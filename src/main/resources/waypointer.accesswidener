@@ -1,0 +1,16 @@
+accessWidener	v2	named
+
+# Needed so WaypointerRenderPipelines can construct a custom RenderType for
+# through-walls lines. Two things are widened:
+#
+#   RenderType.create(String, RenderSetup) -- package-private in vanilla; this
+#     is the only constructor for a RenderType that wraps an arbitrary
+#     RenderPipeline, which we need so our pipeline (depth test disabled) can
+#     actually be drawn through a MultiBufferSource.
+#
+#   RenderPipelines.LINES_SNIPPET -- private static Snippet that vanilla uses
+#     as the shared base for LINES and LINES_TRANSLUCENT. Building from the
+#     snippet is the only way to inherit the line shader + vertex format
+#     without hard-coding shader identifiers that Mojang may rename.
+accessible	method	net/minecraft/client/renderer/rendertype/RenderType	create	(Ljava/lang/String;Lnet/minecraft/client/renderer/rendertype/RenderSetup;)Lnet/minecraft/client/renderer/rendertype/RenderType;
+accessible	field	net/minecraft/client/renderer/RenderPipelines	LINES_SNIPPET	Lcom/mojang/blaze3d/pipeline/RenderPipeline$Snippet;

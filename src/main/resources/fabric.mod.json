@@ -1,0 +1,37 @@
+{
+    "schemaVersion": 1,
+    "id": "waypointer",
+    "version": "${version}",
+    "name": "Waypointer",
+    "description": "Cross-instance ordered waypoints for Hypixel Skyblock, with tracers, proximity progression, and a bit-packed import/export format.",
+    "authors": ["Babbur"],
+    "contact": {
+        "homepage": "https://github.com/ethanrjs/waypointer#readme",
+        "sources": "https://github.com/ethanrjs/waypointer",
+        "issues": "https://github.com/ethanrjs/waypointer/issues"
+    },
+    "license": "PolyForm-Noncommercial-1.0.0",
+    "icon": "assets/waypointer/icon.png",
+    "environment": "client",
+    "entrypoints": {
+        "main": ["dev.ethan.waypointer.Waypointer"],
+        "client": ["dev.ethan.waypointer.WaypointerClient"]
+    },
+    "mixins": [
+        {
+            "config": "waypointer.client.mixins.json",
+            "environment": "client"
+        }
+    ],
+    "accessWidener": "waypointer.accesswidener",
+    "depends": {
+        "fabricloader": ">=0.18.2",
+        "minecraft": "~1.21.11",
+        "java": ">=21",
+        "fabric-api": "*",
+        "owo": ">=0.13.0"
+    },
+    "suggests": {
+        "hypixel-mod-api": ">=1.0"
+    }
+}
