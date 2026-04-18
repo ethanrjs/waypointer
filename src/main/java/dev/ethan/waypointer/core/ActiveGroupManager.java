@@ -47,12 +47,13 @@ public final class ActiveGroupManager {
     /**
      * Groups that should render right now: matching current zone AND enabled.
      *
-     * When no zone has been detected (non-Skyblock world, or before the zone
-     * source has a chance to report in), we fall back to the {@link Zone#UNKNOWN}
-     * zone id rather than returning empty. Without this, waypoints created via the
-     * GUI on a vanilla server or in single-player would silently never render --
-     * they're stored under "unknown" but the filter would reject them because
-     * currentZone was null.
+     * If no zone has been detected (non-Skyblock world, menu, or before the zone
+     * source has reported in) we return empty. Previously this fell back to the
+     * {@link Zone#UNKNOWN} id so waypoints created on non-Skyblock servers could
+     * still render, but that meant the mod painted boxes in singleplayer and
+     * non-Skyblock Hypixel gamemodes too. Since Waypointer is explicitly a
+     * Skyblock tool, gating on a resolved zone is the honest behaviour -- users
+     * who want generic multiplayer waypoints can run a different mod.
      *
      * Returned list is cached and reused across frames -- callers must treat it as
      * read-only. The cache is rebuilt lazily on the next call after any
@@ -61,7 +62,11 @@ public final class ActiveGroupManager {
     public List<WaypointGroup> activeGroups() {
         if (cachedActive != null) return cachedActive;
 
-        String zid = currentZone == null ? Zone.UNKNOWN.id() : currentZone.id();
+        if (currentZone == null) {
+            cachedActive = Collections.emptyList();
+            return cachedActive;
+        }
+        String zid = currentZone.id();
         activeScratch.clear();
         for (WaypointGroup g : byId.values()) {
             if (g.enabled() && zid.equals(g.zoneId())) activeScratch.add(g);

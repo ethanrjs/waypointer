@@ -24,6 +24,17 @@ import java.nio.file.StandardCopyOption;
  */
 public final class WaypointerConfig {
 
+    /**
+     * How the world-space cube is drawn for each waypoint.
+     *
+     * OUTLINED is the old behaviour -- just the twelve edge lines.
+     * FILLED hides the edges and draws six translucent faces, which reads as a
+     * volume at distance where thin lines disappear against bright biomes.
+     * FILLED_OUTLINED stacks both; the alpha on the fill is tuned so the edges
+     * still register as the dominant cue on top.
+     */
+    public enum BoxStyle { OUTLINED, FILLED, FILLED_OUTLINED }
+
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -44,13 +55,48 @@ public final class WaypointerConfig {
     private boolean restartRouteWhenComplete = true;
 
     // Rendering -- tracer defaults to the same green as Waypoint.DEFAULT_COLOR so
-    // a fresh install shows one consistent color scheme across boxes and lines.
+    // a fresh install with matchTracerToWaypointColor=false still shows one
+    // consistent color scheme across boxes and lines.
     private int tracerColor = 0x4FE05A;
+    /**
+     * When {@code true} (default), the tracer line to the current waypoint
+     * inherits that waypoint's rendered colour -- so gradient groups draw a
+     * tracer that smoothly changes hue as the user progresses, and a
+     * manually-coloured checkpoint lights its tracer the same shade. Set
+     * {@code false} to fall back to the flat {@link #tracerColor} override,
+     * which is the old behaviour and useful if a user wants every tracer to
+     * read as one distinct visual element regardless of the active waypoint.
+     */
+    private boolean matchTracerToWaypointColor = true;
     private double tracerOpacity = 0.95;
     private double beaconOpacity = 0.8;
     private boolean showWaypointNames = true;
     private boolean showCompleted = true;
     private boolean showTracer = true;
+    /**
+     * When {@code true}, each waypoint label draws a translucent black rectangle
+     * behind its text for readability. Some players find it obtrusive in busy
+     * routes where labels stack -- turning it off lets the text sit directly
+     * against the world, vanilla-nametag style.
+     */
+    private boolean showLabelBackdrop = true;
+    private BoxStyle boxStyle = BoxStyle.OUTLINED;
+    /**
+     * When {@code true}, every group renders only a three-waypoint sliding
+     * window ({@code currentIndex - 1}, {@code currentIndex}, {@code currentIndex + 1}),
+     * regardless of the group's load mode. Reduces label clutter on dense
+     * static routes where every checkpoint otherwise fights for screen space.
+     *
+     * <p>This is stricter than {@link dev.ethan.waypointer.core.WaypointGroup.LoadMode#SEQUENCE}
+     * already does for sequence groups -- the flag extends the same behavior
+     * to {@link dev.ethan.waypointer.core.WaypointGroup.LoadMode#STATIC}
+     * groups without forcing the user to convert their route and lose the
+     * "see the whole path at once" option.
+     *
+     * <p>Off by default so users don't silently lose visibility of their
+     * existing static routes on upgrade.
+     */
+    private boolean windowedRendering = false;
 
     // Zone detection
     private boolean preferScoreboardFallback = false;
@@ -92,6 +138,31 @@ public final class WaypointerConfig {
      * settings screen without unbinding in the vanilla controls menu.
      */
     private boolean skipWaypointKeybindEnabled = true;
+
+    /**
+     * When {@code true} (legacy behaviour) the proximity tracker reverse-scans
+     * the tail of the route and advances to the farthest-ahead waypoint that is
+     * within reach -- enabling "skip ahead" shortcuts through a dungeon. When
+     * {@code false}, only the current waypoint is considered, forcing strict
+     * sequential progression.
+     */
+    private boolean allowProximitySkipAhead = true;
+
+    /**
+     * Gate for the GitHub update checker. Off means no outbound HTTP at all --
+     * privacy-minded users can disable it without losing the rest of the mod.
+     */
+    private boolean checkForUpdates = true;
+
+    /**
+     * Default mode for the "Add Temp Waypoint Here" keybind, and the pre-selected
+     * mode in the Add Temp modal. Values match
+     * {@link dev.ethan.waypointer.core.Waypoint}'s tempMode encoding:
+     * 1 = time-based, 2 = until reached, 3 = until server leave.
+     */
+    private int tempDefaultMode = 2;
+    /** Default duration (minutes) for time-based temp waypoints. */
+    private int tempDefaultDurationMin = 10;
 
     // Transient; never persisted.
     private transient Path file;
@@ -138,11 +209,15 @@ public final class WaypointerConfig {
     public boolean resetProgressOnWorldJoin() { return resetProgressOnWorldJoin; }
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
     public int tracerColor()                  { return tracerColor; }
+    public boolean matchTracerToWaypointColor() { return matchTracerToWaypointColor; }
     public double tracerOpacity()             { return tracerOpacity; }
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showCompleted()            { return showCompleted; }
     public boolean showTracer()               { return showTracer; }
+    public boolean showLabelBackdrop()        { return showLabelBackdrop; }
+    public BoxStyle boxStyle()                { return boxStyle == null ? BoxStyle.OUTLINED : boxStyle; }
+    public boolean windowedRendering()        { return windowedRendering; }
     public boolean preferScoreboardFallback() { return preferScoreboardFallback; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
     public boolean chatCodecDetection()       { return chatCodecDetection; }
@@ -152,11 +227,16 @@ public final class WaypointerConfig {
     public boolean exportIncludeWaypointFlags(){ return exportIncludeWaypointFlags; }
     public boolean exportIncludeGroupMeta()    { return exportIncludeGroupMeta; }
     public boolean skipWaypointKeybindEnabled() { return skipWaypointKeybindEnabled; }
+    public boolean allowProximitySkipAhead()    { return allowProximitySkipAhead; }
+    public boolean checkForUpdates()            { return checkForUpdates; }
+    public int tempDefaultMode()                { return tempDefaultMode; }
+    public int tempDefaultDurationMin()         { return tempDefaultDurationMin; }
 
     public void setDefaultReachRadius(double v)        { this.defaultReachRadius = clamp(v, 0.5, 100); save(); }
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
     public void setTracerColor(int v)                  { this.tracerColor = v & 0xFFFFFF; save(); }
+    public void setMatchTracerToWaypointColor(boolean v) { this.matchTracerToWaypointColor = v; save(); }
     public void setTracerOpacity(double v)             { this.tracerOpacity = clamp(v, 0, 1); save(); }
     public void setBeaconOpacity(double v)             { this.beaconOpacity = clamp(v, 0, 1); save(); }
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
@@ -171,6 +251,20 @@ public final class WaypointerConfig {
     public void setExportIncludeWaypointFlags(boolean v){ this.exportIncludeWaypointFlags = v; save(); }
     public void setExportIncludeGroupMeta(boolean v)    { this.exportIncludeGroupMeta = v; save(); }
     public void setSkipWaypointKeybindEnabled(boolean v) { this.skipWaypointKeybindEnabled = v; save(); }
+    public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
+    public void setBoxStyle(BoxStyle v)                { this.boxStyle = v == null ? BoxStyle.OUTLINED : v; save(); }
+    public void setWindowedRendering(boolean v)        { this.windowedRendering = v; save(); }
+    public void setAllowProximitySkipAhead(boolean v)  { this.allowProximitySkipAhead = v; save(); }
+    public void setCheckForUpdates(boolean v)          { this.checkForUpdates = v; save(); }
+    public void setTempDefaultMode(int v) {
+        int clamped = (v < 1 || v > 3) ? 2 : v;
+        this.tempDefaultMode = clamped;
+        save();
+    }
+    public void setTempDefaultDurationMin(int v) {
+        this.tempDefaultDurationMin = Math.max(1, Math.min(24 * 60, v));
+        save();
+    }
 
     private static double clamp(double v, double lo, double hi) {
         return Math.max(lo, Math.min(hi, v));

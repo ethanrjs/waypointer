@@ -2,5 +2,6 @@
   "key.waypointer.open_editor": "Open Waypointer Editor",
   "key.waypointer.skip_waypoint": "Skip Current Waypoint",
   "key.waypointer.add_waypoint_here": "Add Waypoint at Player",
+  "key.waypointer.add_temp_waypoint_here": "Add Temporary Waypoint at Player",
   "key.category.waypointer.main": "Waypointer"
 }

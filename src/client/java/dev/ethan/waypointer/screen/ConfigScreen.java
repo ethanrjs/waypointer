@@ -2,6 +2,7 @@ package dev.ethan.waypointer.screen;
 
 import dev.ethan.waypointer.config.WaypointerConfig;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -61,6 +62,16 @@ public final class ConfigScreen extends Screen {
         y += rowH;
         addNumberRow(col1, y, colW, "Tracer color (hex RRGGBB)",
                 config.tracerColor(), v -> config.setTracerColor((int) v), true);
+        y += rowH;
+        addBoolRow(col1, y, "Tracer inherits waypoint color",
+                config.matchTracerToWaypointColor(), config::setMatchTracerToWaypointColor);
+        y += rowH;
+        addBoolRow(col1, y, "Show label backdrop", config.showLabelBackdrop(), config::setShowLabelBackdrop);
+        y += rowH;
+        addBoolRow(col1, y, "Only render nearby waypoints (prev/current/next)",
+                config.windowedRendering(), config::setWindowedRendering);
+        y += rowH;
+        addBoxStyleRow(col1, y, colW);
 
         // --- Column 2: Behavior ------------------------------------------------------------
         int y2 = rowsY;
@@ -89,6 +100,12 @@ public final class ConfigScreen extends Screen {
         y2 += rowH;
         addBoolRow(col2, y2, "Always use scoreboard for zone detection",
                 config.preferScoreboardFallback(), config::setPreferScoreboardFallback);
+        y2 += rowH;
+        addBoolRow(col2, y2, "Allow proximity skip-ahead",
+                config.allowProximitySkipAhead(), config::setAllowProximitySkipAhead);
+        y2 += rowH;
+        addBoolRow(col2, y2, "Check for updates on startup",
+                config.checkForUpdates(), config::setCheckForUpdates);
 
         // Footer
         int footerY = height - FOOTER_H;
@@ -136,6 +153,32 @@ public final class ConfigScreen extends Screen {
             }
         });
         addRenderableWidget(box);
+    }
+
+    /**
+     * Cycling button for the three-way BoxStyle enum. Chose a cycling button over
+     * three radios because the modes form a natural progression (outline → fill →
+     * both) and a single clickable label is less visual noise than a cluster of
+     * toggles.
+     */
+    private void addBoxStyleRow(int x, int y, int colW) {
+        int labelW = colW - 140 - GAP;
+        addRenderableOnly(new LabelWidget(x, y + 6, "Box style", labelW));
+        Button btn = Button.builder(Component.literal(boxStyleLabel(config.boxStyle())), b -> {
+            WaypointerConfig.BoxStyle[] values = WaypointerConfig.BoxStyle.values();
+            WaypointerConfig.BoxStyle next = values[(config.boxStyle().ordinal() + 1) % values.length];
+            config.setBoxStyle(next);
+            b.setMessage(Component.literal(boxStyleLabel(next)));
+        }).bounds(x + labelW + GAP, y, 140, BTN_H).build();
+        addRenderableWidget(btn);
+    }
+
+    private static String boxStyleLabel(WaypointerConfig.BoxStyle s) {
+        return switch (s) {
+            case OUTLINED -> "Outlined";
+            case FILLED -> "Filled";
+            case FILLED_OUTLINED -> "Filled + Outline";
+        };
     }
 
     private void addBoolRow(int x, int y, String label, boolean initial, java.util.function.Consumer<Boolean> setter) {

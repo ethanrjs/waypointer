@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.screen;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.ethan.waypointer.color.GradientColorizer;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
@@ -68,6 +69,11 @@ public final class GroupEditScreen extends Screen {
     private Button sortBtn;
     private Button radiusMinusBtn;
     private Button radiusPlusBtn;
+    // Two small colour swatch buttons for the gradient endpoints. Stored so
+    // the colour-picker callback can push the new colour back onto the
+    // correct widget without chasing it through the widget tree.
+    private ColorSwatchButton gradientStartBtn;
+    private ColorSwatchButton gradientEndBtn;
 
     private SortMode sortMode = SortMode.MANUAL;
     private int scrollOffset;
@@ -135,6 +141,28 @@ public final class GroupEditScreen extends Screen {
         addRenderableWidget(gradientBtn);
         y += BTN_H + GAP_TIGHT;
 
+        // Gradient endpoint swatches. The button IS the colour rather than text
+        // that describes it -- seeing both swatches side by side lets the player
+        // eyeball the range of the gradient before opening either picker. The
+        // full hex code is rendered just below the row for reference without
+        // stealing the button face.
+        int swatchW = (fieldW - GAP_TIGHT) / 2;
+        gradientStartBtn = new ColorSwatchButton(sidebarInner, y, swatchW, BTN_H,
+                "Start", group.gradientStartColor(), () -> openGradientPicker(true));
+        gradientStartBtn.setTooltip(Tooltip.create(Component.literal(
+                "First waypoint's colour. Gradient interpolates from here\n"
+              + "to the end colour across the route. Only applies in AUTO\n"
+              + "mode.")));
+        gradientEndBtn = new ColorSwatchButton(sidebarInner + swatchW + GAP_TIGHT, y,
+                fieldW - swatchW - GAP_TIGHT, BTN_H,
+                "End", group.gradientEndColor(), () -> openGradientPicker(false));
+        gradientEndBtn.setTooltip(Tooltip.create(Component.literal(
+                "Last waypoint's colour. The gradient fades into this\n"
+              + "colour. Only applies in AUTO mode.")));
+        addRenderableWidget(gradientStartBtn);
+        addRenderableWidget(gradientEndBtn);
+        y += BTN_H + GAP_TIGHT;
+
         // Mode toggle
         modeBtn = Button.builder(modeLabel(), this::toggleLoadMode)
                 .bounds(sidebarInner, y, fieldW, BTN_H)
@@ -198,6 +226,7 @@ public final class GroupEditScreen extends Screen {
 
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
         left.add(new GuiTokens.ButtonSpec("+ Add Here", this::addHere));
+        left.add(new GuiTokens.ButtonSpec("+ Add Temp", this::addTempHere));
         left.add(new GuiTokens.ButtonSpec("Export", this::export));
         left.add(new GuiTokens.ButtonSpec("Remove", this::removeSelected));
         left.add(new GuiTokens.ButtonSpec("^", 24, () -> moveSelected(-1)));
@@ -229,6 +258,20 @@ public final class GroupEditScreen extends Screen {
                 ? WaypointGroup.GradientMode.MANUAL : WaypointGroup.GradientMode.AUTO);
         b.setMessage(gradientLabel());
         manager.fireDataChanged();
+    }
+
+    private void openGradientPicker(boolean start) {
+        int current = start ? group.gradientStartColor() : group.gradientEndColor();
+        String title = (start ? "Gradient Start" : "Gradient End") + " Colour";
+        ColorPickerScreen.open(this, title, current, picked -> {
+            if (start) group.setGradientStartColor(picked);
+            else       group.setGradientEndColor(picked);
+            // Push the new colour onto the swatch so the sidebar reflects the
+            // change immediately without re-running init().
+            if (gradientStartBtn != null) gradientStartBtn.setColor(group.gradientStartColor());
+            if (gradientEndBtn   != null) gradientEndBtn.setColor(group.gradientEndColor());
+            manager.fireDataChanged();
+        });
     }
 
     private Component modeLabel() {
@@ -313,6 +356,10 @@ public final class GroupEditScreen extends Screen {
     }
 
     // --- actions ----------------------------------------------------------------------------
+
+    private void addTempHere() {
+        AddTempScreen.open(this, manager, config, group);
+    }
 
     private void addHere() {
         LocalPlayer p = Minecraft.getInstance().player;
@@ -503,11 +550,21 @@ public final class GroupEditScreen extends Screen {
         if (bg != 0) g.fill(x1, y1, x2, y1 + ROW_H, bg);
         if (selected) g.fill(x1, y1, x1 + 2, y1 + ROW_H, ACCENT);
 
-        // Color swatch
+        // Color swatch. Clickable: opens ColorPickerScreen for a per-waypoint colour
+        // override. A thin lock ring is drawn around the swatch when the waypoint's
+        // colour is locked so users know the gradient won't repaint this one.
         int sx = x1 + GAP + 2;
         int sy = y1 + 4;
         int swatchColor = 0xFF000000 | (w.color() & 0xFFFFFF);
         g.fill(sx, sy, sx + 14, sy + 14, swatchColor);
+        if (w.hasFlag(Waypoint.FLAG_LOCKED_COLOR)) {
+            // 1px white inset so the lock state is visible on any swatch colour --
+            // a coloured border would disappear against similar colours.
+            g.fill(sx - 1, sy - 1, sx + 15, sy,      0xFFFFFFFF);
+            g.fill(sx - 1, sy + 14, sx + 15, sy + 15, 0xFFFFFFFF);
+            g.fill(sx - 1, sy, sx, sy + 14,           0xFFFFFFFF);
+            g.fill(sx + 14, sy, sx + 15, sy + 14,     0xFFFFFFFF);
+        }
 
         // Row labels use 1-indexed numbers so they line up with the world labels
         // emitted by WaypointRenderer ("#1", "#2", ...). Coords are parenthesised so
@@ -564,6 +621,31 @@ public final class GroupEditScreen extends Screen {
             }
         }
 
+        // Swatch-click: open per-waypoint colour picker. Checked before super
+        // because the list area doesn't host widgets, so super would fall
+        // through to the row-click path and we'd lose the shift-click affordance
+        // for "unlock colour" below.
+        if (event.button() == MOUSE_BUTTON_LEFT) {
+            int swatchIdx = swatchIndexAt(event.x(), event.y());
+            if (swatchIdx >= 0) {
+                // Poll the shift key directly off the window rather than through a
+                // Screen helper: the old `Screen.hasShiftDown()` helper was split
+                // into per-event Modifiers in 1.21.11 and isn't reachable from a
+                // mouse callback without the event's modifier bits, which aren't
+                // currently exposed on MouseButtonInfo's public API.
+                var win = Minecraft.getInstance().getWindow();
+                boolean shift = InputConstants.isKeyDown(win, InputConstants.KEY_LSHIFT)
+                        || InputConstants.isKeyDown(win, 344 /* GLFW_KEY_RIGHT_SHIFT */);
+                if (shift && group.get(swatchIdx).hasFlag(Waypoint.FLAG_LOCKED_COLOR)) {
+                    unlockWaypointColor(swatchIdx);
+                } else {
+                    openWaypointColorPicker(swatchIdx);
+                }
+                selectedIndex = swatchIdx;
+                return true;
+            }
+        }
+
         if (super.mouseClicked(event, doubleClick)) return true;
         if (event.button() != MOUSE_BUTTON_LEFT) return false;
 
@@ -573,6 +655,54 @@ public final class GroupEditScreen extends Screen {
 
         if (doubleClick) beginLabelEdit(idx);
         return true;
+    }
+
+    /**
+     * Hit-test the 14px colour swatch on row {@code idx}. Returns the row index
+     * if {@code (mx, my)} is inside a swatch, else -1. Mirrors the geometry
+     * used by {@link #renderWaypointRow}: row pitch, list clip, swatch X/Y offsets.
+     */
+    private int swatchIndexAt(double mx, double my) {
+        int top = PAD_OUTER + 10 + GAP_SECTION;
+        int bottom = height - FOOTER_H - GAP_SECTION;
+        int mainLeft = PAD_OUTER + SIDEBAR_W + GAP_SECTION;
+        int mainRight = width - PAD_OUTER;
+        if (mx < mainLeft || mx > mainRight || my < top || my > bottom) return -1;
+
+        int pitch = ROW_H + 2;
+        int idx = (int) ((my - (top + 4) + scrollOffset) / pitch);
+        if (idx < 0 || idx >= group.size()) return -1;
+
+        int rowY = top + 4 - scrollOffset + idx * pitch;
+        int sx = (mainLeft + 2) + GAP + 2;
+        int sy = rowY + 4;
+        if (mx >= sx && mx < sx + 14 && my >= sy && my < sy + 14) return idx;
+        return -1;
+    }
+
+    private void openWaypointColorPicker(int idx) {
+        Waypoint w = group.get(idx);
+        ColorPickerScreen.open(this, "Waypoint #" + (idx + 1) + " Colour", w.color(), picked -> {
+            // Picking a colour implicitly locks the waypoint -- otherwise the
+            // next gradient recolour would wipe the user's choice. Users who
+            // want to re-gradient an individual waypoint can shift-click the
+            // swatch to clear the lock.
+            Waypoint cur = group.get(idx);
+            group.set(idx, cur.withColor(picked).withFlags(cur.flags() | Waypoint.FLAG_LOCKED_COLOR));
+            manager.fireDataChanged();
+        });
+    }
+
+    private void unlockWaypointColor(int idx) {
+        Waypoint w = group.get(idx);
+        int cleared = w.flags() & ~Waypoint.FLAG_LOCKED_COLOR;
+        group.set(idx, w.withFlags(cleared));
+        // Re-run the gradient so the just-unlocked waypoint immediately picks
+        // up its place in the sweep instead of lingering on its old manual colour.
+        if (group.gradientMode() == WaypointGroup.GradientMode.AUTO) {
+            GradientColorizer.apply(group);
+        }
+        manager.fireDataChanged();
     }
 
     /**

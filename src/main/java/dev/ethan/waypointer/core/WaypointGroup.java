@@ -52,6 +52,12 @@ public final class WaypointGroup {
     private GradientMode gradientMode;
     private LoadMode loadMode;
     private double defaultRadius;
+    // Per-group gradient endpoints (RGB). Each group can pick its own palette so a
+    // Foraging route and a Dungeons route don't have to share one theme. Defaults
+    // match the old globals: cyan start, red end -- picked to read as cool → hot
+    // so "next" is visually the calmest point on a route.
+    private int gradientStartColor = 0x00BFFF;
+    private int gradientEndColor   = 0xFF3040;
 
     public WaypointGroup(String id, String name, String zoneId) {
         this.id = Objects.requireNonNull(id);
@@ -77,6 +83,8 @@ public final class WaypointGroup {
     public GradientMode gradientMode() { return gradientMode; }
     public LoadMode loadMode()    { return loadMode; }
     public double defaultRadius() { return defaultRadius; }
+    public int gradientStartColor() { return gradientStartColor; }
+    public int gradientEndColor()   { return gradientEndColor; }
     public List<Waypoint> waypoints() { return Collections.unmodifiableList(waypoints); }
     public int size()             { return waypoints.size(); }
     public boolean isEmpty()      { return waypoints.isEmpty(); }
@@ -86,6 +94,21 @@ public final class WaypointGroup {
     public void setZoneId(String newZoneId)             { this.zoneId = Objects.requireNonNull(newZoneId); }
     public void setEnabled(boolean on)                  { this.enabled = on; }
     public void setDefaultRadius(double r)              { this.defaultRadius = Math.max(0.5, r); }
+
+    /**
+     * Set the group's gradient endpoints. Setters immediately reapply the gradient
+     * when the group is in AUTO mode so the colour change is visible without the
+     * user needing a separate "apply" action. Locked waypoints are preserved by
+     * GradientColorizer so a per-waypoint override survives a gradient re-colour.
+     */
+    public void setGradientStartColor(int rgb) {
+        this.gradientStartColor = rgb & 0xFFFFFF;
+        applyGradientIfAuto();
+    }
+    public void setGradientEndColor(int rgb) {
+        this.gradientEndColor = rgb & 0xFFFFFF;
+        applyGradientIfAuto();
+    }
 
     public void setGradientMode(GradientMode mode) {
         this.gradientMode = Objects.requireNonNull(mode);
@@ -140,10 +163,25 @@ public final class WaypointGroup {
      * {@code action} with each index inline, producing zero garbage.
      */
     public void forEachVisibleIndex(IntConsumer action) {
+        forEachVisibleIndex(action, false);
+    }
+
+    /**
+     * Sibling of {@link #forEachVisibleIndex(IntConsumer)} that lets the caller
+     * force the prev/current/next window even on STATIC groups. Used by the
+     * renderer when the user has enabled the "windowed rendering" config
+     * toggle so dense static routes stop drawing every checkpoint at once
+     * without the user having to convert the group's load mode (which would
+     * also change navigation semantics, not just visuals).
+     *
+     * @param forceWindow when {@code true}, always emit the three-index
+     *                    sliding window regardless of {@link #loadMode}
+     */
+    public void forEachVisibleIndex(IntConsumer action, boolean forceWindow) {
         int n = waypoints.size();
         if (n == 0) return;
 
-        if (loadMode == LoadMode.STATIC) {
+        if (loadMode == LoadMode.STATIC && !forceWindow) {
             for (int i = 0; i < n; i++) action.accept(i);
             return;
         }
@@ -219,6 +257,43 @@ public final class WaypointGroup {
 
     public void resetProgress() {
         currentIndex = 0;
+    }
+
+    /**
+     * Drop every time-based temporary waypoint whose deadline has passed.
+     * Returns the number of waypoints removed so callers can short-circuit
+     * save/dirty notifications when nothing changed.
+     *
+     * <p>The reach-based and server-leave-based temps are handled elsewhere
+     * ({@code ProximityTracker} / {@code TempWaypointCleaner#onDisconnect}).
+     * Centralising only the time branch here keeps the scheduler code in one
+     * place and avoids spreading "what counts as expired" across modules.
+     */
+    public int removeExpired(long nowMillis) {
+        int removed = 0;
+        for (int i = waypoints.size() - 1; i >= 0; i--) {
+            if (waypoints.get(i).isExpired(nowMillis)) {
+                remove(i);
+                removed++;
+            }
+        }
+        return removed;
+    }
+
+    /**
+     * Drop every temporary waypoint regardless of mode. Used on server
+     * disconnect -- the contract is that no temp waypoint outlives the session
+     * that created it.
+     */
+    public int removeAllTemp() {
+        int removed = 0;
+        for (int i = waypoints.size() - 1; i >= 0; i--) {
+            if (waypoints.get(i).isTemp()) {
+                remove(i);
+                removed++;
+            }
+        }
+        return removed;
     }
 
     public void setCurrentIndex(int index) {

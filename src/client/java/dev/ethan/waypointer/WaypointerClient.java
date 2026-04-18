@@ -10,10 +10,13 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.input.WaypointerKeybinds;
 import dev.ethan.waypointer.location.LocationTracker;
 import dev.ethan.waypointer.progression.ProximityTracker;
+import dev.ethan.waypointer.progression.TempWaypointCleaner;
 import dev.ethan.waypointer.progression.WorldJoinProgressReset;
 import dev.ethan.waypointer.render.TracerRenderer;
 import dev.ethan.waypointer.render.WaypointRenderer;
 import dev.ethan.waypointer.screen.WaypointerScreen;
+import dev.ethan.waypointer.update.UpdateChecker;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 
@@ -43,6 +46,7 @@ public final class WaypointerClient implements ClientModInitializer {
 
         new LocationTracker(manager, config).install();
         new ProximityTracker(manager, config).install();
+        new TempWaypointCleaner(manager).install();
         new WorldJoinProgressReset(manager, config).install();
         new WaypointRenderer(manager, config).install();
         new TracerRenderer(manager, config).install();
@@ -58,6 +62,15 @@ public final class WaypointerClient implements ClientModInitializer {
             config.save();
         });
         manager.addDataListener(() -> storage.save(manager));
+
+        // Fire-and-forget update check. Runs on a daemon thread with a 5s
+        // startup delay so it doesn't race with world-load chat spam. Looking
+        // the version up through FabricLoader (vs a hardcoded constant) means
+        // we don't have to remember to bump a second place on release.
+        String modVersion = FabricLoader.getInstance().getModContainer(Waypointer.MOD_ID)
+                .map(c -> c.getMetadata().getVersion().getFriendlyString())
+                .orElse("0.0.0");
+        new UpdateChecker(modVersion, config.checkForUpdates()).start();
 
         Waypointer.LOGGER.info("Waypointer client ready -- {} group(s) loaded", manager.allGroups().size());
     }

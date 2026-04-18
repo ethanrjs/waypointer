@@ -68,6 +68,22 @@ public final class ScoreboardZoneResolver implements ZoneSource {
         Objective side = sb.getDisplayObjective(DisplaySlot.SIDEBAR);
         if (side == null) return null;
 
+        // Glacite sub-areas (Tunnels, Lake, Base Camp, Mineshafts) share the same
+        // broad Hypixel location id as central Dwarven Mines. Scan the entire
+        // sidebar first -- substring order matches Skyblocker's Area.DwarvenMines.
+        //
+        // Specific mineshaft variant (Topaz 1, Jasper Crystal, ...) wins over
+        // the generic "Glacite Mineshafts" line when both are visible: the
+        // variant is strictly more specific and is what users keyed route
+        // waypoints to.
+        String blob = SidebarTexts.collectColorStripped(mc);
+        if (blob != null) {
+            Zone mineshaftType = Zone.tryResolveMineshaftTypeFromSidebarBlob(blob);
+            if (mineshaftType != null) return mineshaftType;
+            Zone dwarvenSub = Zone.tryResolveDwarvenSubAreaFromSidebarBlob(blob);
+            if (dwarvenSub != null) return dwarvenSub;
+        }
+
         Collection<PlayerScoreEntry> entries = sb.listPlayerScores(side);
         for (PlayerScoreEntry entry : entries) {
             String line = renderLine(sb, entry);

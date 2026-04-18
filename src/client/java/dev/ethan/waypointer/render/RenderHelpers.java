@@ -58,6 +58,43 @@ public final class RenderHelpers {
         seg(consumer, pose, x1, y1, z2, x1, y2, z2, r, g, b, a, 0, 1, 0);
     }
 
+    /**
+     * Append the 6 faces of an axis-aligned cube as QUADS to {@code consumer}.
+     *
+     * <p>Used by the filled / filled+outlined box styles. Expects a vertex
+     * consumer pulled from {@link WaypointerRenderPipelines#quadsThroughWalls()}
+     * (POSITION_COLOR vertex format, QUADS draw mode, translucent blending,
+     * no depth test, culling disabled). Each face is wound counter-clockwise;
+     * because culling is disabled on that pipeline the winding doesn't matter
+     * for visibility but the order below matches DEBUG_FILLED_BOX for future
+     * consistency.
+     *
+     * <p>Alpha is deliberately clamped to the config's beacon opacity by the
+     * caller -- passing 1.0 here would produce a solid cube that obscures the
+     * world behind it. Typical values are 0.15-0.35.
+     */
+    public static void emitFilledBox(VertexConsumer consumer, PoseStack ps,
+                                     float x1, float y1, float z1,
+                                     float x2, float y2, float z2,
+                                     int rgb, float alpha) {
+        int r = red(rgb), g = green(rgb), b = blue(rgb);
+        int a = (int) (alpha * 255f) & 0xFF;
+        PoseStack.Pose pose = ps.last();
+
+        // -Y face
+        quad(consumer, pose, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, a);
+        // +Y face
+        quad(consumer, pose, x1, y2, z2, x2, y2, z2, x2, y2, z1, x1, y2, z1, r, g, b, a);
+        // -Z face
+        quad(consumer, pose, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, a);
+        // +Z face
+        quad(consumer, pose, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, r, g, b, a);
+        // -X face
+        quad(consumer, pose, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, r, g, b, a);
+        // +X face
+        quad(consumer, pose, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
+    }
+
     /** Append a single line segment. */
     public static void emitLine(VertexConsumer consumer, PoseStack ps,
                                 float x1, float y1, float z1,
@@ -82,6 +119,20 @@ public final class RenderHelpers {
 
     public static RenderType linesType() {
         return RenderTypes.lines();
+    }
+
+    private static void quad(VertexConsumer c, PoseStack.Pose pose,
+                             float x1, float y1, float z1,
+                             float x2, float y2, float z2,
+                             float x3, float y3, float z3,
+                             float x4, float y4, float z4,
+                             int r, int g, int b, int a) {
+        // POSITION_COLOR vertex format -- no normal, no line width. Writing either
+        // would throw "unexpected element" against the DEBUG_QUADS-style pipeline.
+        c.addVertex(pose, x1, y1, z1).setColor(r, g, b, a);
+        c.addVertex(pose, x2, y2, z2).setColor(r, g, b, a);
+        c.addVertex(pose, x3, y3, z3).setColor(r, g, b, a);
+        c.addVertex(pose, x4, y4, z4).setColor(r, g, b, a);
     }
 
     private static void seg(VertexConsumer c, PoseStack.Pose pose,

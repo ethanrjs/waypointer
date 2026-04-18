@@ -93,8 +93,19 @@ public final class Storage {
         o.addProperty("gradientMode", g.gradientMode().name());
         o.addProperty("loadMode", g.loadMode().name());
         o.addProperty("defaultRadius", g.defaultRadius());
+        // Per-group gradient endpoints. Stored as ints rather than hex strings
+        // because the rest of the waypoint colour fields are already ints -- one
+        // less parser branch in load().
+        o.addProperty("gradientStartColor", g.gradientStartColor());
+        o.addProperty("gradientEndColor",   g.gradientEndColor());
         JsonArray wps = new JsonArray();
-        for (Waypoint w : g.waypoints()) wps.add(waypointToJson(w));
+        for (Waypoint w : g.waypoints()) {
+            // Temporary waypoints are client-session ephemeral by contract.
+            // Skipping them here is the single authoritative filter -- there is
+            // no separate "before save" pass to keep in sync.
+            if (w.isTemp()) continue;
+            wps.add(waypointToJson(w));
+        }
         o.add("waypoints", wps);
         return o;
     }
@@ -114,6 +125,10 @@ public final class Storage {
             try { g.setLoadMode(WaypointGroup.LoadMode.valueOf(o.get("loadMode").getAsString())); }
             catch (IllegalArgumentException ignored) {}
         }
+        // Gradient endpoints were added after schema v1 so both fields are optional;
+        // missing values leave the group on its built-in cyan/red defaults.
+        if (o.has("gradientStartColor")) g.setGradientStartColor(o.get("gradientStartColor").getAsInt());
+        if (o.has("gradientEndColor"))   g.setGradientEndColor(o.get("gradientEndColor").getAsInt());
         if (o.has("waypoints")) {
             for (JsonElement el : o.getAsJsonArray("waypoints")) {
                 g.add(waypointFromJson(el.getAsJsonObject()));
