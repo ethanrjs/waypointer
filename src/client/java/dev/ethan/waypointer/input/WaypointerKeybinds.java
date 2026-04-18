@@ -24,8 +24,8 @@ import org.lwjgl.glfw.GLFW;
  *   - Open Editor -- the primary way into the GUI.
  *   - Skip Waypoint -- advances the current active group(s) past their current
  *     waypoint. Useful for dungeon speedruns or when a waypoint is physically
- *     unreachable. Gated by {@link WaypointerConfig#skipWaypointKeybindEnabled()}
- *     so a player can neutralise an accidental conflict without clearing the bind.
+ *     unreachable. Unbound by default; players who don't want it just don't
+ *     bind the key.
  *   - Add Waypoint Here -- drops a waypoint at the player's position into the
  *     first active group (auto-creating one if the zone has none). Matches
  *     {@code /wp add} in behavior so muscle memory transfers between the command
@@ -48,11 +48,13 @@ public final class WaypointerKeybinds {
     private final Runnable openGui;
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
+    private final WaypointAddFlow addFlow;
 
     public WaypointerKeybinds(Runnable openGui, ActiveGroupManager manager, WaypointerConfig config) {
         this.openGui = openGui;
         this.manager = manager;
         this.config = config;
+        this.addFlow = new WaypointAddFlow(config);
         this.openEditor = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.waypointer.open_editor",
                 InputConstants.Type.KEYSYM,
@@ -93,9 +95,7 @@ public final class WaypointerKeybinds {
         // consumeClick returns true at most once per press, so holding the key doesn't
         // spam new screens / repeated skips / repeated adds.
         while (openEditor.consumeClick()) openGui.run();
-        while (skipWaypoint.consumeClick()) {
-            if (config.skipWaypointKeybindEnabled()) skipCurrentWaypoint(mc);
-        }
+        while (skipWaypoint.consumeClick()) skipCurrentWaypoint(mc);
         while (addWaypointHere.consumeClick()) addWaypointAtPlayer(mc);
         while (addTempWaypointHere.consumeClick()) addTempWaypointAtPlayer(mc);
     }
@@ -142,6 +142,7 @@ public final class WaypointerKeybinds {
 
         WaypointGroup target = manager.getOrCreateActiveGroup();
         target.add(new Waypoint(x, y, z, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
+        addFlow.afterWaypointAdded(target);
         manager.fireDataChanged();
 
         showFeedback(mc, Component.literal("Waypoint added to \"" + target.name()
@@ -155,9 +156,12 @@ public final class WaypointerKeybinds {
      * expiry stamped from {@link System#currentTimeMillis()} at the moment of
      * creation; other modes ignore duration.
      *
-     * <p>Like the regular add path, the target group is either the first
-     * active group in the current zone or a freshly-created one -- temporary
-     * waypoints live in the same groups as normal ones, they're just flagged.
+     * <p>Temps go into the per-zone temp bucket (see
+     * {@link ActiveGroupManager#getOrCreateTempGroup()}), not the player's
+     * actual route. Mixing temps into a real route used to cause visible churn
+     * (gradient recolouring every time a temp dropped, proximity advancing
+     * past temps as if they were route steps); the dedicated bucket keeps
+     * those concerns completely separate.
      */
     private void addTempWaypointAtPlayer(Minecraft mc) {
         LocalPlayer p = mc.player;
@@ -173,7 +177,7 @@ public final class WaypointerKeybinds {
                 ? System.currentTimeMillis() + durationMin * 60_000L
                 : 0L;
 
-        WaypointGroup target = manager.getOrCreateActiveGroup();
+        WaypointGroup target = manager.getOrCreateTempGroup();
         target.add(Waypoint.at(x, y, z).withTemp(mode, expiresAt));
         manager.fireDataChanged();
 

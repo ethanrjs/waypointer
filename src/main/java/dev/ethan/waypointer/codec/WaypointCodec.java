@@ -355,6 +355,36 @@ public final class WaypointCodec {
     }
 
     /**
+     * Cheap-enough integrity probe used by the chat import detector to decide
+     * whether a candidate codec deserves an interactive pill or the stripped
+     * {@code [Invalid Waypointer Code]} fallback.
+     *
+     * <p>Implemented as "try to fully decode and discard" because every
+     * corruption surface the wire format cares about lives in the decoder
+     * path: the CJK alphabet check, the DEFLATE bit-stream self-check (raw
+     * DEFLATE doesn't carry a CRC, but any corrupted token sequence surfaces
+     * as a {@code DataFormatException} on inflate), the header-version guard,
+     * and the per-field length sanity scattered through {@link #readBody}.
+     * Any bit-flip survives at most one of these -- two layers of self-check
+     * in practice -- so a full decode is strictly stronger than a quick
+     * prefix/length probe, and on the microsecond scale a chat-receive
+     * handler can afford per detected match.
+     *
+     * @return {@code true} iff the payload decodes cleanly into at least one
+     *         group. Empty decodes count as invalid because a zero-group
+     *         export has no reason to exist and is almost certainly a truncation.
+     */
+    public static boolean isValidCodec(String text) {
+        if (text == null) return false;
+        try {
+            Decoded decoded = decodeFull(text);
+            return !decoded.groups().isEmpty();
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
+    /**
      * Best-effort partial decode that only returns the sender's label, or
      * {@link Optional#empty()} if the payload has none / fails to decode.
      *

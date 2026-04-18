@@ -18,7 +18,10 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.input.WaypointAddFlow;
 import dev.ethan.waypointer.screen.DebugInspectScreen;
+import dev.ethan.waypointer.screen.ImportFeedback;
+import dev.ethan.waypointer.screen.WaypointerScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
@@ -62,6 +65,7 @@ public final class WaypointerCommands {
     private final WaypointerConfig config;
     private final ChatImportCache chatImportCache;
     private final Runnable openGui; // supplied by client init so we don't wire screens here
+    private final WaypointAddFlow addFlow;
 
     public WaypointerCommands(ActiveGroupManager manager, Storage storage,
                               WaypointerConfig config, ChatImportCache chatImportCache,
@@ -71,6 +75,7 @@ public final class WaypointerCommands {
         this.config = config;
         this.chatImportCache = chatImportCache;
         this.openGui = openGui;
+        this.addFlow = new WaypointAddFlow(config);
     }
 
     public void install() {
@@ -121,6 +126,21 @@ public final class WaypointerCommands {
                                                                         StringArgumentType.getString(ctx, "name"))))))))
                         .then(argument("name", StringArgumentType.greedyString())
                                 .executes(ctx -> runAdd(ctx.getSource(), StringArgumentType.getString(ctx, "name")))))
+                // "addtemp at X Y Z" is the command fired by chat-coord clicks.
+                // It diverges from "add at" in two ways: the waypoint lands in the
+                // zone's dedicated temp bucket (not the active route), and it's
+                // stamped with TEMP_UNTIL_LEAVE so it auto-cleans on disconnect.
+                // Chat-shared coords are almost always one-shot ("come to these
+                // coords") so treating them as permanent polluted routes over time.
+                .then(literal("addtemp")
+                        .then(literal("at")
+                                .then(argument("x", IntegerArgumentType.integer())
+                                        .then(argument("y", IntegerArgumentType.integer())
+                                                .then(argument("z", IntegerArgumentType.integer())
+                                                        .executes(ctx -> runAddTempAt(ctx.getSource(),
+                                                                IntegerArgumentType.getInteger(ctx, "x"),
+                                                                IntegerArgumentType.getInteger(ctx, "y"),
+                                                                IntegerArgumentType.getInteger(ctx, "z"))))))))
                 .then(literal("remove")
                         .then(argument("index", IntegerArgumentType.integer(0))
                                 .suggests(suggestActiveGroupIndices())
@@ -224,7 +244,7 @@ public final class WaypointerCommands {
      */
     private SuggestionProvider<FabricClientCommandSource> suggestAllGroupIndices() {
         return (ctx, builder) -> {
-            List<WaypointGroup> all = manager.allGroups();
+            List<WaypointGroup> all = manager.allGroupsList();
             return suggestIndexed(builder, all.size(),
                     i -> all.get(i).name() + " (" + all.get(i).size() + " pts)");
         };
@@ -537,10 +557,36 @@ public final class WaypointerCommands {
         WaypointGroup target = manager.getOrCreateActiveGroup();
         target.add(new Waypoint(x, y, z, name == null ? "" : name,
                 Waypoint.DEFAULT_COLOR, 0, 0.0));
+        addFlow.afterWaypointAdded(target);
         manager.fireDataChanged();
 
         success(src, "Added waypoint " + (target.size() - 1) + " to \"" + target.name()
                 + "\" at " + x + ", " + y + ", " + z);
+        return 1;
+    }
+
+    /**
+     * Entry point for {@code /wp addtemp at <x> <y> <z>} (fired by chat-coord
+     * clicks, see {@link dev.ethan.waypointer.chat.ChatCoordDetector}).
+     *
+     * <p>Chat-shared coords are generally "meet me here" one-shots; making them
+     * permanent by default would bloat the user's route with single-use
+     * destinations. LEAVE expiry is the right default because:
+     *   - TIME would require guessing a duration the sender never specified;
+     *   - REACH disappears the moment the player arrives, which is too eager
+     *     if the player wants to leave and come back;
+     *   - LEAVE keeps the marker for the whole play session and auto-cleans
+     *     on disconnect, which is exactly the "come to these coords until we
+     *     log off" contract the chat context implies.
+     */
+    private int runAddTempAt(FabricClientCommandSource src, int x, int y, int z) {
+        WaypointGroup target = manager.getOrCreateTempGroup();
+        Waypoint w = Waypoint.at(x, y, z).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L);
+        target.add(w);
+        manager.fireDataChanged();
+
+        success(src, "Added temp waypoint to \"" + target.name()
+                + "\" at " + x + ", " + y + ", " + z + " (expires on disconnect)");
         return 1;
     }
 
@@ -567,6 +613,7 @@ public final class WaypointerCommands {
         int z = (int) Math.floor(player.getZ());
         target.insert(index, new Waypoint(x, y, z, name == null ? "" : name,
                 Waypoint.DEFAULT_COLOR, 0, 0.0));
+        addFlow.afterWaypointAdded(target);
         manager.fireDataChanged();
 
         success(src, "Inserted waypoint at [" + index + "] in \"" + target.name()
@@ -605,7 +652,7 @@ public final class WaypointerCommands {
 
     private int runExport(FabricClientCommandSource src, WaypointCodec.Options opts) {
         Zone zone = manager.currentZone();
-        List<WaypointGroup> toExport = zone == null ? manager.allGroups() : manager.groupsForZone(zone.id());
+        List<WaypointGroup> toExport = zone == null ? manager.allGroupsList() : manager.groupsForZone(zone.id());
         if (toExport.isEmpty()) { info(src, "Nothing to export" + zoneSuffix()); return 0; }
 
         String payload = WaypointCodec.encode(toExport, opts);
@@ -738,9 +785,24 @@ public final class WaypointerCommands {
                         .append(Component.literal("\"" + result.label() + "\"")
                                 .withStyle(ChatFormatting.WHITE)));
             }
+
+            // Toast + editor open on top of the chat feedback. The chat
+            // message is the authoritative record (includes format + retarget
+            // details); the toast is a passive glance-indicator so users who
+            // ran the command in the middle of gameplay notice without
+            // reading chat. Opening the editor is scheduled via the client
+            // executor so we don't fight brigadier's command-completion
+            // rendering on the same frame.
+            ImportFeedback.success(result.groups(), origin);
+            if (!result.groups().isEmpty()) {
+                WaypointGroup focus = result.groups().get(0);
+                Minecraft.getInstance().execute(() ->
+                        WaypointerScreen.openFocused(manager, config, focus));
+            }
             return result.groups().size();
         } catch (IllegalArgumentException e) {
             error(src, "Import failed: " + e.getMessage());
+            ImportFeedback.failure(e.getMessage());
             return 0;
         }
     }
@@ -792,7 +854,7 @@ public final class WaypointerCommands {
     }
 
     private int runListGroups(FabricClientCommandSource src) {
-        List<WaypointGroup> all = manager.allGroups();
+        List<WaypointGroup> all = manager.allGroupsList();
         if (all.isEmpty()) { info(src, "No groups defined."); return 0; }
         info(src, all.size() + " group(s) total:");
         for (int i = 0; i < all.size(); i++) {
@@ -804,7 +866,7 @@ public final class WaypointerCommands {
     }
 
     private int runDeleteGroup(FabricClientCommandSource src, int index) {
-        List<WaypointGroup> all = manager.allGroups();
+        List<WaypointGroup> all = manager.allGroupsList();
         if (index < 0 || index >= all.size()) {
             error(src, "Index " + index + " out of range (0.." + (all.size() - 1) + ")");
             return 0;

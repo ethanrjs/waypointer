@@ -30,9 +30,20 @@ public final class Storage {
     public static final int SCHEMA_VERSION = 1;
     private static final String FILE_NAME = "waypoints.json";
 
+    /**
+     * Quiet window before a dirty marker triggers a disk write. Waypoint
+     * mutations clump hard -- dragging to reorder fires a listener per swap,
+     * gradient repaint fires once per waypoint, bulk import fires once per
+     * waypoint. Debouncing collapses these into one write per intent while
+     * still feeling instant to the user.
+     */
+    private static final long SAVE_DEBOUNCE_MS = 400L;
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     private final Path file;
+    private AsyncSaver saver;
+    private ActiveGroupManager managerRef;
 
     public Storage(Path file) {
         this.file = file;
@@ -64,13 +75,49 @@ public final class Storage {
         }
     }
 
+    /**
+     * Wire the storage up as a data-change listener. The listener-triggered
+     * path is the only live-save channel we support -- callers don't invoke
+     * {@link #save(ActiveGroupManager)} directly any more. Kept separate from
+     * {@link #load} so callers can rehydrate without immediately writing the
+     * canonical form back.
+     */
+    public void attach(ActiveGroupManager manager) {
+        this.managerRef = manager;
+        this.saver = new AsyncSaver("waypoints", this::writeToDisk, SAVE_DEBOUNCE_MS);
+        manager.addDataListener(saver::markDirty);
+    }
+
+    /**
+     * Public entrypoint for explicit saves (e.g. tests, one-off writes before
+     * {@link #attach} has run). Normal live saves go through the async path
+     * driven by {@link #attach}'s listener.
+     */
     public void save(ActiveGroupManager manager) {
+        if (saver != null && managerRef == manager) {
+            saver.markDirty();
+            return;
+        }
+        this.managerRef = manager;
+        writeToDisk();
+    }
+
+    /**
+     * Synchronously flush any pending waypoint write. Called on client
+     * shutdown so an atomic rename in flight lands before the JVM exits.
+     */
+    public void flush() {
+        if (saver != null) saver.flush();
+    }
+
+    private void writeToDisk() {
+        if (managerRef == null) return;
         try {
             Files.createDirectories(file.getParent());
             JsonObject root = new JsonObject();
             root.addProperty("schema", SCHEMA_VERSION);
             JsonArray groups = new JsonArray();
-            for (WaypointGroup g : manager.allGroups()) groups.add(groupToJson(g));
+            for (WaypointGroup g : managerRef.allGroups()) groups.add(groupToJson(g));
             root.add("groups", groups);
 
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");

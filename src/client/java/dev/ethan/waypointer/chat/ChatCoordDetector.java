@@ -16,7 +16,14 @@ import java.util.Optional;
 /**
  * Sniffs incoming game chat for "x y z" coordinate triples and recolors the coord
  * numbers themselves into clickable aqua-underlined runs. Clicking runs
- * {@code /wp add at <x> <y> <z>}.
+ * {@code /wp addtemp at <x> <y> <z>}, which drops a session-scoped temporary
+ * waypoint (expires on disconnect) into the zone's temp bucket.
+ *
+ * <p>Chat-shared coords are almost always one-offs -- "meet me at 100 64 200"
+ * -- so committing them to the permanent route was the wrong default and
+ * caused routes to accumulate stale waypoints from old sessions. The
+ * {@code addtemp} variant matches the intent: mark it while useful, let it
+ * vanish on its own.
  *
  * We walk the original component's styled runs with {@link FormattedText#visit}
  * so styling on non-coord text (rank prefixes, mode colors, etc.) is preserved.
@@ -139,12 +146,17 @@ public final class ChatCoordDetector {
      * force aqua + underline + click + hover so the coord reads as a button.
      */
     private static Style chipStyle(Style base, CoordScanner.Match m) {
-        String cmd = "/wp add at " + m.x() + " " + m.y() + " " + m.z();
+        // Target the temp variant so the waypoint auto-cleans on disconnect --
+        // see the class javadoc for why chat-shared coords default to
+        // session-scoped rather than permanent.
+        String cmd = "/wp addtemp at " + m.x() + " " + m.y() + " " + m.z();
         return base
                 .withColor(ChatFormatting.AQUA)
                 .withUnderlined(true)
                 .withClickEvent(new ClickEvent.RunCommand(cmd))
                 .withHoverEvent(new HoverEvent.ShowText(
-                        Component.literal("Add waypoint at " + m.x() + ", " + m.y() + ", " + m.z())));
+                        Component.literal("Add temp waypoint at "
+                                + m.x() + ", " + m.y() + ", " + m.z()
+                                + "\n(expires on disconnect)")));
     }
 }

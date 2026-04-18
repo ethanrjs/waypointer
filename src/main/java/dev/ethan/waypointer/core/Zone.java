@@ -119,9 +119,16 @@ public record Zone(String id, String displayName) {
         return value != null && value.equalsIgnoreCase(token);
     }
 
+    /**
+     * Case-insensitive prefix check that doesn't allocate. The previous impl
+     * lowercased both strings, which hit hard on tick-level callers (scoreboard
+     * zone resolution runs every 2 ticks and tests every prefix in
+     * {@link #KNOWN} against the sidebar blob).
+     */
     private static boolean startsWithIC(String value, String prefix) {
-        return value != null && value.toLowerCase(Locale.ROOT)
-                .startsWith(prefix.toLowerCase(Locale.ROOT));
+        if (value == null || prefix == null) return false;
+        if (value.length() < prefix.length()) return false;
+        return value.regionMatches(true, 0, prefix, 0, prefix.length());
     }
 
     // ---- known zones -----------------------------------------------------

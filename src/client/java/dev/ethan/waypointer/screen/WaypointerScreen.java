@@ -52,6 +52,12 @@ public final class WaypointerScreen extends Screen {
     private String selectedZoneId;
     private int scrollOffset;
     private int selectedIndex = -1;
+    /**
+     * Group id the screen should focus on its next {@link #init()} pass --
+     * set by {@link #openFocused} and consumed on first init. Nullable by design
+     * so {@code init()} after window resize doesn't re-snap the scroll offset.
+     */
+    private String pendingFocusGroupId;
 
     // Delete uses a two-click confirm: first click arms, second within CONFIRM_WINDOW_MS
     // commits. A full modal would be more intrusive than this class of action warrants;
@@ -90,6 +96,26 @@ public final class WaypointerScreen extends Screen {
         Minecraft.getInstance().setScreen(new WaypointerScreen(manager, config));
     }
 
+    /**
+     * Open the editor pre-focused on {@code focus}: switches to the group's
+     * zone tab, highlights the group in the list, and scrolls it into view
+     * once the screen's first {@link #init()} has run. Used by the import
+     * flow so users see the newly-added group without hunting for it.
+     */
+    public static void openFocused(ActiveGroupManager manager, WaypointerConfig config,
+                                   WaypointGroup focus) {
+        WaypointerScreen screen = new WaypointerScreen(manager, config);
+        if (focus != null) {
+            // Select by id rather than by index -- index lookups into
+            // visibleGroups() are fragile when groups added mid-list shift
+            // indices. The init() pass will resolve the id to a current
+            // selectedIndex after it knows the list ordering for the zone.
+            screen.selectedZoneId = focus.zoneId();
+            screen.pendingFocusGroupId = focus.id();
+        }
+        Minecraft.getInstance().setScreen(screen);
+    }
+
     @Override
     protected void init() {
         int footerY = height - FOOTER_H;
@@ -117,6 +143,36 @@ public final class WaypointerScreen extends Screen {
             }
             addRenderableWidget(b);
         }, font);
+
+        // Resolve a pending focus request from openFocused(). We do this here
+        // rather than in the constructor because the zone's group list can
+        // only be meaningfully indexed after the screen knows its current
+        // zone -- the visibleGroups() list is keyed off selectedZoneId, which
+        // is settled by the time init() runs.
+        if (pendingFocusGroupId != null) {
+            selectGroupById(pendingFocusGroupId);
+            pendingFocusGroupId = null;
+        }
+    }
+
+    /**
+     * Point the selection at the group with {@code id} if it lives in the
+     * currently-viewed zone. No-op when the group isn't in view: the caller
+     * already set {@code selectedZoneId} before invoking us so the group is
+     * expected to resolve, but robustness against stale ids is cheap.
+     */
+    private void selectGroupById(String id) {
+        List<WaypointGroup> groups = visibleGroups();
+        for (int i = 0; i < groups.size(); i++) {
+            if (groups.get(i).id().equals(id)) {
+                selectedIndex = i;
+                // Scroll so the row is visible. Row height + pad mirrors
+                // renderMain's y step; centering on one row is enough -- the
+                // list doesn't need pixel-perfect placement.
+                scrollOffset = Math.max(0, i * (ROW_H + 4) - ROW_H);
+                return;
+            }
+        }
     }
 
     private void openSettings() {
@@ -432,7 +488,10 @@ public final class WaypointerScreen extends Screen {
 
     private void importFromClipboard() {
         String text = minecraft.keyboardHandler.getClipboard();
-        if (text == null || text.isBlank()) return;
+        if (text == null || text.isBlank()) {
+            ImportFeedback.failure("Clipboard is empty.");
+            return;
+        }
         try {
             WaypointImporter.ImportResult result = WaypointImporter.importAny(text);
             // Retarget unknown-zone groups to the zone the user is actively
@@ -445,8 +504,18 @@ public final class WaypointerScreen extends Screen {
                 }
             }
             for (WaypointGroup g : result.groups()) manager.add(g);
-        } catch (IllegalArgumentException ignored) {
-            // Silent on-screen; /wp import surfaces errors via chat.
+
+            ImportFeedback.success(result.groups(), "clipboard");
+            // Navigate the user to the first imported group so the import
+            // result is visible immediately -- no more "did it work?" moments
+            // where the user has to hunt through zone tabs.
+            if (!result.groups().isEmpty()) {
+                WaypointGroup first = result.groups().get(0);
+                selectedZoneId = first.zoneId();
+                selectGroupById(first.id());
+            }
+        } catch (IllegalArgumentException e) {
+            ImportFeedback.failure(e.getMessage());
         }
     }
 

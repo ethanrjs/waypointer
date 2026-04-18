@@ -89,8 +89,11 @@ public final class ConfigScreen extends Screen {
         addBoolRow(col2, y2, "Include names in default export",
                 config.exportIncludeNames(), config::setExportIncludeNames);
         y2 += rowH;
-        addBoolRow(col2, y2, "Enable skip-waypoint keybind",
-                config.skipWaypointKeybindEnabled(), config::setSkipWaypointKeybindEnabled);
+        addBoolRow(col2, y2, "Enable waypoint skip-ahead mechanic",
+                config.skipAheadMechanicEnabled(), config::setSkipAheadMechanicEnabled);
+        y2 += rowH;
+        addBoolRow(col2, y2, "Disable skip-ahead on new waypoints",
+                config.disableGroupSkipAheadOnWaypointAdd(), config::setDisableGroupSkipAheadOnWaypointAdd);
         y2 += rowH;
         addBoolRow(col2, y2, "Reset progress when joining a world",
                 config.resetProgressOnWorldJoin(), config::setResetProgressOnWorldJoin);
@@ -100,9 +103,6 @@ public final class ConfigScreen extends Screen {
         y2 += rowH;
         addBoolRow(col2, y2, "Always use scoreboard for zone detection",
                 config.preferScoreboardFallback(), config::setPreferScoreboardFallback);
-        y2 += rowH;
-        addBoolRow(col2, y2, "Allow proximity skip-ahead",
-                config.allowProximitySkipAhead(), config::setAllowProximitySkipAhead);
         y2 += rowH;
         addBoolRow(col2, y2, "Check for updates on startup",
                 config.checkForUpdates(), config::setCheckForUpdates);

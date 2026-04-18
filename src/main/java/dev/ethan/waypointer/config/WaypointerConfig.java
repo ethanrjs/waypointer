@@ -132,21 +132,38 @@ public final class WaypointerConfig {
      */
     private boolean exportIncludeGroupMeta = true;
     /**
-     * Gates the skip-waypoint keybind. Default {@code true} because it's only wired
-     * to a key the user has to press deliberately, but exposing the toggle means a
-     * player who accidentally bound skip to a common key can defuse it from the
-     * settings screen without unbinding in the vanilla controls menu.
+     * Global gate for the "skip-ahead" proximity mechanic -- the behaviour where
+     * walking into a later waypoint's radius advances progress past every
+     * waypoint before it (rather than only advancing when the player reaches
+     * the current target). Default {@code true} because skip-ahead is what
+     * makes the mod useful for non-linear routes; disabling forces strict
+     * sequential play for every group regardless of individual group settings.
+     *
+     * <p>Replaces the previous {@code skipWaypointKeybindEnabled} toggle --
+     * the keybind itself is always consumable now (players who don't want to
+     * skip just don't bind the key); the setting here is about the automatic
+     * advancement the ProximityTracker performs based on position.
+     *
+     * <p>Works in concert with {@link dev.ethan.waypointer.core.WaypointGroup}'s
+     * per-group {@code skipAheadEnabled} flag: the group flag can disable
+     * skip-ahead on a specific route (e.g. because a waypoint was just added
+     * and would be skipped immediately) without touching the global mechanic.
      */
-    private boolean skipWaypointKeybindEnabled = true;
+    private boolean skipAheadMechanicEnabled = true;
 
     /**
-     * When {@code true} (legacy behaviour) the proximity tracker reverse-scans
-     * the tail of the route and advances to the farthest-ahead waypoint that is
-     * within reach -- enabling "skip ahead" shortcuts through a dungeon. When
-     * {@code false}, only the current waypoint is considered, forcing strict
-     * sequential progression.
+     * When {@code true} (default), adding a waypoint to a group flips that
+     * group's {@code skipAheadEnabled} flag off so the player doesn't
+     * immediately skip past the just-added point via proximity. Re-enable
+     * per-group from the group editor once the route is complete.
+     *
+     * <p>The trade-off: a player who builds a full route then walks it will
+     * likely want skip-ahead on, but they'll have to toggle it back on from
+     * the group editor. Defaulting to on protects the much more common case
+     * (player adds a new waypoint near the current one and is surprised when
+     * the route teleports past it).
      */
-    private boolean allowProximitySkipAhead = true;
+    private boolean disableGroupSkipAheadOnWaypointAdd = true;
 
     /**
      * Gate for the GitHub update checker. Off means no outbound HTTP at all --
@@ -164,9 +181,18 @@ public final class WaypointerConfig {
     /** Default duration (minutes) for time-based temp waypoints. */
     private int tempDefaultDurationMin = 10;
 
+    /**
+     * Debounce window for config writes. Configs mutate in bursts (EditBox
+     * responders fire per keystroke, color pickers fire per slider tick); 500ms
+     * is long enough for a typing burst to settle and short enough that a user
+     * who clicks Done immediately after a change still gets their write before
+     * any reasonable "did my change save?" doubt sets in.
+     */
+    private static final long SAVE_DEBOUNCE_MS = 500L;
+
     // Transient; never persisted.
     private transient Path file;
-    private transient Runnable onSave;
+    private transient AsyncSaver saver;
 
     public static WaypointerConfig load() {
         Path dir = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
@@ -185,10 +211,30 @@ public final class WaypointerConfig {
             config = new WaypointerConfig();
         }
         config.file = file;
+        config.saver = new AsyncSaver("config", config::writeToDisk, SAVE_DEBOUNCE_MS);
         return config;
     }
 
+    /**
+     * Mark the config dirty. Setters call this instead of hitting the disk
+     * directly -- actual writes run on the shared saver thread after a short
+     * quiet window (see {@link AsyncSaver}). Shutdown paths must call
+     * {@link #flush()} to guarantee the last write completes.
+     */
     public void save() {
+        if (saver == null) return;
+        saver.markDirty();
+    }
+
+    /**
+     * Synchronously flush any pending write. Called on client shutdown so the
+     * last mutation lands on disk before the JVM exits.
+     */
+    public void flush() {
+        if (saver != null) saver.flush();
+    }
+
+    private void writeToDisk() {
         if (file == null) return;
         try {
             Files.createDirectories(file.getParent());
@@ -198,10 +244,7 @@ public final class WaypointerConfig {
         } catch (IOException e) {
             Waypointer.LOGGER.error("Failed to write config", e);
         }
-        if (onSave != null) onSave.run();
     }
-
-    public void onSave(Runnable cb) { this.onSave = cb; }
 
     // --- getters/setters ---------------------------------------------------------------------
 
@@ -226,8 +269,8 @@ public final class WaypointerConfig {
     public boolean exportIncludeRadii()        { return exportIncludeRadii; }
     public boolean exportIncludeWaypointFlags(){ return exportIncludeWaypointFlags; }
     public boolean exportIncludeGroupMeta()    { return exportIncludeGroupMeta; }
-    public boolean skipWaypointKeybindEnabled() { return skipWaypointKeybindEnabled; }
-    public boolean allowProximitySkipAhead()    { return allowProximitySkipAhead; }
+    public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
+    public boolean disableGroupSkipAheadOnWaypointAdd() { return disableGroupSkipAheadOnWaypointAdd; }
     public boolean checkForUpdates()            { return checkForUpdates; }
     public int tempDefaultMode()                { return tempDefaultMode; }
     public int tempDefaultDurationMin()         { return tempDefaultDurationMin; }
@@ -250,11 +293,11 @@ public final class WaypointerConfig {
     public void setExportIncludeRadii(boolean v)        { this.exportIncludeRadii = v; save(); }
     public void setExportIncludeWaypointFlags(boolean v){ this.exportIncludeWaypointFlags = v; save(); }
     public void setExportIncludeGroupMeta(boolean v)    { this.exportIncludeGroupMeta = v; save(); }
-    public void setSkipWaypointKeybindEnabled(boolean v) { this.skipWaypointKeybindEnabled = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
     public void setBoxStyle(BoxStyle v)                { this.boxStyle = v == null ? BoxStyle.OUTLINED : v; save(); }
     public void setWindowedRendering(boolean v)        { this.windowedRendering = v; save(); }
-    public void setAllowProximitySkipAhead(boolean v)  { this.allowProximitySkipAhead = v; save(); }
+    public void setSkipAheadMechanicEnabled(boolean v) { this.skipAheadMechanicEnabled = v; save(); }
+    public void setDisableGroupSkipAheadOnWaypointAdd(boolean v) { this.disableGroupSkipAheadOnWaypointAdd = v; save(); }
     public void setCheckForUpdates(boolean v)          { this.checkForUpdates = v; save(); }
     public void setTempDefaultMode(int v) {
         int clamped = (v < 1 || v > 3) ? 2 : v;

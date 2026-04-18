@@ -29,19 +29,57 @@ public final class GradientColorizer {
         int n = group.size();
         if (n == 0) return;
 
-        float[] start = rgbToHsl(group.gradientStartColor());
-        float[] end   = rgbToHsl(group.gradientEndColor());
+        // Pack the two HSL triples into locals rather than float[3]s so we
+        // don't allocate two throwaway arrays every time the group's gradient
+        // is recomputed (which happens on every waypoint add/remove/reorder).
+        int startRgb = group.gradientStartColor();
+        int endRgb   = group.gradientEndColor();
+        float sh = hueOf(startRgb),  ss = satOf(startRgb),  sl = lightOf(startRgb);
+        float eh = hueOf(endRgb),    es = satOf(endRgb),    el = lightOf(endRgb);
 
         for (int i = 0; i < n; i++) {
             Waypoint w = group.get(i);
             if (w.hasFlag(Waypoint.FLAG_LOCKED_COLOR)) continue;
             float t = n == 1 ? 0f : (float) i / (n - 1);
-            float h = lerpHueShortWay(start[0], end[0], t);
-            float s = lerp(start[1], end[1], t);
-            float l = lerp(start[2], end[2], t);
+            float h = lerpHueShortWay(sh, eh, t);
+            float s = lerp(ss, es, t);
+            float l = lerp(sl, el, t);
             int rgb = hslToRgb(h, s, l);
             if (rgb != w.color()) group.set(i, w.withColor(rgb));
         }
+    }
+
+    private static float hueOf(int rgb)   { return rgbToHslComponent(rgb, 0); }
+    private static float satOf(int rgb)   { return rgbToHslComponent(rgb, 1); }
+    private static float lightOf(int rgb) { return rgbToHslComponent(rgb, 2); }
+
+    /**
+     * Component-wise reader used by {@link #hueOf}/{@link #satOf}/{@link #lightOf}
+     * to pull a single HSL channel from a packed RGB without ever materialising
+     * a {@code float[]}. Kept beside {@link #rgbToHsl} because they compute the
+     * same thing; that method stays public for color-picker previews where the
+     * triple-allocation doesn't happen in a hot loop.
+     */
+    private static float rgbToHslComponent(int rgb, int component) {
+        float r = ((rgb >> 16) & 0xFF) / 255f;
+        float g = ((rgb >>  8) & 0xFF) / 255f;
+        float b = ( rgb        & 0xFF) / 255f;
+        float max = Math.max(r, Math.max(g, b));
+        float min = Math.min(r, Math.min(g, b));
+        float l = (max + min) * 0.5f;
+        float delta = max - min;
+        float h, s;
+        if (delta < 1e-6f) {
+            h = 0f;
+            s = 0f;
+        } else {
+            s = l > 0.5f ? delta / (2f - max - min) : delta / (max + min);
+            if (max == r)      h = ((g - b) / delta) + (g < b ? 6f : 0f);
+            else if (max == g) h = ((b - r) / delta) + 2f;
+            else               h = ((r - g) / delta) + 4f;
+            h *= 60f;
+        }
+        return component == 0 ? h : component == 1 ? s : l;
     }
 
     private static float lerp(float a, float b, float t) {

@@ -88,8 +88,29 @@ public final class WaypointRenderer implements HudElement {
     /** Gap between the name row and the distance row below it. */
     private static final int DISTANCE_ROW_GAP = 1;
 
+    /**
+     * Cap on the pre-baked distance table. 0..127m covers every common
+     * on-screen case (beyond that the label usually isn't readable anyway),
+     * and the 128-slot array is cheap to hold in memory. Cache misses fall
+     * back to a shared {@link StringBuilder} rather than {@code Integer.toString}
+     * so we still avoid a per-frame allocation for the long tail.
+     */
+    private static final int DISTANCE_CACHE_MAX = 128;
+    private static final String[] DISTANCE_CACHE;
+    static {
+        DISTANCE_CACHE = new String[DISTANCE_CACHE_MAX];
+        for (int i = 0; i < DISTANCE_CACHE_MAX; i++) DISTANCE_CACHE[i] = i + "m";
+    }
+
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
+
+    /**
+     * Reusable scratch buffer for the fallback distance formatter. Safe because
+     * {@link #render} only runs on the client/render thread; never escape this
+     * reference from a render frame.
+     */
+    private final StringBuilder distanceScratch = new StringBuilder(8);
 
     public WaypointRenderer(ActiveGroupManager manager, WaypointerConfig config) {
         this.manager = manager;
@@ -227,31 +248,51 @@ public final class WaypointRenderer implements HudElement {
             int distance = (int) Math.sqrt(rx * rx + ry * ry + rz * rz);
 
             drawCenteredLabel(g, font, name, sx, sy, NAME_ARGB);
-            drawCenteredLabel(g, font, distance + "m",
+            drawCenteredLabel(g, font, distanceString(distance),
                     sx, sy + font.lineHeight + DISTANCE_ROW_GAP, DISTANCE_ARGB);
         }, windowed);
+    }
+
+    /**
+     * Format a distance as {@code "<n>m"} without allocating for the common case.
+     * 0..127m hits the pre-baked table; beyond that we reuse a single
+     * {@link StringBuilder} instead of {@code (distance + "m")} which would
+     * create a throwaway {@code StringBuilder} + {@code String} per label per
+     * frame. Acceptable because this renderer runs strictly on the render
+     * thread.
+     */
+    private String distanceString(int distance) {
+        if (distance >= 0 && distance < DISTANCE_CACHE_MAX) return DISTANCE_CACHE[distance];
+        distanceScratch.setLength(0);
+        distanceScratch.append(distance).append('m');
+        return distanceScratch.toString();
     }
 
     /**
      * Draw a line of text horizontally centered on {@code (cx, top)} with a
      * translucent backdrop sized to the glyph run. Kept inlined here (rather than
      * in RenderHelpers) because the padding/backdrop decisions are label-specific.
+     *
+     * <p>Computes {@code font.width(text)} once and threads it through: the
+     * backdrop, the half-width, and the {@code drawString} call all reused the
+     * same value, saving two redundant glyph-table lookups per label.
      */
     private void drawCenteredLabel(GuiGraphics g, Font font, String text,
                                    int cx, int top, int argb) {
         int width = font.width(text);
         int halfWidth = width / 2;
+        int left = cx - halfWidth;
 
         if (config.showLabelBackdrop()) {
-            int backdropLeft = cx - halfWidth - BACKDROP_PAD_X;
-            int backdropRight = cx - halfWidth + width + BACKDROP_PAD_X;
             int backdropTop = top - BACKDROP_PAD_Y;
             int backdropBottom = top + font.lineHeight - 1 + BACKDROP_PAD_Y;
-            g.fill(backdropLeft, backdropTop, backdropRight, backdropBottom, LABEL_BACKDROP_ARGB);
+            g.fill(left - BACKDROP_PAD_X, backdropTop,
+                    left + width + BACKDROP_PAD_X, backdropBottom,
+                    LABEL_BACKDROP_ARGB);
         }
         // drawString's shadow flag stays on in both modes -- without the backdrop the
         // drop shadow is doing all the work keeping text readable against bright biomes.
-        g.drawString(font, text, cx - halfWidth, top, argb, true);
+        g.drawString(font, text, left, top, argb, true);
     }
 
     private static String labelFor(WaypointGroup g, int i, Waypoint w, State state) {

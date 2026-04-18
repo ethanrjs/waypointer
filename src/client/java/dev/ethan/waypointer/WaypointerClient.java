@@ -43,6 +43,8 @@ public final class WaypointerClient implements ClientModInitializer {
         manager = new ActiveGroupManager();
         storage = Storage.defaultLocation();
         storage.load(manager);
+        // attach AFTER load so rehydration doesn't trigger a no-op write.
+        storage.attach(manager);
 
         new LocationTracker(manager, config).install();
         new ProximityTracker(manager, config).install();
@@ -58,10 +60,12 @@ public final class WaypointerClient implements ClientModInitializer {
         new ChatImportDetector(config, chatImportCache).install();
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
-            storage.save(manager);
-            config.save();
+            // Flush any debounced writes before the JVM tears down -- the
+            // async saver is a daemon thread, which would otherwise let a
+            // scheduled-but-not-yet-executed save be discarded on exit.
+            storage.flush();
+            config.flush();
         });
-        manager.addDataListener(() -> storage.save(manager));
 
         // Fire-and-forget update check. Runs on a daemon thread with a 5s
         // startup delay so it doesn't race with world-load chat spam. Looking
