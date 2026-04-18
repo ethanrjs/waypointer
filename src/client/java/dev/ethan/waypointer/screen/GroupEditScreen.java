@@ -6,6 +6,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.input.WaypointAddFlow;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -358,7 +359,10 @@ public final class GroupEditScreen extends Screen {
     // --- actions ----------------------------------------------------------------------------
 
     private void addTempHere() {
-        AddTempScreen.open(this, manager, config, group);
+        // Temps always land in the per-zone temp bucket regardless of which
+        // group we opened this screen from -- see AddTempScreen for the
+        // rationale (keeps real routes free of expiring entries).
+        AddTempScreen.open(this, manager, config);
     }
 
     private void addHere() {
@@ -367,6 +371,9 @@ public final class GroupEditScreen extends Screen {
         group.add(new Waypoint(
                 (int) Math.floor(p.getX()), (int) Math.floor(p.getY()), (int) Math.floor(p.getZ()),
                 "", Waypoint.DEFAULT_COLOR, 0, 0.0));
+        // Run the shared post-add flow (auto-disable skip-ahead + toast) so the
+        // GUI add button behaves identically to /wp add and the keybind path.
+        new WaypointAddFlow(config).afterWaypointAdded(group);
         manager.fireDataChanged();
         onManualEdit();
     }

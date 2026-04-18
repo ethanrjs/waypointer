@@ -52,6 +52,23 @@ public final class WaypointGroup {
     private GradientMode gradientMode;
     private LoadMode loadMode;
     private double defaultRadius;
+    /**
+     * Per-group gate for the proximity skip-ahead mechanic. When {@code false},
+     * the proximity tracker only advances when the player reaches the
+     * immediate current waypoint on this group, even if the global mechanic is
+     * on. Flipped off automatically when a new waypoint is added (see
+     * {@code disableGroupSkipAheadOnWaypointAdd} in {@link dev.ethan.waypointer.config.WaypointerConfig})
+     * so a freshly-added waypoint near the player isn't instantly skipped past.
+     */
+    private boolean skipAheadEnabled = true;
+    /**
+     * Marks a group as a container for temporary-only waypoints (the dedicated
+     * "Temp Waypoints" bucket per zone). Temp groups are excluded from the
+     * progression pipeline -- proximity never advances them, completion never
+     * resets them -- because their contents come and go on their own schedule
+     * and shouldn't interact with the player's route through the zone.
+     */
+    private boolean temp = false;
     // Per-group gradient endpoints (RGB). Each group can pick its own palette so a
     // Foraging route and a Dungeons route don't have to share one theme. Defaults
     // match the old globals: cyan start, red end -- picked to read as cool → hot
@@ -85,6 +102,8 @@ public final class WaypointGroup {
     public double defaultRadius() { return defaultRadius; }
     public int gradientStartColor() { return gradientStartColor; }
     public int gradientEndColor()   { return gradientEndColor; }
+    public boolean skipAheadEnabled() { return skipAheadEnabled; }
+    public boolean temp()           { return temp; }
     public List<Waypoint> waypoints() { return Collections.unmodifiableList(waypoints); }
     public int size()             { return waypoints.size(); }
     public boolean isEmpty()      { return waypoints.isEmpty(); }
@@ -94,6 +113,8 @@ public final class WaypointGroup {
     public void setZoneId(String newZoneId)             { this.zoneId = Objects.requireNonNull(newZoneId); }
     public void setEnabled(boolean on)                  { this.enabled = on; }
     public void setDefaultRadius(double r)              { this.defaultRadius = Math.max(0.5, r); }
+    public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
+    public void setTemp(boolean on)                     { this.temp = on; }
 
     /**
      * Set the group's gradient endpoints. Setters immediately reapply the gradient

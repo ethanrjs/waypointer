@@ -26,9 +26,13 @@ import static dev.ethan.waypointer.screen.GuiTokens.*;
  * share a single "what did the user last pick" memory without the user having
  * to re-confirm in the GUI for the keybind variant.
  *
- * <p>Screen is intentionally small and centred. Putting it over the editor
- * lets the user see the list it's being added to, reinforcing that temp
- * waypoints belong to the same group (they just auto-delete later).
+ * <p>The temp waypoint lands in the current zone's dedicated temp bucket
+ * ({@link ActiveGroupManager#getOrCreateTempGroup()}), <em>not</em> into the
+ * group the screen was opened from. Temps used to be appended to the caller's
+ * group, which caused real routes to pick up stray temp entries that then
+ * polluted gradient recolouring, proximity advance, and reorder history. The
+ * dedicated bucket keeps that separation clean even when the player opens
+ * this modal from a regular route's edit screen.
  */
 public final class AddTempScreen extends Screen {
 
@@ -38,26 +42,23 @@ public final class AddTempScreen extends Screen {
     private final Screen parent;
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
-    private final WaypointGroup group;
 
     private int mode;
     private int durationMin;
     private Button modeBtn;
     private EditBox durationBox;
 
-    public AddTempScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config, WaypointGroup group) {
+    public AddTempScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config) {
         super(Component.literal("Add Temporary Waypoint"));
         this.parent = parent;
         this.manager = manager;
         this.config = config;
-        this.group = group;
         this.mode = clampMode(config.tempDefaultMode());
         this.durationMin = Math.max(1, config.tempDefaultDurationMin());
     }
 
-    public static void open(Screen parent, ActiveGroupManager manager,
-                            WaypointerConfig config, WaypointGroup group) {
-        Minecraft.getInstance().setScreen(new AddTempScreen(parent, manager, config, group));
+    public static void open(Screen parent, ActiveGroupManager manager, WaypointerConfig config) {
+        Minecraft.getInstance().setScreen(new AddTempScreen(parent, manager, config));
     }
 
     @Override
@@ -156,7 +157,8 @@ public final class AddTempScreen extends Screen {
                 (int) Math.floor(p.getX()),
                 (int) Math.floor(p.getY()),
                 (int) Math.floor(p.getZ()));
-        group.add(base.withTemp(mode, expiresAt));
+        WaypointGroup target = manager.getOrCreateTempGroup();
+        target.add(base.withTemp(mode, expiresAt));
         manager.fireDataChanged();
 
         // Persist the user's last picks so the next "add temp" (whether from

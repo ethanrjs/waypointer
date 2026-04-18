@@ -46,9 +46,20 @@ public final class ProximityTracker {
         // is used as the starting radius for groups created through commands/UI so the
         // player's preferred feel is baked in from day one.
         boolean loop = config.restartRouteWhenComplete();
-        boolean skip = config.allowProximitySkipAhead();
+        boolean globalSkipAhead = config.skipAheadMechanicEnabled();
         for (WaypointGroup group : manager.activeGroups()) {
-            advanceIfReached(group, px, py, pz, loop, skip);
+            // Temp-only bucket groups don't participate in progression -- they hold
+            // ad-hoc markers whose own expiry modes handle cleanup. Running proximity
+            // on them would re-enter the "advance past waypoint" logic on a container
+            // whose order is meaningless.
+            if (group.temp()) continue;
+            // Group-level skip-ahead gate. When a waypoint was just added the
+            // group's flag is flipped off (see the feature wiring in
+            // WaypointerConfig#disableGroupSkipAheadOnWaypointAdd); we respect
+            // that regardless of the global mechanic state. Global off always
+            // wins over group on -- the config is the master switch.
+            boolean allowSkip = globalSkipAhead && group.skipAheadEnabled();
+            advanceIfReached(group, px, py, pz, loop, allowSkip);
         }
     }
 

@@ -1,7 +1,7 @@
 # Waypointer
 
 Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manager.
-Mod version **1.1.0** (`gradle.properties` → `mod_version`).
+Mod version **1.2.0** (`gradle.properties` → `mod_version`).
 
 Built for Minecraft 1.21.11 (Fabric, client-only).
 <img width="1280" height="675" alt="image" src="https://github.com/user-attachments/assets/bb01bb0b-8e2a-4c46-8ffd-57289e7a1f19" />
@@ -15,7 +15,9 @@ Built for Minecraft 1.21.11 (Fabric, client-only).
 - Importable from chat messages
 - Keybindings
 - Clean UI for editing and management
-- Waypoint skipping in sequence
+- Waypoint skipping in sequence (global toggle + per-group override)
+- Temporary Waypoints
+- Clickable chat coordinates
 
 <img width="1280" height="675" alt="image" src="https://github.com/user-attachments/assets/1acdce6f-5de9-4a1c-8be7-ef1ccb20977d" />
 

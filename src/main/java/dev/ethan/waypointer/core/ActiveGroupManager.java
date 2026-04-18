@@ -1,6 +1,7 @@
 package dev.ethan.waypointer.core;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -22,6 +23,15 @@ import java.util.function.Consumer;
 public final class ActiveGroupManager {
 
     private final Map<String, WaypointGroup> byId = new LinkedHashMap<>();
+    /**
+     * Live unmodifiable {@link Collection} view over {@link #byId}'s values,
+     * returned from {@link #allGroups()}. Backed directly by the map, so no
+     * per-call allocation -- important for the tick-level hot callers
+     * ({@code TempWaypointCleaner}, {@code ProximityTracker}, autosave
+     * listeners). Iteration order matches insertion order via
+     * {@link LinkedHashMap}'s contract.
+     */
+    private final Collection<WaypointGroup> allGroupsView = Collections.unmodifiableCollection(byId.values());
     private Zone currentZone;
     private final List<Consumer<Zone>> zoneListeners = new ArrayList<>();
     private final List<Runnable> dataListeners = new ArrayList<>();
@@ -75,7 +85,22 @@ public final class ActiveGroupManager {
         return cachedActive;
     }
 
-    public List<WaypointGroup> allGroups() {
+    /**
+     * All groups the user has configured, in insertion order. Returned as a
+     * live unmodifiable view -- fine for iteration and {@code isEmpty()} /
+     * {@code size()} checks. Callers that need list semantics (indexed
+     * lookup, etc.) should use {@link #allGroupsList()} instead.
+     */
+    public Collection<WaypointGroup> allGroups() {
+        return allGroupsView;
+    }
+
+    /**
+     * Snapshot of every group as a random-access list. Allocates -- reserved
+     * for callers that actually need {@code list.get(i)} semantics (command
+     * handlers that parse numeric arguments, UI code walking by index).
+     */
+    public List<WaypointGroup> allGroupsList() {
         return List.copyOf(byId.values());
     }
 
@@ -108,6 +133,41 @@ public final class ActiveGroupManager {
         Zone zone = currentZone == null ? Zone.UNKNOWN : currentZone;
         WaypointGroup g = WaypointGroup.create(
                 "Route -- " + zone.displayName().toLowerCase(Locale.ROOT), zone.id());
+        add(g);
+        return g;
+    }
+
+    /**
+     * The per-zone bucket that owns all temporary waypoints dropped in that zone.
+     *
+     * <p>Temp waypoints used to be added onto whichever "real" route group
+     * happened to be the first active one. That leaked temps into the user's
+     * actual route -- reordering, renaming, skip-ahead, gradient colouring, all
+     * of it would catch stray temps. Worse, a temp mid-route would make
+     * sequence-mode groups visually chaotic. Keeping temps in their own
+     * isolated group (marked {@link WaypointGroup#temp()} and forced to
+     * {@link WaypointGroup.LoadMode#STATIC}) sidesteps every one of those
+     * interactions: the proximity tracker skips it (see
+     * {@code ProximityTracker}), the renderer treats it like any other static
+     * group, and the UI can filter/collapse it if desired.
+     *
+     * <p>One bucket per zone, keyed by display-named group id prefix
+     * {@code "temp::<zoneId>"}. Lazy creation means zones the player never drops
+     * a temp into stay clean.
+     */
+    public WaypointGroup getOrCreateTempGroup() {
+        Zone zone = currentZone == null ? Zone.UNKNOWN : currentZone;
+        String tempId = "temp::" + zone.id();
+        WaypointGroup existing = byId.get(tempId);
+        if (existing != null && existing.temp()) return existing;
+
+        // No existing temp bucket for this zone -- build one. Static load mode
+        // keeps all temps visible at once (they're not a sequenced route), and
+        // the skip-ahead flag is irrelevant because temp groups are excluded
+        // from proximity advance.
+        WaypointGroup g = new WaypointGroup(tempId, "Temp -- " + zone.displayName(), zone.id());
+        g.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        g.setTemp(true);
         add(g);
         return g;
     }

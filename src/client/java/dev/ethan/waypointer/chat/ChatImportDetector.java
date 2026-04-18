@@ -110,7 +110,16 @@ public final class ChatImportDetector {
                 // which is ASCII-contiguous, so they won't overlap inherited styles
                 // in a meaningful way -- the pill's own styling is self-contained.
                 if (cursor == m.start()) {
-                    out.append(buildPill(m));
+                    // Validate once per match: invalid codecs (truncated paste, bit-flip,
+                    // hand-typed gibberish that happens to start with WP:) get a
+                    // non-interactive "[Invalid Waypointer Code]" label instead of a
+                    // clickable pill so players don't fire an import that's going to
+                    // fail with a confusing stacktrace in their log.
+                    if (WaypointCodec.isValidCodec(m.text())) {
+                        out.append(buildPill(m));
+                    } else {
+                        out.append(buildInvalidLabel());
+                    }
                 }
                 int consumedTo = Math.min(m.end(), runEnd);
                 cursor = consumedTo;
@@ -152,6 +161,31 @@ public final class ChatImportDetector {
                 .withClickEvent(new ClickEvent.RunCommand(command))
                 .withHoverEvent(new HoverEvent.ShowText(hoverText(match)));
         return pill.withStyle(interactive);
+    }
+
+    /**
+     * Renders the fallback shown in place of a codec that failed integrity
+     * validation. Intentionally non-interactive -- no click event, no hover
+     * beyond a short explainer -- so a malformed paste can't be coerced into
+     * firing {@code /wp importchat}. Styled with red + strikethrough rather
+     * than the brand aqua to visually separate it from valid pills.
+     */
+    private MutableComponent buildInvalidLabel() {
+        Style invalidStyle = Style.EMPTY
+                .withColor(ChatFormatting.DARK_RED)
+                .withStrikethrough(true)
+                .withHoverEvent(new HoverEvent.ShowText(invalidHoverText()));
+        return Component.literal("[Invalid Waypointer Code]").withStyle(invalidStyle);
+    }
+
+    private static Component invalidHoverText() {
+        MutableComponent c = Component.empty();
+        c.append(Component.literal("Malformed Waypointer export").withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
+        c.append(Component.literal("\n"));
+        c.append(Component.literal("The payload failed integrity validation.").withStyle(ChatFormatting.GRAY));
+        c.append(Component.literal("\n"));
+        c.append(Component.literal("It may have been truncated in chat or corrupted.").withStyle(ChatFormatting.GRAY));
+        return c;
     }
 
     private static Component hoverText(CodecScanner.Match match) {
