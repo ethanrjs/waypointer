@@ -48,7 +48,10 @@ import org.joml.Vector3fc;
  *
  * <p>Load-mode aware: {@code STATIC} groups render every waypoint, {@code SEQUENCE}
  * groups render only the prev/current/next triple (delegated to
- * {@link WaypointGroup#forEachVisibleIndex}).
+ * {@link WaypointGroup#forEachVisibleIndex}). The
+ * {@link WaypointerConfig#windowedRendering() windowedRendering} flag forces
+ * every group onto the prev/current/next window to cut label clutter on
+ * dense static routes without changing their navigation behavior.
  */
 public final class WaypointRenderer implements HudElement {
 
@@ -103,6 +106,15 @@ public final class WaypointRenderer implements HudElement {
 
     // ---- world-space path: cube outlines -------------------------------------------------
 
+    /**
+     * Max alpha for the filled faces of a waypoint cube. The line outline is
+     * drawn at the state's full alpha, but if we fill at the same alpha the
+     * cube becomes an opaque block that obscures the world behind it. 35% was
+     * picked by eye: dense enough to read as a coloured volume against bright
+     * biomes, translucent enough that you can still see through it.
+     */
+    private static final float FILLED_ALPHA_SCALE = 0.35f;
+
     private void onWorldRender(WorldRenderContext ctx) {
         var groups = manager.activeGroups();
         if (groups.isEmpty()) return;
@@ -110,24 +122,35 @@ public final class WaypointRenderer implements HudElement {
         MultiBufferSource buffers = ctx.consumers();
         if (buffers == null) return;
 
+        WaypointerConfig.BoxStyle style = config.boxStyle();
+        boolean drawLines = style != WaypointerConfig.BoxStyle.FILLED;
+        boolean drawFill  = style != WaypointerConfig.BoxStyle.OUTLINED;
+
         PoseStack ps = ctx.matrices();
         Vec3 camPos = Minecraft.getInstance().gameRenderer.getMainCamera().position();
         RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
-        VertexConsumer lines = buffers.getBuffer(lineType);
+        RenderType quadType = WaypointerRenderPipelines.quadsThroughWalls();
+        VertexConsumer lines = drawLines ? buffers.getBuffer(lineType) : null;
+        VertexConsumer quads = drawFill  ? buffers.getBuffer(quadType) : null;
 
         ps.pushPose();
         ps.translate(-camPos.x, -camPos.y, -camPos.z);
         for (WaypointGroup g : groups) {
-            emitBoxes(ps, lines, g);
+            emitBoxes(ps, lines, quads, g);
         }
         ps.popPose();
-        RenderHelpers.endBatch(buffers, lineType);
+
+        // Fills flush before lines so the outline renders on top of its own
+        // translucent fill (FILLED_OUTLINED mode) and stays crisp.
+        if (drawFill)  RenderHelpers.endBatch(buffers, quadType);
+        if (drawLines) RenderHelpers.endBatch(buffers, lineType);
     }
 
-    private void emitBoxes(PoseStack ps, VertexConsumer lines, WaypointGroup g) {
+    private void emitBoxes(PoseStack ps, VertexConsumer lines, VertexConsumer quads, WaypointGroup g) {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
+        boolean windowed = config.windowedRendering();
 
         g.forEachVisibleIndex(i -> {
             Waypoint w = g.get(i);
@@ -136,8 +159,14 @@ public final class WaypointRenderer implements HudElement {
 
             float alpha = state.alpha * beaconOpacity;
             float x = w.x(), y = w.y(), z = w.z();
-            RenderHelpers.emitLineBox(lines, ps, x, y, z, x + 1f, y + 1f, z + 1f, w.color(), alpha);
-        });
+            if (quads != null) {
+                RenderHelpers.emitFilledBox(quads, ps, x, y, z, x + 1f, y + 1f, z + 1f,
+                        w.color(), alpha * FILLED_ALPHA_SCALE);
+            }
+            if (lines != null) {
+                RenderHelpers.emitLineBox(lines, ps, x, y, z, x + 1f, y + 1f, z + 1f, w.color(), alpha);
+            }
+        }, windowed);
     }
 
     // ---- HUD path: 2D labels projected from world anchors --------------------------------
@@ -169,6 +198,7 @@ public final class WaypointRenderer implements HudElement {
                                  WaypointGroup group) {
         int currentIdx = group.currentIndex();
         boolean showCompleted = config.showCompleted();
+        boolean windowed = config.windowedRendering();
 
         group.forEachVisibleIndex(i -> {
             Waypoint w = group.get(i);
@@ -199,7 +229,7 @@ public final class WaypointRenderer implements HudElement {
             drawCenteredLabel(g, font, name, sx, sy, NAME_ARGB);
             drawCenteredLabel(g, font, distance + "m",
                     sx, sy + font.lineHeight + DISTANCE_ROW_GAP, DISTANCE_ARGB);
-        });
+        }, windowed);
     }
 
     /**
@@ -207,16 +237,20 @@ public final class WaypointRenderer implements HudElement {
      * translucent backdrop sized to the glyph run. Kept inlined here (rather than
      * in RenderHelpers) because the padding/backdrop decisions are label-specific.
      */
-    private static void drawCenteredLabel(GuiGraphics g, Font font, String text,
-                                          int cx, int top, int argb) {
+    private void drawCenteredLabel(GuiGraphics g, Font font, String text,
+                                   int cx, int top, int argb) {
         int width = font.width(text);
         int halfWidth = width / 2;
-        int backdropLeft = cx - halfWidth - BACKDROP_PAD_X;
-        int backdropRight = cx - halfWidth + width + BACKDROP_PAD_X;
-        int backdropTop = top - BACKDROP_PAD_Y;
-        int backdropBottom = top + font.lineHeight - 1 + BACKDROP_PAD_Y;
 
-        g.fill(backdropLeft, backdropTop, backdropRight, backdropBottom, LABEL_BACKDROP_ARGB);
+        if (config.showLabelBackdrop()) {
+            int backdropLeft = cx - halfWidth - BACKDROP_PAD_X;
+            int backdropRight = cx - halfWidth + width + BACKDROP_PAD_X;
+            int backdropTop = top - BACKDROP_PAD_Y;
+            int backdropBottom = top + font.lineHeight - 1 + BACKDROP_PAD_Y;
+            g.fill(backdropLeft, backdropTop, backdropRight, backdropBottom, LABEL_BACKDROP_ARGB);
+        }
+        // drawString's shadow flag stays on in both modes -- without the backdrop the
+        // drop shadow is doing all the work keeping text readable against bright biomes.
         g.drawString(font, text, cx - halfWidth, top, argb, true);
     }
 

@@ -32,6 +32,48 @@ class StorageJsonTest {
     }
 
     @Test
+    void group_dropsTempWaypointsOnSave() {
+        // Temp waypoints intentionally don't survive a save -- they're session
+        // scratch. We stuff three of them into a group plus one real waypoint
+        // and expect only the real one to survive the round-trip.
+        WaypointGroup g = WaypointGroup.create("temp-route", "dungeon_f7");
+        g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        g.add(Waypoint.at(1, 10, 1).withName("keeper"));
+        g.add(Waypoint.at(2, 10, 2).withName("timed")
+                .withTemp(Waypoint.TEMP_TIME, System.currentTimeMillis() + 60_000));
+        g.add(Waypoint.at(3, 10, 3).withName("reach")
+                .withTemp(Waypoint.TEMP_UNTIL_REACHED, 0L));
+        g.add(Waypoint.at(4, 10, 4).withName("leave")
+                .withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L));
+
+        JsonObject json = Storage.groupToJson(g);
+        WaypointGroup copy = Storage.groupFromJson(json);
+
+        assertEquals(1, copy.size(), "temp waypoints must not round-trip");
+        assertEquals("keeper", copy.get(0).name());
+        assertFalse(copy.get(0).isTemp(), "surviving waypoint is not temporary");
+    }
+
+    @Test
+    void group_perGroupGradientEndpointsRoundTrip() {
+        // Gradient endpoints are per-group (not global). If the codec drops
+        // them the gradient silently resets on the next load -- users then
+        // report "my colours keep reverting" and we chase the wrong bug.
+        WaypointGroup g = WaypointGroup.create("palette", "galatea");
+        // MANUAL prevents the setter's re-apply from overwriting waypoint colors
+        // we haven't added yet, which isn't the point of this test.
+        g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        g.setGradientStartColor(0x112233);
+        g.setGradientEndColor(0xFEDCBA);
+
+        JsonObject json = Storage.groupToJson(g);
+        WaypointGroup copy = Storage.groupFromJson(json);
+
+        assertEquals(0x112233, copy.gradientStartColor());
+        assertEquals(0xFEDCBA, copy.gradientEndColor());
+    }
+
+    @Test
     void group_roundTripPreservesProgressAndOrder() {
         WaypointGroup g = WaypointGroup.create("my-route", "dungeon_f7");
         g.setName("Terminals route");

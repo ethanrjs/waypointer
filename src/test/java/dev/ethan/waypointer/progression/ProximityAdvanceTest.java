@@ -75,6 +75,39 @@ class ProximityAdvanceTest {
         assertTrue(g.isComplete());
     }
 
+    @Test
+    void skip_ahead_disabled_only_advances_current() {
+        // With proximity skip-ahead off, standing next to a far-future waypoint
+        // must NOT jump progression. The only legal advance is when the player is
+        // within range of the waypoint they're actually on (index 0 here).
+        WaypointGroup g = line();
+        assertFalse(ProximityTracker.advanceIfReached(g, 20.5, 0.5, 0.5, false, false));
+        assertEquals(0, g.currentIndex());
+
+        // Walking up to the current waypoint still advances by one, same as the
+        // enabled case -- disabling skip-ahead must not also disable normal
+        // progression.
+        assertTrue(ProximityTracker.advanceIfReached(g, 0.5, 0.5, 0.5, false, false));
+        assertEquals(1, g.currentIndex());
+    }
+
+    @Test
+    void reach_mode_temp_is_removed_on_advance() {
+        // TEMP_UNTIL_REACHED waypoints should vanish the moment the proximity
+        // tracker advances past them -- anything else would leave a stale temp
+        // entry hanging around the list after its lifecycle ended.
+        WaypointGroup g = WaypointGroup.create("route", "test_zone");
+        g.setDefaultRadius(2.0);
+        g.add(Waypoint.at(0, 0, 0).withTemp(Waypoint.TEMP_UNTIL_REACHED, 0L));
+        g.add(Waypoint.at(10, 0, 0));
+
+        assertTrue(ProximityAdvanceTester(g, 0.5, 0.5, 0.5));
+        assertEquals(1, g.size()); // temp was removed
+        // After the temp was removed, currentIndex was originally advanced to 1
+        // but the list shrank; the remaining waypoint should now be index 0.
+        assertEquals(Waypoint.TEMP_NONE, g.get(0).tempMode());
+    }
+
     private static boolean ProximityAdvanceTester(WaypointGroup g, double px, double py, double pz) {
         return ProximityTracker.advanceIfReached(g, px, py, pz);
     }

@@ -44,6 +44,7 @@ public final class WaypointerKeybinds {
     private final KeyMapping openEditor;
     private final KeyMapping skipWaypoint;
     private final KeyMapping addWaypointHere;
+    private final KeyMapping addTempWaypointHere;
     private final Runnable openGui;
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
@@ -73,6 +74,15 @@ public final class WaypointerKeybinds {
                 InputConstants.Type.KEYSYM,
                 InputConstants.UNKNOWN.getValue(),
                 CATEGORY));
+        // Same opt-in story as the other creation keybinds. Uses the user's
+        // last-picked mode + duration (stored in config) so a single tap drops
+        // a temp without an intermediate picker: the editor button path is for
+        // changing those defaults, the keybind is for fast repeat use.
+        this.addTempWaypointHere = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.waypointer.add_temp_waypoint_here",
+                InputConstants.Type.KEYSYM,
+                InputConstants.UNKNOWN.getValue(),
+                CATEGORY));
     }
 
     public void install() {
@@ -87,6 +97,7 @@ public final class WaypointerKeybinds {
             if (config.skipWaypointKeybindEnabled()) skipCurrentWaypoint(mc);
         }
         while (addWaypointHere.consumeClick()) addWaypointAtPlayer(mc);
+        while (addTempWaypointHere.consumeClick()) addTempWaypointAtPlayer(mc);
     }
 
     /**
@@ -136,6 +147,52 @@ public final class WaypointerKeybinds {
         showFeedback(mc, Component.literal("Waypoint added to \"" + target.name()
                         + "\" at " + x + ", " + y + ", " + z)
                 .withStyle(ChatFormatting.GREEN));
+    }
+
+    /**
+     * Drops a temporary waypoint at the player's feet, using the user's last
+     * picks for mode + duration (stored in config). Time-mode temps get their
+     * expiry stamped from {@link System#currentTimeMillis()} at the moment of
+     * creation; other modes ignore duration.
+     *
+     * <p>Like the regular add path, the target group is either the first
+     * active group in the current zone or a freshly-created one -- temporary
+     * waypoints live in the same groups as normal ones, they're just flagged.
+     */
+    private void addTempWaypointAtPlayer(Minecraft mc) {
+        LocalPlayer p = mc.player;
+        if (p == null) return;
+
+        int x = (int) Math.floor(p.getX());
+        int y = (int) Math.floor(p.getY());
+        int z = (int) Math.floor(p.getZ());
+
+        int mode = clampTempMode(config.tempDefaultMode());
+        int durationMin = Math.max(1, config.tempDefaultDurationMin());
+        long expiresAt = mode == Waypoint.TEMP_TIME
+                ? System.currentTimeMillis() + durationMin * 60_000L
+                : 0L;
+
+        WaypointGroup target = manager.getOrCreateActiveGroup();
+        target.add(Waypoint.at(x, y, z).withTemp(mode, expiresAt));
+        manager.fireDataChanged();
+
+        showFeedback(mc, Component.literal("Temp (" + tempModeName(mode) + ") added at "
+                        + x + ", " + y + ", " + z).withStyle(ChatFormatting.AQUA));
+    }
+
+    private static int clampTempMode(int v) {
+        if (v < Waypoint.TEMP_TIME || v > Waypoint.TEMP_UNTIL_LEAVE) return Waypoint.TEMP_UNTIL_REACHED;
+        return v;
+    }
+
+    private static String tempModeName(int mode) {
+        return switch (mode) {
+            case Waypoint.TEMP_TIME          -> "TIME";
+            case Waypoint.TEMP_UNTIL_REACHED -> "REACH";
+            case Waypoint.TEMP_UNTIL_LEAVE   -> "LEAVE";
+            default -> "?";
+        };
     }
 
     /**

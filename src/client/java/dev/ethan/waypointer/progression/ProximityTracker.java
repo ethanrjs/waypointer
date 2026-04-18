@@ -46,8 +46,9 @@ public final class ProximityTracker {
         // is used as the starting radius for groups created through commands/UI so the
         // player's preferred feel is baked in from day one.
         boolean loop = config.restartRouteWhenComplete();
+        boolean skip = config.allowProximitySkipAhead();
         for (WaypointGroup group : manager.activeGroups()) {
-            advanceIfReached(group, px, py, pz, loop);
+            advanceIfReached(group, px, py, pz, loop, skip);
         }
     }
 
@@ -60,29 +61,55 @@ public final class ProximityTracker {
      * unit tests can assert "route complete" without the loop behaviour.
      */
     public static boolean advanceIfReached(WaypointGroup group, double px, double py, double pz) {
-        return advanceIfReached(group, px, py, pz, false);
+        return advanceIfReached(group, px, py, pz, false, true);
+    }
+
+    public static boolean advanceIfReached(WaypointGroup group, double px, double py, double pz,
+                                           boolean restartWhenComplete) {
+        return advanceIfReached(group, px, py, pz, restartWhenComplete, true);
     }
 
     /**
      * @param restartWhenComplete when {@code true}, completing the last waypoint
      *                              immediately resets progress to the start (see
      *                              {@link WaypointGroup#restartIfRouteCompleted(boolean)}).
+     * @param allowSkipAhead      when {@code true} (default behaviour), a hit on
+     *                              waypoint N+3 advances past N+3 in one step --
+     *                              the "corner-cutting" mode. When {@code false},
+     *                              only the immediate next waypoint counts; the
+     *                              player has to visit each one in order. The
+     *                              config flag threads through here verbatim.
      */
     public static boolean advanceIfReached(WaypointGroup group, double px, double py, double pz,
-                                           boolean restartWhenComplete) {
+                                           boolean restartWhenComplete, boolean allowSkipAhead) {
         if (group.isComplete()) return false;
 
         int size = group.size();
         int from = group.currentIndex();
 
-        for (int i = size - 1; i >= from; i--) {
+        // When skip-ahead is disabled, we only look at the single current waypoint.
+        // Scanning [from, from] keeps the hit-test uniform with the full-range
+        // branch so there's one set of distance/advance logic to reason about.
+        int scanStart = allowSkipAhead ? size - 1 : from;
+
+        for (int i = scanStart; i >= from; i--) {
             Waypoint w = group.get(i);
             double r = group.effectiveRadius(w);
             double dx = (w.x() + 0.5) - px;
             double dy = (w.y() + 0.5) - py;
             double dz = (w.z() + 0.5) - pz;
             if (dx * dx + dy * dy + dz * dz <= r * r) {
-                group.advancePast(i);
+                // Collect reach-based temps in [from..i] BEFORE advancing, because
+                // advancing changes currentIndex which we use to bound the scan.
+                // Remove in reverse so earlier indices don't shift under us.
+                int reachedIndex = i;
+                group.advancePast(reachedIndex);
+                for (int j = reachedIndex; j >= from; j--) {
+                    Waypoint wj = group.get(j);
+                    if (wj.tempMode() == Waypoint.TEMP_UNTIL_REACHED) {
+                        group.remove(j);
+                    }
+                }
                 group.restartIfRouteCompleted(restartWhenComplete);
                 return true;
             }

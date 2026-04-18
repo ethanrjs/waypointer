@@ -83,13 +83,18 @@ public final class TracerRenderer {
         float fromY = (float) (camPos.y + look.y * CROSSHAIR_FORWARD);
         float fromZ = (float) (camPos.z + look.z * CROSSHAIR_FORWARD);
         float alpha = (float) config.tracerOpacity();
+        // Matching the tracer to the live waypoint colour means gradient groups
+        // draw a tracer whose hue advances with progress (beacon and line read
+        // as one unit), and manually-coloured checkpoints light their tracer
+        // in the same tint. The flat-override path is still available for
+        // users who prefer a single distinctive tracer colour across groups.
+        boolean matchWaypoint = config.matchTracerToWaypointColor();
         int overrideColor = config.tracerColor();
-        boolean useOverride = overrideColor >= 0;
 
         for (WaypointGroup g : groups) {
             Waypoint target = g.current();
             if (target == null) continue;
-            int color = useOverride ? overrideColor : target.color();
+            int color = matchWaypoint ? target.color() : overrideColor;
             RenderHelpers.emitLine(lines, ps,
                     fromX, fromY, fromZ,
                     target.x() + 0.5f, target.y() + 0.5f, target.z() + 0.5f,
