@@ -2,8 +2,7 @@
 
 Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manager.
 Built for Minecraft 1.21.11 (Fabric, client-only).
-<img width="2560" height="1351" alt="2026-04-18_03 26 34" src="https://github.com/user-attachments/assets/d66ad587-3667-4d7f-8de9-5c27ed12e716" />
-<img width="2560" height="1351" alt="2026-04-18_03 26 51" src="https://github.com/user-attachments/assets/d8f69223-c844-4530-bc87-d14ab2c73b33" />
+<img width="1280" height="675" alt="image" src="https://github.com/user-attachments/assets/bb01bb0b-8e2a-4c46-8ffd-57289e7a1f19" />
 
 ## Features
 
@@ -14,6 +13,9 @@ Built for Minecraft 1.21.11 (Fabric, client-only).
 - Importable from chat messages
 - Keybindings
 - Clean UI for editing and management
+- Waypoint skipping in sequence
+
+<img width="1280" height="675" alt="image" src="https://github.com/user-attachments/assets/1acdce6f-5de9-4a1c-8be7-ef1ccb20977d" />
 
 ## Waypoint Import Compatibility 
 
