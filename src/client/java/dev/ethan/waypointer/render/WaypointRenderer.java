@@ -146,25 +146,42 @@ public final class WaypointRenderer implements HudElement {
         WaypointerConfig.BoxStyle style = config.boxStyle();
         boolean drawLines = style != WaypointerConfig.BoxStyle.FILLED;
         boolean drawFill  = style != WaypointerConfig.BoxStyle.OUTLINED;
+        if (!drawLines && !drawFill) return;
 
         PoseStack ps = ctx.matrices();
         Vec3 camPos = Minecraft.getInstance().gameRenderer.getMainCamera().position();
-        RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
-        RenderType quadType = WaypointerRenderPipelines.quadsThroughWalls();
-        VertexConsumer lines = drawLines ? buffers.getBuffer(lineType) : null;
-        VertexConsumer quads = drawFill  ? buffers.getBuffer(quadType) : null;
 
         ps.pushPose();
         ps.translate(-camPos.x, -camPos.y, -camPos.z);
-        for (WaypointGroup g : groups) {
-            emitBoxes(ps, lines, quads, g);
-        }
-        ps.popPose();
 
-        // Fills flush before lines so the outline renders on top of its own
-        // translucent fill (FILLED_OUTLINED mode) and stays crisp.
-        if (drawFill)  RenderHelpers.endBatch(buffers, quadType);
-        if (drawLines) RenderHelpers.endBatch(buffers, lineType);
+        // Fills and lines MUST run as two separate getBuffer/endBatch cycles.
+        // MultiBufferSource.BufferSource routes every non-fixed RenderType
+        // through a single shared BufferBuilder, so calling getBuffer(quads)
+        // while still holding a lines VertexConsumer silently endBatches the
+        // lines builder -- and the next addVertex on the stale reference
+        // throws "Not building!" (crash seen on FILLED_OUTLINED in 1.2.0).
+        //
+        // We intentionally flush fills before starting the line batch so the
+        // outline renders on top of its translucent fill in FILLED_OUTLINED
+        // mode and stays crisp.
+        if (drawFill) {
+            RenderType quadType = WaypointerRenderPipelines.quadsThroughWalls();
+            VertexConsumer quads = buffers.getBuffer(quadType);
+            for (WaypointGroup g : groups) {
+                emitBoxes(ps, null, quads, g);
+            }
+            RenderHelpers.endBatch(buffers, quadType);
+        }
+        if (drawLines) {
+            RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
+            VertexConsumer lines = buffers.getBuffer(lineType);
+            for (WaypointGroup g : groups) {
+                emitBoxes(ps, lines, null, g);
+            }
+            RenderHelpers.endBatch(buffers, lineType);
+        }
+
+        ps.popPose();
     }
 
     private void emitBoxes(PoseStack ps, VertexConsumer lines, VertexConsumer quads, WaypointGroup g) {
