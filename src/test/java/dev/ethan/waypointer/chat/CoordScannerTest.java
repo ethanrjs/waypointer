@@ -86,4 +86,31 @@ class CoordScannerTest {
         assertEquals(1, coords.size());
         assertEquals(new CoordScanner.Coord(-1234, 12, -5678), coords.get(0));
     }
+
+    @Test
+    void rejects_thousands_separated_coin_amounts() {
+        // Regression for issue #3: bank interest messages like
+        // "You have just received 1,145,926 coins" were being matched as (1, 145, 926).
+        assertTrue(
+                CoordScanner.scan("You have just received 1,145,926 coins as interest in your co-op bank account!").isEmpty(),
+                "bank-interest coin counts must not be decorated as coordinates");
+        assertTrue(CoordScanner.scan("Sold items for 12,345,678 coins").isEmpty());
+        assertTrue(CoordScanner.scan("Jackpot: 1,000,000 coins!").isEmpty());
+    }
+
+    @Test
+    void still_accepts_comma_space_coords_near_thousands_shape() {
+        // Comma+space separators must keep working even though the numeric shape
+        // (three groups of three digits) overlaps with thousands-separated numbers.
+        List<CoordScanner.Coord> coords = CoordScanner.scan("Meet at 100, 145, 926");
+        assertEquals(1, coords.size());
+        assertEquals(new CoordScanner.Coord(100, 145, 926), coords.get(0));
+    }
+
+    @Test
+    void rejects_thousands_separated_number_mixed_in_sentence() {
+        // Even when surrounded by other text, the bare-comma thousands shape
+        // should not leak a coord chip into the chat line.
+        assertTrue(CoordScanner.scan("Cleared dungeon, earned 2,500,400 xp today").isEmpty());
+    }
 }
