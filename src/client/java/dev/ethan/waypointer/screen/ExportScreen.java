@@ -58,6 +58,28 @@ public final class ExportScreen extends Screen {
     /** Minecraft chat input cap. Exports longer than this can't be pasted directly. */
     private static final int CHAT_INPUT_LIMIT = 256;
 
+    /**
+     * UTF-8 byte ceiling a server enforces on serverbound command packets.
+     *
+     * Chat INPUT is measured in characters (256 chars fit in the textbox), but
+     * the wire packet is measured in bytes, and Hypixel's Watchdog closes the
+     * socket the instant a {@code ServerboundChatCommandPacket} serialises past
+     * this cap. CJK glyphs are 3 UTF-8 bytes each so a visibly-short codec can
+     * silently punch over the ceiling and disconnect the sender.
+     */
+    private static final int COMMAND_WIRE_LIMIT_BYTES = 256;
+
+    /**
+     * UTF-8 bytes occupied by the command name + separator when the codec is
+     * pasted after a typical short chat command like {@code /pc }. The leading
+     * {@code /} is stripped by the client before the packet is sent, so only
+     * {@code "pc "} (3 bytes) actually travels on the wire. This is the
+     * reference prefix used to decide whether the export can be shared inline
+     * via a chat command -- longer prefixes (e.g. {@code /msg <name> }) will
+     * fit fewer codec bytes; we surface the shortest-realistic case here.
+     */
+    private static final int REFERENCE_COMMAND_PREFIX_BYTES = "pc ".length();
+
     /** How long to show the "Copied!" state on the copy button before reverting. */
     private static final long COPIED_FEEDBACK_MS = 1500;
 
@@ -307,33 +329,60 @@ public final class ExportScreen extends Screen {
         int y = togglesBottom + GAP_SECTION;
 
         drawSizeSummary(g, PAD_OUTER, y);
-        y += LINE_H + GAP_SECTION;
+        // Size summary spans two lines (chat-char fit + command-wire-byte
+        // fit). Keep the section gap tight so the preview still has room
+        // to show multiple wrap lines at small window sizes.
+        y += LINE_H * 2 + GAP_SECTION;
 
         g.drawString(font, "Encoded preview (this is what gets copied)", PAD_OUTER, y, TEXT_DIM, false);
         y += LINE_H;
         drawPreview(g, PAD_OUTER, y, width - PAD_OUTER, height - FOOTER_H - GAP);
     }
 
+    /**
+     * Render the two-line fit summary: chars-in-chat-textbox on the first line,
+     * wire-bytes-in-a-command on the second.
+     *
+     * Both checks matter and they fail independently. The chat textbox rejects
+     * at 256 characters regardless of byte count, so a purely-ASCII export can
+     * squeak through the textbox but still never be relevant; meanwhile the
+     * server's command packet cap is 256 BYTES, which with 3-byte CJK glyphs
+     * trips long before the chat-char cap does. Surfacing only the char cap
+     * (as this screen previously did) meant routes that looked "safe to share"
+     * disconnected the sender the moment they typed {@code /pc <codec>}.
+     */
     private void drawSizeSummary(GuiGraphics g, int x, int y) {
         int chars = encoded.length();
-        int fitColor = chars <= CHAT_INPUT_LIMIT ? 0xFF88DD88 : 0xFFDD7070;
-        String fit = chars <= CHAT_INPUT_LIMIT
-                ? "fits in one chat message"
-                : "exceeds " + CHAT_INPUT_LIMIT + "-char chat cap";
-        String main = chars + " chars (" + fit + ")";
-        g.drawString(font, main, x, y, fitColor, false);
+        int wireBytes = encoded.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        int commandBytes = REFERENCE_COMMAND_PREFIX_BYTES + wireBytes;
 
-        // Show the raw label byte length next to the size so the user can see
-        // how their label is contributing. Sanitize once for display so the
-        // preview matches what actually ships.
+        boolean chatOk = chars <= CHAT_INPUT_LIMIT;
+        boolean commandOk = commandBytes <= COMMAND_WIRE_LIMIT_BYTES;
+
+        int chatColor = chatOk ? 0xFF88DD88 : 0xFFDD7070;
+        String chatFit = chatOk ? "fits in a chat message" : "exceeds " + CHAT_INPUT_LIMIT + "-char chat input cap";
+        String chatLine = chars + " chars (" + chatFit + ")";
+        g.drawString(font, chatLine, x, y, chatColor, false);
+
         String sanitized = WaypointCodec.Options.sanitizeLabel(currentLabel);
         if (!sanitized.isEmpty()) {
             int gap = font.width("  ");
             int labelBytes = sanitized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
             g.drawString(font,
                     "label: " + labelBytes + "B sanitized",
-                    x + font.width(main) + gap, y, 0xFF88AACC, false);
+                    x + font.width(chatLine) + gap, y, 0xFF88AACC, false);
         }
+
+        // Second line: wire-byte budget for sharing via a command. The user
+        // thinks in "can I paste this into /pc?" terms; we answer that
+        // directly instead of making them translate a character count into
+        // UTF-8 bytes in their head.
+        int cmdColor = commandOk ? 0xFF88DD88 : 0xFFDD7070;
+        String cmdFit = commandOk
+                ? "fits after /pc (" + commandBytes + "/" + COMMAND_WIRE_LIMIT_BYTES + " B on the wire)"
+                : "too long to share via /pc -- would disconnect you ("
+                        + commandBytes + "/" + COMMAND_WIRE_LIMIT_BYTES + " B)";
+        g.drawString(font, wireBytes + " B  " + cmdFit, x, y + LINE_H, cmdColor, false);
     }
 
     private void drawPreview(GuiGraphics g, int x1, int y1, int x2, int y2) {
