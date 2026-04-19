@@ -58,6 +58,34 @@ public final class ExportScreen extends Screen {
     /** Minecraft chat input cap. Exports longer than this can't be pasted directly. */
     private static final int CHAT_INPUT_LIMIT = 256;
 
+    /**
+     * UTF-8 byte ceiling Minecraft enforces on serverbound command packets.
+     * The vanilla client refuses to send a chat command whose serialized
+     * command string runs past this cap, so pastes into {@code /pc}, {@code
+     * /msg}, and friends silently fail when the export is too large.
+     *
+     * Chat INPUT is measured in characters (256 chars fit in the textbox),
+     * but the command wire packet is measured in bytes. v2 uses a base-85
+     * ASCII alphabet (1 UTF-8 byte per char), so the char-count and
+     * wire-byte-count lines now report the same number for the body -- the
+     * gap between them is just {@code WP:} plus any chat-framing. Keeping
+     * both lines in the UI still makes sense: the chat-textbox cap is a
+     * different failure mode (reject-at-type-time) than the command-packet
+     * cap (silently-drop-at-send-time).
+     */
+    private static final int COMMAND_WIRE_LIMIT_BYTES = 256;
+
+    /**
+     * UTF-8 bytes occupied by the command name + separator when the codec is
+     * pasted after a typical short chat command like {@code /pc }. The leading
+     * {@code /} is stripped by the client before the packet is sent, so only
+     * {@code "pc "} (3 bytes) actually travels on the wire. This is the
+     * reference prefix used to decide whether the export can be shared inline
+     * via a chat command -- longer prefixes (e.g. {@code /msg <name> }) will
+     * fit fewer codec bytes; we surface the shortest-realistic case here.
+     */
+    private static final int REFERENCE_COMMAND_PREFIX_BYTES = "pc ".length();
+
     /** How long to show the "Copied!" state on the copy button before reverting. */
     private static final long COPIED_FEEDBACK_MS = 1500;
 
@@ -307,33 +335,75 @@ public final class ExportScreen extends Screen {
         int y = togglesBottom + GAP_SECTION;
 
         drawSizeSummary(g, PAD_OUTER, y);
-        y += LINE_H + GAP_SECTION;
+        // Size summary spans two lines (chat-char fit + command-wire-byte
+        // fit). Keep the section gap tight so the preview still has room
+        // to show multiple wrap lines at small window sizes.
+        y += LINE_H * 2 + GAP_SECTION;
 
         g.drawString(font, "Encoded preview (this is what gets copied)", PAD_OUTER, y, TEXT_DIM, false);
         y += LINE_H;
         drawPreview(g, PAD_OUTER, y, width - PAD_OUTER, height - FOOTER_H - GAP);
     }
 
+    /**
+     * Render the two-line fit summary.
+     *
+     * Line 1 answers "can I send this in a command like /pc or /msg?" --
+     * the Minecraft client silently drops any command whose wire packet
+     * runs past 256 UTF-8 bytes, so a paste into /pc that looks fine
+     * visually can just disappear with no server response.
+     *
+     * Line 2 answers "can I paste this into chat?" -- the chat textbox
+     * caps at 256 characters regardless of bytes.
+     *
+     * With the v2 base-85 alphabet (1 byte/char) the two caps coincide on
+     * the body itself, but command framing ({@code "/pc "} etc.) still
+     * puts the command cap first. When a command won't fit but chat will,
+     * we point that out inline so the user doesn't have to cross-reference
+     * two lines to figure out "can I still share this?".
+     *
+     * User-visible strings are deliberately plain-language -- no byte
+     * counts, no "cap", no "wire" -- because almost nobody pasting a route
+     * to a friend wants to reason about UTF-8 size limits.
+     */
     private void drawSizeSummary(GuiGraphics g, int x, int y) {
         int chars = encoded.length();
-        int fitColor = chars <= CHAT_INPUT_LIMIT ? 0xFF88DD88 : 0xFFDD7070;
-        String fit = chars <= CHAT_INPUT_LIMIT
-                ? "fits in one chat message"
-                : "exceeds " + CHAT_INPUT_LIMIT + "-char chat cap";
-        String main = chars + " chars (" + fit + ")";
-        g.drawString(font, main, x, y, fitColor, false);
+        int wireBytes = encoded.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        int commandBytes = REFERENCE_COMMAND_PREFIX_BYTES + wireBytes;
 
-        // Show the raw label byte length next to the size so the user can see
-        // how their label is contributing. Sanitize once for display so the
-        // preview matches what actually ships.
+        boolean chatOk = chars <= CHAT_INPUT_LIMIT;
+        boolean commandOk = commandBytes <= COMMAND_WIRE_LIMIT_BYTES;
+
+        // Line 1 leads with command-fit because that's the one that silently
+        // fails -- chat-fit at least shows a visible "too long" indicator in
+        // the textbox. When the command path is blocked but chat still works,
+        // we say so inline so the remedy is obvious without reading further.
+        int cmdColor = commandOk ? 0xFF88DD88 : 0xFFDD7070;
+        String cmdLine;
+        if (commandOk) {
+            cmdLine = "OK to send in a command (/pc, /msg, etc.)";
+        } else if (chatOk) {
+            cmdLine = "Too long for a command -- paste it straight into chat instead";
+        } else {
+            cmdLine = "Too long for chat and commands -- remove waypoints or split the group";
+        }
+        g.drawString(font, cmdLine, x, y, cmdColor, false);
+
         String sanitized = WaypointCodec.Options.sanitizeLabel(currentLabel);
         if (!sanitized.isEmpty()) {
             int gap = font.width("  ");
-            int labelBytes = sanitized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
             g.drawString(font,
-                    "label: " + labelBytes + "B sanitized",
-                    x + font.width(main) + gap, y, 0xFF88AACC, false);
+                    "label: \"" + sanitized + "\"",
+                    x + font.width(cmdLine) + gap, y, 0xFF88AACC, false);
         }
+
+        // Line 2: chat-fit. Always shown so users see the ceiling they're
+        // approaching even before they hit it.
+        int chatColor = chatOk ? 0xFF88DD88 : 0xFFDD7070;
+        String chatLine = chatOk
+                ? "Fits in a chat message"
+                : "Too long for chat -- share somewhere else (like Discord)";
+        g.drawString(font, chatLine, x, y + LINE_H, chatColor, false);
     }
 
     private void drawPreview(GuiGraphics g, int x1, int y1, int x2, int y2) {

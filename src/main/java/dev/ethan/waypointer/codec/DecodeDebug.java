@@ -17,8 +17,8 @@ import java.util.List;
  * @param rawInput         Original input string, untrimmed.
  * @param inputChars       {@code rawInput.length()}.
  * @param magic            Magic prefix that matched (always {@link WaypointCodec#MAGIC}).
- * @param payloadChars     Chars after the magic prefix (the CJK-encoded body).
- * @param compressedBytes  Byte count after CJK decoding, before inflate.
+ * @param payloadChars     Chars after the magic prefix (the base-85-encoded body).
+ * @param compressedBytes  Byte count after base-85 decoding, before inflate.
  * @param rawBodyBytes     Byte count after inflate -- size of the binary body.
  * @param charsPerRawByte  {@code inputChars / rawBodyBytes}; overall density ratio.
  * @param headerByte       First byte of the raw body: version in low nibble, flags in high nibble.

@@ -24,7 +24,7 @@ import java.util.zip.Inflater;
  *
  * Wire format:
  *
- *     WP:<CJK-base-16384 body of raw DEFLATE(bin)>
+ *     WP:<base-85 body of raw DEFLATE(bin)>
  *
  * The {@code WP:} prefix is just a scanner anchor; the schema version lives
  * in the low nibble of the first body byte (see below). Keeping the version
@@ -32,9 +32,15 @@ import java.util.zip.Inflater;
  * detector or the regex-style callers that look for the prefix.
  *
  * The body is raw DEFLATE (no gzip header/trailer) compressed with a preset
- * dictionary of Hypixel zone ids and waypoint-name fragments, then encoded into
- * the CJK base-16384 alphabet for density. Each output character is a printable
- * Han glyph that survives Minecraft chat validation, paste, and font fallbacks.
+ * dictionary of Hypixel zone ids and waypoint-name fragments, then encoded
+ * with {@link AsciiPackCodec} (a Z85-derived base-85 alphabet with
+ * {@code '.'} swapped for {@code ';'} to avoid Hypixel's advertising filter).
+ * Each output character is a single UTF-8 byte of printable ASCII that
+ * survives Minecraft chat validation, paste, and the ad-detection heuristic.
+ * The earlier CJK base-16384 alphabet (v1) visually fit more characters into
+ * the 256-CHAR chat textbox, but Minecraft's 256-BYTE command-packet cap is
+ * the constraint that actually drops messages; base-85 carries ~37% more
+ * compressed bytes through that envelope (6.41 bits/UTF-8-byte vs 4.67).
  *
  * Binary body:
  *
@@ -59,7 +65,8 @@ import java.util.zip.Inflater;
  *                   bit 1 = gradientAuto       (else MANUAL)
  *                   bit 2 = loadSequence       (else STATIC)
  *                   bit 3 = customDefaultRadius (else 3.0)
- *                   bits 4..5 = coordMode (0=VECTOR delta, 1=ABSOLUTE_VARINT, 2=FIXED_COMPACT)
+ *                   bits 4..5 = coordMode (0=VECTOR delta, 1=ABSOLUTE_VARINT,
+ *                                           2=FIXED_COMPACT, 3=FIT_COMPACT)
  *       if customDefaultRadius: varint radius_x10
  *       varint    waypointCount
  *       coord stream (see below)
@@ -93,6 +100,12 @@ import java.util.zip.Inflater;
  *     available when every coord in the group fits x,z in [-2048, +2047] and
  *     y in [-64, +447]. Wins on groups with moderate absolute magnitudes and no
  *     delta locality.
+ *   - FIT_COMPACT: per-group auto-fit bit widths. Encodes a small preamble
+ *     (one byte packing xBits..zBits in 5/5/5, plus three zigzag-varint origins)
+ *     then packs each waypoint as (x-xOrig, y-yOrig, z-zOrig) in the fitted
+ *     widths. A dungeon group with x in [66..130] fits in 7 bits, y in [128..145]
+ *     in 5 bits, z in [135..190] in 6 bits = 18 bits/waypoint -- nearly half
+ *     what FIXED_COMPACT costs. Wins on tightly-clustered groups.
  *
  * Worst case AUTO picks wrong by 0 bytes (the losing modes are discarded);
  * best case it saves real characters on pathologically-shaped routes.
@@ -107,8 +120,19 @@ public final class WaypointCodec {
      * so future breaking bumps can happen without touching MAGIC or the chat
      * scanner. Version 0 is reserved as "invalid" so a corrupted header byte
      * can't accidentally decode as an older schema.
+     *
+     * v2 (current): base-85 outer alphabet (Z85 with {@code '.'} swapped for
+     *               {@code ';'} to dodge Hypixel's advertising filter) +
+     *               FIT_COMPACT coord mode.
+     * v1 (retired): CJK base-16384 alphabet; same binary body shape.
+     *
+     * v1 payloads cannot decode here -- the base-85 body-decode step rejects
+     * the CJK characters first, and even a hand-crafted v1 binary body would
+     * hit the version-guard in readBody. We don't maintain a dual-decode path:
+     * users regenerate exports after upgrading, and the scanner still ignores
+     * non-alphabet-body matches so no stale chat lines go red.
      */
-    static final int WIRE_VERSION = 1;
+    static final int WIRE_VERSION = 2;
     private static final int HEADER_VERSION_MASK = 0x0F;
     /** Export flags occupy the high nibble so the version field can grow toward it if we ever need more than 4 bits. */
     private static final int HEADER_FLAG_NAMES = 1 << 4;
@@ -130,7 +154,7 @@ public final class WaypointCodec {
     private static final int GROUP_FLAG_GRAD_AUTO     = 1 << 1;
     private static final int GROUP_FLAG_LOAD_SEQUENCE = 1 << 2;
     private static final int GROUP_FLAG_CUSTOM_RADIUS = 1 << 3;
-    /** 2-bit field at bits 4..5 holding the coord-mode ordinal (0..2). */
+    /** 2-bit field at bits 4..5 holding the coord-mode ordinal (0..3). */
     private static final int GROUP_FLAG_COORD_MODE_SHIFT = 4;
     private static final int GROUP_FLAG_COORD_MODE_MASK  = 0b11 << GROUP_FLAG_COORD_MODE_SHIFT;
 
@@ -140,6 +164,17 @@ public final class WaypointCodec {
     private static final int FIXED_Z_BITS = 12;
     /** Y coordinate offset so (y + FIXED_Y_OFFSET) stays non-negative. Covers y in [-64, +447]. */
     private static final int FIXED_Y_OFFSET = 64;
+
+    /**
+     * FIT_COMPACT bit-width field. 5 bits per axis lets us store any width in
+     * [0, 31]; a width of 0 means "every coord equals the origin" and consumes
+     * zero bits per waypoint on that axis (useful for flat groups, e.g. a
+     * horizontal row at a fixed y). A width of 31 is enough for any realistic
+     * Minecraft world range (2^31 is wider than the world border on any known
+     * server).
+     */
+    private static final int FIT_BITS_PER_AXIS = 5;
+    private static final int FIT_MAX_WIDTH = (1 << FIT_BITS_PER_AXIS) - 1;
 
     private static final int WP_FLAG_HAS_NAME   = 1;
     private static final int WP_FLAG_HAS_COLOR  = 1 << 1;
@@ -156,7 +191,8 @@ public final class WaypointCodec {
     enum CoordMode {
         VECTOR(0),
         ABSOLUTE_VARINT(1),
-        FIXED_COMPACT(2);
+        FIXED_COMPACT(2),
+        FIT_COMPACT(3);
 
         final int wireValue;
 
@@ -174,7 +210,7 @@ public final class WaypointCodec {
      * assert that AUTO actually picks the best option. Production code should
      * stick with AUTO.
      */
-    enum PackingMode { AUTO, FORCE_VECTOR, FORCE_ABSOLUTE, FORCE_FIXED }
+    enum PackingMode { AUTO, FORCE_VECTOR, FORCE_ABSOLUTE, FORCE_FIXED, FORCE_FIT }
 
     /**
      * Export options. Five independent toggles control which payload fields are
@@ -318,7 +354,7 @@ public final class WaypointCodec {
         try {
             byte[] raw = writeBody(groups, opts, mode);
             byte[] compressed = deflate(raw);
-            return MAGIC + CjkBase16384.encode(compressed);
+            return MAGIC + AsciiPackCodec.encode(compressed);
         } catch (IOException e) {
             throw new IllegalStateException("codec encode failed", e);
         }
@@ -344,7 +380,7 @@ public final class WaypointCodec {
         }
         String payload = trimmed.substring(MAGIC.length());
         try {
-            byte[] compressed = CjkBase16384.decode(payload);
+            byte[] compressed = AsciiPackCodec.decode(payload);
             byte[] raw = inflate(compressed);
             DecodedHeader headerOut = new DecodedHeader();
             List<WaypointGroup> groups = readBody(raw, null, headerOut);
@@ -400,7 +436,7 @@ public final class WaypointCodec {
         if (!trimmed.startsWith(MAGIC)) return Optional.empty();
         String payload = trimmed.substring(MAGIC.length());
         try {
-            byte[] compressed = CjkBase16384.decode(payload);
+            byte[] compressed = AsciiPackCodec.decode(payload);
             byte[] raw = inflate(compressed);
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(raw));
             int header = in.readUnsignedByte();
@@ -436,7 +472,7 @@ public final class WaypointCodec {
         }
         String payload = trimmed.substring(MAGIC.length());
         try {
-            byte[] compressed = CjkBase16384.decode(payload);
+            byte[] compressed = AsciiPackCodec.decode(payload);
             byte[] raw = inflate(compressed);
             DebugCapture cap = new DebugCapture();
             List<WaypointGroup> groups = readBody(raw, cap, null);
@@ -571,9 +607,10 @@ public final class WaypointCodec {
      * Runs the packing-mode contest for one group. AUTO encodes every eligible
      * mode and keeps the smallest; forced modes skip the comparison entirely.
      *
-     * FIXED_COMPACT is only eligible when every coord in the group fits the
-     * tight bit-packing bounds -- trying to encode it when a coord overflows
-     * would truncate silently.
+     * FIXED_COMPACT is only eligible when every coord fits the global bounds
+     * (x/z in [-2048, +2047], y in [-64, +447]). FIT_COMPACT is always
+     * eligible but has a small preamble cost, so it only wins on groups
+     * tight enough that the saved coord bits outweigh the preamble.
      */
     private static CoordPicked pickCoordMode(WaypointGroup g, StringPool pool, Options opts,
                                              PackingMode mode) throws IOException {
@@ -593,14 +630,36 @@ public final class WaypointCodec {
                 }
                 return new CoordPicked(CoordMode.FIXED_COMPACT, encodeFixedCompact(g.waypoints(), pool, opts));
             }
+            case FORCE_FIT -> {
+                return new CoordPicked(CoordMode.FIT_COMPACT, encodeFitCompact(g.waypoints(), pool, opts));
+            }
             default -> {
                 byte[] v = encodeVectorOrAbsolute(g.waypoints(), pool, opts, false);
                 byte[] a = encodeVectorOrAbsolute(g.waypoints(), pool, opts, true);
                 byte[] f = fixedEligible ? encodeFixedCompact(g.waypoints(), pool, opts) : null;
+                byte[] t = encodeFitCompact(g.waypoints(), pool, opts);
+
+                // Rank by POST-DEFLATE size, not raw. Raw-byte size mis-ranks
+                // candidates whose contents compress very differently. Concrete
+                // example: a VECTOR stream of 20 identical (+1, +0, +2) deltas
+                // has zero entropy and deflates to near-nothing, while a
+                // FIT_COMPACT stream of the same input is already near the
+                // entropy bound and barely shrinks. Raw bytes say FIT wins;
+                // compressed bytes say VECTOR wins by ~15%. This is a
+                // per-group approximation of the true final size (cross-group
+                // compression context can still shift the ranking marginally),
+                // but it's strictly more accurate than comparing raw bytes and
+                // cheap enough that a user-triggered encode doesn't notice.
+                int vScore = compressedScore(v);
+                int aScore = compressedScore(a);
+                int fScore = f != null ? compressedScore(f) : Integer.MAX_VALUE;
+                int tScore = compressedScore(t);
 
                 CoordPicked best = new CoordPicked(CoordMode.VECTOR, v);
-                if (a.length < best.bytes.length) best = new CoordPicked(CoordMode.ABSOLUTE_VARINT, a);
-                if (f != null && f.length < best.bytes.length) best = new CoordPicked(CoordMode.FIXED_COMPACT, f);
+                int bestScore = vScore;
+                if (aScore < bestScore) { best = new CoordPicked(CoordMode.ABSOLUTE_VARINT, a); bestScore = aScore; }
+                if (fScore < bestScore) { best = new CoordPicked(CoordMode.FIXED_COMPACT, f);   bestScore = fScore; }
+                if (tScore < bestScore) { best = new CoordPicked(CoordMode.FIT_COMPACT, t);     /* bestScore unused after */ }
                 return best;
             }
         }
@@ -671,6 +730,84 @@ public final class WaypointCodec {
         for (Waypoint w : pts) writeWaypointBody(out, w, pool, opts);
         out.flush();
         return scratch.toByteArray();
+    }
+
+    /**
+     * Encode a group with per-axis auto-fitted bit widths. Preamble layout:
+     *
+     *   zigzag-varint xOrigin
+     *   zigzag-varint yOrigin
+     *   zigzag-varint zOrigin
+     *   packed-u15    xBits (5) | yBits (5) | zBits (5)   [2 bytes byte-aligned]
+     *
+     * Each waypoint then packs (x-xOrigin, y-yOrigin, z-zOrigin) in the chosen
+     * widths -- all non-negative by construction because origin = min per axis.
+     * A width of 0 on any axis means every coord equals the origin and
+     * contributes zero bits per waypoint.
+     *
+     * On a group with <= 1 point this collapses to "3 zigzag-varints + 2 bytes
+     * of bit-width preamble + 0 bits per point", which is strictly worse than
+     * ABSOLUTE_VARINT; the AUTO contest will discard it in that case. We still
+     * encode it cleanly so the contest's byte-count comparison doesn't need a
+     * special case.
+     */
+    private static byte[] encodeFitCompact(List<Waypoint> pts, StringPool pool, Options opts) throws IOException {
+        int xMin = Integer.MAX_VALUE, yMin = Integer.MAX_VALUE, zMin = Integer.MAX_VALUE;
+        int xMax = Integer.MIN_VALUE, yMax = Integer.MIN_VALUE, zMax = Integer.MIN_VALUE;
+        for (Waypoint w : pts) {
+            if (w.x() < xMin) xMin = w.x(); if (w.x() > xMax) xMax = w.x();
+            if (w.y() < yMin) yMin = w.y(); if (w.y() > yMax) yMax = w.y();
+            if (w.z() < zMin) zMin = w.z(); if (w.z() > zMax) zMax = w.z();
+        }
+        // Empty group: use zero origins so the decoder's readCoords loop runs
+        // zero iterations but the preamble is still well-formed.
+        int xOrigin = pts.isEmpty() ? 0 : xMin;
+        int yOrigin = pts.isEmpty() ? 0 : yMin;
+        int zOrigin = pts.isEmpty() ? 0 : zMin;
+        int xBits = pts.isEmpty() ? 0 : bitsToRepresent((long) xMax - xMin);
+        int yBits = pts.isEmpty() ? 0 : bitsToRepresent((long) yMax - yMin);
+        int zBits = pts.isEmpty() ? 0 : bitsToRepresent((long) zMax - zMin);
+        // Clamp: if any axis span exceeds 31 bits we fall back to the widest
+        // valid width. In practice the AUTO contest discards FIT_COMPACT long
+        // before this matters because the coord preamble overhead dwarfs any
+        // savings at those ranges.
+        xBits = Math.min(xBits, FIT_MAX_WIDTH);
+        yBits = Math.min(yBits, FIT_MAX_WIDTH);
+        zBits = Math.min(zBits, FIT_MAX_WIDTH);
+
+        ByteArrayOutputStream scratch = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(scratch);
+        writeZigzag(out, xOrigin);
+        writeZigzag(out, yOrigin);
+        writeZigzag(out, zOrigin);
+        // 5+5+5 = 15 bits fits in a u16 but we only need 15; write as u16 big-endian
+        // so the reader can unpack it in one readUnsignedShort call.
+        int packedWidths = (xBits << 10) | (yBits << 5) | zBits;
+        out.writeByte((packedWidths >>> 8) & 0xFF);
+        out.writeByte(packedWidths & 0xFF);
+        out.flush();
+
+        BitWriter bits = new BitWriter(scratch);
+        for (Waypoint w : pts) {
+            if (xBits > 0) bits.write(w.x() - xOrigin, xBits);
+            if (yBits > 0) bits.write(w.y() - yOrigin, yBits);
+            if (zBits > 0) bits.write(w.z() - zOrigin, zBits);
+        }
+        bits.flush();
+
+        for (Waypoint w : pts) writeWaypointBody(out, w, pool, opts);
+        out.flush();
+        return scratch.toByteArray();
+    }
+
+    /**
+     * Number of bits needed to represent a non-negative {@code span} as an
+     * unsigned integer. {@code bitsToRepresent(0) == 0} (no bits needed when
+     * there's only one possible value), {@code bitsToRepresent(1) == 1}, etc.
+     */
+    private static int bitsToRepresent(long span) {
+        if (span <= 0) return 0;
+        return 64 - Long.numberOfLeadingZeros(span);
     }
 
     private static void writeWaypointBody(DataOutputStream out, Waypoint w, StringPool pool, Options opts)
@@ -851,6 +988,23 @@ public final class WaypointCodec {
                     int x = unZigzag(bits.read(FIXED_X_BITS));
                     int y = bits.read(FIXED_Y_BITS) - FIXED_Y_OFFSET;
                     int z = unZigzag(bits.read(FIXED_Z_BITS));
+                    out[i][0] = x; out[i][1] = y; out[i][2] = z;
+                }
+                bits.alignToByteBoundary();
+            }
+            case FIT_COMPACT -> {
+                int xOrigin = readZigzag(in);
+                int yOrigin = readZigzag(in);
+                int zOrigin = readZigzag(in);
+                int packedWidths = (in.readUnsignedByte() << 8) | in.readUnsignedByte();
+                int xBits = (packedWidths >>> 10) & FIT_MAX_WIDTH;
+                int yBits = (packedWidths >>>  5) & FIT_MAX_WIDTH;
+                int zBits =  packedWidths        & FIT_MAX_WIDTH;
+                BitReader bits = new BitReader(in);
+                for (int i = 0; i < count; i++) {
+                    int x = xBits > 0 ? xOrigin + bits.read(xBits) : xOrigin;
+                    int y = yBits > 0 ? yOrigin + bits.read(yBits) : yOrigin;
+                    int z = zBits > 0 ? zOrigin + bits.read(zBits) : zOrigin;
                     out[i][0] = x; out[i][1] = y; out[i][2] = z;
                 }
                 bits.alignToByteBoundary();
@@ -1084,6 +1238,28 @@ public final class WaypointCodec {
             def.end();
         }
         return out.toByteArray();
+    }
+
+    /**
+     * Approximate post-deflate size of a single coord-mode candidate, used to
+     * rank AUTO candidates. Lower = better.
+     *
+     * Uses the same dictionary as the real encode path so dictionary hits get
+     * counted. Doesn't include cross-group compression context, so the score
+     * is a heuristic rather than a true final size -- but it's dramatically
+     * more accurate than raw-byte comparisons for streams that differ in
+     * entropy characteristics.
+     *
+     * Returns {@link Integer#MAX_VALUE} on I/O failure so the caller simply
+     * never picks the affected candidate; in practice {@link Deflater} on an
+     * in-memory buffer cannot actually fail.
+     */
+    private static int compressedScore(byte[] raw) {
+        try {
+            return deflate(raw).length;
+        } catch (IOException ioe) {
+            return Integer.MAX_VALUE;
+        }
     }
 
     private static byte[] inflate(byte[] compressed) throws IOException {

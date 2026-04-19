@@ -92,6 +92,9 @@ public final class TracerRenderer {
         int overrideColor = config.tracerColor();
 
         for (WaypointGroup g : groups) {
+            if (config.hideTracerOnStaticRoutes() && g.loadMode() == WaypointGroup.LoadMode.STATIC) {
+                continue;
+            }
             Waypoint target = g.current();
             if (target == null) continue;
             int color = matchWaypoint ? target.color() : overrideColor;

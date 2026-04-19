@@ -94,13 +94,34 @@ class CodecScannerTest {
     @Test
     void does_not_match_unrelated_text_containing_magic_substring() {
         // "WP" might appear in any number of unrelated contexts (WordPress, a
-        // product name, a URL slug). Without the colon AND a CJK body it must
-        // not trigger -- the body character class is what keeps false positives
-        // from being a problem despite the short magic.
+        // product name, a URL slug). Without the colon AND a valid body it
+        // must not trigger -- the body character class + word-boundary rule
+        // keep false positives from being a problem despite the short magic.
         assertTrue(CodecScanner.scan("WP isn't a codec without a colon").isEmpty());
-        assertTrue(CodecScanner.scan("visit example.com/WP").isEmpty());
+        // NOTE: the 'example' example used to be "example.com/WP" but '.' is
+        // no longer an alphabet character (it trips Hypixel's ad filter), so
+        // the scanner-level URL-adjacency case is moot. We still exercise the
+        // scenario via a non-'.' URL shape below.
+        assertTrue(CodecScanner.scan("visit exampleWP").isEmpty());
         assertTrue(CodecScanner.scan("check /wp help for more").isEmpty(),
                 "unrelated slash commands that happen to contain 'wp' must not match");
+    }
+
+    @Test
+    void rejects_magic_mid_word_when_preceding_char_is_ascii_alphanumeric() {
+        // v2 uses an ASCII alphabet, so without the word-boundary guard a chat
+        // line like "fileWP:stuff" would fire the import pill. The scanner
+        // must require the character immediately before the magic to be
+        // outside the base-85 alphabet (or be at the start of the string).
+        String export = sampleExport();
+        assertTrue(CodecScanner.scan("file" + export).isEmpty(),
+                "magic preceded by ASCII alphanumeric must not match");
+        assertTrue(CodecScanner.scan("helloWP:" + export.substring(3)).isEmpty(),
+                "magic glued to a preceding word must not match");
+        // Sanity: with a space before (outside the alphabet) the same
+        // codec DOES match, so the rule above is doing real work.
+        assertEquals(1, CodecScanner.scan("hello " + export).size(),
+                "magic with a whitespace boundary must still match");
     }
 
     private static String sampleExport() {
