@@ -3,7 +3,6 @@ package dev.ethan.waypointer;
 import dev.ethan.waypointer.chat.ChatCoordDetector;
 import dev.ethan.waypointer.chat.ChatImportCache;
 import dev.ethan.waypointer.chat.ChatImportDetector;
-import dev.ethan.waypointer.chat.ClientCodecSendGuard;
 import dev.ethan.waypointer.commands.WaypointerCommands;
 import dev.ethan.waypointer.config.Storage;
 import dev.ethan.waypointer.config.WaypointerConfig;
@@ -59,10 +58,6 @@ public final class WaypointerClient implements ClientModInitializer {
         new WaypointerKeybinds(WaypointerClient::openGui, manager, config).install();
         new ChatCoordDetector(config).install();
         new ChatImportDetector(config, chatImportCache).install();
-        // Installed unconditionally: this is a safety net, not a feature. A
-        // codec-bearing command that would disconnect the user is always a
-        // bug regardless of config, so there's no toggle to disable it.
-        ClientCodecSendGuard.install();
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             // Flush any debounced writes before the JVM tears down -- the
