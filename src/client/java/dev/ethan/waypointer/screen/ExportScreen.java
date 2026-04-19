@@ -340,16 +340,24 @@ public final class ExportScreen extends Screen {
     }
 
     /**
-     * Render the two-line fit summary: chars-in-chat-textbox on the first line,
-     * wire-bytes-in-a-command on the second.
+     * Render the two-line fit summary.
      *
-     * Both checks matter and they fail independently. The chat textbox rejects
-     * at 256 characters regardless of byte count, so a purely-ASCII export can
-     * squeak through the textbox but still never be relevant; meanwhile the
-     * server's command packet cap is 256 BYTES, which with 3-byte CJK glyphs
-     * trips long before the chat-char cap does. Surfacing only the char cap
-     * (as this screen previously did) meant routes that looked "safe to share"
-     * disconnected the sender the moment they typed {@code /pc <codec>}.
+     * Line 1 answers "can I paste this into chat?" (character count vs. the
+     * chat textbox cap). Line 2 answers "can I send this in /pc?" (UTF-8
+     * byte count vs. the command-packet ceiling, which is what Hypixel
+     * Watchdog closes the connection on).
+     *
+     * Both fail independently -- the chat textbox rejects at 256 chars
+     * regardless of bytes, and the server's command cap is 256 BYTES which
+     * with 3-byte CJK glyphs trips long before the char cap does. Surfacing
+     * only the char cap (as this screen previously did) meant routes that
+     * looked "safe to share" disconnected the sender on /pc.
+     *
+     * The user-visible strings are deliberately plain-language -- no byte
+     * counts, no "cap", no "wire" -- because almost nobody pasting a route
+     * to a friend wants to reason about UTF-8 size limits. The underlying
+     * numbers stay in comments here so future maintainers can still find
+     * them.
      */
     private void drawSizeSummary(GuiGraphics g, int x, int y) {
         int chars = encoded.length();
@@ -360,29 +368,26 @@ public final class ExportScreen extends Screen {
         boolean commandOk = commandBytes <= COMMAND_WIRE_LIMIT_BYTES;
 
         int chatColor = chatOk ? 0xFF88DD88 : 0xFFDD7070;
-        String chatFit = chatOk ? "fits in a chat message" : "exceeds " + CHAT_INPUT_LIMIT + "-char chat input cap";
-        String chatLine = chars + " chars (" + chatFit + ")";
+        String chatLine = chatOk
+                ? "Fits in a chat message"
+                : "Too long for chat -- paste it somewhere else (like Discord)";
         g.drawString(font, chatLine, x, y, chatColor, false);
 
         String sanitized = WaypointCodec.Options.sanitizeLabel(currentLabel);
         if (!sanitized.isEmpty()) {
             int gap = font.width("  ");
-            int labelBytes = sanitized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
             g.drawString(font,
-                    "label: " + labelBytes + "B sanitized",
+                    "label: \"" + sanitized + "\"",
                     x + font.width(chatLine) + gap, y, 0xFF88AACC, false);
         }
 
-        // Second line: wire-byte budget for sharing via a command. The user
-        // thinks in "can I paste this into /pc?" terms; we answer that
-        // directly instead of making them translate a character count into
-        // UTF-8 bytes in their head.
+        // Second line: can this be shared with /pc? This is the check that
+        // actually prevents a disconnect, so it has to be obvious.
         int cmdColor = commandOk ? 0xFF88DD88 : 0xFFDD7070;
-        String cmdFit = commandOk
-                ? "fits after /pc (" + commandBytes + "/" + COMMAND_WIRE_LIMIT_BYTES + " B on the wire)"
-                : "too long to share via /pc -- would disconnect you ("
-                        + commandBytes + "/" + COMMAND_WIRE_LIMIT_BYTES + " B)";
-        g.drawString(font, wireBytes + " B  " + cmdFit, x, y + LINE_H, cmdColor, false);
+        String cmdLine = commandOk
+                ? "OK to send in /pc"
+                : "Too long for /pc -- would kick you from the server";
+        g.drawString(font, cmdLine, x, y + LINE_H, cmdColor, false);
     }
 
     private void drawPreview(GuiGraphics g, int x1, int y1, int x2, int y2) {

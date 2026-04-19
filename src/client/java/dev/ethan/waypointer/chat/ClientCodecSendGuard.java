@@ -42,18 +42,21 @@ public final class ClientCodecSendGuard {
 
     /**
      * Build the cancel-notification chat line. Kept separate from the hook
-     * body so the formatting choices (colors, verb echo, byte math phrasing)
-     * can be tuned without touching the registration path.
+     * body so the wording can be tuned without touching the registration
+     * path.
+     *
+     * The copy is intentionally plain-language: no "bytes", no "cap", no
+     * "packet". Most players don't care (and shouldn't have to) about the
+     * underlying reason; they just need to know the send was stopped, why
+     * it mattered, and what to do next.
      */
     private static Component buildWarning(CodecSendGuard.Decision d) {
         MutableComponent prefix = Component.literal("[Waypointer] ").withStyle(ChatFormatting.AQUA);
         MutableComponent body = Component.literal(
-                "Blocked your /" + d.commandLeader() + " -- it would have disconnected you. "
-                + "The command was " + d.wireBytes() + " B (cap is "
-                + CodecSendGuard.COMMAND_WIRE_LIMIT_BYTES + " B, over by "
-                + d.overByBytes() + " B). "
-                + "Shrink the codec by stripping toggles in the export screen, "
-                + "or share via a channel other than a chat command."
+                "Stopped your /" + d.commandLeader() + " -- it was too long to send and would have "
+                + "kicked you from the server. "
+                + "Try sharing fewer waypoints, or open the export screen and turn off extras "
+                + "(names, colors, etc.) to make it shorter."
         ).withStyle(ChatFormatting.RED);
         return prefix.append(body);
     }
