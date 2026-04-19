@@ -48,10 +48,7 @@ import org.joml.Vector3fc;
  *
  * <p>Load-mode aware: {@code STATIC} groups render every waypoint, {@code SEQUENCE}
  * groups render only the prev/current/next triple (delegated to
- * {@link WaypointGroup#forEachVisibleIndex}). The
- * {@link WaypointerConfig#windowedRendering() windowedRendering} flag forces
- * every group onto the prev/current/next window to cut label clutter on
- * dense static routes without changing their navigation behavior.
+ * {@link WaypointGroup#forEachVisibleIndex}).
  */
 public final class WaypointRenderer implements HudElement {
 
@@ -188,7 +185,6 @@ public final class WaypointRenderer implements HudElement {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
-        boolean windowed = config.windowedRendering();
 
         g.forEachVisibleIndex(i -> {
             Waypoint w = g.get(i);
@@ -204,7 +200,7 @@ public final class WaypointRenderer implements HudElement {
             if (lines != null) {
                 RenderHelpers.emitLineBox(lines, ps, x, y, z, x + 1f, y + 1f, z + 1f, w.color(), alpha);
             }
-        }, windowed);
+        });
     }
 
     // ---- HUD path: 2D labels projected from world anchors --------------------------------
@@ -236,7 +232,6 @@ public final class WaypointRenderer implements HudElement {
                                  WaypointGroup group) {
         int currentIdx = group.currentIndex();
         boolean showCompleted = config.showCompleted();
-        boolean windowed = config.windowedRendering();
 
         group.forEachVisibleIndex(i -> {
             Waypoint w = group.get(i);
@@ -267,7 +262,7 @@ public final class WaypointRenderer implements HudElement {
             drawCenteredLabel(g, font, name, sx, sy, NAME_ARGB);
             drawCenteredLabel(g, font, distanceString(distance),
                     sx, sy + font.lineHeight + DISTANCE_ROW_GAP, DISTANCE_ARGB);
-        }, windowed);
+        });
     }
 
     /**
