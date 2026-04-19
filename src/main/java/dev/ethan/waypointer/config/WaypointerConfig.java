@@ -74,6 +74,13 @@ public final class WaypointerConfig {
     private boolean showCompleted = true;
     private boolean showTracer = true;
     /**
+     * When {@code true} (default), groups in {@link dev.ethan.waypointer.core.WaypointGroup.LoadMode#STATIC}
+     * do not draw the crosshair tracer. Static routes already surface every waypoint, so the
+     * line is often visual noise; {@link dev.ethan.waypointer.core.WaypointGroup.LoadMode#SEQUENCE}
+     * groups still get a tracer to the active breadcrumb target.
+     */
+    private boolean hideTracerOnStaticRoutes = true;
+    /**
      * When {@code true}, each waypoint label draws a translucent black rectangle
      * behind its text for readability. Some players find it obtrusive in busy
      * routes where labels stack -- turning it off lets the text sit directly
@@ -258,6 +265,7 @@ public final class WaypointerConfig {
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showCompleted()            { return showCompleted; }
     public boolean showTracer()               { return showTracer; }
+    public boolean hideTracerOnStaticRoutes() { return hideTracerOnStaticRoutes; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
     public BoxStyle boxStyle()                { return boxStyle == null ? BoxStyle.OUTLINED : boxStyle; }
     public boolean windowedRendering()        { return windowedRendering; }
@@ -285,6 +293,7 @@ public final class WaypointerConfig {
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
     public void setShowCompleted(boolean v)            { this.showCompleted = v; save(); }
     public void setShowTracer(boolean v)               { this.showTracer = v; save(); }
+    public void setHideTracerOnStaticRoutes(boolean v) { this.hideTracerOnStaticRoutes = v; save(); }
     public void setPreferScoreboardFallback(boolean v) { this.preferScoreboardFallback = v; save(); }
     public void setChatCoordDetection(boolean v)       { this.chatCoordDetection = v; save(); }
     public void setChatCodecDetection(boolean v)       { this.chatCodecDetection = v; save(); }

@@ -1,6 +1,7 @@
 package dev.ethan.waypointer.screen;
 
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -68,9 +69,17 @@ public final class GuiTokens {
 
     // --- responsive footer ------------------------------------------------------------------
 
-    /** A button to place in the footer. {@code width <= 0} means "auto-size from label". */
-    public record ButtonSpec(String label, int width, Runnable onClick) {
-        public ButtonSpec(String label, Runnable onClick) { this(label, -1, onClick); }
+    /**
+     * A button to place in the footer. {@code width <= 0} means "auto-size from label".
+     * {@code tooltip} is optional hover help (e.g. the settings screen Done button).
+     */
+    public record ButtonSpec(String label, int width, Runnable onClick, Tooltip tooltip) {
+        public ButtonSpec(String label, Runnable onClick) {
+            this(label, -1, onClick, null);
+        }
+        public ButtonSpec(String label, int width, Runnable onClick) {
+            this(label, width, onClick, null);
+        }
     }
 
     /**
@@ -156,7 +165,11 @@ public final class GuiTokens {
     }
 
     private static Button buildButton(ButtonSpec spec, int x, int y, int w) {
-        return Button.builder(Component.literal(spec.label), b -> spec.onClick.run())
-                .bounds(x, y, w, BTN_H).build();
+        var builder = Button.builder(Component.literal(spec.label), b -> spec.onClick.run())
+                .bounds(x, y, w, BTN_H);
+        if (spec.tooltip != null) {
+            builder = builder.tooltip(spec.tooltip);
+        }
+        return builder.build();
     }
 }
