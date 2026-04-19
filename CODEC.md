@@ -13,7 +13,7 @@ Paste it in chat, get back a group of waypoints. This document explains how that
 Reference implementation in `src/main/java/dev/ethan/waypointer/codec/`:
 
 - `WaypointCodec.java` body format, coord modes, encode/decode
-- `AsciiPackCodec.java` text alphabet (base-84, ASCII)
+- `AsciiPackCodec.java` text alphabet (base-85, ASCII)
 - `CodecDictionary.java` preset DEFLATE dictionary
 
 ---
@@ -34,7 +34,7 @@ Five steps. The top half runs on the sender, the bottom half runs on the receive
   [2] DEFLATE + dict    ──── entropy compression ──    [2] Inflate + dict
        │                                                ▲
        ▼                                                │
-  [3] base-84 text      ──── chat-safe alphabet ───    [3] base-84 decode
+  [3] base-85 text      ──── chat-safe alphabet ───    [3] base-85 decode
        │                                                ▲
        ▼                                                │
   [4] "WP:" prefix      ──── scanner anchor ───────    [4] Strip "WP:"
@@ -49,21 +49,23 @@ Each stage has one job:
 | --- | --- |
 | Binary body | Squeeze varints and bit-packed fields. Route-level smarts live here. |
 | DEFLATE + dict | Byte-level compression with a preset dictionary. |
-| base-84 | Turn bytes into chat-safe ASCII at 1 byte per character. |
+| base-85 | Turn bytes into chat-safe ASCII at 1 byte per character. |
 | `WP:` prefix | Lets the chat scanner find the string without parsing it. |
 
 ---
 
 ## 2. Why the Format Looks Like This
 
-Hypixel's server disconnects anyone who sends a chat command longer than **256 UTF-8 bytes**. That's the real ceiling. The 256-character chat textbox is a separate, weaker limit.
+The Minecraft client silently refuses to send any chat command whose wire
+packet runs past **256 UTF-8 bytes**. That's the real ceiling. The 256-character
+chat textbox is a separate, weaker limit on typed input.
 
 The format is built around that number:
 
 ```
   Total budget: 256 wire bytes per /command
   ┌──────────────────────────────────────────────────────────────┐
-  │  /pc  │  WP:  │  ............  base-84 body  ............   │
+  │  /pc  │  WP:  │  ............  base-85 body  ............   │
   └───────┴───────┴──────────────────────────────────────────────┘
     4 B     3 B                    up to ~249 B
 ```
@@ -73,7 +75,7 @@ Everything in the codec is in service of cramming the most route info into those
 Other constraints shaping the design:
 
 - Chat validation strips control characters, collapses whitespace, rejects `§` (`U+00A7`).
-- Hypixel's advertising filter disconnects senders whose message looks URL-shaped, in particular, anything with a `.` in it. That's why the alphabet excludes `.`.
+- Hypixel's advertising filter disconnects senders whose message looks URL-shaped, in particular, anything with a `.` in it. That's why the alphabet swaps `.` for `;`.
 - Copy-paste must round-trip byte-identically.
 - Hover tooltips need a cheap partial decode (the optional label).
 - Exports describe a route to share, not a session — no progress state, no personal toggles.
@@ -91,17 +93,17 @@ The body decodes to bytes, which are raw DEFLATE, which inflates to the binary b
 
 ---
 
-## 4. Text Alphabet (base-84)
+## 4. Text Alphabet (base-85)
 
 ### 4.1 Characters
 
-84 printable ASCII characters. Z85's alphabet minus `.`:
+85 printable ASCII characters. Z85's alphabet with `.` swapped for `;`:
 
 ```
   0 1 2 3 4 5 6 7 8 9
   a b c d e f g h i j k l m n o p q r s t u v w x y z
   A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
-  - : + = ^ ! / * ? & < > ( ) [ ] { } @ % $ #
+  ; - : + = ^ ! / * ? & < > ( ) [ ] { } @ % $ #
 ```
 
 Every character:
@@ -124,10 +126,10 @@ Four input bytes become five output characters:
              │
              ▼  interpret as one big-endian uint32
              │
-             ▼  split into 5 base-84 digits (MSB first)
+             ▼  split into 5 base-85 digits (MSB first)
              │
   ┌────┬────┬────┬────┬────┐
-  │ d0 │ d1 │ d2 │ d3 │ d4 │   each digit 0..83 → one alphabet char
+  │ d0 │ d1 │ d2 │ d3 │ d4 │   each digit 0..84 → one alphabet char
   └────┴────┴────┴────┴────┘
 ```
 
@@ -141,18 +143,20 @@ If the input length isn't a multiple of 4, pad with zero bytes and remember how 
 
 Output length is `ceil(n / 4) * 5 + 1` characters for `n` input bytes.
 
-### 4.3 Why base-84 and not base-85 / CJK / base64?
+### 4.3 Why base-85 and not base-84 / CJK / base64?
 
-Three reasonable choices, only one fits our constraints:
+The packing math forces our hand. Four input bytes need to fit in five output digits, which requires `base⁵ ≥ 2³²`:
 
-| Alphabet | Bits/char | UTF-8 bytes/char | **Bits per wire byte** |
-| --- | ---: | ---: | ---: |
-| base64 | 6.00 | 1 | 6.00 |
-| base-84 (ours) | 6.39 | 1 | **6.39** |
-| Z85 (base-85) | 6.41 | 1 | 6.41 |
-| CJK base-16384 | 14.00 | 3 | 4.67 |
+| Alphabet | base⁵ | ≥ 2³²? | Bits/char | UTF-8 bytes/char | **Bits per wire byte** |
+| --- | ---: | :---: | ---: | ---: | ---: |
+| base64 | 1,073,741,824 | no (uses 4-char groups instead) | 6.00 | 1 | 6.00 |
+| base-84 | 4,182,119,424 | **no** | 6.39 | 1 | — |
+| **base-85 (ours)** | 4,437,053,125 | yes | 6.41 | 1 | **6.41** |
+| CJK base-16384 | — | — | 14.00 | 3 | 4.67 |
 
-Z85 is 0.3% denser than base-84, but its alphabet includes `.` and Hypixel's ad filter disconnected senders whenever a random digit sequence happened to land as `H.vD` or similar. We trade a fraction of a percent for zero false disconnects.
+Base-84 *almost* works but `84⁵` falls short of `2³²` by ~113M, so some 4-byte inputs cannot be represented in 5 base-84 digits. We need at least 85 symbols.
+
+Straight Z85 hits 85 symbols by including `.`, which is also the single most URL-shaped character on the keyboard. Hypixel's ad filter disconnected senders whenever a random digit sequence happened to land as `H.vD` or similar. Swapping `.` for `;` keeps the 85-symbol alphabet (so the packing math works) while making any URL shape impossible — semicolons don't appear in URLs.
 
 CJK looks like it wins on raw density (14 bits per character), but each character costs 3 UTF-8 bytes on the wire, so it's actually the worst per-byte. v1 used it because we were optimising for the chat textbox, not the server byte cap. v2 fixed that.
 
@@ -163,8 +167,7 @@ CJK looks like it wins on raw density (14 bits per character), but each characte
 - body length (excluding trailer) is a multiple of 5
 - every character is in the alphabet
 - the trailer digit is in `[0, 3]`
-
-Overflow isn't possible: the max 5-digit group value is `83 * (84⁴ + 84³ + 84² + 84 + 1) = 4,182,119,423`, below 2³². The overflow check in the decoder is defense-in-depth only.
+- each 5-digit group's integer value fits in 32 bits (since `85⁵ > 2³²`, a digit sequence like `#####` would otherwise silently wrap)
 
 A single bad character fails loudly instead of producing silent errors.
 
@@ -468,7 +471,7 @@ Signed values are "zigzagged" first so small negatives stay one byte:
   DEFLATE + preset dict ┘ and pick the smallest
        │
        ▼
-  base-84 encode
+  base-85 encode
        │
        ▼
   prepend "WP:"
@@ -486,7 +489,7 @@ Signed values are "zigzagged" first so small negatives stay one byte:
   verify "WP:" prefix
        │
        ▼
-  base-84 decode
+  base-85 decode
        │
        ▼
   Inflate + preset dict
@@ -518,7 +521,7 @@ Chat-hover tooltip path:
 
 ```
   peekLabel(text):
-    same prefix / base-84 / inflate path as decode
+    same prefix / base-85 / inflate path as decode
     read header byte
     if version mismatch or HEADER_FLAG_LABEL unset → Optional.empty()
     read label, sanitize, return
@@ -594,7 +597,7 @@ Binary body (pre-DEFLATE, whitespace for readability):
 ## 12. Non-Goals
 
 - Random Access Format is sequential, no index, no length-prefixed group, no "seek to group 3."
-- Human readability, base-84 text looks like line noise. Use `debugDecode` or hex-dump the raw body.
+- Human readability, base-85 text looks like line noise. Use `debugDecode` or hex-dump the raw body.
 - Interchange with other mods, `WP:` is native. `WaypointImporter` handles Skyblocker, Skytils, Soopy, and Coleweight payloads separately; they don't share bytes with this codec.
 - Cross-version forward compat, an older build that sees a newer `WIRE_VERSION` refuses to decode. Guessing at a newer layout risks silent misreads.
 
@@ -605,7 +608,7 @@ Binary body (pre-DEFLATE, whitespace for readability):
 | Path | Responsibility |
 | --- | --- |
 | `codec/WaypointCodec.java` | Body format, coord modes, options, encode/decode. |
-| `codec/AsciiPackCodec.java` | base-84 text alphabet, pack/unpack, validation. |
+| `codec/AsciiPackCodec.java` | base-85 text alphabet, pack/unpack, validation. |
 | `codec/CodecDictionary.java` | Preset DEFLATE dictionary. |
 | `codec/DecodeDebug.java` | Immutable debug snapshot returned by `debugDecode`. |
 | `codec/WaypointImporter.java` | Multi-format import (Waypointer, Skyblocker, Skytils, Soopy, Coleweight). |

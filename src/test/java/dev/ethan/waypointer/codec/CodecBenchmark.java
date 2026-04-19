@@ -32,10 +32,10 @@ class CodecBenchmark {
         String nameless = WaypointCodec.encode(groups, WaypointCodec.Options.NO_NAMES);
         int pts = 0;
         for (WaypointGroup g : groups) pts += g.size();
-        // Under v2 (base-84) char count == UTF-8 byte count for the body. Printing
+        // Under v2 (base-85, ASCII) char count == UTF-8 byte count for the body. Printing
         // both the char count and the hypothetical command-packet size (prefix
         // "/pc " + body) lets us see at a glance whether a payload fits the
-        // 256-byte Watchdog cap.
+        // 256-byte command-packet cap.
         int namedWire    = named.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
         int namelessWire = nameless.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
         int prefix = "pc ".length();

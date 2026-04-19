@@ -17,12 +17,12 @@ import java.util.List;
  *
  *   - A match must start with {@link WaypointCodec#MAGIC}.
  *   - The character immediately before the magic (if any) must be outside the
- *     base-84 alphabet. The alphabet is printable ASCII, so without this
+ *     base-85 alphabet. The alphabet is printable ASCII, so without this
  *     boundary rule a chat line like {@code "helloWP:stuff"} would fire a
  *     false [Invalid Waypointer Code] pill on every mid-word substring. The
  *     old CJK layer implicitly had this property because its alphabet sat
  *     outside the ordinary ASCII range.
- *   - Body characters are extended greedily while they fall in the base-84
+ *   - Body characters are extended greedily while they fall in the base-85
  *     alphabet.
  *   - The body must be at least {@value #MIN_BODY} characters so a bare magic
  *     prefix surrounded by ordinary text isn't flagged as a codec.
@@ -30,7 +30,7 @@ import java.util.List;
  * Intentional non-goal: we don't validate the payload here. A malformed codec
  * still gets flagged; the actual decode happens when the user clicks the import
  * chip and {@link WaypointCodec#decode} surfaces any errors. Validating at scan
- * time would run deflate + base-84 decode on every chat line, which is wasteful.
+ * time would run deflate + base-85 decode on every chat line, which is wasteful.
  */
 public final class CodecScanner {
 
@@ -77,7 +77,7 @@ public final class CodecScanner {
 
     /**
      * True iff position {@code i} is at the start of the string or the
-     * preceding character is not part of the base-84 alphabet. Rejects
+     * preceding character is not part of the base-85 alphabet. Rejects
      * mid-word and URL-embedded false positives without a heavy regex.
      *
      * The rule is intentionally stricter than "is not alphanumeric" because

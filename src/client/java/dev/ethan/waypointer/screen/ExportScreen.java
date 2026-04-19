@@ -59,17 +59,19 @@ public final class ExportScreen extends Screen {
     private static final int CHAT_INPUT_LIMIT = 256;
 
     /**
-     * UTF-8 byte ceiling a server enforces on serverbound command packets.
+     * UTF-8 byte ceiling Minecraft enforces on serverbound command packets.
+     * The vanilla client refuses to send a chat command whose serialized
+     * command string runs past this cap, so pastes into {@code /pc}, {@code
+     * /msg}, and friends silently fail when the export is too large.
      *
-     * Chat INPUT is measured in characters (256 chars fit in the textbox), but
-     * the wire packet is measured in bytes, and Hypixel's Watchdog closes the
-     * socket the instant a {@code ServerboundChatCommandPacket} serialises past
-     * this cap. v2 uses a base-84 ASCII alphabet (1 UTF-8 byte per char), so
-     * the char-count and wire-byte-count lines now report the same number for
-     * the body -- the gap between them is just {@code WP:} plus any chat-framing.
-     * Keeping both lines in the UI still makes sense: the chat-textbox cap is
-     * a different failure mode (reject-at-type-time) than the command-packet
-     * cap (disconnect-at-send-time).
+     * Chat INPUT is measured in characters (256 chars fit in the textbox),
+     * but the command wire packet is measured in bytes. v2 uses a base-85
+     * ASCII alphabet (1 UTF-8 byte per char), so the char-count and
+     * wire-byte-count lines now report the same number for the body -- the
+     * gap between them is just {@code WP:} plus any chat-framing. Keeping
+     * both lines in the UI still makes sense: the chat-textbox cap is a
+     * different failure mode (reject-at-type-time) than the command-packet
+     * cap (silently-drop-at-send-time).
      */
     private static final int COMMAND_WIRE_LIMIT_BYTES = 256;
 
@@ -346,29 +348,23 @@ public final class ExportScreen extends Screen {
     /**
      * Render the two-line fit summary.
      *
-     * Line 1 answers "can I paste this into chat?" (character count vs. the
-     * chat textbox cap). Line 2 answers "can I send this in a command like
-     * /pc or /msg?" (UTF-8 byte count vs. the command-packet ceiling, which
-     * is what Hypixel Watchdog closes the connection on).
+     * Line 1 answers "can I send this in a command like /pc or /msg?" --
+     * the Minecraft client silently drops any command whose wire packet
+     * runs past 256 UTF-8 bytes, so a paste into /pc that looks fine
+     * visually can just disappear with no server response.
      *
-     * Both fail independently -- the chat textbox rejects at 256 chars
-     * regardless of bytes, and the server's command cap is 256 BYTES. With
-     * the base-84 alphabet (1 byte/char) the two caps coincide on the body
-     * itself, but framing ({@code "/pc "} etc.) still puts the command cap first.
-     * Surfacing only the char cap (as this screen previously did under the
-     * CJK alphabet) meant routes that looked "safe to share" disconnected the
-     * sender on a command.
+     * Line 2 answers "can I paste this into chat?" -- the chat textbox
+     * caps at 256 characters regardless of bytes.
      *
-     * The order matters: command-fit first (the thing that can disconnect
-     * you) and chat-fit second (the safe fallback). When a command won't
-     * fit but chat will, we say so inline so the user doesn't have to
-     * cross-reference two lines to figure out "so can I still share this?".
+     * With the v2 base-85 alphabet (1 byte/char) the two caps coincide on
+     * the body itself, but command framing ({@code "/pc "} etc.) still
+     * puts the command cap first. When a command won't fit but chat will,
+     * we point that out inline so the user doesn't have to cross-reference
+     * two lines to figure out "can I still share this?".
      *
-     * The user-visible strings are deliberately plain-language -- no byte
+     * User-visible strings are deliberately plain-language -- no byte
      * counts, no "cap", no "wire" -- because almost nobody pasting a route
-     * to a friend wants to reason about UTF-8 size limits. The underlying
-     * numbers stay in comments here so future maintainers can still find
-     * them.
+     * to a friend wants to reason about UTF-8 size limits.
      */
     private void drawSizeSummary(GuiGraphics g, int x, int y) {
         int chars = encoded.length();
@@ -378,10 +374,10 @@ public final class ExportScreen extends Screen {
         boolean chatOk = chars <= CHAT_INPUT_LIMIT;
         boolean commandOk = commandBytes <= COMMAND_WIRE_LIMIT_BYTES;
 
-        // Line 1: command-fit. This is the check that can disconnect the
-        // sender, so it leads. When the command path is blocked but chat
-        // still works, we point that out on the same line so the remedy
-        // is obvious without reading further.
+        // Line 1 leads with command-fit because that's the one that silently
+        // fails -- chat-fit at least shows a visible "too long" indicator in
+        // the textbox. When the command path is blocked but chat still works,
+        // we say so inline so the remedy is obvious without reading further.
         int cmdColor = commandOk ? 0xFF88DD88 : 0xFFDD7070;
         String cmdLine;
         if (commandOk) {
@@ -389,7 +385,7 @@ public final class ExportScreen extends Screen {
         } else if (chatOk) {
             cmdLine = "Too long for a command -- paste it straight into chat instead";
         } else {
-            cmdLine = "Too long for a command -- would kick you from the server";
+            cmdLine = "Too long for chat and commands -- remove waypoints or split the group";
         }
         g.drawString(font, cmdLine, x, y, cmdColor, false);
 

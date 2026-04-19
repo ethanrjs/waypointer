@@ -24,7 +24,7 @@ import java.util.zip.Inflater;
  *
  * Wire format:
  *
- *     WP:<base-84 body of raw DEFLATE(bin)>
+ *     WP:<base-85 body of raw DEFLATE(bin)>
  *
  * The {@code WP:} prefix is just a scanner anchor; the schema version lives
  * in the low nibble of the first body byte (see below). Keeping the version
@@ -33,14 +33,14 @@ import java.util.zip.Inflater;
  *
  * The body is raw DEFLATE (no gzip header/trailer) compressed with a preset
  * dictionary of Hypixel zone ids and waypoint-name fragments, then encoded
- * with {@link AsciiPackCodec} (a Z85-derived base-84 alphabet with
- * {@code '.'} removed to avoid Hypixel's advertising filter). Each output
- * character is a single UTF-8 byte of printable ASCII that survives Minecraft
- * chat validation, paste, and the ad-detection heuristic. The earlier CJK
- * base-16384 alphabet (v1) visually fit more characters into the 256-CHAR
- * chat textbox, but Hypixel's 256-BYTE command-packet cap is the constraint
- * that actually disconnects senders; base-84 carries ~37% more compressed
- * bytes through that envelope (6.39 bits/UTF-8-byte vs 4.67).
+ * with {@link AsciiPackCodec} (a Z85-derived base-85 alphabet with
+ * {@code '.'} swapped for {@code ';'} to avoid Hypixel's advertising filter).
+ * Each output character is a single UTF-8 byte of printable ASCII that
+ * survives Minecraft chat validation, paste, and the ad-detection heuristic.
+ * The earlier CJK base-16384 alphabet (v1) visually fit more characters into
+ * the 256-CHAR chat textbox, but Minecraft's 256-BYTE command-packet cap is
+ * the constraint that actually drops messages; base-85 carries ~37% more
+ * compressed bytes through that envelope (6.41 bits/UTF-8-byte vs 4.67).
  *
  * Binary body:
  *
@@ -121,11 +121,12 @@ public final class WaypointCodec {
      * scanner. Version 0 is reserved as "invalid" so a corrupted header byte
      * can't accidentally decode as an older schema.
      *
-     * v2 (current): base-84 outer alphabet (Z85 minus {@code '.'} to dodge
-     *               Hypixel's advertising filter) + FIT_COMPACT coord mode.
+     * v2 (current): base-85 outer alphabet (Z85 with {@code '.'} swapped for
+     *               {@code ';'} to dodge Hypixel's advertising filter) +
+     *               FIT_COMPACT coord mode.
      * v1 (retired): CJK base-16384 alphabet; same binary body shape.
      *
-     * v1 payloads cannot decode here -- the base-84 body-decode step rejects
+     * v1 payloads cannot decode here -- the base-85 body-decode step rejects
      * the CJK characters first, and even a hand-crafted v1 binary body would
      * hit the version-guard in readBody. We don't maintain a dual-decode path:
      * users regenerate exports after upgrading, and the scanner still ignores

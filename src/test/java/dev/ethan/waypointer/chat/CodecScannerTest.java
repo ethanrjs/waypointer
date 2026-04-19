@@ -112,7 +112,7 @@ class CodecScannerTest {
         // v2 uses an ASCII alphabet, so without the word-boundary guard a chat
         // line like "fileWP:stuff" would fire the import pill. The scanner
         // must require the character immediately before the magic to be
-        // outside the base-84 alphabet (or be at the start of the string).
+        // outside the base-85 alphabet (or be at the start of the string).
         String export = sampleExport();
         assertTrue(CodecScanner.scan("file" + export).isEmpty(),
                 "magic preceded by ASCII alphanumeric must not match");

@@ -8,7 +8,7 @@ import java.util.Random;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Correctness tests for the base-84 binary-to-text codec. A single mispacked
+ * Correctness tests for the base-85 binary-to-text codec. A single mispacked
  * bit silently corrupts every shared waypoint route, so we lean hard on fuzzing
  * across every residue class rather than hand-picking cases.
  */
@@ -69,11 +69,11 @@ class AsciiPackCodecTest {
 
     @Test
     void output_never_contains_period() {
-        // The whole reason for base-84: Hypixel's advertising filter flags
-        // messages containing URL-shaped substrings, and in Z85 bodies we
-        // regularly saw runs like "H.vD" or ".BeOz" (just digit coincidences)
-        // kick in "Advertising is against the rules" disconnects. Fuzz a big
-        // pile of random inputs and assert no body ever contains '.'.
+        // Hypixel's advertising filter flags messages containing URL-shaped
+        // substrings, and in raw Z85 bodies we regularly saw runs like "H.vD"
+        // or ".BeOz" (just digit coincidences) kick in "Advertising is against
+        // the rules" disconnects. Base-85 swaps '.' for ';' to avoid this;
+        // fuzz a big pile of random inputs and assert no body ever contains '.'.
         Random r = new Random(0x4D4F4453);
         for (int trial = 0; trial < 200; trial++) {
             byte[] input = new byte[256 + r.nextInt(256)];
@@ -146,21 +146,24 @@ class AsciiPackCodecTest {
         assertThrows(IllegalArgumentException.class, () -> AsciiPackCodec.decode(truncated));
     }
 
-    // NOTE: base-85 had a "reject 5-digit group whose integer value >= 2^32"
-    // test because 85^5 = 4,437,053,125 leaves some group values above the
-    // 32-bit unsigned ceiling. Base-84 happens to have max group value
-    // 83 * (84^4 + 84^3 + 84^2 + 84 + 1) = 4,182,119,423, which is strictly
-    // below 2^32 (4,294,967,296). No digit sequence can overflow, so the
-    // overflow-rejection guard in decode() is defense-in-depth only and
-    // cannot be hit by any well-formed input. The guard stays (cheap,
-    // future-proof if we ever bump the base back up), but there's no useful
-    // test to write for it.
+    @Test
+    void rejects_overflowing_group() {
+        // 85^5 = 4,437,053,125, which is greater than 2^32 (4,294,967,296),
+        // so some 5-digit groups produce integer values that would silently
+        // wrap in a u32 slot. Decode must detect this and fail loudly rather
+        // than emit corrupt bytes. The maximum-digit sequence "#####" packs
+        // digits (84,84,84,84,84) = 85^5 - 1 = 4,437,053,124, which is well
+        // above 0xFFFFFFFF.
+        String overflow = "#####" + AsciiPackCodec.encode(new byte[0]);  // valid pad=0 trailer
+        assertThrows(IllegalArgumentException.class, () -> AsciiPackCodec.decode(overflow),
+                "a 5-digit group whose integer value exceeds 2^32 must be rejected");
+    }
 
     @Test
     void wire_density_beats_cjk_on_utf8_bytes() {
-        // The whole reason we switched: base-84 should carry more compressed
+        // The whole reason we switched: base-85 should carry more compressed
         // DEFLATE per UTF-8 byte than the old CJK base-16384 alphabet on a
-        // typical payload. CJK is 4.67 bits per wire byte; base-84 is ~6.39.
+        // typical payload. CJK is 4.67 bits per wire byte; base-85 is ~6.41.
         byte[] input = "The quick brown fox jumps over the lazy dog's back 0123456789"
                 .getBytes(StandardCharsets.UTF_8);
         String packed = AsciiPackCodec.encode(input);
@@ -169,7 +172,7 @@ class AsciiPackCodecTest {
         // For reference: CJK would emit ceil(n/7)*4 + 1 chars at 3 UTF-8 bytes each.
         int cjkWireBytes = (((input.length + 6) / 7) * 4 + 1) * 3;
         assertTrue(packWireBytes < cjkWireBytes,
-                "expected base-84 wire bytes (" + packWireBytes + ") < CJK wire bytes (" + cjkWireBytes + ")");
+                "expected base-85 wire bytes (" + packWireBytes + ") < CJK wire bytes (" + cjkWireBytes + ")");
     }
 
     @Test
@@ -179,8 +182,9 @@ class AsciiPackCodecTest {
         assertFalse(AsciiPackCodec.isValidBody("hello world"));  // contains space
         assertFalse(AsciiPackCodec.isValidBody(""));
         assertFalse(AsciiPackCodec.isValidBody(null));
-        assertFalse(AsciiPackCodec.isValidBody("abc~"), "~ is outside the base-84 alphabet");
-        assertFalse(AsciiPackCodec.isValidBody("abc.def"), "'.' is outside the base-84 alphabet");
+        assertFalse(AsciiPackCodec.isValidBody("abc~"), "~ is outside the base-85 alphabet");
+        assertFalse(AsciiPackCodec.isValidBody("abc.def"), "'.' is outside the base-85 alphabet");
+        assertTrue(AsciiPackCodec.isValidBody("abc;def"), "';' IS inside the base-85 alphabet (replaces '.')");
     }
 
     @Test
@@ -200,11 +204,14 @@ class AsciiPackCodecTest {
         // Minecraft's chat validator rejects § (U+00A7) and any control char.
         // Shell-style pasters might strip whitespace or backslashes. Hypixel's
         // ad filter rejects anything URL-shaped (which is why '.' is banned).
-        // Verify none of those are present in the alphabet.
-        char[] hostile = { ' ', '\t', '\n', '\r', '\u00A7', '\\', '\'', '"', '|', ',', ';', '`', '~', '.' };
+        // Verify none of those are present in the alphabet. ';' is NOT on this
+        // list -- it's the replacement for '.' and is a valid alphabet char.
+        char[] hostile = { ' ', '\t', '\n', '\r', '\u00A7', '\\', '\'', '"', '|', ',', '`', '~', '.' };
         for (char c : hostile) {
             assertFalse(AsciiPackCodec.isAlphabetChar(c),
-                    "base-84 alphabet must not contain hostile char 0x" + Integer.toHexString(c));
+                    "base-85 alphabet must not contain hostile char 0x" + Integer.toHexString(c));
         }
+        assertTrue(AsciiPackCodec.isAlphabetChar(';'),
+                "';' must be in the alphabet -- it is the replacement for '.' that still fits the 85-digit packing math");
     }
 }

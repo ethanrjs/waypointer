@@ -132,16 +132,17 @@ class WaypointCodecTest {
 
     @Test
     void twenty_named_waypoints_fit_in_command_packet() {
-        // Under v2 (base-84, 1 UTF-8 byte per char) the codec string's char
+        // Under v2 (base-85, 1 UTF-8 byte per char) the codec string's char
         // count equals its wire-byte count. The real failure mode is Hypixel's
         // 256-byte ServerboundChatCommandPacket cap: exceeding it disconnects
         // the sender. A 20-waypoint named route is the "reasonable share"
         // baseline we commit to supporting; with a short command prefix like
         // "/pc " (3 bytes on the wire) the body must stay under 253 bytes.
         //
-        // Picking 20 points rather than the old 50 reflects the Watchdog
-        // byte cap -- 50 named waypoints fundamentally can't fit any chat
-        // command under any encoding, so the old test was paper-over-a-bug.
+        // Picking 20 points rather than the old 50 reflects the 256-byte
+        // command-packet cap -- 50 named waypoints fundamentally can't fit
+        // any chat command under any encoding, so the old test was
+        // paper-over-a-bug.
         WaypointGroup g = WaypointGroup.create("Big Run", "dungeon_f7");
         for (int i = 0; i < 20; i++) {
             g.add(new Waypoint(100 + i * 3, 70 + (i % 5), 200 + i * 2,
@@ -231,7 +232,7 @@ class WaypointCodecTest {
 
         String stripped = WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES);
         // Name strings themselves shouldn't be in the payload. We can't see through
-        // deflate+base-84 directly, but we can confirm the output is smaller than a names
+        // deflate+base-85 directly, but we can confirm the output is smaller than a names
         // export, and that the decoded waypoints come back nameless.
         String withNames = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES);
         assertTrue(stripped.length() < withNames.length(),
