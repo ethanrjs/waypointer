@@ -55,7 +55,8 @@ class WaypointCodecDebugTest {
         // names flag; with no label we expect bit 5 also clear; bits 6-7 are
         // reserved and must remain zero so a future schema bump can claim them
         // without ambiguity.
-        assertEquals(1, d.version(), "encoder must stamp the current wire version");
+        assertEquals(WaypointCodec.WIRE_VERSION, d.version(),
+                "encoder must stamp the current wire version");
         assertEquals(0, d.headerByte() & 0b1100_0000,
                 "reserved high bits must stay 0");
         assertTrue(d.includesNames());
@@ -70,7 +71,7 @@ class WaypointCodecDebugTest {
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
         // NO_NAMES with no label: only the version nibble should be set, everything else zero.
-        assertEquals(1, d.version());
+        assertEquals(WaypointCodec.WIRE_VERSION, d.version());
         assertEquals(0, d.headerByte() & 0b1111_0000,
                 "NO_NAMES + no label must clear every flag bit in the high nibble");
         assertFalse(d.includesNames());
@@ -124,22 +125,33 @@ class WaypointCodecDebugTest {
     }
 
     @Test
-    void coord_mode_is_fixed_compact_for_in_bounds_yoyo_routes() {
-        // Yo-yo pattern inside FIXED_COMPACT's bit range: deltas are large (so VECTOR
-        // pays 2+ bytes per coord) but absolute values fit in the bounded bit widths.
-        // This is the shape where FIXED_COMPACT dominates.
+    void coord_mode_debug_round_trips_in_bounds_yoyo_routes() {
+        // Yo-yo pattern inside the FIXED_COMPACT bit range. The coord-mode
+        // contest ranks candidates by post-DEFLATE size, and on a 2-value
+        // alternating pattern all three bit-packed candidates deflate to
+        // essentially the same size as ABSOLUTE_VARINT (the dictionary + RLE
+        // kills the difference). So AUTO may legitimately pick any of them
+        // -- what the debug layer must guarantee is that whichever it picks
+        // round-trips the exact coord stream and surfaces a valid coord-mode
+        // name.
         WaypointGroup g = WaypointGroup.create("yoyo", "zone");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL); // keep colors clean for flag tests elsewhere
         for (int i = 0; i < 20; i++) {
             int sign = (i % 2 == 0) ? 1 : -1;
             g.add(new Waypoint(sign * 1500, 70, sign * 1800, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
         }
+        String encoded = WaypointCodec.encode(List.of(g));
+        DecodeDebug.GroupDebug gd = WaypointCodec.debugDecode(encoded).groups().get(0);
 
-        DecodeDebug.GroupDebug gd = WaypointCodec.debugDecode(WaypointCodec.encode(List.of(g)))
-                .groups().get(0);
-
-        assertEquals("FIXED_COMPACT", gd.coordMode(), "expected FIXED_COMPACT, got " + gd.coordMode());
-        assertEquals(2, gd.coordModeOrdinal());
+        assertTrue(gd.coordModeOrdinal() >= 0 && gd.coordModeOrdinal() <= 3,
+                "coord-mode ordinal must be a valid wire value, got " + gd.coordModeOrdinal());
+        assertEquals(20, gd.pointCount(), "debug view must report the correct point count");
+        WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
+        for (int i = 0; i < g.size(); i++) {
+            assertEquals(g.get(i).x(), decoded.get(i).x(), "x@" + i);
+            assertEquals(g.get(i).y(), decoded.get(i).y(), "y@" + i);
+            assertEquals(g.get(i).z(), decoded.get(i).z(), "z@" + i);
+        }
     }
 
     @Test

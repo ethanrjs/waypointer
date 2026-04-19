@@ -471,7 +471,7 @@ public final class DebugInspectScreen extends Screen {
         rows.add(new Row.KV("Input",       d.inputChars() + " chars"));
         rows.add(new Row.KVDim("Prefix",   d.magic()));
         rows.add(new Row.KV("Payload",     d.payloadChars() + " chars"));
-        rows.add(new Row.KVDim("Encoding", "CJK base-16384"));
+        rows.add(new Row.KVDim("Encoding", "ASCII base-85"));
         rows.add(new Row.KV("Compressed",  d.compressedBytes() + " bytes"));
         rows.add(new Row.KV("Raw body",    d.rawBodyBytes() + " bytes"));
         rows.add(new Row.KV("Density",     String.format(Locale.ROOT, "%.2f chars / raw byte", d.charsPerRawByte())));

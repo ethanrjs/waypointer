@@ -32,8 +32,18 @@ class CodecBenchmark {
         String nameless = WaypointCodec.encode(groups, WaypointCodec.Options.NO_NAMES);
         int pts = 0;
         for (WaypointGroup g : groups) pts += g.size();
-        System.out.printf("%-48s  pts=%-3d  NAMES=%-4d  NO_NAMES=%-4d%n",
-                label, pts, named.length(), nameless.length());
+        // Under v2 (base-85, ASCII) char count == UTF-8 byte count for the body. Printing
+        // both the char count and the hypothetical command-packet size (prefix
+        // "/pc " + body) lets us see at a glance whether a payload fits the
+        // 256-byte command-packet cap.
+        int namedWire    = named.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        int namelessWire = nameless.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        int prefix = "pc ".length();
+        System.out.printf(
+                "%-48s  pts=%-3d  NAMES chars/wire=%3d/%3d  cmd=%3d  NO_NAMES chars/wire=%3d/%3d  cmd=%3d%n",
+                label, pts,
+                named.length(), namedWire, prefix + namedWire,
+                nameless.length(), namelessWire, prefix + namelessWire);
     }
 
     private static List<WaypointGroup> tinyRoute() {
