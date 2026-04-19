@@ -343,15 +343,20 @@ public final class ExportScreen extends Screen {
      * Render the two-line fit summary.
      *
      * Line 1 answers "can I paste this into chat?" (character count vs. the
-     * chat textbox cap). Line 2 answers "can I send this in /pc?" (UTF-8
-     * byte count vs. the command-packet ceiling, which is what Hypixel
-     * Watchdog closes the connection on).
+     * chat textbox cap). Line 2 answers "can I send this in a command like
+     * /pc or /msg?" (UTF-8 byte count vs. the command-packet ceiling, which
+     * is what Hypixel Watchdog closes the connection on).
      *
      * Both fail independently -- the chat textbox rejects at 256 chars
      * regardless of bytes, and the server's command cap is 256 BYTES which
      * with 3-byte CJK glyphs trips long before the char cap does. Surfacing
      * only the char cap (as this screen previously did) meant routes that
-     * looked "safe to share" disconnected the sender on /pc.
+     * looked "safe to share" disconnected the sender on a command.
+     *
+     * The order matters: command-fit first (the thing that can disconnect
+     * you) and chat-fit second (the safe fallback). When a command won't
+     * fit but chat will, we say so inline so the user doesn't have to
+     * cross-reference two lines to figure out "so can I still share this?".
      *
      * The user-visible strings are deliberately plain-language -- no byte
      * counts, no "cap", no "wire" -- because almost nobody pasting a route
@@ -367,27 +372,36 @@ public final class ExportScreen extends Screen {
         boolean chatOk = chars <= CHAT_INPUT_LIMIT;
         boolean commandOk = commandBytes <= COMMAND_WIRE_LIMIT_BYTES;
 
-        int chatColor = chatOk ? 0xFF88DD88 : 0xFFDD7070;
-        String chatLine = chatOk
-                ? "Fits in a chat message"
-                : "Too long for chat -- paste it somewhere else (like Discord)";
-        g.drawString(font, chatLine, x, y, chatColor, false);
+        // Line 1: command-fit. This is the check that can disconnect the
+        // sender, so it leads. When the command path is blocked but chat
+        // still works, we point that out on the same line so the remedy
+        // is obvious without reading further.
+        int cmdColor = commandOk ? 0xFF88DD88 : 0xFFDD7070;
+        String cmdLine;
+        if (commandOk) {
+            cmdLine = "OK to send in a command (/pc, /msg, etc.)";
+        } else if (chatOk) {
+            cmdLine = "Too long for a command -- paste it straight into chat instead";
+        } else {
+            cmdLine = "Too long for a command -- would kick you from the server";
+        }
+        g.drawString(font, cmdLine, x, y, cmdColor, false);
 
         String sanitized = WaypointCodec.Options.sanitizeLabel(currentLabel);
         if (!sanitized.isEmpty()) {
             int gap = font.width("  ");
             g.drawString(font,
                     "label: \"" + sanitized + "\"",
-                    x + font.width(chatLine) + gap, y, 0xFF88AACC, false);
+                    x + font.width(cmdLine) + gap, y, 0xFF88AACC, false);
         }
 
-        // Second line: can this be shared with /pc? This is the check that
-        // actually prevents a disconnect, so it has to be obvious.
-        int cmdColor = commandOk ? 0xFF88DD88 : 0xFFDD7070;
-        String cmdLine = commandOk
-                ? "OK to send in /pc"
-                : "Too long for /pc -- would kick you from the server";
-        g.drawString(font, cmdLine, x, y + LINE_H, cmdColor, false);
+        // Line 2: chat-fit. Always shown so users see the ceiling they're
+        // approaching even before they hit it.
+        int chatColor = chatOk ? 0xFF88DD88 : 0xFFDD7070;
+        String chatLine = chatOk
+                ? "Fits in a chat message"
+                : "Too long for chat -- share somewhere else (like Discord)";
+        g.drawString(font, chatLine, x, y + LINE_H, chatColor, false);
     }
 
     private void drawPreview(GuiGraphics g, int x1, int y1, int x2, int y2) {
