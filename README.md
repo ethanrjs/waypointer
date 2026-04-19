@@ -1,9 +1,7 @@
 # Waypointer
 
 Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manager.
-Mod version **1.2.0** (`gradle.properties` → `mod_version`).
 
-Built for Minecraft 1.21.11 (Fabric, client-only).
 <img width="1280" height="675" alt="image" src="https://github.com/user-attachments/assets/bb01bb0b-8e2a-4c46-8ffd-57289e7a1f19" />
 
 ## Features
