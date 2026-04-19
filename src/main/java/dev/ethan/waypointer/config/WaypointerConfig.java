@@ -88,22 +88,6 @@ public final class WaypointerConfig {
      */
     private boolean showLabelBackdrop = true;
     private BoxStyle boxStyle = BoxStyle.OUTLINED;
-    /**
-     * When {@code true}, every group renders only a three-waypoint sliding
-     * window ({@code currentIndex - 1}, {@code currentIndex}, {@code currentIndex + 1}),
-     * regardless of the group's load mode. Reduces label clutter on dense
-     * static routes where every checkpoint otherwise fights for screen space.
-     *
-     * <p>This is stricter than {@link dev.ethan.waypointer.core.WaypointGroup.LoadMode#SEQUENCE}
-     * already does for sequence groups -- the flag extends the same behavior
-     * to {@link dev.ethan.waypointer.core.WaypointGroup.LoadMode#STATIC}
-     * groups without forcing the user to convert their route and lose the
-     * "see the whole path at once" option.
-     *
-     * <p>Off by default so users don't silently lose visibility of their
-     * existing static routes on upgrade.
-     */
-    private boolean windowedRendering = false;
 
     // Zone detection
     private boolean preferScoreboardFallback = false;
@@ -268,7 +252,6 @@ public final class WaypointerConfig {
     public boolean hideTracerOnStaticRoutes() { return hideTracerOnStaticRoutes; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
     public BoxStyle boxStyle()                { return boxStyle == null ? BoxStyle.OUTLINED : boxStyle; }
-    public boolean windowedRendering()        { return windowedRendering; }
     public boolean preferScoreboardFallback() { return preferScoreboardFallback; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
     public boolean chatCodecDetection()       { return chatCodecDetection; }
@@ -304,7 +287,6 @@ public final class WaypointerConfig {
     public void setExportIncludeGroupMeta(boolean v)    { this.exportIncludeGroupMeta = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
     public void setBoxStyle(BoxStyle v)                { this.boxStyle = v == null ? BoxStyle.OUTLINED : v; save(); }
-    public void setWindowedRendering(boolean v)        { this.windowedRendering = v; save(); }
     public void setSkipAheadMechanicEnabled(boolean v) { this.skipAheadMechanicEnabled = v; save(); }
     public void setDisableGroupSkipAheadOnWaypointAdd(boolean v) { this.disableGroupSkipAheadOnWaypointAdd = v; save(); }
     public void setCheckForUpdates(boolean v)          { this.checkForUpdates = v; save(); }

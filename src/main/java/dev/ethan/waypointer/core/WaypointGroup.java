@@ -184,25 +184,10 @@ public final class WaypointGroup {
      * {@code action} with each index inline, producing zero garbage.
      */
     public void forEachVisibleIndex(IntConsumer action) {
-        forEachVisibleIndex(action, false);
-    }
-
-    /**
-     * Sibling of {@link #forEachVisibleIndex(IntConsumer)} that lets the caller
-     * force the prev/current/next window even on STATIC groups. Used by the
-     * renderer when the user has enabled the "windowed rendering" config
-     * toggle so dense static routes stop drawing every checkpoint at once
-     * without the user having to convert the group's load mode (which would
-     * also change navigation semantics, not just visuals).
-     *
-     * @param forceWindow when {@code true}, always emit the three-index
-     *                    sliding window regardless of {@link #loadMode}
-     */
-    public void forEachVisibleIndex(IntConsumer action, boolean forceWindow) {
         int n = waypoints.size();
         if (n == 0) return;
 
-        if (loadMode == LoadMode.STATIC && !forceWindow) {
+        if (loadMode == LoadMode.STATIC) {
             for (int i = 0; i < n; i++) action.accept(i);
             return;
         }

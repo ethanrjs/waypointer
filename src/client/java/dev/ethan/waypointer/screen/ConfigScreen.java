@@ -90,11 +90,6 @@ public final class ConfigScreen extends Screen {
                 "Draws a dark rectangle behind floating waypoint names for readability.\n"
               + "Turn off for a lighter HUD when labels stack in busy areas.");
         y += rowH;
-        addBoolRow(col1, y, "Only render nearby waypoints (prev/current/next)",
-                config.windowedRendering(), config::setWindowedRendering,
-                "Renders only the previous, current, and next waypoint for every group,\n"
-              + "including STATIC routes. Cuts clutter on dense shared routes.");
-        y += rowH;
         addBoxStyleRow(col1, y, colW);
 
         // --- Column 2: Behavior ------------------------------------------------------------

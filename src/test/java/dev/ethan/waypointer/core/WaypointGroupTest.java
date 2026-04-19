@@ -185,50 +185,6 @@ class WaypointGroupTest {
     }
 
     @Test
-    void forEachVisibleIndex_forceWindow_overridesStaticMode() {
-        // The windowed-rendering config toggle calls forEachVisibleIndex with
-        // forceWindow=true so dense STATIC routes stop drawing every
-        // checkpoint. Must produce the same prev/current/next slice SEQUENCE
-        // groups get, without mutating the group's load mode.
-        WaypointGroup g = route();
-        g.setLoadMode(WaypointGroup.LoadMode.STATIC);
-        g.setCurrentIndex(2);
-
-        java.util.List<Integer> seen = new java.util.ArrayList<>();
-        g.forEachVisibleIndex(seen::add, true);
-        assertEquals(java.util.List.of(1, 2, 3), seen,
-                "forceWindow should window a STATIC route without changing its load mode");
-        assertEquals(WaypointGroup.LoadMode.STATIC, g.loadMode(),
-                "forceWindow must not mutate loadMode -- it's a pure render-time hint");
-    }
-
-    @Test
-    void forEachVisibleIndex_forceWindow_respectsCompletionAndBounds() {
-        // Same boundary semantics as the SEQUENCE path: completed routes
-        // collapse to the last marker, start/end indices drop the missing
-        // neighbour cleanly. Locking these in because the window path now has
-        // two callers (load-mode-driven and config-driven) and a regression
-        // in either is silent -- labels just disappear or duplicate.
-        WaypointGroup g = route();
-        g.setLoadMode(WaypointGroup.LoadMode.STATIC);
-
-        g.setCurrentIndex(0);
-        java.util.List<Integer> atStart = new java.util.ArrayList<>();
-        g.forEachVisibleIndex(atStart::add, true);
-        assertEquals(java.util.List.of(0, 1), atStart);
-
-        g.setCurrentIndex(g.size() - 1);
-        java.util.List<Integer> atEnd = new java.util.ArrayList<>();
-        g.forEachVisibleIndex(atEnd::add, true);
-        assertEquals(java.util.List.of(g.size() - 2, g.size() - 1), atEnd);
-
-        g.setCurrentIndex(g.size()); // past the end -> isComplete()
-        java.util.List<Integer> done = new java.util.ArrayList<>();
-        g.forEachVisibleIndex(done::add, true);
-        assertEquals(java.util.List.of(g.size() - 1), done);
-    }
-
-    @Test
     void loadMode_defaultsToStatic() {
         WaypointGroup g = WaypointGroup.create("r", "z");
         assertEquals(WaypointGroup.LoadMode.STATIC, g.loadMode(),
