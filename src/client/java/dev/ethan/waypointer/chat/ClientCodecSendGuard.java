@@ -49,14 +49,20 @@ public final class ClientCodecSendGuard {
      * "packet". Most players don't care (and shouldn't have to) about the
      * underlying reason; they just need to know the send was stopped, why
      * it mattered, and what to do next.
+     *
+     * Crucially, regular chat ({@code /ac}-free, no command verb) has a
+     * more forgiving server-side limit than commands do, so a route that's
+     * too long for {@code /pc} or {@code /msg} can often still be pasted
+     * straight into chat. We surface that as the primary suggestion so
+     * users don't conclude "the codec is broken" and give up.
      */
     private static Component buildWarning(CodecSendGuard.Decision d) {
         MutableComponent prefix = Component.literal("[Waypointer] ").withStyle(ChatFormatting.AQUA);
         MutableComponent body = Component.literal(
-                "Stopped your /" + d.commandLeader() + " -- it was too long to send and would have "
-                + "kicked you from the server. "
-                + "Try sharing fewer waypoints, or open the export screen and turn off extras "
-                + "(names, colors, etc.) to make it shorter."
+                "Stopped your /" + d.commandLeader() + " -- it was too long for a command and would "
+                + "have kicked you from the server. "
+                + "You can still paste it straight into chat, or open the export screen and turn off "
+                + "extras (names, colors, etc.) to shrink it first."
         ).withStyle(ChatFormatting.RED);
         return prefix.append(body);
     }
