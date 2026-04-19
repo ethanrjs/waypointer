@@ -22,7 +22,7 @@ public final class CoordScanner {
      * catching the middle of versions, hostnames, or decimals.
      */
     private static final Pattern COORD = Pattern.compile(
-            "(?<![\\w.\\-])(-?\\d{1,5})[\\s,;/]+(-?\\d{1,4})[\\s,;/]+(-?\\d{1,5})(?![\\w.\\-])"
+            "(?<![\\w.\\-])(-?\\d{1,5})([\\s,;/]+)(-?\\d{1,4})([\\s,;/]+)(-?\\d{1,5})(?![\\w.\\-])"
     );
 
     public static final int MAX_MATCHES_PER_MESSAGE = 5;
@@ -58,15 +58,37 @@ public final class CoordScanner {
         List<Match> out = new ArrayList<>();
         while (m.find()) {
             int x = parseOrSentinel(m.group(1));
-            int y = parseOrSentinel(m.group(2));
-            int z = parseOrSentinel(m.group(3));
+            String sep1 = m.group(2);
+            int y = parseOrSentinel(m.group(3));
+            String sep2 = m.group(4);
+            int z = parseOrSentinel(m.group(5));
             if (x == Integer.MIN_VALUE || y == Integer.MIN_VALUE || z == Integer.MIN_VALUE) continue;
             if (y < MIN_Y || y > MAX_Y) continue;
             if (Math.abs(x) > MAX_HORIZONTAL || Math.abs(z) > MAX_HORIZONTAL) continue;
+            if (looksLikeThousandsSeparator(m.group(3), sep1, sep2)) continue;
             out.add(new Match(m.start(), m.end(), x, y, z));
             if (out.size() >= MAX_MATCHES_PER_MESSAGE) break;
         }
         return out;
+    }
+
+    /**
+     * Detects numbers written with thousands separators -- {@code "1,145,926"}
+     * (bank interest), {@code "12,345,678"} (coin drops), {@code "1,000,000"}
+     * (leaderboards). These trivially satisfy "three integers comma-separated"
+     * but are never real coordinates.
+     *
+     * <p>The signature is: both separators are a bare comma (no whitespace)
+     * AND the middle group is exactly 3 digits AND the trailing group starts
+     * with 3 digits. Real coord callouts use comma+space or space alone, so
+     * this filter has effectively zero overlap with legitimate input.
+     */
+    private static boolean looksLikeThousandsSeparator(String middleRaw, String sep1, String sep2) {
+        if (!",".equals(sep1) || !",".equals(sep2)) return false;
+        if (middleRaw.length() != 3) return false;
+        // No negatives in thousands-separated numbers; a leading '-' on the
+        // middle or trailing group guarantees these are distinct integers.
+        return middleRaw.charAt(0) != '-';
     }
 
     private static int parseOrSentinel(String s) {
