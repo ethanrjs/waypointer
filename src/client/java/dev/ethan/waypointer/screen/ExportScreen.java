@@ -64,8 +64,12 @@ public final class ExportScreen extends Screen {
      * Chat INPUT is measured in characters (256 chars fit in the textbox), but
      * the wire packet is measured in bytes, and Hypixel's Watchdog closes the
      * socket the instant a {@code ServerboundChatCommandPacket} serialises past
-     * this cap. CJK glyphs are 3 UTF-8 bytes each so a visibly-short codec can
-     * silently punch over the ceiling and disconnect the sender.
+     * this cap. v2 uses a base-84 ASCII alphabet (1 UTF-8 byte per char), so
+     * the char-count and wire-byte-count lines now report the same number for
+     * the body -- the gap between them is just {@code WP:} plus any chat-framing.
+     * Keeping both lines in the UI still makes sense: the chat-textbox cap is
+     * a different failure mode (reject-at-type-time) than the command-packet
+     * cap (disconnect-at-send-time).
      */
     private static final int COMMAND_WIRE_LIMIT_BYTES = 256;
 
@@ -348,10 +352,12 @@ public final class ExportScreen extends Screen {
      * is what Hypixel Watchdog closes the connection on).
      *
      * Both fail independently -- the chat textbox rejects at 256 chars
-     * regardless of bytes, and the server's command cap is 256 BYTES which
-     * with 3-byte CJK glyphs trips long before the char cap does. Surfacing
-     * only the char cap (as this screen previously did) meant routes that
-     * looked "safe to share" disconnected the sender on a command.
+     * regardless of bytes, and the server's command cap is 256 BYTES. With
+     * the base-84 alphabet (1 byte/char) the two caps coincide on the body
+     * itself, but framing ({@code "/pc "} etc.) still puts the command cap first.
+     * Surfacing only the char cap (as this screen previously did under the
+     * CJK alphabet) meant routes that looked "safe to share" disconnected the
+     * sender on a command.
      *
      * The order matters: command-fit first (the thing that can disconnect
      * you) and chat-fit second (the safe fallback). When a command won't

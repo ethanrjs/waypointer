@@ -11,10 +11,10 @@ import java.nio.charset.StandardCharsets;
  * Why this exists: Hypixel's Watchdog closes the TCP socket the instant a
  * {@code ServerboundChatCommandPacket} serialises past {@value #COMMAND_WIRE_LIMIT_BYTES}
  * UTF-8 bytes, with no kick reason. The client doesn't enforce the cap, so the
- * connection just dies. The codec uses CJK glyphs at 3 UTF-8 bytes apiece, so
- * a route that looks visually short (86 characters, "just a paste") can punch
- * the ceiling the moment it's prefixed with {@code /pc } and dropkick the
- * sender out of the lobby. This class owns the "would that send kill us?"
+ * connection just dies. Even with the v2 base-84 alphabet (1 UTF-8 byte per
+ * char) a sufficiently long route still trips the 256-byte cap once framed
+ * by a command prefix, so we keep the guard in place regardless of which
+ * alphabet the codec uses. This class owns the "would that send kill us?"
  * question; the client-side installer wires it to Fabric's allow-command hook
  * and handles the cancel + chat warning.
  *

@@ -122,38 +122,71 @@ class WaypointCodecTest {
         WaypointGroup g = WaypointGroup.create("Gold Run", "dungeon_f7");
         for (int i = 0; i < 40; i++) g.add(Waypoint.at(i * 3, 70, i * 2));
         String s = WaypointCodec.encode(List.of(g));
-        // JSON for the same route weighs multiple kilobytes; the CJK-packed form
-        // should beat the old Z85 codec by 2x+ on the same fixture.
-        assertTrue(s.length() < 150, "expected packed export < 150 chars, got " + s.length() + ": " + s);
+        // Density regression guard. JSON for the same 40-point route weighs
+        // several kilobytes; the codec should stay well under a quarter of
+        // that on structured data. v2 threshold is 400 chars (= 400 wire
+        // bytes); real output on this fixture is around 330-340, so this
+        // has ~20% slack for dictionary / DEFLATE fluctuations.
+        assertTrue(s.length() < 400, "expected packed export < 400 chars, got " + s.length() + ": " + s);
     }
 
     @Test
-    void fifty_named_waypoints_fit_in_chat_limit() {
-        // The whole point of the CJK densification: a 50-waypoint named route
-        // must fit in a single 255-char Minecraft chat message. Guard that
-        // headline capability with a direct test.
+    void twenty_named_waypoints_fit_in_command_packet() {
+        // Under v2 (base-84, 1 UTF-8 byte per char) the codec string's char
+        // count equals its wire-byte count. The real failure mode is Hypixel's
+        // 256-byte ServerboundChatCommandPacket cap: exceeding it disconnects
+        // the sender. A 20-waypoint named route is the "reasonable share"
+        // baseline we commit to supporting; with a short command prefix like
+        // "/pc " (3 bytes on the wire) the body must stay under 253 bytes.
+        //
+        // Picking 20 points rather than the old 50 reflects the Watchdog
+        // byte cap -- 50 named waypoints fundamentally can't fit any chat
+        // command under any encoding, so the old test was paper-over-a-bug.
         WaypointGroup g = WaypointGroup.create("Big Run", "dungeon_f7");
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 20; i++) {
             g.add(new Waypoint(100 + i * 3, 70 + (i % 5), 200 + i * 2,
                     "pt" + i, Waypoint.DEFAULT_COLOR, 0, 0));
         }
         String s = WaypointCodec.encode(List.of(g));
-        assertTrue(s.length() <= 255,
-                "50 named waypoints must fit in 255 chars; got " + s.length() + ": " + s);
+        int commandWireBytes = "pc ".length() + s.length();
+        assertTrue(commandWireBytes <= 256,
+                "20 named waypoints + /pc prefix must fit in 256 wire bytes; got "
+                        + commandWireBytes + " (body=" + s.length() + "): " + s);
     }
 
     @Test
-    void body_chars_are_all_in_cjk_alphabet_range() {
-        // Every non-magic character must land in [U+4E00, U+4E00 + 16384) so
-        // chat paste, MC's chat validator, and the Unifont fallback all accept it.
+    void body_chars_are_all_in_alphabet() {
+        // Every non-magic character must be a valid alphabet character so chat
+        // paste, MC's chat validator, and the CodecScanner's word-boundary
+        // extractor all accept it.
         WaypointGroup g = sampleGroup("range check", "dungeon_f7");
         String s = WaypointCodec.encode(List.of(g));
         String body = s.substring(WaypointCodec.MAGIC.length());
         for (int i = 0; i < body.length(); i++) {
             char c = body.charAt(i);
-            assertTrue(c >= 0x4E00 && c < 0x4E00 + 16384,
-                    "body char at " + i + " out of CJK alphabet range: U+"
-                            + Integer.toHexString(c).toUpperCase());
+            assertTrue(dev.ethan.waypointer.codec.AsciiPackCodec.isAlphabetChar(c),
+                    "body char at " + i + " out of alphabet: '" + c
+                            + "' (0x" + Integer.toHexString(c).toUpperCase() + ")");
+        }
+    }
+
+    @Test
+    void body_never_contains_period() {
+        // Hypixel's advertising filter flags URL-shaped substrings and will
+        // disconnect the sender. '.' is the single most URL-shaped character
+        // we could ship (anything resembling "host.tld" trips the filter),
+        // so the alphabet explicitly omits it. This test is a regression
+        // guard: if someone reintroduces '.', shared routes start bouncing
+        // off the ad filter and this fails loudly in CI.
+        for (int i = 0; i < 20; i++) {
+            WaypointGroup g = WaypointGroup.create("fuzz " + i, "dungeon_f7");
+            for (int j = 0; j < 8 + i; j++) {
+                g.add(new Waypoint(100 + j * (i + 1), 70 + j, 200 + j * 2,
+                        "n" + j, 0x112233 + j, 0, 0));
+            }
+            String s = WaypointCodec.encode(List.of(g));
+            assertFalse(s.contains("."),
+                    "export " + i + " contains '.' which flags Hypixel's ad filter: " + s);
         }
     }
 
@@ -198,7 +231,7 @@ class WaypointCodecTest {
 
         String stripped = WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES);
         // Name strings themselves shouldn't be in the payload. We can't see through
-        // deflate+CJK directly, but we can confirm the output is smaller than a names
+        // deflate+base-84 directly, but we can confirm the output is smaller than a names
         // export, and that the decoded waypoints come back nameless.
         String withNames = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES);
         assertTrue(stripped.length() < withNames.length(),
@@ -401,25 +434,23 @@ class WaypointCodecTest {
     @Test
     void auto_mode_beats_absolute_on_yoyo_route_inside_fixed_bounds() {
         // Yo-yo path entirely within the FIXED_COMPACT window ([-2048, +2047]
-        // on x/z). Delta mode exacts big jumps; absolute-varint spends ~2 bytes
-        // per coord; fixed-compact spends only 33 bits per waypoint. Fixed
-        // should win outright, and AUTO must pick it.
+        // on x/z). Delta exacts big jumps; absolute-varint spends ~2 bytes per
+        // coord; fixed-compact spends 33 bits; fit-compact spends less when
+        // the span is tight. AUTO must pick whichever ends up smallest.
         WaypointGroup g = WaypointGroup.create("yoyo", "z");
         g.add(new Waypoint(0, 0, 0, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint(2000, 100, 2000, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint(0, 0, 0, "", Waypoint.DEFAULT_COLOR, 0, 0));
 
-        int vector   = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
-                WaypointCodec.PackingMode.FORCE_VECTOR).length();
-        int absolute = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
-                WaypointCodec.PackingMode.FORCE_ABSOLUTE).length();
-        int fixed    = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
-                WaypointCodec.PackingMode.FORCE_FIXED).length();
+        int vector   = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR);
+        int absolute = forcedLen(g, WaypointCodec.PackingMode.FORCE_ABSOLUTE);
+        int fixed    = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIXED);
+        int fit      = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIT);
         int auto     = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES).length();
 
-        assertTrue(auto <= vector && auto <= absolute && auto <= fixed,
+        assertTrue(auto <= vector && auto <= absolute && auto <= fixed && auto <= fit,
                 "AUTO must pick the smallest; auto=" + auto + " vector=" + vector
-                        + " absolute=" + absolute + " fixed=" + fixed);
+                        + " absolute=" + absolute + " fixed=" + fixed + " fit=" + fit);
     }
 
     @Test
@@ -433,39 +464,86 @@ class WaypointCodecTest {
         g.add(new Waypoint(1_000_000, 100, 1_000_000, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint(0, 0, 0, "", Waypoint.DEFAULT_COLOR, 0, 0));
 
-        int vector   = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
-                WaypointCodec.PackingMode.FORCE_VECTOR).length();
-        int absolute = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
-                WaypointCodec.PackingMode.FORCE_ABSOLUTE).length();
+        int vector   = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR);
+        int absolute = forcedLen(g, WaypointCodec.PackingMode.FORCE_ABSOLUTE);
+        int fit      = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIT);
         int auto     = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES).length();
 
-        assertTrue(auto <= vector && auto <= absolute,
-                "AUTO must not be worse than either forced mode; auto=" + auto
-                        + " vector=" + vector + " absolute=" + absolute);
+        assertTrue(auto <= vector && auto <= absolute && auto <= fit,
+                "AUTO must not be worse than any eligible forced mode; auto=" + auto
+                        + " vector=" + vector + " absolute=" + absolute + " fit=" + fit);
     }
 
     @Test
     void auto_mode_picks_vector_when_waypoints_cluster_far_from_origin() {
         // Dense cluster at far coords: each step is tiny but the absolute coord is
-        // 4 bytes of varint. Vector (delta) mode should win here. FIXED_COMPACT
-        // is out of range at these magnitudes, so AUTO falls back to vector.
+        // 4 bytes of varint. Vector (delta) should beat absolute-varint here.
+        // FIT_COMPACT could also win because the group span is small; we only
+        // assert that AUTO is no worse than any eligible forced mode.
         WaypointGroup g = WaypointGroup.create("cluster", "z");
         int base = 2_000_000;
         for (int i = 0; i < 20; i++) {
             g.add(new Waypoint(base + i, 80, base + i * 2, "", Waypoint.DEFAULT_COLOR, 0, 0));
         }
 
-        int vector   = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
-                WaypointCodec.PackingMode.FORCE_VECTOR).length();
-        int absolute = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
-                WaypointCodec.PackingMode.FORCE_ABSOLUTE).length();
+        int vector   = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR);
+        int absolute = forcedLen(g, WaypointCodec.PackingMode.FORCE_ABSOLUTE);
+        int fit      = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIT);
         int auto     = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES).length();
 
         assertTrue(vector < absolute,
                 "clustered route should be smaller under vector packing; vector=" + vector
                         + " absolute=" + absolute);
-        assertTrue(auto <= vector,
-                "AUTO must not be worse than vector; auto=" + auto + " vector=" + vector);
+        assertTrue(auto <= vector && auto <= fit,
+                "AUTO must not be worse than any eligible forced mode; auto=" + auto
+                        + " vector=" + vector + " fit=" + fit);
+    }
+
+    @Test
+    void fit_compact_round_trips_tight_group_exactly() {
+        // FIT_COMPACT picks per-axis bit widths from the group's span. A
+        // dungeon-style group (x in [66..130], y in [128..145], z in [135..190])
+        // needs 7/5/6 bits per axis = 18 bits per waypoint, vs the fixed 33.
+        // Round-tripping must return byte-identical coords.
+        WaypointGroup g = WaypointGroup.create("tight", "dungeon_f7");
+        g.add(new Waypoint( 66, 128, 135, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint( 79, 128, 142, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint( 89, 132, 140, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint( 92, 138, 150, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint(110, 140, 160, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint(115, 140, 172, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint(120, 140, 180, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint(130, 145, 190, "", Waypoint.DEFAULT_COLOR, 0, 0));
+
+        String encoded = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
+                WaypointCodec.PackingMode.FORCE_FIT);
+        WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
+        assertEquals(g.size(), decoded.size());
+        for (int i = 0; i < g.size(); i++) {
+            assertEquals(g.get(i).x(), decoded.get(i).x(), "x@" + i);
+            assertEquals(g.get(i).y(), decoded.get(i).y(), "y@" + i);
+            assertEquals(g.get(i).z(), decoded.get(i).z(), "z@" + i);
+        }
+    }
+
+    @Test
+    void fit_compact_handles_single_value_axis() {
+        // Flat path (every waypoint at y=70). FIT_COMPACT should choose yBits=0
+        // for that axis, and the decoder must reconstruct y=70 for every point
+        // without reading any bits off the wire for it.
+        WaypointGroup g = WaypointGroup.create("flat", "z");
+        g.add(new Waypoint(10, 70, 20, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint(15, 70, 25, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint(20, 70, 30, "", Waypoint.DEFAULT_COLOR, 0, 0));
+
+        String encoded = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
+                WaypointCodec.PackingMode.FORCE_FIT);
+        WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
+        for (int i = 0; i < g.size(); i++) {
+            assertEquals(70, decoded.get(i).y(), "y@" + i + " must decode to constant 70");
+            assertEquals(g.get(i).x(), decoded.get(i).x(), "x@" + i);
+            assertEquals(g.get(i).z(), decoded.get(i).z(), "z@" + i);
+        }
     }
 
     @Test
@@ -515,9 +593,13 @@ class WaypointCodecTest {
         WaypointGroup fromFixed = WaypointCodec.decode(
                 WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
                         WaypointCodec.PackingMode.FORCE_FIXED)).get(0);
+        WaypointGroup fromFit = WaypointCodec.decode(
+                WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
+                        WaypointCodec.PackingMode.FORCE_FIT)).get(0);
         assertGroupsEqual(g, fromVector);
         assertGroupsEqual(g, fromAbsolute);
         assertGroupsEqual(g, fromFixed);
+        assertGroupsEqual(g, fromFit);
     }
 
     @Test
@@ -539,20 +621,23 @@ class WaypointCodecTest {
                 g.add(new Waypoint(x, y, z, "", Waypoint.DEFAULT_COLOR, 0, 0));
             }
 
-            int vector   = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
-                    WaypointCodec.PackingMode.FORCE_VECTOR).length();
-            int absolute = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
-                    WaypointCodec.PackingMode.FORCE_ABSOLUTE).length();
+            int vector   = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR);
+            int absolute = forcedLen(g, WaypointCodec.PackingMode.FORCE_ABSOLUTE);
+            int fit      = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIT);
             int auto     = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES).length();
-            assertTrue(auto <= vector && auto <= absolute,
-                    "trial " + trial + ": auto=" + auto + " vector=" + vector + " absolute=" + absolute);
+            assertTrue(auto <= vector && auto <= absolute && auto <= fit,
+                    "trial " + trial + ": auto=" + auto + " vector=" + vector
+                            + " absolute=" + absolute + " fit=" + fit);
             if (fixedEligible) {
-                int fixed = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
-                        WaypointCodec.PackingMode.FORCE_FIXED).length();
+                int fixed = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIXED);
                 assertTrue(auto <= fixed,
                         "trial " + trial + ": auto=" + auto + " fixed=" + fixed);
             }
         }
+    }
+
+    private static int forcedLen(WaypointGroup g, WaypointCodec.PackingMode mode) {
+        return WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES, mode).length();
     }
 
     // --- helpers ------------------------------------------------------------------------------
