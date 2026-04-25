@@ -90,6 +90,12 @@ public final class ConfigScreen extends Screen {
                 "Draws a dark rectangle behind floating waypoint names for readability.\n"
               + "Turn off for a lighter HUD when labels stack in busy areas.");
         y += rowH;
+        addNumberRow(col1, y, colW, "Label height offset (blocks)",
+                config.labelHeightOffset(), config::setLabelHeightOffset,
+                "Extra blocks to push each waypoint label above its marker. 0 keeps the\n"
+              + "default placement; raise it (e.g. 3-5) so labels stop covering the box\n"
+              + "when viewed from far away. Range -2 to +10.");
+        y += rowH;
         addBoxStyleRow(col1, y, colW);
 
         // --- Column 2: Behavior ------------------------------------------------------------
