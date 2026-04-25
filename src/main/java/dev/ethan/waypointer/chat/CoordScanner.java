@@ -1,6 +1,7 @@
 package dev.ethan.waypointer.chat;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -23,6 +24,25 @@ public final class CoordScanner {
      */
     private static final Pattern COORD = Pattern.compile(
             "(?<![\\w.\\-])(-?\\d{1,5})([\\s,;/]+)(-?\\d{1,4})([\\s,;/]+)(-?\\d{1,5})(?![\\w.\\-])"
+    );
+
+    /**
+     * Labeled "x: <num>, y: <num>, z: <num>" form -- case-insensitive, with
+     * optional whitespace around the colons and commas. Matches the common
+     * in-game callout style ("x: 100, y: 64, z: -200") that the bare-number
+     * regex cannot recognize because the alphabetic axis labels break its
+     * all-digit/separator structure.
+     *
+     * <p>Integers only: matching the bare scanner's behavior keeps the
+     * detector's false-positive policy consistent (decimals are caught by
+     * the trailing lookahead just like in the bare form). Comma is the only
+     * inter-axis separator, so {@code "x: 1,000, y: 64, z: 0"} fails to
+     * parse -- the comma inside {@code 1,000} leaves no axis label between
+     * x's value and the next group, which preserves the issue #3 fix
+     * against thousands-separated numbers.
+     */
+    private static final Pattern COORD_LABELED = Pattern.compile(
+            "(?<![\\w.\\-])[xX]\\s*:\\s*(-?\\d{1,5})\\s*,\\s*[yY]\\s*:\\s*(-?\\d{1,4})\\s*,\\s*[zZ]\\s*:\\s*(-?\\d{1,5})(?![\\w.\\-])"
     );
 
     public static final int MAX_MATCHES_PER_MESSAGE = 5;
@@ -54,8 +74,26 @@ public final class CoordScanner {
     public static List<Match> scanWithPositions(String text) {
         if (text == null || text.isEmpty()) return List.of();
 
-        Matcher m = COORD.matcher(text);
+        // Bare and labeled regexes can't overlap (one starts on a digit/minus,
+        // the other on an axis letter), so collecting separately and merging by
+        // start offset is sound. Each pass enforces the per-message cap; if both
+        // saturate it we trim once more after sorting so chips stay in the order
+        // they appear in chat.
         List<Match> out = new ArrayList<>();
+        collectBareMatches(text, out);
+        collectLabeledMatches(text, out);
+
+        if (out.size() > 1) {
+            out.sort(Comparator.comparingInt(Match::start));
+        }
+        if (out.size() > MAX_MATCHES_PER_MESSAGE) {
+            return new ArrayList<>(out.subList(0, MAX_MATCHES_PER_MESSAGE));
+        }
+        return out;
+    }
+
+    private static void collectBareMatches(String text, List<Match> out) {
+        Matcher m = COORD.matcher(text);
         while (m.find()) {
             int x = parseOrSentinel(m.group(1));
             String sep1 = m.group(2);
@@ -69,7 +107,25 @@ public final class CoordScanner {
             out.add(new Match(m.start(), m.end(), x, y, z));
             if (out.size() >= MAX_MATCHES_PER_MESSAGE) break;
         }
-        return out;
+    }
+
+    private static void collectLabeledMatches(String text, List<Match> out) {
+        Matcher m = COORD_LABELED.matcher(text);
+        int found = 0;
+        while (m.find()) {
+            int x = parseOrSentinel(m.group(1));
+            int y = parseOrSentinel(m.group(2));
+            int z = parseOrSentinel(m.group(3));
+            if (x == Integer.MIN_VALUE || y == Integer.MIN_VALUE || z == Integer.MIN_VALUE) continue;
+            if (y < MIN_Y || y > MAX_Y) continue;
+            if (Math.abs(x) > MAX_HORIZONTAL || Math.abs(z) > MAX_HORIZONTAL) continue;
+            // The thousands-separator filter doesn't apply: the explicit axis
+            // labels disambiguate the format, and the regex itself rejects
+            // "x: 1,000, ..." because the inner comma leaves no `y:` token in
+            // the right place for the next group.
+            out.add(new Match(m.start(), m.end(), x, y, z));
+            if (++found >= MAX_MATCHES_PER_MESSAGE) break;
+        }
     }
 
     /**
