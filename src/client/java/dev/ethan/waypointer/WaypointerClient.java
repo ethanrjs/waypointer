@@ -7,6 +7,10 @@ import dev.ethan.waypointer.commands.WaypointerCommands;
 import dev.ethan.waypointer.config.Storage;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
+import dev.ethan.waypointer.dungeon.DungeonCommands;
+import dev.ethan.waypointer.dungeon.DungeonHighlightRenderer;
+import dev.ethan.waypointer.dungeon.DungeonStateTracker;
+import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import dev.ethan.waypointer.input.WaypointerKeybinds;
 import dev.ethan.waypointer.location.LocationTracker;
 import dev.ethan.waypointer.progression.ProximityTracker;
@@ -32,10 +36,14 @@ public final class WaypointerClient implements ClientModInitializer {
     private static ActiveGroupManager manager;
     private static Storage storage;
     private static WaypointerConfig config;
+    private static DungeonConfig dungeonConfig;
+    private static DungeonStateTracker dungeonTracker;
 
-    public static ActiveGroupManager manager() { return manager; }
-    public static Storage storage()            { return storage; }
-    public static WaypointerConfig config()    { return config; }
+    public static ActiveGroupManager manager()        { return manager; }
+    public static Storage storage()                   { return storage; }
+    public static WaypointerConfig config()           { return config; }
+    public static DungeonConfig dungeonConfig()       { return dungeonConfig; }
+    public static DungeonStateTracker dungeonTracker(){ return dungeonTracker; }
 
     @Override
     public void onInitializeClient() {
@@ -53,6 +61,15 @@ public final class WaypointerClient implements ClientModInitializer {
         new WaypointRenderer(manager, config).install();
         new TracerRenderer(manager, config).install();
 
+        // Dungeon subsystem (issue #9). Lives in its own config + commands so
+        // the merge surface with sibling work on `main` (issues #4/#7) stays
+        // narrow -- no shared files beyond this wiring point.
+        dungeonConfig = DungeonConfig.load();
+        dungeonTracker = new DungeonStateTracker(manager, dungeonConfig);
+        dungeonTracker.install();
+        new DungeonHighlightRenderer(dungeonTracker, dungeonConfig).install();
+        new DungeonCommands(dungeonTracker, dungeonConfig).install();
+
         ChatImportCache chatImportCache = new ChatImportCache();
         new WaypointerCommands(manager, storage, config, chatImportCache, WaypointerClient::openGui).install();
         new WaypointerKeybinds(WaypointerClient::openGui, manager, config).install();
@@ -65,6 +82,7 @@ public final class WaypointerClient implements ClientModInitializer {
             // scheduled-but-not-yet-executed save be discarded on exit.
             storage.flush();
             config.flush();
+            if (dungeonConfig != null) dungeonConfig.flush();
         });
 
         // Fire-and-forget update check. Runs on a daemon thread with a 5s
