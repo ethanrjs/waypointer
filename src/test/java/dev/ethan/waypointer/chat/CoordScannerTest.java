@@ -113,4 +113,104 @@ class CoordScannerTest {
         // should not leak a coord chip into the chat line.
         assertTrue(CoordScanner.scan("Cleared dungeon, earned 2,500,400 xp today").isEmpty());
     }
+
+    @Test
+    void parses_labeled_format_with_spaces() {
+        List<CoordScanner.Coord> coords = CoordScanner.scan("Meet me at x: 100, y: 64, z: -200 by spawn");
+        assertEquals(1, coords.size());
+        assertEquals(new CoordScanner.Coord(100, 64, -200), coords.get(0));
+    }
+
+    @Test
+    void parses_labeled_format_uppercase_no_spaces() {
+        List<CoordScanner.Coord> coords = CoordScanner.scan("Boss at X:100,Y:64,Z:-200 right now");
+        assertEquals(1, coords.size());
+        assertEquals(new CoordScanner.Coord(100, 64, -200), coords.get(0));
+    }
+
+    @Test
+    void parses_labeled_format_negative_values() {
+        List<CoordScanner.Coord> coords = CoordScanner.scan("warp here -- x: -1234, y: 12, z: -5678");
+        assertEquals(1, coords.size());
+        assertEquals(new CoordScanner.Coord(-1234, 12, -5678), coords.get(0));
+    }
+
+    @Test
+    void parses_labeled_format_with_extra_padding_around_punctuation() {
+        // Players sometimes type "x : 100 , y : 64 , z : -200" -- the colon and
+        // comma whitespace must be tolerant in both directions.
+        List<CoordScanner.Coord> coords = CoordScanner.scan("x : 100 , y : 64 , z : -200");
+        assertEquals(1, coords.size());
+        assertEquals(new CoordScanner.Coord(100, 64, -200), coords.get(0));
+    }
+
+    @Test
+    void labeled_format_returns_match_spanning_full_callout() {
+        // The detector recolors the matched range -- it must cover the entire
+        // "x: ..., z: ..." span so the click chip wraps the whole callout, not
+        // just the trailing number.
+        List<CoordScanner.Match> matches = CoordScanner.scanWithPositions("see x: 100, y: 64, z: -200 ok");
+        assertEquals(1, matches.size());
+        CoordScanner.Match match = matches.get(0);
+        assertEquals(4, match.start(), "match should start at the leading 'x'");
+        assertEquals(26, match.end(), "match should end after the final '0' of -200");
+    }
+
+    @Test
+    void labeled_format_rejects_decimals() {
+        // Matches the bare scanner: integers only. The trailing lookahead rejects
+        // any axis whose number is followed by '.', and decimals on x/y are
+        // rejected because the inner '.' breaks the required ',' separator.
+        assertTrue(CoordScanner.scan("x: 100.5, y: 64, z: -200").isEmpty());
+        assertTrue(CoordScanner.scan("x: 100, y: 64.0, z: -200").isEmpty());
+        assertTrue(CoordScanner.scan("x: 100, y: 64, z: -200.5").isEmpty());
+    }
+
+    @Test
+    void labeled_format_rejects_thousands_separated_x_value() {
+        // Regression for issue #3: even with axis labels, a thousands-separated
+        // number must not be coerced into a coord (the user meant x=1000, but
+        // we'd rather miss the callout than parse it wrong).
+        assertTrue(CoordScanner.scan("x: 1,000, y: 64, z: 0").isEmpty());
+    }
+
+    @Test
+    void labeled_format_rejects_y_out_of_minecraft_range() {
+        assertTrue(CoordScanner.scan("x: 100, y: 9999, z: -200").isEmpty());
+        assertTrue(CoordScanner.scan("x: 100, y: -500, z: -200").isEmpty());
+    }
+
+    @Test
+    void labeled_format_rejects_horizontal_magnitudes_too_large() {
+        assertTrue(CoordScanner.scan("x: 50000, y: 64, z: 60000").isEmpty());
+    }
+
+    @Test
+    void labeled_format_does_not_match_when_axis_letter_is_inside_a_word() {
+        // "Trax: 100..." -- the lookbehind must keep the regex from latching
+        // onto arbitrary words ending in x/y/z.
+        assertTrue(CoordScanner.scan("Trax: 100, y: 64, z: -200").isEmpty());
+        assertTrue(CoordScanner.scan("max: 100, y: 64, z: -200").isEmpty());
+    }
+
+    @Test
+    void labeled_format_requires_correct_axis_order() {
+        // Reordered or duplicated labels are not the canonical callout shape;
+        // staying strict avoids creative false positives from build-mode chat.
+        assertTrue(CoordScanner.scan("y: 64, x: 100, z: -200").isEmpty());
+        assertTrue(CoordScanner.scan("x: 100, x: 64, x: -200").isEmpty());
+    }
+
+    @Test
+    void labeled_and_bare_formats_coexist_in_one_message() {
+        // A player echoing both styles in the same line should produce two chips
+        // rendered in chat order.
+        List<CoordScanner.Match> matches = CoordScanner.scanWithPositions(
+                "x: 100, y: 64, z: -200 vs the older 250, 70, -310 callout");
+        assertEquals(2, matches.size());
+        assertEquals(new CoordScanner.Coord(100, 64, -200), matches.get(0).coord());
+        assertEquals(new CoordScanner.Coord(250, 70, -310), matches.get(1).coord());
+        assertTrue(matches.get(0).start() < matches.get(1).start(),
+                "matches must be returned in left-to-right chat order");
+    }
 }
