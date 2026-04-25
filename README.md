@@ -35,6 +35,10 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 - [owo-lib](https://modrinth.com/mod/owo-lib) 0.13.0+
 - *(optional)* Hypixel Mod API 1.0+. Improves zone detection
 
+Minecraft 26.1 is a tracked port target. Mojang/Fabric metadata list it as a
+stable release, but it requires Java 25 and cannot be verified from a Java 21
+Gradle environment yet.
+
 ## Building
 
 ```powershell
