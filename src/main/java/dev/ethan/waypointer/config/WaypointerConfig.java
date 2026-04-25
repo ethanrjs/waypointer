@@ -87,6 +87,22 @@ public final class WaypointerConfig {
      * against the world, vanilla-nametag style.
      */
     private boolean showLabelBackdrop = true;
+    /**
+     * Extra vertical offset (blocks) added on top of the renderer's baseline
+     * label lift. The renderer already pushes labels {@code 1.6} blocks above
+     * the waypoint's bottom corner -- enough to clear the cube at close range
+     * but, by user report, not enough at distance where the label projects
+     * directly over the marker. Players can dial this up so the label rides
+     * higher and stops obscuring the cube from far away. Default {@code 0}
+     * preserves the historical placement; range {@code [-2, +10]} keeps the
+     * label within the visually plausible neighborhood of the waypoint.
+     *
+     * <p>Static offset only -- a distance-scaled offset would handle far-away
+     * waypoints more elegantly but adds a second knob and a toggle for what
+     * is functionally the same control; revisit if the static offset proves
+     * insufficient in practice.
+     */
+    private double labelHeightOffset = 0.0;
     private BoxStyle boxStyle = BoxStyle.OUTLINED;
 
     // Zone detection
@@ -251,6 +267,7 @@ public final class WaypointerConfig {
     public boolean showTracer()               { return showTracer; }
     public boolean hideTracerOnStaticRoutes() { return hideTracerOnStaticRoutes; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
+    public double labelHeightOffset()         { return labelHeightOffset; }
     public BoxStyle boxStyle()                { return boxStyle == null ? BoxStyle.OUTLINED : boxStyle; }
     public boolean preferScoreboardFallback() { return preferScoreboardFallback; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
@@ -286,6 +303,7 @@ public final class WaypointerConfig {
     public void setExportIncludeWaypointFlags(boolean v){ this.exportIncludeWaypointFlags = v; save(); }
     public void setExportIncludeGroupMeta(boolean v)    { this.exportIncludeGroupMeta = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
+    public void setLabelHeightOffset(double v)         { this.labelHeightOffset = clamp(v, -2.0, 10.0); save(); }
     public void setBoxStyle(BoxStyle v)                { this.boxStyle = v == null ? BoxStyle.OUTLINED : v; save(); }
     public void setSkipAheadMechanicEnabled(boolean v) { this.skipAheadMechanicEnabled = v; save(); }
     public void setDisableGroupSkipAheadOnWaypointAdd(boolean v) { this.disableGroupSkipAheadOnWaypointAdd = v; save(); }

@@ -57,9 +57,11 @@ public final class WaypointRenderer implements HudElement {
             Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "waypoint_labels");
 
     /**
-     * Vertical lift (blocks) above the waypoint's bottom corner where the label's
-     * world-space anchor sits. Matches the old billboarded placement so user-facing
-     * positioning is unchanged from the previous renderer.
+     * Baseline vertical lift (blocks) above the waypoint's bottom corner where
+     * the label's world-space anchor sits. Matches the old billboarded placement
+     * so the default placement is unchanged from the previous renderer; users
+     * who want the label higher (e.g. to stop it covering the marker at long
+     * range) layer {@link WaypointerConfig#labelHeightOffset()} on top of this.
      */
     private static final double LABEL_ANCHOR_LIFT = 1.6;
 
@@ -232,6 +234,9 @@ public final class WaypointRenderer implements HudElement {
                                  WaypointGroup group) {
         int currentIdx = group.currentIndex();
         boolean showCompleted = config.showCompleted();
+        // Hoist out of the per-waypoint lambda so a long route doesn't pay
+        // a getter call (and a dirty-flag-eligible call site) per label.
+        double labelLift = LABEL_ANCHOR_LIFT + config.labelHeightOffset();
 
         group.forEachVisibleIndex(i -> {
             Waypoint w = group.get(i);
@@ -240,7 +245,7 @@ public final class WaypointRenderer implements HudElement {
             if (w.hasFlag(Waypoint.FLAG_HIDE_NAME)) return;
 
             double ax = w.x() + 0.5;
-            double ay = w.y() + LABEL_ANCHOR_LIFT;
+            double ay = w.y() + labelLift;
             double az = w.z() + 0.5;
             double rx = ax - camPos.x, ry = ay - camPos.y, rz = az - camPos.z;
 
