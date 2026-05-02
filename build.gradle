@@ -73,6 +73,10 @@ tasks.withType(JavaCompile).configureEach {
 	it.options.release = 21
 }
 
+tasks.named("remapJar") {
+	archiveVersion = "${project.version}-1.21.11"
+}
+
 java {
 	withSourcesJar()
 
@@ -87,6 +91,36 @@ jar {
 		rename { "${it}_${inputs.properties.archivesName}" }
 	}
 }
+
+tasks.register("officialJar", Jar) {
+	group = "build"
+	description = "Assembles an official-namespace jar for 26.x Fabric runtimes."
+
+	dependsOn tasks.jar
+	archiveBaseName = project.base.archivesName
+	archiveVersion = "${project.version}-26.x"
+	destinationDirectory = layout.buildDirectory.dir("libs")
+
+	from(zipTree(tasks.jar.archiveFile)) {
+		exclude "waypointer.accesswidener"
+	}
+	from(layout.buildDirectory.file("generated/officialJar/waypointer.accesswidener")) {
+		into ""
+	}
+
+	inputs.file("src/main/resources/waypointer.accesswidener")
+	outputs.file(layout.buildDirectory.file("generated/officialJar/waypointer.accesswidener"))
+
+	doFirst {
+		def source = file("src/main/resources/waypointer.accesswidener")
+		def target = layout.buildDirectory.file("generated/officialJar/waypointer.accesswidener").get().asFile
+		target.parentFile.mkdirs()
+		target.text = source.getText("UTF-8")
+				.replace("accessWidener\tv2\tnamed", "accessWidener\tv2\tofficial")
+	}
+}
+
+assemble.dependsOn tasks.named("officialJar")
 
 publishing {
 	publications {

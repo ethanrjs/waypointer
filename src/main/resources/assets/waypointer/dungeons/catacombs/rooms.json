@@ -1,0 +1,28 @@
+{
+  "schema": 1,
+  "rooms": [
+    {
+      "id": "waypointer-seed-1x1",
+      "name": "Waypointer Seed 1x1",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "fingerprints": [],
+      "waypoints": [
+        {
+          "id": "seed-1x1-chest",
+          "secretIndex": 1,
+          "category": "chest",
+          "trigger": "OPEN_CHEST",
+          "x": 16,
+          "y": 70,
+          "z": 16,
+          "name": "Seed secret",
+          "highlights": [
+            { "x": 15, "y": 70, "z": 15, "style": "OUTLINE" },
+            { "x": 17, "y": 70, "z": 17, "style": "OUTLINE" }
+          ]
+        }
+      ]
+    }
+  ]
+}

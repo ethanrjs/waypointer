@@ -5,13 +5,12 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
+import dev.ethan.waypointer.render.RenderEventCompat;
 import dev.ethan.waypointer.render.RenderHelpers;
 import dev.ethan.waypointer.render.WaypointerRenderPipelines;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -34,7 +33,7 @@ import java.util.List;
  * <p>Two render paths, mirroring {@code WaypointRenderer}:
  *
  * <ul>
- *   <li>3D outlines / fills via {@link WorldRenderEvents#END_MAIN}.</li>
+ *   <li>3D outlines / fills via Fabric's end-main world render event.</li>
  *   <li>2D labels via {@link HudElementRegistry} so they always face the
  *       camera and stay legible against any biome backdrop.</li>
  * </ul>
@@ -53,6 +52,8 @@ public final class DungeonHighlightRenderer implements HudElement {
 
     private static final float PARENT_ALPHA = 1.0f;
     private static final float CHILD_ALPHA = 0.85f;
+    private static final float FOUND_ALPHA = 0.25f;
+    private static final float UPCOMING_ALPHA = 0.55f;
     private static final float FILLED_ALPHA_SCALE = 0.30f;
 
     /** How high above a parent waypoint cube the 2D label anchors. Same lift as the main renderer. */
@@ -66,14 +67,17 @@ public final class DungeonHighlightRenderer implements HudElement {
 
     private final DungeonStateTracker tracker;
     private final DungeonConfig config;
+    private final DungeonRouteSession session;
 
-    public DungeonHighlightRenderer(DungeonStateTracker tracker, DungeonConfig config) {
+    public DungeonHighlightRenderer(DungeonStateTracker tracker, DungeonConfig config,
+                                    DungeonRouteSession session) {
         this.tracker = tracker;
         this.config = config;
+        this.session = session;
     }
 
     public void install() {
-        WorldRenderEvents.END_MAIN.register(this::onWorldRender);
+        RenderEventCompat.registerEndMain("dungeon highlights", this::onWorldRender);
         // Attach BEFORE the chat layer so the F1 hide-GUI toggle hides the
         // labels in the same way the main renderer does -- consistent UX
         // for the player.
@@ -82,7 +86,7 @@ public final class DungeonHighlightRenderer implements HudElement {
 
     // ---- world-space outlines + fills ---------------------------------
 
-    private void onWorldRender(WorldRenderContext ctx) {
+    private void onWorldRender(Object ctx) {
         if (!config.enabled()) return;
         DungeonRoom room = tracker.currentRoom();
         if (room == null) return;
@@ -90,10 +94,11 @@ public final class DungeonHighlightRenderer implements HudElement {
         List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
         if (waypoints.isEmpty() && !config.drawRoomBounds()) return;
 
-        MultiBufferSource buffers = ctx.consumers();
+        MultiBufferSource buffers = RenderEventCompat.bufferSource(ctx);
         if (buffers == null) return;
 
-        PoseStack ps = ctx.matrices();
+        PoseStack ps = RenderEventCompat.poseStack(ctx);
+        if (ps == null) return;
         Vec3 cam = Minecraft.getInstance().gameRenderer.getMainCamera().position();
 
         ps.pushPose();
@@ -117,11 +122,14 @@ public final class DungeonHighlightRenderer implements HudElement {
         VertexConsumer quads = buffers.getBuffer(type);
         boolean any = false;
         for (DungeonWaypoint wp : waypoints) {
+            if (!shouldRender(wp, room)) continue;
+            float parentAlpha = parentAlpha(wp, room);
+            float childAlpha = parentAlpha == FOUND_ALPHA ? FOUND_ALPHA : CHILD_ALPHA;
             if (config.showSecretWaypoints()) {
                 int[] world = DungeonMapMath.relativeToActual(
                         room.direction(), room.physicalCornerX(), room.physicalCornerZ(),
                         wp.x(), wp.y(), wp.z());
-                emitFill(quads, ps, world[0], world[1], world[2], wp.color(), PARENT_ALPHA);
+                emitFill(quads, ps, world[0], world[1], world[2], wp.color(), parentAlpha);
                 any = true;
             }
             if (config.showHighlights()) {
@@ -131,7 +139,7 @@ public final class DungeonHighlightRenderer implements HudElement {
                             room.direction(), room.physicalCornerX(), room.physicalCornerZ(),
                             h.x(), h.y(), h.z());
                     int color = h.hasOwnColor() ? h.color() : wp.color();
-                    emitFill(quads, ps, world[0], world[1], world[2], color, CHILD_ALPHA);
+                    emitFill(quads, ps, world[0], world[1], world[2], color, childAlpha);
                     any = true;
                 }
             }
@@ -149,11 +157,14 @@ public final class DungeonHighlightRenderer implements HudElement {
             any = true;
         }
         for (DungeonWaypoint wp : waypoints) {
+            if (!shouldRender(wp, room)) continue;
+            float parentAlpha = parentAlpha(wp, room);
+            float childAlpha = parentAlpha == FOUND_ALPHA ? FOUND_ALPHA : CHILD_ALPHA;
             if (config.showSecretWaypoints()) {
                 int[] world = DungeonMapMath.relativeToActual(
                         room.direction(), room.physicalCornerX(), room.physicalCornerZ(),
                         wp.x(), wp.y(), wp.z());
-                emitOutline(lines, ps, world[0], world[1], world[2], wp.color(), PARENT_ALPHA);
+                emitOutline(lines, ps, world[0], world[1], world[2], wp.color(), parentAlpha);
                 any = true;
             }
             if (config.showHighlights()) {
@@ -163,7 +174,7 @@ public final class DungeonHighlightRenderer implements HudElement {
                             room.direction(), room.physicalCornerX(), room.physicalCornerZ(),
                             h.x(), h.y(), h.z());
                     int color = h.hasOwnColor() ? h.color() : wp.color();
-                    emitOutline(lines, ps, world[0], world[1], world[2], color, CHILD_ALPHA);
+                    emitOutline(lines, ps, world[0], world[1], world[2], color, childAlpha);
                     any = true;
                 }
             }
@@ -214,7 +225,11 @@ public final class DungeonHighlightRenderer implements HudElement {
         int sh = g.guiHeight();
 
         for (DungeonWaypoint wp : waypoints) {
+            if (!shouldRender(wp, room)) continue;
             String name = wp.hasName() ? wp.name() : wp.category().id;
+            if (session.status(room, wp) == DungeonRouteSession.Status.CURRENT) {
+                name = "Next: " + name;
+            }
             int[] world = DungeonMapMath.relativeToActual(
                     room.direction(), room.physicalCornerX(), room.physicalCornerZ(),
                     wp.x(), wp.y(), wp.z());
@@ -232,6 +247,21 @@ public final class DungeonHighlightRenderer implements HudElement {
             int sy = (int) Math.round((0.5 - ndc.y * 0.5) * sh);
             drawCenteredLabel(g, font, name, sx, sy);
         }
+    }
+
+    private boolean shouldRender(DungeonWaypoint waypoint, DungeonRoom room) {
+        DungeonRouteSession.Status status = session.status(room, waypoint);
+        if (status == DungeonRouteSession.Status.FOUND && !config.showFoundSecrets()) return false;
+        return !"ACTIVE".equalsIgnoreCase(config.routeRenderMode())
+                || status == DungeonRouteSession.Status.CURRENT;
+    }
+
+    private float parentAlpha(DungeonWaypoint waypoint, DungeonRoom room) {
+        return switch (session.status(room, waypoint)) {
+            case FOUND -> FOUND_ALPHA;
+            case CURRENT -> PARENT_ALPHA;
+            case UPCOMING -> UPCOMING_ALPHA;
+        };
     }
 
     private void drawCenteredLabel(GuiGraphics g, Font font, String text, int cx, int top) {

@@ -94,13 +94,12 @@ public final class WaypointerConfig {
      * but, by user report, not enough at distance where the label projects
      * directly over the marker. Players can dial this up so the label rides
      * higher and stops obscuring the cube from far away. Default {@code 0}
-     * preserves the historical placement; range {@code [-2, +10]} keeps the
-     * label within the visually plausible neighborhood of the waypoint.
+     * preserves the historical placement.
      *
-     * <p>Static offset only -- a distance-scaled offset would handle far-away
-     * waypoints more elegantly but adds a second knob and a toggle for what
-     * is functionally the same control; revisit if the static offset proves
-     * insufficient in practice.
+     * <p>Intentionally unclamped: users testing long-distance routes need to
+     * push labels much farther than a small "reasonable" range. We only reject
+     * NaN / infinity in the setter so JSON stays valid and the renderer never
+     * receives a non-finite coordinate.
      */
     private double labelHeightOffset = 0.0;
     private BoxStyle boxStyle = BoxStyle.OUTLINED;
@@ -110,6 +109,13 @@ public final class WaypointerConfig {
 
     // Quality-of-life
     private boolean chatCoordDetection = true;
+    /**
+     * When {@code true}, detected chat coordinate callouts immediately create
+     * session-scoped temp waypoints. The chat text remains clickable either way
+     * so users who dislike automatic markers can turn this off and opt in per
+     * message.
+     */
+    private boolean autoAddChatTempWaypoints = true;
     private boolean chatCodecDetection = true;
     /** Default exports drop names; set to {@code true} to include them at the cost of length. */
     private boolean exportIncludeNames = false;
@@ -271,6 +277,7 @@ public final class WaypointerConfig {
     public BoxStyle boxStyle()                { return boxStyle == null ? BoxStyle.OUTLINED : boxStyle; }
     public boolean preferScoreboardFallback() { return preferScoreboardFallback; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
+    public boolean autoAddChatTempWaypoints() { return autoAddChatTempWaypoints; }
     public boolean chatCodecDetection()       { return chatCodecDetection; }
     public boolean exportIncludeNames()        { return exportIncludeNames; }
     public boolean exportIncludeColors()       { return exportIncludeColors; }
@@ -296,6 +303,7 @@ public final class WaypointerConfig {
     public void setHideTracerOnStaticRoutes(boolean v) { this.hideTracerOnStaticRoutes = v; save(); }
     public void setPreferScoreboardFallback(boolean v) { this.preferScoreboardFallback = v; save(); }
     public void setChatCoordDetection(boolean v)       { this.chatCoordDetection = v; save(); }
+    public void setAutoAddChatTempWaypoints(boolean v) { this.autoAddChatTempWaypoints = v; save(); }
     public void setChatCodecDetection(boolean v)       { this.chatCodecDetection = v; save(); }
     public void setExportIncludeNames(boolean v)        { this.exportIncludeNames = v; save(); }
     public void setExportIncludeColors(boolean v)       { this.exportIncludeColors = v; save(); }
@@ -303,7 +311,11 @@ public final class WaypointerConfig {
     public void setExportIncludeWaypointFlags(boolean v){ this.exportIncludeWaypointFlags = v; save(); }
     public void setExportIncludeGroupMeta(boolean v)    { this.exportIncludeGroupMeta = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
-    public void setLabelHeightOffset(double v)         { this.labelHeightOffset = clamp(v, -2.0, 10.0); save(); }
+    public void setLabelHeightOffset(double v) {
+        if (!Double.isFinite(v)) return;
+        this.labelHeightOffset = v;
+        save();
+    }
     public void setBoxStyle(BoxStyle v)                { this.boxStyle = v == null ? BoxStyle.OUTLINED : v; save(); }
     public void setSkipAheadMechanicEnabled(boolean v) { this.skipAheadMechanicEnabled = v; save(); }
     public void setDisableGroupSkipAheadOnWaypointAdd(boolean v) { this.disableGroupSkipAheadOnWaypointAdd = v; save(); }

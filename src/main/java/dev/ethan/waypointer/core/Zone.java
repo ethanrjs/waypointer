@@ -100,6 +100,18 @@ public record Zone(String id, String displayName) {
         };
     }
 
+    /**
+     * Fallback for Hypixel payloads that only say "dungeon" in both fields
+     * before a floor id is available. Without this, the sanitize fallback
+     * displays the ugly "Dungeon Dungeon" zone the user hit in live testing.
+     * Floor-specific definitions below still win whenever F1/M7/etc. is
+     * present because this matcher requires both populated fields to be the
+     * generic dungeon token.
+     */
+    private static boolean genericDungeon(String map, String mode) {
+        return equalsIC(map, "dungeon") && equalsIC(mode, "dungeon");
+    }
+
     private static Predicate<String> anyDisplay(String... names) {
         return name -> {
             if (name == null) return false;
@@ -222,6 +234,8 @@ public record Zone(String id, String displayName) {
                     prefixTokens("foraging_2", "Galatea"),
                     displayStartsWithAny("Galatea")),
 
+            new Def("dungeon", "Catacombs", Zone::genericDungeon,
+                    anyDisplay("Catacombs", "Dungeon")),
             new Def("dungeon_f1", "Catacombs F1",     dungeonFloor("F1")),
             new Def("dungeon_f2", "Catacombs F2",     dungeonFloor("F2")),
             new Def("dungeon_f3", "Catacombs F3",     dungeonFloor("F3")),

@@ -172,6 +172,20 @@ public final class ActiveGroupManager {
         return g;
     }
 
+    /**
+     * Add a session-scoped temporary waypoint in the current zone's isolated
+     * temp bucket. Chat coordinate detection and the {@code /wp addtemp}
+     * command share this path so automatic and click-to-add temp markers behave
+     * identically: static rendering, no proximity progression, and cleanup on
+     * disconnect via {@link dev.ethan.waypointer.progression.TempWaypointCleaner}.
+     */
+    public WaypointGroup addTempWaypoint(int x, int y, int z) {
+        WaypointGroup target = getOrCreateTempGroup();
+        target.add(Waypoint.at(x, y, z).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L));
+        fireDataChanged();
+        return target;
+    }
+
     public List<WaypointGroup> groupsForZone(String zoneId) {
         List<WaypointGroup> out = new ArrayList<>();
         for (WaypointGroup g : byId.values()) {

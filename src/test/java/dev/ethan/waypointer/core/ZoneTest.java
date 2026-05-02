@@ -312,4 +312,12 @@ class ZoneTest {
         assertEquals("dungeon_f7", Zone.resolve("SKYBLOCK", "F7", "dungeon").id());
         assertEquals("dungeon_m4", Zone.resolve("SKYBLOCK", "M4", "dungeon").id());
     }
+
+    @Test
+    void dungeonGenericPayloadDoesNotDisplayDungeonDungeon() {
+        Zone zone = Zone.resolve("SKYBLOCK", "Dungeon", "Dungeon");
+
+        assertEquals("dungeon", zone.id());
+        assertEquals("Catacombs", zone.displayName());
+    }
 }
