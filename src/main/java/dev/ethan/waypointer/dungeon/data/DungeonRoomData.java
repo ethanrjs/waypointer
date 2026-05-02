@@ -22,7 +22,6 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -383,10 +382,7 @@ public final class DungeonRoomData {
     private static Map<String, DungeonRoomDefinition> loadBundledDefinitions() {
         try (InputStream stream = DungeonRoomData.class.getResourceAsStream(BUNDLED_RESOURCE)) {
             if (stream == null) return Collections.emptyMap();
-            try (InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
-                JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
-                return parseDefinitions(GSON.toJson(root));
-            }
+            return parseDefinitions(new String(stream.readAllBytes(), StandardCharsets.UTF_8));
         } catch (Exception e) {
             Waypointer.LOGGER.error("Failed to load bundled dungeon room data", e);
             return Collections.emptyMap();

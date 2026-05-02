@@ -393,15 +393,16 @@ public final class DungeonCommands {
             error(src, "No demo data registered for shape " + room.shape() + ".");
             return 0;
         }
+        String id = room.hasRoomId() && DungeonRoomData.isCustomDefinition(room.roomId())
+                ? room.roomId()
+                : "test-" + Math.abs(room.identityKey().hashCode());
+        if (!room.hasRoomId() || !DungeonRoomData.isCustomDefinition(room.roomId())) {
+            DungeonRoomDefinition def = DungeonRoomData.defineRoom(id, room.displayName(), room);
+            tracker.applyCurrentRoomDefinition(def.id(), def.displayName());
+            room = tracker.currentRoom();
+            id = def.id();
+        }
         for (DungeonWaypoint wp : demo) {
-            String id = room.hasRoomId() && DungeonRoomData.isCustomDefinition(room.roomId())
-                    ? room.roomId()
-                    : "test-" + Math.abs(room.identityKey().hashCode());
-            if (!room.hasRoomId() || !DungeonRoomData.isCustomDefinition(room.roomId())) {
-                DungeonRoomDefinition def = DungeonRoomData.defineRoom(id, room.displayName(), room);
-                tracker.applyCurrentRoomDefinition(def.id(), def.displayName());
-                room = tracker.currentRoom();
-            }
             DungeonRoomData.addWaypoint(id, wp);
         }
         success(src, "Added " + demo.size() + " demo waypoint(s) for shape "
