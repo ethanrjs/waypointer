@@ -1,6 +1,7 @@
 package dev.ethan.waypointer.chat;
 
 import dev.ethan.waypointer.config.WaypointerConfig;
+import dev.ethan.waypointer.core.ActiveGroupManager;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.ClickEvent;
@@ -15,9 +16,10 @@ import java.util.Optional;
 
 /**
  * Sniffs incoming game chat for "x y z" coordinate triples and recolors the coord
- * numbers themselves into clickable aqua-underlined runs. Clicking runs
- * {@code /wp addtemp at <x> <y> <z>}, which drops a session-scoped temporary
- * waypoint (expires on disconnect) into the zone's temp bucket.
+ * numbers themselves into clickable aqua-underlined runs. By default, each
+ * detected coordinate also drops a session-scoped temporary waypoint (expires
+ * on disconnect) into the zone's temp bucket; users can turn that automatic
+ * creation off and keep the click-to-add chip only.
  *
  * <p>Chat-shared coords are almost always one-offs -- "meet me at 100 64 200"
  * -- so committing them to the permanent route was the wrong default and
@@ -36,9 +38,11 @@ import java.util.Optional;
 public final class ChatCoordDetector {
 
     private final WaypointerConfig config;
+    private final ActiveGroupManager manager;
 
-    public ChatCoordDetector(WaypointerConfig config) {
+    public ChatCoordDetector(WaypointerConfig config, ActiveGroupManager manager) {
         this.config = config;
+        this.manager = manager;
     }
 
     public void install() {
@@ -54,6 +58,12 @@ public final class ChatCoordDetector {
         String flat = msg.getString();
         List<CoordScanner.Match> matches = CoordScanner.scanWithPositions(flat);
         if (matches.isEmpty()) return msg;
+
+        if (config.autoAddChatTempWaypoints()) {
+            for (CoordScanner.Match match : matches) {
+                manager.addTempWaypoint(match.x(), match.y(), match.z());
+            }
+        }
 
         return rebuildWithHighlights(msg, matches);
     }

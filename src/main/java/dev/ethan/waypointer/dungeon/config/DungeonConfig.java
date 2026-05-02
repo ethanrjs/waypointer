@@ -63,6 +63,15 @@ public final class DungeonConfig {
      */
     private boolean drawRoomBounds = false;
 
+    /** When {@code false}, found secrets are hidden instead of rendered dimly. */
+    private boolean showFoundSecrets = true;
+
+    /**
+     * Route rendering mode: ALL shows every secret in the matched room, ACTIVE
+     * shows only the current target plus its highlights.
+     */
+    private String routeRenderMode = "ALL";
+
     /**
      * Default direction to assume for newly-detected rooms. Block-fingerprint
      * matching is not implemented yet (see issue #9 follow-ups), so the
@@ -120,6 +129,8 @@ public final class DungeonConfig {
     public boolean showHighlights()       { return showHighlights; }
     public boolean debugLogRoomChanges()  { return debugLogRoomChanges; }
     public boolean drawRoomBounds()       { return drawRoomBounds; }
+    public boolean showFoundSecrets()     { return showFoundSecrets; }
+    public String  routeRenderMode()      { return routeRenderMode == null ? "ALL" : routeRenderMode; }
     public String  defaultDirection()     { return defaultDirection == null ? "NW" : defaultDirection; }
 
     public void setEnabled(boolean v)             { this.enabled = v; save(); }
@@ -127,6 +138,15 @@ public final class DungeonConfig {
     public void setShowHighlights(boolean v)      { this.showHighlights = v; save(); }
     public void setDebugLogRoomChanges(boolean v) { this.debugLogRoomChanges = v; save(); }
     public void setDrawRoomBounds(boolean v)      { this.drawRoomBounds = v; save(); }
+    public void setShowFoundSecrets(boolean v)    { this.showFoundSecrets = v; save(); }
+    public void setRouteRenderMode(String v) {
+        if (v == null) return;
+        String upper = v.trim().toUpperCase(java.util.Locale.ROOT);
+        if (upper.equals("ALL") || upper.equals("ACTIVE")) {
+            this.routeRenderMode = upper;
+            save();
+        }
+    }
     public void setDefaultDirection(String v) {
         if (v == null) return;
         String upper = v.trim().toUpperCase(java.util.Locale.ROOT);

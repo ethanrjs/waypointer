@@ -190,4 +190,41 @@ class WaypointGroupTest {
         assertEquals(WaypointGroup.LoadMode.STATIC, g.loadMode(),
                 "shared routes default to STATIC so imported groups stay visible");
     }
+
+    @Test
+    void manager_addTempWaypointCreatesStaticLeaveScopedTempBucketForCurrentZone() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("dungeon_f7", "Catacombs F7"));
+
+        WaypointGroup bucket = manager.addTempWaypoint(100, 64, -200);
+
+        assertEquals("temp::dungeon_f7", bucket.id());
+        assertEquals("Temp -- Catacombs F7", bucket.name());
+        assertTrue(bucket.temp());
+        assertEquals(WaypointGroup.LoadMode.STATIC, bucket.loadMode());
+        assertEquals(1, bucket.size());
+        assertEquals(bucket, manager.firstActiveGroup());
+
+        Waypoint waypoint = bucket.get(0);
+        assertEquals(100, waypoint.x());
+        assertEquals(64, waypoint.y());
+        assertEquals(-200, waypoint.z());
+        assertTrue(waypoint.isTemp());
+        assertEquals(Waypoint.TEMP_UNTIL_LEAVE, waypoint.tempMode());
+    }
+
+    @Test
+    void manager_addTempWaypointReusesBucketAndInvalidatesActiveCache() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("dungeon_f7", "Catacombs F7"));
+
+        WaypointGroup firstBucket = manager.addTempWaypoint(1, 70, 2);
+        assertEquals(1, manager.activeGroups().size());
+
+        WaypointGroup secondBucket = manager.addTempWaypoint(3, 71, 4);
+
+        assertSame(firstBucket, secondBucket);
+        assertEquals(2, manager.activeGroups().get(0).size(),
+                "second temp waypoint should be visible through refreshed active cache");
+    }
 }

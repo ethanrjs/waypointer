@@ -111,8 +111,11 @@ public final class WaypointerCommands {
                         .executes(ctx -> runAdd(ctx.getSource(), ""))
                         .then(literal("at")
                                 .then(argument("x", IntegerArgumentType.integer())
+                                        .suggests(suggestPlayerCoord(Axis.X))
                                         .then(argument("y", IntegerArgumentType.integer())
+                                                .suggests(suggestPlayerCoord(Axis.Y))
                                                 .then(argument("z", IntegerArgumentType.integer())
+                                                        .suggests(suggestPlayerCoord(Axis.Z))
                                                         .executes(ctx -> runAddAt(ctx.getSource(),
                                                                 IntegerArgumentType.getInteger(ctx, "x"),
                                                                 IntegerArgumentType.getInteger(ctx, "y"),
@@ -135,8 +138,11 @@ public final class WaypointerCommands {
                 .then(literal("addtemp")
                         .then(literal("at")
                                 .then(argument("x", IntegerArgumentType.integer())
+                                        .suggests(suggestPlayerCoord(Axis.X))
                                         .then(argument("y", IntegerArgumentType.integer())
+                                                .suggests(suggestPlayerCoord(Axis.Y))
                                                 .then(argument("z", IntegerArgumentType.integer())
+                                                        .suggests(suggestPlayerCoord(Axis.Z))
                                                         .executes(ctx -> runAddTempAt(ctx.getSource(),
                                                                 IntegerArgumentType.getInteger(ctx, "x"),
                                                                 IntegerArgumentType.getInteger(ctx, "y"),
@@ -170,10 +176,12 @@ public final class WaypointerCommands {
                 .then(literal("import")
                         .executes(ctx -> runImportFromClipboard(ctx.getSource()))
                         .then(argument("payload", StringArgumentType.greedyString())
+                                .suggests(suggestImportPayloads())
                                 .executes(ctx -> runImport(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "payload"), "argument"))))
                 .then(literal("importfile")
                         .then(argument("path", StringArgumentType.greedyString())
+                                .suggests(suggestImportFiles())
                                 .executes(ctx -> runImportFile(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "path")))))
                 .then(literal("debug").executes(ctx -> { scheduleOpenDebugInspector(); return 1; }))
@@ -185,6 +193,7 @@ public final class WaypointerCommands {
                 .then(literal("group")
                         .then(literal("create")
                                 .then(argument("name", StringArgumentType.greedyString())
+                                        .suggests(suggestGroupNames())
                                         .executes(ctx -> runCreateGroup(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "name")))))
                         .then(literal("list").executes(ctx -> runListGroups(ctx.getSource())))
@@ -268,6 +277,53 @@ public final class WaypointerCommands {
         };
     }
 
+    private SuggestionProvider<FabricClientCommandSource> suggestPlayerCoord(Axis axis) {
+        return (ctx, builder) -> {
+            LocalPlayer player = Minecraft.getInstance().player;
+            if (player == null) return builder.buildFuture();
+            int value = switch (axis) {
+                case X -> (int) Math.floor(player.getX());
+                case Y -> (int) Math.floor(player.getY());
+                case Z -> (int) Math.floor(player.getZ());
+            };
+            String raw = Integer.toString(value);
+            if (raw.startsWith(builder.getRemaining())) {
+                builder.suggest(value, Component.literal("current player " + axis.name().toLowerCase(Locale.ROOT)));
+            }
+            return builder.buildFuture();
+        };
+    }
+
+    private SuggestionProvider<FabricClientCommandSource> suggestImportPayloads() {
+        return (ctx, builder) -> {
+            for (String handle : chatImportCache.handles()) {
+                suggestText(builder, handle, "cached chat import; or use /wp importchat " + handle);
+            }
+            return builder.buildFuture();
+        };
+    }
+
+    private SuggestionProvider<FabricClientCommandSource> suggestImportFiles() {
+        return (ctx, builder) -> {
+            suggestText(builder, storage.file().toString(), "current waypoint storage file");
+            Path parent = storage.file().getParent();
+            if (parent != null) suggestText(builder, parent.toString(), "waypointer config folder");
+            return builder.buildFuture();
+        };
+    }
+
+    private SuggestionProvider<FabricClientCommandSource> suggestGroupNames() {
+        return (ctx, builder) -> {
+            Zone zone = manager.currentZone();
+            if (zone != null) {
+                suggestText(builder, "Route -- " + zone.displayName().toLowerCase(Locale.ROOT),
+                        "default route name for current zone");
+            }
+            suggestText(builder, "Route", "generic route name");
+            return builder.buildFuture();
+        };
+    }
+
     /**
      * Shared helper: emit integer suggestions 0..count-1 that match the prefix
      * the user has typed so far, each annotated with a tooltip produced by
@@ -287,10 +343,19 @@ public final class WaypointerCommands {
         return builder.buildFuture();
     }
 
+    private static void suggestText(SuggestionsBuilder builder, String value, String tooltip) {
+        if (value == null || value.isBlank()) return;
+        if (value.toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
+            builder.suggest(value, Component.literal(tooltip));
+        }
+    }
+
     private static String describeWaypoint(Waypoint w) {
         String coords = w.x() + ", " + w.y() + ", " + w.z();
         return w.hasName() ? w.name() + "  " + coords : coords;
     }
+
+    private enum Axis { X, Y, Z }
 
     // --- subcommands --------------------------------------------------------------------------
 
@@ -580,10 +645,7 @@ public final class WaypointerCommands {
      *     log off" contract the chat context implies.
      */
     private int runAddTempAt(FabricClientCommandSource src, int x, int y, int z) {
-        WaypointGroup target = manager.getOrCreateTempGroup();
-        Waypoint w = Waypoint.at(x, y, z).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L);
-        target.add(w);
-        manager.fireDataChanged();
+        WaypointGroup target = manager.addTempWaypoint(x, y, z);
 
         success(src, "Added temp waypoint to \"" + target.name()
                 + "\" at " + x + ", " + y + ", " + z + " (expires on disconnect)");

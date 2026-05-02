@@ -4,10 +4,13 @@ import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Zone;
 import dev.ethan.waypointer.dungeon.config.DungeonConfig;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.Entity;
@@ -107,6 +110,14 @@ public final class DungeonStateTracker {
     public DungeonRoom currentRoom()       { return currentRoom; }
     public Direction directionOverride()   { return directionOverride; }
 
+    public void applyCurrentRoomDefinition(String id, String name) {
+        DungeonRoom prev = currentRoom;
+        if (prev == null) return;
+        DungeonRoom updated = prev.withDefinition(id, name);
+        currentRoom = updated;
+        fireRoomChanged(updated);
+    }
+
     /** Cycle the active room's assumed direction. Resets to config default when null. */
     public void setDirectionOverride(Direction dir) {
         this.directionOverride = dir;
@@ -119,7 +130,9 @@ public final class DungeonStateTracker {
                     dir == null ? defaultDirection() : dir,
                     prev.physicalCornerX(),
                     prev.physicalCornerZ(),
-                    prev.segments());
+                    prev.segments(),
+                    prev.roomId(),
+                    prev.roomName());
             currentRoom = rotated;
             fireRoomChanged(rotated);
         }
@@ -128,7 +141,9 @@ public final class DungeonStateTracker {
     // ---- zone -> dungeon state -----------------------------------------
 
     private void onZoneChanged(Zone zone) {
-        boolean nowDungeon = zone != null && zone.id() != null && zone.id().startsWith("dungeon_");
+        boolean nowDungeon = zone != null
+                && zone.id() != null
+                && (zone.id().equals("dungeon") || zone.id().startsWith("dungeon_"));
         if (nowDungeon == inDungeon) return;
         inDungeon = nowDungeon;
         // Reset every cached anchor so a re-entry picks them up fresh -- the
@@ -185,7 +200,7 @@ public final class DungeonStateTracker {
         // Flood-fill segments to find the room's full footprint, then build
         // the immutable DungeonRoom record.
         List<int[]> mapSegments = DungeonMapMath.floodSegments(map, mapPixel[0], mapPixel[1], mapRoomSize, color);
-        DungeonRoom built = buildRoom(type, mapSegments);
+        DungeonRoom built = buildRoom(type, mapSegments, level);
         if (built == null) return;
 
         DungeonRoom prev = currentRoom;
@@ -195,7 +210,7 @@ public final class DungeonStateTracker {
         }
     }
 
-    private DungeonRoom buildRoom(DungeonRoomType type, List<int[]> mapSegments) {
+    private DungeonRoom buildRoom(DungeonRoomType type, List<int[]> mapSegments, ClientLevel level) {
         if (mapSegments.isEmpty()) return null;
 
         // Convert each map-pixel segment to its physical NW corner so shape
@@ -225,7 +240,10 @@ public final class DungeonStateTracker {
 
         Direction dir = directionOverride != null ? directionOverride : defaultDirection();
         int[] corner = DungeonMapMath.physicalCorner(dir, minSegX, minSegZ, maxSegX, maxSegZ);
-        return new DungeonRoom(type, shape, dir, corner[0], corner[1], packed);
+        DungeonRoom room = new DungeonRoom(type, shape, dir, corner[0], corner[1], packed);
+        return DungeonRoomData.withMatchedDefinition(room, (x, y, z) ->
+                BuiltInRegistries.BLOCK.getKey(level.getBlockState(new BlockPos(x, y, z)).getBlock())
+                        .toString());
     }
 
     // ---- anchors -------------------------------------------------------

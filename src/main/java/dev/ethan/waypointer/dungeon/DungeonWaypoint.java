@@ -21,6 +21,7 @@ public record DungeonWaypoint(
         String id,
         int secretIndex,
         DungeonSecretCategory category,
+        DungeonWaypointTrigger trigger,
         int x, int y, int z,
         String name,
         List<DungeonHighlight> highlights) {
@@ -28,8 +29,15 @@ public record DungeonWaypoint(
     public DungeonWaypoint {
         Objects.requireNonNull(id, "id");
         if (category == null) category = DungeonSecretCategory.DEFAULT;
+        if (trigger == null) trigger = defaultTrigger(category);
         name = name == null ? "" : name;
         highlights = highlights == null ? List.of() : List.copyOf(highlights);
+    }
+
+    public DungeonWaypoint(String id, int secretIndex, DungeonSecretCategory category,
+                           int x, int y, int z, String name,
+                           List<DungeonHighlight> highlights) {
+        this(id, secretIndex, category, defaultTrigger(category), x, y, z, name, highlights);
     }
 
     /** Builder helper for waypoints that have no highlights. */
@@ -43,4 +51,29 @@ public record DungeonWaypoint(
     public boolean hasName() { return !name.isEmpty(); }
 
     public int color() { return category.defaultColor; }
+
+    public DungeonWaypoint withTrigger(DungeonWaypointTrigger next) {
+        return new DungeonWaypoint(id, secretIndex, category, next, x, y, z, name, highlights);
+    }
+
+    public DungeonWaypoint withPosition(int nx, int ny, int nz) {
+        return new DungeonWaypoint(id, secretIndex, category, trigger, nx, ny, nz, name, highlights);
+    }
+
+    public DungeonWaypoint withHighlights(List<DungeonHighlight> next) {
+        return new DungeonWaypoint(id, secretIndex, category, trigger, x, y, z, name, next);
+    }
+
+    public static DungeonWaypointTrigger defaultTrigger(DungeonSecretCategory category) {
+        if (category == null) return DungeonWaypointTrigger.MANUAL;
+        return switch (category) {
+            case CHEST, WITHER, REDSTONE_KEY -> DungeonWaypointTrigger.OPEN_CHEST;
+            case LEVER -> DungeonWaypointTrigger.FLIP_LEVER;
+            case ITEM -> DungeonWaypointTrigger.PICKUP_ITEM;
+            case BAT -> DungeonWaypointTrigger.KILL_BAT;
+            case SUPERBOOM -> DungeonWaypointTrigger.USE_SUPERBOOM;
+            case STONK, DUNGEONBREAKER -> DungeonWaypointTrigger.BREAK_BLOCKS;
+            default -> DungeonWaypointTrigger.MANUAL;
+        };
+    }
 }

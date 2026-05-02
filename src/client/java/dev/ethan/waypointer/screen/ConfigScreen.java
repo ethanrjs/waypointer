@@ -93,8 +93,8 @@ public final class ConfigScreen extends Screen {
         addNumberRow(col1, y, colW, "Label height offset (blocks)",
                 config.labelHeightOffset(), config::setLabelHeightOffset,
                 "Extra blocks to push each waypoint label above its marker. 0 keeps the\n"
-              + "default placement; raise it (e.g. 3-5) so labels stop covering the box\n"
-              + "when viewed from far away. Range -2 to +10.");
+              + "default placement. Use large values if distant labels still cover the\n"
+              + "box; finite numbers only, no arbitrary clamp.");
         y += rowH;
         addBoxStyleRow(col1, y, colW);
 
@@ -110,6 +110,11 @@ public final class ConfigScreen extends Screen {
         addBoolRow(col2, y2, "Chat coord detection", config.chatCoordDetection(), config::setChatCoordDetection,
                 "Scans incoming chat for coordinates and can offer quick-add flows for\n"
               + "temporary or permanent waypoints (no effect when chat has no coords).");
+        y2 += rowH;
+        addBoolRow(col2, y2, "Auto-add chat temp waypoints",
+                config.autoAddChatTempWaypoints(), config::setAutoAddChatTempWaypoints,
+                "When chat coord detection finds a coordinate, immediately creates a\n"
+              + "session-scoped temp waypoint. Turn off to keep click-to-add behavior only.");
         y2 += rowH;
         addBoolRow(col2, y2, "Chat codec detection (imports)",
                 config.chatCodecDetection(), config::setChatCodecDetection,
@@ -267,7 +272,10 @@ public final class ConfigScreen extends Screen {
     }
 
     private static String stripTrailingZeros(double v) {
-        if (v == Math.floor(v)) return Integer.toString((int) v);
+        if (v == Math.floor(v)) {
+            String raw = Double.toString(v);
+            return raw.endsWith(".0") ? raw.substring(0, raw.length() - 2) : raw;
+        }
         return String.format("%.2f", v);
     }
 }

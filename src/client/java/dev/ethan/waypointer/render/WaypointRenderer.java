@@ -10,8 +10,6 @@ import dev.ethan.waypointer.core.WaypointGroup;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -117,7 +115,7 @@ public final class WaypointRenderer implements HudElement {
     }
 
     public void install() {
-        WorldRenderEvents.END_MAIN.register(this::onWorldRender);
+        RenderEventCompat.registerEndMain("waypoints", this::onWorldRender);
         // Attaching before CHAT inherits chat's render condition, which means the
         // labels respect the "hide GUI" (F1) toggle the same way chat does. That
         // matches player expectation for any in-world HUD overlay.
@@ -135,11 +133,11 @@ public final class WaypointRenderer implements HudElement {
      */
     private static final float FILLED_ALPHA_SCALE = 0.35f;
 
-    private void onWorldRender(WorldRenderContext ctx) {
+    private void onWorldRender(Object ctx) {
         var groups = manager.activeGroups();
         if (groups.isEmpty()) return;
 
-        MultiBufferSource buffers = ctx.consumers();
+        MultiBufferSource buffers = RenderEventCompat.bufferSource(ctx);
         if (buffers == null) return;
 
         WaypointerConfig.BoxStyle style = config.boxStyle();
@@ -147,7 +145,8 @@ public final class WaypointRenderer implements HudElement {
         boolean drawFill  = style != WaypointerConfig.BoxStyle.OUTLINED;
         if (!drawLines && !drawFill) return;
 
-        PoseStack ps = ctx.matrices();
+        PoseStack ps = RenderEventCompat.poseStack(ctx);
+        if (ps == null) return;
         Vec3 camPos = Minecraft.getInstance().gameRenderer.getMainCamera().position();
 
         ps.pushPose();
