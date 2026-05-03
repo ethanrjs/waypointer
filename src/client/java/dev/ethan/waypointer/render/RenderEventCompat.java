@@ -39,6 +39,19 @@ public final class RenderEventCompat {
                     listenerType.getClassLoader(),
                     new Class<?>[] { listenerType },
                     (proxy, method, args) -> {
+                        if (method.getDeclaringClass() == Object.class) {
+                            return switch (method.getName()) {
+                                case "hashCode" -> System.identityHashCode(proxy);
+                                case "equals" ->
+                                        proxy == (args != null && args.length > 0 ? args[0] : null);
+                                case "toString" ->
+                                        listenerType.getName()
+                                                + "@"
+                                                + Integer.toHexString(
+                                                        System.identityHashCode(proxy));
+                                default -> null;
+                            };
+                        }
                         if (args != null && args.length > 0) callback.accept(args[0]);
                         return null;
                     });

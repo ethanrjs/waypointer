@@ -5,9 +5,9 @@ import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
-import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.ethan.waypointer.Waypointer;
+import dev.ethan.waypointer.commands.CommandSuggestionHelpers;
 import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomDefinition;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomFingerprint;
@@ -23,7 +23,6 @@ import net.minecraft.network.chat.Component;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.CompletableFuture;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
@@ -223,10 +222,10 @@ public final class DungeonCommands {
                 String generated = room.hasRoomId()
                         ? room.roomId()
                         : "room-" + Math.abs(room.identityKey().hashCode());
-                suggestText(builder, generated, "current detected room");
+                CommandSuggestionHelpers.suggestText(builder, generated, "current detected room");
             }
             for (DungeonRoomDefinition definition : DungeonRoomData.customDefinitions()) {
-                suggestText(builder, definition.id(), definition.displayName());
+                CommandSuggestionHelpers.suggestText(builder, definition.id(), definition.displayName());
             }
             return builder.buildFuture();
         };
@@ -235,7 +234,7 @@ public final class DungeonCommands {
     private SuggestionProvider<FabricClientCommandSource> suggestCategories() {
         return (ctx, builder) -> {
             for (DungeonSecretCategory category : DungeonSecretCategory.values()) {
-                suggestText(builder, category.id, "secret category");
+                CommandSuggestionHelpers.suggestText(builder, category.id, "secret category");
             }
             return builder.buildFuture();
         };
@@ -244,7 +243,7 @@ public final class DungeonCommands {
     private SuggestionProvider<FabricClientCommandSource> suggestCurrentRoomNames() {
         return (ctx, builder) -> {
             DungeonRoom room = tracker.currentRoom();
-            if (room != null) suggestText(builder, room.displayName(), "current room display name");
+            if (room != null) CommandSuggestionHelpers.suggestText(builder, room.displayName(), "current room display name");
             return builder.buildFuture();
         };
     }
@@ -258,15 +257,15 @@ public final class DungeonCommands {
                 categoryId = "secret";
             }
             DungeonSecretCategory category = DungeonSecretCategory.fromId(categoryId);
-            suggestText(builder, category.id + " secret", "category-based name");
+            CommandSuggestionHelpers.suggestText(builder, category.id + " secret", "category-based name");
             if (category == DungeonSecretCategory.SUPERBOOM) {
-                suggestText(builder, "Superboom wall", "common superboom marker");
+                CommandSuggestionHelpers.suggestText(builder, "Superboom wall", "common superboom marker");
             } else if (category == DungeonSecretCategory.DUNGEONBREAKER) {
-                suggestText(builder, "Break tunnel", "common dungeonbreaker marker");
+                CommandSuggestionHelpers.suggestText(builder, "Break tunnel", "common dungeonbreaker marker");
             } else if (category == DungeonSecretCategory.LEVER) {
-                suggestText(builder, "Lever", "common lever marker");
+                CommandSuggestionHelpers.suggestText(builder, "Lever", "common lever marker");
             } else if (category == DungeonSecretCategory.CHEST) {
-                suggestText(builder, "Chest", "common chest marker");
+                CommandSuggestionHelpers.suggestText(builder, "Chest", "common chest marker");
             }
             return builder.buildFuture();
         };
@@ -276,7 +275,7 @@ public final class DungeonCommands {
         return (ctx, builder) -> {
             DungeonRoomDefinition definition = currentDefinition();
             if (definition == null) return builder.buildFuture();
-            return suggestIndexed(builder, definition.waypoints().size(),
+            return CommandSuggestionHelpers.suggestIndexed(builder, definition.waypoints().size(),
                     i -> describeWaypoint(definition.waypoints().get(i)));
         };
     }
@@ -295,7 +294,7 @@ public final class DungeonCommands {
                 return builder.buildFuture();
             }
             List<DungeonHighlight> highlights = definition.waypoints().get(waypointIndex).highlights();
-            return suggestIndexed(builder, highlights.size(),
+            return CommandSuggestionHelpers.suggestIndexed(builder, highlights.size(),
                     i -> describeHighlight(highlights.get(i)));
         };
     }
@@ -322,26 +321,6 @@ public final class DungeonCommands {
         DungeonRoom room = tracker.currentRoom();
         if (room == null || !room.hasRoomId()) return null;
         return DungeonRoomData.definition(room.roomId());
-    }
-
-    private static CompletableFuture<Suggestions> suggestIndexed(
-            SuggestionsBuilder builder, int count,
-            java.util.function.IntFunction<String> tooltipFor) {
-        String prefix = builder.getRemaining();
-        for (int i = 0; i < count; i++) {
-            String value = Integer.toString(i);
-            if (value.startsWith(prefix)) {
-                builder.suggest(i, Component.literal(tooltipFor.apply(i)));
-            }
-        }
-        return builder.buildFuture();
-    }
-
-    private static void suggestText(SuggestionsBuilder builder, String value, String tooltip) {
-        if (value == null || value.isBlank()) return;
-        if (value.toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
-            builder.suggest(value, Component.literal(tooltip));
-        }
     }
 
     private static String describeWaypoint(DungeonWaypoint waypoint) {
@@ -607,13 +586,15 @@ public final class DungeonCommands {
     }
 
     private int runBreakBoxAdd(FabricClientCommandSource src, int waypointIndex) {
-        DungeonRoom room = requireAuthoredRoom(src);
         int result = runHighlightAdd(src, waypointIndex, DungeonHighlightStyle.OUTLINE_FILLED);
-        if (result == 1 && room != null) {
-            DungeonRoomData.setWaypointTrigger(room.roomId(), waypointIndex,
-                    DungeonWaypointTrigger.DUNGEONBREAKER);
-            success(src, "Waypoint [" + waypointIndex
-                    + "] now uses dungeonbreaker trigger for its break boxes.");
+        if (result == 1) {
+            DungeonRoom room = tracker.currentRoom();
+            if (room != null && room.hasRoomId()) {
+                DungeonRoomData.setWaypointTrigger(room.roomId(), waypointIndex,
+                        DungeonWaypointTrigger.DUNGEONBREAKER);
+                success(src, "Waypoint [" + waypointIndex
+                        + "] now uses dungeonbreaker trigger for its break boxes.");
+            }
         }
         return result;
     }
