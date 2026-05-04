@@ -108,6 +108,33 @@ class ProximityAdvanceTest {
         assertEquals(Waypoint.TEMP_NONE, g.get(0).tempMode());
     }
 
+    @Test
+    void static_reach_tracking_hides_visited_waypoints_without_advancing_route() {
+        WaypointGroup g = line();
+        g.setLoadMode(WaypointGroup.LoadMode.STATIC);
+
+        assertTrue(ProximityTracker.markReachedStaticWaypoints(g, 20.5, 0.5, 0.5));
+
+        assertEquals(0, g.currentIndex());
+        assertFalse(g.isStaticWaypointReached(0));
+        assertTrue(g.isStaticWaypointReached(2));
+    }
+
+    @Test
+    void static_reach_tracking_resets_after_every_waypoint_is_reached() {
+        WaypointGroup g = line();
+        g.setLoadMode(WaypointGroup.LoadMode.STATIC);
+
+        assertTrue(ProximityTracker.markReachedStaticWaypoints(g, 0.5, 0.5, 0.5));
+        assertTrue(ProximityTracker.markReachedStaticWaypoints(g, 10.5, 0.5, 0.5));
+        assertTrue(ProximityTracker.markReachedStaticWaypoints(g, 20.5, 0.5, 0.5));
+        assertTrue(ProximityTracker.markReachedStaticWaypoints(g, 30.5, 0.5, 0.5));
+
+        for (int i = 0; i < g.size(); i++) {
+            assertFalse(g.isStaticWaypointReached(i));
+        }
+    }
+
     private static boolean ProximityAdvanceTester(WaypointGroup g, double px, double py, double pz) {
         return ProximityTracker.advanceIfReached(g, px, py, pz);
     }
