@@ -162,8 +162,12 @@ public final class WaypointerKeybinds {
     }
 
     private void openNamedWaypointPrompt(Minecraft mc) {
-        if (mc.player == null) return;
-        AddNamedWaypointScreen.open(null, manager, config, null);
+        LocalPlayer p = mc.player;
+        if (p == null) return;
+        int x = (int) Math.floor(p.getX());
+        int y = (int) Math.floor(p.getY());
+        int z = (int) Math.floor(p.getZ());
+        AddNamedWaypointScreen.openAt(null, manager, config, null, x, y, z);
     }
 
     /**

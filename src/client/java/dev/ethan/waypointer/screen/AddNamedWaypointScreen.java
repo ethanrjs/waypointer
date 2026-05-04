@@ -35,22 +35,44 @@ public final class AddNamedWaypointScreen extends Screen {
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
     private final WaypointGroup targetGroup;
+    /** When true, waypoint coords come from {@link #fixedX}/{@link #fixedY}/{@link #fixedZ} (keybind press). */
+    private final boolean useFixedPosition;
+    private final int fixedX;
+    private final int fixedY;
+    private final int fixedZ;
 
     private EditBox nameBox;
 
     public AddNamedWaypointScreen(Screen parent, ActiveGroupManager manager,
                                   WaypointerConfig config, WaypointGroup targetGroup) {
+        this(parent, manager, config, targetGroup, false, 0, 0, 0);
+    }
+
+    private AddNamedWaypointScreen(Screen parent, ActiveGroupManager manager,
+                                   WaypointerConfig config, WaypointGroup targetGroup,
+                                   boolean useFixedPosition, int fixedX, int fixedY, int fixedZ) {
         super(Component.literal("Create Named Waypoint"));
         this.parent = parent;
         this.manager = manager;
         this.config = config;
         this.targetGroup = targetGroup;
+        this.useFixedPosition = useFixedPosition;
+        this.fixedX = fixedX;
+        this.fixedY = fixedY;
+        this.fixedZ = fixedZ;
     }
 
     public static void open(Screen parent, ActiveGroupManager manager,
                             WaypointerConfig config, WaypointGroup targetGroup) {
         Minecraft.getInstance().setScreen(
                 new AddNamedWaypointScreen(parent, manager, config, targetGroup));
+    }
+
+    public static void openAt(Screen parent, ActiveGroupManager manager,
+                              WaypointerConfig config, WaypointGroup targetGroup,
+                              int x, int y, int z) {
+        Minecraft.getInstance().setScreen(
+                new AddNamedWaypointScreen(parent, manager, config, targetGroup, true, x, y, z));
     }
 
     @Override
@@ -99,15 +121,23 @@ public final class AddNamedWaypointScreen extends Screen {
     }
 
     private void createAndClose() {
-        LocalPlayer player = Minecraft.getInstance().player;
-        if (player == null) {
-            onClose();
-            return;
+        int x;
+        int y;
+        int z;
+        if (useFixedPosition) {
+            x = fixedX;
+            y = fixedY;
+            z = fixedZ;
+        } else {
+            LocalPlayer player = Minecraft.getInstance().player;
+            if (player == null) {
+                onClose();
+                return;
+            }
+            x = (int) Math.floor(player.getX());
+            y = (int) Math.floor(player.getY());
+            z = (int) Math.floor(player.getZ());
         }
-
-        int x = (int) Math.floor(player.getX());
-        int y = (int) Math.floor(player.getY());
-        int z = (int) Math.floor(player.getZ());
         WaypointGroup target = targetGroup == null ? manager.getOrCreateActiveGroup() : targetGroup;
 
         target.add(new Waypoint(x, y, z, nameBox.getValue().trim(),
