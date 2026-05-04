@@ -606,13 +606,15 @@ public final class DungeonCommands {
     }
 
     private int runBreakBoxAdd(FabricClientCommandSource src, int waypointIndex) {
-        DungeonRoom room = requireAuthoredRoom(src);
         int result = runHighlightAdd(src, waypointIndex, DungeonHighlightStyle.OUTLINE_FILLED);
-        if (result == 1 && room != null) {
-            DungeonRoomData.setWaypointTrigger(room.roomId(), waypointIndex,
-                    DungeonWaypointTrigger.DUNGEONBREAKER);
-            success(src, "Waypoint [" + waypointIndex
-                    + "] now uses dungeonbreaker trigger for its break boxes.");
+        if (result == 1) {
+            DungeonRoom room = tracker.currentRoom();
+            if (room != null) {
+                DungeonRoomData.setWaypointTrigger(room.roomId(), waypointIndex,
+                        DungeonWaypointTrigger.DUNGEONBREAKER);
+                success(src, "Waypoint [" + waypointIndex
+                        + "] now uses dungeonbreaker trigger for its break boxes.");
+            }
         }
         return result;
     }

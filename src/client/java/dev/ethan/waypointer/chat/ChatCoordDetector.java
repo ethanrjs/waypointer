@@ -71,7 +71,8 @@ public final class ChatCoordDetector {
             }
         }
 
-        return rebuildWithHighlights(msg, matches, flat);
+        return rebuildWithHighlights(msg, matches, flat,
+                config.autoAddChatTempWaypoints());
     }
 
     /**
@@ -81,8 +82,9 @@ public final class ChatCoordDetector {
      * underline + click event (hover wraps both).
      */
     private static Component rebuildWithHighlights(Component msg, List<CoordScanner.Match> matches,
-                                                   String flatText) {
-        Builder builder = new Builder(matches, flatText);
+                                                   String flatText,
+                                                   boolean chatTempAlreadyAutoAdded) {
+        Builder builder = new Builder(matches, flatText, chatTempAlreadyAutoAdded);
         // visit() walks the full styled-run tree and returns Optional.empty() on
         // success; we rely on that to feed every substring into our builder in order.
         msg.visit((style, content) -> {
@@ -104,10 +106,13 @@ public final class ChatCoordDetector {
         private int cursor;        // absolute offset in flat text
         private int matchIdx;      // index into matches list
         private final MutableComponent out = Component.empty();
+        private final boolean chatTempAlreadyAutoAdded;
 
-        Builder(List<CoordScanner.Match> matches, String flatText) {
+        Builder(List<CoordScanner.Match> matches, String flatText,
+                boolean chatTempAlreadyAutoAdded) {
             this.matches = matches;
             this.flatText = flatText;
+            this.chatTempAlreadyAutoAdded = chatTempAlreadyAutoAdded;
         }
 
         void append(Style style, String content) {
@@ -138,7 +143,8 @@ public final class ChatCoordDetector {
                 int sliceStart = Math.max(localStart, preStartLocal);
                 if (matchEndLocal > sliceStart) {
                     String slice = content.substring(sliceStart, matchEndLocal);
-                    out.append(Component.literal(slice).setStyle(chipStyle(style, m, flatText)));
+                    out.append(Component.literal(slice).setStyle(chipStyle(style, m, flatText,
+                            chatTempAlreadyAutoAdded)));
                     localStart = matchEndLocal;
                 }
 
@@ -164,16 +170,26 @@ public final class ChatCoordDetector {
      * font / insertion / shadow so server-side formatting isn't clobbered, then
      * force aqua + underline + click + hover so the coord reads as a button.
      */
-    private static Style chipStyle(Style base, CoordScanner.Match m, String flatText) {
+    private static Style chipStyle(Style base, CoordScanner.Match m, String flatText,
+            boolean chatTempAlreadyAutoAdded) {
         // Target the temp variant so the waypoint auto-cleans on disconnect --
         // see the class javadoc for why chat-shared coords default to
         // session-scoped rather than permanent.
+        Style styled = base
+                .withColor(ChatFormatting.AQUA)
+                .withUnderlined(true);
+        if (chatTempAlreadyAutoAdded) {
+            // Auto-add already created these temps; omit click so the chip cannot
+            // add a second identical waypoint to the same temp group.
+            return styled.withHoverEvent(new HoverEvent.ShowText(
+                    Component.literal("Temp waypoint already added at "
+                            + m.x() + ", " + m.y() + ", " + m.z()
+                            + "\n(expires on disconnect)")));
+        }
         String source = senderNameForChatTemp(flatText, m.start());
         String cmd = "/waypointer addtemp at " + m.x() + " " + m.y() + " " + m.z()
                 + (source.isEmpty() ? "" : " " + source);
-        return base
-                .withColor(ChatFormatting.AQUA)
-                .withUnderlined(true)
+        return styled
                 .withClickEvent(new ClickEvent.RunCommand(cmd))
                 .withHoverEvent(new HoverEvent.ShowText(
                         Component.literal("Add temp waypoint at "
