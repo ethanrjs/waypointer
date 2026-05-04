@@ -75,6 +75,12 @@ public final class WaypointGroup {
     // so "next" is visually the calmest point on a route.
     private int gradientStartColor = 0x00BFFF;
     private int gradientEndColor   = 0xFF3040;
+    /**
+     * Session-only reach state for static-route cycling. Unlike currentIndex,
+     * this is unordered: a static map overlay lets the player visit points in
+     * any order, hiding each one until the whole set has been touched.
+     */
+    private transient boolean[] staticReached;
 
     public WaypointGroup(String id, String name, String zoneId) {
         this.id = Objects.requireNonNull(id);
@@ -217,12 +223,14 @@ public final class WaypointGroup {
 
     public void add(Waypoint w) {
         waypoints.add(w);
+        staticReached = null;
         applyGradientIfAuto();
     }
 
     public void insert(int index, Waypoint w) {
         waypoints.add(index, w);
         if (index <= currentIndex) currentIndex++;
+        staticReached = null;
         applyGradientIfAuto();
     }
 
@@ -230,6 +238,7 @@ public final class WaypointGroup {
         waypoints.remove(index);
         if (currentIndex > index) currentIndex--;
         currentIndex = Math.min(currentIndex, waypoints.size());
+        staticReached = null;
         applyGradientIfAuto();
     }
 
@@ -240,6 +249,7 @@ public final class WaypointGroup {
         if (currentIndex == from) currentIndex = to;
         else if (from < currentIndex && to >= currentIndex) currentIndex--;
         else if (from > currentIndex && to <= currentIndex) currentIndex++;
+        staticReached = null;
         applyGradientIfAuto();
     }
 
@@ -263,6 +273,36 @@ public final class WaypointGroup {
 
     public void resetProgress() {
         currentIndex = 0;
+        resetStaticReachState();
+    }
+
+    public boolean isStaticWaypointReached(int index) {
+        return staticReached != null
+                && index >= 0
+                && index < staticReached.length
+                && staticReached[index];
+    }
+
+    /**
+     * Mark one static waypoint as reached. If that completes the visible set,
+     * the cycle immediately resets so every waypoint appears again for the next
+     * pass through the route.
+     */
+    public boolean markStaticWaypointReached(int index) {
+        if (index < 0 || index >= waypoints.size()) return false;
+
+        ensureStaticReachState();
+        if (staticReached[index]) return false;
+
+        staticReached[index] = true;
+        if (allStaticWaypointsReached()) {
+            resetStaticReachState();
+        }
+        return true;
+    }
+
+    public void resetStaticReachState() {
+        staticReached = null;
     }
 
     /**
@@ -313,5 +353,20 @@ public final class WaypointGroup {
 
     private void applyGradientIfAuto() {
         if (gradientMode == GradientMode.AUTO) GradientColorizer.apply(this);
+    }
+
+    private void ensureStaticReachState() {
+        if (staticReached == null || staticReached.length != waypoints.size()) {
+            staticReached = new boolean[waypoints.size()];
+        }
+    }
+
+    private boolean allStaticWaypointsReached() {
+        if (staticReached == null || staticReached.length == 0) return false;
+
+        for (boolean reached : staticReached) {
+            if (!reached) return false;
+        }
+        return true;
     }
 }

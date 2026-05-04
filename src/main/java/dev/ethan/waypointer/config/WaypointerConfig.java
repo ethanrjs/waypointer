@@ -93,6 +93,12 @@ public final class WaypointerConfig {
      */
     private boolean hideTracerOnStaticRoutes = true;
     /**
+     * Optional checklist behavior for STATIC groups: when the player enters a
+     * waypoint's reach radius, that marker hides until every waypoint in the
+     * group has been reached, then the whole group becomes visible again.
+     */
+    private boolean hideReachedStaticWaypointsUntilCycleComplete = false;
+    /**
      * When {@code true}, each waypoint label draws a translucent black rectangle
      * behind its text for readability. Some players find it obtrusive in busy
      * routes where labels stack -- turning it off lets the text sit directly
@@ -287,6 +293,7 @@ public final class WaypointerConfig {
     public boolean showTracer()               { return showTracer; }
     public boolean dimSequenceContextWaypoints() { return dimSequenceContextWaypoints; }
     public boolean hideTracerOnStaticRoutes() { return hideTracerOnStaticRoutes; }
+    public boolean hideReachedStaticWaypointsUntilCycleComplete() { return hideReachedStaticWaypointsUntilCycleComplete; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
     public double labelHeightOffset()         { return labelHeightOffset; }
     public BoxStyle boxStyle()                { return boxStyle == null ? BoxStyle.OUTLINED : boxStyle; }
@@ -319,6 +326,10 @@ public final class WaypointerConfig {
     public void setShowTracer(boolean v)               { this.showTracer = v; save(); }
     public void setDimSequenceContextWaypoints(boolean v) { this.dimSequenceContextWaypoints = v; save(); }
     public void setHideTracerOnStaticRoutes(boolean v) { this.hideTracerOnStaticRoutes = v; save(); }
+    public void setHideReachedStaticWaypointsUntilCycleComplete(boolean v) {
+        this.hideReachedStaticWaypointsUntilCycleComplete = v;
+        save();
+    }
     public void setPreferScoreboardFallback(boolean v) { this.preferScoreboardFallback = v; save(); }
     public void setChatCoordDetection(boolean v)       { this.chatCoordDetection = v; save(); }
     public void setAutoAddChatTempWaypoints(boolean v) { this.autoAddChatTempWaypoints = v; save(); }
