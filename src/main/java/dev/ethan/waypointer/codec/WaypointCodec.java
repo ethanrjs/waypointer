@@ -222,19 +222,18 @@ public final class WaypointCodec {
      * shorthand for chat-typed shortcuts ({@code /wp export names}); GUI flows
      * build options through the {@link Builder} for finer control.
      *
-     * Defaults are everything-on with no label: a fresh export captures exactly
-     * what the sender sees so the recipient can import a faithful copy without
-     * surprise data loss. Toggles let the sender opt out (e.g. drop personal
-     * beacon-hide flags) on a per-export basis.
+     * Defaults keep route structure but drop styling-heavy per-waypoint fields:
+     * shared routes should import into the recipient's palette unless the sender
+     * explicitly opts into exporting colors.
      */
     public static final class Options {
         /** Hard cap on label visible characters; the byte cap is tracked separately. */
         public static final int MAX_LABEL_CHARS = 64;
 
-        /** Everything-on, no label. The recommended default for "share my route as-is". */
-        public static final Options WITH_NAMES = builder().build();
-        /** Everything-on but names stripped -- minimal-payload preset for chat sharing. */
-        public static final Options NO_NAMES   = builder().includeNames(false).build();
+        /** Names included, colors stripped. The recommended default for readable sharing. */
+        public static final Options WITH_NAMES = builder().includeNames(true).build();
+        /** Names and colors stripped -- minimal-payload preset for chat sharing. */
+        public static final Options NO_NAMES   = builder().build();
 
         public final boolean includeNames;
         public final boolean includeColors;
@@ -303,10 +302,10 @@ public final class WaypointCodec {
         }
 
         public static final class Builder {
-            private boolean includeNames         = true;
-            private boolean includeColors        = true;
-            private boolean includeRadii         = true;
-            private boolean includeWaypointFlags = true;
+            private boolean includeNames         = false;
+            private boolean includeColors        = false;
+            private boolean includeRadii         = false;
+            private boolean includeWaypointFlags = false;
             private boolean includeGroupMeta     = true;
             private String  label                = "";
 

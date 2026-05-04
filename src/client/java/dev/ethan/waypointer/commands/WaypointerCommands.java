@@ -887,11 +887,11 @@ public final class WaypointerCommands {
      */
     private WaypointCodec.Options exportOptionsFromConfig() {
         return WaypointCodec.Options.builder()
-                .includeNames(config.exportIncludeNames())
-                .includeColors(config.exportIncludeColors())
-                .includeRadii(config.exportIncludeRadii())
-                .includeWaypointFlags(config.exportIncludeWaypointFlags())
-                .includeGroupMeta(config.exportIncludeGroupMeta())
+                .includeNames(false)
+                .includeColors(false)
+                .includeRadii(false)
+                .includeWaypointFlags(false)
+                .includeGroupMeta(true)
                 .build();
     }
 

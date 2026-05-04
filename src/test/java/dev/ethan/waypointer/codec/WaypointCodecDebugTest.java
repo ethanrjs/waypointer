@@ -197,7 +197,14 @@ class WaypointCodecDebugTest {
         g.add(new Waypoint(40, 70, 40, "",      Waypoint.DEFAULT_COLOR,
                 Waypoint.FLAG_HIDE_BEACON, 0.0));                                 // extended flags only
 
-        List<DecodeDebug.WaypointDebug> wps = WaypointCodec.debugDecode(WaypointCodec.encode(List.of(g)))
+        WaypointCodec.Options full = WaypointCodec.Options.builder()
+                .includeNames(true)
+                .includeColors(true)
+                .includeRadii(true)
+                .includeWaypointFlags(true)
+                .includeGroupMeta(true)
+                .build();
+        List<DecodeDebug.WaypointDebug> wps = WaypointCodec.debugDecode(WaypointCodec.encode(List.of(g), full))
                 .groups().get(0).waypoints();
 
         assertEquals(0, wps.get(0).wpFlagsByte(), "bare waypoint has zero flag byte");

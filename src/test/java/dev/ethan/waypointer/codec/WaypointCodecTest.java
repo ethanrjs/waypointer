@@ -16,6 +16,15 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class WaypointCodecTest {
 
+    private static final WaypointCodec.Options FULL_FIDELITY =
+            WaypointCodec.Options.builder()
+                    .includeNames(true)
+                    .includeColors(true)
+                    .includeRadii(true)
+                    .includeWaypointFlags(true)
+                    .includeGroupMeta(true)
+                    .build();
+
     @Test
     void magic_prefix_is_emitted() {
         String s = WaypointCodec.encode(List.of(sampleGroup("A", "hub")));
@@ -25,7 +34,8 @@ class WaypointCodecTest {
     @Test
     void round_trip_single_group() {
         WaypointGroup before = sampleGroup("Gold Run", "dungeon_f7");
-        List<WaypointGroup> decoded = WaypointCodec.decode(WaypointCodec.encode(List.of(before)));
+        List<WaypointGroup> decoded = WaypointCodec.decode(
+                WaypointCodec.encode(List.of(before), FULL_FIDELITY));
         assertEquals(1, decoded.size());
         assertGroupsEqual(before, decoded.get(0));
     }
@@ -39,7 +49,8 @@ class WaypointCodecTest {
         // currentIndex is intentionally NOT part of the export contract, so we
         // don't exercise it here. The decoded b will start at index 0 regardless.
 
-        List<WaypointGroup> decoded = WaypointCodec.decode(WaypointCodec.encode(List.of(a, b)));
+        List<WaypointGroup> decoded = WaypointCodec.decode(
+                WaypointCodec.encode(List.of(a, b), FULL_FIDELITY));
         assertEquals(2, decoded.size());
         assertGroupsEqual(a, decoded.get(0));
         assertGroupsEqual(b, decoded.get(1));
@@ -108,7 +119,7 @@ class WaypointCodecTest {
                 groups.add(g);
             }
 
-            String encoded = WaypointCodec.encode(groups);
+            String encoded = WaypointCodec.encode(groups, FULL_FIDELITY);
             List<WaypointGroup> decoded = WaypointCodec.decode(encoded);
             assertEquals(groups.size(), decoded.size(), "trial " + trial + " group count");
             for (int i = 0; i < groups.size(); i++) {
@@ -280,7 +291,8 @@ class WaypointCodecTest {
                 Waypoint.FLAG_LOCKED_COLOR | Waypoint.FLAG_HIDE_BEACON, 4.5));
         g.add(new Waypoint(120, 64, 220, "",   0x33CCDE, 0, 0));
 
-        WaypointGroup d = WaypointCodec.decode(WaypointCodec.encode(List.of(g))).get(0);
+        WaypointGroup d = WaypointCodec.decode(
+                WaypointCodec.encode(List.of(g), FULL_FIDELITY)).get(0);
         assertEquals("F7 Terminals", d.name());
         assertEquals("dungeon_f7", d.zoneId());
         assertEquals(WaypointGroup.GradientMode.MANUAL, d.gradientMode());
@@ -586,16 +598,16 @@ class WaypointCodecTest {
         // decode to the same logical group.
         WaypointGroup g = sampleGroup("A", "z");
         WaypointGroup fromVector = WaypointCodec.decode(
-                WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
+                WaypointCodec.encode(List.of(g), FULL_FIDELITY,
                         WaypointCodec.PackingMode.FORCE_VECTOR)).get(0);
         WaypointGroup fromAbsolute = WaypointCodec.decode(
-                WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
+                WaypointCodec.encode(List.of(g), FULL_FIDELITY,
                         WaypointCodec.PackingMode.FORCE_ABSOLUTE)).get(0);
         WaypointGroup fromFixed = WaypointCodec.decode(
-                WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
+                WaypointCodec.encode(List.of(g), FULL_FIDELITY,
                         WaypointCodec.PackingMode.FORCE_FIXED)).get(0);
         WaypointGroup fromFit = WaypointCodec.decode(
-                WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES,
+                WaypointCodec.encode(List.of(g), FULL_FIDELITY,
                         WaypointCodec.PackingMode.FORCE_FIT)).get(0);
         assertGroupsEqual(g, fromVector);
         assertGroupsEqual(g, fromAbsolute);

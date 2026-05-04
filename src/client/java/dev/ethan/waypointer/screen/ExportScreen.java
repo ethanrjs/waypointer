@@ -95,6 +95,9 @@ public final class ExportScreen extends Screen {
     /** Row height for a line of text in the size summary. */
     private static final int LINE_H = 12;
 
+    /** Vertical block above the toggle buttons: section title + helper copy. */
+    private static final int EXPORT_SETTINGS_HEADER_H = LINE_H * 2 + GAP;
+
     /** Fixed width of each toggle button so the row stays scannable across screen sizes. */
     private static final int TOGGLE_W = 96;
 
@@ -161,7 +164,7 @@ public final class ExportScreen extends Screen {
         // users see exactly when they hit the limit instead of being truncated
         // silently at encode time.
         labelInput.setMaxLength(WaypointCodec.Options.MAX_LABEL_CHARS);
-        labelInput.setHint(Component.literal("Label (optional, e.g. 'F7 dragon path')").withStyle(ChatFormatting.DARK_GRAY));
+        labelInput.setHint(Component.literal("Label (optional, e.g. 'Ruby Picko Topaz route')").withStyle(ChatFormatting.DARK_GRAY));
         labelInput.setValue(currentLabel);
         labelInput.setResponder(this::onLabelChanged);
         addRenderableWidget(labelInput);
@@ -171,25 +174,19 @@ public final class ExportScreen extends Screen {
         // to fit them all. Each button's label flips between "X On" / "X Off"
         // and is colored to match the state so the row reads at a glance.
         registerToggle("Names", optsBuilder.includeNames(),
-                "Include each waypoint's display name. Recipients will see the\n"
-              + "labels you typed. Strip if names contain personal info.",
+                "Include waypoint names in export",
                 v -> { optsBuilder.includeNames(v); reencode(); });
         registerToggle("Colors", optsBuilder.includeColors(),
-                "Per-waypoint colors. Strip to share a route the recipient will\n"
-              + "recolor to match their own palette.",
+                "Include waypoint colors in export",
                 v -> { optsBuilder.includeColors(v); reencode(); });
         registerToggle("Radii", optsBuilder.includeRadii(),
-                "Per-waypoint reach radii. Off by default because most routes use\n"
-              + "the group default; only matters when individual waypoints were tuned.",
+                "Include reach radius of each waypoint in export",
                 v -> { optsBuilder.includeRadii(v); reencode(); });
         registerToggle("WP Flags", optsBuilder.includeWaypointFlags(),
-                "Per-waypoint flag bits (currently just 'shown'). Almost always\n"
-              + "default; safe to leave off.",
+                "Per-waypoint flag bits, safe to leave off for now.",
                 v -> { optsBuilder.includeWaypointFlags(v); reencode(); });
         registerToggle("Group Meta", optsBuilder.includeGroupMeta(),
-                "Group-level settings: gradient mode, load mode, custom default\n"
-              + "radius. Strip for a barebones path; recipients will see your\n"
-              + "groups with default settings.",
+                "Include group settings (gradient, ordered/sequenced, etc) in export",
                 v -> { optsBuilder.includeGroupMeta(v); reencode(); });
 
         layoutToggles();
@@ -226,7 +223,7 @@ public final class ExportScreen extends Screen {
      * preview area.
      */
     private void layoutToggles() {
-        int rowY = PAD_OUTER + HEADER_H + BTN_H + GAP;
+        int rowY = PAD_OUTER + HEADER_H + BTN_H + GAP + EXPORT_SETTINGS_HEADER_H;
         int x = PAD_OUTER;
         int rightEdge = width - PAD_OUTER;
 
@@ -325,6 +322,11 @@ public final class ExportScreen extends Screen {
 
         g.drawString(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
         g.drawString(font, subtitle, PAD_OUTER, PAD_OUTER + LINE_H, TEXT_DIM, false);
+
+        int settingsY = PAD_OUTER + HEADER_H + BTN_H + GAP;
+        g.drawString(font, "Export Settings", PAD_OUTER, settingsY, TEXT_DIM, false);
+        g.drawString(font, "Disabling more can make your export text shorter",
+                PAD_OUTER, settingsY + LINE_H, TEXT_MUTED, false);
 
         // Rows after the toggle grid: size summary, then preview. The toggle
         // grid's actual bottom depends on how many rows it wrapped to, so we
@@ -433,11 +435,11 @@ public final class ExportScreen extends Screen {
 
     private static WaypointCodec.Options.Builder builderFromConfig(WaypointerConfig config) {
         return WaypointCodec.Options.builder()
-                .includeNames(config.exportIncludeNames())
-                .includeColors(config.exportIncludeColors())
-                .includeRadii(config.exportIncludeRadii())
-                .includeWaypointFlags(config.exportIncludeWaypointFlags())
-                .includeGroupMeta(config.exportIncludeGroupMeta());
+                .includeNames(false)
+                .includeColors(false)
+                .includeRadii(false)
+                .includeWaypointFlags(false)
+                .includeGroupMeta(true);
     }
 
     @Override
