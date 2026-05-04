@@ -39,6 +39,31 @@ class WaypointImporterTest {
     }
 
     @Test
+    void unwraps_markdown_code_block_around_native_payload() {
+        WaypointGroup g = WaypointGroup.create("Gold", "dungeon_f7");
+        g.add(Waypoint.at(1, 2, 3));
+        String native_ = WaypointCodec.encode(List.of(g));
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny("```\n" + native_ + "\n```");
+
+        assertEquals(WaypointImporter.Source.WAYPOINTER, result.source());
+        assertEquals(1, result.groups().size());
+        assertEquals("dungeon_f7", result.groups().get(0).zoneId());
+    }
+
+    @Test
+    void unwraps_language_tagged_markdown_code_block_around_native_payload() {
+        WaypointGroup g = WaypointGroup.create("Gold", "dungeon_f7");
+        g.add(Waypoint.at(1, 2, 3));
+        String native_ = WaypointCodec.encode(List.of(g));
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny("```text\n" + native_ + "\n```");
+
+        assertEquals(WaypointImporter.Source.WAYPOINTER, result.source());
+        assertEquals(1, result.groups().size());
+    }
+
+    @Test
     void non_waypointer_sources_default_label_to_empty_string() {
         // JSON / Skyblocker / Skytils paths don't carry a Waypointer label, so
         // ImportResult.label() must be an empty string (never null) for them
