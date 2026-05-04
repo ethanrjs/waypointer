@@ -934,9 +934,8 @@ public final class WaypointerCommands {
         return zone == null ? "" : " (" + zone.displayName() + ")";
     }
 
-    // Clipboard access goes through AWT because Minecraft's GLFW clipboard is only safe
-    // to call on the render thread during certain phases. AWT works reliably even from
-    // the client command thread.
+    // Clipboard writes keep the AWT path because they can be triggered from command
+    // callbacks. Reads prefer Minecraft's clipboard so /wp import matches the GUI path.
     private static boolean setClipboard(String text) {
         try {
             Clipboard c = Toolkit.getDefaultToolkit().getSystemClipboard();
@@ -949,6 +948,16 @@ public final class WaypointerCommands {
     }
 
     private static String getClipboard() {
+        try {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc != null && mc.keyboardHandler != null) {
+                String text = mc.keyboardHandler.getClipboard();
+                if (text != null && !text.isBlank()) return text;
+            }
+        } catch (Throwable t) {
+            Waypointer.LOGGER.warn("Minecraft clipboard read failed", t);
+        }
+
         try {
             Clipboard c = Toolkit.getDefaultToolkit().getSystemClipboard();
             Object data = c.getData(DataFlavor.stringFlavor);
