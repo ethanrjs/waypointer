@@ -24,6 +24,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3fc;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -69,6 +70,9 @@ public final class DungeonHighlightRenderer implements HudElement {
     private final DungeonStateTracker tracker;
     private final DungeonConfig config;
     private final DungeonRouteSession session;
+    private final ArrayList<RenderBox> renderBoxes = new ArrayList<>();
+    private final int[] labelWorldScratch = new int[3];
+    private int renderBoxCount;
 
     public DungeonHighlightRenderer(DungeonStateTracker tracker, DungeonConfig config,
                                     DungeonRouteSession session) {
@@ -93,7 +97,10 @@ public final class DungeonHighlightRenderer implements HudElement {
         if (room == null) return;
 
         List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
-        if (waypoints.isEmpty() && !config.drawRoomBounds()) return;
+        boolean drawRoomBounds = config.drawRoomBounds();
+        if (waypoints.isEmpty() && !drawRoomBounds) return;
+        collectRenderBoxes(room, waypoints);
+        if (renderBoxCount == 0 && !drawRoomBounds) return;
 
         MultiBufferSource buffers = ctx.consumers();
         if (buffers == null) return;
@@ -111,73 +118,86 @@ public final class DungeonHighlightRenderer implements HudElement {
         // own getBuffer/endBatch cycle. This is the same constraint the
         // main waypoint renderer respects -- see comment in
         // WaypointRenderer#onWorldRender for the full background.
-        emitFilledBatch(ps, buffers, room, waypoints);
-        emitLineBatch(ps, buffers, room, waypoints);
+        emitFilledBatch(ps, buffers);
+        emitLineBatch(ps, buffers, room, drawRoomBounds);
 
         ps.popPose();
     }
 
-    private void emitFilledBatch(PoseStack ps, MultiBufferSource buffers,
-                                 DungeonRoom room, List<DungeonWaypoint> waypoints) {
+    private void collectRenderBoxes(DungeonRoom room, List<DungeonWaypoint> waypoints) {
+        renderBoxCount = 0;
+        boolean showSecrets = config.showSecretWaypoints();
+        boolean showHighlights = config.showHighlights();
+        boolean showFound = config.showFoundSecrets();
+        boolean activeOnly = "ACTIVE".equalsIgnoreCase(config.routeRenderMode());
+        if (!showSecrets && !showHighlights) return;
+
+        for (DungeonWaypoint wp : waypoints) {
+            DungeonRouteSession.Status status = session.status(room, wp);
+            if (!shouldRender(status, showFound, activeOnly)) continue;
+
+            float parentAlpha = parentAlpha(status);
+            float childAlpha = parentAlpha == FOUND_ALPHA ? FOUND_ALPHA : CHILD_ALPHA;
+            if (showSecrets) {
+                addRenderBox(room, wp.x(), wp.y(), wp.z(), wp.color(),
+                        parentAlpha, DungeonHighlightStyle.OUTLINE_FILLED);
+            }
+            if (showHighlights) {
+                for (DungeonHighlight h : wp.highlights()) {
+                    int color = h.hasOwnColor() ? h.color() : wp.color();
+                    addRenderBox(room, h.x(), h.y(), h.z(), color, childAlpha, h.style());
+                }
+            }
+        }
+    }
+
+    private void addRenderBox(DungeonRoom room, int rx, int ry, int rz,
+                              int color, float alpha, DungeonHighlightStyle style) {
+        RenderBox box = nextRenderBox();
+        DungeonMapMath.relativeToActual(room.direction(), room.physicalCornerX(),
+                room.physicalCornerZ(), rx, ry, rz, box.world);
+        box.color = color;
+        box.alpha = alpha;
+        box.style = style;
+    }
+
+    private RenderBox nextRenderBox() {
+        if (renderBoxCount == renderBoxes.size()) {
+            renderBoxes.add(new RenderBox());
+        }
+        return renderBoxes.get(renderBoxCount++);
+    }
+
+    private void emitFilledBatch(PoseStack ps, MultiBufferSource buffers) {
         RenderType type = WaypointerRenderPipelines.quadsThroughWalls();
         VertexConsumer quads = buffers.getBuffer(type);
         boolean any = false;
-        for (DungeonWaypoint wp : waypoints) {
-            if (!shouldRender(wp, room)) continue;
-            float parentAlpha = parentAlpha(wp, room);
-            float childAlpha = parentAlpha == FOUND_ALPHA ? FOUND_ALPHA : CHILD_ALPHA;
-            if (config.showSecretWaypoints()) {
-                int[] world = DungeonMapMath.relativeToActual(
-                        room.direction(), room.physicalCornerX(), room.physicalCornerZ(),
-                        wp.x(), wp.y(), wp.z());
-                emitFill(quads, ps, world[0], world[1], world[2], wp.color(), parentAlpha);
+        for (int i = 0; i < renderBoxCount; i++) {
+            RenderBox box = renderBoxes.get(i);
+            if (box.style != DungeonHighlightStyle.OUTLINE) {
+                emitFill(quads, ps, box.world[0], box.world[1], box.world[2],
+                        box.color, box.alpha);
                 any = true;
-            }
-            if (config.showHighlights()) {
-                for (DungeonHighlight h : wp.highlights()) {
-                    if (h.style() == DungeonHighlightStyle.OUTLINE) continue;
-                    int[] world = DungeonMapMath.relativeToActual(
-                            room.direction(), room.physicalCornerX(), room.physicalCornerZ(),
-                            h.x(), h.y(), h.z());
-                    int color = h.hasOwnColor() ? h.color() : wp.color();
-                    emitFill(quads, ps, world[0], world[1], world[2], color, childAlpha);
-                    any = true;
-                }
             }
         }
         if (any) RenderHelpers.endBatch(buffers, type);
     }
 
     private void emitLineBatch(PoseStack ps, MultiBufferSource buffers,
-                               DungeonRoom room, List<DungeonWaypoint> waypoints) {
+                               DungeonRoom room, boolean drawRoomBounds) {
         RenderType type = WaypointerRenderPipelines.linesThroughWalls();
         VertexConsumer lines = buffers.getBuffer(type);
         boolean any = false;
-        if (config.drawRoomBounds()) {
+        if (drawRoomBounds) {
             emitRoomBounds(lines, ps, room);
             any = true;
         }
-        for (DungeonWaypoint wp : waypoints) {
-            if (!shouldRender(wp, room)) continue;
-            float parentAlpha = parentAlpha(wp, room);
-            float childAlpha = parentAlpha == FOUND_ALPHA ? FOUND_ALPHA : CHILD_ALPHA;
-            if (config.showSecretWaypoints()) {
-                int[] world = DungeonMapMath.relativeToActual(
-                        room.direction(), room.physicalCornerX(), room.physicalCornerZ(),
-                        wp.x(), wp.y(), wp.z());
-                emitOutline(lines, ps, world[0], world[1], world[2], wp.color(), parentAlpha);
+        for (int i = 0; i < renderBoxCount; i++) {
+            RenderBox box = renderBoxes.get(i);
+            if (box.style != DungeonHighlightStyle.FILLED) {
+                emitOutline(lines, ps, box.world[0], box.world[1], box.world[2],
+                        box.color, box.alpha);
                 any = true;
-            }
-            if (config.showHighlights()) {
-                for (DungeonHighlight h : wp.highlights()) {
-                    if (h.style() == DungeonHighlightStyle.FILLED) continue;
-                    int[] world = DungeonMapMath.relativeToActual(
-                            room.direction(), room.physicalCornerX(), room.physicalCornerZ(),
-                            h.x(), h.y(), h.z());
-                    int color = h.hasOwnColor() ? h.color() : wp.color();
-                    emitOutline(lines, ps, world[0], world[1], world[2], color, childAlpha);
-                    any = true;
-                }
             }
         }
         if (any) RenderHelpers.endBatch(buffers, type);
@@ -224,19 +244,21 @@ public final class DungeonHighlightRenderer implements HudElement {
         Vector3fc fwd = camera.forwardVector();
         int sw = g.guiWidth();
         int sh = g.guiHeight();
+        boolean showFound = config.showFoundSecrets();
+        boolean activeOnly = "ACTIVE".equalsIgnoreCase(config.routeRenderMode());
 
         for (DungeonWaypoint wp : waypoints) {
-            if (!shouldRender(wp, room)) continue;
+            DungeonRouteSession.Status status = session.status(room, wp);
+            if (!shouldRender(status, showFound, activeOnly)) continue;
             String name = wp.hasName() ? wp.name() : wp.category().id;
-            if (session.status(room, wp) == DungeonRouteSession.Status.CURRENT) {
+            if (status == DungeonRouteSession.Status.CURRENT) {
                 name = "Next: " + name;
             }
-            int[] world = DungeonMapMath.relativeToActual(
-                    room.direction(), room.physicalCornerX(), room.physicalCornerZ(),
-                    wp.x(), wp.y(), wp.z());
-            double ax = world[0] + 0.5;
-            double ay = world[1] + LABEL_LIFT;
-            double az = world[2] + 0.5;
+            DungeonMapMath.relativeToActual(room.direction(), room.physicalCornerX(),
+                    room.physicalCornerZ(), wp.x(), wp.y(), wp.z(), labelWorldScratch);
+            double ax = labelWorldScratch[0] + 0.5;
+            double ay = labelWorldScratch[1] + LABEL_LIFT;
+            double az = labelWorldScratch[2] + 0.5;
             double rx = ax - cam.x, ry = ay - cam.y, rz = az - cam.z;
             // Behind-camera cull -- the projection helper still divides by w
             // for points behind the eye, so we have to gate on the dot
@@ -250,15 +272,14 @@ public final class DungeonHighlightRenderer implements HudElement {
         }
     }
 
-    private boolean shouldRender(DungeonWaypoint waypoint, DungeonRoom room) {
-        DungeonRouteSession.Status status = session.status(room, waypoint);
-        if (status == DungeonRouteSession.Status.FOUND && !config.showFoundSecrets()) return false;
-        return !"ACTIVE".equalsIgnoreCase(config.routeRenderMode())
-                || status == DungeonRouteSession.Status.CURRENT;
+    private static boolean shouldRender(DungeonRouteSession.Status status,
+                                        boolean showFound, boolean activeOnly) {
+        if (status == DungeonRouteSession.Status.FOUND && !showFound) return false;
+        return !activeOnly || status == DungeonRouteSession.Status.CURRENT;
     }
 
-    private float parentAlpha(DungeonWaypoint waypoint, DungeonRoom room) {
-        return switch (session.status(room, waypoint)) {
+    private static float parentAlpha(DungeonRouteSession.Status status) {
+        return switch (status) {
             case FOUND -> FOUND_ALPHA;
             case CURRENT -> PARENT_ALPHA;
             case UPCOMING -> UPCOMING_ALPHA;
@@ -272,5 +293,12 @@ public final class DungeonHighlightRenderer implements HudElement {
                 left + width + BACKDROP_PAD_X, top + font.lineHeight - 1 + BACKDROP_PAD_Y,
                 LABEL_BACKDROP_ARGB);
         g.drawString(font, text, left, top, NAME_ARGB, true);
+    }
+
+    private static final class RenderBox {
+        final int[] world = new int[3];
+        int color;
+        float alpha;
+        DungeonHighlightStyle style;
     }
 }
