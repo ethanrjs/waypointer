@@ -330,6 +330,9 @@ public final class WaypointRenderer implements HudElement {
 
     private static String labelFor(WaypointGroup g, int i, Waypoint w, State state) {
         if (w.hasName()) return w.name();
+        if (g.loadMode() == WaypointGroup.LoadMode.STATIC) {
+            return "#" + (i + 1);
+        }
         return state == State.CURRENT
                 ? "Next (" + (i + 1) + "/" + g.size() + ")"
                 : "#" + (i + 1);

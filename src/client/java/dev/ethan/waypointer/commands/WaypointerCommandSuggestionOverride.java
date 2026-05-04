@@ -60,10 +60,10 @@ public final class WaypointerCommandSuggestionOverride {
     }
 
     private static boolean isWaypointerRoot(CommandNode<?> node) {
-        return node != null
-                && node.getChild("add") != null
-                && node.getChild("group") != null
-                && node.getChild("import") != null;
+        if (node == null) return false;
+        // Many unrelated servers expose add/group/import under /wp; Waypointer also
+        // registers importchat and importfile, which is a much tighter signature.
+        return node.getChild("importchat") != null && node.getChild("importfile") != null;
     }
 
     private void replaceWpRoot(CommandNode<ClientSuggestionProvider> targetRoot,
