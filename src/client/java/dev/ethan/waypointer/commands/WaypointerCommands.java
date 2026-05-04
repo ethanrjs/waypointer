@@ -877,8 +877,8 @@ public final class WaypointerCommands {
     }
 
     /**
-     * Default export options reflect the user's config preference. Keeping names off by
-     * default favors chat-shareability; users who want them can run {@code /wp export names}.
+     * Default export options reflect the user's persisted config (see Settings).
+     * Users can still override per field with {@code /wp export names}, etc.
      *
      * The label is intentionally omitted here: the CLI export path doesn't have a
      * good way to prompt for a label, and silently attaching one from config would
@@ -887,11 +887,11 @@ public final class WaypointerCommands {
      */
     private WaypointCodec.Options exportOptionsFromConfig() {
         return WaypointCodec.Options.builder()
-                .includeNames(false)
-                .includeColors(false)
-                .includeRadii(false)
-                .includeWaypointFlags(false)
-                .includeGroupMeta(true)
+                .includeNames(config.exportIncludeNames())
+                .includeColors(config.exportIncludeColors())
+                .includeRadii(config.exportIncludeRadii())
+                .includeWaypointFlags(config.exportIncludeWaypointFlags())
+                .includeGroupMeta(config.exportIncludeGroupMeta())
                 .build();
     }
 
