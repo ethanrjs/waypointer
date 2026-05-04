@@ -118,6 +118,12 @@ public final class ConfigScreen extends Screen {
                 "When on, waypoints you have already reached still draw (usually faded).\n"
               + "When off, completed stops disappear from the world HUD.");
         y2 += rowH;
+        addBoolRow(col2, y2, "Hide reached static waypoints",
+                config.hideReachedStaticWaypointsUntilCycleComplete(),
+                config::setHideReachedStaticWaypointsUntilCycleComplete,
+                "For STATIC groups, hide each waypoint when you enter its reach radius.\n"
+              + "After every waypoint in the group has been reached, all of them show again.");
+        y2 += rowH;
         addBoolRow(col2, y2, "Chat coord detection", config.chatCoordDetection(), config::setChatCoordDetection,
                 "Scans incoming chat for coordinates and can offer quick-add flows for\n"
               + "temporary or permanent waypoints (no effect when chat has no coords).");

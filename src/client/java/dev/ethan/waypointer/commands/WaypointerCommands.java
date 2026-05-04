@@ -82,6 +82,7 @@ public final class WaypointerCommands {
             register(dispatcher, "wptr");
             register(dispatcher, "wp");
         });
+        new WaypointerCommandSuggestionOverride().install();
     }
 
     private void register(CommandDispatcher<FabricClientCommandSource> d, String root) {

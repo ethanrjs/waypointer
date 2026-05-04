@@ -25,6 +25,18 @@ class WaypointCodecTest {
                     .includeGroupMeta(true)
                     .build();
 
+    private static final String LEGACY_V2_SAMPLE = WaypointCodec.MAGIC
+                + "9NEC)tXa-R&pB;-XZcYv:>OTCcUT%MWvWyNh(fK:V)48Ri7YNG^6nQBfSw-seuxx]y/9F^Ag[GiDd?zQ3QD8{XnSR33(3o6&>*5x"
+                + "Ss+fZXP@uK?$}(JOQotG@(9POy-AwI?Ua}B>4s8MNZpP17$v}#?tb+!<*HK:K$0nhGeD!&Woi;Un$Pl[Tg!BeZRr!6*u-V)kNmS4"
+                + "P==fW1elaHF[NI[ar%CokroUX{#MO}?Ga+>qBb6s24OyM1>!T%kT!GJn<T%P4B]#zlBAGup-X:9t0L;]1*aEq=}SZtBq}/zmR1nh"
+                + "q[J2B(#;{O($s}N9%q]gy5QGfMPvfM{$>&lh$]yLQ&f1SvTU+g{vX#P?5boUf}oR3b=k83^Lntz7/}81Zo2oFAu[1o}v?(+/n7*i"
+                + "k%fh{AR6/${wWuPY1g$R]7/#(z%!Pe[xw35-fE1hC1#F3N)}jkI)9IyA0;P{I3az4:Pi<yl/kFU<fUwGnQcVm5PR!kVCGM5:p(zV"
+                + "i&<4H{0Ss^Jmdh/;$kHIO+D8=7^g*0C6#MrTx0Ich[@O}NoNq7ZI%7&+cfQ@BB:no+5u6Z{RMyOZJOMDO{kxy[z:2hjLs8#>JQKU"
+                + "Yf9B$!lOUKDJ2N?tIx7C>A/Hp&nJXI2yHjPGl$nn}0*OYXoN4}M+29^DaA?JZzdQRd%EQ2^[W5V8(#f{vcahp}!aeU?p%MFTdBsH"
+                + "gQt0$Io%SNxfn2i>EAHfJdNVU>cB42F)DVB(]t*:XK}fu3H)]Iftc;#r!X@ANCH]83x@4rOQXR6C*4<EUD}SoxD^$9+Pnm5+VVXx"
+                + "O3qk^V=(z5WvJotkF!)04So1gc/#gM6aS$l9]N+sa%r4pN-D4yb1HZJKqGeGm3e(fwN;495>v-&&WvUGmU@>V7&=7A6xv1qvUf%)"
+                + "RIF}}Hl%nZ688$IaQyT/lk6*5nWFZ12lj-73";
+
     @Test
     void magic_prefix_is_emitted() {
         String s = WaypointCodec.encode(List.of(sampleGroup("A", "hub")));
@@ -54,6 +66,27 @@ class WaypointCodecTest {
         assertEquals(2, decoded.size());
         assertGroupsEqual(a, decoded.get(0));
         assertGroupsEqual(b, decoded.get(1));
+    }
+
+    @Test
+    void decodes_legacy_v2_base85_exports() {
+        WaypointCodec.Decoded decoded = WaypointCodec.decodeFull(LEGACY_V2_SAMPLE);
+        assertEquals("Codec V2", decoded.label());
+        assertEquals(4, decoded.groups().size());
+
+        WaypointGroup first = decoded.groups().get(0);
+        assertEquals("hawcammang", first.name());
+        assertEquals("galatea", first.zoneId());
+        assertEquals(14, first.size());
+
+        WaypointGroup last = decoded.groups().get(3);
+        assertEquals("HideOnLeaf", last.name());
+        assertEquals("galatea", last.zoneId());
+        assertEquals(50, last.size());
+
+        DecodeDebug debug = WaypointCodec.debugDecode(LEGACY_V2_SAMPLE);
+        assertEquals(2, debug.version());
+        assertEquals("ASCII base-85", debug.textEncoding());
     }
 
     @Test
@@ -135,15 +168,15 @@ class WaypointCodecTest {
         String s = WaypointCodec.encode(List.of(g));
         // Density regression guard. JSON for the same 40-point route weighs
         // several kilobytes; the codec should stay well under a quarter of
-        // that on structured data. v2 threshold is 400 chars (= 400 wire
-        // bytes); real output on this fixture is around 330-340, so this
+        // that on structured data. Threshold is 400 chars (= 400 wire
+        // bytes); real output on this fixture is well below that, so this
         // has ~20% slack for dictionary / DEFLATE fluctuations.
         assertTrue(s.length() < 400, "expected packed export < 400 chars, got " + s.length() + ": " + s);
     }
 
     @Test
     void twenty_named_waypoints_fit_in_command_packet() {
-        // Under v2 (base-85, 1 UTF-8 byte per char) the codec string's char
+        // The native text codec uses one UTF-8 byte per char, so char
         // count equals its wire-byte count. The real failure mode is Hypixel's
         // 256-byte ServerboundChatCommandPacket cap: exceeding it disconnects
         // the sender. A 20-waypoint named route is the "reasonable share"
@@ -176,7 +209,7 @@ class WaypointCodecTest {
         String body = s.substring(WaypointCodec.MAGIC.length());
         for (int i = 0; i < body.length(); i++) {
             char c = body.charAt(i);
-            assertTrue(dev.ethan.waypointer.codec.AsciiPackCodec.isAlphabetChar(c),
+            assertTrue(dev.ethan.waypointer.codec.AsciiStreamCodec.isAlphabetChar(c),
                     "body char at " + i + " out of alphabet: '" + c
                             + "' (0x" + Integer.toHexString(c).toUpperCase() + ")");
         }
@@ -243,7 +276,7 @@ class WaypointCodecTest {
 
         String stripped = WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES);
         // Name strings themselves shouldn't be in the payload. We can't see through
-        // deflate+base-85 directly, but we can confirm the output is smaller than a names
+        // deflate+base-93 directly, but we can confirm the output is smaller than a names
         // export, and that the decoded waypoints come back nameless.
         String withNames = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES);
         assertTrue(stripped.length() < withNames.length(),
@@ -423,6 +456,78 @@ class WaypointCodecTest {
                         .includeWaypointFlags(false).includeGroupMeta(false).build()).length();
         assertTrue(stripped < full,
                 "all-toggles-off must beat all-toggles-on; stripped=" + stripped + " full=" + full);
+    }
+
+    @Test
+    void no_optional_waypoint_fields_omit_the_body_block() {
+        WaypointGroup g = WaypointGroup.create("plain", "dungeon_f7");
+        for (int i = 0; i < 20; i++) {
+            g.add(new Waypoint(100 + i, 70, 200 + i, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        }
+
+        DecodeDebug.GroupDebug debug = WaypointCodec.debugDecode(
+                WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES)).groups().get(0);
+
+        assertEquals(0, debug.bodyBlockBytes(),
+                "a route with no optional waypoint fields should not spend one zero flag byte per point");
+        assertEquals(20, debug.waypoints().size(),
+                "debug still materializes default waypoint bodies for inspection");
+    }
+
+    @Test
+    void unique_waypoint_names_are_inlined_instead_of_pooled() {
+        WaypointGroup g = WaypointGroup.create("route", "dungeon_f7");
+        g.add(new Waypoint(0, 70, 0, "alpha", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint(1, 70, 1, "bravo", Waypoint.DEFAULT_COLOR, 0, 0));
+
+        DecodeDebug debug = WaypointCodec.debugDecode(
+                WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES));
+
+        assertFalse(debug.stringPool().contains("alpha"));
+        assertFalse(debug.stringPool().contains("bravo"));
+        assertEquals("alpha", debug.decodedGroups().get(0).get(0).name());
+        assertEquals("bravo", debug.decodedGroups().get(0).get(1).name());
+    }
+
+    @Test
+    void repeated_waypoint_names_still_use_the_string_pool() {
+        WaypointGroup g = WaypointGroup.create("route", "dungeon_f7");
+        g.add(new Waypoint(0, 70, 0, "Terminal", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint(1, 70, 1, "Terminal", Waypoint.DEFAULT_COLOR, 0, 0));
+
+        DecodeDebug debug = WaypointCodec.debugDecode(
+                WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES));
+
+        assertTrue(debug.stringPool().contains("Terminal"),
+                "repeated names should still be pooled so they are stored once");
+        assertEquals("Terminal", debug.decodedGroups().get(0).get(0).name());
+        assertEquals("Terminal", debug.decodedGroups().get(0).get(1).name());
+    }
+
+    @Test
+    void known_zone_ids_use_the_built_in_dictionary() {
+        WaypointGroup g = WaypointGroup.create("route", "dungeon_f7");
+        g.add(Waypoint.at(0, 70, 0));
+
+        DecodeDebug debug = WaypointCodec.debugDecode(
+                WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES));
+
+        assertFalse(debug.stringPool().contains("dungeon_f7"),
+                "known zones should be encoded as dictionary refs, not pool strings");
+        assertEquals("dungeon_f7", debug.decodedGroups().get(0).zoneId());
+    }
+
+    @Test
+    void unknown_zone_ids_still_round_trip_through_the_string_pool() {
+        WaypointGroup g = WaypointGroup.create("route", "custom_event_zone");
+        g.add(Waypoint.at(0, 70, 0));
+
+        DecodeDebug debug = WaypointCodec.debugDecode(
+                WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES));
+
+        assertTrue(debug.stringPool().contains("custom_event_zone"),
+                "unknown zones need the pool so custom/user-created zones survive");
+        assertEquals("custom_event_zone", debug.decodedGroups().get(0).zoneId());
     }
 
     @Test
