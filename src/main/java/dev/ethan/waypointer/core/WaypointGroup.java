@@ -81,6 +81,12 @@ public final class WaypointGroup {
      * any order, hiding each one until the whole set has been touched.
      */
     private transient boolean[] staticReached;
+    /**
+     * Set when a static reach pass completes the full set and clears {@link #staticReached}.
+     * Lets {@link dev.ethan.waypointer.progression.ProximityTracker} stop scanning for the
+     * rest of the tick so every waypoint shows as visible for at least one frame.
+     */
+    private transient boolean staticCycleJustCompleted;
 
     public WaypointGroup(String id, String name, String zoneId) {
         this.id = Objects.requireNonNull(id);
@@ -297,11 +303,23 @@ public final class WaypointGroup {
         staticReached[index] = true;
         if (allStaticWaypointsReached()) {
             resetStaticReachState();
+            staticCycleJustCompleted = true;
         }
         return true;
     }
 
+    /**
+     * Whether this group just finished a static reach cycle on the current tick.
+     * Clears the flag so it is a one-shot signal for callers that batch marks per tick.
+     */
+    public boolean consumeStaticCycleJustCompleted() {
+        boolean v = staticCycleJustCompleted;
+        staticCycleJustCompleted = false;
+        return v;
+    }
+
     public void resetStaticReachState() {
+        staticCycleJustCompleted = false;
         staticReached = null;
     }
 

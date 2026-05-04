@@ -86,7 +86,12 @@ public final class ProximityTracker {
             double dy = (w.y() + 0.5) - py;
             double dz = (w.z() + 0.5) - pz;
             if (dx * dx + dy * dy + dz * dz <= r * r) {
-                changed |= group.markStaticWaypointReached(i);
+                if (group.markStaticWaypointReached(i)) {
+                    changed = true;
+                    if (group.consumeStaticCycleJustCompleted()) {
+                        break;
+                    }
+                }
             }
         }
         return changed;
