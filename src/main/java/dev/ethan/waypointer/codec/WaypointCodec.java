@@ -371,7 +371,7 @@ public final class WaypointCodec {
         try {
             byte[] raw = writeBody(groups, opts, mode);
             byte[] compressed = deflate(raw);
-            return MAGIC + escapeHypixelEmotesForChat(AsciiStreamCodec.encode(compressed));
+            return MAGIC + escapeHypixelEmotes(AsciiStreamCodec.encode(compressed));
         } catch (IOException e) {
             throw new IllegalStateException("codec encode failed", e);
         }
@@ -527,10 +527,6 @@ public final class WaypointCodec {
         DecodedHeader headerOut = new DecodedHeader();
         List<WaypointGroup> groups = readBody(raw, null, headerOut, expectedVersion, false);
         return new Decoded(groups, headerOut.label);
-    }
-
-    private static String escapeHypixelEmotesForChat(String body) {
-        return escapeHypixelEmotes(body);
     }
 
     /**
@@ -1564,7 +1560,7 @@ public final class WaypointCodec {
 
     private static int encodedScore(byte[] raw) {
         try {
-            return escapeHypixelEmotesForChat(AsciiStreamCodec.encode(deflate(raw))).length();
+            return escapeHypixelEmotes(AsciiStreamCodec.encode(deflate(raw))).length();
         } catch (IOException ioe) {
             return Integer.MAX_VALUE;
         }
