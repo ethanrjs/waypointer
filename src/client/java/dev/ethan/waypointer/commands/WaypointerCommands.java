@@ -6,7 +6,6 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
-import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.chat.ChatImportCache;
@@ -43,7 +42,6 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
-import java.util.concurrent.CompletableFuture;
 
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
@@ -225,7 +223,7 @@ public final class WaypointerCommands {
         return (ctx, builder) -> {
             WaypointGroup g = manager.firstActiveGroup();
             if (g == null) return builder.buildFuture();
-            return suggestIndexed(builder, g.size(), i -> describeWaypoint(g.get(i)));
+            return CommandHelpers.suggestIndexed(builder, g.size(), i -> describeWaypoint(g.get(i)));
         };
     }
 
@@ -262,7 +260,7 @@ public final class WaypointerCommands {
     private SuggestionProvider<FabricClientCommandSource> suggestAllGroupIndices() {
         return (ctx, builder) -> {
             List<WaypointGroup> all = manager.allGroupsList();
-            return suggestIndexed(builder, all.size(),
+            return CommandHelpers.suggestIndexed(builder, all.size(),
                     i -> all.get(i).name() + " (" + all.get(i).size() + " pts)");
         };
     }
@@ -305,7 +303,7 @@ public final class WaypointerCommands {
     private SuggestionProvider<FabricClientCommandSource> suggestImportPayloads() {
         return (ctx, builder) -> {
             for (String handle : chatImportCache.handles()) {
-                suggestText(builder, handle, "cached chat import");
+                CommandHelpers.suggestText(builder, handle, "cached chat import");
             }
             return builder.buildFuture();
         };
@@ -313,9 +311,9 @@ public final class WaypointerCommands {
 
     private SuggestionProvider<FabricClientCommandSource> suggestImportFiles() {
         return (ctx, builder) -> {
-            suggestText(builder, storage.file().toString(), "current waypoint storage file");
+            CommandHelpers.suggestText(builder, storage.file().toString(), "current waypoint storage file");
             Path parent = storage.file().getParent();
-            if (parent != null) suggestText(builder, parent.toString(), "waypointer config folder");
+            if (parent != null) CommandHelpers.suggestText(builder, parent.toString(), "waypointer config folder");
             return builder.buildFuture();
         };
     }
@@ -324,38 +322,12 @@ public final class WaypointerCommands {
         return (ctx, builder) -> {
             Zone zone = manager.currentZone();
             if (zone != null) {
-                suggestText(builder, "Route -- " + zone.displayName().toLowerCase(Locale.ROOT),
+                CommandHelpers.suggestText(builder, "Route -- " + zone.displayName().toLowerCase(Locale.ROOT),
                         "default route name for current zone");
             }
-            suggestText(builder, "Route", "generic route name");
+            CommandHelpers.suggestText(builder, "Route", "generic route name");
             return builder.buildFuture();
         };
-    }
-
-    /**
-     * Shared helper: emit integer suggestions 0..count-1 that match the prefix
-     * the user has typed so far, each annotated with a tooltip produced by
-     * {@code tooltipFor}. Brigadier only re-sorts numerically when the raw
-     * suggestion is parseable as an int, so we pass the number as a string
-     * and let the framework handle the ordering.
-     */
-    private static CompletableFuture<Suggestions> suggestIndexed(
-            SuggestionsBuilder builder, int count,
-            java.util.function.IntFunction<String> tooltipFor) {
-        String prefix = builder.getRemaining();
-        for (int i = 0; i < count; i++) {
-            String s = Integer.toString(i);
-            if (!s.startsWith(prefix)) continue;
-            builder.suggest(i, Component.literal(tooltipFor.apply(i)));
-        }
-        return builder.buildFuture();
-    }
-
-    private static void suggestText(SuggestionsBuilder builder, String value, String tooltip) {
-        if (value == null || value.isBlank()) return;
-        if (value.toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
-            builder.suggest(value, Component.literal(tooltip));
-        }
     }
 
     private static String describeWaypoint(Waypoint w) {

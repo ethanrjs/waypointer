@@ -200,7 +200,7 @@ public final class ChatCoordDetector {
     static String senderNameForChatTemp(String flatText, int coordStart) {
         if (flatText == null || flatText.isBlank()) return "";
         int end = Math.max(0, Math.min(coordStart, flatText.length()));
-        int colon = flatText.lastIndexOf(':', end);
+        int colon = indexOfLastSenderColon(flatText, end);
         if (colon < 0) return "";
 
         String prefix = BRACKETED_PREFIX.matcher(flatText.substring(0, colon)).replaceAll(" ");
@@ -208,5 +208,28 @@ public final class ChatCoordDetector {
         String last = "";
         while (matcher.find()) last = matcher.group();
         return last;
+    }
+
+    /**
+     * Last {@code ':'} before {@code beforeIndex} that is not part of a labeled-axis
+     * prefix ({@code x:}/{@code y:}/{@code z:}). Bare coord matches after a labeled
+     * triple would otherwise latch onto {@code z:} and mis-parse the sender token.
+     */
+    private static int indexOfLastSenderColon(String flatText, int beforeIndex) {
+        for (int i = beforeIndex - 1; i >= 0; i--) {
+            if (flatText.charAt(i) != ':') continue;
+            if (isLabeledAxisColon(flatText, i)) continue;
+            return i;
+        }
+        return -1;
+    }
+
+    private static boolean isLabeledAxisColon(String s, int colonIdx) {
+        int j = colonIdx - 1;
+        while (j >= 0 && Character.isWhitespace(s.charAt(j))) j--;
+        if (j < 0) return false;
+        char c = s.charAt(j);
+        if (c != 'x' && c != 'X' && c != 'y' && c != 'Y' && c != 'z' && c != 'Z') return false;
+        return j == 0 || !Character.isLetterOrDigit(s.charAt(j - 1));
     }
 }
