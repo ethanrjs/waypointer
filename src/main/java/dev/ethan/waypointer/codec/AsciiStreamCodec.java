@@ -6,42 +6,52 @@ import java.util.Arrays;
 /**
  * Trailer-free binary-to-text codec for Waypointer chat payloads.
  *
- * <p>The alphabet is every printable one-byte ASCII character except space and
- * {@code '.'}. Space would split/collapse during chat paste, and the period has
- * repeatedly tripped Hypixel's URL-shaped advertising filter. Keeping the
- * alphabet entirely below {@code 0x80} preserves the important invariant that
- * one visible character is one UTF-8 wire byte.
+ * <p>The current alphabet is every printable one-byte ASCII character except
+ * space, {@code '.'}, and backtick. Space would split/collapse during chat
+ * paste, period trips Hypixel's URL-shaped advertising filter, and backticks
+ * make shared payloads awkward in Markdown-heavy surfaces like Discord. Keeping
+ * the alphabet entirely below {@code 0x80} preserves the important invariant
+ * that one visible character is one UTF-8 wire byte.
  *
- * <p>The bit-packing is the basE91 streaming scheme generalized to a 93-symbol
+ * <p>The bit-packing is the basE91 streaming scheme generalized to an arbitrary
  * alphabet. It emits 13 or 14 source bits per two output characters depending
- * on whether the current 14-bit value fits in {@code 93^2}. Unlike the old
- * 4-byte/5-char base-85 packer, this has no pad trailer and round-trips arbitrary
- * byte arrays exactly.
+ * on whether the current 14-bit value fits in {@code alphabetSize^2}. Unlike
+ * the old 4-byte/5-char base-85 packer, this has no pad trailer and round-trips
+ * arbitrary byte arrays exactly.
  */
 public final class AsciiStreamCodec {
 
-    private static final char[] ALPHABET = (
+    private static final Alphabet CURRENT = new Alphabet(
+            "!\"#$%&'()*+,-/0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+          + "[\\]^_abcdefghijklmnopqrstuvwxyz{|}~"
+    );
+
+    private static final Alphabet LEGACY_V3 = new Alphabet(
             "!\"#$%&'()*+,-/0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ"
           + "[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
-    ).toCharArray();
+    );
 
-    private static final int BASE = ALPHABET.length;
-    private static final int TWO_CHAR_VALUES = BASE * BASE;
     private static final int THIRTEEN_BITS = 1 << 13;
-    private static final int FOURTEEN_BIT_THRESHOLD = TWO_CHAR_VALUES - THIRTEEN_BITS - 1;
-
-    private static final int[] DECODE_TABLE = new int[128];
-
-    static {
-        Arrays.fill(DECODE_TABLE, -1);
-        for (int i = 0; i < ALPHABET.length; i++) {
-            DECODE_TABLE[ALPHABET[i]] = i;
-        }
-    }
 
     private AsciiStreamCodec() {}
 
     public static String encode(byte[] input) {
+        return encode(input, CURRENT);
+    }
+
+    static String encodeLegacyV3(byte[] input) {
+        return encode(input, LEGACY_V3);
+    }
+
+    public static byte[] decode(String input) {
+        return decode(input, CURRENT);
+    }
+
+    static byte[] decodeLegacyV3(String input) {
+        return decode(input, LEGACY_V3);
+    }
+
+    private static String encode(byte[] input, Alphabet alphabet) {
         if (input == null) throw new IllegalArgumentException("null input");
         if (input.length == 0) return "";
 
@@ -55,7 +65,7 @@ public final class AsciiStreamCodec {
 
             if (bitCount > 13) {
                 int encoded = (int) (bitBuffer & (THIRTEEN_BITS - 1));
-                if (encoded > FOURTEEN_BIT_THRESHOLD) {
+                if (encoded > alphabet.fourteenBitThreshold()) {
                     bitBuffer >>>= 13;
                     bitCount -= 13;
                 } else {
@@ -63,21 +73,21 @@ public final class AsciiStreamCodec {
                     bitBuffer >>>= 14;
                     bitCount -= 14;
                 }
-                out.append(ALPHABET[encoded % BASE]);
-                out.append(ALPHABET[encoded / BASE]);
+                out.append(alphabet.charAt(encoded % alphabet.base()));
+                out.append(alphabet.charAt(encoded / alphabet.base()));
             }
         }
 
         if (bitCount > 0) {
-            out.append(ALPHABET[(int) (bitBuffer % BASE)]);
-            if (bitCount > 7 || bitBuffer >= BASE) {
-                out.append(ALPHABET[(int) (bitBuffer / BASE)]);
+            out.append(alphabet.charAt((int) (bitBuffer % alphabet.base())));
+            if (bitCount > 7 || bitBuffer >= alphabet.base()) {
+                out.append(alphabet.charAt((int) (bitBuffer / alphabet.base())));
             }
         }
         return out.toString();
     }
 
-    public static byte[] decode(String input) {
+    private static byte[] decode(String input, Alphabet alphabet) {
         if (input == null) throw new IllegalArgumentException("null input");
         if (input.isEmpty()) return new byte[0];
 
@@ -87,7 +97,7 @@ public final class AsciiStreamCodec {
         int pending = -1;
 
         for (int i = 0; i < input.length(); i++) {
-            int digit = digitOf(input.charAt(i));
+            int digit = alphabet.digitOf(input.charAt(i));
             if (digit < 0) {
                 throw new IllegalArgumentException(
                         "invalid character at " + i + ": '" + input.charAt(i) + "'");
@@ -98,9 +108,11 @@ public final class AsciiStreamCodec {
                 continue;
             }
 
-            int encoded = pending + digit * BASE;
+            int encoded = pending + digit * alphabet.base();
             bitBuffer |= (long) encoded << bitCount;
-            bitCount += (encoded & (THIRTEEN_BITS - 1)) > FOURTEEN_BIT_THRESHOLD ? 13 : 14;
+            bitCount += (encoded & (THIRTEEN_BITS - 1)) > alphabet.fourteenBitThreshold()
+                    ? 13
+                    : 14;
 
             while (bitCount >= 8) {
                 out.write((int) (bitBuffer & 0xFF));
@@ -119,20 +131,52 @@ public final class AsciiStreamCodec {
     public static boolean isValidBody(String s) {
         if (s == null || s.isEmpty()) return false;
         for (int i = 0; i < s.length(); i++) {
-            if (!isAlphabetChar(s.charAt(i))) return false;
+            if (!CURRENT.has(s.charAt(i))) return false;
         }
         return true;
     }
 
     public static boolean isAlphabetChar(char c) {
-        return c < DECODE_TABLE.length && DECODE_TABLE[c] >= 0;
+        return CURRENT.has(c) || LEGACY_V3.has(c);
     }
 
     public static int alphabetSize() {
-        return BASE;
+        return CURRENT.base();
     }
 
-    private static int digitOf(char c) {
-        return c < DECODE_TABLE.length ? DECODE_TABLE[c] : -1;
+    static int legacyV3AlphabetSize() {
+        return LEGACY_V3.base();
+    }
+
+    private record Alphabet(char[] chars, int[] decodeTable, int fourteenBitThreshold) {
+        Alphabet(String chars) {
+            this(chars.toCharArray(), buildDecodeTable(chars),
+                    chars.length() * chars.length() - THIRTEEN_BITS - 1);
+        }
+
+        int base() {
+            return chars.length;
+        }
+
+        char charAt(int digit) {
+            return chars[digit];
+        }
+
+        boolean has(char c) {
+            return digitOf(c) >= 0;
+        }
+
+        int digitOf(char c) {
+            return c < decodeTable.length ? decodeTable[c] : -1;
+        }
+
+        private static int[] buildDecodeTable(String chars) {
+            int[] table = new int[128];
+            Arrays.fill(table, -1);
+            for (int i = 0; i < chars.length(); i++) {
+                table[chars.charAt(i)] = i;
+            }
+            return table;
+        }
     }
 }

@@ -26,7 +26,7 @@ import java.util.zip.Inflater;
  *
  * Wire format:
  *
- *     WP:<base-93 body of raw DEFLATE(bin)>
+ *     WP:<base-92 body of raw DEFLATE(bin)>
  *
  * The {@code WP:} prefix is just a scanner anchor; the schema version lives
  * in the low nibble of the first body byte (see below). Keeping the version
@@ -36,9 +36,10 @@ import java.util.zip.Inflater;
  * The body is raw DEFLATE (no gzip header/trailer) compressed with a preset
  * dictionary of Hypixel zone ids and waypoint-name fragments, then encoded
  * with {@link AsciiStreamCodec} (a trailer-free printable-ASCII stream codec
- * that excludes {@code '.'} to avoid Hypixel's advertising filter).
+ * that excludes {@code '.'} to avoid Hypixel's advertising filter), then
+ * escaped to split Hypixel's {@code <3}/{@code o/} MVP++ emote triggers.
  * Each output character is a single UTF-8 byte of printable ASCII that
- * survives Minecraft chat validation, paste, and the ad-detection heuristic.
+ * survives Minecraft chat validation, paste, and chat-side rewrites.
  * The earlier CJK base-16384 alphabet (v1) visually fit more characters into
  * the 256-CHAR chat textbox, but Minecraft's 256-BYTE command-packet cap is
  * the constraint that actually drops messages; printable ASCII carries more
@@ -124,19 +125,23 @@ public final class WaypointCodec {
      * scanner. Version 0 is reserved as "invalid" so a corrupted header byte
      * can't accidentally decode as an older schema.
      *
-     * v3 (current): base-93 streaming outer alphabet + adaptive waypoint-name
+     * v4 (current): base-92 streaming outer alphabet (v3 minus backtick) plus
+     *               a reversible chat escape for Hypixel MVP++
+     *               {@code <3}/{@code o/} emote triggers.
+     * v3 (retired): base-93 streaming outer alphabet + adaptive waypoint-name
      *               pooling + bodyless waypoint groups.
      * v2 (retired): base-85 outer alphabet (Z85 with {@code '.'} swapped for
      *               {@code ';'} to dodge Hypixel's advertising filter) +
      *               FIT_COMPACT coord mode.
      * v1 (retired): CJK base-16384 alphabet; same binary body shape.
      *
-     * v2 payloads still decode through a legacy path so existing shared routes
-     * keep importing after the v3 density upgrade. v1 payloads remain retired:
-     * the current scanner/text codecs reject the CJK body before the binary
-     * version guard can run.
+     * v3 and v2 payloads still decode through legacy paths so existing shared
+     * routes keep importing after text-layer changes. v1 payloads remain
+     * retired: the current scanner/text codecs reject the CJK body before the
+     * binary version guard can run.
      */
-    static final int WIRE_VERSION = 3;
+    static final int WIRE_VERSION = 4;
+    private static final int LEGACY_V3_WIRE_VERSION = 3;
     private static final int LEGACY_V2_WIRE_VERSION = 2;
     private static final int HEADER_VERSION_MASK = 0x0F;
     /** Export flags occupy the high nibble so the version field can grow toward it if we ever need more than 4 bits. */
@@ -189,8 +194,10 @@ public final class WaypointCodec {
     private static final int WP_FLAG_EXTENDED   = 1 << 3;
     /** Set together with HAS_NAME when the UTF-8 name follows inline instead of a pool index. */
     private static final int WP_FLAG_NAME_INLINE = 1 << 4;
+    private static final String TEXT_ENCODING_V4 = "ASCII base-92 stream + Hypixel emote escape";
     private static final String TEXT_ENCODING_V3 = "ASCII base-93 stream";
     private static final String TEXT_ENCODING_V2 = "ASCII base-85";
+    private static final char HYPIXEL_EMOTE_ESCAPE = '~';
 
     private WaypointCodec() {}
 
@@ -364,7 +371,7 @@ public final class WaypointCodec {
         try {
             byte[] raw = writeBody(groups, opts, mode);
             byte[] compressed = deflate(raw);
-            return MAGIC + AsciiStreamCodec.encode(compressed);
+            return MAGIC + escapeHypixelEmotesForChat(AsciiStreamCodec.encode(compressed));
         } catch (IOException e) {
             throw new IllegalStateException("codec encode failed", e);
         }
@@ -390,14 +397,19 @@ public final class WaypointCodec {
         }
         String payload = trimmed.substring(MAGIC.length());
         try {
-            return decodePayloadV3(payload);
+            return decodePayloadV4(payload);
         } catch (IOException | IllegalArgumentException e) {
             try {
-                return decodePayloadV2(payload);
-            } catch (IOException | IllegalArgumentException legacy) {
-                throw new IllegalArgumentException(
-                        "codec decode failed: v3=" + e.getMessage()
-                                + "; v2=" + legacy.getMessage(), legacy);
+                return decodePayloadV3(payload);
+            } catch (IOException | IllegalArgumentException legacyV3) {
+                try {
+                    return decodePayloadV2(payload);
+                } catch (IOException | IllegalArgumentException legacyV2) {
+                    throw new IllegalArgumentException(
+                            "codec decode failed: v4=" + e.getMessage()
+                                    + "; v3=" + legacyV3.getMessage()
+                                    + "; v2=" + legacyV2.getMessage(), legacyV2);
+                }
             }
         }
     }
@@ -447,8 +459,11 @@ public final class WaypointCodec {
         String trimmed = text.trim();
         if (!trimmed.startsWith(MAGIC)) return Optional.empty();
         String payload = trimmed.substring(MAGIC.length());
-        Optional<String> v3 = peekLabel(payload, true);
-        return v3.isPresent() ? v3 : peekLabel(payload, false);
+        Optional<String> v4 = peekLabelV4(payload);
+        if (v4.isPresent()) return v4;
+
+        Optional<String> v3 = peekLabel(payload, LEGACY_V3_WIRE_VERSION, false);
+        return v3.isPresent() ? v3 : peekLabel(payload, LEGACY_V2_WIRE_VERSION, true);
     }
 
     /** Result of {@link #decodeFull(String)}: the groups plus whatever label the sender stamped on. */
@@ -474,14 +489,19 @@ public final class WaypointCodec {
         }
         String payload = trimmed.substring(MAGIC.length());
         try {
-            return debugDecodePayload(text, payload, t0, true);
+            return debugDecodePayloadV4(text, payload, t0);
         } catch (IOException | IllegalArgumentException e) {
             try {
-                return debugDecodePayload(text, payload, t0, false);
-            } catch (IOException | IllegalArgumentException legacy) {
-                throw new IllegalArgumentException(
-                        "codec debug decode failed: v3=" + e.getMessage()
-                                + "; v2=" + legacy.getMessage(), legacy);
+                return debugDecodePayload(text, payload, t0, LEGACY_V3_WIRE_VERSION, false);
+            } catch (IOException | IllegalArgumentException legacyV3) {
+                try {
+                    return debugDecodePayload(text, payload, t0, LEGACY_V2_WIRE_VERSION, true);
+                } catch (IOException | IllegalArgumentException legacyV2) {
+                    throw new IllegalArgumentException(
+                            "codec debug decode failed: v4=" + e.getMessage()
+                                    + "; v3=" + legacyV3.getMessage()
+                                    + "; v2=" + legacyV2.getMessage(), legacyV2);
+                }
             }
         }
     }
@@ -491,12 +511,84 @@ public final class WaypointCodec {
         return s != null && s.trim().startsWith(MAGIC);
     }
 
+    private static Decoded decodePayloadV4(String payload) throws IOException {
+        return decodePayloadV3Shape(unescapeHypixelEmotes(payload), WIRE_VERSION);
+    }
+
     private static Decoded decodePayloadV3(String payload) throws IOException {
-        byte[] compressed = AsciiStreamCodec.decode(payload);
+        return decodePayloadV3Shape(payload, LEGACY_V3_WIRE_VERSION);
+    }
+
+    private static Decoded decodePayloadV3Shape(String payload, int expectedVersion) throws IOException {
+        byte[] compressed = expectedVersion == LEGACY_V3_WIRE_VERSION
+                ? AsciiStreamCodec.decodeLegacyV3(payload)
+                : AsciiStreamCodec.decode(payload);
         byte[] raw = inflate(compressed);
         DecodedHeader headerOut = new DecodedHeader();
-        List<WaypointGroup> groups = readBody(raw, null, headerOut, WIRE_VERSION, false);
+        List<WaypointGroup> groups = readBody(raw, null, headerOut, expectedVersion, false);
         return new Decoded(groups, headerOut.label);
+    }
+
+    private static String escapeHypixelEmotesForChat(String body) {
+        return escapeHypixelEmotes(body);
+    }
+
+    /**
+     * Split Hypixel's MVP++ emote triggers while staying inside the codec
+     * alphabet, so chat scanning still sees one contiguous body. The escape
+     * character itself is escaped too, making the transform reversible.
+     */
+    static String escapeHypixelEmotes(String body) {
+        if (body == null || body.isEmpty()) return body;
+
+        StringBuilder out = null;
+        for (int i = 0; i < body.length(); i++) {
+            char c = body.charAt(i);
+            boolean needsEscape = c == HYPIXEL_EMOTE_ESCAPE || startsHypixelEmote(body, i);
+            if (!needsEscape) {
+                if (out != null) out.append(c);
+                continue;
+            }
+
+            if (out == null) {
+                out = new StringBuilder(body.length() + 4);
+                out.append(body, 0, i);
+            }
+            out.append(c).append(HYPIXEL_EMOTE_ESCAPE);
+        }
+        return out == null ? body : out.toString();
+    }
+
+    static String unescapeHypixelEmotes(String body) {
+        if (body == null || body.indexOf(HYPIXEL_EMOTE_ESCAPE) < 0) return body;
+
+        StringBuilder out = new StringBuilder(body.length());
+        for (int i = 0; i < body.length(); i++) {
+            char c = body.charAt(i);
+            out.append(c);
+            if (i + 1 < body.length()
+                    && body.charAt(i + 1) == HYPIXEL_EMOTE_ESCAPE
+                    && isEscapedHypixelChar(body, i)) {
+                i++;
+            }
+        }
+        return out.toString();
+    }
+
+    private static boolean startsHypixelEmote(String body, int i) {
+        if (i + 1 >= body.length()) return false;
+
+        char c = body.charAt(i);
+        char next = body.charAt(i + 1);
+        return (c == '<' && next == '3') || (c == 'o' && next == '/');
+    }
+
+    private static boolean isEscapedHypixelChar(String body, int i) {
+        char c = body.charAt(i);
+        char next = i + 2 < body.length() ? body.charAt(i + 2) : 0;
+        return c == HYPIXEL_EMOTE_ESCAPE
+                || (c == '<' && next == '3')
+                || (c == 'o' && next == '/');
     }
 
     private static Decoded decodePayloadV2(String payload) throws IOException {
@@ -507,15 +599,20 @@ public final class WaypointCodec {
         return new Decoded(groups, headerOut.label);
     }
 
-    private static Optional<String> peekLabel(String payload, boolean currentVersion) {
+    private static Optional<String> peekLabelV4(String payload) {
+        return peekLabel(unescapeHypixelEmotes(payload), WIRE_VERSION, false);
+    }
+
+    private static Optional<String> peekLabel(String payload, int expectedVersion, boolean legacyV2) {
         try {
-            byte[] compressed = currentVersion
-                    ? AsciiStreamCodec.decode(payload)
-                    : AsciiPackCodec.decode(payload);
+            byte[] compressed = legacyV2
+                    ? AsciiPackCodec.decode(payload)
+                    : expectedVersion == LEGACY_V3_WIRE_VERSION
+                            ? AsciiStreamCodec.decodeLegacyV3(payload)
+                            : AsciiStreamCodec.decode(payload);
             byte[] raw = inflate(compressed);
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(raw));
             int header = in.readUnsignedByte();
-            int expectedVersion = currentVersion ? WIRE_VERSION : LEGACY_V2_WIRE_VERSION;
             if ((header & HEADER_VERSION_MASK) != expectedVersion) return Optional.empty();
             if ((header & HEADER_FLAG_LABEL) == 0) return Optional.empty();
             String label = readLabel(in);
@@ -525,19 +622,37 @@ public final class WaypointCodec {
         }
     }
 
-    private static DecodeDebug debugDecodePayload(String input, String payload, long startNanos,
-                                                  boolean currentVersion)
+    private static DecodeDebug debugDecodePayloadV4(String input, String payload, long startNanos)
             throws IOException {
-        byte[] compressed = currentVersion
-                ? AsciiStreamCodec.decode(payload)
-                : AsciiPackCodec.decode(payload);
+        return debugDecodePayload(input, payload, unescapeHypixelEmotes(payload),
+                startNanos, WIRE_VERSION, false);
+    }
+
+    private static DecodeDebug debugDecodePayload(String input, String payload, long startNanos,
+                                                  int expectedVersion, boolean legacyV2)
+            throws IOException {
+        return debugDecodePayload(input, payload, payload, startNanos, expectedVersion, legacyV2);
+    }
+
+    private static DecodeDebug debugDecodePayload(String input, String reportedPayload, String decodePayload,
+                                                  long startNanos, int expectedVersion, boolean legacyV2)
+            throws IOException {
+        byte[] compressed = legacyV2
+                ? AsciiPackCodec.decode(decodePayload)
+                : expectedVersion == LEGACY_V3_WIRE_VERSION
+                        ? AsciiStreamCodec.decodeLegacyV3(decodePayload)
+                        : AsciiStreamCodec.decode(decodePayload);
         byte[] raw = inflate(compressed);
         DebugCapture cap = new DebugCapture();
-        int expectedVersion = currentVersion ? WIRE_VERSION : LEGACY_V2_WIRE_VERSION;
-        List<WaypointGroup> groups = readBody(raw, cap, null, expectedVersion, !currentVersion);
+        List<WaypointGroup> groups = readBody(raw, cap, null, expectedVersion, legacyV2);
         long elapsed = System.nanoTime() - startNanos;
-        String encoding = currentVersion ? TEXT_ENCODING_V3 : TEXT_ENCODING_V2;
-        return cap.build(input, payload, encoding, compressed, raw, groups, elapsed);
+        String encoding = switch (expectedVersion) {
+            case WIRE_VERSION -> TEXT_ENCODING_V4;
+            case LEGACY_V3_WIRE_VERSION -> TEXT_ENCODING_V3;
+            case LEGACY_V2_WIRE_VERSION -> TEXT_ENCODING_V2;
+            default -> "unknown";
+        };
+        return cap.build(input, reportedPayload, encoding, compressed, raw, groups, elapsed);
     }
 
     // --- writer -------------------------------------------------------------------------------
@@ -1449,7 +1564,7 @@ public final class WaypointCodec {
 
     private static int encodedScore(byte[] raw) {
         try {
-            return AsciiStreamCodec.encode(deflate(raw)).length();
+            return escapeHypixelEmotesForChat(AsciiStreamCodec.encode(deflate(raw))).length();
         } catch (IOException ioe) {
             return Integer.MAX_VALUE;
         }

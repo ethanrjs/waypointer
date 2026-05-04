@@ -4,9 +4,13 @@ import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.zip.Deflater;
+import java.util.zip.DeflaterOutputStream;
+import java.util.zip.Inflater;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -36,6 +40,17 @@ class WaypointCodecTest {
                 + "gQt0$Io%SNxfn2i>EAHfJdNVU>cB42F)DVB(]t*:XK}fu3H)]Iftc;#r!X@ANCH]83x@4rOQXR6C*4<EUD}SoxD^$9+Pnm5+VVXx"
                 + "O3qk^V=(z5WvJotkF!)04So1gc/#gM6aS$l9]N+sa%r4pN-D4yb1HZJKqGeGm3e(fwN;495>v-&&WvUGmU@>V7&=7A6xv1qvUf%)"
                 + "RIF}}Hl%nZ688$IaQyT/lk6*5nWFZ12lj-73";
+
+    private static final String LEGACY_V3_RELEASE_SAMPLE = WaypointCodec.MAGIC
+                + "ETR'C/Me=pcE$YZ7GWFbB_}bQV~Zi+)W=MVG0Fk+{>z/=\\kNR,94i]D\\?A`|jb;2I9phNe@cBZiOd-db\\b30:t)0mW6\"/"
+                + "VVy:MH&0R!^4tc~iFSII3LJwoI`=yE)bHV5v~+'@R(faf3dfoa,A&c!t|3,O{i&)~[u5CR&d|\"Mwqkd]k>|#o?C-jDxFEzA7DXu"
+                + "_6i_@n'5KK:e2&U5%F5c3>:6KwMqXo_*clyIcAxF'qs)d'tiMW>Z_;J31*Tg=o_g&';HFj&X};'--JZ^v8<gA3ubT>(M+1Ig]_C6"
+                + "vO&NCQ71?[+=W!bSmDs-MLteFwXwoqbf~[fkKP&g;`0C\"l!1uCJ*cqZ];2qFp`Y>/T__>|g`/NBB\\6J,e=~3\"J?~1[4<o;[O1"
+                + ";?>RlM5\\Z6g@T`e`eY-4;*{{|>kSZsCoj36/@r$oj16&zLQ/]78,\\m,b;=?SZ9Q`0)?zSp-b\\]?`eEUh\\N@I'D?r\\oCb;E?"
+                + "<]9Qa0ng]}TJM2/MKc?0&&$A+/?22LBX>=T_@Y*Wc9#?]%i6:PUWerR\\wIr%g[AC9*M-Iq<Py~8EboDuttvDOw9DDdev;d!y(op"
+                + "K7o9nUHl[=]2A)eu($zkH(`t4]q\"8[\"e*b&v[$W%b0P1[4<o;[OjZXv]7zLG5/nJG11F/\\:p4,GyU=SS>MU%OC**GR@F*_QtA"
+                + "&V@Fi_VEsbjf5ABJj(JG\\R:\\n,o<I\"u-C*>&0E/pQe4Di@d4a4/EbQ!3J1*-GW5J0E]:*RHq&R[_/>~Cww;WIG`b\"3sttM4g"
+                + "C=p'dUJuyPL7^ED+SxV-H7)]aKtMq7!";
 
     @Test
     void magic_prefix_is_emitted() {
@@ -74,10 +89,8 @@ class WaypointCodecTest {
         assertEquals("Codec V2", decoded.label());
         assertEquals(4, decoded.groups().size());
 
-        WaypointGroup first = decoded.groups().get(0);
-        assertEquals("hawcammang", first.name());
-        assertEquals("galatea", first.zoneId());
-        assertEquals(14, first.size());
+        assertTrue(hasGroup(decoded.groups(), "hawcammang", "galatea", 14));
+        assertTrue(hasGroup(decoded.groups(), "HideOnLeaf", "galatea", 50));
 
         WaypointGroup last = decoded.groups().get(3);
         assertEquals("HideOnLeaf", last.name());
@@ -87,6 +100,20 @@ class WaypointCodecTest {
         DecodeDebug debug = WaypointCodec.debugDecode(LEGACY_V2_SAMPLE);
         assertEquals(2, debug.version());
         assertEquals("ASCII base-85", debug.textEncoding());
+    }
+
+    @Test
+    void decodes_legacy_v3_base93_export_from_1_4_1_release() {
+        WaypointCodec.Decoded decoded = WaypointCodec.decodeFull(LEGACY_V3_RELEASE_SAMPLE);
+        assertEquals("Codec V3", decoded.label());
+        assertEquals(4, decoded.groups().size());
+
+        assertTrue(hasGroup(decoded.groups(), "hawcammang", "galatea", 14));
+        assertTrue(hasGroup(decoded.groups(), "HideOnLeaf", "galatea", 50));
+
+        DecodeDebug debug = WaypointCodec.debugDecode(LEGACY_V3_RELEASE_SAMPLE);
+        assertEquals(3, debug.version());
+        assertEquals("ASCII base-93 stream", debug.textEncoding());
     }
 
     @Test
@@ -236,6 +263,71 @@ class WaypointCodecTest {
     }
 
     @Test
+    void chat_escape_uses_v4_wire_version_and_splits_hypixel_emotes() {
+        // v4 spends the header version on the chat escape so the body does not
+        // need an extra marker like "~WP~".
+        assertEquals(4, WaypointCodec.WIRE_VERSION);
+
+        String raw = "abc<3defo/ghi~~jkl<~3mno~/pqr";
+        String escaped = WaypointCodec.escapeHypixelEmotes(raw);
+
+        assertFalse(escaped.contains("<3"), "escaped body must not trigger heart emotes: " + escaped);
+        assertFalse(escaped.contains("o/"), "escaped body must not trigger wave emotes: " + escaped);
+        assertEquals(raw, WaypointCodec.unescapeHypixelEmotes(escaped));
+    }
+
+    @Test
+    void exports_never_contain_hypixel_mvp_emote_triggers() {
+        for (int i = 0; i < 40; i++) {
+            WaypointGroup g = WaypointGroup.create("emote fuzz " + i, "dungeon_f7");
+            for (int j = 0; j < 5 + i; j++) {
+                g.add(new Waypoint(50 + i * 7 + j, 70 + (j % 6), 120 + j * 3,
+                        "p" + i + "-" + j, Waypoint.DEFAULT_COLOR, 0, 0));
+            }
+
+            String s = WaypointCodec.encode(List.of(g));
+            assertFalse(s.contains("<3"),
+                    "export " + i + " contains '<3' which Hypixel rewrites to an emote: " + s);
+            assertFalse(s.contains("o/"),
+                    "export " + i + " contains 'o/' which Hypixel rewrites to an emote: " + s);
+            assertFalse(WaypointCodec.decode(s).isEmpty(), "escaped export must still decode");
+        }
+    }
+
+    @Test
+    void v4_exports_never_contain_backticks() {
+        for (int i = 0; i < 40; i++) {
+            WaypointGroup g = WaypointGroup.create("backtick fuzz " + i, "dungeon_f7");
+            for (int j = 0; j < 5 + i; j++) {
+                g.add(new Waypoint(80 + i * 9 + j, 64 + (j % 8), 180 + j * 4,
+                        "p" + i + "-" + j, Waypoint.DEFAULT_COLOR, 0, 0));
+            }
+
+            String s = WaypointCodec.encode(List.of(g));
+            assertFalse(s.contains("`"), "v4 export must not contain backticks: " + s);
+            assertFalse(WaypointCodec.decode(s).isEmpty(), "backtick-free export must still decode");
+        }
+    }
+
+    @Test
+    void decode_still_accepts_legacy_v3_payloads() throws Exception {
+        WaypointGroup g = WaypointGroup.create("legacy v3", "dungeon_f7");
+        for (int i = 0; i < 12; i++) {
+            g.add(new Waypoint(100 + i, 70, 200 + i * 2, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        }
+
+        String legacyV3 = asLegacyV3(WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES));
+
+        WaypointGroup decoded = WaypointCodec.decode(legacyV3).get(0);
+        assertEquals(g.size(), decoded.size());
+        for (int i = 0; i < g.size(); i++) {
+            assertEquals(g.get(i).x(), decoded.get(i).x(), "x@" + i);
+            assertEquals(g.get(i).y(), decoded.get(i).y(), "y@" + i);
+            assertEquals(g.get(i).z(), decoded.get(i).z(), "z@" + i);
+        }
+    }
+
+    @Test
     void packed_export_is_chat_paste_safe() {
         // The whole point of the codec string is that it survives being retyped/pasted
         // into a Minecraft chat box, which collapses runs of spaces. A leaked space
@@ -276,8 +368,8 @@ class WaypointCodecTest {
 
         String stripped = WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES);
         // Name strings themselves shouldn't be in the payload. We can't see through
-        // deflate+base-93 directly, but we can confirm the output is smaller than a names
-        // export, and that the decoded waypoints come back nameless.
+        // deflate+text encoding directly, but we can confirm the output is smaller
+        // than a names export, and that the decoded waypoints come back nameless.
         String withNames = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES);
         assertTrue(stripped.length() < withNames.length(),
                 "NO_NAMES export should be shorter than WITH_NAMES; stripped="
@@ -759,6 +851,51 @@ class WaypointCodecTest {
     }
 
     // --- helpers ------------------------------------------------------------------------------
+
+    private static boolean hasGroup(List<WaypointGroup> groups, String name, String zoneId, int size) {
+        return groups.stream().anyMatch(g ->
+                g.name().equals(name) && g.zoneId().equals(zoneId) && g.size() == size);
+    }
+
+    private static String asLegacyV3(String v4Export) throws Exception {
+        String body = v4Export.substring(WaypointCodec.MAGIC.length());
+        byte[] compressed = AsciiStreamCodec.decode(WaypointCodec.unescapeHypixelEmotes(body));
+        byte[] raw = inflateForTest(compressed);
+        raw[0] = (byte) ((raw[0] & 0xF0) | 3);
+        return WaypointCodec.MAGIC + AsciiStreamCodec.encodeLegacyV3(deflateForTest(raw));
+    }
+
+    private static byte[] deflateForTest(byte[] raw) throws Exception {
+        Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION, true);
+        deflater.setDictionary(CodecDictionary.BYTES);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (DeflaterOutputStream stream = new DeflaterOutputStream(out, deflater)) {
+            stream.write(raw);
+        } finally {
+            deflater.end();
+        }
+        return out.toByteArray();
+    }
+
+    private static byte[] inflateForTest(byte[] compressed) throws Exception {
+        Inflater inflater = new Inflater(true);
+        try {
+            inflater.setInput(compressed);
+            inflater.setDictionary(CodecDictionary.BYTES);
+            ByteArrayOutputStream out = new ByteArrayOutputStream(compressed.length * 2);
+            byte[] buffer = new byte[256];
+            while (!inflater.finished()) {
+                int n = inflater.inflate(buffer);
+                if (n == 0 && (inflater.needsInput() || inflater.needsDictionary())) {
+                    throw new IllegalArgumentException("truncated deflate stream");
+                }
+                out.write(buffer, 0, n);
+            }
+            return out.toByteArray();
+        } finally {
+            inflater.end();
+        }
+    }
 
     private static WaypointGroup sampleGroup(String name, String zone) {
         WaypointGroup g = WaypointGroup.create(name, zone);

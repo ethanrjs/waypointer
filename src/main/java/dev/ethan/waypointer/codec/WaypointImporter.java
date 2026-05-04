@@ -106,7 +106,7 @@ public final class WaypointImporter {
 
     public static ImportResult importAny(String payload) {
         if (payload == null) throw new IllegalArgumentException("null payload");
-        String trimmed = payload.trim();
+        String trimmed = stripMarkdownCodeFence(payload.trim());
 
         if (WaypointCodec.isCodecString(trimmed)) {
             WaypointCodec.Decoded d = WaypointCodec.decodeFull(trimmed);
@@ -151,6 +151,19 @@ public final class WaypointImporter {
 
         throw new IllegalArgumentException(
                 "unrecognized waypoint payload (tried Waypointer, Skyblocker, Skytils, JSON)");
+    }
+
+    private static String stripMarkdownCodeFence(String text) {
+        if (!text.startsWith("```") || !text.endsWith("```") || text.length() < 6) {
+            return text;
+        }
+
+        int bodyStart = 3;
+        int newline = text.indexOf('\n', bodyStart);
+        if (newline >= 0) bodyStart = newline + 1;
+
+        String body = text.substring(bodyStart, text.length() - 3).strip();
+        return body.isEmpty() ? text : body;
     }
 
     /**

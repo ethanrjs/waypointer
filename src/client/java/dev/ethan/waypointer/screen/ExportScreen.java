@@ -30,7 +30,7 @@ import static dev.ethan.waypointer.screen.GuiTokens.SURFACE_SUBTLE;
 /**
  * Dedicated screen for reviewing an export before pasting it elsewhere. Shows the
  * encoded codec string, its size, granular toggles for what gets included, an
- * optional sender label, and a single "Copy to Clipboard" action.
+ * optional sender label, plus plain and Discord-friendly copy actions.
  *
  * The previous version offered only Names / No Names. That worked but lied about
  * the wire format -- exports always carried colors, radii, group metadata, and a
@@ -114,7 +114,9 @@ public final class ExportScreen extends Screen {
     private final List<ToggleSpec> toggleSpecs = new ArrayList<>();
     private final List<Button> toggleButtons = new ArrayList<>();
     private Button copyButton;
+    private Button copyCodeBlockButton;
     private long copyFeedbackUntil = 0L;
+    private long copyCodeBlockFeedbackUntil = 0L;
 
     private String encoded = "";
 
@@ -191,7 +193,9 @@ public final class ExportScreen extends Screen {
 
         layoutToggles();
 
-        // Footer: Back on the left, Reset in the middle, Copy on the right.
+        // Footer: Back/Reset on the left, copy actions on the right. The plain
+        // copy button stays far-right because it is the most common action;
+        // the Discord-friendly wrapper sits immediately beside it.
         // Reset is in the footer rather than near the toggles because it's a
         // destructive-looking action ("did I just lose my settings?") and
         // grouping it with Back makes its scope (the whole screen) clearer.
@@ -201,10 +205,23 @@ public final class ExportScreen extends Screen {
         left.add(new GuiTokens.ButtonSpec("Reset", this::resetToConfigDefaults));
 
         int copyW = 140;
+        int codeBlockCopyW = 136;
+        int rightClusterW = codeBlockCopyW + GAP + copyW;
+        int codeBlockCopyX = width - PAD_OUTER - rightClusterW;
+        int copyX = width - PAD_OUTER - copyW;
+        Tooltip codeBlockTooltip = Tooltip.create(Component.literal(
+                "Wraps export code in 3 backticks. Useful for sending waypoints over Discord"));
+        this.copyCodeBlockButton = Button.builder(Component.literal("Copy as code block"),
+                        b -> copyAsCodeBlock())
+                .bounds(codeBlockCopyX, footerY, codeBlockCopyW, BTN_H)
+                .tooltip(codeBlockTooltip)
+                .build();
         this.copyButton = Button.builder(Component.literal("Copy to Clipboard"), b -> copyToClipboard())
-                .bounds(width - PAD_OUTER - copyW, footerY, copyW, 20).build();
+                .bounds(copyX, footerY, copyW, BTN_H).build();
 
-        GuiTokens.layoutFooter(width, footerY, left, null, this::addRenderableWidget, font);
+        GuiTokens.layoutFooter(width, footerY, left, null, this::addRenderableWidget,
+                font, PAD_OUTER, PAD_OUTER + rightClusterW + GAP_SECTION);
+        addRenderableWidget(copyCodeBlockButton);
         addRenderableWidget(copyButton);
 
         setInitialFocus(labelInput);
@@ -309,6 +326,12 @@ public final class ExportScreen extends Screen {
         copyButton.setMessage(Component.literal("Copied!").withStyle(ChatFormatting.GREEN));
     }
 
+    private void copyAsCodeBlock() {
+        minecraft.keyboardHandler.setClipboard("```\n" + encoded + "\n```");
+        copyCodeBlockFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
+        copyCodeBlockButton.setMessage(Component.literal("Copied!").withStyle(ChatFormatting.GREEN));
+    }
+
     // --- rendering ----------------------------------------------------------------------------
 
     @Override
@@ -318,6 +341,10 @@ public final class ExportScreen extends Screen {
         if (copyFeedbackUntil != 0 && System.currentTimeMillis() > copyFeedbackUntil) {
             copyFeedbackUntil = 0;
             copyButton.setMessage(Component.literal("Copy to Clipboard"));
+        }
+        if (copyCodeBlockFeedbackUntil != 0 && System.currentTimeMillis() > copyCodeBlockFeedbackUntil) {
+            copyCodeBlockFeedbackUntil = 0;
+            copyCodeBlockButton.setMessage(Component.literal("Copy as code block"));
         }
 
         g.drawString(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
@@ -342,7 +369,7 @@ public final class ExportScreen extends Screen {
         // to show multiple wrap lines at small window sizes.
         y += LINE_H * 2 + GAP_SECTION;
 
-        g.drawString(font, "Encoded preview (this is what gets copied)", PAD_OUTER, y, TEXT_DIM, false);
+        g.drawString(font, "Encoded preview (plain export code)", PAD_OUTER, y, TEXT_DIM, false);
         y += LINE_H;
         drawPreview(g, PAD_OUTER, y, width - PAD_OUTER, height - FOOTER_H - GAP);
     }
