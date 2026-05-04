@@ -335,7 +335,7 @@ public final class WaypointRenderer implements HudElement {
         if (config.dimSequenceContextWaypoints()
                 && group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
                 && state != State.CURRENT) {
-            return SEQUENCE_CONTEXT_ALPHA;
+            return Math.min(state.alpha, SEQUENCE_CONTEXT_ALPHA);
         }
         return state.alpha;
     }
