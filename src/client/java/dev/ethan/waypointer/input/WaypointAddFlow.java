@@ -30,14 +30,6 @@ public final class WaypointAddFlow {
     }
 
     /**
-     * Backward-compatible append helper for older call sites.
-     */
-    public void afterWaypointAdded(WaypointGroup group) {
-        if (group == null) return;
-        afterWaypointAdded(group, group.size() - 1);
-    }
-
-    /**
      * Call immediately after a new waypoint has been appended or inserted into
      * {@code group}. Temp groups are intentionally excluded because they never
      * participate in skip-ahead to begin with, and the toast would be a lie.
