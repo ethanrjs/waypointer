@@ -11,6 +11,7 @@ import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import static dev.ethan.waypointer.screen.GuiTokens.*;
 
@@ -278,9 +279,8 @@ public final class ConfigScreen extends Screen {
 
     private static String stripTrailingZeros(double v) {
         if (v == Math.floor(v)) {
-            String raw = Double.toString(v);
-            return raw.endsWith(".0") ? raw.substring(0, raw.length() - 2) : raw;
+            return String.format(Locale.ROOT, "%.0f", v);
         }
-        return String.format("%.2f", v);
+        return String.format(Locale.ROOT, "%.2f", v);
     }
 }
