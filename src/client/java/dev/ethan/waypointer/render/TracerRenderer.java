@@ -10,10 +10,13 @@ import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.entity.ClientAvatarState;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
+import org.joml.Vector3fc;
 
 /**
  * Draws a thick line from the player's crosshair to the
@@ -41,9 +44,11 @@ public final class TracerRenderer {
      * crosshair rather than floating in space ahead of the player.
      */
     private static final float CROSSHAIR_FORWARD = 0.4f;
+    private static final float DEG_TO_RAD = (float) Math.PI / 180.0f;
 
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
+    private final float[] tracerOriginDelta = new float[3];
 
     public TracerRenderer(ActiveGroupManager manager, WaypointerConfig config) {
         this.manager = manager;
@@ -61,7 +66,8 @@ public final class TracerRenderer {
 
         PoseStack ps = ctx.matrices();
         if (ps == null) return;
-        Camera cam = Minecraft.getInstance().gameRenderer.getMainCamera();
+        Minecraft mc = Minecraft.getInstance();
+        Camera cam = mc.gameRenderer.getMainCamera();
         Vec3 camPos = cam.position();
         MultiBufferSource buffers = ctx.consumers();
         if (buffers == null) return;
@@ -72,17 +78,15 @@ public final class TracerRenderer {
         ps.pushPose();
         ps.translate(-camPos.x, -camPos.y, -camPos.z);
 
-        // Push slightly forward along the player's view vector so the start point sits
-        // at the crosshair regardless of pitch, and so the near-plane doesn't clip the
-        // line. Using the LocalPlayer entity (rather than Camera) keeps us on a stable
-        // Mojmap API that's present in every 1.21.x build of Minecraft.
-        LocalPlayer player = Minecraft.getInstance().player;
-        Vec3 look = player == null ? FORWARD : player.getViewVector(1.0f);
+        // Push slightly forward along the camera vector so the start point sits at
+        // the crosshair regardless of pitch, and so the near-plane doesn't clip it.
+        LocalPlayer player = mc.player;
+        writeTracerOriginDelta(mc, cam, player, tracerOriginDelta);
         // Keep the tracer origin in primitives so the per-group loop doesn't touch
         // the Vec3#add allocation path for each active group.
-        float fromX = (float) (camPos.x + look.x * CROSSHAIR_FORWARD);
-        float fromY = (float) (camPos.y + look.y * CROSSHAIR_FORWARD);
-        float fromZ = (float) (camPos.z + look.z * CROSSHAIR_FORWARD);
+        float fromX = (float) camPos.x + tracerOriginDelta[0];
+        float fromY = (float) camPos.y + tracerOriginDelta[1];
+        float fromZ = (float) camPos.z + tracerOriginDelta[2];
         float alpha = (float) config.tracerOpacity();
         // Matching the tracer to the live waypoint colour means gradient groups
         // draw a tracer whose hue advances with progress (beacon and line read
@@ -109,7 +113,47 @@ public final class TracerRenderer {
         RenderHelpers.endBatch(buffers, lineType);
     }
 
-    // Fallback look vector when the player isn't available (e.g. during a brief world
-    // load frame). Cached so we don't alloc a fresh Vec3 on every such frame.
-    private static final Vec3 FORWARD = new Vec3(0, 0, 1);
+    private static void writeTracerOriginDelta(Minecraft mc, Camera cam, LocalPlayer player,
+                                               float[] out) {
+        Vector3fc left = cam.leftVector();
+        Vector3fc up = cam.upVector();
+        Vector3fc forward = cam.forwardVector();
+
+        out[0] = forward.x() * CROSSHAIR_FORWARD;
+        out[1] = forward.y() * CROSSHAIR_FORWARD;
+        out[2] = forward.z() * CROSSHAIR_FORWARD;
+        if (player == null || !mc.options.bobView().get()) return;
+
+        float partialTick = mc.getDeltaTracker().getGameTimeDeltaPartialTick(false);
+        ClientAvatarState avatar = player.avatarState();
+        float walkPhase = avatar.getBackwardsInterpolatedWalkDistance(partialTick);
+        float bob = avatar.getInterpolatedBob(partialTick);
+
+        float bobX = Mth.sin(walkPhase * Mth.PI) * bob * 0.5f;
+        float bobY = -Math.abs(Mth.cos(walkPhase * Mth.PI) * bob);
+        float roll = Mth.sin(walkPhase * Mth.PI) * bob * 3.0f * DEG_TO_RAD;
+        float pitch = Math.abs(Mth.cos(walkPhase * Mth.PI - 0.2f) * bob) * 5.0f * DEG_TO_RAD;
+
+        // Vanilla view bob applies camera-local translation plus small roll/pitch
+        // rotations. Solve the inverse transform for a point that should appear
+        // directly under the crosshair after those bob transforms run.
+        float localX = -bobX;
+        float localY = -bobY;
+        float localZ = -CROSSHAIR_FORWARD;
+
+        float cosRoll = Mth.cos(-roll);
+        float sinRoll = Mth.sin(-roll);
+        float rolledX = localX * cosRoll - localY * sinRoll;
+        float rolledY = localX * sinRoll + localY * cosRoll;
+
+        float cosPitch = Mth.cos(-pitch);
+        float sinPitch = Mth.sin(-pitch);
+        float pitchedY = rolledY * cosPitch - localZ * sinPitch;
+        float pitchedZ = rolledY * sinPitch + localZ * cosPitch;
+
+        out[0] = -left.x() * rolledX + up.x() * pitchedY - forward.x() * pitchedZ;
+        out[1] = -left.y() * rolledX + up.y() * pitchedY - forward.y() * pitchedZ;
+        out[2] = -left.z() * rolledX + up.z() * pitchedY - forward.z() * pitchedZ;
+    }
+
 }
