@@ -130,7 +130,8 @@ public final class GroupEditScreen extends Screen {
         nameBox.setValue(group.name());
         nameBox.setResponder(group::setName);
         nameBox.setTooltip(Tooltip.create(Component.literal(
-                "The group's display name. Shows in the zone list and in exports.")));
+                "Group display name.\n"
+              + "Used in lists and exports.")));
         addRenderableWidget(nameBox);
         y += BTN_H + GAP;
 
@@ -151,15 +152,14 @@ public final class GroupEditScreen extends Screen {
         gradientStartBtn = new ColorSwatchButton(sidebarInner, y, swatchW, BTN_H,
                 "Start", group.gradientStartColor(), () -> openGradientPicker(true));
         gradientStartBtn.setTooltip(Tooltip.create(Component.literal(
-                "First waypoint's colour. Gradient interpolates from here\n"
-              + "to the end colour across the route. Only applies in AUTO\n"
-              + "mode.")));
+                "Gradient start colour.\n"
+              + "Applies in AUTO mode.")));
         gradientEndBtn = new ColorSwatchButton(sidebarInner + swatchW + GAP_TIGHT, y,
                 fieldW - swatchW - GAP_TIGHT, BTN_H,
                 "End", group.gradientEndColor(), () -> openGradientPicker(false));
         gradientEndBtn.setTooltip(Tooltip.create(Component.literal(
-                "Last waypoint's colour. The gradient fades into this\n"
-              + "colour. Only applies in AUTO mode.")));
+                "Gradient end colour.\n"
+              + "Applies in AUTO mode.")));
         addRenderableWidget(gradientStartBtn);
         addRenderableWidget(gradientEndBtn);
         y += BTN_H + GAP_TIGHT;
@@ -182,14 +182,14 @@ public final class GroupEditScreen extends Screen {
         radiusMinusBtn = Button.builder(Component.literal("-"), b -> bumpRadius(-0.5))
                 .bounds(sidebarInner, y, bumpW, BTN_H)
                 .tooltip(Tooltip.create(Component.literal(
-                        "Decrease reach radius by 0.5 blocks.\n"
-                      + "Radius sets how close you must stand to mark a waypoint reached.")))
+                        "Shrink reach radius.\n"
+                      + "-0.5 blocks.")))
                 .build();
         radiusPlusBtn = Button.builder(Component.literal("+"), b -> bumpRadius(0.5))
                 .bounds(sidebarInner + fieldW - bumpW, y, bumpW, BTN_H)
                 .tooltip(Tooltip.create(Component.literal(
-                        "Increase reach radius by 0.5 blocks.\n"
-                      + "Radius sets how close you must stand to mark a waypoint reached.")))
+                        "Grow reach radius.\n"
+                      + "+0.5 blocks.")))
                 .build();
         addRenderableWidget(radiusMinusBtn);
         addRenderableWidget(radiusPlusBtn);
@@ -209,8 +209,7 @@ public final class GroupEditScreen extends Screen {
             manager.fireDataChanged();
         }).bounds(sidebarInner, y, fieldW, BTN_H)
           .tooltip(Tooltip.create(Component.literal(
-                  "Jump the 'current' marker back to the first waypoint.\n"
-                + "Use this to retrace a route without deleting progress history.")))
+                  "Set current waypoint to #1.")))
           .build());
 
         // Inline label editor -- kept invisible until the user double-clicks a row.
@@ -249,9 +248,9 @@ public final class GroupEditScreen extends Screen {
     // wouldn't know what to compare it to if we only described the state they're not in.
     private static Tooltip gradientTooltip() {
         return Tooltip.create(Component.literal(
-                "How waypoint colors are assigned.\n"
-              + "AUTO: interpolate a gradient across the route.\n"
-              + "MANUAL: keep each waypoint's custom color as-is."));
+                "Waypoint colour mode.\n"
+              + "AUTO: gradient across route.\n"
+              + "MANUAL: keep custom colours."));
     }
 
     private void toggleGradientMode(Button b) {
@@ -282,10 +281,9 @@ public final class GroupEditScreen extends Screen {
 
     private static Tooltip modeTooltip() {
         return Tooltip.create(Component.literal(
-                "Which waypoints are drawn in the world.\n"
-              + "STATIC: show every waypoint at once.\n"
-              + "SEQUENCE: show only the previous, current, and next waypoint --\n"
-              + "  best for ordered routes where clutter gets in the way."));
+                "World display mode.\n"
+              + "STATIC: show all waypoints.\n"
+              + "SEQUENCE: show previous, current, next."));
     }
 
     private void toggleLoadMode(Button b) {
@@ -306,12 +304,9 @@ public final class GroupEditScreen extends Screen {
 
     private static Tooltip sortTooltip() {
         return Tooltip.create(Component.literal(
-                "Cycles the route order. Click to advance:\n"
-              + "Manual -> Nearest -> Y ascending -> Y descending -> Manual.\n"
-              + "Nearest / Y asc / Y desc re-sort the list immediately.\n"
-              + "Manual restores the hand-arranged order you had the last time\n"
-              + "you edited or entered Manual -- cycling through the sort modes\n"
-              + "never wipes your custom order."));
+                "Click to change route order.\n"
+              + "Manual -> Nearest -> Y asc -> Y desc.\n"
+              + "Manual restores your custom order."));
     }
 
     // Cycles through MANUAL -> NEAREST -> Y asc -> Y desc -> MANUAL. Leaving MANUAL
