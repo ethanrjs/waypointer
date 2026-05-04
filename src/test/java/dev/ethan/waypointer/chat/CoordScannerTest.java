@@ -229,4 +229,14 @@ class CoordScannerTest {
 
         assertEquals("", ChatCoordDetector.senderNameForChatTemp(message, coordStart));
     }
+
+    @Test
+    void chatTempSenderNameIgnoresAxisColonsWhenBareCoordsFollowLabeled() {
+        String message = "Player: x: 100, y: 64, z: -200 also 50 70 100";
+        List<CoordScanner.Match> matches = CoordScanner.scanWithPositions(message);
+        assertEquals(2, matches.size());
+        int bareStart = matches.get(1).start();
+
+        assertEquals("Player", ChatCoordDetector.senderNameForChatTemp(message, bareStart));
+    }
 }
