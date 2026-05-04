@@ -147,7 +147,14 @@ public final class WaypointerCommands {
                                                         .executes(ctx -> runAddTempAt(ctx.getSource(),
                                                                 IntegerArgumentType.getInteger(ctx, "x"),
                                                                 IntegerArgumentType.getInteger(ctx, "y"),
-                                                                IntegerArgumentType.getInteger(ctx, "z"))))))))
+                                                                IntegerArgumentType.getInteger(ctx, "z"),
+                                                                ""))
+                                                        .then(argument("source", StringArgumentType.greedyString())
+                                                                .executes(ctx -> runAddTempAt(ctx.getSource(),
+                                                                        IntegerArgumentType.getInteger(ctx, "x"),
+                                                                        IntegerArgumentType.getInteger(ctx, "y"),
+                                                                        IntegerArgumentType.getInteger(ctx, "z"),
+                                                                        StringArgumentType.getString(ctx, "source")))))))))
                 .then(literal("remove")
                         .then(argument("index", IntegerArgumentType.integer(0))
                                 .suggests(suggestActiveGroupIndices())
@@ -645,8 +652,8 @@ public final class WaypointerCommands {
      *     on disconnect, which is exactly the "come to these coords until we
      *     log off" contract the chat context implies.
      */
-    private int runAddTempAt(FabricClientCommandSource src, int x, int y, int z) {
-        WaypointGroup target = manager.addTempWaypoint(x, y, z);
+    private int runAddTempAt(FabricClientCommandSource src, int x, int y, int z, String sourceName) {
+        WaypointGroup target = manager.addTempWaypoint(x, y, z, sourceName);
 
         success(src, "Added temp waypoint to \"" + target.name()
                 + "\" at " + x + ", " + y + ", " + z + " (expires on disconnect)");

@@ -214,6 +214,19 @@ class WaypointGroupTest {
     }
 
     @Test
+    void manager_chatTempWaypointIncludesSenderInGroupAndWaypointName() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+
+        WaypointGroup bucket = manager.addTempWaypoint(1, 2, 3, "Babbur");
+
+        assertEquals("Temp -- Babbur -- Hub", bucket.name());
+        assertEquals(1, bucket.size());
+        assertEquals("Babbur: 1, 2, 3", bucket.get(0).name());
+        assertTrue(bucket.get(0).isTemp());
+    }
+
+    @Test
     void manager_addTempWaypointReusesBucketAndInvalidatesActiveCache() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("dungeon_f7", "Catacombs F7"));

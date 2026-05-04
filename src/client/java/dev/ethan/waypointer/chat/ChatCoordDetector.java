@@ -12,6 +12,8 @@ import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.Optional;
 
 /**
@@ -37,6 +39,9 @@ import java.util.Optional;
  */
 public final class ChatCoordDetector {
 
+    private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]");
+    private static final Pattern USERNAME_TOKEN = Pattern.compile("\\b[A-Za-z0-9_]{3,16}\\b");
+
     private final WaypointerConfig config;
     private final ActiveGroupManager manager;
 
@@ -61,11 +66,12 @@ public final class ChatCoordDetector {
 
         if (config.autoAddChatTempWaypoints()) {
             for (CoordScanner.Match match : matches) {
-                manager.addTempWaypoint(match.x(), match.y(), match.z());
+                manager.addTempWaypoint(match.x(), match.y(), match.z(),
+                        senderNameForChatTemp(flat, match.start()));
             }
         }
 
-        return rebuildWithHighlights(msg, matches);
+        return rebuildWithHighlights(msg, matches, flat);
     }
 
     /**
@@ -74,8 +80,9 @@ public final class ChatCoordDetector {
      * original style verbatim; segments inside coord matches override color +
      * underline + click event (hover wraps both).
      */
-    private static Component rebuildWithHighlights(Component msg, List<CoordScanner.Match> matches) {
-        Builder builder = new Builder(matches);
+    private static Component rebuildWithHighlights(Component msg, List<CoordScanner.Match> matches,
+                                                   String flatText) {
+        Builder builder = new Builder(matches, flatText);
         // visit() walks the full styled-run tree and returns Optional.empty() on
         // success; we rely on that to feed every substring into our builder in order.
         msg.visit((style, content) -> {
@@ -93,12 +100,14 @@ public final class ChatCoordDetector {
      */
     private static final class Builder {
         private final List<CoordScanner.Match> matches;
+        private final String flatText;
         private int cursor;        // absolute offset in flat text
         private int matchIdx;      // index into matches list
         private final MutableComponent out = Component.empty();
 
-        Builder(List<CoordScanner.Match> matches) {
+        Builder(List<CoordScanner.Match> matches, String flatText) {
             this.matches = matches;
+            this.flatText = flatText;
         }
 
         void append(Style style, String content) {
@@ -129,7 +138,7 @@ public final class ChatCoordDetector {
                 int sliceStart = Math.max(localStart, preStartLocal);
                 if (matchEndLocal > sliceStart) {
                     String slice = content.substring(sliceStart, matchEndLocal);
-                    out.append(Component.literal(slice).setStyle(chipStyle(style, m)));
+                    out.append(Component.literal(slice).setStyle(chipStyle(style, m, flatText)));
                     localStart = matchEndLocal;
                 }
 
@@ -155,11 +164,13 @@ public final class ChatCoordDetector {
      * font / insertion / shadow so server-side formatting isn't clobbered, then
      * force aqua + underline + click + hover so the coord reads as a button.
      */
-    private static Style chipStyle(Style base, CoordScanner.Match m) {
+    private static Style chipStyle(Style base, CoordScanner.Match m, String flatText) {
         // Target the temp variant so the waypoint auto-cleans on disconnect --
         // see the class javadoc for why chat-shared coords default to
         // session-scoped rather than permanent.
-        String cmd = "/waypointer addtemp at " + m.x() + " " + m.y() + " " + m.z();
+        String source = senderNameForChatTemp(flatText, m.start());
+        String cmd = "/waypointer addtemp at " + m.x() + " " + m.y() + " " + m.z()
+                + (source.isEmpty() ? "" : " " + source);
         return base
                 .withColor(ChatFormatting.AQUA)
                 .withUnderlined(true)
@@ -168,5 +179,18 @@ public final class ChatCoordDetector {
                         Component.literal("Add temp waypoint at "
                                 + m.x() + ", " + m.y() + ", " + m.z()
                                 + "\n(expires on disconnect)")));
+    }
+
+    static String senderNameForChatTemp(String flatText, int coordStart) {
+        if (flatText == null || flatText.isBlank()) return "";
+        int end = Math.max(0, Math.min(coordStart, flatText.length()));
+        int colon = flatText.lastIndexOf(':', end);
+        if (colon < 0) return "";
+
+        String prefix = BRACKETED_PREFIX.matcher(flatText.substring(0, colon)).replaceAll(" ");
+        Matcher matcher = USERNAME_TOKEN.matcher(prefix);
+        String last = "";
+        while (matcher.find()) last = matcher.group();
+        return last;
     }
 }
