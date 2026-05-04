@@ -80,6 +80,17 @@ public final class WaypointerScreen extends Screen {
     private Button deleteBtn;
     private long deleteArmedUntil = 0L;
 
+    private List<GuiTokens.ButtonSpec> footerActions() {
+        List<GuiTokens.ButtonSpec> left = new ArrayList<>();
+        left.add(new GuiTokens.ButtonSpec("New Waypoints", this::createGroup));
+        left.add(new GuiTokens.ButtonSpec("Edit", this::editSelected));
+        left.add(new GuiTokens.ButtonSpec(DELETE_LABEL, DELETE_BTN_W, this::onDeleteClicked));
+        left.add(new GuiTokens.ButtonSpec("Import", this::importFromClipboard));
+        left.add(new GuiTokens.ButtonSpec("Export Zone", this::exportZone));
+        left.add(new GuiTokens.ButtonSpec("Settings", this::openSettings));
+        return left;
+    }
+
     public WaypointerScreen(ActiveGroupManager manager, WaypointerConfig config) {
         super(Component.literal("Waypointer"));
         this.manager = manager;
@@ -122,15 +133,9 @@ public final class WaypointerScreen extends Screen {
         deleteArmedUntil = 0L;
         deleteBtn = null;
 
-        List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("New Waypoints", this::createGroup));
-        left.add(new GuiTokens.ButtonSpec("Edit", this::editSelected));
         // Fixed width so the label can toggle between "Delete" and "Confirm?" without
         // the footer re-flowing or the text sliding past the bevel.
-        left.add(new GuiTokens.ButtonSpec(DELETE_LABEL, DELETE_BTN_W, this::onDeleteClicked));
-        left.add(new GuiTokens.ButtonSpec("Import", this::importFromClipboard));
-        left.add(new GuiTokens.ButtonSpec("Export Zone", this::exportZone));
-        left.add(new GuiTokens.ButtonSpec("Settings", this::openSettings));
+        List<GuiTokens.ButtonSpec> left = footerActions();
         GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec("Done", this::onClose);
 
         // We need a reference to the Delete button so we can repaint its label when it
@@ -219,17 +224,28 @@ public final class WaypointerScreen extends Screen {
         g.drawString(font, status, width - PAD_OUTER - font.width(status), PAD_OUTER, TEXT_DIM, false);
 
         // Region geometry
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int bottom = height - FOOTER_H - GAP_SECTION;
+        Layout layout = layout();
 
+        renderSidebar(g, layout.sidebarLeft(), layout.top(), layout.sidebarRight(),
+                layout.bottom(), mouseX, mouseY);
+        renderMain(g, layout.mainLeft(), layout.top(), layout.mainRight(),
+                layout.bottom(), mouseX, mouseY);
+    }
+
+    private Layout layout() {
+        GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec("Done", this::onClose);
+        int footerSpace = GuiTokens.footerHeight(width, footerActions(), done, font);
+        int top = PAD_OUTER + font.lineHeight + GAP;
+        int bottom = height - footerSpace - GAP_SECTION;
         int sidebarLeft = PAD_OUTER;
         int sidebarRight = sidebarLeft + SIDEBAR_W;
-        int mainLeft = sidebarRight + GAP_SECTION;
+        int mainLeft = sidebarRight + GAP;
         int mainRight = width - PAD_OUTER;
-
-        renderSidebar(g, sidebarLeft, top, sidebarRight, bottom, mouseX, mouseY);
-        renderMain(g, mainLeft, top, mainRight, bottom, mouseX, mouseY);
+        return new Layout(top, bottom, sidebarLeft, sidebarRight, mainLeft, mainRight);
     }
+
+    private record Layout(int top, int bottom, int sidebarLeft, int sidebarRight,
+                          int mainLeft, int mainRight) {}
 
     private void renderSidebar(GuiGraphics g, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
         g.fill(x1, y1, x2, y2, SURFACE);
@@ -358,14 +374,12 @@ public final class WaypointerScreen extends Screen {
         double mx = event.x();
         double my = event.y();
 
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int bottom = height - FOOTER_H - GAP_SECTION;
+        Layout layout = layout();
 
         // Sidebar click -> select zone
-        int sidebarLeft = PAD_OUTER;
-        int sidebarRight = sidebarLeft + SIDEBAR_W;
-        if (mx >= sidebarLeft && mx <= sidebarRight && my >= top && my <= bottom) {
-            int labelY = top + 10;
+        if (mx >= layout.sidebarLeft() && mx <= layout.sidebarRight()
+                && my >= layout.top() && my <= layout.bottom()) {
+            int labelY = layout.top() + 10;
             int rowY = labelY + 14;
             List<String> ids = zoneIds();
             int idx = (int) ((my - rowY) / ROW_H);
@@ -378,14 +392,13 @@ public final class WaypointerScreen extends Screen {
         }
 
         // Main area click -> select group row (and toggle chip if within the right edge)
-        int mainLeft = sidebarRight + GAP_SECTION;
-        int mainRight = width - PAD_OUTER;
-        if (mx < mainLeft || mx > mainRight || my < top || my > bottom) return false;
+        if (mx < layout.mainLeft() || mx > layout.mainRight()
+                || my < layout.top() || my > layout.bottom()) return false;
 
         List<WaypointGroup> groups = visibleGroups();
         if (groups.isEmpty()) return false;
 
-        double yInList = my - (top + 4) + scrollOffset;
+        double yInList = my - (layout.top() + 4) + scrollOffset;
         int idx = (int) (yInList / (ROW_H + 4));
         if (idx < 0 || idx >= groups.size()) return false;
 
@@ -393,7 +406,7 @@ public final class WaypointerScreen extends Screen {
         selectedIndex = idx;
 
         // Toggle-chip hit test -- rightmost region of the row.
-        if (mx > mainRight - 40) {
+        if (mx > layout.mainRight() - 40) {
             group.setEnabled(!group.enabled());
             manager.fireDataChanged();
             return true;
@@ -407,9 +420,8 @@ public final class WaypointerScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int bottom = height - FOOTER_H - GAP_SECTION;
-        int listHeight = bottom - top;
+        Layout layout = layout();
+        int listHeight = layout.bottom() - layout.top();
         int rowPitch = ROW_H + 4;
         int content = visibleGroups().size() * rowPitch;
         int maxScroll = Math.max(0, content - listHeight + 8);

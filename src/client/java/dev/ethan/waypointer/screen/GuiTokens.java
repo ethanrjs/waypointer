@@ -41,7 +41,7 @@ public final class GuiTokens {
 
     public static final int BTN_H = 20;
     public static final int ROW_H = 22;
-    public static final int SIDEBAR_W = 180;
+    public static final int SIDEBAR_W = 156;
     public static final int FOOTER_H = 28;
 
     // --- colors (ARGB, fed to GuiGraphics.fill) ---------------------------------------------
@@ -102,9 +102,24 @@ public final class GuiTokens {
                                     List<ButtonSpec> left, ButtonSpec right,
                                     Consumer<Button> sink,
                                     net.minecraft.client.gui.Font font) {
+        layoutFooter(screenW, footerY, left, right, sink, font, PAD_OUTER, GAP_SECTION);
+    }
+
+    public static int footerHeight(int screenW, List<ButtonSpec> left, ButtonSpec right,
+                                   net.minecraft.client.gui.Font font) {
+        return needsFooterWrap(screenW, left, right, font, PAD_OUTER, GAP_SECTION)
+                ? FOOTER_H + BTN_H + GAP
+                : FOOTER_H;
+    }
+
+    public static void layoutFooter(int screenW, int footerY,
+                                    List<ButtonSpec> left, ButtonSpec right,
+                                    Consumer<Button> sink,
+                                    net.minecraft.client.gui.Font font,
+                                    int startX, int rightInset) {
         int rightW = right == null ? 0 : measureWidth(right, font);
-        int rightX = right == null ? screenW - PAD_OUTER : screenW - PAD_OUTER - rightW;
-        int leftLimit = right == null ? screenW - PAD_OUTER : rightX - GAP_SECTION;
+        int rightX = right == null ? screenW - rightInset : screenW - rightInset - rightW;
+        int leftLimit = right == null ? screenW - rightInset : rightX - GAP_SECTION;
 
         // Measure everything first so we can decide what fits on the primary row.
         int[] widths = new int[left.size()];
@@ -116,7 +131,6 @@ public final class GuiTokens {
         if (!left.isEmpty()) needed += GAP * (left.size() - 1);
 
         // If everything fits, place it all on the primary row.
-        int startX = PAD_OUTER;
         List<ButtonSpec> primary = left;
         List<ButtonSpec> wrapped = List.of();
         int[] primaryW = widths;
@@ -156,6 +170,18 @@ public final class GuiTokens {
                 wx += w + GAP;
             }
         }
+    }
+
+    private static boolean needsFooterWrap(int screenW, List<ButtonSpec> left, ButtonSpec right,
+                                           net.minecraft.client.gui.Font font,
+                                           int startX, int rightInset) {
+        int rightW = right == null ? 0 : measureWidth(right, font);
+        int rightX = right == null ? screenW - rightInset : screenW - rightInset - rightW;
+        int leftLimit = right == null ? screenW - rightInset : rightX - GAP_SECTION;
+        int needed = 0;
+        for (ButtonSpec spec : left) needed += measureWidth(spec, font);
+        if (!left.isEmpty()) needed += GAP * (left.size() - 1);
+        return needed > leftLimit - startX;
     }
 
     private static int measureWidth(ButtonSpec spec, net.minecraft.client.gui.Font font) {
