@@ -268,6 +268,34 @@ public final class DungeonMapMath {
         };
     }
 
+    public static void relativeToActual(Direction dir,
+                                        int physicalCornerX, int physicalCornerZ,
+                                        int rx, int ry, int rz,
+                                        int[] out) {
+        switch (dir) {
+            case NW -> {
+                out[0] = rx + physicalCornerX;
+                out[1] = ry;
+                out[2] = rz + physicalCornerZ;
+            }
+            case NE -> {
+                out[0] = -rz + physicalCornerX;
+                out[1] = ry;
+                out[2] = rx + physicalCornerZ;
+            }
+            case SW -> {
+                out[0] = rz + physicalCornerX;
+                out[1] = ry;
+                out[2] = -rx + physicalCornerZ;
+            }
+            case SE -> {
+                out[0] = -rx + physicalCornerX;
+                out[1] = ry;
+                out[2] = -rz + physicalCornerZ;
+            }
+        }
+    }
+
     /** Inverse of {@link #relativeToActual} -- world coords back into the room's frame. */
     public static int[] actualToRelative(Direction dir,
                                          int physicalCornerX, int physicalCornerZ,
