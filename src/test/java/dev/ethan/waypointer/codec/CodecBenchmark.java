@@ -32,7 +32,7 @@ class CodecBenchmark {
         String nameless = WaypointCodec.encode(groups, WaypointCodec.Options.NO_NAMES);
         int pts = 0;
         for (WaypointGroup g : groups) pts += g.size();
-        // Under v2 (base-85, ASCII) char count == UTF-8 byte count for the body. Printing
+        // The native ASCII text layer makes char count == UTF-8 byte count. Printing
         // both the char count and the hypothetical command-packet size (prefix
         // "/pc " + body) lets us see at a glance whether a payload fits the
         // 256-byte command-packet cap.
