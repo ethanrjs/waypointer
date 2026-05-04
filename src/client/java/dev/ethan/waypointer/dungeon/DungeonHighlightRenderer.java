@@ -5,12 +5,13 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
-import dev.ethan.waypointer.render.RenderEventCompat;
 import dev.ethan.waypointer.render.RenderHelpers;
 import dev.ethan.waypointer.render.WaypointerRenderPipelines;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -77,7 +78,7 @@ public final class DungeonHighlightRenderer implements HudElement {
     }
 
     public void install() {
-        RenderEventCompat.registerEndMain("dungeon highlights", this::onWorldRender);
+        WorldRenderEvents.END_MAIN.register(this::onWorldRender);
         // Attach BEFORE the chat layer so the F1 hide-GUI toggle hides the
         // labels in the same way the main renderer does -- consistent UX
         // for the player.
@@ -86,7 +87,7 @@ public final class DungeonHighlightRenderer implements HudElement {
 
     // ---- world-space outlines + fills ---------------------------------
 
-    private void onWorldRender(Object ctx) {
+    private void onWorldRender(WorldRenderContext ctx) {
         if (!config.enabled()) return;
         DungeonRoom room = tracker.currentRoom();
         if (room == null) return;
@@ -94,10 +95,10 @@ public final class DungeonHighlightRenderer implements HudElement {
         List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
         if (waypoints.isEmpty() && !config.drawRoomBounds()) return;
 
-        MultiBufferSource buffers = RenderEventCompat.bufferSource(ctx);
+        MultiBufferSource buffers = ctx.consumers();
         if (buffers == null) return;
 
-        PoseStack ps = RenderEventCompat.poseStack(ctx);
+        PoseStack ps = ctx.matrices();
         if (ps == null) return;
         Vec3 cam = Minecraft.getInstance().gameRenderer.getMainCamera().position();
 

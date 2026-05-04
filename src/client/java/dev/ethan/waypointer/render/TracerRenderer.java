@@ -6,6 +6,8 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -49,19 +51,19 @@ public final class TracerRenderer {
     }
 
     public void install() {
-        RenderEventCompat.registerEndMain("tracers", this::onRender);
+        WorldRenderEvents.END_MAIN.register(this::onRender);
     }
 
-    private void onRender(Object ctx) {
+    private void onRender(WorldRenderContext ctx) {
         if (!config.showTracer()) return;
         var groups = manager.activeGroups();
         if (groups.isEmpty()) return;
 
-        PoseStack ps = RenderEventCompat.poseStack(ctx);
+        PoseStack ps = ctx.matrices();
         if (ps == null) return;
         Camera cam = Minecraft.getInstance().gameRenderer.getMainCamera();
         Vec3 camPos = cam.position();
-        MultiBufferSource buffers = RenderEventCompat.bufferSource(ctx);
+        MultiBufferSource buffers = ctx.consumers();
         if (buffers == null) return;
 
         RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();

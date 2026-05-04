@@ -213,4 +213,20 @@ class CoordScannerTest {
         assertTrue(matches.get(0).start() < matches.get(1).start(),
                 "matches must be returned in left-to-right chat order");
     }
+
+    @Test
+    void chatTempSenderNameUsesLastUsernameBeforeColon() {
+        String message = "[334] MVP++ Babbur: x: 1, y: 1, z: 1";
+        int coordStart = message.indexOf("x:");
+
+        assertEquals("Babbur", ChatCoordDetector.senderNameForChatTemp(message, coordStart));
+    }
+
+    @Test
+    void chatTempSenderNameReturnsEmptyWithoutChatColon() {
+        String message = "Warp to x: 1, y: 1, z: 1";
+        int coordStart = message.indexOf("x:");
+
+        assertEquals("", ChatCoordDetector.senderNameForChatTemp(message, coordStart));
+    }
 }

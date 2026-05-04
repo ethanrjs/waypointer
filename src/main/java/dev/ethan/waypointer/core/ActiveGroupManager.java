@@ -9,6 +9,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 /**
  * Owns every {@link WaypointGroup} the user has configured and tracks which zone
@@ -34,6 +35,8 @@ public final class ActiveGroupManager {
     private final Collection<WaypointGroup> allGroupsView = Collections.unmodifiableCollection(byId.values());
     private Zone currentZone;
     private final List<Consumer<Zone>> zoneListeners = new ArrayList<>();
+
+    private static final Pattern TEMP_GROUP_ID_UNSAFE = Pattern.compile("[^a-z0-9_]+");
     private final List<Runnable> dataListeners = new ArrayList<>();
 
     // Cached result of activeGroups(). The renderer calls this every frame from two
@@ -156,8 +159,15 @@ public final class ActiveGroupManager {
      * a temp into stay clean.
      */
     public WaypointGroup getOrCreateTempGroup() {
+        return getOrCreateTempGroup("");
+    }
+
+    public WaypointGroup getOrCreateTempGroup(String sourceName) {
         Zone zone = currentZone == null ? Zone.UNKNOWN : currentZone;
-        String tempId = "temp::" + zone.id();
+        String source = sanitizeTempSourceName(sourceName);
+        String tempId = source.isEmpty()
+                ? "temp::" + zone.id()
+                : "temp::" + zone.id() + "::" + tempGroupId(source);
         WaypointGroup existing = byId.get(tempId);
         if (existing != null && existing.temp()) return existing;
 
@@ -165,7 +175,10 @@ public final class ActiveGroupManager {
         // keeps all temps visible at once (they're not a sequenced route), and
         // the skip-ahead flag is irrelevant because temp groups are excluded
         // from proximity advance.
-        WaypointGroup g = new WaypointGroup(tempId, "Temp -- " + zone.displayName(), zone.id());
+        String groupName = source.isEmpty()
+                ? "Temp -- " + zone.displayName()
+                : "Temp -- " + source + " -- " + zone.displayName();
+        WaypointGroup g = new WaypointGroup(tempId, groupName, zone.id());
         g.setLoadMode(WaypointGroup.LoadMode.STATIC);
         g.setTemp(true);
         add(g);
@@ -180,10 +193,31 @@ public final class ActiveGroupManager {
      * disconnect via {@link dev.ethan.waypointer.progression.TempWaypointCleaner}.
      */
     public WaypointGroup addTempWaypoint(int x, int y, int z) {
-        WaypointGroup target = getOrCreateTempGroup();
-        target.add(Waypoint.at(x, y, z).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L));
+        return addTempWaypoint(x, y, z, "");
+    }
+
+    public WaypointGroup addTempWaypoint(int x, int y, int z, String sourceName) {
+        String source = sanitizeTempSourceName(sourceName);
+        WaypointGroup target = getOrCreateTempGroup(source);
+        Waypoint waypoint = Waypoint.at(x, y, z)
+                .withName(source.isEmpty() ? "" : source + ": " + x + ", " + y + ", " + z)
+                .withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L);
+        target.add(waypoint);
         fireDataChanged();
         return target;
+    }
+
+    private static String sanitizeTempSourceName(String raw) {
+        if (raw == null) return "";
+        String trimmed = raw.trim();
+        return trimmed.length() > 32 ? trimmed.substring(0, 32).trim() : trimmed;
+    }
+
+    private static String tempGroupId(String sourceName) {
+        String id = sourceName.toLowerCase(Locale.ROOT);
+        id = TEMP_GROUP_ID_UNSAFE.matcher(id).replaceAll("_");
+        id = id.replaceAll("^_+|_+$", "");
+        return id.isEmpty() ? "unknown" : id;
     }
 
     public List<WaypointGroup> groupsForZone(String zoneId) {
