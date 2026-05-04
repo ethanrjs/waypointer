@@ -137,7 +137,9 @@ public final class DungeonHighlightRenderer implements HudElement {
             if (!shouldRender(status, showFound, activeOnly)) continue;
 
             float parentAlpha = parentAlpha(status);
-            float childAlpha = parentAlpha == FOUND_ALPHA ? FOUND_ALPHA : CHILD_ALPHA;
+            float childAlpha = parentAlpha == FOUND_ALPHA
+                    ? FOUND_ALPHA
+                    : Math.min(parentAlpha, CHILD_ALPHA);
             if (showSecrets) {
                 addRenderBox(room, wp.x(), wp.y(), wp.z(), wp.color(),
                         parentAlpha, DungeonHighlightStyle.OUTLINE_FILLED);

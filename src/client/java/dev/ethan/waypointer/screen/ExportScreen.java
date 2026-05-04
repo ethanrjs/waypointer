@@ -435,11 +435,11 @@ public final class ExportScreen extends Screen {
 
     private static WaypointCodec.Options.Builder builderFromConfig(WaypointerConfig config) {
         return WaypointCodec.Options.builder()
-                .includeNames(false)
-                .includeColors(false)
-                .includeRadii(false)
-                .includeWaypointFlags(false)
-                .includeGroupMeta(true);
+                .includeNames(config.exportIncludeNames())
+                .includeColors(config.exportIncludeColors())
+                .includeRadii(config.exportIncludeRadii())
+                .includeWaypointFlags(config.exportIncludeWaypointFlags())
+                .includeGroupMeta(config.exportIncludeGroupMeta());
     }
 
     @Override
