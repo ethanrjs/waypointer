@@ -63,11 +63,12 @@ class WaypointImporterTest {
         assertEquals("Fetchur", g.name());
         assertEquals("mining_hub", g.zoneId()); // dashes normalized
         assertEquals(2, g.size());
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
         assertEquals(0x102030, g.get(0).color());
     }
 
     @Test
-    void parses_skytils_base64_categories_numeric_route_as_ordered() {
+    void parses_skytils_base64_categories_numeric_route_as_sequence() {
         WaypointImporter.ImportResult result = WaypointImporter.importAny(SKYTILS_TP_POINTS_SAMPLE);
 
         assertEquals(WaypointImporter.Source.SKYTILS, result.source());
@@ -82,7 +83,7 @@ class WaypointImporterTest {
     }
 
     @Test
-    void parses_skytils_base64_categories_named_points_as_static() {
+    void parses_skytils_base64_categories_named_points_as_sequence() {
         WaypointImporter.ImportResult result = WaypointImporter.importAny(SKYTILS_POLE_POINTS_SAMPLE);
 
         assertEquals(WaypointImporter.Source.SKYTILS, result.source());
@@ -90,7 +91,7 @@ class WaypointImporterTest {
         WaypointGroup g = result.groups().get(0);
         assertEquals("Pole Points", g.name());
         assertEquals("galatea", g.zoneId());
-        assertEquals(WaypointGroup.LoadMode.STATIC, g.loadMode());
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
         assertEquals(3, g.size());
         assertEquals("Pole Point 1", g.get(0).name());
         assertEquals("-641,92,-20", coordKey(g.get(0)));
@@ -345,7 +346,8 @@ class WaypointImporterTest {
         assertEquals(2, g.size());
         assertEquals(10, g.get(0).x());
         assertEquals("A", g.get(0).name());
-        // Default (non-ordered) groups are MANUAL so per-point colors are preserved.
+        // Default groups are sequence routes, but MANUAL preserves explicit per-point colors.
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
         assertEquals(WaypointGroup.GradientMode.MANUAL, g.gradientMode());
         assertEquals(0xFF8000, g.get(0).color());
         assertEquals(0x0000FF, g.get(1).color());
