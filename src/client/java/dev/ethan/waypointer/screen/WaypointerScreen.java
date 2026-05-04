@@ -323,7 +323,8 @@ public final class WaypointerScreen extends Screen {
         String name = group.name().isEmpty() ? "(unnamed)" : group.name();
         g.drawString(font, name, x1 + GAP + 2, y1 + 4, textColor, false);
 
-        String sub = group.size() + " pts  @" + group.currentIndex();
+        String sub = group.size() + " pts  @" + group.currentIndex()
+                + "  " + loadModeLabel(group);
         g.drawString(font, sub, x1 + GAP + 2, y1 + 14, TEXT_DIM, false);
 
         // Right-aligned toggle pill -- kept as the one exception to "no button chrome",
@@ -478,6 +479,10 @@ public final class WaypointerScreen extends Screen {
         List<WaypointGroup> groups = visibleGroups();
         if (selectedIndex < 0 || selectedIndex >= groups.size()) return null;
         return groups.get(selectedIndex);
+    }
+
+    private static String loadModeLabel(WaypointGroup group) {
+        return group.loadMode() == WaypointGroup.LoadMode.SEQUENCE ? "sequenced" : "static";
     }
 
     private void exportZone() {
