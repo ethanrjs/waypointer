@@ -71,6 +71,12 @@ public final class WaypointerConfig {
     private double tracerOpacity = 0.95;
     private double beaconOpacity = 0.8;
     private boolean showWaypointNames = true;
+    /**
+     * When {@code true}, the primary waypoint label uses the waypoint's own RGB
+     * instead of flat white. Default-on makes color-coded routes read as a single
+     * visual system across boxes, tracers, and labels.
+     */
+    private boolean matchWaypointTextToWaypointColor = true;
     private boolean showCompleted = true;
     private boolean showTracer = true;
     /**
@@ -281,6 +287,7 @@ public final class WaypointerConfig {
     public double tracerOpacity()             { return tracerOpacity; }
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
+    public boolean matchWaypointTextToWaypointColor() { return matchWaypointTextToWaypointColor; }
     public boolean showCompleted()            { return showCompleted; }
     public boolean showTracer()               { return showTracer; }
     public boolean dimSequenceContextWaypoints() { return dimSequenceContextWaypoints; }
@@ -312,6 +319,7 @@ public final class WaypointerConfig {
     public void setTracerOpacity(double v)             { this.tracerOpacity = clamp(v, 0, 1); save(); }
     public void setBeaconOpacity(double v)             { this.beaconOpacity = clamp(v, 0, 1); save(); }
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
+    public void setMatchWaypointTextToWaypointColor(boolean v) { this.matchWaypointTextToWaypointColor = v; save(); }
     public void setShowCompleted(boolean v)            { this.showCompleted = v; save(); }
     public void setShowTracer(boolean v)               { this.showTracer = v; save(); }
     public void setDimSequenceContextWaypoints(boolean v) { this.dimSequenceContextWaypoints = v; save(); }

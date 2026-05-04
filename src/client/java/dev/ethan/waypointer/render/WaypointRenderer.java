@@ -241,6 +241,7 @@ public final class WaypointRenderer implements HudElement {
         // Hoist out of the per-waypoint lambda so a long route doesn't pay
         // a getter call (and a dirty-flag-eligible call site) per label.
         double labelLift = LABEL_ANCHOR_LIFT + config.labelHeightOffset();
+        boolean colorizeNames = config.matchWaypointTextToWaypointColor();
 
         group.forEachVisibleIndex(i -> {
             Waypoint w = group.get(i);
@@ -268,8 +269,9 @@ public final class WaypointRenderer implements HudElement {
             String name = labelFor(group, i, w, state);
             int distance = (int) Math.sqrt(rx * rx + ry * ry + rz * rz);
             float alpha = alphaFor(group, state);
+            int nameColor = colorizeNames ? 0xFF000000 | (w.color() & 0xFFFFFF) : NAME_ARGB;
 
-            drawCenteredLabel(g, font, name, sx, sy, withAlpha(NAME_ARGB, alpha), alpha);
+            drawCenteredLabel(g, font, name, sx, sy, withAlpha(nameColor, alpha), alpha);
             drawCenteredLabel(g, font, distanceString(distance),
                     sx, sy + font.lineHeight + DISTANCE_ROW_GAP,
                     withAlpha(DISTANCE_ARGB, alpha), alpha);

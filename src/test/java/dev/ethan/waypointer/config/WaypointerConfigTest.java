@@ -3,6 +3,7 @@ package dev.ethan.waypointer.config;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerConfigTest {
@@ -110,6 +111,17 @@ class WaypointerConfigTest {
         assertTrue(config.dimSequenceContextWaypoints());
         assertTrue(config.exportIncludeColors());
         assertTrue(config.exportIncludeGroupMeta());
+    }
+
+    @Test
+    void waypointTextColorMatchingDefaultsOnButCanBeDisabled() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertTrue(config.matchWaypointTextToWaypointColor());
+
+        config.setMatchWaypointTextToWaypointColor(false);
+
+        assertFalse(config.matchWaypointTextToWaypointColor());
     }
 
     @Test
