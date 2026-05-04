@@ -67,6 +67,37 @@ class WaypointImporterTest {
     }
 
     @Test
+    void parses_skytils_base64_categories_numeric_route_as_ordered() {
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(SKYTILS_TP_POINTS_SAMPLE);
+
+        assertEquals(WaypointImporter.Source.SKYTILS, result.source());
+        assertEquals(1, result.groups().size());
+        WaypointGroup g = result.groups().get(0);
+        assertEquals("TP Points", g.name());
+        assertEquals("galatea", g.zoneId());
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
+        assertEquals(10, g.size());
+        assertEquals("-618,88,24", coordKey(g.get(0)));
+        assertEquals("-642,96,-22", coordKey(g.get(9)));
+    }
+
+    @Test
+    void parses_skytils_base64_categories_named_points_as_static() {
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(SKYTILS_POLE_POINTS_SAMPLE);
+
+        assertEquals(WaypointImporter.Source.SKYTILS, result.source());
+        assertEquals(1, result.groups().size());
+        WaypointGroup g = result.groups().get(0);
+        assertEquals("Pole Points", g.name());
+        assertEquals("galatea", g.zoneId());
+        assertEquals(WaypointGroup.LoadMode.STATIC, g.loadMode());
+        assertEquals(3, g.size());
+        assertEquals("Pole Point 1", g.get(0).name());
+        assertEquals("-641,92,-20", coordKey(g.get(0)));
+        assertEquals("-671,92,-11", coordKey(g.get(2)));
+    }
+
+    @Test
     void parses_skyblocker_legacy_map_of_islands() {
         String json = "{"
                 + "\"dwarven_mines\":[{\"x\":1,\"y\":2,\"z\":3,\"name\":\"a\",\"r\":255,\"g\":128,\"b\":64}],"
@@ -141,6 +172,35 @@ class WaypointImporterTest {
         // AUTO gradient rewrites colors on insert; what matters is the group picked AUTO
         // (so users can see route direction), not the specific post-gradient color.
         assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());
+    }
+
+    @Test
+    void parses_soopy_options_array_and_skips_null_coordinate_placeholders() {
+        String json = "["
+                + "{\"x\":null,\"y\":null,\"z\":null,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":1}},"
+                + "{\"x\":20,\"y\":70,\"z\":40,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":2}}"
+                + "]";
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
+
+        assertEquals(WaypointImporter.Source.SOOPY, result.source());
+        assertEquals(1, result.groups().size());
+        WaypointGroup g = result.groups().get(0);
+        assertEquals(1, g.size());
+        assertEquals("2", g.get(0).name());
+        assertEquals(20, g.get(0).x());
+        assertEquals(70, g.get(0).y());
+        assertEquals(40, g.get(0).z());
+    }
+
+    @Test
+    void rejects_soopy_options_array_with_only_null_coordinates_cleanly() {
+        String json = "[{\"x\":null,\"y\":null,\"z\":null,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":1}}]";
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> WaypointImporter.importAny(json));
+
+        assertTrue(ex.getMessage().contains("no waypoints"));
     }
 
     @Test
@@ -370,6 +430,31 @@ class WaypointImporterTest {
         assertEquals("Dragon Path", g.name());
         assertEquals(2, g.size());
         assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());
+    }
+
+    private static final String SKYTILS_TP_POINTS_SAMPLE =
+            "eyJjYXRlZ29yaWVzIjpbeyJuYW1lIjoiVFAgUG9pbnRzIiwiaXNsYW5kIjoiZm9yYWdpbmdfMiIsIndheXBvaW50cyI6W3si"
+                    + "bmFtZSI6IjEiLCJjb2xvciI6MjEzMDc3MTcxMiwiZW5hYmxlZCI6dHJ1ZSwieCI6LTYxOCwieSI6ODgsInoiOjI0fSx7"
+                    + "Im5hbWUiOiIyIiwiY29sb3IiOjIxMzA3NzE3MTIsImVuYWJsZWQiOnRydWUsIngiOi02MTAsInkiOjkzLCJ6IjozMX0s"
+                    + "eyJuYW1lIjoiMyIsImNvbG9yIjoyMTMwNzcxNzEyLCJlbmFibGVkIjp0cnVlLCJ4IjotNjE1LCJ5Ijo5NCwieiI6NDV9"
+                    + "LHsibmFtZSI6IjQiLCJjb2xvciI6MjEzMDc3MTcxMiwiZW5hYmxlZCI6dHJ1ZSwieCI6LTYxMywieSI6MTAwLCJ6Ijo2"
+                    + "M30seyJuYW1lIjoiNSIsImNvbG9yIjoyMTMwNzcxNzEyLCJlbmFibGVkIjp0cnVlLCJ4IjotNjI4LCJ5IjoxMDIsInoi"
+                    + "Ojc2fSx7Im5hbWUiOiI2IiwiY29sb3IiOjIxMzA3NzE3MTIsImVuYWJsZWQiOnRydWUsIngiOi02NTAsInkiOjEwMSwi"
+                    + "eiI6NTN9LHsibmFtZSI6IjciLCJjb2xvciI6MjEzMDc3MTcxMiwiZW5hYmxlZCI6dHJ1ZSwieCI6LTY3MCwieSI6OTYs"
+                    + "InoiOjMwfSx7Im5hbWUiOiI4IiwiY29sb3IiOjIxMzA3NzE3MTIsImVuYWJsZWQiOnRydWUsIngiOi02NzEsInkiOjk2"
+                    + "LCJ6IjotMTB9LHsibmFtZSI6IjkiLCJjb2xvciI6MjEzMDc3MTcxMiwiZW5hYmxlZCI6dHJ1ZSwieCI6LTY3MiwieSI6"
+                    + "OTQsInoiOi0zMn0seyJuYW1lIjoiMTAiLCJjb2xvciI6MjEzMDc3MTcxMiwiZW5hYmxlZCI6dHJ1ZSwieCI6LTY0Miwi"
+                    + "eSI6OTYsInoiOi0yMn1dfV19";
+
+    private static final String SKYTILS_POLE_POINTS_SAMPLE =
+            "eyJjYXRlZ29yaWVzIjpbeyJuYW1lIjoiUG9sZSBQb2ludHMiLCJpc2xhbmQiOiJmb3JhZ2luZ18yIiwid2F5cG9pbnRz"
+                    + "IjpbeyJuYW1lIjoiUG9sZSBQb2ludCAxIiwiY29sb3IiOjIxMzA3NzE3MTIsImVuYWJsZWQiOnRydWUsIngiOi02NDEs"
+                    + "InkiOjkyLCJ6IjotMjB9LHsibmFtZSI6IlBvbGUgUG9pbnQgMiIsImNvbG9yIjoyMTMwNzcxNzEyLCJlbmFibGVkIjp0"
+                    + "cnVlLCJ4IjotNjcxLCJ5Ijo5MSwieiI6Mjl9LHsibmFtZSI6IlBvbGUgUG9pbnQgMyIsImNvbG9yIjoyMTMwNzcxNzEy"
+                    + "LCJlbmFibGVkIjp0cnVlLCJ4IjotNjcxLCJ5Ijo5MiwieiI6LTExfV19XX0=";
+
+    private static String coordKey(Waypoint w) {
+        return w.x() + "," + w.y() + "," + w.z();
     }
 
     private static byte[] gzip(String s) throws Exception {

@@ -76,6 +76,9 @@ public final class WaypointRenderer implements HudElement {
      */
     private static final int LABEL_BACKDROP_ARGB = 0xB0000000;
 
+    /** Alpha used for sequence-mode context points around the active target. */
+    private static final float SEQUENCE_CONTEXT_ALPHA = 0.35f;
+
     /** Horizontal padding (screen pixels) added to the backdrop around the text. */
     private static final int BACKDROP_PAD_X = 2;
 
@@ -192,7 +195,7 @@ public final class WaypointRenderer implements HudElement {
             State state = stateFor(i, currentIdx);
             if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
 
-            float alpha = state.alpha * beaconOpacity;
+            float alpha = alphaFor(g, state) * beaconOpacity;
             float x = w.x(), y = w.y(), z = w.z();
             if (quads != null) {
                 RenderHelpers.emitFilledBox(quads, ps, x, y, z, x + 1f, y + 1f, z + 1f,
@@ -262,10 +265,12 @@ public final class WaypointRenderer implements HudElement {
 
             String name = labelFor(group, i, w, state);
             int distance = (int) Math.sqrt(rx * rx + ry * ry + rz * rz);
+            float alpha = alphaFor(group, state);
 
-            drawCenteredLabel(g, font, name, sx, sy, NAME_ARGB);
+            drawCenteredLabel(g, font, name, sx, sy, withAlpha(NAME_ARGB, alpha), alpha);
             drawCenteredLabel(g, font, distanceString(distance),
-                    sx, sy + font.lineHeight + DISTANCE_ROW_GAP, DISTANCE_ARGB);
+                    sx, sy + font.lineHeight + DISTANCE_ROW_GAP,
+                    withAlpha(DISTANCE_ARGB, alpha), alpha);
         });
     }
 
@@ -294,7 +299,7 @@ public final class WaypointRenderer implements HudElement {
      * same value, saving two redundant glyph-table lookups per label.
      */
     private void drawCenteredLabel(GuiGraphics g, Font font, String text,
-                                   int cx, int top, int argb) {
+                                   int cx, int top, int argb, float alpha) {
         int width = font.width(text);
         int halfWidth = width / 2;
         int left = cx - halfWidth;
@@ -304,7 +309,7 @@ public final class WaypointRenderer implements HudElement {
             int backdropBottom = top + font.lineHeight - 1 + BACKDROP_PAD_Y;
             g.fill(left - BACKDROP_PAD_X, backdropTop,
                     left + width + BACKDROP_PAD_X, backdropBottom,
-                    LABEL_BACKDROP_ARGB);
+                    withAlpha(LABEL_BACKDROP_ARGB, alpha));
         }
         // drawString's shadow flag stays on in both modes -- without the backdrop the
         // drop shadow is doing all the work keeping text readable against bright biomes.
@@ -322,6 +327,21 @@ public final class WaypointRenderer implements HudElement {
         if (i < currentIdx) return State.COMPLETED;
         if (i == currentIdx) return State.CURRENT;
         return State.UPCOMING;
+    }
+
+    private float alphaFor(WaypointGroup group, State state) {
+        if (config.dimSequenceContextWaypoints()
+                && group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
+                && state != State.CURRENT) {
+            return SEQUENCE_CONTEXT_ALPHA;
+        }
+        return state.alpha;
+    }
+
+    private static int withAlpha(int argb, float alphaScale) {
+        float clamped = Math.max(0.0f, Math.min(1.0f, alphaScale));
+        int alpha = Math.round(((argb >>> 24) & 0xFF) * clamped);
+        return (alpha << 24) | (argb & 0x00FFFFFF);
     }
 
     private enum State {

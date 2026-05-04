@@ -139,7 +139,7 @@ public final class ChatImportDetector {
      */
     private MutableComponent buildPill(CodecScanner.Match match) {
         String handle = cache.put(match.text());
-        String command = "/wp importchat " + handle;
+        String command = "/waypointer importchat " + handle;
 
         // Each segment's style explicitly sets underlined=false except for the
         // clickable text. Without the explicit false, children would inherit the
@@ -167,7 +167,7 @@ public final class ChatImportDetector {
      * Renders the fallback shown in place of a codec that failed integrity
      * validation. Intentionally non-interactive -- no click event, no hover
      * beyond a short explainer -- so a malformed paste can't be coerced into
-     * firing {@code /wp importchat}. Styled with red + strikethrough rather
+     * firing {@code /waypointer importchat}. Styled with red + strikethrough rather
      * than the brand aqua to visually separate it from valid pills.
      */
     private MutableComponent buildInvalidLabel() {
