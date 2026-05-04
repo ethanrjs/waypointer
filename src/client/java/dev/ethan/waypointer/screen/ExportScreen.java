@@ -65,8 +65,8 @@ public final class ExportScreen extends Screen {
      * /msg}, and friends silently fail when the export is too large.
      *
      * Chat INPUT is measured in characters (256 chars fit in the textbox),
-     * but the command wire packet is measured in bytes. v2 uses a base-85
-     * ASCII alphabet (1 UTF-8 byte per char), so the char-count and
+     * but the command wire packet is measured in bytes. The native codec uses
+     * a printable ASCII alphabet (1 UTF-8 byte per char), so the char-count and
      * wire-byte-count lines now report the same number for the body -- the
      * gap between them is just {@code WP:} plus any chat-framing. Keeping
      * both lines in the UI still makes sense: the chat-textbox cap is a
@@ -358,7 +358,7 @@ public final class ExportScreen extends Screen {
      * Line 2 answers "can I paste this into chat?" -- the chat textbox
      * caps at 256 characters regardless of bytes.
      *
-     * With the v2 base-85 alphabet (1 byte/char) the two caps coincide on
+     * With the ASCII text codec (1 byte/char) the two caps coincide on
      * the body itself, but command framing ({@code "/pc "} etc.) still
      * puts the command cap first. When a command won't fit but chat will,
      * we point that out inline so the user doesn't have to cross-reference
