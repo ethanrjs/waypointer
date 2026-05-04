@@ -397,22 +397,18 @@ public final class WaypointImporter {
         String zone = firstString(o, Zone.UNKNOWN.id(), "island", "zone", "world", "category");
         WaypointGroup g = WaypointGroup.create(name.isEmpty() ? zone : name, normalizeZone(zone));
 
-        // Imports carry explicit per-waypoint colors that must not be overwritten
-        // by auto-gradient coloring when we add() them below. Ordered routes are
-        // step-by-step paths where direction matters; AUTO keeps that path readable
-        // when every point ships with the same color.
+        // Imported groups represent routes by default. Preserve explicit
+        // per-waypoint colors unless the source marks the route as ordered; ordered
+        // routes usually ship with repeated colors, so AUTO makes direction visible.
         boolean ordered = o.has("ordered")
                 && o.get("ordered").isJsonPrimitive()
                 && o.get("ordered").getAsJsonPrimitive().isBoolean()
                 && o.get("ordered").getAsBoolean();
         JsonArray pts = firstArray(o, "waypoints", "points");
-        if (!ordered && pts != null) ordered = waypointNamesAreConsecutiveIntegers(pts);
         g.setGradientMode(ordered
                 ? WaypointGroup.GradientMode.AUTO
                 : WaypointGroup.GradientMode.MANUAL);
-        g.setLoadMode(ordered
-                ? WaypointGroup.LoadMode.SEQUENCE
-                : WaypointGroup.LoadMode.STATIC);
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
 
         if (o.has("enabled") && o.get("enabled").isJsonPrimitive()) {
             g.setEnabled(o.get("enabled").getAsBoolean());
@@ -422,25 +418,6 @@ public final class WaypointImporter {
             for (JsonElement el : pts) if (el.isJsonObject()) addWaypointFromLoose(g, el.getAsJsonObject());
         }
         return g;
-    }
-
-    private static boolean waypointNamesAreConsecutiveIntegers(JsonArray points) {
-        if (points.isEmpty()) return false;
-        int expected = 1;
-        for (JsonElement el : points) {
-            if (!el.isJsonObject()) return false;
-            JsonObject point = el.getAsJsonObject();
-            if (!point.has("name") || !point.get("name").isJsonPrimitive()) return false;
-            JsonPrimitive name = point.get("name").getAsJsonPrimitive();
-            if (!name.isString()) return false;
-            try {
-                if (Integer.parseInt(name.getAsString().trim()) != expected) return false;
-            } catch (NumberFormatException ignored) {
-                return false;
-            }
-            expected++;
-        }
-        return true;
     }
 
     private static void addWaypointFromLoose(WaypointGroup g, JsonObject o) {
