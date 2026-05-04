@@ -220,7 +220,7 @@ public final class DungeonCommands {
             if (room != null) {
                 String generated = room.hasRoomId()
                         ? room.roomId()
-                        : "room-" + Math.abs(room.identityKey().hashCode());
+                        : fallbackRoomId("room", room);
                 CommandHelpers.suggestText(builder, generated, "current detected room");
             }
             for (DungeonRoomDefinition definition : DungeonRoomData.customDefinitions()) {
@@ -374,7 +374,7 @@ public final class DungeonCommands {
         for (DungeonWaypoint wp : demo) {
             String id = room.hasRoomId() && DungeonRoomData.isCustomDefinition(room.roomId())
                     ? room.roomId()
-                    : "test-" + Math.abs(room.identityKey().hashCode());
+                    : fallbackRoomId("test", room);
             if (!room.hasRoomId() || !DungeonRoomData.isCustomDefinition(room.roomId())) {
                 DungeonRoomDefinition def = DungeonRoomData.defineRoom(id, room.displayName(), room);
                 tracker.applyCurrentRoomDefinition(def.id(), def.displayName());
@@ -729,6 +729,10 @@ public final class DungeonCommands {
             if (waypoint.secretIndex() > max) max = waypoint.secretIndex();
         }
         return max + 1;
+    }
+
+    private static String fallbackRoomId(String prefix, DungeonRoom room) {
+        return prefix + "-" + Integer.toUnsignedLong(room.identityKey().hashCode());
     }
 
     // ---- styled feedback (matches WaypointerCommands' palette) -------------
