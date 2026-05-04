@@ -74,6 +74,18 @@ class WaypointGroupTest {
     }
 
     @Test
+    void focusNewWaypoint_setsCurrentAndSuppressesProximity() {
+        WaypointGroup g = route();
+        g.markStaticWaypointReached(0);
+
+        g.focusNewWaypoint(2);
+
+        assertEquals(2, g.currentIndex());
+        assertTrue(g.isProximitySuppressed(2));
+        assertFalse(g.isStaticWaypointReached(0));
+    }
+
+    @Test
     void restartIfRouteCompleted_wraps_when_enabled() {
         WaypointGroup g = route();
         g.advancePast(3);

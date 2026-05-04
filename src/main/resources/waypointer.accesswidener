@@ -1,7 +1,6 @@
 accessWidener	v2	named
 
-# Needed so WaypointerRenderPipelines can construct a custom RenderType for
-# through-walls lines. Two things are widened:
+# Needed so Waypointer can construct custom RenderTypes. Two things are widened:
 #
 #   RenderType.create(String, RenderSetup) -- package-private in vanilla; this
 #     is the only constructor for a RenderType that wraps an arbitrary

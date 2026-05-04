@@ -12,16 +12,14 @@ import net.minecraft.network.chat.Component;
  *
  * <p>Centralising the post-add behaviour prevents the bug where the rule was
  * added at one entry point but forgotten at another -- every add site now
- * funnels through {@link #afterWaypointAdded(WaypointGroup)} after mutating the
+ * funnels through {@link #afterWaypointAdded(WaypointGroup, int)} after mutating the
  * group, keeping the user-visible contract consistent.
  *
- * <p>Today the flow handles one decision: when a waypoint is added to a group
- * whose skip-ahead is on, proximity advance will likely immediately skip past
- * the freshly-added waypoint because the player is standing on it. Disabling
- * skip-ahead on that group (controlled by
- * {@link WaypointerConfig#disableGroupSkipAheadOnWaypointAdd()}) sidesteps that
- * surprise. The toast tells the player <em>why</em> so they don't go hunting
- * for a bug in the progression system.
+ * <p>The flow does two things: it focuses the route on the newly-created waypoint
+ * so the user sees immediate feedback, then suppresses proximity for that one
+ * index until they step away. Without the suppression, a waypoint created at the
+ * player's feet would be advanced or hidden on the very next tick. It also keeps
+ * the existing skip-ahead auto-disable behavior when that setting is enabled.
  */
 public final class WaypointAddFlow {
 
@@ -32,18 +30,28 @@ public final class WaypointAddFlow {
     }
 
     /**
+     * Backward-compatible append helper for older call sites.
+     */
+    public void afterWaypointAdded(WaypointGroup group) {
+        if (group == null) return;
+        afterWaypointAdded(group, group.size() - 1);
+    }
+
+    /**
      * Call immediately after a new waypoint has been appended or inserted into
      * {@code group}. Temp groups are intentionally excluded because they never
      * participate in skip-ahead to begin with, and the toast would be a lie.
      */
-    public void afterWaypointAdded(WaypointGroup group) {
+    public void afterWaypointAdded(WaypointGroup group, int waypointIndex) {
         if (group == null) return;
         if (group.temp()) return;
-        if (!config.disableGroupSkipAheadOnWaypointAdd()) return;
-        if (!group.skipAheadEnabled()) return;
 
-        group.setSkipAheadEnabled(false);
-        showSkipAheadDisabledToast(group.name());
+        group.focusNewWaypoint(waypointIndex);
+        if (!config.disableGroupSkipAheadOnWaypointAdd()) return;
+        if (group.skipAheadEnabled()) {
+            group.setSkipAheadEnabled(false);
+            showSkipAheadDisabledToast(group.name());
+        }
     }
 
     /**

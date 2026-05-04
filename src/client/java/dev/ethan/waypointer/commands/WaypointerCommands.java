@@ -603,7 +603,7 @@ public final class WaypointerCommands {
         WaypointGroup target = manager.getOrCreateActiveGroup();
         target.add(new Waypoint(x, y, z, name == null ? "" : name,
                 Waypoint.DEFAULT_COLOR, 0, 0.0));
-        addFlow.afterWaypointAdded(target);
+        addFlow.afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
 
         success(src, "Added waypoint " + (target.size() - 1) + " to \"" + target.name()
@@ -656,7 +656,7 @@ public final class WaypointerCommands {
         int z = (int) Math.floor(player.getZ());
         target.insert(index, new Waypoint(x, y, z, name == null ? "" : name,
                 Waypoint.DEFAULT_COLOR, 0, 0.0));
-        addFlow.afterWaypointAdded(target);
+        addFlow.afterWaypointAdded(target, index);
         manager.fireDataChanged();
 
         success(src, "Inserted waypoint at [" + index + "] in \"" + target.name()

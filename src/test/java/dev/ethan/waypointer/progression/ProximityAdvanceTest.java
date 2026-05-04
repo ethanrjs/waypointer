@@ -109,6 +109,21 @@ class ProximityAdvanceTest {
     }
 
     @Test
+    void freshly_focused_waypoint_is_not_immediately_advanced() {
+        WaypointGroup g = line();
+        g.focusNewWaypoint(2);
+
+        assertFalse(ProximityTracker.advanceIfReached(g, 20.5, 0.5, 0.5, false, false));
+        assertEquals(2, g.currentIndex());
+
+        assertFalse(ProximityTracker.advanceIfReached(g, 25.0, 0.5, 0.5, false, false));
+        assertEquals(2, g.currentIndex());
+
+        assertTrue(ProximityTracker.advanceIfReached(g, 20.5, 0.5, 0.5, false, false));
+        assertEquals(3, g.currentIndex());
+    }
+
+    @Test
     void static_reach_tracking_hides_visited_waypoints_without_advancing_route() {
         WaypointGroup g = line();
         g.setLoadMode(WaypointGroup.LoadMode.STATIC);
@@ -117,6 +132,20 @@ class ProximityAdvanceTest {
 
         assertEquals(0, g.currentIndex());
         assertFalse(g.isStaticWaypointReached(0));
+        assertTrue(g.isStaticWaypointReached(2));
+    }
+
+    @Test
+    void freshly_focused_static_waypoint_is_not_hidden_until_player_leaves_and_returns() {
+        WaypointGroup g = line();
+        g.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        g.focusNewWaypoint(2);
+
+        assertFalse(ProximityTracker.markReachedStaticWaypoints(g, 20.5, 0.5, 0.5));
+        assertFalse(g.isStaticWaypointReached(2));
+
+        assertFalse(ProximityTracker.markReachedStaticWaypoints(g, 25.0, 0.5, 0.5));
+        assertTrue(ProximityTracker.markReachedStaticWaypoints(g, 20.5, 0.5, 0.5));
         assertTrue(g.isStaticWaypointReached(2));
     }
 

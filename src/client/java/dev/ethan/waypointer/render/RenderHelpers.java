@@ -69,7 +69,7 @@ public final class RenderHelpers {
      * for visibility but the order below matches DEBUG_FILLED_BOX for future
      * consistency.
      *
-     * <p>Alpha is deliberately clamped to the config's beacon opacity by the
+     * <p>Alpha is deliberately clamped to the config's waypoint box opacity by the
      * caller -- passing 1.0 here would produce a solid cube that obscures the
      * world behind it. Typical values are 0.15-0.35.
      */

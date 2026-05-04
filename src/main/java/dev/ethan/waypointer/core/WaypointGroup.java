@@ -82,6 +82,13 @@ public final class WaypointGroup {
      */
     private transient boolean[] staticReached;
     /**
+     * Newly-created waypoints are often at the player's feet. Suppress proximity
+     * on that one index until the player leaves its radius, otherwise the tick
+     * loop immediately marks it reached and the user never sees feedback that
+     * the add succeeded.
+     */
+    private transient int proximitySuppressedIndex = -1;
+    /**
      * Set when a static reach pass completes the full set and clears {@link #staticReached}.
      * Lets {@link dev.ethan.waypointer.progression.ProximityTracker} stop scanning for the
      * rest of the tick so every waypoint shows as visible for at least one frame.
@@ -236,6 +243,7 @@ public final class WaypointGroup {
     public void insert(int index, Waypoint w) {
         waypoints.add(index, w);
         if (index <= currentIndex) currentIndex++;
+        if (proximitySuppressedIndex >= index) proximitySuppressedIndex++;
         staticReached = null;
         applyGradientIfAuto();
     }
@@ -244,6 +252,8 @@ public final class WaypointGroup {
         waypoints.remove(index);
         if (currentIndex > index) currentIndex--;
         currentIndex = Math.min(currentIndex, waypoints.size());
+        if (proximitySuppressedIndex == index) proximitySuppressedIndex = -1;
+        else if (proximitySuppressedIndex > index) proximitySuppressedIndex--;
         staticReached = null;
         applyGradientIfAuto();
     }
@@ -255,6 +265,7 @@ public final class WaypointGroup {
         if (currentIndex == from) currentIndex = to;
         else if (from < currentIndex && to >= currentIndex) currentIndex--;
         else if (from > currentIndex && to <= currentIndex) currentIndex++;
+        proximitySuppressedIndex = -1;
         staticReached = null;
         applyGradientIfAuto();
     }
@@ -280,6 +291,7 @@ public final class WaypointGroup {
     public void resetProgress() {
         currentIndex = 0;
         resetStaticReachState();
+        clearProximitySuppression();
     }
 
     public boolean isStaticWaypointReached(int index) {
@@ -323,6 +335,29 @@ public final class WaypointGroup {
         staticReached = null;
     }
 
+    public void focusNewWaypoint(int index) {
+        if (waypoints.isEmpty()) {
+            proximitySuppressedIndex = -1;
+            return;
+        }
+
+        currentIndex = Math.max(0, Math.min(index, waypoints.size() - 1));
+        proximitySuppressedIndex = currentIndex;
+        resetStaticReachState();
+    }
+
+    public int proximitySuppressedIndex() {
+        return proximitySuppressedIndex;
+    }
+
+    public boolean isProximitySuppressed(int index) {
+        return index == proximitySuppressedIndex;
+    }
+
+    public void clearProximitySuppression() {
+        proximitySuppressedIndex = -1;
+    }
+
     /**
      * Drop every time-based temporary waypoint whose deadline has passed.
      * Returns the number of waypoints removed so callers can short-circuit
@@ -362,6 +397,7 @@ public final class WaypointGroup {
 
     public void setCurrentIndex(int index) {
         currentIndex = Math.max(0, Math.min(index, waypoints.size()));
+        clearProximitySuppression();
     }
 
     /** Radius the tracker should use for a given waypoint (its own override, else the group default). */

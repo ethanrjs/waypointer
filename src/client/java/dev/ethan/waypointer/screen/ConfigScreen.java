@@ -62,9 +62,9 @@ public final class ConfigScreen extends Screen {
                 "Opacity of the line drawn from the crosshair to the active waypoint.\n"
               + "0 is fully transparent, 1 is solid.");
         y += rowH;
-        addNumberRow(col1, y, colW, "Beacon opacity (0-1)",
+        addNumberRow(col1, y, colW, "Waypoint box opacity (0-1)",
                 config.beaconOpacity(), config::setBeaconOpacity,
-                "Opacity of each waypoint's world-space box / beacon. 0 hides the volume,\n"
+                "Opacity of each waypoint's world-space box. 0 hides the volume,\n"
               + "1 is the strongest fill; labels can still show separately.");
         y += rowH;
         addNumberRow(col1, y, colW, "Tracer color (hex RRGGBB)",
@@ -107,7 +107,7 @@ public final class ConfigScreen extends Screen {
         // --- Column 2: Behavior ------------------------------------------------------------
         int y2 = rowsY;
         addBoolRow(col2, y2, "Show waypoint names", config.showWaypointNames(), config::setShowWaypointNames,
-                "Floating name labels at each rendered waypoint. Off keeps beacons without text.");
+                "Floating name labels at each rendered waypoint. Off keeps boxes without text.");
         y2 += rowH;
         addBoolRow(col2, y2, "Waypoint text inherits color",
                 config.matchWaypointTextToWaypointColor(), config::setMatchWaypointTextToWaypointColor,

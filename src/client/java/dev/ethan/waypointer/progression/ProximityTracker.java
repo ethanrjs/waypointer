@@ -54,6 +54,7 @@ public final class ProximityTracker {
             // on them would re-enter the "advance past waypoint" logic on a container
             // whose order is meaningless.
             if (group.temp()) continue;
+            updateProximitySuppression(group, px, py, pz);
             if (hideReachedStatic && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
                 markReachedStaticWaypoints(group, px, py, pz);
                 continue;
@@ -76,9 +77,11 @@ public final class ProximityTracker {
      */
     public static boolean markReachedStaticWaypoints(WaypointGroup group,
                                                      double px, double py, double pz) {
+        updateProximitySuppression(group, px, py, pz);
         boolean changed = false;
         for (int i = 0; i < group.size(); i++) {
             if (group.isStaticWaypointReached(i)) continue;
+            if (group.isProximitySuppressed(i)) continue;
 
             Waypoint w = group.get(i);
             double r = group.effectiveRadius(w);
@@ -128,6 +131,7 @@ public final class ProximityTracker {
     public static boolean advanceIfReached(WaypointGroup group, double px, double py, double pz,
                                            boolean restartWhenComplete, boolean allowSkipAhead) {
         if (group.isComplete()) return false;
+        updateProximitySuppression(group, px, py, pz);
 
         int size = group.size();
         int from = group.currentIndex();
@@ -138,6 +142,8 @@ public final class ProximityTracker {
         int scanStart = allowSkipAhead ? size - 1 : from;
 
         for (int i = scanStart; i >= from; i--) {
+            if (group.isProximitySuppressed(i)) continue;
+
             Waypoint w = group.get(i);
             double r = group.effectiveRadius(w);
             double dx = (w.x() + 0.5) - px;
@@ -160,5 +166,29 @@ public final class ProximityTracker {
             }
         }
         return false;
+    }
+
+    private static void updateProximitySuppression(WaypointGroup group,
+                                                   double px, double py, double pz) {
+        int index = group.proximitySuppressedIndex();
+        if (index < 0) return;
+        if (index >= group.size()) {
+            group.clearProximitySuppression();
+            return;
+        }
+
+        Waypoint w = group.get(index);
+        if (!isWithinReach(group, w, px, py, pz)) {
+            group.clearProximitySuppression();
+        }
+    }
+
+    private static boolean isWithinReach(WaypointGroup group, Waypoint w,
+                                         double px, double py, double pz) {
+        double r = group.effectiveRadius(w);
+        double dx = (w.x() + 0.5) - px;
+        double dy = (w.y() + 0.5) - py;
+        double dz = (w.z() + 0.5) - pz;
+        return dx * dx + dy * dy + dz * dz <= r * r;
     }
 }
