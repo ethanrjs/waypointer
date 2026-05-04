@@ -471,7 +471,7 @@ public final class DebugInspectScreen extends Screen {
         rows.add(new Row.KV("Input",       d.inputChars() + " chars"));
         rows.add(new Row.KVDim("Prefix",   d.magic()));
         rows.add(new Row.KV("Payload",     d.payloadChars() + " chars"));
-        rows.add(new Row.KVDim("Encoding", "ASCII base-85"));
+        rows.add(new Row.KVDim("Encoding", d.textEncoding()));
         rows.add(new Row.KV("Compressed",  d.compressedBytes() + " bytes"));
         rows.add(new Row.KV("Raw body",    d.rawBodyBytes() + " bytes"));
         rows.add(new Row.KV("Density",     String.format(Locale.ROOT, "%.2f chars / raw byte", d.charsPerRawByte())));
@@ -504,7 +504,8 @@ public final class DebugInspectScreen extends Screen {
 
             rows.add(new Row.KV("Zone",          gd.zoneId().isEmpty() ? "(none)" : gd.zoneId()));
             rows.add(new Row.KV("Group flags",   formatByteFull(gd.groupFlagsByte())));
-            rows.add(new Row.Bit(0, "enabled",      gd.enabled()));
+            rows.add(new Row.Bit(0, d.version() == 2 ? "enabled" : "bodyless",
+                    d.version() == 2 ? gd.enabled() : (gd.groupFlagsByte() & 1) != 0));
             rows.add(new Row.Bit(1, "gradientAuto", gd.gradientAuto()));
             rows.add(new Row.Bit(2, "loadSequence", gd.loadSequence()));
             rows.add(new Row.Bit(3, "customRadius", gd.customRadius()));

@@ -47,12 +47,17 @@ public final class ProximityTracker {
         // player's preferred feel is baked in from day one.
         boolean loop = config.restartRouteWhenComplete();
         boolean globalSkipAhead = config.skipAheadMechanicEnabled();
+        boolean hideReachedStatic = config.hideReachedStaticWaypointsUntilCycleComplete();
         for (WaypointGroup group : manager.activeGroups()) {
             // Temp-only bucket groups don't participate in progression -- they hold
             // ad-hoc markers whose own expiry modes handle cleanup. Running proximity
             // on them would re-enter the "advance past waypoint" logic on a container
             // whose order is meaningless.
             if (group.temp()) continue;
+            if (hideReachedStatic && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
+                markReachedStaticWaypoints(group, px, py, pz);
+                continue;
+            }
             // Group-level skip-ahead gate. When a waypoint was just added the
             // group's flag is flipped off (see the feature wiring in
             // WaypointerConfig#disableGroupSkipAheadOnWaypointAdd); we respect
@@ -61,6 +66,35 @@ public final class ProximityTracker {
             boolean allowSkip = globalSkipAhead && group.skipAheadEnabled();
             advanceIfReached(group, px, py, pz, loop, allowSkip);
         }
+    }
+
+    /**
+     * Static groups are unordered map overlays, so reach tracking scans every
+     * waypoint instead of advancing a single route index. Reaching the final
+     * hidden marker resets the group immediately (handled by WaypointGroup),
+     * making the next cycle visible without requiring a reconnect or command.
+     */
+    public static boolean markReachedStaticWaypoints(WaypointGroup group,
+                                                     double px, double py, double pz) {
+        boolean changed = false;
+        for (int i = 0; i < group.size(); i++) {
+            if (group.isStaticWaypointReached(i)) continue;
+
+            Waypoint w = group.get(i);
+            double r = group.effectiveRadius(w);
+            double dx = (w.x() + 0.5) - px;
+            double dy = (w.y() + 0.5) - py;
+            double dz = (w.z() + 0.5) - pz;
+            if (dx * dx + dy * dy + dz * dz <= r * r) {
+                if (group.markStaticWaypointReached(i)) {
+                    changed = true;
+                    if (group.consumeStaticCycleJustCompleted()) {
+                        break;
+                    }
+                }
+            }
+        }
+        return changed;
     }
 
     /**

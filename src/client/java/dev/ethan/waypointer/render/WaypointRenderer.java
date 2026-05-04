@@ -28,10 +28,14 @@ import org.joml.Vector3fc;
  * Draws every active waypoint as an outlined cube (world-space) plus a 2D label
  * anchored over it (screen-space).
  *
- * State-driven coloring:
+ * State-driven coloring in SEQUENCE mode:
  *   - Completed (i < currentIndex): dim alpha, hidden if its FLAG_HIDE_BEACON is set.
  *   - Current   (i == currentIndex): full alpha, label always visible.
  *   - Upcoming  (i >  currentIndex): mid alpha.
+ *
+ * STATIC groups intentionally draw every waypoint as current/full-alpha. Their
+ * purpose is to act as a persistent map overlay, so proximity progress should
+ * not make markers fade just because the player walked near them.
  *
  * <p><b>Why two render paths?</b> Minecraft 1.21.9 reworked world-space text to go
  * through an {@code OrderedSubmitNodeCollector} queue, and neither the old
@@ -193,8 +197,10 @@ public final class WaypointRenderer implements HudElement {
         float beaconOpacity = (float) config.beaconOpacity();
 
         g.forEachVisibleIndex(i -> {
+            if (shouldHideStaticReached(g, i)) return;
+
             Waypoint w = g.get(i);
-            State state = stateFor(i, currentIdx);
+            State state = stateFor(g, i, currentIdx);
             if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
 
             float alpha = alphaFor(g, state) * beaconOpacity;
@@ -244,8 +250,10 @@ public final class WaypointRenderer implements HudElement {
         boolean colorizeNames = config.matchWaypointTextToWaypointColor();
 
         group.forEachVisibleIndex(i -> {
+            if (shouldHideStaticReached(group, i)) return;
+
             Waypoint w = group.get(i);
-            State state = stateFor(i, currentIdx);
+            State state = stateFor(group, i, currentIdx);
             if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
             if (w.hasFlag(Waypoint.FLAG_HIDE_NAME)) return;
 
@@ -327,10 +335,17 @@ public final class WaypointRenderer implements HudElement {
                 : "#" + (i + 1);
     }
 
-    private static State stateFor(int i, int currentIdx) {
+    private static State stateFor(WaypointGroup group, int i, int currentIdx) {
+        if (group.loadMode() == WaypointGroup.LoadMode.STATIC) return State.CURRENT;
         if (i < currentIdx) return State.COMPLETED;
         if (i == currentIdx) return State.CURRENT;
         return State.UPCOMING;
+    }
+
+    private boolean shouldHideStaticReached(WaypointGroup group, int index) {
+        return config.hideReachedStaticWaypointsUntilCycleComplete()
+                && group.loadMode() == WaypointGroup.LoadMode.STATIC
+                && group.isStaticWaypointReached(index);
     }
 
     private float alphaFor(WaypointGroup group, State state) {
