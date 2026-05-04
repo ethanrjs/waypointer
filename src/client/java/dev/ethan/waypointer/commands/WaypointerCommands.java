@@ -49,7 +49,7 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.arg
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
 
 /**
- * Registers {@code /waypointer} and its alias {@code /wp} as client-side commands.
+ * Registers {@code /waypointer} and short aliases as client-side commands.
  *
  * We lean on Brigadier's help-text for each subcommand's usage; the feedback messages
  * intentionally use the same vocabulary as the in-game UI ("group", "waypoint", "zone")
@@ -81,6 +81,7 @@ public final class WaypointerCommands {
     public void install() {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registry) -> {
             register(dispatcher, "waypointer");
+            register(dispatcher, "wptr");
             register(dispatcher, "wp");
         });
     }
@@ -177,8 +178,8 @@ public final class WaypointerCommands {
                         .executes(ctx -> runImportFromClipboard(ctx.getSource()))
                         .then(argument("payload", StringArgumentType.greedyString())
                                 .suggests(suggestImportPayloads())
-                                .executes(ctx -> runImport(ctx.getSource(),
-                                        StringArgumentType.getString(ctx, "payload"), "argument"))))
+                                .executes(ctx -> runImportArgument(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "payload")))))
                 .then(literal("importfile")
                         .then(argument("path", StringArgumentType.greedyString())
                                 .suggests(suggestImportFiles())
@@ -297,7 +298,7 @@ public final class WaypointerCommands {
     private SuggestionProvider<FabricClientCommandSource> suggestImportPayloads() {
         return (ctx, builder) -> {
             for (String handle : chatImportCache.handles()) {
-                suggestText(builder, handle, "cached chat import; or use /wp importchat " + handle);
+                suggestText(builder, handle, "cached chat import");
             }
             return builder.buildFuture();
         };
@@ -815,6 +816,14 @@ public final class WaypointerCommands {
             return 0;
         }
         return runImport(src, codec, "chat");
+    }
+
+    private int runImportArgument(FabricClientCommandSource src, String payload) {
+        String cached = chatImportCache.get(payload);
+        if (cached != null) {
+            return runImport(src, cached, "chat");
+        }
+        return runImport(src, payload, "argument");
     }
 
     private int runImport(FabricClientCommandSource src, String payload, String origin) {

@@ -107,7 +107,15 @@ class WaypointerConfigTest {
         assertTrue(config.chatCoordDetection());
         assertTrue(config.autoAddChatTempWaypoints());
         assertTrue(config.chatCodecDetection());
+        assertTrue(config.dimSequenceContextWaypoints());
         assertTrue(config.exportIncludeColors());
         assertTrue(config.exportIncludeGroupMeta());
+    }
+
+    @Test
+    void dungeonFeatureFlagDefaultsOff() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertEquals(false, config.dungeonWaypointsFeatureEnabled());
     }
 }

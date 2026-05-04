@@ -159,7 +159,7 @@ public final class ChatCoordDetector {
         // Target the temp variant so the waypoint auto-cleans on disconnect --
         // see the class javadoc for why chat-shared coords default to
         // session-scoped rather than permanent.
-        String cmd = "/wp addtemp at " + m.x() + " " + m.y() + " " + m.z();
+        String cmd = "/waypointer addtemp at " + m.x() + " " + m.y() + " " + m.z();
         return base
                 .withColor(ChatFormatting.AQUA)
                 .withUnderlined(true)

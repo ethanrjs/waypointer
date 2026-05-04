@@ -74,6 +74,12 @@ public final class WaypointerConfig {
     private boolean showCompleted = true;
     private boolean showTracer = true;
     /**
+     * When {@code true}, SEQUENCE routes keep the active target prominent and
+     * dim the surrounding context points (previous/current-location marker and
+     * the point after the active target). Static routes keep their usual alpha.
+     */
+    private boolean dimSequenceContextWaypoints = true;
+    /**
      * When {@code true} (default), groups in {@link dev.ethan.waypointer.core.WaypointGroup.LoadMode#STATIC}
      * do not draw the crosshair tracer. Static routes already surface every waypoint, so the
      * line is often visual noise; {@link dev.ethan.waypointer.core.WaypointGroup.LoadMode#SEQUENCE}
@@ -144,6 +150,12 @@ public final class WaypointerConfig {
      * has no way to know the original intent.
      */
     private boolean exportIncludeGroupMeta = true;
+    /**
+     * Hidden feature flag for the in-progress dungeon waypoint subsystem.
+     * Default-off keeps beta builds from registering commands, renderers, tick
+     * hooks, or dungeon data stores until the feature is ready to ship.
+     */
+    private boolean dungeonWaypointsFeatureEnabled = false;
     /**
      * Global gate for the "skip-ahead" proximity mechanic -- the behaviour where
      * walking into a later waypoint's radius advances progress past every
@@ -271,6 +283,7 @@ public final class WaypointerConfig {
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showCompleted()            { return showCompleted; }
     public boolean showTracer()               { return showTracer; }
+    public boolean dimSequenceContextWaypoints() { return dimSequenceContextWaypoints; }
     public boolean hideTracerOnStaticRoutes() { return hideTracerOnStaticRoutes; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
     public double labelHeightOffset()         { return labelHeightOffset; }
@@ -284,6 +297,7 @@ public final class WaypointerConfig {
     public boolean exportIncludeRadii()        { return exportIncludeRadii; }
     public boolean exportIncludeWaypointFlags(){ return exportIncludeWaypointFlags; }
     public boolean exportIncludeGroupMeta()    { return exportIncludeGroupMeta; }
+    public boolean dungeonWaypointsFeatureEnabled() { return dungeonWaypointsFeatureEnabled; }
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
     public boolean disableGroupSkipAheadOnWaypointAdd() { return disableGroupSkipAheadOnWaypointAdd; }
     public boolean checkForUpdates()            { return checkForUpdates; }
@@ -300,6 +314,7 @@ public final class WaypointerConfig {
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
     public void setShowCompleted(boolean v)            { this.showCompleted = v; save(); }
     public void setShowTracer(boolean v)               { this.showTracer = v; save(); }
+    public void setDimSequenceContextWaypoints(boolean v) { this.dimSequenceContextWaypoints = v; save(); }
     public void setHideTracerOnStaticRoutes(boolean v) { this.hideTracerOnStaticRoutes = v; save(); }
     public void setPreferScoreboardFallback(boolean v) { this.preferScoreboardFallback = v; save(); }
     public void setChatCoordDetection(boolean v)       { this.chatCoordDetection = v; save(); }
@@ -310,6 +325,7 @@ public final class WaypointerConfig {
     public void setExportIncludeRadii(boolean v)        { this.exportIncludeRadii = v; save(); }
     public void setExportIncludeWaypointFlags(boolean v){ this.exportIncludeWaypointFlags = v; save(); }
     public void setExportIncludeGroupMeta(boolean v)    { this.exportIncludeGroupMeta = v; save(); }
+    public void setDungeonWaypointsFeatureEnabled(boolean v) { this.dungeonWaypointsFeatureEnabled = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
     public void setLabelHeightOffset(double v) {
         if (!Double.isFinite(v)) return;

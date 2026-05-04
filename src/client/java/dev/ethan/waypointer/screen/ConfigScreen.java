@@ -80,6 +80,11 @@ public final class ConfigScreen extends Screen {
                 "Master switch for crosshair tracers. When off, no tracer lines are drawn\n"
               + "for any group (other waypoint rendering is unchanged).");
         y += rowH;
+        addBoolRow(col1, y, "Dim sequence context waypoints",
+                config.dimSequenceContextWaypoints(), config::setDimSequenceContextWaypoints,
+                "When on, SEQUENCE routes keep the active next waypoint prominent and\n"
+              + "fade the surrounding context points so irrelevant markers are quieter.");
+        y += rowH;
         addBoolRow(col1, y, "Hide tracer on static routes",
                 config.hideTracerOnStaticRoutes(), config::setHideTracerOnStaticRoutes,
                 "When on (default), groups in STATIC load mode skip the tracer: every\n"

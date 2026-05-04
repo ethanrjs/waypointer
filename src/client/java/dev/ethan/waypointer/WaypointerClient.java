@@ -66,20 +66,11 @@ public final class WaypointerClient implements ClientModInitializer {
         new WaypointRenderer(manager, config).install();
         new TracerRenderer(manager, config).install();
 
-        // Dungeon subsystem (issue #9). Lives in its own config + commands so
-        // the merge surface with sibling work on `main` (issues #4/#7) stays
-        // narrow -- no shared files beyond this wiring point.
-        dungeonConfig = DungeonConfig.load();
-        DungeonRoomData.loadDefaultCustomStore();
-        dungeonTracker = new DungeonStateTracker(manager, dungeonConfig);
-        dungeonRouteSession = new DungeonRouteSession();
-        dungeonTracker.addRoomListener(room -> {
-            if (room == null && !dungeonTracker.inDungeon()) dungeonRouteSession.resetAll();
-        });
-        dungeonTracker.install();
-        new DungeonHighlightRenderer(dungeonTracker, dungeonConfig, dungeonRouteSession).install();
-        new DungeonTriggerDetector(dungeonTracker, dungeonRouteSession).install();
-        new DungeonCommands(dungeonTracker, dungeonConfig, dungeonRouteSession).install();
+        if (config.dungeonWaypointsFeatureEnabled()) {
+            installDungeonSubsystem();
+        } else {
+            Waypointer.LOGGER.info("Dungeon waypoint subsystem disabled by feature flag");
+        }
 
         ChatImportCache chatImportCache = new ChatImportCache();
         new WaypointerCommands(manager, storage, config, chatImportCache, WaypointerClient::openGui).install();
@@ -111,5 +102,19 @@ public final class WaypointerClient implements ClientModInitializer {
 
     private static void openGui() {
         WaypointerScreen.open(manager, config);
+    }
+
+    private static void installDungeonSubsystem() {
+        dungeonConfig = DungeonConfig.load();
+        DungeonRoomData.loadDefaultCustomStore();
+        dungeonTracker = new DungeonStateTracker(manager, dungeonConfig);
+        dungeonRouteSession = new DungeonRouteSession();
+        dungeonTracker.addRoomListener(room -> {
+            if (room == null && !dungeonTracker.inDungeon()) dungeonRouteSession.resetAll();
+        });
+        dungeonTracker.install();
+        new DungeonHighlightRenderer(dungeonTracker, dungeonConfig, dungeonRouteSession).install();
+        new DungeonTriggerDetector(dungeonTracker, dungeonRouteSession).install();
+        new DungeonCommands(dungeonTracker, dungeonConfig, dungeonRouteSession).install();
     }
 }
