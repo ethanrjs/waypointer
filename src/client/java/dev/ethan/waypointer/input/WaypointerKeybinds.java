@@ -6,6 +6,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.screen.AddNamedWaypointScreen;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.ChatFormatting;
@@ -19,19 +20,22 @@ import org.lwjgl.glfw.GLFW;
 /**
  * Registers and polls the mod's keybinds.
  *
- * Three bindings today:
+ * Five bindings today:
  *
  *   - Open Editor -- the primary way into the GUI.
  *   - Skip Waypoint -- advances the current active group(s) past their current
  *     waypoint. Useful for dungeon speedruns or when a waypoint is physically
  *     unreachable. Unbound by default; players who don't want it just don't
  *     bind the key.
- *   - Add Waypoint Here -- drops a waypoint at the player's position into the
+ *   - Create Waypoint -- drops a waypoint at the player's position into the
  *     first active group (auto-creating one if the zone has none). Matches
  *     {@code /wp add} in behavior so muscle memory transfers between the command
  *     and the keybind.
+ *   - Create Named Waypoint -- opens a one-field prompt, then creates the
+ *     waypoint at the player's current position with that name.
+ *   - Add Temp Waypoint Here -- drops a session-scoped temporary waypoint.
  *
- * All three are registered under a single Waypointer category via the
+ * All bindings are registered under a single Waypointer category via the
  * identifier-based API so the vanilla controls screen groups them together.
  * None are bound by default (apart from Open Editor): the mod treats every
  * action that writes or mutates route state as opt-in.
@@ -44,6 +48,7 @@ public final class WaypointerKeybinds {
     private final KeyMapping openEditor;
     private final KeyMapping skipWaypoint;
     private final KeyMapping addWaypointHere;
+    private final KeyMapping addNamedWaypointHere;
     private final KeyMapping addTempWaypointHere;
     private final Runnable openGui;
     private final ActiveGroupManager manager;
@@ -76,6 +81,11 @@ public final class WaypointerKeybinds {
                 InputConstants.Type.KEYSYM,
                 InputConstants.UNKNOWN.getValue(),
                 CATEGORY));
+        this.addNamedWaypointHere = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.waypointer.add_named_waypoint_here",
+                InputConstants.Type.KEYSYM,
+                InputConstants.UNKNOWN.getValue(),
+                CATEGORY));
         // Same opt-in story as the other creation keybinds. Uses the user's
         // last-picked mode + duration (stored in config) so a single tap drops
         // a temp without an intermediate picker: the editor button path is for
@@ -97,6 +107,7 @@ public final class WaypointerKeybinds {
         while (openEditor.consumeClick()) openGui.run();
         while (skipWaypoint.consumeClick()) skipCurrentWaypoint(mc);
         while (addWaypointHere.consumeClick()) addWaypointAtPlayer(mc);
+        while (addNamedWaypointHere.consumeClick()) openNamedWaypointPrompt(mc);
         while (addTempWaypointHere.consumeClick()) addTempWaypointAtPlayer(mc);
     }
 
@@ -142,12 +153,17 @@ public final class WaypointerKeybinds {
 
         WaypointGroup target = manager.getOrCreateActiveGroup();
         target.add(new Waypoint(x, y, z, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
-        addFlow.afterWaypointAdded(target);
+        addFlow.afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
 
         showFeedback(mc, Component.literal("Waypoint added to \"" + target.name()
                         + "\" at " + x + ", " + y + ", " + z)
                 .withStyle(ChatFormatting.GREEN));
+    }
+
+    private void openNamedWaypointPrompt(Minecraft mc) {
+        if (mc.player == null) return;
+        AddNamedWaypointScreen.open(null, manager, config, null);
     }
 
     /**

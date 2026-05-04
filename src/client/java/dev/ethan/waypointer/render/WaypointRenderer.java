@@ -175,7 +175,7 @@ public final class WaypointRenderer implements HudElement {
             RenderType quadType = WaypointerRenderPipelines.quadsThroughWalls();
             VertexConsumer quads = buffers.getBuffer(quadType);
             for (WaypointGroup g : groups) {
-                emitBoxes(ps, null, quads, g);
+                emitFilledBoxes(ps, quads, g);
             }
             RenderHelpers.endBatch(buffers, quadType);
         }
@@ -183,7 +183,7 @@ public final class WaypointRenderer implements HudElement {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
             VertexConsumer lines = buffers.getBuffer(lineType);
             for (WaypointGroup g : groups) {
-                emitBoxes(ps, lines, null, g);
+                emitLineBoxes(ps, lines, g);
             }
             RenderHelpers.endBatch(buffers, lineType);
         }
@@ -191,7 +191,7 @@ public final class WaypointRenderer implements HudElement {
         ps.popPose();
     }
 
-    private void emitBoxes(PoseStack ps, VertexConsumer lines, VertexConsumer quads, WaypointGroup g) {
+    private void emitLineBoxes(PoseStack ps, VertexConsumer lines, WaypointGroup g) {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
@@ -205,13 +205,26 @@ public final class WaypointRenderer implements HudElement {
 
             float alpha = alphaFor(g, state) * beaconOpacity;
             float x = w.x(), y = w.y(), z = w.z();
-            if (quads != null) {
-                RenderHelpers.emitFilledBox(quads, ps, x, y, z, x + 1f, y + 1f, z + 1f,
-                        w.color(), alpha * FILLED_ALPHA_SCALE);
-            }
-            if (lines != null) {
-                RenderHelpers.emitLineBox(lines, ps, x, y, z, x + 1f, y + 1f, z + 1f, w.color(), alpha);
-            }
+            RenderHelpers.emitLineBox(lines, ps, x, y, z, x + 1f, y + 1f, z + 1f, w.color(), alpha);
+        });
+    }
+
+    private void emitFilledBoxes(PoseStack ps, VertexConsumer quads, WaypointGroup g) {
+        int currentIdx = g.currentIndex();
+        boolean showCompleted = config.showCompleted();
+        float beaconOpacity = (float) config.beaconOpacity();
+
+        g.forEachVisibleIndex(i -> {
+            if (shouldHideStaticReached(g, i)) return;
+
+            Waypoint w = g.get(i);
+            State state = stateFor(g, i, currentIdx);
+            if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
+
+            float alpha = alphaFor(g, state) * beaconOpacity;
+            float x = w.x(), y = w.y(), z = w.z();
+            RenderHelpers.emitFilledBox(quads, ps, x, y, z, x + 1f, y + 1f, z + 1f,
+                    w.color(), alpha * FILLED_ALPHA_SCALE);
         });
     }
 

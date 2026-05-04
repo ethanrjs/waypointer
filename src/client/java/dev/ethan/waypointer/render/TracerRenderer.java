@@ -31,9 +31,9 @@ import org.joml.Vector3fc;
  * regardless of view pitch.
  *
  * Shares {@link WaypointerRenderPipelines#linesThroughWalls()} with
- * {@link WaypointRenderer} so the tracer pierces terrain like the beacons do --
- * without that, the tracer vanishes the moment you look at a wall between you
- * and the current waypoint.
+ * {@link WaypointRenderer} so the tracer pierces terrain; without that, the
+ * tracer vanishes the moment you look at a wall between you and the current
+ * waypoint.
  */
 public final class TracerRenderer {
 
@@ -89,9 +89,8 @@ public final class TracerRenderer {
         float fromZ = (float) camPos.z + tracerOriginDelta[2];
         float alpha = (float) config.tracerOpacity();
         // Matching the tracer to the live waypoint colour means gradient groups
-        // draw a tracer whose hue advances with progress (beacon and line read
-        // as one unit), and manually-coloured checkpoints light their tracer
-        // in the same tint. The flat-override path is still available for
+        // draw a tracer whose hue advances with progress, and manually-coloured
+        // checkpoints light their tracer in the same tint. The flat-override path is still available for
         // users who prefer a single distinctive tracer colour across groups.
         boolean matchWaypoint = config.matchTracerToWaypointColor();
         int overrideColor = config.tracerColor();
