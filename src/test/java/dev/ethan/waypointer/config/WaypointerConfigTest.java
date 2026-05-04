@@ -109,7 +109,7 @@ class WaypointerConfigTest {
         assertTrue(config.autoAddChatTempWaypoints());
         assertTrue(config.chatCodecDetection());
         assertTrue(config.dimSequenceContextWaypoints());
-        assertTrue(config.exportIncludeColors());
+        assertFalse(config.exportIncludeColors());
         assertTrue(config.exportIncludeGroupMeta());
     }
 
