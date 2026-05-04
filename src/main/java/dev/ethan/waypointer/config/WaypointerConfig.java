@@ -131,13 +131,8 @@ public final class WaypointerConfig {
     private boolean chatCodecDetection = true;
     /** Default exports drop names; set to {@code true} to include them at the cost of length. */
     private boolean exportIncludeNames = false;
-    /**
-     * Per-waypoint colors are tiny (3 bytes each) and visually meaningful, so the
-     * default is {@code true}. Disabling forces every imported waypoint to the
-     * default color, which is useful when sharing a route someone else will
-     * recolor to match their own palette.
-     */
-    private boolean exportIncludeColors = true;
+    /** Default exports drop colors so shared routes inherit the recipient's palette. */
+    private boolean exportIncludeColors = false;
     /**
      * Per-waypoint custom radii. Off by default because most routes use the
      * group default radius; including them only matters when the sender
