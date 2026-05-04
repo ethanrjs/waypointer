@@ -109,6 +109,11 @@ public final class ConfigScreen extends Screen {
         addBoolRow(col2, y2, "Show waypoint names", config.showWaypointNames(), config::setShowWaypointNames,
                 "Floating name labels at each rendered waypoint. Off keeps beacons without text.");
         y2 += rowH;
+        addBoolRow(col2, y2, "Waypoint text inherits color",
+                config.matchWaypointTextToWaypointColor(), config::setMatchWaypointTextToWaypointColor,
+                "When on, each floating waypoint name uses that waypoint's color.\n"
+              + "When off, names stay white for maximum contrast.");
+        y2 += rowH;
         addBoolRow(col2, y2, "Show completed waypoints", config.showCompleted(), config::setShowCompleted,
                 "When on, waypoints you have already reached still draw (usually faded).\n"
               + "When off, completed stops disappear from the world HUD.");
