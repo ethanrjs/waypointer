@@ -73,10 +73,6 @@ tasks.withType(JavaCompile).configureEach {
 	it.options.release = 21
 }
 
-tasks.named("remapJar") {
-	archiveVersion = "${project.version}-1.21.11"
-}
-
 java {
 	withSourcesJar()
 
