@@ -160,47 +160,10 @@ public final class WaypointGroup {
     }
 
     /**
-     * Which waypoint indices the renderer should surface given the current load mode.
-     * Returns an int array for iteration without boxing; callers should treat it as read-only.
-     *
-     * STATIC: every index in {@code [0, size)}.
-     *
-     * SEQUENCE: up to three indices {@code currentIndex - 1, currentIndex, currentIndex + 1},
-     * clamped to valid bounds. When the route is complete, falls back to the last point so
-     * "you made it" still has something visible.
-     */
-    public int[] visibleIndices() {
-        int n = waypoints.size();
-        if (n == 0) return new int[0];
-        if (loadMode == LoadMode.STATIC) {
-            int[] all = new int[n];
-            for (int i = 0; i < n; i++) all[i] = i;
-            return all;
-        }
-
-        if (isComplete()) {
-            return new int[] { n - 1 };
-        }
-
-        int cur = Math.max(0, Math.min(currentIndex, n - 1));
-        int prev = cur - 1;
-        int next = cur + 1;
-
-        int count = 1 + (prev >= 0 ? 1 : 0) + (next < n ? 1 : 0);
-        int[] out = new int[count];
-        int w = 0;
-        if (prev >= 0) out[w++] = prev;
-        out[w++] = cur;
-        if (next < n) out[w] = next;
-        return out;
-    }
-
-    /**
-     * Alloc-free variant of {@link #visibleIndices()} for render hot paths.
-     *
-     * {@code visibleIndices()} allocates a fresh {@code int[]} on every call, which
-     * the renderer invokes twice per frame per active group. This variant invokes
-     * {@code action} with each index inline, producing zero garbage.
+     * Which waypoint indices the renderer should surface given the current load
+     * mode. Invokes {@code action} inline instead of allocating an index array;
+     * renderers call this every frame, so the no-allocation path is the primary
+     * API rather than a convenience overload.
      */
     public void forEachVisibleIndex(IntConsumer action) {
         int n = waypoints.size();

@@ -102,13 +102,38 @@ public final class WaypointerKeybinds {
     }
 
     private void onTick(Minecraft mc) {
+        if (mc.screen != null) {
+            drainWaypointKeybindClicks();
+            return;
+        }
+
         // consumeClick returns true at most once per press, so holding the key doesn't
         // spam new screens / repeated skips / repeated adds.
-        while (openEditor.consumeClick()) openGui.run();
+        while (openEditor.consumeClick()) {
+            openGui.run();
+            drainWaypointKeybindClicks();
+            return;
+        }
         while (skipWaypoint.consumeClick()) skipCurrentWaypoint(mc);
         while (addWaypointHere.consumeClick()) addWaypointAtPlayer(mc);
-        while (addNamedWaypointHere.consumeClick()) openNamedWaypointPrompt(mc);
+        while (addNamedWaypointHere.consumeClick()) {
+            openNamedWaypointPrompt(mc);
+            drainWaypointKeybindClicks();
+            return;
+        }
         while (addTempWaypointHere.consumeClick()) addTempWaypointAtPlayer(mc);
+    }
+
+    /**
+     * Text-entry screens still feed bound keys into {@link KeyMapping}. Draining
+     * prevents a typed waypoint name from replaying later as route/temp actions.
+     */
+    private void drainWaypointKeybindClicks() {
+        while (openEditor.consumeClick()) {}
+        while (skipWaypoint.consumeClick()) {}
+        while (addWaypointHere.consumeClick()) {}
+        while (addNamedWaypointHere.consumeClick()) {}
+        while (addTempWaypointHere.consumeClick()) {}
     }
 
     /**
@@ -155,10 +180,6 @@ public final class WaypointerKeybinds {
         target.add(new Waypoint(x, y, z, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
         addFlow.afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
-
-        showFeedback(mc, Component.literal("Waypoint added to \"" + target.name()
-                        + "\" at " + x + ", " + y + ", " + z)
-                .withStyle(ChatFormatting.GREEN));
     }
 
     private void openNamedWaypointPrompt(Minecraft mc) {
@@ -191,7 +212,7 @@ public final class WaypointerKeybinds {
         int y = (int) Math.floor(p.getY());
         int z = (int) Math.floor(p.getZ());
 
-        int mode = clampTempMode(config.tempDefaultMode());
+        int mode = Waypoint.normalizeTempMode(config.tempDefaultMode());
         int durationMin = Math.max(1, config.tempDefaultDurationMin());
         long expiresAt = mode == Waypoint.TEMP_TIME
                 ? System.currentTimeMillis() + durationMin * 60_000L
@@ -201,22 +222,8 @@ public final class WaypointerKeybinds {
         target.add(Waypoint.at(x, y, z).withTemp(mode, expiresAt));
         manager.fireDataChanged();
 
-        showFeedback(mc, Component.literal("Temp (" + tempModeName(mode) + ") added at "
+        showFeedback(mc, Component.literal("Temp (" + Waypoint.tempModeName(mode) + ") added at "
                         + x + ", " + y + ", " + z).withStyle(ChatFormatting.AQUA));
-    }
-
-    private static int clampTempMode(int v) {
-        if (v < Waypoint.TEMP_TIME || v > Waypoint.TEMP_UNTIL_LEAVE) return Waypoint.TEMP_UNTIL_REACHED;
-        return v;
-    }
-
-    private static String tempModeName(int mode) {
-        return switch (mode) {
-            case Waypoint.TEMP_TIME          -> "TIME";
-            case Waypoint.TEMP_UNTIL_REACHED -> "REACH";
-            case Waypoint.TEMP_UNTIL_LEAVE   -> "LEAVE";
-            default -> "?";
-        };
     }
 
     /**

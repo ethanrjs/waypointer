@@ -5,7 +5,6 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.input.WaypointAddFlow;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -145,14 +144,7 @@ public final class AddNamedWaypointScreen extends Screen {
         new WaypointAddFlow(config).afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
 
-        showFeedback("Named waypoint added to \"" + target.name() + "\" at " + x + ", " + y + ", " + z);
         onClose();
-    }
-
-    private static void showFeedback(String text) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.gui == null) return;
-        mc.gui.setOverlayMessage(Component.literal(text).withStyle(ChatFormatting.GREEN), false);
     }
 
     @Override

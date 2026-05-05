@@ -53,7 +53,7 @@ public final class AddTempScreen extends Screen {
         this.parent = parent;
         this.manager = manager;
         this.config = config;
-        this.mode = clampMode(config.tempDefaultMode());
+        this.mode = Waypoint.normalizeTempMode(config.tempDefaultMode());
         this.durationMin = Math.max(1, config.tempDefaultDurationMin());
     }
 
@@ -125,24 +125,7 @@ public final class AddTempScreen extends Screen {
     }
 
     private Component modeLabel() {
-        return Component.literal("Mode: " + modeName(mode));
-    }
-
-    private static String modeName(int mode) {
-        return switch (mode) {
-            case Waypoint.TEMP_TIME          -> "TIME";
-            case Waypoint.TEMP_UNTIL_REACHED -> "REACH";
-            case Waypoint.TEMP_UNTIL_LEAVE   -> "LEAVE";
-            default -> "?";
-        };
-    }
-
-    private static int clampMode(int v) {
-        // Defaults outside the valid temp range fall back to REACH, the least
-        // surprising "default temp": no timer to reason about, no server-scope
-        // tie-in, just "get rid of it when I've been there".
-        if (v < Waypoint.TEMP_TIME || v > Waypoint.TEMP_UNTIL_LEAVE) return Waypoint.TEMP_UNTIL_REACHED;
-        return v;
+        return Component.literal("Mode: " + Waypoint.tempModeName(mode));
     }
 
     private void createAndClose() {

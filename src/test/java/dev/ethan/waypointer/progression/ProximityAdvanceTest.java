@@ -25,28 +25,28 @@ class ProximityAdvanceTest {
     @Test
     void out_of_range_does_not_advance() {
         WaypointGroup g = line();
-        assertFalse(ProximityAdvanceTester(g, 5.0, 0.0, 0.0));
+        assertFalse(advanceIfReached(g, 5.0, 0.0, 0.0));
         assertEquals(0, g.currentIndex());
     }
 
     @Test
     void reaching_current_advances_one() {
         WaypointGroup g = line();
-        assertTrue(ProximityAdvanceTester(g, 0.5, 0.5, 0.5));
+        assertTrue(advanceIfReached(g, 0.5, 0.5, 0.5));
         assertEquals(1, g.currentIndex());
     }
 
     @Test
     void reaching_a_future_waypoint_skips_ahead() {
         WaypointGroup g = line();
-        assertTrue(ProximityAdvanceTester(g, 20.5, 0.5, 0.5));
+        assertTrue(advanceIfReached(g, 20.5, 0.5, 0.5));
         assertEquals(3, g.currentIndex()); // jumped from 0 straight past index 2
     }
 
     @Test
     void reaching_last_marks_complete() {
         WaypointGroup g = line();
-        assertTrue(ProximityAdvanceTester(g, 30.5, 0.5, 0.5));
+        assertTrue(advanceIfReached(g, 30.5, 0.5, 0.5));
         assertTrue(g.isComplete());
     }
 
@@ -62,7 +62,7 @@ class ProximityAdvanceTest {
     void ignores_waypoints_before_current() {
         WaypointGroup g = line();
         g.setCurrentIndex(2);
-        assertFalse(ProximityAdvanceTester(g, 0.5, 0.5, 0.5)); // index 0 should not count
+        assertFalse(advanceIfReached(g, 0.5, 0.5, 0.5)); // index 0 should not count
         assertEquals(2, g.currentIndex());
     }
 
@@ -71,7 +71,7 @@ class ProximityAdvanceTest {
         WaypointGroup g = WaypointGroup.create("route", "test_zone");
         g.setDefaultRadius(1.0);
         g.add(Waypoint.at(0, 0, 0).withRadius(10.0));
-        assertTrue(ProximityAdvanceTester(g, 7.0, 0.0, 0.0));
+        assertTrue(advanceIfReached(g, 7.0, 0.0, 0.0));
         assertTrue(g.isComplete());
     }
 
@@ -101,7 +101,7 @@ class ProximityAdvanceTest {
         g.add(Waypoint.at(0, 0, 0).withTemp(Waypoint.TEMP_UNTIL_REACHED, 0L));
         g.add(Waypoint.at(10, 0, 0));
 
-        assertTrue(ProximityAdvanceTester(g, 0.5, 0.5, 0.5));
+        assertTrue(advanceIfReached(g, 0.5, 0.5, 0.5));
         assertEquals(1, g.size()); // temp was removed
         // After the temp was removed, currentIndex was originally advanced to 1
         // but the list shrank; the remaining waypoint should now be index 0.
@@ -186,7 +186,7 @@ class ProximityAdvanceTest {
         }
     }
 
-    private static boolean ProximityAdvanceTester(WaypointGroup g, double px, double py, double pz) {
+    private static boolean advanceIfReached(WaypointGroup g, double px, double py, double pz) {
         return ProximityTracker.advanceIfReached(g, px, py, pz);
     }
 }

@@ -2,6 +2,9 @@ package dev.ethan.waypointer.core;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class WaypointGroupTest {
@@ -133,66 +136,66 @@ class WaypointGroupTest {
     }
 
     @Test
-    void visibleIndices_staticMode_returnsEverythingInOrder() {
+    void forEachVisibleIndex_staticMode_returnsEverythingInOrder() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.STATIC);
 
-        int[] visible = g.visibleIndices();
+        int[] visible = visibleIndices(g);
         assertArrayEquals(new int[] { 0, 1, 2, 3 }, visible,
                 "STATIC should surface every index so shared routes are fully rendered");
     }
 
     @Test
-    void visibleIndices_sequenceMode_atStart_showsCurrentAndNext() {
+    void forEachVisibleIndex_sequenceMode_atStart_showsCurrentAndNext() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         g.setCurrentIndex(0);
 
-        int[] visible = g.visibleIndices();
+        int[] visible = visibleIndices(g);
         assertArrayEquals(new int[] { 0, 1 }, visible,
                 "SEQUENCE at index 0 has no previous; should show current + next only");
     }
 
     @Test
-    void visibleIndices_sequenceMode_middle_showsPrevCurrentNext() {
+    void forEachVisibleIndex_sequenceMode_middle_showsPrevCurrentNext() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         g.setCurrentIndex(2);
 
-        int[] visible = g.visibleIndices();
+        int[] visible = visibleIndices(g);
         assertArrayEquals(new int[] { 1, 2, 3 }, visible,
                 "SEQUENCE in the middle should show the prev/current/next triple");
     }
 
     @Test
-    void visibleIndices_sequenceMode_atEnd_showsPrevAndCurrent() {
+    void forEachVisibleIndex_sequenceMode_atEnd_showsPrevAndCurrent() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         g.setCurrentIndex(3);
 
-        int[] visible = g.visibleIndices();
+        int[] visible = visibleIndices(g);
         assertArrayEquals(new int[] { 2, 3 }, visible,
                 "SEQUENCE at the last index has no next; should show prev + current only");
     }
 
     @Test
-    void visibleIndices_sequenceMode_afterCompletion_fallsBackToLastPoint() {
+    void forEachVisibleIndex_sequenceMode_afterCompletion_fallsBackToLastPoint() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         g.setCurrentIndex(g.size()); // past the end -> isComplete()
 
-        int[] visible = g.visibleIndices();
+        int[] visible = visibleIndices(g);
         assertArrayEquals(new int[] { g.size() - 1 }, visible,
                 "completed SEQUENCE routes should still render the final point as a 'made it' marker");
     }
 
     @Test
-    void visibleIndices_emptyGroup_returnsEmpty() {
+    void forEachVisibleIndex_emptyGroup_returnsEmpty() {
         WaypointGroup g = WaypointGroup.create("empty", "dungeon_f7");
-        assertEquals(0, g.visibleIndices().length);
+        assertEquals(0, visibleIndices(g).length);
 
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
-        assertEquals(0, g.visibleIndices().length,
+        assertEquals(0, visibleIndices(g).length,
                 "empty groups never render, regardless of load mode");
     }
 
@@ -251,5 +254,11 @@ class WaypointGroupTest {
         assertSame(firstBucket, secondBucket);
         assertEquals(2, manager.activeGroups().get(0).size(),
                 "second temp waypoint should be visible through refreshed active cache");
+    }
+
+    private static int[] visibleIndices(WaypointGroup group) {
+        List<Integer> indices = new ArrayList<>();
+        group.forEachVisibleIndex(indices::add);
+        return indices.stream().mapToInt(Integer::intValue).toArray();
     }
 }
