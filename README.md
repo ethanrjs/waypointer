@@ -14,6 +14,9 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 - Waypoint skipping in sequence (global toggle + per-group override)
 - Temporary Waypoints
 - Clickable chat coordinates
+- Auto-added temporary chat coordinate waypoints
+- Customizable waypoint visuals: filled/outlined boxes, beacon beams, tracers, labels, and distances
+- Public API for other Fabric client mods
 
 ## Waypoint Import Compatibility
 
@@ -39,7 +42,7 @@ Compiles with Java 21 for 1.21.11
 ./gradlew build
 ```
 
-- `build/libs/waypointer-<version>-1.21.11.jar` — standard Fabric/intermediary jar.
+- `build/libs/waypointer-<version>.jar` — standard Fabric/intermediary jar.
 
 ## Testing
 
@@ -56,6 +59,22 @@ Compiles with Java 21 for 1.21.11
 ## CODEC Specification
 
 See [CODEC.md](CODEC.md) for the full specification.
+
+## API for Other Mods
+
+Waypointer exposes a Fabric entrypoint API for other client mods:
+
+```json
+{
+  "entrypoints": {
+    "waypointer:api": [
+      "com.example.routes.ExampleWaypointerIntegration"
+    ]
+  }
+}
+```
+
+See [API.md](API.md) for more details and examples.
 
 ## AI Generated Code Disclosure
 
