@@ -3,18 +3,22 @@ package dev.ethan.waypointer.codec;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
 /**
- * Not a pass/fail test; this exists to print realistic codec sizes so we can
- * reason about compression improvements. Run with `--info` to see output.
+ * Opt-in diagnostic benchmark for realistic codec sizes.
+ *
+ * <p>Run with {@code -Dcodec.benchmark=true --info}; normal test runs should
+ * stay assertion-focused and quiet.
  */
 class CodecBenchmark {
 
     @Test
+    @EnabledIfSystemProperty(named = "codec.benchmark", matches = "true")
     void print_sizes_for_realistic_scenarios() {
         report("Tiny route (3 pts, no names, delta)",       tinyRoute());
         report("Medium route (20 pts, no names, delta)",    mediumRoute(20, false));

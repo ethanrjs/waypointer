@@ -35,6 +35,16 @@ public final class WaypointerConfig {
      */
     public enum BoxStyle { OUTLINED, FILLED, FILLED_OUTLINED }
 
+    /**
+     * Which visible waypoints receive a vertical beacon-style guide.
+     *
+     * OFF preserves the historical render surface. CURRENT keeps the beam focused
+     * on the immediate target for each active group, which is the useful default
+     * for noisy temp/chat sessions. ALL_VISIBLE is for players who want every
+     * shown marker to punch through terrain as a vertical reference.
+     */
+    public enum BeaconBeamMode { OFF, CURRENT, ALL_VISIBLE }
+
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -71,6 +81,7 @@ public final class WaypointerConfig {
     private double tracerOpacity = 0.95;
     private double beaconOpacity = 0.8;
     private boolean showWaypointNames = true;
+    private boolean showWaypointDistances = true;
     /**
      * When {@code true}, the primary waypoint label uses the waypoint's own RGB
      * instead of flat white. Default-on makes color-coded routes read as a single
@@ -121,6 +132,8 @@ public final class WaypointerConfig {
      */
     private double labelHeightOffset = 0.0;
     private BoxStyle boxStyle = BoxStyle.OUTLINED;
+    private BeaconBeamMode beaconBeamMode = BeaconBeamMode.OFF;
+    private boolean beaconBeamExtendsBelowWaypoint = false;
 
     // Zone detection
     private boolean preferScoreboardFallback = false;
@@ -288,6 +301,7 @@ public final class WaypointerConfig {
     public double tracerOpacity()             { return tracerOpacity; }
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
+    public boolean showWaypointDistances()    { return showWaypointDistances; }
     public boolean matchWaypointTextToWaypointColor() { return matchWaypointTextToWaypointColor; }
     public boolean showCompleted()            { return showCompleted; }
     public boolean showTracer()               { return showTracer; }
@@ -297,6 +311,10 @@ public final class WaypointerConfig {
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
     public double labelHeightOffset()         { return labelHeightOffset; }
     public BoxStyle boxStyle()                { return boxStyle == null ? BoxStyle.OUTLINED : boxStyle; }
+    public BeaconBeamMode beaconBeamMode()    {
+        return beaconBeamMode == null ? BeaconBeamMode.OFF : beaconBeamMode;
+    }
+    public boolean beaconBeamExtendsBelowWaypoint() { return beaconBeamExtendsBelowWaypoint; }
     public boolean preferScoreboardFallback() { return preferScoreboardFallback; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
     public boolean autoAddChatTempWaypoints() { return autoAddChatTempWaypoints; }
@@ -321,6 +339,7 @@ public final class WaypointerConfig {
     public void setTracerOpacity(double v)             { this.tracerOpacity = clamp(v, 0, 1); save(); }
     public void setBeaconOpacity(double v)             { this.beaconOpacity = clamp(v, 0, 1); save(); }
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
+    public void setShowWaypointDistances(boolean v)    { this.showWaypointDistances = v; save(); }
     public void setMatchWaypointTextToWaypointColor(boolean v) { this.matchWaypointTextToWaypointColor = v; save(); }
     public void setShowCompleted(boolean v)            { this.showCompleted = v; save(); }
     public void setShowTracer(boolean v)               { this.showTracer = v; save(); }
@@ -347,6 +366,14 @@ public final class WaypointerConfig {
         save();
     }
     public void setBoxStyle(BoxStyle v)                { this.boxStyle = v == null ? BoxStyle.OUTLINED : v; save(); }
+    public void setBeaconBeamMode(BeaconBeamMode v)    {
+        this.beaconBeamMode = v == null ? BeaconBeamMode.OFF : v;
+        save();
+    }
+    public void setBeaconBeamExtendsBelowWaypoint(boolean v) {
+        this.beaconBeamExtendsBelowWaypoint = v;
+        save();
+    }
     public void setSkipAheadMechanicEnabled(boolean v) { this.skipAheadMechanicEnabled = v; save(); }
     public void setDisableGroupSkipAheadOnWaypointAdd(boolean v) { this.disableGroupSkipAheadOnWaypointAdd = v; save(); }
     public void setCheckForUpdates(boolean v)          { this.checkForUpdates = v; save(); }

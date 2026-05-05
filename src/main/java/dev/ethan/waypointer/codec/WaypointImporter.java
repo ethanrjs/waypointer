@@ -134,8 +134,7 @@ public final class WaypointImporter {
         try {
             String decoded = decodeBase64Gzip(trimmed);
             if (looksLikeJson(decoded)) {
-                ImportResult r = importJson(decoded);
-                return new ImportResult(Source.SKYBLOCKER, r.groups(), "");
+                return importJson(decoded);
             }
         } catch (Exception ignore) {
             // Fall through to error below; preserve the original so the user sees useful feedback.
@@ -506,14 +505,8 @@ public final class WaypointImporter {
                 String s = c.getAsString().trim();
                 if (s.startsWith("#")) s = s.substring(1);
                 if (s.contains(":")) {
-                    // Skytils: "<scale>:<a>:<r>:<g>:<b>" (values hex). Keep rgb bytes.
-                    String[] parts = s.split(":");
-                    if (parts.length >= 5) {
-                        int r = Integer.parseInt(parts[2], 16);
-                        int gV = Integer.parseInt(parts[3], 16);
-                        int b = Integer.parseInt(parts[4], 16);
-                        return ((r & 0xFF) << 16) | ((gV & 0xFF) << 8) | (b & 0xFF);
-                    }
+                    int color = parseSkytilsColor(s);
+                    return color < 0 ? Waypoint.DEFAULT_COLOR : color;
                 }
                 try { return Integer.parseInt(s, 16) & 0xFFFFFF; }
                 catch (NumberFormatException ignored) { /* fall through */ }
@@ -537,6 +530,20 @@ public final class WaypointImporter {
             return (r << 16) | (gV << 8) | b;
         }
         return Waypoint.DEFAULT_COLOR;
+    }
+
+    private static int parseSkytilsColor(String s) {
+        // Skytils: "<scale>:<a>:<r>:<g>:<b>" (values hex). Keep rgb bytes.
+        String[] parts = s.split(":");
+        if (parts.length < 5) return -1;
+        try {
+            int r = Integer.parseInt(parts[2], 16);
+            int gV = Integer.parseInt(parts[3], 16);
+            int b = Integer.parseInt(parts[4], 16);
+            return ((r & 0xFF) << 16) | ((gV & 0xFF) << 8) | (b & 0xFF);
+        } catch (NumberFormatException ignored) {
+            return -1;
+        }
     }
 
     private static boolean isByteColor(JsonObject o) {

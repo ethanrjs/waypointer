@@ -51,6 +51,37 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void nullBeaconBeamModeFallsBackToOff() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setBeaconBeamMode(null);
+
+        assertEquals(WaypointerConfig.BeaconBeamMode.OFF, config.beaconBeamMode());
+    }
+
+    @Test
+    void visualCustomizationDefaultsPreserveCurrentRendering() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertEquals(WaypointerConfig.BeaconBeamMode.OFF, config.beaconBeamMode());
+        assertFalse(config.beaconBeamExtendsBelowWaypoint());
+        assertTrue(config.showWaypointDistances());
+    }
+
+    @Test
+    void visualCustomizationTogglesCanBeChanged() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setBeaconBeamMode(WaypointerConfig.BeaconBeamMode.ALL_VISIBLE);
+        config.setBeaconBeamExtendsBelowWaypoint(true);
+        config.setShowWaypointDistances(false);
+
+        assertEquals(WaypointerConfig.BeaconBeamMode.ALL_VISIBLE, config.beaconBeamMode());
+        assertTrue(config.beaconBeamExtendsBelowWaypoint());
+        assertFalse(config.showWaypointDistances());
+    }
+
+    @Test
     void tempWaypointDefaultsStayInsideSupportedModes() {
         WaypointerConfig config = new WaypointerConfig();
 
