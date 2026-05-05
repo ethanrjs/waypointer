@@ -43,7 +43,7 @@ public record DungeonWaypoint(
     /** Builder helper for waypoints that have no highlights. */
     public static DungeonWaypoint plain(String id, DungeonSecretCategory cat,
                                         int x, int y, int z, String name) {
-        return new DungeonWaypoint(id, 0, cat, x, y, z, name, List.of());
+        return new DungeonWaypoint(id, 1, cat, x, y, z, name, List.of());
     }
 
     public boolean hasHighlights() { return !highlights.isEmpty(); }

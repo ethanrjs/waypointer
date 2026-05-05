@@ -119,14 +119,19 @@ public final class DungeonRoomData {
         List<DungeonRoomDefinition> candidates = matchingDefinitions(room, allDefinitions());
         if (candidates.isEmpty()) return null;
 
-        if (lookup != null) {
+        List<DungeonRoomDefinition> fingerprintedCandidates = withFingerprints(candidates);
+        if (!fingerprintedCandidates.isEmpty()) {
+            if (lookup == null) return null;
+
             List<DungeonRoomDefinition> fingerprintMatches = new ArrayList<>();
-            for (DungeonRoomDefinition definition : candidates) {
-                if (definition.hasFingerprints() && fingerprintsMatch(room, definition, lookup)) {
+            for (DungeonRoomDefinition definition : fingerprintedCandidates) {
+                if (fingerprintsMatch(room, definition, lookup)) {
                     fingerprintMatches.add(definition);
                 }
             }
             if (fingerprintMatches.size() == 1) return fingerprintMatches.get(0);
+
+            return null;
         }
 
         List<DungeonRoomDefinition> customFallback = withoutFingerprints(customCandidates);
@@ -154,6 +159,15 @@ public final class DungeonRoomData {
             if (!definition.hasFingerprints()) fallback.add(definition);
         }
         return fallback;
+    }
+
+    private static List<DungeonRoomDefinition> withFingerprints(
+            List<DungeonRoomDefinition> candidates) {
+        List<DungeonRoomDefinition> fingerprinted = new ArrayList<>(candidates.size());
+        for (DungeonRoomDefinition definition : candidates) {
+            if (definition.hasFingerprints()) fingerprinted.add(definition);
+        }
+        return fingerprinted;
     }
 
     public static List<DungeonWaypoint> waypointsFor(DungeonRoom room) {

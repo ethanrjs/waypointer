@@ -171,6 +171,24 @@ class DungeonRoomDataTest {
     }
 
     @Test
+    void ambiguousFingerprintMatchesDoNotUseUnfingerprintedFallback() {
+        DungeonRoom room = roomAt(-8, 24);
+        DungeonRoomDefinition first = DungeonRoomData.defineRoom("first-room", "First", room);
+        DungeonRoomDefinition second = DungeonRoomData.defineRoom("second-room", "Second", room);
+        DungeonRoomData.defineRoom("fallback-room", "Fallback", room);
+
+        DungeonRoomFingerprint fingerprint =
+                new DungeonRoomFingerprint(1, 70, 1, "minecraft:stone");
+        DungeonRoomData.addFingerprint(first.id(), fingerprint);
+        DungeonRoomData.addFingerprint(second.id(), fingerprint);
+
+        assertNull(DungeonRoomData.match(room,
+                (x, y, z) -> x == -7 && y == 70 && z == 25
+                        ? "minecraft:stone"
+                        : "minecraft:air"));
+    }
+
+    @Test
     void ambiguousUnfingerprintedRoomsDoNotMatchArbitrarily() {
         DungeonRoom room = roomAt(-8, 24);
 

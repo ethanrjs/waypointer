@@ -19,6 +19,8 @@ public final class DungeonRouteSession {
 
     public enum Status { FOUND, CURRENT, UPCOMING }
 
+    private static final int NO_CURRENT_SECRET = 0;
+
     private final Map<String, RoomProgress> progressByRoom = new HashMap<>();
 
     public void resetAll() {
@@ -28,10 +30,13 @@ public final class DungeonRouteSession {
     public void resetRoom(DungeonRoom room) {
         String key = routeKey(room);
         if (!key.isEmpty()) progressByRoom.remove(key);
+        if (room != null && room.hasRoomId()) {
+            progressByRoom.remove(room.identityKey());
+        }
     }
 
     public void markFound(DungeonRoom room, int secretIndex) {
-        if (room == null) return;
+        if (room == null || secretIndex <= 0) return;
         RoomProgress progress = progressFor(room);
         progress.foundSecretIndices.add(secretIndex);
         if (secretIndex == progress.currentSecretIndex) {
@@ -42,6 +47,8 @@ public final class DungeonRouteSession {
     public void advance(DungeonRoom room) {
         if (room == null) return;
         RoomProgress progress = progressFor(room);
+        if (progress.currentSecretIndex == NO_CURRENT_SECRET) return;
+
         progress.foundSecretIndices.add(progress.currentSecretIndex);
         progress.currentSecretIndex = nextUnfoundSecret(room, progress);
     }
@@ -52,18 +59,36 @@ public final class DungeonRouteSession {
 
     public Status status(DungeonRoom room, DungeonWaypoint waypoint) {
         RoomProgress progress = progressFor(room);
-        if (progress.foundSecretIndices.contains(waypoint.secretIndex())) return Status.FOUND;
-        if (waypoint.secretIndex() == progress.currentSecretIndex) return Status.CURRENT;
+        int secretIndex = waypoint.secretIndex();
+        if (secretIndex <= 0) return Status.UPCOMING;
+        if (progress.foundSecretIndices.contains(secretIndex)) return Status.FOUND;
+        if (secretIndex == progress.currentSecretIndex) return Status.CURRENT;
         return Status.UPCOMING;
     }
 
     private RoomProgress progressFor(DungeonRoom room) {
         String key = routeKey(room);
+        RoomProgress migrated = migrateProgress(room, key);
+        if (migrated != null) return migrated;
+
         return progressByRoom.computeIfAbsent(key, ignored -> {
             RoomProgress progress = new RoomProgress();
             progress.currentSecretIndex = firstSecretIndex(room);
             return progress;
         });
+    }
+
+    private RoomProgress migrateProgress(DungeonRoom room, String key) {
+        if (room == null || !room.hasRoomId()) return null;
+
+        RoomProgress existing = progressByRoom.get(key);
+        if (existing != null) return existing;
+
+        RoomProgress migrated = progressByRoom.remove(room.identityKey());
+        if (migrated == null) return null;
+
+        progressByRoom.put(key, migrated);
+        return migrated;
     }
 
     private static int firstSecretIndex(DungeonRoom room) {
@@ -74,10 +99,12 @@ public final class DungeonRouteSession {
                 min = waypoint.secretIndex();
             }
         }
-        return min == Integer.MAX_VALUE ? 1 : min;
+        return min == Integer.MAX_VALUE ? NO_CURRENT_SECRET : min;
     }
 
     private static int nextUnfoundSecret(DungeonRoom room, RoomProgress progress) {
+        if (progress.currentSecretIndex == NO_CURRENT_SECRET) return NO_CURRENT_SECRET;
+
         int next = Integer.MAX_VALUE;
         for (DungeonWaypoint waypoint : DungeonRoomData.waypointsFor(room)) {
             int index = waypoint.secretIndex();
@@ -88,7 +115,7 @@ public final class DungeonRouteSession {
                 next = index;
             }
         }
-        return next == Integer.MAX_VALUE ? progress.currentSecretIndex + 1 : next;
+        return next == Integer.MAX_VALUE ? NO_CURRENT_SECRET : next;
     }
 
     private static String routeKey(DungeonRoom room) {
@@ -97,7 +124,7 @@ public final class DungeonRouteSession {
     }
 
     private static final class RoomProgress {
-        private int currentSecretIndex = 1;
+        private int currentSecretIndex = NO_CURRENT_SECRET;
         private final Set<Integer> foundSecretIndices = new HashSet<>();
     }
 }

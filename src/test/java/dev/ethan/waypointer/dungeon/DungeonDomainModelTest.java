@@ -138,7 +138,41 @@ class DungeonDomainModelTest {
 
         assertFalse(waypoint.hasHighlights());
         assertTrue(waypoint.hasName());
+        assertEquals(1, waypoint.secretIndex());
         assertEquals(DungeonSecretCategory.WITHER.defaultColor, waypoint.color());
+    }
+
+    @Test
+    void nearestEntityTriggerUsesDistanceAndTriggerType() {
+        DungeonRoom room = new DungeonRoom(
+                DungeonRoomType.ROOM,
+                DungeonRoomShape.ONE_BY_ONE,
+                Direction.NW,
+                -8,
+                24,
+                List.of(DungeonRoom.packSegment(-8, 24)));
+        DungeonWaypoint first = entityWaypoint("first", DungeonWaypointTrigger.PICKUP_ITEM, 1);
+        DungeonWaypoint second = entityWaypoint("second", DungeonWaypointTrigger.PICKUP_ITEM, 10);
+        DungeonWaypoint wrongTrigger = entityWaypoint("bat", DungeonWaypointTrigger.KILL_BAT, 10);
+
+        DungeonWaypoint selected = DungeonTriggerSelection.nearestEntityTrigger(
+                room,
+                List.of(first, second, wrongTrigger),
+                DungeonWaypointTrigger.PICKUP_ITEM,
+                2.6,
+                70.5,
+                25.5,
+                200.0);
+
+        assertEquals(second, selected);
+        assertNull(DungeonTriggerSelection.nearestEntityTrigger(
+                room,
+                List.of(first, second),
+                DungeonWaypointTrigger.PICKUP_ITEM,
+                100.0,
+                70.5,
+                100.0,
+                4.0));
     }
 
     @Test
@@ -185,5 +219,21 @@ class DungeonDomainModelTest {
         assertEquals(DungeonRoomType.BLOOD,
                 DungeonRoomType.fromMapColor(DungeonRoomType.BLOOD.packedColor));
         assertNull(DungeonRoomType.fromMapColor((byte) 0));
+    }
+
+    private static DungeonWaypoint entityWaypoint(
+            String id,
+            DungeonWaypointTrigger trigger,
+            int x) {
+        return new DungeonWaypoint(
+                id,
+                x,
+                DungeonSecretCategory.ITEM,
+                trigger,
+                x,
+                70,
+                1,
+                id,
+                List.of());
     }
 }
