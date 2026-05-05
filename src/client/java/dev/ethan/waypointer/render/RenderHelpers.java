@@ -4,7 +4,6 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderType;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
 
 /**
  * Tiny render utilities shared by {@link WaypointRenderer} and {@link TracerRenderer}.
@@ -24,9 +23,9 @@ public final class RenderHelpers {
 
     private RenderHelpers() {}
 
-    public static int red(int rgb)   { return (rgb >> 16) & 0xFF; }
-    public static int green(int rgb) { return (rgb >>  8) & 0xFF; }
-    public static int blue(int rgb)  { return  rgb        & 0xFF; }
+    private static int red(int rgb)   { return (rgb >> 16) & 0xFF; }
+    private static int green(int rgb) { return (rgb >>  8) & 0xFF; }
+    private static int blue(int rgb)  { return  rgb        & 0xFF; }
 
     /**
      * Append the 12 segments of an axis-aligned cube outline to {@code consumer}.
@@ -95,6 +94,31 @@ public final class RenderHelpers {
         quad(consumer, pose, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
     }
 
+    /**
+     * Append the four side faces of a narrow vertical column.
+     *
+     * <p>The beam intentionally has no top or bottom cap: capped columns read as
+     * solid pillars at long range, while open sides feel closer to a beacon guide.
+     */
+    public static void emitVerticalColumn(VertexConsumer consumer, PoseStack ps,
+                                          float centerX, float y1, float centerZ,
+                                          float y2, float halfWidth,
+                                          int rgb, float alpha) {
+        int r = red(rgb), g = green(rgb), b = blue(rgb);
+        int a = (int) (alpha * 255f) & 0xFF;
+        PoseStack.Pose pose = ps.last();
+
+        float x1 = centerX - halfWidth;
+        float x2 = centerX + halfWidth;
+        float z1 = centerZ - halfWidth;
+        float z2 = centerZ + halfWidth;
+
+        quad(consumer, pose, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, a);
+        quad(consumer, pose, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
+        quad(consumer, pose, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, r, g, b, a);
+        quad(consumer, pose, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, r, g, b, a);
+    }
+
     /** Append a single line segment. */
     public static void emitLine(VertexConsumer consumer, PoseStack ps,
                                 float x1, float y1, float z1,
@@ -115,10 +139,6 @@ public final class RenderHelpers {
         if (buffers instanceof MultiBufferSource.BufferSource bs) {
             bs.endBatch(type);
         }
-    }
-
-    public static RenderType linesType() {
-        return RenderTypes.lines();
     }
 
     private static void quad(VertexConsumer c, PoseStack.Pose pose,

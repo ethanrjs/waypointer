@@ -17,15 +17,21 @@ import java.util.Collection;
  * distinct {@code mode} values in the Hypixel location packet.
  *
  * <p>Hot path (called every 2 game ticks): avoids regex stripping and caches
- * the last-seen sidebar component hash so repeated calls within the same tick
- * reuse the prior result. The 10Hz caller was allocating a {@link StringBuilder}
- * + intermediate strings per invocation; the manual strip + cache keeps the
- * per-call cost to pointer comparisons on the unchanged case.
+ * the last-seen rendered-line hash so repeated unchanged sidebars reuse the
+ * prior stripped result. The 10Hz caller was allocating a {@link StringBuilder}
+ * + stripped output string per invocation; the manual strip + cache keeps the
+ * unchanged case out of that work.
  */
 public final class SidebarTexts {
 
     /** Minecraft's formatting code escape. Kept as a constant to document the parse. */
     private static final char FORMATTING_PREFIX = '\u00a7';
+
+    private static Scoreboard cachedScoreboard;
+    private static Objective cachedObjective;
+    private static int cachedLineHash;
+    private static int cachedLineCount;
+    private static String cachedText;
 
     private SidebarTexts() {}
 
@@ -35,13 +41,67 @@ public final class SidebarTexts {
      */
     public static String collectColorStripped(Minecraft mc) {
         ClientLevel level = mc.level;
-        if (level == null) return null;
+        if (level == null) {
+            clearCache();
+            return null;
+        }
 
         Scoreboard sb = level.getScoreboard();
         Objective side = sb.getDisplayObjective(DisplaySlot.SIDEBAR);
-        if (side == null) return null;
+        if (side == null) {
+            clearCache();
+            return null;
+        }
 
         Collection<PlayerScoreEntry> entries = sb.listPlayerScores(side);
+        SidebarFingerprint fingerprint = fingerprintSidebar(sb, entries);
+        if (matchesCache(sb, side, fingerprint)) return cachedText;
+
+        String text = buildText(sb, entries);
+        remember(sb, side, fingerprint, text);
+        return text;
+    }
+
+    private static SidebarFingerprint fingerprintSidebar(
+            Scoreboard sb, Collection<PlayerScoreEntry> entries) {
+        int hash = 1;
+        int count = 0;
+        for (PlayerScoreEntry entry : entries) {
+            String line = renderLine(sb, entry);
+            if (line == null) continue;
+
+            hash = 31 * hash + line.hashCode();
+            count++;
+        }
+        return new SidebarFingerprint(hash, count);
+    }
+
+    private static boolean matchesCache(
+            Scoreboard sb, Objective side, SidebarFingerprint fingerprint) {
+        return cachedScoreboard == sb
+                && cachedObjective == side
+                && cachedLineHash == fingerprint.hash()
+                && cachedLineCount == fingerprint.lineCount();
+    }
+
+    private static void remember(
+            Scoreboard sb, Objective side, SidebarFingerprint fingerprint, String text) {
+        cachedScoreboard = sb;
+        cachedObjective = side;
+        cachedLineHash = fingerprint.hash();
+        cachedLineCount = fingerprint.lineCount();
+        cachedText = text;
+    }
+
+    private static void clearCache() {
+        cachedScoreboard = null;
+        cachedObjective = null;
+        cachedLineHash = 0;
+        cachedLineCount = 0;
+        cachedText = null;
+    }
+
+    private static String buildText(Scoreboard sb, Collection<PlayerScoreEntry> entries) {
         StringBuilder out = new StringBuilder();
         for (PlayerScoreEntry entry : entries) {
             String line = renderLine(sb, entry);
@@ -51,6 +111,8 @@ public final class SidebarTexts {
         }
         return out.isEmpty() ? null : out.toString();
     }
+
+    private record SidebarFingerprint(int hash, int lineCount) {}
 
     private static String renderLine(Scoreboard sb, PlayerScoreEntry entry) {
         String owner = entry.owner();
