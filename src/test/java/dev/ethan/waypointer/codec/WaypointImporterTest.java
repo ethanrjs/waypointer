@@ -93,6 +93,32 @@ class WaypointImporterTest {
     }
 
     @Test
+    void malformed_skytils_colon_color_falls_back_to_default_color() {
+        String json = "{\"name\":\"Fetchur\",\"island\":\"mining-hub\",\"waypoints\":["
+                + "{\"name\":\"bad\",\"x\":1,\"y\":70,\"z\":2,\"color\":\"0.5:ff:zz:20:30\"},"
+                + "{\"name\":\"short\",\"x\":5,\"y\":70,\"z\":10,\"color\":\"0.5:ff:10\"}"
+                + "]}";
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
+        WaypointGroup g = result.groups().get(0);
+
+        assertEquals(2, g.size());
+        assertEquals(Waypoint.DEFAULT_COLOR, g.get(0).color());
+        assertEquals(Waypoint.DEFAULT_COLOR, g.get(1).color());
+    }
+
+    @Test
+    void malformed_hex_color_falls_back_to_default_color() {
+        String json = "{\"name\":\"Fetchur\",\"island\":\"mining-hub\",\"waypoints\":["
+                + "{\"name\":\"bad\",\"x\":1,\"y\":70,\"z\":2,\"color\":\"#nothex\"}"
+                + "]}";
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
+
+        assertEquals(Waypoint.DEFAULT_COLOR, result.groups().get(0).get(0).color());
+    }
+
+    @Test
     void parses_skytils_base64_categories_numeric_route_as_sequence() {
         WaypointImporter.ImportResult result = WaypointImporter.importAny(SKYTILS_TP_POINTS_SAMPLE);
 
@@ -157,13 +183,25 @@ class WaypointImporterTest {
     }
 
     @Test
-    void decodes_base64_gzipped_json_payload() throws Exception {
+    void unprefixed_base64_gzipped_json_preserves_inner_json_source() throws Exception {
         String json = "[{\"name\":\"Glacite\",\"island\":\"glacite\",\"waypoints\":[{\"x\":1,\"y\":2,\"z\":3}]}]";
         String packed = Base64.getEncoder().encodeToString(gzip(json));
         WaypointImporter.ImportResult result = WaypointImporter.importAny(packed);
-        assertEquals(WaypointImporter.Source.SKYBLOCKER, result.source());
+        assertEquals(WaypointImporter.Source.JSON, result.source());
         assertEquals(1, result.groups().size());
         assertEquals("Glacite", result.groups().get(0).name());
+    }
+
+    @Test
+    void explicit_skyblocker_prefix_forces_skyblocker_source() throws Exception {
+        String json = "[{\"name\":\"Glacite\",\"island\":\"glacite\",\"waypoints\":[{\"x\":1,\"y\":2,\"z\":3}]}]";
+        String packed = WaypointImporter.SKYBLOCKER_V1_PREFIX
+                + Base64.getEncoder().encodeToString(gzip(json));
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(packed);
+
+        assertEquals(WaypointImporter.Source.SKYBLOCKER, result.source());
+        assertEquals(1, result.groups().size());
     }
 
     @Test
