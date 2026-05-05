@@ -73,12 +73,11 @@ public final class DungeonConfig {
     private String routeRenderMode = "ALL";
 
     /**
-     * Default direction to assume for newly-detected rooms. Block-fingerprint
-     * matching is not implemented yet (see issue #9 follow-ups), so the
-     * direction is unknown at detection time -- defaulting to NW gets the
-     * common case (rooms whose canonical frame already matches their world
-     * placement) right. Players in other rotations can rotate the guess via
-     * the {@code /waypointer dungeon rotate} client command.
+     * Default direction to assume for newly-detected rooms. Room definitions
+     * can identify a room by block fingerprints, but those fingerprints do not
+     * infer the room's rotation; defaulting to NW gets the common case (rooms
+     * whose canonical frame already matches their world placement) right.
+     * Players in other rotations can rotate the guess via the dungeon command.
      */
     private String defaultDirection = "NW";
 

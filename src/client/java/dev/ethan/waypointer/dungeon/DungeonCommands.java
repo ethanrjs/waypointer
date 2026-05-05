@@ -7,6 +7,7 @@ import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.ethan.waypointer.Waypointer;
+import dev.ethan.waypointer.chat.WaypointerChatFeedback;
 import dev.ethan.waypointer.commands.CommandHelpers;
 import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomDefinition;
@@ -615,7 +616,12 @@ public final class DungeonCommands {
         DungeonRoom room = requireRoom(src);
         if (room == null) return 0;
         session.advance(room);
-        success(src, "Advanced dungeon route to secret #" + session.currentSecretIndex(room) + ".");
+        int currentSecretIndex = session.currentSecretIndex(room);
+        if (currentSecretIndex == 0) {
+            success(src, "Completed dungeon route for " + room.displayName() + ".");
+        } else {
+            success(src, "Advanced dungeon route to secret #" + currentSecretIndex + ".");
+        }
         return 1;
     }
 
@@ -738,14 +744,17 @@ public final class DungeonCommands {
     // ---- styled feedback (matches WaypointerCommands' palette) -------------
 
     private static void info(FabricClientCommandSource src, String msg) {
-        src.sendFeedback(Component.literal(msg).withStyle(ChatFormatting.GRAY));
+        src.sendFeedback(WaypointerChatFeedback.suppress(
+                Component.literal(msg).withStyle(ChatFormatting.GRAY)));
     }
 
     private static void success(FabricClientCommandSource src, String msg) {
-        src.sendFeedback(Component.literal(msg).withStyle(ChatFormatting.GREEN));
+        src.sendFeedback(WaypointerChatFeedback.suppress(
+                Component.literal(msg).withStyle(ChatFormatting.GREEN)));
     }
 
     private static void error(FabricClientCommandSource src, String msg) {
-        src.sendError(Component.literal(msg).withStyle(ChatFormatting.RED));
+        src.sendError(WaypointerChatFeedback.suppress(
+                Component.literal(msg).withStyle(ChatFormatting.RED)));
     }
 }

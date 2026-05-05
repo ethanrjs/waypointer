@@ -55,6 +55,86 @@ class DungeonRouteSessionTest {
                 session.status(room, DungeonRoomData.waypointsFor(room).get(0)));
     }
 
+    @Test
+    void completedRouteHasNoCurrentSecret() {
+        DungeonRoom base = room();
+        var definition = DungeonRoomData.defineRoom("complete-room", "Complete Room", base);
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("first", 1));
+        DungeonRoom room = base.withDefinition(definition.id(), definition.displayName());
+
+        DungeonRouteSession session = new DungeonRouteSession();
+        session.markFound(room, 1);
+
+        assertEquals(0, session.currentSecretIndex(room));
+        assertEquals(DungeonRouteSession.Status.FOUND,
+                session.status(room, DungeonRoomData.waypointsFor(room).get(0)));
+
+        session.advance(room);
+
+        assertEquals(0, session.currentSecretIndex(room));
+    }
+
+    @Test
+    void routeAdvancesAcrossNonContiguousSecretIndices() {
+        DungeonRoom base = room();
+        var definition = DungeonRoomData.defineRoom("sparse-room", "Sparse Room", base);
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("second", 5));
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("first", 2));
+        DungeonRoom room = base.withDefinition(definition.id(), definition.displayName());
+
+        DungeonRouteSession session = new DungeonRouteSession();
+
+        assertEquals(2, session.currentSecretIndex(room));
+
+        session.markFound(room, 2);
+
+        assertEquals(5, session.currentSecretIndex(room));
+
+        session.markFound(room, 5);
+
+        assertEquals(0, session.currentSecretIndex(room));
+    }
+
+    @Test
+    void secretIndexZeroIsNotPartOfRouteProgress() {
+        DungeonRoom base = room();
+        var definition = DungeonRoomData.defineRoom("zero-room", "Zero Room", base);
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("ignored", 0));
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("first", 1));
+        DungeonRoom room = base.withDefinition(definition.id(), definition.displayName());
+
+        DungeonRouteSession session = new DungeonRouteSession();
+        List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
+
+        assertEquals(1, session.currentSecretIndex(room));
+        assertEquals(DungeonRouteSession.Status.UPCOMING, session.status(room, waypoints.get(0)));
+
+        session.markFound(room, 0);
+
+        assertEquals(1, session.currentSecretIndex(room));
+        assertEquals(DungeonRouteSession.Status.UPCOMING, session.status(room, waypoints.get(0)));
+    }
+
+    @Test
+    void progressMigratesFromUnmatchedIdentityToMatchedRoomId() {
+        DungeonRoom base = room();
+        var definition = DungeonRoomData.defineRoom("matched-room", "Matched Room", base);
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("first", 1));
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("second", 2));
+        DungeonRoom matched = base.withDefinition(definition.id(), definition.displayName());
+
+        DungeonRouteSession session = new DungeonRouteSession();
+        session.markFound(base, 1);
+
+        List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(matched);
+
+        assertEquals(2, session.currentSecretIndex(matched));
+        assertEquals(DungeonRouteSession.Status.FOUND,
+                session.status(matched, waypoints.get(0)));
+        assertEquals(DungeonRouteSession.Status.CURRENT,
+                session.status(matched, waypoints.get(1)));
+    }
+
     private static DungeonRoom room() {
         return new DungeonRoom(
                 DungeonRoomType.ROOM,

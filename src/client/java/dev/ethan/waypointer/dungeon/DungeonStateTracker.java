@@ -45,19 +45,21 @@ import java.util.function.Consumer;
  *       flood-fill same-color segments to derive the room's shape.</li>
  *   <li>Compute the canonical-frame physical corner from the segment bounds
  *       + the configured (or runtime-rotated) {@link Direction}.</li>
+ *   <li>Ask {@link DungeonRoomData} to match the detected footprint against
+ *       bundled/custom room definitions, using block fingerprints when a
+ *       matching definition provides them.</li>
  * </ol>
  *
  * <p>State mutates on the client tick thread; the public read accessors are
  * safe to call from the render thread because the {@code currentRoom}
  * reference is volatile and {@link DungeonRoom} is immutable.
  *
- * <p><b>Not implemented yet (see issue #9 follow-ups):</b>
+ * <p><b>Remaining follow-ups:</b>
  *
  * <ul>
- *   <li>Block-fingerprint room identification -- tracker reports "this is a
- *       1x2 ROOM" but not "this is the Lava Ravine room". Direction is
- *       therefore guessed from {@link DungeonConfig#defaultDirection()} until
- *       fingerprinting is available.</li>
+ *   <li>Broader curated room coverage. The tracker can apply block
+ *       fingerprints from room definitions, but unrecorded rooms still fall
+ *       back to shape/type names and {@link DungeonConfig#defaultDirection()}.</li>
  *   <li>Per-secret found tracking driven by chat / interaction events.</li>
  * </ul>
  */
