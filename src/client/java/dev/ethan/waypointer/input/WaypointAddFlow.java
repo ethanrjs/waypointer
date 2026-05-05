@@ -43,13 +43,18 @@ public final class WaypointAddFlow {
         if (group == null) return;
         if (group.temp()) return;
 
+        WaypointGroup.LoadMode loadModeBefore = group.loadMode();
         group.focusNewWaypoint(waypointIndex);
-        boolean switchedToStatic = group.loadMode() == WaypointGroup.LoadMode.SEQUENCE;
+        boolean switchedToStatic = loadModeBefore == WaypointGroup.LoadMode.SEQUENCE;
         if (switchedToStatic) {
             group.setLoadMode(WaypointGroup.LoadMode.STATIC);
         }
         showWaypointAddedMessage(group, waypointIndex);
-        if (switchedToStatic) showRouteStaticMessage(group.name(), waypointIndex);
+        if (switchedToStatic) {
+            showRouteStaticMessage(group.name(), waypointIndex);
+        } else if (loadModeBefore == WaypointGroup.LoadMode.STATIC) {
+            showCurrentWaypointFocusedMessage(group.name(), waypointIndex);
+        }
 
         if (!config.disableGroupSkipAheadOnWaypointAdd()) return;
         if (group.skipAheadEnabled()) {
@@ -68,6 +73,11 @@ public final class WaypointAddFlow {
 
     private static void showRouteStaticMessage(String groupName, int waypointIndex) {
         showChat(Component.literal("\"" + groupName + "\" is now static; current waypoint set to "
+                + waypointIndex + ".").withStyle(ChatFormatting.YELLOW));
+    }
+
+    private static void showCurrentWaypointFocusedMessage(String groupName, int waypointIndex) {
+        showChat(Component.literal("\"" + groupName + "\" current waypoint set to "
                 + waypointIndex + ".").withStyle(ChatFormatting.YELLOW));
     }
 
