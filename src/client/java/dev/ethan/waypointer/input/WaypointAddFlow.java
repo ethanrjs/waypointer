@@ -9,6 +9,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.gui.components.toasts.SystemToast;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 
 /**
  * Shared side-effects run on every "player just created a waypoint" event,
@@ -66,11 +67,29 @@ public final class WaypointAddFlow {
         if (switchedToStatic) {
             group.setLoadMode(WaypointGroup.LoadMode.STATIC);
         }
-        showWaypointAddedMessage(group, waypointIndex, surface);
-        if (switchedToStatic) {
-            showRouteStaticMessage(group.name(), waypointIndex, surface);
-        } else if (loadModeBefore == WaypointGroup.LoadMode.STATIC) {
-            showCurrentWaypointFocusedMessage(group.name(), waypointIndex, surface);
+        boolean combineActionBarFollowUp = surface == UserFeedbackSurface.ACTION_BAR
+                && waypointIndex >= 0 && waypointIndex < group.size()
+                && (switchedToStatic || loadModeBefore == WaypointGroup.LoadMode.STATIC);
+        if (combineActionBarFollowUp) {
+            Waypoint waypoint = group.get(waypointIndex);
+            MutableComponent line = Component.literal("Added waypoint " + waypointIndex + " at "
+                    + waypoint.x() + ", " + waypoint.y() + ", " + waypoint.z())
+                    .withStyle(ChatFormatting.GREEN);
+            if (switchedToStatic) {
+                line.append(Component.literal(" \"" + group.name() + "\" is now static; current waypoint set to "
+                        + waypointIndex + ".").withStyle(ChatFormatting.YELLOW));
+            } else {
+                line.append(Component.literal(" \"" + group.name() + "\" current waypoint set to "
+                        + waypointIndex + ".").withStyle(ChatFormatting.YELLOW));
+            }
+            showUserFeedback(line, surface);
+        } else {
+            showWaypointAddedMessage(group, waypointIndex, surface);
+            if (switchedToStatic) {
+                showRouteStaticMessage(group.name(), waypointIndex, surface);
+            } else if (loadModeBefore == WaypointGroup.LoadMode.STATIC) {
+                showCurrentWaypointFocusedMessage(group.name(), waypointIndex, surface);
+            }
         }
 
         if (!config.disableGroupSkipAheadOnWaypointAdd()) return;
@@ -107,7 +126,7 @@ public final class WaypointAddFlow {
 
         if (surface == UserFeedbackSurface.ACTION_BAR) {
             if (mc.gui == null) return;
-            mc.gui.setOverlayMessage(message, false);
+            mc.gui.setOverlayMessage(WaypointerChatFeedback.suppress(message), false);
             return;
         }
 

@@ -55,10 +55,10 @@ public final class ChatCoordDetector {
     }
 
     private Component onMessage(Component msg, boolean overlay) {
-        if (WaypointerChatFeedback.consumeIfSuppressed(msg)) return msg;
         // Action bar / overlay messages disappear after a fraction of a second;
         // decorating them is wasted effort and visually noisy.
         if (overlay) return msg;
+        if (WaypointerChatFeedback.consumeIfSuppressed(msg)) return msg;
         if (!config.chatCoordDetection()) return msg;
 
         String flat = msg.getString();
