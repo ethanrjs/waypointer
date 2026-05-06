@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.input;
 
+import dev.ethan.waypointer.chat.WaypointerChatFeedback;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
@@ -86,7 +87,7 @@ public final class WaypointAddFlow {
 
         LocalPlayer player = mc.player;
         if (player == null) return;
-        player.displayClientMessage(message, false);
+        player.displayClientMessage(WaypointerChatFeedback.suppress(message), false);
     }
 
     /**
