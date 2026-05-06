@@ -10,6 +10,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 /**
@@ -90,7 +91,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         Objects.requireNonNull(overlay, "overlay");
         WaypointGroup group = overlayGroup(overlay);
         manager.add(group);
-        return () -> removeRoute(group.id());
+        return closeOnce(() -> removeRoute(group.id()));
     }
 
     @Override
@@ -112,7 +113,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
     public WaypointerHandle onDataChanged(Runnable listener) {
         Objects.requireNonNull(listener, "listener");
         manager.addDataListener(listener);
-        return () -> manager.removeDataListener(listener);
+        return closeOnce(() -> manager.removeDataListener(listener));
     }
 
     @Override
@@ -120,7 +121,14 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         Objects.requireNonNull(listener, "listener");
         Consumer<Zone> wrapper = zone -> listener.accept(ZoneSnapshot.from(zone));
         manager.addZoneListener(wrapper);
-        return () -> manager.removeZoneListener(wrapper);
+        return closeOnce(() -> manager.removeZoneListener(wrapper));
+    }
+
+    private static WaypointerHandle closeOnce(Runnable closeAction) {
+        AtomicBoolean closed = new AtomicBoolean();
+        return () -> {
+            if (closed.compareAndSet(false, true)) closeAction.run();
+        };
     }
 
     private static List<WaypointGroupSnapshot> snapshot(Collection<WaypointGroup> groups) {
