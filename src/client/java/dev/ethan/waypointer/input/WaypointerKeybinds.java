@@ -178,7 +178,7 @@ public final class WaypointerKeybinds {
 
         WaypointGroup target = manager.getOrCreateActiveGroup();
         target.add(new Waypoint(x, y, z, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
-        addFlow.afterWaypointAdded(target, target.size() - 1);
+        addFlow.afterWaypointAdded(target, target.size() - 1, WaypointAddFlow.UserFeedbackSurface.ACTION_BAR);
         manager.fireDataChanged();
     }
 

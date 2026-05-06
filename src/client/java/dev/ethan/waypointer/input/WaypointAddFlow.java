@@ -28,6 +28,15 @@ import net.minecraft.network.chat.Component;
  */
 public final class WaypointAddFlow {
 
+    /**
+     * Where post-add status lines are shown. Keybind-driven adds use the action
+     * bar so rapid use does not flood chat; commands and GUI use chat.
+     */
+    public enum UserFeedbackSurface {
+        CHAT,
+        ACTION_BAR
+    }
+
     private final WaypointerConfig config;
 
     public WaypointAddFlow(WaypointerConfig config) {
@@ -40,6 +49,14 @@ public final class WaypointAddFlow {
      * participate in skip-ahead to begin with, and the toast would be a lie.
      */
     public void afterWaypointAdded(WaypointGroup group, int waypointIndex) {
+        afterWaypointAdded(group, waypointIndex, UserFeedbackSurface.CHAT);
+    }
+
+    /**
+     * Same as {@link #afterWaypointAdded(WaypointGroup, int)} but controls whether
+     * player-visible lines go to chat or the transient action bar overlay.
+     */
+    public void afterWaypointAdded(WaypointGroup group, int waypointIndex, UserFeedbackSurface surface) {
         if (group == null) return;
         if (group.temp()) return;
 
@@ -49,11 +66,11 @@ public final class WaypointAddFlow {
         if (switchedToStatic) {
             group.setLoadMode(WaypointGroup.LoadMode.STATIC);
         }
-        showWaypointAddedMessage(group, waypointIndex);
+        showWaypointAddedMessage(group, waypointIndex, surface);
         if (switchedToStatic) {
-            showRouteStaticMessage(group.name(), waypointIndex);
+            showRouteStaticMessage(group.name(), waypointIndex, surface);
         } else if (loadModeBefore == WaypointGroup.LoadMode.STATIC) {
-            showCurrentWaypointFocusedMessage(group.name(), waypointIndex);
+            showCurrentWaypointFocusedMessage(group.name(), waypointIndex, surface);
         }
 
         if (!config.disableGroupSkipAheadOnWaypointAdd()) return;
@@ -63,27 +80,36 @@ public final class WaypointAddFlow {
         }
     }
 
-    private static void showWaypointAddedMessage(WaypointGroup group, int waypointIndex) {
+    private static void showWaypointAddedMessage(
+            WaypointGroup group, int waypointIndex, UserFeedbackSurface surface) {
         if (waypointIndex < 0 || waypointIndex >= group.size()) return;
         Waypoint waypoint = group.get(waypointIndex);
-        showChat(Component.literal("Added waypoint " + waypointIndex + " at "
+        showUserFeedback(Component.literal("Added waypoint " + waypointIndex + " at "
                 + waypoint.x() + ", " + waypoint.y() + ", " + waypoint.z())
-                .withStyle(ChatFormatting.GREEN));
+                .withStyle(ChatFormatting.GREEN), surface);
     }
 
-    private static void showRouteStaticMessage(String groupName, int waypointIndex) {
-        showChat(Component.literal("\"" + groupName + "\" is now static; current waypoint set to "
-                + waypointIndex + ".").withStyle(ChatFormatting.YELLOW));
+    private static void showRouteStaticMessage(
+            String groupName, int waypointIndex, UserFeedbackSurface surface) {
+        showUserFeedback(Component.literal("\"" + groupName + "\" is now static; current waypoint set to "
+                + waypointIndex + ".").withStyle(ChatFormatting.YELLOW), surface);
     }
 
-    private static void showCurrentWaypointFocusedMessage(String groupName, int waypointIndex) {
-        showChat(Component.literal("\"" + groupName + "\" current waypoint set to "
-                + waypointIndex + ".").withStyle(ChatFormatting.YELLOW));
+    private static void showCurrentWaypointFocusedMessage(
+            String groupName, int waypointIndex, UserFeedbackSurface surface) {
+        showUserFeedback(Component.literal("\"" + groupName + "\" current waypoint set to "
+                + waypointIndex + ".").withStyle(ChatFormatting.YELLOW), surface);
     }
 
-    private static void showChat(Component message) {
+    private static void showUserFeedback(Component message, UserFeedbackSurface surface) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
+
+        if (surface == UserFeedbackSurface.ACTION_BAR) {
+            if (mc.gui == null) return;
+            mc.gui.setOverlayMessage(message, false);
+            return;
+        }
 
         LocalPlayer player = mc.player;
         if (player == null) return;
