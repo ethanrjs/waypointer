@@ -188,7 +188,8 @@ public final class WaypointerKeybinds {
         int x = (int) Math.floor(p.getX());
         int y = (int) Math.floor(p.getY());
         int z = (int) Math.floor(p.getZ());
-        AddNamedWaypointScreen.openAt(null, manager, config, null, x, y, z);
+        WaypointGroup target = manager.getOrCreateActiveGroup();
+        AddNamedWaypointScreen.openAt(null, manager, config, target, x, y, z);
     }
 
     /**
