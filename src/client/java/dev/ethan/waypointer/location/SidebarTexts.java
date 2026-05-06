@@ -9,7 +9,9 @@ import net.minecraft.world.scores.PlayerScoreEntry;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Renders the full Skyblock sidebar as plain text so zone logic can scan for
@@ -54,26 +56,26 @@ public final class SidebarTexts {
         }
 
         Collection<PlayerScoreEntry> entries = sb.listPlayerScores(side);
-        SidebarFingerprint fingerprint = fingerprintSidebar(sb, entries);
-        if (matchesCache(sb, side, fingerprint)) return cachedText;
+        SidebarScan scan = scanSidebar(sb, entries);
+        if (matchesCache(sb, side, scan.fingerprint())) return cachedText;
 
-        String text = buildText(sb, entries);
-        remember(sb, side, fingerprint, text);
+        String text = buildStrippedText(scan.renderedLines());
+        remember(sb, side, scan.fingerprint(), text);
         return text;
     }
 
-    private static SidebarFingerprint fingerprintSidebar(
+    private static SidebarScan scanSidebar(
             Scoreboard sb, Collection<PlayerScoreEntry> entries) {
         int hash = 1;
-        int count = 0;
+        List<String> renderedLines = new ArrayList<>();
         for (PlayerScoreEntry entry : entries) {
             String line = renderLine(sb, entry);
             if (line == null) continue;
 
+            renderedLines.add(line);
             hash = 31 * hash + line.hashCode();
-            count++;
         }
-        return new SidebarFingerprint(hash, count);
+        return new SidebarScan(new SidebarFingerprint(hash, renderedLines.size()), renderedLines);
     }
 
     private static boolean matchesCache(
@@ -101,11 +103,9 @@ public final class SidebarTexts {
         cachedText = null;
     }
 
-    private static String buildText(Scoreboard sb, Collection<PlayerScoreEntry> entries) {
+    private static String buildStrippedText(List<String> renderedLines) {
         StringBuilder out = new StringBuilder();
-        for (PlayerScoreEntry entry : entries) {
-            String line = renderLine(sb, entry);
-            if (line == null) continue;
+        for (String line : renderedLines) {
             if (!out.isEmpty()) out.append('\n');
             appendStripped(out, line);
         }
@@ -113,6 +113,8 @@ public final class SidebarTexts {
     }
 
     private record SidebarFingerprint(int hash, int lineCount) {}
+
+    private record SidebarScan(SidebarFingerprint fingerprint, List<String> renderedLines) {}
 
     private static String renderLine(Scoreboard sb, PlayerScoreEntry entry) {
         String owner = entry.owner();
