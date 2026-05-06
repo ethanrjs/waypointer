@@ -5,7 +5,6 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.input.WaypointAddFlow;
-import dev.ethan.waypointer.input.WaypointAddFlow.UserFeedbackSurface;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -142,10 +141,7 @@ public final class AddNamedWaypointScreen extends Screen {
 
         target.add(new Waypoint(x, y, z, nameBox.getValue().trim(),
                 Waypoint.DEFAULT_COLOR, 0, 0.0));
-        UserFeedbackSurface surface = useFixedPosition
-                ? UserFeedbackSurface.ACTION_BAR
-                : UserFeedbackSurface.CHAT;
-        new WaypointAddFlow(config).afterWaypointAdded(target, target.size() - 1, surface);
+        new WaypointAddFlow(config).afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
 
         onClose();
