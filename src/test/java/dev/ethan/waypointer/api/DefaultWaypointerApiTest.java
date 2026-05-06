@@ -88,6 +88,7 @@ class DefaultWaypointerApiTest {
         assertTrue(api.allGroups().stream().anyMatch(WaypointGroupSnapshot::temporary));
 
         overlay.close();
+        overlay.close();
 
         assertEquals(1, api.allGroups().size());
         assertEquals(userRouteId, api.allGroups().get(0).id());
@@ -138,6 +139,8 @@ class DefaultWaypointerApiTest {
         WaypointerHandle dataHandle = api.onDataChanged(dataChanges::incrementAndGet);
         WaypointerHandle zoneHandle = api.onZoneChanged(zone -> zoneChanges.incrementAndGet());
         dataHandle.close();
+        dataHandle.close();
+        zoneHandle.close();
         zoneHandle.close();
 
         api.createRoute(RouteSpec.builder().name("Route").build());

@@ -54,7 +54,6 @@ public final class ProximityTracker {
             // on them would re-enter the "advance past waypoint" logic on a container
             // whose order is meaningless.
             if (group.temp()) continue;
-            updateProximitySuppression(group, px, py, pz);
             if (hideReachedStatic && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
                 markReachedStaticWaypoints(group, px, py, pz);
                 continue;
