@@ -110,7 +110,8 @@ public interface WaypointerApi {
      * Import routes from any share format Waypointer understands.
      *
      * <p>Accepted formats match Waypointer's import command: Waypointer
-     * {@code WP:} payloads, Skyblocker, Skytils, Soopy, Coleweight, and JSON.
+     * {@code WP:} payloads, Skyblocker, Skytils, SkyHanni, Soopy, Coleweight,
+     * and JSON.
      *
      * @param options import options, or {@code null} for {@link ImportOptions#defaults()}
      */

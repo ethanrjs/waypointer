@@ -200,10 +200,10 @@ class WaypointGroupTest {
     }
 
     @Test
-    void loadMode_defaultsToStatic() {
+    void loadMode_defaultsToSequence() {
         WaypointGroup g = WaypointGroup.create("r", "z");
-        assertEquals(WaypointGroup.LoadMode.STATIC, g.loadMode(),
-                "shared routes default to STATIC so imported groups stay visible");
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode(),
+                "loaded routes default to SEQUENCE so the intended order is visible");
     }
 
     @Test

@@ -432,13 +432,11 @@ public final class GroupEditScreen extends Screen {
         // re-gradient across the new order, and starting progress over is the least
         // surprising behaviour after a sort.
         WaypointGroup.GradientMode mode = group.gradientMode();
-        while (group.size() > 0) group.remove(group.size() - 1);
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-        for (Waypoint w : pts) group.add(w);
+        group.replaceWaypoints(pts);
         group.setGradientMode(mode);
         group.setCurrentIndex(0);
         manager.fireDataChanged();
-        if (mode == WaypointGroup.GradientMode.AUTO) GradientColorizer.apply(group);
     }
 
     private void removeSelected() {

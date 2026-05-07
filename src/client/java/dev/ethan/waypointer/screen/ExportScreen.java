@@ -1,6 +1,7 @@
 package dev.ethan.waypointer.screen;
 
 import dev.ethan.waypointer.codec.WaypointCodec;
+import dev.ethan.waypointer.codec.WaypointExportCodec;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.WaypointGroup;
 import net.minecraft.ChatFormatting;
@@ -43,7 +44,7 @@ import static dev.ethan.waypointer.screen.GuiTokens.SURFACE_SUBTLE;
  * Layout, top to bottom:
  *
  *   1. Title + subtitle describing what's being exported.
- *   2. Sanitized label EditBox -- shown to recipients on hover and on import.
+ *   2. Sanitized label EditBox plus export-target chooser.
  *   3. Toggle row per export option (Names, Colors, Radii, Waypoint Flags,
  *      Group Meta). Each carries a tooltip explaining the trade-off.
  *   4. Reset-to-defaults button so users who experimented can recover the
@@ -100,6 +101,7 @@ public final class ExportScreen extends Screen {
 
     /** Fixed width of each toggle button so the row stays scannable across screen sizes. */
     private static final int TOGGLE_W = 96;
+    private static final int EXPORT_FOR_W = 124;
 
     private final Screen parent;
     private final WaypointerConfig config;
@@ -108,11 +110,13 @@ public final class ExportScreen extends Screen {
 
     /** Mutable export options the user is currently building. */
     private WaypointCodec.Options.Builder optsBuilder;
+    private WaypointExportCodec.Target exportTarget = WaypointExportCodec.Target.WAYPOINTER;
     private String currentLabel = "";
 
     private EditBox labelInput;
     private final List<ToggleSpec> toggleSpecs = new ArrayList<>();
     private final List<Button> toggleButtons = new ArrayList<>();
+    private Button exportForButton;
     private Button copyButton;
     private Button copyCodeBlockButton;
     private long copyFeedbackUntil = 0L;
@@ -158,7 +162,7 @@ public final class ExportScreen extends Screen {
         // its own visual selection/cursor handling; we only need to size it
         // and forward changes through sanitizeLabel() before re-encoding.
         int labelY = PAD_OUTER + HEADER_H;
-        int labelW = width - PAD_OUTER * 2;
+        int labelW = Math.max(80, width - PAD_OUTER * 2 - EXPORT_FOR_W - GAP);
         labelInput = new EditBox(font, PAD_OUTER, labelY, labelW, BTN_H,
                 Component.literal("Label (optional)"));
         // MAX_LABEL_CHARS bounds the visible character count; on-the-wire we
@@ -171,24 +175,36 @@ public final class ExportScreen extends Screen {
         labelInput.setResponder(this::onLabelChanged);
         addRenderableWidget(labelInput);
 
+        this.exportForButton = Button.builder(exportForButtonLabel(), b -> openExportTargetMenu())
+                .bounds(PAD_OUTER + labelW + GAP, labelY, EXPORT_FOR_W, BTN_H)
+                .tooltip(Tooltip.create(Component.literal("Choose who this export is for")))
+                .build();
+        addRenderableWidget(exportForButton);
+        updateLabelInputState();
+
         // Toggle row: one button per granular option. Buttons live in the order
         // they're declared, wrapping to a second row if the screen is too narrow
         // to fit them all. Each button's label flips between "X On" / "X Off"
         // and is colored to match the state so the row reads at a glance.
-        registerToggle("Names", optsBuilder.includeNames(),
+        registerToggle("Names", optsBuilder.includeNames(), () -> exportTarget.supportsNames(),
                 "Include waypoint names in export",
+                "This format can only preserve coordinates and colors.",
                 v -> { optsBuilder.includeNames(v); reencode(); });
-        registerToggle("Colors", optsBuilder.includeColors(),
+        registerToggle("Colors", optsBuilder.includeColors(), () -> exportTarget.supportsColors(),
                 "Include waypoint colors in export",
+                "This format does not support waypoint colors.",
                 v -> { optsBuilder.includeColors(v); reencode(); });
-        registerToggle("Radii", optsBuilder.includeRadii(),
+        registerToggle("Radii", optsBuilder.includeRadii(), () -> exportTarget.supportsRadii(),
                 "Include reach radius of each waypoint in export",
+                "Only Waypointer exports can preserve custom reach radii.",
                 v -> { optsBuilder.includeRadii(v); reencode(); });
-        registerToggle("WP Flags", optsBuilder.includeWaypointFlags(),
+        registerToggle("WP Flags", optsBuilder.includeWaypointFlags(), () -> exportTarget.supportsWaypointFlags(),
                 "Per-waypoint flag bits, safe to leave off for now.",
+                "Only Waypointer exports can preserve hide/through-wall flags.",
                 v -> { optsBuilder.includeWaypointFlags(v); reencode(); });
-        registerToggle("Group Meta", optsBuilder.includeGroupMeta(),
+        registerToggle("Group Meta", optsBuilder.includeGroupMeta(), () -> exportTarget.supportsGroupMeta(),
                 "Include group settings (gradient, ordered/sequenced, etc) in export",
+                "This format keeps basic route/category names, but not Waypointer group settings.",
                 v -> { optsBuilder.includeGroupMeta(v); reencode(); });
 
         layoutToggles();
@@ -228,9 +244,12 @@ public final class ExportScreen extends Screen {
         reencode();
     }
 
-    private void registerToggle(String label, boolean initialValue, String tooltip,
+    private void registerToggle(String label, boolean initialValue,
+                                java.util.function.BooleanSupplier supported,
+                                String tooltip, String unsupportedTooltip,
                                 java.util.function.Consumer<Boolean> sink) {
-        toggleSpecs.add(new ToggleSpec(label, initialValue, tooltip, sink));
+        toggleSpecs.add(new ToggleSpec(label, initialValue, supported,
+                tooltip, unsupportedTooltip, sink));
     }
 
     /**
@@ -258,8 +277,9 @@ public final class ExportScreen extends Screen {
                         btn.setMessage(toggleLabel(spec));
                     })
                     .bounds(x, rowY, TOGGLE_W, BTN_H)
-                    .tooltip(Tooltip.create(Component.literal(spec.tooltip)))
+                    .tooltip(Tooltip.create(Component.literal(spec.tooltip())))
                     .build();
+            b.active = spec.supported();
             addRenderableWidget(b);
             toggleButtons.add(b);
             x += TOGGLE_W + GAP;
@@ -267,6 +287,9 @@ public final class ExportScreen extends Screen {
     }
 
     private static Component toggleLabel(ToggleSpec spec) {
+        if (!spec.supported()) {
+            return Component.literal("[-] " + spec.label).withStyle(ChatFormatting.DARK_GRAY);
+        }
         ChatFormatting fmt = spec.value ? ChatFormatting.AQUA : ChatFormatting.DARK_GRAY;
         String marker = spec.value ? "[+] " : "[ ] ";
         return Component.literal(marker + spec.label).withStyle(fmt);
@@ -284,6 +307,18 @@ public final class ExportScreen extends Screen {
         reencode();
     }
 
+    private void openExportTargetMenu() {
+        minecraft.setScreen(new ExportTargetScreen(this));
+    }
+
+    private void selectExportTarget(WaypointExportCodec.Target target) {
+        exportTarget = target;
+        if (exportForButton != null) exportForButton.setMessage(exportForButtonLabel());
+        if (!toggleButtons.isEmpty()) refreshToggleButtons();
+        if (labelInput != null) updateLabelInputState();
+        reencode();
+    }
+
     private void resetToConfigDefaults() {
         optsBuilder = builderFromConfig(config);
         currentLabel = "";
@@ -291,9 +326,7 @@ public final class ExportScreen extends Screen {
         // Re-apply each toggle's value from the freshly-built options and
         // refresh its button label so the UI matches the new state.
         applyBuilderToToggleSpecs();
-        for (int i = 0; i < toggleSpecs.size(); i++) {
-            toggleButtons.get(i).setMessage(toggleLabel(toggleSpecs.get(i)));
-        }
+        refreshToggleButtons();
         reencode();
     }
 
@@ -317,7 +350,28 @@ public final class ExportScreen extends Screen {
     }
 
     private void reencode() {
-        this.encoded = WaypointCodec.encode(groups, optsBuilder.build());
+        this.encoded = WaypointExportCodec.encode(groups, optsBuilder.build(), exportTarget);
+    }
+
+    private void refreshToggleButtons() {
+        for (int i = 0; i < toggleSpecs.size(); i++) {
+            ToggleSpec spec = toggleSpecs.get(i);
+            Button button = toggleButtons.get(i);
+            button.active = spec.supported();
+            button.setTooltip(Tooltip.create(Component.literal(spec.tooltip())));
+            button.setMessage(toggleLabel(spec));
+        }
+    }
+
+    private void updateLabelInputState() {
+        labelInput.active = exportTarget.supportsLabel();
+        labelInput.setTooltip(Tooltip.create(Component.literal(exportTarget.supportsLabel()
+                ? "Optional title shown by Waypointer imports"
+                : exportTarget.displayName() + " exports do not support Waypointer labels")));
+    }
+
+    private Component exportForButtonLabel() {
+        return Component.literal("Export for...").withStyle(ChatFormatting.AQUA);
     }
 
     private void copyToClipboard() {
@@ -352,7 +406,7 @@ public final class ExportScreen extends Screen {
 
         int settingsY = PAD_OUTER + HEADER_H + BTN_H + GAP;
         g.drawString(font, "Export Settings", PAD_OUTER, settingsY, TEXT_DIM, false);
-        g.drawString(font, "Disabling more can make your export text shorter",
+        g.drawString(font, settingsHelpText(),
                 PAD_OUTER, settingsY + LINE_H, TEXT_MUTED, false);
 
         // Rows after the toggle grid: size summary, then preview. The toggle
@@ -369,7 +423,7 @@ public final class ExportScreen extends Screen {
         // to show multiple wrap lines at small window sizes.
         y += LINE_H * 2 + GAP_SECTION;
 
-        g.drawString(font, "Encoded preview (plain export code)", PAD_OUTER, y, TEXT_DIM, false);
+        g.drawString(font, WaypointExportCodec.previewLabel(exportTarget), PAD_OUTER, y, TEXT_DIM, false);
         y += LINE_H;
         drawPreview(g, PAD_OUTER, y, width - PAD_OUTER, height - FOOTER_H - GAP);
     }
@@ -419,7 +473,7 @@ public final class ExportScreen extends Screen {
         g.drawString(font, cmdLine, x, y, cmdColor, false);
 
         String sanitized = WaypointCodec.Options.sanitizeLabel(currentLabel);
-        if (!sanitized.isEmpty()) {
+        if (exportTarget.supportsLabel() && !sanitized.isEmpty()) {
             int gap = font.width("  ");
             g.drawString(font,
                     "label: \"" + sanitized + "\"",
@@ -433,6 +487,13 @@ public final class ExportScreen extends Screen {
                 ? "Fits in a chat message"
                 : "Too long for chat -- share somewhere else (like Discord)";
         g.drawString(font, chatLine, x, y + LINE_H, chatColor, false);
+    }
+
+    private String settingsHelpText() {
+        if (exportTarget == WaypointExportCodec.Target.WAYPOINTER) {
+            return "Disabling more can make your export text shorter";
+        }
+        return "Unavailable options are disabled for " + exportTarget.displayName();
     }
 
     private void drawPreview(GuiGraphics g, int x1, int y1, int x2, int y2) {
@@ -476,6 +537,76 @@ public final class ExportScreen extends Screen {
     public void onClose() { minecraft.setScreen(parent); }
 
     /**
+     * Standalone target picker for the export screen. A dedicated screen keeps
+     * the choice deliberate: users see every supported target before switching,
+     * instead of cycling past formats whose disabled options can surprise them.
+     */
+    private static final class ExportTargetScreen extends Screen {
+        private static final int MENU_W = 220;
+
+        private final ExportScreen owner;
+
+        ExportTargetScreen(ExportScreen owner) {
+            super(Component.literal("Export For"));
+            this.owner = owner;
+        }
+
+        @Override
+        protected void init() {
+            int x = (width - MENU_W) / 2;
+            int y = PAD_OUTER + 32;
+
+            for (WaypointExportCodec.Target target : WaypointExportCodec.Target.values()) {
+                Button button = Button.builder(targetLabel(target), b -> {
+                            owner.selectExportTarget(target);
+                            minecraft.setScreen(owner);
+                        })
+                        .bounds(x, y, MENU_W, BTN_H)
+                        .tooltip(Tooltip.create(Component.literal(targetTooltip(target))))
+                        .build();
+                addRenderableWidget(button);
+                y += BTN_H + GAP;
+            }
+
+            addRenderableWidget(Button.builder(Component.literal("Back"),
+                            b -> minecraft.setScreen(owner))
+                    .bounds(x, height - FOOTER_H, MENU_W, BTN_H)
+                    .build());
+        }
+
+        @Override
+        public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
+            super.render(g, mouseX, mouseY, partial);
+            int x = (width - MENU_W) / 2;
+            g.drawString(font, getTitle(), x, PAD_OUTER, TEXT, false);
+            g.drawString(font, "Current: " + owner.exportTarget.displayName(),
+                    x, PAD_OUTER + LINE_H, TEXT_DIM, false);
+        }
+
+        @Override
+        public boolean isPauseScreen() { return false; }
+
+        @Override
+        public void onClose() { minecraft.setScreen(owner); }
+
+        private Component targetLabel(WaypointExportCodec.Target target) {
+            boolean selected = target == owner.exportTarget;
+            ChatFormatting color = selected ? ChatFormatting.AQUA : ChatFormatting.WHITE;
+            String marker = selected ? "[x] " : "[ ] ";
+            return Component.literal(marker + target.displayName()).withStyle(color);
+        }
+
+        private static String targetTooltip(WaypointExportCodec.Target target) {
+            return switch (target) {
+                case WAYPOINTER -> "Native format. Preserves every enabled Waypointer option.";
+                case SKYBLOCKER -> "For Skyblocker. Preserves coordinates, names, and colors.";
+                case SKYTILS -> "For Skytils. Preserves coordinates, names, and colors.";
+                case SKYHANNI -> "For SkyHanni. Preserves coordinates, names, and colors.";
+            };
+        }
+    }
+
+    /**
      * Holds the live state for a single export-option toggle. Exists so the
      * button render lambda can mutate one shared place (rather than chasing
      * the option through three callbacks) and so a Reset can rewrite all
@@ -484,15 +615,29 @@ public final class ExportScreen extends Screen {
     private static final class ToggleSpec {
         final String label;
         final String tooltip;
+        final String unsupportedTooltip;
+        final java.util.function.BooleanSupplier supported;
         final java.util.function.Consumer<Boolean> sink;
         boolean value;
 
-        ToggleSpec(String label, boolean value, String tooltip,
+        ToggleSpec(String label, boolean value,
+                   java.util.function.BooleanSupplier supported,
+                   String tooltip, String unsupportedTooltip,
                    java.util.function.Consumer<Boolean> sink) {
             this.label = label;
             this.value = value;
+            this.supported = supported;
             this.tooltip = tooltip;
+            this.unsupportedTooltip = unsupportedTooltip;
             this.sink = sink;
+        }
+
+        boolean supported() {
+            return supported.getAsBoolean();
+        }
+
+        String tooltip() {
+            return supported() ? tooltip : unsupportedTooltip;
         }
     }
 }

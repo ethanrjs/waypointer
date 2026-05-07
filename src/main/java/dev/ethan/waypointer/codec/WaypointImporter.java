@@ -32,16 +32,16 @@ import java.util.zip.GZIPInputStream;
  *   - Skytils / Soopy style: raw JSON or base64(JSON) with either a top-level
  *     array of groups, a {@code categories} array, or a single object with a
  *     {@code waypoints} array.
- *   - Coleweight-style: a flat JSON array where each entry carries {@code x/y/z},
- *     float {@code r/g/b} in [0,1], and an {@code options} object holding
- *     {@code name} (string or sequence number).
+ *   - SkyHanni / Coleweight-style: a flat JSON array where each entry carries
+ *     {@code x/y/z}, float {@code r/g/b} in [0,1], and an {@code options}
+ *     object holding {@code name} (string or sequence number).
  *
  * Unknown fields are ignored. Missing fields fall back to defaults so a partially
  * malformed payload from a third-party tool still imports the coordinates cleanly.
  */
 public final class WaypointImporter {
 
-    public enum Source { WAYPOINTER, SKYBLOCKER, SKYTILS, SOOPY, COLEWEIGHT, JSON }
+    public enum Source { WAYPOINTER, SKYBLOCKER, SKYTILS, SKYHANNI, SOOPY, COLEWEIGHT, JSON }
 
     /** Skyblocker's current (V1) share-string prefix. Payload after it is base64(gzip(json)). */
     static final String SKYBLOCKER_V1_PREFIX = "[Skyblocker-Waypoint-Data-V1]";
@@ -149,7 +149,7 @@ public final class WaypointImporter {
         }
 
         throw new IllegalArgumentException(
-                "unrecognized waypoint payload (tried Waypointer, Skyblocker, Skytils, JSON)");
+                "unrecognized waypoint payload (tried Waypointer, Skyblocker, Skytils, SkyHanni, JSON)");
     }
 
     private static String stripMarkdownCodeFence(String text) {
@@ -198,20 +198,27 @@ public final class WaypointImporter {
         Source source = Source.JSON;
 
         if (root.isJsonArray()) {
-            // Either a list of groups, a coleweight flat route, or a list of loose waypoints.
-            // Distinguish by content shape: groups have nested point arrays, coleweight has an
-            // `options` object per point, loose waypoints are plain {x,y,z,...} dicts.
+            // Either a list of groups, a SkyHanni/Coleweight flat route, or a list of loose
+            // waypoints. Distinguish by content shape: groups have nested point arrays,
+            // SkyHanni/Coleweight has an `options` object per point, loose waypoints are
+            // plain {x,y,z,...} dicts.
             JsonArray arr = root.getAsJsonArray();
             if (looksLikeGroupArray(arr)) {
                 for (JsonElement el : arr) groups.add(parseGroup(el.getAsJsonObject()));
             } else if (looksLikeColeweightArray(arr)) {
                 WaypointGroup g = parseColeweightRoute(arr);
                 if (!g.isEmpty()) groups.add(g);
-                source = hasNullCoordinatePlaceholder(arr) ? Source.SOOPY : Source.COLEWEIGHT;
+                source = hasNullCoordinatePlaceholder(arr) ? Source.SOOPY : Source.SKYHANNI;
             } else {
                 WaypointGroup g = WaypointGroup.create("Imported", Zone.UNKNOWN.id());
                 g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-                for (JsonElement el : arr) if (el.isJsonObject()) addWaypointFromLoose(g, el.getAsJsonObject());
+                List<Waypoint> waypoints = new ArrayList<>(arr.size());
+                for (JsonElement el : arr) {
+                    if (!el.isJsonObject()) continue;
+                    Waypoint waypoint = waypointFromLoose(el.getAsJsonObject());
+                    if (waypoint != null) waypoints.add(waypoint);
+                }
+                g.addAll(waypoints);
                 groups.add(g);
             }
         } else if (root.isJsonObject()) {
@@ -244,9 +251,13 @@ public final class WaypointImporter {
                     if (val.isJsonArray()) {
                         WaypointGroup g = WaypointGroup.create(entry.getKey(), normalizeZone(entry.getKey()));
                         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+                        List<Waypoint> waypoints = new ArrayList<>(val.getAsJsonArray().size());
                         for (JsonElement el : val.getAsJsonArray()) {
-                            if (el.isJsonObject()) addWaypointFromLoose(g, el.getAsJsonObject());
+                            if (!el.isJsonObject()) continue;
+                            Waypoint waypoint = waypointFromLoose(el.getAsJsonObject());
+                            if (waypoint != null) waypoints.add(waypoint);
                         }
+                        g.addAll(waypoints);
                         if (!g.isEmpty()) groups.add(g);
                     } else if (val.isJsonObject() && val.getAsJsonObject().has("waypoints")) {
                         WaypointGroup g = parseGroup(val.getAsJsonObject());
@@ -278,7 +289,8 @@ public final class WaypointImporter {
     }
 
     /**
-     * Coleweight's signature: each entry has its metadata nested under {@code options}.
+     * SkyHanni and Coleweight share this signature: each entry has its metadata
+     * nested under {@code options}.
      * The other supported formats all put {@code name}/{@code color} at the top level,
      * so the presence of an {@code options} object on a coord-bearing entry is a clean
      * marker we can use without false positives.
@@ -305,24 +317,24 @@ public final class WaypointImporter {
     }
 
     /**
-     * Build a single route group from a coleweight export.
+     * Build a single route group from a SkyHanni/Coleweight export.
      *
-     * Coleweight stores sequential routes where waypoint order matters but isn't
-     * guaranteed by the JSON array order -- the option {@code name} field holds the
-     * intended step index. We sort by that when every entry names itself with an
-     * integer so the imported group walks in the same order the author intended.
-     * Non-numeric names disable the sort and we fall back to JSON array order,
-     * which is still correct for any sensibly-written export.
+     * SkyHanni stores sequential routes where waypoint order matters. Legacy
+     * Coleweight exports used the same schema and often put the intended step
+     * index in {@code options.name}. We sort by that when every entry names
+     * itself with an integer so the imported group walks in author order.
+     * Non-numeric names disable the sort and we fall back to JSON array order.
      *
-     * AUTO gradient is chosen deliberately: coleweight routes almost always paint
+     * AUTO gradient is chosen deliberately: these routes almost always paint
      * every point the same color, so preserving those identical colors (as MANUAL
      * does for Skytils/Skyblocker) would leave the player unable to see route
      * direction at a glance. The gradient sweeps cool -> hot so "next" reads
      * clearly.
      */
     private static WaypointGroup parseColeweightRoute(JsonArray arr) {
-        WaypointGroup g = WaypointGroup.create("Coleweight Route", Zone.UNKNOWN.id());
-        g.setGradientMode(WaypointGroup.GradientMode.AUTO);
+        WaypointGroup g = WaypointGroup.create("Imported Route", Zone.UNKNOWN.id());
+        g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
 
         List<JsonObject> points = new ArrayList<>(arr.size());
         for (JsonElement el : arr) {
@@ -335,21 +347,27 @@ public final class WaypointImporter {
             points.sort(Comparator.comparingInt(WaypointImporter::coleweightOptionNameAsInt));
         }
 
-        for (JsonObject p : points) addWaypointFromColeweight(g, p);
+        List<Waypoint> waypoints = new ArrayList<>(points.size());
+        for (JsonObject p : points) {
+            Waypoint waypoint = waypointFromColeweight(p);
+            if (waypoint != null) waypoints.add(waypoint);
+        }
+        g.addAll(waypoints);
+        g.setGradientMode(WaypointGroup.GradientMode.AUTO);
         return g;
     }
 
-    private static void addWaypointFromColeweight(WaypointGroup g, JsonObject o) {
+    private static Waypoint waypointFromColeweight(JsonObject o) {
         int[] pos = extractCoordinates(o);
-        if (pos == null) return;
+        if (pos == null) return null;
 
         String name = coleweightName(o);
         int color = parseColeweightColor(o);
-        g.add(new Waypoint(pos[0], pos[1], pos[2], name, color, 0, 0.0));
+        return new Waypoint(pos[0], pos[1], pos[2], name, color, 0, 0.0);
     }
 
     /**
-     * Coleweight R/G/B are normalized floats in [0,1]. A coleweight export with
+     * SkyHanni/Coleweight R/G/B are normalized floats in [0,1]. An export with
      * integer literals (e.g. {@code "r":0,"g":1,"b":0}) is still valid -- those
      * are just the endpoints of the same [0,1] range, not byte values. Either
      * way, scaling by 255 gives the correct 8-bit channel.
@@ -417,9 +435,7 @@ public final class WaypointImporter {
                 && o.get("ordered").getAsJsonPrimitive().isBoolean()
                 && o.get("ordered").getAsBoolean();
         JsonArray pts = firstArray(o, "waypoints", "points");
-        g.setGradientMode(ordered
-                ? WaypointGroup.GradientMode.AUTO
-                : WaypointGroup.GradientMode.MANUAL);
+        g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
 
         if (o.has("enabled") && o.get("enabled").isJsonPrimitive()) {
@@ -427,14 +443,21 @@ public final class WaypointImporter {
         }
 
         if (pts != null) {
-            for (JsonElement el : pts) if (el.isJsonObject()) addWaypointFromLoose(g, el.getAsJsonObject());
+            List<Waypoint> waypoints = new ArrayList<>(pts.size());
+            for (JsonElement el : pts) {
+                if (!el.isJsonObject()) continue;
+                Waypoint waypoint = waypointFromLoose(el.getAsJsonObject());
+                if (waypoint != null) waypoints.add(waypoint);
+            }
+            g.addAll(waypoints);
         }
+        if (ordered) g.setGradientMode(WaypointGroup.GradientMode.AUTO);
         return g;
     }
 
-    private static void addWaypointFromLoose(WaypointGroup g, JsonObject o) {
+    private static Waypoint waypointFromLoose(JsonObject o) {
         int[] pos = extractCoordinates(o);
-        if (pos == null) return;
+        if (pos == null) return null;
 
         String name = firstString(o, "", "name", "label", "title");
         int color = parseColor(o);
@@ -448,7 +471,7 @@ public final class WaypointImporter {
                 && !hasCoordinateArray(o))
                 ? o.get("r").getAsDouble()
                 : 0.0;
-        g.add(new Waypoint(pos[0], pos[1], pos[2], name, color, 0, radius));
+        return new Waypoint(pos[0], pos[1], pos[2], name, color, 0, radius);
     }
 
     /**

@@ -351,7 +351,7 @@ public final class WaypointerCommands {
         // Screen is opened standalone (no parent) so Escape closes the entire screen
         // stack rather than dropping the user into whatever they had open before --
         // /wp debug is a diagnostic entry point, not a sub-view of the main GUI.
-        Minecraft.getInstance().execute(() -> DebugInspectScreen.open(null));
+        Minecraft.getInstance().execute(() -> DebugInspectScreen.open(null, manager, config));
     }
 
     /**
@@ -400,7 +400,7 @@ public final class WaypointerCommands {
                             new HelpRow(" group create <name>",     "make a new group in the current zone"),
                             new HelpRow(" group list",              "list every group across zones"),
                             new HelpRow(" group delete <index>",    "delete a group by list index"),
-                            new HelpRow(" debug",                   "inspect a pasted codec's wire format")))
+                            new HelpRow(" debug",                   "copy performance stats or inspect a codec")))
     );
 
     /**

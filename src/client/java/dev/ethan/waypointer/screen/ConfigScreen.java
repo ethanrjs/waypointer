@@ -191,7 +191,7 @@ public final class ConfigScreen extends Screen {
 
     private void addPerformancePage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Budgets";
-        rightHeader = "Cosmetic Cost";
+        rightHeader = "Label Cost";
 
         int y = rowsY;
         addNumberRow(col1, y, colW, "Max waypoint labels (0 = unlimited)",
@@ -208,12 +208,6 @@ public final class ConfigScreen extends Screen {
               + "SEQUENCE targets stay uncapped so navigation does not disappear.");
 
         int y2 = rowsY;
-        addBoxStyleRow(col2, y2, colW,
-                "Medium/high impact: filled cubes add translucent faces to every marker.");
-        y2 += rowH;
-        addBeamModeRow(col2, y2, colW,
-                "High impact in \"All visible\" mode: each visible waypoint draws a tall beam.");
-        y2 += rowH;
         addBoolRow(col2, y2, "Show waypoint names",
                 config.showWaypointNames(), config::setShowWaypointNames,
                 "High impact in dense routes because every name submits text to the HUD.");

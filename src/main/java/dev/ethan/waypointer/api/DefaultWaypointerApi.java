@@ -142,7 +142,9 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         group.setEnabled(route.enabled());
         group.setLoadMode(route.loadMode().toCore());
         group.setDefaultRadius(route.defaultRadius());
-        for (WaypointSpec waypoint : route.waypoints()) group.add(waypoint.toWaypoint());
+        List<dev.ethan.waypointer.core.Waypoint> waypoints = new ArrayList<>(route.waypoints().size());
+        for (WaypointSpec waypoint : route.waypoints()) waypoints.add(waypoint.toWaypoint());
+        group.addAll(waypoints);
         return group;
     }
 
@@ -151,7 +153,9 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         WaypointGroup group = new WaypointGroup(id, overlay.name(), overlay.zoneId());
         group.setTemp(true);
         group.setLoadMode(overlay.loadMode().toCore());
-        for (WaypointSpec waypoint : overlay.waypoints()) group.add(waypoint.toTempWaypoint());
+        List<dev.ethan.waypointer.core.Waypoint> waypoints = new ArrayList<>(overlay.waypoints().size());
+        for (WaypointSpec waypoint : overlay.waypoints()) waypoints.add(waypoint.toTempWaypoint());
+        group.addAll(waypoints);
         return group;
     }
 

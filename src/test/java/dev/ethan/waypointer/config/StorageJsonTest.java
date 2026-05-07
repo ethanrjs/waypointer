@@ -105,6 +105,7 @@ class StorageJsonTest {
 
         assertNull(manager.get("existing"));
         assertNotNull(manager.get("loaded"));
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, manager.get("loaded").loadMode());
         assertEquals(1, manager.allGroups().size());
     }
 
