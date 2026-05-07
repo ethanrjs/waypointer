@@ -211,8 +211,9 @@ class WaypointImporterTest {
     }
 
     @Test
-    void parses_coleweight_flat_array_with_options_name() {
-        // Mirrors a real coleweight export: flat array, float 0-1 r/g/b, options.name holds the step index.
+    void parses_skyhanni_flat_array_with_options_name() {
+        // SkyHanni uses the same flat route schema as legacy Coleweight:
+        // float 0-1 r/g/b, options.name holds the step index.
         String json = "["
                 + "{\"x\":100,\"y\":64,\"z\":200,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":1}},"
                 + "{\"x\":110,\"y\":64,\"z\":210,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":2}},"
@@ -220,19 +221,21 @@ class WaypointImporterTest {
                 + "]";
         WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
 
-        assertEquals(WaypointImporter.Source.COLEWEIGHT, result.source());
+        assertEquals(WaypointImporter.Source.SKYHANNI, result.source());
         assertEquals(1, result.groups().size());
         WaypointGroup g = result.groups().get(0);
+        assertEquals("Imported Route", g.name());
         assertEquals(3, g.size());
         assertEquals("1", g.get(0).name());
         assertEquals(100, g.get(0).x());
         assertEquals(220, g.get(2).z());
-        // Coleweight payloads carry no zone info, so parse time must leave the
+        // SkyHanni payloads carry no zone info, so parse time must leave the
         // group tagged UNKNOWN -- the command-layer retarget step is what
         // snaps it to the player's current zone. If the parser ever picks
         // a default zone on its own, the retarget step becomes a no-op and
         // this test (plus the call-site retarget test below) would flag it.
         assertEquals(dev.ethan.waypointer.core.Zone.UNKNOWN.id(), g.zoneId());
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
         // AUTO gradient rewrites colors on insert; what matters is the group picked AUTO
         // (so users can see route direction), not the specific post-gradient color.
         assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());

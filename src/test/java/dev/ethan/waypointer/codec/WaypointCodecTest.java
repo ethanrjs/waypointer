@@ -506,7 +506,7 @@ class WaypointCodecTest {
     @Test
     void include_group_meta_false_strips_gradient_load_mode_and_default_radius() {
         // Group metadata stripping should make the recipient see plain
-        // defaults: AUTO gradient, STATIC load order, default 3.0 radius.
+        // defaults: AUTO gradient, SEQUENCE load order, default 3.0 radius.
         WaypointGroup g = WaypointGroup.create("R", "z");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
@@ -518,8 +518,8 @@ class WaypointCodecTest {
         WaypointGroup decoded = WaypointCodec.decode(WaypointCodec.encode(List.of(g), stripped)).get(0);
         assertEquals(WaypointGroup.GradientMode.AUTO, decoded.gradientMode(),
                 "gradient must default to AUTO when group meta is dropped");
-        assertEquals(WaypointGroup.LoadMode.STATIC, decoded.loadMode(),
-                "load mode must default to STATIC when group meta is dropped");
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, decoded.loadMode(),
+                "load mode must default to SEQUENCE when group meta is dropped");
         assertEquals(3.0, decoded.defaultRadius(), 1e-6,
                 "default radius must reset to 3.0 when group meta is dropped");
     }

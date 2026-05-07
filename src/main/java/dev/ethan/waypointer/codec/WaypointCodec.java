@@ -793,12 +793,11 @@ public final class WaypointCodec {
 
         boolean bodyless = hasEmptyWaypointBodies(g.waypoints(), pool, opts);
 
-        // When the sender opts out of group metadata, we want the recipient to
-        // see the same defaults a freshly-created WaypointGroup would have:
-        // AUTO gradient, STATIC load mode, default 3.0 radius. The wire bit
-        // for "auto gradient" is 1, so we set it explicitly here -- writing
-        // groupFlags=0 would otherwise decode as MANUAL, which is *worse*
-        // than the user's source if they had AUTO selected. The coord-mode
+        // When the sender opts out of group metadata, the recipient should see
+        // the defaults a freshly-created WaypointGroup would have: AUTO
+        // gradient, SEQUENCE load mode, default 3.0 radius. The wire bits for
+        // "auto gradient" and "sequence load" are 1, so set them explicitly;
+        // writing groupFlags=0 would decode as MANUAL/STATIC. The coord-mode
         // nibble is unaffected: it's a wire-level packing detail, not
         // user-visible state.
         int baseGroupFlags = 0;
@@ -811,6 +810,7 @@ public final class WaypointCodec {
             if (customRadius) baseGroupFlags |= GROUP_FLAG_CUSTOM_RADIUS;
         } else {
             baseGroupFlags |= GROUP_FLAG_GRAD_AUTO;
+            baseGroupFlags |= GROUP_FLAG_LOAD_SEQUENCE;
         }
 
         CoordPicked picked = pickCoordMode(g, pool, opts, mode, bodyless, baseGroupFlags,
@@ -1205,6 +1205,7 @@ public final class WaypointCodec {
         int coordEnd = bais.position();
         if (gCap != null) gCap.coordBlockBytes = coordEnd - coordStart;
 
+        List<Waypoint> waypoints = new ArrayList<>(pointCount);
         for (int i = 0; i < pointCount; i++) {
             int x = coords[i][0], y = coords[i][1], z = coords[i][2];
             int wpFlags = bodyless ? 0 : in.readUnsignedByte();
@@ -1230,8 +1231,9 @@ public final class WaypointCodec {
                         wname, color, radiusW, wFlags));
             }
 
-            g.add(new Waypoint(x, y, z, wname, color, wFlags, radiusW));
+            waypoints.add(new Waypoint(x, y, z, wname, color, wFlags, radiusW));
         }
+        g.addAll(waypoints);
         if (gCap != null) gCap.bodyBlockBytes = bais.position() - coordEnd;
 
         // currentIndex is never written on the wire (see writeGroup). Imported

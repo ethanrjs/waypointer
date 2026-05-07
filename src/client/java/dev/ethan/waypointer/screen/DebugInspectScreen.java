@@ -2,6 +2,9 @@ package dev.ethan.waypointer.screen;
 
 import dev.ethan.waypointer.codec.DecodeDebug;
 import dev.ethan.waypointer.codec.WaypointCodec;
+import dev.ethan.waypointer.config.WaypointerConfig;
+import dev.ethan.waypointer.core.ActiveGroupManager;
+import dev.ethan.waypointer.debug.PerformanceStats;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -64,6 +67,11 @@ public final class DebugInspectScreen extends Screen {
 
     private record SectionAnchor(String label, String subtitle, int rowIndex) {}
 
+    private enum ReportKind {
+        PERFORMANCE,
+        CODEC
+    }
+
     /** How many rows a single wheel notch advances the scroll. */
     private static final int SCROLL_ROWS_PER_NOTCH = 3;
 
@@ -83,8 +91,12 @@ public final class DebugInspectScreen extends Screen {
     private static final int ERROR_TONE = 0xFFCA7A7A;
 
     private final Screen parent;
+    private final ActiveGroupManager manager;
+    private final WaypointerConfig config;
 
     private DecodeDebug debug;
+    private PerformanceStats performanceStats;
+    private ReportKind reportKind = ReportKind.PERFORMANCE;
     private String lastError;
     private final List<Row> rows = new ArrayList<>();
     private final List<SectionAnchor> sections = new ArrayList<>();
@@ -99,13 +111,25 @@ public final class DebugInspectScreen extends Screen {
     private int mainX1, mainX2, mainTop, mainBottom;
     private int visibleRowCount;
 
-    public DebugInspectScreen(Screen parent) {
-        super(Component.literal("Codec Debug Inspector"));
+    public DebugInspectScreen(Screen parent, ActiveGroupManager manager,
+                              WaypointerConfig config) {
+        super(Component.literal("Waypointer Debug"));
         this.parent = parent;
+        this.manager = manager;
+        this.config = config;
     }
 
     public static void open(Screen parent) {
         Minecraft.getInstance().setScreen(new DebugInspectScreen(parent));
+    }
+
+    public DebugInspectScreen(Screen parent) {
+        this(parent, null, null);
+    }
+
+    public static void open(Screen parent, ActiveGroupManager manager,
+                            WaypointerConfig config) {
+        Minecraft.getInstance().setScreen(new DebugInspectScreen(parent, manager, config));
     }
 
     // --- lifecycle -------------------------------------------------------------------------
@@ -113,7 +137,8 @@ public final class DebugInspectScreen extends Screen {
     @Override
     protected void init() {
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("Load from clipboard", this::loadFromClipboard));
+        left.add(new GuiTokens.ButtonSpec("Refresh stats", this::loadPerformanceStats));
+        left.add(new GuiTokens.ButtonSpec("Load codec", this::loadFromClipboard));
         left.add(new GuiTokens.ButtonSpec("Copy report", this::copyReportToClipboard));
         GuiTokens.ButtonSpec back = new GuiTokens.ButtonSpec("Back", this::onClose);
 
@@ -128,15 +153,38 @@ public final class DebugInspectScreen extends Screen {
             addRenderableWidget(b);
         }, font);
 
-        // First-open affordance: try to load whatever is already on the clipboard so the
-        // user doesn't have to click twice for the common case. Subsequent re-inits (e.g.
-        // window resize) preserve whatever state was already there.
-        if (debug == null && lastError == null) {
-            loadFromClipboard();
+        // First-open affordance: /wp debug is now a performance snapshot by default.
+        // The codec inspector remains one click away for route-wire investigations.
+        if (debug == null && performanceStats == null && lastError == null) {
+            loadPerformanceStats();
         }
     }
 
     // --- actions ---------------------------------------------------------------------------
+
+    private void loadPerformanceStats() {
+        this.debug = null;
+        this.performanceStats = null;
+        this.lastError = null;
+        this.rows.clear();
+        this.sections.clear();
+        this.scrollRows = 0;
+        this.selectedSection = 0;
+        this.reportKind = ReportKind.PERFORMANCE;
+
+        if (manager == null || config == null) {
+            this.lastError = "Performance stats unavailable.\n"
+                    + "Open this screen through /wp debug so it can see live Waypointer state.";
+            return;
+        }
+
+        var player = Minecraft.getInstance().player;
+        this.performanceStats = player == null
+                ? PerformanceStats.capture(manager, config)
+                : PerformanceStats.capture(manager, config,
+                        player.getX(), player.getY(), player.getZ());
+        buildPerformanceReport(this.performanceStats, config, rows, sections);
+    }
 
     private void loadFromClipboard() {
         loadFromString(minecraft.keyboardHandler.getClipboard());
@@ -149,6 +197,8 @@ public final class DebugInspectScreen extends Screen {
         this.sections.clear();
         this.scrollRows = 0;
         this.selectedSection = 0;
+        this.performanceStats = null;
+        this.reportKind = ReportKind.CODEC;
 
         if (text == null || text.isBlank()) {
             this.lastError = "Clipboard is empty.\nCopy a " + WaypointCodec.MAGIC + " export, then click Load from clipboard.";
@@ -260,6 +310,13 @@ public final class DebugInspectScreen extends Screen {
     }
 
     private String buildHeaderSummary() {
+        if (reportKind == ReportKind.PERFORMANCE && performanceStats != null) {
+            return performanceStats.activeGroups() + " active groups"
+                    + "   .   " + performanceStats.activeWaypoints() + " active pts"
+                    + "   .   " + performanceStats.activeVisibleWaypoints() + " renderable"
+                    + "   .   " + performanceStats.estimatedProximityIndexVisitsPerTick()
+                    + " proximity visits/tick";
+        }
         if (debug == null) return null;
         int wps = totalWaypoints(debug);
         return debug.inputChars() + " ch  ->  "
@@ -278,7 +335,8 @@ public final class DebugInspectScreen extends Screen {
         g.fill(x2, y1, x2 + 1, y2, BORDER);
 
         int labelY = y1 + 10;
-        g.drawString(font, "Sections", x1 + GAP, labelY, TEXT_DIM, false);
+        g.drawString(font, reportKind == ReportKind.PERFORMANCE ? "Performance" : "Sections",
+                x1 + GAP, labelY, TEXT_DIM, false);
         this.sidebarContentTop = labelY + 14;
 
         if (sections.isEmpty()) {
@@ -526,6 +584,77 @@ public final class DebugInspectScreen extends Screen {
         }
     }
 
+    private static void buildPerformanceReport(PerformanceStats stats,
+                                               WaypointerConfig config,
+                                               List<Row> rows,
+                                               List<SectionAnchor> sections) {
+        addSection(rows, sections, "Snapshot", null);
+        rows.add(new Row.KV("Captured", stats.capturedAt().toString()));
+        rows.add(new Row.KV("Zone", stats.currentZoneName() + " (" + stats.currentZoneId() + ")"));
+        rows.add(new Row.KVDim("Meaning", "counts before camera/distance culling unless noted"));
+        rows.add(new Row.KVDim("Java", System.getProperty("java.version", "(unknown)")));
+        rows.add(new Row.KVDim("Memory used", formatBytes(stats.usedMemoryBytes())
+                + " / " + formatBytes(stats.maxMemoryBytes())));
+
+        addSection(rows, sections, "Route Library", stats.totalWaypoints() + " pts");
+        rows.add(new Row.KV("Groups", stats.totalGroups() + " total, "
+                + stats.enabledGroups() + " enabled, " + stats.tempGroups() + " temp"));
+        rows.add(new Row.KV("Zones", stats.knownZoneCount() + " known"));
+        rows.add(new Row.KV("Waypoints", stats.totalWaypoints() + " total, "
+                + stats.tempWaypoints() + " temp"));
+        rows.add(new Row.KV("Load modes", stats.staticGroups() + " static groups, "
+                + stats.sequenceGroups() + " sequence groups"));
+        rows.add(new Row.KV("Largest group", groupSummary(stats.largestGroup())));
+
+        addSection(rows, sections, "Active Zone", stats.activeGroups() + " groups");
+        rows.add(new Row.KV("Active points", stats.activeWaypoints() + " total"));
+        rows.add(new Row.KV("Static points", String.valueOf(stats.activeStaticWaypoints())));
+        rows.add(new Row.KV("Sequence points", String.valueOf(stats.activeSequenceWaypoints())));
+        rows.add(new Row.KV("Renderable", stats.activeVisibleWaypoints() + " waypoint slots"));
+        rows.add(new Row.KV("Label candidates", stats.activeLabelCandidates() + " before budget"));
+        rows.add(new Row.KV("Largest active", groupSummary(stats.largestActiveGroup())));
+
+        addSection(rows, sections, "Render Estimate", null);
+        rows.add(new Row.KV("Box style", config.boxStyle().name()));
+        rows.add(new Row.KV("Beacon mode", config.beaconBeamMode().name()));
+        rows.add(new Row.KV("Line vertices", String.valueOf(stats.estimatedLineBoxVertices())));
+        rows.add(new Row.KV("Fill vertices", String.valueOf(stats.estimatedFillBoxVertices())));
+        rows.add(new Row.KV("Beam vertices", String.valueOf(stats.estimatedBeamVertices())));
+        rows.add(new Row.KV("Label budget", config.maxWaypointLabels() == 0
+                ? "unlimited" : String.valueOf(config.maxWaypointLabels())));
+        rows.add(new Row.KV("Static distance", config.maxStaticWaypointRenderDistance() <= 0.0
+                ? "unlimited" : String.format(Locale.ROOT, "%.1f blocks",
+                config.maxStaticWaypointRenderDistance())));
+
+        addSection(rows, sections, "Tick Estimate", null);
+        rows.add(new Row.KV("Proximity visits", stats.estimatedProximityIndexVisitsPerTick()
+                + " nearby candidates/tick"));
+        rows.add(new Row.KVDim("Skip-ahead", config.skipAheadMechanicEnabled() ? "enabled" : "disabled"));
+        rows.add(new Row.KVDim("Static reached hide",
+                config.hideReachedStaticWaypointsUntilCycleComplete() ? "enabled" : "disabled"));
+
+        addSection(rows, sections, "Config Toggles", null);
+        rows.add(new Row.KV("Names", config.showWaypointNames() ? "on" : "off"));
+        rows.add(new Row.KV("Distances", config.showWaypointDistances() ? "on" : "off"));
+        rows.add(new Row.KV("Backdrop", config.showLabelBackdrop() ? "on" : "off"));
+        rows.add(new Row.KV("Tracer", config.showTracer() ? "on" : "off"));
+        rows.add(new Row.KV("Hide static tracer", config.hideTracerOnStaticRoutes() ? "on" : "off"));
+
+        addSection(rows, sections, "Active Groups", String.valueOf(stats.activeGroupStats().size()));
+        if (stats.activeGroupStats().isEmpty()) {
+            rows.add(new Row.KVDim("None", "No active groups in the current zone."));
+            return;
+        }
+        for (PerformanceStats.GroupStats group : stats.activeGroupStats()) {
+            rows.add(new Row.KV(shortGroupName(group),
+                    group.waypoints() + " pts, "
+                            + group.renderableWaypoints() + " renderable, "
+                            + group.labelCandidates() + " labels, "
+                            + group.proximityIndexVisitsPerTick() + " tick candidates, "
+                            + group.loadMode().toLowerCase(Locale.ROOT)));
+        }
+    }
+
     private static void addSection(List<Row> rows, List<SectionAnchor> sections,
                                     String label, String subtitle) {
         if (!rows.isEmpty()) rows.add(new Row.Blank());
@@ -548,6 +677,20 @@ public final class DebugInspectScreen extends Screen {
             case Row.WP wp -> formatWaypointPlain(wp.wp());
             case Row.Blank ignored -> "";
         };
+    }
+
+    private static String groupSummary(PerformanceStats.GroupStats group) {
+        if (group == null) return "(none)";
+        return shortGroupName(group) + " -- " + group.waypoints()
+                + " pts, " + group.loadMode().toLowerCase(Locale.ROOT);
+    }
+
+    private static String shortGroupName(PerformanceStats.GroupStats group) {
+        String name = group.name() == null || group.name().isBlank()
+                ? "(unnamed)"
+                : group.name();
+        if (name.length() <= 28) return name;
+        return name.substring(0, 25) + "...";
     }
 
     private static String formatWaypointPlain(DecodeDebug.WaypointDebug wp) {
@@ -573,6 +716,15 @@ public final class DebugInspectScreen extends Screen {
         // consumed by a blanket zero-fill.
         String bin = String.format(Locale.ROOT, "%8s", Integer.toBinaryString(b)).replace(' ', '0');
         return String.format(Locale.ROOT, "0x%02X  0b%s", b, bin);
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024L) return bytes + " B";
+        double kib = bytes / 1024.0;
+        if (kib < 1024.0) return String.format(Locale.ROOT, "%.1f KiB", kib);
+        double mib = kib / 1024.0;
+        if (mib < 1024.0) return String.format(Locale.ROOT, "%.1f MiB", mib);
+        return String.format(Locale.ROOT, "%.2f GiB", mib / 1024.0);
     }
 
     private static String formatNanos(long nanos) {

@@ -28,8 +28,8 @@ class ColeweightSmokeTest {
         String json = Files.readString(p);
 
         WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
-        assertEquals(WaypointImporter.Source.COLEWEIGHT, result.source(),
-                "should auto-detect the coleweight wire format");
+        assertEquals(WaypointImporter.Source.SKYHANNI, result.source(),
+                "SkyHanni and legacy Coleweight share this wire format");
         assertEquals(1, result.groups().size(), "coleweight exports are a single flat route");
 
         WaypointGroup g = result.groups().get(0);

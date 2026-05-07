@@ -199,9 +199,11 @@ public final class Storage {
         if (o.has("gradientStartColor")) g.setGradientStartColor(o.get("gradientStartColor").getAsInt());
         if (o.has("gradientEndColor"))   g.setGradientEndColor(o.get("gradientEndColor").getAsInt());
         if (o.has("waypoints")) {
+            List<Waypoint> waypoints = new ArrayList<>(o.getAsJsonArray("waypoints").size());
             for (JsonElement el : o.getAsJsonArray("waypoints")) {
-                g.add(waypointFromJson(el.getAsJsonObject()));
+                waypoints.add(waypointFromJson(el.getAsJsonObject()));
             }
+            g.addAll(waypoints);
         }
         if (o.has("currentIndex")) g.setCurrentIndex(o.get("currentIndex").getAsInt());
         return g;
