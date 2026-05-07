@@ -293,7 +293,6 @@ public final class ConfigScreen extends Screen {
         y += rowH;
         addBoolRow(col1, y, "Chat codec detection (imports)",
                 config.chatCodecDetection(), config::setChatCodecDetection,
-                config::chatCoordDetection,
                 "Detects Waypointer share codes pasted in chat so you can import routes\n"
               + "without opening the main menu.");
 
