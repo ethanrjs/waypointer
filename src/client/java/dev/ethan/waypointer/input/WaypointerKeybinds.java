@@ -59,7 +59,7 @@ public final class WaypointerKeybinds {
         this.openGui = openGui;
         this.manager = manager;
         this.config = config;
-        this.addFlow = new WaypointAddFlow(config);
+        this.addFlow = new WaypointAddFlow();
         this.openEditor = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.waypointer.open_editor",
                 InputConstants.Type.KEYSYM,
@@ -221,6 +221,9 @@ public final class WaypointerKeybinds {
 
         WaypointGroup target = manager.getOrCreateTempGroup();
         target.add(Waypoint.at(x, y, z).withTemp(mode, expiresAt));
+        if (config.focusTempWaypoints()) {
+            manager.focusTempWaypoint(target, target.size() - 1);
+        }
         manager.fireDataChanged();
 
         showFeedback(mc, Component.literal("Temp (" + Waypoint.tempModeName(mode) + ") added at "

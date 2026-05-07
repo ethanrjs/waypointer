@@ -229,6 +229,19 @@ class WaypointGroupTest {
     }
 
     @Test
+    void manager_getOrCreateActiveGroupDoesNotReuseTempBucket() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup bucket = manager.addTempWaypoint(1, 70, 2);
+
+        WaypointGroup route = manager.getOrCreateActiveGroup();
+
+        assertNotSame(bucket, route);
+        assertFalse(route.temp());
+        assertEquals("hub", route.zoneId());
+    }
+
+    @Test
     void manager_chatTempWaypointIncludesSenderInGroupAndWaypointName() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("hub", "Hub"));
@@ -254,6 +267,45 @@ class WaypointGroupTest {
         assertSame(firstBucket, secondBucket);
         assertEquals(2, manager.activeGroups().get(0).size(),
                 "second temp waypoint should be visible through refreshed active cache");
+    }
+
+    @Test
+    void manager_tempWaypointFocusHidesOtherActiveGroupsUntilCleared() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup route = route();
+        route.setZoneId("hub");
+        manager.add(route);
+
+        WaypointGroup bucket = manager.addTempWaypoint(1, 70, 2);
+        bucket.add(Waypoint.at(3, 71, 4).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L));
+        manager.focusTempWaypoint(bucket, 1);
+
+        assertEquals(List.of(bucket), manager.activeGroups());
+        assertArrayEquals(new int[] { 1 }, visibleIndices(bucket),
+                "focus should render only the newly-added temp waypoint");
+        assertEquals(bucket.get(1), bucket.current(),
+                "the tracer target follows the focused temporary waypoint");
+
+        manager.clearTempWaypointFocus();
+
+        assertEquals(List.of(route, bucket), manager.activeGroups());
+        assertArrayEquals(new int[] { 0, 1 }, visibleIndices(bucket));
+    }
+
+    @Test
+    void manager_tempWaypointFocusClearsWhenFocusedTempIsRemoved() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup route = route();
+        route.setZoneId("hub");
+        manager.add(route);
+
+        WaypointGroup bucket = manager.addTempWaypoint(1, 70, 2);
+        manager.focusTempWaypoint(bucket, 0);
+        bucket.remove(0);
+
+        assertEquals(List.of(route, bucket), manager.activeGroups());
     }
 
     private static int[] visibleIndices(WaypointGroup group) {

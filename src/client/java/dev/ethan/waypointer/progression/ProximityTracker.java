@@ -59,10 +59,9 @@ public final class ProximityTracker {
                 continue;
             }
             // Group-level skip-ahead gate. When a waypoint was just added the
-            // group's flag is flipped off (see the feature wiring in
-            // WaypointerConfig#disableGroupSkipAheadOnWaypointAdd); we respect
-            // that regardless of the global mechanic state. Global off always
-            // wins over group on -- the config is the master switch.
+            // group's flag is flipped off; we respect that regardless of the
+            // global mechanic state. Global off always wins over group on -- the
+            // config is the master switch.
             boolean allowSkip = globalSkipAhead && group.skipAheadEnabled();
             advanceIfReached(group, px, py, pz, loop, allowSkip);
         }

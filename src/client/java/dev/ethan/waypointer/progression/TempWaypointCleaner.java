@@ -69,6 +69,8 @@ public final class TempWaypointCleaner {
      * model ("it was a temp from THAT server's session").
      */
     private void onDisconnect() {
+        manager.clearTempWaypointFocus();
+
         boolean anyRemoved = false;
         for (WaypointGroup g : manager.allGroups()) {
             if (g.removeAllTemp() > 0) anyRemoved = true;

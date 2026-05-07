@@ -141,7 +141,7 @@ public final class AddNamedWaypointScreen extends Screen {
 
         target.add(new Waypoint(x, y, z, nameBox.getValue().trim(),
                 Waypoint.DEFAULT_COLOR, 0, 0.0));
-        new WaypointAddFlow(config).afterWaypointAdded(target, target.size() - 1);
+        new WaypointAddFlow().afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
 
         onClose();

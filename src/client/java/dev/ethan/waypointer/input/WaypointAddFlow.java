@@ -1,7 +1,6 @@
 package dev.ethan.waypointer.input;
 
 import dev.ethan.waypointer.chat.WaypointerChatFeedback;
-import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import net.minecraft.ChatFormatting;
@@ -23,16 +22,10 @@ import net.minecraft.network.chat.Component;
  * to static mode so the new marker remains visible, then suppresses proximity
  * for that one index until the player steps away. Without the suppression, a
  * waypoint created at the player's feet would be advanced or hidden on the very
- * next tick. It also keeps the existing skip-ahead auto-disable behavior when
- * that setting is enabled.
+ * next tick. It also auto-disables route skip-ahead so the new waypoint cannot
+ * be skipped immediately.
  */
 public final class WaypointAddFlow {
-
-    private final WaypointerConfig config;
-
-    public WaypointAddFlow(WaypointerConfig config) {
-        this.config = config;
-    }
 
     /**
      * Call immediately after a new waypoint has been appended or inserted into
@@ -56,7 +49,6 @@ public final class WaypointAddFlow {
             showCurrentWaypointFocusedMessage(group.name(), waypointIndex);
         }
 
-        if (!config.disableGroupSkipAheadOnWaypointAdd()) return;
         if (group.skipAheadEnabled()) {
             group.setSkipAheadEnabled(false);
             showSkipAheadDisabledToast(group.name());
