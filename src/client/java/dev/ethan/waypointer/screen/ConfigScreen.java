@@ -176,8 +176,7 @@ public final class ConfigScreen extends Screen {
                 "Opacity of the line drawn from the crosshair to the active waypoint.\n"
               + "0 is fully transparent, 1 is solid.");
         y2 += rowH;
-        addNumberRow(col2, y2, colW, "Tracer color (hex RRGGBB)",
-                config.tracerColor(), v -> config.setTracerColor((int) v), true,
+        addTracerColorRow(col2, y2, colW,
                 () -> config.showTracer() && !config.matchTracerToWaypointColor(),
                 "Fixed tracer color as hex RRGGBB (e.g. 4FE05A). Only used when\n"
               + "\"Tracer inherits waypoint color\" is off.");
@@ -337,8 +336,7 @@ public final class ConfigScreen extends Screen {
 
     /**
      * Label + inline editor. The hex flag switches the parse path so colors round-trip
-     * through user-friendly {@code RRGGBB} strings without us needing to expose a real
-     * color picker.
+     * through user-friendly {@code RRGGBB} strings for any legacy hex-only rows.
      */
     private void addNumberRow(int x, int y, int colW, String label, double initial, DoubleSetter setter,
                               boolean hex, BooleanSupplier enabled, String tooltip) {
@@ -360,6 +358,47 @@ public final class ConfigScreen extends Screen {
         box.setTooltip(Tooltip.create(Component.literal(tooltip)));
         trackDependent(box, enabled);
         addRenderableWidget(box);
+    }
+
+    private void addTracerColorRow(int x, int y, int colW, BooleanSupplier enabled,
+                                   String tooltip) {
+        int swatchW = 44;
+        int boxW = 80;
+        int labelW = colW - boxW - swatchW - GAP * 2;
+        addRenderableOnly(new LabelWidget(x, y + 6,
+                "Tracer color (hex RRGGBB)", labelW, enabled));
+
+        EditBox box = new EditBox(font, x + labelW + GAP, y + 2, boxW, BTN_H,
+                Component.literal("Tracer color"));
+        box.setMaxLength(6);
+        box.setValue(String.format("%06X", config.tracerColor() & 0xFFFFFF));
+        box.setTooltip(Tooltip.create(Component.literal(tooltip)));
+
+        ColorSwatchButton swatch = new ColorSwatchButton(
+                x + labelW + GAP + boxW + GAP, y, swatchW, BTN_H,
+                "Pick", config.tracerColor(), () -> ColorPickerScreen.open(this,
+                "Tracer Colour", config.tracerColor(), picked -> {
+                    config.setTracerColor(picked);
+                    box.setValue(String.format("%06X", picked & 0xFFFFFF));
+                }));
+        swatch.setTooltip(Tooltip.create(Component.literal(
+                "Open the color picker for the fixed tracer color.")));
+
+        box.setResponder(v -> {
+            if (v.isEmpty()) return;
+            try {
+                int parsed = Integer.parseInt(v.trim(), 16) & 0xFFFFFF;
+                config.setTracerColor(parsed);
+                swatch.setColor(parsed);
+            } catch (NumberFormatException ignored) {
+                // Partial edits are expected while typing; keep the last valid color.
+            }
+        });
+
+        trackDependent(box, enabled);
+        trackDependent(swatch, enabled);
+        addRenderableWidget(box);
+        addRenderableWidget(swatch);
     }
 
     private void addBoxStyleRow(int x, int y, int colW) {

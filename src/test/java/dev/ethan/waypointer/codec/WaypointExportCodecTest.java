@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -86,10 +87,42 @@ class WaypointExportCodecTest {
                 WaypointExportCodec.Target.SKYHANNI);
 
         JsonArray root = JsonParser.parseString(encoded).getAsJsonArray();
-        assertEquals(1, root.get(0).getAsJsonObject()
+        JsonObject first = root.get(0).getAsJsonObject();
+        assertEquals(1, first
                 .getAsJsonObject("options").get("name").getAsInt());
         assertEquals(2, root.get(1).getAsJsonObject()
                 .getAsJsonObject("options").get("name").getAsInt());
+        assertFalse(first.has("r"));
+        assertFalse(first.has("g"));
+        assertFalse(first.has("b"));
+    }
+
+    @Test
+    void third_party_normalized_color_channels_are_short_but_precise() {
+        WaypointGroup group = WaypointGroup.create("Route", "hub");
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.add(new Waypoint(1, 64, 2, "colored", 0x4F38E0, 0, 0.0));
+        WaypointCodec.Options opts = WaypointCodec.Options.builder()
+                .includeNames(true)
+                .includeColors(true)
+                .build();
+
+        String skyhanni = WaypointExportCodec.encode(List.of(group), opts,
+                WaypointExportCodec.Target.SKYHANNI);
+        assertTrue(skyhanni.contains("\"r\":0.31"));
+        assertTrue(skyhanni.contains("\"g\":0.22"));
+        assertTrue(skyhanni.contains("\"b\":0.878"));
+        assertFalse(skyhanni.contains("0.30980392156862746"));
+        JsonObject first = JsonParser.parseString(skyhanni).getAsJsonArray()
+                .get(0).getAsJsonObject();
+        assertEquals(0x4F38E0, WaypointImporter.coleweightRgb(
+                first.get("r").getAsDouble(),
+                first.get("g").getAsDouble(),
+                first.get("b").getAsDouble()));
+
+        String skyblocker = WaypointExportCodec.encode(List.of(group), opts,
+                WaypointExportCodec.Target.SKYBLOCKER);
+        assertTrue(WaypointImporter.importAny(skyblocker).groups().get(0).size() > 0);
     }
 
     private static WaypointGroup sampleGroup(String name, String zoneId) {

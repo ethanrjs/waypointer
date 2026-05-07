@@ -16,6 +16,7 @@ import net.minecraft.network.chat.FormattedText;
 import net.minecraft.util.FormattedCharSequence;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static dev.ethan.waypointer.screen.GuiTokens.BTN_H;
@@ -49,14 +50,14 @@ import static dev.ethan.waypointer.screen.GuiTokens.SURFACE_SUBTLE;
  *      Group Meta). Each carries a tooltip explaining the trade-off.
  *   4. Reset-to-defaults button so users who experimented can recover the
  *      sensible config preset without leaving the screen.
- *   5. Size summary: char count + chat-fit indicator.
+ *   5. Size summary: char count + paste-fit indicator.
  *   6. Preview box labelled "Encoded preview (this is what gets copied)".
  */
 public final class ExportScreen extends Screen {
 
     private static final int PREVIEW_INSET = 6;
 
-    /** Minecraft chat input cap. Exports longer than this can't be pasted directly. */
+    /** Reference chat textbox size used only for paste-fit messaging. */
     private static final int CHAT_INPUT_LIMIT = 256;
 
     /**
@@ -65,14 +66,10 @@ public final class ExportScreen extends Screen {
      * command string runs past this cap, so pastes into {@code /pc}, {@code
      * /msg}, and friends silently fail when the export is too large.
      *
-     * Chat INPUT is measured in characters (256 chars fit in the textbox),
-     * but the command wire packet is measured in bytes. The native codec uses
-     * a printable ASCII alphabet (1 UTF-8 byte per char), so the char-count and
-     * wire-byte-count lines now report the same number for the body -- the
-     * gap between them is just {@code WP:} plus any chat-framing. Keeping
-     * both lines in the UI still makes sense: the chat-textbox cap is a
-     * different failure mode (reject-at-type-time) than the command-packet
-     * cap (silently-drop-at-send-time).
+     * Chat input is measured in characters, but the command wire packet is
+     * measured in bytes. The native codec uses a printable ASCII alphabet
+     * (1 UTF-8 byte per char), so command framing ({@code /pc }, etc.) is
+     * what makes "fits in chat" differ from "fits in commands".
      */
     private static final int COMMAND_WIRE_LIMIT_BYTES = 256;
 
@@ -102,10 +99,12 @@ public final class ExportScreen extends Screen {
     /** Fixed width of each toggle button so the row stays scannable across screen sizes. */
     private static final int TOGGLE_W = 96;
     private static final int EXPORT_FOR_W = 124;
+    private static final int ROUTE_TOGGLE_W = 148;
 
     private final Screen parent;
     private final WaypointerConfig config;
     private final List<WaypointGroup> groups;
+    private final boolean[] selectedGroups;
     private final String subtitle;
 
     /** Mutable export options the user is currently building. */
@@ -116,6 +115,7 @@ public final class ExportScreen extends Screen {
     private EditBox labelInput;
     private final List<ToggleSpec> toggleSpecs = new ArrayList<>();
     private final List<Button> toggleButtons = new ArrayList<>();
+    private final List<Button> routeButtons = new ArrayList<>();
     private Button exportForButton;
     private Button copyButton;
     private Button copyCodeBlockButton;
@@ -130,6 +130,8 @@ public final class ExportScreen extends Screen {
         this.parent = parent;
         this.config = config;
         this.groups = groups;
+        this.selectedGroups = new boolean[groups.size()];
+        Arrays.fill(this.selectedGroups, true);
         this.subtitle = subtitle;
         this.optsBuilder = builderFromConfig(config);
     }
@@ -156,6 +158,7 @@ public final class ExportScreen extends Screen {
     protected void init() {
         toggleSpecs.clear();
         toggleButtons.clear();
+        routeButtons.clear();
 
         // Label input lives directly under the header so it reads as the
         // primary "what is this export for?" field. Vanilla EditBox enforces
@@ -208,6 +211,7 @@ public final class ExportScreen extends Screen {
                 v -> { optsBuilder.includeGroupMeta(v); reencode(); });
 
         layoutToggles();
+        layoutRouteToggles();
 
         // Footer: Back/Reset on the left, copy actions on the right. The plain
         // copy button stays far-right because it is the most common action;
@@ -286,6 +290,34 @@ public final class ExportScreen extends Screen {
         }
     }
 
+    private void layoutRouteToggles() {
+        if (!isZoneExport()) return;
+
+        int y = controlsBottom() + GAP_SECTION + LINE_H * 2;
+        int x = PAD_OUTER;
+        int rightEdge = width - PAD_OUTER;
+
+        for (int i = 0; i < groups.size(); i++) {
+            if (x + ROUTE_TOGGLE_W > rightEdge) {
+                x = PAD_OUTER;
+                y += BTN_H + GAP;
+            }
+            final int idx = i;
+            Button b = Button.builder(routeToggleLabel(idx), btn -> {
+                        if (selectedGroups[idx] && selectedGroupCount() == 1) return;
+                        selectedGroups[idx] = !selectedGroups[idx];
+                        refreshRouteButtons();
+                        reencode();
+                    })
+                    .bounds(x, y, ROUTE_TOGGLE_W, BTN_H)
+                    .tooltip(Tooltip.create(Component.literal(routeTooltip(idx))))
+                    .build();
+            addRenderableWidget(b);
+            routeButtons.add(b);
+            x += ROUTE_TOGGLE_W + GAP;
+        }
+    }
+
     private static Component toggleLabel(ToggleSpec spec) {
         if (!spec.supported()) {
             return Component.literal("[-] " + spec.label).withStyle(ChatFormatting.DARK_GRAY);
@@ -350,7 +382,8 @@ public final class ExportScreen extends Screen {
     }
 
     private void reencode() {
-        this.encoded = WaypointExportCodec.encode(groups, optsBuilder.build(), exportTarget);
+        this.encoded = WaypointExportCodec.encode(selectedGroupsForExport(),
+                optsBuilder.build(), exportTarget);
     }
 
     private void refreshToggleButtons() {
@@ -361,6 +394,66 @@ public final class ExportScreen extends Screen {
             button.setTooltip(Tooltip.create(Component.literal(spec.tooltip())));
             button.setMessage(toggleLabel(spec));
         }
+    }
+
+    private void refreshRouteButtons() {
+        for (int i = 0; i < routeButtons.size(); i++) {
+            Button button = routeButtons.get(i);
+            button.setMessage(routeToggleLabel(i));
+            button.setTooltip(Tooltip.create(Component.literal(routeTooltip(i))));
+        }
+    }
+
+    private boolean isZoneExport() {
+        return groups.size() > 1;
+    }
+
+    private int selectedGroupCount() {
+        if (!isZoneExport()) return groups.size();
+
+        int count = 0;
+        for (boolean selected : selectedGroups) {
+            if (selected) count++;
+        }
+        return count;
+    }
+
+    private int selectedWaypointCount() {
+        int total = 0;
+        List<WaypointGroup> selected = selectedGroupsForExport();
+        for (WaypointGroup group : selected) {
+            total += group.size();
+        }
+        return total;
+    }
+
+    private List<WaypointGroup> selectedGroupsForExport() {
+        if (!isZoneExport()) return groups;
+
+        List<WaypointGroup> selected = new ArrayList<>();
+        for (int i = 0; i < groups.size(); i++) {
+            if (selectedGroups[i]) selected.add(groups.get(i));
+        }
+        return selected;
+    }
+
+    private Component routeToggleLabel(int idx) {
+        WaypointGroup group = groups.get(idx);
+        ChatFormatting color = selectedGroups[idx] ? ChatFormatting.AQUA : ChatFormatting.DARK_GRAY;
+        String name = group.name().isBlank() ? "(unnamed)" : group.name();
+        String clipped = font == null ? name : font.plainSubstrByWidth(name, ROUTE_TOGGLE_W - 28);
+        return Component.literal((selectedGroups[idx] ? "[x] " : "[ ] ") + clipped)
+                .withStyle(color);
+    }
+
+    private String routeTooltip(int idx) {
+        WaypointGroup group = groups.get(idx);
+        String name = group.name().isBlank() ? "(unnamed)" : group.name();
+        String action = selectedGroups[idx] && selectedGroupCount() == 1
+                ? "At least one route must stay selected."
+                : "Click to " + (selectedGroups[idx] ? "exclude" : "include") + " this route.";
+        return name + "\n" + group.size() + " waypoints, "
+                + group.loadMode().name().toLowerCase(java.util.Locale.ROOT) + "\n" + action;
     }
 
     private void updateLabelInputState() {
@@ -413,14 +506,19 @@ public final class ExportScreen extends Screen {
         // grid's actual bottom depends on how many rows it wrapped to, so we
         // recompute by walking the registered button positions instead of
         // hard-coding a y offset.
-        int togglesBottom = 0;
-        for (Button b : toggleButtons) togglesBottom = Math.max(togglesBottom, b.getY() + b.getHeight());
-        int y = togglesBottom + GAP_SECTION;
+        if (isZoneExport()) {
+            int routeY = controlsBottom(toggleButtons) + GAP_SECTION;
+            g.drawString(font, "Routes", PAD_OUTER, routeY, TEXT_DIM, false);
+            String routeSummary = selectedGroupCount() + " of " + groups.size()
+                    + " selected, " + selectedWaypointCount() + " waypoints";
+            g.drawString(font, routeSummary, PAD_OUTER, routeY + LINE_H, TEXT_MUTED, false);
+        }
+
+        int y = controlsBottom() + GAP_SECTION;
 
         drawSizeSummary(g, PAD_OUTER, y);
-        // Size summary spans two lines (chat-char fit + command-wire-byte
-        // fit). Keep the section gap tight so the preview still has room
-        // to show multiple wrap lines at small window sizes.
+        // Size summary spans two lines (counter + paste fit). Keep the gap tight
+        // so the preview still has room at small window sizes.
         y += LINE_H * 2 + GAP_SECTION;
 
         g.drawString(font, WaypointExportCodec.previewLabel(exportTarget), PAD_OUTER, y, TEXT_DIM, false);
@@ -429,21 +527,7 @@ public final class ExportScreen extends Screen {
     }
 
     /**
-     * Render the two-line fit summary.
-     *
-     * Line 1 answers "can I send this in a command like /pc or /msg?" --
-     * the Minecraft client silently drops any command whose wire packet
-     * runs past 256 UTF-8 bytes, so a paste into /pc that looks fine
-     * visually can just disappear with no server response.
-     *
-     * Line 2 answers "can I paste this into chat?" -- the chat textbox
-     * caps at 256 characters regardless of bytes.
-     *
-     * With the ASCII text codec (1 byte/char) the two caps coincide on
-     * the body itself, but command framing ({@code "/pc "} etc.) still
-     * puts the command cap first. When a command won't fit but chat will,
-     * we point that out inline so the user doesn't have to cross-reference
-     * two lines to figure out "can I still share this?".
+     * Render a neutral character count plus a single paste-fit summary.
      *
      * User-visible strings are deliberately plain-language -- no byte
      * counts, no "cap", no "wire" -- because almost nobody pasting a route
@@ -457,36 +541,28 @@ public final class ExportScreen extends Screen {
         boolean chatOk = chars <= CHAT_INPUT_LIMIT;
         boolean commandOk = commandBytes <= COMMAND_WIRE_LIMIT_BYTES;
 
-        // Line 1 leads with command-fit because that's the one that silently
-        // fails -- chat-fit at least shows a visible "too long" indicator in
-        // the textbox. When the command path is blocked but chat still works,
-        // we say so inline so the remedy is obvious without reading further.
-        int cmdColor = commandOk ? 0xFF88DD88 : 0xFFDD7070;
-        String cmdLine;
+        g.drawString(font, "Characters: " + chars, x, y, TEXT_DIM, false);
+
+        int fitY = y + LINE_H;
+
+        int fitColor = chatOk ? 0xFF88DD88 : 0xFFDD7070;
+        String fitLine;
         if (commandOk) {
-            cmdLine = "OK to send in a command (/pc, /msg, etc.)";
+            fitLine = "Can fit in chat and commands";
         } else if (chatOk) {
-            cmdLine = "Too long for a command -- paste it straight into chat instead";
+            fitLine = "Can fit in chat";
         } else {
-            cmdLine = "Too long for chat and commands -- remove waypoints or split the group";
+            fitLine = "Too long for chat or commands (like /pc)";
         }
-        g.drawString(font, cmdLine, x, y, cmdColor, false);
+        g.drawString(font, fitLine, x, fitY, fitColor, false);
 
         String sanitized = WaypointCodec.Options.sanitizeLabel(currentLabel);
         if (exportTarget.supportsLabel() && !sanitized.isEmpty()) {
             int gap = font.width("  ");
             g.drawString(font,
                     "label: \"" + sanitized + "\"",
-                    x + font.width(cmdLine) + gap, y, 0xFF88AACC, false);
+                    x + font.width(fitLine) + gap, fitY, 0xFF88AACC, false);
         }
-
-        // Line 2: chat-fit. Always shown so users see the ceiling they're
-        // approaching even before they hit it.
-        int chatColor = chatOk ? 0xFF88DD88 : 0xFFDD7070;
-        String chatLine = chatOk
-                ? "Fits in a chat message"
-                : "Too long for chat -- share somewhere else (like Discord)";
-        g.drawString(font, chatLine, x, y + LINE_H, chatColor, false);
     }
 
     private String settingsHelpText() {
@@ -517,6 +593,16 @@ public final class ExportScreen extends Screen {
                     + (lines.size() - shown == 1 ? "" : "s") + ", full payload goes to clipboard)";
             g.drawString(font, ellipsis, innerX, y, TEXT_MUTED, false);
         }
+    }
+
+    private int controlsBottom() {
+        return Math.max(controlsBottom(toggleButtons), controlsBottom(routeButtons));
+    }
+
+    private static int controlsBottom(List<Button> buttons) {
+        int bottom = 0;
+        for (Button b : buttons) bottom = Math.max(bottom, b.getY() + b.getHeight());
+        return bottom;
     }
 
     // --- helpers ------------------------------------------------------------------------------
