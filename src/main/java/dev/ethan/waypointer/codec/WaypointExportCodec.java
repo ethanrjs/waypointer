@@ -8,6 +8,8 @@ import dev.ethan.waypointer.core.Zone;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
@@ -191,10 +193,11 @@ public final class WaypointExportCodec {
                 point.addProperty("y", waypoint.y());
                 point.addProperty("z", waypoint.z());
 
-                int color = opts.includeColors ? waypoint.color() : Waypoint.DEFAULT_COLOR;
-                point.addProperty("r", channel(color, 16) / 255.0);
-                point.addProperty("g", channel(color, 8) / 255.0);
-                point.addProperty("b", channel(color, 0) / 255.0);
+                if (opts.includeColors) {
+                    point.addProperty("r", normalizedChannel(waypoint.color(), 16));
+                    point.addProperty("g", normalizedChannel(waypoint.color(), 8));
+                    point.addProperty("b", normalizedChannel(waypoint.color(), 0));
+                }
 
                 JsonObject options = new JsonObject();
                 if (opts.includeNames && waypoint.hasName()) {
@@ -232,10 +235,16 @@ public final class WaypointExportCodec {
 
     private static JsonArray colorComponents(int rgb) {
         JsonArray color = new JsonArray();
-        color.add(channel(rgb, 16) / 255.0);
-        color.add(channel(rgb, 8) / 255.0);
-        color.add(channel(rgb, 0) / 255.0);
+        color.add(normalizedChannel(rgb, 16));
+        color.add(normalizedChannel(rgb, 8));
+        color.add(normalizedChannel(rgb, 0));
         return color;
+    }
+
+    private static BigDecimal normalizedChannel(int rgb, int shift) {
+        return BigDecimal.valueOf(channel(rgb, shift))
+                .divide(BigDecimal.valueOf(255), 3, RoundingMode.HALF_UP)
+                .stripTrailingZeros();
     }
 
     private static int channel(int rgb, int shift) {

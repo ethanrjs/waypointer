@@ -263,7 +263,7 @@ class WaypointCodecTest {
     }
 
     @Test
-    void chat_escape_uses_v4_wire_version_and_splits_hypixel_emotes() {
+    void current_wire_version_keeps_hypixel_emote_escape() {
         // v4 spends the header version on the chat escape so the body does not
         // need an extra marker like "~WP~".
         assertEquals(4, WaypointCodec.WIRE_VERSION);
@@ -295,7 +295,7 @@ class WaypointCodecTest {
     }
 
     @Test
-    void v4_exports_never_contain_backticks() {
+    void current_exports_never_contain_backticks() {
         for (int i = 0; i < 40; i++) {
             WaypointGroup g = WaypointGroup.create("backtick fuzz " + i, "dungeon_f7");
             for (int j = 0; j < 5 + i; j++) {
@@ -304,7 +304,7 @@ class WaypointCodecTest {
             }
 
             String s = WaypointCodec.encode(List.of(g));
-            assertFalse(s.contains("`"), "v4 export must not contain backticks: " + s);
+            assertFalse(s.contains("`"), "export must not contain backticks: " + s);
             assertFalse(WaypointCodec.decode(s).isEmpty(), "backtick-free export must still decode");
         }
     }

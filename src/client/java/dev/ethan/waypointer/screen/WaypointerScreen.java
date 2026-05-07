@@ -30,7 +30,7 @@ import static dev.ethan.waypointer.screen.GuiTokens.*;
  *   |   Garden     1|                          |
  *   |   Unknown    0|                          |
  *   |                                          |
- *   | [New Waypoints][Edit][Delete]...  [Done] |
+ *   | [New Group][Edit][Delete]...      [Done] |
  *   +------------------------------------------+
  *
  * The sidebar replaces the old horizontal tab strip so the "Unknown" zone stops
@@ -72,7 +72,7 @@ public final class WaypointerScreen extends Screen {
     private static final String NO_SEL_LABEL  = "Pick group";
     private static final String DELETE_TOOLTIP_DEFAULT =
             "Remove the selected group permanently.\n"
-          + "Click twice within 2.5s to confirm.";
+          + "Double click to confirm.";
     // Sized for the widest transient state label ("Confirm?") so the button doesn't
     // visibly grow or shrink when arming/disarming. Leave some horizontal slack so
     // vanilla's "hover" narration arrow has room without clipping the text.
@@ -82,11 +82,12 @@ public final class WaypointerScreen extends Screen {
 
     private List<GuiTokens.ButtonSpec> footerActions() {
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("New Waypoints", this::createGroup));
+        left.add(new GuiTokens.ButtonSpec("New Group", this::createGroup));
         left.add(new GuiTokens.ButtonSpec("Edit", this::editSelected));
         left.add(new GuiTokens.ButtonSpec(DELETE_LABEL, DELETE_BTN_W, this::onDeleteClicked));
         left.add(new GuiTokens.ButtonSpec("Import", this::importFromClipboard));
-        left.add(new GuiTokens.ButtonSpec("Export Zone", this::exportZone));
+        left.add(new GuiTokens.ButtonSpec("Export Zone", -1, this::exportZone,
+                Tooltip.create(Component.literal("Export all saved routes on an island"))));
         left.add(new GuiTokens.ButtonSpec("Settings", this::openSettings));
         return left;
     }
@@ -97,7 +98,7 @@ public final class WaypointerScreen extends Screen {
         this.config = config;
         Zone current = manager.currentZone();
         // Prefer the detected zone. When none is detected (non-Skyblock server or pre-resolve)
-        // default to "unknown" rather than a stale known zone: that way "+ New Waypoints"
+        // default to "unknown" rather than a stale known zone: that way "New Group"
         // creates the group in the zone that ActiveGroupManager.activeGroups() actually
         // renders when currentZone is null, and the user sees their waypoints immediately.
         this.selectedZoneId = current == null ? Zone.UNKNOWN.id() : current.id();
@@ -204,7 +205,7 @@ public final class WaypointerScreen extends Screen {
 
         // Reset the Delete button label once the confirm/flash window elapses.
         // Doing this in render (rather than tick) keeps the screen dependency-free
-        // and runs every frame which is plenty for a ~2.5s transition.
+        // and runs every frame which is plenty for a short confirmation transition.
         long now = System.currentTimeMillis();
         if (deleteBtn != null) {
             if (deleteArmedUntil != 0 && now > deleteArmedUntil) {
@@ -305,7 +306,9 @@ public final class WaypointerScreen extends Screen {
         g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
         g.enableScissor(x1, y1, x2, y2);
 
-        int y = y1 + 4 - scrollOffset;
+        g.drawString(font, "Groups", x1 + GAP, y1 + 6, TEXT_DIM, false);
+
+        int y = y1 + 20 - scrollOffset;
         int listW = x2 - x1;
         for (int i = 0; i < groups.size(); i++, y += ROW_H + 4) {
             int rowTop = y;
@@ -323,7 +326,7 @@ public final class WaypointerScreen extends Screen {
     private void renderEmptyState(GuiGraphics g, int x1, int y1) {
         g.drawString(font, "No waypoint groups in this zone.",
                 x1, y1 + 8, TEXT, false);
-        g.drawString(font, "Click \"New Waypoints\" to start, or paste a codec into chat.",
+        g.drawString(font, "Click \"New Group\" to start, or paste a codec into chat.",
                 x1, y1 + 8 + 14, TEXT_DIM, false);
     }
 
@@ -397,8 +400,9 @@ public final class WaypointerScreen extends Screen {
 
         List<WaypointGroup> groups = visibleGroups();
         if (groups.isEmpty()) return false;
+        if (my < layout.top() + 20) return false;
 
-        double yInList = my - (layout.top() + 4) + scrollOffset;
+        double yInList = my - (layout.top() + 20) + scrollOffset;
         int idx = (int) (yInList / (ROW_H + 4));
         if (idx < 0 || idx >= groups.size()) return false;
 
@@ -423,7 +427,7 @@ public final class WaypointerScreen extends Screen {
         Layout layout = layout();
         int listHeight = layout.bottom() - layout.top();
         int rowPitch = ROW_H + 4;
-        int content = visibleGroups().size() * rowPitch;
+        int content = 20 + visibleGroups().size() * rowPitch;
         int maxScroll = Math.max(0, content - listHeight + 8);
         scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int) (vert * rowPitch)));
         return true;
@@ -468,8 +472,7 @@ public final class WaypointerScreen extends Screen {
         if (deleteBtn != null) {
             deleteBtn.setMessage(Component.literal(CONFIRM_LABEL));
             deleteBtn.setTooltip(Tooltip.create(Component.literal(
-                    "Click again to permanently delete \"" + g.name() + "\".\n"
-                  + "Times out in 2.5 seconds.")));
+                    "Double click to permanently delete \"" + g.name() + "\".")));
         }
     }
 

@@ -891,9 +891,17 @@ public final class WaypointCodec {
 
                 CoordPicked best = new CoordPicked(CoordMode.VECTOR, v);
                 int bestScore = vScore;
-                if (aScore < bestScore) { best = new CoordPicked(CoordMode.ABSOLUTE_VARINT, a); bestScore = aScore; }
-                if (fScore < bestScore) { best = new CoordPicked(CoordMode.FIXED_COMPACT, f);   bestScore = fScore; }
-                if (tScore < bestScore) { best = new CoordPicked(CoordMode.FIT_COMPACT, t); }
+                if (aScore < bestScore) {
+                    best = new CoordPicked(CoordMode.ABSOLUTE_VARINT, a);
+                    bestScore = aScore;
+                }
+                if (fScore < bestScore) {
+                    best = new CoordPicked(CoordMode.FIXED_COMPACT, f);
+                    bestScore = fScore;
+                }
+                if (tScore < bestScore) {
+                    best = new CoordPicked(CoordMode.FIT_COMPACT, t);
+                }
                 return best;
             }
         }
