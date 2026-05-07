@@ -6,6 +6,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.screen.AddNamedWaypointScreen;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.ChatFormatting;
@@ -19,19 +20,22 @@ import org.lwjgl.glfw.GLFW;
 /**
  * Registers and polls the mod's keybinds.
  *
- * Three bindings today:
+ * Five bindings today:
  *
  *   - Open Editor -- the primary way into the GUI.
  *   - Skip Waypoint -- advances the current active group(s) past their current
  *     waypoint. Useful for dungeon speedruns or when a waypoint is physically
  *     unreachable. Unbound by default; players who don't want it just don't
  *     bind the key.
- *   - Add Waypoint Here -- drops a waypoint at the player's position into the
+ *   - Create Waypoint -- drops a waypoint at the player's position into the
  *     first active group (auto-creating one if the zone has none). Matches
  *     {@code /wp add} in behavior so muscle memory transfers between the command
  *     and the keybind.
+ *   - Create Named Waypoint -- opens a one-field prompt, then creates the
+ *     waypoint at the player's current position with that name.
+ *   - Add Temp Waypoint Here -- drops a session-scoped temporary waypoint.
  *
- * All three are registered under a single Waypointer category via the
+ * All bindings are registered under a single Waypointer category via the
  * identifier-based API so the vanilla controls screen groups them together.
  * None are bound by default (apart from Open Editor): the mod treats every
  * action that writes or mutates route state as opt-in.
@@ -44,6 +48,7 @@ public final class WaypointerKeybinds {
     private final KeyMapping openEditor;
     private final KeyMapping skipWaypoint;
     private final KeyMapping addWaypointHere;
+    private final KeyMapping addNamedWaypointHere;
     private final KeyMapping addTempWaypointHere;
     private final Runnable openGui;
     private final ActiveGroupManager manager;
@@ -54,7 +59,7 @@ public final class WaypointerKeybinds {
         this.openGui = openGui;
         this.manager = manager;
         this.config = config;
-        this.addFlow = new WaypointAddFlow(config);
+        this.addFlow = new WaypointAddFlow();
         this.openEditor = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.waypointer.open_editor",
                 InputConstants.Type.KEYSYM,
@@ -76,6 +81,11 @@ public final class WaypointerKeybinds {
                 InputConstants.Type.KEYSYM,
                 InputConstants.UNKNOWN.getValue(),
                 CATEGORY));
+        this.addNamedWaypointHere = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.waypointer.add_named_waypoint_here",
+                InputConstants.Type.KEYSYM,
+                InputConstants.UNKNOWN.getValue(),
+                CATEGORY));
         // Same opt-in story as the other creation keybinds. Uses the user's
         // last-picked mode + duration (stored in config) so a single tap drops
         // a temp without an intermediate picker: the editor button path is for
@@ -92,12 +102,38 @@ public final class WaypointerKeybinds {
     }
 
     private void onTick(Minecraft mc) {
+        if (mc.screen != null) {
+            drainWaypointKeybindClicks();
+            return;
+        }
+
         // consumeClick returns true at most once per press, so holding the key doesn't
         // spam new screens / repeated skips / repeated adds.
-        while (openEditor.consumeClick()) openGui.run();
+        while (openEditor.consumeClick()) {
+            openGui.run();
+            drainWaypointKeybindClicks();
+            return;
+        }
         while (skipWaypoint.consumeClick()) skipCurrentWaypoint(mc);
         while (addWaypointHere.consumeClick()) addWaypointAtPlayer(mc);
+        while (addNamedWaypointHere.consumeClick()) {
+            openNamedWaypointPrompt(mc);
+            drainWaypointKeybindClicks();
+            return;
+        }
         while (addTempWaypointHere.consumeClick()) addTempWaypointAtPlayer(mc);
+    }
+
+    /**
+     * Text-entry screens still feed bound keys into {@link KeyMapping}. Draining
+     * prevents a typed waypoint name from replaying later as route/temp actions.
+     */
+    private void drainWaypointKeybindClicks() {
+        while (openEditor.consumeClick()) {}
+        while (skipWaypoint.consumeClick()) {}
+        while (addWaypointHere.consumeClick()) {}
+        while (addNamedWaypointHere.consumeClick()) {}
+        while (addTempWaypointHere.consumeClick()) {}
     }
 
     /**
@@ -142,12 +178,18 @@ public final class WaypointerKeybinds {
 
         WaypointGroup target = manager.getOrCreateActiveGroup();
         target.add(new Waypoint(x, y, z, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
-        addFlow.afterWaypointAdded(target);
+        addFlow.afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
+    }
 
-        showFeedback(mc, Component.literal("Waypoint added to \"" + target.name()
-                        + "\" at " + x + ", " + y + ", " + z)
-                .withStyle(ChatFormatting.GREEN));
+    private void openNamedWaypointPrompt(Minecraft mc) {
+        LocalPlayer p = mc.player;
+        if (p == null) return;
+        int x = (int) Math.floor(p.getX());
+        int y = (int) Math.floor(p.getY());
+        int z = (int) Math.floor(p.getZ());
+        WaypointGroup target = manager.getOrCreateActiveGroup();
+        AddNamedWaypointScreen.openAt(null, manager, config, target, x, y, z);
     }
 
     /**
@@ -171,7 +213,7 @@ public final class WaypointerKeybinds {
         int y = (int) Math.floor(p.getY());
         int z = (int) Math.floor(p.getZ());
 
-        int mode = clampTempMode(config.tempDefaultMode());
+        int mode = Waypoint.normalizeTempMode(config.tempDefaultMode());
         int durationMin = Math.max(1, config.tempDefaultDurationMin());
         long expiresAt = mode == Waypoint.TEMP_TIME
                 ? System.currentTimeMillis() + durationMin * 60_000L
@@ -179,24 +221,13 @@ public final class WaypointerKeybinds {
 
         WaypointGroup target = manager.getOrCreateTempGroup();
         target.add(Waypoint.at(x, y, z).withTemp(mode, expiresAt));
+        if (config.focusTempWaypoints()) {
+            manager.focusTempWaypoint(target, target.size() - 1);
+        }
         manager.fireDataChanged();
 
-        showFeedback(mc, Component.literal("Temp (" + tempModeName(mode) + ") added at "
+        showFeedback(mc, Component.literal("Temp (" + Waypoint.tempModeName(mode) + ") added at "
                         + x + ", " + y + ", " + z).withStyle(ChatFormatting.AQUA));
-    }
-
-    private static int clampTempMode(int v) {
-        if (v < Waypoint.TEMP_TIME || v > Waypoint.TEMP_UNTIL_LEAVE) return Waypoint.TEMP_UNTIL_REACHED;
-        return v;
-    }
-
-    private static String tempModeName(int mode) {
-        return switch (mode) {
-            case Waypoint.TEMP_TIME          -> "TIME";
-            case Waypoint.TEMP_UNTIL_REACHED -> "REACH";
-            case Waypoint.TEMP_UNTIL_LEAVE   -> "LEAVE";
-            default -> "?";
-        };
     }
 
     /**

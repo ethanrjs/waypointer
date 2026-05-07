@@ -2,6 +2,9 @@ package dev.ethan.waypointer.screen;
 
 import dev.ethan.waypointer.codec.DecodeDebug;
 import dev.ethan.waypointer.codec.WaypointCodec;
+import dev.ethan.waypointer.config.WaypointerConfig;
+import dev.ethan.waypointer.core.ActiveGroupManager;
+import dev.ethan.waypointer.debug.PerformanceStats;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -55,6 +58,7 @@ public final class DebugInspectScreen extends Screen {
         record Section(String title) implements Row {}
         record KV(String key, String value) implements Row {}
         record KVDim(String key, String value) implements Row {}
+        record KVWarn(String key, String value) implements Row {}
         record Bit(int bit, String label, boolean set) implements Row {}
         record BitNote(String text) implements Row {}
         record PoolEntry(int index, String text) implements Row {}
@@ -71,7 +75,7 @@ public final class DebugInspectScreen extends Screen {
     private static final long FEEDBACK_MS = 1500L;
 
     /** Pixel column where the value half of every key:value row starts (relative to the row's inner left). */
-    private static final int KEY_COL_W = 120;
+    private static final int KEY_COL_W = 140;
 
     /** Pixel column where a bit-row's label starts (after "bit N"). */
     private static final int BIT_LABEL_OFFSET = 30;
@@ -81,11 +85,21 @@ public final class DebugInspectScreen extends Screen {
 
     /** Subdued warm tone for error surfaces. Errors are signal, not decoration -- allowed as a one-off. */
     private static final int ERROR_TONE = 0xFFCA7A7A;
+    private static final int SUCCESS_TONE = 0xFF8BD49C;
+    private static final int WARN_TONE = 0xFFE6C07B;
+    private static final int NUMBER_TONE = 0xFF82AAFF;
+    private static final int STRING_TONE = 0xFFC3E88D;
+    private static final int HEX_TONE = 0xFFFFCB6B;
+    private static final int KEYWORD_TONE = 0xFFC792EA;
 
     private final Screen parent;
+    private final ActiveGroupManager manager;
+    private final WaypointerConfig config;
 
     private DecodeDebug debug;
+    private PerformanceStats performanceStats;
     private String lastError;
+    private String codecError;
     private final List<Row> rows = new ArrayList<>();
     private final List<SectionAnchor> sections = new ArrayList<>();
     private int scrollRows;
@@ -99,13 +113,25 @@ public final class DebugInspectScreen extends Screen {
     private int mainX1, mainX2, mainTop, mainBottom;
     private int visibleRowCount;
 
-    public DebugInspectScreen(Screen parent) {
-        super(Component.literal("Codec Debug Inspector"));
+    public DebugInspectScreen(Screen parent, ActiveGroupManager manager,
+                              WaypointerConfig config) {
+        super(Component.literal("Waypointer Debug"));
         this.parent = parent;
+        this.manager = manager;
+        this.config = config;
     }
 
     public static void open(Screen parent) {
         Minecraft.getInstance().setScreen(new DebugInspectScreen(parent));
+    }
+
+    public DebugInspectScreen(Screen parent) {
+        this(parent, null, null);
+    }
+
+    public static void open(Screen parent, ActiveGroupManager manager,
+                            WaypointerConfig config) {
+        Minecraft.getInstance().setScreen(new DebugInspectScreen(parent, manager, config));
     }
 
     // --- lifecycle -------------------------------------------------------------------------
@@ -113,7 +139,7 @@ public final class DebugInspectScreen extends Screen {
     @Override
     protected void init() {
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("Load from clipboard", this::loadFromClipboard));
+        left.add(new GuiTokens.ButtonSpec("Refresh", this::loadCombinedReport));
         left.add(new GuiTokens.ButtonSpec("Copy report", this::copyReportToClipboard));
         GuiTokens.ButtonSpec back = new GuiTokens.ButtonSpec("Back", this::onClose);
 
@@ -128,43 +154,57 @@ public final class DebugInspectScreen extends Screen {
             addRenderableWidget(b);
         }, font);
 
-        // First-open affordance: try to load whatever is already on the clipboard so the
-        // user doesn't have to click twice for the common case. Subsequent re-inits (e.g.
-        // window resize) preserve whatever state was already there.
-        if (debug == null && lastError == null) {
-            loadFromClipboard();
+        if (rows.isEmpty() && lastError == null) {
+            loadCombinedReport();
         }
     }
 
     // --- actions ---------------------------------------------------------------------------
 
-    private void loadFromClipboard() {
-        loadFromString(minecraft.keyboardHandler.getClipboard());
-    }
-
-    private void loadFromString(String text) {
+    private void loadCombinedReport() {
         this.debug = null;
+        this.performanceStats = null;
+        this.codecError = null;
         this.lastError = null;
         this.rows.clear();
         this.sections.clear();
         this.scrollRows = 0;
         this.selectedSection = 0;
 
+        if (manager == null || config == null) {
+            addSection(rows, sections, "Performance Snapshot", "unavailable");
+            rows.add(new Row.KVWarn("Unavailable",
+                    "Open this screen through /wp debug to capture live Waypointer state."));
+        } else {
+            var player = Minecraft.getInstance().player;
+            this.performanceStats = player == null
+                    ? PerformanceStats.capture(manager, config)
+                    : PerformanceStats.capture(manager, config,
+                    player.getX(), player.getY(), player.getZ());
+            buildPerformanceReport(this.performanceStats, config, rows, sections);
+        }
+
+        String text = minecraft.keyboardHandler.getClipboard();
         if (text == null || text.isBlank()) {
-            this.lastError = "Clipboard is empty.\nCopy a " + WaypointCodec.MAGIC + " export, then click Load from clipboard.";
+            this.codecError = "Clipboard is empty. Copy a " + WaypointCodec.MAGIC
+                    + " export to inspect its codec payload here.";
+            buildCodecClipboardReport(rows, sections, codecError);
             return;
         }
         String trimmed = text.trim();
         if (!WaypointCodec.isCodecString(trimmed)) {
-            this.lastError = "Clipboard doesn't start with " + WaypointCodec.MAGIC + "\n"
-                    + "Copy a Waypointer export string and try again.";
+            this.codecError = "Clipboard does not start with " + WaypointCodec.MAGIC
+                    + ". Copy a Waypointer export string to inspect codec details.";
+            buildCodecClipboardReport(rows, sections, codecError);
             return;
         }
+
         try {
             this.debug = WaypointCodec.debugDecode(trimmed);
             buildReport(this.debug, rows, sections);
         } catch (IllegalArgumentException e) {
-            this.lastError = "Decode failed.\n" + e.getMessage();
+            this.codecError = "Decode failed: " + e.getMessage();
+            buildCodecClipboardReport(rows, sections, codecError);
         }
     }
 
@@ -260,14 +300,31 @@ public final class DebugInspectScreen extends Screen {
     }
 
     private String buildHeaderSummary() {
-        if (debug == null) return null;
-        int wps = totalWaypoints(debug);
-        return debug.inputChars() + " ch  ->  "
-                + debug.compressedBytes() + " B  ->  "
-                + debug.rawBodyBytes() + " B"
-                + "   .   " + debug.decodedGroups().size() + (debug.decodedGroups().size() == 1 ? " group" : " groups")
-                + "   .   " + wps + (wps == 1 ? " pt" : " pts")
-                + "   .   " + formatNanos(debug.decodeNanos());
+        StringBuilder summary = new StringBuilder();
+        if (performanceStats != null) {
+            summary.append(performanceStats.activeGroups()).append(" active groups")
+                    .append("   .   ").append(performanceStats.activeWaypoints()).append(" active pts")
+                    .append("   .   ").append(performanceStats.activeVisibleWaypoints()).append(" renderable")
+                    .append("   .   ")
+                    .append(performanceStats.estimatedProximityIndexVisitsPerTick())
+                    .append(" proximity visits/tick");
+        }
+        if (debug != null) {
+            if (!summary.isEmpty()) summary.append("   |   ");
+            int wps = totalWaypoints(debug);
+            summary.append("codec ")
+                    .append(debug.inputChars()).append(" ch -> ")
+                    .append(debug.compressedBytes()).append(" B")
+                    .append("   .   ")
+                    .append(debug.decodedGroups().size())
+                    .append(debug.decodedGroups().size() == 1 ? " group" : " groups")
+                    .append("   .   ")
+                    .append(wps).append(wps == 1 ? " pt" : " pts");
+        } else if (codecError != null) {
+            if (!summary.isEmpty()) summary.append("   |   ");
+            summary.append("codec unavailable");
+        }
+        return summary.isEmpty() ? null : summary.toString();
     }
 
     // --- sidebar ---------------------------------------------------------------------------
@@ -278,7 +335,7 @@ public final class DebugInspectScreen extends Screen {
         g.fill(x2, y1, x2 + 1, y2, BORDER);
 
         int labelY = y1 + 10;
-        g.drawString(font, "Sections", x1 + GAP, labelY, TEXT_DIM, false);
+        g.drawString(font, "Debug Report", x1 + GAP, labelY, TEXT_DIM, false);
         this.sidebarContentTop = labelY + 14;
 
         if (sections.isEmpty()) {
@@ -357,32 +414,76 @@ public final class DebugInspectScreen extends Screen {
 
     private void drawRow(GuiGraphics g, Row row, int x, int y, int xEnd) {
         switch (row) {
-            case Row.Section s -> g.drawString(font, s.title(), x, y, TEXT, false);
+            case Row.Section s -> {
+                g.drawString(font, s.title(), x, y, ACCENT, false);
+                int lineX = x + font.width(s.title()) + GAP;
+                if (lineX < xEnd) g.fill(lineX, y + 5, xEnd, y + 6, BORDER);
+            }
             case Row.KV kv -> {
-                g.drawString(font, kv.key(), x, y, TEXT_DIM, false);
-                g.drawString(font, kv.value(), x + KEY_COL_W, y, TEXT, false);
+                drawKey(g, kv.key(), x, y);
+                g.drawString(font, kv.value(), x + KEY_COL_W, y,
+                        valueColor(kv.key(), kv.value()), false);
             }
             case Row.KVDim kv -> {
-                g.drawString(font, kv.key(), x, y, TEXT_DIM, false);
+                drawKey(g, kv.key(), x, y);
                 g.drawString(font, kv.value(), x + KEY_COL_W, y, TEXT_DIM, false);
+            }
+            case Row.KVWarn kv -> {
+                drawKey(g, kv.key(), x, y);
+                g.drawString(font, kv.value(), x + KEY_COL_W, y, WARN_TONE, false);
             }
             case Row.Bit b -> {
                 g.drawString(font, "bit " + b.bit(), x, y, TEXT_DIM, false);
-                g.drawString(font, b.label(), x + BIT_LABEL_OFFSET, y,
-                        b.set() ? TEXT_DIM : TEXT_MUTED, false);
+                g.drawString(font, b.label(), x + BIT_LABEL_OFFSET, y, KEYWORD_TONE, false);
                 g.drawString(font, b.set() ? "true" : "false", x + KEY_COL_W, y,
-                        b.set() ? TEXT : TEXT_MUTED, false);
+                        b.set() ? SUCCESS_TONE : TEXT_MUTED, false);
             }
             case Row.BitNote n -> g.drawString(font, n.text(), x, y, TEXT_MUTED, false);
             case Row.PoolEntry p -> {
-                g.drawString(font, "[" + p.index() + "]", x, y, TEXT_DIM, false);
+                g.drawString(font, "[" + p.index() + "]", x, y, NUMBER_TONE, false);
                 String content = p.text().isEmpty() ? "(empty)" : p.text();
                 g.drawString(font, content, x + POOL_CONTENT_OFFSET, y,
-                        p.text().isEmpty() ? TEXT_MUTED : TEXT, false);
+                        p.text().isEmpty() ? TEXT_MUTED : STRING_TONE, false);
             }
             case Row.WP wp -> drawWaypointRow(g, wp.wp(), x, y, xEnd);
             case Row.Blank ignored -> { /* deliberate breathing room */ }
         }
+    }
+
+    private void drawKey(GuiGraphics g, String key, int x, int y) {
+        String shown = key;
+        while (font.width(shown) > KEY_COL_W - GAP && shown.length() > 3) {
+            shown = shown.substring(0, shown.length() - 4) + "...";
+        }
+        g.drawString(font, shown, x, y, TEXT_DIM, false);
+    }
+
+    private static int valueColor(String key, String value) {
+        String lowerKey = key.toLowerCase(Locale.ROOT);
+        String lowerValue = value.toLowerCase(Locale.ROOT);
+
+        if (lowerValue.equals("on") || lowerValue.equals("enabled")
+                || lowerValue.equals("true") || lowerValue.equals("unlimited")) {
+            return SUCCESS_TONE;
+        }
+        if (lowerValue.equals("off") || lowerValue.equals("disabled")
+                || lowerValue.equals("false") || lowerValue.equals("(none)")) {
+            return TEXT_MUTED;
+        }
+        if (lowerValue.startsWith("0x") || lowerValue.contains("  0b")
+                || lowerKey.contains("byte") || lowerKey.contains("flags")) {
+            return HEX_TONE;
+        }
+        if (lowerValue.startsWith("\"") || lowerValue.startsWith("(")) {
+            return STRING_TONE;
+        }
+        if (!value.isEmpty() && Character.isDigit(value.charAt(0))) {
+            return NUMBER_TONE;
+        }
+        if (lowerKey.contains("mode") || lowerKey.contains("zone")) {
+            return KEYWORD_TONE;
+        }
+        return TEXT;
     }
 
     private void drawWaypointRow(GuiGraphics g, DecodeDebug.WaypointDebug wp,
@@ -396,12 +497,12 @@ public final class DebugInspectScreen extends Screen {
         int xHex    = xSwatch + 10;
         int xExtras = xHex + 58;
 
-        g.drawString(font, "#" + wp.index(), xIdx, y, TEXT_DIM, false);
+        g.drawString(font, "#" + wp.index(), xIdx, y, NUMBER_TONE, false);
 
         String coords = String.format(Locale.ROOT, "%d, %d, %d", wp.x(), wp.y(), wp.z());
-        g.drawString(font, coords, xCoords, y, TEXT, false);
+        g.drawString(font, coords, xCoords, y, NUMBER_TONE, false);
 
-        g.drawString(font, shortByte(wp.wpFlagsByte()), xFlags, y, TEXT_DIM, false);
+        g.drawString(font, shortByte(wp.wpFlagsByte()), xFlags, y, HEX_TONE, false);
 
         // 7x7 color swatch so the wire-level color is visible at a glance alongside the hex.
         // This is data, not chrome -- the ACCENT-only rule is about UI surface color,
@@ -410,7 +511,7 @@ public final class DebugInspectScreen extends Screen {
             int swatchColor = 0xFF000000 | (wp.color() & 0xFFFFFF);
             g.fill(xSwatch, y + 1, xSwatch + 7, y + 8, swatchColor);
             g.drawString(font, String.format(Locale.ROOT, "#%06X", wp.color() & 0xFFFFFF),
-                    xHex, y, TEXT_DIM, false);
+                    xHex, y, HEX_TONE, false);
         }
 
         // Name and radius share the right tail. Name takes priority; if both, name wins
@@ -418,16 +519,16 @@ public final class DebugInspectScreen extends Screen {
         int cx = xExtras;
         if (wp.hasName()) {
             String name = "\"" + wp.name() + "\"";
-            g.drawString(font, name, cx, y, TEXT, false);
+            g.drawString(font, name, cx, y, STRING_TONE, false);
             cx += font.width(name) + GAP;
         }
         if (wp.hasRadius() && cx < xEnd) {
             String r = String.format(Locale.ROOT, "r=%.1f", wp.customRadius());
-            g.drawString(font, r, cx, y, TEXT_DIM, false);
+            g.drawString(font, r, cx, y, NUMBER_TONE, false);
             cx += font.width(r) + GAP;
         }
         if (wp.extended() && cx < xEnd) {
-            g.drawString(font, "ext=" + shortByte(wp.extendedFlags()), cx, y, TEXT_MUTED, false);
+            g.drawString(font, "ext=" + shortByte(wp.extendedFlags()), cx, y, HEX_TONE, false);
         }
     }
 
@@ -467,7 +568,7 @@ public final class DebugInspectScreen extends Screen {
     // --- report building --------------------------------------------------------------------
 
     private static void buildReport(DecodeDebug d, List<Row> rows, List<SectionAnchor> sections) {
-        addSection(rows, sections, "Pipeline", null);
+        addSection(rows, sections, "Codec Pipeline", null);
         rows.add(new Row.KV("Input",       d.inputChars() + " chars"));
         rows.add(new Row.KVDim("Prefix",   d.magic()));
         rows.add(new Row.KV("Payload",     d.payloadChars() + " chars"));
@@ -477,7 +578,7 @@ public final class DebugInspectScreen extends Screen {
         rows.add(new Row.KV("Density",     String.format(Locale.ROOT, "%.2f chars / raw byte", d.charsPerRawByte())));
         rows.add(new Row.KV("Decode time", formatNanos(d.decodeNanos())));
 
-        addSection(rows, sections, "Header", shortByte(d.headerByte()));
+        addSection(rows, sections, "Codec Header", shortByte(d.headerByte()));
         rows.add(new Row.KV("Byte",    formatByteFull(d.headerByte())));
         rows.add(new Row.KV("Version", "v" + d.version() + " (bits 0..3)"));
         rows.add(new Row.Bit(4, "includesNames", d.includesNames()));
@@ -493,14 +594,14 @@ public final class DebugInspectScreen extends Screen {
         }
 
         String poolSub = d.stringPool().size() + (d.stringPool().size() == 1 ? " entry" : " entries");
-        addSection(rows, sections, "String pool", poolSub);
+        addSection(rows, sections, "Codec String Pool", poolSub);
         for (int i = 0; i < d.stringPool().size(); i++) {
             rows.add(new Row.PoolEntry(i, d.stringPool().get(i)));
         }
 
         for (DecodeDebug.GroupDebug gd : d.groups()) {
             String subtitle = gd.name().isEmpty() ? "(unnamed)" : gd.name();
-            addSection(rows, sections, "Group " + gd.index(), subtitle);
+            addSection(rows, sections, "Codec Group " + gd.index(), subtitle);
 
             rows.add(new Row.KV("Zone",          gd.zoneId().isEmpty() ? "(none)" : gd.zoneId()));
             rows.add(new Row.KV("Group flags",   formatByteFull(gd.groupFlagsByte())));
@@ -526,6 +627,85 @@ public final class DebugInspectScreen extends Screen {
         }
     }
 
+    private static void buildCodecClipboardReport(List<Row> rows,
+                                                  List<SectionAnchor> sections,
+                                                  String message) {
+        addSection(rows, sections, "Codec Clipboard", "not loaded");
+        rows.add(new Row.KVWarn("Status", message));
+        rows.add(new Row.KVDim("Hint", "Copy a Waypointer export and hit Refresh."));
+    }
+
+    private static void buildPerformanceReport(PerformanceStats stats,
+                                               WaypointerConfig config,
+                                               List<Row> rows,
+                                               List<SectionAnchor> sections) {
+        addSection(rows, sections, "Performance Snapshot", null);
+        rows.add(new Row.KV("Captured", stats.capturedAt().toString()));
+        rows.add(new Row.KV("Zone", stats.currentZoneName() + " (" + stats.currentZoneId() + ")"));
+        rows.add(new Row.KVDim("Meaning", "counts before camera/distance culling unless noted"));
+        rows.add(new Row.KVDim("Java", System.getProperty("java.version", "(unknown)")));
+        rows.add(new Row.KVDim("Memory used", formatBytes(stats.usedMemoryBytes())
+                + " / " + formatBytes(stats.maxMemoryBytes())));
+
+        addSection(rows, sections, "Route Library", stats.totalWaypoints() + " pts");
+        rows.add(new Row.KV("Groups", stats.totalGroups() + " total, "
+                + stats.enabledGroups() + " enabled, " + stats.tempGroups() + " temp"));
+        rows.add(new Row.KV("Zones", stats.knownZoneCount() + " known"));
+        rows.add(new Row.KV("Waypoints", stats.totalWaypoints() + " total, "
+                + stats.tempWaypoints() + " temp"));
+        rows.add(new Row.KV("Load modes", stats.staticGroups() + " static groups, "
+                + stats.sequenceGroups() + " sequence groups"));
+        rows.add(new Row.KV("Largest group", groupSummary(stats.largestGroup())));
+
+        addSection(rows, sections, "Active Zone", stats.activeGroups() + " groups");
+        rows.add(new Row.KV("Active points", stats.activeWaypoints() + " total"));
+        rows.add(new Row.KV("Static points", String.valueOf(stats.activeStaticWaypoints())));
+        rows.add(new Row.KV("Sequence points", String.valueOf(stats.activeSequenceWaypoints())));
+        rows.add(new Row.KV("Renderable", stats.activeVisibleWaypoints() + " waypoint slots"));
+        rows.add(new Row.KV("Label candidates", stats.activeLabelCandidates() + " before budget"));
+        rows.add(new Row.KV("Largest active", groupSummary(stats.largestActiveGroup())));
+
+        addSection(rows, sections, "Render Estimate", null);
+        rows.add(new Row.KV("Box style", config.boxStyle().name()));
+        rows.add(new Row.KV("Beacon mode", config.beaconBeamMode().name()));
+        rows.add(new Row.KV("Line vertices", String.valueOf(stats.estimatedLineBoxVertices())));
+        rows.add(new Row.KV("Fill vertices", String.valueOf(stats.estimatedFillBoxVertices())));
+        rows.add(new Row.KV("Beam vertices", String.valueOf(stats.estimatedBeamVertices())));
+        rows.add(new Row.KV("Label budget", config.maxWaypointLabels() == 0
+                ? "unlimited" : String.valueOf(config.maxWaypointLabels())));
+        rows.add(new Row.KV("Static distance", config.maxStaticWaypointRenderDistance() <= 0.0
+                ? "unlimited" : String.format(Locale.ROOT, "%.1f blocks",
+                config.maxStaticWaypointRenderDistance())));
+
+        addSection(rows, sections, "Tick Estimate", null);
+        rows.add(new Row.KV("Proximity visits", stats.estimatedProximityIndexVisitsPerTick()
+                + " nearby candidates/tick"));
+        rows.add(new Row.KVDim("Skip-ahead", config.skipAheadMechanicEnabled() ? "enabled" : "disabled"));
+        rows.add(new Row.KVDim("Static reached hide",
+                config.hideReachedStaticWaypointsUntilCycleComplete() ? "enabled" : "disabled"));
+
+        addSection(rows, sections, "Config Toggles", null);
+        rows.add(new Row.KV("Names", config.showWaypointNames() ? "on" : "off"));
+        rows.add(new Row.KV("Distances", config.showWaypointDistances() ? "on" : "off"));
+        rows.add(new Row.KV("Backdrop", config.showLabelBackdrop() ? "on" : "off"));
+        rows.add(new Row.KV("Tracer", config.showTracer() ? "on" : "off"));
+        rows.add(new Row.KV("Hide static tracer", config.hideTracerOnStaticRoutes() ? "on" : "off"));
+
+        addSection(rows, sections, "Active Groups", String.valueOf(stats.activeGroupStats().size()));
+        if (stats.activeGroupStats().isEmpty()) {
+            rows.add(new Row.KVDim("None", "No active groups in the current zone."));
+            return;
+        }
+        for (PerformanceStats.GroupStats group : stats.activeGroupStats()) {
+            rows.add(new Row.KV(shortGroupName(group),
+                    group.waypoints() + " pts, "
+                            + group.renderableWaypoints() + " renderable, "
+                            + group.labelCandidates() + " labels, "
+                            + group.proximityIndexVisitsPerTick() + " tick candidates, "
+                            + group.loadMode().toLowerCase(Locale.ROOT)));
+        }
+    }
+
     private static void addSection(List<Row> rows, List<SectionAnchor> sections,
                                     String label, String subtitle) {
         if (!rows.isEmpty()) rows.add(new Row.Blank());
@@ -540,6 +720,7 @@ public final class DebugInspectScreen extends Screen {
             case Row.Section s -> "== " + s.title() + " ==";
             case Row.KV kv -> String.format(Locale.ROOT, "  %-16s %s", kv.key() + ":", kv.value());
             case Row.KVDim kv -> String.format(Locale.ROOT, "  %-16s %s", kv.key() + ":", kv.value());
+            case Row.KVWarn kv -> String.format(Locale.ROOT, "  %-16s %s", kv.key() + ":", kv.value());
             case Row.Bit b -> String.format(Locale.ROOT, "    bit %d  %-17s = %s",
                     b.bit(), b.label(), b.set() ? "true" : "false");
             case Row.BitNote n -> "    " + n.text();
@@ -548,6 +729,20 @@ public final class DebugInspectScreen extends Screen {
             case Row.WP wp -> formatWaypointPlain(wp.wp());
             case Row.Blank ignored -> "";
         };
+    }
+
+    private static String groupSummary(PerformanceStats.GroupStats group) {
+        if (group == null) return "(none)";
+        return shortGroupName(group) + " -- " + group.waypoints()
+                + " pts, " + group.loadMode().toLowerCase(Locale.ROOT);
+    }
+
+    private static String shortGroupName(PerformanceStats.GroupStats group) {
+        String name = group.name() == null || group.name().isBlank()
+                ? "(unnamed)"
+                : group.name();
+        if (name.length() <= 28) return name;
+        return name.substring(0, 25) + "...";
     }
 
     private static String formatWaypointPlain(DecodeDebug.WaypointDebug wp) {
@@ -573,6 +768,15 @@ public final class DebugInspectScreen extends Screen {
         // consumed by a blanket zero-fill.
         String bin = String.format(Locale.ROOT, "%8s", Integer.toBinaryString(b)).replace(' ', '0');
         return String.format(Locale.ROOT, "0x%02X  0b%s", b, bin);
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024L) return bytes + " B";
+        double kib = bytes / 1024.0;
+        if (kib < 1024.0) return String.format(Locale.ROOT, "%.1f KiB", kib);
+        double mib = kib / 1024.0;
+        if (mib < 1024.0) return String.format(Locale.ROOT, "%.1f MiB", mib);
+        return String.format(Locale.ROOT, "%.2f GiB", mib / 1024.0);
     }
 
     private static String formatNanos(long nanos) {

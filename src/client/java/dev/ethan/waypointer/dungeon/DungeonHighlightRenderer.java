@@ -6,6 +6,7 @@ import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.render.RenderHelpers;
+import dev.ethan.waypointer.render.WorldScreenProjector;
 import dev.ethan.waypointer.render.WaypointerRenderPipelines;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
@@ -22,7 +23,6 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Vector3fc;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -72,6 +72,8 @@ public final class DungeonHighlightRenderer implements HudElement {
     private final DungeonRouteSession session;
     private final ArrayList<RenderBox> renderBoxes = new ArrayList<>();
     private final int[] labelWorldScratch = new int[3];
+    private final WorldScreenProjector labelProjector = new WorldScreenProjector();
+    private final double[] labelScreenScratch = new double[2];
     private int renderBoxCount;
 
     public DungeonHighlightRenderer(DungeonStateTracker tracker, DungeonConfig config,
@@ -242,8 +244,7 @@ public final class DungeonHighlightRenderer implements HudElement {
         Camera camera = renderer.getMainCamera();
         if (!camera.isInitialized()) return;
         Font font = mc.font;
-        Vec3 cam = camera.position();
-        Vector3fc fwd = camera.forwardVector();
+        labelProjector.prepare(renderer, camera);
         int sw = g.guiWidth();
         int sh = g.guiHeight();
         boolean showFound = config.showFoundSecrets();
@@ -261,16 +262,10 @@ public final class DungeonHighlightRenderer implements HudElement {
             double ax = labelWorldScratch[0] + 0.5;
             double ay = labelWorldScratch[1] + LABEL_LIFT;
             double az = labelWorldScratch[2] + 0.5;
-            double rx = ax - cam.x, ry = ay - cam.y, rz = az - cam.z;
-            // Behind-camera cull -- the projection helper still divides by w
-            // for points behind the eye, so we have to gate on the dot
-            // product against the forward vector ourselves.
-            if (rx * fwd.x() + ry * fwd.y() + rz * fwd.z() <= 0) continue;
-            Vec3 ndc = renderer.projectPointToScreen(new Vec3(ax, ay, az));
-            if (!Double.isFinite(ndc.x) || !Double.isFinite(ndc.y)) continue;
-            int sx = (int) Math.round((ndc.x * 0.5 + 0.5) * sw);
-            int sy = (int) Math.round((0.5 - ndc.y * 0.5) * sh);
-            drawCenteredLabel(g, font, name, sx, sy);
+            if (!labelProjector.project(ax, ay, az, sw, sh, labelScreenScratch)) {
+                continue;
+            }
+            drawCenteredLabel(g, font, name, labelScreenScratch[0], labelScreenScratch[1]);
         }
     }
 
@@ -288,13 +283,21 @@ public final class DungeonHighlightRenderer implements HudElement {
         };
     }
 
-    private void drawCenteredLabel(GuiGraphics g, Font font, String text, int cx, int top) {
+    private void drawCenteredLabel(GuiGraphics g, Font font, String text, double cx, double top) {
         int width = font.width(text);
-        int left = cx - width / 2;
-        g.fill(left - BACKDROP_PAD_X, top - BACKDROP_PAD_Y,
-                left + width + BACKDROP_PAD_X, top + font.lineHeight - 1 + BACKDROP_PAD_Y,
+        double left = cx - width / 2.0;
+        int drawX = (int) Math.floor(left);
+        int drawY = (int) Math.floor(top);
+        float subpixelX = (float) (left - drawX);
+        float subpixelY = (float) (top - drawY);
+
+        g.pose().pushMatrix();
+        g.pose().translate(subpixelX, subpixelY);
+        g.fill(drawX - BACKDROP_PAD_X, drawY - BACKDROP_PAD_Y,
+                drawX + width + BACKDROP_PAD_X, drawY + font.lineHeight - 1 + BACKDROP_PAD_Y,
                 LABEL_BACKDROP_ARGB);
-        g.drawString(font, text, left, top, NAME_ARGB, true);
+        g.drawString(font, text, drawX, drawY, NAME_ARGB, true);
+        g.pose().popMatrix();
     }
 
     private static final class RenderBox {

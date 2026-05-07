@@ -16,9 +16,10 @@ import net.minecraft.client.player.LocalPlayer;
  * player walks near waypoint N+3 before N, the group jumps straight to N+4. That
  * matters for dungeon speedruns where players intentionally cut corners.
  *
- * We scan the *tail* of the list starting at {@link WaypointGroup#currentIndex()} in
- * reverse. Reverse scan means the first hit is the farthest-ahead reachable waypoint,
- * so we advance past it in one step rather than N steps. Tick-hot path: don't allocate.
+ * Large imported routes can contain thousands of points, so the tracker asks each
+ * group for nearby spatial-index candidates instead of walking the whole list
+ * every tick. When skip-ahead is enabled we still choose the highest reachable
+ * index, preserving the old "farthest-ahead waypoint wins" behaviour.
  */
 public final class ProximityTracker {
 
@@ -59,10 +60,9 @@ public final class ProximityTracker {
                 continue;
             }
             // Group-level skip-ahead gate. When a waypoint was just added the
-            // group's flag is flipped off (see the feature wiring in
-            // WaypointerConfig#disableGroupSkipAheadOnWaypointAdd); we respect
-            // that regardless of the global mechanic state. Global off always
-            // wins over group on -- the config is the master switch.
+            // group's flag is flipped off; we respect that regardless of the
+            // global mechanic state. Global off always wins over group on -- the
+            // config is the master switch.
             boolean allowSkip = globalSkipAhead && group.skipAheadEnabled();
             advanceIfReached(group, px, py, pz, loop, allowSkip);
         }
@@ -76,9 +76,11 @@ public final class ProximityTracker {
      */
     public static boolean markReachedStaticWaypoints(WaypointGroup group,
                                                      double px, double py, double pz) {
-        boolean changed = false;
-        for (int i = 0; i < group.size(); i++) {
-            if (group.isStaticWaypointReached(i)) continue;
+        updateProximitySuppression(group, px, py, pz);
+        boolean[] changed = { false };
+        group.forEachNearbyIndex(px, py, pz, group.maxEffectiveRadius(), i -> {
+            if (group.isStaticWaypointReached(i)) return true;
+            if (group.isProximitySuppressed(i)) return true;
 
             Waypoint w = group.get(i);
             double r = group.effectiveRadius(w);
@@ -87,14 +89,15 @@ public final class ProximityTracker {
             double dz = (w.z() + 0.5) - pz;
             if (dx * dx + dy * dy + dz * dz <= r * r) {
                 if (group.markStaticWaypointReached(i)) {
-                    changed = true;
+                    changed[0] = true;
                     if (group.consumeStaticCycleJustCompleted()) {
-                        break;
+                        return false;
                     }
                 }
             }
-        }
-        return changed;
+            return true;
+        });
+        return changed[0];
     }
 
     /**
@@ -128,37 +131,72 @@ public final class ProximityTracker {
     public static boolean advanceIfReached(WaypointGroup group, double px, double py, double pz,
                                            boolean restartWhenComplete, boolean allowSkipAhead) {
         if (group.isComplete()) return false;
+        updateProximitySuppression(group, px, py, pz);
 
         int size = group.size();
         int from = group.currentIndex();
 
-        // When skip-ahead is disabled, we only look at the single current waypoint.
-        // Scanning [from, from] keeps the hit-test uniform with the full-range
-        // branch so there's one set of distance/advance logic to reason about.
-        int scanStart = allowSkipAhead ? size - 1 : from;
+        int reachedIndex = allowSkipAhead
+                ? highestNearbyReachedIndex(group, from, px, py, pz)
+                : currentReachedIndex(group, from, px, py, pz);
+        if (reachedIndex < 0) return false;
 
-        for (int i = scanStart; i >= from; i--) {
-            Waypoint w = group.get(i);
-            double r = group.effectiveRadius(w);
-            double dx = (w.x() + 0.5) - px;
-            double dy = (w.y() + 0.5) - py;
-            double dz = (w.z() + 0.5) - pz;
-            if (dx * dx + dy * dy + dz * dz <= r * r) {
-                // Collect reach-based temps in [from..i] BEFORE advancing, because
-                // advancing changes currentIndex which we use to bound the scan.
-                // Remove in reverse so earlier indices don't shift under us.
-                int reachedIndex = i;
-                group.advancePast(reachedIndex);
-                for (int j = reachedIndex; j >= from; j--) {
-                    Waypoint wj = group.get(j);
-                    if (wj.tempMode() == Waypoint.TEMP_UNTIL_REACHED) {
-                        group.remove(j);
-                    }
-                }
-                group.restartIfRouteCompleted(restartWhenComplete);
-                return true;
+        // Collect reach-based temps in [from..reachedIndex] BEFORE advancing,
+        // because advancing changes currentIndex which we use to bound the scan.
+        // Remove in reverse so earlier indices don't shift under us.
+        group.advancePast(reachedIndex);
+        for (int j = reachedIndex; j >= from; j--) {
+            Waypoint wj = group.get(j);
+            if (wj.tempMode() == Waypoint.TEMP_UNTIL_REACHED) {
+                group.remove(j);
             }
         }
-        return false;
+        group.restartIfRouteCompleted(restartWhenComplete);
+        return true;
+    }
+
+    private static int currentReachedIndex(WaypointGroup group, int index,
+                                           double px, double py, double pz) {
+        if (index < 0 || index >= group.size()) return -1;
+        if (group.isProximitySuppressed(index)) return -1;
+        return isWithinReach(group, group.get(index), px, py, pz) ? index : -1;
+    }
+
+    private static int highestNearbyReachedIndex(WaypointGroup group, int from,
+                                                 double px, double py, double pz) {
+        int[] reachedIndex = { -1 };
+        group.forEachNearbyIndex(px, py, pz, group.maxEffectiveRadius(), i -> {
+            if (i < from || group.isProximitySuppressed(i)) return true;
+            if (i <= reachedIndex[0]) return true;
+            if (isWithinReach(group, group.get(i), px, py, pz)) {
+                reachedIndex[0] = i;
+            }
+            return true;
+        });
+        return reachedIndex[0];
+    }
+
+    private static void updateProximitySuppression(WaypointGroup group,
+                                                   double px, double py, double pz) {
+        int index = group.proximitySuppressedIndex();
+        if (index < 0) return;
+        if (index >= group.size()) {
+            group.clearProximitySuppression();
+            return;
+        }
+
+        Waypoint w = group.get(index);
+        if (!isWithinReach(group, w, px, py, pz)) {
+            group.clearProximitySuppression();
+        }
+    }
+
+    private static boolean isWithinReach(WaypointGroup group, Waypoint w,
+                                         double px, double py, double pz) {
+        double r = group.effectiveRadius(w);
+        double dx = (w.x() + 0.5) - px;
+        double dy = (w.y() + 0.5) - py;
+        double dz = (w.z() + 0.5) - pz;
+        return dx * dx + dy * dy + dz * dz <= r * r;
     }
 }

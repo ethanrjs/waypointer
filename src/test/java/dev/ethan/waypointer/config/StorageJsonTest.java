@@ -1,9 +1,16 @@
 package dev.ethan.waypointer.config;
 
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
+import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -12,6 +19,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * package-private static helpers directly.
  */
 class StorageJsonTest {
+
+    @TempDir
+    Path tempDir;
 
     @Test
     void waypoint_roundTripPreservesAllFields() {
@@ -52,6 +62,101 @@ class StorageJsonTest {
         assertEquals(1, copy.size(), "temp waypoints must not round-trip");
         assertEquals("keeper", copy.get(0).name());
         assertFalse(copy.get(0).isTemp(), "surviving waypoint is not temporary");
+    }
+
+    @Test
+    void save_skipsTempGroups() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup real = WaypointGroup.create("real", "hub");
+        real.add(Waypoint.at(1, 2, 3).withName("keeper"));
+        WaypointGroup temp = new WaypointGroup("temp::hub", "Temp -- Hub", "hub");
+        temp.setTemp(true);
+        temp.add(Waypoint.at(4, 5, 6).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L));
+        manager.add(real);
+        manager.add(temp);
+
+        Path file = tempDir.resolve("waypoints.json");
+        new Storage(file).save(manager);
+        JsonObject root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+
+        assertEquals(1, root.getAsJsonArray("groups").size());
+        assertEquals("real", root.getAsJsonArray("groups").get(0).getAsJsonObject().get("name").getAsString());
+    }
+
+    @Test
+    void load_replacesGroupsOnlyAfterWholeFileParses() throws Exception {
+        ActiveGroupManager manager = managerWithExistingGroup();
+        Path file = tempDir.resolve("waypoints.json");
+        Files.writeString(file, """
+                {
+                  "schema": 1,
+                  "groups": [
+                    {
+                      "id": "loaded",
+                      "name": "Loaded",
+                      "zone": "hub",
+                      "waypoints": [{"x": 4, "y": 5, "z": 6}]
+                    }
+                  ]
+                }
+                """);
+
+        new Storage(file).load(manager);
+
+        assertNull(manager.get("existing"));
+        assertNotNull(manager.get("loaded"));
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, manager.get("loaded").loadMode());
+        assertEquals(1, manager.allGroups().size());
+    }
+
+    @Test
+    void load_keepsExistingGroupsWhenRootOrGroupsAreMalformed() throws Exception {
+        List<String> malformedFiles = List.of(
+                "null",
+                "[]",
+                "{\"groups\": null}",
+                "{\"groups\": {\"id\": \"not-array\"}}",
+                "{\"groups\": [null]}"
+        );
+
+        for (int i = 0; i < malformedFiles.size(); i++) {
+            ActiveGroupManager manager = managerWithExistingGroup();
+            Path file = tempDir.resolve("malformed-" + i + ".json");
+            Files.writeString(file, malformedFiles.get(i));
+
+            new Storage(file).load(manager);
+
+            assertExistingGroupSurvived(manager, "case " + i);
+        }
+    }
+
+    @Test
+    void load_keepsExistingGroupsWhenLaterGroupFailsToParse() throws Exception {
+        ActiveGroupManager manager = managerWithExistingGroup();
+        Path file = tempDir.resolve("mid-array-failure.json");
+        Files.writeString(file, """
+                {
+                  "schema": 1,
+                  "groups": [
+                    {
+                      "id": "loaded",
+                      "name": "Loaded",
+                      "zone": "hub",
+                      "waypoints": [{"x": 4, "y": 5, "z": 6}]
+                    },
+                    {
+                      "id": "broken",
+                      "name": "Broken",
+                      "zone": "hub",
+                      "waypoints": [{"x": "not-a-number", "y": 5, "z": 6}]
+                    }
+                  ]
+                }
+                """);
+
+        new Storage(file).load(manager);
+
+        assertExistingGroupSurvived(manager, "partially parsed file must not replace live state");
     }
 
     @Test
@@ -97,5 +202,19 @@ class StorageJsonTest {
         for (int i = 0; i < g.size(); i++) {
             assertEquals(g.get(i).name(), copy.get(i).name(), "waypoint order preserved at " + i);
         }
+    }
+
+    private static ActiveGroupManager managerWithExistingGroup() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup existing = new WaypointGroup("existing", "Existing", "hub");
+        existing.add(Waypoint.at(1, 2, 3).withName("keeper"));
+        manager.add(existing);
+        return manager;
+    }
+
+    private static void assertExistingGroupSurvived(ActiveGroupManager manager, String message) {
+        assertNotNull(manager.get("existing"), message);
+        assertEquals(1, manager.allGroups().size(), message);
+        assertEquals("keeper", manager.get("existing").get(0).name(), message);
     }
 }

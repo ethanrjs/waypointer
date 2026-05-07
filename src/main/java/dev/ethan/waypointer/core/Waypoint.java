@@ -1,8 +1,5 @@
 package dev.ethan.waypointer.core;
 
-import net.minecraft.core.BlockPos;
-import net.minecraft.world.phys.Vec3;
-
 /**
  * A single point in the world rendered by the mod.
  *
@@ -63,14 +60,6 @@ public record Waypoint(
         return new Waypoint(x, y, z, "", DEFAULT_COLOR, 0, 0.0, TEMP_NONE, 0L);
     }
 
-    public BlockPos blockPos() {
-        return new BlockPos(x, y, z);
-    }
-
-    public Vec3 center() {
-        return new Vec3(x + 0.5, y + 0.5, z + 0.5);
-    }
-
     public boolean hasName() {
         return !name.isEmpty();
     }
@@ -86,6 +75,24 @@ public record Waypoint(
     /** True iff this is a time-based temp and the deadline has passed. */
     public boolean isExpired(long nowMillis) {
         return tempMode == TEMP_TIME && expiresAtMillis > 0 && nowMillis >= expiresAtMillis;
+    }
+
+    /**
+     * Invalid persisted/default temp modes fall back to REACH: no timer to
+     * reason about, no server-scope tie-in, just "delete it after I go there."
+     */
+    public static int normalizeTempMode(int mode) {
+        if (mode < TEMP_TIME || mode > TEMP_UNTIL_LEAVE) return TEMP_UNTIL_REACHED;
+        return mode;
+    }
+
+    public static String tempModeName(int mode) {
+        return switch (mode) {
+            case TEMP_TIME          -> "TIME";
+            case TEMP_UNTIL_REACHED -> "REACH";
+            case TEMP_UNTIL_LEAVE   -> "LEAVE";
+            default -> "?";
+        };
     }
 
     public Waypoint withName(String newName)       { return new Waypoint(x, y, z, newName, color, flags, customRadius, tempMode, expiresAtMillis); }

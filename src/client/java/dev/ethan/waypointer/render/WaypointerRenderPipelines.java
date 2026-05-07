@@ -13,9 +13,9 @@ import net.minecraft.resources.Identifier;
  * Custom render pipelines for Waypointer.
  *
  * <p>Vanilla's stock pipelines (e.g. {@code RenderTypes.lines()}) use
- * {@code LEQUAL_DEPTH_TEST} so geometry occludes behind terrain. That's right
- * for block outlines but wrong for a waypoint beacon -- if you can't see the
- * marker through a cave wall the beacon isn't doing its job.
+ * {@code LEQUAL_DEPTH_TEST} so geometry occludes behind terrain. Waypoint
+ * overlays intentionally pierce terrain so markers remain usable through caves
+ * and walls.
  *
  * <p>We reuse the private {@code *_SNIPPET} base pipelines (exposed via
  * access widener) to inherit the correct shader + vertex format, then flip
@@ -75,4 +75,5 @@ public final class WaypointerRenderPipelines {
         return RenderType.create("waypointer_quads_through_walls",
                 RenderSetup.builder(pipeline).createRenderSetup());
     }
+
 }

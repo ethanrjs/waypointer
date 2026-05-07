@@ -226,6 +226,7 @@ public final class GroupEditScreen extends Screen {
 
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
         left.add(new GuiTokens.ButtonSpec("+ Add Here", this::addHere));
+        left.add(new GuiTokens.ButtonSpec("+ Add Named", this::addNamedHere));
         left.add(new GuiTokens.ButtonSpec("+ Add Temp", this::addTempHere));
         left.add(new GuiTokens.ButtonSpec("Export", this::export));
         left.add(new GuiTokens.ButtonSpec("Remove", this::removeSelected));
@@ -360,6 +361,10 @@ public final class GroupEditScreen extends Screen {
         AddTempScreen.open(this, manager, config);
     }
 
+    private void addNamedHere() {
+        AddNamedWaypointScreen.open(this, manager, config, group);
+    }
+
     private void addHere() {
         LocalPlayer p = Minecraft.getInstance().player;
         if (p == null) return;
@@ -368,7 +373,7 @@ public final class GroupEditScreen extends Screen {
                 "", Waypoint.DEFAULT_COLOR, 0, 0.0));
         // Run the shared post-add flow (auto-disable skip-ahead + toast) so the
         // GUI add button behaves identically to /wp add and the keybind path.
-        new WaypointAddFlow(config).afterWaypointAdded(group);
+        new WaypointAddFlow().afterWaypointAdded(group, group.size() - 1);
         manager.fireDataChanged();
         onManualEdit();
     }
@@ -427,13 +432,11 @@ public final class GroupEditScreen extends Screen {
         // re-gradient across the new order, and starting progress over is the least
         // surprising behaviour after a sort.
         WaypointGroup.GradientMode mode = group.gradientMode();
-        while (group.size() > 0) group.remove(group.size() - 1);
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-        for (Waypoint w : pts) group.add(w);
+        group.replaceWaypoints(pts);
         group.setGradientMode(mode);
         group.setCurrentIndex(0);
         manager.fireDataChanged();
-        if (mode == WaypointGroup.GradientMode.AUTO) GradientColorizer.apply(group);
     }
 
     private void removeSelected() {

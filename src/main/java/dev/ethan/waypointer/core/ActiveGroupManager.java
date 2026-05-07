@@ -35,16 +35,16 @@ public final class ActiveGroupManager {
     private final Collection<WaypointGroup> allGroupsView = Collections.unmodifiableCollection(byId.values());
     private Zone currentZone;
     private final List<Consumer<Zone>> zoneListeners = new ArrayList<>();
+    private String focusedTempGroupId;
 
     private static final Pattern TEMP_GROUP_ID_UNSAFE = Pattern.compile("[^a-z0-9_]+");
     private final List<Runnable> dataListeners = new ArrayList<>();
 
     // Cached result of activeGroups(). The renderer calls this every frame from two
-    // separate END_MAIN handlers, so returning a fresh ArrayList each time burned a
-    // measurable chunk of young-gen garbage. Invalidated on zone change and on
-    // fireDataChanged(), which every mutation path funnels through.
+    // separate END_MAIN handlers, so rebuilding on every call burns avoidable
+    // young-gen garbage. Invalidated on zone change and on fireDataChanged(),
+    // which every mutation path funnels through.
     private List<WaypointGroup> cachedActive;
-    private final List<WaypointGroup> activeScratch = new ArrayList<>();
 
     public Zone currentZone() {
         return currentZone;
@@ -54,7 +54,7 @@ public final class ActiveGroupManager {
         if (Objects.equals(newZone, currentZone)) return;
         currentZone = newZone;
         cachedActive = null;
-        for (Consumer<Zone> l : zoneListeners) l.accept(newZone);
+        for (Consumer<Zone> l : List.copyOf(zoneListeners)) l.accept(newZone);
     }
 
     /**
@@ -79,12 +79,18 @@ public final class ActiveGroupManager {
             cachedActive = Collections.emptyList();
             return cachedActive;
         }
-        String zid = currentZone.id();
-        activeScratch.clear();
-        for (WaypointGroup g : byId.values()) {
-            if (g.enabled() && zid.equals(g.zoneId())) activeScratch.add(g);
+        String zoneId = currentZone.id();
+        WaypointGroup focused = focusedTempGroupForZone(zoneId);
+        if (focused != null) {
+            cachedActive = List.of(focused);
+            return cachedActive;
         }
-        cachedActive = Collections.unmodifiableList(activeScratch);
+
+        List<WaypointGroup> active = new ArrayList<>();
+        for (WaypointGroup g : byId.values()) {
+            if (g.enabled() && zoneId.equals(g.zoneId())) active.add(g);
+        }
+        cachedActive = List.copyOf(active);
         return cachedActive;
     }
 
@@ -122,8 +128,8 @@ public final class ActiveGroupManager {
     }
 
     /**
-     * Returns {@link #firstActiveGroup()}, or creates a fresh group in the current
-     * zone and returns that. The newly-created group's name is built via
+     * Returns the first active non-temp route group, or creates a fresh group in
+     * the current zone and returns that. The newly-created group's name is built via
      * {@code "Route -- " + zone.displayName()} so first-time users get a labelled
      * route without a naming prompt, while still being able to rename in the UI.
      *
@@ -131,13 +137,23 @@ public final class ActiveGroupManager {
      * listeners see the change without the caller needing to remember.
      */
     public WaypointGroup getOrCreateActiveGroup() {
-        WaypointGroup existing = firstActiveGroup();
+        WaypointGroup existing = firstActiveRouteGroup();
         if (existing != null) return existing;
         Zone zone = currentZone == null ? Zone.UNKNOWN : currentZone;
         WaypointGroup g = WaypointGroup.create(
                 "Route -- " + zone.displayName().toLowerCase(Locale.ROOT), zone.id());
         add(g);
         return g;
+    }
+
+    private WaypointGroup firstActiveRouteGroup() {
+        if (currentZone == null) return null;
+
+        String zoneId = currentZone.id();
+        for (WaypointGroup g : byId.values()) {
+            if (!g.temp() && g.enabled() && zoneId.equals(g.zoneId())) return g;
+        }
+        return null;
     }
 
     /**
@@ -180,6 +196,7 @@ public final class ActiveGroupManager {
                 : "Temp -- " + source + " -- " + zone.displayName();
         WaypointGroup g = new WaypointGroup(tempId, groupName, zone.id());
         g.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setTemp(true);
         add(g);
         return g;
@@ -205,6 +222,37 @@ public final class ActiveGroupManager {
         target.add(waypoint);
         fireDataChanged();
         return target;
+    }
+
+    /**
+     * Temporarily narrow rendering to one newly-created temp waypoint. This does
+     * not mutate group enabled flags, so disconnect cleanup can restore the user's
+     * active zone by simply clearing this transient focus.
+     */
+    public void focusTempWaypoint(WaypointGroup group, int waypointIndex) {
+        if (group == null || !group.temp()) return;
+        if (waypointIndex < 0 || waypointIndex >= group.size()) return;
+        if (!group.get(waypointIndex).isTemp()) return;
+
+        clearTempWaypointFocus();
+        focusedTempGroupId = group.id();
+        group.focusNewWaypoint(waypointIndex);
+        group.focusOnlyVisibleIndex(waypointIndex);
+        cachedActive = null;
+    }
+
+    public boolean tempWaypointFocusActive() {
+        if (currentZone == null) return false;
+        return focusedTempGroupForZone(currentZone.id()) != null;
+    }
+
+    public void clearTempWaypointFocus() {
+        if (focusedTempGroupId == null) return;
+
+        WaypointGroup group = byId.get(focusedTempGroupId);
+        if (group != null) group.clearFocusedVisibleIndex();
+        focusedTempGroupId = null;
+        cachedActive = null;
     }
 
     private static String sanitizeTempSourceName(String raw) {
@@ -246,6 +294,28 @@ public final class ActiveGroupManager {
         fireDataChanged();
     }
 
+    /**
+     * Add several groups as one logical mutation. Bulk import paths use this so
+     * autosave and external API listeners see a single completed import rather
+     * than one intermediate notification per group.
+     */
+    public void addAll(Collection<WaypointGroup> groups) {
+        if (groups.isEmpty()) return;
+        for (WaypointGroup group : groups) byId.put(group.id(), group);
+        fireDataChanged();
+    }
+
+    /**
+     * Replace all persisted groups in one mutation after the caller has fully
+     * validated the replacement set. Storage load uses this to avoid clearing
+     * the live manager until malformed files have already been rejected.
+     */
+    public void replaceAll(Collection<WaypointGroup> groups) {
+        byId.clear();
+        for (WaypointGroup group : groups) byId.put(group.id(), group);
+        fireDataChanged();
+    }
+
     public void remove(String id) {
         if (byId.remove(id) != null) fireDataChanged();
     }
@@ -257,9 +327,32 @@ public final class ActiveGroupManager {
 
     public void fireDataChanged() {
         cachedActive = null;
-        for (Runnable l : dataListeners) l.run();
+        for (Runnable l : List.copyOf(dataListeners)) l.run();
+    }
+
+    private WaypointGroup focusedTempGroupForZone(String zoneId) {
+        if (focusedTempGroupId == null) return null;
+
+        WaypointGroup group = byId.get(focusedTempGroupId);
+        if (group == null
+                || !group.temp()
+                || !group.enabled()
+                || !zoneId.equals(group.zoneId())) {
+            clearTempWaypointFocus();
+            return null;
+        }
+
+        int index = group.focusedVisibleIndex();
+        if (index < 0 || index >= group.size() || !group.get(index).isTemp()) {
+            clearTempWaypointFocus();
+            return null;
+        }
+        return group;
     }
 
     public void addZoneListener(Consumer<Zone> listener) { zoneListeners.add(listener); }
+    public void removeZoneListener(Consumer<Zone> listener) { zoneListeners.remove(listener); }
+
     public void addDataListener(Runnable listener)        { dataListeners.add(listener); }
+    public void removeDataListener(Runnable listener)     { dataListeners.remove(listener); }
 }

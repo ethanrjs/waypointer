@@ -31,9 +31,9 @@ import org.joml.Vector3fc;
  * regardless of view pitch.
  *
  * Shares {@link WaypointerRenderPipelines#linesThroughWalls()} with
- * {@link WaypointRenderer} so the tracer pierces terrain like the beacons do --
- * without that, the tracer vanishes the moment you look at a wall between you
- * and the current waypoint.
+ * {@link WaypointRenderer} so the tracer pierces terrain; without that, the
+ * tracer vanishes the moment you look at a wall between you and the current
+ * waypoint.
  */
 public final class TracerRenderer {
 
@@ -44,6 +44,8 @@ public final class TracerRenderer {
      * crosshair rather than floating in space ahead of the player.
      */
     private static final float CROSSHAIR_FORWARD = 0.4f;
+    /** When temp-waypoint focus forces a tracer, opacity 0 would hide it entirely. */
+    private static final float TEMP_FOCUS_TRACER_ALPHA_FLOOR = 0.5f;
     private static final float DEG_TO_RAD = (float) Math.PI / 180.0f;
 
     private final ActiveGroupManager manager;
@@ -60,9 +62,10 @@ public final class TracerRenderer {
     }
 
     private void onRender(WorldRenderContext ctx) {
-        if (!config.showTracer()) return;
         var groups = manager.activeGroups();
         if (groups.isEmpty()) return;
+        boolean tempFocus = manager.tempWaypointFocusActive();
+        if (!tempFocus && !config.showTracer()) return;
 
         PoseStack ps = ctx.matrices();
         if (ps == null) return;
@@ -88,16 +91,20 @@ public final class TracerRenderer {
         float fromY = (float) camPos.y + tracerOriginDelta[1];
         float fromZ = (float) camPos.z + tracerOriginDelta[2];
         float alpha = (float) config.tracerOpacity();
+        if (tempFocus) {
+            alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
+        }
         // Matching the tracer to the live waypoint colour means gradient groups
-        // draw a tracer whose hue advances with progress (beacon and line read
-        // as one unit), and manually-coloured checkpoints light their tracer
-        // in the same tint. The flat-override path is still available for
+        // draw a tracer whose hue advances with progress, and manually-coloured
+        // checkpoints light their tracer in the same tint. The flat-override path is still available for
         // users who prefer a single distinctive tracer colour across groups.
         boolean matchWaypoint = config.matchTracerToWaypointColor();
         int overrideColor = config.tracerColor();
 
         for (WaypointGroup g : groups) {
-            if (config.hideTracerOnStaticRoutes() && g.loadMode() == WaypointGroup.LoadMode.STATIC) {
+            if (!tempFocus
+                    && config.hideTracerOnStaticRoutes()
+                    && g.loadMode() == WaypointGroup.LoadMode.STATIC) {
                 continue;
             }
             Waypoint target = g.current();

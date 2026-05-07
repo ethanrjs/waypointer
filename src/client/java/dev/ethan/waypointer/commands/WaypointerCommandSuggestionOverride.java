@@ -32,6 +32,9 @@ public final class WaypointerCommandSuggestionOverride {
     private static final Field ARGUMENTS_FIELD = findCommandNodeMap("arguments");
 
     private boolean warnedReflectionFailure;
+    private ClientPacketListener installedConnection;
+    private CommandDispatcher<ClientSuggestionProvider> installedDispatcher;
+    private CommandNode<ClientSuggestionProvider> installedWpRoot;
 
     public void install() {
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
@@ -39,16 +42,47 @@ public final class WaypointerCommandSuggestionOverride {
 
     private void onTick(Minecraft mc) {
         ClientPacketListener connection = mc.getConnection();
-        if (connection == null) return;
+        if (connection == null) {
+            clearInstalledState();
+            return;
+        }
 
         CommandDispatcher<ClientSuggestionProvider> target = connection.getCommands();
         CommandNode<ClientSuggestionProvider> targetRoot = target.getRoot().getChild(ROOT);
-        if (isWaypointerRoot(targetRoot)) return;
+        if (isInstalledFor(connection, target, targetRoot)) return;
+        if (isWaypointerRoot(targetRoot)) {
+            rememberInstalledState(connection, target, targetRoot);
+            return;
+        }
 
         CommandNode<FabricClientCommandSource> clientRoot = clientRoot();
         if (clientRoot == null) return;
 
-        replaceWpRoot(target.getRoot(), clientRoot);
+        if (replaceWpRoot(target.getRoot(), clientRoot)) {
+            rememberInstalledState(connection, target, target.getRoot().getChild(ROOT));
+        }
+    }
+
+    private boolean isInstalledFor(ClientPacketListener connection,
+                                   CommandDispatcher<ClientSuggestionProvider> dispatcher,
+                                   CommandNode<ClientSuggestionProvider> wpRoot) {
+        return installedConnection == connection
+                && installedDispatcher == dispatcher
+                && installedWpRoot == wpRoot;
+    }
+
+    private void rememberInstalledState(ClientPacketListener connection,
+                                        CommandDispatcher<ClientSuggestionProvider> dispatcher,
+                                        CommandNode<ClientSuggestionProvider> wpRoot) {
+        installedConnection = connection;
+        installedDispatcher = dispatcher;
+        installedWpRoot = wpRoot;
+    }
+
+    private void clearInstalledState() {
+        installedConnection = null;
+        installedDispatcher = null;
+        installedWpRoot = null;
     }
 
     @SuppressWarnings("unchecked")
@@ -60,21 +94,23 @@ public final class WaypointerCommandSuggestionOverride {
     }
 
     private static boolean isWaypointerRoot(CommandNode<?> node) {
-        return node != null
-                && node.getChild("add") != null
-                && node.getChild("group") != null
-                && node.getChild("import") != null;
+        if (node == null) return false;
+        // Many unrelated servers expose add/group/import under /wp; Waypointer also
+        // registers importchat and importfile, which is a much tighter signature.
+        return node.getChild("importchat") != null && node.getChild("importfile") != null;
     }
 
-    private void replaceWpRoot(CommandNode<ClientSuggestionProvider> targetRoot,
-                               CommandNode<FabricClientCommandSource> clientRoot) {
-        if (!canEditCommandNodeMaps()) return;
+    private boolean replaceWpRoot(CommandNode<ClientSuggestionProvider> targetRoot,
+                                  CommandNode<FabricClientCommandSource> clientRoot) {
+        if (!canEditCommandNodeMaps()) return false;
 
         try {
             removeChild(targetRoot, ROOT);
             targetRoot.addChild(copyAsSuggestionNode(clientRoot));
+            return true;
         } catch (ReflectiveOperationException | RuntimeException e) {
             warnReflectionFailure(e);
+            return false;
         }
     }
 

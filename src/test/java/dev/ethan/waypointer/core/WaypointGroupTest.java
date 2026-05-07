@@ -2,6 +2,9 @@ package dev.ethan.waypointer.core;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class WaypointGroupTest {
@@ -74,6 +77,18 @@ class WaypointGroupTest {
     }
 
     @Test
+    void focusNewWaypoint_setsCurrentAndSuppressesProximity() {
+        WaypointGroup g = route();
+        g.markStaticWaypointReached(0);
+
+        g.focusNewWaypoint(2);
+
+        assertEquals(2, g.currentIndex());
+        assertTrue(g.isProximitySuppressed(2));
+        assertFalse(g.isStaticWaypointReached(0));
+    }
+
+    @Test
     void restartIfRouteCompleted_wraps_when_enabled() {
         WaypointGroup g = route();
         g.advancePast(3);
@@ -121,74 +136,74 @@ class WaypointGroupTest {
     }
 
     @Test
-    void visibleIndices_staticMode_returnsEverythingInOrder() {
+    void forEachVisibleIndex_staticMode_returnsEverythingInOrder() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.STATIC);
 
-        int[] visible = g.visibleIndices();
+        int[] visible = visibleIndices(g);
         assertArrayEquals(new int[] { 0, 1, 2, 3 }, visible,
                 "STATIC should surface every index so shared routes are fully rendered");
     }
 
     @Test
-    void visibleIndices_sequenceMode_atStart_showsCurrentAndNext() {
+    void forEachVisibleIndex_sequenceMode_atStart_showsCurrentAndNext() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         g.setCurrentIndex(0);
 
-        int[] visible = g.visibleIndices();
+        int[] visible = visibleIndices(g);
         assertArrayEquals(new int[] { 0, 1 }, visible,
                 "SEQUENCE at index 0 has no previous; should show current + next only");
     }
 
     @Test
-    void visibleIndices_sequenceMode_middle_showsPrevCurrentNext() {
+    void forEachVisibleIndex_sequenceMode_middle_showsPrevCurrentNext() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         g.setCurrentIndex(2);
 
-        int[] visible = g.visibleIndices();
+        int[] visible = visibleIndices(g);
         assertArrayEquals(new int[] { 1, 2, 3 }, visible,
                 "SEQUENCE in the middle should show the prev/current/next triple");
     }
 
     @Test
-    void visibleIndices_sequenceMode_atEnd_showsPrevAndCurrent() {
+    void forEachVisibleIndex_sequenceMode_atEnd_showsPrevAndCurrent() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         g.setCurrentIndex(3);
 
-        int[] visible = g.visibleIndices();
+        int[] visible = visibleIndices(g);
         assertArrayEquals(new int[] { 2, 3 }, visible,
                 "SEQUENCE at the last index has no next; should show prev + current only");
     }
 
     @Test
-    void visibleIndices_sequenceMode_afterCompletion_fallsBackToLastPoint() {
+    void forEachVisibleIndex_sequenceMode_afterCompletion_fallsBackToLastPoint() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         g.setCurrentIndex(g.size()); // past the end -> isComplete()
 
-        int[] visible = g.visibleIndices();
+        int[] visible = visibleIndices(g);
         assertArrayEquals(new int[] { g.size() - 1 }, visible,
                 "completed SEQUENCE routes should still render the final point as a 'made it' marker");
     }
 
     @Test
-    void visibleIndices_emptyGroup_returnsEmpty() {
+    void forEachVisibleIndex_emptyGroup_returnsEmpty() {
         WaypointGroup g = WaypointGroup.create("empty", "dungeon_f7");
-        assertEquals(0, g.visibleIndices().length);
+        assertEquals(0, visibleIndices(g).length);
 
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
-        assertEquals(0, g.visibleIndices().length,
+        assertEquals(0, visibleIndices(g).length,
                 "empty groups never render, regardless of load mode");
     }
 
     @Test
-    void loadMode_defaultsToStatic() {
+    void loadMode_defaultsToSequence() {
         WaypointGroup g = WaypointGroup.create("r", "z");
-        assertEquals(WaypointGroup.LoadMode.STATIC, g.loadMode(),
-                "shared routes default to STATIC so imported groups stay visible");
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode(),
+                "loaded routes default to SEQUENCE so the intended order is visible");
     }
 
     @Test
@@ -211,6 +226,19 @@ class WaypointGroupTest {
         assertEquals(-200, waypoint.z());
         assertTrue(waypoint.isTemp());
         assertEquals(Waypoint.TEMP_UNTIL_LEAVE, waypoint.tempMode());
+    }
+
+    @Test
+    void manager_getOrCreateActiveGroupDoesNotReuseTempBucket() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup bucket = manager.addTempWaypoint(1, 70, 2);
+
+        WaypointGroup route = manager.getOrCreateActiveGroup();
+
+        assertNotSame(bucket, route);
+        assertFalse(route.temp());
+        assertEquals("hub", route.zoneId());
     }
 
     @Test
@@ -239,5 +267,50 @@ class WaypointGroupTest {
         assertSame(firstBucket, secondBucket);
         assertEquals(2, manager.activeGroups().get(0).size(),
                 "second temp waypoint should be visible through refreshed active cache");
+    }
+
+    @Test
+    void manager_tempWaypointFocusHidesOtherActiveGroupsUntilCleared() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup route = route();
+        route.setZoneId("hub");
+        manager.add(route);
+
+        WaypointGroup bucket = manager.addTempWaypoint(1, 70, 2);
+        bucket.add(Waypoint.at(3, 71, 4).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L));
+        manager.focusTempWaypoint(bucket, 1);
+
+        assertEquals(List.of(bucket), manager.activeGroups());
+        assertArrayEquals(new int[] { 1 }, visibleIndices(bucket),
+                "focus should render only the newly-added temp waypoint");
+        assertEquals(bucket.get(1), bucket.current(),
+                "the tracer target follows the focused temporary waypoint");
+
+        manager.clearTempWaypointFocus();
+
+        assertEquals(List.of(route, bucket), manager.activeGroups());
+        assertArrayEquals(new int[] { 0, 1 }, visibleIndices(bucket));
+    }
+
+    @Test
+    void manager_tempWaypointFocusClearsWhenFocusedTempIsRemoved() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup route = route();
+        route.setZoneId("hub");
+        manager.add(route);
+
+        WaypointGroup bucket = manager.addTempWaypoint(1, 70, 2);
+        manager.focusTempWaypoint(bucket, 0);
+        bucket.remove(0);
+
+        assertEquals(List.of(route, bucket), manager.activeGroups());
+    }
+
+    private static int[] visibleIndices(WaypointGroup group) {
+        List<Integer> indices = new ArrayList<>();
+        group.forEachVisibleIndex(indices::add);
+        return indices.stream().mapToInt(Integer::intValue).toArray();
     }
 }

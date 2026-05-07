@@ -16,21 +16,20 @@ import java.util.List;
  * Rules:
  *
  *   - A match must start with {@link WaypointCodec#MAGIC}.
- *   - The character immediately before the magic (if any) must be outside the
- *     codec alphabet. The alphabet is printable ASCII, so without this
- *     boundary rule a chat line like {@code "helloWP:stuff"} would fire a
- *     false [Invalid Waypointer Code] pill on every mid-word substring. The
- *     old CJK layer implicitly had this property because its alphabet sat
- *     outside the ordinary ASCII range.
+ *   - The character immediately before the magic (if any) must not glue the
+ *     prefix to the magic: either it is outside the codec alphabet, or it is
+ *     clause-like punctuation that is in the alphabet but still starts a new
+ *     paste (e.g. {@code ",WP:…"}). Without this, a line like
+ *     {@code "helloWP:stuff"} would fire a false pill on every mid-word substring.
  *   - Body characters are extended greedily while they fall in the codec
  *     alphabet.
  *   - The body must be at least {@value #MIN_BODY} characters so a bare magic
  *     prefix surrounded by ordinary text isn't flagged as a codec.
  *
- * Intentional non-goal: we don't validate the payload here. A malformed codec
- * still gets flagged; the actual decode happens when the user clicks the import
- * chip and {@link WaypointCodec#decode} surfaces any errors. Validating at scan
- * time would run text decode + deflate on every chat line, which is wasteful.
+ * When greedy extension could swallow trailing sentence punctuation that is also
+ * an alphabet character, we trim those suffixes only while {@link WaypointCodec#isValidCodec}
+ * rejects the candidate (cheap integrity probe), so prose delimiters do not corrupt
+ * an otherwise valid paste.
  */
 public final class CodecScanner {
 
@@ -59,6 +58,27 @@ public final class CodecScanner {
             while (bodyEnd < message.length() && AsciiStreamCodec.isAlphabetChar(message.charAt(bodyEnd))) {
                 bodyEnd++;
             }
+            // Printable-ASCII bodies share most punctuation with normal prose. Without a
+            // backscan, greedy extension can swallow trailing delimiters (e.g. commas)
+            // that belong to the surrounding sentence. Shrink the end only while
+            // {@link WaypointCodec#isValidCodec} rejects the candidate (cheap probe).
+            while (bodyEnd > bodyStart + MIN_BODY - 1) {
+                if (WaypointCodec.isValidCodec(message.substring(i, bodyEnd))) break;
+                bodyEnd--;
+            }
+            // If the greedy span is valid as a whole but a clause delimiter at the end
+            // is prose (not payload), the payload-with-delimiter can still decode as an
+            // unrelated blob — trim when dropping that suffix keeps a valid decode.
+            while (bodyEnd > bodyStart + MIN_BODY) {
+                char last = message.charAt(bodyEnd - 1);
+                if (!isClauseSuffixDelim(last)) break;
+                String shorter = message.substring(i, bodyEnd - 1);
+                if (WaypointCodec.isValidCodec(shorter)) {
+                    bodyEnd--;
+                } else {
+                    break;
+                }
+            }
             int bodyLen = bodyEnd - bodyStart;
             if (bodyLen >= MIN_BODY) {
                 out.add(new Match(i, bodyEnd, message.substring(i, bodyEnd)));
@@ -76,18 +96,33 @@ public final class CodecScanner {
     }
 
     /**
-     * True iff position {@code i} is at the start of the string or the
-     * preceding character is not part of the codec alphabet. Rejects
-     * mid-word and URL-embedded false positives without a heavy regex.
-     *
-     * The rule is intentionally stricter than "is not alphanumeric" because
-     * the alphabet includes punctuation like {@code /} and {@code :} that
-     * frequently appears inside URLs. Requiring a non-alphabet char (which
-     * covers every whitespace class and every non-ASCII rune) catches all
-     * the organic paste shapes while filtering obvious false positives.
+     * True when {@code WP:} may start a new codec at this index: start of string,
+     * a non-alphabet character, or clause punctuation that is alphabet-sized but
+     * still separates a paste from the preceding word. Mid-word and URL runs
+     * (e.g. {@code fileWP:}, {@code /path/WP:}) stay rejected.
      */
     private static boolean isAtWordBoundary(String s, int i) {
         if (i == 0) return true;
-        return !AsciiStreamCodec.isAlphabetChar(s.charAt(i - 1));
+        char prev = s.charAt(i - 1);
+        if (!AsciiStreamCodec.isAlphabetChar(prev)) return true;
+        // Alphabet letters/digits and symbols like '/' glue runs together (URLs, words).
+        // Clause punctuation is also in the v3 alphabet; treat it as a start boundary so
+        // pastes like ",WP:..." still match.
+        return isClauseBoundaryBeforeMagic(prev);
+    }
+
+    private static boolean isClauseBoundaryBeforeMagic(char c) {
+        return switch (c) {
+            case ',', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}', '\'', '"', '-' -> true;
+            default -> false;
+        };
+    }
+
+    /** Clause punctuation that may trail an embedded paste but is rarely meaningful payload. */
+    private static boolean isClauseSuffixDelim(char c) {
+        return switch (c) {
+            case ',', ';', ':', '!', '?', ')', ']', '}', '\'', '"' -> true;
+            default -> false;
+        };
     }
 }

@@ -9,6 +9,7 @@ import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.chat.ChatImportCache;
+import dev.ethan.waypointer.chat.WaypointerChatFeedback;
 import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.codec.WaypointImporter;
 import dev.ethan.waypointer.config.Storage;
@@ -73,7 +74,7 @@ public final class WaypointerCommands {
         this.config = config;
         this.chatImportCache = chatImportCache;
         this.openGui = openGui;
-        this.addFlow = new WaypointAddFlow(config);
+        this.addFlow = new WaypointAddFlow();
     }
 
     public void install() {
@@ -350,7 +351,7 @@ public final class WaypointerCommands {
         // Screen is opened standalone (no parent) so Escape closes the entire screen
         // stack rather than dropping the user into whatever they had open before --
         // /wp debug is a diagnostic entry point, not a sub-view of the main GUI.
-        Minecraft.getInstance().execute(() -> DebugInspectScreen.open(null));
+        Minecraft.getInstance().execute(() -> DebugInspectScreen.open(null, manager, config));
     }
 
     /**
@@ -399,7 +400,7 @@ public final class WaypointerCommands {
                             new HelpRow(" group create <name>",     "make a new group in the current zone"),
                             new HelpRow(" group list",              "list every group across zones"),
                             new HelpRow(" group delete <index>",    "delete a group by list index"),
-                            new HelpRow(" debug",                   "inspect a pasted codec's wire format")))
+                            new HelpRow(" debug",                   "copy performance stats or inspect a codec")))
     );
 
     /**
@@ -509,7 +510,7 @@ public final class WaypointerCommands {
                 footer.append(Component.literal(" ").withStyle(ChatFormatting.DARK_GRAY));
             }
         }
-        src.sendFeedback(footer);
+        src.sendFeedback(WaypointerChatFeedback.suppress(footer));
     }
 
     /**
@@ -603,11 +604,9 @@ public final class WaypointerCommands {
         WaypointGroup target = manager.getOrCreateActiveGroup();
         target.add(new Waypoint(x, y, z, name == null ? "" : name,
                 Waypoint.DEFAULT_COLOR, 0, 0.0));
-        addFlow.afterWaypointAdded(target);
+        addFlow.afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
 
-        success(src, "Added waypoint " + (target.size() - 1) + " to \"" + target.name()
-                + "\" at " + x + ", " + y + ", " + z);
         return 1;
     }
 
@@ -627,6 +626,9 @@ public final class WaypointerCommands {
      */
     private int runAddTempAt(FabricClientCommandSource src, int x, int y, int z, String sourceName) {
         WaypointGroup target = manager.addTempWaypoint(x, y, z, sourceName);
+        if (config.focusTempWaypoints()) {
+            manager.focusTempWaypoint(target, target.size() - 1);
+        }
 
         success(src, "Added temp waypoint to \"" + target.name()
                 + "\" at " + x + ", " + y + ", " + z + " (expires on disconnect)");
@@ -656,11 +658,9 @@ public final class WaypointerCommands {
         int z = (int) Math.floor(player.getZ());
         target.insert(index, new Waypoint(x, y, z, name == null ? "" : name,
                 Waypoint.DEFAULT_COLOR, 0, 0.0));
-        addFlow.afterWaypointAdded(target);
+        addFlow.afterWaypointAdded(target, index);
         manager.fireDataChanged();
 
-        success(src, "Inserted waypoint at [" + index + "] in \"" + target.name()
-                + "\" at " + x + ", " + y + ", " + z);
         return 1;
     }
 
@@ -708,7 +708,7 @@ public final class WaypointerCommands {
         line.append(Component.literal(" [click to copy]")
                 .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
                         .withClickEvent(new ClickEvent.CopyToClipboard(payload))));
-        src.sendFeedback(line);
+        src.sendFeedback(WaypointerChatFeedback.suppress(line));
         return toExport.size();
     }
 
@@ -970,22 +970,26 @@ public final class WaypointerCommands {
     }
 
     private static void info(FabricClientCommandSource src, String msg) {
-        src.sendFeedback(Component.literal(msg).withStyle(ChatFormatting.GRAY));
+        src.sendFeedback(WaypointerChatFeedback.suppress(
+                Component.literal(msg).withStyle(ChatFormatting.GRAY)));
     }
 
     private static void info(FabricClientCommandSource src, Component msg) {
-        src.sendFeedback(msg);
+        src.sendFeedback(WaypointerChatFeedback.suppress(msg));
     }
 
     private static void success(FabricClientCommandSource src, String msg) {
-        src.sendFeedback(Component.literal(msg).withStyle(ChatFormatting.GREEN));
+        src.sendFeedback(WaypointerChatFeedback.suppress(
+                Component.literal(msg).withStyle(ChatFormatting.GREEN)));
     }
 
     private static void warn(FabricClientCommandSource src, String msg) {
-        src.sendFeedback(Component.literal(msg).withStyle(ChatFormatting.YELLOW));
+        src.sendFeedback(WaypointerChatFeedback.suppress(
+                Component.literal(msg).withStyle(ChatFormatting.YELLOW)));
     }
 
     private static void error(FabricClientCommandSource src, String msg) {
-        src.sendError(Component.literal(msg).withStyle(ChatFormatting.RED));
+        src.sendError(WaypointerChatFeedback.suppress(
+                Component.literal(msg).withStyle(ChatFormatting.RED)));
     }
 }
