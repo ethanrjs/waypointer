@@ -56,9 +56,8 @@ public final class WaypointGroup {
      * Per-group gate for the proximity skip-ahead mechanic. When {@code false},
      * the proximity tracker only advances when the player reaches the
      * immediate current waypoint on this group, even if the global mechanic is
-     * on. Flipped off automatically when a new waypoint is added (see
-     * {@code disableGroupSkipAheadOnWaypointAdd} in {@link dev.ethan.waypointer.config.WaypointerConfig})
-     * so a freshly-added waypoint near the player isn't instantly skipped past.
+     * on. Flipped off automatically when a new waypoint is added so a
+     * freshly-added waypoint near the player isn't instantly skipped past.
      */
     private boolean skipAheadEnabled = true;
     /**
@@ -88,6 +87,12 @@ public final class WaypointGroup {
      * the add succeeded.
      */
     private transient int proximitySuppressedIndex = -1;
+    /**
+     * Optional render-only focus for temp waypoint mode. Kept on the group so
+     * index shifts caused by temp expiry/removal stay local to the list mutation
+     * that caused them, instead of leaving a manager-level pointer stale.
+     */
+    private transient Integer focusedVisibleIndex;
     /**
      * Set when a static reach pass completes the full set and clears {@link #staticReached}.
      * Lets {@link dev.ethan.waypointer.progression.ProximityTracker} stop scanning for the
@@ -169,6 +174,12 @@ public final class WaypointGroup {
         int n = waypoints.size();
         if (n == 0) return;
 
+        if (focusedVisibleIndex != null) {
+            int index = focusedVisibleIndex;
+            if (index >= 0 && index < n) action.accept(index);
+            return;
+        }
+
         if (loadMode == LoadMode.STATIC) {
             for (int i = 0; i < n; i++) action.accept(i);
             return;
@@ -207,6 +218,9 @@ public final class WaypointGroup {
         waypoints.add(index, w);
         if (index <= currentIndex) currentIndex++;
         if (proximitySuppressedIndex >= index) proximitySuppressedIndex++;
+        if (focusedVisibleIndex != null && focusedVisibleIndex >= index) {
+            focusedVisibleIndex++;
+        }
         staticReached = null;
         applyGradientIfAuto();
     }
@@ -217,6 +231,10 @@ public final class WaypointGroup {
         currentIndex = Math.min(currentIndex, waypoints.size());
         if (proximitySuppressedIndex == index) proximitySuppressedIndex = -1;
         else if (proximitySuppressedIndex > index) proximitySuppressedIndex--;
+        if (focusedVisibleIndex != null) {
+            if (focusedVisibleIndex == index) focusedVisibleIndex = null;
+            else if (focusedVisibleIndex > index) focusedVisibleIndex--;
+        }
         staticReached = null;
         applyGradientIfAuto();
     }
@@ -229,6 +247,7 @@ public final class WaypointGroup {
         else if (from < currentIndex && to >= currentIndex) currentIndex--;
         else if (from > currentIndex && to <= currentIndex) currentIndex++;
         proximitySuppressedIndex = -1;
+        focusedVisibleIndex = null;
         staticReached = null;
         applyGradientIfAuto();
     }
@@ -307,6 +326,18 @@ public final class WaypointGroup {
         currentIndex = Math.max(0, Math.min(index, waypoints.size() - 1));
         proximitySuppressedIndex = currentIndex;
         resetStaticReachState();
+    }
+
+    public void focusOnlyVisibleIndex(int index) {
+        focusedVisibleIndex = index < 0 ? null : Math.min(index, waypoints.size() - 1);
+    }
+
+    public int focusedVisibleIndex() {
+        return focusedVisibleIndex == null ? -1 : focusedVisibleIndex;
+    }
+
+    public void clearFocusedVisibleIndex() {
+        focusedVisibleIndex = null;
     }
 
     public int proximitySuppressedIndex() {

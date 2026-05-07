@@ -60,9 +60,10 @@ public final class TracerRenderer {
     }
 
     private void onRender(WorldRenderContext ctx) {
-        if (!config.showTracer()) return;
         var groups = manager.activeGroups();
         if (groups.isEmpty()) return;
+        boolean tempFocus = manager.tempWaypointFocusActive();
+        if (!tempFocus && !config.showTracer()) return;
 
         PoseStack ps = ctx.matrices();
         if (ps == null) return;
@@ -96,7 +97,9 @@ public final class TracerRenderer {
         int overrideColor = config.tracerColor();
 
         for (WaypointGroup g : groups) {
-            if (config.hideTracerOnStaticRoutes() && g.loadMode() == WaypointGroup.LoadMode.STATIC) {
+            if (!tempFocus
+                    && config.hideTracerOnStaticRoutes()
+                    && g.loadMode() == WaypointGroup.LoadMode.STATIC) {
                 continue;
             }
             Waypoint target = g.current();

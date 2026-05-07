@@ -74,7 +74,7 @@ public final class WaypointerCommands {
         this.config = config;
         this.chatImportCache = chatImportCache;
         this.openGui = openGui;
-        this.addFlow = new WaypointAddFlow(config);
+        this.addFlow = new WaypointAddFlow();
     }
 
     public void install() {
@@ -626,6 +626,9 @@ public final class WaypointerCommands {
      */
     private int runAddTempAt(FabricClientCommandSource src, int x, int y, int z, String sourceName) {
         WaypointGroup target = manager.addTempWaypoint(x, y, z, sourceName);
+        if (config.focusTempWaypoints()) {
+            manager.focusTempWaypoint(target, target.size() - 1);
+        }
 
         success(src, "Added temp waypoint to \"" + target.name()
                 + "\" at " + x + ", " + y + ", " + z + " (expires on disconnect)");

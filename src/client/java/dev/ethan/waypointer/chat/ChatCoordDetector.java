@@ -67,8 +67,11 @@ public final class ChatCoordDetector {
 
         if (config.autoAddChatTempWaypoints()) {
             for (CoordScanner.Match match : matches) {
-                manager.addTempWaypoint(match.x(), match.y(), match.z(),
+                var group = manager.addTempWaypoint(match.x(), match.y(), match.z(),
                         senderNameForChatTemp(flat, match.start()));
+                if (config.focusTempWaypoints()) {
+                    manager.focusTempWaypoint(group, group.size() - 1);
+                }
             }
         }
 

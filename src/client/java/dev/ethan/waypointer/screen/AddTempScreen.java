@@ -142,6 +142,9 @@ public final class AddTempScreen extends Screen {
                 (int) Math.floor(p.getZ()));
         WaypointGroup target = manager.getOrCreateTempGroup();
         target.add(base.withTemp(mode, expiresAt));
+        if (config.focusTempWaypoints()) {
+            manager.focusTempWaypoint(target, target.size() - 1);
+        }
         manager.fireDataChanged();
 
         // Persist the user's last picks so the next "add temp" (whether from

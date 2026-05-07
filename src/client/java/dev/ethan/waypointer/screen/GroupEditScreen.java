@@ -373,7 +373,7 @@ public final class GroupEditScreen extends Screen {
                 "", Waypoint.DEFAULT_COLOR, 0, 0.0));
         // Run the shared post-add flow (auto-disable skip-ahead + toast) so the
         // GUI add button behaves identically to /wp add and the keybind path.
-        new WaypointAddFlow(config).afterWaypointAdded(group, group.size() - 1);
+        new WaypointAddFlow().afterWaypointAdded(group, group.size() - 1);
         manager.fireDataChanged();
         onManualEdit();
     }
