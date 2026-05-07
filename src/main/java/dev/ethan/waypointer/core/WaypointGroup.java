@@ -209,19 +209,38 @@ public final class WaypointGroup {
     }
 
     public void add(Waypoint w) {
+        int oldSize = waypoints.size();
         waypoints.add(w);
-        staticReached = null;
+        if (staticReached != null) {
+            if (staticReached.length != oldSize) {
+                staticReached = null;
+            } else {
+                boolean[] next = new boolean[waypoints.size()];
+                System.arraycopy(staticReached, 0, next, 0, oldSize);
+                staticReached = next;
+            }
+        }
         applyGradientIfAuto();
     }
 
     public void insert(int index, Waypoint w) {
+        int oldSize = waypoints.size();
         waypoints.add(index, w);
         if (index <= currentIndex) currentIndex++;
         if (proximitySuppressedIndex >= index) proximitySuppressedIndex++;
         if (focusedVisibleIndex != null && focusedVisibleIndex >= index) {
             focusedVisibleIndex++;
         }
-        staticReached = null;
+        if (staticReached != null) {
+            if (staticReached.length != oldSize) {
+                staticReached = null;
+            } else {
+                boolean[] next = new boolean[waypoints.size()];
+                System.arraycopy(staticReached, 0, next, 0, index);
+                System.arraycopy(staticReached, index, next, index + 1, oldSize - index);
+                staticReached = next;
+            }
+        }
         applyGradientIfAuto();
     }
 
@@ -318,6 +337,14 @@ public final class WaypointGroup {
     }
 
     public void focusNewWaypoint(int index) {
+        focusNewWaypoint(index, true);
+    }
+
+    /**
+     * @param resetStaticReachState when {@code false}, leaves {@link #staticReached} unchanged
+     *     (used after add/insert, which already resized reach bits to match the new list).
+     */
+    public void focusNewWaypoint(int index, boolean resetStaticReachState) {
         if (waypoints.isEmpty()) {
             proximitySuppressedIndex = -1;
             return;
@@ -325,7 +352,9 @@ public final class WaypointGroup {
 
         currentIndex = Math.max(0, Math.min(index, waypoints.size() - 1));
         proximitySuppressedIndex = currentIndex;
-        resetStaticReachState();
+        if (resetStaticReachState) {
+            resetStaticReachState();
+        }
     }
 
     public void focusOnlyVisibleIndex(int index) {
