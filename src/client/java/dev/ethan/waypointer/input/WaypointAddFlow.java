@@ -37,7 +37,7 @@ public final class WaypointAddFlow {
         if (group.temp()) return;
 
         WaypointGroup.LoadMode loadModeBefore = group.loadMode();
-        group.focusNewWaypoint(waypointIndex);
+        group.focusNewWaypoint(waypointIndex, false);
         boolean switchedToStatic = loadModeBefore == WaypointGroup.LoadMode.SEQUENCE;
         if (switchedToStatic) {
             group.setLoadMode(WaypointGroup.LoadMode.STATIC);
