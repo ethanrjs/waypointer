@@ -8,12 +8,12 @@ WP:4BdPN0BU%k[nFq#[FH-++?AX6bO}NHVtY(cx5KE...
 
 Paste it in chat, get back a group of waypoints. This document explains how that string is built.
 
-**Current wire version: 3.**
+**Current wire version: 4.**
 
 Reference implementation in `src/main/java/dev/ethan/waypointer/codec/`:
 
-- `WaypointCodec.java` body format, coord modes, encode/decode
-- `AsciiStreamCodec.java` text alphabet (base-93 streaming, ASCII)
+- `WaypointCodec.java` body format, coord modes, chat escaping, encode/decode
+- `AsciiStreamCodec.java` text alphabet (base-92 streaming, ASCII)
 - `AsciiPackCodec.java` retired v2 base-85 packer, kept for tests/history
 - `CodecDictionary.java` preset DEFLATE dictionary
 - `CodecZoneDictionary.java` compact known-zone refs, seeded from Skyblocker
@@ -36,7 +36,7 @@ Five steps. The top half runs on the sender, the bottom half runs on the receive
   [2] DEFLATE + dict    ──── entropy compression ──    [2] Inflate + dict
        │                                                ▲
        ▼                                                │
-  [3] base-93 text      ──── chat-safe alphabet ───    [3] base-93 decode
+  [3] base-92 + escape ──── chat-safe alphabet ───    [3] unescape + base-92
        │                                                ▲
        ▼                                                │
   [4] "WP:" prefix      ──── scanner anchor ───────    [4] Strip "WP:"
@@ -48,12 +48,13 @@ Five steps. The top half runs on the sender, the bottom half runs on the receive
 Each stage has one job:
 
 
-| Stage          | Job                                                                  |
-| -------------- | -------------------------------------------------------------------- |
-| Binary body    | Squeeze varints and bit-packed fields. Route-level smarts live here. |
-| DEFLATE + dict | Byte-level compression with a preset dictionary.                     |
-| base-93        | Turn bytes into chat-safe ASCII at 1 byte per character.             |
-| `WP:` prefix   | Lets the chat scanner find the string without parsing it.            |
+| Stage          | Job                                                                    |
+| -------------- | ---------------------------------------------------------------------- |
+| Binary body    | Squeeze varints and bit-packed fields. Route-level smarts live here.   |
+| DEFLATE + dict | Byte-level compression with a preset dictionary.                       |
+| base-92        | Turn bytes into chat-safe ASCII at 1 byte per character.               |
+| chat escape    | Split Hypixel's `<3`/`o/` MVP++ emote triggers without changing bytes. |
+| `WP:` prefix   | Lets the chat scanner find the string without parsing it.              |
 
 
 ---
@@ -69,7 +70,7 @@ The format is built around that number:
 ```
   Total budget: 256 wire bytes per /command
   ┌──────────────────────────────────────────────────────────────┐
-  │  /pc  │  WP:  │  ............  base-93 body  ............   │
+  │  /pc  │  WP:  │  ............  base-92 body  ............   │
   └───────┴───────┴──────────────────────────────────────────────┘
     3 B     3 B                    up to ~250 B
 ```
@@ -79,7 +80,9 @@ Everything in the codec is in service of cramming the most route info into those
 Other constraints shaping the design:
 
 - Chat validation strips control characters, collapses whitespace, rejects `§` (`U+00A7`).
-- Hypixel's advertising filter disconnects senders whose message looks URL-shaped, in particular, anything with a `.` in it. That's why the alphabet swaps `.` for `;`.
+- Hypixel's advertising filter disconnects senders whose message looks URL-shaped, in particular, anything with a `.` in it. That's why the alphabet excludes `.`.
+- Hypixel rewrites `<3` and `o/` to MVP++ emotes before recipients see chat. The encoder escapes those pairs after base-92 packing so route bytes do not get malformed in transit.
+- Backticks make payloads awkward in Markdown-heavy surfaces like Discord, so v4 excludes them from the output alphabet.
 - Copy-paste must round-trip byte-identically.
 - Hover tooltips need a cheap partial decode (the optional label).
 - Exports describe a route to share, not a session — no progress state, no personal toggles.
@@ -97,18 +100,18 @@ The body decodes to bytes, which are raw DEFLATE, which inflates to the binary b
 
 ---
 
-## 4. Text Alphabet (base-93)
+## 4. Text Alphabet (base-92)
 
 ### 4.1 Characters
 
-93 printable ASCII characters. Every printable ASCII character except space and `.`:
+92 printable ASCII characters. Every printable ASCII character except space, `.`, and ```:
 
 ```
   ! " # $ % & ' ( ) * + , - /
   0 1 2 3 4 5 6 7 8 9
   : ; < = > ? @
   A B C D E F G H I J K L M N O P Q R S T U V W X Y Z
-  [ \ ] ^ _ `
+  [ \ ] ^ _
   a b c d e f g h i j k l m n o p q r s t u v w x y z
   { | } ~
 ```
@@ -119,21 +122,32 @@ Every character:
 - is not `.`, so sequences can't look like `host.tld` to Hypixel's ad filter
 - is not whitespace, so paste can't collapse runs
 - is not `§`, so chat validation never treats a body character as a color code
+- is not ```, so route strings can be pasted into Markdown without opening code spans
 - is printable ASCII
+
+v4 applies one reversible chat escape after base-92 packing: `~` is doubled,
+`<3` becomes `<~3`, and `o/` becomes `o~/`. The escape character is part of the
+base-92 alphabet, so the scanner still sees one contiguous `WP:` body and the
+escape costs only when a risky pair actually appears. Legacy v3 bodies skip this
+step and still decode through the compatibility path.
 
 ### 4.2 Packing
 
-The v3 text layer is the basE91 streaming scheme generalized to a 93-symbol
+The v4 text layer is the basE91 streaming scheme generalized to a 92-symbol
 alphabet. It accumulates source bits and emits 13 or 14 bits per two output
-characters depending on whether the current 14-bit value fits in `93²`.
+characters depending on whether the current 14-bit value fits in `92²`.
 
 ```
-  93² = 8649
+  92² = 8464
   2¹³ = 8192
 
   Most pairs carry 13 bits.
-  457 low-value pairs carry 14 bits because they still fit below 8649.
+  272 low-value pairs carry 14 bits because they still fit below 8464.
 ```
+
+Legacy v3 uses the same streaming scheme with the older 93-symbol alphabet,
+which included backtick. The scanner accepts both alphabets so old chat exports
+still get detected.
 
 There is no pad trailer. The final partial bit buffer is emitted as one or two
 characters, and decode reconstructs the exact original byte length.
@@ -141,7 +155,7 @@ characters, and decode reconstructs the exact original byte length.
 Output length is data-dependent, typically about `ceil(n * 1.22)` characters
 for `n` compressed bytes.
 
-### 4.3 Why base-93 and not CJK / base64 / base-85?
+### 4.3 Why base-92 and not CJK / base64 / base-85?
 
 The real budget is UTF-8 bytes, not visible glyph count:
 
@@ -150,11 +164,12 @@ The real budget is UTF-8 bytes, not visible glyph count:
 | --------------------- | --------- | ---------------- | ---------------------- | -------------------------------------- |
 | base64                | 6.00      | 1                | 6.00                   | safe but wastes capacity               |
 | v2 base-85            | 6.41      | 1                | 6.41                   | fixed 4-byte/5-char groups + 1 trailer |
-| **v3 base-93 stream** | ~6.53     | 1                | ~6.53                  | no trailer, variable 13/14-bit pairs   |
+| **v4 base-92 stream** | ~6.52     | 1                | ~6.52                  | no trailer, variable 13/14-bit pairs   |
+| v3 base-93 stream     | ~6.53     | 1                | ~6.53                  | legacy; includes backtick              |
 | CJK base-16384        | 14.00     | 3                | 4.67                   | visually short, byte-expensive         |
 
 
-CJK looks like it wins on raw density (14 bits per character), but each character costs 3 UTF-8 bytes on the wire, so it's actually the worst per-byte. v1 used it because we were optimising for the chat textbox, not the server byte cap. v2 fixed that with base-85; v3 removes the base-85 pad trailer and uses the remaining printable ASCII capacity.
+CJK looks like it wins on raw density (14 bits per character), but each character costs 3 UTF-8 bytes on the wire, so it's actually the worst per-byte. v1 used it because we were optimising for the chat textbox, not the server byte cap. v2 fixed that with base-85; v3 removed the base-85 pad trailer, and v4 spends one symbol of capacity to avoid Markdown backticks.
 
 ### 4.4 Decode safety
 
@@ -230,7 +245,7 @@ All multi-byte numbers use varints or zigzag varints (§7). No raw little- or bi
       │ r │ r │ L │ N │    version    │
       └───┴───┴───┴───┴───────────────┘
         │   │   │   │        │
-        │   │   │   │        └── 4 bits; MUST be non-zero; current: 2
+        │   │   │   │        └── 4 bits; MUST be non-zero; current: 4
         │   │   │   └─────────── HEADER_FLAG_NAMES (informational)
         │   │   └─────────────── HEADER_FLAG_LABEL (a label byte-string follows)
         │   └─────────────────── reserved (encoder writes 0, decoder ignores)
@@ -389,7 +404,7 @@ Origins are the per-axis `min` across the group, so every delta is ≥ 0 and no 
 #### Picking a mode
 
 The encoder tries every eligible mode, runs each candidate through DEFLATE plus
-the base-93 text layer, and picks the one whose final text length is smallest.
+the base-92 text layer, and picks the one whose final text length is smallest.
 Comparing raw bytes isn't enough — a repetitive VECTOR delta stream can look
 large but compress to almost nothing, while an already-dense FIT_COMPACT
 bitstream compresses poorly.
@@ -489,11 +504,14 @@ Signed values are "zigzagged" first so small negatives stay one byte:
        ▼
   write binary body   ──┐
        │                │ for each group, run every eligible
-       ▼                ├─ coord mode through trial DEFLATE + base-93
+       ▼                ├─ coord mode through trial DEFLATE + base-92
   DEFLATE + preset dict ┘ and pick the shortest text
        │
        ▼
-  base-93 encode
+  base-92 encode
+       │
+       ▼
+  escape <3 / o/ pairs
        │
        ▼
   prepend "WP:"
@@ -511,7 +529,10 @@ Signed values are "zigzagged" first so small negatives stay one byte:
   verify "WP:" prefix
        │
        ▼
-  base-93 decode
+  remove v4 chat escape
+       │
+       ▼
+  base-92 decode
        │
        ▼
   Inflate + preset dict
@@ -537,14 +558,15 @@ Signed values are "zigzagged" first so small negatives stay one byte:
 
 Unknown-version payloads fail fast with `unsupported wire version N` instead of limping through a misinterpreted body.
 
-Current decoders accept both v3 and legacy v2 exports:
+Current decoders accept v4, legacy v3, and legacy v2 exports:
 
+- v4: `AsciiStreamCodec` base-92 text layer + Hypixel emote escape + v4 header.
 - v3: `AsciiStreamCodec` base-93 text layer + v3 body (`zoneRef`, inline names,
 bodyless groups).
 - v2: `AsciiPackCodec` base-85 text layer + v2 body (zone IDs are string-pool
 indexes, waypoint names are always pool refs, bit 0 of group flags is ignored).
 
-The encoder only writes v3.
+The encoder only writes v4.
 
 ### 8.3 peekLabel
 
@@ -552,7 +574,7 @@ Chat-hover tooltip path:
 
 ```
   peekLabel(text):
-    same prefix / base-93 / inflate path as decode
+    same prefix / v4-unescape / base-92 / inflate path as decode, then legacy fallbacks
     read header byte
     if version mismatch or HEADER_FLAG_LABEL unset → Optional.empty()
     read label, sanitize, return
@@ -633,7 +655,7 @@ bytes), well inside a single chat command.
 ## 12. Non-Goals
 
 - Random Access Format is sequential, no index, no length-prefixed group, no "seek to group 3."
-- Human readability, base-93 text looks like line noise. Use `debugDecode` or hex-dump the raw body.
+- Human readability, base-92 text looks like line noise. Use `debugDecode` or hex-dump the raw body.
 - Interchange with other mods, `WP:` is native. `WaypointImporter` handles Skyblocker, Skytils, Soopy, and Coleweight payloads separately; they don't share bytes with this codec.
 - Cross-version forward compat, an older build that sees a newer `WIRE_VERSION` refuses to decode. Guessing at a newer layout risks silent misreads.
 
@@ -645,7 +667,7 @@ bytes), well inside a single chat command.
 | Path                                                     | Responsibility                                                            |
 | -------------------------------------------------------- | ------------------------------------------------------------------------- |
 | `codec/WaypointCodec.java`                               | Body format, coord modes, options, encode/decode.                         |
-| `codec/AsciiStreamCodec.java`                            | base-93 text alphabet, streaming pack/unpack, validation.                 |
+| `codec/AsciiStreamCodec.java`                            | base-92 text alphabet, streaming pack/unpack, validation.                 |
 | `codec/AsciiPackCodec.java`                              | Retired v2 base-85 packer, kept for regression tests/history.             |
 | `codec/CodecDictionary.java`                             | Preset DEFLATE dictionary.                                                |
 | `codec/CodecZoneDictionary.java`                         | Skyblocker-seeded known-zone dictionary.                                  |

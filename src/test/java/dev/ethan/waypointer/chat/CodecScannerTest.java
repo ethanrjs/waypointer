@@ -108,6 +108,31 @@ class CodecScannerTest {
     }
 
     @Test
+    void extracts_export_before_clause_punctuation_after_greedy_body() {
+        String export = sampleExport();
+        // Comma/close-paren are in the v3 alphabet; they must not be consumed as body
+        // when they belong to the surrounding sentence.
+        String afterComma = "Try " + export + ", then head north";
+        List<CodecScanner.Match> a = CodecScanner.scan(afterComma);
+        assertEquals(1, a.size());
+        assertEquals(export, a.get(0).text(), "trailing clause punctuation must not be part of the payload");
+
+        String paren = "(" + export + ") for you";
+        List<CodecScanner.Match> b = CodecScanner.scan(paren);
+        assertEquals(1, b.size());
+        assertEquals(export, b.get(0).text(), "closing paren after export must not be absorbed");
+    }
+
+    @Test
+    void detects_codec_immediately_after_clause_punctuation() {
+        String export = sampleExport();
+        String message = "As I said," + export + " works great";
+        List<CodecScanner.Match> matches = CodecScanner.scan(message);
+        assertEquals(1, matches.size());
+        assertEquals(export, matches.get(0).text());
+    }
+
+    @Test
     void rejects_magic_mid_word_when_preceding_char_is_ascii_alphanumeric() {
         // v2 uses an ASCII alphabet, so without the word-boundary guard a chat
         // line like "fileWP:stuff" would fire the import pill. The scanner

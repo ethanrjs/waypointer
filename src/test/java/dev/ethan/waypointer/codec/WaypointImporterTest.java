@@ -39,6 +39,31 @@ class WaypointImporterTest {
     }
 
     @Test
+    void unwraps_markdown_code_block_around_native_payload() {
+        WaypointGroup g = WaypointGroup.create("Gold", "dungeon_f7");
+        g.add(Waypoint.at(1, 2, 3));
+        String native_ = WaypointCodec.encode(List.of(g));
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny("```\n" + native_ + "\n```");
+
+        assertEquals(WaypointImporter.Source.WAYPOINTER, result.source());
+        assertEquals(1, result.groups().size());
+        assertEquals("dungeon_f7", result.groups().get(0).zoneId());
+    }
+
+    @Test
+    void unwraps_language_tagged_markdown_code_block_around_native_payload() {
+        WaypointGroup g = WaypointGroup.create("Gold", "dungeon_f7");
+        g.add(Waypoint.at(1, 2, 3));
+        String native_ = WaypointCodec.encode(List.of(g));
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny("```text\n" + native_ + "\n```");
+
+        assertEquals(WaypointImporter.Source.WAYPOINTER, result.source());
+        assertEquals(1, result.groups().size());
+    }
+
+    @Test
     void non_waypointer_sources_default_label_to_empty_string() {
         // JSON / Skyblocker / Skytils paths don't carry a Waypointer label, so
         // ImportResult.label() must be an empty string (never null) for them
@@ -65,6 +90,32 @@ class WaypointImporterTest {
         assertEquals(2, g.size());
         assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
         assertEquals(0x102030, g.get(0).color());
+    }
+
+    @Test
+    void malformed_skytils_colon_color_falls_back_to_default_color() {
+        String json = "{\"name\":\"Fetchur\",\"island\":\"mining-hub\",\"waypoints\":["
+                + "{\"name\":\"bad\",\"x\":1,\"y\":70,\"z\":2,\"color\":\"0.5:ff:zz:20:30\"},"
+                + "{\"name\":\"short\",\"x\":5,\"y\":70,\"z\":10,\"color\":\"0.5:ff:10\"}"
+                + "]}";
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
+        WaypointGroup g = result.groups().get(0);
+
+        assertEquals(2, g.size());
+        assertEquals(Waypoint.DEFAULT_COLOR, g.get(0).color());
+        assertEquals(Waypoint.DEFAULT_COLOR, g.get(1).color());
+    }
+
+    @Test
+    void malformed_hex_color_falls_back_to_default_color() {
+        String json = "{\"name\":\"Fetchur\",\"island\":\"mining-hub\",\"waypoints\":["
+                + "{\"name\":\"bad\",\"x\":1,\"y\":70,\"z\":2,\"color\":\"#nothex\"}"
+                + "]}";
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
+
+        assertEquals(Waypoint.DEFAULT_COLOR, result.groups().get(0).get(0).color());
     }
 
     @Test
@@ -132,13 +183,25 @@ class WaypointImporterTest {
     }
 
     @Test
-    void decodes_base64_gzipped_json_payload() throws Exception {
+    void unprefixed_base64_gzipped_json_preserves_inner_json_source() throws Exception {
         String json = "[{\"name\":\"Glacite\",\"island\":\"glacite\",\"waypoints\":[{\"x\":1,\"y\":2,\"z\":3}]}]";
         String packed = Base64.getEncoder().encodeToString(gzip(json));
         WaypointImporter.ImportResult result = WaypointImporter.importAny(packed);
-        assertEquals(WaypointImporter.Source.SKYBLOCKER, result.source());
+        assertEquals(WaypointImporter.Source.JSON, result.source());
         assertEquals(1, result.groups().size());
         assertEquals("Glacite", result.groups().get(0).name());
+    }
+
+    @Test
+    void explicit_skyblocker_prefix_forces_skyblocker_source() throws Exception {
+        String json = "[{\"name\":\"Glacite\",\"island\":\"glacite\",\"waypoints\":[{\"x\":1,\"y\":2,\"z\":3}]}]";
+        String packed = WaypointImporter.SKYBLOCKER_V1_PREFIX
+                + Base64.getEncoder().encodeToString(gzip(json));
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(packed);
+
+        assertEquals(WaypointImporter.Source.SKYBLOCKER, result.source());
+        assertEquals(1, result.groups().size());
     }
 
     @Test
@@ -148,8 +211,9 @@ class WaypointImporterTest {
     }
 
     @Test
-    void parses_coleweight_flat_array_with_options_name() {
-        // Mirrors a real coleweight export: flat array, float 0-1 r/g/b, options.name holds the step index.
+    void parses_skyhanni_flat_array_with_options_name() {
+        // SkyHanni uses the same flat route schema as legacy Coleweight:
+        // float 0-1 r/g/b, options.name holds the step index.
         String json = "["
                 + "{\"x\":100,\"y\":64,\"z\":200,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":1}},"
                 + "{\"x\":110,\"y\":64,\"z\":210,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":2}},"
@@ -157,19 +221,21 @@ class WaypointImporterTest {
                 + "]";
         WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
 
-        assertEquals(WaypointImporter.Source.COLEWEIGHT, result.source());
+        assertEquals(WaypointImporter.Source.SKYHANNI, result.source());
         assertEquals(1, result.groups().size());
         WaypointGroup g = result.groups().get(0);
+        assertEquals("Imported Route", g.name());
         assertEquals(3, g.size());
         assertEquals("1", g.get(0).name());
         assertEquals(100, g.get(0).x());
         assertEquals(220, g.get(2).z());
-        // Coleweight payloads carry no zone info, so parse time must leave the
+        // SkyHanni payloads carry no zone info, so parse time must leave the
         // group tagged UNKNOWN -- the command-layer retarget step is what
         // snaps it to the player's current zone. If the parser ever picks
         // a default zone on its own, the retarget step becomes a no-op and
         // this test (plus the call-site retarget test below) would flag it.
         assertEquals(dev.ethan.waypointer.core.Zone.UNKNOWN.id(), g.zoneId());
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
         // AUTO gradient rewrites colors on insert; what matters is the group picked AUTO
         // (so users can see route direction), not the specific post-gradient color.
         assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());

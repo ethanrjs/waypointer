@@ -51,8 +51,75 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void nullBeaconBeamModeFallsBackToOff() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setBeaconBeamMode(null);
+
+        assertEquals(WaypointerConfig.BeaconBeamMode.OFF, config.beaconBeamMode());
+    }
+
+    @Test
+    void visualCustomizationDefaultsPreserveCurrentRendering() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertEquals(WaypointerConfig.BeaconBeamMode.OFF, config.beaconBeamMode());
+        assertFalse(config.beaconBeamExtendsBelowWaypoint());
+        assertTrue(config.showWaypointDistances());
+        assertEquals(0, config.maxWaypointLabels());
+        assertEquals(0.0, config.maxStaticWaypointRenderDistance());
+    }
+
+    @Test
+    void visualCustomizationTogglesCanBeChanged() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setBeaconBeamMode(WaypointerConfig.BeaconBeamMode.ALL_VISIBLE);
+        config.setBeaconBeamExtendsBelowWaypoint(true);
+        config.setShowWaypointDistances(false);
+
+        assertEquals(WaypointerConfig.BeaconBeamMode.ALL_VISIBLE, config.beaconBeamMode());
+        assertTrue(config.beaconBeamExtendsBelowWaypoint());
+        assertFalse(config.showWaypointDistances());
+    }
+
+    @Test
+    void performanceBudgetsDefaultToUnlimitedAndClampToDisabled() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setMaxWaypointLabels(75);
+        assertEquals(75, config.maxWaypointLabels());
+
+        config.setMaxWaypointLabels(-1);
+        assertEquals(0, config.maxWaypointLabels());
+
+        config.setMaxStaticWaypointRenderDistance(128.5);
+        assertEquals(128.5, config.maxStaticWaypointRenderDistance());
+
+        config.setMaxStaticWaypointRenderDistance(-20.0);
+        assertEquals(0.0, config.maxStaticWaypointRenderDistance());
+    }
+
+    @Test
+    void performanceDistanceBudgetRejectsNonFiniteValues() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setMaxStaticWaypointRenderDistance(250.0);
+
+        config.setMaxStaticWaypointRenderDistance(Double.NaN);
+        assertEquals(250.0, config.maxStaticWaypointRenderDistance());
+
+        config.setMaxStaticWaypointRenderDistance(Double.POSITIVE_INFINITY);
+        assertEquals(250.0, config.maxStaticWaypointRenderDistance());
+    }
+
+    @Test
     void tempWaypointDefaultsStayInsideSupportedModes() {
         WaypointerConfig config = new WaypointerConfig();
+
+        assertFalse(config.focusTempWaypoints());
+
+        config.setFocusTempWaypoints(true);
+        assertTrue(config.focusTempWaypoints());
 
         config.setTempDefaultMode(1);
         assertEquals(1, config.tempDefaultMode());

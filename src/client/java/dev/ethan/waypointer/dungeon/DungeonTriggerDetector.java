@@ -18,10 +18,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Set;
+import java.util.Map;
 
 /**
  * Converts normal client-observable dungeon actions into secret progress.
@@ -38,8 +38,8 @@ public final class DungeonTriggerDetector {
 
     private final DungeonStateTracker tracker;
     private final DungeonRouteSession session;
-    private final Set<Integer> nearbyItemIds = new HashSet<>();
-    private final Set<Integer> nearbyBatIds = new HashSet<>();
+    private final Map<Integer, EntityPosition> nearbyItemEntities = new HashMap<>();
+    private final Map<Integer, EntityPosition> nearbyBatEntities = new HashMap<>();
 
     private int tickCounter;
 
@@ -66,10 +66,11 @@ public final class DungeonTriggerDetector {
     private void onUseBlock(BlockPos pos, ItemStack held) {
         DungeonRoom room = tracker.currentRoom();
         if (room == null) return;
+        List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
 
         ClientLevel level = Minecraft.getInstance().level;
         BlockState state = level == null ? null : level.getBlockState(pos);
-        for (DungeonWaypoint waypoint : DungeonRoomData.waypointsFor(room)) {
+        for (DungeonWaypoint waypoint : waypoints) {
             if (!matchesAnyTarget(room, waypoint, pos)) continue;
             if (useMatchesTrigger(waypoint, held, state)) {
                 session.markFound(room, waypoint.secretIndex());
@@ -80,7 +81,9 @@ public final class DungeonTriggerDetector {
     private void onAttackBlock(BlockPos pos) {
         DungeonRoom room = tracker.currentRoom();
         if (room == null) return;
-        for (DungeonWaypoint waypoint : DungeonRoomData.waypointsFor(room)) {
+        List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
+
+        for (DungeonWaypoint waypoint : waypoints) {
             if ((waypoint.trigger() == DungeonWaypointTrigger.BREAK_BLOCKS
                     || waypoint.trigger() == DungeonWaypointTrigger.DUNGEONBREAKER)
                     && matchesAnyTarget(room, waypoint, pos)) {
@@ -94,7 +97,8 @@ public final class DungeonTriggerDetector {
         if (room == null) return;
 
         String text = message.getString().toLowerCase(Locale.ROOT);
-        for (DungeonWaypoint waypoint : DungeonRoomData.waypointsFor(room)) {
+        List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
+        for (DungeonWaypoint waypoint : waypoints) {
             if (waypoint.trigger() != DungeonWaypointTrigger.CHAT_MESSAGE) continue;
             String needle = waypoint.hasName() ? waypoint.name() : waypoint.category().id;
             if (!needle.isBlank() && text.contains(needle.toLowerCase(Locale.ROOT))) {
@@ -110,17 +114,19 @@ public final class DungeonTriggerDetector {
         DungeonRoom room = tracker.currentRoom();
         ClientLevel level = client.level;
         if (room == null || level == null) {
-            nearbyItemIds.clear();
-            nearbyBatIds.clear();
+            nearbyItemEntities.clear();
+            nearbyBatEntities.clear();
             return;
         }
+        List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
 
-        checkBreakTargets(level, room);
-        checkEntityDisappearance(level, room);
+        checkBreakTargets(level, room, waypoints);
+        checkEntityDisappearance(level, room, waypoints);
     }
 
-    private void checkBreakTargets(ClientLevel level, DungeonRoom room) {
-        for (DungeonWaypoint waypoint : DungeonRoomData.waypointsFor(room)) {
+    private void checkBreakTargets(ClientLevel level, DungeonRoom room,
+                                   List<DungeonWaypoint> waypoints) {
+        for (DungeonWaypoint waypoint : waypoints) {
             if (waypoint.trigger() != DungeonWaypointTrigger.BREAK_BLOCKS
                     && waypoint.trigger() != DungeonWaypointTrigger.DUNGEONBREAKER
                     && waypoint.trigger() != DungeonWaypointTrigger.USE_SUPERBOOM) {
@@ -139,34 +145,36 @@ public final class DungeonTriggerDetector {
         }
     }
 
-    private void checkEntityDisappearance(ClientLevel level, DungeonRoom room) {
-        Set<Integer> itemsNow = new HashSet<>();
-        Set<Integer> batsNow = new HashSet<>();
+    private void checkEntityDisappearance(ClientLevel level, DungeonRoom room,
+                                          List<DungeonWaypoint> waypoints) {
+        Map<Integer, EntityPosition> itemsNow = new HashMap<>();
+        Map<Integer, EntityPosition> batsNow = new HashMap<>();
         for (Entity entity : level.entitiesForRendering()) {
-            if (entity instanceof ItemEntity && nearAnyEntityTrigger(room, entity, DungeonWaypointTrigger.PICKUP_ITEM)) {
-                itemsNow.add(entity.getId());
+            if (entity instanceof ItemEntity
+                    && nearAnyEntityTrigger(room, waypoints, entity, DungeonWaypointTrigger.PICKUP_ITEM)) {
+                itemsNow.put(entity.getId(), EntityPosition.of(entity));
             } else if (entity instanceof AmbientCreature
-                    && nearAnyEntityTrigger(room, entity, DungeonWaypointTrigger.KILL_BAT)) {
-                batsNow.add(entity.getId());
+                    && nearAnyEntityTrigger(room, waypoints, entity, DungeonWaypointTrigger.KILL_BAT)) {
+                batsNow.put(entity.getId(), EntityPosition.of(entity));
             }
         }
 
-        if (!nearbyItemIds.isEmpty() && itemsNow.size() < nearbyItemIds.size()) {
-            markNearestEntityTrigger(room, DungeonWaypointTrigger.PICKUP_ITEM);
-        }
-        if (!nearbyBatIds.isEmpty() && batsNow.size() < nearbyBatIds.size()) {
-            markNearestEntityTrigger(room, DungeonWaypointTrigger.KILL_BAT);
-        }
-        nearbyItemIds.clear();
-        nearbyItemIds.addAll(itemsNow);
-        nearbyBatIds.clear();
-        nearbyBatIds.addAll(batsNow);
+        markMissingEntityTriggers(room, waypoints, DungeonWaypointTrigger.PICKUP_ITEM,
+                nearbyItemEntities, itemsNow);
+        markMissingEntityTriggers(room, waypoints, DungeonWaypointTrigger.KILL_BAT,
+                nearbyBatEntities, batsNow);
+
+        nearbyItemEntities.clear();
+        nearbyItemEntities.putAll(itemsNow);
+        nearbyBatEntities.clear();
+        nearbyBatEntities.putAll(batsNow);
     }
 
     private boolean useMatchesTrigger(DungeonWaypoint waypoint, ItemStack held, BlockState state) {
         return switch (waypoint.trigger()) {
-            case INTERACT_BLOCK -> true;
-            case OPEN_CHEST -> state != null && (state.is(Blocks.CHEST) || state.is(Blocks.TRAPPED_CHEST));
+            case INTERACT_BLOCK -> state != null && !state.isAir();
+            case OPEN_CHEST -> state != null
+                    && (state.is(Blocks.CHEST) || state.is(Blocks.TRAPPED_CHEST));
             case FLIP_LEVER -> state != null && state.is(Blocks.LEVER);
             case USE_SUPERBOOM -> itemNameContains(held, "superboom");
             default -> false;
@@ -178,31 +186,35 @@ public final class DungeonTriggerDetector {
         return stack.getHoverName().getString().toLowerCase(Locale.ROOT).contains(needle);
     }
 
-    private static boolean nearAnyEntityTrigger(DungeonRoom room, Entity entity,
-                                                DungeonWaypointTrigger trigger) {
-        for (DungeonWaypoint waypoint : DungeonRoomData.waypointsFor(room)) {
-            if (waypoint.trigger() == trigger && distanceToWaypoint(room, waypoint, entity) <= ENTITY_TRIGGER_RANGE_SQ) {
-                return true;
-            }
-        }
-        return false;
+    private static boolean nearAnyEntityTrigger(
+            DungeonRoom room,
+            List<DungeonWaypoint> waypoints,
+            Entity entity,
+            DungeonWaypointTrigger trigger) {
+        return DungeonTriggerSelection.nearestEntityTrigger(
+                room,
+                waypoints,
+                trigger,
+                entity.getX(),
+                entity.getY(),
+                entity.getZ(),
+                ENTITY_TRIGGER_RANGE_SQ) != null;
     }
 
-    private void markNearestEntityTrigger(DungeonRoom room, DungeonWaypointTrigger trigger) {
-        for (DungeonWaypoint waypoint : DungeonRoomData.waypointsFor(room)) {
-            if (waypoint.trigger() == trigger) {
-                session.markFound(room, waypoint.secretIndex());
-                return;
-            }
-        }
-    }
+    private void markMissingEntityTriggers(
+            DungeonRoom room,
+            List<DungeonWaypoint> waypoints,
+            DungeonWaypointTrigger trigger,
+            Map<Integer, EntityPosition> previous,
+            Map<Integer, EntityPosition> current) {
+        for (Map.Entry<Integer, EntityPosition> entry : previous.entrySet()) {
+            if (current.containsKey(entry.getKey())) continue;
 
-    private static double distanceToWaypoint(DungeonRoom room, DungeonWaypoint waypoint, Entity entity) {
-        BlockPos pos = worldPos(room, waypoint.x(), waypoint.y(), waypoint.z());
-        double dx = entity.getX() - (pos.getX() + 0.5);
-        double dy = entity.getY() - (pos.getY() + 0.5);
-        double dz = entity.getZ() - (pos.getZ() + 0.5);
-        return dx * dx + dy * dy + dz * dz;
+            EntityPosition pos = entry.getValue();
+            DungeonWaypoint waypoint = DungeonTriggerSelection.nearestEntityTrigger(
+                    room, waypoints, trigger, pos.x(), pos.y(), pos.z(), ENTITY_TRIGGER_RANGE_SQ);
+            if (waypoint != null) session.markFound(room, waypoint.secretIndex());
+        }
     }
 
     private static boolean matchesAnyTarget(DungeonRoom room, DungeonWaypoint waypoint, BlockPos pos) {
@@ -225,5 +237,12 @@ public final class DungeonTriggerDetector {
         int[] world = DungeonMapMath.relativeToActual(
                 room.direction(), room.physicalCornerX(), room.physicalCornerZ(), x, y, z);
         return new BlockPos(world[0], world[1], world[2]);
+    }
+
+    private record EntityPosition(double x, double y, double z) {
+
+        static EntityPosition of(Entity entity) {
+            return new EntityPosition(entity.getX(), entity.getY(), entity.getZ());
+        }
     }
 }

@@ -25,6 +25,7 @@ bin/
 
 # fabric
 run/
+logs/
 
 # java
 hs_err_*.log
@@ -34,3 +35,4 @@ replay_*.log
 
 # local / Gradle noise
 *.log
+*.log.gz

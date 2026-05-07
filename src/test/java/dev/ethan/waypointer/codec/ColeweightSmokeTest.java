@@ -28,8 +28,8 @@ class ColeweightSmokeTest {
         String json = Files.readString(p);
 
         WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
-        assertEquals(WaypointImporter.Source.COLEWEIGHT, result.source(),
-                "should auto-detect the coleweight wire format");
+        assertEquals(WaypointImporter.Source.SKYHANNI, result.source(),
+                "SkyHanni and legacy Coleweight share this wire format");
         assertEquals(1, result.groups().size(), "coleweight exports are a single flat route");
 
         WaypointGroup g = result.groups().get(0);
@@ -45,7 +45,7 @@ class ColeweightSmokeTest {
         }
         assertEquals(g.size(), names.size(), "every step should carry a distinct name");
 
-        System.out.printf("coleweight import: %d waypoints, first=(%d,%d,%d)%n",
-                g.size(), g.get(0).x(), g.get(0).y(), g.get(0).z());
+        assertTrue(g.get(0).y() >= -64 && g.get(0).y() <= 319,
+                "first waypoint should be inside Minecraft build height");
     }
 }

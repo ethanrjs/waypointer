@@ -15,6 +15,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 
 /**
  * Reads and writes the user's waypoint groups as JSON at
@@ -63,12 +66,8 @@ public final class Storage {
             if (!Files.exists(file)) return;
             String raw = Files.readString(file);
             if (raw.isBlank()) return;
-            JsonObject root = GSON.fromJson(raw, JsonObject.class);
-            manager.clear();
-            JsonArray groups = root.has("groups") ? root.getAsJsonArray("groups") : new JsonArray();
-            for (JsonElement el : groups) {
-                manager.add(groupFromJson(el.getAsJsonObject()));
-            }
+            List<WaypointGroup> groups = parseGroups(raw);
+            manager.replaceAll(groups);
             Waypointer.LOGGER.info("Loaded {} waypoint group(s) from {}", groups.size(), file);
         } catch (Exception e) {
             Waypointer.LOGGER.error("Failed to load waypoints from {}", file, e);
@@ -117,7 +116,9 @@ public final class Storage {
             JsonObject root = new JsonObject();
             root.addProperty("schema", SCHEMA_VERSION);
             JsonArray groups = new JsonArray();
-            for (WaypointGroup g : managerRef.allGroups()) groups.add(groupToJson(g));
+            for (WaypointGroup g : managerRef.allGroups()) {
+                if (!g.temp()) groups.add(groupToJson(g));
+            }
             root.add("groups", groups);
 
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
@@ -129,6 +130,31 @@ public final class Storage {
     }
 
     // --- JSON codec -----------------------------------------------------------------
+
+    private static List<WaypointGroup> parseGroups(String raw) {
+        JsonElement parsed = GSON.fromJson(raw, JsonElement.class);
+        if (parsed == null || !parsed.isJsonObject()) {
+            throw new IllegalArgumentException("waypoints root must be a JSON object");
+        }
+
+        JsonObject root = parsed.getAsJsonObject();
+        if (!root.has("groups")) return List.of();
+
+        JsonElement groupsElement = root.get("groups");
+        if (groupsElement == null || groupsElement.isJsonNull() || !groupsElement.isJsonArray()) {
+            throw new IllegalArgumentException("waypoints groups must be a JSON array");
+        }
+
+        JsonArray groupsJson = groupsElement.getAsJsonArray();
+        List<WaypointGroup> groups = new ArrayList<>(groupsJson.size());
+        for (JsonElement el : groupsJson) {
+            if (el == null || !el.isJsonObject()) {
+                throw new IllegalArgumentException("waypoint group entry must be a JSON object");
+            }
+            groups.add(groupFromJson(el.getAsJsonObject()));
+        }
+        return groups;
+    }
 
     static JsonObject groupToJson(WaypointGroup g) {
         JsonObject o = new JsonObject();
@@ -164,22 +190,20 @@ public final class Storage {
         WaypointGroup g = new WaypointGroup(id, name, zone);
         if (o.has("enabled"))       g.setEnabled(o.get("enabled").getAsBoolean());
         if (o.has("defaultRadius")) g.setDefaultRadius(o.get("defaultRadius").getAsDouble());
-        if (o.has("gradientMode")) {
-            try { g.setGradientMode(WaypointGroup.GradientMode.valueOf(o.get("gradientMode").getAsString())); }
-            catch (IllegalArgumentException ignored) {}
-        }
-        if (o.has("loadMode")) {
-            try { g.setLoadMode(WaypointGroup.LoadMode.valueOf(o.get("loadMode").getAsString())); }
-            catch (IllegalArgumentException ignored) {}
-        }
+        if (o.has("gradientMode")) parseEnum(WaypointGroup.GradientMode.class,
+                o.get("gradientMode").getAsString()).ifPresent(g::setGradientMode);
+        if (o.has("loadMode")) parseEnum(WaypointGroup.LoadMode.class,
+                o.get("loadMode").getAsString()).ifPresent(g::setLoadMode);
         // Gradient endpoints were added after schema v1 so both fields are optional;
         // missing values leave the group on its built-in cyan/red defaults.
         if (o.has("gradientStartColor")) g.setGradientStartColor(o.get("gradientStartColor").getAsInt());
         if (o.has("gradientEndColor"))   g.setGradientEndColor(o.get("gradientEndColor").getAsInt());
         if (o.has("waypoints")) {
+            List<Waypoint> waypoints = new ArrayList<>(o.getAsJsonArray("waypoints").size());
             for (JsonElement el : o.getAsJsonArray("waypoints")) {
-                g.add(waypointFromJson(el.getAsJsonObject()));
+                waypoints.add(waypointFromJson(el.getAsJsonObject()));
             }
+            g.addAll(waypoints);
         }
         if (o.has("currentIndex")) g.setCurrentIndex(o.get("currentIndex").getAsInt());
         return g;
@@ -206,5 +230,14 @@ public final class Storage {
         int flags    = o.has("flags")  ? o.get("flags").getAsInt()     : 0;
         double rad   = o.has("radius") ? o.get("radius").getAsDouble() : 0.0;
         return new Waypoint(x, y, z, name, color, flags, rad);
+    }
+
+    private static <E extends Enum<E>> Optional<E> parseEnum(Class<E> type, String raw) {
+        if (raw == null || raw.isBlank()) return Optional.empty();
+        try {
+            return Optional.of(Enum.valueOf(type, raw.trim()));
+        } catch (IllegalArgumentException e) {
+            return Optional.empty();
+        }
     }
 }

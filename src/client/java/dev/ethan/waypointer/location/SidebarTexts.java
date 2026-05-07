@@ -9,7 +9,9 @@ import net.minecraft.world.scores.PlayerScoreEntry;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * Renders the full Skyblock sidebar as plain text so zone logic can scan for
@@ -17,15 +19,21 @@ import java.util.Collection;
  * distinct {@code mode} values in the Hypixel location packet.
  *
  * <p>Hot path (called every 2 game ticks): avoids regex stripping and caches
- * the last-seen sidebar component hash so repeated calls within the same tick
- * reuse the prior result. The 10Hz caller was allocating a {@link StringBuilder}
- * + intermediate strings per invocation; the manual strip + cache keeps the
- * per-call cost to pointer comparisons on the unchanged case.
+ * the last-seen rendered-line hash so repeated unchanged sidebars reuse the
+ * prior stripped result. The 10Hz caller was allocating a {@link StringBuilder}
+ * + stripped output string per invocation; the manual strip + cache keeps the
+ * unchanged case out of that work.
  */
 public final class SidebarTexts {
 
     /** Minecraft's formatting code escape. Kept as a constant to document the parse. */
     private static final char FORMATTING_PREFIX = '\u00a7';
+
+    private static Scoreboard cachedScoreboard;
+    private static Objective cachedObjective;
+    private static int cachedLineHash;
+    private static int cachedLineCount;
+    private static String cachedText;
 
     private SidebarTexts() {}
 
@@ -35,22 +43,78 @@ public final class SidebarTexts {
      */
     public static String collectColorStripped(Minecraft mc) {
         ClientLevel level = mc.level;
-        if (level == null) return null;
+        if (level == null) {
+            clearCache();
+            return null;
+        }
 
         Scoreboard sb = level.getScoreboard();
         Objective side = sb.getDisplayObjective(DisplaySlot.SIDEBAR);
-        if (side == null) return null;
+        if (side == null) {
+            clearCache();
+            return null;
+        }
 
         Collection<PlayerScoreEntry> entries = sb.listPlayerScores(side);
-        StringBuilder out = new StringBuilder();
+        SidebarScan scan = scanSidebar(sb, entries);
+        if (matchesCache(sb, side, scan.fingerprint())) return cachedText;
+
+        String text = buildStrippedText(scan.renderedLines());
+        remember(sb, side, scan.fingerprint(), text);
+        return text;
+    }
+
+    private static SidebarScan scanSidebar(
+            Scoreboard sb, Collection<PlayerScoreEntry> entries) {
+        int hash = 1;
+        List<String> renderedLines = new ArrayList<>();
         for (PlayerScoreEntry entry : entries) {
             String line = renderLine(sb, entry);
             if (line == null) continue;
+
+            renderedLines.add(line);
+            hash = 31 * hash + line.hashCode();
+        }
+        return new SidebarScan(new SidebarFingerprint(hash, renderedLines.size()), renderedLines);
+    }
+
+    private static boolean matchesCache(
+            Scoreboard sb, Objective side, SidebarFingerprint fingerprint) {
+        return cachedScoreboard == sb
+                && cachedObjective == side
+                && cachedLineHash == fingerprint.hash()
+                && cachedLineCount == fingerprint.lineCount();
+    }
+
+    private static void remember(
+            Scoreboard sb, Objective side, SidebarFingerprint fingerprint, String text) {
+        cachedScoreboard = sb;
+        cachedObjective = side;
+        cachedLineHash = fingerprint.hash();
+        cachedLineCount = fingerprint.lineCount();
+        cachedText = text;
+    }
+
+    private static void clearCache() {
+        cachedScoreboard = null;
+        cachedObjective = null;
+        cachedLineHash = 0;
+        cachedLineCount = 0;
+        cachedText = null;
+    }
+
+    private static String buildStrippedText(List<String> renderedLines) {
+        StringBuilder out = new StringBuilder();
+        for (String line : renderedLines) {
             if (!out.isEmpty()) out.append('\n');
             appendStripped(out, line);
         }
         return out.isEmpty() ? null : out.toString();
     }
+
+    private record SidebarFingerprint(int hash, int lineCount) {}
+
+    private record SidebarScan(SidebarFingerprint fingerprint, List<String> renderedLines) {}
 
     private static String renderLine(Scoreboard sb, PlayerScoreEntry entry) {
         String owner = entry.owner();

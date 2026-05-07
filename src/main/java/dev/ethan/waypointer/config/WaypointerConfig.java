@@ -35,6 +35,16 @@ public final class WaypointerConfig {
      */
     public enum BoxStyle { OUTLINED, FILLED, FILLED_OUTLINED }
 
+    /**
+     * Which visible waypoints receive a vertical beacon-style guide.
+     *
+     * OFF preserves the historical render surface. CURRENT keeps the beam focused
+     * on the immediate target for each active group, which is the useful default
+     * for noisy temp/chat sessions. ALL_VISIBLE is for players who want every
+     * shown marker to punch through terrain as a vertical reference.
+     */
+    public enum BeaconBeamMode { OFF, CURRENT, ALL_VISIBLE }
+
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
@@ -71,6 +81,7 @@ public final class WaypointerConfig {
     private double tracerOpacity = 0.95;
     private double beaconOpacity = 0.8;
     private boolean showWaypointNames = true;
+    private boolean showWaypointDistances = true;
     /**
      * When {@code true}, the primary waypoint label uses the waypoint's own RGB
      * instead of flat white. Default-on makes color-coded routes read as a single
@@ -106,6 +117,20 @@ public final class WaypointerConfig {
      */
     private boolean showLabelBackdrop = true;
     /**
+     * Maximum number of waypoint labels drawn per frame, nearest first.
+     * {@code 0} means unlimited so existing configs keep their historical
+     * "draw everything" behaviour until the user opts into the performance
+     * tradeoff.
+     */
+    private int maxWaypointLabels = 0;
+    /**
+     * Optional distance gate for STATIC route markers. Sequenced routes remain
+     * uncapped because their current target is navigationally important even
+     * when it is far away; huge static overlays are the case where users can
+     * trade cosmetic density for frame time.
+     */
+    private double maxStaticWaypointRenderDistance = 0.0;
+    /**
      * Extra vertical offset (blocks) added on top of the renderer's baseline
      * label lift. The renderer already pushes labels {@code 1.6} blocks above
      * the waypoint's bottom corner -- enough to clear the cube at close range
@@ -121,6 +146,8 @@ public final class WaypointerConfig {
      */
     private double labelHeightOffset = 0.0;
     private BoxStyle boxStyle = BoxStyle.OUTLINED;
+    private BeaconBeamMode beaconBeamMode = BeaconBeamMode.OFF;
+    private boolean beaconBeamExtendsBelowWaypoint = false;
 
     // Zone detection
     private boolean preferScoreboardFallback = false;
@@ -134,6 +161,12 @@ public final class WaypointerConfig {
      * message.
      */
     private boolean autoAddChatTempWaypoints = true;
+    /**
+     * When enabled, every user-created temp waypoint becomes the only waypoint
+     * shown in the active zone until the server session ends or the temp vanishes.
+     * This is transient render focus, not a persistent route enable/disable.
+     */
+    private boolean focusTempWaypoints = false;
     private boolean chatCodecDetection = true;
     /** Default exports drop names; set to {@code true} to include them at the cost of length. */
     private boolean exportIncludeNames = false;
@@ -182,20 +215,6 @@ public final class WaypointerConfig {
      * and would be skipped immediately) without touching the global mechanic.
      */
     private boolean skipAheadMechanicEnabled = true;
-
-    /**
-     * When {@code true} (default), adding a waypoint to a group flips that
-     * group's {@code skipAheadEnabled} flag off so the player doesn't
-     * immediately skip past the just-added point via proximity. Re-enable
-     * per-group from the group editor once the route is complete.
-     *
-     * <p>The trade-off: a player who builds a full route then walks it will
-     * likely want skip-ahead on, but they'll have to toggle it back on from
-     * the group editor. Defaulting to on protects the much more common case
-     * (player adds a new waypoint near the current one and is surprised when
-     * the route teleports past it).
-     */
-    private boolean disableGroupSkipAheadOnWaypointAdd = true;
 
     /**
      * Gate for the GitHub update checker. Off means no outbound HTTP at all --
@@ -288,6 +307,7 @@ public final class WaypointerConfig {
     public double tracerOpacity()             { return tracerOpacity; }
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
+    public boolean showWaypointDistances()    { return showWaypointDistances; }
     public boolean matchWaypointTextToWaypointColor() { return matchWaypointTextToWaypointColor; }
     public boolean showCompleted()            { return showCompleted; }
     public boolean showTracer()               { return showTracer; }
@@ -295,11 +315,20 @@ public final class WaypointerConfig {
     public boolean hideTracerOnStaticRoutes() { return hideTracerOnStaticRoutes; }
     public boolean hideReachedStaticWaypointsUntilCycleComplete() { return hideReachedStaticWaypointsUntilCycleComplete; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
+    public int maxWaypointLabels()            { return Math.max(0, maxWaypointLabels); }
+    public double maxStaticWaypointRenderDistance() {
+        return Math.max(0.0, maxStaticWaypointRenderDistance);
+    }
     public double labelHeightOffset()         { return labelHeightOffset; }
     public BoxStyle boxStyle()                { return boxStyle == null ? BoxStyle.OUTLINED : boxStyle; }
+    public BeaconBeamMode beaconBeamMode()    {
+        return beaconBeamMode == null ? BeaconBeamMode.OFF : beaconBeamMode;
+    }
+    public boolean beaconBeamExtendsBelowWaypoint() { return beaconBeamExtendsBelowWaypoint; }
     public boolean preferScoreboardFallback() { return preferScoreboardFallback; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
     public boolean autoAddChatTempWaypoints() { return autoAddChatTempWaypoints; }
+    public boolean focusTempWaypoints()       { return focusTempWaypoints; }
     public boolean chatCodecDetection()       { return chatCodecDetection; }
     public boolean exportIncludeNames()        { return exportIncludeNames; }
     public boolean exportIncludeColors()       { return exportIncludeColors; }
@@ -308,7 +337,6 @@ public final class WaypointerConfig {
     public boolean exportIncludeGroupMeta()    { return exportIncludeGroupMeta; }
     public boolean dungeonWaypointsFeatureEnabled() { return dungeonWaypointsFeatureEnabled; }
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
-    public boolean disableGroupSkipAheadOnWaypointAdd() { return disableGroupSkipAheadOnWaypointAdd; }
     public boolean checkForUpdates()            { return checkForUpdates; }
     public int tempDefaultMode()                { return tempDefaultMode; }
     public int tempDefaultDurationMin()         { return tempDefaultDurationMin; }
@@ -321,6 +349,7 @@ public final class WaypointerConfig {
     public void setTracerOpacity(double v)             { this.tracerOpacity = clamp(v, 0, 1); save(); }
     public void setBeaconOpacity(double v)             { this.beaconOpacity = clamp(v, 0, 1); save(); }
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
+    public void setShowWaypointDistances(boolean v)    { this.showWaypointDistances = v; save(); }
     public void setMatchWaypointTextToWaypointColor(boolean v) { this.matchWaypointTextToWaypointColor = v; save(); }
     public void setShowCompleted(boolean v)            { this.showCompleted = v; save(); }
     public void setShowTracer(boolean v)               { this.showTracer = v; save(); }
@@ -333,6 +362,7 @@ public final class WaypointerConfig {
     public void setPreferScoreboardFallback(boolean v) { this.preferScoreboardFallback = v; save(); }
     public void setChatCoordDetection(boolean v)       { this.chatCoordDetection = v; save(); }
     public void setAutoAddChatTempWaypoints(boolean v) { this.autoAddChatTempWaypoints = v; save(); }
+    public void setFocusTempWaypoints(boolean v)       { this.focusTempWaypoints = v; save(); }
     public void setChatCodecDetection(boolean v)       { this.chatCodecDetection = v; save(); }
     public void setExportIncludeNames(boolean v)        { this.exportIncludeNames = v; save(); }
     public void setExportIncludeColors(boolean v)       { this.exportIncludeColors = v; save(); }
@@ -341,14 +371,30 @@ public final class WaypointerConfig {
     public void setExportIncludeGroupMeta(boolean v)    { this.exportIncludeGroupMeta = v; save(); }
     public void setDungeonWaypointsFeatureEnabled(boolean v) { this.dungeonWaypointsFeatureEnabled = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
+    public void setMaxWaypointLabels(int v) {
+        this.maxWaypointLabels = Math.max(0, v);
+        save();
+    }
+    public void setMaxStaticWaypointRenderDistance(double v) {
+        if (!Double.isFinite(v)) return;
+        this.maxStaticWaypointRenderDistance = Math.max(0.0, v);
+        save();
+    }
     public void setLabelHeightOffset(double v) {
         if (!Double.isFinite(v)) return;
         this.labelHeightOffset = v;
         save();
     }
     public void setBoxStyle(BoxStyle v)                { this.boxStyle = v == null ? BoxStyle.OUTLINED : v; save(); }
+    public void setBeaconBeamMode(BeaconBeamMode v)    {
+        this.beaconBeamMode = v == null ? BeaconBeamMode.OFF : v;
+        save();
+    }
+    public void setBeaconBeamExtendsBelowWaypoint(boolean v) {
+        this.beaconBeamExtendsBelowWaypoint = v;
+        save();
+    }
     public void setSkipAheadMechanicEnabled(boolean v) { this.skipAheadMechanicEnabled = v; save(); }
-    public void setDisableGroupSkipAheadOnWaypointAdd(boolean v) { this.disableGroupSkipAheadOnWaypointAdd = v; save(); }
     public void setCheckForUpdates(boolean v)          { this.checkForUpdates = v; save(); }
     public void setTempDefaultMode(int v) {
         int clamped = (v < 1 || v > 3) ? 2 : v;

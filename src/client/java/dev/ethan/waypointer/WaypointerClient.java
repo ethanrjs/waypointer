@@ -3,6 +3,9 @@ package dev.ethan.waypointer;
 import dev.ethan.waypointer.chat.ChatCoordDetector;
 import dev.ethan.waypointer.chat.ChatImportCache;
 import dev.ethan.waypointer.chat.ChatImportDetector;
+import dev.ethan.waypointer.api.DefaultWaypointerApi;
+import dev.ethan.waypointer.api.WaypointerApi;
+import dev.ethan.waypointer.api.WaypointerApiEntrypoints;
 import dev.ethan.waypointer.commands.WaypointerCommands;
 import dev.ethan.waypointer.config.Storage;
 import dev.ethan.waypointer.config.WaypointerConfig;
@@ -39,6 +42,7 @@ public final class WaypointerClient implements ClientModInitializer {
     private static ActiveGroupManager manager;
     private static Storage storage;
     private static WaypointerConfig config;
+    private static WaypointerApi api;
     private static DungeonConfig dungeonConfig;
     private static DungeonStateTracker dungeonTracker;
     private static DungeonRouteSession dungeonRouteSession;
@@ -46,6 +50,7 @@ public final class WaypointerClient implements ClientModInitializer {
     public static ActiveGroupManager manager()        { return manager; }
     public static Storage storage()                   { return storage; }
     public static WaypointerConfig config()           { return config; }
+    public static WaypointerApi api()                 { return api; }
     public static DungeonConfig dungeonConfig()       { return dungeonConfig; }
     public static DungeonStateTracker dungeonTracker(){ return dungeonTracker; }
     public static DungeonRouteSession dungeonRouteSession(){ return dungeonRouteSession; }
@@ -58,6 +63,7 @@ public final class WaypointerClient implements ClientModInitializer {
         storage.load(manager);
         // attach AFTER load so rehydration doesn't trigger a no-op write.
         storage.attach(manager);
+        api = new DefaultWaypointerApi(manager);
 
         new LocationTracker(manager, config).install();
         new ProximityTracker(manager, config).install();
@@ -77,6 +83,10 @@ public final class WaypointerClient implements ClientModInitializer {
         new WaypointerKeybinds(WaypointerClient::openGui, manager, config).install();
         new ChatCoordDetector(config, manager).install();
         new ChatImportDetector(config, chatImportCache).install();
+        int apiEntrypoints = WaypointerApiEntrypoints.invokeFabricEntrypoints(api);
+        if (apiEntrypoints > 0) {
+            Waypointer.LOGGER.info("Invoked {} Waypointer API integration(s)", apiEntrypoints);
+        }
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
             // Flush any debounced writes before the JVM tears down -- the

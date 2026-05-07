@@ -3,11 +3,15 @@ package dev.ethan.waypointer.core;
 import dev.ethan.waypointer.color.GradientColorizer;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.IntConsumer;
+import java.util.function.IntPredicate;
 
 /**
  * An ordered, named route of {@link Waypoint}s bound to a single {@link Zone}.
@@ -20,6 +24,13 @@ import java.util.function.IntConsumer;
  */
 public final class WaypointGroup {
 
+    /**
+     * Spatial bucket edge length for proximity checks. The default reach radius
+     * is 3 blocks, so 16 keeps normal queries to a small neighbourhood while
+     * still being coarse enough that large imports don't create huge maps.
+     */
+    private static final int PROXIMITY_CELL_SIZE = 16;
+
     public enum GradientMode {
         /** Colors are auto-interpolated across the list; manual edits to unlocked entries get overwritten. */
         AUTO,
@@ -30,11 +41,10 @@ public final class WaypointGroup {
     /**
      * How many waypoints of the group are surfaced to the renderer at once.
      *
-     * STATIC is the default because it matches what most shared routes assume (all
-     * points visible so the player can pick their own order). SEQUENCE is the
-     * "breadcrumb" mode: only the neighborhood of {@code currentIndex} renders,
-     * which keeps the HUD clean on long routes and makes the intended order
-     * obvious.
+     * SEQUENCE is the default because loaded routes usually have an intended
+     * order. It renders only the neighborhood of {@code currentIndex}, which
+     * keeps the HUD clean on long routes. STATIC remains available for map-like
+     * overlays where every point should be visible at once.
      */
     public enum LoadMode {
         /** All waypoints render at once (subject to FLAG_HIDE_BEACON / completion state). */
@@ -56,9 +66,8 @@ public final class WaypointGroup {
      * Per-group gate for the proximity skip-ahead mechanic. When {@code false},
      * the proximity tracker only advances when the player reaches the
      * immediate current waypoint on this group, even if the global mechanic is
-     * on. Flipped off automatically when a new waypoint is added (see
-     * {@code disableGroupSkipAheadOnWaypointAdd} in {@link dev.ethan.waypointer.config.WaypointerConfig})
-     * so a freshly-added waypoint near the player isn't instantly skipped past.
+     * on. Flipped off automatically when a new waypoint is added so a
+     * freshly-added waypoint near the player isn't instantly skipped past.
      */
     private boolean skipAheadEnabled = true;
     /**
@@ -82,11 +91,25 @@ public final class WaypointGroup {
      */
     private transient boolean[] staticReached;
     /**
+     * Newly-created waypoints are often at the player's feet. Suppress proximity
+     * on that one index until the player leaves its radius, otherwise the tick
+     * loop immediately marks it reached and the user never sees feedback that
+     * the add succeeded.
+     */
+    private transient int proximitySuppressedIndex = -1;
+    /**
+     * Optional render-only focus for temp waypoint mode. Kept on the group so
+     * index shifts caused by temp expiry/removal stay local to the list mutation
+     * that caused them, instead of leaving a manager-level pointer stale.
+     */
+    private transient Integer focusedVisibleIndex;
+    /**
      * Set when a static reach pass completes the full set and clears {@link #staticReached}.
      * Lets {@link dev.ethan.waypointer.progression.ProximityTracker} stop scanning for the
      * rest of the tick so every waypoint shows as visible for at least one frame.
      */
     private transient boolean staticCycleJustCompleted;
+    private transient ProximityIndex proximityIndex;
 
     public WaypointGroup(String id, String name, String zoneId) {
         this.id = Objects.requireNonNull(id);
@@ -96,7 +119,7 @@ public final class WaypointGroup {
         this.currentIndex = 0;
         this.enabled = true;
         this.gradientMode = GradientMode.AUTO;
-        this.loadMode = LoadMode.STATIC;
+        this.loadMode = LoadMode.SEQUENCE;
         this.defaultRadius = 3.0;
     }
 
@@ -124,7 +147,7 @@ public final class WaypointGroup {
     public void setName(String newName)                 { this.name = newName == null ? "" : newName; }
     public void setZoneId(String newZoneId)             { this.zoneId = Objects.requireNonNull(newZoneId); }
     public void setEnabled(boolean on)                  { this.enabled = on; }
-    public void setDefaultRadius(double r)              { this.defaultRadius = Math.max(0.5, r); }
+    public void setDefaultRadius(double r)              { this.defaultRadius = Math.max(0.5, r); invalidateProximityIndex(); }
     public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
     public void setTemp(boolean on)                     { this.temp = on; }
 
@@ -153,51 +176,20 @@ public final class WaypointGroup {
     }
 
     /**
-     * Which waypoint indices the renderer should surface given the current load mode.
-     * Returns an int array for iteration without boxing; callers should treat it as read-only.
-     *
-     * STATIC: every index in {@code [0, size)}.
-     *
-     * SEQUENCE: up to three indices {@code currentIndex - 1, currentIndex, currentIndex + 1},
-     * clamped to valid bounds. When the route is complete, falls back to the last point so
-     * "you made it" still has something visible.
-     */
-    public int[] visibleIndices() {
-        int n = waypoints.size();
-        if (n == 0) return new int[0];
-        if (loadMode == LoadMode.STATIC) {
-            int[] all = new int[n];
-            for (int i = 0; i < n; i++) all[i] = i;
-            return all;
-        }
-
-        if (isComplete()) {
-            return new int[] { n - 1 };
-        }
-
-        int cur = Math.max(0, Math.min(currentIndex, n - 1));
-        int prev = cur - 1;
-        int next = cur + 1;
-
-        int count = 1 + (prev >= 0 ? 1 : 0) + (next < n ? 1 : 0);
-        int[] out = new int[count];
-        int w = 0;
-        if (prev >= 0) out[w++] = prev;
-        out[w++] = cur;
-        if (next < n) out[w] = next;
-        return out;
-    }
-
-    /**
-     * Alloc-free variant of {@link #visibleIndices()} for render hot paths.
-     *
-     * {@code visibleIndices()} allocates a fresh {@code int[]} on every call, which
-     * the renderer invokes twice per frame per active group. This variant invokes
-     * {@code action} with each index inline, producing zero garbage.
+     * Which waypoint indices the renderer should surface given the current load
+     * mode. Invokes {@code action} inline instead of allocating an index array;
+     * renderers call this every frame, so the no-allocation path is the primary
+     * API rather than a convenience overload.
      */
     public void forEachVisibleIndex(IntConsumer action) {
         int n = waypoints.size();
         if (n == 0) return;
+
+        if (focusedVisibleIndex != null) {
+            int index = focusedVisibleIndex;
+            if (index >= 0 && index < n) action.accept(index);
+            return;
+        }
 
         if (loadMode == LoadMode.STATIC) {
             for (int i = 0; i < n; i++) action.accept(i);
@@ -225,18 +217,48 @@ public final class WaypointGroup {
 
     public void set(int index, Waypoint replacement) {
         waypoints.set(index, replacement);
+        invalidateProximityIndex();
     }
 
     public void add(Waypoint w) {
+        int oldSize = waypoints.size();
         waypoints.add(w);
-        staticReached = null;
+        resizeStaticReachAfterAppend(oldSize);
+        invalidateProximityIndex();
+        applyGradientIfAuto();
+    }
+
+    public void addAll(Collection<Waypoint> additions) {
+        if (additions.isEmpty()) return;
+        int oldSize = waypoints.size();
+        waypoints.addAll(additions);
+        resizeStaticReachAfterAppend(oldSize);
+        invalidateProximityIndex();
+        applyGradientIfAuto();
+    }
+
+    public void replaceWaypoints(Collection<Waypoint> replacements) {
+        waypoints.clear();
+        waypoints.addAll(replacements);
+        currentIndex = Math.min(currentIndex, waypoints.size());
+        if (proximitySuppressedIndex >= waypoints.size()) proximitySuppressedIndex = -1;
+        if (focusedVisibleIndex != null && focusedVisibleIndex >= waypoints.size()) {
+            focusedVisibleIndex = waypoints.isEmpty() ? null : waypoints.size() - 1;
+        }
+        afterWaypointStructureChanged();
         applyGradientIfAuto();
     }
 
     public void insert(int index, Waypoint w) {
+        int oldSize = waypoints.size();
         waypoints.add(index, w);
         if (index <= currentIndex) currentIndex++;
-        staticReached = null;
+        if (proximitySuppressedIndex >= index) proximitySuppressedIndex++;
+        if (focusedVisibleIndex != null && focusedVisibleIndex >= index) {
+            focusedVisibleIndex++;
+        }
+        resizeStaticReachAfterInsert(index, oldSize);
+        invalidateProximityIndex();
         applyGradientIfAuto();
     }
 
@@ -244,7 +266,13 @@ public final class WaypointGroup {
         waypoints.remove(index);
         if (currentIndex > index) currentIndex--;
         currentIndex = Math.min(currentIndex, waypoints.size());
-        staticReached = null;
+        if (proximitySuppressedIndex == index) proximitySuppressedIndex = -1;
+        else if (proximitySuppressedIndex > index) proximitySuppressedIndex--;
+        if (focusedVisibleIndex != null) {
+            if (focusedVisibleIndex == index) focusedVisibleIndex = null;
+            else if (focusedVisibleIndex > index) focusedVisibleIndex--;
+        }
+        afterWaypointStructureChanged();
         applyGradientIfAuto();
     }
 
@@ -255,7 +283,9 @@ public final class WaypointGroup {
         if (currentIndex == from) currentIndex = to;
         else if (from < currentIndex && to >= currentIndex) currentIndex--;
         else if (from > currentIndex && to <= currentIndex) currentIndex++;
-        staticReached = null;
+        proximitySuppressedIndex = -1;
+        focusedVisibleIndex = null;
+        afterWaypointStructureChanged();
         applyGradientIfAuto();
     }
 
@@ -280,6 +310,7 @@ public final class WaypointGroup {
     public void resetProgress() {
         currentIndex = 0;
         resetStaticReachState();
+        clearProximitySuppression();
     }
 
     public boolean isStaticWaypointReached(int index) {
@@ -323,6 +354,51 @@ public final class WaypointGroup {
         staticReached = null;
     }
 
+    public void focusNewWaypoint(int index) {
+        focusNewWaypoint(index, true);
+    }
+
+    /**
+     * @param resetStaticReachState when {@code false}, leaves {@link #staticReached} unchanged
+     *     (used after add/insert, which already resized reach bits to match the new list).
+     */
+    public void focusNewWaypoint(int index, boolean resetStaticReachState) {
+        if (waypoints.isEmpty()) {
+            proximitySuppressedIndex = -1;
+            return;
+        }
+
+        currentIndex = Math.max(0, Math.min(index, waypoints.size() - 1));
+        proximitySuppressedIndex = currentIndex;
+        if (resetStaticReachState) {
+            resetStaticReachState();
+        }
+    }
+
+    public void focusOnlyVisibleIndex(int index) {
+        focusedVisibleIndex = index < 0 ? null : Math.min(index, waypoints.size() - 1);
+    }
+
+    public int focusedVisibleIndex() {
+        return focusedVisibleIndex == null ? -1 : focusedVisibleIndex;
+    }
+
+    public void clearFocusedVisibleIndex() {
+        focusedVisibleIndex = null;
+    }
+
+    public int proximitySuppressedIndex() {
+        return proximitySuppressedIndex;
+    }
+
+    public boolean isProximitySuppressed(int index) {
+        return index == proximitySuppressedIndex;
+    }
+
+    public void clearProximitySuppression() {
+        proximitySuppressedIndex = -1;
+    }
+
     /**
      * Drop every time-based temporary waypoint whose deadline has passed.
      * Returns the number of waypoints removed so callers can short-circuit
@@ -362,6 +438,7 @@ public final class WaypointGroup {
 
     public void setCurrentIndex(int index) {
         currentIndex = Math.max(0, Math.min(index, waypoints.size()));
+        clearProximitySuppression();
     }
 
     /** Radius the tracker should use for a given waypoint (its own override, else the group default). */
@@ -369,8 +446,56 @@ public final class WaypointGroup {
         return w.customRadius() > 0 ? w.customRadius() : defaultRadius;
     }
 
+    public double maxEffectiveRadius() {
+        return proximityIndex().maxEffectiveRadius;
+    }
+
+    public boolean forEachNearbyIndex(double x, double y, double z,
+                                      double radius, IntPredicate action) {
+        return proximityIndex().forEachNearby(x, y, z, radius, action);
+    }
+
     private void applyGradientIfAuto() {
         if (gradientMode == GradientMode.AUTO) GradientColorizer.apply(this);
+    }
+
+    private void afterWaypointStructureChanged() {
+        staticReached = null;
+        invalidateProximityIndex();
+    }
+
+    private void resizeStaticReachAfterAppend(int oldSize) {
+        if (staticReached == null) return;
+        if (staticReached.length != oldSize) {
+            staticReached = null;
+            return;
+        }
+
+        boolean[] next = new boolean[waypoints.size()];
+        System.arraycopy(staticReached, 0, next, 0, oldSize);
+        staticReached = next;
+    }
+
+    private void resizeStaticReachAfterInsert(int index, int oldSize) {
+        if (staticReached == null) return;
+        if (staticReached.length != oldSize) {
+            staticReached = null;
+            return;
+        }
+
+        boolean[] next = new boolean[waypoints.size()];
+        System.arraycopy(staticReached, 0, next, 0, index);
+        System.arraycopy(staticReached, index, next, index + 1, oldSize - index);
+        staticReached = next;
+    }
+
+    private void invalidateProximityIndex() {
+        proximityIndex = null;
+    }
+
+    private ProximityIndex proximityIndex() {
+        if (proximityIndex == null) proximityIndex = ProximityIndex.build(this);
+        return proximityIndex;
     }
 
     private void ensureStaticReachState() {
@@ -386,5 +511,81 @@ public final class WaypointGroup {
             if (!reached) return false;
         }
         return true;
+    }
+
+    private static int cell(double value) {
+        return Math.floorDiv((int) Math.floor(value), PROXIMITY_CELL_SIZE);
+    }
+
+    private static long cellKey(int x, int y, int z) {
+        return ((long) (x & 0x1FFFFF) << 42)
+                | ((long) (y & 0x1FFFFF) << 21)
+                | (z & 0x1FFFFFL);
+    }
+
+    private static final class ProximityIndex {
+        private final Map<Long, IntBucket> buckets = new HashMap<>();
+        private final double maxEffectiveRadius;
+
+        static ProximityIndex build(WaypointGroup group) {
+            double maxRadius = group.defaultRadius();
+            Map<Long, IntBucket> buckets = new HashMap<>();
+
+            for (int i = 0; i < group.waypoints.size(); i++) {
+                Waypoint waypoint = group.waypoints.get(i);
+                double radius = group.effectiveRadius(waypoint);
+                if (radius > maxRadius) maxRadius = radius;
+
+                long key = cellKey(
+                        cell(waypoint.x()),
+                        cell(waypoint.y()),
+                        cell(waypoint.z()));
+                buckets.computeIfAbsent(key, ignored -> new IntBucket()).add(i);
+            }
+
+            return new ProximityIndex(maxRadius, buckets);
+        }
+
+        private ProximityIndex(double maxEffectiveRadius, Map<Long, IntBucket> buckets) {
+            this.maxEffectiveRadius = maxEffectiveRadius;
+            this.buckets.putAll(buckets);
+        }
+
+        boolean forEachNearby(double x, double y, double z,
+                              double radius, IntPredicate action) {
+            int minX = cell(x - radius);
+            int minY = cell(y - radius);
+            int minZ = cell(z - radius);
+            int maxX = cell(x + radius);
+            int maxY = cell(y + radius);
+            int maxZ = cell(z + radius);
+
+            for (int cx = minX; cx <= maxX; cx++) {
+                for (int cy = minY; cy <= maxY; cy++) {
+                    for (int cz = minZ; cz <= maxZ; cz++) {
+                        IntBucket bucket = buckets.get(cellKey(cx, cy, cz));
+                        if (bucket == null) continue;
+                        for (int i = 0; i < bucket.size; i++) {
+                            if (!action.test(bucket.values[i])) return false;
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+    }
+
+    private static final class IntBucket {
+        private int[] values = new int[4];
+        private int size;
+
+        void add(int value) {
+            if (size == values.length) {
+                int[] next = new int[values.length * 2];
+                System.arraycopy(values, 0, next, 0, values.length);
+                values = next;
+            }
+            values[size++] = value;
+        }
     }
 }
