@@ -176,6 +176,12 @@ public final class ConfigScreen extends Screen {
                 "Opacity of the line drawn from the crosshair to the active waypoint.\n"
               + "0 is fully transparent, 1 is solid.");
         y2 += rowH;
+        addNumberRow(col2, y2, colW, "Tracer thickness (px)",
+                config.tracerThickness(), config::setTracerThickness,
+                config::showTracer,
+                "Pixel width of the crosshair tracer line. Values are clamped\n"
+              + "from 1 to 12 so it stays visible without flooding the screen.");
+        y2 += rowH;
         addTracerColorRow(col2, y2, colW,
                 () -> config.showTracer() && !config.matchTracerToWaypointColor(),
                 "Fixed tracer color as hex RRGGBB (e.g. 4FE05A). Only used when\n"
@@ -246,6 +252,11 @@ public final class ConfigScreen extends Screen {
                 config.restartRouteWhenComplete(), config::setRestartRouteWhenComplete,
                 "After you complete the final waypoint, progress wraps to the first point\n"
               + "so loop and farm routes do not sit in a \"finished\" state.");
+        y += rowH;
+        addBoolRow(col1, y, "Add new waypoints below player",
+                config.placeNewWaypointsBelowPlayer(), config::setPlaceNewWaypointsBelowPlayer,
+                "When adding at your position, place the marker one block below your feet.\n"
+              + "Turn off to use your exact standing block. Typed coordinates stay exact.");
 
         int y2 = rowsY;
         addBoolRow(col2, y2, "Dim sequence context waypoints",

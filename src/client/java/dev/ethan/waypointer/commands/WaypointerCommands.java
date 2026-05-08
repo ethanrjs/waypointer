@@ -19,6 +19,7 @@ import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
 import dev.ethan.waypointer.input.WaypointAddFlow;
+import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import dev.ethan.waypointer.screen.DebugInspectScreen;
 import dev.ethan.waypointer.screen.ImportFeedback;
 import dev.ethan.waypointer.screen.WaypointerScreen;
@@ -289,17 +290,26 @@ public final class WaypointerCommands {
         return (ctx, builder) -> {
             LocalPlayer player = Minecraft.getInstance().player;
             if (player == null) return builder.buildFuture();
+            PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
+                    player.getX(), player.getY(), player.getZ(), config);
             int value = switch (axis) {
-                case X -> (int) Math.floor(player.getX());
-                case Y -> (int) Math.floor(player.getY());
-                case Z -> (int) Math.floor(player.getZ());
+                case X -> pos.x();
+                case Y -> pos.y();
+                case Z -> pos.z();
             };
             String raw = Integer.toString(value);
             if (raw.startsWith(builder.getRemaining())) {
-                builder.suggest(value, Component.literal("current player " + axis.name().toLowerCase(Locale.ROOT)));
+                builder.suggest(value, Component.literal(playerCoordSuggestionLabel(axis)));
             }
             return builder.buildFuture();
         };
+    }
+
+    private String playerCoordSuggestionLabel(Axis axis) {
+        if (axis == Axis.Y && config.placeNewWaypointsBelowPlayer()) {
+            return "current player y - 1";
+        }
+        return "current player " + axis.name().toLowerCase(Locale.ROOT);
     }
 
     private SuggestionProvider<FabricClientCommandSource> suggestImportPayloads() {
@@ -592,12 +602,10 @@ public final class WaypointerCommands {
     private int runAdd(FabricClientCommandSource src, String name) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) { error(src, "Not in a world"); return 0; }
+        PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
+                player.getX(), player.getY(), player.getZ(), config);
 
-        return runAddAt(src,
-                (int) Math.floor(player.getX()),
-                (int) Math.floor(player.getY()),
-                (int) Math.floor(player.getZ()),
-                name);
+        return runAddAt(src, pos.x(), pos.y(), pos.z(), name);
     }
 
     private int runAddAt(FabricClientCommandSource src, int x, int y, int z, String name) {
@@ -636,8 +644,8 @@ public final class WaypointerCommands {
     }
 
     /**
-     * Inserts a new waypoint at the player's position into the active group's
-     * waypoint list at {@code index}. {@code index == size} appends, matching
+     * Inserts a new waypoint at the configured player-relative position into the
+     * active group's waypoint list at {@code index}. {@code index == size} appends, matching
      * the semantics of {@link java.util.List#add(int, Object)} which
      * {@link WaypointGroup#insert(int, Waypoint)} delegates to.
      */
@@ -653,10 +661,10 @@ public final class WaypointerCommands {
             return 0;
         }
 
-        int x = (int) Math.floor(player.getX());
-        int y = (int) Math.floor(player.getY());
-        int z = (int) Math.floor(player.getZ());
-        target.insert(index, new Waypoint(x, y, z, name == null ? "" : name,
+        PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
+                player.getX(), player.getY(), player.getZ(), config);
+        target.insert(index, new Waypoint(
+                pos.x(), pos.y(), pos.z(), name == null ? "" : name,
                 Waypoint.DEFAULT_COLOR, 0, 0.0));
         addFlow.afterWaypointAdded(target, index);
         manager.fireDataChanged();

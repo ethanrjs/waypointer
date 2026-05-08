@@ -96,10 +96,11 @@ public final class TracerRenderer {
         }
         // Matching the tracer to the live waypoint colour means gradient groups
         // draw a tracer whose hue advances with progress, and manually-coloured
-        // checkpoints light their tracer in the same tint. The flat-override path is still available for
-        // users who prefer a single distinctive tracer colour across groups.
+        // checkpoints light their tracer in the same tint. The flat-override path
+        // is still available for users who prefer one tracer colour across groups.
         boolean matchWaypoint = config.matchTracerToWaypointColor();
         int overrideColor = config.tracerColor();
+        float thickness = (float) config.tracerThickness();
 
         for (WaypointGroup g : groups) {
             if (!tempFocus
@@ -113,7 +114,7 @@ public final class TracerRenderer {
             RenderHelpers.emitLine(lines, ps,
                     fromX, fromY, fromZ,
                     target.x() + 0.5f, target.y() + 0.5f, target.z() + 0.5f,
-                    color, alpha);
+                    color, alpha, thickness);
         }
 
         ps.popPose();
