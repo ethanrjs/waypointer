@@ -16,9 +16,8 @@ public final class RenderHelpers {
 
     // 1.21.11 added LineWidth to the lines vertex format, so every vertex must carry
     // a line width or the buffer check throws "Missing elements in vertex: LineWidth".
-    // We use a chunky 3px so the outlined boxes and the crosshair tracer stay legible
-    // at distance and against busy biomes -- 1px (vanilla default) was disappearing
-    // against grass and reeds.
+    // We use a chunky 3px so outlined boxes stay legible at distance and against
+    // busy biomes -- 1px (vanilla default) was disappearing against grass and reeds.
     private static final float DEFAULT_LINE_WIDTH = 3.0f;
 
     private RenderHelpers() {}
@@ -124,6 +123,14 @@ public final class RenderHelpers {
                                 float x1, float y1, float z1,
                                 float x2, float y2, float z2,
                                 int rgb, float alpha) {
+        emitLine(consumer, ps, x1, y1, z1, x2, y2, z2, rgb, alpha, DEFAULT_LINE_WIDTH);
+    }
+
+    /** Append a single line segment using a caller-controlled pixel width. */
+    public static void emitLine(VertexConsumer consumer, PoseStack ps,
+                                float x1, float y1, float z1,
+                                float x2, float y2, float z2,
+                                int rgb, float alpha, float width) {
         int r = red(rgb), g = green(rgb), b = blue(rgb);
         int a = (int) (alpha * 255f) & 0xFF;
         float nx = x2 - x1, ny = y2 - y1, nz = z2 - z1;
@@ -131,7 +138,7 @@ public final class RenderHelpers {
         if (len > 1e-5f) { nx /= len; ny /= len; nz /= len; }
         else { nx = 0; ny = 1; nz = 0; }
         PoseStack.Pose pose = ps.last();
-        seg(consumer, pose, x1, y1, z1, x2, y2, z2, r, g, b, a, nx, ny, nz);
+        seg(consumer, pose, x1, y1, z1, x2, y2, z2, r, g, b, a, nx, ny, nz, width);
     }
 
     /** Force-flush a render type from a batched MultiBufferSource. No-op if not a BufferSource. */
@@ -160,13 +167,22 @@ public final class RenderHelpers {
                             float x2, float y2, float z2,
                             int r, int g, int b, int a,
                             float nx, float ny, float nz) {
+        seg(c, pose, x1, y1, z1, x2, y2, z2, r, g, b, a,
+                nx, ny, nz, DEFAULT_LINE_WIDTH);
+    }
+
+    private static void seg(VertexConsumer c, PoseStack.Pose pose,
+                            float x1, float y1, float z1,
+                            float x2, float y2, float z2,
+                            int r, int g, int b, int a,
+                            float nx, float ny, float nz, float width) {
         // Call order must match the vertex format declaration: POSITION, COLOR, NORMAL,
         // LINE_WIDTH. setLineWidth is new in 1.21.11; writing it in the wrong slot causes
         // BufferBuilder's endLastVertex to throw "Not building!" on the next addVertex
         // because the previous vertex was detected as incomplete and it closed the buffer.
         c.addVertex(pose, x1, y1, z1).setColor(r, g, b, a)
-                .setNormal(pose, nx, ny, nz).setLineWidth(DEFAULT_LINE_WIDTH);
+                .setNormal(pose, nx, ny, nz).setLineWidth(width);
         c.addVertex(pose, x2, y2, z2).setColor(r, g, b, a)
-                .setNormal(pose, nx, ny, nz).setLineWidth(DEFAULT_LINE_WIDTH);
+                .setNormal(pose, nx, ny, nz).setLineWidth(width);
     }
 }

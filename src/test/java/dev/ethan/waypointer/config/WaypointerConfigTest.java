@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.config;
 
+import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -169,15 +170,58 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void tracerThicknessDefaultsToHistoricalWidthAndClampsToSafeRange() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertEquals(3.0, config.tracerThickness());
+
+        config.setTracerThickness(6.5);
+        assertEquals(6.5, config.tracerThickness());
+
+        config.setTracerThickness(0.0);
+        assertEquals(1.0, config.tracerThickness());
+
+        config.setTracerThickness(99.0);
+        assertEquals(12.0, config.tracerThickness());
+    }
+
+    @Test
+    void tracerThicknessRejectsNonFiniteValues() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setTracerThickness(4.0);
+
+        config.setTracerThickness(Double.NaN);
+        assertEquals(4.0, config.tracerThickness());
+
+        config.setTracerThickness(Double.POSITIVE_INFINITY);
+        assertEquals(4.0, config.tracerThickness());
+    }
+
+    @Test
     void defaultExportAndDetectionTogglesStayUserFriendly() {
         WaypointerConfig config = new WaypointerConfig();
 
         assertTrue(config.chatCoordDetection());
         assertTrue(config.autoAddChatTempWaypoints());
+        assertTrue(config.placeNewWaypointsBelowPlayer());
         assertTrue(config.chatCodecDetection());
         assertTrue(config.dimSequenceContextWaypoints());
         assertFalse(config.exportIncludeColors());
         assertTrue(config.exportIncludeGroupMeta());
+    }
+
+    @Test
+    void playerWaypointPlacementDefaultsBelowPlayerButCanUseStandingBlock() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        PlayerWaypointPlacement.BlockPosition below = PlayerWaypointPlacement.fromPlayer(
+                10.9, 64.2, -3.1, config);
+        assertEquals(new PlayerWaypointPlacement.BlockPosition(10, 63, -4), below);
+
+        config.setPlaceNewWaypointsBelowPlayer(false);
+        PlayerWaypointPlacement.BlockPosition standing = PlayerWaypointPlacement.fromPlayer(
+                10.9, 64.2, -3.1, config);
+        assertEquals(new PlayerWaypointPlacement.BlockPosition(10, 64, -4), standing);
     }
 
     @Test

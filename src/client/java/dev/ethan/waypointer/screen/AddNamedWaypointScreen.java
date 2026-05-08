@@ -5,6 +5,7 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.input.WaypointAddFlow;
+import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -133,9 +134,11 @@ public final class AddNamedWaypointScreen extends Screen {
                 onClose();
                 return;
             }
-            x = (int) Math.floor(player.getX());
-            y = (int) Math.floor(player.getY());
-            z = (int) Math.floor(player.getZ());
+            PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
+                    player.getX(), player.getY(), player.getZ(), config);
+            x = pos.x();
+            y = pos.y();
+            z = pos.z();
         }
         WaypointGroup target = targetGroup == null ? manager.getOrCreateActiveGroup() : targetGroup;
 
