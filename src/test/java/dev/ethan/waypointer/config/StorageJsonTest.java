@@ -179,6 +179,18 @@ class StorageJsonTest {
     }
 
     @Test
+    void group_skipAheadSettingRoundTrips() {
+        WaypointGroup g = WaypointGroup.create("strict-route", "dungeon_f7");
+        g.setSkipAheadEnabled(false);
+
+        JsonObject json = Storage.groupToJson(g);
+        WaypointGroup copy = Storage.groupFromJson(json);
+
+        assertFalse(copy.skipAheadEnabled(),
+                "per-route skip-ahead preference must survive reloads");
+    }
+
+    @Test
     void group_roundTripPreservesProgressAndOrder() {
         WaypointGroup g = WaypointGroup.create("my-route", "dungeon_f7");
         g.setName("Terminals route");
