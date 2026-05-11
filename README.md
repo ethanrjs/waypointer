@@ -18,13 +18,13 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 - Customizable waypoint visuals: filled/outlined boxes, beacon beams, tracers, labels, and distances
 - Public API for other Fabric client mods
 
-## Waypoint Import Compatibility
+## Waypoint Import/Export Compatibility
 
-- Coleweight
-- Skytils
-- Skyblocker
-- Soopy
-- JSON-based
+- Coleweight/SkyHanni (I/E)
+- Skytils (I/E)
+- Skyblocker (I/E)
+- Soopy (I)
+- Generic JSON-based (I)
 
 ## Requirements
 
@@ -52,9 +52,9 @@ Compiles with Java 21 for 1.21.11
 
 ## Layout
 
-- `src/main/` — shared logic: codec, config, core waypoint/zone/group types, chat scanners.
-- `src/client/` — client-only: rendering, screens, keybinds, location/zone tracking, chat hooks.
-- `src/test/` — JUnit 5 tests for codec, scanners, storage, and progression.
+- `src/main/` shared logic: codec, config, core waypoint/zone/group types, chat scanners.
+- `src/client/` client-only: rendering, screens, keybinds, location/zone tracking, chat hooks.
+- `src/test/` JUnit 5 tests for codec, scanners, storage, and progression.
 
 ## CODEC Specification
 
