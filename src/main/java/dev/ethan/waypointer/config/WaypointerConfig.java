@@ -85,6 +85,12 @@ public final class WaypointerConfig {
      * tracers or giant lines that flood the screen.
      */
     private double tracerThickness = 3.0;
+    /**
+     * Pixel width for waypoint box outlines in both the normal world renderer
+     * and the Iris HUD fallback. Kept separate from tracer thickness because
+     * users often want a subtle box but a stronger navigation line.
+     */
+    private double waypointOutlineThickness = 3.0;
     private double beaconOpacity = 0.8;
     private boolean showWaypointNames = true;
     private boolean showWaypointDistances = true;
@@ -234,6 +240,13 @@ public final class WaypointerConfig {
      * privacy-minded users can disable it without losing the rest of the mod.
      */
     private boolean checkForUpdates = true;
+    /**
+     * Experimental compatibility path for Iris shader packs that composite after
+     * Waypointer's no-depth world render pass. When enabled, active Iris shaders
+     * draw waypoint boxes/tracers as projected HUD overlays instead of world
+     * geometry so shader depth buffers cannot hide them.
+     */
+    private boolean irisShaderHudFallback = false;
 
     /**
      * Default mode for the "Add Temp Waypoint Here" keybind, and the pre-selected
@@ -319,6 +332,7 @@ public final class WaypointerConfig {
     public boolean matchTracerToWaypointColor() { return matchTracerToWaypointColor; }
     public double tracerOpacity()             { return tracerOpacity; }
     public double tracerThickness()           { return clamp(tracerThickness, 1.0, 12.0); }
+    public double waypointOutlineThickness()  { return clamp(waypointOutlineThickness, 1.0, 12.0); }
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showWaypointDistances()    { return showWaypointDistances; }
@@ -353,6 +367,7 @@ public final class WaypointerConfig {
     public boolean dungeonWaypointsFeatureEnabled() { return dungeonWaypointsFeatureEnabled; }
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
     public boolean checkForUpdates()            { return checkForUpdates; }
+    public boolean irisShaderHudFallback()      { return irisShaderHudFallback; }
     public int tempDefaultMode()                { return tempDefaultMode; }
     public int tempDefaultDurationMin()         { return tempDefaultDurationMin; }
 
@@ -365,6 +380,11 @@ public final class WaypointerConfig {
     public void setTracerThickness(double v) {
         if (!Double.isFinite(v)) return;
         this.tracerThickness = clamp(v, 1.0, 12.0);
+        save();
+    }
+    public void setWaypointOutlineThickness(double v) {
+        if (!Double.isFinite(v)) return;
+        this.waypointOutlineThickness = clamp(v, 1.0, 12.0);
         save();
     }
     public void setBeaconOpacity(double v)             { this.beaconOpacity = clamp(v, 0, 1); save(); }
@@ -417,6 +437,7 @@ public final class WaypointerConfig {
     }
     public void setSkipAheadMechanicEnabled(boolean v) { this.skipAheadMechanicEnabled = v; save(); }
     public void setCheckForUpdates(boolean v)          { this.checkForUpdates = v; save(); }
+    public void setIrisShaderHudFallback(boolean v)    { this.irisShaderHudFallback = v; save(); }
     public void setTempDefaultMode(int v) {
         int clamped = (v < 1 || v > 3) ? 2 : v;
         this.tempDefaultMode = clamped;

@@ -2,18 +2,26 @@ package dev.ethan.waypointer.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
 import net.minecraft.client.Camera;
+import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.ClientAvatarState;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3fc;
@@ -35,7 +43,10 @@ import org.joml.Vector3fc;
  * tracer vanishes the moment you look at a wall between you and the current
  * waypoint.
  */
-public final class TracerRenderer {
+public final class TracerRenderer implements HudElement {
+
+    private static final Identifier HUD_FALLBACK_ID =
+            Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "iris_tracer_fallback");
 
     /**
      * Distance (in blocks) to push the tracer origin forward along the camera's
@@ -51,6 +62,8 @@ public final class TracerRenderer {
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
     private final float[] tracerOriginDelta = new float[3];
+    private final WorldScreenProjector projector = new WorldScreenProjector();
+    private final double[] screenScratch = new double[2];
 
     public TracerRenderer(ActiveGroupManager manager, WaypointerConfig config) {
         this.manager = manager;
@@ -59,9 +72,12 @@ public final class TracerRenderer {
 
     public void install() {
         WorldRenderEvents.END_MAIN.register(this::onRender);
+        HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, HUD_FALLBACK_ID, this);
     }
 
     private void onRender(WorldRenderContext ctx) {
+        if (IrisShaderFallback.shouldUse(config)) return;
+
         var groups = manager.activeGroups();
         if (groups.isEmpty()) return;
         boolean tempFocus = manager.tempWaypointFocusActive();
@@ -121,6 +137,84 @@ public final class TracerRenderer {
         RenderHelpers.endBatch(buffers, lineType);
     }
 
+    @Override
+    public void render(GuiGraphics g, DeltaTracker tick) {
+        if (!IrisShaderFallback.shouldUse(config)) return;
+
+        var groups = manager.activeGroups();
+        if (groups.isEmpty()) return;
+        boolean tempFocus = manager.tempWaypointFocusActive();
+        if (!tempFocus && !config.showTracer()) return;
+
+        Minecraft mc = Minecraft.getInstance();
+        GameRenderer renderer = mc.gameRenderer;
+        Camera camera = renderer.getMainCamera();
+        if (!camera.isInitialized()) return;
+
+        projector.prepare(renderer, camera);
+        int screenW = g.guiWidth();
+        int screenH = g.guiHeight();
+        double fromX = screenW / 2.0;
+        double fromY = screenH / 2.0;
+        float alpha = (float) config.tracerOpacity();
+        if (tempFocus) {
+            alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
+        }
+        boolean matchWaypoint = config.matchTracerToWaypointColor();
+        int overrideColor = config.tracerColor();
+        double thickness = config.tracerThickness();
+
+        for (WaypointGroup group : groups) {
+            if (!tempFocus
+                    && config.hideTracerOnStaticRoutes()
+                    && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
+                continue;
+            }
+
+            Waypoint target = group.current();
+            if (target == null) continue;
+            if (!projector.project(target.x() + 0.5, target.y() + 0.5, target.z() + 0.5,
+                    screenW, screenH, screenScratch)) {
+                projectOffscreenTarget(camera, target, screenW, screenH, screenScratch);
+            }
+
+            int color = matchWaypoint ? target.color() : overrideColor;
+            int argb = withAlpha(0xFF000000 | (color & 0xFFFFFF), alpha);
+            WaypointRenderer.drawScreenLine(g, fromX, fromY,
+                    screenScratch[0], screenScratch[1], argb, thickness);
+        }
+    }
+
+    private static void projectOffscreenTarget(Camera camera, Waypoint target,
+                                               int screenW, int screenH,
+                                               double[] out) {
+        Vec3 cameraPos = camera.position();
+        Vector3fc left = camera.leftVector();
+        Vector3fc up = camera.upVector();
+
+        double dx = target.x() + 0.5 - cameraPos.x;
+        double dy = target.y() + 0.5 - cameraPos.y;
+        double dz = target.z() + 0.5 - cameraPos.z;
+
+        double screenDirX = -(dx * left.x() + dy * left.y() + dz * left.z());
+        double screenDirY = -(dx * up.x() + dy * up.y() + dz * up.z());
+        if (screenDirX * screenDirX + screenDirY * screenDirY < 1.0e-6) {
+            screenDirY = 1.0;
+        }
+
+        double centerX = screenW / 2.0;
+        double centerY = screenH / 2.0;
+        double t = Double.POSITIVE_INFINITY;
+        if (screenDirX > 0.0) t = Math.min(t, (screenW - centerX) / screenDirX);
+        else if (screenDirX < 0.0) t = Math.min(t, -centerX / screenDirX);
+        if (screenDirY > 0.0) t = Math.min(t, (screenH - centerY) / screenDirY);
+        else if (screenDirY < 0.0) t = Math.min(t, -centerY / screenDirY);
+        if (!Double.isFinite(t) || t <= 0.0) t = 1.0;
+
+        out[0] = centerX + screenDirX * t;
+        out[1] = centerY + screenDirY * t;
+    }
+
     private static void writeTracerOriginDelta(Minecraft mc, Camera cam, LocalPlayer player,
                                                float[] out) {
         Vector3fc left = cam.leftVector();
@@ -162,6 +256,12 @@ public final class TracerRenderer {
         out[0] = -left.x() * rolledX + up.x() * pitchedY - forward.x() * pitchedZ;
         out[1] = -left.y() * rolledX + up.y() * pitchedY - forward.y() * pitchedZ;
         out[2] = -left.z() * rolledX + up.z() * pitchedY - forward.z() * pitchedZ;
+    }
+
+    private static int withAlpha(int argb, float alphaScale) {
+        float clamped = Math.max(0.0f, Math.min(1.0f, alphaScale));
+        int alpha = Math.round(((argb >>> 24) & 0xFF) * clamped);
+        return (alpha << 24) | (argb & 0x00FFFFFF);
     }
 
 }
