@@ -71,6 +71,11 @@ public final class GroupEditScreen extends Screen {
     private Button sortBtn;
     private Button radiusMinusBtn;
     private Button radiusPlusBtn;
+    private Button skipAheadBtn;
+    private Button moveSelectedHereBtn;
+    private EditBox coordXBox;
+    private EditBox coordYBox;
+    private EditBox coordZBox;
     // Two small colour swatch buttons for the gradient endpoints. Stored so
     // the colour-picker callback can push the new colour back onto the
     // correct widget without chasing it through the widget tree.
@@ -80,6 +85,8 @@ public final class GroupEditScreen extends Screen {
     private SortMode sortMode = SortMode.MANUAL;
     private int scrollOffset;
     private int selectedIndex = -1;
+    private int coordinateEditorIndex = -1;
+    private boolean syncingCoordinateEditors;
 
     // Inline per-row label editor: shown only while the user is renaming a waypoint,
     // positioned in render() so it tracks the row through scroll. We hold one EditBox
@@ -212,6 +219,28 @@ public final class GroupEditScreen extends Screen {
           .tooltip(Tooltip.create(Component.literal(
                   "Set current waypoint to #1.")))
           .build());
+        y += BTN_H + GAP;
+
+        skipAheadBtn = Button.builder(skipAheadLabel(), this::toggleSkipAhead)
+                .bounds(sidebarInner, y, fieldW, BTN_H)
+                .tooltip(Tooltip.create(Component.literal(
+                        "Route-specific skip-ahead gate.\n"
+                      + "OFF forces this group to advance in order even when\n"
+                      + "the global skip-ahead setting is enabled.")))
+                .build();
+        addRenderableWidget(skipAheadBtn);
+        y += BTN_H + GAP;
+
+        addCoordinateEditors(sidebarInner, y, fieldW);
+        y += BTN_H + GAP;
+
+        moveSelectedHereBtn = Button.builder(Component.literal("Move Selected Here"), b -> moveSelectedHere())
+                .bounds(sidebarInner, y, fieldW, BTN_H)
+                .tooltip(Tooltip.create(Component.literal(
+                        "Replace the selected waypoint's coordinates with your\n"
+                      + "current block position.")))
+                .build();
+        addRenderableWidget(moveSelectedHereBtn);
 
         // Inline label editor -- kept invisible until the user double-clicks a row.
         // Added last so it paints on top of the row it's editing. A fresh widget per
@@ -221,6 +250,7 @@ public final class GroupEditScreen extends Screen {
         labelEditor.setMaxLength(64);
         labelEditor.setVisible(false);
         addRenderableWidget(labelEditor);
+        syncCoordinateEditors();
 
         // Footer
         int footerY = height - FOOTER_H;
@@ -300,6 +330,64 @@ public final class GroupEditScreen extends Screen {
         manager.fireDataChanged();
     }
 
+    private Component skipAheadLabel() {
+        return Component.literal("Skip Ahead: " + (group.skipAheadEnabled() ? "ON" : "OFF"));
+    }
+
+    private void toggleSkipAhead(Button b) {
+        group.setSkipAheadEnabled(!group.skipAheadEnabled());
+        b.setMessage(skipAheadLabel());
+        manager.fireDataChanged();
+    }
+
+    private void addCoordinateEditors(int x, int y, int width) {
+        int boxW = (width - GAP_TIGHT * 2) / 3;
+        coordXBox = createCoordinateEditor("X", 0);
+        coordYBox = createCoordinateEditor("Y", 1);
+        coordZBox = createCoordinateEditor("Z", 2);
+
+        coordXBox.setX(x);
+        coordYBox.setX(x + boxW + GAP_TIGHT);
+        coordZBox.setX(x + (boxW + GAP_TIGHT) * 2);
+        coordXBox.setY(y);
+        coordYBox.setY(y);
+        coordZBox.setY(y);
+        coordXBox.setWidth(boxW);
+        coordYBox.setWidth(boxW);
+        coordZBox.setWidth(width - boxW * 2 - GAP_TIGHT * 2);
+
+        addRenderableWidget(coordXBox);
+        addRenderableWidget(coordYBox);
+        addRenderableWidget(coordZBox);
+    }
+
+    private EditBox createCoordinateEditor(String label, int axis) {
+        EditBox box = new EditBox(font, 0, 0, 40, BTN_H, Component.literal(label));
+        box.setMaxLength(12);
+        box.setHint(Component.literal(label));
+        box.setTooltip(Tooltip.create(Component.literal(
+                "Edit the selected waypoint's " + label + " coordinate.")));
+        box.setResponder(v -> updateSelectedCoordinate(axis, v));
+        return box;
+    }
+
+    private void updateSelectedCoordinate(int axis, String raw) {
+        if (syncingCoordinateEditors) return;
+        if (!hasSelectedWaypoint() || raw.isBlank()) return;
+
+        try {
+            int value = Integer.parseInt(raw.trim());
+            Waypoint w = group.get(selectedIndex);
+            int x = axis == 0 ? value : w.x();
+            int y = axis == 1 ? value : w.y();
+            int z = axis == 2 ? value : w.z();
+            group.set(selectedIndex, w.withPos(x, y, z));
+            manager.fireDataChanged();
+        } catch (NumberFormatException ignored) {
+            // Partial integer edits such as "-" are expected while typing.
+        }
+    }
+
     private Component sortLabel() {
         return Component.literal("Sort: " + sortMode.label);
     }
@@ -355,6 +443,59 @@ public final class GroupEditScreen extends Screen {
 
     // --- actions ----------------------------------------------------------------------------
 
+    private boolean hasSelectedWaypoint() {
+        return selectedIndex >= 0 && selectedIndex < group.size();
+    }
+
+    private void selectWaypoint(int index) {
+        selectedIndex = index >= 0 && index < group.size() ? index : -1;
+        syncCoordinateEditors();
+    }
+
+    private void syncCoordinateEditors() {
+        if (coordXBox == null || coordYBox == null || coordZBox == null) return;
+
+        boolean hasSelection = hasSelectedWaypoint();
+        coordXBox.active = hasSelection;
+        coordYBox.active = hasSelection;
+        coordZBox.active = hasSelection;
+        if (moveSelectedHereBtn != null) moveSelectedHereBtn.active = hasSelection;
+
+        if (!hasSelection) {
+            coordinateEditorIndex = -1;
+            setCoordinateEditorValues("", "", "");
+            return;
+        }
+
+        if (coordinateEditorIndex == selectedIndex) return;
+        Waypoint w = group.get(selectedIndex);
+        coordinateEditorIndex = selectedIndex;
+        setCoordinateEditorValues(Integer.toString(w.x()), Integer.toString(w.y()), Integer.toString(w.z()));
+    }
+
+    private void setCoordinateEditorValues(String x, String y, String z) {
+        syncingCoordinateEditors = true;
+        coordXBox.setValue(x);
+        coordYBox.setValue(y);
+        coordZBox.setValue(z);
+        syncingCoordinateEditors = false;
+    }
+
+    private void moveSelectedHere() {
+        if (!hasSelectedWaypoint()) return;
+
+        LocalPlayer p = Minecraft.getInstance().player;
+        if (p == null) return;
+
+        PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
+                p.getX(), p.getY(), p.getZ(), config);
+        Waypoint w = group.get(selectedIndex);
+        group.set(selectedIndex, w.withPos(pos.x(), pos.y(), pos.z()));
+        coordinateEditorIndex = -1;
+        syncCoordinateEditors();
+        manager.fireDataChanged();
+    }
+
     private void addTempHere() {
         // Temps always land in the per-zone temp bucket regardless of which
         // group we opened this screen from -- see AddTempScreen for the
@@ -377,6 +518,8 @@ public final class GroupEditScreen extends Screen {
         // Run the shared post-add flow (auto-disable skip-ahead + toast) so the
         // GUI add button behaves identically to /wp add and the keybind path.
         new WaypointAddFlow().afterWaypointAdded(group, group.size() - 1);
+        if (skipAheadBtn != null) skipAheadBtn.setMessage(skipAheadLabel());
+        selectWaypoint(group.size() - 1);
         manager.fireDataChanged();
         onManualEdit();
     }
@@ -439,13 +582,15 @@ public final class GroupEditScreen extends Screen {
         group.replaceWaypoints(pts);
         group.setGradientMode(mode);
         group.setCurrentIndex(0);
+        coordinateEditorIndex = -1;
+        syncCoordinateEditors();
         manager.fireDataChanged();
     }
 
     private void removeSelected() {
         if (selectedIndex < 0 || selectedIndex >= group.size()) return;
         group.remove(selectedIndex);
-        selectedIndex = Math.min(selectedIndex, group.size() - 1);
+        selectWaypoint(Math.min(selectedIndex, group.size() - 1));
         manager.fireDataChanged();
         onManualEdit();
     }
@@ -455,7 +600,7 @@ public final class GroupEditScreen extends Screen {
         int to = Math.max(0, Math.min(group.size() - 1, selectedIndex + delta));
         if (to == selectedIndex) return;
         group.move(selectedIndex, to);
-        selectedIndex = to;
+        selectWaypoint(to);
         manager.fireDataChanged();
         onManualEdit();
     }
@@ -623,7 +768,7 @@ public final class GroupEditScreen extends Screen {
             int idx = rowIndexAt(event.x(), event.y());
             if (idx >= 0) {
                 group.setCurrentIndex(idx);
-                selectedIndex = idx;
+                selectWaypoint(idx);
                 manager.fireDataChanged();
                 return true;
             }
@@ -649,7 +794,7 @@ public final class GroupEditScreen extends Screen {
                 } else {
                     openWaypointColorPicker(swatchIdx);
                 }
-                selectedIndex = swatchIdx;
+                selectWaypoint(swatchIdx);
                 return true;
             }
         }
@@ -659,7 +804,7 @@ public final class GroupEditScreen extends Screen {
 
         int idx = rowIndexAt(event.x(), event.y());
         if (idx < 0) return false;
-        selectedIndex = idx;
+        selectWaypoint(idx);
 
         if (doubleClick) beginLabelEdit(idx);
         return true;
@@ -777,7 +922,7 @@ public final class GroupEditScreen extends Screen {
      */
     private void beginLabelEdit(int index) {
         if (index < 0 || index >= group.size()) return;
-        selectedIndex = index;
+        selectWaypoint(index);
         editingIndex = index;
 
         Waypoint w = group.get(index);
