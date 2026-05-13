@@ -186,6 +186,34 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void waypointOutlineThicknessDefaultsToHistoricalWidthAndClampsToSafeRange() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertEquals(3.0, config.waypointOutlineThickness());
+
+        config.setWaypointOutlineThickness(5.5);
+        assertEquals(5.5, config.waypointOutlineThickness());
+
+        config.setWaypointOutlineThickness(0.0);
+        assertEquals(1.0, config.waypointOutlineThickness());
+
+        config.setWaypointOutlineThickness(99.0);
+        assertEquals(12.0, config.waypointOutlineThickness());
+    }
+
+    @Test
+    void waypointOutlineThicknessRejectsNonFiniteValues() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setWaypointOutlineThickness(4.0);
+
+        config.setWaypointOutlineThickness(Double.NaN);
+        assertEquals(4.0, config.waypointOutlineThickness());
+
+        config.setWaypointOutlineThickness(Double.POSITIVE_INFINITY);
+        assertEquals(4.0, config.waypointOutlineThickness());
+    }
+
+    @Test
     void tracerThicknessRejectsNonFiniteValues() {
         WaypointerConfig config = new WaypointerConfig();
         config.setTracerThickness(4.0);
@@ -240,5 +268,16 @@ class WaypointerConfigTest {
         WaypointerConfig config = new WaypointerConfig();
 
         assertEquals(false, config.dungeonWaypointsFeatureEnabled());
+    }
+
+    @Test
+    void irisHudFallbackDefaultsOffButCanBeEnabled() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertFalse(config.irisShaderHudFallback());
+
+        config.setIrisShaderHudFallback(true);
+
+        assertTrue(config.irisShaderHudFallback());
     }
 }

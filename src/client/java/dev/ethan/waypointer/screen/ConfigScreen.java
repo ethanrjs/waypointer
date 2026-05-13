@@ -126,6 +126,10 @@ public final class ConfigScreen extends Screen {
         y += rowH;
         addBoxStyleRow(col1, y, colW);
         y += rowH;
+        addNumberRow(col1, y, colW, "Outline thickness (px)",
+                config.waypointOutlineThickness(), config::setWaypointOutlineThickness,
+                "Width of waypoint outlines.");
+        y += rowH;
         addBeamModeRow(col1, y, colW);
         y += rowH;
         addBoolRow(col1, y, "Beam extends below waypoint",
@@ -316,10 +320,16 @@ public final class ConfigScreen extends Screen {
                 "Prefer Hypixel-style scoreboard hints when resolving the current zone ID,\n"
               + "even when other signals exist. Use if tab/location detection misbehaves.");
 
-        addBoolRow(col2, rowsY, "Check for updates on startup",
+        int y2 = rowsY;
+        addBoolRow(col2, y2, "Check for updates on startup",
                 config.checkForUpdates(), config::setCheckForUpdates,
                 "On client start, checks GitHub once for a newer Waypointer release.\n"
               + "Off avoids any update HTTP request.");
+        y2 += rowH;
+        addBoolRow(col2, y2, "Experimental Iris HUD fallback",
+                config.irisShaderHudFallback(), config::setIrisShaderHudFallback,
+                "Allows tracers and waypoints to render with iris shaders enabled.\n"
+              + "The appearance will be degraded.");
     }
 
     private int leftHeaderX;

@@ -35,25 +35,32 @@ public final class RenderHelpers {
                                    float x1, float y1, float z1,
                                    float x2, float y2, float z2,
                                    int rgb, float alpha) {
+        emitLineBox(consumer, ps, x1, y1, z1, x2, y2, z2, rgb, alpha, DEFAULT_LINE_WIDTH);
+    }
+
+    public static void emitLineBox(VertexConsumer consumer, PoseStack ps,
+                                   float x1, float y1, float z1,
+                                   float x2, float y2, float z2,
+                                   int rgb, float alpha, float width) {
         int r = red(rgb), g = green(rgb), b = blue(rgb);
         int a = (int) (alpha * 255f) & 0xFF;
         PoseStack.Pose pose = ps.last();
 
         // bottom rectangle
-        seg(consumer, pose, x1, y1, z1, x2, y1, z1, r, g, b, a, 1, 0, 0);
-        seg(consumer, pose, x2, y1, z1, x2, y1, z2, r, g, b, a, 0, 0, 1);
-        seg(consumer, pose, x2, y1, z2, x1, y1, z2, r, g, b, a, -1, 0, 0);
-        seg(consumer, pose, x1, y1, z2, x1, y1, z1, r, g, b, a, 0, 0, -1);
+        seg(consumer, pose, x1, y1, z1, x2, y1, z1, r, g, b, a, 1, 0, 0, width);
+        seg(consumer, pose, x2, y1, z1, x2, y1, z2, r, g, b, a, 0, 0, 1, width);
+        seg(consumer, pose, x2, y1, z2, x1, y1, z2, r, g, b, a, -1, 0, 0, width);
+        seg(consumer, pose, x1, y1, z2, x1, y1, z1, r, g, b, a, 0, 0, -1, width);
         // top rectangle
-        seg(consumer, pose, x1, y2, z1, x2, y2, z1, r, g, b, a, 1, 0, 0);
-        seg(consumer, pose, x2, y2, z1, x2, y2, z2, r, g, b, a, 0, 0, 1);
-        seg(consumer, pose, x2, y2, z2, x1, y2, z2, r, g, b, a, -1, 0, 0);
-        seg(consumer, pose, x1, y2, z2, x1, y2, z1, r, g, b, a, 0, 0, -1);
+        seg(consumer, pose, x1, y2, z1, x2, y2, z1, r, g, b, a, 1, 0, 0, width);
+        seg(consumer, pose, x2, y2, z1, x2, y2, z2, r, g, b, a, 0, 0, 1, width);
+        seg(consumer, pose, x2, y2, z2, x1, y2, z2, r, g, b, a, -1, 0, 0, width);
+        seg(consumer, pose, x1, y2, z2, x1, y2, z1, r, g, b, a, 0, 0, -1, width);
         // verticals
-        seg(consumer, pose, x1, y1, z1, x1, y2, z1, r, g, b, a, 0, 1, 0);
-        seg(consumer, pose, x2, y1, z1, x2, y2, z1, r, g, b, a, 0, 1, 0);
-        seg(consumer, pose, x2, y1, z2, x2, y2, z2, r, g, b, a, 0, 1, 0);
-        seg(consumer, pose, x1, y1, z2, x1, y2, z2, r, g, b, a, 0, 1, 0);
+        seg(consumer, pose, x1, y1, z1, x1, y2, z1, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x2, y1, z1, x2, y2, z1, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x2, y1, z2, x2, y2, z2, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x1, y1, z2, x1, y2, z2, r, g, b, a, 0, 1, 0, width);
     }
 
     /**
