@@ -126,6 +126,10 @@ public final class ConfigScreen extends Screen {
         y += rowH;
         addBoxStyleRow(col1, y, colW);
         y += rowH;
+        addNumberRow(col1, y, colW, "Outline thickness (px)",
+                config.waypointOutlineThickness(), config::setWaypointOutlineThickness,
+                "Width of waypoint outlines.");
+        y += rowH;
         addBeamModeRow(col1, y, colW);
         y += rowH;
         addBoolRow(col1, y, "Beam extends below waypoint",
@@ -175,6 +179,12 @@ public final class ConfigScreen extends Screen {
                 config::showTracer,
                 "Opacity of the line drawn from the crosshair to the active waypoint.\n"
               + "0 is fully transparent, 1 is solid.");
+        y2 += rowH;
+        addNumberRow(col2, y2, colW, "Tracer thickness (px)",
+                config.tracerThickness(), config::setTracerThickness,
+                config::showTracer,
+                "Pixel width of the crosshair tracer line. Values are clamped\n"
+              + "from 1 to 12 so it stays visible without flooding the screen.");
         y2 += rowH;
         addTracerColorRow(col2, y2, colW,
                 () -> config.showTracer() && !config.matchTracerToWaypointColor(),
@@ -246,6 +256,11 @@ public final class ConfigScreen extends Screen {
                 config.restartRouteWhenComplete(), config::setRestartRouteWhenComplete,
                 "After you complete the final waypoint, progress wraps to the first point\n"
               + "so loop and farm routes do not sit in a \"finished\" state.");
+        y += rowH;
+        addBoolRow(col1, y, "Add new waypoints below player",
+                config.placeNewWaypointsBelowPlayer(), config::setPlaceNewWaypointsBelowPlayer,
+                "When adding at your position, place the marker one block below your feet.\n"
+              + "Turn off to use your exact standing block. Typed coordinates stay exact.");
 
         int y2 = rowsY;
         addBoolRow(col2, y2, "Dim sequence context waypoints",
@@ -305,10 +320,16 @@ public final class ConfigScreen extends Screen {
                 "Prefer Hypixel-style scoreboard hints when resolving the current zone ID,\n"
               + "even when other signals exist. Use if tab/location detection misbehaves.");
 
-        addBoolRow(col2, rowsY, "Check for updates on startup",
+        int y2 = rowsY;
+        addBoolRow(col2, y2, "Check for updates on startup",
                 config.checkForUpdates(), config::setCheckForUpdates,
                 "On client start, checks GitHub once for a newer Waypointer release.\n"
               + "Off avoids any update HTTP request.");
+        y2 += rowH;
+        addBoolRow(col2, y2, "Experimental Iris HUD fallback",
+                config.irisShaderHudFallback(), config::setIrisShaderHudFallback,
+                "Allows tracers and waypoints to render with iris shaders enabled.\n"
+              + "The appearance will be degraded.");
     }
 
     private int leftHeaderX;
@@ -362,8 +383,8 @@ public final class ConfigScreen extends Screen {
 
     private void addTracerColorRow(int x, int y, int colW, BooleanSupplier enabled,
                                    String tooltip) {
-        int swatchW = 44;
-        int boxW = 80;
+        int swatchW = 72;
+        int boxW = 76;
         int labelW = colW - boxW - swatchW - GAP * 2;
         addRenderableOnly(new LabelWidget(x, y + 6,
                 "Tracer color (hex RRGGBB)", labelW, enabled));
@@ -375,8 +396,8 @@ public final class ConfigScreen extends Screen {
         box.setTooltip(Tooltip.create(Component.literal(tooltip)));
 
         ColorSwatchButton swatch = new ColorSwatchButton(
-                x + labelW + GAP + boxW + GAP, y, swatchW, BTN_H,
-                "Pick", config.tracerColor(), () -> ColorPickerScreen.open(this,
+                x + labelW + GAP + boxW + GAP, y + 2, swatchW, BTN_H,
+                "Pick color", config.tracerColor(), () -> ColorPickerScreen.open(this,
                 "Tracer Colour", config.tracerColor(), picked -> {
                     config.setTracerColor(picked);
                     box.setValue(String.format("%06X", picked & 0xFFFFFF));

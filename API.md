@@ -8,6 +8,7 @@ You can:
 - read the user's routes
 - add temporary markers
 - create normal saved routes
+- edit waypoints in saved routes
 - show routes owned by your mod
 - import waypoint share strings
 - listen for zone or waypoint changes
@@ -86,6 +87,19 @@ String groupId = waypointer.createRoute(RouteSpec.builder()
         .waypoint(WaypointSpec.at(20, 65, 20).name("Vein 1"))
         .waypoint(WaypointSpec.at(30, 66, 30).name("Vein 2"))
         .build());
+```
+
+### Edit A Saved Waypoint
+
+Use `updateWaypoint` when you want to replace one waypoint without changing its
+position in the route. The call returns `false` if the route id or index no
+longer exists.
+
+```java
+boolean changed = waypointer.updateWaypoint(
+        groupId,
+        1,
+        WaypointSpec.at(20, 64, 20).name("Updated Stop"));
 ```
 
 ### Read User Waypoints

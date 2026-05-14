@@ -78,6 +78,19 @@ public final class DefaultWaypointerApi implements WaypointerApi {
     }
 
     @Override
+    public boolean updateWaypoint(String groupId, int waypointIndex, WaypointSpec replacement) {
+        Objects.requireNonNull(groupId, "groupId");
+        Objects.requireNonNull(replacement, "replacement");
+        WaypointGroup group = manager.get(groupId);
+        if (group == null) return false;
+        if (waypointIndex < 0 || waypointIndex >= group.size()) return false;
+
+        group.set(waypointIndex, replacement.toWaypoint());
+        manager.fireDataChanged();
+        return true;
+    }
+
+    @Override
     public WaypointGroupSnapshot addTempWaypoint(WaypointSpec waypoint) {
         Objects.requireNonNull(waypoint, "waypoint");
         WaypointGroup group = manager.getOrCreateTempGroup(waypoint.source());

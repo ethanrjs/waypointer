@@ -6,6 +6,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import dev.ethan.waypointer.screen.AddNamedWaypointScreen;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
@@ -164,20 +165,19 @@ public final class WaypointerKeybinds {
     }
 
     /**
-     * Drops a waypoint at the player's feet, reusing the first active group in the
-     * current zone (or bootstrapping one if needed). Coordinates are floored to
-     * match {@code /wp add} so the keybind and command produce identical data.
+     * Drops a waypoint at the configured player-relative position, reusing the
+     * first active group in the current zone (or bootstrapping one if needed).
+     * This matches {@code /wp add} so keybind and command muscle memory align.
      */
     private void addWaypointAtPlayer(Minecraft mc) {
         LocalPlayer p = mc.player;
         if (p == null) return;
 
-        int x = (int) Math.floor(p.getX());
-        int y = (int) Math.floor(p.getY());
-        int z = (int) Math.floor(p.getZ());
+        PlayerWaypointPlacement.BlockPosition pos = playerWaypointPosition(p);
 
-        WaypointGroup target = manager.getOrCreateActiveGroup();
-        target.add(new Waypoint(x, y, z, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
+        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
+        target.add(new Waypoint(
+                pos.x(), pos.y(), pos.z(), "", Waypoint.DEFAULT_COLOR, 0, 0.0));
         addFlow.afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
     }
@@ -185,18 +185,17 @@ public final class WaypointerKeybinds {
     private void openNamedWaypointPrompt(Minecraft mc) {
         LocalPlayer p = mc.player;
         if (p == null) return;
-        int x = (int) Math.floor(p.getX());
-        int y = (int) Math.floor(p.getY());
-        int z = (int) Math.floor(p.getZ());
-        WaypointGroup target = manager.getOrCreateActiveGroup();
-        AddNamedWaypointScreen.openAt(null, manager, config, target, x, y, z);
+        PlayerWaypointPlacement.BlockPosition pos = playerWaypointPosition(p);
+        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
+        AddNamedWaypointScreen.openAt(
+                null, manager, config, target, pos.x(), pos.y(), pos.z());
     }
 
     /**
-     * Drops a temporary waypoint at the player's feet, using the user's last
-     * picks for mode + duration (stored in config). Time-mode temps get their
-     * expiry stamped from {@link System#currentTimeMillis()} at the moment of
-     * creation; other modes ignore duration.
+     * Drops a temporary waypoint at the configured player-relative position,
+     * using the user's last picks for mode + duration (stored in config).
+     * Time-mode temps get their expiry stamped from {@link System#currentTimeMillis()}
+     * at the moment of creation; other modes ignore duration.
      *
      * <p>Temps go into the per-zone temp bucket (see
      * {@link ActiveGroupManager#getOrCreateTempGroup()}), not the player's
@@ -209,9 +208,7 @@ public final class WaypointerKeybinds {
         LocalPlayer p = mc.player;
         if (p == null) return;
 
-        int x = (int) Math.floor(p.getX());
-        int y = (int) Math.floor(p.getY());
-        int z = (int) Math.floor(p.getZ());
+        PlayerWaypointPlacement.BlockPosition pos = playerWaypointPosition(p);
 
         int mode = Waypoint.normalizeTempMode(config.tempDefaultMode());
         int durationMin = Math.max(1, config.tempDefaultDurationMin());
@@ -220,14 +217,19 @@ public final class WaypointerKeybinds {
                 : 0L;
 
         WaypointGroup target = manager.getOrCreateTempGroup();
-        target.add(Waypoint.at(x, y, z).withTemp(mode, expiresAt));
+        target.add(Waypoint.at(pos.x(), pos.y(), pos.z()).withTemp(mode, expiresAt));
         if (config.focusTempWaypoints()) {
             manager.focusTempWaypoint(target, target.size() - 1);
         }
         manager.fireDataChanged();
 
         showFeedback(mc, Component.literal("Temp (" + Waypoint.tempModeName(mode) + ") added at "
-                        + x + ", " + y + ", " + z).withStyle(ChatFormatting.AQUA));
+                + pos.x() + ", " + pos.y() + ", " + pos.z()).withStyle(ChatFormatting.AQUA));
+    }
+
+    private PlayerWaypointPlacement.BlockPosition playerWaypointPosition(LocalPlayer player) {
+        return PlayerWaypointPlacement.fromPlayer(
+                player.getX(), player.getY(), player.getZ(), config);
     }
 
     /**

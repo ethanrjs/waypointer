@@ -78,6 +78,17 @@ public interface WaypointerApi {
     boolean addWaypoint(String groupId, WaypointSpec waypoint);
 
     /**
+     * Replace one waypoint in an existing route.
+     *
+     * <p>Use this for edits that should keep the waypoint in the same list
+     * position while changing its coordinates, name, color, flags, or radius.
+     *
+     * @return {@code true} when the waypoint was replaced, {@code false} when the
+     *         route id did not exist or the index was outside the route
+     */
+    boolean updateWaypoint(String groupId, int waypointIndex, WaypointSpec replacement);
+
+    /**
      * Add one session-only marker to Waypointer's temp bucket for the current zone.
      *
      * <p>Use this for short-lived markers such as chat coordinates, burrows, or

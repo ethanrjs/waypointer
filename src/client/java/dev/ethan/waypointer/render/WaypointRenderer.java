@@ -104,11 +104,14 @@ public final class WaypointRenderer implements HudElement {
      * frame. The array is still tiny compared with a single route import.
      */
     private static final int DISTANCE_CACHE_MAX = 4096;
+    private static final int HUD_LINE_CULL_MARGIN = 64;
     private static final String[] DISTANCE_CACHE;
     static {
         DISTANCE_CACHE = new String[DISTANCE_CACHE_MAX];
         for (int i = 0; i < DISTANCE_CACHE_MAX; i++) DISTANCE_CACHE[i] = i + "m";
     }
+    private static final int[] BOX_EDGE_A = {0, 1, 3, 2, 4, 5, 7, 6, 0, 1, 2, 3};
+    private static final int[] BOX_EDGE_B = {1, 3, 2, 0, 5, 7, 6, 4, 4, 5, 6, 7};
 
     /**
      * Bounded cache for generated labels like "#34" and "Next (34/120)".
@@ -135,6 +138,12 @@ public final class WaypointRenderer implements HudElement {
     private final String[] nextLabelCache = new String[NEXT_LABEL_CACHE_SIZE];
     private final WorldScreenProjector labelProjector = new WorldScreenProjector();
     private final double[] labelScreenScratch = new double[2];
+    private final double[] boxScreenScratch = new double[16];
+    private final boolean[] boxCornerVisible = new boolean[8];
+    private double projectedBoxMinX;
+    private double projectedBoxMinY;
+    private double projectedBoxMaxX;
+    private double projectedBoxMaxY;
     private final ArrayList<LabelCandidate> labelCandidates = new ArrayList<>();
     private int labelCandidateCount;
 
@@ -169,6 +178,8 @@ public final class WaypointRenderer implements HudElement {
     private static final int DEFAULT_MAX_BUILD_Y = 320;
 
     private void onWorldRender(WorldRenderContext ctx) {
+        if (IrisShaderFallback.shouldUse(config)) return;
+
         var groups = manager.activeGroups();
         if (groups.isEmpty()) return;
 
@@ -234,6 +245,7 @@ public final class WaypointRenderer implements HudElement {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
+        float outlineThickness = (float) config.waypointOutlineThickness();
 
         g.forEachVisibleIndex(i -> {
             if (shouldHideStaticReached(g, i)) return;
@@ -242,11 +254,12 @@ public final class WaypointRenderer implements HudElement {
             if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
 
             State state = stateFor(g, i, currentIdx);
-            if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
+            if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
 
             float alpha = alphaFor(g, state) * beaconOpacity;
             float x = w.x(), y = w.y(), z = w.z();
-            RenderHelpers.emitLineBox(lines, ps, x, y, z, x + 1f, y + 1f, z + 1f, w.color(), alpha);
+            RenderHelpers.emitLineBox(lines, ps, x, y, z, x + 1f, y + 1f, z + 1f,
+                    w.color(), alpha, outlineThickness);
         });
     }
 
@@ -263,7 +276,7 @@ public final class WaypointRenderer implements HudElement {
             if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
 
             State state = stateFor(g, i, currentIdx);
-            if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
+            if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
 
             float alpha = alphaFor(g, state) * beaconOpacity;
             float x = w.x(), y = w.y(), z = w.z();
@@ -303,7 +316,7 @@ public final class WaypointRenderer implements HudElement {
         if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
 
         State state = stateFor(g, i, currentIdx);
-        if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
+        if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
 
         float alpha = alphaFor(g, state) * (float) config.beaconOpacity() * BEAM_ALPHA_SCALE;
         if (alpha <= 0.0f) return;
@@ -335,7 +348,8 @@ public final class WaypointRenderer implements HudElement {
     public void render(GuiGraphics g, DeltaTracker tick) {
         boolean showNames = config.showWaypointNames();
         boolean showDistances = config.showWaypointDistances();
-        if (!showNames && !showDistances) return;
+        boolean drawHudFallback = IrisShaderFallback.shouldUse(config);
+        if (!showNames && !showDistances && !drawHudFallback) return;
 
         var groups = manager.activeGroups();
         if (groups.isEmpty()) return;
@@ -354,13 +368,118 @@ public final class WaypointRenderer implements HudElement {
         double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
         labelCandidateCount = 0;
 
-        for (WaypointGroup group : groups) {
-            drawGroupLabels(g, font, camPos, screenW, screenH, group,
-                    showNames, showDistances, labelBudget, maxStaticDistanceSq);
+        if (drawHudFallback) {
+            drawHudFallbackBoxes(g, camPos, screenW, screenH, groups, maxStaticDistanceSq);
         }
-        if (labelBudget > 0 && labelCandidateCount > 0) {
-            drawBudgetedLabels(g, font, Math.min(labelBudget, labelCandidateCount));
+
+        if (showNames || showDistances) {
+            for (WaypointGroup group : groups) {
+                drawGroupLabels(g, font, camPos, screenW, screenH, group,
+                        showNames, showDistances, labelBudget, maxStaticDistanceSq);
+            }
+            if (labelBudget > 0 && labelCandidateCount > 0) {
+                drawBudgetedLabels(g, font, Math.min(labelBudget, labelCandidateCount));
+            }
         }
+    }
+
+    private void drawHudFallbackBoxes(GuiGraphics g, Vec3 camPos, int screenW,
+                                      int screenH, Iterable<WaypointGroup> groups,
+                                      double maxStaticDistanceSq) {
+        WaypointerConfig.BoxStyle style = config.boxStyle();
+        if (style == WaypointerConfig.BoxStyle.FILLED) {
+            // The HUD fallback cannot faithfully preserve translucent 3D faces
+            // after projection. Draw an outline anyway so FILLED users still get
+            // a visible shader-safe marker instead of losing boxes entirely.
+            style = WaypointerConfig.BoxStyle.OUTLINED;
+        }
+        if (style == WaypointerConfig.BoxStyle.OUTLINED
+                || style == WaypointerConfig.BoxStyle.FILLED_OUTLINED) {
+            for (WaypointGroup group : groups) {
+                drawHudFallbackGroupBoxes(g, camPos, screenW, screenH,
+                        group, maxStaticDistanceSq);
+            }
+        }
+    }
+
+    private void drawHudFallbackGroupBoxes(GuiGraphics g, Vec3 camPos, int screenW,
+                                           int screenH, WaypointGroup group,
+                                           double maxStaticDistanceSq) {
+        int currentIdx = group.currentIndex();
+        boolean showCompleted = config.showCompleted();
+        float beaconOpacity = (float) config.beaconOpacity();
+
+        group.forEachVisibleIndex(i -> {
+            if (shouldHideStaticReached(group, i)) return;
+
+            Waypoint waypoint = group.get(i);
+            if (isStaticBeyondDistanceLimit(group, waypoint, camPos, maxStaticDistanceSq)) return;
+
+            State state = stateFor(group, i, currentIdx);
+            if (shouldHideCompletedSequenceWaypoint(
+                    group, i, currentIdx, state, showCompleted, waypoint)) {
+                return;
+            }
+
+            float alpha = alphaFor(group, state) * beaconOpacity;
+            int argb = RenderHelpers.withAlpha(0xFF000000 | (waypoint.color() & 0xFFFFFF), alpha);
+            if (!projectBoxCorners(waypoint, screenW, screenH)) return;
+
+            double outlineThickness = config.waypointOutlineThickness();
+            for (int edge = 0; edge < BOX_EDGE_A.length; edge++) {
+                int a = BOX_EDGE_A[edge];
+                int b = BOX_EDGE_B[edge];
+                if (!boxCornerVisible[a] || !boxCornerVisible[b]) continue;
+                drawFastScreenLine(g,
+                        boxScreenScratch[a * 2], boxScreenScratch[a * 2 + 1],
+                        boxScreenScratch[b * 2], boxScreenScratch[b * 2 + 1],
+                        argb, outlineThickness);
+            }
+        });
+    }
+
+    private boolean projectBoxCorners(Waypoint waypoint, int screenW, int screenH) {
+        projectedBoxMinX = Double.POSITIVE_INFINITY;
+        projectedBoxMinY = Double.POSITIVE_INFINITY;
+        projectedBoxMaxX = Double.NEGATIVE_INFINITY;
+        projectedBoxMaxY = Double.NEGATIVE_INFINITY;
+
+        double x1 = waypoint.x();
+        double y1 = waypoint.y();
+        double z1 = waypoint.z();
+        double x2 = x1 + 1.0;
+        double y2 = y1 + 1.0;
+        double z2 = z1 + 1.0;
+
+        projectBoxCorner(0, x1, y1, z1, screenW, screenH);
+        projectBoxCorner(1, x2, y1, z1, screenW, screenH);
+        projectBoxCorner(2, x1, y1, z2, screenW, screenH);
+        projectBoxCorner(3, x2, y1, z2, screenW, screenH);
+        projectBoxCorner(4, x1, y2, z1, screenW, screenH);
+        projectBoxCorner(5, x2, y2, z1, screenW, screenH);
+        projectBoxCorner(6, x1, y2, z2, screenW, screenH);
+        projectBoxCorner(7, x2, y2, z2, screenW, screenH);
+
+        if (!Double.isFinite(projectedBoxMinX)) return false;
+        double margin = HUD_LINE_CULL_MARGIN / Minecraft.getInstance().getWindow().getGuiScale();
+        return projectedBoxMaxX >= -margin
+                && projectedBoxMinX <= screenW + margin
+                && projectedBoxMaxY >= -margin
+                && projectedBoxMinY <= screenH + margin;
+    }
+
+    private void projectBoxCorner(int index, double x, double y, double z,
+                                  int screenW, int screenH) {
+        int offset = index * 2;
+        boxCornerVisible[index] = labelProjector.project(x, y, z, screenW, screenH, labelScreenScratch);
+        if (!boxCornerVisible[index]) return;
+
+        boxScreenScratch[offset] = labelScreenScratch[0];
+        boxScreenScratch[offset + 1] = labelScreenScratch[1];
+        projectedBoxMinX = Math.min(projectedBoxMinX, labelScreenScratch[0]);
+        projectedBoxMinY = Math.min(projectedBoxMinY, labelScreenScratch[1]);
+        projectedBoxMaxX = Math.max(projectedBoxMaxX, labelScreenScratch[0]);
+        projectedBoxMaxY = Math.max(projectedBoxMaxY, labelScreenScratch[1]);
     }
 
     private void drawGroupLabels(GuiGraphics g, Font font, Vec3 camPos,
@@ -379,7 +498,7 @@ public final class WaypointRenderer implements HudElement {
 
             Waypoint w = group.get(i);
             State state = stateFor(group, i, currentIdx);
-            if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
+            if (shouldHideCompletedSequenceWaypoint(group, i, currentIdx, state, showCompleted, w)) return;
             if (w.hasFlag(Waypoint.FLAG_HIDE_NAME)) return;
 
             double ax = w.x() + 0.5;
@@ -415,12 +534,12 @@ public final class WaypointRenderer implements HudElement {
 
             double rowY = sy;
             if (showNames) {
-                drawCenteredLabel(g, font, name, sx, rowY, withAlpha(nameColor, alpha), alpha);
+                drawCenteredLabel(g, font, name, sx, rowY, RenderHelpers.withAlpha(nameColor, alpha), alpha);
                 rowY += font.lineHeight + DISTANCE_ROW_GAP;
             }
             if (showDistances) {
                 drawCenteredLabel(g, font, distanceText, sx, rowY,
-                        withAlpha(DISTANCE_ARGB, alpha), alpha);
+                        RenderHelpers.withAlpha(DISTANCE_ARGB, alpha), alpha);
             }
         });
     }
@@ -432,12 +551,12 @@ public final class WaypointRenderer implements HudElement {
             double rowY = candidate.screenY;
             if (candidate.name != null) {
                 drawCenteredLabel(g, font, candidate.name, candidate.screenX, rowY,
-                        withAlpha(candidate.nameColor, candidate.alpha), candidate.alpha);
+                        RenderHelpers.withAlpha(candidate.nameColor, candidate.alpha), candidate.alpha);
                 rowY += font.lineHeight + DISTANCE_ROW_GAP;
             }
             if (candidate.distance != null) {
                 drawCenteredLabel(g, font, candidate.distance, candidate.screenX, rowY,
-                        withAlpha(DISTANCE_ARGB, candidate.alpha), candidate.alpha);
+                        RenderHelpers.withAlpha(DISTANCE_ARGB, candidate.alpha), candidate.alpha);
             }
         }
     }
@@ -493,7 +612,7 @@ public final class WaypointRenderer implements HudElement {
             int backdropBottom = drawY + font.lineHeight - 1 + BACKDROP_PAD_Y;
             g.fill(drawX - BACKDROP_PAD_X, backdropTop,
                     drawX + width + BACKDROP_PAD_X, backdropBottom,
-                    withAlpha(LABEL_BACKDROP_ARGB, alpha));
+                    RenderHelpers.withAlpha(LABEL_BACKDROP_ARGB, alpha));
         }
         // drawString's shadow flag stays on in both modes -- without the backdrop the
         // drop shadow is doing all the work keeping text readable against bright biomes.
@@ -544,6 +663,24 @@ public final class WaypointRenderer implements HudElement {
         return State.UPCOMING;
     }
 
+    private boolean shouldHideCompletedSequenceWaypoint(WaypointGroup group,
+                                                        int index,
+                                                        int currentIdx,
+                                                        State state,
+                                                        boolean showCompleted,
+                                                        Waypoint waypoint) {
+        if (state != State.COMPLETED) return false;
+        if (waypoint.hasFlag(Waypoint.FLAG_HIDE_BEACON)) return true;
+        if (showCompleted) return false;
+
+        return !isImmediateSequenceContext(group, index, currentIdx);
+    }
+
+    private boolean isImmediateSequenceContext(WaypointGroup group, int index, int currentIdx) {
+        return group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
+                && index == currentIdx - 1;
+    }
+
     private boolean shouldHideStaticReached(WaypointGroup group, int index) {
         return config.hideReachedStaticWaypointsUntilCycleComplete()
                 && group.loadMode() == WaypointGroup.LoadMode.STATIC
@@ -591,10 +728,78 @@ public final class WaypointRenderer implements HudElement {
         return state.alpha;
     }
 
-    private static int withAlpha(int argb, float alphaScale) {
-        float clamped = Math.max(0.0f, Math.min(1.0f, alphaScale));
-        int alpha = Math.round(((argb >>> 24) & 0xFF) * clamped);
-        return (alpha << 24) | (argb & 0x00FFFFFF);
+    static void drawScreenLine(GuiGraphics g, double x1, double y1,
+                               double x2, double y2, int argb, double thickness) {
+        drawFastScreenLine(g, x1, y1, x2, y2, argb, thickness);
+    }
+
+    private static void drawFastScreenLine(GuiGraphics g, double x1, double y1,
+                                           double x2, double y2, int argb,
+                                           double thickness) {
+        double guiScale = Minecraft.getInstance().getWindow().getGuiScale();
+        double scaledThickness = Math.max(1.0 / guiScale, thickness / guiScale);
+        double margin = HUD_LINE_CULL_MARGIN / guiScale;
+        double minX = -margin;
+        double minY = -margin;
+        double maxX = g.guiWidth() + margin;
+        double maxY = g.guiHeight() + margin;
+        int out1 = outCode(x1, y1, minX, minY, maxX, maxY);
+        int out2 = outCode(x2, y2, minX, minY, maxX, maxY);
+        while ((out1 | out2) != 0) {
+            if ((out1 & out2) != 0) return;
+
+            int outside = out1 != 0 ? out1 : out2;
+            double x;
+            double y;
+            if ((outside & 8) != 0) {
+                x = x1 + (x2 - x1) * (maxY - y1) / (y2 - y1);
+                y = maxY;
+            } else if ((outside & 4) != 0) {
+                x = x1 + (x2 - x1) * (minY - y1) / (y2 - y1);
+                y = minY;
+            } else if ((outside & 2) != 0) {
+                y = y1 + (y2 - y1) * (maxX - x1) / (x2 - x1);
+                x = maxX;
+            } else {
+                y = y1 + (y2 - y1) * (minX - x1) / (x2 - x1);
+                x = minX;
+            }
+
+            if (outside == out1) {
+                x1 = x;
+                y1 = y;
+                out1 = outCode(x1, y1, minX, minY, maxX, maxY);
+            } else {
+                x2 = x;
+                y2 = y;
+                out2 = outCode(x2, y2, minX, minY, maxX, maxY);
+            }
+        }
+
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        double length = Math.sqrt(dx * dx + dy * dy);
+        if (length < 0.5) return;
+
+        double step = Math.max(1.0, scaledThickness * 0.75);
+        int samples = Math.max(1, (int) Math.ceil(length / step));
+        int radius = Math.max(0, (int) Math.floor(scaledThickness * 0.5));
+        for (int i = 0; i <= samples; i++) {
+            double t = i / (double) samples;
+            int x = (int) Math.round(x1 + dx * t);
+            int y = (int) Math.round(y1 + dy * t);
+            g.fill(x - radius, y - radius, x + radius + 1, y + radius + 1, argb);
+        }
+    }
+
+    private static int outCode(double x, double y, double minX, double minY,
+                               double maxX, double maxY) {
+        int code = 0;
+        if (x < minX) code |= 1;
+        else if (x > maxX) code |= 2;
+        if (y < minY) code |= 4;
+        else if (y > maxY) code |= 8;
+        return code;
     }
 
     private enum State {

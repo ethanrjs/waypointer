@@ -7,6 +7,7 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.input.WaypointAddFlow;
+import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -53,12 +54,6 @@ import static dev.ethan.waypointer.screen.GuiTokens.*;
  */
 public final class GroupEditScreen extends Screen {
 
-    private enum SortMode {
-        MANUAL("Manual"), NEAREST("Nearest"), Y_ASC("Y asc"), Y_DESC("Y desc");
-        final String label;
-        SortMode(String label) { this.label = label; }
-    }
-
     private final Screen parent;
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
@@ -67,18 +62,23 @@ public final class GroupEditScreen extends Screen {
     private EditBox nameBox;
     private Button gradientBtn;
     private Button modeBtn;
-    private Button sortBtn;
     private Button radiusMinusBtn;
     private Button radiusPlusBtn;
+    private Button skipAheadBtn;
+    private Button moveSelectedHereBtn;
+    private EditBox coordXBox;
+    private EditBox coordYBox;
+    private EditBox coordZBox;
     // Two small colour swatch buttons for the gradient endpoints. Stored so
     // the colour-picker callback can push the new colour back onto the
     // correct widget without chasing it through the widget tree.
     private ColorSwatchButton gradientStartBtn;
     private ColorSwatchButton gradientEndBtn;
 
-    private SortMode sortMode = SortMode.MANUAL;
     private int scrollOffset;
     private int selectedIndex = -1;
+    private int coordinateEditorIndex = -1;
+    private boolean syncingCoordinateEditors;
 
     // Inline per-row label editor: shown only while the user is renaming a waypoint,
     // positioned in render() so it tracks the row through scroll. We hold one EditBox
@@ -91,21 +91,6 @@ public final class GroupEditScreen extends Screen {
     private static final int GLFW_KEY_ESCAPE   = 256;
     private static final int GLFW_KEY_ENTER    = 257;
     private static final int GLFW_KEY_KP_ENTER = 335;
-
-    /**
-     * Snapshot of the manual state so cycling through the sort modes never loses
-     * the route the player hand-arranged. Order AND current progress index are both
-     * captured so an accidental cycle restores the editor to the exact state the
-     * player would expect -- order alone would resurrect the route but leave them
-     * at progress 0 after Nearest reset it on the way through.
-     *
-     * Captured on the first transition away from MANUAL, refreshed whenever the
-     * player makes a manual edit (add/move/remove), restored when the cycle wraps
-     * back to MANUAL. {@code null} means "nothing to restore": we don't pretend
-     * there's a saved order before the user ever pressed the sort button.
-     */
-    private record ManualSnapshot(List<Waypoint> order, int currentIndex) {}
-    private ManualSnapshot manualSnapshot = null;
 
     public GroupEditScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config, WaypointGroup group) {
         super(Component.literal("Edit: " + group.name()));
@@ -162,6 +147,7 @@ public final class GroupEditScreen extends Screen {
               + "Applies in AUTO mode.")));
         addRenderableWidget(gradientStartBtn);
         addRenderableWidget(gradientEndBtn);
+        updateGradientButtons();
         y += BTN_H + GAP_TIGHT;
 
         // Mode toggle
@@ -195,19 +181,31 @@ public final class GroupEditScreen extends Screen {
         addRenderableWidget(radiusPlusBtn);
         y += BTN_H + GAP;
 
-        // Sort cycle
-        sortBtn = Button.builder(sortLabel(), this::cycleSort)
+        skipAheadBtn = Button.builder(skipAheadLabel(), this::toggleSkipAhead)
                 .bounds(sidebarInner, y, fieldW, BTN_H)
-                .tooltip(sortTooltip())
+                .tooltip(Tooltip.create(Component.literal(
+                        "Toggle skipping waypoints for this group.")))
                 .build();
-        addRenderableWidget(sortBtn);
+        addRenderableWidget(skipAheadBtn);
         y += BTN_H + GAP;
 
-        // Reset progress (de-emphasized)
+        addCoordinateEditors(sidebarInner, y, fieldW);
+        y += BTN_H + GAP;
+
+        moveSelectedHereBtn = Button.builder(Component.literal("Move Selected Here"), b -> moveSelectedHere())
+                .bounds(sidebarInner, y, fieldW, BTN_H)
+                .tooltip(Tooltip.create(Component.literal(
+                        "Replace the selected waypoint's coordinates with your\n"
+                      + "current block position.")))
+                .build();
+        addRenderableWidget(moveSelectedHereBtn);
+
+        int sidebarBottom = height - FOOTER_H - GAP_SECTION;
+        int resetY = sidebarBottom - BTN_H - GAP;
         addRenderableWidget(Button.builder(Component.literal("Reset Progress"), b -> {
             group.resetProgress();
             manager.fireDataChanged();
-        }).bounds(sidebarInner, y, fieldW, BTN_H)
+        }).bounds(sidebarInner, resetY, fieldW, BTN_H)
           .tooltip(Tooltip.create(Component.literal(
                   "Set current waypoint to #1.")))
           .build());
@@ -220,6 +218,7 @@ public final class GroupEditScreen extends Screen {
         labelEditor.setMaxLength(64);
         labelEditor.setVisible(false);
         addRenderableWidget(labelEditor);
+        syncCoordinateEditors();
 
         // Footer
         int footerY = height - FOOTER_H;
@@ -258,7 +257,14 @@ public final class GroupEditScreen extends Screen {
         group.setGradientMode(group.gradientMode() == WaypointGroup.GradientMode.AUTO
                 ? WaypointGroup.GradientMode.MANUAL : WaypointGroup.GradientMode.AUTO);
         b.setMessage(gradientLabel());
+        updateGradientButtons();
         manager.fireDataChanged();
+    }
+
+    private void updateGradientButtons() {
+        boolean active = group.gradientMode() == WaypointGroup.GradientMode.AUTO;
+        if (gradientStartBtn != null) gradientStartBtn.active = active;
+        if (gradientEndBtn != null) gradientEndBtn.active = active;
     }
 
     private void openGradientPicker(boolean start) {
@@ -282,9 +288,8 @@ public final class GroupEditScreen extends Screen {
 
     private static Tooltip modeTooltip() {
         return Tooltip.create(Component.literal(
-                "World display mode.\n"
-              + "STATIC: show all waypoints.\n"
-              + "SEQUENCE: show previous, current, next."));
+                "Static: Show all waypoints\n"
+              + "Sequenced: Go one-by-one"));
     }
 
     private void toggleLoadMode(Button b) {
@@ -299,60 +304,117 @@ public final class GroupEditScreen extends Screen {
         manager.fireDataChanged();
     }
 
-    private Component sortLabel() {
-        return Component.literal("Sort: " + sortMode.label);
+    private Component skipAheadLabel() {
+        return Component.literal("Skip Ahead: " + (group.skipAheadEnabled() ? "ON" : "OFF"));
     }
 
-    private static Tooltip sortTooltip() {
-        return Tooltip.create(Component.literal(
-                "Click to change route order.\n"
-              + "Manual -> Nearest -> Y asc -> Y desc.\n"
-              + "Manual restores your custom order."));
-    }
-
-    // Cycles through MANUAL -> NEAREST -> Y asc -> Y desc -> MANUAL. Leaving MANUAL
-    // snapshots the current order so cycling back restores it verbatim; auto-sort
-    // modes apply immediately. A Manual -> Manual cycle is impossible by construction.
-    private void cycleSort(Button b) {
-        SortMode next = switch (sortMode) {
-            case MANUAL  -> SortMode.NEAREST;
-            case NEAREST -> SortMode.Y_ASC;
-            case Y_ASC   -> SortMode.Y_DESC;
-            case Y_DESC  -> SortMode.MANUAL;
-        };
-
-        // The transition out of MANUAL is the last safe moment to capture what the
-        // user considers "manual" -- any auto-sort below would overwrite the list,
-        // and we need something to hand back when the cycle lands on MANUAL again.
-        if (sortMode == SortMode.MANUAL && next != SortMode.MANUAL) {
-            manualSnapshot = new ManualSnapshot(new ArrayList<>(group.waypoints()), group.currentIndex());
-        }
-
-        sortMode = next;
-        b.setMessage(sortLabel());
-
-        switch (sortMode) {
-            case NEAREST -> sortByDistance();
-            case Y_ASC   -> sortByY(true);
-            case Y_DESC  -> sortByY(false);
-            case MANUAL  -> restoreManualOrder();
-        }
-    }
-
-    /**
-     * Puts the group back into the player's last hand-arranged order AND progress
-     * index. If we never snapshotted (i.e. the player never left MANUAL this
-     * session) the existing state IS the manual state, and we no-op rather than
-     * clobber it.
-     */
-    private void restoreManualOrder() {
-        if (manualSnapshot == null) return;
-        replaceAll(manualSnapshot.order());
-        group.setCurrentIndex(manualSnapshot.currentIndex());
+    private void toggleSkipAhead(Button b) {
+        group.setSkipAheadEnabled(!group.skipAheadEnabled());
+        b.setMessage(skipAheadLabel());
         manager.fireDataChanged();
     }
 
+    private void addCoordinateEditors(int x, int y, int width) {
+        int boxW = (width - GAP_TIGHT * 2) / 3;
+        coordXBox = createCoordinateEditor("X", 0);
+        coordYBox = createCoordinateEditor("Y", 1);
+        coordZBox = createCoordinateEditor("Z", 2);
+
+        coordXBox.setX(x);
+        coordYBox.setX(x + boxW + GAP_TIGHT);
+        coordZBox.setX(x + (boxW + GAP_TIGHT) * 2);
+        coordXBox.setY(y);
+        coordYBox.setY(y);
+        coordZBox.setY(y);
+        coordXBox.setWidth(boxW);
+        coordYBox.setWidth(boxW);
+        coordZBox.setWidth(width - boxW * 2 - GAP_TIGHT * 2);
+
+        addRenderableWidget(coordXBox);
+        addRenderableWidget(coordYBox);
+        addRenderableWidget(coordZBox);
+    }
+
+    private EditBox createCoordinateEditor(String label, int axis) {
+        EditBox box = new EditBox(font, 0, 0, 40, BTN_H, Component.literal(label));
+        box.setMaxLength(12);
+        box.setHint(Component.literal(label));
+        box.setTooltip(Tooltip.create(Component.literal(
+                "Edit the selected waypoint's " + label + " coordinate.")));
+        box.setResponder(v -> updateSelectedCoordinate(axis, v));
+        return box;
+    }
+
+    private void updateSelectedCoordinate(int axis, String raw) {
+        if (syncingCoordinateEditors) return;
+        if (!hasSelectedWaypoint() || raw.isBlank()) return;
+
+        try {
+            int value = Integer.parseInt(raw.trim());
+            Waypoint w = group.get(selectedIndex);
+            int x = axis == 0 ? value : w.x();
+            int y = axis == 1 ? value : w.y();
+            int z = axis == 2 ? value : w.z();
+            group.set(selectedIndex, w.withPos(x, y, z));
+            manager.fireDataChanged();
+        } catch (NumberFormatException ignored) {
+            // Partial integer edits such as "-" are expected while typing.
+        }
+    }
+
     // --- actions ----------------------------------------------------------------------------
+
+    private boolean hasSelectedWaypoint() {
+        return selectedIndex >= 0 && selectedIndex < group.size();
+    }
+
+    private void selectWaypoint(int index) {
+        selectedIndex = index >= 0 && index < group.size() ? index : -1;
+        syncCoordinateEditors();
+    }
+
+    private void syncCoordinateEditors() {
+        if (coordXBox == null || coordYBox == null || coordZBox == null) return;
+
+        boolean hasSelection = hasSelectedWaypoint();
+        coordXBox.active = hasSelection;
+        coordYBox.active = hasSelection;
+        coordZBox.active = hasSelection;
+        if (moveSelectedHereBtn != null) moveSelectedHereBtn.active = hasSelection;
+
+        if (!hasSelection) {
+            coordinateEditorIndex = -1;
+            setCoordinateEditorValues("", "", "");
+            return;
+        }
+
+        if (coordinateEditorIndex == selectedIndex) return;
+        Waypoint w = group.get(selectedIndex);
+        coordinateEditorIndex = selectedIndex;
+        setCoordinateEditorValues(Integer.toString(w.x()), Integer.toString(w.y()), Integer.toString(w.z()));
+    }
+
+    private void setCoordinateEditorValues(String x, String y, String z) {
+        syncingCoordinateEditors = true;
+        coordXBox.setValue(x);
+        coordYBox.setValue(y);
+        coordZBox.setValue(z);
+        syncingCoordinateEditors = false;
+    }
+
+    private void moveSelectedHere() {
+        if (!hasSelectedWaypoint()) return;
+
+        LocalPlayer p = Minecraft.getInstance().player;
+        if (p == null) return;
+
+        PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
+                p.getX(), p.getY(), p.getZ(), config);
+        group.moveWaypointTo(selectedIndex, pos.x(), pos.y(), pos.z());
+        coordinateEditorIndex = -1;
+        syncCoordinateEditors();
+        manager.fireDataChanged();
+    }
 
     private void addTempHere() {
         // Temps always land in the per-zone temp bucket regardless of which
@@ -368,83 +430,26 @@ public final class GroupEditScreen extends Screen {
     private void addHere() {
         LocalPlayer p = Minecraft.getInstance().player;
         if (p == null) return;
+        PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
+                p.getX(), p.getY(), p.getZ(), config);
         group.add(new Waypoint(
-                (int) Math.floor(p.getX()), (int) Math.floor(p.getY()), (int) Math.floor(p.getZ()),
+                pos.x(), pos.y(), pos.z(),
                 "", Waypoint.DEFAULT_COLOR, 0, 0.0));
-        // Run the shared post-add flow (auto-disable skip-ahead + toast) so the
+        int newIndex = group.size() - 1;
+        // Run the shared post-add flow (focus + mode/toast updates) so the
         // GUI add button behaves identically to /wp add and the keybind path.
-        new WaypointAddFlow().afterWaypointAdded(group, group.size() - 1);
-        manager.fireDataChanged();
-        onManualEdit();
-    }
-
-    /**
-     * Called after any manual mutation of the list (add / move / remove). Drops the
-     * sort label back to MANUAL and refreshes the snapshot so the new order IS the
-     * manual state: cycling Nearest -> Y asc -> Y desc -> Manual will hand it back
-     * unchanged. Without this, the snapshot would go stale and "restore" to a
-     * pre-edit list, silently undoing the player's edit.
-     */
-    private void onManualEdit() {
-        if (sortMode != SortMode.MANUAL) {
-            sortMode = SortMode.MANUAL;
-            if (sortBtn != null) sortBtn.setMessage(sortLabel());
-        }
-        manualSnapshot = new ManualSnapshot(new ArrayList<>(group.waypoints()), group.currentIndex());
-    }
-
-    private void sortByDistance() {
-        LocalPlayer p = Minecraft.getInstance().player;
-        if (p == null || group.size() <= 1) return;
-        // Nearest-neighbour greedy sort: does what the player means by "put the nearest
-        // one first" better than raw distance-to-player (which would reorder globally
-        // even when the current head is already fine).
-        double cx = p.getX(), cy = p.getY(), cz = p.getZ();
-        List<Waypoint> pts = new ArrayList<>(group.waypoints());
-        List<Waypoint> sorted = new ArrayList<>(pts.size());
-        while (!pts.isEmpty()) {
-            int best = 0;
-            double bestDist = Double.MAX_VALUE;
-            for (int i = 0; i < pts.size(); i++) {
-                Waypoint w = pts.get(i);
-                double dx = (w.x() + 0.5) - cx;
-                double dy = (w.y() + 0.5) - cy;
-                double dz = (w.z() + 0.5) - cz;
-                double d = dx * dx + dy * dy + dz * dz;
-                if (d < bestDist) { bestDist = d; best = i; }
-            }
-            Waypoint w = pts.remove(best);
-            sorted.add(w);
-            cx = w.x(); cy = w.y(); cz = w.z();
-        }
-        replaceAll(sorted);
-    }
-
-    private void sortByY(boolean ascending) {
-        if (group.size() <= 1) return;
-        List<Waypoint> pts = new ArrayList<>(group.waypoints());
-        pts.sort((a, b) -> ascending ? Integer.compare(a.y(), b.y()) : Integer.compare(b.y(), a.y()));
-        replaceAll(pts);
-    }
-
-    private void replaceAll(List<Waypoint> pts) {
-        // Preserve gradient mode + progress intentionally: user expects the colors to
-        // re-gradient across the new order, and starting progress over is the least
-        // surprising behaviour after a sort.
-        WaypointGroup.GradientMode mode = group.gradientMode();
-        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-        group.replaceWaypoints(pts);
-        group.setGradientMode(mode);
-        group.setCurrentIndex(0);
+        new WaypointAddFlow().afterWaypointAdded(group, newIndex);
+        if (skipAheadBtn != null) skipAheadBtn.setMessage(skipAheadLabel());
+        selectWaypoint(newIndex);
         manager.fireDataChanged();
     }
 
     private void removeSelected() {
         if (selectedIndex < 0 || selectedIndex >= group.size()) return;
         group.remove(selectedIndex);
-        selectedIndex = Math.min(selectedIndex, group.size() - 1);
+        coordinateEditorIndex = -1;
+        selectWaypoint(Math.min(selectedIndex, group.size() - 1));
         manager.fireDataChanged();
-        onManualEdit();
     }
 
     private void moveSelected(int delta) {
@@ -452,9 +457,8 @@ public final class GroupEditScreen extends Screen {
         int to = Math.max(0, Math.min(group.size() - 1, selectedIndex + delta));
         if (to == selectedIndex) return;
         group.move(selectedIndex, to);
-        selectedIndex = to;
+        selectWaypoint(to);
         manager.fireDataChanged();
-        onManualEdit();
     }
 
     private void export() {
@@ -620,7 +624,7 @@ public final class GroupEditScreen extends Screen {
             int idx = rowIndexAt(event.x(), event.y());
             if (idx >= 0) {
                 group.setCurrentIndex(idx);
-                selectedIndex = idx;
+                selectWaypoint(idx);
                 manager.fireDataChanged();
                 return true;
             }
@@ -646,7 +650,7 @@ public final class GroupEditScreen extends Screen {
                 } else {
                     openWaypointColorPicker(swatchIdx);
                 }
-                selectedIndex = swatchIdx;
+                selectWaypoint(swatchIdx);
                 return true;
             }
         }
@@ -656,7 +660,7 @@ public final class GroupEditScreen extends Screen {
 
         int idx = rowIndexAt(event.x(), event.y());
         if (idx < 0) return false;
-        selectedIndex = idx;
+        selectWaypoint(idx);
 
         if (doubleClick) beginLabelEdit(idx);
         return true;
@@ -774,7 +778,7 @@ public final class GroupEditScreen extends Screen {
      */
     private void beginLabelEdit(int index) {
         if (index < 0 || index >= group.size()) return;
-        selectedIndex = index;
+        selectWaypoint(index);
         editingIndex = index;
 
         Waypoint w = group.get(index);

@@ -436,7 +436,8 @@ public final class WaypointerScreen extends Screen {
     // --- actions -----------------------------------------------------------------------------
 
     private void createGroup() {
-        WaypointGroup g = WaypointGroup.create("New group", selectedZoneId);
+        WaypointGroup g = WaypointGroup.create(
+                "New group", selectedZoneId, config.skipAheadMechanicEnabled());
         g.setDefaultRadius(config.defaultReachRadius());
         manager.add(g);
         minecraft.setScreen(new GroupEditScreen(this, manager, config, g));
