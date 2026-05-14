@@ -447,6 +447,7 @@ public final class GroupEditScreen extends Screen {
     private void removeSelected() {
         if (selectedIndex < 0 || selectedIndex >= group.size()) return;
         group.remove(selectedIndex);
+        coordinateEditorIndex = -1;
         selectWaypoint(Math.min(selectedIndex, group.size() - 1));
         manager.fireDataChanged();
     }
