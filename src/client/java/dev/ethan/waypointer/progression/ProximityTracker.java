@@ -67,6 +67,7 @@ public final class ProximityTracker {
 
         if (hideReachedStatic && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
             markReachedStaticWaypoints(group, px, py, pz);
+            return;
         }
 
         // Group-level skip-ahead gate. Global off always wins over group on --
