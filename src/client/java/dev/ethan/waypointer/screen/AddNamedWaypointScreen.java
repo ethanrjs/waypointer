@@ -140,7 +140,9 @@ public final class AddNamedWaypointScreen extends Screen {
             y = pos.y();
             z = pos.z();
         }
-        WaypointGroup target = targetGroup == null ? manager.getOrCreateActiveGroup() : targetGroup;
+        WaypointGroup target = targetGroup == null
+                ? manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled())
+                : targetGroup;
 
         target.add(new Waypoint(x, y, z, nameBox.getValue().trim(),
                 Waypoint.DEFAULT_COLOR, 0, 0.0));

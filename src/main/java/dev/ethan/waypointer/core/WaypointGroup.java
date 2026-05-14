@@ -127,6 +127,12 @@ public final class WaypointGroup {
         return new WaypointGroup(UUID.randomUUID().toString(), name, zoneId);
     }
 
+    public static WaypointGroup create(String name, String zoneId, boolean skipAheadEnabled) {
+        WaypointGroup group = create(name, zoneId);
+        group.setSkipAheadEnabled(skipAheadEnabled);
+        return group;
+    }
+
     public String id()            { return id; }
     public String name()          { return name; }
     public String zoneId()        { return zoneId; }
@@ -218,6 +224,17 @@ public final class WaypointGroup {
     public void set(int index, Waypoint replacement) {
         waypoints.set(index, replacement);
         invalidateProximityIndex();
+    }
+
+    /**
+     * Repositioning a waypoint is a visibility-affecting edit, not just a data
+     * replacement: if static reach hiding had already hidden this index, the
+     * moved marker would stay invisible until the whole static cycle reset.
+     */
+    public void moveWaypointTo(int index, int x, int y, int z) {
+        waypoints.set(index, waypoints.get(index).withPos(x, y, z));
+        invalidateProximityIndex();
+        focusNewWaypoint(index);
     }
 
     public void add(Waypoint w) {

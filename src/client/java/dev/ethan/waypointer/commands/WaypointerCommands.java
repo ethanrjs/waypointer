@@ -609,7 +609,7 @@ public final class WaypointerCommands {
     }
 
     private int runAddAt(FabricClientCommandSource src, int x, int y, int z, String name) {
-        WaypointGroup target = manager.getOrCreateActiveGroup();
+        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         target.add(new Waypoint(x, y, z, name == null ? "" : name,
                 Waypoint.DEFAULT_COLOR, 0, 0.0));
         addFlow.afterWaypointAdded(target, target.size() - 1);
@@ -653,7 +653,7 @@ public final class WaypointerCommands {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) { error(src, "Not in a world"); return 0; }
 
-        WaypointGroup target = manager.getOrCreateActiveGroup();
+        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         if (index < 0 || index > target.size()) {
             // Mirror the inclusive upper bound from the suggest tooltip so the
             // error message and the completion list agree on what's legal.

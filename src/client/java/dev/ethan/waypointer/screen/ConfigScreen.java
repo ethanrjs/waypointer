@@ -383,8 +383,8 @@ public final class ConfigScreen extends Screen {
 
     private void addTracerColorRow(int x, int y, int colW, BooleanSupplier enabled,
                                    String tooltip) {
-        int swatchW = 44;
-        int boxW = 80;
+        int swatchW = 72;
+        int boxW = 76;
         int labelW = colW - boxW - swatchW - GAP * 2;
         addRenderableOnly(new LabelWidget(x, y + 6,
                 "Tracer color (hex RRGGBB)", labelW, enabled));
@@ -396,8 +396,8 @@ public final class ConfigScreen extends Screen {
         box.setTooltip(Tooltip.create(Component.literal(tooltip)));
 
         ColorSwatchButton swatch = new ColorSwatchButton(
-                x + labelW + GAP + boxW + GAP, y, swatchW, BTN_H,
-                "Pick", config.tracerColor(), () -> ColorPickerScreen.open(this,
+                x + labelW + GAP + boxW + GAP, y + 2, swatchW, BTN_H,
+                "Pick color", config.tracerColor(), () -> ColorPickerScreen.open(this,
                 "Tracer Colour", config.tracerColor(), picked -> {
                     config.setTracerColor(picked);
                     box.setValue(String.format("%06X", picked & 0xFFFFFF));
