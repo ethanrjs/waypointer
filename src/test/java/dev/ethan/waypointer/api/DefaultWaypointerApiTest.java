@@ -52,6 +52,39 @@ class DefaultWaypointerApiTest {
     }
 
     @Test
+    void updateWaypointReplacesOneWaypointAndFiresDataChanged() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        AtomicInteger changes = new AtomicInteger();
+        api.onDataChanged(changes::incrementAndGet);
+
+        String groupId = api.createRoute(RouteSpec.builder()
+                .name("Route")
+                .waypoint(WaypointSpec.at(1, 2, 3).name("old"))
+                .waypoint(WaypointSpec.at(4, 5, 6))
+                .build());
+
+        assertTrue(api.updateWaypoint(groupId, 0, WaypointSpec.builder()
+                .position(10, 11, 12)
+                .name("new")
+                .color(0x123456)
+                .radius(4.5)
+                .build()));
+        assertFalse(api.updateWaypoint(groupId, -1, WaypointSpec.at(0, 0, 0)));
+        assertFalse(api.updateWaypoint(groupId, 2, WaypointSpec.at(0, 0, 0)));
+        assertFalse(api.updateWaypoint("missing", 0, WaypointSpec.at(0, 0, 0)));
+
+        WaypointSnapshot updated = api.allGroups().get(0).waypoints().get(0);
+        assertEquals(10, updated.x());
+        assertEquals(11, updated.y());
+        assertEquals(12, updated.z());
+        assertEquals("new", updated.name());
+        assertEquals(0x123456, updated.color());
+        assertEquals(4.5, updated.radius());
+        assertEquals(2, changes.get(), "invalid updates must not notify listeners");
+    }
+
+    @Test
     void addTempWaypointUsesSessionOnlyTempBucket() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("hub", "Hub"));

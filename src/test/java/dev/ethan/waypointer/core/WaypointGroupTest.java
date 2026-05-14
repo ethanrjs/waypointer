@@ -89,6 +89,22 @@ class WaypointGroupTest {
     }
 
     @Test
+    void moveWaypointTo_focusesMovedWaypointAndClearsStaticReachState() {
+        WaypointGroup g = route();
+        g.markStaticWaypointReached(0);
+
+        g.moveWaypointTo(2, 25, 71, -4);
+
+        Waypoint moved = g.get(2);
+        assertEquals(25, moved.x());
+        assertEquals(71, moved.y());
+        assertEquals(-4, moved.z());
+        assertEquals(2, g.currentIndex());
+        assertTrue(g.isProximitySuppressed(2));
+        assertFalse(g.isStaticWaypointReached(0));
+    }
+
+    @Test
     void restartIfRouteCompleted_wraps_when_enabled() {
         WaypointGroup g = route();
         g.advancePast(3);
@@ -204,6 +220,25 @@ class WaypointGroupTest {
         WaypointGroup g = WaypointGroup.create("r", "z");
         assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode(),
                 "loaded routes default to SEQUENCE so the intended order is visible");
+    }
+
+    @Test
+    void create_canSeedSkipAheadFromGlobalDefault() {
+        WaypointGroup enabled = WaypointGroup.create("on", "hub", true);
+        WaypointGroup disabled = WaypointGroup.create("off", "hub", false);
+
+        assertTrue(enabled.skipAheadEnabled());
+        assertFalse(disabled.skipAheadEnabled());
+    }
+
+    @Test
+    void manager_getOrCreateActiveGroupSeedsSkipAheadDefault() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+
+        WaypointGroup route = manager.getOrCreateActiveGroup(false);
+
+        assertFalse(route.skipAheadEnabled());
     }
 
     @Test

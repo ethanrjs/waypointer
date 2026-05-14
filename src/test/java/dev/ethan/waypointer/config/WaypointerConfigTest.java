@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.config;
 
+import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -169,15 +170,95 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void tracerThicknessDefaultsToHistoricalWidthAndClampsToSafeRange() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertEquals(3.0, config.tracerThickness());
+
+        config.setTracerThickness(6.5);
+        assertEquals(6.5, config.tracerThickness());
+
+        config.setTracerThickness(0.0);
+        assertEquals(1.0, config.tracerThickness());
+
+        config.setTracerThickness(99.0);
+        assertEquals(12.0, config.tracerThickness());
+    }
+
+    @Test
+    void waypointOutlineThicknessDefaultsToHistoricalWidthAndClampsToSafeRange() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertEquals(3.0, config.waypointOutlineThickness());
+
+        config.setWaypointOutlineThickness(5.5);
+        assertEquals(5.5, config.waypointOutlineThickness());
+
+        config.setWaypointOutlineThickness(0.0);
+        assertEquals(1.0, config.waypointOutlineThickness());
+
+        config.setWaypointOutlineThickness(99.0);
+        assertEquals(12.0, config.waypointOutlineThickness());
+    }
+
+    @Test
+    void waypointOutlineThicknessRejectsNonFiniteValues() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setWaypointOutlineThickness(4.0);
+
+        config.setWaypointOutlineThickness(Double.NaN);
+        assertEquals(4.0, config.waypointOutlineThickness());
+
+        config.setWaypointOutlineThickness(Double.POSITIVE_INFINITY);
+        assertEquals(4.0, config.waypointOutlineThickness());
+    }
+
+    @Test
+    void tracerThicknessRejectsNonFiniteValues() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setTracerThickness(4.0);
+
+        config.setTracerThickness(Double.NaN);
+        assertEquals(4.0, config.tracerThickness());
+
+        config.setTracerThickness(Double.POSITIVE_INFINITY);
+        assertEquals(4.0, config.tracerThickness());
+    }
+
+    @Test
     void defaultExportAndDetectionTogglesStayUserFriendly() {
         WaypointerConfig config = new WaypointerConfig();
 
         assertTrue(config.chatCoordDetection());
         assertTrue(config.autoAddChatTempWaypoints());
+        assertTrue(config.placeNewWaypointsBelowPlayer());
         assertTrue(config.chatCodecDetection());
         assertTrue(config.dimSequenceContextWaypoints());
         assertFalse(config.exportIncludeColors());
         assertTrue(config.exportIncludeGroupMeta());
+    }
+
+    @Test
+    void playerWaypointPlacementTargetsSupportingBlockByDefault() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        PlayerWaypointPlacement.BlockPosition fullBlock = PlayerWaypointPlacement.fromPlayer(
+                10.9, 65.0, -3.1, config);
+        assertEquals(new PlayerWaypointPlacement.BlockPosition(10, 64, -4), fullBlock);
+
+        PlayerWaypointPlacement.BlockPosition partialBlock = PlayerWaypointPlacement.fromPlayer(
+                10.9, 64.5, -3.1, config);
+        assertEquals(new PlayerWaypointPlacement.BlockPosition(10, 64, -4), partialBlock);
+    }
+
+    @Test
+    void playerWaypointPlacementCanUseExactFootBlock() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setPlaceNewWaypointsBelowPlayer(false);
+        PlayerWaypointPlacement.BlockPosition standing = PlayerWaypointPlacement.fromPlayer(
+                10.9, 65.0, -3.1, config);
+        assertEquals(new PlayerWaypointPlacement.BlockPosition(10, 65, -4), standing);
     }
 
     @Test
@@ -196,5 +277,16 @@ class WaypointerConfigTest {
         WaypointerConfig config = new WaypointerConfig();
 
         assertEquals(false, config.dungeonWaypointsFeatureEnabled());
+    }
+
+    @Test
+    void irisHudFallbackDefaultsOffButCanBeEnabled() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertFalse(config.irisShaderHudFallback());
+
+        config.setIrisShaderHudFallback(true);
+
+        assertTrue(config.irisShaderHudFallback());
     }
 }

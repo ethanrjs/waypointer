@@ -4,6 +4,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -18,7 +19,7 @@ import static dev.ethan.waypointer.screen.GuiTokens.*;
 /**
  * Modal for creating a temporary waypoint. Three expiry modes are offered and
  * a duration (minutes) for the one mode that needs it; every mode produces a
- * waypoint at the player's current block position.
+ * waypoint at the configured player-relative position.
  *
  * <p>The mode + duration defaults come from
  * {@link WaypointerConfig#tempDefaultMode()} / {@link WaypointerConfig#tempDefaultDurationMin()}
@@ -136,10 +137,9 @@ public final class AddTempScreen extends Screen {
                 ? System.currentTimeMillis() + durationMin * 60_000L
                 : 0L;
 
-        Waypoint base = Waypoint.at(
-                (int) Math.floor(p.getX()),
-                (int) Math.floor(p.getY()),
-                (int) Math.floor(p.getZ()));
+        PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
+                p.getX(), p.getY(), p.getZ(), config);
+        Waypoint base = Waypoint.at(pos.x(), pos.y(), pos.z());
         WaypointGroup target = manager.getOrCreateTempGroup();
         target.add(base.withTemp(mode, expiresAt));
         if (config.focusTempWaypoints()) {

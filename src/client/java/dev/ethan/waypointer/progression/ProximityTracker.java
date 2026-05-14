@@ -50,22 +50,30 @@ public final class ProximityTracker {
         boolean globalSkipAhead = config.skipAheadMechanicEnabled();
         boolean hideReachedStatic = config.hideReachedStaticWaypointsUntilCycleComplete();
         for (WaypointGroup group : manager.activeGroups()) {
-            // Temp-only bucket groups don't participate in progression -- they hold
-            // ad-hoc markers whose own expiry modes handle cleanup. Running proximity
-            // on them would re-enter the "advance past waypoint" logic on a container
-            // whose order is meaningless.
-            if (group.temp()) continue;
-            if (hideReachedStatic && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
-                markReachedStaticWaypoints(group, px, py, pz);
-                continue;
-            }
-            // Group-level skip-ahead gate. When a waypoint was just added the
-            // group's flag is flipped off; we respect that regardless of the
-            // global mechanic state. Global off always wins over group on -- the
-            // config is the master switch.
-            boolean allowSkip = globalSkipAhead && group.skipAheadEnabled();
-            advanceIfReached(group, px, py, pz, loop, allowSkip);
+            updateGroupProgress(group, px, py, pz, loop, globalSkipAhead, hideReachedStatic);
         }
+    }
+
+    public static void updateGroupProgress(WaypointGroup group,
+                                           double px, double py, double pz,
+                                           boolean restartWhenComplete,
+                                           boolean globalSkipAhead,
+                                           boolean hideReachedStatic) {
+        // Temp-only bucket groups don't participate in progression -- they hold
+        // ad-hoc markers whose own expiry modes handle cleanup. Running proximity
+        // on them would re-enter the "advance past waypoint" logic on a container
+        // whose order is meaningless.
+        if (group.temp()) return;
+
+        if (hideReachedStatic && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
+            markReachedStaticWaypoints(group, px, py, pz);
+            return;
+        }
+
+        // Group-level skip-ahead gate. Global off always wins over group on --
+        // the config is the master switch; the group flag is a per-route opt-out.
+        boolean allowSkip = globalSkipAhead && group.skipAheadEnabled();
+        advanceIfReached(group, px, py, pz, restartWhenComplete, allowSkip);
     }
 
     /**

@@ -16,9 +16,8 @@ public final class RenderHelpers {
 
     // 1.21.11 added LineWidth to the lines vertex format, so every vertex must carry
     // a line width or the buffer check throws "Missing elements in vertex: LineWidth".
-    // We use a chunky 3px so the outlined boxes and the crosshair tracer stay legible
-    // at distance and against busy biomes -- 1px (vanilla default) was disappearing
-    // against grass and reeds.
+    // We use a chunky 3px so outlined boxes stay legible at distance and against
+    // busy biomes -- 1px (vanilla default) was disappearing against grass and reeds.
     private static final float DEFAULT_LINE_WIDTH = 3.0f;
 
     private RenderHelpers() {}
@@ -26,6 +25,12 @@ public final class RenderHelpers {
     private static int red(int rgb)   { return (rgb >> 16) & 0xFF; }
     private static int green(int rgb) { return (rgb >>  8) & 0xFF; }
     private static int blue(int rgb)  { return  rgb        & 0xFF; }
+
+    public static int withAlpha(int argb, float alphaScale) {
+        float clamped = Math.max(0.0f, Math.min(1.0f, alphaScale));
+        int alpha = Math.round(((argb >>> 24) & 0xFF) * clamped);
+        return (alpha << 24) | (argb & 0x00FFFFFF);
+    }
 
     /**
      * Append the 12 segments of an axis-aligned cube outline to {@code consumer}.
@@ -36,25 +41,32 @@ public final class RenderHelpers {
                                    float x1, float y1, float z1,
                                    float x2, float y2, float z2,
                                    int rgb, float alpha) {
+        emitLineBox(consumer, ps, x1, y1, z1, x2, y2, z2, rgb, alpha, DEFAULT_LINE_WIDTH);
+    }
+
+    public static void emitLineBox(VertexConsumer consumer, PoseStack ps,
+                                   float x1, float y1, float z1,
+                                   float x2, float y2, float z2,
+                                   int rgb, float alpha, float width) {
         int r = red(rgb), g = green(rgb), b = blue(rgb);
         int a = (int) (alpha * 255f) & 0xFF;
         PoseStack.Pose pose = ps.last();
 
         // bottom rectangle
-        seg(consumer, pose, x1, y1, z1, x2, y1, z1, r, g, b, a, 1, 0, 0);
-        seg(consumer, pose, x2, y1, z1, x2, y1, z2, r, g, b, a, 0, 0, 1);
-        seg(consumer, pose, x2, y1, z2, x1, y1, z2, r, g, b, a, -1, 0, 0);
-        seg(consumer, pose, x1, y1, z2, x1, y1, z1, r, g, b, a, 0, 0, -1);
+        seg(consumer, pose, x1, y1, z1, x2, y1, z1, r, g, b, a, 1, 0, 0, width);
+        seg(consumer, pose, x2, y1, z1, x2, y1, z2, r, g, b, a, 0, 0, 1, width);
+        seg(consumer, pose, x2, y1, z2, x1, y1, z2, r, g, b, a, -1, 0, 0, width);
+        seg(consumer, pose, x1, y1, z2, x1, y1, z1, r, g, b, a, 0, 0, -1, width);
         // top rectangle
-        seg(consumer, pose, x1, y2, z1, x2, y2, z1, r, g, b, a, 1, 0, 0);
-        seg(consumer, pose, x2, y2, z1, x2, y2, z2, r, g, b, a, 0, 0, 1);
-        seg(consumer, pose, x2, y2, z2, x1, y2, z2, r, g, b, a, -1, 0, 0);
-        seg(consumer, pose, x1, y2, z2, x1, y2, z1, r, g, b, a, 0, 0, -1);
+        seg(consumer, pose, x1, y2, z1, x2, y2, z1, r, g, b, a, 1, 0, 0, width);
+        seg(consumer, pose, x2, y2, z1, x2, y2, z2, r, g, b, a, 0, 0, 1, width);
+        seg(consumer, pose, x2, y2, z2, x1, y2, z2, r, g, b, a, -1, 0, 0, width);
+        seg(consumer, pose, x1, y2, z2, x1, y2, z1, r, g, b, a, 0, 0, -1, width);
         // verticals
-        seg(consumer, pose, x1, y1, z1, x1, y2, z1, r, g, b, a, 0, 1, 0);
-        seg(consumer, pose, x2, y1, z1, x2, y2, z1, r, g, b, a, 0, 1, 0);
-        seg(consumer, pose, x2, y1, z2, x2, y2, z2, r, g, b, a, 0, 1, 0);
-        seg(consumer, pose, x1, y1, z2, x1, y2, z2, r, g, b, a, 0, 1, 0);
+        seg(consumer, pose, x1, y1, z1, x1, y2, z1, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x2, y1, z1, x2, y2, z1, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x2, y1, z2, x2, y2, z2, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x1, y1, z2, x1, y2, z2, r, g, b, a, 0, 1, 0, width);
     }
 
     /**
@@ -124,6 +136,14 @@ public final class RenderHelpers {
                                 float x1, float y1, float z1,
                                 float x2, float y2, float z2,
                                 int rgb, float alpha) {
+        emitLine(consumer, ps, x1, y1, z1, x2, y2, z2, rgb, alpha, DEFAULT_LINE_WIDTH);
+    }
+
+    /** Append a single line segment using a caller-controlled pixel width. */
+    public static void emitLine(VertexConsumer consumer, PoseStack ps,
+                                float x1, float y1, float z1,
+                                float x2, float y2, float z2,
+                                int rgb, float alpha, float width) {
         int r = red(rgb), g = green(rgb), b = blue(rgb);
         int a = (int) (alpha * 255f) & 0xFF;
         float nx = x2 - x1, ny = y2 - y1, nz = z2 - z1;
@@ -131,7 +151,7 @@ public final class RenderHelpers {
         if (len > 1e-5f) { nx /= len; ny /= len; nz /= len; }
         else { nx = 0; ny = 1; nz = 0; }
         PoseStack.Pose pose = ps.last();
-        seg(consumer, pose, x1, y1, z1, x2, y2, z2, r, g, b, a, nx, ny, nz);
+        seg(consumer, pose, x1, y1, z1, x2, y2, z2, r, g, b, a, nx, ny, nz, width);
     }
 
     /** Force-flush a render type from a batched MultiBufferSource. No-op if not a BufferSource. */
@@ -160,13 +180,22 @@ public final class RenderHelpers {
                             float x2, float y2, float z2,
                             int r, int g, int b, int a,
                             float nx, float ny, float nz) {
+        seg(c, pose, x1, y1, z1, x2, y2, z2, r, g, b, a,
+                nx, ny, nz, DEFAULT_LINE_WIDTH);
+    }
+
+    private static void seg(VertexConsumer c, PoseStack.Pose pose,
+                            float x1, float y1, float z1,
+                            float x2, float y2, float z2,
+                            int r, int g, int b, int a,
+                            float nx, float ny, float nz, float width) {
         // Call order must match the vertex format declaration: POSITION, COLOR, NORMAL,
         // LINE_WIDTH. setLineWidth is new in 1.21.11; writing it in the wrong slot causes
         // BufferBuilder's endLastVertex to throw "Not building!" on the next addVertex
         // because the previous vertex was detected as incomplete and it closed the buffer.
         c.addVertex(pose, x1, y1, z1).setColor(r, g, b, a)
-                .setNormal(pose, nx, ny, nz).setLineWidth(DEFAULT_LINE_WIDTH);
+                .setNormal(pose, nx, ny, nz).setLineWidth(width);
         c.addVertex(pose, x2, y2, z2).setColor(r, g, b, a)
-                .setNormal(pose, nx, ny, nz).setLineWidth(DEFAULT_LINE_WIDTH);
+                .setNormal(pose, nx, ny, nz).setLineWidth(width);
     }
 }

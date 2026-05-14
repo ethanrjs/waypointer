@@ -9,8 +9,8 @@ import net.minecraft.network.chat.Component;
 
 /**
  * Square-ish button whose primary visual IS the colour it represents -- the
- * fill spans the full button, with a small caption in the corner so the user
- * still knows what they're looking at (e.g. "Start" vs "End").
+ * fill spans the full button, with centered text so the control still reads
+ * as an action rather than a passive chip.
  *
  * <p>Replaces the previous text-only Button that read e.g. {@code "Start #F6FBFC"}.
  * Players picking a gradient want to see the actual colour alongside the label;
@@ -25,6 +25,9 @@ public final class ColorSwatchButton extends AbstractButton {
     private static final int BORDER_IDLE    = 0xFF000000;
     private static final int BORDER_HOVER   = 0xFFFFFFFF;
     private static final int BORDER_FOCUS   = 0xFFFFD35A;
+    private static final int INNER_SHADOW   = 0x66000000;
+    private static final int INNER_HIGHLIGHT = 0x33FFFFFF;
+    private static final int DISABLED_OVERLAY = 0xAA000000;
 
     private final Runnable onPress;
     private final String caption;
@@ -57,21 +60,29 @@ public final class ColorSwatchButton extends AbstractButton {
         int x2 = x1 + getWidth();
         int y2 = y1 + getHeight();
 
-        int border = isFocused() ? BORDER_FOCUS : (isHoveredOrFocused() ? BORDER_HOVER : BORDER_IDLE);
+        int border = active && isFocused()
+                ? BORDER_FOCUS
+                : active && isHoveredOrFocused() ? BORDER_HOVER : BORDER_IDLE;
 
         g.fill(x1, y1, x2, y2, border);
         g.fill(x1 + 1, y1 + 1, x2 - 1, y2 - 1, 0xFF000000 | rgb);
+        g.fill(x1 + 1, y1 + 1, x2 - 1, y1 + 2, INNER_HIGHLIGHT);
+        g.fill(x1 + 1, y2 - 2, x2 - 1, y2 - 1, INNER_SHADOW);
+        if (!active) {
+            g.fill(x1 + 1, y1 + 1, x2 - 1, y2 - 1, DISABLED_OVERLAY);
+        }
 
         // Caption with a dark 1px drop shadow offset by (+1, +1). Drop shadow is
         // enough contrast for the bright-swatch case without needing to pick a
         // fully inverted text colour per swatch.
-        int textColor = isLightColor(rgb) ? 0xFF101216 : 0xFFE6E9EC;
+        int textColor = !active ? 0xFF9A9A9A : isLightColor(rgb) ? 0xFF101216 : 0xFFE6E9EC;
         int shadow = textColor == 0xFF101216 ? 0x40FFFFFF : 0x80000000;
         var font = Minecraft.getInstance().font;
-        int textX = x1 + 4;
+        String clipped = font.plainSubstrByWidth(caption, getWidth() - 8);
+        int textX = x1 + (getWidth() - font.width(clipped)) / 2;
         int textY = y1 + (getHeight() - 8) / 2;
-        g.drawString(font, caption, textX + 1, textY + 1, shadow, false);
-        g.drawString(font, caption, textX, textY, textColor, false);
+        g.drawString(font, clipped, textX + 1, textY + 1, shadow, false);
+        g.drawString(font, clipped, textX, textY, textColor, false);
     }
 
     /** Cheap perceptual-luminance threshold to flip caption colour for contrast. */

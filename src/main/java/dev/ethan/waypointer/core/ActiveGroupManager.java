@@ -137,11 +137,17 @@ public final class ActiveGroupManager {
      * listeners see the change without the caller needing to remember.
      */
     public WaypointGroup getOrCreateActiveGroup() {
+        return getOrCreateActiveGroup(true);
+    }
+
+    public WaypointGroup getOrCreateActiveGroup(boolean skipAheadDefault) {
         WaypointGroup existing = firstActiveRouteGroup();
         if (existing != null) return existing;
         Zone zone = currentZone == null ? Zone.UNKNOWN : currentZone;
         WaypointGroup g = WaypointGroup.create(
-                "Route -- " + zone.displayName().toLowerCase(Locale.ROOT), zone.id());
+                "Route -- " + zone.displayName().toLowerCase(Locale.ROOT),
+                zone.id(),
+                skipAheadDefault);
         add(g);
         return g;
     }

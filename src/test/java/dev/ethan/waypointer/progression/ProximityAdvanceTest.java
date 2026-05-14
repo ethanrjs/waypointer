@@ -136,6 +136,18 @@ class ProximityAdvanceTest {
     }
 
     @Test
+    void static_progress_update_does_not_run_sequence_advancement() {
+        WaypointGroup g = line();
+        g.setLoadMode(WaypointGroup.LoadMode.STATIC);
+
+        ProximityTracker.updateGroupProgress(g, 20.5, 0.5, 0.5,
+                false, true, true);
+
+        assertEquals(0, g.currentIndex());
+        assertTrue(g.isStaticWaypointReached(2));
+    }
+
+    @Test
     void freshly_focused_static_waypoint_is_not_hidden_until_player_leaves_and_returns() {
         WaypointGroup g = line();
         g.setLoadMode(WaypointGroup.LoadMode.STATIC);
