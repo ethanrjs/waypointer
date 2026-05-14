@@ -422,7 +422,7 @@ public final class WaypointRenderer implements HudElement {
             }
 
             float alpha = alphaFor(group, state) * beaconOpacity;
-            int argb = withAlpha(0xFF000000 | (waypoint.color() & 0xFFFFFF), alpha);
+            int argb = RenderHelpers.withAlpha(0xFF000000 | (waypoint.color() & 0xFFFFFF), alpha);
             if (!projectBoxCorners(waypoint, screenW, screenH)) return;
 
             double outlineThickness = config.waypointOutlineThickness();
@@ -534,12 +534,12 @@ public final class WaypointRenderer implements HudElement {
 
             double rowY = sy;
             if (showNames) {
-                drawCenteredLabel(g, font, name, sx, rowY, withAlpha(nameColor, alpha), alpha);
+                drawCenteredLabel(g, font, name, sx, rowY, RenderHelpers.withAlpha(nameColor, alpha), alpha);
                 rowY += font.lineHeight + DISTANCE_ROW_GAP;
             }
             if (showDistances) {
                 drawCenteredLabel(g, font, distanceText, sx, rowY,
-                        withAlpha(DISTANCE_ARGB, alpha), alpha);
+                        RenderHelpers.withAlpha(DISTANCE_ARGB, alpha), alpha);
             }
         });
     }
@@ -551,12 +551,12 @@ public final class WaypointRenderer implements HudElement {
             double rowY = candidate.screenY;
             if (candidate.name != null) {
                 drawCenteredLabel(g, font, candidate.name, candidate.screenX, rowY,
-                        withAlpha(candidate.nameColor, candidate.alpha), candidate.alpha);
+                        RenderHelpers.withAlpha(candidate.nameColor, candidate.alpha), candidate.alpha);
                 rowY += font.lineHeight + DISTANCE_ROW_GAP;
             }
             if (candidate.distance != null) {
                 drawCenteredLabel(g, font, candidate.distance, candidate.screenX, rowY,
-                        withAlpha(DISTANCE_ARGB, candidate.alpha), candidate.alpha);
+                        RenderHelpers.withAlpha(DISTANCE_ARGB, candidate.alpha), candidate.alpha);
             }
         }
     }
@@ -612,7 +612,7 @@ public final class WaypointRenderer implements HudElement {
             int backdropBottom = drawY + font.lineHeight - 1 + BACKDROP_PAD_Y;
             g.fill(drawX - BACKDROP_PAD_X, backdropTop,
                     drawX + width + BACKDROP_PAD_X, backdropBottom,
-                    withAlpha(LABEL_BACKDROP_ARGB, alpha));
+                    RenderHelpers.withAlpha(LABEL_BACKDROP_ARGB, alpha));
         }
         // drawString's shadow flag stays on in both modes -- without the backdrop the
         // drop shadow is doing all the work keeping text readable against bright biomes.
@@ -726,12 +726,6 @@ public final class WaypointRenderer implements HudElement {
             return Math.min(state.alpha, SEQUENCE_CONTEXT_ALPHA);
         }
         return state.alpha;
-    }
-
-    static int withAlpha(int argb, float alphaScale) {
-        float clamped = Math.max(0.0f, Math.min(1.0f, alphaScale));
-        int alpha = Math.round(((argb >>> 24) & 0xFF) * clamped);
-        return (alpha << 24) | (argb & 0x00FFFFFF);
     }
 
     static void drawScreenLine(GuiGraphics g, double x1, double y1,
