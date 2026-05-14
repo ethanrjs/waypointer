@@ -355,7 +355,7 @@ public final class GroupEditScreen extends Screen {
             int x = axis == 0 ? value : w.x();
             int y = axis == 1 ? value : w.y();
             int z = axis == 2 ? value : w.z();
-            group.moveWaypointTo(selectedIndex, x, y, z);
+            group.set(selectedIndex, w.withPos(x, y, z));
             manager.fireDataChanged();
         } catch (NumberFormatException ignored) {
             // Partial integer edits such as "-" are expected while typing.
