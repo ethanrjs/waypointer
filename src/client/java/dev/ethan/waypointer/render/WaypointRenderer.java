@@ -254,7 +254,7 @@ public final class WaypointRenderer implements HudElement {
             if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
 
             State state = stateFor(g, i, currentIdx);
-            if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
+            if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
 
             float alpha = alphaFor(g, state) * beaconOpacity;
             float x = w.x(), y = w.y(), z = w.z();
@@ -276,7 +276,7 @@ public final class WaypointRenderer implements HudElement {
             if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
 
             State state = stateFor(g, i, currentIdx);
-            if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
+            if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
 
             float alpha = alphaFor(g, state) * beaconOpacity;
             float x = w.x(), y = w.y(), z = w.z();
@@ -316,7 +316,7 @@ public final class WaypointRenderer implements HudElement {
         if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
 
         State state = stateFor(g, i, currentIdx);
-        if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
+        if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
 
         float alpha = alphaFor(g, state) * (float) config.beaconOpacity() * BEAM_ALPHA_SCALE;
         if (alpha <= 0.0f) return;
@@ -416,8 +416,8 @@ public final class WaypointRenderer implements HudElement {
             if (isStaticBeyondDistanceLimit(group, waypoint, camPos, maxStaticDistanceSq)) return;
 
             State state = stateFor(group, i, currentIdx);
-            if (state == State.COMPLETED
-                    && (!showCompleted || waypoint.hasFlag(Waypoint.FLAG_HIDE_BEACON))) {
+            if (shouldHideCompletedSequenceWaypoint(
+                    group, i, currentIdx, state, showCompleted, waypoint)) {
                 return;
             }
 
@@ -498,7 +498,7 @@ public final class WaypointRenderer implements HudElement {
 
             Waypoint w = group.get(i);
             State state = stateFor(group, i, currentIdx);
-            if (state == State.COMPLETED && (!showCompleted || w.hasFlag(Waypoint.FLAG_HIDE_BEACON))) return;
+            if (shouldHideCompletedSequenceWaypoint(group, i, currentIdx, state, showCompleted, w)) return;
             if (w.hasFlag(Waypoint.FLAG_HIDE_NAME)) return;
 
             double ax = w.x() + 0.5;
@@ -661,6 +661,24 @@ public final class WaypointRenderer implements HudElement {
         if (i < currentIdx) return State.COMPLETED;
         if (i == currentIdx) return State.CURRENT;
         return State.UPCOMING;
+    }
+
+    private boolean shouldHideCompletedSequenceWaypoint(WaypointGroup group,
+                                                        int index,
+                                                        int currentIdx,
+                                                        State state,
+                                                        boolean showCompleted,
+                                                        Waypoint waypoint) {
+        if (state != State.COMPLETED) return false;
+        if (waypoint.hasFlag(Waypoint.FLAG_HIDE_BEACON)) return true;
+        if (showCompleted) return false;
+
+        return !isImmediateSequenceContext(group, index, currentIdx);
+    }
+
+    private boolean isImmediateSequenceContext(WaypointGroup group, int index, int currentIdx) {
+        return group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
+                && index == currentIdx - 1;
     }
 
     private boolean shouldHideStaticReached(WaypointGroup group, int index) {

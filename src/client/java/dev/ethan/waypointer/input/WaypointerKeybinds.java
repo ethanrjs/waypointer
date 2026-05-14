@@ -175,7 +175,7 @@ public final class WaypointerKeybinds {
 
         PlayerWaypointPlacement.BlockPosition pos = playerWaypointPosition(p);
 
-        WaypointGroup target = manager.getOrCreateActiveGroup();
+        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         target.add(new Waypoint(
                 pos.x(), pos.y(), pos.z(), "", Waypoint.DEFAULT_COLOR, 0, 0.0));
         addFlow.afterWaypointAdded(target, target.size() - 1);
@@ -186,7 +186,7 @@ public final class WaypointerKeybinds {
         LocalPlayer p = mc.player;
         if (p == null) return;
         PlayerWaypointPlacement.BlockPosition pos = playerWaypointPosition(p);
-        WaypointGroup target = manager.getOrCreateActiveGroup();
+        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         AddNamedWaypointScreen.openAt(
                 null, manager, config, target, pos.x(), pos.y(), pos.z());
     }
