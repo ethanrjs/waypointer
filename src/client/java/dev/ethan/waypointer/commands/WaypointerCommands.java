@@ -906,7 +906,7 @@ public final class WaypointerCommands {
 
     private int runCreateGroup(FabricClientCommandSource src, String name) {
         Zone zone = manager.currentZone() == null ? Zone.UNKNOWN : manager.currentZone();
-        WaypointGroup g = WaypointGroup.create(name, zone.id());
+        WaypointGroup g = WaypointGroup.create(name, zone.id(), config.skipAheadMechanicEnabled());
         manager.add(g);
         success(src, "Created group \"" + name + "\" in " + zone.displayName());
         return 1;
