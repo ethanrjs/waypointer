@@ -239,17 +239,26 @@ class WaypointerConfigTest {
     }
 
     @Test
-    void playerWaypointPlacementDefaultsBelowPlayerButCanUseStandingBlock() {
+    void playerWaypointPlacementTargetsSupportingBlockByDefault() {
         WaypointerConfig config = new WaypointerConfig();
 
-        PlayerWaypointPlacement.BlockPosition below = PlayerWaypointPlacement.fromPlayer(
-                10.9, 64.2, -3.1, config);
-        assertEquals(new PlayerWaypointPlacement.BlockPosition(10, 63, -4), below);
+        PlayerWaypointPlacement.BlockPosition fullBlock = PlayerWaypointPlacement.fromPlayer(
+                10.9, 65.0, -3.1, config);
+        assertEquals(new PlayerWaypointPlacement.BlockPosition(10, 64, -4), fullBlock);
+
+        PlayerWaypointPlacement.BlockPosition partialBlock = PlayerWaypointPlacement.fromPlayer(
+                10.9, 64.5, -3.1, config);
+        assertEquals(new PlayerWaypointPlacement.BlockPosition(10, 64, -4), partialBlock);
+    }
+
+    @Test
+    void playerWaypointPlacementCanUseExactFootBlock() {
+        WaypointerConfig config = new WaypointerConfig();
 
         config.setPlaceNewWaypointsBelowPlayer(false);
         PlayerWaypointPlacement.BlockPosition standing = PlayerWaypointPlacement.fromPlayer(
-                10.9, 64.2, -3.1, config);
-        assertEquals(new PlayerWaypointPlacement.BlockPosition(10, 64, -4), standing);
+                10.9, 65.0, -3.1, config);
+        assertEquals(new PlayerWaypointPlacement.BlockPosition(10, 65, -4), standing);
     }
 
     @Test
