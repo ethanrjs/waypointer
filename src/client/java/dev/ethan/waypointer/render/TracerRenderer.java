@@ -179,7 +179,7 @@ public final class TracerRenderer implements HudElement {
             }
 
             int color = matchWaypoint ? target.color() : overrideColor;
-            int argb = withAlpha(0xFF000000 | (color & 0xFFFFFF), alpha);
+            int argb = WaypointRenderer.withAlpha(0xFF000000 | (color & 0xFFFFFF), alpha);
             WaypointRenderer.drawScreenLine(g, fromX, fromY,
                     screenScratch[0], screenScratch[1], argb, thickness);
         }
@@ -256,12 +256,6 @@ public final class TracerRenderer implements HudElement {
         out[0] = -left.x() * rolledX + up.x() * pitchedY - forward.x() * pitchedZ;
         out[1] = -left.y() * rolledX + up.y() * pitchedY - forward.y() * pitchedZ;
         out[2] = -left.z() * rolledX + up.z() * pitchedY - forward.z() * pitchedZ;
-    }
-
-    private static int withAlpha(int argb, float alphaScale) {
-        float clamped = Math.max(0.0f, Math.min(1.0f, alphaScale));
-        int alpha = Math.round(((argb >>> 24) & 0xFF) * clamped);
-        return (alpha << 24) | (argb & 0x00FFFFFF);
     }
 
 }
