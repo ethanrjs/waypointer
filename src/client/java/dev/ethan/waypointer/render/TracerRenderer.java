@@ -179,7 +179,7 @@ public final class TracerRenderer implements HudElement {
             }
 
             int color = matchWaypoint ? target.color() : overrideColor;
-            int argb = WaypointRenderer.withAlpha(0xFF000000 | (color & 0xFFFFFF), alpha);
+            int argb = RenderHelpers.withAlpha(0xFF000000 | (color & 0xFFFFFF), alpha);
             WaypointRenderer.drawScreenLine(g, fromX, fromY,
                     screenScratch[0], screenScratch[1], argb, thickness);
         }

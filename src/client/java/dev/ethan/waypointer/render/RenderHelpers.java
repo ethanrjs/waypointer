@@ -26,6 +26,12 @@ public final class RenderHelpers {
     private static int green(int rgb) { return (rgb >>  8) & 0xFF; }
     private static int blue(int rgb)  { return  rgb        & 0xFF; }
 
+    public static int withAlpha(int argb, float alphaScale) {
+        float clamped = Math.max(0.0f, Math.min(1.0f, alphaScale));
+        int alpha = Math.round(((argb >>> 24) & 0xFF) * clamped);
+        return (alpha << 24) | (argb & 0x00FFFFFF);
+    }
+
     /**
      * Append the 12 segments of an axis-aligned cube outline to {@code consumer}.
      * Caller is responsible for calling {@code endBatch} afterwards (or letting
