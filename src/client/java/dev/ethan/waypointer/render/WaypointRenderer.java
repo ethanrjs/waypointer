@@ -728,7 +728,7 @@ public final class WaypointRenderer implements HudElement {
         return state.alpha;
     }
 
-    private static int withAlpha(int argb, float alphaScale) {
+    static int withAlpha(int argb, float alphaScale) {
         float clamped = Math.max(0.0f, Math.min(1.0f, alphaScale));
         int alpha = Math.round(((argb >>> 24) & 0xFF) * clamped);
         return (alpha << 24) | (argb & 0x00FFFFFF);
@@ -736,77 +736,7 @@ public final class WaypointRenderer implements HudElement {
 
     static void drawScreenLine(GuiGraphics g, double x1, double y1,
                                double x2, double y2, int argb, double thickness) {
-        double guiScale = Minecraft.getInstance().getWindow().getGuiScale();
-        double scaledThickness = Math.max(1.0 / guiScale, thickness / guiScale);
-        double margin = HUD_LINE_CULL_MARGIN / guiScale;
-        double minX = -margin;
-        double minY = -margin;
-        double maxX = g.guiWidth() + margin;
-        double maxY = g.guiHeight() + margin;
-        int out1 = outCode(x1, y1, minX, minY, maxX, maxY);
-        int out2 = outCode(x2, y2, minX, minY, maxX, maxY);
-        while ((out1 | out2) != 0) {
-            if ((out1 & out2) != 0) return;
-
-            int outside = out1 != 0 ? out1 : out2;
-            double x;
-            double y;
-            if ((outside & 8) != 0) {
-                x = x1 + (x2 - x1) * (maxY - y1) / (y2 - y1);
-                y = maxY;
-            } else if ((outside & 4) != 0) {
-                x = x1 + (x2 - x1) * (minY - y1) / (y2 - y1);
-                y = minY;
-            } else if ((outside & 2) != 0) {
-                y = y1 + (y2 - y1) * (maxX - x1) / (x2 - x1);
-                x = maxX;
-            } else {
-                y = y1 + (y2 - y1) * (minX - x1) / (x2 - x1);
-                x = minX;
-            }
-
-            if (outside == out1) {
-                x1 = x;
-                y1 = y;
-                out1 = outCode(x1, y1, minX, minY, maxX, maxY);
-            } else {
-                x2 = x;
-                y2 = y;
-                out2 = outCode(x2, y2, minX, minY, maxX, maxY);
-            }
-        }
-
-        double dx = x2 - x1;
-        double dy = y2 - y1;
-        double length = Math.sqrt(dx * dx + dy * dy);
-        if (length < 0.5) return;
-
-        double half = scaledThickness * 0.5;
-        double aaWidth = Math.max(0.75 / guiScale, 0.25);
-        int drawMinX = (int) Math.floor(Math.min(x1, x2) - half - aaWidth);
-        int drawMaxX = (int) Math.ceil(Math.max(x1, x2) + half + aaWidth);
-        int drawMinY = (int) Math.floor(Math.min(y1, y2) - half - aaWidth);
-        int drawMaxY = (int) Math.ceil(Math.max(y1, y2) + half + aaWidth);
-        double invLengthSq = 1.0 / (dx * dx + dy * dy);
-        int baseAlpha = (argb >>> 24) & 0xFF;
-
-        for (int y = drawMinY; y <= drawMaxY; y++) {
-            for (int x = drawMinX; x <= drawMaxX; x++) {
-                double px = x + 0.5;
-                double py = y + 0.5;
-                double t = ((px - x1) * dx + (py - y1) * dy) * invLengthSq;
-                t = Math.max(0.0, Math.min(1.0, t));
-                double closestX = x1 + dx * t;
-                double closestY = y1 + dy * t;
-                double dist = Math.hypot(px - closestX, py - closestY);
-                double coverage = (half + aaWidth - dist) / aaWidth;
-                if (coverage <= 0.0) continue;
-
-                int alpha = (int) Math.round(baseAlpha * Math.min(1.0, coverage));
-                if (alpha <= 0) continue;
-                g.fill(x, y, x + 1, y + 1, (alpha << 24) | (argb & 0x00FFFFFF));
-            }
-        }
+        drawFastScreenLine(g, x1, y1, x2, y2, argb, thickness);
     }
 
     private static void drawFastScreenLine(GuiGraphics g, double x1, double y1,

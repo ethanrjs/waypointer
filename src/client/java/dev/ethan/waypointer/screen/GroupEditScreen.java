@@ -432,14 +432,22 @@ public final class GroupEditScreen extends Screen {
         if (p == null) return;
         PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
                 p.getX(), p.getY(), p.getZ(), config);
-        group.add(new Waypoint(
+        Waypoint newWaypoint = new Waypoint(
                 pos.x(), pos.y(), pos.z(),
-                "", Waypoint.DEFAULT_COLOR, 0, 0.0));
+                "", Waypoint.DEFAULT_COLOR, 0, 0.0);
+        int newIndex;
+        if (hasSelectedWaypoint()) {
+            newIndex = selectedIndex + 1;
+            group.insert(newIndex, newWaypoint);
+        } else {
+            group.add(newWaypoint);
+            newIndex = group.size() - 1;
+        }
         // Run the shared post-add flow (focus + mode/toast updates) so the
         // GUI add button behaves identically to /wp add and the keybind path.
-        new WaypointAddFlow().afterWaypointAdded(group, group.size() - 1);
+        new WaypointAddFlow().afterWaypointAdded(group, newIndex);
         if (skipAheadBtn != null) skipAheadBtn.setMessage(skipAheadLabel());
-        selectWaypoint(group.size() - 1);
+        selectWaypoint(newIndex);
         manager.fireDataChanged();
     }
 
