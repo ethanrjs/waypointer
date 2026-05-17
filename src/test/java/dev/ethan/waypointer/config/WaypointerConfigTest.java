@@ -3,6 +3,8 @@ package dev.ethan.waypointer.config;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -236,6 +238,22 @@ class WaypointerConfigTest {
         assertTrue(config.dimSequenceContextWaypoints());
         assertFalse(config.exportIncludeColors());
         assertTrue(config.exportIncludeGroupMeta());
+    }
+
+    @Test
+    void chatCoordSenderBlacklistTogglesCaseInsensitively() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertTrue(config.addChatCoordSenderBlacklist("Babbur"));
+        assertFalse(config.addChatCoordSenderBlacklist("babbur"));
+        assertTrue(config.isChatCoordSenderBlacklisted("BABBUR"));
+        assertEquals(List.of("Babbur"), config.chatCoordSenderBlacklist());
+
+        assertFalse(config.toggleChatCoordSenderBlacklist("babbur"));
+        assertFalse(config.isChatCoordSenderBlacklisted("Babbur"));
+
+        assertTrue(config.toggleChatCoordSenderBlacklist("Babbur"));
+        assertTrue(config.isChatCoordSenderBlacklisted("babbur"));
     }
 
     @Test

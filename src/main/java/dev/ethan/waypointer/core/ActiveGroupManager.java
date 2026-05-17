@@ -4,11 +4,14 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.function.Consumer;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -37,8 +40,9 @@ public final class ActiveGroupManager {
     private final List<Consumer<Zone>> zoneListeners = new ArrayList<>();
     private String focusedTempGroupId;
 
-    private static final Pattern TEMP_GROUP_ID_UNSAFE = Pattern.compile("[^a-z0-9_]+");
     private final List<Runnable> dataListeners = new ArrayList<>();
+    private static final Pattern USERNAME_TOKEN = Pattern.compile("\\b[A-Za-z0-9_]{3,16}\\b");
+    private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]");
 
     // Cached result of activeGroups(). The renderer calls this every frame from two
     // separate END_MAIN handlers, so rebuilding on every call burns avoidable
@@ -176,9 +180,9 @@ public final class ActiveGroupManager {
      * {@code ProximityTracker}), the renderer treats it like any other static
      * group, and the UI can filter/collapse it if desired.
      *
-     * <p>One bucket per zone, keyed by display-named group id prefix
-     * {@code "temp::<zoneId>"}. Lazy creation means zones the player never drops
-     * a temp into stay clean.
+     * <p>One bucket per zone, keyed by {@code "temp::<zoneId>"}. The editor shows
+     * all of these buckets under its virtual Temporary zone instead of exposing
+     * the implementation detail in each group's name.
      */
     public WaypointGroup getOrCreateTempGroup() {
         return getOrCreateTempGroup("");
@@ -186,21 +190,18 @@ public final class ActiveGroupManager {
 
     public WaypointGroup getOrCreateTempGroup(String sourceName) {
         Zone zone = currentZone == null ? Zone.UNKNOWN : currentZone;
-        String source = sanitizeTempSourceName(sourceName);
-        String tempId = source.isEmpty()
-                ? "temp::" + zone.id()
-                : "temp::" + zone.id() + "::" + tempGroupId(source);
+        String tempId = "temp::" + zone.id();
         WaypointGroup existing = byId.get(tempId);
-        if (existing != null && existing.temp()) return existing;
+        if (existing != null && existing.temp()) {
+            existing.setName("Temporary");
+            return existing;
+        }
 
         // No existing temp bucket for this zone -- build one. Static load mode
         // keeps all temps visible at once (they're not a sequenced route), and
         // the skip-ahead flag is irrelevant because temp groups are excluded
         // from proximity advance.
-        String groupName = source.isEmpty()
-                ? "Temp -- " + zone.displayName()
-                : "Temp -- " + source + " -- " + zone.displayName();
-        WaypointGroup g = new WaypointGroup(tempId, groupName, zone.id());
+        WaypointGroup g = new WaypointGroup(tempId, "Temporary", zone.id());
         g.setLoadMode(WaypointGroup.LoadMode.STATIC);
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setTemp(true);
@@ -223,7 +224,7 @@ public final class ActiveGroupManager {
         String source = sanitizeTempSourceName(sourceName);
         WaypointGroup target = getOrCreateTempGroup(source);
         Waypoint waypoint = Waypoint.at(x, y, z)
-                .withName(source.isEmpty() ? "" : source + ": " + x + ", " + y + ", " + z)
+                .withName(source)
                 .withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L);
         target.add(waypoint);
         fireDataChanged();
@@ -261,17 +262,108 @@ public final class ActiveGroupManager {
         cachedActive = null;
     }
 
+    /**
+     * Remove every temporary waypoint from every zone bucket. Empty temp groups
+     * may remain in memory, but they are hidden from the Temporary menu and
+     * never persist to disk.
+     *
+     * @return number of temporary waypoints removed
+     */
+    public int clearTemporaryWaypoints() {
+        clearTempWaypointFocus();
+
+        int removed = 0;
+        for (WaypointGroup group : byId.values()) {
+            if (group.temp()) removed += group.removeAllTemp();
+        }
+        if (removed > 0) fireDataChanged();
+        return removed;
+    }
+
+    public TempWaypointSelection findTempWaypoint(int x, int y, int z, String senderName) {
+        String wantedSender = normalizeSenderName(senderName);
+        TempWaypointSelection fallback = null;
+        for (WaypointGroup group : byId.values()) {
+            if (!group.temp()) continue;
+            for (int i = 0; i < group.size(); i++) {
+                Waypoint waypoint = group.get(i);
+                if (!waypoint.isTemp()
+                        || waypoint.x() != x
+                        || waypoint.y() != y
+                        || waypoint.z() != z) {
+                    continue;
+                }
+                TempWaypointSelection selection = new TempWaypointSelection(group, i);
+                if (fallback == null) fallback = selection;
+                if (!wantedSender.isEmpty()
+                        && wantedSender.equalsIgnoreCase(senderNameForTempWaypoint(waypoint))) {
+                    return selection;
+                }
+            }
+        }
+        return fallback;
+    }
+
+    public int removeTempWaypointsFromSender(String senderName) {
+        String wantedSender = normalizeSenderName(senderName);
+        if (wantedSender.isEmpty()) return 0;
+
+        clearTempWaypointFocus();
+        int removed = 0;
+        for (WaypointGroup group : byId.values()) {
+            if (!group.temp()) continue;
+            for (int i = group.size() - 1; i >= 0; i--) {
+                if (wantedSender.equalsIgnoreCase(senderNameForTempWaypoint(group.get(i)))) {
+                    group.remove(i);
+                    removed++;
+                }
+            }
+        }
+        if (removed > 0) fireDataChanged();
+        return removed;
+    }
+
     private static String sanitizeTempSourceName(String raw) {
         if (raw == null) return "";
         String trimmed = raw.trim();
-        return trimmed.length() > 32 ? trimmed.substring(0, 32).trim() : trimmed;
+        StringBuilder out = new StringBuilder(Math.min(trimmed.length(), 128));
+        for (int i = 0; i < trimmed.length() && out.length() < 128; i++) {
+            char c = trimmed.charAt(i);
+            if ((c == '\u00A7' && i + 1 < trimmed.length()) || !Character.isISOControl(c)) {
+                out.append(c);
+            }
+        }
+        int len = out.length();
+        if (len > 0 && out.charAt(len - 1) == '\u00A7') out.setLength(len - 1);
+        return out.toString().trim();
     }
 
-    private static String tempGroupId(String sourceName) {
-        String id = sourceName.toLowerCase(Locale.ROOT);
-        id = TEMP_GROUP_ID_UNSAFE.matcher(id).replaceAll("_");
-        id = id.replaceAll("^_+|_+$", "");
-        return id.isEmpty() ? "unknown" : id;
+    private static String senderNameForTempWaypoint(Waypoint waypoint) {
+        if (waypoint == null || !waypoint.hasName()) return "";
+        String plain = stripLegacyFormatting(waypoint.name());
+        if (plain.startsWith("From ")) plain = plain.substring(5);
+        plain = BRACKETED_PREFIX.matcher(plain).replaceAll(" ");
+        Matcher matcher = USERNAME_TOKEN.matcher(plain);
+        String last = "";
+        while (matcher.find()) last = matcher.group();
+        return last;
+    }
+
+    private static String stripLegacyFormatting(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\u00A7' && i + 1 < text.length()) {
+                i++;
+                continue;
+            }
+            out.append(c);
+        }
+        return out.toString();
+    }
+
+    private static String normalizeSenderName(String senderName) {
+        return senderName == null ? "" : senderName.trim();
     }
 
     public List<WaypointGroup> groupsForZone(String zoneId) {
@@ -284,11 +376,11 @@ public final class ActiveGroupManager {
 
     /** Distinct zone ids that at least one group is attached to, preserving insertion order. */
     public List<String> knownZoneIds() {
-        List<String> out = new ArrayList<>();
+        Set<String> out = new LinkedHashSet<>();
         for (WaypointGroup g : byId.values()) {
-            if (!out.contains(g.zoneId())) out.add(g.zoneId());
+            out.add(g.zoneId());
         }
-        return Collections.unmodifiableList(out);
+        return List.copyOf(out);
     }
 
     public WaypointGroup get(String id) {
@@ -361,4 +453,6 @@ public final class ActiveGroupManager {
 
     public void addDataListener(Runnable listener)        { dataListeners.add(listener); }
     public void removeDataListener(Runnable listener)     { dataListeners.remove(listener); }
+
+    public record TempWaypointSelection(WaypointGroup group, int index) {}
 }

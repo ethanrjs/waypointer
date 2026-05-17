@@ -72,4 +72,45 @@ class ActiveGroupManagerTest {
 
         assertEquals(0, manager.activeGroups().size());
     }
+
+    @Test
+    void clearTemporaryWaypointsWipesOnlyTempBucketsAndFocus() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+
+        WaypointGroup route = WaypointGroup.create("Route", "hub");
+        route.add(Waypoint.at(1, 2, 3));
+        manager.add(route);
+
+        WaypointGroup temp = manager.addTempWaypoint(4, 5, 6, "From Someone");
+        manager.focusTempWaypoint(temp, 0);
+        assertTrue(manager.tempWaypointFocusActive());
+
+        assertEquals(1, manager.clearTemporaryWaypoints());
+
+        assertEquals(1, route.size(), "permanent route data should be left alone");
+        assertEquals(0, temp.size(), "temporary menu bucket should be emptied");
+        assertFalse(manager.tempWaypointFocusActive(), "focused temp render mode should be cleared too");
+    }
+
+    @Test
+    void canFindAndRemoveTempWaypointsByFormattedSender() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+
+        WaypointGroup temp = manager.addTempWaypoint(6, 1, 1,
+                "\u00A7eFrom \u00A76[MVP\u00A7d++\u00A76] Babbur");
+        manager.addTempWaypoint(7, 2, 3, "\u00A7eFrom SomeoneElse");
+
+        ActiveGroupManager.TempWaypointSelection selection =
+                manager.findTempWaypoint(6, 1, 1, "babbur");
+
+        assertNotNull(selection);
+        assertSame(temp, selection.group());
+        assertEquals(0, selection.index());
+
+        assertEquals(1, manager.removeTempWaypointsFromSender("BABBUR"));
+        assertEquals(1, temp.size());
+        assertEquals("\u00A7eFrom SomeoneElse", temp.get(0).name());
+    }
 }

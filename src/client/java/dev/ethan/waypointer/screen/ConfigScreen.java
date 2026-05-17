@@ -8,7 +8,9 @@ import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -163,6 +165,13 @@ public final class ConfigScreen extends Screen {
                 "Draws a dark rectangle behind floating waypoint names for readability.\n"
               + "Turn off for a lighter HUD when labels stack in busy areas.");
         y2 += rowH;
+        addBoolRow(col2, y2, "Scale text with distance",
+                config.scaleWaypointTextWithDistance(), config::setScaleWaypointTextWithDistance,
+                () -> config.showWaypointNames() || config.showWaypointDistances(),
+                "When on, waypoint labels use camera-depth scaling like a small\n"
+              + "world-space label, while still drawing through the 2D HUD path.\n"
+              + "Off preserves fixed-size labels.");
+        y2 += rowH;
         addNumberRow(col2, y2, colW, "Label height offset (blocks)",
                 config.labelHeightOffset(), config::setLabelHeightOffset,
                 () -> config.showWaypointNames() || config.showWaypointDistances(),
@@ -200,36 +209,47 @@ public final class ConfigScreen extends Screen {
 
     private void addPerformancePage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Budgets";
-        rightHeader = "Label Cost";
+        rightHeader = "Label Performance";
 
         int y = rowsY;
         addNumberRow(col1, y, colW, "Max waypoint labels (0 = unlimited)",
                 config.maxWaypointLabels(),
                 this::setMaxWaypointLabels,
-                "High impact when many waypoints are on screen. Keeps only the nearest\n"
-              + "N floating labels, while boxes and tracers can still render normally.");
+                performanceTooltip(
+                        "Keeps only the nearest N floating labels on screen.\n"
+                      + "Boxes and tracers can still render normally.",
+                        Impact.HIGH));
         y += rowH;
         addNumberRow(col1, y, colW, "Static marker distance (0 = unlimited)",
                 config.maxStaticWaypointRenderDistance(),
                 config::setMaxStaticWaypointRenderDistance,
-                "High impact on huge STATIC overlays. Skips boxes, beams, and labels\n"
-              + "for static waypoints farther than this many blocks from the camera.\n"
-              + "SEQUENCE targets stay uncapped so navigation does not disappear.");
+                performanceTooltip(
+                        "Skips boxes, beams, and labels for static waypoints farther\n"
+                      + "than this many blocks. Sequence targets stay uncapped.",
+                        Impact.HIGH));
 
         int y2 = rowsY;
         addBoolRow(col2, y2, "Show waypoint names",
                 config.showWaypointNames(), config::setShowWaypointNames,
-                "High impact in dense routes because every name submits text to the HUD.");
+                performanceTooltip(
+                        "Every visible name submits text to the HUD, which adds up\n"
+                      + "quickly in dense routes.",
+                        Impact.HIGH));
         y2 += rowH;
         addBoolRow(col2, y2, "Show waypoint distances",
                 config.showWaypointDistances(), config::setShowWaypointDistances,
-                "Medium/high impact in dense routes because each visible distance is text.");
+                performanceTooltip(
+                        "Each visible distance is another text draw. Useful, but busy\n"
+                      + "routes can make it expensive.",
+                        Impact.MEDIUM));
         y2 += rowH;
         addBoolRow(col2, y2, "Show label backdrop",
                 config.showLabelBackdrop(), config::setShowLabelBackdrop,
                 () -> config.showWaypointNames() || config.showWaypointDistances(),
-                "Medium impact when many labels are visible. Turning this off removes\n"
-              + "one rectangle draw behind every label row.");
+                performanceTooltip(
+                        "Removes the dark rectangle drawn behind each label row.\n"
+                      + "Mostly helps when lots of labels are visible.",
+                        Impact.LOW));
     }
 
     private void addRoutesPage(int col1, int col2, int colW, int rowsY, int rowH) {
@@ -340,27 +360,59 @@ public final class ConfigScreen extends Screen {
 
     private interface DoubleSetter { void accept(double value); }
 
+    private enum Impact {
+        HIGH("HIGH", ChatFormatting.RED),
+        MEDIUM("MEDIUM", ChatFormatting.GOLD),
+        LOW("LOW", ChatFormatting.GREEN);
+
+        final String label;
+        final ChatFormatting color;
+
+        Impact(String label, ChatFormatting color) {
+            this.label = label;
+            this.color = color;
+        }
+    }
+
+    private static Component performanceTooltip(String description, Impact impact) {
+        MutableComponent out = Component.literal(description).withStyle(ChatFormatting.GRAY);
+        out.append(Component.literal("\n\nImpact: ").withStyle(ChatFormatting.GRAY));
+        out.append(Component.literal(impact.label).withStyle(impact.color));
+        return out;
+    }
+
     private void addNumberRow(int x, int y, int colW, String label, double initial, DoubleSetter setter,
                               String tooltip) {
+        addNumberRow(x, y, colW, label, initial, setter, Component.literal(tooltip));
+    }
+
+    private void addNumberRow(int x, int y, int colW, String label, double initial, DoubleSetter setter,
+                              Component tooltip) {
         addNumberRow(x, y, colW, label, initial, setter, false, () -> true, tooltip);
     }
 
     private void addNumberRow(int x, int y, int colW, String label, double initial, DoubleSetter setter,
                               BooleanSupplier enabled, String tooltip) {
+        addNumberRow(x, y, colW, label, initial, setter, enabled, Component.literal(tooltip));
+    }
+
+    private void addNumberRow(int x, int y, int colW, String label, double initial, DoubleSetter setter,
+                              BooleanSupplier enabled, Component tooltip) {
         addNumberRow(x, y, colW, label, initial, setter, false, enabled, tooltip);
     }
 
     private void addNumberRow(int x, int y, int colW, String label, double initial, DoubleSetter setter,
                               boolean hex, String tooltip) {
-        addNumberRow(x, y, colW, label, initial, setter, hex, () -> true, tooltip);
+        addNumberRow(x, y, colW, label, initial, setter, hex, () -> true, Component.literal(tooltip));
     }
 
     /**
      * Label + inline editor. The hex flag switches the parse path so colors round-trip
      * through user-friendly {@code RRGGBB} strings for any legacy hex-only rows.
      */
-    private void addNumberRow(int x, int y, int colW, String label, double initial, DoubleSetter setter,
-                              boolean hex, BooleanSupplier enabled, String tooltip) {
+    private void addNumberRow(int x, int y, int colW, String label, double initial,
+                              DoubleSetter setter, boolean hex, BooleanSupplier enabled,
+                              Component tooltip) {
         int boxW = 80;
         int labelW = colW - boxW - GAP;
         addRenderableOnly(new LabelWidget(x, y + 6, label, labelW, enabled));
@@ -376,7 +428,7 @@ public final class ConfigScreen extends Screen {
                 // Partial edits are expected while typing; keep the last valid value.
             }
         });
-        box.setTooltip(Tooltip.create(Component.literal(tooltip)));
+        box.setTooltip(Tooltip.create(tooltip));
         trackDependent(box, enabled);
         addRenderableWidget(box);
     }
@@ -498,18 +550,29 @@ public final class ConfigScreen extends Screen {
 
     private void addBoolRow(int x, int y, String label, boolean initial,
                             java.util.function.Consumer<Boolean> setter, String tooltip) {
+        addBoolRow(x, y, label, initial, setter, Component.literal(tooltip));
+    }
+
+    private void addBoolRow(int x, int y, String label, boolean initial,
+                            java.util.function.Consumer<Boolean> setter, Component tooltip) {
         addBoolRow(x, y, label, initial, setter, () -> true, tooltip);
     }
 
     private void addBoolRow(int x, int y, String label, boolean initial,
                             java.util.function.Consumer<Boolean> setter,
                             BooleanSupplier enabled, String tooltip) {
+        addBoolRow(x, y, label, initial, setter, enabled, Component.literal(tooltip));
+    }
+
+    private void addBoolRow(int x, int y, String label, boolean initial,
+                            java.util.function.Consumer<Boolean> setter,
+                            BooleanSupplier enabled, Component tooltip) {
         Checkbox cb = Checkbox.builder(Component.literal(label), font)
                 .pos(x, y)
                 .selected(initial)
                 .onValueChange((b, v) -> setter.accept(v))
                 .build();
-        cb.setTooltip(Tooltip.create(Component.literal(tooltip)));
+        cb.setTooltip(Tooltip.create(tooltip));
         trackDependent(cb, enabled);
         addRenderableWidget(cb);
     }

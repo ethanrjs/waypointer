@@ -499,8 +499,9 @@ public final class ExportScreen extends Screen {
 
         int settingsY = PAD_OUTER + HEADER_H + BTN_H + GAP;
         g.drawString(font, "Export Settings", PAD_OUTER, settingsY, TEXT_DIM, false);
-        g.drawString(font, settingsHelpText(),
-                PAD_OUTER, settingsY + LINE_H, TEXT_MUTED, false);
+        int settingsHelpColor = showSubwaypointCompatibilityWarning() ? 0xFFFFB060 : TEXT_MUTED;
+        g.drawString(font, settingsHelpText(), PAD_OUTER, settingsY + LINE_H,
+                settingsHelpColor, false);
 
         // Rows after the toggle grid: size summary, then preview. The toggle
         // grid's actual bottom depends on how many rows it wrapped to, so we
@@ -566,10 +567,25 @@ public final class ExportScreen extends Screen {
     }
 
     private String settingsHelpText() {
+        if (showSubwaypointCompatibilityWarning()) {
+            return "Warning: other mods do not support subwaypoints; they export as regular waypoints";
+        }
         if (exportTarget == WaypointExportCodec.Target.WAYPOINTER) {
             return "Disabling more can make your export text shorter";
         }
         return "Unavailable options are disabled for " + exportTarget.displayName();
+    }
+
+    private boolean showSubwaypointCompatibilityWarning() {
+        return exportTarget != WaypointExportCodec.Target.WAYPOINTER
+                && selectedExportHasSubwaypoints();
+    }
+
+    private boolean selectedExportHasSubwaypoints() {
+        for (WaypointGroup group : selectedGroupsForExport()) {
+            if (group.hasSubwaypoints()) return true;
+        }
+        return false;
     }
 
     private void drawPreview(GuiGraphics g, int x1, int y1, int x2, int y2) {
@@ -685,9 +701,12 @@ public final class ExportScreen extends Screen {
         private static String targetTooltip(WaypointExportCodec.Target target) {
             return switch (target) {
                 case WAYPOINTER -> "Native format. Preserves every enabled Waypointer option.";
-                case SKYBLOCKER -> "For Skyblocker. Preserves coordinates, names, and colors.";
-                case SKYTILS -> "For Skytils. Preserves coordinates, names, and colors.";
-                case SKYHANNI -> "For SkyHanni. Preserves coordinates, names, and colors.";
+                case SKYBLOCKER -> "For Skyblocker. Preserves coordinates, names, and colors.\n"
+                        + "Subwaypoints export as regular waypoints.";
+                case SKYTILS -> "For Skytils. Preserves coordinates, names, and colors.\n"
+                        + "Subwaypoints export as regular waypoints.";
+                case SKYHANNI -> "For SkyHanni. Preserves coordinates, names, and colors.\n"
+                        + "Subwaypoints export as regular waypoints.";
             };
         }
     }

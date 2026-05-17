@@ -9,6 +9,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * User-tunable runtime settings, persisted as JSON alongside the waypoint data.
@@ -95,6 +97,12 @@ public final class WaypointerConfig {
     private boolean showWaypointNames = true;
     private boolean showWaypointDistances = true;
     /**
+     * Optional readability mode: labels shrink as their world anchor gets farther
+     * from the camera. Default-off preserves the stable fixed-size HUD labels
+     * existing users are used to.
+     */
+    private boolean scaleWaypointTextWithDistance = false;
+    /**
      * When {@code true}, the primary waypoint label uses the waypoint's own RGB
      * instead of flat white. Default-on makes color-coded routes read as a single
      * visual system across boxes, tracers, and labels.
@@ -166,6 +174,12 @@ public final class WaypointerConfig {
 
     // Quality-of-life
     private boolean chatCoordDetection = true;
+    /**
+     * Plain usernames ignored by chat coordinate detection. Toggled from the
+     * clickable red [B] action beside chat coordinates, and intentionally kept as
+     * names rather than UUIDs because chat callouts only expose display text.
+     */
+    private List<String> chatCoordSenderBlacklist = new ArrayList<>();
     /**
      * When {@code true}, detected chat coordinate callouts immediately create
      * session-scoped temp waypoints. The chat text remains clickable either way
@@ -247,7 +261,6 @@ public final class WaypointerConfig {
      * geometry so shader depth buffers cannot hide them.
      */
     private boolean irisShaderHudFallback = false;
-
     /**
      * Default mode for the "Add Temp Waypoint Here" keybind, and the pre-selected
      * mode in the Add Temp modal. Values match
@@ -336,6 +349,7 @@ public final class WaypointerConfig {
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showWaypointDistances()    { return showWaypointDistances; }
+    public boolean scaleWaypointTextWithDistance() { return scaleWaypointTextWithDistance; }
     public boolean matchWaypointTextToWaypointColor() { return matchWaypointTextToWaypointColor; }
     public boolean showCompleted()            { return showCompleted; }
     public boolean showTracer()               { return showTracer; }
@@ -355,6 +369,19 @@ public final class WaypointerConfig {
     public boolean beaconBeamExtendsBelowWaypoint() { return beaconBeamExtendsBelowWaypoint; }
     public boolean preferScoreboardFallback() { return preferScoreboardFallback; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
+    public List<String> chatCoordSenderBlacklist() {
+        ensureChatCoordSenderBlacklist();
+        return List.copyOf(chatCoordSenderBlacklist);
+    }
+    public boolean isChatCoordSenderBlacklisted(String senderName) {
+        String normalized = normalizeChatCoordSender(senderName);
+        if (normalized.isEmpty()) return false;
+        ensureChatCoordSenderBlacklist();
+        for (String blocked : chatCoordSenderBlacklist) {
+            if (blocked.equalsIgnoreCase(normalized)) return true;
+        }
+        return false;
+    }
     public boolean autoAddChatTempWaypoints() { return autoAddChatTempWaypoints; }
     public boolean placeNewWaypointsBelowPlayer() { return placeNewWaypointsBelowPlayer; }
     public boolean focusTempWaypoints()       { return focusTempWaypoints; }
@@ -390,6 +417,7 @@ public final class WaypointerConfig {
     public void setBeaconOpacity(double v)             { this.beaconOpacity = clamp(v, 0, 1); save(); }
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
     public void setShowWaypointDistances(boolean v)    { this.showWaypointDistances = v; save(); }
+    public void setScaleWaypointTextWithDistance(boolean v) { this.scaleWaypointTextWithDistance = v; save(); }
     public void setMatchWaypointTextToWaypointColor(boolean v) { this.matchWaypointTextToWaypointColor = v; save(); }
     public void setShowCompleted(boolean v)            { this.showCompleted = v; save(); }
     public void setShowTracer(boolean v)               { this.showTracer = v; save(); }
@@ -401,6 +429,32 @@ public final class WaypointerConfig {
     }
     public void setPreferScoreboardFallback(boolean v) { this.preferScoreboardFallback = v; save(); }
     public void setChatCoordDetection(boolean v)       { this.chatCoordDetection = v; save(); }
+    public boolean addChatCoordSenderBlacklist(String senderName) {
+        String normalized = normalizeChatCoordSender(senderName);
+        if (normalized.isEmpty() || isChatCoordSenderBlacklisted(normalized)) return false;
+        ensureChatCoordSenderBlacklist();
+        chatCoordSenderBlacklist.add(normalized);
+        save();
+        return true;
+    }
+    public boolean removeChatCoordSenderBlacklist(String senderName) {
+        String normalized = normalizeChatCoordSender(senderName);
+        if (normalized.isEmpty()) return false;
+        ensureChatCoordSenderBlacklist();
+        for (int i = 0; i < chatCoordSenderBlacklist.size(); i++) {
+            if (chatCoordSenderBlacklist.get(i).equalsIgnoreCase(normalized)) {
+                chatCoordSenderBlacklist.remove(i);
+                save();
+                return true;
+            }
+        }
+        return false;
+    }
+    public boolean toggleChatCoordSenderBlacklist(String senderName) {
+        return removeChatCoordSenderBlacklist(senderName)
+                ? false
+                : addChatCoordSenderBlacklist(senderName);
+    }
     public void setAutoAddChatTempWaypoints(boolean v) { this.autoAddChatTempWaypoints = v; save(); }
     public void setPlaceNewWaypointsBelowPlayer(boolean v) { this.placeNewWaypointsBelowPlayer = v; save(); }
     public void setFocusTempWaypoints(boolean v)       { this.focusTempWaypoints = v; save(); }
@@ -450,5 +504,18 @@ public final class WaypointerConfig {
 
     private static double clamp(double v, double lo, double hi) {
         return Math.max(lo, Math.min(hi, v));
+    }
+
+    private void ensureChatCoordSenderBlacklist() {
+        if (chatCoordSenderBlacklist == null) {
+            chatCoordSenderBlacklist = new ArrayList<>();
+        }
+    }
+
+    private static String normalizeChatCoordSender(String senderName) {
+        if (senderName == null) return "";
+        String trimmed = senderName.trim();
+        if (trimmed.length() > 16) trimmed = trimmed.substring(0, 16);
+        return trimmed;
     }
 }

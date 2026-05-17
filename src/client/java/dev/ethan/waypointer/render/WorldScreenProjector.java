@@ -28,6 +28,7 @@ public final class WorldScreenProjector {
     private float forwardX;
     private float forwardY;
     private float forwardZ;
+    private float fovDegrees = 70.0f;
 
     public void prepare(GameRenderer renderer, Camera camera) {
         Vec3 pos = camera.position();
@@ -40,6 +41,7 @@ public final class WorldScreenProjector {
         forwardZ = camera.forwardVector().z();
 
         float fov = renderer.getFov(camera, camera.getPartialTickTime(), true);
+        fovDegrees = fov;
         camera.rotation().conjugate(inverseCameraRotation);
         rotationMatrix.rotation(inverseCameraRotation);
         viewProjection.set(renderer.getProjectionMatrix(fov)).mul(rotationMatrix);
@@ -58,5 +60,16 @@ public final class WorldScreenProjector {
         out[0] = (ndcScratch.x * 0.5 + 0.5) * screenW;
         out[1] = (0.5 - ndcScratch.y * 0.5) * screenH;
         return true;
+    }
+
+    public double depth(double x, double y, double z) {
+        double rx = x - cameraX;
+        double ry = y - cameraY;
+        double rz = z - cameraZ;
+        return rx * forwardX + ry * forwardY + rz * forwardZ;
+    }
+
+    public float fovDegrees() {
+        return fovDegrees;
     }
 }

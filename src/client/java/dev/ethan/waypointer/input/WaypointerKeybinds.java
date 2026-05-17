@@ -21,7 +21,7 @@ import org.lwjgl.glfw.GLFW;
 /**
  * Registers and polls the mod's keybinds.
  *
- * Five bindings today:
+ * Seven bindings today:
  *
  *   - Open Editor -- the primary way into the GUI.
  *   - Skip Waypoint -- advances the current active group(s) past their current
@@ -34,6 +34,10 @@ import org.lwjgl.glfw.GLFW;
  *     and the keybind.
  *   - Create Named Waypoint -- opens a one-field prompt, then creates the
  *     waypoint at the player's current position with that name.
+ *   - Reposition Mode: Add Waypoint -- pick a block in-world, then add an
+ *     unnamed waypoint there.
+ *   - Reposition Mode: Add Named Waypoint -- pick a block in-world, then name
+ *     the waypoint before adding it.
  *   - Add Temp Waypoint Here -- drops a session-scoped temporary waypoint.
  *
  * All bindings are registered under a single Waypointer category via the
@@ -50,6 +54,8 @@ public final class WaypointerKeybinds {
     private final KeyMapping skipWaypoint;
     private final KeyMapping addWaypointHere;
     private final KeyMapping addNamedWaypointHere;
+    private final KeyMapping repositionAddWaypoint;
+    private final KeyMapping repositionAddNamedWaypoint;
     private final KeyMapping addTempWaypointHere;
     private final Runnable openGui;
     private final ActiveGroupManager manager;
@@ -84,6 +90,16 @@ public final class WaypointerKeybinds {
                 CATEGORY));
         this.addNamedWaypointHere = KeyBindingHelper.registerKeyBinding(new KeyMapping(
                 "key.waypointer.add_named_waypoint_here",
+                InputConstants.Type.KEYSYM,
+                InputConstants.UNKNOWN.getValue(),
+                CATEGORY));
+        this.repositionAddWaypoint = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.waypointer.reposition_add_waypoint",
+                InputConstants.Type.KEYSYM,
+                InputConstants.UNKNOWN.getValue(),
+                CATEGORY));
+        this.repositionAddNamedWaypoint = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.waypointer.reposition_add_named_waypoint",
                 InputConstants.Type.KEYSYM,
                 InputConstants.UNKNOWN.getValue(),
                 CATEGORY));
@@ -122,6 +138,16 @@ public final class WaypointerKeybinds {
             drainWaypointKeybindClicks();
             return;
         }
+        while (repositionAddWaypoint.consumeClick()) {
+            WaypointRepositionMode.startAdd(manager, config, false);
+            drainWaypointKeybindClicks();
+            return;
+        }
+        while (repositionAddNamedWaypoint.consumeClick()) {
+            WaypointRepositionMode.startAdd(manager, config, true);
+            drainWaypointKeybindClicks();
+            return;
+        }
         while (addTempWaypointHere.consumeClick()) addTempWaypointAtPlayer(mc);
     }
 
@@ -134,6 +160,8 @@ public final class WaypointerKeybinds {
         while (skipWaypoint.consumeClick()) {}
         while (addWaypointHere.consumeClick()) {}
         while (addNamedWaypointHere.consumeClick()) {}
+        while (repositionAddWaypoint.consumeClick()) {}
+        while (repositionAddNamedWaypoint.consumeClick()) {}
         while (addTempWaypointHere.consumeClick()) {}
     }
 

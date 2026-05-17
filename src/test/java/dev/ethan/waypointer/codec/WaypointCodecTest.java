@@ -68,6 +68,40 @@ class WaypointCodecTest {
     }
 
     @Test
+    void subwaypoint_structure_roundTripsEvenWhenVisualFlagsAreExcluded() {
+        WaypointGroup before = WaypointGroup.create("Subway", "dungeon_f7");
+        before.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        before.add(Waypoint.at(0, 70, 0));
+        before.add(Waypoint.at(5, 70, 0).withFlags(Waypoint.FLAG_HIDE_BEACON));
+        before.toggleSubwaypoint(1);
+
+        WaypointGroup decoded = WaypointCodec.decode(
+                WaypointCodec.encode(List.of(before), WaypointCodec.Options.NO_NAMES)).get(0);
+
+        assertFalse(decoded.isSubwaypoint(0));
+        assertTrue(decoded.isSubwaypoint(1),
+                "subwaypoint is route structure, so it survives minimal exports");
+        assertFalse(decoded.get(1).hasFlag(Waypoint.FLAG_HIDE_BEACON),
+                "visual flags should still be stripped by minimal exports");
+    }
+
+    @Test
+    void minimalPlainRouteExportStaysBodylessWhenNoSubwaypointsExist() {
+        WaypointGroup route = WaypointGroup.create("Plain", "dungeon_f7");
+        route.add(Waypoint.at(0, 70, 0));
+        route.add(Waypoint.at(5, 70, 0));
+        route.add(Waypoint.at(10, 70, 0));
+
+        String encoded = WaypointCodec.encode(List.of(route), WaypointCodec.Options.NO_NAMES);
+        DecodeDebug.GroupDebug debug = WaypointCodec.debugDecode(encoded).groups().get(0);
+
+        assertEquals(0, debug.bodyBlockBytes(),
+                "plain minimal routes must keep the pre-subwaypoint bodyless encoding");
+        assertTrue(debug.waypoints().stream().noneMatch(DecodeDebug.WaypointDebug::extended),
+                "no subwaypoints means no per-waypoint extended flag records");
+    }
+
+    @Test
     void round_trip_multiple_groups_preserves_order() {
         WaypointGroup a = sampleGroup("A", "dwarven_mines");
         WaypointGroup b = sampleGroup("B", "crystal_hollows");
@@ -264,9 +298,9 @@ class WaypointCodecTest {
 
     @Test
     void current_wire_version_keeps_hypixel_emote_escape() {
-        // v4 spends the header version on the chat escape so the body does not
-        // need an extra marker like "~WP~".
-        assertEquals(4, WaypointCodec.WIRE_VERSION);
+        // v5 keeps the v4 chat escape, removes commas from the fresh export
+        // alphabet, and adds extended coordinate modes before shipping.
+        assertEquals(5, WaypointCodec.WIRE_VERSION);
 
         String raw = "abc<3defo/ghi~~jkl<~3mno~/pqr";
         String escaped = WaypointCodec.escapeHypixelEmotes(raw);
@@ -306,6 +340,40 @@ class WaypointCodecTest {
             String s = WaypointCodec.encode(List.of(g));
             assertFalse(s.contains("`"), "export must not contain backticks: " + s);
             assertFalse(WaypointCodec.decode(s).isEmpty(), "backtick-free export must still decode");
+        }
+    }
+
+    @Test
+    void current_exports_never_contain_commas() {
+        for (int i = 0; i < 40; i++) {
+            WaypointGroup g = WaypointGroup.create("comma fuzz " + i, "dungeon_f7");
+            for (int j = 0; j < 5 + i; j++) {
+                g.add(new Waypoint(40 + i * 5 + j, 64 + (j % 6), 140 + j * 7,
+                        "p" + i + "-" + j, Waypoint.DEFAULT_COLOR, 0, 0));
+            }
+
+            String s = WaypointCodec.encode(List.of(g));
+            assertFalse(s.contains(","), "export must not contain commas: " + s);
+            assertFalse(WaypointCodec.decode(s).isEmpty(), "comma-free export must still decode");
+        }
+    }
+
+    @Test
+    void decode_still_accepts_legacy_v4_payloads_with_commas() throws Exception {
+        WaypointGroup g = WaypointGroup.create("legacy v4", "dungeon_f7");
+        for (int i = 0; i < 12; i++) {
+            g.add(new Waypoint(100 + i, 70, 200 + i * 2, "", Waypoint.DEFAULT_COLOR, 0, 0));
+        }
+
+        String legacyV4 = asLegacyV4WithComma(WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES));
+        assertTrue(legacyV4.contains(","), "fixture should exercise legacy comma alphabet: " + legacyV4);
+
+        WaypointGroup decoded = WaypointCodec.decode(legacyV4).get(0);
+        assertEquals(g.size(), decoded.size());
+        for (int i = 0; i < g.size(); i++) {
+            assertEquals(g.get(i).x(), decoded.get(i).x(), "x@" + i);
+            assertEquals(g.get(i).y(), decoded.get(i).y(), "y@" + i);
+            assertEquals(g.get(i).z(), decoded.get(i).z(), "z@" + i);
         }
     }
 
@@ -476,6 +544,28 @@ class WaypointCodecTest {
     }
 
     @Test
+    void include_colors_false_does_not_restore_auto_gradient_colors() {
+        WaypointGroup g = WaypointGroup.create("auto gradient", "z");
+        g.setGradientMode(WaypointGroup.GradientMode.AUTO);
+        for (int i = 0; i < 5; i++) {
+            g.add(Waypoint.at(i, 70, i));
+        }
+
+        WaypointCodec.Options stripped = WaypointCodec.Options.builder()
+                .includeColors(false)
+                .includeGroupMeta(true)
+                .build();
+        WaypointGroup decoded = WaypointCodec.decode(WaypointCodec.encode(List.of(g), stripped)).get(0);
+
+        assertEquals(WaypointGroup.GradientMode.MANUAL, decoded.gradientMode(),
+                "stripping colors must also suppress AUTO gradient restoration");
+        for (int i = 0; i < decoded.size(); i++) {
+            assertEquals(Waypoint.DEFAULT_COLOR, decoded.get(i).color(),
+                    "auto gradient must not recolor stripped export at index " + i);
+        }
+    }
+
+    @Test
     void include_radii_false_strips_custom_per_waypoint_radius() {
         WaypointGroup g = WaypointGroup.create("R", "z");
         g.add(new Waypoint(0, 70, 0, "", Waypoint.DEFAULT_COLOR, 0, 8.5));
@@ -505,8 +595,9 @@ class WaypointCodecTest {
 
     @Test
     void include_group_meta_false_strips_gradient_load_mode_and_default_radius() {
-        // Group metadata stripping should make the recipient see plain
-        // defaults: AUTO gradient, SEQUENCE load order, default 3.0 radius.
+        // Group metadata stripping should make the recipient see plain defaults.
+        // With colors stripped, that means no AUTO gradient restoration because
+        // AUTO would recolor the default-colored import.
         WaypointGroup g = WaypointGroup.create("R", "z");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
@@ -516,8 +607,8 @@ class WaypointCodecTest {
         WaypointCodec.Options stripped = WaypointCodec.Options.builder()
                 .includeGroupMeta(false).build();
         WaypointGroup decoded = WaypointCodec.decode(WaypointCodec.encode(List.of(g), stripped)).get(0);
-        assertEquals(WaypointGroup.GradientMode.AUTO, decoded.gradientMode(),
-                "gradient must default to AUTO when group meta is dropped");
+        assertEquals(WaypointGroup.GradientMode.MANUAL, decoded.gradientMode(),
+                "colorless metadata stripping must not restore AUTO gradient");
         assertEquals(WaypointGroup.LoadMode.SEQUENCE, decoded.loadMode(),
                 "load mode must default to SEQUENCE when group meta is dropped");
         assertEquals(3.0, decoded.defaultRadius(), 1e-6,
@@ -656,11 +747,15 @@ class WaypointCodecTest {
         int absolute = forcedLen(g, WaypointCodec.PackingMode.FORCE_ABSOLUTE);
         int fixed    = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIXED);
         int fit      = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIT);
+        int vectorAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR_AXIS_SEPARATED);
+        int deltaFitAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_DELTA_FIT_AXIS_SEPARATED);
         int auto     = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES).length();
 
-        assertTrue(auto <= vector && auto <= absolute && auto <= fixed && auto <= fit,
+        assertTrue(auto <= vector && auto <= absolute && auto <= fixed && auto <= fit
+                        && auto <= vectorAxis && auto <= deltaFitAxis,
                 "AUTO must pick the smallest; auto=" + auto + " vector=" + vector
-                        + " absolute=" + absolute + " fixed=" + fixed + " fit=" + fit);
+                        + " absolute=" + absolute + " fixed=" + fixed + " fit=" + fit
+                        + " vectorAxis=" + vectorAxis + " deltaFitAxis=" + deltaFitAxis);
     }
 
     @Test
@@ -677,11 +772,15 @@ class WaypointCodecTest {
         int vector   = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR);
         int absolute = forcedLen(g, WaypointCodec.PackingMode.FORCE_ABSOLUTE);
         int fit      = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIT);
+        int vectorAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR_AXIS_SEPARATED);
+        int deltaFitAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_DELTA_FIT_AXIS_SEPARATED);
         int auto     = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES).length();
 
-        assertTrue(auto <= vector && auto <= absolute && auto <= fit,
+        assertTrue(auto <= vector && auto <= absolute && auto <= fit
+                        && auto <= vectorAxis && auto <= deltaFitAxis,
                 "AUTO must not be worse than any eligible forced mode; auto=" + auto
-                        + " vector=" + vector + " absolute=" + absolute + " fit=" + fit);
+                        + " vector=" + vector + " absolute=" + absolute + " fit=" + fit
+                        + " vectorAxis=" + vectorAxis + " deltaFitAxis=" + deltaFitAxis);
     }
 
     @Test
@@ -699,14 +798,17 @@ class WaypointCodecTest {
         int vector   = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR);
         int absolute = forcedLen(g, WaypointCodec.PackingMode.FORCE_ABSOLUTE);
         int fit      = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIT);
+        int vectorAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR_AXIS_SEPARATED);
+        int deltaFitAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_DELTA_FIT_AXIS_SEPARATED);
         int auto     = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES).length();
 
         assertTrue(vector < absolute,
                 "clustered route should be smaller under vector packing; vector=" + vector
                         + " absolute=" + absolute);
-        assertTrue(auto <= vector && auto <= fit,
+        assertTrue(auto <= vector && auto <= fit && auto <= vectorAxis && auto <= deltaFitAxis,
                 "AUTO must not be worse than any eligible forced mode; auto=" + auto
-                        + " vector=" + vector + " fit=" + fit);
+                        + " vector=" + vector + " fit=" + fit
+                        + " vectorAxis=" + vectorAxis + " deltaFitAxis=" + deltaFitAxis);
     }
 
     @Test
@@ -806,10 +908,18 @@ class WaypointCodecTest {
         WaypointGroup fromFit = WaypointCodec.decode(
                 WaypointCodec.encode(List.of(g), FULL_FIDELITY,
                         WaypointCodec.PackingMode.FORCE_FIT)).get(0);
+        WaypointGroup fromVectorAxis = WaypointCodec.decode(
+                WaypointCodec.encode(List.of(g), FULL_FIDELITY,
+                        WaypointCodec.PackingMode.FORCE_VECTOR_AXIS_SEPARATED)).get(0);
+        WaypointGroup fromDeltaFitAxis = WaypointCodec.decode(
+                WaypointCodec.encode(List.of(g), FULL_FIDELITY,
+                        WaypointCodec.PackingMode.FORCE_DELTA_FIT_AXIS_SEPARATED)).get(0);
         assertGroupsEqual(g, fromVector);
         assertGroupsEqual(g, fromAbsolute);
         assertGroupsEqual(g, fromFixed);
         assertGroupsEqual(g, fromFit);
+        assertGroupsEqual(g, fromVectorAxis);
+        assertGroupsEqual(g, fromDeltaFitAxis);
     }
 
     @Test
@@ -834,10 +944,14 @@ class WaypointCodecTest {
             int vector   = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR);
             int absolute = forcedLen(g, WaypointCodec.PackingMode.FORCE_ABSOLUTE);
             int fit      = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIT);
+            int vectorAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR_AXIS_SEPARATED);
+            int deltaFitAxis = forcedLenOrMax(g, WaypointCodec.PackingMode.FORCE_DELTA_FIT_AXIS_SEPARATED);
             int auto     = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES).length();
-            assertTrue(auto <= vector && auto <= absolute && auto <= fit,
+            assertTrue(auto <= vector && auto <= absolute && auto <= fit
+                            && auto <= vectorAxis && auto <= deltaFitAxis,
                     "trial " + trial + ": auto=" + auto + " vector=" + vector
-                            + " absolute=" + absolute + " fit=" + fit);
+                            + " absolute=" + absolute + " fit=" + fit
+                            + " vectorAxis=" + vectorAxis + " deltaFitAxis=" + deltaFitAxis);
             if (fixedEligible) {
                 int fixed = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIXED);
                 assertTrue(auto <= fixed,
@@ -848,6 +962,14 @@ class WaypointCodecTest {
 
     private static int forcedLen(WaypointGroup g, WaypointCodec.PackingMode mode) {
         return WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES, mode).length();
+    }
+
+    private static int forcedLenOrMax(WaypointGroup g, WaypointCodec.PackingMode mode) {
+        try {
+            return forcedLen(g, mode);
+        } catch (IllegalArgumentException ignored) {
+            return Integer.MAX_VALUE;
+        }
     }
 
     // --- helpers ------------------------------------------------------------------------------
@@ -863,6 +985,16 @@ class WaypointCodecTest {
         byte[] raw = inflateForTest(compressed);
         raw[0] = (byte) ((raw[0] & 0xF0) | 3);
         return WaypointCodec.MAGIC + AsciiStreamCodec.encodeLegacyV3(deflateForTest(raw));
+    }
+
+    private static String asLegacyV4WithComma(String v5Export) throws Exception {
+        String body = v5Export.substring(WaypointCodec.MAGIC.length());
+        byte[] compressed = AsciiStreamCodec.decode(WaypointCodec.unescapeHypixelEmotes(body));
+        byte[] raw = inflateForTest(compressed);
+        raw[0] = (byte) ((raw[0] & 0xF0) | 4);
+
+        return WaypointCodec.MAGIC
+                + WaypointCodec.escapeHypixelEmotes(AsciiStreamCodec.encodeLegacyV4(deflateForTest(raw)));
     }
 
     private static byte[] deflateForTest(byte[] raw) throws Exception {

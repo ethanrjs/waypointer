@@ -41,7 +41,11 @@ public final class CodecScanner {
 
     private CodecScanner() {}
 
-    public record Match(int start, int end, String text) {
+    public record Match(int start, int end, String text, boolean valid) {
+        public Match(int start, int end, String text) {
+            this(start, end, text, true);
+        }
+
         public int length() { return end - start; }
     }
 
@@ -58,30 +62,42 @@ public final class CodecScanner {
             while (bodyEnd < message.length() && AsciiStreamCodec.isAlphabetChar(message.charAt(bodyEnd))) {
                 bodyEnd++;
             }
+            int greedyBodyEnd = bodyEnd;
+            boolean valid = false;
             // Printable-ASCII bodies share most punctuation with normal prose. Without a
             // backscan, greedy extension can swallow trailing delimiters (e.g. commas)
             // that belong to the surrounding sentence. Shrink the end only while
             // {@link WaypointCodec#isValidCodec} rejects the candidate (cheap probe).
             while (bodyEnd > bodyStart + MIN_BODY - 1) {
-                if (WaypointCodec.isValidCodec(message.substring(i, bodyEnd))) break;
+                if (WaypointCodec.isValidCodec(message.substring(i, bodyEnd))) {
+                    valid = true;
+                    break;
+                }
                 bodyEnd--;
             }
             // If the greedy span is valid as a whole but a clause delimiter at the end
             // is prose (not payload), the payload-with-delimiter can still decode as an
             // unrelated blob — trim when dropping that suffix keeps a valid decode.
-            while (bodyEnd > bodyStart + MIN_BODY) {
-                char last = message.charAt(bodyEnd - 1);
-                if (!isClauseSuffixDelim(last)) break;
-                String shorter = message.substring(i, bodyEnd - 1);
-                if (WaypointCodec.isValidCodec(shorter)) {
-                    bodyEnd--;
-                } else {
-                    break;
+            if (valid) {
+                while (bodyEnd > bodyStart + MIN_BODY) {
+                    char last = message.charAt(bodyEnd - 1);
+                    if (!isClauseSuffixDelim(last)) break;
+                    String shorter = message.substring(i, bodyEnd - 1);
+                    if (WaypointCodec.isValidCodec(shorter)) {
+                        bodyEnd--;
+                    } else {
+                        break;
+                    }
                 }
+            } else {
+                // A WP: body that never decodes is still useful to surface: it is
+                // almost always a truncated/corrupted route paste, and silently
+                // ignoring it makes the sender think nothing happened.
+                bodyEnd = greedyBodyEnd;
             }
             int bodyLen = bodyEnd - bodyStart;
             if (bodyLen >= MIN_BODY) {
-                out.add(new Match(i, bodyEnd, message.substring(i, bodyEnd)));
+                out.add(new Match(i, bodyEnd, message.substring(i, bodyEnd), valid));
                 i = bodyEnd;
             } else {
                 // False start: magic matched but body was too short (e.g. literal "WP:" in prose).
