@@ -7,6 +7,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.text.AmpersandFormatting;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
@@ -97,6 +98,10 @@ public final class WaypointRenderer implements HudElement {
     /** Gap between the name row and the distance row below it. */
     private static final int DISTANCE_ROW_GAP = 1;
     private static final int SCREEN_CULL_MARGIN = 64;
+    private static final double LABEL_SCALE_REFERENCE_DEPTH = 24.0;
+    private static final double LABEL_SCALE_BASELINE_FOV_DEGREES = 70.0;
+    private static final float LABEL_SCALE_MIN = 0.25f;
+    private static final float LABEL_SCALE_MAX = 2.25f;
 
     /**
      * Cap on the pre-baked distance table. 0..4095m covers dense imported route
@@ -330,8 +335,8 @@ public final class WaypointRenderer implements HudElement {
 
     private static int currentBeamIndex(WaypointGroup g) {
         if (g.isEmpty()) return -1;
-        if (g.isComplete()) return g.size() - 1;
-        return Math.max(0, Math.min(g.currentIndex(), g.size() - 1));
+        if (g.isComplete()) return g.lastMainIndex();
+        return g.currentMainIndex();
     }
 
     private static int beamMinY(Minecraft mc) {
@@ -492,6 +497,9 @@ public final class WaypointRenderer implements HudElement {
         // a getter call (and a dirty-flag-eligible call site) per label.
         double labelLift = LABEL_ANCHOR_LIFT + config.labelHeightOffset();
         boolean colorizeNames = config.matchWaypointTextToWaypointColor();
+        boolean scaleLabelsWithDistance = config.scaleWaypointTextWithDistance();
+        boolean hasSubwaypoints = group.hasSubwaypoints();
+        int mainWaypointCount = hasSubwaypoints ? group.mainWaypointCount() : group.size();
 
         group.forEachVisibleIndex(i -> {
             if (shouldHideStaticReached(group, i)) return;
@@ -517,9 +525,14 @@ public final class WaypointRenderer implements HudElement {
             double sy = labelScreenScratch[1];
             if (!isNearScreen(sx, sy, screenW, screenH)) return;
 
-            String name = showNames ? labelFor(group, i, w, state) : null;
+            double distance = showDistances ? Math.sqrt(distanceSq) : 0.0;
+            float labelScale = labelScaleForDepth(
+                    labelProjector.depth(ax, ay, az),
+                    labelProjector.fovDegrees(),
+                    scaleLabelsWithDistance);
+            String name = showNames ? labelFor(group, i, w, state, hasSubwaypoints, mainWaypointCount) : null;
             String distanceText = showDistances
-                    ? distanceString((int) Math.sqrt(distanceSq))
+                    ? distanceString((int) distance)
                     : null;
             float alpha = alphaFor(group, state);
             int nameColor = colorizeNames && showNames
@@ -528,37 +541,83 @@ public final class WaypointRenderer implements HudElement {
 
             if (labelBudget > 0) {
                 LabelCandidate candidate = nextLabelCandidate();
-                candidate.set(name, distanceText, sx, sy, distanceSq, nameColor, alpha);
+                candidate.set(name, distanceText, sx, sy, distanceSq, nameColor, alpha, labelScale);
                 return;
             }
 
             double rowY = sy;
             if (showNames) {
-                drawCenteredLabel(g, font, name, sx, rowY, RenderHelpers.withAlpha(nameColor, alpha), alpha);
-                rowY += font.lineHeight + DISTANCE_ROW_GAP;
+                drawCenteredLabel(g, font, name, sx, rowY,
+                        RenderHelpers.withAlpha(nameColor, alpha), alpha, labelScale);
+                rowY += labelRowAdvance(font, labelScale);
             }
             if (showDistances) {
                 drawCenteredLabel(g, font, distanceText, sx, rowY,
-                        RenderHelpers.withAlpha(DISTANCE_ARGB, alpha), alpha);
+                        RenderHelpers.withAlpha(DISTANCE_ARGB, alpha), alpha, labelScale);
             }
         });
     }
 
     private void drawBudgetedLabels(GuiGraphics g, Font font, int count) {
-        labelCandidates.subList(0, labelCandidateCount).sort(LABEL_NEAREST_FIRST);
+        if (count <= 0) return;
+        if (count < labelCandidateCount) {
+            selectNearestLabels(count);
+            labelCandidates.subList(0, count).sort(LABEL_NEAREST_FIRST);
+        } else {
+            labelCandidates.subList(0, labelCandidateCount).sort(LABEL_NEAREST_FIRST);
+        }
         for (int i = 0; i < count; i++) {
             LabelCandidate candidate = labelCandidates.get(i);
             double rowY = candidate.screenY;
             if (candidate.name != null) {
                 drawCenteredLabel(g, font, candidate.name, candidate.screenX, rowY,
-                        RenderHelpers.withAlpha(candidate.nameColor, candidate.alpha), candidate.alpha);
-                rowY += font.lineHeight + DISTANCE_ROW_GAP;
+                        RenderHelpers.withAlpha(candidate.nameColor, candidate.alpha),
+                        candidate.alpha, candidate.scale);
+                rowY += labelRowAdvance(font, candidate.scale);
             }
             if (candidate.distance != null) {
                 drawCenteredLabel(g, font, candidate.distance, candidate.screenX, rowY,
-                        RenderHelpers.withAlpha(DISTANCE_ARGB, candidate.alpha), candidate.alpha);
+                        RenderHelpers.withAlpha(DISTANCE_ARGB, candidate.alpha),
+                        candidate.alpha, candidate.scale);
             }
         }
+    }
+
+    /**
+     * Keep the nearest {@code count} labels in slots [0, count) without sorting
+     * the full candidate list. Dense static overlays can produce thousands of
+     * candidates per frame while the user only wants, say, the nearest 50 labels.
+     */
+    private void selectNearestLabels(int count) {
+        int target = count - 1;
+        int left = 0;
+        int right = labelCandidateCount - 1;
+        while (left < right) {
+            int pivot = partitionLabels(left, right, (left + right) >>> 1);
+            if (pivot == target) return;
+            if (pivot > target) right = pivot - 1;
+            else left = pivot + 1;
+        }
+    }
+
+    private int partitionLabels(int left, int right, int pivotIndex) {
+        double pivotDistance = labelCandidates.get(pivotIndex).distanceSquared;
+        swapLabelCandidates(pivotIndex, right);
+        int store = left;
+        for (int i = left; i < right; i++) {
+            if (labelCandidates.get(i).distanceSquared < pivotDistance) {
+                swapLabelCandidates(store++, i);
+            }
+        }
+        swapLabelCandidates(store, right);
+        return store;
+    }
+
+    private void swapLabelCandidates(int a, int b) {
+        if (a == b) return;
+        LabelCandidate tmp = labelCandidates.get(a);
+        labelCandidates.set(a, labelCandidates.get(b));
+        labelCandidates.set(b, tmp);
     }
 
     private LabelCandidate nextLabelCandidate() {
@@ -583,6 +642,21 @@ public final class WaypointRenderer implements HudElement {
         return distanceScratch.toString();
     }
 
+    private static float labelScaleForDepth(double depth, float fovDegrees, boolean enabled) {
+        if (!enabled) return 1.0f;
+        if (depth <= 0.0 || !Double.isFinite(depth)) return LABEL_SCALE_MIN;
+
+        double currentFov = Math.max(1.0, Math.min(179.0, fovDegrees));
+        double fovScale = Math.tan(Math.toRadians(LABEL_SCALE_BASELINE_FOV_DEGREES) * 0.5)
+                / Math.tan(Math.toRadians(currentFov) * 0.5);
+        double scale = fovScale * LABEL_SCALE_REFERENCE_DEPTH / depth;
+        return (float) Math.max(LABEL_SCALE_MIN, Math.min(LABEL_SCALE_MAX, scale));
+    }
+
+    private static double labelRowAdvance(Font font, float scale) {
+        return (font.lineHeight + DISTANCE_ROW_GAP) * scale;
+    }
+
     /**
      * Draw a line of text horizontally centered on {@code (cx, top)} with a
      * translucent backdrop sized to the glyph run. Kept inlined here (rather than
@@ -597,41 +671,46 @@ public final class WaypointRenderer implements HudElement {
      * same value, saving two redundant glyph-table lookups per label.
      */
     private void drawCenteredLabel(GuiGraphics g, Font font, String text,
-                                   double cx, double top, int argb, float alpha) {
+                                   double cx, double top, int argb, float alpha,
+                                   float scale) {
         int width = font.width(text);
-        double left = cx - width / 2.0;
+        double left = cx - (width * scale) / 2.0;
         int drawX = (int) Math.floor(left);
         int drawY = (int) Math.floor(top);
         float subpixelX = (float) (left - drawX);
         float subpixelY = (float) (top - drawY);
 
         g.pose().pushMatrix();
-        g.pose().translate(subpixelX, subpixelY);
+        g.pose().translate(drawX + subpixelX, drawY + subpixelY);
+        if (scale != 1.0f) {
+            g.pose().scale(scale, scale);
+        }
         if (config.showLabelBackdrop()) {
-            int backdropTop = drawY - BACKDROP_PAD_Y;
-            int backdropBottom = drawY + font.lineHeight - 1 + BACKDROP_PAD_Y;
-            g.fill(drawX - BACKDROP_PAD_X, backdropTop,
-                    drawX + width + BACKDROP_PAD_X, backdropBottom,
+            g.fill(-BACKDROP_PAD_X, -BACKDROP_PAD_Y,
+                    width + BACKDROP_PAD_X, font.lineHeight - 1 + BACKDROP_PAD_Y,
                     RenderHelpers.withAlpha(LABEL_BACKDROP_ARGB, alpha));
         }
         // drawString's shadow flag stays on in both modes -- without the backdrop the
         // drop shadow is doing all the work keeping text readable against bright biomes.
-        g.drawString(font, text, drawX, drawY, argb, true);
+        g.drawString(font, text, 0, 0, argb, true);
         g.pose().popMatrix();
     }
 
-    private String labelFor(WaypointGroup g, int i, Waypoint w, State state) {
-        if (w.hasName()) return w.name();
-        if (g.loadMode() == WaypointGroup.LoadMode.STATIC) {
-            return indexLabel(i);
+    private String labelFor(WaypointGroup g, int i, Waypoint w, State state,
+                            boolean hasSubwaypoints, int mainWaypointCount) {
+        if (w.hasName()) return AmpersandFormatting.translate(w.name());
+        if (g.isSubwaypoint(i) || (hasSubwaypoints && g.loadMode() == WaypointGroup.LoadMode.STATIC)) {
+            return g.displayIndexLabel(i);
         }
+        if (g.loadMode() == WaypointGroup.LoadMode.STATIC) return indexLabel(i + 1);
+
+        int mainOrdinal = hasSubwaypoints ? g.mainOrdinal(i) : i + 1;
         return state == State.CURRENT
-                ? nextLabel(i, g.size())
-                : indexLabel(i);
+                ? nextLabel(mainOrdinal - 1, mainWaypointCount)
+                : indexLabel(mainOrdinal);
     }
 
-    private String indexLabel(int i) {
-        int number = i + 1;
+    private String indexLabel(int number) {
         if (number <= 0 || number >= INDEX_LABEL_CACHE_MAX) return "#" + number;
 
         String cached = indexLabelCache[number];
@@ -658,6 +737,15 @@ public final class WaypointRenderer implements HudElement {
 
     private static State stateFor(WaypointGroup group, int i, int currentIdx) {
         if (group.loadMode() == WaypointGroup.LoadMode.STATIC) return State.CURRENT;
+        int activeSubwayParent = group.activeSubwaypointParentIndex();
+        if (group.isSubwaypoint(i)) {
+            int parent = group.parentMainIndex(i);
+            if (parent == activeSubwayParent) return State.CURRENT;
+            if (parent < currentIdx) return State.COMPLETED;
+            if (parent == currentIdx) return State.CURRENT;
+            return State.UPCOMING;
+        }
+        if (i == activeSubwayParent) return State.CURRENT;
         if (i < currentIdx) return State.COMPLETED;
         if (i == currentIdx) return State.CURRENT;
         return State.UPCOMING;
@@ -678,7 +766,7 @@ public final class WaypointRenderer implements HudElement {
 
     private boolean isImmediateSequenceContext(WaypointGroup group, int index, int currentIdx) {
         return group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
-                && index == currentIdx - 1;
+                && index == group.previousMainIndexBefore(currentIdx);
     }
 
     private boolean shouldHideStaticReached(WaypointGroup group, int index) {
@@ -819,9 +907,10 @@ public final class WaypointRenderer implements HudElement {
         double distanceSquared;
         int nameColor;
         float alpha;
+        float scale;
 
         void set(String name, String distance, double screenX, double screenY,
-                 double distanceSquared, int nameColor, float alpha) {
+                 double distanceSquared, int nameColor, float alpha, float scale) {
             this.name = name;
             this.distance = distance;
             this.screenX = screenX;
@@ -829,6 +918,7 @@ public final class WaypointRenderer implements HudElement {
             this.distanceSquared = distanceSquared;
             this.nameColor = nameColor;
             this.alpha = alpha;
+            this.scale = scale;
         }
     }
 }

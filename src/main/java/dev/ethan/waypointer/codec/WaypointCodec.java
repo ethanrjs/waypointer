@@ -26,7 +26,7 @@ import java.util.zip.Inflater;
  *
  * Wire format:
  *
- *     WP:<base-92 body of raw DEFLATE(bin)>
+ *     WP:<base-91 body of raw DEFLATE(bin)>
  *
  * The {@code WP:} prefix is just a scanner anchor; the schema version lives
  * in the low nibble of the first body byte (see below). Keeping the version
@@ -69,8 +69,8 @@ import java.util.zip.Inflater;
  *                   bit 1 = gradientAuto       (else MANUAL)
  *                   bit 2 = loadSequence       (else STATIC)
  *                   bit 3 = customDefaultRadius (else 3.0)
- *                   bits 4..5 = coordMode (0=VECTOR delta, 1=ABSOLUTE_VARINT,
- *                                           2=FIXED_COMPACT, 3=FIT_COMPACT)
+ *                   bits 4..5 = coordMode low bits
+ *                   bit 6 = coordMode high bit in v5+
  *       if customDefaultRadius: varint radius_x10
  *       varint    waypointCount
  *       coord stream (see below)
@@ -110,6 +110,8 @@ import java.util.zip.Inflater;
  *     widths. A dungeon group with x in [66..130] fits in 7 bits, y in [128..145]
  *     in 5 bits, z in [135..190] in 6 bits = 18 bits/waypoint -- nearly half
  *     what FIXED_COMPACT costs. Wins on tightly-clustered groups.
+ *   - VECTOR_AXIS_SEPARATED / DELTA_FIT_AXIS_SEPARATED: v5-only path-route
+ *     candidates that transpose deltas into axis streams before DEFLATE.
  *
  * Worst case AUTO picks wrong by 0 bytes (the losing modes are discarded);
  * best case it saves real characters on pathologically-shaped routes.
@@ -125,7 +127,9 @@ public final class WaypointCodec {
      * scanner. Version 0 is reserved as "invalid" so a corrupted header byte
      * can't accidentally decode as an older schema.
      *
-     * v4 (current): base-92 streaming outer alphabet (v3 minus backtick) plus
+     * v5 (current): base-91 streaming outer alphabet (v4 minus comma) plus
+     *               extended coord-mode ids in group flags.
+     * v4 (retired): base-92 streaming outer alphabet (v3 minus backtick) plus
      *               a reversible chat escape for Hypixel MVP++
      *               {@code <3}/{@code o/} emote triggers.
      * v3 (retired): base-93 streaming outer alphabet + adaptive waypoint-name
@@ -140,7 +144,8 @@ public final class WaypointCodec {
      * retired: the current scanner/text codecs reject the CJK body before the
      * binary version guard can run.
      */
-    static final int WIRE_VERSION = 4;
+    static final int WIRE_VERSION = 5;
+    private static final int LEGACY_V4_WIRE_VERSION = 4;
     private static final int LEGACY_V3_WIRE_VERSION = 3;
     private static final int LEGACY_V2_WIRE_VERSION = 2;
     private static final int HEADER_VERSION_MASK = 0x0F;
@@ -169,6 +174,8 @@ public final class WaypointCodec {
     /** 2-bit field at bits 4..5 holding the coord-mode ordinal (0..3). */
     private static final int GROUP_FLAG_COORD_MODE_SHIFT = 4;
     private static final int GROUP_FLAG_COORD_MODE_MASK  = 0b11 << GROUP_FLAG_COORD_MODE_SHIFT;
+    /** Current v5 uses bit 6 as the high bit for coord-mode ids 4..7. */
+    private static final int GROUP_FLAG_COORD_MODE_EXTENDED = 1 << 6;
 
     /** Bit widths for the FIXED_COMPACT packing. */
     private static final int FIXED_X_BITS = 12;
@@ -194,6 +201,7 @@ public final class WaypointCodec {
     private static final int WP_FLAG_EXTENDED   = 1 << 3;
     /** Set together with HAS_NAME when the UTF-8 name follows inline instead of a pool index. */
     private static final int WP_FLAG_NAME_INLINE = 1 << 4;
+    private static final String TEXT_ENCODING_V5 = "ASCII base-91 stream + extended coord modes";
     private static final String TEXT_ENCODING_V4 = "ASCII base-92 stream + Hypixel emote escape";
     private static final String TEXT_ENCODING_V3 = "ASCII base-93 stream";
     private static final String TEXT_ENCODING_V2 = "ASCII base-85";
@@ -210,7 +218,9 @@ public final class WaypointCodec {
         VECTOR(0),
         ABSOLUTE_VARINT(1),
         FIXED_COMPACT(2),
-        FIT_COMPACT(3);
+        FIT_COMPACT(3),
+        VECTOR_AXIS_SEPARATED(4),
+        DELTA_FIT_AXIS_SEPARATED(5);
 
         final int wireValue;
 
@@ -228,7 +238,15 @@ public final class WaypointCodec {
      * assert that AUTO actually picks the best option. Production code should
      * stick with AUTO.
      */
-    enum PackingMode { AUTO, FORCE_VECTOR, FORCE_ABSOLUTE, FORCE_FIXED, FORCE_FIT }
+    enum PackingMode {
+        AUTO,
+        FORCE_VECTOR,
+        FORCE_ABSOLUTE,
+        FORCE_FIXED,
+        FORCE_FIT,
+        FORCE_VECTOR_AXIS_SEPARATED,
+        FORCE_DELTA_FIT_AXIS_SEPARATED
+    }
 
     /**
      * Export options. Five independent toggles control which payload fields are
@@ -369,7 +387,7 @@ public final class WaypointCodec {
      */
     static String encode(List<WaypointGroup> groups, Options opts, PackingMode mode) {
         try {
-            byte[] raw = writeBody(groups, opts, mode);
+            byte[] raw = writeBody(groups, opts, mode, WIRE_VERSION, true);
             byte[] compressed = deflate(raw);
             return MAGIC + escapeHypixelEmotes(AsciiStreamCodec.encode(compressed));
         } catch (IOException e) {
@@ -397,18 +415,23 @@ public final class WaypointCodec {
         }
         String payload = trimmed.substring(MAGIC.length());
         try {
-            return decodePayloadV4(payload);
+            return decodePayloadCurrent(payload);
         } catch (IOException | IllegalArgumentException e) {
             try {
-                return decodePayloadV3(payload);
-            } catch (IOException | IllegalArgumentException legacyV3) {
+                return decodePayloadLegacyV4(payload);
+            } catch (IOException | IllegalArgumentException legacyV4) {
                 try {
-                    return decodePayloadV2(payload);
-                } catch (IOException | IllegalArgumentException legacyV2) {
-                    throw new IllegalArgumentException(
-                            "codec decode failed: v4=" + e.getMessage()
-                                    + "; v3=" + legacyV3.getMessage()
-                                    + "; v2=" + legacyV2.getMessage(), legacyV2);
+                    return decodePayloadV3(payload);
+                } catch (IOException | IllegalArgumentException legacyV3) {
+                    try {
+                        return decodePayloadV2(payload);
+                    } catch (IOException | IllegalArgumentException legacyV2) {
+                        throw new IllegalArgumentException(
+                                "codec decode failed: v5=" + e.getMessage()
+                                        + "; v4=" + legacyV4.getMessage()
+                                        + "; v3=" + legacyV3.getMessage()
+                                        + "; v2=" + legacyV2.getMessage(), legacyV2);
+                    }
                 }
             }
         }
@@ -459,7 +482,10 @@ public final class WaypointCodec {
         String trimmed = text.trim();
         if (!trimmed.startsWith(MAGIC)) return Optional.empty();
         String payload = trimmed.substring(MAGIC.length());
-        Optional<String> v4 = peekLabelV4(payload);
+        Optional<String> current = peekLabelCurrent(payload);
+        if (current.isPresent()) return current;
+
+        Optional<String> v4 = peekLabelLegacyV4(payload);
         if (v4.isPresent()) return v4;
 
         Optional<String> v3 = peekLabel(payload, LEGACY_V3_WIRE_VERSION, false);
@@ -489,18 +515,24 @@ public final class WaypointCodec {
         }
         String payload = trimmed.substring(MAGIC.length());
         try {
-            return debugDecodePayloadV4(text, payload, t0);
+            return debugDecodePayloadCurrent(text, payload, t0);
         } catch (IOException | IllegalArgumentException e) {
             try {
-                return debugDecodePayload(text, payload, t0, LEGACY_V3_WIRE_VERSION, false);
-            } catch (IOException | IllegalArgumentException legacyV3) {
+                return debugDecodePayload(text, payload, unescapeHypixelEmotes(payload),
+                        t0, LEGACY_V4_WIRE_VERSION, false);
+            } catch (IOException | IllegalArgumentException legacyV4) {
                 try {
-                    return debugDecodePayload(text, payload, t0, LEGACY_V2_WIRE_VERSION, true);
-                } catch (IOException | IllegalArgumentException legacyV2) {
-                    throw new IllegalArgumentException(
-                            "codec debug decode failed: v4=" + e.getMessage()
-                                    + "; v3=" + legacyV3.getMessage()
-                                    + "; v2=" + legacyV2.getMessage(), legacyV2);
+                    return debugDecodePayload(text, payload, t0, LEGACY_V3_WIRE_VERSION, false);
+                } catch (IOException | IllegalArgumentException legacyV3) {
+                    try {
+                        return debugDecodePayload(text, payload, t0, LEGACY_V2_WIRE_VERSION, true);
+                    } catch (IOException | IllegalArgumentException legacyV2) {
+                        throw new IllegalArgumentException(
+                                "codec debug decode failed: v5=" + e.getMessage()
+                                        + "; v4=" + legacyV4.getMessage()
+                                        + "; v3=" + legacyV3.getMessage()
+                                        + "; v2=" + legacyV2.getMessage(), legacyV2);
+                    }
                 }
             }
         }
@@ -511,8 +543,12 @@ public final class WaypointCodec {
         return s != null && s.trim().startsWith(MAGIC);
     }
 
-    private static Decoded decodePayloadV4(String payload) throws IOException {
+    private static Decoded decodePayloadCurrent(String payload) throws IOException {
         return decodePayloadV3Shape(unescapeHypixelEmotes(payload), WIRE_VERSION);
+    }
+
+    private static Decoded decodePayloadLegacyV4(String payload) throws IOException {
+        return decodePayloadV3Shape(unescapeHypixelEmotes(payload), LEGACY_V4_WIRE_VERSION);
     }
 
     private static Decoded decodePayloadV3(String payload) throws IOException {
@@ -520,9 +556,11 @@ public final class WaypointCodec {
     }
 
     private static Decoded decodePayloadV3Shape(String payload, int expectedVersion) throws IOException {
-        byte[] compressed = expectedVersion == LEGACY_V3_WIRE_VERSION
-                ? AsciiStreamCodec.decodeLegacyV3(payload)
-                : AsciiStreamCodec.decode(payload);
+        byte[] compressed = switch (expectedVersion) {
+            case LEGACY_V3_WIRE_VERSION -> AsciiStreamCodec.decodeLegacyV3(payload);
+            case LEGACY_V4_WIRE_VERSION -> AsciiStreamCodec.decodeLegacyV4(payload);
+            default -> AsciiStreamCodec.decode(payload);
+        };
         byte[] raw = inflate(compressed);
         DecodedHeader headerOut = new DecodedHeader();
         List<WaypointGroup> groups = readBody(raw, null, headerOut, expectedVersion, false);
@@ -595,17 +633,23 @@ public final class WaypointCodec {
         return new Decoded(groups, headerOut.label);
     }
 
-    private static Optional<String> peekLabelV4(String payload) {
+    private static Optional<String> peekLabelCurrent(String payload) {
         return peekLabel(unescapeHypixelEmotes(payload), WIRE_VERSION, false);
+    }
+
+    private static Optional<String> peekLabelLegacyV4(String payload) {
+        return peekLabel(unescapeHypixelEmotes(payload), LEGACY_V4_WIRE_VERSION, false);
     }
 
     private static Optional<String> peekLabel(String payload, int expectedVersion, boolean legacyV2) {
         try {
             byte[] compressed = legacyV2
                     ? AsciiPackCodec.decode(payload)
-                    : expectedVersion == LEGACY_V3_WIRE_VERSION
-                            ? AsciiStreamCodec.decodeLegacyV3(payload)
-                            : AsciiStreamCodec.decode(payload);
+                    : switch (expectedVersion) {
+                        case LEGACY_V3_WIRE_VERSION -> AsciiStreamCodec.decodeLegacyV3(payload);
+                        case LEGACY_V4_WIRE_VERSION -> AsciiStreamCodec.decodeLegacyV4(payload);
+                        default -> AsciiStreamCodec.decode(payload);
+                    };
             byte[] raw = inflate(compressed);
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(raw));
             int header = in.readUnsignedByte();
@@ -618,7 +662,7 @@ public final class WaypointCodec {
         }
     }
 
-    private static DecodeDebug debugDecodePayloadV4(String input, String payload, long startNanos)
+    private static DecodeDebug debugDecodePayloadCurrent(String input, String payload, long startNanos)
             throws IOException {
         return debugDecodePayload(input, payload, unescapeHypixelEmotes(payload),
                 startNanos, WIRE_VERSION, false);
@@ -635,15 +679,18 @@ public final class WaypointCodec {
             throws IOException {
         byte[] compressed = legacyV2
                 ? AsciiPackCodec.decode(decodePayload)
-                : expectedVersion == LEGACY_V3_WIRE_VERSION
-                        ? AsciiStreamCodec.decodeLegacyV3(decodePayload)
-                        : AsciiStreamCodec.decode(decodePayload);
+                : switch (expectedVersion) {
+                    case LEGACY_V3_WIRE_VERSION -> AsciiStreamCodec.decodeLegacyV3(decodePayload);
+                    case LEGACY_V4_WIRE_VERSION -> AsciiStreamCodec.decodeLegacyV4(decodePayload);
+                    default -> AsciiStreamCodec.decode(decodePayload);
+                };
         byte[] raw = inflate(compressed);
         DebugCapture cap = new DebugCapture();
         List<WaypointGroup> groups = readBody(raw, cap, null, expectedVersion, legacyV2);
         long elapsed = System.nanoTime() - startNanos;
         String encoding = switch (expectedVersion) {
-            case WIRE_VERSION -> TEXT_ENCODING_V4;
+            case WIRE_VERSION -> TEXT_ENCODING_V5;
+            case LEGACY_V4_WIRE_VERSION -> TEXT_ENCODING_V4;
             case LEGACY_V3_WIRE_VERSION -> TEXT_ENCODING_V3;
             case LEGACY_V2_WIRE_VERSION -> TEXT_ENCODING_V2;
             default -> "unknown";
@@ -653,18 +700,19 @@ public final class WaypointCodec {
 
     // --- writer -------------------------------------------------------------------------------
 
-    private static byte[] writeBody(List<WaypointGroup> groups, Options opts, PackingMode mode) throws IOException {
+    private static byte[] writeBody(List<WaypointGroup> groups, Options opts, PackingMode mode,
+                                    int wireVersion, boolean extendedCoordModes) throws IOException {
         StringPool pool = buildStringPool(groups, opts);
 
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         DataOutputStream out = new DataOutputStream(buf);
-        out.writeByte(buildHeaderByte(opts));
+        out.writeByte(buildHeaderByte(opts, wireVersion));
         if (!opts.label.isEmpty()) writeLabel(out, opts.label);
         pool.writeTo(out);
         writeVarint(out, groups.size());
 
         for (WaypointGroup g : groups) {
-            writeGroup(buf, out, g, pool, opts, mode);
+            writeGroup(buf, out, g, pool, opts, mode, extendedCoordModes);
         }
         out.flush();
         return buf.toByteArray();
@@ -779,44 +827,42 @@ public final class WaypointCodec {
      * the high nibble. Keeping version at a fixed, well-known position means
      * the decoder can validate the schema before touching anything else.
      */
-    private static int buildHeaderByte(Options opts) {
-        int header = WIRE_VERSION & HEADER_VERSION_MASK;
+    private static int buildHeaderByte(Options opts, int wireVersion) {
+        int header = wireVersion & HEADER_VERSION_MASK;
         if (opts.includeNames) header |= HEADER_FLAG_NAMES;
         if (!opts.label.isEmpty()) header |= HEADER_FLAG_LABEL;
         return header;
     }
 
     private static void writeGroup(ByteArrayOutputStream bodySoFar, DataOutputStream out, WaypointGroup g, StringPool pool,
-                                   Options opts, PackingMode mode) throws IOException {
+                                   Options opts, PackingMode mode, boolean extendedCoordModes) throws IOException {
         out.flush();
         byte[] bodyPrefix = bodySoFar.toByteArray();
 
         boolean bodyless = hasEmptyWaypointBodies(g.waypoints(), pool, opts);
 
-        // When the sender opts out of group metadata, the recipient should see
-        // the defaults a freshly-created WaypointGroup would have: AUTO
-        // gradient, SEQUENCE load mode, default 3.0 radius. The wire bits for
-        // "auto gradient" and "sequence load" are 1, so set them explicitly;
-        // writing groupFlags=0 would decode as MANUAL/STATIC. The coord-mode
-        // nibble is unaffected: it's a wire-level packing detail, not
-        // user-visible state.
+        // When colors are stripped, don't preserve AUTO gradient. Otherwise the
+        // decoder would recolor every default-colored imported waypoint and make
+        // a colorless export look like it carried colors after all.
         int baseGroupFlags = 0;
         if (bodyless) baseGroupFlags |= GROUP_FLAG_BODYLESS_WAYPOINTS;
         boolean customRadius = false;
         if (opts.includeGroupMeta) {
-            if (g.gradientMode() == WaypointGroup.GradientMode.AUTO) baseGroupFlags |= GROUP_FLAG_GRAD_AUTO;
+            if (opts.includeColors && g.gradientMode() == WaypointGroup.GradientMode.AUTO) {
+                baseGroupFlags |= GROUP_FLAG_GRAD_AUTO;
+            }
             if (g.loadMode()     == WaypointGroup.LoadMode.SEQUENCE) baseGroupFlags |= GROUP_FLAG_LOAD_SEQUENCE;
             customRadius = Math.abs(g.defaultRadius() - 3.0) > 0.001;
             if (customRadius) baseGroupFlags |= GROUP_FLAG_CUSTOM_RADIUS;
         } else {
-            baseGroupFlags |= GROUP_FLAG_GRAD_AUTO;
+            if (opts.includeColors) baseGroupFlags |= GROUP_FLAG_GRAD_AUTO;
             baseGroupFlags |= GROUP_FLAG_LOAD_SEQUENCE;
         }
 
         CoordPicked picked = pickCoordMode(g, pool, opts, mode, bodyless, baseGroupFlags,
-                customRadius, bodyPrefix);
+                customRadius, bodyPrefix, extendedCoordModes);
         int groupFlags = baseGroupFlags;
-        groupFlags |= (picked.mode.wireValue << GROUP_FLAG_COORD_MODE_SHIFT) & GROUP_FLAG_COORD_MODE_MASK;
+        groupFlags |= encodeCoordModeFlags(picked.mode, extendedCoordModes);
 
         writeVarint(out, pool.index(g.name()));
         writeZoneRef(out, g.zoneId(), pool);
@@ -831,6 +877,23 @@ public final class WaypointCodec {
     /** Result of coordinate-mode selection: the chosen mode and the encoded bytes. */
     private record CoordPicked(CoordMode mode, byte[] bytes) {}
 
+    private static int encodeCoordModeFlags(CoordMode mode, boolean extendedCoordModes) {
+        int wire = mode.wireValue;
+        if (!extendedCoordModes && (wire & 0b100) != 0) {
+            throw new IllegalArgumentException("coord mode " + mode + " is not available before v5");
+        }
+        return ((wire & 0b11) << GROUP_FLAG_COORD_MODE_SHIFT)
+                | ((wire & 0b100) != 0 ? GROUP_FLAG_COORD_MODE_EXTENDED : 0);
+    }
+
+    private static CoordMode decodeCoordMode(int groupFlags, int expectedVersion) {
+        int wire = (groupFlags & GROUP_FLAG_COORD_MODE_MASK) >>> GROUP_FLAG_COORD_MODE_SHIFT;
+        if (expectedVersion >= WIRE_VERSION && (groupFlags & GROUP_FLAG_COORD_MODE_EXTENDED) != 0) {
+            wire |= 0b100;
+        }
+        return CoordMode.fromWire(wire);
+    }
+
     /**
      * Runs the packing-mode contest for one group. AUTO encodes every eligible
      * mode and keeps the smallest; forced modes skip the comparison entirely.
@@ -842,7 +905,8 @@ public final class WaypointCodec {
      */
     private static CoordPicked pickCoordMode(WaypointGroup g, StringPool pool, Options opts,
                                              PackingMode mode, boolean bodyless, int baseGroupFlags,
-                                             boolean customRadius, byte[] bodyPrefix) throws IOException {
+                                             boolean customRadius, byte[] bodyPrefix,
+                                             boolean extendedCoordModes) throws IOException {
         boolean fixedEligible = canUseFixedCompact(g.waypoints());
 
         switch (mode) {
@@ -866,11 +930,35 @@ public final class WaypointCodec {
                 return new CoordPicked(CoordMode.FIT_COMPACT,
                         encodeFitCompact(g.waypoints(), pool, opts, bodyless));
             }
+            case FORCE_VECTOR_AXIS_SEPARATED -> {
+                if (!extendedCoordModes) {
+                    throw new IllegalArgumentException("FORCE_VECTOR_AXIS_SEPARATED is not available before v5");
+                }
+                return new CoordPicked(CoordMode.VECTOR_AXIS_SEPARATED,
+                        encodeVectorAxisSeparated(g.waypoints(), pool, opts, bodyless));
+            }
+            case FORCE_DELTA_FIT_AXIS_SEPARATED -> {
+                if (!extendedCoordModes) {
+                    throw new IllegalArgumentException("FORCE_DELTA_FIT_AXIS_SEPARATED is not available before v5");
+                }
+                if (!canUseDeltaFitAxisSeparated(g.waypoints())) {
+                    throw new IllegalArgumentException(
+                            "FORCE_DELTA_FIT_AXIS_SEPARATED requested but a delta needs more than 31 bits");
+                }
+                return new CoordPicked(CoordMode.DELTA_FIT_AXIS_SEPARATED,
+                        encodeDeltaFitAxisSeparated(g.waypoints(), pool, opts, bodyless));
+            }
             default -> {
                 byte[] v = encodeVectorOrAbsolute(g.waypoints(), pool, opts, false, bodyless);
                 byte[] a = encodeVectorOrAbsolute(g.waypoints(), pool, opts, true, bodyless);
                 byte[] f = fixedEligible ? encodeFixedCompact(g.waypoints(), pool, opts, bodyless) : null;
                 byte[] t = encodeFitCompact(g.waypoints(), pool, opts, bodyless);
+                byte[] vx = extendedCoordModes
+                        ? encodeVectorAxisSeparated(g.waypoints(), pool, opts, bodyless)
+                        : null;
+                byte[] dt = extendedCoordModes && canUseDeltaFitAxisSeparated(g.waypoints())
+                        ? encodeDeltaFitAxisSeparated(g.waypoints(), pool, opts, bodyless)
+                        : null;
 
                 // Rank by final text size, not raw bytes. Raw-byte size mis-ranks
                 // candidates whose contents compress differently, and the v3
@@ -879,15 +967,23 @@ public final class WaypointCodec {
                 // groups can still affect cross-group compression context), but
                 // it is close to the actual share-string length users care about.
                 int vScore = encodedGroupScore(bodyPrefix, g, pool, CoordMode.VECTOR, v,
-                        baseGroupFlags, customRadius);
+                        baseGroupFlags, customRadius, extendedCoordModes);
                 int aScore = encodedGroupScore(bodyPrefix, g, pool, CoordMode.ABSOLUTE_VARINT, a,
-                        baseGroupFlags, customRadius);
+                        baseGroupFlags, customRadius, extendedCoordModes);
                 int fScore = f != null
                         ? encodedGroupScore(bodyPrefix, g, pool, CoordMode.FIXED_COMPACT, f,
-                                baseGroupFlags, customRadius)
+                                baseGroupFlags, customRadius, extendedCoordModes)
                         : Integer.MAX_VALUE;
                 int tScore = encodedGroupScore(bodyPrefix, g, pool, CoordMode.FIT_COMPACT, t,
-                        baseGroupFlags, customRadius);
+                        baseGroupFlags, customRadius, extendedCoordModes);
+                int vxScore = vx != null
+                        ? encodedGroupScore(bodyPrefix, g, pool, CoordMode.VECTOR_AXIS_SEPARATED, vx,
+                                baseGroupFlags, customRadius, extendedCoordModes)
+                        : Integer.MAX_VALUE;
+                int dtScore = dt != null
+                        ? encodedGroupScore(bodyPrefix, g, pool, CoordMode.DELTA_FIT_AXIS_SEPARATED, dt,
+                                baseGroupFlags, customRadius, extendedCoordModes)
+                        : Integer.MAX_VALUE;
 
                 CoordPicked best = new CoordPicked(CoordMode.VECTOR, v);
                 int bestScore = vScore;
@@ -901,6 +997,14 @@ public final class WaypointCodec {
                 }
                 if (tScore < bestScore) {
                     best = new CoordPicked(CoordMode.FIT_COMPACT, t);
+                    bestScore = tScore;
+                }
+                if (vxScore < bestScore) {
+                    best = new CoordPicked(CoordMode.VECTOR_AXIS_SEPARATED, vx);
+                    bestScore = vxScore;
+                }
+                if (dtScore < bestScore) {
+                    best = new CoordPicked(CoordMode.DELTA_FIT_AXIS_SEPARATED, dt);
                 }
                 return best;
             }
@@ -951,6 +1055,112 @@ public final class WaypointCodec {
         }
         out.flush();
         return scratch.toByteArray();
+    }
+
+    /**
+     * Same logical model as VECTOR, but transposed into three axis streams:
+     * first absolute point, then every dx, then every dy, then every dz.
+     * Raw size is nearly identical to VECTOR, but real mining routes often
+     * compress better when DEFLATE sees each axis as its own repetitive stream.
+     */
+    private static byte[] encodeVectorAxisSeparated(List<Waypoint> pts, StringPool pool, Options opts,
+                                                    boolean bodyless) throws IOException {
+        ByteArrayOutputStream scratch = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(scratch);
+
+        if (!pts.isEmpty()) {
+            Waypoint first = pts.get(0);
+            writeZigzag(out, first.x());
+            writeZigzag(out, first.y());
+            writeZigzag(out, first.z());
+
+            for (int axis = 0; axis < 3; axis++) {
+                for (int i = 1; i < pts.size(); i++) {
+                    Waypoint prev = pts.get(i - 1);
+                    Waypoint cur = pts.get(i);
+                    writeZigzag(out, coord(cur, axis) - coord(prev, axis));
+                }
+            }
+        }
+
+        if (!bodyless) {
+            for (Waypoint w : pts) writeWaypointBody(out, w, pool, opts);
+        }
+        out.flush();
+        return scratch.toByteArray();
+    }
+
+    /**
+     * Delta-local sibling of FIT_COMPACT, transposed by axis. Preamble:
+     * first absolute point, then 5-bit widths for zigzag(dx/dy/dz), followed
+     * by all packed dx values, all packed dy values, all packed dz values.
+     */
+    private static byte[] encodeDeltaFitAxisSeparated(List<Waypoint> pts, StringPool pool, Options opts,
+                                                      boolean bodyless) throws IOException {
+        int[] widths = deltaFitWidths(pts);
+
+        ByteArrayOutputStream scratch = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(scratch);
+        if (!pts.isEmpty()) {
+            Waypoint first = pts.get(0);
+            writeZigzag(out, first.x());
+            writeZigzag(out, first.y());
+            writeZigzag(out, first.z());
+        }
+        int packedWidths = (widths[0] << 10) | (widths[1] << 5) | widths[2];
+        out.writeByte((packedWidths >>> 8) & 0xFF);
+        out.writeByte(packedWidths & 0xFF);
+        out.flush();
+
+        BitWriter bits = new BitWriter(scratch);
+        for (int axis = 0; axis < 3; axis++) {
+            int width = widths[axis];
+            if (width == 0) continue;
+            for (int i = 1; i < pts.size(); i++) {
+                int delta = coord(pts.get(i), axis) - coord(pts.get(i - 1), axis);
+                bits.write(zigzag(delta), width);
+            }
+        }
+        bits.flush();
+
+        if (!bodyless) {
+            for (Waypoint w : pts) writeWaypointBody(out, w, pool, opts);
+        }
+        out.flush();
+        return scratch.toByteArray();
+    }
+
+    private static boolean canUseDeltaFitAxisSeparated(List<Waypoint> pts) {
+        int[] widths = deltaFitWidths(pts);
+        return widths[0] <= FIT_MAX_WIDTH
+                && widths[1] <= FIT_MAX_WIDTH
+                && widths[2] <= FIT_MAX_WIDTH;
+    }
+
+    private static int[] deltaFitWidths(List<Waypoint> pts) {
+        int[] widths = new int[3];
+        for (int i = 1; i < pts.size(); i++) {
+            Waypoint prev = pts.get(i - 1);
+            Waypoint cur = pts.get(i);
+            for (int axis = 0; axis < 3; axis++) {
+                int delta = coord(cur, axis) - coord(prev, axis);
+                widths[axis] = Math.max(widths[axis], bitsToRepresentUnsignedInt(zigzag(delta)));
+            }
+        }
+        return widths;
+    }
+
+    private static int bitsToRepresentUnsignedInt(int value) {
+        return value == 0 ? 0 : 32 - Integer.numberOfLeadingZeros(value);
+    }
+
+    private static int coord(Waypoint waypoint, int axis) {
+        return switch (axis) {
+            case 0 -> waypoint.x();
+            case 1 -> waypoint.y();
+            case 2 -> waypoint.z();
+            default -> throw new IllegalArgumentException("bad axis: " + axis);
+        };
     }
 
     /**
@@ -1086,7 +1296,7 @@ public final class WaypointCodec {
             out.writeByte( c        & 0xFF);
         }
         if ((wpFlags & WP_FLAG_HAS_RADIUS) != 0) writeVarint(out, (int) Math.round(w.customRadius() * 10.0));
-        if ((wpFlags & WP_FLAG_EXTENDED)   != 0) writeVarint(out, w.flags() & 0xFF);
+        if ((wpFlags & WP_FLAG_EXTENDED)   != 0) writeVarint(out, exportedWaypointFlags(w, opts));
     }
 
     private static int waypointFlags(Waypoint w, StringPool pool, Options opts) {
@@ -1097,7 +1307,7 @@ public final class WaypointCodec {
         boolean hasColor  = opts.includeColors
                 && (w.color() & 0xFFFFFF) != (Waypoint.DEFAULT_COLOR & 0xFFFFFF);
         boolean hasRadius = opts.includeRadii         && w.customRadius() > 0;
-        boolean extended  = opts.includeWaypointFlags && w.flags() != 0;
+        boolean extended  = exportedWaypointFlags(w, opts) != 0;
 
         int wpFlags = 0;
         if (hasName) {
@@ -1108,6 +1318,12 @@ public final class WaypointCodec {
         if (hasRadius) wpFlags |= WP_FLAG_HAS_RADIUS;
         if (extended)  wpFlags |= WP_FLAG_EXTENDED;
         return wpFlags;
+    }
+
+    private static int exportedWaypointFlags(Waypoint w, Options opts) {
+        int flags = w.flags();
+        if (!opts.includeWaypointFlags) flags &= Waypoint.STRUCTURAL_FLAGS;
+        return flags & 0xFF;
     }
 
     // --- reader -------------------------------------------------------------------------------
@@ -1148,25 +1364,26 @@ public final class WaypointCodec {
         for (int gi = 0; gi < groupCount; gi++) {
             groups.add(legacyV2
                     ? readLegacyV2Group(in, bais, pool, cap, gi)
-                    : readGroup(in, bais, pool, cap, gi));
+                    : readGroup(in, bais, pool, cap, gi, expectedVersion));
         }
         return groups;
     }
 
     private static WaypointGroup readGroup(DataInputStream in, TrackedByteStream bais, List<String> pool,
-                                           DebugCapture cap, int groupIndex)
+                                           DebugCapture cap, int groupIndex, int expectedVersion)
             throws IOException {
-        return readGroupRecord(in, bais, pool, cap, groupIndex, false);
+        return readGroupRecord(in, bais, pool, cap, groupIndex, false, expectedVersion);
     }
 
     private static WaypointGroup readLegacyV2Group(DataInputStream in, TrackedByteStream bais, List<String> pool,
                                                   DebugCapture cap, int groupIndex)
             throws IOException {
-        return readGroupRecord(in, bais, pool, cap, groupIndex, true);
+        return readGroupRecord(in, bais, pool, cap, groupIndex, true, LEGACY_V2_WIRE_VERSION);
     }
 
     private static WaypointGroup readGroupRecord(DataInputStream in, TrackedByteStream bais, List<String> pool,
-                                                 DebugCapture cap, int groupIndex, boolean legacyV2)
+                                                 DebugCapture cap, int groupIndex, boolean legacyV2,
+                                                 int expectedVersion)
             throws IOException {
         String name = poolGet(pool, readVarint(in));
         String zone = legacyV2 ? poolGet(pool, readVarint(in)) : readZoneRef(in, pool);
@@ -1175,8 +1392,7 @@ public final class WaypointCodec {
         boolean autoGrad     = (groupFlags & GROUP_FLAG_GRAD_AUTO)     != 0;
         boolean sequence     = (groupFlags & GROUP_FLAG_LOAD_SEQUENCE) != 0;
         boolean customRadius = (groupFlags & GROUP_FLAG_CUSTOM_RADIUS) != 0;
-        CoordMode coordMode  = CoordMode.fromWire(
-                (groupFlags & GROUP_FLAG_COORD_MODE_MASK) >>> GROUP_FLAG_COORD_MODE_SHIFT);
+        CoordMode coordMode  = decodeCoordMode(groupFlags, expectedVersion);
 
         double radius = customRadius ? readVarint(in) / 10.0 : 3.0;
 
@@ -1301,8 +1517,45 @@ public final class WaypointCodec {
                 }
                 bits.alignToByteBoundary();
             }
+            case VECTOR_AXIS_SEPARATED -> {
+                readAxisSeparatedFirstPoint(in, out, count);
+                for (int axis = 0; axis < 3; axis++) {
+                    int last = count == 0 ? 0 : out[0][axis];
+                    for (int i = 1; i < count; i++) {
+                        last += readZigzag(in);
+                        out[i][axis] = last;
+                    }
+                }
+            }
+            case DELTA_FIT_AXIS_SEPARATED -> {
+                readAxisSeparatedFirstPoint(in, out, count);
+                int packedWidths = (in.readUnsignedByte() << 8) | in.readUnsignedByte();
+                int xBits = (packedWidths >>> 10) & FIT_MAX_WIDTH;
+                int yBits = (packedWidths >>>  5) & FIT_MAX_WIDTH;
+                int zBits =  packedWidths        & FIT_MAX_WIDTH;
+                int[] widths = { xBits, yBits, zBits };
+                BitReader bits = new BitReader(in);
+                for (int axis = 0; axis < 3; axis++) {
+                    int last = count == 0 ? 0 : out[0][axis];
+                    int width = widths[axis];
+                    for (int i = 1; i < count; i++) {
+                        int delta = width > 0 ? unZigzag(bits.read(width)) : 0;
+                        last += delta;
+                        out[i][axis] = last;
+                    }
+                }
+                bits.alignToByteBoundary();
+            }
         }
         return out;
+    }
+
+    private static void readAxisSeparatedFirstPoint(DataInputStream in, int[][] out, int count)
+            throws IOException {
+        if (count == 0) return;
+        out[0][0] = readZigzag(in);
+        out[0][1] = readZigzag(in);
+        out[0][2] = readZigzag(in);
     }
 
     private static String poolGet(List<String> pool, int idx) throws IOException {
@@ -1548,7 +1801,8 @@ public final class WaypointCodec {
      * in-memory buffer cannot actually fail.
      */
     private static int encodedGroupScore(byte[] bodyPrefix, WaypointGroup g, StringPool pool, CoordMode mode,
-                                         byte[] coordAndBody, int baseGroupFlags, boolean customRadius) {
+                                         byte[] coordAndBody, int baseGroupFlags, boolean customRadius,
+                                         boolean extendedCoordModes) {
         try {
             ByteArrayOutputStream scratch = new ByteArrayOutputStream();
             scratch.write(bodyPrefix);
@@ -1556,7 +1810,7 @@ public final class WaypointCodec {
             writeVarint(out, pool.index(g.name()));
             writeZoneRef(out, g.zoneId(), pool);
             int groupFlags = baseGroupFlags
-                    | ((mode.wireValue << GROUP_FLAG_COORD_MODE_SHIFT) & GROUP_FLAG_COORD_MODE_MASK);
+                    | encodeCoordModeFlags(mode, extendedCoordModes);
             out.writeByte(groupFlags);
             if (customRadius) writeVarint(out, (int) Math.round(g.defaultRadius() * 10.0));
             writeVarint(out, g.size());

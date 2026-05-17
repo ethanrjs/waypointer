@@ -17,6 +17,7 @@ import dev.ethan.waypointer.dungeon.DungeonStateTracker;
 import dev.ethan.waypointer.dungeon.DungeonTriggerDetector;
 import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
+import dev.ethan.waypointer.input.WaypointRepositionMode;
 import dev.ethan.waypointer.input.WaypointerKeybinds;
 import dev.ethan.waypointer.location.LocationTracker;
 import dev.ethan.waypointer.progression.ProximityTracker;
@@ -71,6 +72,7 @@ public final class WaypointerClient implements ClientModInitializer {
         new WorldJoinProgressReset(manager, config).install();
         new WaypointRenderer(manager, config).install();
         new TracerRenderer(manager, config).install();
+        WaypointRepositionMode.install();
 
         if (config.dungeonWaypointsFeatureEnabled()) {
             installDungeonSubsystem();

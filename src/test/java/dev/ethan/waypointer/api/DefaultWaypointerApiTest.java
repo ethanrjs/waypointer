@@ -97,7 +97,7 @@ class DefaultWaypointerApiTest {
                 .source("Example Mod")
                 .build());
 
-        assertEquals("Temp -- Example Mod -- Hub", bucket.name());
+        assertEquals("Temporary", bucket.name());
         assertTrue(bucket.temporary());
         assertEquals(1, bucket.waypoints().size());
         assertEquals("Burrow", bucket.waypoints().get(0).name());
