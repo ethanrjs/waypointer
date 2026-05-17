@@ -47,6 +47,10 @@ import static dev.ethan.waypointer.screen.GuiTokens.*;
  */
 public final class WaypointerScreen extends Screen {
 
+    private static final String TEMPORARY_ZONE_ID = "__temporary__";
+    private static final String TEMPORARY_ZONE_LABEL = "Temporary";
+    private static final int TEMPORARY_ACCENT = 0xFF58C878;
+
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
     private String selectedZoneId;
@@ -77,18 +81,19 @@ public final class WaypointerScreen extends Screen {
     // visibly grow or shrink when arming/disarming. Leave some horizontal slack so
     // vanilla's "hover" narration arrow has room without clipping the text.
     private static final int DELETE_BTN_W = 72;
+    private Button editBtn;
     private Button deleteBtn;
     private long deleteArmedUntil = 0L;
 
     private List<GuiTokens.ButtonSpec> footerActions() {
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("New Group", this::createGroup));
-        left.add(new GuiTokens.ButtonSpec("Edit", this::editSelected));
-        left.add(new GuiTokens.ButtonSpec(DELETE_LABEL, DELETE_BTN_W, this::onDeleteClicked));
-        left.add(new GuiTokens.ButtonSpec("Import", this::importFromClipboard));
-        left.add(new GuiTokens.ButtonSpec("Export Zone", -1, this::exportZone,
+        left.add(new GuiTokens.ButtonSpec("New Route", 92, this::createGroup));
+        left.add(new GuiTokens.ButtonSpec("Edit", 64, this::editSelected));
+        left.add(new GuiTokens.ButtonSpec("Import", 74, this::importFromClipboard));
+        left.add(new GuiTokens.ButtonSpec("Export", 74, this::exportZone,
                 Tooltip.create(Component.literal("Export all saved routes on an island"))));
-        left.add(new GuiTokens.ButtonSpec("Settings", this::openSettings));
+        left.add(new GuiTokens.ButtonSpec("Settings", 88, this::openSettings));
+        left.add(new GuiTokens.ButtonSpec(DELETE_LABEL, DELETE_BTN_W, this::onDeleteClicked));
         return left;
     }
 
@@ -122,7 +127,7 @@ public final class WaypointerScreen extends Screen {
             // visibleGroups() are fragile when groups added mid-list shift
             // indices. The init() pass will resolve the id to a current
             // selectedIndex after it knows the list ordering for the zone.
-            screen.selectedZoneId = focus.zoneId();
+            screen.selectedZoneId = focus.temp() ? TEMPORARY_ZONE_ID : focus.zoneId();
             screen.pendingFocusGroupId = focus.id();
         }
         Minecraft.getInstance().setScreen(screen);
@@ -132,6 +137,7 @@ public final class WaypointerScreen extends Screen {
     protected void init() {
         int footerY = height - FOOTER_H;
         deleteArmedUntil = 0L;
+        editBtn = null;
         deleteBtn = null;
 
         // Fixed width so the label can toggle between "Delete" and "Confirm?" without
@@ -143,6 +149,9 @@ public final class WaypointerScreen extends Screen {
         // arms/disarms. Intercept every built button and stash Delete; addRenderableWidget
         // still runs for all of them.
         GuiTokens.layoutFooter(width, footerY, left, done, b -> {
+            if ("Edit".contentEquals(b.getMessage().getString())) {
+                editBtn = b;
+            }
             if (DELETE_LABEL.contentEquals(b.getMessage().getString())) {
                 deleteBtn = b;
                 deleteBtn.setTooltip(Tooltip.create(Component.literal(DELETE_TOOLTIP_DEFAULT)));
@@ -159,6 +168,7 @@ public final class WaypointerScreen extends Screen {
             selectGroupById(pendingFocusGroupId);
             pendingFocusGroupId = null;
         }
+        refreshActionButtons();
     }
 
     /**
@@ -186,15 +196,55 @@ public final class WaypointerScreen extends Screen {
     }
 
     private List<String> zoneIds() {
-        List<String> zones = new ArrayList<>(manager.knownZoneIds());
+        List<String> zones = new ArrayList<>();
+        zones.add(TEMPORARY_ZONE_ID);
+        for (String zoneId : manager.knownZoneIds()) {
+            if (normalGroupCountForZone(zoneId) > 0 && !zones.contains(zoneId)) {
+                zones.add(zoneId);
+            }
+        }
         Zone currentZone = manager.currentZone();
-        if (currentZone != null && !zones.contains(currentZone.id())) zones.add(0, currentZone.id());
-        if (zones.isEmpty()) zones.add(Zone.UNKNOWN.id());
+        if (currentZone != null && !zones.contains(currentZone.id())) zones.add(1, currentZone.id());
+        if (zones.size() == 1) zones.add(Zone.UNKNOWN.id());
         return zones;
     }
 
     private List<WaypointGroup> visibleGroups() {
-        return manager.groupsForZone(selectedZoneId);
+        if (isTemporaryZone(selectedZoneId)) return temporaryGroups();
+
+        List<WaypointGroup> out = new ArrayList<>();
+        for (WaypointGroup group : manager.groupsForZone(selectedZoneId)) {
+            if (!group.temp()) out.add(group);
+        }
+        return out;
+    }
+
+    private List<WaypointGroup> temporaryGroups() {
+        List<WaypointGroup> out = new ArrayList<>();
+        for (WaypointGroup group : manager.allGroups()) {
+            if (group.temp() && !group.isEmpty()) out.add(group);
+        }
+        return out;
+    }
+
+    private int normalGroupCountForZone(String zoneId) {
+        int count = 0;
+        for (WaypointGroup group : manager.groupsForZone(zoneId)) {
+            if (!group.temp()) count++;
+        }
+        return count;
+    }
+
+    private int temporaryWaypointCount() {
+        int count = 0;
+        for (WaypointGroup group : manager.allGroups()) {
+            if (group.temp()) count += group.size();
+        }
+        return count;
+    }
+
+    private static boolean isTemporaryZone(String zoneId) {
+        return TEMPORARY_ZONE_ID.equals(zoneId);
     }
 
     // --- render ------------------------------------------------------------------------------
@@ -220,8 +270,16 @@ public final class WaypointerScreen extends Screen {
 
         // Header
         g.drawString(font, "Waypointer", PAD_OUTER, PAD_OUTER, TEXT, false);
-        String status = Zone.fromId(selectedZoneId).displayName() + "  ."
-                + "  " + visibleGroups().size() + " group" + (visibleGroups().size() == 1 ? "" : "s");
+        String status;
+        if (isTemporaryZone(selectedZoneId)) {
+            int waypointCount = temporaryWaypointCount();
+            status = TEMPORARY_ZONE_LABEL + "  .  " + waypointCount
+                    + " waypoint" + (waypointCount == 1 ? "" : "s");
+        } else {
+            int groupCount = visibleGroups().size();
+            status = Zone.fromId(selectedZoneId).displayName() + "  ."
+                    + "  " + groupCount + " group" + (groupCount == 1 ? "" : "s");
+        }
         g.drawString(font, status, width - PAD_OUTER - font.width(status), PAD_OUTER, TEXT_DIM, false);
 
         // Region geometry
@@ -260,28 +318,34 @@ public final class WaypointerScreen extends Screen {
         String currentId = manager.currentZone() == null ? null : manager.currentZone().id();
         for (String id : ids) {
             boolean selected = id.equals(selectedZoneId);
+            boolean temporary = isTemporaryZone(id);
             boolean hovered = mouseX >= x1 && mouseX <= x2
                     && mouseY >= rowY && mouseY <= rowY + ROW_H;
-            drawZoneRow(g, x1, rowY, x2, id, selected, hovered, id.equals(currentId));
+            drawZoneRow(g, x1, rowY, x2, id, selected, hovered,
+                    !temporary && id.equals(currentId), temporary);
             rowY += ROW_H;
         }
     }
 
     private void drawZoneRow(GuiGraphics g, int x1, int y, int x2,
-                             String zoneId, boolean selected, boolean hovered, boolean isCurrent) {
+                             String zoneId, boolean selected, boolean hovered,
+                             boolean isCurrent, boolean temporary) {
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
         if (bg != 0) g.fill(x1, y, x2, y + ROW_H, bg);
 
         // "unknown" is intentionally quiet -- it's a placeholder zone, not the focal
         // point of an empty state. So it never gets the accent bar and renders in muted text.
         boolean isUnknown = Zone.UNKNOWN.id().equals(zoneId);
-        if (selected && !isUnknown) {
-            g.fill(x1, y, x1 + 2, y + ROW_H, ACCENT);
+        int accent = temporary ? TEMPORARY_ACCENT : ACCENT;
+        if (selected && (!isUnknown || temporary)) {
+            g.fill(x1, y, x1 + 2, y + ROW_H, accent);
         }
 
-        Zone z = Zone.fromId(zoneId);
-        int textColor = isUnknown ? TEXT_MUTED : selected ? TEXT : TEXT_DIM;
-        g.drawString(font, z.displayName(), x1 + GAP + 2, y + 6, textColor, false);
+        String label = temporary ? TEMPORARY_ZONE_LABEL : Zone.fromId(zoneId).displayName();
+        int count = temporary ? temporaryWaypointCount() : normalGroupCountForZone(zoneId);
+        int textColor = isUnknown && !temporary ? TEXT_MUTED : selected ? TEXT : TEXT_DIM;
+        if (temporary && count == 0 && !selected) textColor = TEXT_MUTED;
+        g.drawString(font, label, x1 + GAP + 2, y + 6, textColor, false);
 
         // live "current zone" indicator -- a tiny filled dot, no color, just a glyph
         if (isCurrent) {
@@ -290,7 +354,6 @@ public final class WaypointerScreen extends Screen {
         }
 
         // Group count, right-aligned next to the dot (or at the edge if no dot)
-        int count = manager.groupsForZone(zoneId).size();
         String countStr = Integer.toString(count);
         int countX = (isCurrent ? x2 - GAP - 12 : x2 - GAP) - font.width(countStr);
         g.drawString(font, countStr, countX, y + 6, TEXT_MUTED, false);
@@ -306,7 +369,8 @@ public final class WaypointerScreen extends Screen {
         g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
         g.enableScissor(x1, y1, x2, y2);
 
-        g.drawString(font, "Groups", x1 + GAP, y1 + 6, TEXT_DIM, false);
+        g.drawString(font, isTemporaryZone(selectedZoneId) ? "Temporary Waypoints" : "Groups",
+                x1 + GAP, y1 + 6, TEXT_DIM, false);
 
         int y = y1 + 20 - scrollOffset;
         int listW = x2 - x1;
@@ -324,6 +388,13 @@ public final class WaypointerScreen extends Screen {
     }
 
     private void renderEmptyState(GuiGraphics g, int x1, int y1) {
+        if (isTemporaryZone(selectedZoneId)) {
+            g.drawString(font, "No temporary waypoints.",
+                    x1, y1 + 8, TEXT, false);
+            g.drawString(font, "Chat coords and Add Temp markers will appear here.",
+                    x1, y1 + 8 + 14, TEXT_DIM, false);
+            return;
+        }
         g.drawString(font, "No waypoint groups in this zone.",
                 x1, y1 + 8, TEXT, false);
         g.drawString(font, "Click \"New Group\" to start, or paste a codec into chat.",
@@ -336,14 +407,17 @@ public final class WaypointerScreen extends Screen {
         int rowBot = y1 + ROW_H + 2;
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
         if (bg != 0) g.fill(x1, y1, x2, rowBot, bg);
-        if (selected) g.fill(x1, y1, x1 + 2, rowBot, ACCENT);
+        int accent = group.temp() ? TEMPORARY_ACCENT : ACCENT;
+        if (selected) g.fill(x1, y1, x1 + 2, rowBot, accent);
 
         int textColor = group.enabled() ? TEXT : TEXT_MUTED;
-        String name = group.name().isEmpty() ? "(unnamed)" : group.name();
+        String name = displayGroupName(group);
         g.drawString(font, name, x1 + GAP + 2, y1 + 4, textColor, false);
 
-        String sub = group.size() + " pts  @" + group.currentIndex()
-                + "  " + loadModeLabel(group);
+        String sub = group.temp()
+                ? group.size() + " temp pts  " + Zone.fromId(group.zoneId()).displayName()
+                : group.size() + " pts  @" + group.currentIndex()
+                        + "  " + loadModeLabel(group);
         g.drawString(font, sub, x1 + GAP + 2, y1 + 14, TEXT_DIM, false);
 
         // Right-aligned toggle pill -- kept as the one exception to "no button chrome",
@@ -360,11 +434,18 @@ public final class WaypointerScreen extends Screen {
 
         // Cross-zone hint (rare, but possible if a group's zone id drifts)
         String zid = group.zoneId();
-        if (!zid.equals(selectedZoneId)) {
+        if (!group.temp() && !zid.equals(selectedZoneId)) {
             String hint = "(" + zid + ")";
             g.drawString(font, hint, chipX - GAP - font.width(hint), y1 + 10,
                     TEXT_MUTED, false);
         }
+    }
+
+    private static String displayGroupName(WaypointGroup group) {
+        String name = group.name().trim();
+        if (!group.temp()) return name.isEmpty() ? "(unnamed)" : name;
+        if (name.isEmpty() || name.startsWith("Temp --")) return TEMPORARY_ZONE_LABEL;
+        return name;
     }
 
     // --- input -------------------------------------------------------------------------------
@@ -390,6 +471,7 @@ public final class WaypointerScreen extends Screen {
                 selectedZoneId = ids.get(idx);
                 scrollOffset = 0;
                 selectedIndex = -1;
+                refreshActionButtons();
             }
             return true;
         }
@@ -408,6 +490,7 @@ public final class WaypointerScreen extends Screen {
 
         WaypointGroup group = groups.get(idx);
         selectedIndex = idx;
+        refreshActionButtons();
 
         // Toggle-chip hit test -- rightmost region of the row.
         if (mx > layout.mainRight() - 40) {
@@ -436,6 +519,10 @@ public final class WaypointerScreen extends Screen {
     // --- actions -----------------------------------------------------------------------------
 
     private void createGroup() {
+        if (isTemporaryZone(selectedZoneId)) {
+            Zone current = manager.currentZone();
+            selectedZoneId = current == null ? Zone.UNKNOWN.id() : current.id();
+        }
         WaypointGroup g = WaypointGroup.create(
                 "New group", selectedZoneId, config.skipAheadMechanicEnabled());
         g.setDefaultRadius(config.defaultReachRadius());
@@ -446,6 +533,10 @@ public final class WaypointerScreen extends Screen {
     private void editSelected() {
         WaypointGroup g = currentSelection();
         if (g != null) minecraft.setScreen(new GroupEditScreen(this, manager, config, g));
+    }
+
+    private void refreshActionButtons() {
+        if (editBtn != null) editBtn.active = currentSelection() != null;
     }
 
     private void onDeleteClicked() {
@@ -463,6 +554,7 @@ public final class WaypointerScreen extends Screen {
             deleteArmedUntil = 0L;
             manager.remove(g.id());
             selectedIndex = Math.min(selectedIndex, visibleGroups().size() - 1);
+            refreshActionButtons();
             resetDeleteButton();
             return;
         }
@@ -504,7 +596,10 @@ public final class WaypointerScreen extends Screen {
     private void exportZone() {
         List<WaypointGroup> groups = visibleGroups();
         if (groups.isEmpty()) return;
-        ExportScreen.openForGroups(this, config, groups, Zone.fromId(selectedZoneId).displayName());
+        String label = isTemporaryZone(selectedZoneId)
+                ? TEMPORARY_ZONE_LABEL
+                : Zone.fromId(selectedZoneId).displayName();
+        ExportScreen.openForGroups(this, config, groups, label);
     }
 
     private void importFromClipboard() {

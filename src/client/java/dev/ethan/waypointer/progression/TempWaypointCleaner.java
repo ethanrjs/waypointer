@@ -14,11 +14,12 @@ import net.minecraft.client.Minecraft;
  *       groups and drop any time-based temp whose deadline has passed. A per-tick
  *       sweep is overkill — a 2s granularity is well below the resolution of the
  *       shortest duration the UI offers (1 min).</li>
- *   <li>{@code TEMP_UNTIL_LEAVE}: on {@link ClientPlayConnectionEvents#DISCONNECT}
- *       we wipe every temporary waypoint of every mode. Storage already skips
- *       temps on save, but unpersisted memory state still needs an explicit clear
- *       so temps don't leak into the next server session via the in-memory
- *       {@link ActiveGroupManager}.</li>
+ *   <li>{@code TEMP_UNTIL_LEAVE}: on {@link ClientPlayConnectionEvents#JOIN}
+ *       and {@link ClientPlayConnectionEvents#DISCONNECT} we wipe every
+ *       temporary waypoint of every mode. Hypixel lobby transfers can create a
+ *       new play connection without waiting for the old session's temp markers
+ *       to feel obviously "disconnected" to the player, so join is treated as
+ *       a hard boundary too.</li>
  * </ul>
  *
  * {@code TEMP_UNTIL_REACHED} cleanup is handled inside {@link ProximityTracker}
@@ -43,7 +44,8 @@ public final class TempWaypointCleaner {
 
     public void install() {
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> onDisconnect());
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> clearAllTemps());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> clearAllTemps());
     }
 
     private void onTick(Minecraft mc) {
@@ -62,19 +64,8 @@ public final class TempWaypointCleaner {
         if (anyRemoved) manager.fireDataChanged();
     }
 
-    /**
-     * Leaving the server is the hard deadline for every temp mode — even
-     * {@code TEMP_TIME} entries with deadlines in the future get dropped here,
-     * because carrying a timer into a different world would break the mental
-     * model ("it was a temp from THAT server's session").
-     */
-    private void onDisconnect() {
-        manager.clearTempWaypointFocus();
-
-        boolean anyRemoved = false;
-        for (WaypointGroup g : manager.allGroups()) {
-            if (g.removeAllTemp() > 0) anyRemoved = true;
-        }
-        if (anyRemoved) manager.fireDataChanged();
+    /** Lobby/server transitions are the hard deadline for every temp mode. */
+    private void clearAllTemps() {
+        manager.clearTemporaryWaypoints();
     }
 }

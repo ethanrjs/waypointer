@@ -24,10 +24,16 @@ public final class GradientColorizer {
 
     private GradientColorizer() {}
 
-    /** Rewrites every unlocked waypoint in the group with a gradient-interpolated color. */
+    /**
+     * Rewrites every unlocked waypoint in the group with a gradient-interpolated
+     * color. Subwaypoints inherit the nearest parent main waypoint's colour and
+     * do not consume their own step in the gradient.
+     */
     public static void apply(WaypointGroup group) {
         int n = group.size();
         if (n == 0) return;
+        int mainCount = group.mainWaypointCount();
+        if (mainCount == 0) return;
 
         // Pack the two HSL triples into locals rather than float[3]s so we
         // don't allocate two throwaway arrays every time the group's gradient
@@ -37,15 +43,27 @@ public final class GradientColorizer {
         float sh = hueOf(startRgb),  ss = satOf(startRgb),  sl = lightOf(startRgb);
         float eh = hueOf(endRgb),    es = satOf(endRgb),    el = lightOf(endRgb);
 
+        int mainOrdinal = 0;
+        int currentMainColor = group.get(0).color();
         for (int i = 0; i < n; i++) {
             Waypoint w = group.get(i);
-            if (w.hasFlag(Waypoint.FLAG_LOCKED_COLOR)) continue;
-            float t = n == 1 ? 0f : (float) i / (n - 1);
-            float h = lerpHueShortWay(sh, eh, t);
-            float s = lerp(ss, es, t);
-            float l = lerp(sl, el, t);
-            int rgb = hslToRgb(h, s, l);
-            if (rgb != w.color()) group.set(i, w.withColor(rgb));
+            if (w.isSubwaypoint()) {
+                if (!w.hasFlag(Waypoint.FLAG_LOCKED_COLOR) && w.color() != currentMainColor) {
+                    group.set(i, w.withColor(currentMainColor));
+                }
+                continue;
+            }
+
+            mainOrdinal++;
+            float t = mainCount == 1 ? 0f : (float) (mainOrdinal - 1) / (mainCount - 1);
+            int rgb = hslToRgb(
+                    lerpHueShortWay(sh, eh, t),
+                    lerp(ss, es, t),
+                    lerp(sl, el, t));
+            currentMainColor = w.hasFlag(Waypoint.FLAG_LOCKED_COLOR) ? w.color() : rgb;
+            if (!w.hasFlag(Waypoint.FLAG_LOCKED_COLOR) && rgb != w.color()) {
+                group.set(i, w.withColor(rgb));
+            }
         }
     }
 

@@ -42,7 +42,7 @@ class WaypointCodecDebugTest {
         assertEquals(encoded.length(), d.inputChars());
         assertEquals(WaypointCodec.MAGIC, d.magic());
         assertEquals(encoded.length() - WaypointCodec.MAGIC.length(), d.payloadChars());
-        assertEquals("ASCII base-92 stream + Hypixel emote escape", d.textEncoding());
+        assertEquals("ASCII base-91 stream + extended coord modes", d.textEncoding());
         assertTrue(d.rawBodyBytes() > 0, "raw body must be non-empty");
         assertTrue(d.compressedBytes() > 0, "compressed must be non-empty");
     }
@@ -112,7 +112,10 @@ class WaypointCodecDebugTest {
         g.setGradientMode(WaypointGroup.GradientMode.AUTO);      // gradientAuto
         g.setEnabled(true);                                      // enabled
 
-        String encoded = WaypointCodec.encode(List.of(g));
+        WaypointCodec.Options opts = WaypointCodec.Options.builder()
+                .includeColors(true)
+                .build();
+        String encoded = WaypointCodec.encode(List.of(g), opts);
         DecodeDebug.GroupDebug gd = WaypointCodec.debugDecode(encoded).groups().get(0);
 
         assertTrue(gd.enabled());
@@ -120,9 +123,10 @@ class WaypointCodecDebugTest {
         assertTrue(gd.loadSequence());
         assertTrue(gd.customRadius());
         assertEquals(5.5, gd.defaultRadius(), 0.001);
-        int mode = (gd.groupFlagsByte() >>> 4) & 0b11;
+        int mode = ((gd.groupFlagsByte() & 0b0100_0000) != 0 ? 0b100 : 0)
+                | ((gd.groupFlagsByte() >>> 4) & 0b11);
         assertEquals(gd.coordModeOrdinal(), mode,
-                "group flags byte's coord-mode nibble must match reported ordinal");
+                "group flags byte's coord-mode bits must match reported ordinal");
     }
 
     @Test
@@ -144,7 +148,7 @@ class WaypointCodecDebugTest {
         String encoded = WaypointCodec.encode(List.of(g));
         DecodeDebug.GroupDebug gd = WaypointCodec.debugDecode(encoded).groups().get(0);
 
-        assertTrue(gd.coordModeOrdinal() >= 0 && gd.coordModeOrdinal() <= 3,
+        assertTrue(gd.coordModeOrdinal() >= 0 && gd.coordModeOrdinal() <= 5,
                 "coord-mode ordinal must be a valid wire value, got " + gd.coordModeOrdinal());
         assertEquals(20, gd.pointCount(), "debug view must report the correct point count");
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);

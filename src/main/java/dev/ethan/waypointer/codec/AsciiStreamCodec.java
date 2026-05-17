@@ -7,8 +7,9 @@ import java.util.Arrays;
  * Trailer-free binary-to-text codec for Waypointer chat payloads.
  *
  * <p>The current alphabet is every printable one-byte ASCII character except
- * space, {@code '.'}, and backtick. Space would split/collapse during chat
- * paste, period trips Hypixel's URL-shaped advertising filter, and backticks
+ * space, comma, {@code '.'}, and backtick. Space would split/collapse during
+ * chat paste, comma is common prose punctuation that can stick to a shared
+ * route, period trips Hypixel's URL-shaped advertising filter, and backticks
  * make shared payloads awkward in Markdown-heavy surfaces like Discord. Keeping
  * the alphabet entirely below {@code 0x80} preserves the important invariant
  * that one visible character is one UTF-8 wire byte.
@@ -22,6 +23,11 @@ import java.util.Arrays;
 public final class AsciiStreamCodec {
 
     private static final Alphabet CURRENT = new Alphabet(
+            "!\"#$%&'()*+-/0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+          + "[\\]^_abcdefghijklmnopqrstuvwxyz{|}~"
+    );
+
+    private static final Alphabet LEGACY_V4 = new Alphabet(
             "!\"#$%&'()*+,-/0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ"
           + "[\\]^_abcdefghijklmnopqrstuvwxyz{|}~"
     );
@@ -43,8 +49,16 @@ public final class AsciiStreamCodec {
         return encode(input, LEGACY_V3);
     }
 
+    static String encodeLegacyV4(byte[] input) {
+        return encode(input, LEGACY_V4);
+    }
+
     public static byte[] decode(String input) {
         return decode(input, CURRENT);
+    }
+
+    static byte[] decodeLegacyV4(String input) {
+        return decode(input, LEGACY_V4);
     }
 
     static byte[] decodeLegacyV3(String input) {
@@ -137,11 +151,15 @@ public final class AsciiStreamCodec {
     }
 
     public static boolean isAlphabetChar(char c) {
-        return CURRENT.has(c) || LEGACY_V3.has(c);
+        return CURRENT.has(c) || LEGACY_V4.has(c) || LEGACY_V3.has(c);
     }
 
     public static int alphabetSize() {
         return CURRENT.base();
+    }
+
+    static int legacyV4AlphabetSize() {
+        return LEGACY_V4.base();
     }
 
     static int legacyV3AlphabetSize() {

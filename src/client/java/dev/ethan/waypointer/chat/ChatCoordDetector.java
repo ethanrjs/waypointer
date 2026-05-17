@@ -10,11 +10,15 @@ import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.TextColor;
 
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.Optional;
 
 /**
  * Sniffs incoming game chat for "x y z" coordinate triples and recolors the coord
@@ -41,6 +45,7 @@ public final class ChatCoordDetector {
 
     private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]");
     private static final Pattern USERNAME_TOKEN = Pattern.compile("\\b[A-Za-z0-9_]{3,16}\\b");
+    private static final char FORMAT_PREFIX = '\u00A7';
 
     private final WaypointerConfig config;
     private final ActiveGroupManager manager;
@@ -65,18 +70,33 @@ public final class ChatCoordDetector {
         List<CoordScanner.Match> matches = CoordScanner.scanWithPositions(flat);
         if (matches.isEmpty()) return msg;
 
+        List<CoordScanner.Match> visibleMatches = new ArrayList<>(matches.size());
+        List<String> tempLabels = new ArrayList<>(matches.size());
+        List<String> senderNames = new ArrayList<>(matches.size());
+        for (CoordScanner.Match match : matches) {
+            String senderName = senderNameForChatTemp(flat, match.start());
+            if (!senderName.isBlank() && config.isChatCoordSenderBlacklisted(senderName)) {
+                continue;
+            }
+            visibleMatches.add(match);
+            senderNames.add(senderName);
+            tempLabels.add(senderLabelForChatTemp(msg, flat, match.start()));
+        }
+        if (visibleMatches.isEmpty()) return msg;
+
         if (config.autoAddChatTempWaypoints()) {
-            for (CoordScanner.Match match : matches) {
+            for (int i = 0; i < visibleMatches.size(); i++) {
+                CoordScanner.Match match = visibleMatches.get(i);
                 var group = manager.addTempWaypoint(match.x(), match.y(), match.z(),
-                        senderNameForChatTemp(flat, match.start()));
+                        tempLabels.get(i));
                 if (config.focusTempWaypoints()) {
                     manager.focusTempWaypoint(group, group.size() - 1);
                 }
             }
         }
 
-        return rebuildWithHighlights(msg, matches, flat,
-                config.autoAddChatTempWaypoints());
+        return rebuildWithHighlights(msg, visibleMatches, flat,
+                config.autoAddChatTempWaypoints(), tempLabels, senderNames);
     }
 
     /**
@@ -87,8 +107,10 @@ public final class ChatCoordDetector {
      */
     private static Component rebuildWithHighlights(Component msg, List<CoordScanner.Match> matches,
                                                    String flatText,
-                                                   boolean chatTempAlreadyAutoAdded) {
-        Builder builder = new Builder(matches, flatText, chatTempAlreadyAutoAdded);
+                                                   boolean chatTempAlreadyAutoAdded,
+                                                   List<String> tempLabels,
+                                                   List<String> senderNames) {
+        Builder builder = new Builder(matches, flatText, chatTempAlreadyAutoAdded, tempLabels, senderNames);
         // visit() walks the full styled-run tree and returns Optional.empty() on
         // success; we rely on that to feed every substring into our builder in order.
         msg.visit((style, content) -> {
@@ -111,12 +133,16 @@ public final class ChatCoordDetector {
         private int matchIdx;      // index into matches list
         private final MutableComponent out = Component.empty();
         private final boolean chatTempAlreadyAutoAdded;
+        private final List<String> tempLabels;
+        private final List<String> senderNames;
 
         Builder(List<CoordScanner.Match> matches, String flatText,
-                boolean chatTempAlreadyAutoAdded) {
+                boolean chatTempAlreadyAutoAdded, List<String> tempLabels, List<String> senderNames) {
             this.matches = matches;
             this.flatText = flatText;
             this.chatTempAlreadyAutoAdded = chatTempAlreadyAutoAdded;
+            this.tempLabels = tempLabels;
+            this.senderNames = senderNames;
         }
 
         void append(Style style, String content) {
@@ -148,7 +174,8 @@ public final class ChatCoordDetector {
                 if (matchEndLocal > sliceStart) {
                     String slice = content.substring(sliceStart, matchEndLocal);
                     out.append(Component.literal(slice).setStyle(chipStyle(style, m, flatText,
-                            chatTempAlreadyAutoAdded)));
+                            chatTempAlreadyAutoAdded, tempLabels.get(matchIdx),
+                            senderNames.get(matchIdx))));
                     localStart = matchEndLocal;
                 }
 
@@ -156,6 +183,7 @@ public final class ChatCoordDetector {
                     // Match continues into a later segment; don't advance matchIdx yet.
                     break;
                 }
+                out.append(blockSenderAction(senderNames.get(matchIdx)));
                 matchIdx++;
             }
 
@@ -175,30 +203,62 @@ public final class ChatCoordDetector {
      * force aqua + underline + click + hover so the coord reads as a button.
      */
     private static Style chipStyle(Style base, CoordScanner.Match m, String flatText,
-            boolean chatTempAlreadyAutoAdded) {
+            boolean chatTempAlreadyAutoAdded, String tempLabel, String senderName) {
         // Target the temp variant so the waypoint auto-cleans on disconnect --
         // see the class javadoc for why chat-shared coords default to
         // session-scoped rather than permanent.
         Style styled = base
                 .withColor(ChatFormatting.AQUA)
                 .withUnderlined(true);
-        if (chatTempAlreadyAutoAdded) {
-            // Auto-add already created these temps; omit click so the chip cannot
-            // add a second identical waypoint to the same temp group.
-            return styled.withHoverEvent(new HoverEvent.ShowText(
-                    Component.literal("Temp waypoint already added at "
-                            + m.x() + ", " + m.y() + ", " + m.z()
-                            + "\n(expires on disconnect)")));
-        }
-        String source = senderNameForChatTemp(flatText, m.start());
-        String cmd = "/waypointer addtemp at " + m.x() + " " + m.y() + " " + m.z()
-                + (source.isEmpty() ? "" : " " + source);
+
+        String cmd = "/waypointer chattemp " + m.x() + " " + m.y() + " " + m.z()
+                + " " + (senderName == null || senderName.isBlank() ? "-" : senderName)
+                + " " + encodeChatTempSource(tempLabel);
         return styled
                 .withClickEvent(new ClickEvent.RunCommand(cmd))
-                .withHoverEvent(new HoverEvent.ShowText(
-                        Component.literal("Add temp waypoint at "
-                                + m.x() + ", " + m.y() + ", " + m.z()
-                                + "\n(expires on disconnect)")));
+                .withHoverEvent(new HoverEvent.ShowText(tempWaypointHover(m,
+                        chatTempAlreadyAutoAdded, senderName)));
+    }
+
+    private static Component blockSenderAction(String senderName) {
+        if (senderName == null || senderName.isBlank()) return Component.empty();
+        return Component.literal(" [B]")
+                .withStyle(Style.EMPTY
+                        .withColor(ChatFormatting.RED)
+                        .withBold(true)
+                        .withClickEvent(new ClickEvent.RunCommand("/waypointer blacklist add " + senderName))
+                        .withHoverEvent(new HoverEvent.ShowText(Component.literal(
+                                "Click here to block " + senderName).withStyle(ChatFormatting.RED))));
+    }
+
+    private static Component tempWaypointHover(CoordScanner.Match m, boolean alreadyAdded,
+                                               String senderName) {
+        MutableComponent out = Component.empty()
+                .append(Component.literal("Temporary waypoint at ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("(" + m.x() + ", " + m.y() + ", " + m.z() + ")")
+                        .withStyle(ChatFormatting.YELLOW));
+
+        out.append(Component.literal("\n"));
+        out.append(Component.literal(alreadyAdded ? "Click to open it in Waypointer."
+                : "Click to add and open it in Waypointer.").withStyle(ChatFormatting.AQUA));
+
+        return out;
+    }
+
+    private static String encodeChatTempSource(String source) {
+        if (source == null || source.isBlank()) return "-";
+        return Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(source.getBytes(StandardCharsets.UTF_8));
+    }
+
+    static String senderLabelForChatTemp(Component message, String flatText, int coordStart) {
+        SenderSpan span = senderSpanForChatTemp(flatText, coordStart);
+        if (span == null) return "";
+
+        String sender = legacyFormattedSlice(message, span.start(), span.end()).trim();
+        return sender.isEmpty()
+                ? ""
+                : ChatFormatting.YELLOW + "From " + sender;
     }
 
     static String senderNameForChatTemp(String flatText, int coordStart) {
@@ -213,6 +273,147 @@ public final class ChatCoordDetector {
         while (matcher.find()) last = matcher.group();
         return last;
     }
+
+    private static SenderSpan senderSpanForChatTemp(String flatText, int coordStart) {
+        if (flatText == null || flatText.isBlank()) return null;
+        int endLimit = Math.max(0, Math.min(coordStart, flatText.length()));
+        int colon = indexOfLastSenderColon(flatText, endLimit);
+        if (colon < 0) return null;
+
+        int end = trimWhitespaceBackward(flatText, colon);
+        if (end <= 0) return null;
+
+        Matcher matcher = USERNAME_TOKEN.matcher(flatText.substring(0, end));
+        int userStart = -1;
+        while (matcher.find()) userStart = matcher.start();
+        if (userStart < 0) return null;
+
+        int start = userStart;
+        int rankClose = flatText.lastIndexOf(']', userStart);
+        if (rankClose >= 0) {
+            int rankOpen = flatText.lastIndexOf('[', rankClose);
+            if (rankOpen >= 0
+                    && rankClose < userStart
+                    && isRankLikeBracket(flatText, rankOpen, rankClose)
+                    && flatText.substring(rankClose + 1, userStart).trim().isEmpty()) {
+                start = rankOpen;
+            }
+        }
+        start = includeAdjacentLegacyFormattingPrefix(flatText, start);
+        return new SenderSpan(start, end);
+    }
+
+    private static boolean isRankLikeBracket(String text, int open, int close) {
+        String inside = text.substring(open + 1, close).trim();
+        if (inside.equalsIgnoreCase("chat")) return false;
+        boolean hasLetter = false;
+        for (int i = 0; i < inside.length(); i++) {
+            if (Character.isLetter(inside.charAt(i))) {
+                hasLetter = true;
+                break;
+            }
+        }
+        return hasLetter;
+    }
+
+    private static int trimWhitespaceBackward(String text, int endExclusive) {
+        int end = endExclusive;
+        while (end > 0 && Character.isWhitespace(text.charAt(end - 1))) end--;
+        return end;
+    }
+
+    private static int includeAdjacentLegacyFormattingPrefix(String text, int start) {
+        int out = start;
+        while (out >= 2
+                && text.charAt(out - 2) == FORMAT_PREFIX
+                && isLegacyFormattingCode(text.charAt(out - 1))) {
+            out -= 2;
+        }
+        return out;
+    }
+
+    private static String legacyFormattedSlice(Component message, int start, int end) {
+        LegacySliceBuilder builder = new LegacySliceBuilder(start, end);
+        message.visit((style, content) -> {
+            builder.append(style, content);
+            return Optional.<Boolean>empty();
+        }, Style.EMPTY);
+        return builder.out.toString();
+    }
+
+    private static final class LegacySliceBuilder {
+        private final int start;
+        private final int end;
+        private int cursor;
+        private final StringBuilder out = new StringBuilder();
+
+        LegacySliceBuilder(int start, int end) {
+            this.start = start;
+            this.end = end;
+        }
+
+        void append(Style style, String content) {
+            if (content.isEmpty()) return;
+
+            int segmentStart = cursor;
+            int segmentEnd = cursor + content.length();
+            int sliceStart = Math.max(start, segmentStart);
+            int sliceEnd = Math.min(end, segmentEnd);
+            if (sliceStart < sliceEnd) {
+                int localStart = sliceStart - segmentStart;
+                int localEnd = sliceEnd - segmentStart;
+                if (!startsWithLegacyFormattingCode(content, localStart, localEnd)) {
+                    appendLegacyStyle(out, style);
+                }
+                out.append(content, localStart, localEnd);
+            }
+            cursor = segmentEnd;
+        }
+    }
+
+    private static void appendLegacyStyle(StringBuilder out, Style style) {
+        appendLegacyColor(out, style.getColor());
+        if (style.isBold()) out.append(ChatFormatting.BOLD);
+        if (style.isItalic()) out.append(ChatFormatting.ITALIC);
+        if (style.isUnderlined()) out.append(ChatFormatting.UNDERLINE);
+        if (style.isStrikethrough()) out.append(ChatFormatting.STRIKETHROUGH);
+        if (style.isObfuscated()) out.append(ChatFormatting.OBFUSCATED);
+    }
+
+    private static void appendLegacyColor(StringBuilder out, TextColor color) {
+        if (color == null) {
+            out.append(ChatFormatting.WHITE);
+            return;
+        }
+        for (ChatFormatting formatting : ChatFormatting.values()) {
+            Integer rgb = formatting.getColor();
+            if (rgb != null && (rgb & 0xFFFFFF) == (color.getValue() & 0xFFFFFF)) {
+                out.append(formatting);
+                return;
+            }
+        }
+        String hex = String.format("%06X", color.getValue() & 0xFFFFFF);
+        out.append('\u00A7').append('x');
+        for (int i = 0; i < hex.length(); i++) {
+            out.append('\u00A7').append(hex.charAt(i));
+        }
+    }
+
+    private static boolean isLegacyFormattingCode(char c) {
+        if (c >= '0' && c <= '9') return true;
+        c = Character.toLowerCase(c);
+        return c >= 'a' && c <= 'f'
+                || c >= 'k' && c <= 'o'
+                || c == 'r';
+    }
+
+    private static boolean startsWithLegacyFormattingCode(String text, int start, int end) {
+        return start + 1 < end
+                && text.charAt(start) == FORMAT_PREFIX
+                && isLegacyFormattingCode(text.charAt(start + 1));
+    }
+
+    private record SenderSpan(int start, int end) {}
 
     /**
      * Last {@code ':'} before {@code beforeIndex} that is not part of a labeled-axis

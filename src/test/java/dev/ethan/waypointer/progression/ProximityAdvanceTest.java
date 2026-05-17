@@ -59,6 +59,18 @@ class ProximityAdvanceTest {
     }
 
     @Test
+    void reaching_last_parentWithSubwaypoints_loopsTracerButKeepsVisualHold() {
+        WaypointGroup g = line();
+        g.toggleSubwaypoint(3);
+
+        assertTrue(ProximityTracker.advanceIfReached(g, 20.5, 0.5, 0.5, true));
+
+        assertEquals(0, g.currentIndex(), "tracer target should wrap back to waypoint 1");
+        assertEquals(2, g.activeSubwaypointParentIndex(),
+                "last waypoint and its subwaypoints should stay visible after the wrap");
+    }
+
+    @Test
     void ignores_waypoints_before_current() {
         WaypointGroup g = line();
         g.setCurrentIndex(2);
@@ -89,6 +101,66 @@ class ProximityAdvanceTest {
         // progression.
         assertTrue(ProximityTracker.advanceIfReached(g, 0.5, 0.5, 0.5, false, false));
         assertEquals(1, g.currentIndex());
+    }
+
+    @Test
+    void subwaypoints_doNotAdvanceRouteProgress() {
+        WaypointGroup g = line();
+        g.toggleSubwaypoint(1);
+
+        assertFalse(advanceIfReached(g, 10.5, 0.5, 0.5));
+
+        assertEquals(0, g.currentIndex());
+    }
+
+    @Test
+    void reaching_parentWithSubwaypoints_advancesTracerTargetButLeavesVisualHold() {
+        WaypointGroup g = line();
+        g.toggleSubwaypoint(1);
+
+        assertTrue(advanceIfReached(g, 0.5, 0.5, 0.5));
+        assertEquals(2, g.currentIndex());
+        assertEquals(0, g.activeSubwaypointParentIndex());
+
+        assertTrue(advanceIfReached(g, 20.5, 0.5, 0.5));
+        assertEquals(3, g.currentIndex());
+        assertEquals(-1, g.activeSubwaypointParentIndex());
+    }
+
+    @Test
+    void strictProgression_parentWithSubwaypoints_advancesTracerTarget() {
+        WaypointGroup g = line();
+        g.toggleSubwaypoint(1);
+
+        assertTrue(ProximityTracker.advanceIfReached(g, 0.5, 0.5, 0.5, false, false));
+        assertEquals(2, g.currentIndex());
+        assertEquals(0, g.activeSubwaypointParentIndex());
+
+        assertTrue(ProximityTracker.advanceIfReached(g, 20.5, 0.5, 0.5, false, false));
+        assertEquals(3, g.currentIndex());
+        assertEquals(-1, g.activeSubwaypointParentIndex());
+    }
+
+    @Test
+    void skipAhead_ignoresSubwaypointsButStillFindsFutureMainWaypoints() {
+        WaypointGroup g = line();
+        g.toggleSubwaypoint(1);
+
+        assertTrue(advanceIfReached(g, 20.5, 0.5, 0.5));
+
+        assertEquals(3, g.currentIndex());
+    }
+
+    @Test
+    void staticReachTracking_ignoresSubwaypoints() {
+        WaypointGroup g = line();
+        g.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        g.toggleSubwaypoint(1);
+
+        assertFalse(ProximityTracker.markReachedStaticWaypoints(g, 10.5, 0.5, 0.5));
+
+        assertFalse(g.isStaticWaypointReached(1));
+        assertEquals(0, g.currentIndex());
     }
 
     @Test

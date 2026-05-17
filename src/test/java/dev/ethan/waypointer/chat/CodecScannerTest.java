@@ -124,6 +124,29 @@ class CodecScannerTest {
     }
 
     @Test
+    void truncated_chat_export_is_reported_as_invalid_but_complete_export_imports() {
+        String invalid = truncatedRealChatExport();
+        String valid = invalid + "!";
+
+        assertFalse(WaypointCodec.isValidCodec(invalid),
+                "fixture without the final character should stay invalid");
+        assertTrue(WaypointCodec.isValidCodec(valid),
+                "fixture with the final character should be a valid route export");
+
+        List<CodecScanner.Match> invalidMatches = CodecScanner.scan("Babbur: " + invalid);
+        assertEquals(1, invalidMatches.size());
+        assertEquals(invalid, invalidMatches.get(0).text());
+        assertFalse(invalidMatches.get(0).valid(),
+                "truncated WP: bodies should render an invalid marker, not disappear");
+
+        List<CodecScanner.Match> validMatches = CodecScanner.scan("Babbur: " + valid);
+        assertEquals(1, validMatches.size());
+        assertEquals(valid, validMatches.get(0).text());
+        assertTrue(validMatches.get(0).valid(),
+                "the same payload with its final character should stay importable");
+    }
+
+    @Test
     void detects_codec_immediately_after_clause_punctuation() {
         String export = sampleExport();
         String message = "As I said," + export + " works great";
@@ -154,5 +177,9 @@ class CodecScannerTest {
         g.add(new Waypoint(10, 70, 20, "a", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint(12, 71, 25, "b", Waypoint.DEFAULT_COLOR, 0, 0));
         return WaypointCodec.encode(List.of(g));
+    }
+
+    private static String truncatedRealChatExport() {
+        return "WP:12^)a&p|zWy@Ie3A~~MMKlKe'Zj]MZxf4}+H4U'P]yT%bJR:o{g_?i&4_&U>zNl6q%6$Ar=4=Juwb_=kgD!%'";
     }
 }

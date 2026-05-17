@@ -1,8 +1,20 @@
 package dev.ethan.waypointer.chat;
 
+import dev.ethan.waypointer.config.WaypointerConfig;
+import dev.ethan.waypointer.core.ActiveGroupManager;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FormattedText;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.TextColor;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,6 +40,21 @@ class CoordScannerTest {
         List<CoordScanner.Coord> coords = CoordScanner.scan("Boss spawns at 250, 70 -310 every minute");
         assertEquals(1, coords.size());
         assertEquals(new CoordScanner.Coord(250, 70, -310), coords.get(0));
+    }
+
+    @Test
+    void parses_explicit_slash_separated_triple() {
+        List<CoordScanner.Coord> coords = CoordScanner.scan("Boss spawns at 250/70/-310 every minute");
+        assertEquals(1, coords.size());
+        assertEquals(new CoordScanner.Coord(250, 70, -310), coords.get(0));
+    }
+
+    @Test
+    void rejects_fraction_like_mixed_slash_separator() {
+        assertTrue(CoordScanner.scan("3 99/100").isEmpty(),
+                "progress/fraction text must not be detected as a coordinate");
+        assertTrue(CoordScanner.scan("3, 99/100").isEmpty());
+        assertTrue(CoordScanner.scan("3/99 100").isEmpty());
     }
 
     @Test
@@ -238,5 +265,87 @@ class CoordScannerTest {
         int bareStart = matches.get(1).start();
 
         assertEquals("Player", ChatCoordDetector.senderNameForChatTemp(message, bareStart));
+    }
+
+    @Test
+    void chatTempSenderLabelUsesRankAndUsernameStylesWithoutDependingOnEmblem() {
+        MutableComponent message = Component.empty()
+                .append(Component.literal("[CHAT] [334] \u16DD ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("[MVP++] ").withStyle(ChatFormatting.GOLD))
+                .append(Component.literal("Babbur").withStyle(ChatFormatting.LIGHT_PURPLE))
+                .append(Component.literal(": ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("1 2 3"));
+        String flat = message.getString();
+
+        assertEquals(ChatFormatting.YELLOW + "From "
+                        + ChatFormatting.GOLD + "[MVP++] "
+                        + ChatFormatting.LIGHT_PURPLE + "Babbur",
+                ChatCoordDetector.senderLabelForChatTemp(message, flat, flat.indexOf("1 2 3")));
+    }
+
+    @Test
+    void chatTempSenderLabelKeepsRawFormattingCodeBeforeRankPrefix() {
+        Component message = Component.literal(
+                "[CHAT] [313] \u2600 \u00A76[MVP\u00A7d++\u00A76] pushhsuq\u00A7f: x: -592, y: 113, z: 6");
+        String flat = message.getString();
+
+        assertEquals(ChatFormatting.YELLOW + "From "
+                        + "\u00A76[MVP\u00A7d++\u00A76] pushhsuq\u00A7f",
+                ChatCoordDetector.senderLabelForChatTemp(message, flat, flat.indexOf("x:")));
+    }
+
+    @Test
+    void chatTempSenderLabelFallsBackToUsernameWhenNoRankIsPresent() {
+        MutableComponent message = Component.empty()
+                .append(Component.literal("[CHAT] [334] \u2736 ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("Babbur").withStyle(ChatFormatting.LIGHT_PURPLE))
+                .append(Component.literal(": ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("1 2 3"));
+        String flat = message.getString();
+
+        assertEquals(ChatFormatting.YELLOW + "From "
+                        + ChatFormatting.LIGHT_PURPLE + "Babbur",
+                ChatCoordDetector.senderLabelForChatTemp(message, flat, flat.indexOf("1 2 3")));
+    }
+
+    @Test
+    void chatCoordHighlightAddsExplicitBlockActionAfterCoords() throws Exception {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setAutoAddChatTempWaypoints(false);
+        Component out = invokeCoordDetector(
+                Component.literal("[CHAT] [334] [MVP++] Babbur: x: 1, y: 2, z: 3"),
+                config);
+
+        assertEquals("[CHAT] [334] [MVP++] Babbur: x: 1, y: 2, z: 3 [B]", out.getString());
+
+        StyledRun blockRun = runs(out).stream()
+                .filter(run -> run.text().equals(" [B]"))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("missing block action run"));
+        assertEquals(TextColor.fromLegacyFormat(ChatFormatting.RED), blockRun.style().getColor());
+        assertTrue(blockRun.style().isBold());
+        ClickEvent clickEvent = blockRun.style().getClickEvent();
+        ClickEvent.RunCommand runCommand = assertInstanceOf(ClickEvent.RunCommand.class, clickEvent);
+        assertEquals("/waypointer blacklist add Babbur", runCommand.command());
+        assertNotNull(blockRun.style().getHoverEvent());
+    }
+
+    private static Component invokeCoordDetector(Component message, WaypointerConfig config) throws Exception {
+        ChatCoordDetector detector = new ChatCoordDetector(config, new ActiveGroupManager());
+        Method onMessage = ChatCoordDetector.class.getDeclaredMethod("onMessage", Component.class, boolean.class);
+        onMessage.setAccessible(true);
+        return (Component) onMessage.invoke(detector, message, false);
+    }
+
+    private static List<StyledRun> runs(Component component) {
+        List<StyledRun> runs = new ArrayList<>();
+        component.visit((FormattedText.StyledContentConsumer<Void>) (style, text) -> {
+            if (!text.isEmpty()) runs.add(new StyledRun(text, style));
+            return Optional.empty();
+        }, Style.EMPTY);
+        return runs;
+    }
+
+    private record StyledRun(String text, Style style) {
     }
 }
