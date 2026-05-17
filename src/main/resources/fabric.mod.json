@@ -3,7 +3,7 @@
     "id": "waypointer",
     "version": "${version}",
     "name": "Waypointer",
-    "description": "Cross-instance ordered waypoints for Hypixel Skyblock, with tracers, proximity progression, and a bit-packed import/export format.",
+  "description": "Best waypoint mod for Hypixel SkyBlock.",
     "authors": ["Babbur"],
     "contact": {
         "homepage": "https://github.com/ethanrjs/waypointer#readme",

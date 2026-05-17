@@ -58,6 +58,28 @@ class GradientColorizerTest {
     }
 
     @Test
+    void subwaypointsInheritParentColorAndDoNotAdvanceGradient() {
+        WaypointGroup plain = WaypointGroup.create("plain", "z");
+        plain.add(Waypoint.at(0, 0, 0));
+        plain.add(Waypoint.at(1, 0, 0));
+        plain.add(Waypoint.at(2, 0, 0));
+
+        WaypointGroup withSubwaypoint = WaypointGroup.create("subway", "z");
+        withSubwaypoint.add(Waypoint.at(0, 0, 0));
+        withSubwaypoint.add(Waypoint.at(99, 0, 0));
+        withSubwaypoint.add(Waypoint.at(1, 0, 0));
+        withSubwaypoint.add(Waypoint.at(2, 0, 0));
+        assertTrue(withSubwaypoint.toggleSubwaypoint(1));
+
+        assertEquals(withSubwaypoint.get(0).color(), withSubwaypoint.get(1).color(),
+                "subwaypoint should render in the same gradient colour as its parent");
+        assertEquals(plain.get(1).color(), withSubwaypoint.get(2).color(),
+                "subwaypoint should not consume a gradient step");
+        assertEquals(plain.get(2).color(), withSubwaypoint.get(3).color(),
+                "route end colour should still land on the last main waypoint");
+    }
+
+    @Test
     void reorder_recomputesGradient() {
         // The plan promises "recomputes on reorder" -- verify the colors of positions
         // 0 and N-1 stay anchored to the gradient endpoints regardless of which

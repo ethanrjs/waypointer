@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.commands;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -21,6 +22,7 @@ import dev.ethan.waypointer.core.Zone;
 import dev.ethan.waypointer.input.WaypointAddFlow;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import dev.ethan.waypointer.screen.DebugInspectScreen;
+import dev.ethan.waypointer.screen.GroupEditScreen;
 import dev.ethan.waypointer.screen.ImportFeedback;
 import dev.ethan.waypointer.screen.WaypointerScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -42,6 +44,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 
@@ -156,6 +159,28 @@ public final class WaypointerCommands {
                                                                         IntegerArgumentType.getInteger(ctx, "y"),
                                                                         IntegerArgumentType.getInteger(ctx, "z"),
                                                                         StringArgumentType.getString(ctx, "source")))))))))
+                .then(literal("chattemp")
+                        .then(argument("x", IntegerArgumentType.integer())
+                                .then(argument("y", IntegerArgumentType.integer())
+                                        .then(argument("z", IntegerArgumentType.integer())
+                                                .then(argument("sender", StringArgumentType.word())
+                                                        .then(argument("source", StringArgumentType.word())
+                                                                .executes(ctx -> runChatTempClick(ctx.getSource(),
+                                                                        IntegerArgumentType.getInteger(ctx, "x"),
+                                                                        IntegerArgumentType.getInteger(ctx, "y"),
+                                                                        IntegerArgumentType.getInteger(ctx, "z"),
+                                                                        StringArgumentType.getString(ctx, "sender"),
+                                                                        StringArgumentType.getString(ctx, "source")))))))))
+                .then(literal("blacklist")
+                        .executes(ctx -> runChatCoordBlacklist(ctx.getSource()))
+                        .then(literal("add")
+                                .then(argument("name", StringArgumentType.word())
+                                        .executes(ctx -> runChatCoordBlacklistAdd(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "name")))))
+                        .then(literal("remove")
+                                .then(argument("name", StringArgumentType.word())
+                                        .executes(ctx -> runChatCoordBlacklistRemove(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "name"))))))
                 .then(literal("remove")
                         .then(argument("index", IntegerArgumentType.integer(0))
                                 .suggests(suggestActiveGroupIndices())
@@ -410,6 +435,7 @@ public final class WaypointerCommands {
                             new HelpRow(" group create <name>",     "make a new group in the current zone"),
                             new HelpRow(" group list",              "list every group across zones"),
                             new HelpRow(" group delete <index>",    "delete a group by list index"),
+                            new HelpRow(" blacklist",               "show chat waypoint sender blacklist"),
                             new HelpRow(" debug",                   "copy performance stats or inspect a codec")))
     );
 
@@ -643,6 +669,79 @@ public final class WaypointerCommands {
         return 1;
     }
 
+    private int runChatTempClick(FabricClientCommandSource src, int x, int y, int z,
+                                 String senderArg, String encodedSource) {
+        String senderName = "-".equals(senderArg) ? "" : senderArg;
+        String sourceName = decodeChatTempSource(encodedSource);
+
+        if (hasShiftDown()) {
+            if (senderName.isBlank()) {
+                warn(src, "Couldn't identify who sent that waypoint, so nothing was blacklisted.");
+            } else {
+                boolean nowBlocked = config.toggleChatCoordSenderBlacklist(senderName);
+                int removed = nowBlocked ? manager.removeTempWaypointsFromSender(senderName) : 0;
+                if (nowBlocked) {
+                    success(src, "Blacklisted " + senderName + " for chat waypoints"
+                            + (removed > 0 ? " and removed " + removed + " temporary waypoint(s)" : ""));
+                } else {
+                    success(src, "Removed " + senderName + " from the chat waypoint blacklist");
+                }
+            }
+            return 1;
+        }
+
+        ActiveGroupManager.TempWaypointSelection selection = manager.findTempWaypoint(x, y, z, senderName);
+        if (selection == null) {
+            WaypointGroup target = manager.addTempWaypoint(x, y, z, sourceName);
+            int index = target.size() - 1;
+            if (config.focusTempWaypoints()) {
+                manager.focusTempWaypoint(target, index);
+            }
+            selection = new ActiveGroupManager.TempWaypointSelection(target, index);
+        }
+
+        ActiveGroupManager.TempWaypointSelection focused = selection;
+        Minecraft.getInstance().execute(() -> {
+            WaypointerScreen parent = new WaypointerScreen(manager, config);
+            GroupEditScreen.openFocused(parent, manager, config, focused.group(), focused.index());
+        });
+        success(src, "Opened temporary waypoint at " + x + ", " + y + ", " + z);
+        return 1;
+    }
+
+    private int runChatCoordBlacklist(FabricClientCommandSource src) {
+        List<String> names = config.chatCoordSenderBlacklist();
+        if (names.isEmpty()) {
+            info(src, "No chat waypoint senders are blacklisted.");
+            return 0;
+        }
+        info(src, Component.literal("Chat waypoint blacklist: ")
+                .withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(String.join(", ", names)).withStyle(ChatFormatting.YELLOW)));
+        return names.size();
+    }
+
+    private int runChatCoordBlacklistAdd(FabricClientCommandSource src, String senderName) {
+        boolean added = config.addChatCoordSenderBlacklist(senderName);
+        int removed = added ? manager.removeTempWaypointsFromSender(senderName) : 0;
+        if (added) {
+            success(src, "Blacklisted " + senderName + " for chat waypoints"
+                    + (removed > 0 ? " and removed " + removed + " temporary waypoint(s)" : ""));
+        } else {
+            info(src, senderName + " is already blacklisted.");
+        }
+        return added ? 1 : 0;
+    }
+
+    private int runChatCoordBlacklistRemove(FabricClientCommandSource src, String senderName) {
+        if (config.removeChatCoordSenderBlacklist(senderName)) {
+            success(src, "Removed " + senderName + " from the chat waypoint blacklist");
+            return 1;
+        }
+        info(src, senderName + " is not blacklisted.");
+        return 0;
+    }
+
     /**
      * Inserts a new waypoint at the configured player-relative position into the
      * active group's waypoint list at {@code index}. {@code index == size} appends, matching
@@ -795,6 +894,24 @@ public final class WaypointerCommands {
             return s.substring(1, s.length() - 1);
         }
         return s;
+    }
+
+    private static String decodeChatTempSource(String encoded) {
+        if (encoded == null || encoded.isBlank() || "-".equals(encoded)) return "";
+        try {
+            byte[] bytes = Base64.getUrlDecoder().decode(encoded);
+            return new String(bytes, StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException ignored) {
+            return "";
+        }
+    }
+
+    private static boolean hasShiftDown() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) return false;
+        var win = mc.getWindow();
+        return InputConstants.isKeyDown(win, InputConstants.KEY_LSHIFT)
+                || InputConstants.isKeyDown(win, 344 /* GLFW_KEY_RIGHT_SHIFT */);
     }
 
     private int runImportChat(FabricClientCommandSource src, String handle) {

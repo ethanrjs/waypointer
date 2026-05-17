@@ -104,6 +104,7 @@ public final class CoordScanner {
             if (y < MIN_Y || y > MAX_Y) continue;
             if (Math.abs(x) > MAX_HORIZONTAL || Math.abs(z) > MAX_HORIZONTAL) continue;
             if (looksLikeThousandsSeparator(m.group(3), sep1, sep2)) continue;
+            if (looksLikeFractionSeparator(sep1, sep2)) continue;
             out.add(new Match(m.start(), m.end(), x, y, z));
             if (out.size() >= MAX_MATCHES_PER_MESSAGE) break;
         }
@@ -145,6 +146,18 @@ public final class CoordScanner {
         // No negatives in thousands-separated numbers; a leading '-' on the
         // middle or trailing group guarantees these are distinct integers.
         return middleRaw.charAt(0) != '-';
+    }
+
+    /**
+     * Slash-delimited coords are accepted only in the explicit {@code x/y/z}
+     * form. Mixed whitespace/slash strings are overwhelmingly fractions or
+     * progress counters, e.g. {@code "3 99/100"}, not coordinates.
+     */
+    private static boolean looksLikeFractionSeparator(String sep1, String sep2) {
+        boolean slash1 = sep1.indexOf('/') >= 0;
+        boolean slash2 = sep2.indexOf('/') >= 0;
+        if (!slash1 && !slash2) return false;
+        return !("/".equals(sep1) && "/".equals(sep2));
     }
 
     private static int parseOrSentinel(String s) {

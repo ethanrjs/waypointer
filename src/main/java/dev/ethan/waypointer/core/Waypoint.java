@@ -36,6 +36,10 @@ public record Waypoint(
     public static final int FLAG_HIDE_NAME    = 1 << 1;
     public static final int FLAG_THROUGH_WALL = 1 << 2;
     public static final int FLAG_LOCKED_COLOR = 1 << 3; // excluded from gradient auto-recolor
+    /** Structural flag: this waypoint is a one-level child of the nearest previous main waypoint. */
+    public static final int FLAG_SUBWAYPOINT  = 1 << 4;
+    /** Flags that define route structure and must survive even when visual flags are stripped from exports. */
+    public static final int STRUCTURAL_FLAGS  = FLAG_SUBWAYPOINT;
 
     public static final int TEMP_NONE = 0;
     public static final int TEMP_TIME = 1;
@@ -72,6 +76,10 @@ public record Waypoint(
         return tempMode != TEMP_NONE;
     }
 
+    public boolean isSubwaypoint() {
+        return hasFlag(FLAG_SUBWAYPOINT);
+    }
+
     /** True iff this is a time-based temp and the deadline has passed. */
     public boolean isExpired(long nowMillis) {
         return tempMode == TEMP_TIME && expiresAtMillis > 0 && nowMillis >= expiresAtMillis;
@@ -100,6 +108,11 @@ public record Waypoint(
     public Waypoint withFlags(int newFlags)        { return new Waypoint(x, y, z, name, color, newFlags, customRadius, tempMode, expiresAtMillis); }
     public Waypoint withRadius(double newRadius)   { return new Waypoint(x, y, z, name, color, flags, newRadius, tempMode, expiresAtMillis); }
     public Waypoint withPos(int nx, int ny, int nz){ return new Waypoint(nx, ny, nz, name, color, flags, customRadius, tempMode, expiresAtMillis); }
+
+    public Waypoint withSubwaypoint(boolean subwaypoint) {
+        int nextFlags = subwaypoint ? flags | FLAG_SUBWAYPOINT : flags & ~FLAG_SUBWAYPOINT;
+        return withFlags(nextFlags);
+    }
 
     /** Flip a waypoint's temp mode. Typically used to build a brand-new temp waypoint from {@link #at}. */
     public Waypoint withTemp(int mode, long expiresAt) {

@@ -206,6 +206,24 @@ class WaypointGroupTest {
     }
 
     @Test
+    void restartIfRouteCompleted_keepsLastParentSubwaypointsVisibleWhileLoopingToStart() {
+        WaypointGroup g = route();
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        g.toggleSubwaypoint(3);
+        g.setCurrentIndex(2);
+
+        g.advancePast(2);
+        assertTrue(g.isComplete());
+        g.restartIfRouteCompleted(true);
+
+        assertEquals(0, g.currentIndex(), "tracer target should wrap back to the first main waypoint");
+        assertEquals(2, g.activeSubwaypointParentIndex(),
+                "the reached final parent should stay visually active after the wrap");
+        assertArrayEquals(new int[] { 2, 3, 0, 1 }, visibleIndices(g),
+                "final parent subwaypoints should remain visible while the route points back to #1");
+    }
+
+    @Test
     void forEachVisibleIndex_emptyGroup_returnsEmpty() {
         WaypointGroup g = WaypointGroup.create("empty", "dungeon_f7");
         assertEquals(0, visibleIndices(g).length);
@@ -213,6 +231,166 @@ class WaypointGroupTest {
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         assertEquals(0, visibleIndices(g).length,
                 "empty groups never render, regardless of load mode");
+    }
+
+    @Test
+    void subwaypoint_toggle_rejectsFirstWaypointAndInfersNearestMainParent() {
+        WaypointGroup g = route();
+
+        assertFalse(g.toggleSubwaypoint(0), "the first row cannot become a child");
+        assertTrue(g.toggleSubwaypoint(1));
+        assertTrue(g.toggleSubwaypoint(2));
+
+        assertTrue(g.isSubwaypoint(1));
+        assertTrue(g.isSubwaypoint(2));
+        assertEquals(0, g.parentMainIndex(1));
+        assertEquals(0, g.parentMainIndex(2),
+                "a child after another child still belongs to the nearest previous main waypoint");
+        assertEquals("#1.1", g.displayIndexLabel(1));
+        assertEquals("#1.2", g.displayIndexLabel(2));
+    }
+
+    @Test
+    void subwaypoint_toggle_promotesChildBackToMain() {
+        WaypointGroup g = route();
+        g.toggleSubwaypoint(1);
+
+        assertTrue(g.toggleSubwaypoint(1));
+
+        assertFalse(g.isSubwaypoint(1));
+        assertEquals(4, g.mainWaypointCount());
+    }
+
+    @Test
+    void forEachVisibleIndex_sequenceMode_showsCurrentMainChildrenAndAdjacentMains() {
+        WaypointGroup g = route();
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(2);
+        g.setCurrentIndex(0);
+
+        assertArrayEquals(new int[] { 0, 1, 2, 3 }, visibleIndices(g),
+                "current parent should render its subwaypoints plus the next main waypoint");
+
+        g.setCurrentIndex(3);
+
+        assertArrayEquals(new int[] { 0, 3 }, visibleIndices(g),
+                "children only render while their parent main waypoint is current");
+    }
+
+    @Test
+    void advancePast_skipsSubwaypointsAndKeepsCurrentOnMainWaypoints() {
+        WaypointGroup g = route();
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(2);
+
+        g.advancePast(0);
+
+        assertEquals(3, g.currentIndex());
+        assertEquals(2, g.currentMainOrdinal());
+    }
+
+    @Test
+    void advancePast_parentWithSubwaypoints_keepsParentChildrenVisibleWhileTargetingNextMain() {
+        WaypointGroup g = route();
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(2);
+
+        g.advancePast(0);
+
+        assertEquals(3, g.currentIndex(), "tracer target should advance to the next main waypoint");
+        assertEquals(0, g.activeSubwaypointParentIndex(),
+                "reached parent should stay visually active while targeting the next main");
+        assertArrayEquals(new int[] { 0, 1, 2, 3 }, visibleIndices(g),
+                "reached parent subwaypoints should remain visible until the next main is reached");
+
+        g.advancePast(3);
+
+        assertEquals(-1, g.activeSubwaypointParentIndex());
+        assertArrayEquals(new int[] { 3 }, visibleIndices(g));
+    }
+
+    @Test
+    void visibleIndices_afterSubwaypointParentAdvance_doNotShowNextParentsChildrenEarly() {
+        WaypointGroup g = WaypointGroup.create("route", "test_zone");
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        for (int i = 0; i < 5; i++) {
+            g.add(Waypoint.at(i * 10, 0, 0));
+        }
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(3);
+
+        g.advancePast(0);
+
+        assertEquals(2, g.currentIndex());
+        assertArrayEquals(new int[] { 0, 1, 2, 4 }, visibleIndices(g),
+                "the next parent's subwaypoints should wait until that parent is reached");
+
+        g.advancePast(2);
+
+        assertEquals(4, g.currentIndex());
+        assertArrayEquals(new int[] { 2, 3, 4 }, visibleIndices(g),
+                "the visual hold should move to the newly reached subwaypoint parent");
+    }
+
+    @Test
+    void setCurrentIndex_onSubwaypointTargetsItsParent() {
+        WaypointGroup g = route();
+        g.toggleSubwaypoint(1);
+
+        g.setCurrentIndex(1);
+
+        assertEquals(0, g.currentIndex());
+        assertEquals(g.get(0), g.current());
+    }
+
+    @Test
+    void remove_parentPromotesItsSubwaypointsToMainWaypoints() {
+        WaypointGroup g = route();
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(2);
+
+        g.remove(0);
+
+        assertEquals(3, g.size());
+        assertFalse(g.isSubwaypoint(0));
+        assertFalse(g.isSubwaypoint(1));
+        assertEquals(3, g.mainWaypointCount());
+    }
+
+    @Test
+    void moveBy_parentCarriesSubwaypointBlock() {
+        WaypointGroup g = route();
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(2);
+
+        int movedTo = g.moveBy(0, 1);
+
+        assertEquals(1, movedTo);
+        assertEquals(30, g.get(0).x());
+        assertEquals(0, g.get(1).x());
+        assertTrue(g.isSubwaypoint(2));
+        assertTrue(g.isSubwaypoint(3));
+        assertEquals(1, g.parentMainIndex(2));
+        assertEquals(1, g.parentMainIndex(3));
+    }
+
+    @Test
+    void moveBy_subwaypointReordersWithinSiblingBlockOnly() {
+        WaypointGroup g = route();
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(2);
+
+        int movedTo = g.moveBy(1, 1);
+
+        assertEquals(2, movedTo);
+        assertEquals(20, g.get(1).x());
+        assertEquals(10, g.get(2).x());
+        assertTrue(g.isSubwaypoint(1));
+        assertTrue(g.isSubwaypoint(2));
+        assertEquals(0, g.parentMainIndex(1));
+        assertEquals(0, g.parentMainIndex(2));
     }
 
     @Test
@@ -249,7 +427,7 @@ class WaypointGroupTest {
         WaypointGroup bucket = manager.addTempWaypoint(100, 64, -200);
 
         assertEquals("temp::dungeon_f7", bucket.id());
-        assertEquals("Temp -- Catacombs F7", bucket.name());
+        assertEquals("Temporary", bucket.name());
         assertTrue(bucket.temp());
         assertEquals(WaypointGroup.LoadMode.STATIC, bucket.loadMode());
         assertEquals(1, bucket.size());
@@ -281,11 +459,11 @@ class WaypointGroupTest {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("hub", "Hub"));
 
-        WaypointGroup bucket = manager.addTempWaypoint(1, 2, 3, "Babbur");
+        WaypointGroup bucket = manager.addTempWaypoint(1, 2, 3, "\u00A7eFrom \u00A7dBabbur");
 
-        assertEquals("Temp -- Babbur -- Hub", bucket.name());
+        assertEquals("Temporary", bucket.name());
         assertEquals(1, bucket.size());
-        assertEquals("Babbur: 1, 2, 3", bucket.get(0).name());
+        assertEquals("\u00A7eFrom \u00A7dBabbur", bucket.get(0).name());
         assertTrue(bucket.get(0).isTemp());
     }
 

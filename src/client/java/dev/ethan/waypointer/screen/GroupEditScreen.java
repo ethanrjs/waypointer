@@ -6,6 +6,8 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.input.WaypointRepositionMode;
+import dev.ethan.waypointer.text.AmpersandFormatting;
 import dev.ethan.waypointer.input.WaypointAddFlow;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import net.minecraft.client.Minecraft;
@@ -79,6 +81,7 @@ public final class GroupEditScreen extends Screen {
     private int selectedIndex = -1;
     private int coordinateEditorIndex = -1;
     private boolean syncingCoordinateEditors;
+    private static final int SUBWAY_ACCENT = 0xFF58C878;
 
     // Inline per-row label editor: shown only while the user is renaming a waypoint,
     // positioned in render() so it tracks the row through scroll. We hold one EditBox
@@ -98,6 +101,23 @@ public final class GroupEditScreen extends Screen {
         this.manager = manager;
         this.config = config;
         this.group = group;
+    }
+
+    public GroupEditScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config,
+                           WaypointGroup group, int initialSelectedIndex) {
+        this(parent, manager, config, group);
+        this.selectedIndex = initialSelectedIndex >= 0 && initialSelectedIndex < group.size()
+                ? initialSelectedIndex
+                : -1;
+        if (selectedIndex >= 0) {
+            this.scrollOffset = Math.max(0, selectedIndex * (ROW_H + 2) - ROW_H);
+        }
+    }
+
+    public static void openFocused(Screen parent, ActiveGroupManager manager, WaypointerConfig config,
+                                   WaypointGroup group, int waypointIndex) {
+        Minecraft.getInstance().setScreen(
+                new GroupEditScreen(parent, manager, config, group, waypointIndex));
     }
 
     @Override
@@ -224,9 +244,12 @@ public final class GroupEditScreen extends Screen {
         int footerY = height - FOOTER_H;
 
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("+ Add Here", this::addHere));
-        left.add(new GuiTokens.ButtonSpec("+ Add Named", this::addNamedHere));
-        left.add(new GuiTokens.ButtonSpec("+ Add Temp", this::addTempHere));
+        left.add(new GuiTokens.ButtonSpec("+ Add Here", -1, this::addHere,
+                Tooltip.create(Component.literal("Add a waypoint at your current position."))));
+        left.add(new GuiTokens.ButtonSpec("+ Add Named", -1, this::addNamedHere,
+                Tooltip.create(Component.literal("Name a new waypoint at your current position."))));
+        left.add(new GuiTokens.ButtonSpec("+ Add Temp", -1, this::addTempHere,
+                Tooltip.create(Component.literal("Add a temporary waypoint at your current position."))));
         left.add(new GuiTokens.ButtonSpec("Export", this::export));
         left.add(new GuiTokens.ButtonSpec("Remove", this::removeSelected));
         left.add(new GuiTokens.ButtonSpec("^", 24, () -> moveSelected(-1)));
@@ -454,10 +477,9 @@ public final class GroupEditScreen extends Screen {
 
     private void moveSelected(int delta) {
         if (selectedIndex < 0 || selectedIndex >= group.size()) return;
-        int to = Math.max(0, Math.min(group.size() - 1, selectedIndex + delta));
-        if (to == selectedIndex) return;
-        group.move(selectedIndex, to);
-        selectWaypoint(to);
+        int movedTo = group.moveBy(selectedIndex, delta);
+        if (movedTo == selectedIndex) return;
+        selectWaypoint(movedTo);
         manager.fireDataChanged();
     }
 
@@ -473,7 +495,8 @@ public final class GroupEditScreen extends Screen {
 
         // Header
         g.drawString(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
-        String status = group.size() + " pts  .  @" + group.currentIndex()
+        String status = group.mainWaypointCount() + " main / " + group.size() + " pts  .  @"
+                + group.currentMainOrdinal()
                 + "  .  radius " + String.format("%.1f", group.defaultRadius());
         g.drawString(font, status, width - PAD_OUTER - font.width(status), PAD_OUTER, TEXT_DIM, false);
 
@@ -481,7 +504,7 @@ public final class GroupEditScreen extends Screen {
         // the title in TEXT_MUTED so it reads as ambient help rather than UI chrome.
         // A tooltip would hide these behind a hover the user has to guess at; an
         // always-visible line is cheaper than documentation they won't read.
-        String hint = "double-click: rename  .  right-click: set current";
+        String hint = "double-click: rename  .  shift-left: reposition  .  right-click: set current  .  shift-right-click: subwaypoint";
         g.drawString(font, hint, PAD_OUTER, PAD_OUTER + 11, TEXT_MUTED, false);
 
         int top = PAD_OUTER + 10 + GAP_SECTION;
@@ -535,9 +558,12 @@ public final class GroupEditScreen extends Screen {
         g.enableScissor(x1, y1, x2, y2);
         int y = y1 + 4 - scrollOffset;
         int pitch = ROW_H + 2;
+        boolean hasSubwaypoints = group.hasSubwaypoints();
+        renderWaypointConnectors(g, pts, x1 + 2, y1, y2, y, pitch);
         for (int i = 0; i < pts.size(); i++, y += pitch) {
             if (y + ROW_H < y1 || y > y2) continue;
-            renderWaypointRow(g, pts.get(i), i, x1 + 2, y, x2 - 2, mouseX, mouseY);
+            renderWaypointRow(g, pts.get(i), i, x1 + 2, y, x2 - 2,
+                    mouseX, mouseY, hasSubwaypoints);
         }
         g.disableScissor();
 
@@ -549,20 +575,94 @@ public final class GroupEditScreen extends Screen {
         }
     }
 
+    private void renderWaypointConnectors(GuiGraphics g, List<Waypoint> pts,
+                                          int rowX, int clipTop, int clipBottom,
+                                          int firstRowY, int pitch) {
+        if (pts.size() < 2) return;
+
+        int mainCenterX = rowX + GAP + 2 + 7;
+        int childCenterX = mainCenterX + 16;
+        int previousCenterY = firstRowY + ROW_H / 2;
+        int previousColor = pts.get(0).color();
+
+        for (int i = 1; i < pts.size(); i++) {
+            int centerY = firstRowY + i * pitch + ROW_H / 2;
+            int color = pts.get(i).color();
+            drawVerticalGradientLine(g, mainCenterX, previousCenterY, centerY,
+                    previousColor, color, clipTop, clipBottom);
+            if (group.isSubwaypoint(i)) {
+                drawHorizontalGradientLine(g, mainCenterX, childCenterX, centerY,
+                        previousColor, color, clipTop, clipBottom);
+            }
+            previousCenterY = centerY;
+            previousColor = color;
+        }
+    }
+
+    private static void drawVerticalGradientLine(GuiGraphics g, int centerX, int y1, int y2,
+                                                 int color1, int color2,
+                                                 int clipTop, int clipBottom) {
+        if (y1 == y2) return;
+
+        int top = Math.min(y1, y2);
+        int bottom = Math.max(y1, y2);
+        int clippedTop = Math.max(top, clipTop);
+        int clippedBottom = Math.min(bottom, clipBottom);
+        if (clippedTop > clippedBottom) return;
+
+        int denom = Math.max(1, bottom - top);
+        for (int y = clippedTop; y <= clippedBottom; y++) {
+            double t = (y - top) / (double) denom;
+            g.fill(centerX - 1, y, centerX + 1, y + 1, gradientLineColor(color1, color2, t));
+        }
+    }
+
+    private static void drawHorizontalGradientLine(GuiGraphics g, int x1, int x2, int centerY,
+                                                   int color1, int color2,
+                                                   int clipTop, int clipBottom) {
+        if (centerY < clipTop || centerY > clipBottom) return;
+
+        int left = Math.min(x1, x2);
+        int right = Math.max(x1, x2);
+        int denom = Math.max(1, right - left);
+        for (int x = left; x <= right; x++) {
+            double t = (x - left) / (double) denom;
+            g.fill(x, centerY - 1, x + 1, centerY + 1, gradientLineColor(color1, color2, t));
+        }
+    }
+
+    private static int gradientLineColor(int color1, int color2, double t) {
+        int r1 = (color1 >> 16) & 0xFF;
+        int g1 = (color1 >> 8) & 0xFF;
+        int b1 = color1 & 0xFF;
+        int r2 = (color2 >> 16) & 0xFF;
+        int g2 = (color2 >> 8) & 0xFF;
+        int b2 = color2 & 0xFF;
+        int r = (int) Math.round(r1 + (r2 - r1) * t);
+        int green = (int) Math.round(g1 + (g2 - g1) * t);
+        int b = (int) Math.round(b1 + (b2 - b1) * t);
+        return 0xCC000000 | (r << 16) | (green << 8) | b;
+    }
+
     private void renderWaypointRow(GuiGraphics g, Waypoint w, int index,
-                                   int x1, int y1, int x2, int mouseX, int mouseY) {
+                                   int x1, int y1, int x2, int mouseX, int mouseY,
+                                   boolean hasSubwaypoints) {
         boolean selected = index == selectedIndex;
-        boolean isCurrent = index == group.currentIndex();
+        boolean subwaypoint = group.isSubwaypoint(index);
+        boolean isCurrent = !subwaypoint && index == group.currentIndex();
+        boolean subwaypointActive = subwaypoint && group.parentMainIndex(index) == group.currentIndex();
         boolean hovered = mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y1 + ROW_H;
 
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
         if (bg != 0) g.fill(x1, y1, x2, y1 + ROW_H, bg);
-        if (selected) g.fill(x1, y1, x1 + 2, y1 + ROW_H, ACCENT);
+        if (selected) g.fill(x1, y1, x1 + 2, y1 + ROW_H, subwaypoint ? SUBWAY_ACCENT : ACCENT);
+
+        int indent = subwaypoint ? 16 : 0;
 
         // Color swatch. Clickable: opens ColorPickerScreen for a per-waypoint colour
         // override. A thin lock ring is drawn around the swatch when the waypoint's
         // colour is locked so users know the gradient won't repaint this one.
-        int sx = x1 + GAP + 2;
+        int sx = x1 + GAP + 2 + indent;
         int sy = y1 + 4;
         int swatchColor = 0xFF000000 | (w.color() & 0xFFFFFF);
         g.fill(sx, sy, sx + 14, sy + 14, swatchColor);
@@ -575,13 +675,13 @@ public final class GroupEditScreen extends Screen {
             g.fill(sx + 14, sy, sx + 15, sy + 14,     0xFFFFFFFF);
         }
 
-        // Row labels use 1-indexed numbers so they line up with the world labels
-        // emitted by WaypointRenderer ("#1", "#2", ...). Coords are parenthesised so
-        // the ordinal reads as "item N" rather than being eaten by the first number
-        // in a raw "[0] 123, 64, -77" string.
-        String label = "#" + (index + 1) + "  (" + w.x() + ", " + w.y() + ", " + w.z() + ")";
-        int textColor = isCurrent ? 0xFFFFF080
+        // GUI rows keep the route ordinal visible even for named waypoints.
+        // Custom names only replace the number in world-rendered labels.
+        String ordinal = hasSubwaypoints ? group.displayIndexLabel(index) : "#" + (index + 1);
+        String label = ordinal + "  (" + w.x() + ", " + w.y() + ", " + w.z() + ")";
+        int textColor = isCurrent || subwaypointActive ? 0xFFFFF080
                 : index < group.currentIndex() ? TEXT_MUTED
+                : subwaypoint ? TEXT_DIM
                 : TEXT;
         g.drawString(font, label, sx + 20, y1 + 7, textColor, false);
 
@@ -589,15 +689,23 @@ public final class GroupEditScreen extends Screen {
         // on top of this slot and drawing the old name behind it leaks through at the
         // edges of the edit box when the caret is mid-text.
         if (w.hasName() && index != editingIndex) {
-            g.drawString(font, w.name(), sx + 20 + font.width(label) + GAP, y1 + 7, TEXT_DIM, false);
+            g.drawString(font, AmpersandFormatting.translate(w.name()),
+                    sx + 20 + font.width(label) + GAP, y1 + 7, TEXT_DIM, false);
         }
 
+        int rightTextX = x2 - GAP;
+        if (subwaypoint) {
+            String tag = "subwaypoint";
+            int tagW = font.width(tag);
+            g.drawString(font, tag, rightTextX - tagW, y1 + 7, SUBWAY_ACCENT, false);
+            rightTextX -= tagW + GAP;
+        }
         if (w.customRadius() > 0) {
             String r = "r=" + String.format("%.1f", w.customRadius());
-            g.drawString(font, r, x2 - GAP - font.width(r), y1 + 7, TEXT_DIM, false);
+            g.drawString(font, r, rightTextX - font.width(r), y1 + 7, TEXT_DIM, false);
         } else if (isCurrent) {
             String tag = "current";
-            g.drawString(font, tag, x2 - GAP - font.width(tag), y1 + 7, 0xFFFFF080, false);
+            g.drawString(font, tag, rightTextX - font.width(tag), y1 + 7, 0xFFFFF080, false);
         }
     }
 
@@ -616,16 +724,34 @@ public final class GroupEditScreen extends Screen {
             commitLabelEdit();
         }
 
-        // Right-click on a waypoint row sets progress to that waypoint. Handled
+        // Right-click on a waypoint row sets progress to that waypoint. Holding Shift
+        // turns the same gesture into the structural subwaypoint toggle.
         // before super.mouseClicked because widgets (buttons, EditBoxes) ignore
         // right clicks anyway, and running super first would swallow the event
         // over any widget that happens to sit under the list area.
         if (event.button() == MOUSE_BUTTON_RIGHT) {
             int idx = rowIndexAt(event.x(), event.y());
             if (idx >= 0) {
-                group.setCurrentIndex(idx);
                 selectWaypoint(idx);
-                manager.fireDataChanged();
+                if (hasShiftDown()) {
+                    if (group.toggleSubwaypoint(idx)) {
+                        coordinateEditorIndex = -1;
+                        syncCoordinateEditors();
+                        manager.fireDataChanged();
+                    }
+                } else {
+                    group.setCurrentIndex(idx);
+                    manager.fireDataChanged();
+                }
+                return true;
+            }
+        }
+
+        if (event.button() == MOUSE_BUTTON_LEFT && hasShiftDown()) {
+            int idx = rowIndexAt(event.x(), event.y());
+            if (idx >= 0 && swatchIndexAt(event.x(), event.y()) < 0) {
+                selectWaypoint(idx);
+                WaypointRepositionMode.start(manager, config, group, idx);
                 return true;
             }
         }
@@ -642,10 +768,7 @@ public final class GroupEditScreen extends Screen {
                 // into per-event Modifiers in 1.21.11 and isn't reachable from a
                 // mouse callback without the event's modifier bits, which aren't
                 // currently exposed on MouseButtonInfo's public API.
-                var win = Minecraft.getInstance().getWindow();
-                boolean shift = InputConstants.isKeyDown(win, InputConstants.KEY_LSHIFT)
-                        || InputConstants.isKeyDown(win, 344 /* GLFW_KEY_RIGHT_SHIFT */);
-                if (shift && group.get(swatchIdx).hasFlag(Waypoint.FLAG_LOCKED_COLOR)) {
+                if (hasShiftDown() && group.get(swatchIdx).hasFlag(Waypoint.FLAG_LOCKED_COLOR)) {
                     unlockWaypointColor(swatchIdx);
                 } else {
                     openWaypointColorPicker(swatchIdx);
@@ -666,6 +789,12 @@ public final class GroupEditScreen extends Screen {
         return true;
     }
 
+    private static boolean hasShiftDown() {
+        var win = Minecraft.getInstance().getWindow();
+        return InputConstants.isKeyDown(win, InputConstants.KEY_LSHIFT)
+                || InputConstants.isKeyDown(win, 344 /* GLFW_KEY_RIGHT_SHIFT */);
+    }
+
     /**
      * Hit-test the 14px colour swatch on row {@code idx}. Returns the row index
      * if {@code (mx, my)} is inside a swatch, else -1. Mirrors the geometry
@@ -683,7 +812,7 @@ public final class GroupEditScreen extends Screen {
         if (idx < 0 || idx >= group.size()) return -1;
 
         int rowY = top + 4 - scrollOffset + idx * pitch;
-        int sx = (mainLeft + 2) + GAP + 2;
+        int sx = (mainLeft + 2) + GAP + 2 + (group.isSubwaypoint(idx) ? 16 : 0);
         int sy = rowY + 4;
         if (mx >= sx && mx < sx + 14 && my >= sy && my < sy + 14) return idx;
         return -1;
@@ -718,7 +847,7 @@ public final class GroupEditScreen extends Screen {
      * Maps a screen-space point to a waypoint list index, or {@code -1} if the point
      * is outside the list area or on an empty row past the last waypoint.
      *
-     * Extracted because both the click handler and the right-click progress
+     * Extracted because both the click handler and the right-click row actions
      * shortcut need the exact same hit-test, and keeping the math in one place
      * means a future layout change (sidebar width, row height) only has to be
      * updated once.
@@ -831,10 +960,10 @@ public final class GroupEditScreen extends Screen {
 
         int rowX1 = mainLeft + 2;
         int rowX2 = mainRight - 2;
-        int sx = rowX1 + GAP + 2;
+        int sx = rowX1 + GAP + 2 + (group.isSubwaypoint(index) ? 16 : 0);
         int labelStart = sx + 20;
         Waypoint w = group.get(index);
-        String prefix = "#" + (index + 1) + "  (" + w.x() + ", " + w.y() + ", " + w.z() + ")";
+        String prefix = group.displayIndexLabel(index) + "  (" + w.x() + ", " + w.y() + ", " + w.z() + ")";
         int editorX = labelStart + font.width(prefix) + GAP;
         int editorW = Math.max(80, rowX2 - GAP - editorX);
 

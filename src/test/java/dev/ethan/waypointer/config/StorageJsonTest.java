@@ -69,7 +69,7 @@ class StorageJsonTest {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup real = WaypointGroup.create("real", "hub");
         real.add(Waypoint.at(1, 2, 3).withName("keeper"));
-        WaypointGroup temp = new WaypointGroup("temp::hub", "Temp -- Hub", "hub");
+        WaypointGroup temp = new WaypointGroup("temp::hub", "Temporary", "hub");
         temp.setTemp(true);
         temp.add(Waypoint.at(4, 5, 6).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L));
         manager.add(real);
@@ -188,6 +188,21 @@ class StorageJsonTest {
 
         assertFalse(copy.skipAheadEnabled(),
                 "per-route skip-ahead preference must survive reloads");
+    }
+
+    @Test
+    void group_subwaypointStructureRoundTrips() {
+        WaypointGroup g = WaypointGroup.create("subway-route", "dungeon_f7");
+        g.add(Waypoint.at(1, 10, 1).withName("main"));
+        g.add(Waypoint.at(2, 10, 2).withName("helper"));
+        g.toggleSubwaypoint(1);
+
+        JsonObject json = Storage.groupToJson(g);
+        WaypointGroup copy = Storage.groupFromJson(json);
+
+        assertFalse(copy.isSubwaypoint(0));
+        assertTrue(copy.isSubwaypoint(1));
+        assertEquals(0, copy.parentMainIndex(1));
     }
 
     @Test

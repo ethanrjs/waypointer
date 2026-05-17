@@ -87,6 +87,7 @@ public final class ProximityTracker {
         updateProximitySuppression(group, px, py, pz);
         boolean[] changed = { false };
         group.forEachNearbyIndex(px, py, pz, group.maxEffectiveRadius(), i -> {
+            if (group.isSubwaypoint(i)) return true;
             if (group.isStaticWaypointReached(i)) return true;
             if (group.isProximitySuppressed(i)) return true;
 
@@ -154,6 +155,7 @@ public final class ProximityTracker {
         // Remove in reverse so earlier indices don't shift under us.
         group.advancePast(reachedIndex);
         for (int j = reachedIndex; j >= from; j--) {
+            if (group.isSubwaypoint(j)) continue;
             Waypoint wj = group.get(j);
             if (wj.tempMode() == Waypoint.TEMP_UNTIL_REACHED) {
                 group.remove(j);
@@ -164,8 +166,9 @@ public final class ProximityTracker {
     }
 
     private static int currentReachedIndex(WaypointGroup group, int index,
-                                           double px, double py, double pz) {
+                                            double px, double py, double pz) {
         if (index < 0 || index >= group.size()) return -1;
+        if (group.isSubwaypoint(index)) return -1;
         if (group.isProximitySuppressed(index)) return -1;
         return isWithinReach(group, group.get(index), px, py, pz) ? index : -1;
     }
@@ -175,6 +178,7 @@ public final class ProximityTracker {
         int[] reachedIndex = { -1 };
         group.forEachNearbyIndex(px, py, pz, group.maxEffectiveRadius(), i -> {
             if (i < from || group.isProximitySuppressed(i)) return true;
+            if (group.isSubwaypoint(i)) return true;
             if (i <= reachedIndex[0]) return true;
             if (isWithinReach(group, group.get(i), px, py, pz)) {
                 reachedIndex[0] = i;
