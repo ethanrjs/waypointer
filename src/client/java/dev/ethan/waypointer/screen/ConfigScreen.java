@@ -292,6 +292,16 @@ public final class ConfigScreen extends Screen {
                 config::showTracer,
                 "Disable the waypoint tracer on static routes.");
         y2 += rowH;
+        addBoolRow(col2, y2, "Hide waypoints when near",
+                config.hideWaypointsNearPlayer(), config::setHideWaypointsNearPlayer,
+                "When on, waypoint boxes, labels, beams, and tracers hide while\n"
+              + "you stand near the waypoint, then reappear after you move away.");
+        y2 += rowH;
+        addNumberRow(col2, y2, colW, "Near hide radius (blocks)",
+                config.hideWaypointsNearRadius(), config::setHideWaypointsNearRadius,
+                config::hideWaypointsNearPlayer,
+                "Distance from the waypoint where near-hide starts. Default is 5 blocks.");
+        y2 += rowH;
         addBoolRow(col2, y2, "Hide reached static waypoints",
                 config.hideReachedStaticWaypointsUntilCycleComplete(),
                 config::setHideReachedStaticWaypointsUntilCycleComplete,
@@ -302,6 +312,17 @@ public final class ConfigScreen extends Screen {
                 config.focusTempWaypoints(), config::setFocusTempWaypoints,
                 "When on, adding a temporary waypoint hides other waypoints in the\n"
               + "active zone and forces a tracer to the temp until you leave the server.");
+        y2 += rowH;
+        addBoolRow(col2, y2, "Temp waypoints expire",
+                config.tempWaypointsExpireByDefault(), config::setTempWaypointsExpireByDefault,
+                "When on, newly-created temp waypoints use TIME mode by default.\n"
+              + "When off, they last until you leave the server unless changed in\n"
+              + "the Add Temp dialog.");
+        y2 += rowH;
+        addNumberRow(col2, y2, colW, "Temp duration (min)",
+                config.tempDefaultDurationMin(), this::setTempDefaultDuration,
+                config::tempWaypointsExpireByDefault,
+                "Default lifetime for TIME-mode temporary waypoints.");
     }
 
     private void addChatPage(int col1, int col2, int colW, int rowsY, int rowH) {
@@ -317,7 +338,7 @@ public final class ConfigScreen extends Screen {
                 config.autoAddChatTempWaypoints(), config::setAutoAddChatTempWaypoints,
                 config::chatCoordDetection,
                 "When chat coord detection finds a coordinate, immediately creates a\n"
-              + "session-scoped temp waypoint. Turn off to keep click-to-add behavior only.");
+              + "temporary waypoint using your default expiry. Off keeps click-to-add only.");
         y += rowH;
         addBoolRow(col1, y, "Chat codec detection (imports)",
                 config.chatCodecDetection(), config::setChatCodecDetection,
@@ -546,6 +567,13 @@ public final class ConfigScreen extends Screen {
 
         int clamped = rounded > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) rounded;
         config.setMaxWaypointLabels(clamped);
+    }
+
+    private void setTempDefaultDuration(double value) {
+        if (!Double.isFinite(value)) return;
+        long rounded = Math.round(value);
+        int clamped = rounded > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) rounded;
+        config.setTempDefaultDurationMin(clamped);
     }
 
     private void addBoolRow(int x, int y, String label, boolean initial,

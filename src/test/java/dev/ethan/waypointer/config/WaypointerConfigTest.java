@@ -1,6 +1,7 @@
 package dev.ethan.waypointer.config;
 
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
+import dev.ethan.waypointer.core.Waypoint;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -120,6 +121,9 @@ class WaypointerConfigTest {
         WaypointerConfig config = new WaypointerConfig();
 
         assertFalse(config.focusTempWaypoints());
+        assertEquals(Waypoint.TEMP_TIME, config.tempDefaultMode());
+        assertTrue(config.tempWaypointsExpireByDefault());
+        assertEquals(1, config.tempDefaultDurationMin());
 
         config.setFocusTempWaypoints(true);
         assertTrue(config.focusTempWaypoints());
@@ -131,10 +135,71 @@ class WaypointerConfigTest {
         assertEquals(3, config.tempDefaultMode());
 
         config.setTempDefaultMode(0);
-        assertEquals(2, config.tempDefaultMode());
+        assertEquals(Waypoint.TEMP_TIME, config.tempDefaultMode());
 
         config.setTempDefaultMode(4);
-        assertEquals(2, config.tempDefaultMode());
+        assertEquals(Waypoint.TEMP_TIME, config.tempDefaultMode());
+    }
+
+    @Test
+    void tempWaypointExpiryToggleMapsToTimeOrLeaveDefault() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setTempWaypointsExpireByDefault(false);
+        assertFalse(config.tempWaypointsExpireByDefault());
+        assertEquals(Waypoint.TEMP_UNTIL_LEAVE, config.tempDefaultMode());
+        assertEquals(0L, config.defaultTempExpiresAtMillis(1_000L));
+
+        config.setTempWaypointsExpireByDefault(true);
+        assertTrue(config.tempWaypointsExpireByDefault());
+        assertEquals(Waypoint.TEMP_TIME, config.tempDefaultMode());
+        assertEquals(61_000L, config.defaultTempExpiresAtMillis(1_000L));
+    }
+
+    @Test
+    void oldImplicitTempDefaultsMigrateToIssue31Defaults() {
+        WaypointerConfig config = WaypointerConfig.fromJson("""
+                {
+                  "autoAddChatTempWaypoints": true,
+                  "tempDefaultMode": 2,
+                  "tempDefaultDurationMin": 10
+                }
+                """);
+
+        assertFalse(config.autoAddChatTempWaypoints());
+        assertEquals(Waypoint.TEMP_TIME, config.tempDefaultMode());
+        assertEquals(1, config.tempDefaultDurationMin());
+    }
+
+    @Test
+    void oldConfigWithAutoAddAlreadyOffStillMigratesDurationDefault() {
+        WaypointerConfig config = WaypointerConfig.fromJson("""
+                {
+                  "autoAddChatTempWaypoints": false,
+                  "tempDefaultMode": 2,
+                  "tempDefaultDurationMin": 10
+                }
+                """);
+
+        assertFalse(config.autoAddChatTempWaypoints());
+        assertEquals(Waypoint.TEMP_TIME, config.tempDefaultMode());
+        assertEquals(1, config.tempDefaultDurationMin());
+    }
+
+    @Test
+    void currentSchemaKeepsExplicitTenMinuteTempDuration() {
+        WaypointerConfig config = WaypointerConfig.fromJson("""
+                {
+                  "configSchemaVersion": 2,
+                  "autoAddChatTempWaypoints": true,
+                  "tempDefaultMode": 1,
+                  "tempDefaultDurationMin": 10
+                }
+                """);
+
+        assertTrue(config.autoAddChatTempWaypoints());
+        assertEquals(Waypoint.TEMP_TIME, config.tempDefaultMode());
+        assertEquals(10, config.tempDefaultDurationMin());
     }
 
     @Test
@@ -232,12 +297,31 @@ class WaypointerConfigTest {
         WaypointerConfig config = new WaypointerConfig();
 
         assertTrue(config.chatCoordDetection());
-        assertTrue(config.autoAddChatTempWaypoints());
+        assertFalse(config.autoAddChatTempWaypoints());
         assertTrue(config.placeNewWaypointsBelowPlayer());
         assertTrue(config.chatCodecDetection());
         assertTrue(config.dimSequenceContextWaypoints());
         assertFalse(config.exportIncludeColors());
         assertTrue(config.exportIncludeGroupMeta());
+    }
+
+    @Test
+    void nearHideDefaultsOffWithFiveBlockRadiusAndClamps() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertFalse(config.hideWaypointsNearPlayer());
+        assertEquals(5.0, config.hideWaypointsNearRadius());
+
+        config.setHideWaypointsNearPlayer(true);
+        config.setHideWaypointsNearRadius(12.5);
+        assertTrue(config.hideWaypointsNearPlayer());
+        assertEquals(12.5, config.hideWaypointsNearRadius());
+
+        config.setHideWaypointsNearRadius(0.0);
+        assertEquals(0.5, config.hideWaypointsNearRadius());
+
+        config.setHideWaypointsNearRadius(Double.NaN);
+        assertEquals(0.5, config.hideWaypointsNearRadius());
     }
 
     @Test

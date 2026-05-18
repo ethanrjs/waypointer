@@ -209,23 +209,29 @@ public final class ActiveGroupManager {
         return g;
     }
 
-    /**
-     * Add a session-scoped temporary waypoint in the current zone's isolated
-     * temp bucket. Chat coordinate detection and the {@code /wp addtemp}
-     * command share this path so automatic and click-to-add temp markers behave
-     * identically: static rendering, no proximity progression, and cleanup on
-     * disconnect via {@link dev.ethan.waypointer.progression.TempWaypointCleaner}.
-     */
+    /** Add a disconnect-scoped temporary waypoint in the current zone's isolated temp bucket. */
     public WaypointGroup addTempWaypoint(int x, int y, int z) {
         return addTempWaypoint(x, y, z, "");
     }
 
     public WaypointGroup addTempWaypoint(int x, int y, int z, String sourceName) {
+        return addTempWaypoint(x, y, z, sourceName, Waypoint.TEMP_UNTIL_LEAVE, 0L);
+    }
+
+    /**
+     * Add a temporary waypoint in the current zone's isolated temp bucket using
+     * the caller's chosen lifecycle mode. Chat detection, commands, and keybinds
+     * share this path so temp markers stay static-rendered and out of real routes.
+     */
+    public WaypointGroup addTempWaypoint(int x, int y, int z, String sourceName,
+                                         int tempMode, long expiresAtMillis) {
         String source = sanitizeTempSourceName(sourceName);
         WaypointGroup target = getOrCreateTempGroup(source);
+        int mode = Waypoint.normalizeTempMode(tempMode);
+        long expiresAt = mode == Waypoint.TEMP_TIME ? Math.max(0L, expiresAtMillis) : 0L;
         Waypoint waypoint = Waypoint.at(x, y, z)
                 .withName(source)
-                .withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L);
+                .withTemp(mode, expiresAt);
         target.add(waypoint);
         fireDataChanged();
         return target;

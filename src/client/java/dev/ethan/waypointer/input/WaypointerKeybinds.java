@@ -38,7 +38,8 @@ import org.lwjgl.glfw.GLFW;
  *     unnamed waypoint there.
  *   - Reposition Mode: Add Named Waypoint -- pick a block in-world, then name
  *     the waypoint before adding it.
- *   - Add Temp Waypoint Here -- drops a session-scoped temporary waypoint.
+ *   - Add Temp Waypoint Here -- drops a temporary waypoint using the user's
+ *     default expiry mode and duration.
  *
  * All bindings are registered under a single Waypointer category via the
  * identifier-based API so the vanilla controls screen groups them together.
