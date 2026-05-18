@@ -7,16 +7,18 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 - Waypoints organized per Skyblock world type
 - Ordered routes
 - World rendering
-- Extremely compact import/export format
+- Extremely compact export format
 - Importable from chat messages
 - Keybindings
 - Clean UI for editing and management
-- Waypoint skipping in sequence (global toggle + per-group override)
+- Waypoint skipping in sequence
 - Temporary Waypoints
 - Clickable chat coordinates
 - Auto-added temporary chat coordinate waypoints
-- Customizable waypoint visuals: filled/outlined boxes, beacon beams, tracers, labels, and distances
+- Customizable waypoint visuals
 - Public API for other Fabric client mods
+- Works with shaders
+- Subwaypoints
 
 ## Waypoint Import/Export Compatibility
 
