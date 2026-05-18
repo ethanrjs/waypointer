@@ -2,7 +2,11 @@ package dev.ethan.waypointer.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import dev.ethan.waypointer.Waypointer;
+import dev.ethan.waypointer.core.Waypoint;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -49,8 +53,10 @@ public final class WaypointerConfig {
 
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final int CONFIG_SCHEMA_VERSION = 2;
 
     // Progression
+    private int configSchemaVersion = CONFIG_SCHEMA_VERSION;
     private double defaultReachRadius = 3.0;
     /**
      * When {@code true}, every waypoint group's progress index resets to 0 each time
@@ -124,6 +130,14 @@ public final class WaypointerConfig {
      */
     private boolean hideTracerOnStaticRoutes = true;
     /**
+     * Optional proximity declutter: waypoints temporarily stop rendering while
+     * the player stands near them, then reappear when the player walks away.
+     * Default-off keeps existing routes visually stable.
+     */
+    private boolean hideWaypointsNearPlayer = false;
+    /** Radius in blocks for {@link #hideWaypointsNearPlayer}. */
+    private double hideWaypointsNearRadius = 5.0;
+    /**
      * Optional checklist behavior for STATIC groups: when the player enters a
      * waypoint's reach radius, that marker hides until every waypoint in the
      * group has been reached, then the whole group becomes visible again.
@@ -182,11 +196,11 @@ public final class WaypointerConfig {
     private List<String> chatCoordSenderBlacklist = new ArrayList<>();
     /**
      * When {@code true}, detected chat coordinate callouts immediately create
-     * session-scoped temp waypoints. The chat text remains clickable either way
-     * so users who dislike automatic markers can turn this off and opt in per
-     * message.
+     * temp waypoints using the user's temp expiry defaults. Default-off keeps
+     * chat detection click-to-add first unless the player explicitly opts into
+     * automatic markers.
      */
-    private boolean autoAddChatTempWaypoints = true;
+    private boolean autoAddChatTempWaypoints = false;
     /**
      * Player-relative add flows default to the block below the player's feet so
      * newly-created markers sit on the floor instead of inside the player's body.
@@ -267,9 +281,9 @@ public final class WaypointerConfig {
      * {@link dev.ethan.waypointer.core.Waypoint}'s tempMode encoding:
      * 1 = time-based, 2 = until reached, 3 = until server leave.
      */
-    private int tempDefaultMode = 2;
+    private int tempDefaultMode = Waypoint.TEMP_TIME;
     /** Default duration (minutes) for time-based temp waypoints. */
-    private int tempDefaultDurationMin = 10;
+    private int tempDefaultDurationMin = 1;
 
     /**
      * Debounce window for config writes. Configs mutate in bursts (EditBox
@@ -283,6 +297,7 @@ public final class WaypointerConfig {
     // Transient; never persisted.
     private transient Path file;
     private transient AsyncSaver saver;
+    private transient boolean migratedDuringLoad;
 
     public static WaypointerConfig load() {
         Path dir = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
@@ -291,8 +306,7 @@ public final class WaypointerConfig {
         try {
             if (Files.exists(file)) {
                 String raw = Files.readString(file);
-                config = GSON.fromJson(raw, WaypointerConfig.class);
-                if (config == null) config = new WaypointerConfig();
+                config = fromJson(raw);
             } else {
                 config = new WaypointerConfig();
             }
@@ -302,7 +316,52 @@ public final class WaypointerConfig {
         }
         config.file = file;
         config.saver = new AsyncSaver("config", config::writeToDisk, SAVE_DEBOUNCE_MS);
+        if (config.migratedDuringLoad) config.save();
         return config;
+    }
+
+    static WaypointerConfig fromJson(String raw) {
+        WaypointerConfig config = GSON.fromJson(raw, WaypointerConfig.class);
+        if (config == null) config = new WaypointerConfig();
+        config.applyMigrations(schemaVersion(raw));
+        return config;
+    }
+
+    private static int schemaVersion(String raw) {
+        try {
+            JsonElement parsed = JsonParser.parseString(raw);
+            if (parsed == null || !parsed.isJsonObject()) return CONFIG_SCHEMA_VERSION;
+            JsonObject root = parsed.getAsJsonObject();
+            return root.has("configSchemaVersion")
+                    ? root.get("configSchemaVersion").getAsInt()
+                    : 1;
+        } catch (Exception ignored) {
+            return CONFIG_SCHEMA_VERSION;
+        }
+    }
+
+    private void applyMigrations(int schemaVersion) {
+        if (schemaVersion < 2) {
+            migrateIssue31TempDefaults();
+        }
+        configSchemaVersion = CONFIG_SCHEMA_VERSION;
+    }
+
+    private void migrateIssue31TempDefaults() {
+        boolean changed = false;
+        if (autoAddChatTempWaypoints) {
+            autoAddChatTempWaypoints = false;
+            changed = true;
+        }
+        if (tempDefaultMode == Waypoint.TEMP_UNTIL_REACHED) {
+            tempDefaultMode = Waypoint.TEMP_TIME;
+            changed = true;
+        }
+        if (tempDefaultDurationMin == 10) {
+            tempDefaultDurationMin = 1;
+            changed = true;
+        }
+        migratedDuringLoad = changed;
     }
 
     /**
@@ -355,6 +414,8 @@ public final class WaypointerConfig {
     public boolean showTracer()               { return showTracer; }
     public boolean dimSequenceContextWaypoints() { return dimSequenceContextWaypoints; }
     public boolean hideTracerOnStaticRoutes() { return hideTracerOnStaticRoutes; }
+    public boolean hideWaypointsNearPlayer()  { return hideWaypointsNearPlayer; }
+    public double hideWaypointsNearRadius()   { return Math.max(0.5, hideWaypointsNearRadius); }
     public boolean hideReachedStaticWaypointsUntilCycleComplete() { return hideReachedStaticWaypointsUntilCycleComplete; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
     public int maxWaypointLabels()            { return Math.max(0, maxWaypointLabels); }
@@ -395,8 +456,18 @@ public final class WaypointerConfig {
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
     public boolean checkForUpdates()            { return checkForUpdates; }
     public boolean irisShaderHudFallback()      { return irisShaderHudFallback; }
-    public int tempDefaultMode()                { return tempDefaultMode; }
-    public int tempDefaultDurationMin()         { return tempDefaultDurationMin; }
+    public int tempDefaultMode() {
+        return tempDefaultMode < Waypoint.TEMP_TIME || tempDefaultMode > Waypoint.TEMP_UNTIL_LEAVE
+                ? Waypoint.TEMP_TIME
+                : tempDefaultMode;
+    }
+    public int tempDefaultDurationMin()         { return Math.max(1, Math.min(24 * 60, tempDefaultDurationMin)); }
+    public boolean tempWaypointsExpireByDefault() { return tempDefaultMode() == Waypoint.TEMP_TIME; }
+    public long defaultTempExpiresAtMillis(long nowMillis) {
+        return tempDefaultMode() == Waypoint.TEMP_TIME
+                ? nowMillis + (long) tempDefaultDurationMin() * 60_000L
+                : 0L;
+    }
 
     public void setDefaultReachRadius(double v)        { this.defaultReachRadius = clamp(v, 0.5, 100); save(); }
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
@@ -423,6 +494,12 @@ public final class WaypointerConfig {
     public void setShowTracer(boolean v)               { this.showTracer = v; save(); }
     public void setDimSequenceContextWaypoints(boolean v) { this.dimSequenceContextWaypoints = v; save(); }
     public void setHideTracerOnStaticRoutes(boolean v) { this.hideTracerOnStaticRoutes = v; save(); }
+    public void setHideWaypointsNearPlayer(boolean v) { this.hideWaypointsNearPlayer = v; save(); }
+    public void setHideWaypointsNearRadius(double v) {
+        if (!Double.isFinite(v)) return;
+        this.hideWaypointsNearRadius = clamp(v, 0.5, 100.0);
+        save();
+    }
     public void setHideReachedStaticWaypointsUntilCycleComplete(boolean v) {
         this.hideReachedStaticWaypointsUntilCycleComplete = v;
         save();
@@ -493,13 +570,18 @@ public final class WaypointerConfig {
     public void setCheckForUpdates(boolean v)          { this.checkForUpdates = v; save(); }
     public void setIrisShaderHudFallback(boolean v)    { this.irisShaderHudFallback = v; save(); }
     public void setTempDefaultMode(int v) {
-        int clamped = (v < 1 || v > 3) ? 2 : v;
+        int clamped = (v < Waypoint.TEMP_TIME || v > Waypoint.TEMP_UNTIL_LEAVE)
+                ? Waypoint.TEMP_TIME
+                : v;
         this.tempDefaultMode = clamped;
         save();
     }
     public void setTempDefaultDurationMin(int v) {
         this.tempDefaultDurationMin = Math.max(1, Math.min(24 * 60, v));
         save();
+    }
+    public void setTempWaypointsExpireByDefault(boolean v) {
+        setTempDefaultMode(v ? Waypoint.TEMP_TIME : Waypoint.TEMP_UNTIL_LEAVE);
     }
 
     private static double clamp(double v, double lo, double hi) {

@@ -442,6 +442,19 @@ class WaypointGroupTest {
     }
 
     @Test
+    void manager_addTempWaypointCanUseConfiguredTimedExpiry() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("dungeon_f7", "Catacombs F7"));
+
+        WaypointGroup bucket = manager.addTempWaypoint(
+                100, 64, -200, "", Waypoint.TEMP_TIME, 123_456L);
+
+        Waypoint waypoint = bucket.get(0);
+        assertEquals(Waypoint.TEMP_TIME, waypoint.tempMode());
+        assertEquals(123_456L, waypoint.expiresAtMillis());
+    }
+
+    @Test
     void manager_getOrCreateActiveGroupDoesNotReuseTempBucket() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("hub", "Hub"));

@@ -134,12 +134,10 @@ public final class WaypointerCommands {
                                                                         StringArgumentType.getString(ctx, "name"))))))))
                         .then(argument("name", StringArgumentType.greedyString())
                                 .executes(ctx -> runAdd(ctx.getSource(), StringArgumentType.getString(ctx, "name")))))
-                // "addtemp at X Y Z" is the command fired by chat-coord clicks.
+                // "addtemp at X Y Z" is also the command fired by chat-coord clicks.
                 // It diverges from "add at" in two ways: the waypoint lands in the
-                // zone's dedicated temp bucket (not the active route), and it's
-                // stamped with TEMP_UNTIL_LEAVE so it auto-cleans on disconnect.
-                // Chat-shared coords are almost always one-shot ("come to these
-                // coords") so treating them as permanent polluted routes over time.
+                // zone's dedicated temp bucket (not the active route), and it uses
+                // the user's configured temp expiry default.
                 .then(literal("addtemp")
                         .then(literal("at")
                                 .then(argument("x", IntegerArgumentType.integer())
@@ -644,28 +642,15 @@ public final class WaypointerCommands {
         return 1;
     }
 
-    /**
-     * Entry point for {@code /wp addtemp at <x> <y> <z>} (fired by chat-coord
-     * clicks, see {@link dev.ethan.waypointer.chat.ChatCoordDetector}).
-     *
-     * <p>Chat-shared coords are generally "meet me here" one-shots; making them
-     * permanent by default would bloat the user's route with single-use
-     * destinations. LEAVE expiry is the right default because:
-     *   - TIME would require guessing a duration the sender never specified;
-     *   - REACH disappears the moment the player arrives, which is too eager
-     *     if the player wants to leave and come back;
-     *   - LEAVE keeps the marker for the whole play session and auto-cleans
-     *     on disconnect, which is exactly the "come to these coords until we
-     *     log off" contract the chat context implies.
-     */
     private int runAddTempAt(FabricClientCommandSource src, int x, int y, int z, String sourceName) {
-        WaypointGroup target = manager.addTempWaypoint(x, y, z, sourceName);
+        WaypointGroup target = addConfiguredTempWaypoint(x, y, z, sourceName);
         if (config.focusTempWaypoints()) {
             manager.focusTempWaypoint(target, target.size() - 1);
         }
 
         success(src, "Added temp waypoint to \"" + target.name()
-                + "\" at " + x + ", " + y + ", " + z + " (expires on disconnect)");
+                + "\" at " + x + ", " + y + ", " + z + " ("
+                + defaultTempExpiryDescription() + ")");
         return 1;
     }
 
@@ -692,7 +677,7 @@ public final class WaypointerCommands {
 
         ActiveGroupManager.TempWaypointSelection selection = manager.findTempWaypoint(x, y, z, senderName);
         if (selection == null) {
-            WaypointGroup target = manager.addTempWaypoint(x, y, z, sourceName);
+            WaypointGroup target = addConfiguredTempWaypoint(x, y, z, sourceName);
             int index = target.size() - 1;
             if (config.focusTempWaypoints()) {
                 manager.focusTempWaypoint(target, index);
@@ -707,6 +692,22 @@ public final class WaypointerCommands {
         });
         success(src, "Opened temporary waypoint at " + x + ", " + y + ", " + z);
         return 1;
+    }
+
+    private WaypointGroup addConfiguredTempWaypoint(int x, int y, int z, String sourceName) {
+        long now = System.currentTimeMillis();
+        return manager.addTempWaypoint(x, y, z, sourceName,
+                config.tempDefaultMode(),
+                config.defaultTempExpiresAtMillis(now));
+    }
+
+    private String defaultTempExpiryDescription() {
+        return switch (config.tempDefaultMode()) {
+            case Waypoint.TEMP_TIME -> "expires after " + config.tempDefaultDurationMin() + " min";
+            case Waypoint.TEMP_UNTIL_REACHED -> "expires when reached";
+            case Waypoint.TEMP_UNTIL_LEAVE -> "expires on disconnect";
+            default -> "temporary";
+        };
     }
 
     private int runChatCoordBlacklist(FabricClientCommandSource src) {
