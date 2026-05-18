@@ -7,6 +7,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.core.WaypointVisibility;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
@@ -106,6 +107,7 @@ public final class TracerRenderer implements HudElement {
         float fromX = (float) camPos.x + tracerOriginDelta[0];
         float fromY = (float) camPos.y + tracerOriginDelta[1];
         float fromZ = (float) camPos.z + tracerOriginDelta[2];
+        double nearHideDistanceSq = nearHideDistanceSq();
         float alpha = (float) config.tracerOpacity();
         if (tempFocus) {
             alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
@@ -126,6 +128,7 @@ public final class TracerRenderer implements HudElement {
             }
             Waypoint target = g.current();
             if (target == null) continue;
+            if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) continue;
             int color = matchWaypoint ? target.color() : overrideColor;
             RenderHelpers.emitLine(lines, ps,
                     fromX, fromY, fromZ,
@@ -147,6 +150,7 @@ public final class TracerRenderer implements HudElement {
         if (!tempFocus && !config.showTracer()) return;
 
         Minecraft mc = Minecraft.getInstance();
+        LocalPlayer player = mc.player;
         GameRenderer renderer = mc.gameRenderer;
         Camera camera = renderer.getMainCamera();
         if (!camera.isInitialized()) return;
@@ -160,6 +164,7 @@ public final class TracerRenderer implements HudElement {
         if (tempFocus) {
             alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
         }
+        double nearHideDistanceSq = nearHideDistanceSq();
         boolean matchWaypoint = config.matchTracerToWaypointColor();
         int overrideColor = config.tracerColor();
         double thickness = config.tracerThickness();
@@ -173,6 +178,7 @@ public final class TracerRenderer implements HudElement {
 
             Waypoint target = group.current();
             if (target == null) continue;
+            if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) continue;
             if (!projector.project(target.x() + 0.5, target.y() + 0.5, target.z() + 0.5,
                     screenW, screenH, screenScratch)) {
                 projectOffscreenTarget(camera, target, screenW, screenH, screenScratch);
@@ -213,6 +219,19 @@ public final class TracerRenderer implements HudElement {
 
         out[0] = centerX + screenDirX * t;
         out[1] = centerY + screenDirY * t;
+    }
+
+    private double nearHideDistanceSq() {
+        return config.hideWaypointsNearPlayer()
+                ? WaypointVisibility.squaredRadius(config.hideWaypointsNearRadius())
+                : 0.0;
+    }
+
+    private static boolean shouldHideNearPlayer(Waypoint waypoint, LocalPlayer player,
+                                                double nearHideDistanceSq) {
+        return player != null
+                && WaypointVisibility.isHiddenNearPlayer(
+                        waypoint, player.getX(), player.getY(), player.getZ(), nearHideDistanceSq);
     }
 
     private static void writeTracerOriginDelta(Minecraft mc, Camera cam, LocalPlayer player,
