@@ -22,10 +22,9 @@ import java.util.regex.Pattern;
 
 /**
  * Sniffs incoming game chat for "x y z" coordinate triples and recolors the coord
- * numbers themselves into clickable aqua-underlined runs. By default, each
- * detected coordinate also drops a session-scoped temporary waypoint (expires
- * on disconnect) into the zone's temp bucket; users can turn that automatic
- * creation off and keep the click-to-add chip only.
+ * numbers themselves into clickable aqua-underlined runs. If the user enables
+ * automatic chat temp waypoints, each detected coordinate also drops a temporary
+ * waypoint into the zone's temp bucket; the default stays click-to-add only.
  *
  * <p>Chat-shared coords are almost always one-offs -- "meet me at 100 64 200"
  * -- so committing them to the permanent route was the wrong default and
@@ -85,10 +84,13 @@ public final class ChatCoordDetector {
         if (visibleMatches.isEmpty()) return msg;
 
         if (config.autoAddChatTempWaypoints()) {
+            long now = System.currentTimeMillis();
             for (int i = 0; i < visibleMatches.size(); i++) {
                 CoordScanner.Match match = visibleMatches.get(i);
                 var group = manager.addTempWaypoint(match.x(), match.y(), match.z(),
-                        tempLabels.get(i));
+                        tempLabels.get(i),
+                        config.tempDefaultMode(),
+                        config.defaultTempExpiresAtMillis(now));
                 if (config.focusTempWaypoints()) {
                     manager.focusTempWaypoint(group, group.size() - 1);
                 }
@@ -204,9 +206,8 @@ public final class ChatCoordDetector {
      */
     private static Style chipStyle(Style base, CoordScanner.Match m, String flatText,
             boolean chatTempAlreadyAutoAdded, String tempLabel, String senderName) {
-        // Target the temp variant so the waypoint auto-cleans on disconnect --
-        // see the class javadoc for why chat-shared coords default to
-        // session-scoped rather than permanent.
+        // Target the temp variant so chat-shared coords stay ephemeral instead
+        // of being appended to the user's permanent route.
         Style styled = base
                 .withColor(ChatFormatting.AQUA)
                 .withUnderlined(true);

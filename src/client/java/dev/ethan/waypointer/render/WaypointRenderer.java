@@ -7,6 +7,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.core.WaypointVisibility;
 import dev.ethan.waypointer.text.AmpersandFormatting;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
@@ -201,7 +202,9 @@ public final class WaypointRenderer implements HudElement {
         if (ps == null) return;
         Minecraft mc = Minecraft.getInstance();
         Vec3 camPos = mc.gameRenderer.getMainCamera().position();
+        Vec3 playerPos = mc.player == null ? null : mc.player.position();
         double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
+        double nearHideDistanceSq = nearHideDistanceSq();
 
         ps.pushPose();
         ps.translate(-camPos.x, -camPos.y, -camPos.z);
@@ -223,12 +226,14 @@ public final class WaypointRenderer implements HudElement {
             int maxY = beamMaxY(mc);
             if (drawBeams) {
                 for (WaypointGroup g : groups) {
-                    emitBeaconBeams(ps, quads, g, camPos, maxStaticDistanceSq, minY, maxY);
+                    emitBeaconBeams(ps, quads, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq, minY, maxY);
                 }
             }
             if (drawFill) {
                 for (WaypointGroup g : groups) {
-                    emitFilledBoxes(ps, quads, g, camPos, maxStaticDistanceSq);
+                    emitFilledBoxes(ps, quads, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq);
                 }
             }
             RenderHelpers.endBatch(buffers, quadType);
@@ -237,7 +242,8 @@ public final class WaypointRenderer implements HudElement {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
             VertexConsumer lines = buffers.getBuffer(lineType);
             for (WaypointGroup g : groups) {
-                emitLineBoxes(ps, lines, g, camPos, maxStaticDistanceSq);
+                emitLineBoxes(ps, lines, g, camPos, playerPos,
+                        maxStaticDistanceSq, nearHideDistanceSq);
             }
             RenderHelpers.endBatch(buffers, lineType);
         }
@@ -246,7 +252,8 @@ public final class WaypointRenderer implements HudElement {
     }
 
     private void emitLineBoxes(PoseStack ps, VertexConsumer lines, WaypointGroup g,
-                               Vec3 camPos, double maxStaticDistanceSq) {
+                               Vec3 camPos, Vec3 playerPos,
+                               double maxStaticDistanceSq, double nearHideDistanceSq) {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
@@ -256,6 +263,7 @@ public final class WaypointRenderer implements HudElement {
             if (shouldHideStaticReached(g, i)) return;
 
             Waypoint w = g.get(i);
+            if (shouldHideNearPlayer(w, playerPos, nearHideDistanceSq)) return;
             if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
 
             State state = stateFor(g, i, currentIdx);
@@ -269,7 +277,8 @@ public final class WaypointRenderer implements HudElement {
     }
 
     private void emitFilledBoxes(PoseStack ps, VertexConsumer quads, WaypointGroup g,
-                                 Vec3 camPos, double maxStaticDistanceSq) {
+                                 Vec3 camPos, Vec3 playerPos,
+                                 double maxStaticDistanceSq, double nearHideDistanceSq) {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
@@ -278,6 +287,7 @@ public final class WaypointRenderer implements HudElement {
             if (shouldHideStaticReached(g, i)) return;
 
             Waypoint w = g.get(i);
+            if (shouldHideNearPlayer(w, playerPos, nearHideDistanceSq)) return;
             if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
 
             State state = stateFor(g, i, currentIdx);
@@ -291,7 +301,8 @@ public final class WaypointRenderer implements HudElement {
     }
 
     private void emitBeaconBeams(PoseStack ps, VertexConsumer quads, WaypointGroup g,
-                                 Vec3 camPos, double maxStaticDistanceSq,
+                                 Vec3 camPos, Vec3 playerPos,
+                                 double maxStaticDistanceSq, double nearHideDistanceSq,
                                  int minY, int maxY) {
         WaypointerConfig.BeaconBeamMode mode = config.beaconBeamMode();
         if (mode == WaypointerConfig.BeaconBeamMode.OFF || g.isEmpty()) return;
@@ -302,22 +313,26 @@ public final class WaypointRenderer implements HudElement {
         if (mode == WaypointerConfig.BeaconBeamMode.CURRENT) {
             int beamIndex = currentBeamIndex(g);
             emitBeaconBeamIfVisible(ps, quads, g, beamIndex, currentIdx,
-                    showCompleted, camPos, maxStaticDistanceSq, minY, maxY);
+                    showCompleted, camPos, playerPos, maxStaticDistanceSq,
+                    nearHideDistanceSq, minY, maxY);
             return;
         }
 
         g.forEachVisibleIndex(i -> emitBeaconBeamIfVisible(ps, quads, g, i,
-                currentIdx, showCompleted, camPos, maxStaticDistanceSq, minY, maxY));
+                currentIdx, showCompleted, camPos, playerPos, maxStaticDistanceSq,
+                nearHideDistanceSq, minY, maxY));
     }
 
     private void emitBeaconBeamIfVisible(PoseStack ps, VertexConsumer quads,
                                          WaypointGroup g, int i, int currentIdx,
                                          boolean showCompleted, Vec3 camPos,
-                                         double maxStaticDistanceSq, int minY, int maxY) {
+                                         Vec3 playerPos, double maxStaticDistanceSq,
+                                         double nearHideDistanceSq, int minY, int maxY) {
         if (i < 0 || i >= g.size()) return;
         if (shouldHideStaticReached(g, i)) return;
 
         Waypoint w = g.get(i);
+        if (shouldHideNearPlayer(w, playerPos, nearHideDistanceSq)) return;
         if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
 
         State state = stateFor(g, i, currentIdx);
@@ -366,21 +381,25 @@ public final class WaypointRenderer implements HudElement {
 
         Font font = mc.font;
         Vec3 camPos = camera.position();
+        Vec3 playerPos = mc.player == null ? null : mc.player.position();
         labelProjector.prepare(renderer, camera);
         int screenW = g.guiWidth();
         int screenH = g.guiHeight();
         int labelBudget = config.maxWaypointLabels();
         double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
+        double nearHideDistanceSq = nearHideDistanceSq();
         labelCandidateCount = 0;
 
         if (drawHudFallback) {
-            drawHudFallbackBoxes(g, camPos, screenW, screenH, groups, maxStaticDistanceSq);
+            drawHudFallbackBoxes(g, camPos, playerPos, screenW, screenH, groups,
+                    maxStaticDistanceSq, nearHideDistanceSq);
         }
 
         if (showNames || showDistances) {
             for (WaypointGroup group : groups) {
-                drawGroupLabels(g, font, camPos, screenW, screenH, group,
-                        showNames, showDistances, labelBudget, maxStaticDistanceSq);
+                drawGroupLabels(g, font, camPos, playerPos, screenW, screenH, group,
+                        showNames, showDistances, labelBudget,
+                        maxStaticDistanceSq, nearHideDistanceSq);
             }
             if (labelBudget > 0 && labelCandidateCount > 0) {
                 drawBudgetedLabels(g, font, Math.min(labelBudget, labelCandidateCount));
@@ -388,9 +407,9 @@ public final class WaypointRenderer implements HudElement {
         }
     }
 
-    private void drawHudFallbackBoxes(GuiGraphics g, Vec3 camPos, int screenW,
+    private void drawHudFallbackBoxes(GuiGraphics g, Vec3 camPos, Vec3 playerPos, int screenW,
                                       int screenH, Iterable<WaypointGroup> groups,
-                                      double maxStaticDistanceSq) {
+                                      double maxStaticDistanceSq, double nearHideDistanceSq) {
         WaypointerConfig.BoxStyle style = config.boxStyle();
         if (style == WaypointerConfig.BoxStyle.FILLED) {
             // The HUD fallback cannot faithfully preserve translucent 3D faces
@@ -401,15 +420,15 @@ public final class WaypointRenderer implements HudElement {
         if (style == WaypointerConfig.BoxStyle.OUTLINED
                 || style == WaypointerConfig.BoxStyle.FILLED_OUTLINED) {
             for (WaypointGroup group : groups) {
-                drawHudFallbackGroupBoxes(g, camPos, screenW, screenH,
-                        group, maxStaticDistanceSq);
+                drawHudFallbackGroupBoxes(g, camPos, playerPos, screenW, screenH,
+                        group, maxStaticDistanceSq, nearHideDistanceSq);
             }
         }
     }
 
-    private void drawHudFallbackGroupBoxes(GuiGraphics g, Vec3 camPos, int screenW,
+    private void drawHudFallbackGroupBoxes(GuiGraphics g, Vec3 camPos, Vec3 playerPos, int screenW,
                                            int screenH, WaypointGroup group,
-                                           double maxStaticDistanceSq) {
+                                           double maxStaticDistanceSq, double nearHideDistanceSq) {
         int currentIdx = group.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
@@ -418,6 +437,7 @@ public final class WaypointRenderer implements HudElement {
             if (shouldHideStaticReached(group, i)) return;
 
             Waypoint waypoint = group.get(i);
+            if (shouldHideNearPlayer(waypoint, playerPos, nearHideDistanceSq)) return;
             if (isStaticBeyondDistanceLimit(group, waypoint, camPos, maxStaticDistanceSq)) return;
 
             State state = stateFor(group, i, currentIdx);
@@ -487,10 +507,11 @@ public final class WaypointRenderer implements HudElement {
         projectedBoxMaxY = Math.max(projectedBoxMaxY, labelScreenScratch[1]);
     }
 
-    private void drawGroupLabels(GuiGraphics g, Font font, Vec3 camPos,
+    private void drawGroupLabels(GuiGraphics g, Font font, Vec3 camPos, Vec3 playerPos,
                                  int screenW, int screenH, WaypointGroup group,
                                  boolean showNames, boolean showDistances,
-                                 int labelBudget, double maxStaticDistanceSq) {
+                                 int labelBudget, double maxStaticDistanceSq,
+                                 double nearHideDistanceSq) {
         int currentIdx = group.currentIndex();
         boolean showCompleted = config.showCompleted();
         // Hoist out of the per-waypoint lambda so a long route doesn't pay
@@ -505,6 +526,7 @@ public final class WaypointRenderer implements HudElement {
             if (shouldHideStaticReached(group, i)) return;
 
             Waypoint w = group.get(i);
+            if (shouldHideNearPlayer(w, playerPos, nearHideDistanceSq)) return;
             State state = stateFor(group, i, currentIdx);
             if (shouldHideCompletedSequenceWaypoint(group, i, currentIdx, state, showCompleted, w)) return;
             if (w.hasFlag(Waypoint.FLAG_HIDE_NAME)) return;
@@ -773,6 +795,19 @@ public final class WaypointRenderer implements HudElement {
         return config.hideReachedStaticWaypointsUntilCycleComplete()
                 && group.loadMode() == WaypointGroup.LoadMode.STATIC
                 && group.isStaticWaypointReached(index);
+    }
+
+    private double nearHideDistanceSq() {
+        return config.hideWaypointsNearPlayer()
+                ? WaypointVisibility.squaredRadius(config.hideWaypointsNearRadius())
+                : 0.0;
+    }
+
+    private static boolean shouldHideNearPlayer(Waypoint waypoint, Vec3 playerPos,
+                                                double nearHideDistanceSq) {
+        return playerPos != null
+                && WaypointVisibility.isHiddenNearPlayer(
+                        waypoint, playerPos.x, playerPos.y, playerPos.z, nearHideDistanceSq);
     }
 
     private static boolean isNearScreen(double sx, double sy, int screenW, int screenH) {
