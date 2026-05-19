@@ -6,5 +6,6 @@
   "key.waypointer.reposition_add_waypoint": "Reposition Mode: Add Waypoint",
   "key.waypointer.reposition_add_named_waypoint": "Reposition Mode: Add Named Waypoint",
   "key.waypointer.add_temp_waypoint_here": "Add Temporary Waypoint at Player",
+  "key.waypointer.diana_warp_assist": "Diana Warp Assist",
   "key.category.waypointer.main": "Waypointer"
 }

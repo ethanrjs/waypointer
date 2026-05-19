@@ -534,6 +534,58 @@ class WaypointGroupTest {
         assertEquals(List.of(route, bucket), manager.activeGroups());
     }
 
+    @Test
+    void manager_removeReachedTempWaypointsClearsReachedTempsInCurrentZone() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup route = route();
+        route.setZoneId("hub");
+        manager.add(route);
+
+        WaypointGroup bucket = manager.addTempWaypoint(1, 70, 2);
+        manager.addTempWaypoint(30, 70, 2);
+        manager.focusTempWaypoint(bucket, 0);
+
+        int removed = manager.removeReachedTempWaypoints(1.5, 70.5, 2.5);
+
+        assertEquals(1, removed);
+        assertEquals(1, bucket.size());
+        assertEquals(30, bucket.get(0).x());
+        assertEquals(List.of(route, bucket), manager.activeGroups(),
+                "removing the focused temp waypoint should restore the normal active set");
+    }
+
+    @Test
+    void manager_removeReachedTempWaypointsOnlyTouchesCurrentZone() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup hubBucket = manager.addTempWaypoint(1, 70, 2);
+
+        manager.onZoneChanged(new Zone("park", "The Park"));
+        WaypointGroup parkBucket = manager.addTempWaypoint(1, 70, 2);
+
+        int removed = manager.removeReachedTempWaypoints(1.5, 70.5, 2.5);
+
+        assertEquals(1, removed);
+        assertEquals(1, hubBucket.size());
+        assertEquals(0, parkBucket.size());
+    }
+
+    @Test
+    void manager_removeReachedTempWaypointsHonorsPredicate() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup bucket = manager.addTempWaypoint(1, 70, 2, "Rare Mob from Babbur");
+        manager.addTempWaypoint(1, 70, 2, "Generic temp");
+
+        int removed = manager.removeReachedTempWaypoints(1.5, 70.5, 2.5,
+                waypoint -> waypoint.name().contains("from"));
+
+        assertEquals(1, removed);
+        assertEquals(1, bucket.size());
+        assertEquals("Generic temp", bucket.get(0).name());
+    }
+
     private static int[] visibleIndices(WaypointGroup group) {
         List<Integer> indices = new ArrayList<>();
         group.forEachVisibleIndex(indices::add);

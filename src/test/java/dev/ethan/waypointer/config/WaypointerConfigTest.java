@@ -2,6 +2,8 @@ package dev.ethan.waypointer.config;
 
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import dev.ethan.waypointer.core.Waypoint;
+import dev.ethan.waypointer.diana.DianaRareMob;
+import dev.ethan.waypointer.diana.DianaWarp;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -190,7 +192,7 @@ class WaypointerConfigTest {
     void currentSchemaKeepsExplicitTenMinuteTempDuration() {
         WaypointerConfig config = WaypointerConfig.fromJson("""
                 {
-                  "configSchemaVersion": 2,
+                  "configSchemaVersion": 6,
                   "autoAddChatTempWaypoints": true,
                   "tempDefaultMode": 1,
                   "tempDefaultDurationMin": 10
@@ -200,6 +202,32 @@ class WaypointerConfigTest {
         assertTrue(config.autoAddChatTempWaypoints());
         assertEquals(Waypoint.TEMP_TIME, config.tempDefaultMode());
         assertEquals(10, config.tempDefaultDurationMin());
+    }
+
+    @Test
+    void oldDianaSubsettingsMigrateBackToSimpleDefaults() {
+        WaypointerConfig config = WaypointerConfig.fromJson("""
+                {
+                  "configSchemaVersion": 2,
+                  "dianaShowStartBurrows": false,
+                  "dianaShowMobBurrows": false,
+                  "dianaShowTreasureBurrows": false,
+                  "dianaSpadeEstimateWaypoints": false,
+                  "dianaWarpPrompt": false,
+                  "dianaEstimateWaypointName": "Skyhook",
+                  "dianaEstimateMinSamples": 24,
+                  "dianaEstimateStabilityRadius": 16.0
+                }
+                """);
+
+        assertTrue(config.dianaShowStartBurrows());
+        assertTrue(config.dianaShowMobBurrows());
+        assertTrue(config.dianaShowTreasureBurrows());
+        assertTrue(config.dianaSpadeEstimateWaypoints());
+        assertTrue(config.dianaWarpPrompt());
+        assertEquals("Burrow", config.dianaEstimateWaypointName());
+        assertEquals(8, config.dianaEstimateMinSamples());
+        assertEquals(4.5, config.dianaEstimateStabilityRadius());
     }
 
     @Test
@@ -298,11 +326,40 @@ class WaypointerConfigTest {
 
         assertTrue(config.chatCoordDetection());
         assertFalse(config.autoAddChatTempWaypoints());
+        assertTrue(config.dianaBurrowWaypoints());
+        assertTrue(config.dianaShowStartBurrows());
+        assertTrue(config.dianaShowMobBurrows());
+        assertTrue(config.dianaShowTreasureBurrows());
+        assertTrue(config.dianaSpadeEstimateWaypoints());
+        assertEquals("Burrow", config.dianaEstimateWaypointName());
+        assertEquals(0x4FE05A, config.dianaEstimateWaypointColor());
+        assertEquals(0x4FE05A, config.dianaStartBurrowColor());
+        assertEquals(0xFF4040, config.dianaMobBurrowColor());
+        assertEquals(0xFFB02E, config.dianaTreasureBurrowColor());
+        assertEquals(8, config.dianaEstimateMinSamples());
+        assertEquals(4.5, config.dianaEstimateStabilityRadius());
+        assertTrue(config.dianaWarpAssist());
+        assertTrue(config.dianaWarpPrompt());
+        assertEquals(45.0, config.dianaWarpMinSavings());
+        assertTrue(config.dianaWarpEnabled(DianaWarp.HUB));
+        assertTrue(config.dianaWarpEnabled(DianaWarp.CASTLE));
+        assertTrue(config.dianaWarpEnabled(DianaWarp.MUSEUM));
+        assertTrue(config.dianaWarpEnabled(DianaWarp.WIZARD));
+        assertTrue(config.dianaWarpEnabled(DianaWarp.STONKS));
+        assertFalse(config.dianaWarpEnabled(DianaWarp.DA));
+        assertFalse(config.dianaWarpEnabled(DianaWarp.CRYPT));
+        assertEquals(5, config.dianaEnabledWarpCount());
+        assertTrue(config.dianaHideStartBurrowsUntilChainComplete());
+        assertFalse(config.dianaSpadeDebugLogging());
+        assertTrue(config.dianaRareMobWaypoints());
+        assertTrue(config.dianaRareMobPartySharing());
+        assertTrue(config.dianaRareMobShareEnabled(DianaRareMob.MINOS_INQUISITOR));
+        assertFalse(config.dianaRareMobShareEnabled(DianaRareMob.SIAMESE_LYNX));
+        assertEquals(1, config.dianaRareMobShareEnabledCount());
         assertTrue(config.placeNewWaypointsBelowPlayer());
+        assertFalse(config.deleteTempWaypointsWhenReached());
         assertTrue(config.chatCodecDetection());
         assertTrue(config.dimSequenceContextWaypoints());
-        assertFalse(config.exportIncludeColors());
-        assertTrue(config.exportIncludeGroupMeta());
     }
 
     @Test
@@ -364,6 +421,115 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void tempWaypointDeleteWhenReachedCanBeEnabled() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertFalse(config.deleteTempWaypointsWhenReached());
+
+        config.setDeleteTempWaypointsWhenReached(true);
+
+        assertTrue(config.deleteTempWaypointsWhenReached());
+    }
+
+    @Test
+    void dianaAppearanceAndEstimateTuningClampToUsefulBounds() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setDianaEstimateWaypointName("  &2Pretty Burrow  ");
+        config.setDianaEstimateWaypointColor(0xFF1E5E32);
+        config.setDianaEstimateMinSamples(2);
+        config.setDianaEstimateStabilityRadius(0.1);
+
+        assertEquals("&2Pretty Burrow", config.dianaEstimateWaypointName());
+        assertEquals(0xFF1E5E32, config.dianaEstimateWaypointColor());
+        assertEquals(4, config.dianaEstimateMinSamples());
+        assertEquals(0.5, config.dianaEstimateStabilityRadius());
+
+        config.setDianaEstimateWaypointName("");
+        config.setDianaEstimateMinSamples(99);
+        config.setDianaEstimateStabilityRadius(99.0);
+
+        assertEquals("Burrow", config.dianaEstimateWaypointName());
+        assertEquals(24, config.dianaEstimateMinSamples());
+        assertEquals(16.0, config.dianaEstimateStabilityRadius());
+    }
+
+    @Test
+    void oldDianaEstimateColorMigratesToBrightGreen() {
+        WaypointerConfig config = WaypointerConfig.fromJson("""
+                {
+                  "configSchemaVersion": 3,
+                  "dianaEstimateWaypointColor": 1990194
+                }
+                """);
+
+        assertEquals(0x4FE05A, config.dianaEstimateWaypointColor());
+    }
+
+    @Test
+    void oldDianaWarpSavingsThresholdMigratesToFortyFiveBlocks() {
+        WaypointerConfig config = WaypointerConfig.fromJson("""
+                {
+                  "configSchemaVersion": 4,
+                  "dianaWarpMinSavings": 30.0
+                }
+                """);
+
+        assertEquals(45.0, config.dianaWarpMinSavings());
+    }
+
+    @Test
+    void dianaWarpSettingsCanBeTunedAndClampToUsefulBounds() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setDianaWarpAssist(false);
+        config.setDianaWarpPrompt(false);
+        config.setDianaWarpMinSavings(-10.0);
+        config.setDianaWarpEnabled(DianaWarp.DA, true);
+        config.setDianaWarpEnabled(DianaWarp.HUB, false);
+
+        assertFalse(config.dianaWarpAssist());
+        assertFalse(config.dianaWarpPrompt());
+        assertEquals(0.0, config.dianaWarpMinSavings());
+        assertTrue(config.dianaWarpEnabled(DianaWarp.DA));
+        assertFalse(config.dianaWarpEnabled(DianaWarp.HUB));
+        assertEquals(5, config.dianaEnabledWarpCount());
+
+        config.setDianaWarpMinSavings(500.0);
+        assertEquals(300.0, config.dianaWarpMinSavings());
+
+        config.setDianaWarpMinSavings(42.0);
+        config.setDianaWarpMinSavings(Double.NaN);
+        assertEquals(42.0, config.dianaWarpMinSavings());
+    }
+
+    @Test
+    void dianaSpadeDebugLoggingDefaultsOffButCanBeEnabled() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertFalse(config.dianaSpadeDebugLogging());
+
+        config.setDianaSpadeDebugLogging(true);
+
+        assertTrue(config.dianaSpadeDebugLogging());
+    }
+
+    @Test
+    void dianaRareMobPartySharingCanSelectMobs() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertTrue(config.dianaRareMobPartySharing());
+        assertFalse(config.dianaRareMobShareEnabled(DianaRareMob.SIAMESE_LYNX));
+
+        config.setDianaRareMobPartySharing(false);
+        config.setDianaRareMobShareEnabled(DianaRareMob.SIAMESE_LYNX, true);
+
+        assertFalse(config.dianaRareMobPartySharing());
+        assertTrue(config.dianaRareMobShareEnabled(DianaRareMob.SIAMESE_LYNX));
+        assertEquals(2, config.dianaRareMobShareEnabledCount());
+    }
+
+    @Test
     void waypointTextColorMatchingDefaultsOnButCanBeDisabled() {
         WaypointerConfig config = new WaypointerConfig();
 
@@ -390,5 +556,32 @@ class WaypointerConfigTest {
         config.setIrisShaderHudFallback(true);
 
         assertTrue(config.irisShaderHudFallback());
+    }
+
+    @Test
+    void disableAllFeaturesTurnsOffFeatureToggles() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setBeaconBeamMode(WaypointerConfig.BeaconBeamMode.ALL_VISIBLE);
+        config.setDianaRareMobWaypoints(true);
+
+        config.disableAllFeatures();
+
+        assertFalse(config.showWaypointNames());
+        assertFalse(config.showWaypointDistances());
+        assertFalse(config.showTracer());
+        assertFalse(config.chatCoordDetection());
+        assertFalse(config.chatCodecDetection());
+        assertFalse(config.deleteTempWaypointsWhenReached());
+        assertFalse(config.dianaBurrowWaypoints());
+        assertFalse(config.dianaWarpAssist());
+        assertFalse(config.dianaSpadeDebugLogging());
+        for (DianaWarp warp : DianaWarp.values()) {
+            assertFalse(config.dianaWarpEnabled(warp));
+        }
+        assertFalse(config.dianaHideStartBurrowsUntilChainComplete());
+        assertFalse(config.dianaRareMobWaypoints());
+        assertFalse(config.dianaRareMobPartySharing());
+        assertFalse(config.checkForUpdates());
+        assertEquals(WaypointerConfig.BeaconBeamMode.OFF, config.beaconBeamMode());
     }
 }

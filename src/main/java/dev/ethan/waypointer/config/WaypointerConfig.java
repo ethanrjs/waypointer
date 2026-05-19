@@ -7,6 +7,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.core.Waypoint;
+import dev.ethan.waypointer.diana.DianaRareMob;
+import dev.ethan.waypointer.diana.DianaWarp;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -53,7 +55,7 @@ public final class WaypointerConfig {
 
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int CONFIG_SCHEMA_VERSION = 2;
+    private static final int CONFIG_SCHEMA_VERSION = 7;
 
     // Progression
     private int configSchemaVersion = CONFIG_SCHEMA_VERSION;
@@ -183,9 +185,6 @@ public final class WaypointerConfig {
     private BeaconBeamMode beaconBeamMode = BeaconBeamMode.OFF;
     private boolean beaconBeamExtendsBelowWaypoint = false;
 
-    // Zone detection
-    private boolean preferScoreboardFallback = false;
-
     // Quality-of-life
     private boolean chatCoordDetection = true;
     /**
@@ -214,29 +213,14 @@ public final class WaypointerConfig {
      * This is transient render focus, not a persistent route enable/disable.
      */
     private boolean focusTempWaypoints = false;
+    /**
+     * Optional cleanup for temporary waypoints: when the player enters the
+     * waypoint's reach radius, remove the temp marker immediately. Time-based
+     * temps can still expire first; this is an additional "whichever happens
+     * first" cleanup path.
+     */
+    private boolean deleteTempWaypointsWhenReached = false;
     private boolean chatCodecDetection = true;
-    /** Default exports drop names; set to {@code true} to include them at the cost of length. */
-    private boolean exportIncludeNames = false;
-    /** Default exports drop colors so shared routes inherit the recipient's palette. */
-    private boolean exportIncludeColors = false;
-    /**
-     * Per-waypoint custom radii. Off by default because most routes use the
-     * group default radius; including them only matters when the sender
-     * deliberately tuned individual waypoints.
-     */
-    private boolean exportIncludeRadii = false;
-    /**
-     * Per-waypoint flags (currently just "shown") -- almost always identical to
-     * defaults, so off by default to keep payloads short.
-     */
-    private boolean exportIncludeWaypointFlags = false;
-    /**
-     * Group-level metadata: gradient mode, load mode, custom default radius.
-     * On by default because a group with a non-default radius or sequenced load
-     * mode will play very differently if these are stripped, and a recipient
-     * has no way to know the original intent.
-     */
-    private boolean exportIncludeGroupMeta = true;
     /**
      * Hidden feature flag for the in-progress dungeon waypoint subsystem.
      * Default-off keeps beta builds from registering commands, renderers, tick
@@ -284,6 +268,64 @@ public final class WaypointerConfig {
     private int tempDefaultMode = Waypoint.TEMP_TIME;
     /** Default duration (minutes) for time-based temp waypoints. */
     private int tempDefaultDurationMin = 1;
+    /**
+     * Detects real Diana burrow particles in the Hub and renders high-confidence
+     * start/mob/treasure burrows plus conservative Ancestral Spade arrow guesses.
+     */
+    private boolean dianaBurrowWaypoints = true;
+    private boolean dianaShowStartBurrows = true;
+    private boolean dianaShowMobBurrows = true;
+    private boolean dianaShowTreasureBurrows = true;
+    /**
+     * Render Ancestral Spade estimate waypoints. Confirmed burrow particles still
+     * render when this is off; only predicted "Burrow" estimate markers
+     * are suppressed.
+     */
+    private boolean dianaSpadeEstimateWaypoints = true;
+    private String dianaEstimateWaypointName = "Burrow";
+    private int dianaEstimateWaypointColor = 0x4FE05A;
+    private int dianaStartBurrowColor = 0x4FE05A;
+    private int dianaMobBurrowColor = 0xFF4040;
+    private int dianaTreasureBurrowColor = 0xFFB02E;
+    private int dianaEstimateMinSamples = 8;
+    private double dianaEstimateStabilityRadius = 4.5;
+    private boolean dianaWarpAssist = true;
+    private boolean dianaWarpPrompt = true;
+    private double dianaWarpMinSavings = 45.0;
+    private boolean dianaWarpHub = true;
+    private boolean dianaWarpCastle = true;
+    private boolean dianaWarpMuseum = true;
+    private boolean dianaWarpWizard = true;
+    private boolean dianaWarpStonks = true;
+    private boolean dianaWarpDa = false;
+    private boolean dianaWarpCrypt = false;
+    /**
+     * Hide start burrows while chat progress says the current Griffin chain is in
+     * progress. This prevents the Diana temp group from selecting a fresh start
+     * as the active target before the current chain is actually done.
+     */
+    private boolean dianaHideStartBurrowsUntilChainComplete = true;
+    /**
+     * Targeted Diana solver diagnostics written to latest.log. This stays off by
+     * default because normal users should not pay for or see solver chatter, but
+     * it is useful when tuning missed Ancestral Spade estimates.
+     */
+    private boolean dianaSpadeDebugLogging = false;
+    /**
+     * Early Diana support: detect SkyHanni-style rare mob / inquisitor share
+     * messages in chat and turn their coordinates into temporary Hub waypoints.
+     */
+    private boolean dianaRareMobWaypoints = true;
+    private boolean dianaRareMobPartySharing = true;
+    private boolean dianaShareMinosInquisitor = true;
+    private boolean dianaShareMinosChampion = false;
+    private boolean dianaShareKingMinos = false;
+    private boolean dianaShareGaiaConstruct = false;
+    private boolean dianaShareMinotaur = false;
+    private boolean dianaShareMinosHunter = false;
+    private boolean dianaShareSiameseLynx = false;
+    private boolean dianaShareManticore = false;
+    private boolean dianaShareSphinx = false;
 
     /**
      * Debounce window for config writes. Configs mutate in bursts (EditBox
@@ -344,6 +386,15 @@ public final class WaypointerConfig {
         if (schemaVersion < 2) {
             migrateIssue31TempDefaults();
         }
+        if (schemaVersion < 3) {
+            migrateDianaSettingsSimplification();
+        }
+        if (schemaVersion < 4) {
+            migrateDianaBurrowEstimateColor();
+        }
+        if (schemaVersion < 5) {
+            migrateDianaWarpSavingsThreshold();
+        }
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
     }
 
@@ -362,6 +413,32 @@ public final class WaypointerConfig {
             changed = true;
         }
         migratedDuringLoad = changed;
+    }
+
+    private void migrateDianaSettingsSimplification() {
+        dianaShowStartBurrows = true;
+        dianaShowMobBurrows = true;
+        dianaShowTreasureBurrows = true;
+        dianaSpadeEstimateWaypoints = true;
+        dianaWarpPrompt = true;
+        dianaEstimateWaypointName = "Burrow";
+        dianaEstimateMinSamples = 8;
+        dianaEstimateStabilityRadius = 4.5;
+        migratedDuringLoad = true;
+    }
+
+    private void migrateDianaBurrowEstimateColor() {
+        if ((dianaEstimateWaypointColor & 0xFFFFFF) == 0x1E5E32) {
+            dianaEstimateWaypointColor = 0x4FE05A;
+            migratedDuringLoad = true;
+        }
+    }
+
+    private void migrateDianaWarpSavingsThreshold() {
+        if (Math.abs(dianaWarpMinSavings - 30.0) < 0.0001) {
+            dianaWarpMinSavings = 45.0;
+            migratedDuringLoad = true;
+        }
     }
 
     /**
@@ -428,7 +505,6 @@ public final class WaypointerConfig {
         return beaconBeamMode == null ? BeaconBeamMode.OFF : beaconBeamMode;
     }
     public boolean beaconBeamExtendsBelowWaypoint() { return beaconBeamExtendsBelowWaypoint; }
-    public boolean preferScoreboardFallback() { return preferScoreboardFallback; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
     public List<String> chatCoordSenderBlacklist() {
         ensureChatCoordSenderBlacklist();
@@ -446,12 +522,8 @@ public final class WaypointerConfig {
     public boolean autoAddChatTempWaypoints() { return autoAddChatTempWaypoints; }
     public boolean placeNewWaypointsBelowPlayer() { return placeNewWaypointsBelowPlayer; }
     public boolean focusTempWaypoints()       { return focusTempWaypoints; }
+    public boolean deleteTempWaypointsWhenReached() { return deleteTempWaypointsWhenReached; }
     public boolean chatCodecDetection()       { return chatCodecDetection; }
-    public boolean exportIncludeNames()        { return exportIncludeNames; }
-    public boolean exportIncludeColors()       { return exportIncludeColors; }
-    public boolean exportIncludeRadii()        { return exportIncludeRadii; }
-    public boolean exportIncludeWaypointFlags(){ return exportIncludeWaypointFlags; }
-    public boolean exportIncludeGroupMeta()    { return exportIncludeGroupMeta; }
     public boolean dungeonWaypointsFeatureEnabled() { return dungeonWaypointsFeatureEnabled; }
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
     public boolean checkForUpdates()            { return checkForUpdates; }
@@ -463,6 +535,65 @@ public final class WaypointerConfig {
     }
     public int tempDefaultDurationMin()         { return Math.max(1, Math.min(24 * 60, tempDefaultDurationMin)); }
     public boolean tempWaypointsExpireByDefault() { return tempDefaultMode() == Waypoint.TEMP_TIME; }
+    public boolean dianaBurrowWaypoints()       { return dianaBurrowWaypoints; }
+    public boolean dianaShowStartBurrows()      { return dianaShowStartBurrows; }
+    public boolean dianaShowMobBurrows()        { return dianaShowMobBurrows; }
+    public boolean dianaShowTreasureBurrows()   { return dianaShowTreasureBurrows; }
+    public boolean dianaSpadeEstimateWaypoints() { return dianaSpadeEstimateWaypoints; }
+    public String dianaEstimateWaypointName() { return sanitizeDianaWaypointName(dianaEstimateWaypointName, "Burrow"); }
+    public int dianaEstimateWaypointColor() { return normalizeOptionalAlphaColor(dianaEstimateWaypointColor); }
+    public int dianaStartBurrowColor() { return normalizeOptionalAlphaColor(dianaStartBurrowColor); }
+    public int dianaMobBurrowColor() { return normalizeOptionalAlphaColor(dianaMobBurrowColor); }
+    public int dianaTreasureBurrowColor() { return normalizeOptionalAlphaColor(dianaTreasureBurrowColor); }
+    public int dianaEstimateMinSamples() { return Math.max(4, Math.min(24, dianaEstimateMinSamples)); }
+    public double dianaEstimateStabilityRadius() { return clamp(dianaEstimateStabilityRadius, 0.5, 16.0); }
+    public boolean dianaWarpAssist() { return dianaWarpAssist; }
+    public boolean dianaWarpPrompt() { return dianaWarpPrompt; }
+    public double dianaWarpMinSavings() { return clamp(dianaWarpMinSavings, 0.0, 300.0); }
+    public int dianaEnabledWarpCount() {
+        int count = 0;
+        for (DianaWarp warp : DianaWarp.values()) {
+            if (dianaWarpEnabled(warp)) count++;
+        }
+        return count;
+    }
+    public boolean dianaWarpEnabled(DianaWarp warp) {
+        if (warp == null) return false;
+        return switch (warp) {
+            case HUB -> dianaWarpHub;
+            case CASTLE -> dianaWarpCastle;
+            case MUSEUM -> dianaWarpMuseum;
+            case WIZARD -> dianaWarpWizard;
+            case STONKS -> dianaWarpStonks;
+            case DA -> dianaWarpDa;
+            case CRYPT -> dianaWarpCrypt;
+        };
+    }
+    public boolean dianaHideStartBurrowsUntilChainComplete() { return dianaHideStartBurrowsUntilChainComplete; }
+    public boolean dianaSpadeDebugLogging() { return dianaSpadeDebugLogging; }
+    public boolean dianaRareMobWaypoints()      { return dianaRareMobWaypoints; }
+    public boolean dianaRareMobPartySharing()   { return dianaRareMobPartySharing; }
+    public boolean dianaRareMobShareEnabled(DianaRareMob mob) {
+        if (mob == null) return false;
+        return switch (mob) {
+            case MINOS_INQUISITOR -> dianaShareMinosInquisitor;
+            case MINOS_CHAMPION -> dianaShareMinosChampion;
+            case KING_MINOS -> dianaShareKingMinos;
+            case GAIA_CONSTRUCT -> dianaShareGaiaConstruct;
+            case MINOTAUR -> dianaShareMinotaur;
+            case MINOS_HUNTER -> dianaShareMinosHunter;
+            case SIAMESE_LYNX -> dianaShareSiameseLynx;
+            case MANTICORE -> dianaShareManticore;
+            case SPHINX -> dianaShareSphinx;
+        };
+    }
+    public int dianaRareMobShareEnabledCount() {
+        int count = 0;
+        for (DianaRareMob mob : DianaRareMob.values()) {
+            if (dianaRareMobShareEnabled(mob)) count++;
+        }
+        return count;
+    }
     public long defaultTempExpiresAtMillis(long nowMillis) {
         return tempDefaultMode() == Waypoint.TEMP_TIME
                 ? nowMillis + (long) tempDefaultDurationMin() * 60_000L
@@ -504,7 +635,6 @@ public final class WaypointerConfig {
         this.hideReachedStaticWaypointsUntilCycleComplete = v;
         save();
     }
-    public void setPreferScoreboardFallback(boolean v) { this.preferScoreboardFallback = v; save(); }
     public void setChatCoordDetection(boolean v)       { this.chatCoordDetection = v; save(); }
     public boolean addChatCoordSenderBlacklist(String senderName) {
         String normalized = normalizeChatCoordSender(senderName);
@@ -535,12 +665,11 @@ public final class WaypointerConfig {
     public void setAutoAddChatTempWaypoints(boolean v) { this.autoAddChatTempWaypoints = v; save(); }
     public void setPlaceNewWaypointsBelowPlayer(boolean v) { this.placeNewWaypointsBelowPlayer = v; save(); }
     public void setFocusTempWaypoints(boolean v)       { this.focusTempWaypoints = v; save(); }
+    public void setDeleteTempWaypointsWhenReached(boolean v) {
+        this.deleteTempWaypointsWhenReached = v;
+        save();
+    }
     public void setChatCodecDetection(boolean v)       { this.chatCodecDetection = v; save(); }
-    public void setExportIncludeNames(boolean v)        { this.exportIncludeNames = v; save(); }
-    public void setExportIncludeColors(boolean v)       { this.exportIncludeColors = v; save(); }
-    public void setExportIncludeRadii(boolean v)        { this.exportIncludeRadii = v; save(); }
-    public void setExportIncludeWaypointFlags(boolean v){ this.exportIncludeWaypointFlags = v; save(); }
-    public void setExportIncludeGroupMeta(boolean v)    { this.exportIncludeGroupMeta = v; save(); }
     public void setDungeonWaypointsFeatureEnabled(boolean v) { this.dungeonWaypointsFeatureEnabled = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
     public void setMaxWaypointLabels(int v) {
@@ -583,9 +712,135 @@ public final class WaypointerConfig {
     public void setTempWaypointsExpireByDefault(boolean v) {
         setTempDefaultMode(v ? Waypoint.TEMP_TIME : Waypoint.TEMP_UNTIL_LEAVE);
     }
+    public void setDianaBurrowWaypoints(boolean v) { this.dianaBurrowWaypoints = v; save(); }
+    public void setDianaShowStartBurrows(boolean v) { this.dianaShowStartBurrows = v; save(); }
+    public void setDianaShowMobBurrows(boolean v) { this.dianaShowMobBurrows = v; save(); }
+    public void setDianaShowTreasureBurrows(boolean v) { this.dianaShowTreasureBurrows = v; save(); }
+    public void setDianaSpadeEstimateWaypoints(boolean v) { this.dianaSpadeEstimateWaypoints = v; save(); }
+    public void setDianaEstimateWaypointName(String v) {
+        this.dianaEstimateWaypointName = sanitizeDianaWaypointName(v, "Burrow");
+        save();
+    }
+    public void setDianaEstimateWaypointColor(int v) { this.dianaEstimateWaypointColor = normalizeOptionalAlphaColor(v); save(); }
+    public void setDianaStartBurrowColor(int v) { this.dianaStartBurrowColor = normalizeOptionalAlphaColor(v); save(); }
+    public void setDianaMobBurrowColor(int v) { this.dianaMobBurrowColor = normalizeOptionalAlphaColor(v); save(); }
+    public void setDianaTreasureBurrowColor(int v) { this.dianaTreasureBurrowColor = normalizeOptionalAlphaColor(v); save(); }
+    public void setDianaEstimateMinSamples(int v) {
+        this.dianaEstimateMinSamples = Math.max(4, Math.min(24, v));
+        save();
+    }
+    public void setDianaEstimateStabilityRadius(double v) {
+        if (!Double.isFinite(v)) return;
+        this.dianaEstimateStabilityRadius = clamp(v, 0.5, 16.0);
+        save();
+    }
+    public void setDianaWarpAssist(boolean v) { this.dianaWarpAssist = v; save(); }
+    public void setDianaWarpPrompt(boolean v) { this.dianaWarpPrompt = v; save(); }
+    public void setDianaWarpMinSavings(double v) {
+        if (!Double.isFinite(v)) return;
+        this.dianaWarpMinSavings = clamp(v, 0.0, 300.0);
+        save();
+    }
+    public void setDianaWarpEnabled(DianaWarp warp, boolean enabled) {
+        if (warp == null) return;
+        switch (warp) {
+            case HUB -> dianaWarpHub = enabled;
+            case CASTLE -> dianaWarpCastle = enabled;
+            case MUSEUM -> dianaWarpMuseum = enabled;
+            case WIZARD -> dianaWarpWizard = enabled;
+            case STONKS -> dianaWarpStonks = enabled;
+            case DA -> dianaWarpDa = enabled;
+            case CRYPT -> dianaWarpCrypt = enabled;
+        }
+        save();
+    }
+    public void setDianaHideStartBurrowsUntilChainComplete(boolean v) {
+        this.dianaHideStartBurrowsUntilChainComplete = v;
+        save();
+    }
+    public void setDianaSpadeDebugLogging(boolean v) { this.dianaSpadeDebugLogging = v; save(); }
+    public void setDianaRareMobWaypoints(boolean v) { this.dianaRareMobWaypoints = v; save(); }
+    public void setDianaRareMobPartySharing(boolean v) { this.dianaRareMobPartySharing = v; save(); }
+    public void setDianaRareMobShareEnabled(DianaRareMob mob, boolean enabled) {
+        if (mob == null) return;
+        switch (mob) {
+            case MINOS_INQUISITOR -> dianaShareMinosInquisitor = enabled;
+            case MINOS_CHAMPION -> dianaShareMinosChampion = enabled;
+            case KING_MINOS -> dianaShareKingMinos = enabled;
+            case GAIA_CONSTRUCT -> dianaShareGaiaConstruct = enabled;
+            case MINOTAUR -> dianaShareMinotaur = enabled;
+            case MINOS_HUNTER -> dianaShareMinosHunter = enabled;
+            case SIAMESE_LYNX -> dianaShareSiameseLynx = enabled;
+            case MANTICORE -> dianaShareManticore = enabled;
+            case SPHINX -> dianaShareSphinx = enabled;
+        }
+        save();
+    }
+
+    public void disableAllFeatures() {
+        matchTracerToWaypointColor = false;
+        showWaypointNames = false;
+        showWaypointDistances = false;
+        scaleWaypointTextWithDistance = false;
+        matchWaypointTextToWaypointColor = false;
+        showCompleted = false;
+        showTracer = false;
+        dimSequenceContextWaypoints = false;
+        hideTracerOnStaticRoutes = false;
+        hideWaypointsNearPlayer = false;
+        hideReachedStaticWaypointsUntilCycleComplete = false;
+        showLabelBackdrop = false;
+        beaconBeamExtendsBelowWaypoint = false;
+        chatCoordDetection = false;
+        autoAddChatTempWaypoints = false;
+        placeNewWaypointsBelowPlayer = false;
+        focusTempWaypoints = false;
+        deleteTempWaypointsWhenReached = false;
+        chatCodecDetection = false;
+        dungeonWaypointsFeatureEnabled = false;
+        skipAheadMechanicEnabled = false;
+        checkForUpdates = false;
+        irisShaderHudFallback = false;
+        dianaBurrowWaypoints = false;
+        dianaWarpAssist = false;
+        dianaSpadeDebugLogging = false;
+        for (DianaWarp warp : DianaWarp.values()) {
+            setDianaWarpEnabledInMemory(warp, false);
+        }
+        dianaHideStartBurrowsUntilChainComplete = false;
+        dianaRareMobWaypoints = false;
+        dianaRareMobPartySharing = false;
+        beaconBeamMode = BeaconBeamMode.OFF;
+        save();
+    }
 
     private static double clamp(double v, double lo, double hi) {
         return Math.max(lo, Math.min(hi, v));
+    }
+
+    private static int normalizeOptionalAlphaColor(int color) {
+        return (color & 0xFF000000) == 0 ? color & 0xFFFFFF : color;
+    }
+
+    private static String sanitizeDianaWaypointName(String value, String fallback) {
+        String cleaned = value == null ? "" : value
+                .replace('\u00A7', '&')
+                .replaceAll("\\p{Cntrl}", "")
+                .trim();
+        if (cleaned.isEmpty()) return fallback;
+        return cleaned.length() > 32 ? cleaned.substring(0, 32) : cleaned;
+    }
+
+    private void setDianaWarpEnabledInMemory(DianaWarp warp, boolean enabled) {
+        switch (warp) {
+            case HUB -> dianaWarpHub = enabled;
+            case CASTLE -> dianaWarpCastle = enabled;
+            case MUSEUM -> dianaWarpMuseum = enabled;
+            case WIZARD -> dianaWarpWizard = enabled;
+            case STONKS -> dianaWarpStonks = enabled;
+            case DA -> dianaWarpDa = enabled;
+            case CRYPT -> dianaWarpCrypt = enabled;
+        }
     }
 
     private void ensureChatCoordSenderBlacklist() {

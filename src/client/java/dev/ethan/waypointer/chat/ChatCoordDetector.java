@@ -227,9 +227,10 @@ public final class ChatCoordDetector {
                 .withStyle(Style.EMPTY
                         .withColor(ChatFormatting.RED)
                         .withBold(true)
-                        .withClickEvent(new ClickEvent.RunCommand("/waypointer blacklist add " + senderName))
+                        .withClickEvent(new ClickEvent.RunCommand("/waypointer blacklist toggle " + senderName))
                         .withHoverEvent(new HoverEvent.ShowText(Component.literal(
-                                "Click here to block " + senderName).withStyle(ChatFormatting.RED))));
+                                "Click to block/unblock chat waypoints from " + senderName)
+                                .withStyle(ChatFormatting.RED))));
     }
 
     private static Component tempWaypointHover(CoordScanner.Match m, boolean alreadyAdded,

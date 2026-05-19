@@ -14,6 +14,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.DoubleConsumer;
 import java.util.function.IntConsumer;
 
 import static dev.ethan.waypointer.screen.GuiTokens.*;
@@ -46,9 +47,10 @@ public final class ColorPickerScreen extends Screen {
     // footer buttons (top=192 rel) to overlap by ~8px. Bumped so there is a clean
     // gap between the hex row and the footer.
     private static final int PANEL_W = 280;
-    private static final int PANEL_H = 252;
+    private static final int PANEL_H = 276;
     private static final int SV_SIZE = 140;
     private static final int HUE_W   = 18;
+    private static final int OPACITY_W = 18;
 
     // ResourceLocations for the picker's two dynamic textures. A per-instance
     // suffix keeps two simultaneous pickers (e.g. a quickly swapped-open one)
@@ -59,15 +61,17 @@ public final class ColorPickerScreen extends Screen {
     private final Screen parent;
     private final String title;
     private final IntConsumer onPicked;
+    private final DoubleConsumer onOpacityPicked;
 
     // Working HSV state. Kept in floats so mid-drag updates are smooth even when
     // the resulting RGB would snap the SV position back into the visible box.
     private float hue;       // [0, 360)
     private float sat;       // [0, 1]
     private float value;     // [0, 1]
+    private float opacity;   // [0, 1]
 
     private EditBox hexBox;
-    private int svX, svY, hueX, hueY, swatchX, swatchY;
+    private int svX, svY, hueX, hueY, opacityX, opacityY, swatchX, swatchY;
 
     private DynamicTexture svTex;
     private DynamicTexture hueTex;
@@ -78,23 +82,36 @@ public final class ColorPickerScreen extends Screen {
     // Whether a drag started on the SV square vs the hue slider. Without this, a
     // drag that starts on the SV box and wanders out would silently switch to
     // editing the hue, which feels broken.
-    private enum Drag { NONE, SV, HUE }
+    private enum Drag { NONE, SV, HUE, OPACITY }
     private Drag drag = Drag.NONE;
 
     public ColorPickerScreen(Screen parent, String title, int initialRgb, IntConsumer onPicked) {
+        this(parent, title, initialRgb, 1.0, onPicked, null);
+    }
+
+    public ColorPickerScreen(Screen parent, String title, int initialRgb, double initialOpacity,
+                             IntConsumer onPicked, DoubleConsumer onOpacityPicked) {
         super(Component.literal(title));
         this.parent = parent;
         this.title = title;
         this.onPicked = onPicked;
+        this.onOpacityPicked = onOpacityPicked;
         float[] hsv = rgbToHsv(initialRgb & 0xFFFFFF);
         this.hue = hsv[0];
         this.sat = hsv[1];
         this.value = hsv[2];
+        this.opacity = (float) clamp01(initialOpacity);
     }
 
     /** Convenience opener so call sites read like "pick a colour → here's what to do". */
     public static void open(Screen parent, String title, int initialRgb, IntConsumer onPicked) {
         Minecraft.getInstance().setScreen(new ColorPickerScreen(parent, title, initialRgb, onPicked));
+    }
+
+    public static void open(Screen parent, String title, int initialRgb, double initialOpacity,
+                            IntConsumer onPicked, DoubleConsumer onOpacityPicked) {
+        Minecraft.getInstance().setScreen(new ColorPickerScreen(parent, title, initialRgb,
+                initialOpacity, onPicked, onOpacityPicked));
     }
 
     @Override
@@ -106,7 +123,9 @@ public final class ColorPickerScreen extends Screen {
         svY = panelY + 32;
         hueX = svX + SV_SIZE + GAP;
         hueY = svY;
-        swatchX = hueX + HUE_W + GAP;
+        opacityX = hueX + HUE_W + GAP;
+        opacityY = svY;
+        swatchX = (onOpacityPicked != null ? opacityX + OPACITY_W + GAP : opacityX);
         swatchY = svY;
 
         int hexY = svY + SV_SIZE + GAP;
@@ -137,6 +156,7 @@ public final class ColorPickerScreen extends Screen {
                 .bounds(panelX + PANEL_W - PAD_OUTER - btnW * 2 - GAP, footerY, btnW, BTN_H).build());
         addRenderableWidget(Button.builder(Component.literal("Save"), b -> {
             onPicked.accept(currentRgb());
+            if (onOpacityPicked != null) onOpacityPicked.accept(opacity);
             onClose();
         }).bounds(panelX + PANEL_W - PAD_OUTER - btnW, footerY, btnW, BTN_H).build());
 
@@ -157,6 +177,7 @@ public final class ColorPickerScreen extends Screen {
 
         drawSvSquare(g);
         drawHueSlider(g);
+        if (onOpacityPicked != null) drawOpacitySlider(g);
         drawSwatch(g);
 
         super.render(g, mouseX, mouseY, partial);
@@ -192,6 +213,25 @@ public final class ColorPickerScreen extends Screen {
         int hy = hueY + Math.round(hue / 360f * (SV_SIZE - 1));
         g.fill(hueX - 2, hy,     hueX + HUE_W + 2, hy + 1, 0xFF000000);
         g.fill(hueX - 2, hy + 1, hueX + HUE_W + 2, hy + 2, 0xFFFFFFFF);
+    }
+
+    private void drawOpacitySlider(GuiGraphics g) {
+        int rgb = currentRgb();
+        g.fill(opacityX - 1, opacityY - 1, opacityX + OPACITY_W + 1, opacityY + SV_SIZE + 1, 0xFF000000);
+        for (int py = 0; py < SV_SIZE; py++) {
+            int baseY = opacityY + py;
+            int alpha = Math.round((1f - (float) py / (SV_SIZE - 1)) * 255f);
+            for (int px = 0; px < OPACITY_W; px++) {
+                boolean light = (((px / 4) + (py / 4)) & 1) == 0;
+                int checker = light ? 0xFF5A5A5A : 0xFF242424;
+                g.fill(opacityX + px, baseY, opacityX + px + 1, baseY + 1, checker);
+            }
+            g.fill(opacityX, baseY, opacityX + OPACITY_W, baseY + 1, (alpha << 24) | rgb);
+        }
+
+        int oy = opacityY + Math.round((1f - opacity) * (SV_SIZE - 1));
+        g.fill(opacityX - 2, oy,     opacityX + OPACITY_W + 2, oy + 1, 0xFF000000);
+        g.fill(opacityX - 2, oy + 1, opacityX + OPACITY_W + 2, oy + 2, 0xFFFFFFFF);
     }
 
     private void drawSwatch(GuiGraphics g) {
@@ -293,6 +333,11 @@ public final class ColorPickerScreen extends Screen {
                 updateHue(my);
                 return true;
             }
+            if (onOpacityPicked != null && inside(mx, my, opacityX, opacityY, OPACITY_W, SV_SIZE)) {
+                drag = Drag.OPACITY;
+                updateOpacity(my);
+                return true;
+            }
         }
         return super.mouseClicked(event, doubleClick);
     }
@@ -300,8 +345,9 @@ public final class ColorPickerScreen extends Screen {
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dx, double dy) {
         double mx = event.x(), my = event.y();
-        if (drag == Drag.SV)  { updateSv(mx, my); return true; }
-        if (drag == Drag.HUE) { updateHue(my);    return true; }
+        if (drag == Drag.SV)      { updateSv(mx, my);  return true; }
+        if (drag == Drag.HUE)     { updateHue(my);     return true; }
+        if (drag == Drag.OPACITY) { updateOpacity(my); return true; }
         return super.mouseDragged(event, dx, dy);
     }
 
@@ -323,6 +369,10 @@ public final class ColorPickerScreen extends Screen {
         hue = 360f * (float) clamp01((my - hueY) / (double) (SV_SIZE - 1));
         if (hue >= 360f) hue = 359.9999f;
         syncHex();
+    }
+
+    private void updateOpacity(double my) {
+        opacity = 1f - (float) clamp01((my - opacityY) / (double) (SV_SIZE - 1));
     }
 
     private void syncHex() {

@@ -4,6 +4,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.diana.DianaWaypointDetector;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
@@ -51,6 +52,11 @@ public final class ProximityTracker {
         boolean hideReachedStatic = config.hideReachedStaticWaypointsUntilCycleComplete();
         for (WaypointGroup group : manager.activeGroups()) {
             updateGroupProgress(group, px, py, pz, loop, globalSkipAhead, hideReachedStatic);
+        }
+        if (config.deleteTempWaypointsWhenReached()) {
+            manager.removeReachedTempWaypoints(px, py, pz);
+        } else {
+            manager.removeReachedTempWaypoints(px, py, pz, DianaWaypointDetector::isRareMobWaypoint);
         }
     }
 

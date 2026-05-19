@@ -50,6 +50,11 @@ public final class WaypointerScreen extends Screen {
     private static final String TEMPORARY_ZONE_ID = "__temporary__";
     private static final String TEMPORARY_ZONE_LABEL = "Temporary";
     private static final int TEMPORARY_ACCENT = 0xFF58C878;
+    private static final String DIANA_ZONE_ID = "__diana__";
+    private static final String DIANA_ZONE_LABEL = "Diana";
+    private static final String DIANA_GROUP_PREFIX = "diana::";
+    private static final String HUB_ZONE_ID = "hub";
+    private static final int DIANA_ACCENT = 0xFF1E5E32;
 
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
@@ -127,7 +132,9 @@ public final class WaypointerScreen extends Screen {
             // visibleGroups() are fragile when groups added mid-list shift
             // indices. The init() pass will resolve the id to a current
             // selectedIndex after it knows the list ordering for the zone.
-            screen.selectedZoneId = focus.temp() ? TEMPORARY_ZONE_ID : focus.zoneId();
+            screen.selectedZoneId = isDianaGroup(focus) ? DIANA_ZONE_ID
+                    : focus.temp() ? TEMPORARY_ZONE_ID
+                    : focus.zoneId();
             screen.pendingFocusGroupId = focus.id();
         }
         Minecraft.getInstance().setScreen(screen);
@@ -198,6 +205,7 @@ public final class WaypointerScreen extends Screen {
     private List<String> zoneIds() {
         List<String> zones = new ArrayList<>();
         zones.add(TEMPORARY_ZONE_ID);
+        if (dianaWaypointCount() > 0) zones.add(DIANA_ZONE_ID);
         for (String zoneId : manager.knownZoneIds()) {
             if (normalGroupCountForZone(zoneId) > 0 && !zones.contains(zoneId)) {
                 zones.add(zoneId);
@@ -211,10 +219,11 @@ public final class WaypointerScreen extends Screen {
 
     private List<WaypointGroup> visibleGroups() {
         if (isTemporaryZone(selectedZoneId)) return temporaryGroups();
+        if (isDianaZone(selectedZoneId)) return dianaGroups();
 
         List<WaypointGroup> out = new ArrayList<>();
         for (WaypointGroup group : manager.groupsForZone(selectedZoneId)) {
-            if (!group.temp()) out.add(group);
+            if (!group.temp() && !isDianaGroup(group)) out.add(group);
         }
         return out;
     }
@@ -222,7 +231,15 @@ public final class WaypointerScreen extends Screen {
     private List<WaypointGroup> temporaryGroups() {
         List<WaypointGroup> out = new ArrayList<>();
         for (WaypointGroup group : manager.allGroups()) {
-            if (group.temp() && !group.isEmpty()) out.add(group);
+            if (group.temp() && !isDianaGroup(group) && !group.isEmpty()) out.add(group);
+        }
+        return out;
+    }
+
+    private List<WaypointGroup> dianaGroups() {
+        List<WaypointGroup> out = new ArrayList<>();
+        for (WaypointGroup group : manager.allGroups()) {
+            if (isDianaGroup(group) && !group.isEmpty()) out.add(group);
         }
         return out;
     }
@@ -230,7 +247,7 @@ public final class WaypointerScreen extends Screen {
     private int normalGroupCountForZone(String zoneId) {
         int count = 0;
         for (WaypointGroup group : manager.groupsForZone(zoneId)) {
-            if (!group.temp()) count++;
+            if (!group.temp() && !isDianaGroup(group)) count++;
         }
         return count;
     }
@@ -243,8 +260,24 @@ public final class WaypointerScreen extends Screen {
         return count;
     }
 
+    private int dianaWaypointCount() {
+        int count = 0;
+        for (WaypointGroup group : manager.allGroups()) {
+            if (isDianaGroup(group)) count += group.size();
+        }
+        return count;
+    }
+
     private static boolean isTemporaryZone(String zoneId) {
         return TEMPORARY_ZONE_ID.equals(zoneId);
+    }
+
+    private static boolean isDianaZone(String zoneId) {
+        return DIANA_ZONE_ID.equals(zoneId);
+    }
+
+    private static boolean isDianaGroup(WaypointGroup group) {
+        return group != null && group.id().startsWith(DIANA_GROUP_PREFIX);
     }
 
     // --- render ------------------------------------------------------------------------------
@@ -274,6 +307,10 @@ public final class WaypointerScreen extends Screen {
         if (isTemporaryZone(selectedZoneId)) {
             int waypointCount = temporaryWaypointCount();
             status = TEMPORARY_ZONE_LABEL + "  .  " + waypointCount
+                    + " waypoint" + (waypointCount == 1 ? "" : "s");
+        } else if (isDianaZone(selectedZoneId)) {
+            int waypointCount = dianaWaypointCount();
+            status = DIANA_ZONE_LABEL + "  .  " + waypointCount
                     + " waypoint" + (waypointCount == 1 ? "" : "s");
         } else {
             int groupCount = visibleGroups().size();
@@ -319,38 +356,40 @@ public final class WaypointerScreen extends Screen {
         for (String id : ids) {
             boolean selected = id.equals(selectedZoneId);
             boolean temporary = isTemporaryZone(id);
+            boolean diana = isDianaZone(id);
             boolean hovered = mouseX >= x1 && mouseX <= x2
                     && mouseY >= rowY && mouseY <= rowY + ROW_H;
             drawZoneRow(g, x1, rowY, x2, id, selected, hovered,
-                    !temporary && id.equals(currentId), temporary);
+                    diana ? HUB_ZONE_ID.equals(currentId) : !temporary && id.equals(currentId),
+                    temporary, diana);
             rowY += ROW_H;
         }
     }
 
     private void drawZoneRow(GuiGraphics g, int x1, int y, int x2,
                              String zoneId, boolean selected, boolean hovered,
-                             boolean isCurrent, boolean temporary) {
+                             boolean isCurrent, boolean temporary, boolean diana) {
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
         if (bg != 0) g.fill(x1, y, x2, y + ROW_H, bg);
 
         // "unknown" is intentionally quiet -- it's a placeholder zone, not the focal
         // point of an empty state. So it never gets the accent bar and renders in muted text.
         boolean isUnknown = Zone.UNKNOWN.id().equals(zoneId);
-        int accent = temporary ? TEMPORARY_ACCENT : ACCENT;
-        if (selected && (!isUnknown || temporary)) {
+        int accent = diana ? DIANA_ACCENT : temporary ? TEMPORARY_ACCENT : ACCENT;
+        if (selected && (!isUnknown || temporary || diana)) {
             g.fill(x1, y, x1 + 2, y + ROW_H, accent);
         }
 
-        String label = temporary ? TEMPORARY_ZONE_LABEL : Zone.fromId(zoneId).displayName();
-        int count = temporary ? temporaryWaypointCount() : normalGroupCountForZone(zoneId);
+        String label = diana ? DIANA_ZONE_LABEL : temporary ? TEMPORARY_ZONE_LABEL : Zone.fromId(zoneId).displayName();
+        int count = diana ? dianaWaypointCount() : temporary ? temporaryWaypointCount() : normalGroupCountForZone(zoneId);
         int textColor = isUnknown && !temporary ? TEXT_MUTED : selected ? TEXT : TEXT_DIM;
-        if (temporary && count == 0 && !selected) textColor = TEXT_MUTED;
+        if ((temporary || diana) && count == 0 && !selected) textColor = TEXT_MUTED;
         g.drawString(font, label, x1 + GAP + 2, y + 6, textColor, false);
 
         // live "current zone" indicator -- a tiny filled dot, no color, just a glyph
         if (isCurrent) {
             int dotX = x2 - GAP - 6;
-            g.fill(dotX, y + ROW_H / 2 - 2, dotX + 4, y + ROW_H / 2 + 2, ACCENT);
+            g.fill(dotX, y + ROW_H / 2 - 2, dotX + 4, y + ROW_H / 2 + 2, accent);
         }
 
         // Group count, right-aligned next to the dot (or at the edge if no dot)
@@ -369,8 +408,10 @@ public final class WaypointerScreen extends Screen {
         g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
         g.enableScissor(x1, y1, x2, y2);
 
-        g.drawString(font, isTemporaryZone(selectedZoneId) ? "Temporary Waypoints" : "Groups",
-                x1 + GAP, y1 + 6, TEXT_DIM, false);
+        String header = isDianaZone(selectedZoneId) ? "Diana Waypoints"
+                : isTemporaryZone(selectedZoneId) ? "Temporary Waypoints"
+                : "Groups";
+        g.drawString(font, header, x1 + GAP, y1 + 6, TEXT_DIM, false);
 
         int y = y1 + 20 - scrollOffset;
         int listW = x2 - x1;
@@ -395,6 +436,13 @@ public final class WaypointerScreen extends Screen {
                     x1, y1 + 8 + 14, TEXT_DIM, false);
             return;
         }
+        if (isDianaZone(selectedZoneId)) {
+            g.drawString(font, "No Diana waypoints.",
+                    x1, y1 + 8, TEXT, false);
+            g.drawString(font, "Detected burrows and estimates will appear here.",
+                    x1, y1 + 8 + 14, TEXT_DIM, false);
+            return;
+        }
         g.drawString(font, "No waypoint groups in this zone.",
                 x1, y1 + 8, TEXT, false);
         g.drawString(font, "Click \"New Group\" to start, or paste a codec into chat.",
@@ -407,7 +455,7 @@ public final class WaypointerScreen extends Screen {
         int rowBot = y1 + ROW_H + 2;
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
         if (bg != 0) g.fill(x1, y1, x2, rowBot, bg);
-        int accent = group.temp() ? TEMPORARY_ACCENT : ACCENT;
+        int accent = isDianaGroup(group) ? DIANA_ACCENT : group.temp() ? TEMPORARY_ACCENT : ACCENT;
         if (selected) g.fill(x1, y1, x1 + 2, rowBot, accent);
 
         int textColor = group.enabled() ? TEXT : TEXT_MUTED;
@@ -415,7 +463,9 @@ public final class WaypointerScreen extends Screen {
         g.drawString(font, name, x1 + GAP + 2, y1 + 4, textColor, false);
 
         String sub = group.temp()
-                ? group.size() + " temp pts  " + Zone.fromId(group.zoneId()).displayName()
+                ? group.size() + (isDianaGroup(group)
+                        ? " Diana pts  Hub"
+                        : " temp pts  " + Zone.fromId(group.zoneId()).displayName())
                 : group.size() + " pts  @" + group.currentIndex()
                         + "  " + loadModeLabel(group);
         g.drawString(font, sub, x1 + GAP + 2, y1 + 14, TEXT_DIM, false);
@@ -519,7 +569,7 @@ public final class WaypointerScreen extends Screen {
     // --- actions -----------------------------------------------------------------------------
 
     private void createGroup() {
-        if (isTemporaryZone(selectedZoneId)) {
+        if (isTemporaryZone(selectedZoneId) || isDianaZone(selectedZoneId)) {
             Zone current = manager.currentZone();
             selectedZoneId = current == null ? Zone.UNKNOWN.id() : current.id();
         }

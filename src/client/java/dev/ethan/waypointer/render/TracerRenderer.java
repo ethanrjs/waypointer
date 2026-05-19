@@ -80,7 +80,7 @@ public final class TracerRenderer implements HudElement {
         if (IrisShaderFallback.shouldUse(config)) return;
 
         var groups = manager.activeGroups();
-        if (groups.isEmpty()) return;
+        if (groups == null || groups.isEmpty()) return;
         boolean tempFocus = manager.tempWaypointFocusActive();
         if (!tempFocus && !config.showTracer()) return;
 
@@ -145,7 +145,7 @@ public final class TracerRenderer implements HudElement {
         if (!IrisShaderFallback.shouldUse(config)) return;
 
         var groups = manager.activeGroups();
-        if (groups.isEmpty()) return;
+        if (groups == null || groups.isEmpty()) return;
         boolean tempFocus = manager.tempWaypointFocusActive();
         if (!tempFocus && !config.showTracer()) return;
 

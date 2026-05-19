@@ -326,7 +326,7 @@ class CoordScannerTest {
         assertTrue(blockRun.style().isBold());
         ClickEvent clickEvent = blockRun.style().getClickEvent();
         ClickEvent.RunCommand runCommand = assertInstanceOf(ClickEvent.RunCommand.class, clickEvent);
-        assertEquals("/waypointer blacklist add Babbur", runCommand.command());
+        assertEquals("/waypointer blacklist toggle Babbur", runCommand.command());
         assertNotNull(blockRun.style().getHoverEvent());
     }
 

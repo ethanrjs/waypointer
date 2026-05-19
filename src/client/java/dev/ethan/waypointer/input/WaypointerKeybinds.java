@@ -6,6 +6,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.diana.DianaWarp;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import dev.ethan.waypointer.screen.AddNamedWaypointScreen;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -40,6 +41,8 @@ import org.lwjgl.glfw.GLFW;
  *     the waypoint before adding it.
  *   - Add Temp Waypoint Here -- drops a temporary waypoint using the user's
  *     default expiry mode and duration.
+ *   - Diana Warp Assist -- warps to the enabled Hub warp that saves meaningful
+ *     travel distance to the active Diana estimate waypoint.
  *
  * All bindings are registered under a single Waypointer category via the
  * identifier-based API so the vanilla controls screen groups them together.
@@ -58,6 +61,7 @@ public final class WaypointerKeybinds {
     private final KeyMapping repositionAddWaypoint;
     private final KeyMapping repositionAddNamedWaypoint;
     private final KeyMapping addTempWaypointHere;
+    private final KeyMapping dianaWarpAssist;
     private final Runnable openGui;
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
@@ -113,6 +117,11 @@ public final class WaypointerKeybinds {
                 InputConstants.Type.KEYSYM,
                 InputConstants.UNKNOWN.getValue(),
                 CATEGORY));
+        this.dianaWarpAssist = KeyBindingHelper.registerKeyBinding(new KeyMapping(
+                "key.waypointer.diana_warp_assist",
+                InputConstants.Type.KEYSYM,
+                InputConstants.UNKNOWN.getValue(),
+                CATEGORY));
     }
 
     public void install() {
@@ -150,6 +159,7 @@ public final class WaypointerKeybinds {
             return;
         }
         while (addTempWaypointHere.consumeClick()) addTempWaypointAtPlayer(mc);
+        while (dianaWarpAssist.consumeClick()) runDianaWarpAssist(mc);
     }
 
     /**
@@ -164,6 +174,7 @@ public final class WaypointerKeybinds {
         while (repositionAddWaypoint.consumeClick()) {}
         while (repositionAddNamedWaypoint.consumeClick()) {}
         while (addTempWaypointHere.consumeClick()) {}
+        while (dianaWarpAssist.consumeClick()) {}
     }
 
     /**
@@ -256,6 +267,66 @@ public final class WaypointerKeybinds {
                 + pos.x() + ", " + pos.y() + ", " + pos.z()).withStyle(ChatFormatting.AQUA));
     }
 
+    private void runDianaWarpAssist(Minecraft mc) {
+        DianaWarpCandidate candidate = currentDianaWarpCandidate(mc);
+        if (candidate == null) return;
+
+        LocalPlayer player = mc.player;
+        if (player == null || player.connection == null) return;
+        player.connection.sendCommand(candidate.warp().command());
+        showFeedback(mc, Component.literal("Warping to " + candidate.warp().label() + "...")
+                .withStyle(ChatFormatting.DARK_GREEN));
+    }
+
+    private DianaWarpCandidate currentDianaWarpCandidate(Minecraft mc) {
+        if (!config.dianaWarpAssist()) return null;
+        LocalPlayer player = mc.player;
+        if (player == null) return null;
+
+        Waypoint estimate = currentDianaEstimate();
+        if (estimate == null) return null;
+
+        double estimateX = estimate.x() + 0.5;
+        double estimateY = estimate.y() + 0.5;
+        double estimateZ = estimate.z() + 0.5;
+        double playerDistance = distance(player.getX(), player.getY(), player.getZ(),
+                estimateX, estimateY, estimateZ);
+
+        DianaWarpCandidate best = null;
+        for (DianaWarp warp : DianaWarp.values()) {
+            if (!config.dianaWarpEnabled(warp)) continue;
+
+            double warpDistance = distance(warp.x(), warp.y(), warp.z(), estimateX, estimateY, estimateZ);
+            double savings = playerDistance - warpDistance;
+            if (savings <= config.dianaWarpMinSavings()) continue;
+            if (best == null || warpDistance < best.warpDistance()) {
+                best = new DianaWarpCandidate(warp, warpDistance, savings);
+            }
+        }
+        return best;
+    }
+
+    private Waypoint currentDianaEstimate() {
+        String estimateName = config.dianaEstimateWaypointName();
+        for (WaypointGroup group : manager.activeGroups()) {
+            if (!group.id().startsWith("diana::")) continue;
+            for (Waypoint waypoint : group.waypoints()) {
+                if (estimateName.equals(waypoint.name())
+                        || waypoint.name().startsWith(estimateName + "\n")) {
+                    return waypoint;
+                }
+            }
+        }
+        return null;
+    }
+
+    private static double distance(double ax, double ay, double az, double bx, double by, double bz) {
+        double dx = ax - bx;
+        double dy = ay - by;
+        double dz = az - bz;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
     private PlayerWaypointPlacement.BlockPosition playerWaypointPosition(LocalPlayer player) {
         return PlayerWaypointPlacement.fromPlayer(
                 player.getX(), player.getY(), player.getZ(), config);
@@ -271,4 +342,6 @@ public final class WaypointerKeybinds {
         if (mc.gui == null) return;
         mc.gui.setOverlayMessage(msg, false);
     }
+
+    private record DianaWarpCandidate(DianaWarp warp, double warpDistance, double savings) {}
 }

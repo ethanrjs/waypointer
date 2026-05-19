@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -48,7 +49,7 @@ public final class ActiveGroupManager {
     // separate END_MAIN handlers, so rebuilding on every call burns avoidable
     // young-gen garbage. Invalidated on zone change and on fireDataChanged(),
     // which every mutation path funnels through.
-    private List<WaypointGroup> cachedActive;
+    private volatile List<WaypointGroup> cachedActive;
 
     public Zone currentZone() {
         return currentZone;
@@ -77,25 +78,30 @@ public final class ActiveGroupManager {
      * invalidation (zone change or data change).
      */
     public List<WaypointGroup> activeGroups() {
-        if (cachedActive != null) return cachedActive;
+        List<WaypointGroup> snapshot = cachedActive;
+        if (snapshot != null) return snapshot;
 
-        if (currentZone == null) {
-            cachedActive = Collections.emptyList();
-            return cachedActive;
+        Zone zone = currentZone;
+        if (zone == null) {
+            snapshot = Collections.emptyList();
+            cachedActive = snapshot;
+            return snapshot;
         }
-        String zoneId = currentZone.id();
+        String zoneId = zone.id();
         WaypointGroup focused = focusedTempGroupForZone(zoneId);
         if (focused != null) {
-            cachedActive = List.of(focused);
-            return cachedActive;
+            snapshot = List.of(focused);
+            cachedActive = snapshot;
+            return snapshot;
         }
 
         List<WaypointGroup> active = new ArrayList<>();
         for (WaypointGroup g : byId.values()) {
             if (g.enabled() && zoneId.equals(g.zoneId())) active.add(g);
         }
-        cachedActive = List.copyOf(active);
-        return cachedActive;
+        snapshot = List.copyOf(active);
+        cachedActive = snapshot;
+        return snapshot;
     }
 
     /**
@@ -329,6 +335,52 @@ public final class ActiveGroupManager {
         return removed;
     }
 
+    /**
+     * Remove temporary waypoints in the current zone when the player enters
+     * their reach radius. This is intentionally zone-scoped so standing at the
+     * same coordinates on another island cannot clear unrelated temp markers.
+     *
+     * @return number of temporary waypoints removed
+     */
+    public int removeReachedTempWaypoints(double px, double py, double pz) {
+        return removeReachedTempWaypoints(px, py, pz, waypoint -> true);
+    }
+
+    public int removeReachedTempWaypoints(double px, double py, double pz, Predicate<Waypoint> shouldRemove) {
+        if (currentZone == null) return 0;
+        Predicate<Waypoint> filter = shouldRemove == null ? waypoint -> true : shouldRemove;
+
+        int removed = 0;
+        String zoneId = currentZone.id();
+        boolean focusCleared = false;
+        for (WaypointGroup group : byId.values()) {
+            if (!group.temp() || !zoneId.equals(group.zoneId()) || group.isEmpty()) continue;
+
+            List<Integer> reached = new ArrayList<>();
+            group.forEachNearbyIndex(px, py, pz, group.maxEffectiveRadius(), i -> {
+                if (i < 0 || i >= group.size()) return true;
+                Waypoint waypoint = group.get(i);
+                if (!waypoint.isTemp()) return true;
+                if (!filter.test(waypoint)) return true;
+                if (isWithinReach(group, waypoint, px, py, pz)) reached.add(i);
+                return true;
+            });
+
+            if (reached.isEmpty()) continue;
+            if (!focusCleared) {
+                clearTempWaypointFocus();
+                focusCleared = true;
+            }
+            for (int i = reached.size() - 1; i >= 0; i--) {
+                group.remove(reached.get(i));
+                removed++;
+            }
+        }
+
+        if (removed > 0) fireDataChanged();
+        return removed;
+    }
+
     private static String sanitizeTempSourceName(String raw) {
         if (raw == null) return "";
         String trimmed = raw.trim();
@@ -370,6 +422,15 @@ public final class ActiveGroupManager {
 
     private static String normalizeSenderName(String senderName) {
         return senderName == null ? "" : senderName.trim();
+    }
+
+    private static boolean isWithinReach(WaypointGroup group, Waypoint waypoint,
+                                         double px, double py, double pz) {
+        double radius = group.effectiveRadius(waypoint);
+        double dx = (waypoint.x() + 0.5) - px;
+        double dy = (waypoint.y() + 0.5) - py;
+        double dz = (waypoint.z() + 0.5) - pz;
+        return dx * dx + dy * dy + dz * dz <= radius * radius;
     }
 
     public List<WaypointGroup> groupsForZone(String zoneId) {

@@ -175,8 +175,14 @@ public final class WaypointerCommands {
                                 .then(argument("name", StringArgumentType.word())
                                         .executes(ctx -> runChatCoordBlacklistAdd(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "name")))))
+                        .then(literal("toggle")
+                                .then(argument("name", StringArgumentType.word())
+                                        .suggests(suggestChatCoordBlacklistNames())
+                                        .executes(ctx -> runChatCoordBlacklistToggle(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "name")))))
                         .then(literal("remove")
                                 .then(argument("name", StringArgumentType.word())
+                                        .suggests(suggestChatCoordBlacklistNames())
                                         .executes(ctx -> runChatCoordBlacklistRemove(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "name"))))))
                 .then(literal("remove")
@@ -200,7 +206,7 @@ public final class WaypointerCommands {
                         .executes(ctx -> runClearZone(ctx.getSource(), false))
                         .then(literal("confirm").executes(ctx -> runClearZone(ctx.getSource(), true))))
                 .then(literal("export")
-                        .executes(ctx -> runExport(ctx.getSource(), exportOptionsFromConfig()))
+                        .executes(ctx -> runExport(ctx.getSource(), defaultExportOptions()))
                         .then(literal("names")
                                 .executes(ctx -> runExport(ctx.getSource(), WaypointCodec.Options.WITH_NAMES)))
                         .then(literal("nonames")
@@ -303,6 +309,18 @@ public final class WaypointerCommands {
             for (String h : handles) {
                 if (h.toLowerCase(Locale.ROOT).startsWith(token)) {
                     builder.suggest(h, Component.literal("cached import"));
+                }
+            }
+            return builder.buildFuture();
+        };
+    }
+
+    private SuggestionProvider<FabricClientCommandSource> suggestChatCoordBlacklistNames() {
+        return (ctx, builder) -> {
+            String token = builder.getRemainingLowerCase();
+            for (String name : config.chatCoordSenderBlacklist()) {
+                if (name.toLowerCase(Locale.ROOT).startsWith(token)) {
+                    builder.suggest(name, Component.literal("blacklisted sender"));
                 }
             }
             return builder.buildFuture();
@@ -734,6 +752,18 @@ public final class WaypointerCommands {
         return added ? 1 : 0;
     }
 
+    private int runChatCoordBlacklistToggle(FabricClientCommandSource src, String senderName) {
+        boolean nowBlocked = config.toggleChatCoordSenderBlacklist(senderName);
+        int removed = nowBlocked ? manager.removeTempWaypointsFromSender(senderName) : 0;
+        if (nowBlocked) {
+            success(src, "Blacklisted " + senderName + " for chat waypoints"
+                    + (removed > 0 ? " and removed " + removed + " temporary waypoint(s)" : ""));
+        } else {
+            success(src, "Removed " + senderName + " from the chat waypoint blacklist");
+        }
+        return 1;
+    }
+
     private int runChatCoordBlacklistRemove(FabricClientCommandSource src, String senderName) {
         if (config.removeChatCoordSenderBlacklist(senderName)) {
             success(src, "Removed " + senderName + " from the chat waypoint blacklist");
@@ -1004,21 +1034,17 @@ public final class WaypointerCommands {
     }
 
     /**
-     * Default export options reflect the user's persisted config (see Settings).
-     * Users can still override per field with {@code /wp export names}, etc.
-     *
-     * The label is intentionally omitted here: the CLI export path doesn't have a
-     * good way to prompt for a label, and silently attaching one from config would
-     * surprise users who set it once and forgot. Use {@link dev.ethan.waypointer.screen.ExportScreen}
-     * (the GUI export panel) to set a label on a per-export basis.
+     * Default exports keep every optional per-waypoint field off and preserve only
+     * group metadata. Users can still override per field with
+     * {@code /wp export names}, etc.
      */
-    private WaypointCodec.Options exportOptionsFromConfig() {
+    private WaypointCodec.Options defaultExportOptions() {
         return WaypointCodec.Options.builder()
-                .includeNames(config.exportIncludeNames())
-                .includeColors(config.exportIncludeColors())
-                .includeRadii(config.exportIncludeRadii())
-                .includeWaypointFlags(config.exportIncludeWaypointFlags())
-                .includeGroupMeta(config.exportIncludeGroupMeta())
+                .includeNames(false)
+                .includeColors(false)
+                .includeRadii(false)
+                .includeWaypointFlags(false)
+                .includeGroupMeta(true)
                 .build();
     }
 

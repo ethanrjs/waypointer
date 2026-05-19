@@ -22,8 +22,10 @@ import net.minecraft.client.Minecraft;
  *       a hard boundary too.</li>
  * </ul>
  *
- * {@code TEMP_UNTIL_REACHED} cleanup is handled inside {@link ProximityTracker}
- * at the moment of advance, where the "reached" signal actually lives.
+ * Reach cleanup is handled inside {@link ProximityTracker} at the moment the
+ * player enters a marker's radius. Route-owned {@code TEMP_UNTIL_REACHED}
+ * waypoints are removed as progression advances; temp bucket markers can also
+ * opt into the same behavior through the user's settings.
  */
 public final class TempWaypointCleaner {
 

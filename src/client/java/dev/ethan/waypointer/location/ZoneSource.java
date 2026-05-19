@@ -5,9 +5,7 @@ import dev.ethan.waypointer.core.Zone;
 import java.util.function.Consumer;
 
 /**
- * A source that can emit Zone change signals. Swappable so we can pick the best
- * available source at runtime -- the Hypixel Mod API when installed, scoreboard
- * scraping otherwise.
+ * A source that can emit Zone change signals.
  */
 public interface ZoneSource {
 

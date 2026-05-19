@@ -74,8 +74,8 @@ public final class WaypointRenderer implements HudElement {
      */
     private static final double LABEL_ANCHOR_LIFT = 1.6;
 
-    /** Opaque ARGB for the waypoint name -- readable against every biome. */
-    private static final int NAME_ARGB = 0xFFFFFFFF;
+    /** Default label colour, matching Minecraft's &7 gray. */
+    private static final int NAME_ARGB = 0xFFAAAAAA;
 
     /** Slightly dimmer than the name so the distance row reads as secondary info. */
     private static final int DISTANCE_ARGB = 0xFFCCCCCC;
@@ -187,7 +187,7 @@ public final class WaypointRenderer implements HudElement {
         if (IrisShaderFallback.shouldUse(config)) return;
 
         var groups = manager.activeGroups();
-        if (groups.isEmpty()) return;
+        if (groups == null || groups.isEmpty()) return;
 
         WaypointerConfig.BoxStyle style = config.boxStyle();
         boolean drawLines = style != WaypointerConfig.BoxStyle.FILLED;
@@ -269,7 +269,7 @@ public final class WaypointRenderer implements HudElement {
             State state = stateFor(g, i, currentIdx);
             if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
 
-            float alpha = alphaFor(g, state) * beaconOpacity;
+            float alpha = alphaFor(g, state) * beaconOpacity * colorOpacity(w.color());
             float x = w.x(), y = w.y(), z = w.z();
             RenderHelpers.emitLineBox(lines, ps, x, y, z, x + 1f, y + 1f, z + 1f,
                     w.color(), alpha, outlineThickness);
@@ -293,7 +293,7 @@ public final class WaypointRenderer implements HudElement {
             State state = stateFor(g, i, currentIdx);
             if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
 
-            float alpha = alphaFor(g, state) * beaconOpacity;
+            float alpha = alphaFor(g, state) * beaconOpacity * colorOpacity(w.color());
             float x = w.x(), y = w.y(), z = w.z();
             RenderHelpers.emitFilledBox(quads, ps, x, y, z, x + 1f, y + 1f, z + 1f,
                     w.color(), alpha * FILLED_ALPHA_SCALE);
@@ -338,7 +338,8 @@ public final class WaypointRenderer implements HudElement {
         State state = stateFor(g, i, currentIdx);
         if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
 
-        float alpha = alphaFor(g, state) * (float) config.beaconOpacity() * BEAM_ALPHA_SCALE;
+        float alpha = alphaFor(g, state) * (float) config.beaconOpacity()
+                * colorOpacity(w.color()) * BEAM_ALPHA_SCALE;
         if (alpha <= 0.0f) return;
 
         float y1 = config.beaconBeamExtendsBelowWaypoint() ? minY : w.y();
@@ -372,7 +373,7 @@ public final class WaypointRenderer implements HudElement {
         if (!showNames && !showDistances && !drawHudFallback) return;
 
         var groups = manager.activeGroups();
-        if (groups.isEmpty()) return;
+        if (groups == null || groups.isEmpty()) return;
 
         Minecraft mc = Minecraft.getInstance();
         GameRenderer renderer = mc.gameRenderer;
@@ -446,7 +447,7 @@ public final class WaypointRenderer implements HudElement {
                 return;
             }
 
-            float alpha = alphaFor(group, state) * beaconOpacity;
+            float alpha = alphaFor(group, state) * beaconOpacity * colorOpacity(waypoint.color());
             int argb = RenderHelpers.withAlpha(0xFF000000 | (waypoint.color() & 0xFFFFFF), alpha);
             if (!projectBoxCorners(waypoint, screenW, screenH)) return;
 
@@ -556,7 +557,7 @@ public final class WaypointRenderer implements HudElement {
             String distanceText = showDistances
                     ? distanceString((int) distance)
                     : null;
-            float alpha = alphaFor(group, state);
+            float alpha = alphaFor(group, state) * colorOpacity(w.color());
             int nameColor = colorizeNames && showNames
                     ? 0xFF000000 | (w.color() & 0xFFFFFF)
                     : NAME_ARGB;
@@ -569,9 +570,8 @@ public final class WaypointRenderer implements HudElement {
 
             double rowY = sy;
             if (showNames) {
-                drawCenteredLabel(g, font, name, sx, rowY,
+                rowY = drawCenteredLabelRows(g, font, name, sx, rowY,
                         RenderHelpers.withAlpha(nameColor, alpha), alpha, labelScale);
-                rowY += labelRowAdvance(font, labelScale);
             }
             if (showDistances) {
                 drawCenteredLabel(g, font, distanceText, sx, rowY,
@@ -592,10 +592,9 @@ public final class WaypointRenderer implements HudElement {
             LabelCandidate candidate = labelCandidates.get(i);
             double rowY = candidate.screenY;
             if (candidate.name != null) {
-                drawCenteredLabel(g, font, candidate.name, candidate.screenX, rowY,
+                rowY = drawCenteredLabelRows(g, font, candidate.name, candidate.screenX, rowY,
                         RenderHelpers.withAlpha(candidate.nameColor, candidate.alpha),
                         candidate.alpha, candidate.scale);
-                rowY += labelRowAdvance(font, candidate.scale);
             }
             if (candidate.distance != null) {
                 drawCenteredLabel(g, font, candidate.distance, candidate.screenX, rowY,
@@ -675,6 +674,11 @@ public final class WaypointRenderer implements HudElement {
         return (float) Math.max(LABEL_SCALE_MIN, Math.min(LABEL_SCALE_MAX, scale));
     }
 
+    private static float colorOpacity(int color) {
+        int alpha = (color >>> 24) & 0xFF;
+        return alpha == 0 ? 1.0f : alpha / 255.0f;
+    }
+
     private static double labelRowAdvance(Font font, float scale) {
         return (font.lineHeight + DISTANCE_ROW_GAP) * scale;
     }
@@ -716,6 +720,26 @@ public final class WaypointRenderer implements HudElement {
         // drop shadow is doing all the work keeping text readable against bright biomes.
         g.drawString(font, text, 0, 0, argb, true);
         g.pose().popMatrix();
+    }
+
+    private double drawCenteredLabelRows(GuiGraphics g, Font font, String text,
+                                         double cx, double top, int argb,
+                                         float alpha, float scale) {
+        if (text == null || text.isEmpty()) return top;
+
+        double rowY = top;
+        int start = 0;
+        while (start <= text.length()) {
+            int next = text.indexOf('\n', start);
+            String row = next < 0 ? text.substring(start) : text.substring(start, next);
+            if (!row.isEmpty()) {
+                drawCenteredLabel(g, font, row, cx, rowY, argb, alpha, scale);
+                rowY += labelRowAdvance(font, scale);
+            }
+            if (next < 0) break;
+            start = next + 1;
+        }
+        return rowY;
     }
 
     private String labelFor(WaypointGroup g, int i, Waypoint w, State state,

@@ -17,6 +17,8 @@ import dev.ethan.waypointer.dungeon.DungeonStateTracker;
 import dev.ethan.waypointer.dungeon.DungeonTriggerDetector;
 import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
+import dev.ethan.waypointer.diana.DianaBurrowDetector;
+import dev.ethan.waypointer.diana.DianaWaypointDetector;
 import dev.ethan.waypointer.input.WaypointRepositionMode;
 import dev.ethan.waypointer.input.WaypointerKeybinds;
 import dev.ethan.waypointer.location.LocationTracker;
@@ -84,6 +86,8 @@ public final class WaypointerClient implements ClientModInitializer {
         new WaypointerCommands(manager, storage, config, chatImportCache, WaypointerClient::openGui).install();
         new WaypointerKeybinds(WaypointerClient::openGui, manager, config).install();
         new ChatCoordDetector(config, manager).install();
+        new DianaBurrowDetector(config, manager).install();
+        new DianaWaypointDetector(config, manager).install();
         new ChatImportDetector(config, chatImportCache).install();
         int apiEntrypoints = WaypointerApiEntrypoints.invokeFabricEntrypoints(api);
         if (apiEntrypoints > 0) {

@@ -38,9 +38,9 @@ import static dev.ethan.waypointer.screen.GuiTokens.SURFACE_SUBTLE;
  * the wire format -- exports always carried colors, radii, group metadata, and a
  * fixed-format header regardless of what the user picked. The recipient had no
  * way to opt out, and a sender who wanted a small "just the path" payload had no
- * choice. Granular toggles let the sender pay only for what's worth sharing;
- * defaults are preserved so the common case still produces a sensible mid-size
- * export with names dropped.
+ * choice. Granular toggles let the sender pay only for what's worth sharing.
+ * New export screens start with only Group Meta enabled so route behaviour
+ * survives while the payload stays clean by default.
  *
  * Layout, top to bottom:
  *
@@ -49,7 +49,7 @@ import static dev.ethan.waypointer.screen.GuiTokens.SURFACE_SUBTLE;
  *   3. Toggle row per export option (Names, Colors, Radii, Waypoint Flags,
  *      Group Meta). Each carries a tooltip explaining the trade-off.
  *   4. Reset-to-defaults button so users who experimented can recover the
- *      sensible config preset without leaving the screen.
+ *      short, predictable export preset without leaving the screen.
  *   5. Size summary: char count + paste-fit indicator.
  *   6. Preview box labelled "Encoded preview (this is what gets copied)".
  */
@@ -102,7 +102,6 @@ public final class ExportScreen extends Screen {
     private static final int ROUTE_TOGGLE_W = 148;
 
     private final Screen parent;
-    private final WaypointerConfig config;
     private final List<WaypointGroup> groups;
     private final boolean[] selectedGroups;
     private final String subtitle;
@@ -128,12 +127,11 @@ public final class ExportScreen extends Screen {
     public ExportScreen(Screen parent, WaypointerConfig config, List<WaypointGroup> groups, String subtitle) {
         super(Component.literal("Export Waypoints"));
         this.parent = parent;
-        this.config = config;
         this.groups = groups;
         this.selectedGroups = new boolean[groups.size()];
         Arrays.fill(this.selectedGroups, true);
         this.subtitle = subtitle;
-        this.optsBuilder = builderFromConfig(config);
+        this.optsBuilder = defaultExportBuilder();
     }
 
     /** Entry point for a single-group export; wraps the group in a list with a title. */
@@ -352,7 +350,7 @@ public final class ExportScreen extends Screen {
     }
 
     private void resetToConfigDefaults() {
-        optsBuilder = builderFromConfig(config);
+        optsBuilder = defaultExportBuilder();
         currentLabel = "";
         labelInput.setValue("");
         // Re-apply each toggle's value from the freshly-built options and
@@ -623,13 +621,13 @@ public final class ExportScreen extends Screen {
 
     // --- helpers ------------------------------------------------------------------------------
 
-    private static WaypointCodec.Options.Builder builderFromConfig(WaypointerConfig config) {
+    private static WaypointCodec.Options.Builder defaultExportBuilder() {
         return WaypointCodec.Options.builder()
-                .includeNames(config.exportIncludeNames())
-                .includeColors(config.exportIncludeColors())
-                .includeRadii(config.exportIncludeRadii())
-                .includeWaypointFlags(config.exportIncludeWaypointFlags())
-                .includeGroupMeta(config.exportIncludeGroupMeta());
+                .includeNames(false)
+                .includeColors(false)
+                .includeRadii(false)
+                .includeWaypointFlags(false)
+                .includeGroupMeta(true);
     }
 
     @Override
