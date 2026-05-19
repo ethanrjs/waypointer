@@ -3,6 +3,7 @@ package dev.ethan.waypointer.diana;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
+import dev.ethan.waypointer.math.DistanceUtil;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -69,6 +70,13 @@ public final class DianaBurrowDetector {
     private static final int RESOLVED_BURROW_Y_TOLERANCE = 16;
     private static final double EPSILON = 1.0E-6;
     private static final Pattern CHAIN_PROGRESS_PATTERN = Pattern.compile("\\((\\d+)\\s*/\\s*(\\d+)\\)");
+
+    /**
+     * Second line on Diana estimate markers when warp-assist applies. Kept in this
+     * class with {@link #dianaEstimateNameWithWarpAssistLine} so keybind lookup
+     * stays aligned with the detector label.
+     */
+    public static final String DIANA_WARP_ASSIST_HINT = "Press warp key";
 
     private final WaypointerConfig config;
     private final ActiveGroupManager manager;
@@ -861,9 +869,12 @@ public final class DianaBurrowDetector {
         if (type != DianaBurrowType.GUESS) return type.label();
 
         String base = config.dianaEstimateWaypointName();
-        return hasHelpfulWarp(key)
-                ? base + "\nPress warp key"
-                : base;
+        return hasHelpfulWarp(key) ? dianaEstimateNameWithWarpAssistLine(base) : base;
+    }
+
+    /** Full waypoint name when the warp-assist hint row is shown under {@code baseName}. */
+    public static String dianaEstimateNameWithWarpAssistLine(String baseName) {
+        return baseName + "\n" + DIANA_WARP_ASSIST_HINT;
     }
 
     private int dianaColor(BlockKey key, DianaBurrowType type) {
@@ -897,14 +908,14 @@ public final class DianaBurrowDetector {
         double estimateX = key.x() + 0.5;
         double estimateY = key.y() + 0.5;
         double estimateZ = key.z() + 0.5;
-        double playerDistance = distance(
+        double playerDistance = DistanceUtil.euclidean(
                 player.getX(), player.getY(), player.getZ(),
                 estimateX, estimateY, estimateZ);
 
         for (DianaWarp warp : DianaWarp.values()) {
             if (!config.dianaWarpEnabled(warp)) continue;
 
-            double warpDistance = distance(
+            double warpDistance = DistanceUtil.euclidean(
                     warp.x(), warp.y(), warp.z(),
                     estimateX, estimateY, estimateZ);
             if (playerDistance - warpDistance > config.dianaWarpMinSavings()) {
@@ -1079,13 +1090,6 @@ public final class DianaBurrowDetector {
 
         spadeDebugLogTimes.put(key, now);
         Waypointer.LOGGER.info("[Diana spade] {}", message);
-    }
-
-    private static double distance(double ax, double ay, double az, double bx, double by, double bz) {
-        double dx = ax - bx;
-        double dy = ay - by;
-        double dz = az - bz;
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     private static double distanceToRay(Ray ray, Vec3 point) {

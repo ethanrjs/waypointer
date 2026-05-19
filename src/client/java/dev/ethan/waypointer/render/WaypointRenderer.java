@@ -78,7 +78,7 @@ public final class WaypointRenderer implements HudElement {
     private static final int NAME_ARGB = 0xFFAAAAAA;
 
     /** Slightly dimmer than the name so the distance row reads as secondary info. */
-    private static final int DISTANCE_ARGB = 0xFFCCCCCC;
+    private static final int DISTANCE_ARGB = 0xFF888888;
 
     /**
      * ~70% black backdrop drawn behind each label. Vanilla nametags use ~25%

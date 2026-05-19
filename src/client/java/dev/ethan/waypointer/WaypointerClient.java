@@ -68,7 +68,7 @@ public final class WaypointerClient implements ClientModInitializer {
         storage.attach(manager);
         api = new DefaultWaypointerApi(manager);
 
-        new LocationTracker(manager, config).install();
+        new LocationTracker(manager).install();
         new ProximityTracker(manager, config).install();
         new TempWaypointCleaner(manager).install();
         new WorldJoinProgressReset(manager, config).install();

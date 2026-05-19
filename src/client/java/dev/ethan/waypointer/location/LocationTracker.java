@@ -1,7 +1,6 @@
 package dev.ethan.waypointer.location;
 
 import dev.ethan.waypointer.Waypointer;
-import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Zone;
 
@@ -17,7 +16,7 @@ public final class LocationTracker {
     private final ActiveGroupManager manager;
     private ZoneSource source;
 
-    public LocationTracker(ActiveGroupManager manager, WaypointerConfig config) {
+    public LocationTracker(ActiveGroupManager manager) {
         this.manager = manager;
     }
 

@@ -6,7 +6,9 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.diana.DianaBurrowDetector;
 import dev.ethan.waypointer.diana.DianaWarp;
+import dev.ethan.waypointer.math.DistanceUtil;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import dev.ethan.waypointer.screen.AddNamedWaypointScreen;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -289,14 +291,14 @@ public final class WaypointerKeybinds {
         double estimateX = estimate.x() + 0.5;
         double estimateY = estimate.y() + 0.5;
         double estimateZ = estimate.z() + 0.5;
-        double playerDistance = distance(player.getX(), player.getY(), player.getZ(),
+        double playerDistance = DistanceUtil.euclidean(player.getX(), player.getY(), player.getZ(),
                 estimateX, estimateY, estimateZ);
 
         DianaWarpCandidate best = null;
         for (DianaWarp warp : DianaWarp.values()) {
             if (!config.dianaWarpEnabled(warp)) continue;
 
-            double warpDistance = distance(warp.x(), warp.y(), warp.z(), estimateX, estimateY, estimateZ);
+            double warpDistance = DistanceUtil.euclidean(warp.x(), warp.y(), warp.z(), estimateX, estimateY, estimateZ);
             double savings = playerDistance - warpDistance;
             if (savings <= config.dianaWarpMinSavings()) continue;
             if (best == null || warpDistance < best.warpDistance()) {
@@ -308,23 +310,17 @@ public final class WaypointerKeybinds {
 
     private Waypoint currentDianaEstimate() {
         String estimateName = config.dianaEstimateWaypointName();
+        String withWarpAssistLine = DianaBurrowDetector.dianaEstimateNameWithWarpAssistLine(estimateName);
         for (WaypointGroup group : manager.activeGroups()) {
             if (!group.id().startsWith("diana::")) continue;
             for (Waypoint waypoint : group.waypoints()) {
                 if (estimateName.equals(waypoint.name())
-                        || waypoint.name().startsWith(estimateName + "\n")) {
+                        || withWarpAssistLine.equals(waypoint.name())) {
                     return waypoint;
                 }
             }
         }
         return null;
-    }
-
-    private static double distance(double ax, double ay, double az, double bx, double by, double bz) {
-        double dx = ax - bx;
-        double dy = ay - by;
-        double dz = az - bz;
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     private PlayerWaypointPlacement.BlockPosition playerWaypointPosition(LocalPlayer player) {
