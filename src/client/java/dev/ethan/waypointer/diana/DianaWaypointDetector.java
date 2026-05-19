@@ -96,6 +96,11 @@ public final class DianaWaypointDetector {
     }
 
     public static boolean isRareMobWaypoint(Waypoint waypoint) {
-        return waypoint != null && waypoint.name().contains(RARE_MOB_LABEL_MARKER);
+        if (waypoint == null) return false;
+        String name = waypoint.name();
+        // Diana chat labels use LIGHT_PURPLE for the mob + YELLOW before " from ".
+        // Require those codes so plain user text like "Start from North" does not match.
+        return name.contains(String.valueOf(ChatFormatting.LIGHT_PURPLE))
+                && name.contains(String.valueOf(ChatFormatting.YELLOW) + RARE_MOB_LABEL_MARKER);
     }
 }

@@ -38,7 +38,6 @@ import java.util.regex.Pattern;
 
 public final class DianaBurrowDetector {
 
-    private static final String GROUP_ID = "diana::burrows";
     private static final String HUB_ZONE_ID = "hub";
     private static final int WARP_HELPFUL_COLOR = 0x3FA7FF;
     private static final int HUB_MIN_X = -296;
@@ -168,13 +167,13 @@ public final class DianaBurrowDetector {
         if (isBurrowDugMessage(clean)) {
             lastBurrowRelatedChatMillis = System.currentTimeMillis();
             BlockKey clicked = recentlyClickedBurrowBlock(lastBurrowRelatedChatMillis);
-            boolean removed = clicked != null
-                    ? removeNearby(clicked, 3.0)
-                    : removeNearestToPlayer(9.0);
-            boolean clearedStale = clearResolvedBurrowMarkers(clean);
-            boolean clearedGuess = !guesses.isEmpty();
+            if (clicked != null) {
+                removeNearby(clicked, 3.0);
+            } else {
+                removeNearestToPlayer(9.0);
+            }
+            clearResolvedBurrowMarkers(clean);
             guesses.clear();
-            removed = removed || clearedStale || clearedGuess;
             renderWaypoints();
         } else if (chainStateChanged) {
             renderWaypoints();
@@ -780,7 +779,7 @@ public final class DianaBurrowDetector {
 
         int navigationIndex = navigationIndex(waypoints, estimateWaypoints.size());
         String signature = signature(waypoints);
-        WaypointGroup existing = manager.get(GROUP_ID);
+        WaypointGroup existing = manager.get(DianaBurrowWaypointGroup.ID);
         if (Objects.equals(signature, lastRenderedSignature)) {
             if (existing != null && existing.currentIndex() != navigationIndex) {
                 existing.setCurrentIndex(navigationIndex);
@@ -791,7 +790,7 @@ public final class DianaBurrowDetector {
         lastRenderedSignature = signature;
 
         if (waypoints.isEmpty()) {
-            if (existing != null) manager.remove(GROUP_ID);
+            if (existing != null) manager.remove(DianaBurrowWaypointGroup.ID);
             return;
         }
 
@@ -838,10 +837,10 @@ public final class DianaBurrowDetector {
     }
 
     private WaypointGroup ensureGroup() {
-        WaypointGroup existing = manager.get(GROUP_ID);
+        WaypointGroup existing = manager.get(DianaBurrowWaypointGroup.ID);
         if (existing != null) return existing;
 
-        WaypointGroup group = new WaypointGroup(GROUP_ID, "Diana Burrows", HUB_ZONE_ID);
+        WaypointGroup group = new WaypointGroup(DianaBurrowWaypointGroup.ID, "Diana Burrows", HUB_ZONE_ID);
         group.setTemp(true);
         group.setLoadMode(WaypointGroup.LoadMode.STATIC);
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
@@ -963,7 +962,7 @@ public final class DianaBurrowDetector {
         reportedArrowParticlesForSequence = false;
         currentChainComplete = true;
         spadeDebugLogTimes.clear();
-        if (manager.get(GROUP_ID) != null) manager.remove(GROUP_ID);
+        if (manager.get(DianaBurrowWaypointGroup.ID) != null) manager.remove(DianaBurrowWaypointGroup.ID);
     }
 
     private boolean isEnabledInHub() {

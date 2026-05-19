@@ -6,6 +6,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.ethan.waypointer.Waypointer;
+import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.diana.DianaRareMob;
 import dev.ethan.waypointer.diana.DianaWarp;
@@ -220,6 +221,15 @@ public final class WaypointerConfig {
      * first" cleanup path.
      */
     private boolean deleteTempWaypointsWhenReached = false;
+    /**
+     * Defaults for {@code /wp export} and the export screen "reset" preset.
+     * Gson repopulates these when older configs still carry the same keys.
+     */
+    private boolean exportIncludeNames = true;
+    private boolean exportIncludeColors = false;
+    private boolean exportIncludeRadii = false;
+    private boolean exportIncludeWaypointFlags = false;
+    private boolean exportIncludeGroupMeta = true;
     private boolean chatCodecDetection = true;
     /**
      * Hidden feature flag for the in-progress dungeon waypoint subsystem.
@@ -523,6 +533,11 @@ public final class WaypointerConfig {
     public boolean placeNewWaypointsBelowPlayer() { return placeNewWaypointsBelowPlayer; }
     public boolean focusTempWaypoints()       { return focusTempWaypoints; }
     public boolean deleteTempWaypointsWhenReached() { return deleteTempWaypointsWhenReached; }
+    public boolean exportIncludeNames()         { return exportIncludeNames; }
+    public boolean exportIncludeColors()        { return exportIncludeColors; }
+    public boolean exportIncludeRadii()         { return exportIncludeRadii; }
+    public boolean exportIncludeWaypointFlags() { return exportIncludeWaypointFlags; }
+    public boolean exportIncludeGroupMeta()     { return exportIncludeGroupMeta; }
     public boolean chatCodecDetection()       { return chatCodecDetection; }
     public boolean dungeonWaypointsFeatureEnabled() { return dungeonWaypointsFeatureEnabled; }
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
@@ -600,6 +615,22 @@ public final class WaypointerConfig {
                 : 0L;
     }
 
+    /** Snapshot for clipboard export and {@code /wp export} with no explicit override. */
+    public WaypointCodec.Options exportCodecOptions() {
+        return WaypointCodec.Options.builder()
+                .includeNames(exportIncludeNames)
+                .includeColors(exportIncludeColors)
+                .includeRadii(exportIncludeRadii)
+                .includeWaypointFlags(exportIncludeWaypointFlags)
+                .includeGroupMeta(exportIncludeGroupMeta)
+                .build();
+    }
+
+    /** Mutable builder seeded from persisted export toggles (export screen, reset). */
+    public WaypointCodec.Options.Builder exportCodecOptionsBuilder() {
+        return exportCodecOptions().toBuilder();
+    }
+
     public void setDefaultReachRadius(double v)        { this.defaultReachRadius = clamp(v, 0.5, 100); save(); }
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
@@ -669,6 +700,11 @@ public final class WaypointerConfig {
         this.deleteTempWaypointsWhenReached = v;
         save();
     }
+    public void setExportIncludeNames(boolean v)         { this.exportIncludeNames = v; save(); }
+    public void setExportIncludeColors(boolean v)        { this.exportIncludeColors = v; save(); }
+    public void setExportIncludeRadii(boolean v)         { this.exportIncludeRadii = v; save(); }
+    public void setExportIncludeWaypointFlags(boolean v) { this.exportIncludeWaypointFlags = v; save(); }
+    public void setExportIncludeGroupMeta(boolean v)     { this.exportIncludeGroupMeta = v; save(); }
     public void setChatCodecDetection(boolean v)       { this.chatCodecDetection = v; save(); }
     public void setDungeonWaypointsFeatureEnabled(boolean v) { this.dungeonWaypointsFeatureEnabled = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }

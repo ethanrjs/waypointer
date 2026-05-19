@@ -102,6 +102,7 @@ public final class ExportScreen extends Screen {
     private static final int ROUTE_TOGGLE_W = 148;
 
     private final Screen parent;
+    private final WaypointerConfig config;
     private final List<WaypointGroup> groups;
     private final boolean[] selectedGroups;
     private final String subtitle;
@@ -127,11 +128,12 @@ public final class ExportScreen extends Screen {
     public ExportScreen(Screen parent, WaypointerConfig config, List<WaypointGroup> groups, String subtitle) {
         super(Component.literal("Export Waypoints"));
         this.parent = parent;
+        this.config = config;
         this.groups = groups;
         this.selectedGroups = new boolean[groups.size()];
         Arrays.fill(this.selectedGroups, true);
         this.subtitle = subtitle;
-        this.optsBuilder = defaultExportBuilder();
+        this.optsBuilder = config.exportCodecOptionsBuilder();
     }
 
     /** Entry point for a single-group export; wraps the group in a list with a title. */
@@ -350,7 +352,7 @@ public final class ExportScreen extends Screen {
     }
 
     private void resetToConfigDefaults() {
-        optsBuilder = defaultExportBuilder();
+        optsBuilder = config.exportCodecOptionsBuilder();
         currentLabel = "";
         labelInput.setValue("");
         // Re-apply each toggle's value from the freshly-built options and
@@ -620,15 +622,6 @@ public final class ExportScreen extends Screen {
     }
 
     // --- helpers ------------------------------------------------------------------------------
-
-    private static WaypointCodec.Options.Builder defaultExportBuilder() {
-        return WaypointCodec.Options.builder()
-                .includeNames(false)
-                .includeColors(false)
-                .includeRadii(false)
-                .includeWaypointFlags(false)
-                .includeGroupMeta(true);
-    }
 
     @Override
     public boolean isPauseScreen() { return false; }

@@ -1034,18 +1034,11 @@ public final class WaypointerCommands {
     }
 
     /**
-     * Default exports keep every optional per-waypoint field off and preserve only
-     * group metadata. Users can still override per field with
-     * {@code /wp export names}, etc.
+     * Default exports follow persisted toggles; explicit {@code /wp export names}
+     * and friends still override per invocation.
      */
     private WaypointCodec.Options defaultExportOptions() {
-        return WaypointCodec.Options.builder()
-                .includeNames(false)
-                .includeColors(false)
-                .includeRadii(false)
-                .includeWaypointFlags(false)
-                .includeGroupMeta(true)
-                .build();
+        return config.exportCodecOptions();
     }
 
     private int runCreateGroup(FabricClientCommandSource src, String name) {

@@ -1,5 +1,7 @@
 package dev.ethan.waypointer.core;
 
+import dev.ethan.waypointer.diana.DianaBurrowWaypointGroup;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -355,6 +357,9 @@ public final class ActiveGroupManager {
         boolean focusCleared = false;
         for (WaypointGroup group : byId.values()) {
             if (!group.temp() || !zoneId.equals(group.zoneId()) || group.isEmpty()) continue;
+            // Diana burrows are re-synced from particle state; removing markers here
+            // can desync the detector's signature cache (see DianaBurrowDetector).
+            if (DianaBurrowWaypointGroup.ID.equals(group.id())) continue;
 
             List<Integer> reached = new ArrayList<>();
             group.forEachNearbyIndex(px, py, pz, group.maxEffectiveRadius(), i -> {
