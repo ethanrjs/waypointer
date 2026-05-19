@@ -1002,11 +1002,6 @@ public final class DianaBurrowDetector {
         return y >= MIN_BURROW_Y && y <= MAX_BURROW_Y;
     }
 
-    private static boolean isPlausibleHubBlock(BlockKey block) {
-        return isPlausibleHubColumn(block)
-                && isPlausibleBurrowY(block.y());
-    }
-
     private static boolean isPlausibleHubColumn(BlockKey block) {
         return block.x() >= HUB_MIN_X
                 && block.x() <= HUB_MAX_X
@@ -1100,8 +1095,6 @@ public final class DianaBurrowDetector {
         return originToPoint.subtract(projected).length();
     }
 
-    private record SightingState(BlockKey key, DianaBurrowType type) {}
-
     private static final class Sighting {
         private boolean hasEnchant;
         private DianaBurrowType type;
@@ -1133,7 +1126,7 @@ public final class DianaBurrowDetector {
 
     private record BlockKey(int x, int y, int z) implements Comparable<BlockKey> {
         double distanceSq(BlockKey other) {
-            return distanceSq(other.x, other.y, other.z);
+            return distanceSq(other.x + 0.5, other.y + 0.5, other.z + 0.5);
         }
 
         double distance(BlockKey other) {

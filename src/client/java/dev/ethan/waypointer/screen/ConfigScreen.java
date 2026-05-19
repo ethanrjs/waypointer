@@ -1247,11 +1247,14 @@ public final class ConfigScreen extends Screen {
 
     private static double opacityFromColor(int color) {
         int alpha = (color >>> 24) & 0xFF;
-        return alpha == 0 ? 1.0 : alpha / 255.0;
+        if (alpha == 0) return 1.0;
+        if (alpha == 1) return 0.0;
+        return alpha / 255.0;
     }
 
     private static int withOpacity(int color, double opacity) {
         int alpha = Math.max(0, Math.min(255, (int) Math.round(opacity * 255.0)));
+        if (alpha == 0) alpha = 1;
         return (alpha << 24) | (color & 0xFFFFFF);
     }
 

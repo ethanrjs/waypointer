@@ -676,7 +676,11 @@ public final class WaypointRenderer implements HudElement {
 
     private static float colorOpacity(int color) {
         int alpha = (color >>> 24) & 0xFF;
-        return alpha == 0 ? 1.0f : alpha / 255.0f;
+        // Alpha 0: legacy 24-bit RGB (no high byte) — treat as fully opaque.
+        if (alpha == 0) return 1.0f;
+        // Alpha 1: ConfigScreen encodes "opacity 0" this way to avoid colliding with legacy A=0.
+        if (alpha == 1) return 1.0f / 255.0f;
+        return alpha / 255.0f;
     }
 
     private static double labelRowAdvance(Font font, float scale) {
