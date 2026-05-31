@@ -16,6 +16,8 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
+import static dev.ethan.waypointer.util.MathUtil.clamp;
+
 /**
  * User-tunable runtime settings, persisted as JSON alongside the waypoint data.
  *
@@ -584,8 +586,40 @@ public final class WaypointerConfig {
         setTempDefaultMode(v ? Waypoint.TEMP_TIME : Waypoint.TEMP_UNTIL_LEAVE);
     }
 
-    private static double clamp(double v, double lo, double hi) {
-        return Math.max(lo, Math.min(hi, v));
+    public void disableAllSettings() {
+        resetProgressOnWorldJoin = false;
+        restartRouteWhenComplete = false;
+        matchTracerToWaypointColor = false;
+        showWaypointNames = false;
+        showWaypointDistances = false;
+        scaleWaypointTextWithDistance = false;
+        matchWaypointTextToWaypointColor = false;
+        showCompleted = false;
+        showTracer = false;
+        dimSequenceContextWaypoints = false;
+        hideTracerOnStaticRoutes = false;
+        hideWaypointsNearPlayer = false;
+        hideReachedStaticWaypointsUntilCycleComplete = false;
+        showLabelBackdrop = false;
+        beaconBeamExtendsBelowWaypoint = false;
+        preferScoreboardFallback = false;
+        chatCoordDetection = false;
+        autoAddChatTempWaypoints = false;
+        placeNewWaypointsBelowPlayer = false;
+        focusTempWaypoints = false;
+        chatCodecDetection = false;
+        exportIncludeNames = false;
+        exportIncludeColors = false;
+        exportIncludeRadii = false;
+        exportIncludeWaypointFlags = false;
+        exportIncludeGroupMeta = false;
+        dungeonWaypointsFeatureEnabled = false;
+        skipAheadMechanicEnabled = false;
+        checkForUpdates = false;
+        irisShaderHudFallback = false;
+        beaconBeamMode = BeaconBeamMode.OFF;
+        tempDefaultMode = Waypoint.TEMP_UNTIL_LEAVE;
+        save();
     }
 
     private void ensureChatCoordSenderBlacklist() {

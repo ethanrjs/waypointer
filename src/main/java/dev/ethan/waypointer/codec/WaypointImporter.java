@@ -10,6 +10,7 @@ import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -18,6 +19,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.zip.GZIPInputStream;
+
+import static dev.ethan.waypointer.util.MathUtil.clampByte;
 
 /**
  * Accepts waypoint payloads from several known-good sources and converts them into
@@ -45,6 +48,11 @@ public final class WaypointImporter {
 
     /** Skyblocker's current (V1) share-string prefix. Payload after it is base64(gzip(json)). */
     static final String SKYBLOCKER_V1_PREFIX = "[Skyblocker-Waypoint-Data-V1]";
+    static final int MAX_TEXT_PAYLOAD_CHARS = 8 * 1024 * 1024;
+    static final int MAX_DECODED_JSON_CHARS = 8 * 1024 * 1024;
+    static final int MAX_GROUPS_PER_IMPORT = 256;
+    static final int MAX_WAYPOINTS_PER_GROUP = 20_000;
+    static final int MAX_TOTAL_WAYPOINTS_PER_IMPORT = 50_000;
 
     /**
      * Skyblocker's deprecated ordered-waypoints prefix. Payload is the same base64(gzip(json))
@@ -107,10 +115,34 @@ public final class WaypointImporter {
     public static ImportResult importAny(String payload) {
         if (payload == null) throw new IllegalArgumentException("null payload");
         String trimmed = stripMarkdownCodeFence(payload.trim());
+        enforceTextPayloadLimit(trimmed);
 
+        IllegalArgumentException originalFailure;
+        try {
+            return importAnyCore(trimmed);
+        } catch (IllegalArgumentException e) {
+            originalFailure = e;
+        }
+
+        IllegalArgumentException repairFailure = null;
+        for (String candidate : repairCandidates(trimmed)) {
+            if (candidate.equals(trimmed)) continue;
+            try {
+                return importAnyCore(candidate);
+            } catch (IllegalArgumentException e) {
+                repairFailure = e;
+            }
+        }
+
+        if (repairFailure == null) throw originalFailure;
+        throw new IllegalArgumentException(originalFailure.getMessage()
+                + " (repair also failed: " + repairFailure.getMessage() + ")", originalFailure);
+    }
+
+    private static ImportResult importAnyCore(String trimmed) {
         if (WaypointCodec.isCodecString(trimmed)) {
             WaypointCodec.Decoded d = WaypointCodec.decodeFull(trimmed);
-            return new ImportResult(Source.WAYPOINTER, d.groups(), d.label());
+            return checkedImport(new ImportResult(Source.WAYPOINTER, d.groups(), d.label()));
         }
 
         // Skyblocker's prefixed exports must be handled before the raw-base64 path
@@ -127,14 +159,14 @@ public final class WaypointImporter {
         // Prefer JSON if it looks like JSON -- saves us from trying a base64 decode that
         // would succeed by coincidence on short JSON payloads.
         if (looksLikeJson(trimmed)) {
-            return importJson(trimmed);
+            return checkedImport(importJson(trimmed));
         }
 
         // Skyblocker exports (and some Skytils strings) are base64(gzip(json)).
         try {
             String decoded = decodeBase64Gzip(trimmed);
             if (looksLikeJson(decoded)) {
-                return importJson(decoded);
+                return checkedImport(importJson(decoded));
             }
         } catch (Exception ignore) {
             // Fall through to error below; preserve the original so the user sees useful feedback.
@@ -143,13 +175,187 @@ public final class WaypointImporter {
         // Skytils category exports are base64(JSON) with no gzip wrapper.
         try {
             String decoded = decodeBase64Utf8(trimmed);
-            if (looksLikeJson(decoded)) return importJson(decoded);
+            if (looksLikeJson(decoded)) return checkedImport(importJson(decoded));
         } catch (Exception ignore) {
             // Fall through to error below; preserve the original so the user sees useful feedback.
         }
 
         throw new IllegalArgumentException(
                 "unrecognized waypoint payload (tried Waypointer, Skyblocker, Skytils, SkyHanni, JSON)");
+    }
+
+    private static void enforceTextPayloadLimit(String text) {
+        if (text.length() > MAX_TEXT_PAYLOAD_CHARS) {
+            throw new IllegalArgumentException("waypoint payload is too large (max "
+                    + MAX_TEXT_PAYLOAD_CHARS + " chars)");
+        }
+    }
+
+    private static ImportResult checkedImport(ImportResult result) {
+        if (result == null || result.groups() == null) {
+            throw new IllegalArgumentException("import decoder returned no groups");
+        }
+        List<WaypointGroup> groups = result.groups();
+        if (groups.size() > MAX_GROUPS_PER_IMPORT) {
+            throw new IllegalArgumentException("import contains too many groups ("
+                    + groups.size() + " > " + MAX_GROUPS_PER_IMPORT + ")");
+        }
+
+        int totalWaypoints = 0;
+        for (WaypointGroup group : groups) {
+            if (group == null) throw new IllegalArgumentException("import contained a null group");
+            if (group.size() > MAX_WAYPOINTS_PER_GROUP) {
+                throw new IllegalArgumentException("group \"" + group.name()
+                        + "\" has too many waypoints (" + group.size()
+                        + " > " + MAX_WAYPOINTS_PER_GROUP + ")");
+            }
+            totalWaypoints += group.size();
+            if (totalWaypoints > MAX_TOTAL_WAYPOINTS_PER_IMPORT) {
+                throw new IllegalArgumentException("import contains too many waypoints ("
+                        + totalWaypoints + " > " + MAX_TOTAL_WAYPOINTS_PER_IMPORT + ")");
+            }
+        }
+        if (totalWaypoints == 0) {
+            throw new IllegalArgumentException("import contained no waypoints");
+        }
+        return new ImportResult(result.source(), List.copyOf(groups),
+                result.label() == null ? "" : result.label());
+    }
+
+    private static List<String> repairCandidates(String trimmed) {
+        List<String> candidates = new ArrayList<>();
+        addRepairCandidate(candidates, stripMinecraftFormattingAndInvisibleChars(trimmed).trim());
+        addRepairCandidate(candidates, compactLikelyEncodedWhitespace(trimmed));
+        addRepairCandidate(candidates, extractNativeCodecCandidate(trimmed));
+        addRepairCandidate(candidates, extractJsonCandidate(trimmed));
+        return candidates;
+    }
+
+    private static void addRepairCandidate(List<String> candidates, String candidate) {
+        if (candidate == null || candidate.isBlank()) return;
+        if (candidate.length() > MAX_TEXT_PAYLOAD_CHARS) return;
+        if (candidates.contains(candidate)) return;
+        candidates.add(candidate);
+    }
+
+    private static String stripMinecraftFormattingAndInvisibleChars(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c == '\u00A7') {
+                if (i + 1 < text.length()) i++;
+                continue;
+            }
+            if (c == '\u200B' || c == '\u200C' || c == '\u200D' || c == '\uFEFF') {
+                continue;
+            }
+            out.append(c);
+        }
+        return out.toString();
+    }
+
+    private static String compactLikelyEncodedWhitespace(String text) {
+        if (text.startsWith(WaypointCodec.MAGIC)) {
+            return WaypointCodec.MAGIC
+                    + removeWhitespace(text.substring(WaypointCodec.MAGIC.length()));
+        }
+        if (text.startsWith(SKYBLOCKER_V1_PREFIX)) {
+            return SKYBLOCKER_V1_PREFIX
+                    + removeWhitespace(text.substring(SKYBLOCKER_V1_PREFIX.length()));
+        }
+        if (text.startsWith(SKYBLOCKER_LEGACY_ORDERED_PREFIX)) {
+            return SKYBLOCKER_LEGACY_ORDERED_PREFIX
+                    + removeWhitespace(text.substring(SKYBLOCKER_LEGACY_ORDERED_PREFIX.length()));
+        }
+        if (looksLikeJson(text)) return text;
+        return removeWhitespace(text);
+    }
+
+    private static String removeWhitespace(String text) {
+        StringBuilder out = new StringBuilder(text.length());
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (!Character.isWhitespace(c)) out.append(c);
+        }
+        return out.toString();
+    }
+
+    private static String extractNativeCodecCandidate(String text) {
+        int start = text.indexOf(WaypointCodec.MAGIC);
+        if (start < 0) return null;
+
+        int end = start + WaypointCodec.MAGIC.length();
+        while (end < text.length()) {
+            char c = text.charAt(end);
+            if (!AsciiStreamCodec.isAlphabetChar(c) && !Character.isWhitespace(c)) break;
+            end++;
+        }
+
+        String compact = WaypointCodec.MAGIC
+                + removeWhitespace(text.substring(start + WaypointCodec.MAGIC.length(), end));
+        if (WaypointCodec.isValidCodec(compact)) return compact;
+
+        int minLength = WaypointCodec.MAGIC.length() + 3;
+        for (int candidateEnd = compact.length() - 1; candidateEnd >= minLength; candidateEnd--) {
+            String shorter = compact.substring(0, candidateEnd);
+            if (WaypointCodec.isValidCodec(shorter)) return shorter;
+        }
+        return compact.length() >= minLength ? compact : null;
+    }
+
+    private static String extractJsonCandidate(String text) {
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c != '{' && c != '[') continue;
+            int end = findBalancedJsonEnd(text, i);
+            if (end > i) return text.substring(i, end);
+        }
+        return null;
+    }
+
+    private static int findBalancedJsonEnd(String text, int start) {
+        if (start < 0 || start >= text.length()) return -1;
+        char opener = text.charAt(start);
+        if (opener != '{' && opener != '[') return -1;
+
+        char[] stack = new char[text.length() - start];
+        int depth = 0;
+        stack[depth++] = opener;
+        boolean inString = false;
+        boolean escaped = false;
+
+        for (int i = start + 1; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+
+            if (c == '"') {
+                inString = true;
+                continue;
+            }
+            if (c == '{' || c == '[') {
+                stack[depth++] = c;
+                continue;
+            }
+            if (c == '}' || c == ']') {
+                if (depth == 0 || !jsonCloserMatches(stack[depth - 1], c)) return -1;
+                depth--;
+                if (depth == 0) return i + 1;
+            }
+        }
+        return -1;
+    }
+
+    private static boolean jsonCloserMatches(char opener, char closer) {
+        return (opener == '{' && closer == '}') || (opener == '[' && closer == ']');
     }
 
     private static String stripMarkdownCodeFence(String text) {
@@ -187,7 +393,7 @@ public final class WaypointImporter {
                     "Skyblocker payload decoded but didn't contain JSON");
         }
         ImportResult r = importJson(json);
-        return new ImportResult(Source.SKYBLOCKER, r.groups(), "");
+        return checkedImport(new ImportResult(Source.SKYBLOCKER, r.groups(), ""));
     }
 
     // --- JSON path ---------------------------------------------------------------------------
@@ -575,8 +781,6 @@ public final class WaypointImporter {
                 && o.get("r").getAsJsonPrimitive().isNumber();
     }
 
-    private static int clampByte(int v) { return Math.max(0, Math.min(255, v)); }
-
     private static String firstString(JsonObject o, String fallback, String... keys) {
         for (String k : keys) {
             if (o.has(k) && o.get(k).isJsonPrimitive() && o.get(k).getAsJsonPrimitive().isString()) {
@@ -622,12 +826,33 @@ public final class WaypointImporter {
     private static String decodeBase64Gzip(String s) throws Exception {
         byte[] data = decodeBase64Bytes(s);
         try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(data))) {
-            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            return readUtf8WithLimit(in);
         }
     }
 
     private static String decodeBase64Utf8(String s) {
-        return new String(decodeBase64Bytes(s), StandardCharsets.UTF_8);
+        byte[] data = decodeBase64Bytes(s);
+        if (data.length > MAX_DECODED_JSON_CHARS) {
+            throw new IllegalArgumentException("decoded waypoint JSON is too large (max "
+                    + MAX_DECODED_JSON_CHARS + " bytes)");
+        }
+        return new String(data, StandardCharsets.UTF_8);
+    }
+
+    private static String readUtf8WithLimit(GZIPInputStream in) throws IOException {
+        byte[] buffer = new byte[8192];
+        java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+        int total = 0;
+        int read;
+        while ((read = in.read(buffer)) >= 0) {
+            total += read;
+            if (total > MAX_DECODED_JSON_CHARS) {
+                throw new IllegalArgumentException("decoded waypoint JSON is too large (max "
+                        + MAX_DECODED_JSON_CHARS + " bytes)");
+            }
+            out.write(buffer, 0, read);
+        }
+        return out.toString(StandardCharsets.UTF_8);
     }
 
     private static byte[] decodeBase64Bytes(String s) {
