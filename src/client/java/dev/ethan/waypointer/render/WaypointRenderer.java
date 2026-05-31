@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
+import dev.ethan.waypointer.core.RouteProgress;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.WaypointVisibility;
@@ -728,7 +729,7 @@ public final class WaypointRenderer implements HudElement {
 
         int mainOrdinal = hasSubwaypoints ? g.mainOrdinal(i) : i + 1;
         return state == State.CURRENT
-                ? nextLabel(mainOrdinal - 1, mainWaypointCount)
+                ? RouteProgress.nextTargetLabel(mainOrdinal, mainWaypointCount)
                 : indexLabel(mainOrdinal);
     }
 

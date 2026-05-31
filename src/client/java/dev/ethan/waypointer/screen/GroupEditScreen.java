@@ -4,8 +4,10 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.ethan.waypointer.color.GradientColorizer;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
+import dev.ethan.waypointer.core.RouteProgress;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.core.WaypointRouteOptimizer;
 import dev.ethan.waypointer.input.WaypointRepositionMode;
 import dev.ethan.waypointer.text.AmpersandFormatting;
 import dev.ethan.waypointer.input.WaypointAddFlow;
@@ -251,6 +253,8 @@ public final class GroupEditScreen extends Screen {
         left.add(new GuiTokens.ButtonSpec("+ Add Temp", -1, this::addTempHere,
                 Tooltip.create(Component.literal("Add a temporary waypoint at your current position."))));
         left.add(new GuiTokens.ButtonSpec("Export", this::export));
+        left.add(new GuiTokens.ButtonSpec("Optimize", 82, this::optimizeRoute,
+                Tooltip.create(Component.literal("Reorder route by nearest next waypoint."))));
         left.add(new GuiTokens.ButtonSpec("Remove", this::removeSelected));
         left.add(new GuiTokens.ButtonSpec("^", 24, () -> moveSelected(-1)));
         left.add(new GuiTokens.ButtonSpec("v", 24, () -> moveSelected(+1)));
@@ -483,6 +487,19 @@ public final class GroupEditScreen extends Screen {
         manager.fireDataChanged();
     }
 
+    private void optimizeRoute() {
+        try {
+            WaypointRouteOptimizer.Result result =
+                    WaypointRouteOptimizer.optimizeNearestNeighbor(group, selectedIndex);
+            if (!result.changed) return;
+            coordinateEditorIndex = -1;
+            selectWaypoint(result.selectedIndex);
+            manager.fireDataChanged();
+        } catch (IllegalArgumentException e) {
+            ImportFeedback.failure(e.getMessage());
+        }
+    }
+
     private void export() {
         ExportScreen.openForGroup(this, config, group);
     }
@@ -495,7 +512,8 @@ public final class GroupEditScreen extends Screen {
 
         // Header
         g.drawString(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
-        String status = group.mainWaypointCount() + " main / " + group.size() + " pts  .  @"
+        String status = group.mainWaypointCount() + " main / " + group.size() + " pts  .  "
+                + RouteProgress.summary(group) + "  .  @"
                 + group.currentMainOrdinal()
                 + "  .  radius " + String.format("%.1f", group.defaultRadius());
         g.drawString(font, status, width - PAD_OUTER - font.width(status), PAD_OUTER, TEXT_DIM, false);

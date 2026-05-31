@@ -13,8 +13,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.function.BooleanSupplier;
 
 import static dev.ethan.waypointer.screen.GuiTokens.*;
@@ -51,21 +53,45 @@ public final class ConfigScreen extends Screen {
     private final WaypointerConfig config;
     private final Page page;
     private final List<DependentControl> dependentControls = new ArrayList<>();
+    private final Set<String> searchSeenSettingKeys = new HashSet<>();
+    private static final int SETTINGS_SEARCH_W = 160;
+    private static final int SETTINGS_SEARCH_MIN_W = 104;
+    private EditBox settingsSearchBox;
+    private String settingsSearchQuery;
+    private Page searchPageContext;
+    private int searchCol1;
+    private int searchCol2;
+    private int searchColW;
+    private int searchRowsY;
+    private int searchRowH;
+    private int searchMaxVisibleMatches;
+    private int searchTotalMatches;
+    private int searchRenderedMatches;
 
     public ConfigScreen(Screen parent, WaypointerConfig config) {
-        this(parent, config, Page.VISUALS);
+        this(parent, config, Page.VISUALS, "");
     }
 
     private ConfigScreen(Screen parent, WaypointerConfig config, Page page) {
+        this(parent, config, page, "");
+    }
+
+    private ConfigScreen(Screen parent, WaypointerConfig config, Page page, String settingsSearchQuery) {
         super(Component.literal("Waypointer Settings"));
         this.parent = parent;
         this.config = config;
         this.page = page == null ? Page.VISUALS : page;
+        this.settingsSearchQuery = settingsSearchQuery == null ? "" : settingsSearchQuery;
     }
 
     @Override
     protected void init() {
         dependentControls.clear();
+        searchSeenSettingKeys.clear();
+        settingsSearchBox = null;
+        searchPageContext = null;
+        searchTotalMatches = 0;
+        searchRenderedMatches = 0;
 
         int navY = PAD_OUTER + font.lineHeight + GAP;
         int top = navY + BTN_H + GAP_SECTION;
@@ -78,41 +104,144 @@ public final class ConfigScreen extends Screen {
         int headerY = top;
         int rowsY = top + 16;
 
-        addPageTabs(navY);
+        int tabsEnd = addPageTabs(navY);
+        addSettingsSearchBox(tabsEnd, navY);
 
-        switch (page) {
-            case VISUALS -> addVisualsPage(col1, col2, colW, rowsY, rowH);
-            case PERFORMANCE -> addPerformancePage(col1, col2, colW, rowsY, rowH);
-            case ROUTES -> addRoutesPage(col1, col2, colW, rowsY, rowH);
-            case CHAT -> addChatPage(col1, col2, colW, rowsY, rowH);
-            case SYSTEM -> addSystemPage(col1, col2, colW, rowsY, rowH);
+        if (settingsSearchActive()) {
+            addSearchResults(col1, col2, colW, rowsY, rowH);
+        } else {
+            switch (page) {
+                case VISUALS -> addVisualsPage(col1, col2, colW, rowsY, rowH);
+                case PERFORMANCE -> addPerformancePage(col1, col2, colW, rowsY, rowH);
+                case ROUTES -> addRoutesPage(col1, col2, colW, rowsY, rowH);
+                case CHAT -> addChatPage(col1, col2, colW, rowsY, rowH);
+                case SYSTEM -> addSystemPage(col1, col2, colW, rowsY, rowH);
+            }
         }
 
         int footerY = height - FOOTER_H;
-        List<GuiTokens.ButtonSpec> empty = new ArrayList<>();
+        List<GuiTokens.ButtonSpec> left = new ArrayList<>();
+        if (page == Page.VISUALS) {
+            left.add(new GuiTokens.ButtonSpec("Disable All", 96, this::disableAllSettings,
+                    Tooltip.create(Component.literal(
+                            "Turn off every Waypointer toggle.\n"
+                          + "Distances, colors, radii, and other numeric values are kept."))));
+        }
         GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec("Done", -1, this::onClose,
                 Tooltip.create(Component.literal(
                         "Return to the previous screen.\n"
                       + "Every change on this page is saved as you type or click.")));
-        GuiTokens.layoutFooter(width, footerY, empty, done, this::addRenderableWidget, font);
+        GuiTokens.layoutFooter(width, footerY, left, done, this::addRenderableWidget, font);
 
         this.leftHeaderX = col1;
         this.rightHeaderX = col2;
         this.sectionHeaderY = headerY;
     }
 
-    private void addPageTabs(int y) {
+    private int addPageTabs(int y) {
         int x = PAD_OUTER;
         for (Page target : Page.values()) {
             int tabW = Math.max(64, font.width(target.label) + 18);
-            Button btn = Button.builder(Component.literal(target.label), b -> {
-                if (target != page) {
-                    minecraft.setScreen(new ConfigScreen(parent, config, target));
-                }
-            }).bounds(x, y, tabW, BTN_H).build();
+            Button btn = Button.builder(Component.literal(target.label),
+                    b -> openPage(target)).bounds(x, y, tabW, BTN_H).build();
             btn.active = target != page;
             addRenderableWidget(btn);
             x += tabW + GAP;
+        }
+        return x;
+    }
+
+    private void openPage(Page target) {
+        if (target == null || target == page) return;
+        minecraft.setScreen(new ConfigScreen(parent, config, target, settingsSearchQuery));
+    }
+
+    private void addSettingsSearchBox(int tabsEnd, int y) {
+        int right = width - PAD_OUTER;
+        int leftLimit = tabsEnd + GAP;
+        int available = right - leftLimit;
+        if (available < SETTINGS_SEARCH_MIN_W) return;
+
+        int searchW = Math.min(SETTINGS_SEARCH_W, available);
+        int searchX = right - searchW;
+        settingsSearchBox = new EditBox(font, searchX, y, searchW, BTN_H,
+                Component.literal("Search settings"));
+        settingsSearchBox.setMaxLength(80);
+        settingsSearchBox.setValue(settingsSearchQuery);
+        settingsSearchBox.setHint(Component.literal("Search settings"));
+        settingsSearchBox.setTooltip(Tooltip.create(Component.literal(
+                "Fuzzy-search settings by label, page, or tooltip text.")));
+        settingsSearchBox.setResponder(this::onSettingsSearchChanged);
+        addRenderableWidget(settingsSearchBox);
+    }
+
+    private void onSettingsSearchChanged(String raw) {
+        String next = raw == null ? "" : raw;
+        if (next.equals(settingsSearchQuery)) return;
+        settingsSearchQuery = next;
+        rebuildSettingsWidgets();
+        if (settingsSearchBox != null) settingsSearchBox.setFocused(true);
+    }
+
+    private void rebuildSettingsWidgets() {
+        rebuildWidgets();
+    }
+
+    private void disableAllSettings() {
+        config.disableAllSettings();
+        settingsSearchQuery = "";
+        rebuildSettingsWidgets();
+    }
+
+    private void addSearchResults(int col1, int col2, int colW, int rowsY, int rowH) {
+        beginSearchResults(col1, col2, colW, rowsY, rowH);
+        addPageSearchResults(Page.VISUALS, col1, col2, colW, rowsY, rowH);
+        addPageSearchResults(Page.PERFORMANCE, col1, col2, colW, rowsY, rowH);
+        addPageSearchResults(Page.ROUTES, col1, col2, colW, rowsY, rowH);
+        addPageSearchResults(Page.CHAT, col1, col2, colW, rowsY, rowH);
+        addPageSearchResults(Page.SYSTEM, col1, col2, colW, rowsY, rowH);
+        finishSearchResults();
+    }
+
+    private void beginSearchResults(int col1, int col2, int colW, int rowsY, int rowH) {
+        searchCol1 = col1;
+        searchCol2 = col2;
+        searchColW = colW;
+        searchRowsY = rowsY;
+        searchRowH = rowH;
+        searchSeenSettingKeys.clear();
+        searchTotalMatches = 0;
+        searchRenderedMatches = 0;
+        int availableHeight = Math.max(rowH, height - rowsY - FOOTER_H - GAP_SECTION);
+        searchMaxVisibleMatches = Math.max(2, (availableHeight / rowH) * 2);
+    }
+
+    private void addPageSearchResults(Page target, int col1, int col2, int colW, int rowsY, int rowH) {
+        searchPageContext = target;
+        try {
+            switch (target) {
+                case VISUALS -> addVisualsPage(col1, col2, colW, rowsY, rowH);
+                case PERFORMANCE -> addPerformancePage(col1, col2, colW, rowsY, rowH);
+                case ROUTES -> addRoutesPage(col1, col2, colW, rowsY, rowH);
+                case CHAT -> addChatPage(col1, col2, colW, rowsY, rowH);
+                case SYSTEM -> addSystemPage(col1, col2, colW, rowsY, rowH);
+            }
+        } finally {
+            searchPageContext = null;
+        }
+    }
+
+    private void finishSearchResults() {
+        if (searchTotalMatches == 0) {
+            leftHeader = "No matching settings";
+            rightHeader = "";
+            return;
+        }
+        leftHeader = "Matching settings";
+        if (searchRenderedMatches < searchTotalMatches) {
+            rightHeader = "Showing " + searchRenderedMatches + " of " + searchTotalMatches;
+        } else {
+            rightHeader = searchTotalMatches + " match" + (searchTotalMatches == 1 ? "" : "es");
         }
     }
 
@@ -402,6 +531,62 @@ public final class ConfigScreen extends Screen {
         return out;
     }
 
+    private boolean settingsSearchActive() {
+        return !normalizedSettingsSearchQuery().isEmpty();
+    }
+
+    private String normalizedSettingsSearchQuery() {
+        return settingsSearchQuery == null ? "" : settingsSearchQuery.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private boolean shouldRenderSettingRow(String label, Component tooltip) {
+        if (!settingsSearchActive()) return true;
+        String safeLabel = label == null ? "" : label;
+        String pageLabel = searchPageContext == null ? page.label : searchPageContext.label;
+        String tooltipText = tooltip == null ? "" : tooltip.getString();
+        String searchable = pageLabel + " " + safeLabel + " " + tooltipText;
+        if (!fuzzySettingMatch(normalizedSettingsSearchQuery(), searchable)) return false;
+
+        String key = safeLabel.toLowerCase(Locale.ROOT);
+        if (!searchSeenSettingKeys.add(key)) return false;
+        searchTotalMatches++;
+        return searchTotalMatches <= searchMaxVisibleMatches;
+    }
+
+    private int[] settingRowGeometry(int x, int y, int colW) {
+        if (!settingsSearchActive()) return new int[]{x, y, colW};
+        int index = searchRenderedMatches;
+        searchRenderedMatches++;
+        int column = index % 2;
+        int row = index / 2;
+        int resultX = column == 0 ? searchCol1 : searchCol2;
+        int resultY = searchRowsY + row * searchRowH;
+        return new int[]{resultX, resultY, searchColW};
+    }
+
+    private static boolean fuzzySettingMatch(String query, String searchable) {
+        if (query == null || query.isBlank()) return true;
+        String haystack = searchable == null ? "" : searchable.toLowerCase(Locale.ROOT);
+        for (String token : query.split("\\s+")) {
+            if (token.isEmpty()) continue;
+            if (haystack.contains(token)) continue;
+            if (!isSubsequence(token, haystack)) return false;
+        }
+        return true;
+    }
+
+    private static boolean isSubsequence(String needle, String haystack) {
+        if (needle == null || needle.isEmpty()) return true;
+        if (haystack == null || haystack.isEmpty()) return false;
+        int needleIndex = 0;
+        for (int i = 0; i < haystack.length() && needleIndex < needle.length(); i++) {
+            if (haystack.charAt(i) == needle.charAt(needleIndex)) {
+                needleIndex++;
+            }
+        }
+        return needleIndex == needle.length();
+    }
+
     private void addNumberRow(int x, int y, int colW, String label, double initial, DoubleSetter setter,
                               String tooltip) {
         addNumberRow(x, y, colW, label, initial, setter, Component.literal(tooltip));
@@ -427,20 +612,22 @@ public final class ConfigScreen extends Screen {
         addNumberRow(x, y, colW, label, initial, setter, hex, () -> true, Component.literal(tooltip));
     }
 
-    /**
-     * Label + inline editor. The hex flag switches the parse path so colors round-trip
-     * through user-friendly {@code RRGGBB} strings for any legacy hex-only rows.
-     */
     private void addNumberRow(int x, int y, int colW, String label, double initial,
                               DoubleSetter setter, boolean hex, BooleanSupplier enabled,
                               Component tooltip) {
+        if (!shouldRenderSettingRow(label, tooltip)) return;
+        int[] geometry = settingRowGeometry(x, y, colW);
+        x = geometry[0];
+        y = geometry[1];
+        colW = geometry[2];
         int boxW = 80;
         int labelW = colW - boxW - GAP;
         addRenderableOnly(new LabelWidget(x, y + 6, label, labelW, enabled));
         EditBox box = new EditBox(font, x + labelW + GAP, y + 2, boxW, BTN_H, Component.literal(label));
         box.setMaxLength(24);
         box.setValue(hex ? String.format("%06X", (int) initial) : stripTrailingZeros(initial));
-        box.setResponder(v -> {
+        box.setResponder(
+                v -> {
             if (v.isEmpty()) return;
             try {
                 double parsed = hex ? Integer.parseInt(v.trim(), 16) : Double.parseDouble(v.trim());
@@ -456,29 +643,38 @@ public final class ConfigScreen extends Screen {
 
     private void addTracerColorRow(int x, int y, int colW, BooleanSupplier enabled,
                                    String tooltip) {
+        Component tooltipComponent = Component.literal(tooltip);
+        String label = "Tracer color (hex RRGGBB)";
+        if (!shouldRenderSettingRow(label, tooltipComponent)) return;
+        int[] geometry = settingRowGeometry(x, y, colW);
+        x = geometry[0];
+        y = geometry[1];
+        colW = geometry[2];
         int swatchW = 72;
         int boxW = 76;
         int labelW = colW - boxW - swatchW - GAP * 2;
-        addRenderableOnly(new LabelWidget(x, y + 6,
-                "Tracer color (hex RRGGBB)", labelW, enabled));
+        addRenderableOnly(new LabelWidget(x, y + 6, label, labelW, enabled));
 
         EditBox box = new EditBox(font, x + labelW + GAP, y + 2, boxW, BTN_H,
                 Component.literal("Tracer color"));
         box.setMaxLength(6);
         box.setValue(String.format("%06X", config.tracerColor() & 0xFFFFFF));
-        box.setTooltip(Tooltip.create(Component.literal(tooltip)));
+        box.setTooltip(Tooltip.create(tooltipComponent));
 
         ColorSwatchButton swatch = new ColorSwatchButton(
                 x + labelW + GAP + boxW + GAP, y + 2, swatchW, BTN_H,
-                "Pick color", config.tracerColor(), () -> ColorPickerScreen.open(this,
-                "Tracer Colour", config.tracerColor(), picked -> {
+                "Pick color", config.tracerColor(),
+                () -> ColorPickerScreen.open(this,
+                "Tracer Colour", config.tracerColor(),
+                picked -> {
                     config.setTracerColor(picked);
                     box.setValue(String.format("%06X", picked & 0xFFFFFF));
                 }));
         swatch.setTooltip(Tooltip.create(Component.literal(
                 "Open the color picker for the fixed tracer color.")));
 
-        box.setResponder(v -> {
+        box.setResponder(
+                v -> {
             if (v.isEmpty()) return;
             try {
                 int parsed = Integer.parseInt(v.trim(), 16) & 0xFFFFFF;
@@ -504,15 +700,23 @@ public final class ConfigScreen extends Screen {
     }
 
     private void addBoxStyleRow(int x, int y, int colW, String tooltip) {
+        Component tooltipComponent = Component.literal(tooltip);
+        String label = "Box style";
+        if (!shouldRenderSettingRow(label, tooltipComponent)) return;
+        int[] geometry = settingRowGeometry(x, y, colW);
+        x = geometry[0];
+        y = geometry[1];
+        colW = geometry[2];
         int labelW = colW - 140 - GAP;
-        addRenderableOnly(new LabelWidget(x, y + 6, "Box style", labelW, () -> true));
-        Button btn = Button.builder(Component.literal(boxStyleLabel(config.boxStyle())), b -> {
+        addRenderableOnly(new LabelWidget(x, y + 6, label, labelW, () -> true));
+        Button btn = Button.builder(Component.literal(boxStyleLabel(config.boxStyle())),
+                b -> {
             WaypointerConfig.BoxStyle[] values = WaypointerConfig.BoxStyle.values();
             WaypointerConfig.BoxStyle next = values[(config.boxStyle().ordinal() + 1) % values.length];
             config.setBoxStyle(next);
             b.setMessage(Component.literal(boxStyleLabel(next)));
         }).bounds(x + labelW + GAP, y, 140, BTN_H)
-                .tooltip(Tooltip.create(Component.literal(tooltip)))
+                .tooltip(Tooltip.create(tooltipComponent))
                 .build();
         addRenderableWidget(btn);
     }
@@ -526,16 +730,24 @@ public final class ConfigScreen extends Screen {
     }
 
     private void addBeamModeRow(int x, int y, int colW, String tooltip) {
+        Component tooltipComponent = Component.literal(tooltip);
+        String label = "Beacon beams";
+        if (!shouldRenderSettingRow(label, tooltipComponent)) return;
+        int[] geometry = settingRowGeometry(x, y, colW);
+        x = geometry[0];
+        y = geometry[1];
+        colW = geometry[2];
         int labelW = colW - 140 - GAP;
-        addRenderableOnly(new LabelWidget(x, y + 6, "Beacon beams", labelW, () -> true));
-        Button btn = Button.builder(Component.literal(beamModeLabel(config.beaconBeamMode())), b -> {
+        addRenderableOnly(new LabelWidget(x, y + 6, label, labelW, () -> true));
+        Button btn = Button.builder(Component.literal(beamModeLabel(config.beaconBeamMode())),
+                b -> {
             WaypointerConfig.BeaconBeamMode[] values = WaypointerConfig.BeaconBeamMode.values();
             WaypointerConfig.BeaconBeamMode next =
                     values[(config.beaconBeamMode().ordinal() + 1) % values.length];
             config.setBeaconBeamMode(next);
             b.setMessage(Component.literal(beamModeLabel(next)));
         }).bounds(x + labelW + GAP, y, 140, BTN_H)
-                .tooltip(Tooltip.create(Component.literal(tooltip)))
+                .tooltip(Tooltip.create(tooltipComponent))
                 .build();
         addRenderableWidget(btn);
     }
@@ -595,10 +807,15 @@ public final class ConfigScreen extends Screen {
     private void addBoolRow(int x, int y, String label, boolean initial,
                             java.util.function.Consumer<Boolean> setter,
                             BooleanSupplier enabled, Component tooltip) {
+        if (!shouldRenderSettingRow(label, tooltip)) return;
+        int[] geometry = settingRowGeometry(x, y, 0);
+        x = geometry[0];
+        y = geometry[1];
         Checkbox cb = Checkbox.builder(Component.literal(label), font)
                 .pos(x, y)
                 .selected(initial)
-                .onValueChange((b, v) -> setter.accept(v))
+                .onValueChange(
+                        (b, v) -> setter.accept(v))
                 .build();
         cb.setTooltip(Tooltip.create(tooltip));
         trackDependent(cb, enabled);

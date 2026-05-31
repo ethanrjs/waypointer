@@ -38,6 +38,17 @@ class ZoneTest {
     }
 
     @Test
+    void fromId_collapsesDuplicatedFallbackDisplayNames() {
+        Zone lotus = Zone.fromId("lotus_atoll_lotus_atoll");
+        assertEquals("lotus_atoll_lotus_atoll", lotus.id());
+        assertEquals("Lotus Atoll", lotus.displayName());
+
+        Zone generic = Zone.fromId("future_place_future_place");
+        assertEquals("future_place_future_place", generic.id());
+        assertEquals("Future Place", generic.displayName());
+    }
+
+    @Test
     void resolveFromDisplayName_matchesKnownZone() {
         Zone z = Zone.resolveFromDisplayName("Crystal Hollows");
         assertEquals("crystal_hollows", z.id());
