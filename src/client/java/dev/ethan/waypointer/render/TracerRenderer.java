@@ -83,6 +83,11 @@ public final class TracerRenderer implements HudElement {
         if (groups.isEmpty()) return;
         boolean tempFocus = manager.tempWaypointFocusActive();
         if (!tempFocus && !config.showTracer()) return;
+        float alpha = (float) config.tracerOpacity();
+        if (tempFocus) {
+            alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
+        }
+        if (alpha <= 0.0f) return;
 
         PoseStack ps = ctx.matrices();
         if (ps == null) return;
@@ -91,9 +96,6 @@ public final class TracerRenderer implements HudElement {
         Vec3 camPos = cam.position();
         MultiBufferSource buffers = ctx.consumers();
         if (buffers == null) return;
-
-        RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
-        VertexConsumer lines = buffers.getBuffer(lineType);
 
         ps.pushPose();
         ps.translate(-camPos.x, -camPos.y, -camPos.z);
@@ -108,10 +110,6 @@ public final class TracerRenderer implements HudElement {
         float fromY = (float) camPos.y + tracerOriginDelta[1];
         float fromZ = (float) camPos.z + tracerOriginDelta[2];
         double nearHideDistanceSq = nearHideDistanceSq();
-        float alpha = (float) config.tracerOpacity();
-        if (tempFocus) {
-            alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
-        }
         // Matching the tracer to the live waypoint colour means gradient groups
         // draw a tracer whose hue advances with progress, and manually-coloured
         // checkpoints light their tracer in the same tint. The flat-override path
@@ -119,6 +117,8 @@ public final class TracerRenderer implements HudElement {
         boolean matchWaypoint = config.matchTracerToWaypointColor();
         int overrideColor = config.tracerColor();
         float thickness = (float) config.tracerThickness();
+        RenderType lineType = null;
+        VertexConsumer lines = null;
 
         for (WaypointGroup g : groups) {
             if (!tempFocus
@@ -129,6 +129,10 @@ public final class TracerRenderer implements HudElement {
             Waypoint target = g.current();
             if (target == null) continue;
             if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) continue;
+            if (lines == null) {
+                lineType = WaypointerRenderPipelines.linesThroughWalls();
+                lines = buffers.getBuffer(lineType);
+            }
             int color = matchWaypoint ? target.color() : overrideColor;
             RenderHelpers.emitLine(lines, ps,
                     fromX, fromY, fromZ,
@@ -137,7 +141,9 @@ public final class TracerRenderer implements HudElement {
         }
 
         ps.popPose();
-        RenderHelpers.endBatch(buffers, lineType);
+        if (lineType != null) {
+            RenderHelpers.endBatch(buffers, lineType);
+        }
     }
 
     @Override
@@ -164,6 +170,7 @@ public final class TracerRenderer implements HudElement {
         if (tempFocus) {
             alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
         }
+        if (alpha <= 0.0f) return;
         double nearHideDistanceSq = nearHideDistanceSq();
         boolean matchWaypoint = config.matchTracerToWaypointColor();
         int overrideColor = config.tracerColor();

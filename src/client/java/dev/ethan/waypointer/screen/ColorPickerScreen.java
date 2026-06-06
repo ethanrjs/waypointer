@@ -2,6 +2,7 @@ package dev.ethan.waypointer.screen;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import dev.ethan.waypointer.Waypointer;
+import dev.ethan.waypointer.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -343,7 +344,7 @@ public final class ColorPickerScreen extends Screen {
     }
 
     private static double clamp01(double v) {
-        return Math.max(0d, Math.min(1d, v));
+        return MathUtil.clamp(v, 0d, 1d);
     }
 
     // HSV ↔ RGB kept local (and not pushed into GradientColorizer) because the
@@ -388,6 +389,6 @@ public final class ColorPickerScreen extends Screen {
     }
 
     private static int clamp255(int v) {
-        return Math.max(0, Math.min(255, v));
+        return MathUtil.clampByte(v);
     }
 }

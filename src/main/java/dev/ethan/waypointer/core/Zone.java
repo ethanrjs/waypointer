@@ -499,10 +499,33 @@ public record Zone(String id, String displayName) {
     // ---- helpers ---------------------------------------------------------
 
     private static String prettify(String id) {
-        String[] parts = id.replace('_', ' ').split(" ");
+        if (id == null || id.isBlank()) return "";
+        String[] rawParts = id.replace('_', ' ').split(" ");
+        String[] parts = new String[rawParts.length];
+        int count = 0;
+        for (String part : rawParts) {
+            if (!part.isEmpty()) {
+                parts[count] = part;
+                count++;
+            }
+        }
+
+        int displayCount = count;
+        if (count > 0 && count % 2 == 0) {
+            int half = count / 2;
+            boolean duplicated = true;
+            for (int i = 0; i < half; i++) {
+                if (!parts[i].equalsIgnoreCase(parts[i + half])) {
+                    duplicated = false;
+                    break;
+                }
+            }
+            if (duplicated) displayCount = half;
+        }
+
         StringBuilder sb = new StringBuilder();
-        for (String p : parts) {
-            if (p.isEmpty()) continue;
+        for (int i = 0; i < displayCount; i++) {
+            String p = parts[i];
             if (!sb.isEmpty()) sb.append(' ');
             sb.append(Character.toUpperCase(p.charAt(0)));
             sb.append(p.substring(1).toLowerCase(Locale.ROOT));

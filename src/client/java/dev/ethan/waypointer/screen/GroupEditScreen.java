@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import dev.ethan.waypointer.color.GradientColorizer;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
+import dev.ethan.waypointer.core.RouteProgress;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.input.WaypointRepositionMode;
@@ -495,7 +496,8 @@ public final class GroupEditScreen extends Screen {
 
         // Header
         g.drawString(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
-        String status = group.mainWaypointCount() + " main / " + group.size() + " pts  .  @"
+        String status = group.mainWaypointCount() + " main / " + group.size() + " pts  .  "
+                + RouteProgress.summary(group) + "  .  @"
                 + group.currentMainOrdinal()
                 + "  .  radius " + String.format("%.1f", group.defaultRadius());
         g.drawString(font, status, width - PAD_OUTER - font.width(status), PAD_OUTER, TEXT_DIM, false);

@@ -18,29 +18,45 @@ final class IrisShaderFallback {
 
     private static final String IRIS_MOD_ID = "iris";
     private static final String IRIS_API_CLASS = "net.irisshaders.iris.api.v0.IrisApi";
+    private static final long SHADER_STATUS_REFRESH_MS = 250L;
 
     private static Boolean irisLoaded;
     private static Object irisApi;
     private static Method isShaderPackInUse;
     private static boolean apiUnavailable;
+    private static boolean cachedShaderPackInUse;
+    private static long lastShaderStatusCheckMillis;
 
     private IrisShaderFallback() {
     }
 
     static boolean shouldUse(WaypointerConfig config) {
-        return config.irisShaderHudFallback() && isShaderPackInUse();
+        return config.irisShaderHudFallback() && cachedShaderPackInUse();
     }
 
-    private static boolean isShaderPackInUse() {
+    private static boolean cachedShaderPackInUse() {
         if (!isIrisLoaded()) return false;
         if (apiUnavailable) return false;
 
+        long now = System.currentTimeMillis();
+        if (lastShaderStatusCheckMillis != 0L
+                && now - lastShaderStatusCheckMillis < SHADER_STATUS_REFRESH_MS) {
+            return cachedShaderPackInUse;
+        }
+
+        cachedShaderPackInUse = queryShaderPackInUse();
+        lastShaderStatusCheckMillis = now;
+        return cachedShaderPackInUse;
+    }
+
+    private static boolean queryShaderPackInUse() {
         try {
             Method method = shaderPackMethod();
             if (method == null) return false;
             return Boolean.TRUE.equals(method.invoke(irisApi));
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             apiUnavailable = true;
+            cachedShaderPackInUse = false;
             return false;
         }
     }

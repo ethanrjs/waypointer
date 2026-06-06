@@ -2,6 +2,7 @@ package dev.ethan.waypointer.color;
 
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.util.MathUtil;
 
 /**
  * Paints a {@link WaypointGroup}'s waypoints with an evenly-spaced HSL gradient
@@ -119,7 +120,6 @@ public final class GradientColorizer {
         return h;
     }
 
-    /** H in [0,360), S and L in [0,1]. Returns 0xRRGGBB. */
     public static int hslToRgb(float h, float s, float l) {
         float c = (1f - Math.abs(2f * l - 1f)) * s;
         float hp = h / 60f;
@@ -135,7 +135,9 @@ public final class GradientColorizer {
         int ri = Math.round((r + m) * 255f);
         int gi = Math.round((g + m) * 255f);
         int bi = Math.round((b + m) * 255f);
-        return (clamp(ri) << 16) | (clamp(gi) << 8) | clamp(bi);
+        return (MathUtil.clampByte(ri) << 16)
+                | (MathUtil.clampByte(gi) << 8)
+                | MathUtil.clampByte(bi);
     }
 
     /** RGB (0xRRGGBB) → {H (0..360), S (0..1), L (0..1)}. */
@@ -163,7 +165,4 @@ public final class GradientColorizer {
         return new float[] { h, s, l };
     }
 
-    private static int clamp(int v) {
-        return Math.max(0, Math.min(255, v));
-    }
 }
