@@ -3,11 +3,14 @@ package dev.ethan.waypointer.screen;
 import dev.ethan.waypointer.codec.WaypointImporter;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
+import dev.ethan.waypointer.core.RouteProgress;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -15,6 +18,7 @@ import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 import static dev.ethan.waypointer.screen.GuiTokens.*;
 
@@ -83,6 +87,8 @@ public final class WaypointerScreen extends Screen {
     private static final int DELETE_BTN_W = 72;
     private Button editBtn;
     private Button deleteBtn;
+    private EditBox searchBox;
+    private String searchQuery = "";
     private long deleteArmedUntil = 0L;
 
     private List<GuiTokens.ButtonSpec> footerActions() {
@@ -139,6 +145,7 @@ public final class WaypointerScreen extends Screen {
         deleteArmedUntil = 0L;
         editBtn = null;
         deleteBtn = null;
+        searchBox = null;
 
         // Fixed width so the label can toggle between "Delete" and "Confirm?" without
         // the footer re-flowing or the text sliding past the bevel.
@@ -158,6 +165,15 @@ public final class WaypointerScreen extends Screen {
             }
             addRenderableWidget(b);
         }, font);
+
+        searchBox = new EditBox(font, 0, 0, 100, BTN_H, Component.literal("Search routes"));
+        searchBox.setMaxLength(80);
+        searchBox.setValue(searchQuery);
+        searchBox.setHint(Component.literal("Search routes"));
+        searchBox.setTooltip(Tooltip.create(Component.literal("Filter routes by name, zone, waypoint, or progress.")));
+        searchBox.setResponder(this::onSearchChanged);
+        syncSearchBoxGeometry();
+        addRenderableWidget(searchBox);
 
         // Resolve a pending focus request from openFocused(). We do this here
         // rather than in the constructor because the zone's group list can
@@ -191,6 +207,24 @@ public final class WaypointerScreen extends Screen {
         }
     }
 
+    private void onSearchChanged(String raw) {
+        String next = raw == null ? "" : raw;
+        if (next.equals(searchQuery)) return;
+        searchQuery = next;
+        scrollOffset = 0;
+        selectedIndex = -1;
+        refreshActionButtons();
+    }
+
+    private void syncSearchBoxGeometry() {
+        if (searchBox == null) return;
+        Layout layout = layout();
+        searchBox.setX(layout.mainLeft() + GAP);
+        searchBox.setY(layout.top() + 4);
+        int availableWidth = layout.mainRight() - layout.mainLeft() - GAP * 2;
+        searchBox.setWidth(Math.max(80, Math.min(180, availableWidth)));
+    }
+
     private void openSettings() {
         minecraft.setScreen(new ConfigScreen(this, config));
     }
@@ -210,13 +244,52 @@ public final class WaypointerScreen extends Screen {
     }
 
     private List<WaypointGroup> visibleGroups() {
-        if (isTemporaryZone(selectedZoneId)) return temporaryGroups();
-
         List<WaypointGroup> out = new ArrayList<>();
-        for (WaypointGroup group : manager.groupsForZone(selectedZoneId)) {
-            if (!group.temp()) out.add(group);
+        if (isTemporaryZone(selectedZoneId)) {
+            out.addAll(temporaryGroups());
+        } else {
+            for (WaypointGroup group : manager.groupsForZone(selectedZoneId)) {
+                if (!group.temp()) out.add(group);
+            }
         }
-        return out;
+
+        String query = normalizedSearchQuery();
+        if (query.isEmpty()) return out;
+
+        List<WaypointGroup> filtered = new ArrayList<>();
+        for (WaypointGroup group : out) {
+            if (groupMatchesSearch(group, query)) filtered.add(group);
+        }
+        return filtered;
+    }
+
+    private String normalizedSearchQuery() {
+        return searchQuery == null ? "" : searchQuery.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private boolean groupMatchesSearch(WaypointGroup group, String query) {
+        if (containsSearch(group.name(), query)) return true;
+        if (containsSearch(group.zoneId(), query)) return true;
+        if (containsSearch(Zone.fromId(group.zoneId()).displayName(), query)) return true;
+        if (containsSearch(group.loadMode().name(), query)) return true;
+        if (containsSearch(RouteProgress.summary(group), query)) return true;
+
+        for (int i = 0; i < group.size(); i++) {
+            if (waypointMatchesSearch(group, i, query)) return true;
+        }
+        return false;
+    }
+
+    private boolean waypointMatchesSearch(WaypointGroup group, int index, String query) {
+        var waypoint = group.get(index);
+        if (containsSearch(waypoint.name(), query)) return true;
+        if (containsSearch(group.displayIndexLabel(index), query)) return true;
+        String coords = waypoint.x() + "," + waypoint.y() + "," + waypoint.z();
+        return containsSearch(coords, query);
+    }
+
+    private static boolean containsSearch(String text, String query) {
+        return text != null && text.toLowerCase(Locale.ROOT).contains(query);
     }
 
     private List<WaypointGroup> temporaryGroups() {
@@ -289,6 +362,13 @@ public final class WaypointerScreen extends Screen {
                 layout.bottom(), mouseX, mouseY);
         renderMain(g, layout.mainLeft(), layout.top(), layout.mainRight(),
                 layout.bottom(), mouseX, mouseY);
+        renderSearchBox(g, mouseX, mouseY, partial);
+    }
+
+    private void renderSearchBox(GuiGraphics g, int mouseX, int mouseY, float partial) {
+        if (searchBox == null) return;
+        syncSearchBoxGeometry();
+        searchBox.renderWidget(g, mouseX, mouseY, partial);
     }
 
     private Layout layout() {
@@ -361,23 +441,21 @@ public final class WaypointerScreen extends Screen {
 
     private void renderMain(GuiGraphics g, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
         List<WaypointGroup> groups = visibleGroups();
+        g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
+        int rowsTop = mainRowsTop(y1);
         if (groups.isEmpty()) {
-            renderEmptyState(g, x1, y1);
+            renderEmptyState(g, x1, rowsTop);
             return;
         }
 
-        g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
-        g.enableScissor(x1, y1, x2, y2);
+        g.enableScissor(x1, rowsTop, x2, y2);
 
-        g.drawString(font, isTemporaryZone(selectedZoneId) ? "Temporary Waypoints" : "Groups",
-                x1 + GAP, y1 + 6, TEXT_DIM, false);
-
-        int y = y1 + 20 - scrollOffset;
+        int y = rowsTop - scrollOffset;
         int listW = x2 - x1;
         for (int i = 0; i < groups.size(); i++, y += ROW_H + 4) {
             int rowTop = y;
             int rowBot = y + ROW_H + 2;
-            if (rowBot < y1 || rowTop > y2) continue;
+            if (rowBot < rowsTop || rowTop > y2) continue;
 
             boolean hovered = mouseX >= x1 + 2 && mouseX <= x2 - 2
                     && mouseY >= rowTop && mouseY <= rowBot;
@@ -387,7 +465,18 @@ public final class WaypointerScreen extends Screen {
         g.disableScissor();
     }
 
+    private static int mainRowsTop(int panelTop) {
+        return panelTop + 4 + BTN_H + GAP;
+    }
+
     private void renderEmptyState(GuiGraphics g, int x1, int y1) {
+        if (!normalizedSearchQuery().isEmpty()) {
+            g.drawString(font, "No routes match search.",
+                    x1, y1 + 8, TEXT, false);
+            g.drawString(font, "Clear the search field to show all routes.",
+                    x1, y1 + 8 + 14, TEXT_DIM, false);
+            return;
+        }
         if (isTemporaryZone(selectedZoneId)) {
             g.drawString(font, "No temporary waypoints.",
                     x1, y1 + 8, TEXT, false);
@@ -416,7 +505,7 @@ public final class WaypointerScreen extends Screen {
 
         String sub = group.temp()
                 ? group.size() + " temp pts  " + Zone.fromId(group.zoneId()).displayName()
-                : group.size() + " pts  @" + group.currentIndex()
+                : group.size() + " pts  " + RouteProgress.summary(group)
                         + "  " + loadModeLabel(group);
         g.drawString(font, sub, x1 + GAP + 2, y1 + 14, TEXT_DIM, false);
 
@@ -482,9 +571,10 @@ public final class WaypointerScreen extends Screen {
 
         List<WaypointGroup> groups = visibleGroups();
         if (groups.isEmpty()) return false;
-        if (my < layout.top() + 20) return false;
+        int rowsTop = mainRowsTop(layout.top());
+        if (my < rowsTop) return false;
 
-        double yInList = my - (layout.top() + 20) + scrollOffset;
+        double yInList = my - rowsTop + scrollOffset;
         int idx = (int) (yInList / (ROW_H + 4));
         if (idx < 0 || idx >= groups.size()) return false;
 
@@ -508,11 +598,12 @@ public final class WaypointerScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
         Layout layout = layout();
-        int listHeight = layout.bottom() - layout.top();
+        int rowsTop = mainRowsTop(layout.top());
+        int listHeight = layout.bottom() - rowsTop;
         int rowPitch = ROW_H + 4;
-        int content = 20 + visibleGroups().size() * rowPitch;
+        int content = visibleGroups().size() * rowPitch;
         int maxScroll = Math.max(0, content - listHeight + 8);
-        scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - (int) (vert * rowPitch)));
+        scrollOffset = MathUtil.clamp(scrollOffset - (int) (vert * rowPitch), 0, maxScroll);
         return true;
     }
 
@@ -627,6 +718,8 @@ public final class WaypointerScreen extends Screen {
             // where the user has to hunt through zone tabs.
             if (!result.groups().isEmpty()) {
                 WaypointGroup first = result.groups().get(0);
+                searchQuery = "";
+                if (searchBox != null) searchBox.setValue("");
                 selectedZoneId = first.zoneId();
                 selectGroupById(first.id());
             }
