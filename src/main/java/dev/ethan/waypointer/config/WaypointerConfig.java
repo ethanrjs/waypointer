@@ -105,6 +105,12 @@ public final class WaypointerConfig {
     private boolean showWaypointNames = true;
     private boolean showWaypointDistances = true;
     /**
+     * Optional route progress percentage row for waypoint HUD labels.
+     * Default-off keeps labels compact unless the player asks for route progress
+     * at every visible waypoint.
+     */
+    private boolean showRouteProgress = false;
+    /**
      * Optional readability mode: labels shrink as their world anchor gets farther
      * from the camera. Default-off preserves the stable fixed-size HUD labels
      * existing users are used to.
@@ -184,9 +190,6 @@ public final class WaypointerConfig {
     private BoxStyle boxStyle = BoxStyle.OUTLINED;
     private BeaconBeamMode beaconBeamMode = BeaconBeamMode.OFF;
     private boolean beaconBeamExtendsBelowWaypoint = false;
-
-    // Zone detection
-    private boolean preferScoreboardFallback = false;
 
     // Quality-of-life
     private boolean chatCoordDetection = true;
@@ -410,6 +413,7 @@ public final class WaypointerConfig {
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showWaypointDistances()    { return showWaypointDistances; }
+    public boolean showRouteProgress()        { return showRouteProgress; }
     public boolean scaleWaypointTextWithDistance() { return scaleWaypointTextWithDistance; }
     public boolean matchWaypointTextToWaypointColor() { return matchWaypointTextToWaypointColor; }
     public boolean showCompleted()            { return showCompleted; }
@@ -430,7 +434,6 @@ public final class WaypointerConfig {
         return beaconBeamMode == null ? BeaconBeamMode.OFF : beaconBeamMode;
     }
     public boolean beaconBeamExtendsBelowWaypoint() { return beaconBeamExtendsBelowWaypoint; }
-    public boolean preferScoreboardFallback() { return preferScoreboardFallback; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
     public List<String> chatCoordSenderBlacklist() {
         ensureChatCoordSenderBlacklist();
@@ -490,6 +493,7 @@ public final class WaypointerConfig {
     public void setBeaconOpacity(double v)             { this.beaconOpacity = clamp(v, 0, 1); save(); }
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
     public void setShowWaypointDistances(boolean v)    { this.showWaypointDistances = v; save(); }
+    public void setShowRouteProgress(boolean v)        { this.showRouteProgress = v; save(); }
     public void setScaleWaypointTextWithDistance(boolean v) { this.scaleWaypointTextWithDistance = v; save(); }
     public void setMatchWaypointTextToWaypointColor(boolean v) { this.matchWaypointTextToWaypointColor = v; save(); }
     public void setShowCompleted(boolean v)            { this.showCompleted = v; save(); }
@@ -506,7 +510,6 @@ public final class WaypointerConfig {
         this.hideReachedStaticWaypointsUntilCycleComplete = v;
         save();
     }
-    public void setPreferScoreboardFallback(boolean v) { this.preferScoreboardFallback = v; save(); }
     public void setChatCoordDetection(boolean v)       { this.chatCoordDetection = v; save(); }
     public boolean addChatCoordSenderBlacklist(String senderName) {
         String normalized = normalizeChatCoordSender(senderName);
@@ -592,6 +595,7 @@ public final class WaypointerConfig {
         matchTracerToWaypointColor = false;
         showWaypointNames = false;
         showWaypointDistances = false;
+        showRouteProgress = false;
         scaleWaypointTextWithDistance = false;
         matchWaypointTextToWaypointColor = false;
         showCompleted = false;
@@ -602,7 +606,6 @@ public final class WaypointerConfig {
         hideReachedStaticWaypointsUntilCycleComplete = false;
         showLabelBackdrop = false;
         beaconBeamExtendsBelowWaypoint = false;
-        preferScoreboardFallback = false;
         chatCoordDetection = false;
         autoAddChatTempWaypoints = false;
         placeNewWaypointsBelowPlayer = false;
@@ -619,6 +622,58 @@ public final class WaypointerConfig {
         irisShaderHudFallback = false;
         beaconBeamMode = BeaconBeamMode.OFF;
         tempDefaultMode = Waypoint.TEMP_UNTIL_LEAVE;
+        save();
+    }
+
+    public void resetToDefaults() {
+        WaypointerConfig defaults = new WaypointerConfig();
+        configSchemaVersion = CONFIG_SCHEMA_VERSION;
+        defaultReachRadius = defaults.defaultReachRadius;
+        resetProgressOnWorldJoin = defaults.resetProgressOnWorldJoin;
+        restartRouteWhenComplete = defaults.restartRouteWhenComplete;
+        tracerColor = defaults.tracerColor;
+        matchTracerToWaypointColor = defaults.matchTracerToWaypointColor;
+        tracerOpacity = defaults.tracerOpacity;
+        tracerThickness = defaults.tracerThickness;
+        waypointOutlineThickness = defaults.waypointOutlineThickness;
+        beaconOpacity = defaults.beaconOpacity;
+        showWaypointNames = defaults.showWaypointNames;
+        showWaypointDistances = defaults.showWaypointDistances;
+        showRouteProgress = defaults.showRouteProgress;
+        scaleWaypointTextWithDistance = defaults.scaleWaypointTextWithDistance;
+        matchWaypointTextToWaypointColor = defaults.matchWaypointTextToWaypointColor;
+        showCompleted = defaults.showCompleted;
+        showTracer = defaults.showTracer;
+        dimSequenceContextWaypoints = defaults.dimSequenceContextWaypoints;
+        hideTracerOnStaticRoutes = defaults.hideTracerOnStaticRoutes;
+        hideWaypointsNearPlayer = defaults.hideWaypointsNearPlayer;
+        hideWaypointsNearRadius = defaults.hideWaypointsNearRadius;
+        hideReachedStaticWaypointsUntilCycleComplete = defaults.hideReachedStaticWaypointsUntilCycleComplete;
+        showLabelBackdrop = defaults.showLabelBackdrop;
+        maxWaypointLabels = defaults.maxWaypointLabels;
+        maxStaticWaypointRenderDistance = defaults.maxStaticWaypointRenderDistance;
+        labelHeightOffset = defaults.labelHeightOffset;
+        boxStyle = defaults.boxStyle;
+        beaconBeamMode = defaults.beaconBeamMode;
+        beaconBeamExtendsBelowWaypoint = defaults.beaconBeamExtendsBelowWaypoint;
+        chatCoordDetection = defaults.chatCoordDetection;
+        chatCoordSenderBlacklist = new ArrayList<>(defaults.chatCoordSenderBlacklist);
+        autoAddChatTempWaypoints = defaults.autoAddChatTempWaypoints;
+        placeNewWaypointsBelowPlayer = defaults.placeNewWaypointsBelowPlayer;
+        focusTempWaypoints = defaults.focusTempWaypoints;
+        chatCodecDetection = defaults.chatCodecDetection;
+        exportIncludeNames = defaults.exportIncludeNames;
+        exportIncludeColors = defaults.exportIncludeColors;
+        exportIncludeRadii = defaults.exportIncludeRadii;
+        exportIncludeWaypointFlags = defaults.exportIncludeWaypointFlags;
+        exportIncludeGroupMeta = defaults.exportIncludeGroupMeta;
+        dungeonWaypointsFeatureEnabled = defaults.dungeonWaypointsFeatureEnabled;
+        skipAheadMechanicEnabled = defaults.skipAheadMechanicEnabled;
+        checkForUpdates = defaults.checkForUpdates;
+        irisShaderHudFallback = defaults.irisShaderHudFallback;
+        tempDefaultMode = defaults.tempDefaultMode;
+        tempDefaultDurationMin = defaults.tempDefaultDurationMin;
+        migratedDuringLoad = false;
         save();
     }
 

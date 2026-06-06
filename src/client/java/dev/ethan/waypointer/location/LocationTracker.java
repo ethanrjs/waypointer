@@ -14,9 +14,10 @@ import net.fabricmc.loader.api.FabricLoader;
  *
  *   1. {@code hypixel-mod-api} installed -- use {@link HypixelApiZoneSource}
  *      (authoritative, event-driven).
- *   2. Otherwise -- use {@link ScoreboardZoneResolver} (polls sidebar each tick).
+ *   2. Otherwise -- use {@link ScoreboardZoneResolver} as a defensive fallback.
  *
- * This keeps the mod useful standalone but automatically upgrades when the API mod is present.
+ * Hypixel Mod API is a dependency now, so there is no user-facing override for
+ * forcing scoreboard detection.
  */
 public final class LocationTracker {
 
@@ -30,15 +31,13 @@ public final class LocationTracker {
     }
 
     public void install() {
-        boolean hypixelApi = !config.preferScoreboardFallback()
-                && FabricLoader.getInstance().isModLoaded("hypixel-mod-api");
+        boolean hypixelApi = FabricLoader.getInstance().isModLoaded("hypixel-mod-api");
         if (hypixelApi) {
             source = new HypixelApiZoneSource();
             Waypointer.LOGGER.info("Location: using Hypixel Mod API source");
         } else {
             source = new ScoreboardZoneResolver();
-            Waypointer.LOGGER.info("Location: using scoreboard fallback"
-                    + (config.preferScoreboardFallback() ? " (forced by config)" : " (install hypixel-mod-api for better accuracy)"));
+            Waypointer.LOGGER.info("Location: using scoreboard fallback (hypixel-mod-api missing)");
         }
         source.register(manager::onZoneChanged);
     }

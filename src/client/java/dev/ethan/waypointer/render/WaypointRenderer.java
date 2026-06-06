@@ -27,7 +27,6 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 
 /**
@@ -121,12 +120,11 @@ public final class WaypointRenderer implements HudElement {
     private static final int[] BOX_EDGE_B = {1, 3, 2, 0, 5, 7, 6, 4, 4, 5, 6, 7};
 
     /**
-     * Bounded cache for generated labels like "#34" and "Next (34/120)".
-     * User-named waypoints already return their stored string; this only avoids
-     * rebuilding unnamed labels every render frame.
+     * Bounded cache for generated numeric labels like "#34". User-named
+     * waypoints already return their stored string; this only avoids rebuilding
+     * unnamed labels every render frame.
      */
     private static final int INDEX_LABEL_CACHE_MAX = 256;
-    private static final int NEXT_LABEL_CACHE_SIZE = 128;
     private static final Comparator<LabelCandidate> LABEL_NEAREST_FIRST =
             Comparator.comparingDouble(c -> c.distanceSquared);
 
@@ -140,9 +138,6 @@ public final class WaypointRenderer implements HudElement {
      */
     private final StringBuilder distanceScratch = new StringBuilder(8);
     private final String[] indexLabelCache = new String[INDEX_LABEL_CACHE_MAX];
-    private final int[] nextLabelIndexes = new int[NEXT_LABEL_CACHE_SIZE];
-    private final int[] nextLabelSizes = new int[NEXT_LABEL_CACHE_SIZE];
-    private final String[] nextLabelCache = new String[NEXT_LABEL_CACHE_SIZE];
     private final WorldScreenProjector labelProjector = new WorldScreenProjector();
     private final double[] labelScreenScratch = new double[2];
     private final double[] boxScreenScratch = new double[16];
@@ -157,8 +152,6 @@ public final class WaypointRenderer implements HudElement {
     public WaypointRenderer(ActiveGroupManager manager, WaypointerConfig config) {
         this.manager = manager;
         this.config = config;
-        Arrays.fill(nextLabelIndexes, -1);
-        Arrays.fill(nextLabelSizes, -1);
     }
 
     public void install() {
@@ -195,6 +188,7 @@ public final class WaypointRenderer implements HudElement {
         boolean drawFill  = style != WaypointerConfig.BoxStyle.OUTLINED;
         boolean drawBeams = config.beaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF;
         if (!drawLines && !drawFill && !drawBeams) return;
+        if (config.beaconOpacity() <= 0.0) return;
 
         MultiBufferSource buffers = ctx.consumers();
         if (buffers == null) return;
@@ -368,9 +362,10 @@ public final class WaypointRenderer implements HudElement {
     @Override
     public void render(GuiGraphics g, DeltaTracker tick) {
         boolean showNames = config.showWaypointNames();
+        boolean showRouteProgress = config.showRouteProgress();
         boolean showDistances = config.showWaypointDistances();
         boolean drawHudFallback = IrisShaderFallback.shouldUse(config);
-        if (!showNames && !showDistances && !drawHudFallback) return;
+        if (!showNames && !showRouteProgress && !showDistances && !drawHudFallback) return;
 
         var groups = manager.activeGroups();
         if (groups.isEmpty()) return;
@@ -389,23 +384,26 @@ public final class WaypointRenderer implements HudElement {
         int labelBudget = config.maxWaypointLabels();
         double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
         double nearHideDistanceSq = nearHideDistanceSq();
+        clearLabelCandidates();
         labelCandidateCount = 0;
 
-        if (drawHudFallback) {
+        if (drawHudFallback && config.beaconOpacity() > 0.0) {
             drawHudFallbackBoxes(g, camPos, playerPos, screenW, screenH, groups,
                     maxStaticDistanceSq, nearHideDistanceSq);
         }
 
-        if (showNames || showDistances) {
+        if (showNames || showRouteProgress || showDistances) {
             for (WaypointGroup group : groups) {
                 drawGroupLabels(g, font, camPos, playerPos, screenW, screenH, group,
-                        showNames, showDistances, labelBudget,
+                        showNames, showRouteProgress, showDistances, labelBudget,
                         maxStaticDistanceSq, nearHideDistanceSq);
             }
             if (labelBudget > 0 && labelCandidateCount > 0) {
-                drawBudgetedLabels(g, font, Math.min(labelBudget, labelCandidateCount));
+                drawBudgetedLabels(g, font, Math.min(labelBudget, labelCandidateCount),
+                        showNames, showRouteProgress, showDistances);
             }
         }
+        clearLabelCandidates();
     }
 
     private void drawHudFallbackBoxes(GuiGraphics g, Vec3 camPos, Vec3 playerPos, int screenW,
@@ -510,7 +508,7 @@ public final class WaypointRenderer implements HudElement {
 
     private void drawGroupLabels(GuiGraphics g, Font font, Vec3 camPos, Vec3 playerPos,
                                  int screenW, int screenH, WaypointGroup group,
-                                 boolean showNames, boolean showDistances,
+                                 boolean showNames, boolean showRouteProgress, boolean showDistances,
                                  int labelBudget, double maxStaticDistanceSq,
                                  double nearHideDistanceSq) {
         int currentIdx = group.currentIndex();
@@ -521,7 +519,7 @@ public final class WaypointRenderer implements HudElement {
         boolean colorizeNames = config.matchWaypointTextToWaypointColor();
         boolean scaleLabelsWithDistance = config.scaleWaypointTextWithDistance();
         boolean hasSubwaypoints = group.hasSubwaypoints();
-        int mainWaypointCount = hasSubwaypoints ? group.mainWaypointCount() : group.size();
+        String routeProgressText = showRouteProgress ? routeProgressText(group) : null;
 
         group.forEachVisibleIndex(i -> {
             if (shouldHideStaticReached(group, i)) return;
@@ -548,15 +546,10 @@ public final class WaypointRenderer implements HudElement {
             double sy = labelScreenScratch[1];
             if (!isNearScreen(sx, sy, screenW, screenH)) return;
 
-            double distance = showDistances ? Math.sqrt(distanceSq) : 0.0;
             float labelScale = labelScaleForDepth(
                     labelProjector.depth(ax, ay, az),
                     labelProjector.fovDegrees(),
                     scaleLabelsWithDistance);
-            String name = showNames ? labelFor(group, i, w, state, hasSubwaypoints, mainWaypointCount) : null;
-            String distanceText = showDistances
-                    ? distanceString((int) distance)
-                    : null;
             float alpha = alphaFor(group, state);
             int nameColor = colorizeNames && showNames
                     ? 0xFF000000 | (w.color() & 0xFFFFFF)
@@ -564,24 +557,35 @@ public final class WaypointRenderer implements HudElement {
 
             if (labelBudget > 0) {
                 LabelCandidate candidate = nextLabelCandidate();
-                candidate.set(name, distanceText, sx, sy, distanceSq, nameColor, alpha, labelScale);
+                candidate.set(group, i, w, routeProgressText, hasSubwaypoints,
+                        sx, sy, distanceSq, nameColor, alpha, labelScale);
                 return;
             }
 
             double rowY = sy;
             if (showNames) {
+                String name = labelFor(group, i, w, hasSubwaypoints);
                 drawCenteredLabel(g, font, name, sx, rowY,
                         RenderHelpers.withAlpha(nameColor, alpha), alpha, labelScale);
                 rowY += labelRowAdvance(font, labelScale);
             }
+            if (showRouteProgress) {
+                drawCenteredLabel(g, font, routeProgressText, sx, rowY,
+                        RenderHelpers.withAlpha(DISTANCE_ARGB, alpha), alpha, labelScale);
+                rowY += labelRowAdvance(font, labelScale);
+            }
             if (showDistances) {
+                double distance = Math.sqrt(distanceSq);
+                String distanceText = distanceString((int) distance);
                 drawCenteredLabel(g, font, distanceText, sx, rowY,
                         RenderHelpers.withAlpha(DISTANCE_ARGB, alpha), alpha, labelScale);
             }
         });
     }
 
-    private void drawBudgetedLabels(GuiGraphics g, Font font, int count) {
+    private void drawBudgetedLabels(GuiGraphics g, Font font, int count,
+                                    boolean showNames, boolean showRouteProgress,
+                                    boolean showDistances) {
         if (count <= 0) return;
         if (count < labelCandidateCount) {
             selectNearestLabels(count);
@@ -590,20 +594,42 @@ public final class WaypointRenderer implements HudElement {
             labelCandidates.subList(0, labelCandidateCount).sort(LABEL_NEAREST_FIRST);
         }
         for (int i = 0; i < count; i++) {
-            LabelCandidate candidate = labelCandidates.get(i);
-            double rowY = candidate.screenY;
-            if (candidate.name != null) {
-                drawCenteredLabel(g, font, candidate.name, candidate.screenX, rowY,
-                        RenderHelpers.withAlpha(candidate.nameColor, candidate.alpha),
-                        candidate.alpha, candidate.scale);
-                rowY += labelRowAdvance(font, candidate.scale);
-            }
-            if (candidate.distance != null) {
-                drawCenteredLabel(g, font, candidate.distance, candidate.screenX, rowY,
-                        RenderHelpers.withAlpha(DISTANCE_ARGB, candidate.alpha),
-                        candidate.alpha, candidate.scale);
-            }
+            drawCandidateLabel(g, font, labelCandidates.get(i),
+                    showNames, showRouteProgress, showDistances);
         }
+    }
+
+    private void drawCandidateLabel(GuiGraphics g, Font font, LabelCandidate candidate,
+                                    boolean showNames, boolean showRouteProgress,
+                                    boolean showDistances) {
+        double rowY = candidate.screenY;
+        if (showNames) {
+            String name = labelFor(candidate.group, candidate.index, candidate.waypoint,
+                    candidate.hasSubwaypoints);
+            drawCenteredLabel(g, font, name, candidate.screenX, rowY,
+                    RenderHelpers.withAlpha(candidate.nameColor, candidate.alpha),
+                    candidate.alpha, candidate.scale);
+            rowY += labelRowAdvance(font, candidate.scale);
+        }
+        if (showRouteProgress) {
+            drawCenteredLabel(g, font, candidate.routeProgressText, candidate.screenX, rowY,
+                    RenderHelpers.withAlpha(DISTANCE_ARGB, candidate.alpha),
+                    candidate.alpha, candidate.scale);
+            rowY += labelRowAdvance(font, candidate.scale);
+        }
+        if (showDistances) {
+            String distance = distanceString((int) Math.sqrt(candidate.distanceSquared));
+            drawCenteredLabel(g, font, distance, candidate.screenX, rowY,
+                    RenderHelpers.withAlpha(DISTANCE_ARGB, candidate.alpha),
+                    candidate.alpha, candidate.scale);
+        }
+    }
+
+    private void clearLabelCandidates() {
+        for (int i = 0; i < labelCandidateCount; i++) {
+            labelCandidates.get(i).clear();
+        }
+        labelCandidateCount = 0;
     }
 
     /**
@@ -719,8 +745,20 @@ public final class WaypointRenderer implements HudElement {
         g.pose().popMatrix();
     }
 
-    private String labelFor(WaypointGroup g, int i, Waypoint w, State state,
-                            boolean hasSubwaypoints, int mainWaypointCount) {
+    private static String routeProgressText(WaypointGroup group) {
+        return formatProgressPercent(RouteProgress.snapshot(group).percentComplete);
+    }
+
+    private static String formatProgressPercent(double percent) {
+        double safePercent = Double.isFinite(percent)
+                ? Math.max(0.0, Math.min(100.0, percent))
+                : 0.0;
+        long tenths = Math.round(safePercent * 10.0);
+        return (tenths / 10) + "." + (tenths % 10) + "%";
+    }
+
+    private String labelFor(WaypointGroup g, int i, Waypoint w,
+                            boolean hasSubwaypoints) {
         if (w.hasName()) return AmpersandFormatting.translate(w.name());
         if (g.isSubwaypoint(i) || (hasSubwaypoints && g.loadMode() == WaypointGroup.LoadMode.STATIC)) {
             return g.displayIndexLabel(i);
@@ -728,9 +766,7 @@ public final class WaypointRenderer implements HudElement {
         if (g.loadMode() == WaypointGroup.LoadMode.STATIC) return indexLabel(i + 1);
 
         int mainOrdinal = hasSubwaypoints ? g.mainOrdinal(i) : i + 1;
-        return state == State.CURRENT
-                ? RouteProgress.nextTargetLabel(mainOrdinal, mainWaypointCount)
-                : indexLabel(mainOrdinal);
+        return indexLabel(mainOrdinal);
     }
 
     private String indexLabel(int number) {
@@ -742,20 +778,6 @@ public final class WaypointRenderer implements HudElement {
             indexLabelCache[number] = cached;
         }
         return cached;
-    }
-
-    private String nextLabel(int i, int size) {
-        int number = i + 1;
-        int slot = (31 * number + size) & (NEXT_LABEL_CACHE_SIZE - 1);
-        if (nextLabelIndexes[slot] == number && nextLabelSizes[slot] == size) {
-            return nextLabelCache[slot];
-        }
-
-        String label = "Next (" + number + "/" + size + ")";
-        nextLabelIndexes[slot] = number;
-        nextLabelSizes[slot] = size;
-        nextLabelCache[slot] = label;
-        return label;
     }
 
     private static State stateFor(WaypointGroup group, int i, int currentIdx) {
@@ -936,8 +958,11 @@ public final class WaypointRenderer implements HudElement {
     }
 
     private static final class LabelCandidate {
-        String name;
-        String distance;
+        WaypointGroup group;
+        Waypoint waypoint;
+        String routeProgressText;
+        int index;
+        boolean hasSubwaypoints;
         double screenX;
         double screenY;
         double distanceSquared;
@@ -945,16 +970,35 @@ public final class WaypointRenderer implements HudElement {
         float alpha;
         float scale;
 
-        void set(String name, String distance, double screenX, double screenY,
-                 double distanceSquared, int nameColor, float alpha, float scale) {
-            this.name = name;
-            this.distance = distance;
+        void set(WaypointGroup group, int index, Waypoint waypoint, String routeProgressText,
+                 boolean hasSubwaypoints, double screenX,
+                 double screenY, double distanceSquared, int nameColor, float alpha,
+                 float scale) {
+            this.group = group;
+            this.index = index;
+            this.waypoint = waypoint;
+            this.routeProgressText = routeProgressText;
+            this.hasSubwaypoints = hasSubwaypoints;
             this.screenX = screenX;
             this.screenY = screenY;
             this.distanceSquared = distanceSquared;
             this.nameColor = nameColor;
             this.alpha = alpha;
             this.scale = scale;
+        }
+
+        void clear() {
+            group = null;
+            waypoint = null;
+            routeProgressText = null;
+            index = 0;
+            hasSubwaypoints = false;
+            screenX = 0.0;
+            screenY = 0.0;
+            distanceSquared = 0.0;
+            nameColor = 0;
+            alpha = 0.0f;
+            scale = 0.0f;
         }
     }
 }
