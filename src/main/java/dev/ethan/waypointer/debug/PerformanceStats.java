@@ -235,6 +235,7 @@ public record PerformanceStats(
 
     private static int estimatedBeamVertices(WaypointGroup group,
                                              WaypointerConfig config) {
+        if (config.beaconOpacity() <= 0.0) return 0;
         return switch (config.beaconBeamMode()) {
             case OFF -> 0;
             case CURRENT -> hasCurrentBeam(group, config) ? BEAM_VERTICES : 0;
@@ -295,11 +296,13 @@ public record PerformanceStats(
     }
 
     private static boolean drawsLines(WaypointerConfig config) {
-        return config.boxStyle() != WaypointerConfig.BoxStyle.FILLED;
+        return config.beaconOpacity() > 0.0
+                && config.boxStyle() != WaypointerConfig.BoxStyle.FILLED;
     }
 
     private static boolean drawsFills(WaypointerConfig config) {
-        return config.boxStyle() != WaypointerConfig.BoxStyle.OUTLINED;
+        return config.beaconOpacity() > 0.0
+                && config.boxStyle() != WaypointerConfig.BoxStyle.OUTLINED;
     }
 
     private enum RenderState {
