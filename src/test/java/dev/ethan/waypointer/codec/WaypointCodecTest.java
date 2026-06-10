@@ -5,8 +5,12 @@ import dev.ethan.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
@@ -115,6 +119,25 @@ class WaypointCodecTest {
         assertEquals(2, decoded.size());
         assertGroupsEqual(a, decoded.get(0));
         assertGroupsEqual(b, decoded.get(1));
+    }
+
+    @Test
+    void decodes_legacy_v1_cjk_exports() throws Exception {
+        WaypointGroup group = sampleGroup("legacy-v1", "dungeon_f7");
+        String legacy = legacyV1Export(List.of(group), FULL_FIDELITY, "Codec V1");
+
+        String body = legacy.substring(WaypointCodec.MAGIC.length());
+        assertTrue(CjkBase16384.isValidBody(body), "legacy fixture must use the v1 CJK body alphabet");
+        assertEquals("Codec V1", WaypointCodec.peekLabel(legacy).orElseThrow());
+
+        WaypointCodec.Decoded decoded = WaypointCodec.decodeFull(legacy);
+        DecodeDebug debug = WaypointCodec.debugDecode(legacy);
+
+        assertEquals("Codec V1", decoded.label());
+        assertEquals(1, decoded.groups().size());
+        assertGroupsEqual(group, decoded.groups().get(0));
+        assertEquals(1, debug.version());
+        assertEquals("CJK base-16384", debug.textEncoding());
     }
 
     @Test
@@ -298,9 +321,9 @@ class WaypointCodecTest {
 
     @Test
     void current_wire_version_keeps_hypixel_emote_escape() {
-        // v5 keeps the v4 chat escape, removes commas from the fresh export
-        // alphabet, and adds extended coordinate modes before shipping.
-        assertEquals(5, WaypointCodec.WIRE_VERSION);
+        // v6 keeps the v4/v5 chat escape while adding range-delta coordinates
+        // and the anonymous coordinate-only wrapper.
+        assertEquals(6, WaypointCodec.WIRE_VERSION);
 
         String raw = "abc<3defo/ghi~~jkl<~3mno~/pqr";
         String escaped = WaypointCodec.escapeHypixelEmotes(raw);
@@ -365,8 +388,8 @@ class WaypointCodecTest {
             g.add(new Waypoint(100 + i, 70, 200 + i * 2, "", Waypoint.DEFAULT_COLOR, 0, 0));
         }
 
-        String legacyV4 = asLegacyV4WithComma(WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES));
-        assertTrue(legacyV4.contains(","), "fixture should exercise legacy comma alphabet: " + legacyV4);
+        String legacyV4 = asLegacyV4WithComma(WaypointCodec.encode(List.of(g),
+                WaypointCodec.Options.WITH_NAMES, WaypointCodec.PackingMode.FORCE_VECTOR));
 
         WaypointGroup decoded = WaypointCodec.decode(legacyV4).get(0);
         assertEquals(g.size(), decoded.size());
@@ -384,7 +407,8 @@ class WaypointCodecTest {
             g.add(new Waypoint(100 + i, 70, 200 + i * 2, "", Waypoint.DEFAULT_COLOR, 0, 0));
         }
 
-        String legacyV3 = asLegacyV3(WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES));
+        String legacyV3 = asLegacyV3(WaypointCodec.encode(List.of(g),
+                WaypointCodec.Options.WITH_NAMES, WaypointCodec.PackingMode.FORCE_VECTOR));
 
         WaypointGroup decoded = WaypointCodec.decode(legacyV3).get(0);
         assertEquals(g.size(), decoded.size());
@@ -693,7 +717,7 @@ class WaypointCodecTest {
         g.add(Waypoint.at(0, 70, 0));
 
         DecodeDebug debug = WaypointCodec.debugDecode(
-                WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES));
+                WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES));
 
         assertFalse(debug.stringPool().contains("dungeon_f7"),
                 "known zones should be encoded as dictionary refs, not pool strings");
@@ -706,7 +730,7 @@ class WaypointCodecTest {
         g.add(Waypoint.at(0, 70, 0));
 
         DecodeDebug debug = WaypointCodec.debugDecode(
-                WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES));
+                WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES));
 
         assertTrue(debug.stringPool().contains("custom_event_zone"),
                 "unknown zones need the pool so custom/user-created zones survive");
@@ -892,6 +916,72 @@ class WaypointCodecTest {
     }
 
     @Test
+    void range_delta_forced_round_trips_full_fidelity_route() {
+        WaypointGroup g = sampleGroup("range", "crystal_hollows");
+        for (int i = 0; i < 40; i++) {
+            g.add(new Waypoint(35 + i * 3, 68 + (i % 4), 9 + i * 2,
+                    "p" + i, 0x55AAFF, i % 3 == 0 ? Waypoint.FLAG_HIDE_BEACON : 0,
+                    i % 5 == 0 ? 4.5 : 0.0));
+        }
+
+        String encoded = WaypointCodec.encode(List.of(g), FULL_FIDELITY,
+                WaypointCodec.PackingMode.FORCE_RANGE_DELTA);
+        List<WaypointGroup> decoded = WaypointCodec.decode(encoded);
+
+        assertEquals(1, decoded.size());
+        assertGroupsEqual(g, decoded.get(0));
+    }
+
+    @Test
+    void anonymous_coordinate_export_preserves_order_zone_and_group_meta() {
+        WaypointGroup g = WaypointGroup.create("Secret Route", "dwarven_mines");
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        g.setDefaultRadius(6.5);
+        for (int i = 0; i < 24; i++) {
+            g.add(Waypoint.at(100 + i * 2, 64 + (i % 3), -50 - i));
+        }
+
+        String encoded = WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES);
+        DecodeDebug debug = WaypointCodec.debugDecode(encoded);
+        WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
+
+        assertEquals(6, debug.version());
+        assertTrue(debug.reservedBit6(), "v6 bit 6 marks the anonymous coordinate-only body");
+        assertTrue(debug.stringPool().isEmpty(), "anonymous coordinate export should not write a string pool");
+        assertEquals(1, debug.groups().size());
+        assertEquals("", decoded.name(), "anonymous coordinate export intentionally omits route name");
+        assertEquals(g.zoneId(), decoded.zoneId());
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, decoded.loadMode());
+        assertEquals(6.5, decoded.defaultRadius(), 1e-6);
+        assertEquals(g.size(), decoded.size());
+        for (int i = 0; i < g.size(); i++) {
+            assertEquals(g.get(i).x(), decoded.get(i).x(), "x@" + i);
+            assertEquals(g.get(i).y(), decoded.get(i).y(), "y@" + i);
+            assertEquals(g.get(i).z(), decoded.get(i).z(), "z@" + i);
+        }
+    }
+
+    @Test
+    void legacy_v5_payloads_still_decode_after_v6_bump() throws Exception {
+        WaypointGroup g = sampleGroup("legacy-v5", "dungeon_f7");
+        String current = WaypointCodec.encode(List.of(g), FULL_FIDELITY,
+                WaypointCodec.PackingMode.FORCE_VECTOR);
+        String body = current.substring(WaypointCodec.MAGIC.length());
+        byte[] compressed = AsciiStreamCodec.decode(WaypointCodec.unescapeHypixelEmotes(body));
+        byte[] raw = inflateForTest(compressed);
+        raw[0] = (byte) ((raw[0] & 0xF0) | 5);
+
+        String legacyV5 = WaypointCodec.MAGIC
+                + WaypointCodec.escapeHypixelEmotes(AsciiStreamCodec.encode(deflateForTest(raw)));
+        WaypointGroup decoded = WaypointCodec.decode(legacyV5).get(0);
+        DecodeDebug debug = WaypointCodec.debugDecode(legacyV5);
+
+        assertGroupsEqual(g, decoded);
+        assertEquals(5, debug.version());
+        assertEquals("ASCII base-91 stream + extended coord modes", debug.textEncoding());
+    }
+
+    @Test
     void all_forced_modes_round_trip_identically() {
         // Packing mode is purely a byte-count optimization -- every mode must
         // decode to the same logical group.
@@ -914,12 +1004,16 @@ class WaypointCodecTest {
         WaypointGroup fromDeltaFitAxis = WaypointCodec.decode(
                 WaypointCodec.encode(List.of(g), FULL_FIDELITY,
                         WaypointCodec.PackingMode.FORCE_DELTA_FIT_AXIS_SEPARATED)).get(0);
+        WaypointGroup fromRangeDelta = WaypointCodec.decode(
+                WaypointCodec.encode(List.of(g), FULL_FIDELITY,
+                        WaypointCodec.PackingMode.FORCE_RANGE_DELTA)).get(0);
         assertGroupsEqual(g, fromVector);
         assertGroupsEqual(g, fromAbsolute);
         assertGroupsEqual(g, fromFixed);
         assertGroupsEqual(g, fromFit);
         assertGroupsEqual(g, fromVectorAxis);
         assertGroupsEqual(g, fromDeltaFitAxis);
+        assertGroupsEqual(g, fromRangeDelta);
     }
 
     @Test
@@ -946,12 +1040,14 @@ class WaypointCodecTest {
             int fit      = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIT);
             int vectorAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR_AXIS_SEPARATED);
             int deltaFitAxis = forcedLenOrMax(g, WaypointCodec.PackingMode.FORCE_DELTA_FIT_AXIS_SEPARATED);
+            int rangeDelta = forcedLenOrMax(g, WaypointCodec.PackingMode.FORCE_RANGE_DELTA);
             int auto     = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES).length();
             assertTrue(auto <= vector && auto <= absolute && auto <= fit
-                            && auto <= vectorAxis && auto <= deltaFitAxis,
+                            && auto <= vectorAxis && auto <= deltaFitAxis && auto <= rangeDelta,
                     "trial " + trial + ": auto=" + auto + " vector=" + vector
                             + " absolute=" + absolute + " fit=" + fit
-                            + " vectorAxis=" + vectorAxis + " deltaFitAxis=" + deltaFitAxis);
+                            + " vectorAxis=" + vectorAxis + " deltaFitAxis=" + deltaFitAxis
+                            + " rangeDelta=" + rangeDelta);
             if (fixedEligible) {
                 int fixed = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIXED);
                 assertTrue(auto <= fixed,
@@ -995,6 +1091,117 @@ class WaypointCodecTest {
 
         return WaypointCodec.MAGIC
                 + WaypointCodec.escapeHypixelEmotes(AsciiStreamCodec.encodeLegacyV4(deflateForTest(raw)));
+    }
+
+    private static String legacyV1Export(List<WaypointGroup> groups, WaypointCodec.Options opts, String label)
+            throws Exception {
+        String safeLabel = WaypointCodec.Options.sanitizeLabel(label);
+        Map<String, Integer> pool = new LinkedHashMap<>();
+        legacyV1Intern(pool, "");
+        for (WaypointGroup group : groups) {
+            legacyV1Intern(pool, group.name());
+            legacyV1Intern(pool, group.zoneId());
+            if (opts.includeNames) {
+                for (Waypoint waypoint : group.waypoints()) {
+                    if (waypoint.hasName()) legacyV1Intern(pool, waypoint.name());
+                }
+            }
+        }
+
+        ByteArrayOutputStream body = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(body);
+        int header = 1;
+        if (opts.includeNames) header |= 0x10;
+        if (!safeLabel.isEmpty()) header |= 0x20;
+        out.writeByte(header);
+        if (!safeLabel.isEmpty()) writeLegacyV1Utf8String(out, safeLabel);
+
+        WaypointCodec.writeVarint(out, pool.size());
+        for (String value : pool.keySet()) {
+            writeLegacyV1Utf8String(out, value);
+        }
+        WaypointCodec.writeVarint(out, groups.size());
+
+        for (WaypointGroup group : groups) {
+            WaypointCodec.writeVarint(out, pool.get(group.name()));
+            WaypointCodec.writeVarint(out, pool.get(group.zoneId()));
+
+            boolean customRadius = opts.includeGroupMeta
+                    && Math.abs(group.defaultRadius() - 3.0) > 0.001;
+            int groupFlags = 0;
+            if (opts.includeGroupMeta) {
+                if (group.gradientMode() == WaypointGroup.GradientMode.AUTO) groupFlags |= 0x02;
+                if (group.loadMode() == WaypointGroup.LoadMode.SEQUENCE) groupFlags |= 0x04;
+                if (customRadius) groupFlags |= 0x08;
+            } else {
+                groupFlags |= 0x02;
+            }
+            out.writeByte(groupFlags);
+            if (customRadius) {
+                WaypointCodec.writeVarint(out, (int) Math.round(group.defaultRadius() * 10.0));
+            }
+
+            WaypointCodec.writeVarint(out, group.size());
+            int lastX = 0;
+            int lastY = 0;
+            int lastZ = 0;
+            for (int i = 0; i < group.size(); i++) {
+                Waypoint waypoint = group.get(i);
+                WaypointCodec.writeZigzag(out, i == 0 ? waypoint.x() : waypoint.x() - lastX);
+                WaypointCodec.writeZigzag(out, i == 0 ? waypoint.y() : waypoint.y() - lastY);
+                WaypointCodec.writeZigzag(out, i == 0 ? waypoint.z() : waypoint.z() - lastZ);
+                lastX = waypoint.x();
+                lastY = waypoint.y();
+                lastZ = waypoint.z();
+            }
+            for (Waypoint waypoint : group.waypoints()) {
+                writeLegacyV1WaypointBody(out, pool, waypoint, opts);
+            }
+        }
+        out.flush();
+        return WaypointCodec.MAGIC + CjkBase16384.encode(deflateForTest(body.toByteArray()));
+    }
+
+    private static int legacyV1Intern(Map<String, Integer> pool, String value) {
+        String key = value == null ? "" : value;
+        Integer existing = pool.get(key);
+        if (existing != null) return existing;
+        int index = pool.size();
+        pool.put(key, index);
+        return index;
+    }
+
+    private static void writeLegacyV1Utf8String(DataOutputStream out, String value) throws Exception {
+        byte[] bytes = (value == null ? "" : value).getBytes(StandardCharsets.UTF_8);
+        WaypointCodec.writeVarint(out, bytes.length);
+        out.write(bytes);
+    }
+
+    private static void writeLegacyV1WaypointBody(DataOutputStream out, Map<String, Integer> pool,
+                                                  Waypoint waypoint, WaypointCodec.Options opts)
+            throws Exception {
+        boolean hasName = opts.includeNames && waypoint.hasName();
+        boolean hasColor = opts.includeColors
+                && (waypoint.color() & 0xFFFFFF) != (Waypoint.DEFAULT_COLOR & 0xFFFFFF);
+        boolean hasRadius = opts.includeRadii && waypoint.customRadius() > 0;
+        int extendedFlags = opts.includeWaypointFlags ? waypoint.flags() & 0xFF : 0;
+
+        int flags = 0;
+        if (hasName) flags |= 0x01;
+        if (hasColor) flags |= 0x02;
+        if (hasRadius) flags |= 0x04;
+        if (extendedFlags != 0) flags |= 0x08;
+        out.writeByte(flags);
+
+        if (hasName) WaypointCodec.writeVarint(out, pool.get(waypoint.name()));
+        if (hasColor) {
+            int color = waypoint.color() & 0xFFFFFF;
+            out.writeByte((color >> 16) & 0xFF);
+            out.writeByte((color >> 8) & 0xFF);
+            out.writeByte(color & 0xFF);
+        }
+        if (hasRadius) WaypointCodec.writeVarint(out, (int) Math.round(waypoint.customRadius() * 10.0));
+        if (extendedFlags != 0) WaypointCodec.writeVarint(out, extendedFlags);
     }
 
     private static byte[] deflateForTest(byte[] raw) throws Exception {

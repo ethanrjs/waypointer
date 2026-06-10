@@ -382,8 +382,9 @@ public final class ExportScreen extends Screen {
     }
 
     private void reencode() {
-        this.encoded = WaypointExportCodec.encode(selectedGroupsForExport(),
-                optsBuilder.build(), exportTarget);
+        List<WaypointGroup> selected = selectedGroupsForExport();
+        WaypointCodec.Options options = optsBuilder.build();
+        this.encoded = WaypointExportCodec.encode(selected, options, exportTarget);
     }
 
     private void refreshToggleButtons() {
