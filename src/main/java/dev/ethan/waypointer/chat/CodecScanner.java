@@ -1,6 +1,7 @@
 package dev.ethan.waypointer.chat;
 
 import dev.ethan.waypointer.codec.AsciiStreamCodec;
+import dev.ethan.waypointer.codec.CjkBase16384;
 import dev.ethan.waypointer.codec.WaypointCodec;
 
 import java.util.ArrayList;
@@ -59,7 +60,7 @@ public final class CodecScanner {
 
             int bodyStart = i + WaypointCodec.MAGIC.length();
             int bodyEnd = bodyStart;
-            while (bodyEnd < message.length() && AsciiStreamCodec.isAlphabetChar(message.charAt(bodyEnd))) {
+            while (bodyEnd < message.length() && isCodecBodyChar(message.charAt(bodyEnd))) {
                 bodyEnd++;
             }
             int greedyBodyEnd = bodyEnd;
@@ -120,11 +121,15 @@ public final class CodecScanner {
     private static boolean isAtWordBoundary(String s, int i) {
         if (i == 0) return true;
         char prev = s.charAt(i - 1);
-        if (!AsciiStreamCodec.isAlphabetChar(prev)) return true;
+        if (!isCodecBodyChar(prev)) return true;
         // Alphabet letters/digits and symbols like '/' glue runs together (URLs, words).
         // Clause punctuation is also in the v3 alphabet; treat it as a start boundary so
         // pastes like ",WP:..." still match.
         return isClauseBoundaryBeforeMagic(prev);
+    }
+
+    private static boolean isCodecBodyChar(char c) {
+        return AsciiStreamCodec.isAlphabetChar(c) || CjkBase16384.isAlphabetChar(c);
     }
 
     private static boolean isClauseBoundaryBeforeMagic(char c) {

@@ -470,24 +470,25 @@ public final class WaypointerScreen extends Screen {
     }
 
     private void renderEmptyState(GuiGraphics g, int x1, int y1) {
+        int textX = x1 + GAP;
         if (!normalizedSearchQuery().isEmpty()) {
             g.drawString(font, "No routes match search.",
-                    x1, y1 + 8, TEXT, false);
+                    textX, y1 + 8, TEXT, false);
             g.drawString(font, "Clear the search field to show all routes.",
-                    x1, y1 + 8 + 14, TEXT_DIM, false);
+                    textX, y1 + 8 + 14, TEXT_DIM, false);
             return;
         }
         if (isTemporaryZone(selectedZoneId)) {
             g.drawString(font, "No temporary waypoints.",
-                    x1, y1 + 8, TEXT, false);
+                    textX, y1 + 8, TEXT, false);
             g.drawString(font, "Chat coords and Add Temp markers will appear here.",
-                    x1, y1 + 8 + 14, TEXT_DIM, false);
+                    textX, y1 + 8 + 14, TEXT_DIM, false);
             return;
         }
         g.drawString(font, "No waypoint groups in this zone.",
-                x1, y1 + 8, TEXT, false);
+                textX, y1 + 8, TEXT, false);
         g.drawString(font, "Click \"New Group\" to start, or paste a codec into chat.",
-                x1, y1 + 8 + 14, TEXT_DIM, false);
+                textX, y1 + 8 + 14, TEXT_DIM, false);
     }
 
     private void renderGroupRow(GuiGraphics g, WaypointGroup group, int index,

@@ -26,8 +26,8 @@ import java.util.List;
  * @param version          Wire format version extracted from the low nibble of {@code headerByte}.
  * @param includesNames    Header bit 4 -- whether the encoder wrote per-waypoint names.
  * @param hasLabel         Header bit 5 -- whether a sender-supplied label string is present.
- * @param reservedBit6     Header bit 6. Reserved; current encoder writes 0. Non-zero indicates
- *                         a hand-crafted or future-version payload -- decoder ignores either way.
+ * @param reservedBit6     Header bit 6. In v6+ this marks the anonymous single-group
+ *                         coordinate-only body; older versions treated it as reserved.
  * @param reservedBit7     Header bit 7. Reserved; same semantics as {@code reservedBit6}.
  * @param label            Sender-supplied human-readable export title; empty if none.
  *                         Already sanitized (no formatting codes / control chars).

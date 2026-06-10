@@ -42,7 +42,7 @@ class WaypointCodecDebugTest {
         assertEquals(encoded.length(), d.inputChars());
         assertEquals(WaypointCodec.MAGIC, d.magic());
         assertEquals(encoded.length() - WaypointCodec.MAGIC.length(), d.payloadChars());
-        assertEquals("ASCII base-91 stream + extended coord modes", d.textEncoding());
+        assertEquals("ASCII base-91 stream + range-delta coord mode", d.textEncoding());
         assertTrue(d.rawBodyBytes() > 0, "raw body must be non-empty");
         assertTrue(d.compressedBytes() > 0, "compressed must be non-empty");
     }
@@ -67,17 +67,18 @@ class WaypointCodecDebugTest {
     }
 
     @Test
-    void header_byte_carries_only_version_when_names_excluded() {
+    void header_byte_marks_anonymous_body_when_coordinate_only_names_excluded() {
         String encoded = WaypointCodec.encode(List.of(sampleGroup()), WaypointCodec.Options.NO_NAMES);
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
-        // NO_NAMES with no label: only the version nibble should be set, everything else zero.
+        // NO_NAMES with no label on one bodyless group now uses v6 bit 6 for
+        // the anonymous coordinate-only wrapper; names and label bits stay off.
         assertEquals(WaypointCodec.WIRE_VERSION, d.version());
-        assertEquals(0, d.headerByte() & 0b1111_0000,
-                "NO_NAMES + no label must clear every flag bit in the high nibble");
+        assertEquals(0b0100_0000, d.headerByte() & 0b1111_0000,
+                "coordinate-only single-group export must set the anonymous body bit");
         assertFalse(d.includesNames());
         assertFalse(d.hasLabel());
-        assertFalse(d.reservedBit6());
+        assertTrue(d.reservedBit6(), "v6 bit 6 marks the anonymous coordinate-only body");
         assertFalse(d.reservedBit7());
     }
 
