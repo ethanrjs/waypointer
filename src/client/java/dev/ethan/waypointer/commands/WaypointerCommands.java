@@ -13,6 +13,7 @@ import dev.ethan.waypointer.chat.ChatImportCache;
 import dev.ethan.waypointer.chat.WaypointerChatFeedback;
 import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.codec.WaypointImporter;
+import dev.ethan.waypointer.color.RouteColorPolicy;
 import dev.ethan.waypointer.config.Storage;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
@@ -932,7 +933,7 @@ public final class WaypointerCommands {
         return runImport(src, payload, "argument");
     }
 
-    private int runImport(FabricClientCommandSource src, String payload, String origin) {
+        private int runImport(FabricClientCommandSource src, String payload, String origin) {
         try {
             WaypointImporter.ImportResult result = WaypointImporter.importAny(payload);
             // Coleweight (and any JSON source without a zone field) parse into
@@ -944,6 +945,7 @@ public final class WaypointerCommands {
             // preserved untouched.
             Zone targetZone = manager.currentZone();
             int retargeted = retargetUnknownGroups(result.groups(), targetZone);
+            RouteColorPolicy.applyImportedRouteDefaults(result.groups(), config);
 
             for (WaypointGroup g : result.groups()) manager.add(g);
             success(src, "Imported " + result.groups().size() + " group(s) from " + origin

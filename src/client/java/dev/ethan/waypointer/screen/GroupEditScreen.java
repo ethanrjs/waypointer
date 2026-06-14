@@ -63,7 +63,7 @@ public final class GroupEditScreen extends Screen {
     private final WaypointGroup group;
 
     private EditBox nameBox;
-    private Button gradientBtn;
+    private Button colorModeBtn;
     private Button modeBtn;
     private Button radiusMinusBtn;
     private Button radiusPlusBtn;
@@ -75,8 +75,10 @@ public final class GroupEditScreen extends Screen {
     // Two small colour swatch buttons for the gradient endpoints. Stored so
     // the colour-picker callback can push the new colour back onto the
     // correct widget without chasing it through the widget tree.
+    private ColorSwatchButton staticColorBtn;
     private ColorSwatchButton gradientStartBtn;
     private ColorSwatchButton gradientEndBtn;
+    private int waypointColorPickerIndex = -1;
 
     private int scrollOffset;
     private int selectedIndex = -1;
@@ -121,7 +123,7 @@ public final class GroupEditScreen extends Screen {
                 new GroupEditScreen(parent, manager, config, group, waypointIndex));
     }
 
-    @Override
+        @Override
     protected void init() {
         int top = PAD_OUTER + 10 + GAP_SECTION;
         int sidebarLeft = PAD_OUTER;
@@ -141,12 +143,20 @@ public final class GroupEditScreen extends Screen {
         addRenderableWidget(nameBox);
         y += BTN_H + GAP;
 
-        // Gradient toggle
-        gradientBtn = Button.builder(gradientLabel(), this::toggleGradientMode)
+        // Route color mode
+        colorModeBtn = Button.builder(colorModeLabel(), this::toggleColorMode)
                 .bounds(sidebarInner, y, fieldW, BTN_H)
-                .tooltip(gradientTooltip())
+                .tooltip(colorModeTooltip())
                 .build();
-        addRenderableWidget(gradientBtn);
+        addRenderableWidget(colorModeBtn);
+        y += BTN_H + GAP_TIGHT;
+
+        staticColorBtn = new ColorSwatchButton(sidebarInner, y, fieldW, BTN_H,
+                "One color", group.staticColor(), this::openStaticColorPicker);
+        staticColorBtn.setTooltip(Tooltip.create(Component.literal(
+                "One route color.\n"
+              + "Applies in One color mode.")));
+        addRenderableWidget(staticColorBtn);
         y += BTN_H + GAP_TIGHT;
 
         // Gradient endpoint swatches. The button IS the colour rather than text
@@ -156,19 +166,19 @@ public final class GroupEditScreen extends Screen {
         // stealing the button face.
         int swatchW = (fieldW - GAP_TIGHT) / 2;
         gradientStartBtn = new ColorSwatchButton(sidebarInner, y, swatchW, BTN_H,
-                "Start", group.gradientStartColor(), () -> openGradientPicker(true));
+                "Start", group.gradientStartColor(), this::openGradientStartPicker);
         gradientStartBtn.setTooltip(Tooltip.create(Component.literal(
                 "Gradient start colour.\n"
-              + "Applies in AUTO mode.")));
+              + "Applies in Gradient mode.")));
         gradientEndBtn = new ColorSwatchButton(sidebarInner + swatchW + GAP_TIGHT, y,
                 fieldW - swatchW - GAP_TIGHT, BTN_H,
-                "End", group.gradientEndColor(), () -> openGradientPicker(false));
+                "End", group.gradientEndColor(), this::openGradientEndPicker);
         gradientEndBtn.setTooltip(Tooltip.create(Component.literal(
                 "Gradient end colour.\n"
-              + "Applies in AUTO mode.")));
+              + "Applies in Gradient mode.")));
         addRenderableWidget(gradientStartBtn);
         addRenderableWidget(gradientEndBtn);
-        updateGradientButtons();
+        updateColorModeButtons();
         y += BTN_H + GAP_TIGHT;
 
         // Mode toggle
@@ -262,47 +272,94 @@ public final class GroupEditScreen extends Screen {
 
     // --- sidebar toggles ---------------------------------------------------------------------
 
-    private Component gradientLabel() {
-        return Component.literal("Gradient: "
-                + (group.gradientMode() == WaypointGroup.GradientMode.AUTO ? "AUTO" : "MANUAL"));
+        private Component colorModeLabel() {
+        return Component.literal("Color: " + colorModeName(group.gradientMode()));
     }
 
-    // Tooltip content is duplicated on both branches (not just the "current" mode) so the
-    // hover surface always explains both options -- a user who doesn't know what AUTO does
-    // wouldn't know what to compare it to if we only described the state they're not in.
-    private static Tooltip gradientTooltip() {
+        private static String colorModeName(WaypointGroup.GradientMode mode) {
+        if (mode == WaypointGroup.GradientMode.AUTO) return "Gradient";
+        if (mode == WaypointGroup.GradientMode.MANUAL) return "Manual";
+        return "One";
+    }
+
+        private static Tooltip colorModeTooltip() {
         return Tooltip.create(Component.literal(
                 "Waypoint colour mode.\n"
-              + "AUTO: gradient across route.\n"
-              + "MANUAL: keep custom colours."));
+              + "One color: repaint whole route.\n"
+              + "Gradient: sweep between endpoints.\n"
+              + "Manual: edit waypoint swatches."));
     }
 
-    private void toggleGradientMode(Button b) {
-        group.setGradientMode(group.gradientMode() == WaypointGroup.GradientMode.AUTO
-                ? WaypointGroup.GradientMode.MANUAL : WaypointGroup.GradientMode.AUTO);
-        b.setMessage(gradientLabel());
-        updateGradientButtons();
+        private void toggleColorMode(Button b) {
+        group.setGradientMode(nextColorMode(group.gradientMode()));
+        b.setMessage(colorModeLabel());
+        updateColorModeButtons();
         manager.fireDataChanged();
     }
 
-    private void updateGradientButtons() {
-        boolean active = group.gradientMode() == WaypointGroup.GradientMode.AUTO;
-        if (gradientStartBtn != null) gradientStartBtn.active = active;
-        if (gradientEndBtn != null) gradientEndBtn.active = active;
+        private static WaypointGroup.GradientMode nextColorMode(WaypointGroup.GradientMode mode) {
+        if (mode == WaypointGroup.GradientMode.STATIC) return WaypointGroup.GradientMode.AUTO;
+        if (mode == WaypointGroup.GradientMode.AUTO) return WaypointGroup.GradientMode.MANUAL;
+        return WaypointGroup.GradientMode.STATIC;
     }
 
-    private void openGradientPicker(boolean start) {
-        int current = start ? group.gradientStartColor() : group.gradientEndColor();
-        String title = (start ? "Gradient Start" : "Gradient End") + " Colour";
-        ColorPickerScreen.open(this, title, current, picked -> {
-            if (start) group.setGradientStartColor(picked);
-            else       group.setGradientEndColor(picked);
-            // Push the new colour onto the swatch so the sidebar reflects the
-            // change immediately without re-running init().
-            if (gradientStartBtn != null) gradientStartBtn.setColor(group.gradientStartColor());
-            if (gradientEndBtn   != null) gradientEndBtn.setColor(group.gradientEndColor());
-            manager.fireDataChanged();
-        });
+        private void updateColorModeButtons() {
+        WaypointGroup.GradientMode mode = group.gradientMode();
+        if (colorModeBtn != null) colorModeBtn.setMessage(colorModeLabel());
+        if (staticColorBtn != null) {
+            staticColorBtn.setColor(group.staticColor());
+            staticColorBtn.active = mode == WaypointGroup.GradientMode.STATIC;
+        }
+        boolean gradientActive = mode == WaypointGroup.GradientMode.AUTO;
+        if (gradientStartBtn != null) {
+            gradientStartBtn.setColor(group.gradientStartColor());
+            gradientStartBtn.active = gradientActive;
+        }
+        if (gradientEndBtn != null) {
+            gradientEndBtn.setColor(group.gradientEndColor());
+            gradientEndBtn.active = gradientActive;
+        }
+    }
+
+        private void openStaticColorPicker() {
+        ColorPickerScreen.open(this, "Route Colour", group.staticColor(), this::onStaticColorPicked);
+    }
+
+        private void onStaticColorPicked(int picked) {
+        group.setStaticColor(picked);
+        group.setGradientMode(WaypointGroup.GradientMode.STATIC);
+        updateColorModeButtons();
+        manager.fireDataChanged();
+    }
+
+        private void openGradientStartPicker() {
+        openGradientPicker(true);
+    }
+
+        private void openGradientEndPicker() {
+        openGradientPicker(false);
+    }
+
+        private void openGradientPicker(boolean start) {
+        if (start) {
+            ColorPickerScreen.open(this, "Gradient Start Colour",
+                    group.gradientStartColor(), this::onGradientStartPicked);
+        } else {
+            ColorPickerScreen.open(this, "Gradient End Colour",
+                    group.gradientEndColor(), this::onGradientEndPicked);
+        }
+    }
+
+        private void onGradientStartPicked(int picked) {
+        group.setGradientStartColor(picked);
+        updateColorModeButtons();
+        manager.fireDataChanged();
+    }
+
+        private void onGradientEndPicked(int picked) {
+        group.setGradientEndColor(picked);
+        updateColorModeButtons();
+        manager.fireDataChanged();
     }
 
     private Component modeLabel() {
@@ -820,17 +877,25 @@ public final class GroupEditScreen extends Screen {
         return -1;
     }
 
-    private void openWaypointColorPicker(int idx) {
+        private void openWaypointColorPicker(int idx) {
+        if (idx < 0 || idx >= group.size()) return;
+        waypointColorPickerIndex = idx;
         Waypoint w = group.get(idx);
-        ColorPickerScreen.open(this, "Waypoint #" + (idx + 1) + " Colour", w.color(), picked -> {
-            // Picking a colour implicitly locks the waypoint -- otherwise the
-            // next gradient recolour would wipe the user's choice. Users who
-            // want to re-gradient an individual waypoint can shift-click the
-            // swatch to clear the lock.
-            Waypoint cur = group.get(idx);
-            group.set(idx, cur.withColor(picked).withFlags(cur.flags() | Waypoint.FLAG_LOCKED_COLOR));
-            manager.fireDataChanged();
-        });
+        ColorPickerScreen.open(this, "Waypoint #" + (idx + 1) + " Colour",
+                w.color(), this::onWaypointColorPicked);
+    }
+
+        private void onWaypointColorPicked(int picked) {
+        int idx = waypointColorPickerIndex;
+        waypointColorPickerIndex = -1;
+        if (idx < 0 || idx >= group.size()) return;
+        if (group.gradientMode() != WaypointGroup.GradientMode.MANUAL) {
+            group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        }
+        Waypoint cur = group.get(idx);
+        group.set(idx, cur.withColor(picked).withFlags(cur.flags() | Waypoint.FLAG_LOCKED_COLOR));
+        updateColorModeButtons();
+        manager.fireDataChanged();
     }
 
     private void unlockWaypointColor(int idx) {

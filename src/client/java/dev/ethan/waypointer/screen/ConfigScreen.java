@@ -1,6 +1,8 @@
 package dev.ethan.waypointer.screen;
 
 import dev.ethan.waypointer.config.WaypointerConfig;
+import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.update.UpdateChecker;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
@@ -75,6 +77,12 @@ public final class ConfigScreen extends Screen {
     private int searchMaxVisibleMatches;
     private int searchTotalMatches;
     private int searchRenderedMatches;
+    private boolean updateCheckInProgress;
+    private long updateCheckRequestSeq;
+    private UpdateChecker.CheckResult updateCheckResult;
+    private boolean updateDownloadInProgress;
+    private long updateDownloadRequestSeq;
+    private UpdateChecker.DownloadResult updateDownloadResult;
 
     public ConfigScreen(Screen parent, WaypointerConfig config) {
         this(parent, config, Page.VISUALS, "");
@@ -325,7 +333,7 @@ public final class ConfigScreen extends Screen {
                 || config.showRouteProgress();
     }
 
-    private void addVisualsPage(int col1, int col2, int colW, int rowsY, int rowH) {
+        private void addVisualsPage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Markers";
         rightHeader = "Labels & Tracers";
 
@@ -372,10 +380,25 @@ public final class ConfigScreen extends Screen {
                 this::anyWaypointLabelTextEnabled,
                 "Scale labels by distance from camera.");
         y2 += rowH;
+        addNumberRow(col2, y2, colW, "Label scale (0.25-4)",
+                config.labelScale(), config::setLabelScale,
+                this::anyWaypointLabelTextEnabled,
+                "Baseline size multiplier for waypoint labels.");
+        y2 += rowH;
         addNumberRow(col2, y2, colW, "Label height offset (blocks)",
                 config.labelHeightOffset(), config::setLabelHeightOffset,
                 this::anyWaypointLabelTextEnabled,
                 "Raises labels above waypoint boxes.");
+        y2 += rowH;
+        addBoolRow(col2, y2, "Hide labels when near",
+                config.hideWaypointLabelsNearPlayer(), config::setHideWaypointLabelsNearPlayer,
+                this::anyWaypointLabelTextEnabled,
+                "Hide only text labels while you stand near their waypoint.");
+        y2 += rowH;
+        addNumberRow(col2, y2, colW, "Label near radius (blocks)",
+                config.hideWaypointLabelsNearRadius(), config::setHideWaypointLabelsNearRadius,
+                config::hideWaypointLabelsNearPlayer,
+                "Distance where label-only near-hide starts.");
         y2 += rowH;
         addBoolRow(col2, y2, "Show tracers", config.showTracer(), config::setShowTracer,
                 "Draw lines from crosshair to active waypoints.");
@@ -507,9 +530,9 @@ public final class ConfigScreen extends Screen {
                 "Default lifetime for expiring temp waypoints.");
     }
 
-    private void addChatPage(int col1, int col2, int colW, int rowsY, int rowH) {
+        private void addChatPage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Chat Detection";
-        rightHeader = "Export Defaults";
+        rightHeader = "Import / Export Defaults";
 
         int y = rowsY;
         addBoolRow(col1, y, "Chat coord detection", config.chatCoordDetection(), config::setChatCoordDetection,
@@ -525,14 +548,119 @@ public final class ConfigScreen extends Screen {
                 "Detect Waypointer share codes in chat.");
 
         int y2 = rowsY;
+        addImportedRouteColorModeRow(col2, y2, colW);
+        y2 += rowH;
+        addImportedRouteColorRow(col2, y2, colW, this::isImportedRouteStaticColorMode,
+                "Default color for imported routes in one-color mode.");
+        y2 += rowH;
         addBoolRow(col2, y2, "Include names in default export",
                 config.exportIncludeNames(), config::setExportIncludeNames,
                 "Include waypoint names in exported share codes.");
     }
 
-    private void addOtherPage(int col1, int col2, int colW, int rowsY, int rowH) {
+        private void addImportedRouteColorModeRow(int x, int y, int colW) {
+        Component tooltipComponent = importedRouteColorModeTooltip();
+        String label = "Imported route colors";
+        if (!shouldRenderSettingRow(label, tooltipComponent)) return;
+        int[] geometry = settingRowGeometry(x, y, colW);
+        x = geometry[0];
+        y = geometry[1];
+        colW = geometry[2];
+        int buttonW = 140;
+        int labelW = colW - buttonW - GAP;
+        addRenderableOnly(new LabelWidget(x, y + 6, label, labelW, ConfigScreen::alwaysEnabled));
+        Button btn = Button.builder(Component.literal(importedRouteColorModeLabel(config.importedRouteColorMode())),
+                                b -> {
+            WaypointGroup.GradientMode next = nextImportedRouteColorMode(config.importedRouteColorMode());
+            config.setImportedRouteColorMode(next);
+            b.setMessage(Component.literal(importedRouteColorModeLabel(next)));
+            refreshDependentControls();
+        }).bounds(x + labelW + GAP, y, buttonW, BTN_H)
+                .tooltip(Tooltip.create(tooltipComponent))
+                .build();
+        addRenderableWidget(btn);
+    }
+
+        private static WaypointGroup.GradientMode nextImportedRouteColorMode(WaypointGroup.GradientMode mode) {
+        if (mode == WaypointGroup.GradientMode.STATIC) return WaypointGroup.GradientMode.AUTO;
+        if (mode == WaypointGroup.GradientMode.AUTO) return WaypointGroup.GradientMode.MANUAL;
+        return WaypointGroup.GradientMode.STATIC;
+    }
+
+        private static String importedRouteColorModeLabel(WaypointGroup.GradientMode mode) {
+        if (mode == WaypointGroup.GradientMode.AUTO) return "Gradient";
+        if (mode == WaypointGroup.GradientMode.MANUAL) return "Manual";
+        return "One color";
+    }
+
+        private static Component importedRouteColorModeTooltip() {
+        return normalizedTooltipComponent(Component.literal(
+                "One color overrides every imported waypoint with the default color.\n"
+              + "Gradient recolors the imported route with its gradient.\n"
+              + "Manual preserves colors from the imported payload."));
+    }
+
+        private boolean isImportedRouteStaticColorMode() {
+        return config.importedRouteColorMode() == WaypointGroup.GradientMode.STATIC;
+    }
+
+        private void addImportedRouteColorRow(int x, int y, int colW, BooleanSupplier enabled,
+                                          String tooltip) {
+        Component tooltipComponent = normalizedTooltipComponent(Component.literal(tooltip));
+        String label = "Imported color (hex RRGGBB)";
+        if (!shouldRenderSettingRow(label, tooltipComponent)) return;
+        int[] geometry = settingRowGeometry(x, y, colW);
+        x = geometry[0];
+        y = geometry[1];
+        colW = geometry[2];
+        int swatchW = 72;
+        int boxW = 76;
+        int labelW = colW - boxW - swatchW - GAP * 2;
+        addRenderableOnly(new LabelWidget(x, y + 6, label, labelW, enabled));
+
+        EditBox box = new EditBox(font, x + labelW + GAP, y + 2, boxW, BTN_H,
+                Component.literal("Imported color"));
+        box.setMaxLength(6);
+        box.setValue(String.format("%06X", config.importedRouteDefaultColor() & 0xFFFFFF));
+        box.setTooltip(Tooltip.create(tooltipComponent));
+
+        ColorSwatchButton[] swatchRef = new ColorSwatchButton[1];
+        ColorSwatchButton swatch = new ColorSwatchButton(
+                x + labelW + GAP + boxW + GAP, y + 2, swatchW, BTN_H,
+                "Pick color", config.importedRouteDefaultColor(),
+                                () -> ColorPickerScreen.open(this,
+                "Imported Route Colour", config.importedRouteDefaultColor(),
+                                picked -> {
+                    config.setImportedRouteDefaultColor(picked);
+                    box.setValue(String.format("%06X", picked & 0xFFFFFF));
+                    if (swatchRef[0] != null) swatchRef[0].setColor(picked);
+                }));
+        swatchRef[0] = swatch;
+        swatch.setTooltip(Tooltip.create(Component.literal("Pick imported route color.")));
+
+        box.setResponder(
+                                v -> {
+            if (v.isEmpty()) return;
+            String trimmed = v.trim();
+            if (trimmed.length() != 6) return;
+            try {
+                int parsed = Integer.parseInt(trimmed, 16) & 0xFFFFFF;
+                config.setImportedRouteDefaultColor(parsed);
+                swatch.setColor(parsed);
+            } catch (NumberFormatException ignored) {
+                // Partial edits are expected while typing; keep the last valid color.
+            }
+        });
+
+        trackDependent(box, enabled);
+        trackDependent(swatch, enabled);
+        addRenderableWidget(box);
+        addRenderableWidget(swatch);
+    }
+
+        private void addOtherPage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Maintenance";
-        rightHeader = "Bulk Actions";
+        rightHeader = "Updates";
 
         int y = rowsY;
         addBoolRow(col1, y, "Check for updates on startup",
@@ -542,6 +670,179 @@ public final class ConfigScreen extends Screen {
         addBoolRow(col1, y, "Experimental Iris HUD fallback",
                 config.irisShaderHudFallback(), config::setIrisShaderHudFallback,
                 "Render waypoint HUD fallback when Iris shaders are active.");
+
+        int y2 = rowsY;
+        addUpdateControlsRow(col2, y2, colW);
+        y2 += rowH;
+        addUpdateStatusRow(col2, y2, colW);
+    }
+
+        private void addUpdateControlsRow(int x, int y, int colW) {
+        Component tooltipComponent = normalizedTooltipComponent(Component.literal(
+                "Download saves the latest release jar to your Minecraft mods folder.\n"
+              + "Restart Minecraft after it finishes. The refresh button checks GitHub now."));
+        String label = "Latest release";
+        if (!shouldRenderSettingRow(label, tooltipComponent)) return;
+        int[] geometry = settingRowGeometry(x, y, colW);
+        x = geometry[0];
+        y = geometry[1];
+        colW = geometry[2];
+
+        int refreshW = BTN_H + 8;
+        int downloadW = Math.min(132, Math.max(104, colW / 2 + 8));
+        int labelW = Math.max(0, colW - downloadW - refreshW - GAP * 2);
+        addRenderableOnly(new LabelWidget(x, y + 6, label, labelW, ConfigScreen::alwaysEnabled));
+
+        Button download = Button.builder(Component.literal(updateDownloadButtonLabel()), this::downloadLatestUpdate)
+                .bounds(x + labelW + GAP, y, downloadW, BTN_H)
+                .tooltip(Tooltip.create(tooltipComponent))
+                .build();
+        download.active = canDownloadUpdate();
+        addRenderableWidget(download);
+
+        LargeRefreshButton refresh = new LargeRefreshButton(
+                x + labelW + GAP + downloadW + GAP, y, refreshW, BTN_H,
+                this::startManualUpdateCheck);
+        refresh.setTooltip(Tooltip.create(Component.literal("Check for updates now.")));
+        refresh.active = !updateCheckInProgress && !updateDownloadInProgress;
+        addRenderableWidget(refresh);
+    }
+
+        private void addUpdateStatusRow(int x, int y, int colW) {
+        Component tooltipComponent = normalizedTooltipComponent(Component.literal(
+                "Shows the result of the latest manual update check."));
+        if (!shouldRenderSettingRow("Update status", tooltipComponent)) return;
+        int[] geometry = settingRowGeometry(x, y, colW);
+        addRenderableOnly(new ComponentLabelWidget(geometry[0], geometry[1] + 6,
+                updateStatusComponent(), geometry[2], TEXT_DIM, ConfigScreen::alwaysEnabled));
+    }
+
+        private String updateDownloadButtonLabel() {
+        if (updateCheckInProgress) return "Checking...";
+        if (updateDownloadInProgress) return "Downloading...";
+        if (updateCheckResult != null
+                && updateCheckResult.updateAvailable()
+                && updateCheckResult.latestVersion() != null) {
+            return "Download v" + updateCheckResult.latestVersion();
+        }
+        return "Download update";
+    }
+
+        private Component updateStatusComponent() {
+        MutableComponent out = Component.literal("Status: ").withStyle(ChatFormatting.GRAY);
+        ChatFormatting color;
+        if (updateDownloadInProgress) {
+            color = ChatFormatting.YELLOW;
+        } else if (updateDownloadResult != null) {
+            color = updateDownloadResult.success() ? ChatFormatting.GREEN : ChatFormatting.RED;
+        } else if (updateCheckInProgress || updateCheckResult == null) {
+            color = ChatFormatting.GRAY;
+        } else if (updateCheckResult.failureMessage() != null
+                && !updateCheckResult.failureMessage().isBlank()) {
+            color = ChatFormatting.RED;
+        } else if (updateCheckResult.updateAvailable()) {
+            color = ChatFormatting.GREEN;
+        } else {
+            color = ChatFormatting.DARK_GREEN;
+        }
+        out.append(Component.literal(updateStatusText()).withStyle(color));
+        return out;
+    }
+
+        private String updateStatusText() {
+        if (updateDownloadInProgress) return "Downloading update...";
+        if (updateDownloadResult != null) {
+            String message = updateDownloadResult.message();
+            return message == null || message.isBlank()
+                    ? "Could not download update. Try again."
+                    : message;
+        }
+        if (updateCheckInProgress) return "Checking GitHub releases...";
+        if (updateCheckResult == null) return "Not checked yet.";
+        if (updateCheckResult.failureMessage() != null && !updateCheckResult.failureMessage().isBlank()) {
+            return updateCheckResult.failureMessage() + " Try again.";
+        }
+        if (updateCheckResult.updateAvailable()) {
+            return updateCheckResult.latestVersion() == null
+                    ? "Update available"
+                    : "Update available v" + updateCheckResult.latestVersion();
+        }
+        String local = updateCheckResult.localVersion() == null ? UpdateChecker.currentModVersion()
+                : updateCheckResult.localVersion();
+        return "Up to date v" + local;
+    }
+
+        private boolean canDownloadUpdate() {
+        return !updateCheckInProgress
+                && !updateDownloadInProgress
+                && updateCheckResult != null
+                && updateCheckResult.updateAvailable()
+                && UpdateChecker.isJarDownloadUri(updateCheckResult.downloadUri());
+    }
+
+        private void startManualUpdateCheck(Button b) {
+        if (updateCheckInProgress || updateDownloadInProgress) return;
+        long requestId = ++updateCheckRequestSeq;
+        updateCheckInProgress = true;
+        updateCheckResult = null;
+        updateDownloadResult = null;
+        rebuildSettingsWidgets();
+
+        UpdateChecker.checkLatestAsync(UpdateChecker.currentModVersion()).whenComplete(
+                                (result, error) -> {
+            UpdateChecker.CheckResult safeResult = result;
+            if (error != null) {
+                safeResult = new UpdateChecker.CheckResult(UpdateChecker.currentModVersion(),
+                        null, false, null, null, "Could not check GitHub releases.");
+            }
+            UpdateChecker.CheckResult finalResult = safeResult;
+            net.minecraft.client.Minecraft.getInstance().execute(
+                                        () -> handleManualUpdateCheckResult(requestId, finalResult));
+        });
+    }
+
+        private void handleManualUpdateCheckResult(long requestId, UpdateChecker.CheckResult result) {
+        if (requestId != updateCheckRequestSeq) return;
+        updateCheckInProgress = false;
+        updateCheckResult = result == null
+                ? new UpdateChecker.CheckResult(UpdateChecker.currentModVersion(),
+                        null, false, null, null, "Could not check GitHub releases.")
+                : result;
+        if (minecraft != null && minecraft.screen == this) {
+            rebuildSettingsWidgets();
+        }
+    }
+
+        private void downloadLatestUpdate(Button b) {
+        if (!canDownloadUpdate()) return;
+        long requestId = ++updateDownloadRequestSeq;
+        updateDownloadInProgress = true;
+        updateDownloadResult = null;
+        rebuildSettingsWidgets();
+
+        UpdateChecker.downloadLatestJarAsync(updateCheckResult).whenComplete(
+                                (result, error) -> {
+            UpdateChecker.DownloadResult safeResult = result;
+            if (error != null) {
+                safeResult = new UpdateChecker.DownloadResult(false, null, null,
+                        "Could not download update. Try again.");
+            }
+            UpdateChecker.DownloadResult finalResult = safeResult;
+            net.minecraft.client.Minecraft.getInstance().execute(
+                                        () -> handleUpdateDownloadResult(requestId, finalResult));
+        });
+    }
+
+        private void handleUpdateDownloadResult(long requestId, UpdateChecker.DownloadResult result) {
+        if (requestId != updateDownloadRequestSeq) return;
+        updateDownloadInProgress = false;
+        updateDownloadResult = result == null
+                ? new UpdateChecker.DownloadResult(false, null, null,
+                        "Could not download update. Try again.")
+                : result;
+        if (minecraft != null && minecraft.screen == this) {
+            rebuildSettingsWidgets();
+        }
     }
 
     private int leftHeaderX;
@@ -839,6 +1140,10 @@ public final class ConfigScreen extends Screen {
         };
     }
 
+        private static boolean alwaysEnabled() {
+        return true;
+    }
+
     private void setMaxWaypointLabels(double value) {
         if (!Double.isFinite(value)) return;
 
@@ -927,6 +1232,51 @@ public final class ConfigScreen extends Screen {
 
     /** Right-padded label with an explicit width so long labels truncate at column bounds. */
     private record DependentControl(AbstractWidget widget, BooleanSupplier enabled) {}
+
+        private record ComponentLabelWidget(int x, int y, Component text, int maxW, int fallbackColor,
+                                        BooleanSupplier enabled)
+            implements net.minecraft.client.gui.components.Renderable {
+                @Override
+        public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
+            var font = net.minecraft.client.Minecraft.getInstance().font;
+            Component safeText = text == null ? Component.empty() : text;
+            if (font.width(safeText) <= maxW) {
+                g.drawString(font, safeText, x, y, enabled.getAsBoolean() ? TEXT : TEXT_DIM, false);
+                return;
+            }
+            String clipped = font.plainSubstrByWidth(safeText.getString(), maxW);
+            g.drawString(font, clipped, x, y, enabled.getAsBoolean() ? fallbackColor : TEXT_DIM, false);
+        }
+    }
+
+        private static final class LargeRefreshButton extends Button {
+        private static final String REFRESH_ICON = "\u21BB";
+        private static final float ICON_SCALE = 2.35f;
+
+                private LargeRefreshButton(int x, int y, int width, int height, OnPress onPress) {
+            super(x, y, width, height,
+                    Component.literal("Check for updates now"),
+                    onPress,
+                    DEFAULT_NARRATION);
+        }
+
+                @Override
+        protected void renderContents(GuiGraphics g, int mouseX, int mouseY, float partial) {
+            var font = net.minecraft.client.Minecraft.getInstance().font;
+            int iconW = font.width(REFRESH_ICON);
+            float scaledW = iconW * ICON_SCALE;
+            float scaledH = font.lineHeight * ICON_SCALE;
+            float drawX = getX() + (getWidth() - scaledW) / 2.0f;
+            float drawY = getY() + (getHeight() - scaledH) / 2.0f + 0.5f;
+            int color = active ? TEXT : TEXT_MUTED;
+
+            g.pose().pushMatrix();
+            g.pose().translate(drawX, drawY);
+            g.pose().scale(ICON_SCALE, ICON_SCALE);
+            g.drawString(font, REFRESH_ICON, 0, 0, color, false);
+            g.pose().popMatrix();
+        }
+    }
 
     private record LabelWidget(int x, int y, String text, int maxW, BooleanSupplier enabled)
             implements net.minecraft.client.gui.components.Renderable {

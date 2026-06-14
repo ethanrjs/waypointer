@@ -156,7 +156,7 @@ public final class Storage {
         return groups;
     }
 
-    static JsonObject groupToJson(WaypointGroup g) {
+        static JsonObject groupToJson(WaypointGroup g) {
         JsonObject o = new JsonObject();
         o.addProperty("id", g.id());
         o.addProperty("name", g.name());
@@ -167,6 +167,7 @@ public final class Storage {
         o.addProperty("loadMode", g.loadMode().name());
         o.addProperty("defaultRadius", g.defaultRadius());
         o.addProperty("skipAheadEnabled", g.skipAheadEnabled());
+        o.addProperty("staticColor", g.staticColor());
         // Per-group gradient endpoints. Stored as ints rather than hex strings
         // because the rest of the waypoint colour fields are already ints -- one
         // less parser branch in load().
@@ -184,13 +185,14 @@ public final class Storage {
         return o;
     }
 
-    static WaypointGroup groupFromJson(JsonObject o) {
+        static WaypointGroup groupFromJson(JsonObject o) {
         String id = o.has("id") ? o.get("id").getAsString() : java.util.UUID.randomUUID().toString();
         String name = o.has("name") ? o.get("name").getAsString() : "";
         String zone = o.has("zone") ? o.get("zone").getAsString() : "unknown";
         WaypointGroup g = new WaypointGroup(id, name, zone);
         if (o.has("enabled"))       g.setEnabled(o.get("enabled").getAsBoolean());
         if (o.has("defaultRadius")) g.setDefaultRadius(o.get("defaultRadius").getAsDouble());
+        if (o.has("staticColor"))   g.setStaticColor(o.get("staticColor").getAsInt());
         if (o.has("gradientMode")) parseEnum(WaypointGroup.GradientMode.class,
                 o.get("gradientMode").getAsString()).ifPresent(g::setGradientMode);
         if (o.has("loadMode")) parseEnum(WaypointGroup.LoadMode.class,

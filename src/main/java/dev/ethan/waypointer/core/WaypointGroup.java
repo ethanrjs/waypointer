@@ -32,6 +32,8 @@ public final class WaypointGroup {
     private static final int PROXIMITY_CELL_SIZE = 16;
 
     public enum GradientMode {
+        /** Every waypoint uses the group's single static color. */
+        STATIC,
         /** Colors are auto-interpolated across the list; manual edits to unlocked entries get overwritten. */
         AUTO,
         /** Each waypoint keeps its own color. Reordering does not recolor. */
@@ -78,6 +80,8 @@ public final class WaypointGroup {
      * and shouldn't interact with the player's route through the zone.
      */
     private boolean temp = false;
+    /** Single-color route palette used when {@link #gradientMode} is {@link GradientMode#STATIC}. */
+    private int staticColor = Waypoint.DEFAULT_COLOR;
     // Per-group gradient endpoints (RGB). Each group can pick its own palette so a
     // Foraging route and a Dungeons route don't have to share one theme. Defaults
     // match the old globals: cyan start, red end -- picked to read as cool → hot
@@ -118,10 +122,10 @@ public final class WaypointGroup {
     private transient boolean staticCycleJustCompleted;
     private transient ProximityIndex proximityIndex;
 
-    public WaypointGroup(String id, String name, String zoneId) {
+        public WaypointGroup(String id, String name, String zoneId) {
         this.id = Objects.requireNonNull(id);
         this.name = name == null ? "" : name;
-        this.zoneId = Objects.requireNonNull(zoneId);
+        this.zoneId = Zone.canonicalId(Objects.requireNonNull(zoneId));
         this.waypoints = new ArrayList<>();
         this.currentIndex = 0;
         this.enabled = true;
@@ -148,6 +152,7 @@ public final class WaypointGroup {
     public GradientMode gradientMode() { return gradientMode; }
     public LoadMode loadMode()    { return loadMode; }
     public double defaultRadius() { return defaultRadius; }
+        public int staticColor()      { return staticColor; }
     public int gradientStartColor() { return gradientStartColor; }
     public int gradientEndColor()   { return gradientEndColor; }
     public boolean skipAheadEnabled() { return skipAheadEnabled; }
@@ -267,7 +272,7 @@ public final class WaypointGroup {
     }
 
     public void setName(String newName)                 { this.name = newName == null ? "" : newName; }
-    public void setZoneId(String newZoneId)             { this.zoneId = Objects.requireNonNull(newZoneId); }
+        public void setZoneId(String newZoneId)             { this.zoneId = Zone.canonicalId(Objects.requireNonNull(newZoneId)); }
     public void setEnabled(boolean on)                  { this.enabled = on; }
     public void setDefaultRadius(double r)              { this.defaultRadius = Math.max(0.5, r); invalidateProximityIndex(); }
     public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
@@ -279,18 +284,24 @@ public final class WaypointGroup {
      * user needing a separate "apply" action. Locked waypoints are preserved by
      * GradientColorizer so a per-waypoint override survives a gradient re-colour.
      */
-    public void setGradientStartColor(int rgb) {
+        public void setGradientStartColor(int rgb) {
         this.gradientStartColor = rgb & 0xFFFFFF;
-        applyGradientIfAuto();
-    }
-    public void setGradientEndColor(int rgb) {
-        this.gradientEndColor = rgb & 0xFFFFFF;
-        applyGradientIfAuto();
+        applyColorMode();
     }
 
-    public void setGradientMode(GradientMode mode) {
+        public void setGradientEndColor(int rgb) {
+        this.gradientEndColor = rgb & 0xFFFFFF;
+        applyColorMode();
+    }
+
+        public void setStaticColor(int rgb) {
+        this.staticColor = rgb & 0xFFFFFF;
+        applyColorMode();
+    }
+
+        public void setGradientMode(GradientMode mode) {
         this.gradientMode = Objects.requireNonNull(mode);
-        if (mode == GradientMode.AUTO) GradientColorizer.apply(this);
+        applyColorMode();
     }
 
     public void setLoadMode(LoadMode mode) {
@@ -362,8 +373,12 @@ public final class WaypointGroup {
         return current < 0 ? null : waypoints.get(current);
     }
 
-    public void set(int index, Waypoint replacement) {
-        waypoints.set(index, normalizeWaypointForIndex(index, replacement));
+        public void set(int index, Waypoint replacement) {
+        Waypoint normalized = normalizeWaypointForIndex(index, replacement);
+        if (gradientMode == GradientMode.STATIC) {
+            normalized = normalized.withColor(staticColor);
+        }
+        waypoints.set(index, normalized);
         afterWaypointStructureChanged();
     }
 
@@ -378,17 +393,17 @@ public final class WaypointGroup {
         focusNewWaypoint(index);
     }
 
-    public void add(Waypoint w) {
+        public void add(Waypoint w) {
         int oldSize = waypoints.size();
         waypoints.add(w);
         normalizeSubwaypointStructure();
         resizeStaticReachAfterAppend(oldSize);
         normalizeCurrentIndexToMain();
         invalidateProximityIndex();
-        applyGradientIfAuto();
+        applyColorMode();
     }
 
-    public void addAll(Collection<Waypoint> additions) {
+        public void addAll(Collection<Waypoint> additions) {
         if (additions.isEmpty()) return;
         int oldSize = waypoints.size();
         waypoints.addAll(additions);
@@ -396,10 +411,10 @@ public final class WaypointGroup {
         resizeStaticReachAfterAppend(oldSize);
         normalizeCurrentIndexToMain();
         invalidateProximityIndex();
-        applyGradientIfAuto();
+        applyColorMode();
     }
 
-    public void replaceWaypoints(Collection<Waypoint> replacements) {
+        public void replaceWaypoints(Collection<Waypoint> replacements) {
         waypoints.clear();
         waypoints.addAll(replacements);
         normalizeSubwaypointStructure();
@@ -409,10 +424,10 @@ public final class WaypointGroup {
             focusedVisibleIndex = waypoints.isEmpty() ? null : waypoints.size() - 1;
         }
         afterWaypointStructureChanged();
-        applyGradientIfAuto();
+        applyColorMode();
     }
 
-    public void insert(int index, Waypoint w) {
+        public void insert(int index, Waypoint w) {
         int oldSize = waypoints.size();
         waypoints.add(index, w);
         waypoints.set(index, normalizeWaypointForIndex(index, w));
@@ -425,7 +440,7 @@ public final class WaypointGroup {
         normalizeSubwaypointStructure();
         normalizeCurrentIndexToMain();
         invalidateProximityIndex();
-        applyGradientIfAuto();
+        applyColorMode();
     }
 
     public boolean canMakeSubwaypoint(int index) {
@@ -435,23 +450,23 @@ public final class WaypointGroup {
                 && previousMainIndexBefore(index) >= 0;
     }
 
-    public boolean toggleSubwaypoint(int index) {
+        public boolean toggleSubwaypoint(int index) {
         if (index < 0 || index >= waypoints.size()) return false;
         if (isSubwaypoint(index)) {
             waypoints.set(index, waypoints.get(index).withSubwaypoint(false));
             afterWaypointStructureChanged();
-            applyGradientIfAuto();
+            applyColorMode();
             return true;
         }
         if (!canMakeSubwaypoint(index)) return false;
 
         waypoints.set(index, waypoints.get(index).withSubwaypoint(true));
         afterWaypointStructureChanged();
-        applyGradientIfAuto();
+        applyColorMode();
         return true;
     }
 
-    public void remove(int index) {
+        public void remove(int index) {
         waypoints.remove(index);
         promoteOrphanedSubwaypoints(index);
         if (currentIndex > index) currentIndex--;
@@ -465,10 +480,10 @@ public final class WaypointGroup {
             else if (focusedVisibleIndex > index) focusedVisibleIndex--;
         }
         afterWaypointStructureChanged();
-        applyGradientIfAuto();
+        applyColorMode();
     }
 
-    public void move(int from, int to) {
+        public void move(int from, int to) {
         if (from == to || from < 0 || from >= waypoints.size() || to < 0 || to >= waypoints.size()) return;
         Waypoint current = currentWaypointReference();
 
@@ -492,7 +507,7 @@ public final class WaypointGroup {
         focusedVisibleIndex = null;
         activeSubwaypointParentIndex = -1;
         afterWaypointStructureChanged();
-        applyGradientIfAuto();
+        applyColorMode();
     }
 
     public int moveBy(int index, int delta) {
@@ -687,8 +702,22 @@ public final class WaypointGroup {
         return proximityIndex().forEachNearby(x, y, z, radius, action);
     }
 
-    private void applyGradientIfAuto() {
-        if (gradientMode == GradientMode.AUTO) GradientColorizer.apply(this);
+        private void applyColorMode() {
+        if (gradientMode == GradientMode.STATIC) {
+            applyStaticColor();
+        } else if (gradientMode == GradientMode.AUTO) {
+            GradientColorizer.apply(this);
+        }
+    }
+
+        private void applyStaticColor() {
+        int target = staticColor & 0xFFFFFF;
+        for (int i = 0; i < waypoints.size(); i++) {
+            Waypoint waypoint = waypoints.get(i);
+            if (waypoint.color() != target) {
+                waypoints.set(i, waypoint.withColor(target));
+            }
+        }
     }
 
     private void afterWaypointStructureChanged() {
@@ -771,7 +800,7 @@ public final class WaypointGroup {
         }
     }
 
-    private int moveSubwaypointBy(int index, int delta) {
+        private int moveSubwaypointBy(int index, int delta) {
         int parent = parentMainIndex(index);
         if (parent < 0) return index;
 
@@ -786,11 +815,11 @@ public final class WaypointGroup {
         proximitySuppressedIndex = -1;
         focusedVisibleIndex = null;
         afterWaypointStructureChanged();
-        applyGradientIfAuto();
+        applyColorMode();
         return to;
     }
 
-    private int moveMainBlockBy(int index, int delta) {
+        private int moveMainBlockBy(int index, int delta) {
         int blockEnd = childEndExclusive(index);
         int insertAt;
         if (delta < 0) {
@@ -811,7 +840,7 @@ public final class WaypointGroup {
         proximitySuppressedIndex = -1;
         focusedVisibleIndex = null;
         afterWaypointStructureChanged();
-        applyGradientIfAuto();
+        applyColorMode();
         return newIndex;
     }
 

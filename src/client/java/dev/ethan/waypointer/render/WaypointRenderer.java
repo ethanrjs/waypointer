@@ -102,7 +102,7 @@ public final class WaypointRenderer implements HudElement {
     private static final double LABEL_SCALE_REFERENCE_DEPTH = 24.0;
     private static final double LABEL_SCALE_BASELINE_FOV_DEGREES = 70.0;
     private static final float LABEL_SCALE_MIN = 0.25f;
-    private static final float LABEL_SCALE_MAX = 2.25f;
+    private static final float LABEL_SCALE_MAX = 4.0f;
 
     /**
      * Cap on the pre-baked distance table. 0..4095m covers dense imported route
@@ -359,7 +359,7 @@ public final class WaypointRenderer implements HudElement {
 
     // ---- HUD path: 2D labels projected from world anchors --------------------------------
 
-    @Override
+        @Override
     public void render(GuiGraphics g, DeltaTracker tick) {
         boolean showNames = config.showWaypointNames();
         boolean showRouteProgress = config.showRouteProgress();
@@ -384,6 +384,7 @@ public final class WaypointRenderer implements HudElement {
         int labelBudget = config.maxWaypointLabels();
         double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
         double nearHideDistanceSq = nearHideDistanceSq();
+        double labelNearHideDistanceSq = labelNearHideDistanceSq();
         clearLabelCandidates();
         labelCandidateCount = 0;
 
@@ -396,7 +397,7 @@ public final class WaypointRenderer implements HudElement {
             for (WaypointGroup group : groups) {
                 drawGroupLabels(g, font, camPos, playerPos, screenW, screenH, group,
                         showNames, showRouteProgress, showDistances, labelBudget,
-                        maxStaticDistanceSq, nearHideDistanceSq);
+                        maxStaticDistanceSq, nearHideDistanceSq, labelNearHideDistanceSq);
             }
             if (labelBudget > 0 && labelCandidateCount > 0) {
                 drawBudgetedLabels(g, font, Math.min(labelBudget, labelCandidateCount),
@@ -506,11 +507,11 @@ public final class WaypointRenderer implements HudElement {
         projectedBoxMaxY = Math.max(projectedBoxMaxY, labelScreenScratch[1]);
     }
 
-    private void drawGroupLabels(GuiGraphics g, Font font, Vec3 camPos, Vec3 playerPos,
+        private void drawGroupLabels(GuiGraphics g, Font font, Vec3 camPos, Vec3 playerPos,
                                  int screenW, int screenH, WaypointGroup group,
                                  boolean showNames, boolean showRouteProgress, boolean showDistances,
                                  int labelBudget, double maxStaticDistanceSq,
-                                 double nearHideDistanceSq) {
+                                 double nearHideDistanceSq, double labelNearHideDistanceSq) {
         int currentIdx = group.currentIndex();
         boolean showCompleted = config.showCompleted();
         // Hoist out of the per-waypoint lambda so a long route doesn't pay
@@ -518,14 +519,17 @@ public final class WaypointRenderer implements HudElement {
         double labelLift = LABEL_ANCHOR_LIFT + config.labelHeightOffset();
         boolean colorizeNames = config.matchWaypointTextToWaypointColor();
         boolean scaleLabelsWithDistance = config.scaleWaypointTextWithDistance();
+        double configuredLabelScale = config.labelScale();
         boolean hasSubwaypoints = group.hasSubwaypoints();
         String routeProgressText = showRouteProgress ? routeProgressText(group) : null;
 
-        group.forEachVisibleIndex(i -> {
+        group.forEachVisibleIndex(
+                                i -> {
             if (shouldHideStaticReached(group, i)) return;
 
             Waypoint w = group.get(i);
             if (shouldHideNearPlayer(w, playerPos, nearHideDistanceSq)) return;
+            if (shouldHideNearPlayer(w, playerPos, labelNearHideDistanceSq)) return;
             State state = stateFor(group, i, currentIdx);
             if (shouldHideCompletedSequenceWaypoint(group, i, currentIdx, state, showCompleted, w)) return;
             if (w.hasFlag(Waypoint.FLAG_HIDE_NAME)) return;
@@ -549,7 +553,8 @@ public final class WaypointRenderer implements HudElement {
             float labelScale = labelScaleForDepth(
                     labelProjector.depth(ax, ay, az),
                     labelProjector.fovDegrees(),
-                    scaleLabelsWithDistance);
+                    scaleLabelsWithDistance,
+                    configuredLabelScale);
             float alpha = alphaFor(group, state);
             int nameColor = colorizeNames && showNames
                     ? 0xFF000000 | (w.color() & 0xFFFFFF)
@@ -691,15 +696,24 @@ public final class WaypointRenderer implements HudElement {
         return distanceScratch.toString();
     }
 
-    private static float labelScaleForDepth(double depth, float fovDegrees, boolean enabled) {
-        if (!enabled) return 1.0f;
-        if (depth <= 0.0 || !Double.isFinite(depth)) return LABEL_SCALE_MIN;
+        private static float labelScaleForDepth(double depth, float fovDegrees,
+                                            boolean enabled, double userScale) {
+        double baseScale = clampLabelScale(userScale);
+        if (!enabled) return (float) baseScale;
+        if (depth <= 0.0 || !Double.isFinite(depth)) {
+            return (float) clampLabelScale(baseScale * LABEL_SCALE_MIN);
+        }
 
         double currentFov = Math.max(1.0, Math.min(179.0, fovDegrees));
         double fovScale = Math.tan(Math.toRadians(LABEL_SCALE_BASELINE_FOV_DEGREES) * 0.5)
                 / Math.tan(Math.toRadians(currentFov) * 0.5);
         double scale = fovScale * LABEL_SCALE_REFERENCE_DEPTH / depth;
-        return (float) Math.max(LABEL_SCALE_MIN, Math.min(LABEL_SCALE_MAX, scale));
+        return (float) clampLabelScale(baseScale * scale);
+    }
+
+        private static double clampLabelScale(double scale) {
+        double safe = Double.isFinite(scale) ? scale : 1.0;
+        return Math.max(LABEL_SCALE_MIN, Math.min(LABEL_SCALE_MAX, safe));
     }
 
     private static double labelRowAdvance(Font font, float scale) {
@@ -823,6 +837,12 @@ public final class WaypointRenderer implements HudElement {
     private double nearHideDistanceSq() {
         return config.hideWaypointsNearPlayer()
                 ? WaypointVisibility.squaredRadius(config.hideWaypointsNearRadius())
+                : 0.0;
+    }
+
+        private double labelNearHideDistanceSq() {
+        return config.hideWaypointLabelsNearPlayer()
+                ? WaypointVisibility.squaredRadius(config.hideWaypointLabelsNearRadius())
                 : 0.0;
     }
 

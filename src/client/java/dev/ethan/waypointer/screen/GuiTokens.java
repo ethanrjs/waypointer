@@ -17,7 +17,7 @@ import java.util.function.Consumer;
  * footer-overlap bug crept in: buttons laid out left-to-right with fixed widths
  * eventually walked under the right-anchored "Done" button at small GUI scales.
  *
- * Design principles (see .impeccable.md):
+ * Design principles:
  *   1. Space does the work -- hierarchy via gaps first, weight second, color last.
  *   2. One accent color -- ACCENT is for the currently selected thing only.
  *   3. Translucent surfaces -- single depth; no nested borders or drop shadows.

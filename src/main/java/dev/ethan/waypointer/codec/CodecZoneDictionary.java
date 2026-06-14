@@ -107,7 +107,8 @@ public final class CodecZoneDictionary {
             "mineshaft_umber",
             "mineshaft_tungsten",
             "mineshaft_vanguard",
-            "mineshaft_littlefoots_den"
+            "mineshaft_littlefoots_den",
+            "mineshaft_crystal"
     };
 
     private static final Map<String, Integer> INDEX_BY_ID = new HashMap<>();

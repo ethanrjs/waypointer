@@ -2,6 +2,7 @@ package dev.ethan.waypointer.config;
 
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import dev.ethan.waypointer.core.Waypoint;
+import dev.ethan.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -43,6 +44,34 @@ class WaypointerConfigTest {
 
         config.setLabelHeightOffset(Double.POSITIVE_INFINITY);
         assertEquals(42.0, config.labelHeightOffset());
+    }
+
+        @Test
+    void labelScaleDefaultsToOneAndClampsSafeBounds() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertEquals(1.0, config.labelScale());
+
+        config.setLabelScale(2.5);
+        assertEquals(2.5, config.labelScale());
+
+        config.setLabelScale(0.1);
+        assertEquals(0.25, config.labelScale());
+
+        config.setLabelScale(9.0);
+        assertEquals(4.0, config.labelScale());
+    }
+
+        @Test
+    void labelScaleRejectsNonFiniteValues() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setLabelScale(1.75);
+
+        config.setLabelScale(Double.NaN);
+        assertEquals(1.75, config.labelScale());
+
+        config.setLabelScale(Double.POSITIVE_INFINITY);
+        assertEquals(1.75, config.labelScale());
     }
 
     @Test
@@ -322,6 +351,51 @@ class WaypointerConfigTest {
 
         config.setHideWaypointsNearRadius(Double.NaN);
         assertEquals(0.5, config.hideWaypointsNearRadius());
+    }
+
+        @Test
+    void labelNearHideDefaultsOffWithFiveBlockRadiusAndClamps() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertFalse(config.hideWaypointLabelsNearPlayer());
+        assertEquals(5.0, config.hideWaypointLabelsNearRadius());
+
+        config.setHideWaypointLabelsNearPlayer(true);
+        config.setHideWaypointLabelsNearRadius(9.5);
+        assertTrue(config.hideWaypointLabelsNearPlayer());
+        assertEquals(9.5, config.hideWaypointLabelsNearRadius());
+
+        config.setHideWaypointLabelsNearRadius(0.0);
+        assertEquals(0.5, config.hideWaypointLabelsNearRadius());
+
+        config.setHideWaypointLabelsNearRadius(Double.NaN);
+        assertEquals(0.5, config.hideWaypointLabelsNearRadius());
+    }
+
+        @Test
+    void importedRouteColorDefaultsToStaticGreen() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertEquals(WaypointGroup.GradientMode.STATIC, config.importedRouteColorMode());
+        assertEquals(0x00FF00, config.importedRouteDefaultColor());
+    }
+
+        @Test
+    void importedRouteColorSettingsNormalizeAndDisableConsistently() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setImportedRouteColorMode(WaypointGroup.GradientMode.AUTO);
+        assertEquals(WaypointGroup.GradientMode.AUTO, config.importedRouteColorMode());
+
+        config.setImportedRouteColorMode(null);
+        assertEquals(WaypointGroup.GradientMode.STATIC, config.importedRouteColorMode());
+
+        config.setImportedRouteDefaultColor(0xAA112233);
+        assertEquals(0x112233, config.importedRouteDefaultColor());
+
+        config.disableAllSettings();
+        assertEquals(WaypointGroup.GradientMode.MANUAL, config.importedRouteColorMode());
+        assertEquals(0x112233, config.importedRouteDefaultColor());
     }
 
     @Test
