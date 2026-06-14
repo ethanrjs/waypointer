@@ -178,6 +178,43 @@ class StorageJsonTest {
         assertEquals(0xFEDCBA, copy.gradientEndColor());
     }
 
+        @Test
+    void group_staticColorAndModeRoundTrip() {
+        WaypointGroup g = WaypointGroup.create("one-color", "hub");
+        g.add(Waypoint.at(1, 2, 3).withColor(0x111111));
+        g.add(Waypoint.at(4, 5, 6).withColor(0x222222));
+        g.setStaticColor(0x135724);
+        g.setGradientMode(WaypointGroup.GradientMode.STATIC);
+
+        JsonObject json = Storage.groupToJson(g);
+        WaypointGroup copy = Storage.groupFromJson(json);
+
+        assertEquals(0x135724, json.get("staticColor").getAsInt());
+        assertEquals(WaypointGroup.GradientMode.STATIC, copy.gradientMode());
+        assertEquals(0x135724, copy.staticColor());
+        assertEquals(0x135724, copy.get(0).color());
+        assertEquals(0x135724, copy.get(1).color());
+    }
+
+        @Test
+    void group_legacyGradientModeJsonStillLoads() {
+        JsonObject json = JsonParser.parseString("""
+                {
+                  "id": "legacy-gradient",
+                  "name": "Legacy Gradient",
+                  "zone": "hub",
+                  "gradientMode": "AUTO",
+                  "waypoints": [
+                    {"x": 1, "y": 2, "z": 3}
+                  ]
+                }
+                """).getAsJsonObject();
+
+        WaypointGroup copy = Storage.groupFromJson(json);
+
+        assertEquals(WaypointGroup.GradientMode.AUTO, copy.gradientMode());
+    }
+
     @Test
     void group_skipAheadSettingRoundTrips() {
         WaypointGroup g = WaypointGroup.create("strict-route", "dungeon_f7");

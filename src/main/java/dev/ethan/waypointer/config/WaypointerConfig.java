@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.core.Waypoint;
+import dev.ethan.waypointer.core.WaypointGroup;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -110,6 +111,8 @@ public final class WaypointerConfig {
      * at every visible waypoint.
      */
     private boolean showRouteProgress = false;
+    /** User multiplier for waypoint HUD label size. */
+    private double labelScale = 1.0;
     /**
      * Optional readability mode: labels shrink as their world anchor gets farther
      * from the camera. Default-off preserves the stable fixed-size HUD labels
@@ -145,6 +148,13 @@ public final class WaypointerConfig {
     private boolean hideWaypointsNearPlayer = false;
     /** Radius in blocks for {@link #hideWaypointsNearPlayer}. */
     private double hideWaypointsNearRadius = 5.0;
+    /**
+     * Optional label-only proximity declutter: labels hide near the player while
+     * boxes, beams, and tracers remain visible.
+     */
+    private boolean hideWaypointLabelsNearPlayer = false;
+    /** Radius in blocks for {@link #hideWaypointLabelsNearPlayer}. */
+    private double hideWaypointLabelsNearRadius = 5.0;
     /**
      * Optional checklist behavior for STATIC groups: when the player enters a
      * waypoint's reach radius, that marker hides until every waypoint in the
@@ -220,6 +230,10 @@ public final class WaypointerConfig {
      */
     private boolean focusTempWaypoints = false;
     private boolean chatCodecDetection = true;
+    /** Default color mode applied after any route import. */
+    private WaypointGroup.GradientMode importedRouteColorMode = WaypointGroup.GradientMode.STATIC;
+    /** Default one-color import palette: pure green, requested as RGB (0, 255, 0). */
+    private int importedRouteDefaultColor = 0x00FF00;
     /** Default exports drop names; set to {@code true} to include them at the cost of length. */
     private boolean exportIncludeNames = false;
     /** Default exports drop colors so shared routes inherit the recipient's palette. */
@@ -414,6 +428,7 @@ public final class WaypointerConfig {
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showWaypointDistances()    { return showWaypointDistances; }
     public boolean showRouteProgress()        { return showRouteProgress; }
+        public double labelScale()                { return clamp(labelScale, 0.25, 4.0); }
     public boolean scaleWaypointTextWithDistance() { return scaleWaypointTextWithDistance; }
     public boolean matchWaypointTextToWaypointColor() { return matchWaypointTextToWaypointColor; }
     public boolean showCompleted()            { return showCompleted; }
@@ -422,6 +437,8 @@ public final class WaypointerConfig {
     public boolean hideTracerOnStaticRoutes() { return hideTracerOnStaticRoutes; }
     public boolean hideWaypointsNearPlayer()  { return hideWaypointsNearPlayer; }
     public double hideWaypointsNearRadius()   { return Math.max(0.5, hideWaypointsNearRadius); }
+        public boolean hideWaypointLabelsNearPlayer() { return hideWaypointLabelsNearPlayer; }
+        public double hideWaypointLabelsNearRadius() { return Math.max(0.5, hideWaypointLabelsNearRadius); }
     public boolean hideReachedStaticWaypointsUntilCycleComplete() { return hideReachedStaticWaypointsUntilCycleComplete; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
     public int maxWaypointLabels()            { return Math.max(0, maxWaypointLabels); }
@@ -452,6 +469,12 @@ public final class WaypointerConfig {
     public boolean placeNewWaypointsBelowPlayer() { return placeNewWaypointsBelowPlayer; }
     public boolean focusTempWaypoints()       { return focusTempWaypoints; }
     public boolean chatCodecDetection()       { return chatCodecDetection; }
+        public WaypointGroup.GradientMode importedRouteColorMode() {
+        return importedRouteColorMode == null
+                ? WaypointGroup.GradientMode.STATIC
+                : importedRouteColorMode;
+    }
+        public int importedRouteDefaultColor()     { return importedRouteDefaultColor & 0xFFFFFF; }
     public boolean exportIncludeNames()        { return exportIncludeNames; }
     public boolean exportIncludeColors()       { return exportIncludeColors; }
     public boolean exportIncludeRadii()        { return exportIncludeRadii; }
@@ -494,6 +517,11 @@ public final class WaypointerConfig {
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
     public void setShowWaypointDistances(boolean v)    { this.showWaypointDistances = v; save(); }
     public void setShowRouteProgress(boolean v)        { this.showRouteProgress = v; save(); }
+        public void setLabelScale(double v) {
+        if (!Double.isFinite(v)) return;
+        this.labelScale = clamp(v, 0.25, 4.0);
+        save();
+    }
     public void setScaleWaypointTextWithDistance(boolean v) { this.scaleWaypointTextWithDistance = v; save(); }
     public void setMatchWaypointTextToWaypointColor(boolean v) { this.matchWaypointTextToWaypointColor = v; save(); }
     public void setShowCompleted(boolean v)            { this.showCompleted = v; save(); }
@@ -504,6 +532,15 @@ public final class WaypointerConfig {
     public void setHideWaypointsNearRadius(double v) {
         if (!Double.isFinite(v)) return;
         this.hideWaypointsNearRadius = clamp(v, 0.5, 100.0);
+        save();
+    }
+        public void setHideWaypointLabelsNearPlayer(boolean v) {
+        this.hideWaypointLabelsNearPlayer = v;
+        save();
+    }
+        public void setHideWaypointLabelsNearRadius(double v) {
+        if (!Double.isFinite(v)) return;
+        this.hideWaypointLabelsNearRadius = clamp(v, 0.5, 100.0);
         save();
     }
     public void setHideReachedStaticWaypointsUntilCycleComplete(boolean v) {
@@ -541,6 +578,14 @@ public final class WaypointerConfig {
     public void setPlaceNewWaypointsBelowPlayer(boolean v) { this.placeNewWaypointsBelowPlayer = v; save(); }
     public void setFocusTempWaypoints(boolean v)       { this.focusTempWaypoints = v; save(); }
     public void setChatCodecDetection(boolean v)       { this.chatCodecDetection = v; save(); }
+        public void setImportedRouteColorMode(WaypointGroup.GradientMode v) {
+        this.importedRouteColorMode = v == null ? WaypointGroup.GradientMode.STATIC : v;
+        save();
+    }
+        public void setImportedRouteDefaultColor(int v) {
+        this.importedRouteDefaultColor = v & 0xFFFFFF;
+        save();
+    }
     public void setExportIncludeNames(boolean v)        { this.exportIncludeNames = v; save(); }
     public void setExportIncludeColors(boolean v)       { this.exportIncludeColors = v; save(); }
     public void setExportIncludeRadii(boolean v)        { this.exportIncludeRadii = v; save(); }
@@ -589,7 +634,7 @@ public final class WaypointerConfig {
         setTempDefaultMode(v ? Waypoint.TEMP_TIME : Waypoint.TEMP_UNTIL_LEAVE);
     }
 
-    public void disableAllSettings() {
+        public void disableAllSettings() {
         resetProgressOnWorldJoin = false;
         restartRouteWhenComplete = false;
         matchTracerToWaypointColor = false;
@@ -603,6 +648,7 @@ public final class WaypointerConfig {
         dimSequenceContextWaypoints = false;
         hideTracerOnStaticRoutes = false;
         hideWaypointsNearPlayer = false;
+        hideWaypointLabelsNearPlayer = false;
         hideReachedStaticWaypointsUntilCycleComplete = false;
         showLabelBackdrop = false;
         beaconBeamExtendsBelowWaypoint = false;
@@ -611,6 +657,7 @@ public final class WaypointerConfig {
         placeNewWaypointsBelowPlayer = false;
         focusTempWaypoints = false;
         chatCodecDetection = false;
+        importedRouteColorMode = WaypointGroup.GradientMode.MANUAL;
         exportIncludeNames = false;
         exportIncludeColors = false;
         exportIncludeRadii = false;
@@ -625,7 +672,7 @@ public final class WaypointerConfig {
         save();
     }
 
-    public void resetToDefaults() {
+        public void resetToDefaults() {
         WaypointerConfig defaults = new WaypointerConfig();
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
         defaultReachRadius = defaults.defaultReachRadius;
@@ -640,6 +687,7 @@ public final class WaypointerConfig {
         showWaypointNames = defaults.showWaypointNames;
         showWaypointDistances = defaults.showWaypointDistances;
         showRouteProgress = defaults.showRouteProgress;
+        labelScale = defaults.labelScale;
         scaleWaypointTextWithDistance = defaults.scaleWaypointTextWithDistance;
         matchWaypointTextToWaypointColor = defaults.matchWaypointTextToWaypointColor;
         showCompleted = defaults.showCompleted;
@@ -648,6 +696,8 @@ public final class WaypointerConfig {
         hideTracerOnStaticRoutes = defaults.hideTracerOnStaticRoutes;
         hideWaypointsNearPlayer = defaults.hideWaypointsNearPlayer;
         hideWaypointsNearRadius = defaults.hideWaypointsNearRadius;
+        hideWaypointLabelsNearPlayer = defaults.hideWaypointLabelsNearPlayer;
+        hideWaypointLabelsNearRadius = defaults.hideWaypointLabelsNearRadius;
         hideReachedStaticWaypointsUntilCycleComplete = defaults.hideReachedStaticWaypointsUntilCycleComplete;
         showLabelBackdrop = defaults.showLabelBackdrop;
         maxWaypointLabels = defaults.maxWaypointLabels;
@@ -662,6 +712,8 @@ public final class WaypointerConfig {
         placeNewWaypointsBelowPlayer = defaults.placeNewWaypointsBelowPlayer;
         focusTempWaypoints = defaults.focusTempWaypoints;
         chatCodecDetection = defaults.chatCodecDetection;
+        importedRouteColorMode = defaults.importedRouteColorMode;
+        importedRouteDefaultColor = defaults.importedRouteDefaultColor;
         exportIncludeNames = defaults.exportIncludeNames;
         exportIncludeColors = defaults.exportIncludeColors;
         exportIncludeRadii = defaults.exportIncludeRadii;

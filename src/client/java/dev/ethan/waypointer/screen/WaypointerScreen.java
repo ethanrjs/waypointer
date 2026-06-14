@@ -1,6 +1,7 @@
 package dev.ethan.waypointer.screen;
 
 import dev.ethan.waypointer.codec.WaypointImporter;
+import dev.ethan.waypointer.color.RouteColorPolicy;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.RouteProgress;
@@ -25,7 +26,7 @@ import static dev.ethan.waypointer.screen.GuiTokens.*;
 /**
  * Top-level editor screen.
  *
- * Layout (clinical / utility aesthetic, see .impeccable.md):
+ * Layout (clinical / utility aesthetic):
  *   +------------------------------------------+
  *   | Waypointer                   Hub -- 3 gp |
  *   |                                          |
@@ -694,7 +695,7 @@ public final class WaypointerScreen extends Screen {
         ExportScreen.openForGroups(this, config, groups, label);
     }
 
-    private void importFromClipboard() {
+        private void importFromClipboard() {
         String text = minecraft.keyboardHandler.getClipboard();
         if (text == null || text.isBlank()) {
             ImportFeedback.failure("Clipboard is empty.");
@@ -711,6 +712,7 @@ public final class WaypointerScreen extends Screen {
                     if (Zone.UNKNOWN.id().equals(g.zoneId())) g.setZoneId(selectedZoneId);
                 }
             }
+            RouteColorPolicy.applyImportedRouteDefaults(result.groups(), config);
             for (WaypointGroup g : result.groups()) manager.add(g);
 
             ImportFeedback.success(result.groups(), "clipboard");

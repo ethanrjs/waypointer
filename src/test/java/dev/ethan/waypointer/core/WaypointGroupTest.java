@@ -141,6 +141,37 @@ class WaypointGroupTest {
         assertNotEquals(c0, cN, "first and last waypoints should differ in AUTO gradient");
     }
 
+        @Test
+    void staticColorModeRecolorsExistingWaypointsAndFutureAdditions() {
+        WaypointGroup g = route();
+
+        g.setStaticColor(0x123456);
+        g.setGradientMode(WaypointGroup.GradientMode.STATIC);
+
+        for (Waypoint waypoint : g.waypoints()) {
+            assertEquals(0x123456, waypoint.color());
+        }
+
+        g.add(Waypoint.at(40, 70, 0).withColor(0xABCDEF));
+
+        assertEquals(0x123456, g.get(g.size() - 1).color());
+    }
+
+        @Test
+    void manualColorModePreservesIndividualWaypointColors() {
+        WaypointGroup g = WaypointGroup.create("manual", "hub");
+        g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        g.add(Waypoint.at(0, 70, 0).withColor(0x111111));
+        g.add(Waypoint.at(1, 70, 0).withColor(0x222222));
+
+        g.setStaticColor(0x00FF00);
+        g.setGradientStartColor(0xAAAAAA);
+        g.setGradientEndColor(0xBBBBBB);
+
+        assertEquals(0x111111, g.get(0).color());
+        assertEquals(0x222222, g.get(1).color());
+    }
+
     @Test
     void gradientLockedColor_isNotOverwritten() {
         WaypointGroup g = WaypointGroup.create("x", "z");

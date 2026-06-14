@@ -808,11 +808,11 @@ public final class WaypointImporter {
      * {@code garden}) or become a new prettified zone the user can rebind from
      * the UI.
      */
-    static String normalizeZone(String raw) {
+        static String normalizeZone(String raw) {
         if (raw == null || raw.isBlank()) return Zone.UNKNOWN.id();
         String s = raw.toLowerCase(Locale.ROOT).replace('-', '_').replace(' ', '_');
         String aliased = SKYBLOCKER_ISLAND_ALIASES.get(s);
-        return aliased == null ? s : aliased;
+        return Zone.canonicalId(aliased == null ? s : aliased);
     }
 
     // --- helpers ------------------------------------------------------------------------------
