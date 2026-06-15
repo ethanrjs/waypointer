@@ -8,7 +8,7 @@ WP:4BdPN0BU%k[nFq#[FH-++?AX6bO}NHVtY(cx5KE...
 
 A recipient pastes the string in chat and imports the route as waypoint groups.
 
-Current wire version: **6**.
+Current wire version: **7**.
 
 Reference implementation: `src/main/java/dev/ethan/waypointer/codec/`
 
@@ -21,7 +21,12 @@ Reference implementation: `src/main/java/dev/ethan/waypointer/codec/`
 | `CodecDictionary.java` | Preset DEFLATE dictionary. |
 | `CodecZoneDictionary.java` | Compact known-zone references seeded from Skyblocker. |
 
-v6 keeps v5's chat-safe base-91 text layer. The improvements come from three binary-side changes:
+v7 keeps v6's chat-safe base-91 text layer and binary coordinate modes, then adds default-preserved subwaypoint detail:
+
+- minimal exports now keep subwaypoint small/filled style bits along with the structural subwaypoint bit;
+- subwaypoints with custom one-sixteenth placement write a packed 12-bit in-block offset so shared tiny markers import at the same precise center.
+
+v6 kept v5's chat-safe base-91 text layer. Its improvements came from three binary-side changes:
 
 - coordinate-only single-group exports can skip the normal string pool, group count, group name index, and waypoint body bytes;
 - long ordered coordinate routes can use `RANGE_DELTA`, a new bit-level adaptive delta mode that gets closer to the entropy limit than varints or fixed packed deltas;
@@ -105,7 +110,7 @@ The body decodes to compressed bytes. Raw DEFLATE inflates those bytes into the 
 
 ### 4.1 Characters
 
-v6 uses 91 printable ASCII characters. The alphabet includes every printable ASCII character except space, comma, `.`, and backtick.
+v6 and v7 use 91 printable ASCII characters. The alphabet includes every printable ASCII character except space, comma, `.`, and backtick.
 
 ```text
   ! " # $ % & ' ( ) * + - /
@@ -137,7 +142,7 @@ o/  -> o~/
 
 ### 4.2 Packing
 
-v5 and v6 use the basE91 streaming scheme with a 91-symbol alphabet. The packer accumulates source bits and emits two output characters carrying either 13 or 14 bits, depending on whether the current 14-bit value fits inside `91²`.
+v5, v6, and v7 use the basE91 streaming scheme with a 91-symbol alphabet. The packer accumulates source bits and emits two output characters carrying either 13 or 14 bits, depending on whether the current 14-bit value fits inside `91²`.
 
 ```text
 91² = 8281
@@ -167,12 +172,12 @@ The budget is UTF-8 bytes, not visible glyphs.
 | --- | ---: | ---: | ---: | --- |
 | base64 | 6.00 | 1 | 6.00 | Safe, lower density. |
 | v2 base-85 | 6.41 | 1 | 6.41 | Fixed 4-byte/5-char groups plus one trailer. |
-| v5/v6 base-91 stream | ~6.51 | 1 | ~6.51 | No trailer; variable 13/14-bit pairs. |
+| v5/v6/v7 base-91 stream | ~6.51 | 1 | ~6.51 | No trailer; variable 13/14-bit pairs. |
 | v4 base-92 stream | ~6.52 | 1 | ~6.52 | Legacy; includes comma. |
 | v3 base-93 stream | ~6.53 | 1 | ~6.53 | Legacy; includes backtick. |
 | CJK base-16384 | 14.00 | 3 | 4.67 | Short visually, expensive on the wire. |
 
-CJK carries more bits per glyph, but each glyph costs three UTF-8 bytes. That makes it worse under the server byte cap. v1 optimized for textbox length. v2 switched to base-85 for byte efficiency. v3 removed the base-85 pad trailer. v4 spent one symbol to remove backticks. v5 spent one more symbol to remove commas and added extended coordinate modes. v6 keeps the same base-91 text layer, then improves the binary body with a coordinate-only shortcut and a new range-delta coordinate mode.
+CJK carries more bits per glyph, but each glyph costs three UTF-8 bytes. That makes it worse under the server byte cap. v1 optimized for textbox length. v2 switched to base-85 for byte efficiency. v3 removed the base-85 pad trailer. v4 spent one symbol to remove backticks. v5 spent one more symbol to remove commas and added extended coordinate modes. v6 kept the same base-91 text layer, then improved the binary body with a coordinate-only shortcut and a new range-delta coordinate mode. v7 keeps that text layer and adds exact tiny-subwaypoint sharing.
 
 ### 4.4 Decode Safety
 
@@ -262,13 +267,13 @@ Regular bodies keep the v5 wrapper:
   └──────┴──────────┴─────────────┴───────────────┴─────────────┘
 ```
 
-v6 can also use an anonymous single-group coordinate-only body. That body still begins with the same header and optional label, but it skips the string pool and group count because there is exactly one unnamed group:
+v6 and newer can also use an anonymous single-group coordinate-only body. That body still begins with the same header and optional label, but it skips the string pool and group count because there is exactly one unnamed group:
 
 ```text
   hdr [label] anonymous-group
 ```
 
-The anonymous shape is only for exports that contain exactly one group of coordinates in order, with waypoint names, colors, radii, and waypoint flags disabled. If any waypoint body data would be lost, the encoder falls back to the regular body.
+The anonymous shape is only for exports that contain exactly one group of coordinates in order, with no waypoint body data to preserve. If names, colors, radii, waypoint flags, subwaypoint style, or precise offsets would be lost, the encoder falls back to the regular body.
 
 ### 6.2 Header Byte
 
@@ -278,7 +283,7 @@ The anonymous shape is only for exports that contain exactly one group of coordi
       │ r │ A │ L │ N │    version    │
       └───┴───┴───┴───┴───────────────┘
         │   │   │   │        │
-        │   │   │   │        └── 4 bits; must be non-zero; current: 6
+        │   │   │   │        └── 4 bits; must be non-zero; current: 7
         │   │   │   └─────────── HEADER_FLAG_NAMES, informational
         │   │   └─────────────── HEADER_FLAG_LABEL, label byte-string follows
         │   └─────────────────── HEADER_FLAG_ANONYMOUS_SINGLE_GROUP, v6+ coordinate-only body
@@ -558,6 +563,7 @@ waypoint-body := u8 wpFlags
                  [ byte[3] rgb ]        ; iff WP_FLAG_HAS_COLOR, MSB-first R,G,B
                  [ varint radius_x10 ]  ; iff WP_FLAG_HAS_RADIUS
                  [ varint flags ]       ; iff WP_FLAG_EXTENDED, user flag byte & 0xFF
+                 [ varint precise ]     ; iff WP_FLAG_HAS_PRECISE, v7+ packed x/y/z offsets
 
 name-ref      := varint nameIdx         ; pooled name, iff WP_FLAG_NAME_INLINE unset
               | varint byteLen; bytes   ; inline UTF-8, iff WP_FLAG_NAME_INLINE set
@@ -568,7 +574,7 @@ name-ref      := varint nameIdx         ; pooled name, iff WP_FLAG_NAME_INLINE u
 ```text
   bit   7   6   5   4   3   2   1   0
       ┌───┬───┬───┬───┬───┬───┬───┬───┐
-      │ r │ r │ r │ I │ X │ R │ C │ N │
+      │ r │ r │ P │ I │ X │ R │ C │ N │
       └───┴───┴───┴───┴───┴───┴───┴───┘
                             │   │   │   │
                             │   │   │   └── WP_FLAG_HAS_NAME
@@ -576,6 +582,7 @@ name-ref      := varint nameIdx         ; pooled name, iff WP_FLAG_NAME_INLINE u
                             │   └────────── WP_FLAG_HAS_RADIUS, else inherit group
                             └────────────── WP_FLAG_EXTENDED, else no user flags
                         └────────────── WP_FLAG_NAME_INLINE; name-ref is inline UTF-8
+                    └────────────── WP_FLAG_HAS_PRECISE; v7+ packed sixteenth offsets
 ```
 
 Unique waypoint names are inlined instead of added to the string pool. Pooling a one-use name costs the string bytes plus a separate index. Repeated names still pool, so labels such as `Terminal` or `Lever` store once and reference by index.
@@ -586,6 +593,8 @@ Subwaypoint status is stored in the extended waypoint flags field. It is not a s
 
 ```text
 Waypoint.FLAG_SUBWAYPOINT = 1 << 4   ; 0x10
+Waypoint.FLAG_SMALL_SUBWAYPOINT = 1 << 5
+Waypoint.FLAG_FILLED_SUBWAYPOINT = 1 << 6
 ```
 
 A waypoint with only subwaypoint metadata writes this body:
@@ -597,7 +606,16 @@ A waypoint with only subwaypoint metadata writes this body:
 └──── wpFlags = WP_FLAG_EXTENDED
 ```
 
-Subwaypoint structure survives minimal exports. When `includeWaypointFlags` is false, the encoder strips visual flags but keeps `Waypoint.STRUCTURAL_FLAGS`, currently only `FLAG_SUBWAYPOINT`.
+Subwaypoint structure and subwaypoint-specific style survive minimal exports. When `includeWaypointFlags` is false, the encoder strips unrelated visual/user flags but keeps `FLAG_SUBWAYPOINT` and, when that structural bit is present, `FLAG_SMALL_SUBWAYPOINT` and `FLAG_FILLED_SUBWAYPOINT`.
+
+v7 also stores precise small-waypoint placement by default for subwaypoints. The coordinate stream still stores whole-block `x/y/z`; the waypoint body can add one packed varint:
+
+```text
+precise = (xOffset << 8) | (yOffset << 4) | zOffset
+offsets are 0..15, in sixteenths of a block inside the decoded block coordinate
+```
+
+A block-centered waypoint has offset `8, 8, 8` and usually omits this field. A custom tiny subwaypoint at `x + 3/16`, `y + 12/16`, `z + 15/16` writes `0x3CF`.
 
 The parent relationship is positional. A subwaypoint is a one-level child of the nearest previous non-subwaypoint in the same group. The first waypoint cannot remain a subwaypoint after group normalization.
 
@@ -608,10 +626,10 @@ Sender `Options` can disable field families:
 - `includeNames`: waypoint names only; group names are still written;
 - `includeColors`: waypoint colors and AUTO gradient preservation;
 - `includeRadii`: per-waypoint radius overrides;
-- `includeWaypointFlags`: visual/user waypoint flags, while structural flags still survive;
+- `includeWaypointFlags`: visual/user waypoint flags, while subwaypoint structure/style still survive;
 - `includeGroupMeta`: load mode, default radius, and group gradient mode.
 
-When a family is disabled, the encoder writes neither the corresponding flag bit nor the value, except for structural waypoint flags. The decoder sees unset fields and substitutes defaults.
+When a family is disabled, the encoder writes neither the corresponding flag bit nor the value, except for subwaypoint structure/style flags and v7 subwaypoint precise offsets. The decoder sees unset fields and substitutes defaults.
 
 Colors are omitted when they equal `DEFAULT_COLOR`; the recipient substitutes the same constant. Extended flags are stored as the low byte of `Waypoint.flags` (`flags & 0xFF`).
 

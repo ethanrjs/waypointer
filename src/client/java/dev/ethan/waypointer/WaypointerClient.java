@@ -12,6 +12,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.dungeon.DungeonCommands;
 import dev.ethan.waypointer.dungeon.DungeonHighlightRenderer;
+import dev.ethan.waypointer.dungeon.DungeonRoomZoneBridge;
 import dev.ethan.waypointer.dungeon.DungeonRouteSession;
 import dev.ethan.waypointer.dungeon.DungeonStateTracker;
 import dev.ethan.waypointer.dungeon.DungeonTriggerDetector;
@@ -74,10 +75,9 @@ public final class WaypointerClient implements ClientModInitializer {
         new TracerRenderer(manager, config).install();
         WaypointRepositionMode.install();
 
-        if (config.dungeonWaypointsFeatureEnabled()) {
-            installDungeonSubsystem();
-        } else {
-            Waypointer.LOGGER.info("Dungeon waypoint subsystem disabled by feature flag");
+        installDungeonSubsystem();
+        if (!config.dungeonWaypointsFeatureEnabled()) {
+            Waypointer.LOGGER.info("Legacy dungeon feature flag is off; dungeon room detection still installs.");
         }
 
         ChatImportCache chatImportCache = new ChatImportCache();
@@ -125,6 +125,7 @@ public final class WaypointerClient implements ClientModInitializer {
             if (room == null && !dungeonTracker.inDungeon()) dungeonRouteSession.resetAll();
         });
         dungeonTracker.install();
+        new DungeonRoomZoneBridge(manager, dungeonTracker).install();
         new DungeonHighlightRenderer(dungeonTracker, dungeonConfig, dungeonRouteSession).install();
         new DungeonTriggerDetector(dungeonTracker, dungeonRouteSession).install();
         new DungeonCommands(dungeonTracker, dungeonConfig, dungeonRouteSession).install();

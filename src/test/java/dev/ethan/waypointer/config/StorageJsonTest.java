@@ -32,6 +32,39 @@ class StorageJsonTest {
         assertEquals(original, copy);
     }
 
+    /*[[AI-FN-DOC
+Function:
+waypoint_omitsOptionalFieldsWhenDefault.
+Purpose:
+Verify default waypoint serialization stays compact by omitting fields that are implied by defaults.
+Why this exists:
+The storage schema has optional fields for labels, flags, radius, and precise centers; default waypoints should not bloat every saved route.
+When to use:
+Run with the storage JSON tests whenever optional waypoint fields are added or changed.
+Inputs:
+No runtime inputs; constructs a plain default waypoint.
+Outputs:
+Assertions pass when optional JSON properties are absent.
+Side effects:
+None beyond test allocations.
+Failure modes:
+Fails if serialization starts writing default name, flags, radius, or precise fields unnecessarily.
+Important invariants:
+Default block-centered precision must remain implicit so old-looking waypoints save cleanly.
+Internal logic:
+Serialize Waypoint.at(1,2,3), then assert each optional field is missing.
+Pseudocode:
+plain = Waypoint.at(1, 2, 3)
+json = waypointToJson(plain)
+assert no name
+assert no flags
+assert no radius
+assert no preciseX
+Implementation notes:
+Checking only preciseX is enough for the precision group because storage writes all three precise axes together.
+AI self-check:
+Verify the test covers the new precision omission in addition to the older optional fields.
+]]*/
     @Test
     void waypoint_omitsOptionalFieldsWhenDefault() {
         Waypoint plain = Waypoint.at(1, 2, 3);
@@ -39,6 +72,59 @@ class StorageJsonTest {
         assertFalse(json.has("name"),   "empty name should not serialize");
         assertFalse(json.has("flags"),  "zero flags should not serialize");
         assertFalse(json.has("radius"), "default radius should not serialize");
+        assertFalse(json.has("preciseX"), "default block-center precision should not serialize");
+    }
+
+    /*[[AI-FN-DOC
+Function:
+waypoint_precisePositionRoundTripsWhenCustom.
+Purpose:
+Verify local storage preserves optional sixteenth-block waypoint centers.
+Why this exists:
+Small waypoint repositioning stores sub-block precision in waypoints.json, and losing those fields on save/load would make the UI appear to work only until restart.
+When to use:
+Run with the storage JSON test suite whenever waypoint serialization changes.
+Inputs:
+No runtime inputs; constructs a waypoint with precise sixteenths that differ from the default block center.
+Outputs:
+Assertions pass when precise fields serialize and load back into an equal precise center.
+Side effects:
+None beyond temporary test allocations.
+Failure modes:
+Fails if Storage omits custom precise fields or waypointFromJson falls back to block center despite the fields being present.
+Important invariants:
+The required legacy x/y/z block fields remain present alongside optional precise fields.
+Internal logic:
+Create a waypoint, apply precise sixteenths, serialize it, assert precise fields exist, deserialize it, and compare precise centers and derived block coordinates.
+Pseudocode:
+original = waypoint at 1,2,-2 with precise 20,39,-25
+json = waypointToJson(original)
+assert json precise fields equal supplied values
+copy = waypointFromJson(json)
+assert copy precise fields equal original
+assert copy x/y/z match containing blocks
+Implementation notes:
+The negative Z value covers floorDiv behavior for coordinates west/north of zero.
+AI self-check:
+Verify this test covers both persistence and the derived block-coordinate invariant.
+]]*/
+    @Test
+    void waypoint_precisePositionRoundTripsWhenCustom() {
+        Waypoint original = Waypoint.at(1, 2, -2)
+                .withPreciseSixteenths(20, 39, -25);
+
+        JsonObject json = Storage.waypointToJson(original);
+        Waypoint copy = Storage.waypointFromJson(json);
+
+        assertEquals(20, json.get("preciseX").getAsInt());
+        assertEquals(39, json.get("preciseY").getAsInt());
+        assertEquals(-25, json.get("preciseZ").getAsInt());
+        assertEquals(original.preciseX(), copy.preciseX());
+        assertEquals(original.preciseY(), copy.preciseY());
+        assertEquals(original.preciseZ(), copy.preciseZ());
+        assertEquals(1, copy.x());
+        assertEquals(2, copy.y());
+        assertEquals(-2, copy.z());
     }
 
     @Test

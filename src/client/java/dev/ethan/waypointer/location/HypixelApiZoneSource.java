@@ -7,6 +7,7 @@ import net.hypixel.modapi.HypixelModAPI;
 import net.hypixel.modapi.packet.impl.clientbound.event.ClientboundLocationPacket;
 import net.minecraft.client.Minecraft;
 
+import java.time.Instant;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -28,6 +29,7 @@ import java.util.function.Consumer;
 public final class HypixelApiZoneSource implements ZoneSource {
 
     private static final int REFINE_POLL_TICKS = 2;
+    private static volatile DebugSnapshot lastDebugSnapshot;
 
     private Zone lastEmitted;
     /** Last raw zone from {@link Zone#resolve(String, String, String)} before sidebar refinement. */
@@ -67,6 +69,7 @@ public final class HypixelApiZoneSource implements ZoneSource {
         Minecraft mc = Minecraft.getInstance();
         String blob = SidebarTexts.collectColorStripped(mc);
         Zone refined = Zone.refineIfDwarvenMinesContext(lastRawPacketZone, blob != null ? blob : "");
+        lastDebugSnapshot = new DebugSnapshot(serverType, map, mode, lastRawPacketZone, refined, Instant.now());
 
         if (!Objects.equals(refined, lastEmitted)) {
             lastEmitted = refined;
@@ -79,4 +82,16 @@ public final class HypixelApiZoneSource implements ZoneSource {
             listener.accept(refined);
         }
     }
+
+    public static DebugSnapshot debugSnapshot() {
+        return lastDebugSnapshot;
+    }
+
+    public record DebugSnapshot(
+            String serverType,
+            String map,
+            String mode,
+            Zone rawZone,
+            Zone refinedZone,
+            Instant capturedAt) {}
 }

@@ -35,6 +35,41 @@ class WaypointCodecDebugTest {
     }
 
     @Test
+    /*[[AI-FN-DOC
+Function:
+input_and_payload_char_counts_are_consistent.
+Purpose:
+Verify the debug decoder reports basic string lengths, magic prefix, current text-encoding label, and non-empty byte buffers.
+Why this exists:
+The debug inspector relies on these summary fields to explain a pasted route code, and a version bump must update the displayed text encoding.
+When to use:
+Run after changing debugDecode, text encoding labels, MAGIC handling, or current wire-version behavior.
+Inputs:
+No parameters. The test encodes a sample route with current defaults.
+Outputs:
+No return value. Assertions fail if debug metadata no longer matches the encoded string or current v7 label.
+Side effects:
+Allocates a sample encoded route and debug capture only.
+Failure modes:
+Fails when counts drift, the magic prefix is wrong, the v7 text label is stale, or compressed/raw byte buffers are empty.
+Important invariants:
+The textEncoding assertion should describe the current writer, not a legacy fallback.
+Internal logic:
+Encode a sample group, debug-decode it, compare input and payload character counts, assert MAGIC and v7 text label, and ensure compressed/raw body sizes are positive.
+Pseudocode:
+encoded = encode(sampleGroup)
+d = debugDecode(encoded)
+assert inputChars equals encoded length
+assert magic equals MAGIC
+assert payloadChars equals encoded length minus MAGIC length
+assert textEncoding equals v7 label
+assert rawBodyBytes > 0
+assert compressedBytes > 0
+Implementation notes:
+Keeping the text label literal in the test makes stale debug descriptions visible during version bumps.
+AI self-check:
+Verify the expected label matches WaypointCodec's current debug switch.
+]]*/
     void input_and_payload_char_counts_are_consistent() {
         String encoded = WaypointCodec.encode(List.of(sampleGroup()));
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
@@ -42,7 +77,7 @@ class WaypointCodecDebugTest {
         assertEquals(encoded.length(), d.inputChars());
         assertEquals(WaypointCodec.MAGIC, d.magic());
         assertEquals(encoded.length() - WaypointCodec.MAGIC.length(), d.payloadChars());
-        assertEquals("ASCII base-91 stream + range-delta coord mode", d.textEncoding());
+        assertEquals("ASCII base-91 stream + subwaypoint precision", d.textEncoding());
         assertTrue(d.rawBodyBytes() > 0, "raw body must be non-empty");
         assertTrue(d.compressedBytes() > 0, "compressed must be non-empty");
     }
@@ -67,18 +102,53 @@ class WaypointCodecDebugTest {
     }
 
     @Test
+    /*[[AI-FN-DOC
+Function:
+header_byte_marks_anonymous_body_when_coordinate_only_names_excluded.
+Purpose:
+Verify that current coordinate-only single-group exports still use the anonymous-body header bit.
+Why this exists:
+The anonymous wrapper was introduced in v6 and must remain active in v7 for compact plain route sharing.
+When to use:
+Run after changing anonymous-body eligibility, header flag layout, or current wire version.
+Inputs:
+No parameters. The test encodes a sample coordinate-only group with names excluded.
+Outputs:
+No return value. Assertions fail if the header no longer marks the anonymous body or if unrelated header bits are set.
+Side effects:
+Allocates one encoded route and debug capture only.
+Failure modes:
+Fails if current version reporting is wrong, if header bit 6 is missing, if names/label bits are set, or if reserved bit 7 is set.
+Important invariants:
+Bit 6 means anonymous coordinate-only body for v6 and newer, including v7.
+Internal logic:
+Encode a sample group with NO_NAMES, debug-decode it, assert current version, assert high header nibble equals only bit 6, and inspect decoded header booleans.
+Pseudocode:
+encoded = encode(sampleGroup, NO_NAMES)
+d = debugDecode(encoded)
+assert d.version equals WIRE_VERSION
+assert high header nibble is 0b0100_0000
+assert includesNames false
+assert hasLabel false
+assert reservedBit6 true
+assert reservedBit7 false
+Implementation notes:
+The debug model still names the high bits reservedBit6/reservedBit7 for historical UI compatibility, even though bit 6 is now claimed for anonymous groups.
+AI self-check:
+Verify the assertion message says v6+ rather than implying the feature is only v6.
+]]*/
     void header_byte_marks_anonymous_body_when_coordinate_only_names_excluded() {
         String encoded = WaypointCodec.encode(List.of(sampleGroup()), WaypointCodec.Options.NO_NAMES);
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
-        // NO_NAMES with no label on one bodyless group now uses v6 bit 6 for
+        // NO_NAMES with no label on one bodyless group uses the v6+ bit 6 for
         // the anonymous coordinate-only wrapper; names and label bits stay off.
         assertEquals(WaypointCodec.WIRE_VERSION, d.version());
         assertEquals(0b0100_0000, d.headerByte() & 0b1111_0000,
                 "coordinate-only single-group export must set the anonymous body bit");
         assertFalse(d.includesNames());
         assertFalse(d.hasLabel());
-        assertTrue(d.reservedBit6(), "v6 bit 6 marks the anonymous coordinate-only body");
+        assertTrue(d.reservedBit6(), "v6+ bit 6 marks the anonymous coordinate-only body");
         assertFalse(d.reservedBit7());
     }
 

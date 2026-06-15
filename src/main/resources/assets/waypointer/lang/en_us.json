@@ -1,6 +1,7 @@
 {
   "key.waypointer.open_editor": "Open Waypointer Editor",
   "key.waypointer.skip_waypoint": "Skip Current Waypoint",
+  "key.waypointer.previous_waypoint": "Go Back to Previous Waypoint",
   "key.waypointer.add_waypoint_here": "Create Waypoint",
   "key.waypointer.add_named_waypoint_here": "Create Named Waypoint",
   "key.waypointer.reposition_add_waypoint": "Reposition Mode: Add Waypoint",

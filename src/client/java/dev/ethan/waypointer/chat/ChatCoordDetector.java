@@ -90,7 +90,8 @@ public final class ChatCoordDetector {
                 var group = manager.addTempWaypoint(match.x(), match.y(), match.z(),
                         tempLabels.get(i),
                         config.tempDefaultMode(),
-                        config.defaultTempExpiresAtMillis(now));
+                        config.defaultTempExpiresAtMillis(now),
+                        config.defaultWaypointColor());
                 if (config.focusTempWaypoints()) {
                     manager.focusTempWaypoint(group, group.size() - 1);
                 }

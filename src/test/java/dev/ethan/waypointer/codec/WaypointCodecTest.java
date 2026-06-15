@@ -90,6 +90,74 @@ class WaypointCodecTest {
     }
 
     @Test
+    /*[[AI-FN-DOC
+Function:
+subwaypointStyleAndPrecisePlacementRoundTripByDefault.
+Purpose:
+Verify that default route sharing preserves the visual and precise-position data that makes a small subwaypoint usable.
+Why this exists:
+The user expects little subwaypoints to share exactly, and the default NO_NAMES export path previously kept only the parent/child subwaypoint bit.
+When to use:
+Run with codec tests whenever waypoint body flags, precise coordinate storage, or default export policy changes.
+Inputs:
+No parameters. The test builds an in-memory route with one main waypoint and one styled precise subwaypoint.
+Outputs:
+No return value. Assertions fail if default export drops small/filled flags, exact sixteenth offsets, or the subwaypoint relationship.
+Side effects:
+Allocates test route groups and encoded strings only.
+Failure modes:
+Fails if encoding omits v7 precise payloads, if decoding snaps to block center, or if unrelated hidden-beacon flags stop being stripped by minimal exports.
+Important invariants:
+Minimal exports must still strip unrelated visual flags while preserving subwaypoint structure, subwaypoint style, and custom precise placement.
+Internal logic:
+Create a manual group, add a normal parent, add a subwaypoint with small and filled style plus a custom precise center, encode with Options.NO_NAMES, decode, and compare the decoded child fields.
+Pseudocode:
+create group
+set manual colors to avoid unrelated gradient side effects
+add parent waypoint
+create child waypoint with subwaypoint, small, filled, and hide-beacon flags
+move child to exact sixteenth offsets
+add child
+encode/decode with NO_NAMES
+assert decoded child is subwaypoint
+assert small and filled flags are present
+assert hide beacon flag is absent
+assert preciseX/Y/Z equal the source child
+AI self-check:
+Verify this test covers the default sharing path, not only FULL_FIDELITY exports.
+]]*/
+    void subwaypointStyleAndPrecisePlacementRoundTripByDefault() {
+        WaypointGroup before = WaypointGroup.create("Tiny Subway", "dungeon_f7");
+        before.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        before.add(Waypoint.at(0, 70, 0));
+        Waypoint child = Waypoint.at(5, 70, -2)
+                .withFlags(Waypoint.FLAG_SUBWAYPOINT
+                        | Waypoint.FLAG_SMALL_SUBWAYPOINT
+                        | Waypoint.FLAG_FILLED_SUBWAYPOINT
+                        | Waypoint.FLAG_HIDE_BEACON)
+                .withPreciseSixteenths(5 * Waypoint.PRECISE_SCALE + 3,
+                        70 * Waypoint.PRECISE_SCALE + 12,
+                        -2 * Waypoint.PRECISE_SCALE + 15);
+        before.add(child);
+
+        WaypointGroup decoded = WaypointCodec.decode(
+                WaypointCodec.encode(List.of(before), WaypointCodec.Options.NO_NAMES)).get(0);
+        Waypoint decodedChild = decoded.get(1);
+
+        assertTrue(decodedChild.hasFlag(Waypoint.FLAG_SUBWAYPOINT),
+                "subwaypoint structure must survive default exports");
+        assertTrue(decodedChild.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT),
+                "small subwaypoint style must survive default exports");
+        assertTrue(decodedChild.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT),
+                "filled subwaypoint style must survive default exports");
+        assertFalse(decodedChild.hasFlag(Waypoint.FLAG_HIDE_BEACON),
+                "unrelated visual flags should still be stripped by default");
+        assertEquals(child.preciseX(), decodedChild.preciseX(), "preciseX");
+        assertEquals(child.preciseY(), decodedChild.preciseY(), "preciseY");
+        assertEquals(child.preciseZ(), decodedChild.preciseZ(), "preciseZ");
+    }
+
+    @Test
     void minimalPlainRouteExportStaysBodylessWhenNoSubwaypointsExist() {
         WaypointGroup route = WaypointGroup.create("Plain", "dungeon_f7");
         route.add(Waypoint.at(0, 70, 0));
@@ -320,10 +388,42 @@ class WaypointCodecTest {
     }
 
     @Test
+    /*[[AI-FN-DOC
+Function:
+current_wire_version_keeps_hypixel_emote_escape.
+Purpose:
+Verify that the current wire version is the expected v7 value and still uses the Hypixel emote escape transform.
+Why this exists:
+Version bumps are easy to miss in tests and docs, and the text-layer escape must keep protecting shared route strings from Hypixel chat rewrites.
+When to use:
+Run with codec tests after changing WIRE_VERSION, the text alphabet, or Hypixel escape handling.
+Inputs:
+No parameters. The test uses a hard-coded body containing risky emote pairs and the escape character.
+Outputs:
+No return value. Assertions fail if WIRE_VERSION is stale, escaping leaves raw emote triggers, or unescaping is not reversible.
+Side effects:
+None beyond local string allocation.
+Failure modes:
+Fails when the current version constant is not v7, when escaped output still contains <3 or o/, or when the escape round-trip changes text.
+Important invariants:
+v7 keeps the v4+ emote escaping behavior while adding subwaypoint precision to the binary body.
+Internal logic:
+Assert WIRE_VERSION, escape a sample body with heart/wave triggers and literal escape characters, verify risky pairs are gone, then verify unescape returns the original text.
+Pseudocode:
+assert WIRE_VERSION == 7
+raw = sample containing <3, o/, and ~
+escaped = escapeHypixelEmotes(raw)
+assert escaped does not contain <3
+assert escaped does not contain o/
+assert unescapeHypixelEmotes(escaped) equals raw
+Implementation notes:
+This is intentionally separate from full encode tests so text escaping regressions point at the small transform directly.
+AI self-check:
+Verify the version assertion is updated whenever the writer's current schema changes.
+]]*/
     void current_wire_version_keeps_hypixel_emote_escape() {
-        // v6 keeps the v4/v5 chat escape while adding range-delta coordinates
-        // and the anonymous coordinate-only wrapper.
-        assertEquals(6, WaypointCodec.WIRE_VERSION);
+        // v7 keeps the v4+ chat escape while adding precise subwaypoint payloads.
+        assertEquals(7, WaypointCodec.WIRE_VERSION);
 
         String raw = "abc<3defo/ghi~~jkl<~3mno~/pqr";
         String escaped = WaypointCodec.escapeHypixelEmotes(raw);
@@ -933,6 +1033,43 @@ class WaypointCodecTest {
     }
 
     @Test
+    /*[[AI-FN-DOC
+Function:
+anonymous_coordinate_export_preserves_order_zone_and_group_meta.
+Purpose:
+Verify that the anonymous single-group shortcut still preserves route order, zone, and group metadata under the current wire version.
+Why this exists:
+The v6 anonymous wrapper remains active in v7, and a version bump must not accidentally force minimal coordinate-only routes back through the larger normal group wrapper.
+When to use:
+Run after changing WIRE_VERSION, anonymous-body eligibility, group metadata export, or coordinate-mode selection.
+Inputs:
+No parameters. The test builds one coordinate-only sequence group with a custom zone-relevant route name, load mode, radius, and ordered waypoints.
+Outputs:
+No return value. Assertions fail if the encoder skips the anonymous bit, writes a string pool, loses metadata, or reorders coordinates.
+Side effects:
+Allocates an encoded route and debug capture only.
+Failure modes:
+Fails if v7 debug decode reports the wrong version, if header bit 6 is not set for anonymous coordinate-only bodies, or if decoded route fields differ.
+Important invariants:
+The anonymous route is allowed for v6 and newer, including current v7; it must still reset the route name while keeping zone, load mode, radius, and waypoint order.
+Internal logic:
+Create one sequence group, encode with NO_NAMES, debug-decode and decode it, assert v7 plus anonymous header bit/string-pool behavior, then compare decoded metadata and coordinates.
+Pseudocode:
+create route group with sequence load mode and custom radius
+add multiple block-centered waypoints
+encoded = encode with NO_NAMES
+debug = debugDecode(encoded)
+decoded = decode(encoded).first
+assert debug version equals 7
+assert anonymous bit and empty string pool
+assert decoded name omitted
+assert zone/load/radius preserved
+for every waypoint assert x/y/z match
+Implementation notes:
+The route intentionally has no subwaypoints or precise offsets so it remains eligible for the coordinate-only shortcut after the v7 feature.
+AI self-check:
+Verify this test distinguishes current v7 from legacy v6 while keeping the v6+ anonymous semantics.
+]]*/
     void anonymous_coordinate_export_preserves_order_zone_and_group_meta() {
         WaypointGroup g = WaypointGroup.create("Secret Route", "dwarven_mines");
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
@@ -945,8 +1082,8 @@ class WaypointCodecTest {
         DecodeDebug debug = WaypointCodec.debugDecode(encoded);
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
 
-        assertEquals(6, debug.version());
-        assertTrue(debug.reservedBit6(), "v6 bit 6 marks the anonymous coordinate-only body");
+        assertEquals(7, debug.version());
+        assertTrue(debug.reservedBit6(), "v6+ bit 6 marks the anonymous coordinate-only body");
         assertTrue(debug.stringPool().isEmpty(), "anonymous coordinate export should not write a string pool");
         assertEquals(1, debug.groups().size());
         assertEquals("", decoded.name(), "anonymous coordinate export intentionally omits route name");
@@ -962,7 +1099,103 @@ class WaypointCodecTest {
     }
 
     @Test
-    void legacy_v5_payloads_still_decode_after_v6_bump() throws Exception {
+    /*[[AI-FN-DOC
+Function:
+legacy_v6_payloads_still_decode_after_v7_bump.
+Purpose:
+Verify that route codes written by the previous v6 schema still decode after the current writer moves to v7.
+Why this exists:
+Adding precise subwaypoint payloads requires a wire-version bump, and users may already have v6 codes saved in chat, Discord, or route lists.
+When to use:
+Run after changing the current wire version, decode fallback order, or v6-compatible binary body parsing.
+Inputs:
+No parameters. The test creates a current payload without v7-only fields, rewrites its header nibble to v6, and re-encodes it through the same text layer.
+Outputs:
+No return value. Assertions fail if the v6 fallback is missing, if debug reports the wrong version, or if route data changes.
+Side effects:
+Allocates compressed/raw test buffers only.
+Failure modes:
+Fails when v6 payloads are rejected, decoded with the wrong text label, or materialize different groups than the source.
+Important invariants:
+The compatibility payload must avoid v7-only precise fields so it is a valid v6-shaped body; only the version nibble is changed.
+Internal logic:
+Encode a full-fidelity vector route, decode the text layer to raw bytes, change the version nibble to 6, deflate and encode it again, then decode/debug-decode the result.
+Pseudocode:
+group = sampleGroup
+current = encode group with full fidelity and forced vector mode
+body = strip MAGIC
+compressed = decode text body
+raw = inflate compressed
+raw header low nibble = 6
+legacyV6 = MAGIC + encoded deflated raw
+decoded = decode legacyV6
+debug = debugDecode legacyV6
+assert groups equal
+assert debug version 6
+assert v6 text encoding label
+Implementation notes:
+Forcing VECTOR avoids relying on newer coord-mode choices while still using the modern base-91 text layer shared by v6 and v7.
+AI self-check:
+Verify this test would fail if decodeFull skipped directly from v7 to v5.
+]]*/
+    void legacy_v6_payloads_still_decode_after_v7_bump() throws Exception {
+        WaypointGroup g = sampleGroup("legacy-v6", "dungeon_f7");
+        String current = WaypointCodec.encode(List.of(g), FULL_FIDELITY,
+                WaypointCodec.PackingMode.FORCE_VECTOR);
+        String body = current.substring(WaypointCodec.MAGIC.length());
+        byte[] compressed = AsciiStreamCodec.decode(WaypointCodec.unescapeHypixelEmotes(body));
+        byte[] raw = inflateForTest(compressed);
+        raw[0] = (byte) ((raw[0] & 0xF0) | 6);
+
+        String legacyV6 = WaypointCodec.MAGIC
+                + WaypointCodec.escapeHypixelEmotes(AsciiStreamCodec.encode(deflateForTest(raw)));
+        WaypointGroup decoded = WaypointCodec.decode(legacyV6).get(0);
+        DecodeDebug debug = WaypointCodec.debugDecode(legacyV6);
+
+        assertGroupsEqual(g, decoded);
+        assertEquals(6, debug.version());
+        assertEquals("ASCII base-91 stream + range-delta coord mode", debug.textEncoding());
+    }
+
+    @Test
+    /*[[AI-FN-DOC
+Function:
+legacy_v5_payloads_still_decode_after_v7_bump.
+Purpose:
+Verify that older v5 route codes still decode after both the v6 and v7 schema bumps.
+Why this exists:
+The fallback chain must keep supporting routes shared before anonymous groups, range-delta mode, and precise subwaypoint payloads existed.
+When to use:
+Run after changing decode fallback order, text-layer handling, or modern header-version constants.
+Inputs:
+No parameters. The test creates a current vector payload without newer-only fields, rewrites its header nibble to v5, and re-encodes it.
+Outputs:
+No return value. Assertions fail if v5 fallback decoding, debug version reporting, or group round-tripping breaks.
+Side effects:
+Allocates compressed/raw test buffers only.
+Failure modes:
+Fails when v5 payloads are rejected, interpreted as the wrong version, or decoded into different route data.
+Important invariants:
+The synthetic v5 payload must use only fields v5 understands; forcing vector mode avoids newer coordinate modes.
+Internal logic:
+Encode a full-fidelity vector route, rewrite the raw header version to 5, re-deflate and text-encode, decode and debug-decode, then compare group data and debug labels.
+Pseudocode:
+group = sampleGroup
+current = encode with full fidelity forced vector
+raw = text-decode and inflate current body
+raw header low nibble = 5
+legacyV5 = MAGIC + escaped base-91 deflated raw
+decoded = decode legacyV5
+debug = debugDecode legacyV5
+assert groups equal
+assert debug version 5
+assert v5 text encoding label
+Implementation notes:
+This remains separate from the v6 test so failures identify exactly which compatibility hop broke.
+AI self-check:
+Verify the test name and expected label mention v7 as the current bump while still asserting v5 behavior.
+]]*/
+    void legacy_v5_payloads_still_decode_after_v7_bump() throws Exception {
         WaypointGroup g = sampleGroup("legacy-v5", "dungeon_f7");
         String current = WaypointCodec.encode(List.of(g), FULL_FIDELITY,
                 WaypointCodec.PackingMode.FORCE_VECTOR);
@@ -1245,6 +1478,45 @@ class WaypointCodecTest {
         return g;
     }
 
+    /*[[AI-FN-DOC
+Function:
+assertGroupsEqual.
+Purpose:
+Assert that two waypoint groups are equivalent under the route-sharing contract.
+Why this exists:
+Codec tests need one central comparison that covers route metadata, waypoint data, and the intentional import-session resets without duplicating assertions in every test.
+When to use:
+Use when a test exports and imports a group with all shareable fields expected to survive. Do not use when the test intentionally strips colors, names, flags, radii, or group metadata.
+Inputs:
+expected is the source group; actual is the decoded group. Both must be non-null and have default session state expectations except for fields explicitly checked here.
+Outputs:
+No return value. JUnit assertions fail with field-specific messages on mismatch.
+Side effects:
+Only assertion reporting; no mutation.
+Failure modes:
+Fails when names, zone ids, default radius, gradient mode, size, waypoint position, precise position, flags, radius, or relevant colors differ, or when decoded session state is not reset.
+Important invariants:
+Exports never preserve enabled/currentIndex, so this helper asserts decoded enabled true and currentIndex zero instead of comparing those source fields.
+Internal logic:
+Compare group-level shareable fields, compute whether color comparison should be loose for AUTO gradients, then compare every waypoint's block position, precise sixteenth position, name, flags, radius, and applicable color.
+Pseudocode:
+assert group name and zone equal
+assert actual enabled and currentIndex import defaults
+assert default radius and gradient mode equal
+assert sizes equal
+looseColor = expected gradient mode is AUTO
+for each waypoint index:
+  e = expected waypoint
+  a = actual waypoint
+  assert x/y/z equal
+  assert preciseX/preciseY/preciseZ equal
+  assert name, flags, custom radius equal
+  if colors are not loose or waypoint is locked, assert color equal
+Implementation notes:
+Precise checks are included even for normal waypoints because their default block centers are part of the Waypoint invariant and catch accidental snapping regressions.
+AI self-check:
+Verify this helper is not used by tests that intentionally exercise field-stripping options.
+]]*/
     private static void assertGroupsEqual(WaypointGroup expected, WaypointGroup actual) {
         assertEquals(expected.name(), actual.name(), "name");
         assertEquals(expected.zoneId(), actual.zoneId(), "zoneId");
@@ -1266,6 +1538,9 @@ class WaypointCodecTest {
             assertEquals(e.x(), a.x(), "x@" + i);
             assertEquals(e.y(), a.y(), "y@" + i);
             assertEquals(e.z(), a.z(), "z@" + i);
+            assertEquals(e.preciseX(), a.preciseX(), "preciseX@" + i);
+            assertEquals(e.preciseY(), a.preciseY(), "preciseY@" + i);
+            assertEquals(e.preciseZ(), a.preciseZ(), "preciseZ@" + i);
             assertEquals(e.name(), a.name(), "name@" + i);
             assertEquals(e.flags(), a.flags(), "flags@" + i);
             assertEquals(e.customRadius(), a.customRadius(), 1e-6, "customRadius@" + i);

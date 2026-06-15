@@ -5,6 +5,7 @@ import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.debug.DebugSignals;
 import dev.ethan.waypointer.debug.PerformanceStressProbe;
 import dev.ethan.waypointer.debug.PerformanceStats;
 import net.minecraft.client.Minecraft;
@@ -749,6 +750,14 @@ public final class DebugInspectScreen extends Screen {
         rows.add(new Row.KVDim("Java", System.getProperty("java.version", "(unknown)")));
         rows.add(new Row.KVDim("Memory used", formatBytes(stats.usedMemoryBytes())
                 + " / " + formatBytes(stats.maxMemoryBytes())));
+
+        addSection(rows, sections, "Dungeon Signals", null);
+        rows.add(new Row.KV("Room tracker", DebugSignals.dungeonRoomLine()));
+        rows.add(new Row.KVDim("Zone bridge", DebugSignals.dungeonBridgeLine()));
+        rows.add(new Row.KVDim("Dungeon config", DebugSignals.dungeonConfigLine()));
+        rows.add(new Row.KVDim("Hypixel API", DebugSignals.hypixelApiLine()));
+        rows.add(new Row.KVDim("Scoreboard text", DebugSignals.scoreboardLine()));
+        rows.add(new Row.KVDim("Tab text", DebugSignals.tabListLine()));
 
         addSection(rows, sections, "Route Library", stats.totalWaypoints() + " pts");
         rows.add(new Row.KV("Groups", stats.totalGroups() + " total, "

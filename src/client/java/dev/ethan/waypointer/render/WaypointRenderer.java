@@ -103,6 +103,8 @@ public final class WaypointRenderer implements HudElement {
     private static final double LABEL_SCALE_BASELINE_FOV_DEGREES = 70.0;
     private static final float LABEL_SCALE_MIN = 0.25f;
     private static final float LABEL_SCALE_MAX = 4.0f;
+    private static final double SMALL_SUBWAYPOINT_SIZE = 1.0 / 16.0;
+    private static final double SMALL_SUBWAYPOINT_INSET = (1.0 - SMALL_SUBWAYPOINT_SIZE) * 0.5;
 
     /**
      * Cap on the pre-baked distance table. 0..4095m covers dense imported route
@@ -177,6 +179,42 @@ public final class WaypointRenderer implements HudElement {
     private static final int DEFAULT_MIN_BUILD_Y = -64;
     private static final int DEFAULT_MAX_BUILD_Y = 320;
 
+    /*[[AI-FN-DOC
+Function:
+onWorldRender
+Purpose:
+Render world-space waypoint geometry, beacon beams, optional route connector lines, and per-subwaypoint fill overrides for active groups.
+Why this exists:
+Waypoint boxes and connector lines must be drawn in the world render pass so they align with block positions and can use through-walls pipelines.
+When to use:
+Registered by install as the WorldRenderEvents.END_MAIN callback. Do not call directly from HUD label rendering.
+Inputs:
+ctx is Fabric's world render context and may contain null matrices or consumers during unusual render states.
+Outputs:
+No return value. Emits vertices to render buffers when there is visible geometry.
+Side effects:
+Reads active groups, config, camera/player state, writes to render buffers, and flushes render batches.
+Failure modes:
+Returns early for Iris HUD fallback, empty groups, absent buffers/matrices, or disabled geometry. Route lines can still draw when waypoint opacity is zero.
+Important invariants:
+Fills and lines must use separate buffer cycles where required; route connector lines share the line pipeline but remain independent from box outline enablement. A filled subwaypoint can force the fill pass without changing the global box style.
+Internal logic:
+Gather draw flags and render context, include filled subwaypoint overrides in the fill decision, translate to camera-relative coordinates, emit fill/beam quads when enabled, then emit connector and/or box line geometry when enabled.
+Pseudocode:
+if Iris fallback active, return
+get active groups and draw flags, including per-subwaypoint filled overrides
+if nothing to draw, return
+get buffers and pose stack
+compute camera/player positions and culling thresholds
+push pose and translate by negative camera
+if beams or fills enabled, emit quads and flush
+if connector lines or box lines enabled, emit line geometry and flush
+pop pose
+Implementation notes:
+Route lines are checked separately from beaconOpacity so users can turn box opacity down without accidentally disabling connector topology.
+AI self-check:
+Verify drawRouteLines participates in the line batch and does not force boxes to render.
+]]*/
     private void onWorldRender(WorldRenderContext ctx) {
         if (IrisShaderFallback.shouldUse(config)) return;
 
@@ -185,10 +223,12 @@ public final class WaypointRenderer implements HudElement {
 
         WaypointerConfig.BoxStyle style = config.boxStyle();
         boolean drawLines = style != WaypointerConfig.BoxStyle.FILLED;
-        boolean drawFill  = style != WaypointerConfig.BoxStyle.OUTLINED;
+        boolean drawGlobalFill = style != WaypointerConfig.BoxStyle.OUTLINED;
+        boolean drawFill  = drawGlobalFill || hasFilledSubwaypoint(groups);
         boolean drawBeams = config.beaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF;
-        if (!drawLines && !drawFill && !drawBeams) return;
-        if (config.beaconOpacity() <= 0.0) return;
+        boolean drawRouteLines = config.showRouteLines();
+        if (!drawLines && !drawFill && !drawBeams && !drawRouteLines) return;
+        if (config.beaconOpacity() <= 0.0 && !drawRouteLines) return;
 
         MultiBufferSource buffers = ctx.consumers();
         if (buffers == null) return;
@@ -228,17 +268,25 @@ public final class WaypointRenderer implements HudElement {
             if (drawFill) {
                 for (WaypointGroup g : groups) {
                     emitFilledBoxes(ps, quads, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq);
+                            maxStaticDistanceSq, nearHideDistanceSq, drawGlobalFill);
                 }
             }
             RenderHelpers.endBatch(buffers, quadType);
         }
-        if (drawLines) {
+        if (drawLines || drawRouteLines) {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
             VertexConsumer lines = buffers.getBuffer(lineType);
-            for (WaypointGroup g : groups) {
-                emitLineBoxes(ps, lines, g, camPos, playerPos,
-                        maxStaticDistanceSq, nearHideDistanceSq);
+            if (drawRouteLines) {
+                for (WaypointGroup g : groups) {
+                    emitRouteLines(ps, lines, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq);
+                }
+            }
+            if (drawLines) {
+                for (WaypointGroup g : groups) {
+                    emitLineBoxes(ps, lines, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq);
+                }
             }
             RenderHelpers.endBatch(buffers, lineType);
         }
@@ -246,6 +294,327 @@ public final class WaypointRenderer implements HudElement {
         ps.popPose();
     }
 
+    /*[[AI-FN-DOC
+Function:
+emitRouteLines
+Purpose:
+Render connector segments between the centers of currently visible waypoints in one group.
+Why this exists:
+The route topology line is separate from box outlines and tracers: it shows how the visible route context connects without pointing from the player crosshair.
+When to use:
+Use from the world render pass when config.showRouteLines() is true. Do not use for HUD fallback or crosshair tracer rendering.
+Inputs:
+ps is the translated pose stack; lines is the active line vertex consumer; g is the waypoint group; camPos and playerPos are current camera/player positions; maxStaticDistanceSq and nearHideDistanceSq are precomputed culling thresholds.
+Outputs:
+No return value. Appends line vertices to the current render batch.
+Side effects:
+Writes vertices into the line buffer. Does not mutate route state.
+Failure modes:
+Empty or one-point visible routes emit nothing. Segments with hidden/cull-filtered endpoints are skipped.
+Important invariants:
+Connector endpoints must be waypoint centers, use the configured route line color, and respect the same visibility filters as box outlines.
+Internal logic:
+Iterate visible indices in route order, keep the previous renderable index, and emit a segment from previous center to current center when both endpoints pass visibility filters.
+Pseudocode:
+currentIdx = group.currentIndex
+showCompleted = config.showCompleted
+previous = -1
+for each visible index:
+  if index is not connector-renderable, continue
+  if previous exists, draw center-to-center line from previous waypoint to current waypoint
+  previous = index
+Implementation notes:
+Skipping non-renderable endpoints avoids connector lines pointing into markers the player has intentionally hidden through distance, near-hide, completed-hide, or static reached-hide settings.
+AI self-check:
+Verify this method uses routeLineColor(), existing outline thickness, and the same per-waypoint visibility helpers as boxes.
+]]*/
+    private void emitRouteLines(PoseStack ps, VertexConsumer lines, WaypointGroup g,
+                                Vec3 camPos, Vec3 playerPos,
+                                double maxStaticDistanceSq, double nearHideDistanceSq) {
+        int currentIdx = g.currentIndex();
+        boolean showCompleted = config.showCompleted();
+        float alpha = 0.85f;
+        float width = (float) config.waypointOutlineThickness();
+        int color = config.routeLineColor();
+        int[] previous = { -1 };
+
+        g.forEachVisibleIndex(i -> {
+            if (!shouldRenderWaypointWorld(g, i, currentIdx, showCompleted,
+                    camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq)) {
+                return;
+            }
+            if (previous[0] >= 0) {
+                Waypoint a = g.get(previous[0]);
+                Waypoint b = g.get(i);
+                RenderHelpers.emitLine(lines, ps,
+                        (float) a.centerX(), (float) a.centerY(), (float) a.centerZ(),
+                        (float) b.centerX(), (float) b.centerY(), (float) b.centerZ(),
+                        color, alpha, width);
+            }
+            previous[0] = i;
+        });
+    }
+
+    /*[[AI-FN-DOC
+Function:
+shouldRenderWaypointWorld
+Purpose:
+Decide whether a waypoint endpoint should participate in world-space box or connector rendering.
+Why this exists:
+Route connector lines need to share the same visibility rules as waypoint boxes so hidden waypoints do not leave stray floating segments behind.
+When to use:
+Use inside world-space waypoint render helpers before emitting geometry tied to a specific waypoint index. Do not use for label-only near-hide because labels intentionally have separate rules.
+Inputs:
+group is the route; index is a waypoint list index; currentIdx is the group's current target index; showCompleted is the config flag; camPos/playerPos are current positions; maxStaticDistanceSq and nearHideDistanceSq are culling thresholds.
+Outputs:
+Returns true when the waypoint should render in the world pass, false when any visibility rule hides it.
+Side effects:
+None.
+Failure modes:
+Out-of-range indices return false. Null player positions simply disable near-hide filtering.
+Important invariants:
+Static reached hiding, player near-hide, static distance culling, and completed sequence hiding must match existing box rendering behavior.
+Internal logic:
+Validate index, fetch waypoint, evaluate each existing visibility helper, then return the final render decision.
+Pseudocode:
+if index out of bounds, return false
+if static reached hide applies, return false
+if near-hide applies, return false
+if static distance limit applies, return false
+state = stateFor group/index/current
+if completed sequence hide applies, return false
+return true
+Implementation notes:
+This helper intentionally does not inspect label-near-hide because route connector lines are world geometry, not HUD labels.
+AI self-check:
+Confirm emitRouteLines and future world helpers can share this without changing label behavior.
+]]*/
+    private boolean shouldRenderWaypointWorld(WaypointGroup group, int index, int currentIdx,
+                                              boolean showCompleted, Vec3 camPos,
+                                              Vec3 playerPos, double maxStaticDistanceSq,
+                                              double nearHideDistanceSq) {
+        if (index < 0 || index >= group.size()) return false;
+        if (shouldHideStaticReached(group, index)) return false;
+
+        Waypoint waypoint = group.get(index);
+        if (shouldHideNearPlayer(waypoint, playerPos, nearHideDistanceSq)) return false;
+        if (isStaticBeyondDistanceLimit(group, waypoint, camPos, maxStaticDistanceSq)) return false;
+
+        State state = stateFor(group, index, currentIdx);
+        return !shouldHideCompletedSequenceWaypoint(group, index, currentIdx, state,
+                showCompleted, waypoint);
+    }
+
+    /*[[AI-FN-DOC
+Function:
+hasFilledSubwaypoint
+Purpose:
+Detect whether any active route contains a subwaypoint that explicitly requests filled rendering.
+Why this exists:
+The global OUTLINED box style normally skips the fill render pass, but per-subwaypoint filled markers need that pass even when the rest of the route stays outlined.
+When to use:
+Use from the world render setup before deciding whether to allocate the quad buffer. Do not use for deciding if a specific waypoint should fill; emitFilledBoxes handles that per waypoint.
+Inputs:
+groups is the active group iterable already selected for rendering.
+Outputs:
+Returns true if any waypoint in any group has FLAG_FILLED_SUBWAYPOINT.
+Side effects:
+None.
+Failure modes:
+Null groups are not expected; empty groups return false through normal iteration.
+Important invariants:
+This helper only gates whether the fill pass exists. Visibility, distance, near-hide, and completed-hide filters still run later per waypoint.
+Internal logic:
+Loop through every group and waypoint, returning true on the first filled subwaypoint flag.
+Pseudocode:
+for group in groups:
+  for each waypoint:
+    if waypoint has filled subwaypoint flag return true
+return false
+Implementation notes:
+The scan is cheap relative to rendering and avoids running a quad pass for routes that do not need per-subwaypoint fill.
+AI self-check:
+Verify the actual fill emitter still skips unflagged waypoints when global fill is off.
+]]*/
+    private static boolean hasFilledSubwaypoint(Iterable<WaypointGroup> groups) {
+        for (WaypointGroup group : groups) {
+            for (Waypoint waypoint : group.waypoints()) {
+                if (isFilledSubwaypoint(waypoint)) return true;
+            }
+        }
+        return false;
+    }
+
+    /*[[AI-FN-DOC
+Function:
+isSmallSubwaypoint
+Purpose:
+Determine whether a waypoint should render with the tiny centered subwaypoint marker bounds.
+Why this exists:
+The small style is meaningful only for subwaypoints, and render code should not shrink a main waypoint just because stale flags exist in old or hand-edited data.
+When to use:
+Use anywhere marker bounds are computed for world or HUD fallback rendering.
+Inputs:
+waypoint is the waypoint being rendered and may be null only from defensive callers.
+Outputs:
+Returns true when the waypoint is non-null, structurally a subwaypoint, and has FLAG_SMALL_SUBWAYPOINT.
+Side effects:
+None.
+Failure modes:
+Null returns false.
+Important invariants:
+Main waypoints always keep full block bounds even if the small flag appears in legacy data.
+Internal logic:
+Check non-null, isSubwaypoint, and hasFlag for the small style bit.
+Pseudocode:
+return waypoint not null and waypoint.isSubwaypoint and waypoint has FLAG_SMALL_SUBWAYPOINT
+Implementation notes:
+The structural check mirrors the GUI, which only exposes these toggles on subwaypoint rows.
+AI self-check:
+Verify normal route markers cannot shrink accidentally.
+]]*/
+    private static boolean isSmallSubwaypoint(Waypoint waypoint) {
+        return waypoint != null
+                && waypoint.isSubwaypoint()
+                && waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT);
+    }
+
+    /*[[AI-FN-DOC
+Function:
+isFilledSubwaypoint
+Purpose:
+Determine whether a waypoint asks for per-subwaypoint filled-box rendering.
+Why this exists:
+The fill flag is only intended for subwaypoints, so renderer decisions should ignore stale filled flags on main waypoints.
+When to use:
+Use when deciding whether to force a fill pass or fill a specific waypoint outside global filled box styles.
+Inputs:
+waypoint is the waypoint being considered and may be null only from defensive callers.
+Outputs:
+Returns true when the waypoint is non-null, structurally a subwaypoint, and has FLAG_FILLED_SUBWAYPOINT.
+Side effects:
+None.
+Failure modes:
+Null returns false.
+Important invariants:
+Per-waypoint fill never applies to main waypoints.
+Internal logic:
+Check non-null, subwaypoint structure, and the filled style flag.
+Pseudocode:
+return waypoint not null and waypoint.isSubwaypoint and waypoint has FLAG_FILLED_SUBWAYPOINT
+Implementation notes:
+Keeping this guard centralized lets storage retain raw flags while rendering remains conservative.
+AI self-check:
+Verify hasFilledSubwaypoint and emitFilledBoxes both call this helper.
+]]*/
+    private static boolean isFilledSubwaypoint(Waypoint waypoint) {
+        return waypoint != null
+                && waypoint.isSubwaypoint()
+                && waypoint.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT);
+    }
+
+    /*[[AI-FN-DOC
+Function:
+waypointBoxMin
+Purpose:
+Calculate the minimum coordinate for a waypoint marker box on one axis.
+Why this exists:
+Small subwaypoints render as a centered 1/16-block cube and can now have sixteenth-block centers, while all other waypoints keep full block bounds.
+When to use:
+Use for x, y, or z box minimums before emitting world vertices or projecting HUD fallback corners.
+Inputs:
+blockCoordinate is the integer waypoint coordinate for one axis; centerCoordinate is the precise world-space center for that axis; waypoint is the marker whose style flags determine the bounds.
+Outputs:
+Returns a double minimum coordinate in world space.
+Side effects:
+None.
+Failure modes:
+None. Null waypoints are treated as normal full-size boxes through isSmallSubwaypoint.
+Important invariants:
+Small boxes remain centered around centerCoordinate and keep exactly SMALL_SUBWAYPOINT_SIZE length.
+Internal logic:
+Return centerCoordinate minus half the small size for small subwaypoints, otherwise the raw block coordinate.
+Pseudocode:
+if isSmallSubwaypoint waypoint return centerCoordinate - SMALL_SUBWAYPOINT_SIZE / 2
+return blockCoordinate
+Implementation notes:
+Passing centerCoordinate keeps the helper axis-agnostic while allowing small waypoints to preserve sub-block precision.
+AI self-check:
+Verify waypointBoxMax uses the complementary center math so size is exactly 1/16.
+]]*/
+    private static double waypointBoxMin(int blockCoordinate, double centerCoordinate, Waypoint waypoint) {
+        return isSmallSubwaypoint(waypoint)
+                ? centerCoordinate - SMALL_SUBWAYPOINT_SIZE * 0.5
+                : blockCoordinate;
+    }
+
+    /*[[AI-FN-DOC
+Function:
+waypointBoxMax
+Purpose:
+Calculate the maximum coordinate for a waypoint marker box on one axis.
+Why this exists:
+Small subwaypoints need matching max bounds so their rendered cube is one sixteenth of normal size around the stored precise center.
+When to use:
+Use with waypointBoxMin for every axis when emitting or projecting marker boxes.
+Inputs:
+blockCoordinate is the integer waypoint coordinate for one axis; centerCoordinate is the precise world-space center for that axis; waypoint is the marker whose style flags determine the bounds.
+Outputs:
+Returns a double maximum coordinate in world space.
+Side effects:
+None.
+Failure modes:
+None. Null waypoints are treated as normal full-size boxes through isSmallSubwaypoint.
+Important invariants:
+For small subwaypoints, max minus min equals SMALL_SUBWAYPOINT_SIZE.
+Internal logic:
+Return centerCoordinate plus half the small size for small subwaypoints, otherwise blockCoordinate plus one.
+Pseudocode:
+if isSmallSubwaypoint waypoint return centerCoordinate + SMALL_SUBWAYPOINT_SIZE / 2
+return blockCoordinate + 1
+Implementation notes:
+The helper keeps world and HUD fallback boxes visually identical while respecting precise small-waypoint centers.
+AI self-check:
+Verify full-size markers still cover the original [coord, coord + 1] block range.
+]]*/
+    private static double waypointBoxMax(int blockCoordinate, double centerCoordinate, Waypoint waypoint) {
+        return isSmallSubwaypoint(waypoint)
+                ? centerCoordinate + SMALL_SUBWAYPOINT_SIZE * 0.5
+                : blockCoordinate + 1.0;
+    }
+
+    /*[[AI-FN-DOC
+Function:
+emitLineBoxes
+Purpose:
+Emit world-space outline boxes for every visible waypoint in a group, using precise small bounds for styled subwaypoints.
+Why this exists:
+Outlined marker geometry needs to honor route visibility, completed/near-hide rules, and the new per-subwaypoint small marker flag.
+When to use:
+Use from onWorldRender when the global box style includes outlines.
+Inputs:
+ps is the translated pose stack; lines is the line vertex consumer; g is the route group; camPos/playerPos are current positions; maxStaticDistanceSq and nearHideDistanceSq are precomputed culling thresholds.
+Outputs:
+No return value. Appends line-box vertices to the line buffer.
+Side effects:
+Writes vertices into the active render buffer.
+Failure modes:
+Hidden, culled, completed-hidden, or near-hidden waypoints emit nothing.
+Important invariants:
+Normal waypoints render as one-block boxes; small subwaypoints render as 1/16-block boxes centered on the waypoint's precise center.
+Internal logic:
+Iterate visible indices, apply existing visibility filters, compute alpha and styled box bounds, then emit a line box.
+Pseudocode:
+for each visible index:
+  skip static reached, near-hidden, distance-hidden, or completed-hidden waypoint
+  alpha = state alpha times opacity
+  bounds = waypointBoxMin/Max for x,y,z
+  emit line box with bounds
+Implementation notes:
+Bounds are calculated through shared helpers so HUD fallback, fill boxes, line boxes, and precise reposition previews stay aligned.
+AI self-check:
+Verify normal markers still cover a full block and small markers honor precise centers.
+]]*/
     private void emitLineBoxes(PoseStack ps, VertexConsumer lines, WaypointGroup g,
                                Vec3 camPos, Vec3 playerPos,
                                double maxStaticDistanceSq, double nearHideDistanceSq) {
@@ -265,15 +634,55 @@ public final class WaypointRenderer implements HudElement {
             if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
 
             float alpha = alphaFor(g, state) * beaconOpacity;
-            float x = w.x(), y = w.y(), z = w.z();
-            RenderHelpers.emitLineBox(lines, ps, x, y, z, x + 1f, y + 1f, z + 1f,
+            float x1 = (float) waypointBoxMin(w.x(), w.centerX(), w);
+            float y1 = (float) waypointBoxMin(w.y(), w.centerY(), w);
+            float z1 = (float) waypointBoxMin(w.z(), w.centerZ(), w);
+            float x2 = (float) waypointBoxMax(w.x(), w.centerX(), w);
+            float y2 = (float) waypointBoxMax(w.y(), w.centerY(), w);
+            float z2 = (float) waypointBoxMax(w.z(), w.centerZ(), w);
+            RenderHelpers.emitLineBox(lines, ps, x1, y1, z1, x2, y2, z2,
                     w.color(), alpha, outlineThickness);
         });
     }
 
+    /*[[AI-FN-DOC
+Function:
+emitFilledBoxes
+Purpose:
+Emit world-space filled boxes for globally filled markers or subwaypoints with the filled override.
+Why this exists:
+Filled subwaypoint styling should work even when the user's global box style is outlined, without filling every other waypoint.
+When to use:
+Use from onWorldRender whenever the global style asks for fill or any active subwaypoint has FLAG_FILLED_SUBWAYPOINT.
+Inputs:
+ps is the translated pose stack; quads is the quad vertex consumer; g is the route group; camPos/playerPos are current positions; maxStaticDistanceSq and nearHideDistanceSq are precomputed culling thresholds; fillAllWaypoints is true when the global box style fills every waypoint.
+Outputs:
+No return value. Appends filled-box quad vertices to the quad buffer.
+Side effects:
+Writes vertices into the active render buffer.
+Failure modes:
+Hidden or culled waypoints emit nothing. When fillAllWaypoints is false, unfilled subwaypoints and normal waypoints are skipped.
+Important invariants:
+Per-subwaypoint fill does not change global box style, and small filled subwaypoints use the same precise 1/16-block bounds as their outline.
+Internal logic:
+Iterate visible indices, apply visibility filters, skip unfilled waypoints when not globally filling, compute alpha and styled precise bounds, then emit a filled box.
+Pseudocode:
+for each visible index:
+  skip static reached, near-hidden, distance-hidden waypoint
+  if not fillAllWaypoints and waypoint is not filled subwaypoint, continue
+  skip completed-hidden waypoint
+  alpha = state alpha times opacity
+  bounds = waypointBoxMin/Max for x,y,z
+  emit filled box with bounds
+Implementation notes:
+The filled flag is checked before state classification where possible to avoid extra work for unfilled waypoints in outlined mode.
+AI self-check:
+Verify global FILLED and FILLED_OUTLINED styles still fill all visible waypoints, and small filled waypoints align to their outline.
+]]*/
     private void emitFilledBoxes(PoseStack ps, VertexConsumer quads, WaypointGroup g,
                                  Vec3 camPos, Vec3 playerPos,
-                                 double maxStaticDistanceSq, double nearHideDistanceSq) {
+                                 double maxStaticDistanceSq, double nearHideDistanceSq,
+                                 boolean fillAllWaypoints) {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
@@ -284,13 +693,19 @@ public final class WaypointRenderer implements HudElement {
             Waypoint w = g.get(i);
             if (shouldHideNearPlayer(w, playerPos, nearHideDistanceSq)) return;
             if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
+            if (!fillAllWaypoints && !isFilledSubwaypoint(w)) return;
 
             State state = stateFor(g, i, currentIdx);
             if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
 
             float alpha = alphaFor(g, state) * beaconOpacity;
-            float x = w.x(), y = w.y(), z = w.z();
-            RenderHelpers.emitFilledBox(quads, ps, x, y, z, x + 1f, y + 1f, z + 1f,
+            float x1 = (float) waypointBoxMin(w.x(), w.centerX(), w);
+            float y1 = (float) waypointBoxMin(w.y(), w.centerY(), w);
+            float z1 = (float) waypointBoxMin(w.z(), w.centerZ(), w);
+            float x2 = (float) waypointBoxMax(w.x(), w.centerX(), w);
+            float y2 = (float) waypointBoxMax(w.y(), w.centerY(), w);
+            float z2 = (float) waypointBoxMax(w.z(), w.centerZ(), w);
+            RenderHelpers.emitFilledBox(quads, ps, x1, y1, z1, x2, y2, z2,
                     w.color(), alpha * FILLED_ALPHA_SCALE);
         });
     }
@@ -339,7 +754,7 @@ public final class WaypointRenderer implements HudElement {
         float y1 = config.beaconBeamExtendsBelowWaypoint() ? minY : w.y();
         float y2 = Math.max(y1 + 1.0f, maxY);
         RenderHelpers.emitVerticalColumn(quads, ps,
-                w.x() + 0.5f, y1, w.z() + 0.5f,
+                (float) w.centerX(), y1, (float) w.centerZ(),
                 y2, BEAM_HALF_WIDTH, w.color(), alpha);
     }
 
@@ -463,18 +878,51 @@ public final class WaypointRenderer implements HudElement {
         });
     }
 
+    /*[[AI-FN-DOC
+Function:
+projectBoxCorners
+Purpose:
+Project a waypoint marker box's eight corners for the Iris HUD fallback outline renderer.
+Why this exists:
+The HUD fallback draws screen-space box edges and needs the same full-size or small-subwaypoint bounds as the world renderer.
+When to use:
+Use from drawHudFallbackGroupBoxes before drawing projected box edges.
+Inputs:
+waypoint is the marker to project; screenW and screenH are current GUI dimensions.
+Outputs:
+Returns true when at least part of the projected box is inside the padded screen bounds. Updates boxScreenScratch and boxCornerVisible arrays.
+Side effects:
+Mutates reusable projection scratch fields on the renderer instance.
+Failure modes:
+Returns false when all corners fail projection or the projected bounds are outside the cull margin.
+Important invariants:
+Small subwaypoints project a centered 1/16-block cube, matching world-space outline/fill geometry.
+Internal logic:
+Reset projected min/max bounds, compute styled min/max world coordinates, project all eight corners, and compare projected bounds to a screen margin.
+Pseudocode:
+reset projected bounds
+x/y/z min = waypointBoxMin
+x/y/z max = waypointBoxMax
+project eight box corners
+if no finite projected corner return false
+return projected bounds intersect screen plus margin
+Implementation notes:
+The helper intentionally projects all corners even if some fail so partially visible boxes still draw their visible edges.
+AI self-check:
+Verify world and HUD fallback marker sizes cannot diverge.
+]]*/
     private boolean projectBoxCorners(Waypoint waypoint, int screenW, int screenH) {
         projectedBoxMinX = Double.POSITIVE_INFINITY;
         projectedBoxMinY = Double.POSITIVE_INFINITY;
         projectedBoxMaxX = Double.NEGATIVE_INFINITY;
         projectedBoxMaxY = Double.NEGATIVE_INFINITY;
 
-        double x1 = waypoint.x();
-        double y1 = waypoint.y();
-        double z1 = waypoint.z();
-        double x2 = x1 + 1.0;
-        double y2 = y1 + 1.0;
-        double z2 = z1 + 1.0;
+        double x1 = waypointBoxMin(waypoint.x(), waypoint.centerX(), waypoint);
+        double y1 = waypointBoxMin(waypoint.y(), waypoint.centerY(), waypoint);
+        double z1 = waypointBoxMin(waypoint.z(), waypoint.centerZ(), waypoint);
+        double x2 = waypointBoxMax(waypoint.x(), waypoint.centerX(), waypoint);
+        double y2 = waypointBoxMax(waypoint.y(), waypoint.centerY(), waypoint);
+        double z2 = waypointBoxMax(waypoint.z(), waypoint.centerZ(), waypoint);
 
         projectBoxCorner(0, x1, y1, z1, screenW, screenH);
         projectBoxCorner(1, x2, y1, z1, screenW, screenH);
@@ -534,9 +982,9 @@ public final class WaypointRenderer implements HudElement {
             if (shouldHideCompletedSequenceWaypoint(group, i, currentIdx, state, showCompleted, w)) return;
             if (w.hasFlag(Waypoint.FLAG_HIDE_NAME)) return;
 
-            double ax = w.x() + 0.5;
-            double ay = w.y() + labelLift;
-            double az = w.z() + 0.5;
+            double ax = w.centerX();
+            double ay = w.centerY() - 0.5 + labelLift;
+            double az = w.centerZ();
             double rx = ax - camPos.x, ry = ay - camPos.y, rz = az - camPos.z;
             double distanceSq = rx * rx + ry * ry + rz * rz;
             if (isStaticBeyondDistanceLimit(group, distanceSq, maxStaticDistanceSq)) {
@@ -794,10 +1242,50 @@ public final class WaypointRenderer implements HudElement {
         return cached;
     }
 
+    /*[[AI-FN-DOC
+Function:
+stateFor
+Purpose:
+Classify a waypoint as completed, current, or upcoming for sequence rendering.
+Why this exists:
+Boxes, labels, beams, and connector endpoint filtering all need a consistent route-state interpretation.
+When to use:
+Use from rendering visibility and alpha decisions. Do not use for mutating route progress.
+Inputs:
+group is the route; i is the waypoint index being classified; currentIdx is the group's current target index.
+Outputs:
+Returns a State enum value describing render status.
+Side effects:
+None.
+Failure modes:
+Out-of-range indices are not validated here; callers are expected to pass valid indices from group iteration.
+Important invariants:
+Static routes always render waypoints as current. Exact subwaypoint current targets must classify as current.
+Internal logic:
+Return current for static routes, then handle subwaypoint parent/current relationships, active visual holds, completed indices, and upcoming indices.
+Pseudocode:
+if group load mode is static, return CURRENT
+activeParent = group.activeSubwaypointParentIndex
+if index is subwaypoint:
+  if index equals currentIdx, return CURRENT
+  parent = parent main index
+  if parent equals activeParent or currentIdx, return CURRENT
+  if parent is before currentIdx, return COMPLETED
+  return UPCOMING
+if index equals active parent, return CURRENT
+if index before currentIdx, return COMPLETED
+if index equals currentIdx, return CURRENT
+return UPCOMING
+Implementation notes:
+The exact subwaypoint check is required for /wp skipto decimal targets to highlight the chosen child instead of only its parent.
+AI self-check:
+Verify the child current case runs before parent-based classification.
+]]*/
     private static State stateFor(WaypointGroup group, int i, int currentIdx) {
         if (group.loadMode() == WaypointGroup.LoadMode.STATIC) return State.CURRENT;
         int activeSubwayParent = group.activeSubwaypointParentIndex();
         if (group.isSubwaypoint(i)) {
+            if (i == currentIdx) return State.CURRENT;
             int parent = group.parentMainIndex(i);
             if (parent == activeSubwayParent) return State.CURRENT;
             if (parent < currentIdx) return State.COMPLETED;
@@ -810,6 +1298,36 @@ public final class WaypointRenderer implements HudElement {
         return State.UPCOMING;
     }
 
+    /*[[AI-FN-DOC
+Function:
+shouldHideCompletedSequenceWaypoint
+Purpose:
+Decide whether a sequence waypoint classified as completed should be hidden from world rendering.
+Why this exists:
+The renderer needs one consistent gate for completed sequence markers so boxes, beams, labels, tracers, and connector endpoints agree.
+When to use:
+Use during per-waypoint render filtering after stateFor has classified the waypoint. Do not use for static route reached markers.
+Inputs:
+group is the waypoint group being rendered; index is the waypoint index; currentIdx is the current route target; state is the classified waypoint state; showCompleted is the config value; waypoint is the waypoint data.
+Outputs:
+Returns true when the completed waypoint should be skipped entirely.
+Side effects:
+None.
+Failure modes:
+Null waypoint is not expected because callers iterate concrete group entries.
+Important invariants:
+Only State.COMPLETED can be hidden by this setting. Current targets and active subwaypoint holds must remain visible because stateFor classifies them as CURRENT.
+Internal logic:
+Ignore non-completed states, always respect the per-waypoint hide beacon flag for completed waypoints, otherwise hide completed waypoints whenever showCompleted is false.
+Pseudocode:
+if state is not COMPLETED return false
+if waypoint has hide-beacon flag return true
+return not showCompleted
+Implementation notes:
+The group, index, and currentIdx parameters remain for call-site clarity and future route-state decisions even though the current rule no longer needs contextual previous-waypoint exceptions.
+AI self-check:
+Verify the previous completed waypoint is hidden when Show completed waypoints is off and current/held waypoints are unaffected.
+]]*/
     private boolean shouldHideCompletedSequenceWaypoint(WaypointGroup group,
                                                         int index,
                                                         int currentIdx,
@@ -818,14 +1336,7 @@ public final class WaypointRenderer implements HudElement {
                                                         Waypoint waypoint) {
         if (state != State.COMPLETED) return false;
         if (waypoint.hasFlag(Waypoint.FLAG_HIDE_BEACON)) return true;
-        if (showCompleted) return false;
-
-        return !isImmediateSequenceContext(group, index, currentIdx);
-    }
-
-    private boolean isImmediateSequenceContext(WaypointGroup group, int index, int currentIdx) {
-        return group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
-                && index == group.previousMainIndexBefore(currentIdx);
+        return !showCompleted;
     }
 
     private boolean shouldHideStaticReached(WaypointGroup group, int index) {
@@ -864,15 +1375,47 @@ public final class WaypointRenderer implements HudElement {
         return distance <= 0.0 ? 0.0 : distance * distance;
     }
 
+    /*[[AI-FN-DOC
+Function:
+isStaticBeyondDistanceLimit.
+Purpose:
+Decide whether a static-route waypoint is far enough from the camera to skip rendering.
+Why this exists:
+Static overlays can contain many points, so distance culling keeps the world render pass light while sequence routes remain unaffected.
+When to use:
+Use before rendering waypoint-linked world or label elements for static routes. Do not use for route progression, which has separate reach logic.
+Inputs:
+group is the waypoint group; waypoint is the marker being checked; camPos is the camera position; maxStaticDistanceSq is the squared static render distance limit.
+Outputs:
+Returns true when the waypoint should be culled for static distance, false otherwise.
+Side effects:
+None.
+Failure modes:
+None expected for finite camera positions; disabled limits and non-static routes return false.
+Important invariants:
+Distance must be measured from waypoint.centerX/Y/Z so precise small waypoint render filters match their actual marker position.
+Internal logic:
+Return false when static culling is disabled or the group is not static, otherwise compute squared distance from camera to waypoint center and delegate to the scalar overload.
+Pseudocode:
+if maxStaticDistanceSq <= 0 or group load mode is not STATIC, return false
+dx = waypoint.centerX - cam x
+dy = waypoint.centerY - cam y
+dz = waypoint.centerZ - cam z
+return scalar isStaticBeyondDistanceLimit(group, distanceSq, maxStaticDistanceSq)
+Implementation notes:
+Using the center methods preserves old behavior for block-centered waypoints because their default precise center is x/y/z + 0.5.
+AI self-check:
+Verify static route culling is unchanged for normal waypoints and aligned for precise small waypoints.
+]]*/
     private static boolean isStaticBeyondDistanceLimit(WaypointGroup group, Waypoint waypoint,
                                                        Vec3 camPos, double maxStaticDistanceSq) {
         if (maxStaticDistanceSq <= 0.0 || group.loadMode() != WaypointGroup.LoadMode.STATIC) {
             return false;
         }
 
-        double dx = waypoint.x() + 0.5 - camPos.x;
-        double dy = waypoint.y() + 0.5 - camPos.y;
-        double dz = waypoint.z() + 0.5 - camPos.z;
+        double dx = waypoint.centerX() - camPos.x;
+        double dy = waypoint.centerY() - camPos.y;
+        double dz = waypoint.centerZ() - camPos.z;
         return isStaticBeyondDistanceLimit(group, dx * dx + dy * dy + dz * dz,
                 maxStaticDistanceSq);
     }

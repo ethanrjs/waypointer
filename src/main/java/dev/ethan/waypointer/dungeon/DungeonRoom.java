@@ -11,11 +11,8 @@ import java.util.Objects;
  *
  * <p>This is intentionally a "thin" room descriptor -- it carries only the
  * geometry needed to project room-local secret coordinates back into the
- * world. The named room (e.g. "Waterfall", "Three Chests") is NOT identified
- * here; that's the job of a future block-fingerprint matcher (see
- * {@code Room.checkBlock} in Skyblocker for the algorithm we'd port). Until
- * that lands, dungeon waypoint data is keyed by shape + segment topology
- * rather than by named room.
+ * world plus the optional catalog identity that {@code DungeonRoomData}
+ * attaches after matching room-core hashes or authored fingerprints.
  *
  * <p>Segments are encoded as {@code packed = (x << 32) | (z & 0xFFFFFFFF)}
  * to avoid allocating a list of pairs; the helpers

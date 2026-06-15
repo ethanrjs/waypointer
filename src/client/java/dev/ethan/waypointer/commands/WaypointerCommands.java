@@ -109,6 +109,11 @@ public final class WaypointerCommands {
                                 .executes(ctx -> runHelp(ctx.getSource(), root,
                                         StringArgumentType.getString(ctx, "target")))))
                 .then(literal("list").executes(ctx -> runList(ctx.getSource())))
+                .then(literal("skipto")
+                        .then(argument("target", StringArgumentType.word())
+                                .suggests(suggestSkipTargets())
+                                .executes(ctx -> runSkipTo(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "target")))))
                 // "add" uses an explicit "at" literal for coord input so we never have to
                 // disambiguate "/wp add 100" (a name) from "/wp add 100 64 200" (coords).
                 // Brigadier's greedy-string fallback was flagging ambiguity warnings and --
@@ -251,6 +256,55 @@ public final class WaypointerCommands {
             WaypointGroup g = manager.firstActiveGroup();
             if (g == null) return builder.buildFuture();
             return CommandHelpers.suggestIndexed(builder, g.size(), i -> describeWaypoint(g.get(i)));
+        };
+    }
+
+    /*[[AI-FN-DOC
+Function:
+suggestSkipTargets
+Purpose:
+Suggest displayed waypoint labels for the /wp skipto command.
+Why this exists:
+skipto uses user-facing numbering such as 2 and 2.2 instead of raw zero-based list indices, so tab completion needs a custom suggestion source.
+When to use:
+Use only as the Brigadier suggestion provider for the skipto target argument.
+Inputs:
+ctx is Brigadier command context; builder contains the partially typed target text and collects suggestions.
+Outputs:
+Returns a future Suggestions object from builder.buildFuture().
+Side effects:
+Reads the first active group from the manager but does not mutate route state.
+Failure modes:
+If no active group exists, returns no suggestions. Null waypoint names are handled by describeWaypoint.
+Important invariants:
+Suggestions must omit the leading # from display labels because the command syntax is /wp skipto 2.2, not /wp skipto #2.2.
+Internal logic:
+Fetch first active group, filter each displayed label by the typed prefix, and suggest matching labels with waypoint coordinate tooltips.
+Pseudocode:
+get first active group
+if absent, return empty suggestions
+prefix = builder remaining text lower-cased
+for each waypoint index:
+  label = display label without leading #
+  if label starts with prefix, suggest it with waypoint description
+return built suggestions future
+Implementation notes:
+Using the display label keeps tab completion aligned with the route editor and label renderer.
+AI self-check:
+Confirm main and subwaypoint labels are both suggested and no raw zero-based indices leak into the command UI.
+]]*/
+    private SuggestionProvider<FabricClientCommandSource> suggestSkipTargets() {
+        return (ctx, builder) -> {
+            WaypointGroup g = manager.firstActiveGroup();
+            if (g == null) return builder.buildFuture();
+            String prefix = builder.getRemainingLowerCase();
+            for (int i = 0; i < g.size(); i++) {
+                String label = skipTargetLabel(g, i);
+                if (label.toLowerCase(Locale.ROOT).startsWith(prefix)) {
+                    builder.suggest(label, Component.literal(describeWaypoint(g.get(i))));
+                }
+            }
+            return builder.buildFuture();
         };
     }
 
@@ -422,6 +476,7 @@ public final class WaypointerCommands {
                             new HelpRow(" add at <x> <y> <z>",      "add waypoint at the given coordinates"),
                             new HelpRow(" insert [index] [name]",  "insert at index, your position"),
                             new HelpRow(" remove <index>",          "remove waypoint by index"),
+                            new HelpRow(" skipto <n[.sub]>",        "jump to displayed waypoint number"),
                             new HelpRow(" clear [confirm]",         "clear all groups in current zone"))),
             new HelpSection("sharing", "Sharing (import/export)",
                     List.of(
@@ -624,6 +679,414 @@ public final class WaypointerCommands {
         return active.size();
     }
 
+    /*[[AI-FN-DOC
+Function:
+runSkipTo
+Purpose:
+Handle /wp skipto by setting the first active group's current target to a displayed waypoint label.
+Why this exists:
+Players asked for command-based route jumps, and the UI displays one-based decimal labels rather than raw list indices.
+When to use:
+Use as the command executor for /wp skipto <target>. Do not use for automatic proximity advancement or editor insert/remove actions.
+Inputs:
+src is the Fabric client command source for feedback; target is a user-entered label such as 2 or 2.2.
+Outputs:
+Returns 1 when the route target changes, 0 when validation fails.
+Side effects:
+Mutates the first active group's current target, clears its proximity suppression through WaypointGroup, fires manager data-changed notification, and sends chat feedback.
+Failure modes:
+Fails with an error when there is no active group, the target syntax is invalid, the main waypoint is out of range, or the child waypoint is out of range.
+Important invariants:
+Target labels are one-based. A decimal child component addresses subwaypoints under the selected main waypoint, also one-based.
+Internal logic:
+Validate active group, resolve the displayed target into a zero-based route index, set that exact current target, notify the manager, and report the chosen label.
+Pseudocode:
+get first active group
+if absent, error and return 0
+parse target with resolveSkipTargetIndex
+if parse result has error, send error and return 0
+set group current target index to parsed index
+fire data changed
+send success with display label and coordinates
+return 1
+Implementation notes:
+The command deliberately targets firstActiveGroup to match list/remove/insert command behavior already established in this class.
+AI self-check:
+Confirm /wp skipto 2 and /wp skipto 2.2 both address displayed labels, not zero-based indices.
+]]*/
+    private int runSkipTo(FabricClientCommandSource src, String target) {
+        WaypointGroup group = manager.firstActiveGroup();
+        if (group == null) {
+            error(src, "No active group to skip in");
+            return 0;
+        }
+        SkipTarget resolved = resolveSkipTargetIndex(group, target);
+        if (resolved.error() != null) {
+            error(src, resolved.error());
+            return 0;
+        }
+        group.setCurrentTargetIndex(resolved.index());
+        manager.fireDataChanged();
+
+        Waypoint waypoint = group.get(resolved.index());
+        success(src, "Skipped to " + skipTargetLabel(group, resolved.index())
+                + " (" + waypoint.x() + ", " + waypoint.y() + ", " + waypoint.z() + ")");
+        return 1;
+    }
+
+    /*[[AI-FN-DOC
+Function:
+resolveSkipTargetIndex
+Purpose:
+Resolve a displayed skip target string into a zero-based waypoint list index.
+Why this exists:
+The command accepts labels like 2.2 that are meaningful to users but do not directly match internal storage indices.
+When to use:
+Use before changing route progress from /wp skipto. Do not use for raw edit commands that intentionally accept zero-based indices.
+Inputs:
+group is the route to search; rawTarget is the command argument and may be null, blank, malformed, or out of range.
+Outputs:
+Returns a SkipTarget record containing either a valid index or a user-facing error string.
+Side effects:
+None.
+Failure modes:
+Malformed numbers, zero/negative ordinals, multiple decimals, missing decimals, out-of-range main waypoints, and out-of-range child waypoints all return explanatory errors.
+Important invariants:
+Main and child ordinals are one-based. Child ordinals count only subwaypoints immediately following the selected main waypoint.
+Internal logic:
+Trim an optional leading #, split on a single decimal, parse positive ordinals, locate the requested main waypoint, then locate the requested child when present.
+Pseudocode:
+normalize raw target
+if empty, return usage error
+remove leading # if present
+split by dot preserving empty parts
+if not one or two parts, return syntax error
+parse main ordinal as positive int
+find matching main index
+if no child part, return main index
+parse child ordinal as positive int
+scan children after main until next main
+if matching child found, return child index
+otherwise return out-of-range child error
+Implementation notes:
+Accepting #2.2 costs nothing and makes copy/paste from labels forgiving, but suggestions still emit plain 2.2.
+AI self-check:
+Verify 2.2 maps to the second subwaypoint under main waypoint two and 2 maps to main waypoint two.
+]]*/
+    private static SkipTarget resolveSkipTargetIndex(WaypointGroup group, String rawTarget) {
+        String target = rawTarget == null ? "" : rawTarget.trim();
+        if (target.startsWith("#")) target = target.substring(1);
+        if (target.isEmpty()) {
+            return SkipTarget.error("Usage: /wp skipto <number>, for example 2 or 2.2");
+        }
+
+        String[] parts = target.split("\\.", -1);
+        if (parts.length < 1 || parts.length > 2 || parts[0].isBlank()) {
+            return SkipTarget.error("Invalid skip target '" + rawTarget + "'. Use 2 or 2.2.");
+        }
+
+        int mainOrdinal = parsePositiveOrdinal(parts[0]);
+        if (mainOrdinal <= 0) {
+            return SkipTarget.error("Main waypoint number must be 1 or higher.");
+        }
+
+        int mainIndex = indexForMainOrdinal(group, mainOrdinal);
+        if (mainIndex < 0) {
+            return SkipTarget.error("Main waypoint " + mainOrdinal
+                    + " out of range (1.." + group.mainWaypointCount() + ")");
+        }
+        if (parts.length == 1) {
+            return SkipTarget.index(mainIndex);
+        }
+        if (parts[1].isBlank()) {
+            return SkipTarget.error("Subwaypoint number is missing after the decimal.");
+        }
+
+        int childOrdinal = parsePositiveOrdinal(parts[1]);
+        if (childOrdinal <= 0) {
+            return SkipTarget.error("Subwaypoint number must be 1 or higher.");
+        }
+
+        int childIndex = indexForChildOrdinal(group, mainIndex, childOrdinal);
+        if (childIndex < 0) {
+            return SkipTarget.error("Waypoint " + mainOrdinal + " only has "
+                    + childCount(group, mainIndex) + " subwaypoint(s).");
+        }
+        return SkipTarget.index(childIndex);
+    }
+
+    /*[[AI-FN-DOC
+Function:
+parsePositiveOrdinal
+Purpose:
+Parse a command label component into a positive waypoint ordinal.
+Why this exists:
+/wp skipto needs consistent validation for both the main and subwaypoint parts of decimal labels.
+When to use:
+Use from skip target parsing for one-based numeric components. Do not use for coordinates or raw zero-based editor indices.
+Inputs:
+raw is a string component that may contain digits or invalid text.
+Outputs:
+Returns the parsed positive integer, or -1 when parsing fails, overflows, or is less than one.
+Side effects:
+None.
+Failure modes:
+NumberFormatException is caught and converted to -1. Integer overflow also returns -1.
+Important invariants:
+Only positive ordinals are valid command labels.
+Internal logic:
+Trim the component, parse it as an int, and reject values below one.
+Pseudocode:
+try parse trimmed raw as integer
+if parsed < 1, return -1
+return parsed
+catch number format, return -1
+Implementation notes:
+Returning a sentinel keeps user-facing error wording centralized in resolveSkipTargetIndex.
+AI self-check:
+Confirm 0, negative values, blanks, and huge values all fail.
+]]*/
+    private static int parsePositiveOrdinal(String raw) {
+        try {
+            int parsed = Integer.parseInt(raw.trim());
+            return parsed < 1 ? -1 : parsed;
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    /*[[AI-FN-DOC
+Function:
+indexForMainOrdinal
+Purpose:
+Find the zero-based list index for a one-based main waypoint ordinal.
+Why this exists:
+Main waypoint labels skip subwaypoints, so converting a displayed number requires scanning route structure.
+When to use:
+Use while resolving displayed route labels for commands or suggestions. Do not use when a caller already has a raw list index.
+Inputs:
+group is the route to scan; ordinal is a one-based main waypoint number.
+Outputs:
+Returns the matching list index, or -1 when the ordinal does not exist.
+Side effects:
+None.
+Failure modes:
+Empty groups and out-of-range ordinals return -1.
+Important invariants:
+Only non-subwaypoint entries increment the main ordinal counter.
+Internal logic:
+Scan waypoints from start to finish, count main waypoints, and return the index where the count reaches the requested ordinal.
+Pseudocode:
+count = 0
+for each index:
+  if index is subwaypoint, continue
+  increment count
+  if count equals ordinal, return index
+return -1
+Implementation notes:
+This mirrors WaypointGroup.mainOrdinal in reverse without exposing route internals.
+AI self-check:
+Verify subwaypoints do not affect the count.
+]]*/
+    private static int indexForMainOrdinal(WaypointGroup group, int ordinal) {
+        int count = 0;
+        for (int i = 0; i < group.size(); i++) {
+            if (group.isSubwaypoint(i)) continue;
+            count++;
+            if (count == ordinal) return i;
+        }
+        return -1;
+    }
+
+    /*[[AI-FN-DOC
+Function:
+indexForChildOrdinal
+Purpose:
+Find the zero-based list index for a one-based subwaypoint ordinal under a specific main waypoint.
+Why this exists:
+Displayed labels like 2.2 address the second subwaypoint under main waypoint 2, not the second raw index after it in every case.
+When to use:
+Use while resolving decimal skip targets. Do not use for moving subwaypoints, where raw indices are already known.
+Inputs:
+group is the route; mainIndex is the parent main waypoint index; childOrdinal is a one-based child number.
+Outputs:
+Returns the matching subwaypoint index, or -1 when the child does not exist.
+Side effects:
+None.
+Failure modes:
+Invalid parent indices, parent subwaypoints, and out-of-range child ordinals return -1.
+Important invariants:
+Scanning stops at the next main waypoint so children never bleed into the following parent.
+Internal logic:
+Validate parent, scan forward through contiguous subwaypoints, count them, and return the index for the requested ordinal.
+Pseudocode:
+if parent invalid or is subwaypoint, return -1
+count = 0
+for each index after parent while index is subwaypoint:
+  increment count
+  if count equals childOrdinal, return index
+return -1
+Implementation notes:
+The route model stores children contiguously after their parent, so a forward scan is simple and stable.
+AI self-check:
+Confirm 2.1 maps to the first child and 2.2 maps to the second child.
+]]*/
+    private static int indexForChildOrdinal(WaypointGroup group, int mainIndex, int childOrdinal) {
+        if (mainIndex < 0 || mainIndex >= group.size() || group.isSubwaypoint(mainIndex)) {
+            return -1;
+        }
+        int count = 0;
+        for (int i = mainIndex + 1; i < group.size() && group.isSubwaypoint(i); i++) {
+            count++;
+            if (count == childOrdinal) return i;
+        }
+        return -1;
+    }
+
+    /*[[AI-FN-DOC
+Function:
+childCount
+Purpose:
+Count the subwaypoints attached to a main waypoint for helpful skipto error messages.
+Why this exists:
+When a user asks for an out-of-range decimal target, the command should say how many child points actually exist.
+When to use:
+Use in skip target validation errors. Do not use for hot render paths because it scans route structure.
+Inputs:
+group is the route; mainIndex is the parent main waypoint index.
+Outputs:
+Returns the number of contiguous subwaypoints after the parent, or 0 for invalid parents.
+Side effects:
+None.
+Failure modes:
+Invalid parent indices return 0.
+Important invariants:
+Only contiguous subwaypoints immediately after the parent count.
+Internal logic:
+Validate the parent and count child entries until the next main waypoint or route end.
+Pseudocode:
+if parent invalid or subwaypoint, return 0
+count = 0
+for each following subwaypoint, increment count
+return count
+Implementation notes:
+Duplicating a tiny scan keeps the error path readable instead of overloading indexForChildOrdinal with extra output.
+AI self-check:
+Confirm the count matches the decimal suffix labels shown by WaypointGroup.displayIndexLabel.
+]]*/
+    private static int childCount(WaypointGroup group, int mainIndex) {
+        if (mainIndex < 0 || mainIndex >= group.size() || group.isSubwaypoint(mainIndex)) {
+            return 0;
+        }
+        int count = 0;
+        for (int i = mainIndex + 1; i < group.size() && group.isSubwaypoint(i); i++) {
+            count++;
+        }
+        return count;
+    }
+
+    /*[[AI-FN-DOC
+Function:
+skipTargetLabel
+Purpose:
+Return the command-friendly displayed label for a waypoint index.
+Why this exists:
+WaypointGroup display labels include a leading # for UI text, while /wp skipto syntax should be plain 2 or 2.2.
+When to use:
+Use for skipto suggestions and success feedback. Do not use where the UI intentionally wants the # prefix.
+Inputs:
+group is the route; index is the waypoint list index to label.
+Outputs:
+Returns a label string without a leading # when present.
+Side effects:
+None.
+Failure modes:
+Invalid indices are delegated to WaypointGroup display fallback behavior.
+Important invariants:
+The returned label must match what resolveSkipTargetIndex accepts.
+Internal logic:
+Ask the group for its display index label and strip one leading # if present.
+Pseudocode:
+label = group.displayIndexLabel(index)
+if label starts with #, return substring after #
+return label
+Implementation notes:
+Centralizing this prevents suggestions and success messages from drifting apart.
+AI self-check:
+Confirm display label #2.2 becomes command target 2.2.
+]]*/
+    private static String skipTargetLabel(WaypointGroup group, int index) {
+        String label = group.displayIndexLabel(index);
+        return label.startsWith("#") ? label.substring(1) : label;
+    }
+
+    private record SkipTarget(int index, String error) {
+        /*[[AI-FN-DOC
+Function:
+SkipTarget.index
+Purpose:
+Create a successful skip target parse result.
+Why this exists:
+The parser returns either an index or an error, and named factories make call sites self-documenting.
+When to use:
+Use when resolveSkipTargetIndex has found a valid waypoint index.
+Inputs:
+index is the zero-based waypoint list index resolved from the displayed label.
+Outputs:
+Returns a SkipTarget with the index set and no error.
+Side effects:
+None.
+Failure modes:
+No validation is performed here; the parser is responsible for passing a valid index.
+Important invariants:
+Successful results must have error equal to null.
+Internal logic:
+Construct a new record with the given index and null error.
+Pseudocode:
+return new SkipTarget(index, null)
+Implementation notes:
+This keeps success and error construction symmetric.
+AI self-check:
+Confirm runSkipTo treats null error as success.
+]]*/
+        static SkipTarget index(int index) {
+            return new SkipTarget(index, null);
+        }
+
+        /*[[AI-FN-DOC
+Function:
+SkipTarget.error
+Purpose:
+Create a failed skip target parse result with a user-facing error message.
+Why this exists:
+The parser needs to return specific validation failures without throwing through Brigadier.
+When to use:
+Use when resolveSkipTargetIndex detects malformed or out-of-range input.
+Inputs:
+message is the error text to send to chat; null is normalized to a generic invalid-target message.
+Outputs:
+Returns a SkipTarget with index -1 and the error populated.
+Side effects:
+None.
+Failure modes:
+Null messages are replaced so callers never send null feedback.
+Important invariants:
+Error results must have an invalid index and non-null error text.
+Internal logic:
+Normalize the message and construct a new record.
+Pseudocode:
+if message is null, use generic message
+return new SkipTarget(-1, message)
+Implementation notes:
+Using a record avoids an exception class for normal command validation flow.
+AI self-check:
+Confirm runSkipTo checks error before reading index.
+]]*/
+        static SkipTarget error(String message) {
+            return new SkipTarget(-1, message == null ? "Invalid skip target" : message);
+        }
+    }
+
     private int runAdd(FabricClientCommandSource src, String name) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) { error(src, "Not in a world"); return 0; }
@@ -636,7 +1099,7 @@ public final class WaypointerCommands {
     private int runAddAt(FabricClientCommandSource src, int x, int y, int z, String name) {
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         target.add(new Waypoint(x, y, z, name == null ? "" : name,
-                Waypoint.DEFAULT_COLOR, 0, 0.0));
+                config.defaultWaypointColor(), 0, 0.0));
         addFlow.afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
 
@@ -699,7 +1162,8 @@ public final class WaypointerCommands {
         long now = System.currentTimeMillis();
         return manager.addTempWaypoint(x, y, z, sourceName,
                 config.tempDefaultMode(),
-                config.defaultTempExpiresAtMillis(now));
+                config.defaultTempExpiresAtMillis(now),
+                config.defaultWaypointColor());
     }
 
     private String defaultTempExpiryDescription() {
@@ -766,7 +1230,7 @@ public final class WaypointerCommands {
                 player.getX(), player.getY(), player.getZ(), config);
         target.insert(index, new Waypoint(
                 pos.x(), pos.y(), pos.z(), name == null ? "" : name,
-                Waypoint.DEFAULT_COLOR, 0, 0.0));
+                config.defaultWaypointColor(), 0, 0.0));
         addFlow.afterWaypointAdded(target, index);
         manager.fireDataChanged();
 
