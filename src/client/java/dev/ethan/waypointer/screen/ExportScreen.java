@@ -4,6 +4,9 @@ import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.codec.WaypointExportCodec;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomDefinition;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -56,6 +59,7 @@ import static dev.ethan.waypointer.screen.GuiTokens.SURFACE_SUBTLE;
 public final class ExportScreen extends Screen {
 
     private static final int PREVIEW_INSET = 6;
+    private static final String DUNGEON_ROOM_LABEL_PREFIX = "Dungeons: ";
 
     /** Reference chat textbox size used only for paste-fit messaging. */
     private static final int CHAT_INPUT_LIMIT = 256;
@@ -136,9 +140,37 @@ public final class ExportScreen extends Screen {
         this.optsBuilder = builderFromConfig(config);
     }
 
-    /** Entry point for a single-group export; wraps the group in a list with a title. */
+    /*[[AI-FN-DOC
+Function:
+openForGroup.
+Purpose:
+Open the export review screen for one route group.
+Why this exists:
+Single-route exports need the same review/copy UI as zone exports while presenting a concise title for the selected route.
+When to use:
+Use from group-level export actions. Do not use for exporting all visible groups in a sidebar zone; use openForGroups for that.
+Inputs:
+parent is the screen to return to; config provides export defaults; group is the non-null route group being exported and may belong to a normal island or dungeon room zone.
+Outputs:
+No return value; opens an ExportScreen.
+Side effects:
+Mutates Minecraft's current screen.
+Failure modes:
+Blank route names fall back to displayZoneLabel, which handles dungeon room prefixes and normal zone labels.
+Important invariants:
+The title must identify room-scoped unnamed routes with the same "Dungeons:" prefix used by the zone sidebar.
+Internal logic:
+Build a title from routeDisplayName and waypoint count, wrap the group in a singleton list, and set the current screen.
+Pseudocode:
+title = "Route: " + routeDisplayName(group) + waypoint count suffix
+set Minecraft screen to new ExportScreen(parent, config, List.of(group), title)
+Implementation notes:
+routeDisplayName centralizes the blank-name fallback so buttons, tooltips, and titles stay consistent.
+AI self-check:
+Verify this method does not mutate the group or export options.
+]]*/
     public static void openForGroup(Screen parent, WaypointerConfig config, WaypointGroup group) {
-        String title = "Route: " + (group.name().isEmpty() ? "(unnamed)" : group.name())
+        String title = "Route: " + routeDisplayName(group)
                 + "  --  " + group.size() + " waypoint" + (group.size() == 1 ? "" : "s");
         Minecraft.getInstance().setScreen(new ExportScreen(parent, config, List.of(group), title));
     }
@@ -438,23 +470,159 @@ public final class ExportScreen extends Screen {
         return selected;
     }
 
+    /*[[AI-FN-DOC
+Function:
+routeToggleLabel.
+Purpose:
+Build the visible label for a route include/exclude toggle in zone exports.
+Why this exists:
+Zone exports can contain many routes, including unnamed dungeon room routes, so each toggle needs a compact but recognizable label.
+When to use:
+Use when creating or refreshing route selection buttons. Do not use for tooltips, which can show more detail.
+Inputs:
+idx is the zero-based route index into groups and selectedGroups; it must be in range.
+Outputs:
+Returns a styled Component with [x] or [ ] plus a clipped route display name.
+Side effects:
+None.
+Failure modes:
+Out-of-range idx would throw through groups.get, matching existing internal widget assumptions.
+Important invariants:
+Selected routes render aqua, excluded routes render dark gray, and unnamed dungeon room routes show the "Dungeons:" room fallback before clipping.
+Internal logic:
+Read the group, choose the state color, compute routeDisplayName, clip it to the fixed button width, and prepend the state marker.
+Pseudocode:
+group = groups[idx]
+color = selected ? AQUA : DARK_GRAY
+name = routeDisplayName(group)
+clipped = font-aware clipped name
+return component(marker + clipped).withStyle(color)
+Implementation notes:
+The button row still wraps across multiple lines through layoutRouteToggles; this method only controls text inside one button.
+AI self-check:
+Verify the visible string cannot overflow ROUTE_TOGGLE_W.
+]]*/
     private Component routeToggleLabel(int idx) {
         WaypointGroup group = groups.get(idx);
         ChatFormatting color = selectedGroups[idx] ? ChatFormatting.AQUA : ChatFormatting.DARK_GRAY;
-        String name = group.name().isBlank() ? "(unnamed)" : group.name();
+        String name = routeDisplayName(group);
         String clipped = font == null ? name : font.plainSubstrByWidth(name, ROUTE_TOGGLE_W - 28);
         return Component.literal((selectedGroups[idx] ? "[x] " : "[ ] ") + clipped)
                 .withStyle(color);
     }
 
+    /*[[AI-FN-DOC
+Function:
+routeTooltip.
+Purpose:
+Build the hover tooltip for a route include/exclude toggle.
+Why this exists:
+The route toggle button text is intentionally clipped, so the tooltip carries the full route name, room/island label, route size, load mode, and action state.
+When to use:
+Use when creating or refreshing route selection buttons. Do not use for the compact button label.
+Inputs:
+idx is the zero-based route index into groups and selectedGroups; it must be in range.
+Outputs:
+Returns a newline-delimited tooltip string.
+Side effects:
+None.
+Failure modes:
+Out-of-range idx would throw through groups.get, matching existing internal widget assumptions.
+Important invariants:
+The tooltip must prevent the final selected route from being excluded by explaining the disabled no-op behavior.
+Internal logic:
+Read the group, compute routeDisplayName and displayZoneLabel, choose the action text based on selection count, then concatenate detailed lines.
+Pseudocode:
+group = groups[idx]
+name = routeDisplayName(group)
+action = final selected route ? at least one route message : include/exclude message
+return name + zone label + waypoint count/load mode + action
+Implementation notes:
+Including the room/island line makes multi-room dungeon exports diagnosable even when several route names are generic.
+AI self-check:
+Verify dungeon room tooltips contain the "Dungeons:" prefix.
+]]*/
     private String routeTooltip(int idx) {
         WaypointGroup group = groups.get(idx);
-        String name = group.name().isBlank() ? "(unnamed)" : group.name();
+        String name = routeDisplayName(group);
         String action = selectedGroups[idx] && selectedGroupCount() == 1
                 ? "At least one route must stay selected."
                 : "Click to " + (selectedGroups[idx] ? "exclude" : "include") + " this route.";
-        return name + "\n" + group.size() + " waypoints, "
+        return name + "\n" + displayZoneLabel(group.zoneId()) + "\n"
+                + group.size() + " waypoints, "
                 + group.loadMode().name().toLowerCase(java.util.Locale.ROOT) + "\n" + action;
+    }
+
+    /*[[AI-FN-DOC
+Function:
+routeDisplayName.
+Purpose:
+Return the best human-readable name for a route choice in export UI.
+Why this exists:
+Route names can be blank, especially for room-scoped route data, and showing "(unnamed)" makes multi-room export choices impossible to distinguish.
+When to use:
+Use for export titles, route toggle labels, and tooltips. Do not use for persisted route names because it is a display fallback only.
+Inputs:
+group is the route group whose name and zone id should be inspected.
+Outputs:
+Returns the trimmed route name when present, otherwise displayZoneLabel(group.zoneId()).
+Side effects:
+None.
+Failure modes:
+If the zone id is unknown, displayZoneLabel falls back to Zone.fromId prettification.
+Important invariants:
+Blank dungeon room route names must display as "Dungeons: <room>".
+Internal logic:
+Trim the route name; if non-empty return it, otherwise return the display label for the group's zone.
+Pseudocode:
+name = group.name.trim
+if name not empty, return name
+return displayZoneLabel(group.zoneId)
+Implementation notes:
+This avoids writing fallback text into the route itself.
+AI self-check:
+Verify no route data is mutated and blank names remain blank in storage/export payloads unless names are explicitly included by codec options.
+]]*/
+    private static String routeDisplayName(WaypointGroup group) {
+        String name = group.name().trim();
+        if (!name.isEmpty()) return name;
+        return displayZoneLabel(group.zoneId());
+    }
+
+    /*[[AI-FN-DOC
+Function:
+displayZoneLabel.
+Purpose:
+Return the UI label for a route group's zone inside the export screen.
+Why this exists:
+Dungeon room zones need catalog display names plus the "Dungeons:" prefix, while normal islands should keep using Zone.fromId.
+When to use:
+Use for export-screen labels and tooltips. Do not use for codec zone ids or third-party island ids.
+Inputs:
+zoneId may be a dungeon room id, normal island id, or unknown id.
+Outputs:
+Returns "Dungeons: <room name>" for room definitions, otherwise Zone.fromId(zoneId).displayName().
+Side effects:
+May read DungeonRoomData's bundled/custom definition maps; does not mutate state.
+Failure modes:
+Unknown ids fall back through Zone.fromId.
+Important invariants:
+This must mirror WaypointerScreen's room-prefix behavior for user-facing consistency.
+Internal logic:
+Look up a dungeon room definition; if present, prefix its display name; otherwise fall back to Zone.fromId.
+Pseudocode:
+definition = DungeonRoomData.definition(zoneId)
+if definition exists, return "Dungeons: " + definition.displayName
+return Zone.fromId(zoneId).displayName
+Implementation notes:
+The helper is intentionally local to the export screen to avoid changing codec or storage semantics.
+AI self-check:
+Verify the prefixed label is never passed as a persisted id.
+]]*/
+    private static String displayZoneLabel(String zoneId) {
+        DungeonRoomDefinition definition = DungeonRoomData.definition(zoneId);
+        if (definition != null) return DUNGEON_ROOM_LABEL_PREFIX + definition.displayName();
+        return Zone.fromId(zoneId).displayName();
     }
 
     private void updateLabelInputState() {

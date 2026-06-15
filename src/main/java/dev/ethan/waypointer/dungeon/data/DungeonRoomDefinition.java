@@ -20,6 +20,7 @@ public record DungeonRoomDefinition(
         String displayName,
         DungeonRoomType type,
         DungeonRoomShape shape,
+        List<Integer> coreHashes,
         List<DungeonRoomFingerprint> fingerprints,
         List<DungeonWaypoint> waypoints) {
 
@@ -29,20 +30,36 @@ public record DungeonRoomDefinition(
         displayName = displayName == null || displayName.isBlank() ? id : displayName.trim();
         type = type == null ? DungeonRoomType.ROOM : type;
         shape = shape == null ? DungeonRoomShape.UNKNOWN : shape;
+        coreHashes = coreHashes == null ? List.of() : List.copyOf(coreHashes);
         fingerprints = fingerprints == null ? List.of() : List.copyOf(fingerprints);
         waypoints = waypoints == null ? List.of() : List.copyOf(waypoints);
     }
 
+    public DungeonRoomDefinition(String id, String displayName, DungeonRoomType type,
+                                 DungeonRoomShape shape,
+                                 List<DungeonRoomFingerprint> fingerprints,
+                                 List<DungeonWaypoint> waypoints) {
+        this(id, displayName, type, shape, List.of(), fingerprints, waypoints);
+    }
+
     public DungeonRoomDefinition withDisplayName(String name) {
-        return new DungeonRoomDefinition(id, name, type, shape, fingerprints, waypoints);
+        return new DungeonRoomDefinition(id, name, type, shape, coreHashes, fingerprints, waypoints);
+    }
+
+    public DungeonRoomDefinition withCoreHashes(List<Integer> next) {
+        return new DungeonRoomDefinition(id, displayName, type, shape, next, fingerprints, waypoints);
     }
 
     public DungeonRoomDefinition withFingerprints(List<DungeonRoomFingerprint> next) {
-        return new DungeonRoomDefinition(id, displayName, type, shape, next, waypoints);
+        return new DungeonRoomDefinition(id, displayName, type, shape, coreHashes, next, waypoints);
     }
 
     public DungeonRoomDefinition withWaypoints(List<DungeonWaypoint> next) {
-        return new DungeonRoomDefinition(id, displayName, type, shape, fingerprints, next);
+        return new DungeonRoomDefinition(id, displayName, type, shape, coreHashes, fingerprints, next);
+    }
+
+    public boolean hasCoreHashes() {
+        return !coreHashes.isEmpty();
     }
 
     public boolean hasFingerprints() {

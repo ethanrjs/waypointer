@@ -4,11 +4,9 @@ package dev.ethan.waypointer.dungeon;
  * The footprint of a dungeon room, derived from how many 32x32-block segments
  * share its map color and how those segments are arranged in space.
  *
- * <p>Shape is meaningful primarily for {@link DungeonRoomType#ROOM} -- the
- * single-segment special types (puzzle, trap, miniboss, fairy, blood,
- * entrance) collapse to {@link #ONE_BY_ONE}. A future room-fingerprinting
- * pass would pick a specific named room out of the set of rooms sharing a
- * shape; for now, room data is keyed only by shape.
+ * <p>Shape is meaningful primarily for {@link DungeonRoomType#ROOM}. Room
+ * identity comes from core hashes and authored definitions; shape is retained
+ * as geometry metadata and as a safe fallback for generic rooms.
  */
 public enum DungeonRoomShape {
     ONE_BY_ONE,
