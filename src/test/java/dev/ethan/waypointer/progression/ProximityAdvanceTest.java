@@ -1,8 +1,18 @@
 package dev.ethan.waypointer.progression;
 
+import dev.ethan.waypointer.dungeon.Direction;
+import dev.ethan.waypointer.dungeon.DungeonRoom;
+import dev.ethan.waypointer.dungeon.DungeonRoomShape;
+import dev.ethan.waypointer.dungeon.DungeonRoomType;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -12,6 +22,14 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ProximityAdvanceTest {
 
+    private static final String DUNGEON_TRIGGER_ROOM_ID = "progress-trigger-room";
+
+    @BeforeEach
+    @AfterEach
+    void clearCustomDungeonRooms() {
+        DungeonRoomData.clearAllCustom();
+    }
+
     private static WaypointGroup line() {
         WaypointGroup g = WaypointGroup.create("route", "test_zone");
         g.setDefaultRadius(2.0);
@@ -20,6 +38,122 @@ class ProximityAdvanceTest {
         g.add(Waypoint.at(20, 0, 0));
         g.add(Waypoint.at(30, 0, 0));
         return g;
+    }
+
+    private static WaypointGroup dungeonTriggerGroup() {
+        DungeonRoom room = new DungeonRoom(
+                DungeonRoomType.ROOM,
+                DungeonRoomShape.ONE_BY_ONE,
+                Direction.NW,
+                0,
+                0,
+                List.of(DungeonRoom.packSegment(0, 0)));
+        var definition = DungeonRoomData.defineRoom(
+                DUNGEON_TRIGGER_ROOM_ID,
+                "Progress Trigger Room",
+                room);
+        WaypointGroup group = WaypointGroup.create("trigger", definition.id());
+        group.setDefaultRadius(0.5);
+        return group;
+    }
+
+    @Test
+    void standSkipFlagRequiresHalfSecondOnDungeonWaypointBlock() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.add(Waypoint.at(0, 0, 0).withFlags(Waypoint.FLAG_SKIP_ON_STAND));
+
+        assertFalse(ProximityTracker.advanceIfReached(group, 0.1, 1.0, 0.1,
+                false, true, false, 1_000L));
+        assertFalse(ProximityTracker.advanceIfReached(group, 0.1, 1.0, 0.1,
+                false, true, false, 1_499L));
+        assertTrue(ProximityTracker.advanceIfReached(group, 0.1, 1.0, 0.1,
+                false, true, false, 1_500L));
+
+        assertTrue(group.isComplete());
+    }
+
+    @Test
+    void standSkipFlagIgnoresDungeonWaypointRadius() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.setDefaultRadius(10.0);
+        group.add(Waypoint.at(0, 0, 0).withFlags(Waypoint.FLAG_SKIP_ON_STAND));
+
+        assertFalse(ProximityTracker.advanceIfReached(group, 5.0, 0.5, 0.5,
+                false, true, false, 1_000L));
+
+        assertEquals(0, group.currentIndex());
+    }
+
+    @Test
+    void standSkipInPassableSpaceFallsBackToRadius() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.setDefaultRadius(2.0);
+        Waypoint waypoint = Waypoint.at(0, 2, 0).withFlags(Waypoint.FLAG_SKIP_ON_STAND);
+        group.add(waypoint);
+
+        assertTrue(ProximityTracker.isStandSkipReached(group, 0, waypoint,
+                0.5, 1.0, 0.5, 1_000L, false));
+
+        assertEquals(-1, group.standSkipHoldIndex());
+    }
+
+    @Test
+    void standSkipHoldResetsAfterLeavingDungeonWaypointBlock() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.add(Waypoint.at(0, 0, 0).withFlags(Waypoint.FLAG_SKIP_ON_STAND));
+
+        assertFalse(ProximityTracker.advanceIfReached(group, 0.1, 1.0, 0.1,
+                false, true, false, 1_000L));
+        assertFalse(ProximityTracker.advanceIfReached(group, 4.0, 1.0, 4.0,
+                false, true, false, 1_600L));
+        assertFalse(ProximityTracker.advanceIfReached(group, 0.1, 1.0, 0.1,
+                false, true, false, 1_700L));
+        assertTrue(ProximityTracker.advanceIfReached(group, 0.1, 1.0, 0.1,
+                false, true, false, 2_200L));
+    }
+
+    @Test
+    void standSkipFlagDoesNotAffectNormalRoutes() {
+        WaypointGroup group = WaypointGroup.create("normal", "hub");
+        group.setDefaultRadius(0.5);
+        group.add(Waypoint.at(0, 0, 0).withFlags(Waypoint.FLAG_SKIP_ON_STAND));
+
+        assertFalse(ProximityTracker.advanceIfReached(group, 0.1, 1.0, 0.1,
+                false, true, false));
+
+        assertEquals(0, group.currentIndex());
+    }
+
+    @Test
+    void interactSkipFlagAdvancesDungeonWaypointForClickedBlock() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.add(Waypoint.at(4, 2, 6).withFlags(Waypoint.FLAG_SKIP_ON_INTERACT));
+
+        assertTrue(ProximityTracker.advanceIfInteractedWithBlock(group, 4, 2, 6, false));
+
+        assertTrue(group.isComplete());
+    }
+
+    @Test
+    void interactSkipFlagIgnoresDungeonWaypointRadius() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.setDefaultRadius(10.0);
+        group.add(Waypoint.at(0, 0, 0).withFlags(Waypoint.FLAG_SKIP_ON_INTERACT));
+
+        assertFalse(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5,
+                false, true, false, 1_000L));
+
+        assertEquals(0, group.currentIndex());
+    }
+
+    @Test
+    void interactSkipFlagIgnoresDifferentBlocks() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.add(Waypoint.at(4, 2, 6).withFlags(Waypoint.FLAG_SKIP_ON_INTERACT));
+
+        assertFalse(ProximityTracker.advanceIfInteractedWithBlock(group, 5, 2, 6, false));
+
+        assertEquals(0, group.currentIndex());
     }
 
     @Test
@@ -59,6 +193,17 @@ class ProximityAdvanceTest {
     }
 
     @Test
+    void dungeonRoomRouteDoesNotLoopWhenRestartEnabled() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.add(Waypoint.at(0, 0, 0));
+
+        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5, true));
+
+        assertTrue(group.isComplete());
+        assertEquals(group.size(), group.currentIndex());
+    }
+
+    @Test
     void reaching_last_parentWithSubwaypoints_loopsTracerButKeepsVisualHold() {
         WaypointGroup g = line();
         g.toggleSubwaypoint(3);
@@ -68,6 +213,31 @@ class ProximityAdvanceTest {
         assertEquals(0, g.currentIndex(), "tracer target should wrap back to waypoint 1");
         assertEquals(2, g.activeSubwaypointParentIndex(),
                 "last waypoint and its subwaypoints should stay visible after the wrap");
+    }
+
+    @Test
+    void oneWaypointHideAfterParentSubwaypointReappearsAfterLeavingParentRange() {
+        WaypointGroup group = WaypointGroup.create("single", "test_zone");
+        group.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        group.setDefaultRadius(2.0);
+        group.add(Waypoint.at(0, 0, 0));
+        group.add(Waypoint.at(1, 0, 0)
+                .withFlags(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED));
+        group.toggleSubwaypoint(1);
+
+        assertArrayEquals(new int[] { 0, 1 }, visibleIndices(group));
+
+        assertTrue(ProximityTracker.updateGroupProgress(group, 0.5, 0.5, 0.5,
+                true, true, false, false));
+        assertEquals(0, group.currentIndex());
+        assertEquals(0, group.activeSubwaypointParentIndex());
+        assertArrayEquals(new int[] { 0 }, visibleIndices(group));
+
+        assertTrue(ProximityTracker.updateGroupProgress(group, 8.0, 0.5, 0.5,
+                true, true, false, false));
+        assertEquals(0, group.currentIndex());
+        assertEquals(-1, group.activeSubwaypointParentIndex());
+        assertArrayEquals(new int[] { 0, 1 }, visibleIndices(group));
     }
 
     @Test
@@ -103,37 +273,53 @@ class ProximityAdvanceTest {
         assertEquals(1, g.currentIndex());
     }
 
-    /*[[AI-FN-DOC
-Function:
-skipAheadVisibleOnlyDoesNotJumpToHiddenFutureWaypoint
-Purpose:
-Verify automatic skip-ahead respects the visible route-context cap when enabled.
-Why this exists:
-The default skip behavior should not advance to far-future waypoints that are not currently visible in contextual sequence rendering.
-When to use:
-Run with progression tests after changing skip-ahead visibility filtering or WaypointGroup.forEachVisibleIndex behavior.
-Inputs:
-No parameters. Builds a four-point line route with default sequence visibility.
-Outputs:
-No return value. Assertions fail if hidden future waypoints can still be skipped to under visible-only mode.
-Side effects:
-Mutates only the test route's in-memory currentIndex.
-Failure modes:
-Fails if visible-only filtering is ignored or if current index changes unexpectedly.
-Important invariants:
-Index 2 is reachable by distance but not visible from current index 0 in a simple sequence route, so it must not count.
-Internal logic:
-Create route, stand near index 2, call advanceIfReached with skip-ahead and visible-only both true, then assert no advance happened.
-Pseudocode:
-g = line route
-advanced = advanceIfReached at waypoint 3 position with restart false, allow skip true, visible only true
-assert advanced is false
-assert currentIndex remains 0
-Implementation notes:
-This isolates the new cap from the legacy skip-ahead test, which still expects far-future jumping when visible-only is false.
-AI self-check:
-Confirm the coordinates are inside index 2 radius and outside index 0/1 radius.
-]]*/
+    @Test
+    void routeSkipAheadOffOverridesGlobalSkipAheadOn() {
+        WaypointGroup g = line();
+        g.setSkipAheadEnabled(false);
+
+        assertFalse(ProximityTracker.updateGroupProgress(g, 20.5, 0.5, 0.5,
+                false, true, false, false));
+        assertEquals(0, g.currentIndex());
+
+        assertTrue(ProximityTracker.updateGroupProgress(g, 0.5, 0.5, 0.5,
+                false, true, false, false));
+        assertEquals(1, g.currentIndex());
+    }
+
+    @Test
+    void skipAheadDoesNotJumpToFutureInteractTriggerWaypoint() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.setDefaultRadius(2.0);
+        group.add(Waypoint.at(0, 0, 0));
+        group.add(Waypoint.at(10, 0, 0).withFlags(Waypoint.FLAG_SKIP_ON_INTERACT));
+
+        assertFalse(ProximityTracker.advanceIfReached(group, 10.5, 0.5, 0.5,
+                false, true, false));
+        assertEquals(0, group.currentIndex());
+
+        assertTrue(ProximityTracker.advanceIfInteractedWithBlock(group, 10, 0, 0, false));
+        assertTrue(group.isComplete());
+    }
+
+    @Test
+    void skipAheadDoesNotJumpToFutureStandTriggerWaypoint() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.add(Waypoint.at(0, 0, 0));
+        group.add(Waypoint.at(10, 0, 0).withFlags(Waypoint.FLAG_SKIP_ON_STAND));
+
+        assertFalse(ProximityTracker.advanceIfReached(group, 10.1, 1.0, 0.1,
+                false, true, false));
+        assertEquals(0, group.currentIndex());
+
+        group.setCurrentIndex(1);
+        assertFalse(ProximityTracker.advanceIfReached(group, 10.1, 1.0, 0.1,
+                false, true, false, 1_000L));
+        assertTrue(ProximityTracker.advanceIfReached(group, 10.1, 1.0, 0.1,
+                false, true, false, 1_500L));
+        assertTrue(group.isComplete());
+    }
+
     @Test
     void skipAheadVisibleOnlyDoesNotJumpToHiddenFutureWaypoint() {
         WaypointGroup g = line();
@@ -144,37 +330,6 @@ Confirm the coordinates are inside index 2 radius and outside index 0/1 radius.
         assertEquals(0, g.currentIndex());
     }
 
-    /*[[AI-FN-DOC
-Function:
-skipAheadVisibleOnlyCanAdvanceToVisibleNextWaypoint
-Purpose:
-Verify the visible-only skip cap still allows automatic progression to a visible next waypoint.
-Why this exists:
-The setting should prevent invisible far-future jumps without breaking the normal contextual one-ahead route flow.
-When to use:
-Run with progression tests after changing visibility filtering or sequence route advancement.
-Inputs:
-No parameters. Builds a four-point route and starts at the first point.
-Outputs:
-No return value. Assertions fail if visible next waypoint progression stops working.
-Side effects:
-Mutates the test route currentIndex.
-Failure modes:
-Fails if the visible mask omits the next main waypoint or if skip-ahead ignores valid visible candidates.
-Important invariants:
-From current index 0, index 1 is visible and should be eligible for skip-ahead when reached.
-Internal logic:
-Create route, stand near index 1, run advance with visible-only skip enabled, and assert the route advances past index 1.
-Pseudocode:
-g = line route
-advanced = advanceIfReached near waypoint 2 with allow skip true and visible only true
-assert advanced true
-assert currentIndex equals 2
-Implementation notes:
-This catches overly strict filtering that would reduce skip-ahead to current-only behavior.
-AI self-check:
-Confirm index 1 is the visible next waypoint in WaypointGroup.forEachVisibleIndex.
-]]*/
     @Test
     void skipAheadVisibleOnlyCanAdvanceToVisibleNextWaypoint() {
         WaypointGroup g = line();
@@ -185,40 +340,6 @@ Confirm index 1 is the visible next waypoint in WaypointGroup.forEachVisibleInde
         assertEquals(2, g.currentIndex());
     }
 
-    /*[[AI-FN-DOC
-Function:
-explicitSubwaypointTargetAdvancesWhenReached
-Purpose:
-Verify a subwaypoint selected by an explicit command-style target can become the current route target and advance when reached.
-Why this exists:
-/wp skipto supports decimal labels like 1.1, so progression must honor that exact child target instead of normalizing back to the parent.
-When to use:
-Run with progression tests after changing WaypointGroup current target handling or ProximityTracker current waypoint checks.
-Inputs:
-No parameters. Builds a route where index 1 is a subwaypoint under index 0.
-Outputs:
-No return value. Assertions fail if current targeting or child advancement regresses.
-Side effects:
-Mutates the test route currentIndex and active subwaypoint parent state.
-Failure modes:
-Fails if setCurrentTargetIndex normalizes children away, if currentReachedIndex rejects subwaypoints, or if advancePast skips incorrectly.
-Important invariants:
-Explicit child targets are allowed, but automatic far-future child skip-ahead remains separate.
-Internal logic:
-Create route, convert index 1 to a subwaypoint, set current target to index 1, stand inside its radius, then assert route advances to the next main waypoint.
-Pseudocode:
-g = line route
-toggle index 1 into subwaypoint
-set current target index 1
-assert currentIndex is 1
-advance near index 1 with skip-ahead enabled
-assert advanced true
-assert currentIndex is 2
-Implementation notes:
-This models /wp skipto 1.1 without depending on Brigadier command plumbing.
-AI self-check:
-Confirm the test checks both target preservation and advancement.
-]]*/
     @Test
     void explicitSubwaypointTargetAdvancesWhenReached() {
         WaypointGroup g = line();
@@ -397,6 +518,12 @@ Confirm the test checks both target preservation and advancement.
         for (int i = 0; i < g.size(); i++) {
             assertFalse(g.isStaticWaypointReached(i), "index " + i);
         }
+    }
+
+    private static int[] visibleIndices(WaypointGroup group) {
+        List<Integer> indices = new ArrayList<>();
+        group.forEachVisibleIndex(indices::add);
+        return indices.stream().mapToInt(Integer::intValue).toArray();
     }
 
     private static boolean advanceIfReached(WaypointGroup g, double px, double py, double pz) {

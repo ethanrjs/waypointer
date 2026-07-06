@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.core;
 
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -74,6 +75,25 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void completedDungeonRoomRouteIsHiddenFromActiveGroups() {
+        assertNotNull(DungeonRoomData.definition("spider"));
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("spider", "Spider"));
+        WaypointGroup group = WaypointGroup.create("Room Route", "spider");
+        group.add(Waypoint.at(0, 0, 0));
+        manager.add(group);
+
+        assertEquals(1, manager.activeGroups().size());
+
+        group.advancePast(0);
+        manager.fireDataChanged();
+
+        assertEquals(0, manager.activeGroups().size());
+        assertTrue(manager.allGroups().contains(group));
+        assertEquals(List.of(group), manager.completedDungeonRoomGroupsInCurrentZone());
+    }
+
+    @Test
     void clearTemporaryWaypointsWipesOnlyTempBucketsAndFocus() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("hub", "Hub"));
@@ -93,39 +113,27 @@ class ActiveGroupManagerTest {
         assertFalse(manager.tempWaypointFocusActive(), "focused temp render mode should be cleared too");
     }
 
-    /*[[AI-FN-DOC
-Function:
-addTempWaypointUsesCallerSuppliedColor
-Purpose:
-Verify the config-aware temporary waypoint overload stores the caller's RGB color.
-Why this exists:
-Default waypoint color now applies to temp waypoint creation paths, and ActiveGroupManager is the shared non-UI insertion seam.
-When to use:
-Run with core manager tests after changing temp waypoint construction or default color plumbing.
-Inputs:
-No parameters. Creates an in-memory manager, zone, and temp waypoint.
-Outputs:
-No return value. Assertions fail if the color is not masked/stored on the new temp waypoint.
-Side effects:
-Mutates only the local manager and temp group.
-Failure modes:
-Fails if the overload ignores the supplied color, keeps alpha bits, or inserts into the wrong temp bucket.
-Important invariants:
-Temp lifecycle behavior must remain unchanged; this overload changes only the waypoint color.
-Internal logic:
-Create a manager in a known zone, add a temp waypoint with an ARGB value through the new overload, then assert the temp group and waypoint color.
-Pseudocode:
-manager = new ActiveGroupManager
-set zone hub
-temp = addTempWaypoint with TEMP_TIME and ARGB color
-assert temp has one waypoint
-assert waypoint color equals low RGB bits
-assert waypoint temp mode remains TEMP_TIME
-Implementation notes:
-This avoids Minecraft client dependencies while still covering the shared creation method used by commands and chat/keybind flows.
-AI self-check:
-Verify the test does not depend on renderer or screen classes.
-]]*/
+    @Test
+    void tempFocusInvalidatesActiveGroupCache() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup route = WaypointGroup.create("Route", "hub");
+        route.add(Waypoint.at(1, 2, 3));
+        manager.add(route);
+        WaypointGroup temp = manager.addTempWaypoint(4, 5, 6, "From Someone");
+
+        List<WaypointGroup> cachedRoute = manager.activeGroups();
+        assertEquals(List.of(route, temp), cachedRoute);
+
+        manager.focusTempWaypoint(temp, 0);
+
+        assertEquals(List.of(temp), manager.activeGroups());
+
+        manager.clearTempWaypointFocus();
+
+        assertEquals(List.of(route, temp), manager.activeGroups());
+    }
+
     @Test
     void addTempWaypointUsesCallerSuppliedColor() {
         ActiveGroupManager manager = new ActiveGroupManager();

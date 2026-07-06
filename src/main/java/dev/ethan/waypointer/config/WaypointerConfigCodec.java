@@ -83,72 +83,19 @@ public final class WaypointerConfigCodec {
     private static final int IRIS_SHADER_HUD_FALLBACK = 52;
     private static final int TEMP_DEFAULT_MODE = 53;
     private static final int TEMP_DEFAULT_DURATION_MIN = 54;
+    private static final int SHARP_WAYPOINT_EDGES = 55;
+    private static final int EDIT_SOUNDS = 56;
+    private static final int SHOW_EDIT_MODE_SUBTITLE = 57;
+    private static final int USE_BEACON_BEAM_TEXTURES = 58;
+    private static final int TEMP_DEFAULT_DURATION_SEC = 59;
+    private static final int DUNGEON_ENTRY_PATH_TO_FIRST_WAYPOINT = 60;
+    private static final int DUNGEON_ENTRY_PATH_COLOR = 61;
+    private static final int DUNGEON_ENTRY_PATH_TO_FOLLOWING_WAYPOINTS = 62;
+    private static final int SHOW_CONTRIBUTOR_BADGES = 63;
 
-    /*[[AI-FN-DOC
-Function:
-WaypointerConfigCodec constructor
-Purpose:
-Prevent instantiation of a stateless codec utility class.
-Why this exists:
-All behavior is exposed through static encode and decode helpers, so instances would be misleading.
-When to use:
-Never call directly; Java may still reflectively see the constructor.
-Inputs:
-None.
-Outputs:
-No return value.
-Side effects:
-None.
-Failure modes:
-None.
-Important invariants:
-The codec remains a pure utility with no instance state.
-Internal logic:
-Use an empty private constructor.
-Pseudocode:
-do nothing
-Implementation notes:
-Matches the style of other codec utility classes in the repo.
-AI self-check:
-Verify no mutable state is stored on instances.
-]]*/
     private WaypointerConfigCodec() {
     }
 
-    /*[[AI-FN-DOC
-Function:
-encode
-Purpose:
-Convert a WaypointerConfig into a compact WPC: settings code.
-Why this exists:
-Users asked for short, fun import/export codes for Waypointer settings without bundling route data.
-When to use:
-Use from settings UI when the user clicks Copy config code. Do not use for route exports.
-Inputs:
-config is the settings object to encode; it must not be null.
-Outputs:
-Returns a string starting with WPC: that can be pasted into the matching decoder.
-Side effects:
-None.
-Failure modes:
-Throws IllegalArgumentException for null config and IllegalStateException if binary encoding unexpectedly fails.
-Important invariants:
-Only differences from a fresh default config are written, and omitted settings decode back to defaults.
-Internal logic:
-Write a version byte, write tagged non-default fields, terminate with tag 0, deflate the binary body, and ASCII-encode it.
-Pseudocode:
-if config null, throw
-defaults = new WaypointerConfig
-open binary output
-write version
-write non-default fields
-write END tag
-return MAGIC + AsciiStreamCodec.encode(deflate(binary))
-Implementation notes:
-DataOutputStream writes are wrapped because ByteArrayOutputStream should not throw normal IO failures.
-AI self-check:
-Verify every public setting included in replaceWith is represented here or intentionally derived.
-]]*/
     public static String encode(WaypointerConfig config) {
         if (config == null) throw new IllegalArgumentException("config is required");
         WaypointerConfig defaults = new WaypointerConfig();
@@ -165,42 +112,6 @@ Verify every public setting included in replaceWith is represented here or inten
         }
     }
 
-    /*[[AI-FN-DOC
-Function:
-decode
-Purpose:
-Parse a compact WPC: settings code into a fresh WaypointerConfig snapshot.
-Why this exists:
-Settings import needs a complete replacement object that starts from defaults and applies only fields present in the code.
-When to use:
-Use from settings UI before calling WaypointerConfig.replaceWith. Do not call for route import payloads.
-Inputs:
-code is a user-provided string that should start with WPC: and contain an ASCII stream encoded deflated body.
-Outputs:
-Returns a new WaypointerConfig with decoded settings applied over defaults.
-Side effects:
-None; the returned config has no saver attached.
-Failure modes:
-Throws IllegalArgumentException for missing prefix, invalid body characters, unsupported version, corrupt compression, unknown tags, or truncated fields.
-Important invariants:
-Malformed input never mutates the live config because mutation happens only after this method returns successfully.
-Internal logic:
-Validate prefix, decode and inflate the body, read the version byte, then apply tagged fields until the END tag.
-Pseudocode:
-trim code
-if prefix missing, throw
-body = decode ASCII after prefix
-raw = inflate body
-read version and validate
-config = new defaults
-while next tag != END:
-  apply tag payload to config
-return config
-Implementation notes:
-The inflate path has a fixed cap to avoid large allocation attacks from pasted text.
-AI self-check:
-Verify decode creates a new config and never touches the live config object directly.
-]]*/
     public static WaypointerConfig decode(String code) {
         String trimmed = code == null ? "" : code.trim();
         if (!trimmed.startsWith(MAGIC)) {
@@ -224,40 +135,8 @@ Verify decode creates a new config and never touches the live config object dire
             throw new IllegalArgumentException("Malformed config code", e);
         }
     }
-
-    /*[[AI-FN-DOC
-Function:
-writeFields
-Purpose:
-Write every non-default WaypointerConfig field into the tagged binary config-code stream.
-Why this exists:
-The compact codec needs a single audited list of persisted settings so encode, decode, replaceWith, and defaults stay aligned.
-When to use:
-Use only from encode after the version byte has been written and before the END tag is written.
-Inputs:
-out is the binary output stream; config is the source settings object; defaults is a fresh default config used for diffing.
-Outputs:
-No return value. Writes zero or more tagged field payloads to out.
-Side effects:
-Mutates the output stream position.
-Failure modes:
-Propagates IOException from DataOutputStream. Null inputs are not expected because encode controls the call.
-Important invariants:
-Only fields whose public getter value differs from defaults should be written; omitted fields must decode back to defaults.
-Internal logic:
-Call type-specific write helpers for each config property using stable numeric tags and matching default values.
-Pseudocode:
-for each supported config property:
-  read actual value from config getter
-  read default value from defaults getter
-  call boolean/int/double/enum/list writer with the assigned tag
-Implementation notes:
-The explicit field list is long by design: it avoids reflection, keeps tag order stable, and makes schema additions reviewable.
-AI self-check:
-Verify every field copied by WaypointerConfig.replaceWith is represented here or intentionally derived elsewhere.
-]]*/
     private static void writeFields(DataOutputStream out, WaypointerConfig config,
-                                    WaypointerConfig defaults) throws IOException {
+                                     WaypointerConfig defaults) throws IOException {
         writeDouble(out, DEFAULT_REACH_RADIUS, config.defaultReachRadius(), defaults.defaultReachRadius());
         writeBoolean(out, RESET_PROGRESS_ON_WORLD_JOIN, config.resetProgressOnWorldJoin(), defaults.resetProgressOnWorldJoin());
         writeBoolean(out, RESTART_ROUTE_WHEN_COMPLETE, config.restartRouteWhenComplete(), defaults.restartRouteWhenComplete());
@@ -267,6 +146,7 @@ Verify every field copied by WaypointerConfig.replaceWith is represented here or
         writeDouble(out, TRACER_OPACITY, config.tracerOpacity(), defaults.tracerOpacity());
         writeDouble(out, TRACER_THICKNESS, config.tracerThickness(), defaults.tracerThickness());
         writeDouble(out, WAYPOINT_OUTLINE_THICKNESS, config.waypointOutlineThickness(), defaults.waypointOutlineThickness());
+        writeBoolean(out, SHARP_WAYPOINT_EDGES, config.sharpWaypointEdges(), defaults.sharpWaypointEdges());
         writeDouble(out, BEACON_OPACITY, config.beaconOpacity(), defaults.beaconOpacity());
         writeBoolean(out, SHOW_WAYPOINT_NAMES, config.showWaypointNames(), defaults.showWaypointNames());
         writeBoolean(out, SHOW_WAYPOINT_DISTANCES, config.showWaypointDistances(), defaults.showWaypointDistances());
@@ -285,6 +165,14 @@ Verify every field copied by WaypointerConfig.replaceWith is represented here or
         writeBoolean(out, HIDE_REACHED_STATIC_WAYPOINTS, config.hideReachedStaticWaypointsUntilCycleComplete(), defaults.hideReachedStaticWaypointsUntilCycleComplete());
         writeBoolean(out, SKIP_AHEAD_ONLY_VISIBLE, config.skipAheadOnlyVisibleWaypoints(), defaults.skipAheadOnlyVisibleWaypoints());
         writeBoolean(out, SHOW_ROUTE_LINES, config.showRouteLines(), defaults.showRouteLines());
+        writeBoolean(out, DUNGEON_ENTRY_PATH_TO_FIRST_WAYPOINT,
+                config.showDungeonEntryPathToFirstWaypoint(),
+                defaults.showDungeonEntryPathToFirstWaypoint());
+        writeBoolean(out, DUNGEON_ENTRY_PATH_TO_FOLLOWING_WAYPOINTS,
+                config.showDungeonEntryPathToFollowingWaypoints(),
+                defaults.showDungeonEntryPathToFollowingWaypoints());
+        writeInt(out, DUNGEON_ENTRY_PATH_COLOR,
+                config.dungeonEntryPathColor(), defaults.dungeonEntryPathColor());
         writeInt(out, ROUTE_LINE_COLOR, config.routeLineColor(), defaults.routeLineColor());
         writeBoolean(out, SHOW_LABEL_BACKDROP, config.showLabelBackdrop(), defaults.showLabelBackdrop());
         writeInt(out, MAX_WAYPOINT_LABELS, config.maxWaypointLabels(), defaults.maxWaypointLabels());
@@ -293,12 +181,16 @@ Verify every field copied by WaypointerConfig.replaceWith is represented here or
         writeEnum(out, BOX_STYLE, config.boxStyle(), defaults.boxStyle());
         writeEnum(out, BEACON_BEAM_MODE, config.beaconBeamMode(), defaults.beaconBeamMode());
         writeBoolean(out, BEACON_BEAM_EXTENDS_BELOW, config.beaconBeamExtendsBelowWaypoint(), defaults.beaconBeamExtendsBelowWaypoint());
+        writeBoolean(out, USE_BEACON_BEAM_TEXTURES, config.useBeaconBeamTextures(), defaults.useBeaconBeamTextures());
+        writeBoolean(out, EDIT_SOUNDS, config.editSounds(), defaults.editSounds());
+        writeBoolean(out, SHOW_EDIT_MODE_SUBTITLE, config.showEditModeSubtitle(), defaults.showEditModeSubtitle());
         writeBoolean(out, CHAT_COORD_DETECTION, config.chatCoordDetection(), defaults.chatCoordDetection());
         writeStringList(out, CHAT_COORD_SENDER_BLACKLIST, config.chatCoordSenderBlacklist(), defaults.chatCoordSenderBlacklist());
         writeBoolean(out, AUTO_ADD_CHAT_TEMP_WAYPOINTS, config.autoAddChatTempWaypoints(), defaults.autoAddChatTempWaypoints());
         writeBoolean(out, PLACE_NEW_WAYPOINTS_BELOW_PLAYER, config.placeNewWaypointsBelowPlayer(), defaults.placeNewWaypointsBelowPlayer());
         writeBoolean(out, FOCUS_TEMP_WAYPOINTS, config.focusTempWaypoints(), defaults.focusTempWaypoints());
         writeBoolean(out, CHAT_CODEC_DETECTION, config.chatCodecDetection(), defaults.chatCodecDetection());
+        writeBoolean(out, SHOW_CONTRIBUTOR_BADGES, config.showContributorBadges(), defaults.showContributorBadges());
         writeEnum(out, IMPORTED_ROUTE_COLOR_MODE, config.importedRouteColorMode(), defaults.importedRouteColorMode());
         writeInt(out, IMPORTED_ROUTE_DEFAULT_COLOR, config.importedRouteDefaultColor(), defaults.importedRouteDefaultColor());
         writeBoolean(out, EXPORT_INCLUDE_NAMES, config.exportIncludeNames(), defaults.exportIncludeNames());
@@ -311,43 +203,8 @@ Verify every field copied by WaypointerConfig.replaceWith is represented here or
         writeBoolean(out, CHECK_FOR_UPDATES, config.checkForUpdates(), defaults.checkForUpdates());
         writeBoolean(out, IRIS_SHADER_HUD_FALLBACK, config.irisShaderHudFallback(), defaults.irisShaderHudFallback());
         writeInt(out, TEMP_DEFAULT_MODE, config.tempDefaultMode(), defaults.tempDefaultMode());
-        writeInt(out, TEMP_DEFAULT_DURATION_MIN, config.tempDefaultDurationMin(), defaults.tempDefaultDurationMin());
+        writeInt(out, TEMP_DEFAULT_DURATION_SEC, config.tempDefaultDurationSec(), defaults.tempDefaultDurationSec());
     }
-
-    /*[[AI-FN-DOC
-Function:
-readFields
-Purpose:
-Read tagged config-code fields into a fresh WaypointerConfig snapshot until the END tag appears.
-Why this exists:
-Decode must apply a sparse settings diff over defaults while rejecting unknown or truncated data before the live config is replaced.
-When to use:
-Use only from decode after prefix, compression, and version validation have succeeded.
-Inputs:
-in is positioned at the first field tag; config is the fresh settings snapshot to mutate.
-Outputs:
-No return value. Mutates config through public setters.
-Side effects:
-Reads from the input stream and calls config setters on the snapshot.
-Failure modes:
-Throws IOException for truncated payloads and IllegalArgumentException for unknown field tags.
-Important invariants:
-Unknown tags are rejected instead of skipped so unsupported future codes do not silently misconfigure current clients.
-Internal logic:
-Loop forever, read an unsigned tag, return on END, otherwise read the tag-specific payload and call the matching config setter.
-Pseudocode:
-while true:
-  tag = read unsigned byte
-  if tag == END return
-  switch tag:
-    read payload of expected type
-    set corresponding config property
-  unknown tag throws
-Implementation notes:
-Setters provide clamping/masking so decoded values follow the same validation rules as UI-edited values.
-AI self-check:
-Verify every tag written by writeFields has a matching read branch.
-]]*/
     private static void readFields(DataInputStream in, WaypointerConfig config) throws IOException {
         while (true) {
             int tag = in.readUnsignedByte();
@@ -362,6 +219,7 @@ Verify every tag written by writeFields has a matching read branch.
                 case TRACER_OPACITY -> config.setTracerOpacity(in.readDouble());
                 case TRACER_THICKNESS -> config.setTracerThickness(in.readDouble());
                 case WAYPOINT_OUTLINE_THICKNESS -> config.setWaypointOutlineThickness(in.readDouble());
+                case SHARP_WAYPOINT_EDGES -> config.setSharpWaypointEdges(in.readBoolean());
                 case BEACON_OPACITY -> config.setBeaconOpacity(in.readDouble());
                 case SHOW_WAYPOINT_NAMES -> config.setShowWaypointNames(in.readBoolean());
                 case SHOW_WAYPOINT_DISTANCES -> config.setShowWaypointDistances(in.readBoolean());
@@ -380,6 +238,11 @@ Verify every tag written by writeFields has a matching read branch.
                 case HIDE_REACHED_STATIC_WAYPOINTS -> config.setHideReachedStaticWaypointsUntilCycleComplete(in.readBoolean());
                 case SKIP_AHEAD_ONLY_VISIBLE -> config.setSkipAheadOnlyVisibleWaypoints(in.readBoolean());
                 case SHOW_ROUTE_LINES -> config.setShowRouteLines(in.readBoolean());
+                case DUNGEON_ENTRY_PATH_TO_FIRST_WAYPOINT ->
+                        config.setShowDungeonEntryPathToFirstWaypoint(in.readBoolean());
+                case DUNGEON_ENTRY_PATH_TO_FOLLOWING_WAYPOINTS ->
+                        config.setShowDungeonEntryPathToFollowingWaypoints(in.readBoolean());
+                case DUNGEON_ENTRY_PATH_COLOR -> config.setDungeonEntryPathColor(in.readInt());
                 case ROUTE_LINE_COLOR -> config.setRouteLineColor(in.readInt());
                 case SHOW_LABEL_BACKDROP -> config.setShowLabelBackdrop(in.readBoolean());
                 case MAX_WAYPOINT_LABELS -> config.setMaxWaypointLabels(in.readInt());
@@ -388,12 +251,16 @@ Verify every tag written by writeFields has a matching read branch.
                 case BOX_STYLE -> config.setBoxStyle(readEnum(in, WaypointerConfig.BoxStyle.values(), WaypointerConfig.BoxStyle.OUTLINED));
                 case BEACON_BEAM_MODE -> config.setBeaconBeamMode(readEnum(in, WaypointerConfig.BeaconBeamMode.values(), WaypointerConfig.BeaconBeamMode.OFF));
                 case BEACON_BEAM_EXTENDS_BELOW -> config.setBeaconBeamExtendsBelowWaypoint(in.readBoolean());
+                case USE_BEACON_BEAM_TEXTURES -> config.setUseBeaconBeamTextures(in.readBoolean());
+                case EDIT_SOUNDS -> config.setEditSounds(in.readBoolean());
+                case SHOW_EDIT_MODE_SUBTITLE -> config.setShowEditModeSubtitle(in.readBoolean());
                 case CHAT_COORD_DETECTION -> config.setChatCoordDetection(in.readBoolean());
                 case CHAT_COORD_SENDER_BLACKLIST -> readStringList(in).forEach(config::addChatCoordSenderBlacklist);
                 case AUTO_ADD_CHAT_TEMP_WAYPOINTS -> config.setAutoAddChatTempWaypoints(in.readBoolean());
                 case PLACE_NEW_WAYPOINTS_BELOW_PLAYER -> config.setPlaceNewWaypointsBelowPlayer(in.readBoolean());
                 case FOCUS_TEMP_WAYPOINTS -> config.setFocusTempWaypoints(in.readBoolean());
                 case CHAT_CODEC_DETECTION -> config.setChatCodecDetection(in.readBoolean());
+                case SHOW_CONTRIBUTOR_BADGES -> config.setShowContributorBadges(in.readBoolean());
                 case IMPORTED_ROUTE_COLOR_MODE -> config.setImportedRouteColorMode(readEnum(in, WaypointGroup.GradientMode.values(), WaypointGroup.GradientMode.STATIC));
                 case IMPORTED_ROUTE_DEFAULT_COLOR -> config.setImportedRouteDefaultColor(in.readInt());
                 case EXPORT_INCLUDE_NAMES -> config.setExportIncludeNames(in.readBoolean());
@@ -407,41 +274,12 @@ Verify every tag written by writeFields has a matching read branch.
                 case IRIS_SHADER_HUD_FALLBACK -> config.setIrisShaderHudFallback(in.readBoolean());
                 case TEMP_DEFAULT_MODE -> config.setTempDefaultMode(in.readInt());
                 case TEMP_DEFAULT_DURATION_MIN -> config.setTempDefaultDurationMin(in.readInt());
+                case TEMP_DEFAULT_DURATION_SEC -> config.setTempDefaultDurationSec(in.readInt());
                 default -> throw new IllegalArgumentException("Unknown config field tag: " + tag);
             }
         }
     }
 
-    /*[[AI-FN-DOC
-Function:
-writeBoolean
-Purpose:
-Write a boolean field tag and value only when it differs from the default value.
-Why this exists:
-The config codec stores a compact diff, and booleans are numerous enough to benefit from one helper.
-When to use:
-Use from writeFields for boolean settings.
-Inputs:
-out is the binary output stream; tag is the stable field id; actual is the config value; defaultValue is the default config value.
-Outputs:
-No return value. May write one tag byte plus one boolean byte.
-Side effects:
-Mutates the output stream when actual differs from defaultValue.
-Failure modes:
-Propagates IOException from DataOutputStream.
-Important invariants:
-Equal-to-default values must not be written.
-Internal logic:
-Compare actual to default; return if equal; otherwise write tag and boolean payload.
-Pseudocode:
-if actual equals defaultValue return
-write tag
-write boolean actual
-Implementation notes:
-Keeping this helper tiny makes the field list in writeFields easier to audit.
-AI self-check:
-Verify callers pass the matching default getter for the same setting.
-]]*/
     private static void writeBoolean(DataOutputStream out, int tag, boolean actual,
                                      boolean defaultValue) throws IOException {
         if (actual == defaultValue) return;
@@ -449,36 +287,6 @@ Verify callers pass the matching default getter for the same setting.
         out.writeBoolean(actual);
     }
 
-    /*[[AI-FN-DOC
-Function:
-writeInt
-Purpose:
-Write an integer field tag and value only when it differs from the default value.
-Why this exists:
-Colors, durations, modes, and count limits share the same compact integer wire representation.
-When to use:
-Use from writeFields for int-backed settings.
-Inputs:
-out is the binary output stream; tag is the stable field id; actual is the config value; defaultValue is the default config value.
-Outputs:
-No return value. May write one tag byte plus a four-byte integer.
-Side effects:
-Mutates the output stream when actual differs from defaultValue.
-Failure modes:
-Propagates IOException from DataOutputStream.
-Important invariants:
-Equal-to-default values must be omitted from the diff stream.
-Internal logic:
-Return for equal values, otherwise write tag and int payload.
-Pseudocode:
-if actual equals defaultValue return
-write tag
-write int actual
-Implementation notes:
-Callers are expected to pass already-normalized getter values, such as masked RGB colors.
-AI self-check:
-Verify color callers use public getters so alpha bits are not encoded.
-]]*/
     private static void writeInt(DataOutputStream out, int tag, int actual,
                                  int defaultValue) throws IOException {
         if (actual == defaultValue) return;
@@ -486,36 +294,6 @@ Verify color callers use public getters so alpha bits are not encoded.
         out.writeInt(actual);
     }
 
-    /*[[AI-FN-DOC
-Function:
-writeDouble
-Purpose:
-Write a double field tag and value only when it differs exactly from the default value.
-Why this exists:
-Several numeric settings are doubles and need a compact shared diff writer.
-When to use:
-Use from writeFields for double-backed config settings.
-Inputs:
-out is the binary output stream; tag is the stable field id; actual is the config value; defaultValue is the default config value.
-Outputs:
-No return value. May write one tag byte plus an eight-byte double.
-Side effects:
-Mutates the output stream when actual differs from defaultValue.
-Failure modes:
-Propagates IOException from DataOutputStream.
-Important invariants:
-Comparison uses Double.compare so negative zero and NaN behavior is explicit; public setters should prevent non-finite persisted values.
-Internal logic:
-If Double.compare reports equality return, otherwise write tag and double payload.
-Pseudocode:
-if Double.compare(actual, defaultValue) == 0 return
-write tag
-write double actual
-Implementation notes:
-Exact comparison is appropriate because values originate from stored config fields, not calculations that need epsilon tolerance.
-AI self-check:
-Verify decoded doubles still pass through config setters for clamping.
-]]*/
     private static void writeDouble(DataOutputStream out, int tag, double actual,
                                     double defaultValue) throws IOException {
         if (Double.compare(actual, defaultValue) == 0) return;
@@ -523,36 +301,6 @@ Verify decoded doubles still pass through config setters for clamping.
         out.writeDouble(actual);
     }
 
-    /*[[AI-FN-DOC
-Function:
-writeEnum
-Purpose:
-Write an enum field tag and ordinal only when the enum differs from its default.
-Why this exists:
-Enum-backed config settings need a compact representation without string names in the paste code.
-When to use:
-Use from writeFields for enum settings whose declaration order is stable for this codec version.
-Inputs:
-out is the binary output stream; tag is the stable field id; actual is the current enum; defaultValue is the default enum.
-Outputs:
-No return value. May write one tag byte plus one ordinal byte.
-Side effects:
-Mutates the output stream when actual differs from defaultValue.
-Failure modes:
-Propagates IOException. Null actual values are not expected because config getters provide fallbacks.
-Important invariants:
-Enum ordinal values are versioned by the WPC format version and must be read with the matching enum value array.
-Internal logic:
-Return when actual equals defaultValue, otherwise write tag and actual.ordinal().
-Pseudocode:
-if actual == defaultValue return
-write tag
-write byte actual ordinal
-Implementation notes:
-The codec is versioned so enum reorderings can be handled with a future version if needed.
-AI self-check:
-Verify decode uses readEnum with a safe fallback for the same enum type.
-]]*/
     private static <E extends Enum<E>> void writeEnum(DataOutputStream out, int tag,
                                                       E actual, E defaultValue) throws IOException {
         if (actual == defaultValue) return;
@@ -560,38 +308,6 @@ Verify decode uses readEnum with a safe fallback for the same enum type.
         out.writeByte(actual.ordinal());
     }
 
-    /*[[AI-FN-DOC
-Function:
-writeStringList
-Purpose:
-Write a string-list field only when it differs from the default list.
-Why this exists:
-The chat sender blacklist is user data that should round-trip through config codes without bloating default exports.
-When to use:
-Use from writeFields for ordered string-list settings.
-Inputs:
-out is the binary output stream; tag is the stable field id; actual is the current list; defaultValue is the default list.
-Outputs:
-No return value. May write tag, list size, and UTF entries.
-Side effects:
-Mutates the output stream when the list differs from the default.
-Failure modes:
-Propagates IOException. Null list entries are normalized to empty strings.
-Important invariants:
-List order is preserved because blacklist display and future list settings may care about user order.
-Internal logic:
-Return when lists are equal, otherwise write tag, unsigned-short-sized count, and each UTF string.
-Pseudocode:
-if actual equals defaultValue return
-write tag
-write short actual size
-for each value in actual:
-  write UTF value or empty string
-Implementation notes:
-The config currently keeps the blacklist small; the 32 KiB inflate cap bounds abuse from pasted codes.
-AI self-check:
-Verify readStringList reads the same count and UTF encoding.
-]]*/
     private static void writeStringList(DataOutputStream out, int tag, List<String> actual,
                                         List<String> defaultValue) throws IOException {
         if (actual.equals(defaultValue)) return;
@@ -602,38 +318,6 @@ Verify readStringList reads the same count and UTF encoding.
         }
     }
 
-    /*[[AI-FN-DOC
-Function:
-readStringList
-Purpose:
-Read an ordered UTF string list from the config-code stream.
-Why this exists:
-String-list payload decoding is shared by the blacklist field and keeps readFields focused on tag dispatch.
-When to use:
-Use from readFields immediately after a tag whose payload was written by writeStringList.
-Inputs:
-in is positioned at the list size field.
-Outputs:
-Returns a mutable list containing every decoded string in order.
-Side effects:
-Advances the input stream.
-Failure modes:
-Propagates IOException for truncated size or UTF payloads.
-Important invariants:
-The number of UTF reads must match the unsigned-short count written by writeStringList.
-Internal logic:
-Read the count, allocate an ArrayList of that size, read each UTF entry, and return the list.
-Pseudocode:
-size = read unsigned short
-out = new ArrayList(size)
-repeat size times:
-  out.add(read UTF)
-return out
-Implementation notes:
-The caller decides how to apply the strings so list normalization remains config-specific.
-AI self-check:
-Verify the loop cannot read past the declared count.
-]]*/
     private static List<String> readStringList(DataInputStream in) throws IOException {
         int size = in.readUnsignedShort();
         java.util.ArrayList<String> out = new java.util.ArrayList<>(size);
@@ -643,76 +327,12 @@ Verify the loop cannot read past the declared count.
         return out;
     }
 
-    /*[[AI-FN-DOC
-Function:
-readEnum
-Purpose:
-Read a one-byte enum ordinal and map it to a safe enum value.
-Why this exists:
-Enum payload decoding should tolerate out-of-range ordinals without crashing older clients unnecessarily.
-When to use:
-Use from readFields for enum-backed config tags.
-Inputs:
-in is positioned at the ordinal byte; values is the enum constants array; fallback is used when the ordinal is outside the array.
-Outputs:
-Returns the decoded enum value or fallback.
-Side effects:
-Advances the input stream by one byte.
-Failure modes:
-Propagates IOException if the ordinal byte is missing.
-Important invariants:
-Valid ordinals map to values from the same enum type that writeEnum encoded.
-Internal logic:
-Read unsigned byte and return values[ordinal] when it is inside bounds, otherwise fallback.
-Pseudocode:
-ordinal = read unsigned byte
-if ordinal within values length return values[ordinal]
-return fallback
-Implementation notes:
-Unknown enum values are less severe than unknown field tags because the setting can safely revert to a default mode.
-AI self-check:
-Verify fallback is never null at call sites.
-]]*/
     private static <E extends Enum<E>> E readEnum(DataInputStream in, E[] values,
                                                   E fallback) throws IOException {
         int ordinal = in.readUnsignedByte();
         return ordinal >= 0 && ordinal < values.length ? values[ordinal] : fallback;
     }
 
-    /*[[AI-FN-DOC
-Function:
-deflate
-Purpose:
-Compress the raw versioned config-code payload with raw DEFLATE.
-Why this exists:
-Compressed binary keeps WPC: codes short before the ASCII stream alphabet is applied.
-When to use:
-Use only from encode after the raw tagged payload has been fully written.
-Inputs:
-input is the raw binary config payload.
-Outputs:
-Returns compressed bytes using nowrap/raw DEFLATE mode.
-Side effects:
-Allocates compression buffers and closes the DeflaterOutputStream.
-Failure modes:
-Propagates IOException from the compression stream.
-Important invariants:
-The Deflater must be ended in all paths to avoid native-resource leaks.
-Internal logic:
-Create ByteArrayOutputStream, create raw best-compression Deflater, write input through DeflaterOutputStream, end deflater, and return bytes.
-Pseudocode:
-out = byte array stream
-deflater = new Deflater(best, nowrap true)
-try deflaterOut:
-  write input
-finally:
-  end deflater
-return out bytes
-Implementation notes:
-Best compression is acceptable because settings codes are tiny and copied manually.
-AI self-check:
-Verify inflate uses matching raw nowrap mode.
-]]*/
     private static byte[] deflate(byte[] input) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream(input.length);
         Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION, true);
@@ -724,42 +344,6 @@ Verify inflate uses matching raw nowrap mode.
         return out.toByteArray();
     }
 
-    /*[[AI-FN-DOC
-Function:
-inflate
-Purpose:
-Decompress a raw DEFLATE config-code body while enforcing a maximum inflated size.
-Why this exists:
-Pasted text is untrusted, so decode needs bounded decompression before parsing the binary fields.
-When to use:
-Use only from decode after ASCII stream decoding succeeds.
-Inputs:
-input is the compressed raw DEFLATE byte array.
-Outputs:
-Returns the inflated binary config payload.
-Side effects:
-Allocates a bounded output buffer and advances an InflaterInputStream.
-Failure modes:
-Throws IOException for corrupt compression data and IllegalArgumentException when the inflated body exceeds MAX_INFLATED_BYTES.
-Important invariants:
-The Inflater must be ended in all paths, and output size must stay at or below the configured cap.
-Internal logic:
-Create raw Inflater, read chunks into an output stream, check size after each write, end the inflater, and return bytes.
-Pseudocode:
-out = byte array stream
-inflater = raw inflater
-try input stream:
-  while read chunk:
-    write chunk
-    if out size over max throw
-finally:
-  inflater.end
-return out bytes
-Implementation notes:
-The cap is intentionally much larger than expected config payloads but small enough to avoid decompression-bomb behavior.
-AI self-check:
-Verify malformed data cannot mutate live config because decode applies this before returning a replacement object.
-]]*/
     private static byte[] inflate(byte[] input) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream(input.length * 2);
         Inflater inflater = new Inflater(true);

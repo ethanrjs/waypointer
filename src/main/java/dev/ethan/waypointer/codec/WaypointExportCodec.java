@@ -29,9 +29,9 @@ public final class WaypointExportCodec {
      */
     public enum Target {
         WAYPOINTER("Waypointer", true, true, true, true, true, true),
-        SKYBLOCKER("Skyblocker", true, true, false, false, false, false),
-        SKYTILS("Skytils", true, true, false, false, false, false),
-        SKYHANNI("SkyHanni", true, true, false, false, false, false);
+        SKYBLOCKER("Skyblocker", false, true, false, false, false, false),
+        SKYTILS("Skytils", false, true, false, false, false, false),
+        SKYHANNI("SkyHanni", false, true, false, false, false, false);
 
         private final String displayName;
         private final boolean supportsNames;
@@ -54,11 +54,17 @@ public final class WaypointExportCodec {
         }
 
         public String displayName()          { return displayName; }
+
         public boolean supportsNames()       { return supportsNames; }
+
         public boolean supportsColors()      { return supportsColors; }
+
         public boolean supportsRadii()       { return supportsRadii; }
+
         public boolean supportsWaypointFlags() { return supportsWaypointFlags; }
+
         public boolean supportsGroupMeta()   { return supportsGroupMeta; }
+
         public boolean supportsLabel()       { return supportsLabel; }
 
         public Target next() {
@@ -120,10 +126,10 @@ public final class WaypointExportCodec {
 
     public static String previewLabel(Target target) {
         return switch (target) {
-            case WAYPOINTER -> "Encoded preview (Waypointer export code)";
-            case SKYBLOCKER -> "Encoded preview (Skyblocker share string)";
-            case SKYTILS -> "Encoded preview (Skytils base64 JSON)";
-            case SKYHANNI -> "Encoded preview (SkyHanni route JSON)";
+            case WAYPOINTER -> "Export Preview (Waypointer export code)";
+            case SKYBLOCKER -> "Export Preview (Skyblocker share string)";
+            case SKYTILS -> "Export Preview (Skytils base64 JSON)";
+            case SKYHANNI -> "Export Preview (SkyHanni route JSON)";
         };
     }
 

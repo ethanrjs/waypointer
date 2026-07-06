@@ -30,13 +30,13 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 
 ## Requirements
 
-- Minecraft 1.21.11
-- Fabric Loader 0.18.2+
+- Minecraft 26.1.x
+- Fabric Loader 0.19.3+
 - [Fabric API](https://modrinth.com/mod/fabric-api)
 - [owo-lib](https://modrinth.com/mod/owo-lib) 0.13.0+
 - *(optional)* Hypixel Mod API 1.0+. Improves zone detection
 
-Compiles with Java 21 for 1.21.11
+Compiles with Java 25 for the Minecraft 26.1 patch line and is built/tested against Minecraft 26.1.2. Gradle is configured to use a Java 25 toolchain when one is installed.
 
 ## Building
 

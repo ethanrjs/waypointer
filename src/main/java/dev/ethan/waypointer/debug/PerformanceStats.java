@@ -49,7 +49,8 @@ public record PerformanceStats(
 
     private static final int LINE_BOX_VERTICES = 24;
     private static final int FILLED_BOX_VERTICES = 24;
-    private static final int BEAM_VERTICES = 16;
+    private static final int FLAT_BEAM_VERTICES = 16;
+    private static final int TEXTURED_BEAM_VERTICES = 32;
 
     public static PerformanceStats capture(ActiveGroupManager manager,
                                            WaypointerConfig config) {
@@ -236,10 +237,13 @@ public record PerformanceStats(
     private static int estimatedBeamVertices(WaypointGroup group,
                                              WaypointerConfig config) {
         if (config.beaconOpacity() <= 0.0) return 0;
+        int beamVertices = config.useBeaconBeamTextures()
+                ? TEXTURED_BEAM_VERTICES
+                : FLAT_BEAM_VERTICES;
         return switch (config.beaconBeamMode()) {
             case OFF -> 0;
-            case CURRENT -> hasCurrentBeam(group, config) ? BEAM_VERTICES : 0;
-            case ALL_VISIBLE -> countRenderableWaypoints(group, config) * BEAM_VERTICES;
+            case CURRENT -> hasCurrentBeam(group, config) ? beamVertices : 0;
+            case ALL_VISIBLE -> countRenderableWaypoints(group, config) * beamVertices;
         };
     }
 

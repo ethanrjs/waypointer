@@ -15,7 +15,9 @@ import net.minecraft.network.chat.TextColor;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -45,9 +47,11 @@ public final class ChatCoordDetector {
     private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]");
     private static final Pattern USERNAME_TOKEN = Pattern.compile("\\b[A-Za-z0-9_]{3,16}\\b");
     private static final char FORMAT_PREFIX = '\u00A7';
+    private static final long AUTO_ADD_DEDUPE_MS = 15_000L;
 
     private final WaypointerConfig config;
     private final ActiveGroupManager manager;
+    private final Map<String, Long> recentAutoAddedChatTemps = new HashMap<>();
 
     public ChatCoordDetector(WaypointerConfig config, ActiveGroupManager manager) {
         this.config = config;
@@ -85,8 +89,14 @@ public final class ChatCoordDetector {
 
         if (config.autoAddChatTempWaypoints()) {
             long now = System.currentTimeMillis();
+            pruneRecentAutoAddedChatTemps(now);
             for (int i = 0; i < visibleMatches.size(); i++) {
                 CoordScanner.Match match = visibleMatches.get(i);
+                String dedupeKey = autoAddDedupeKey(flat, match);
+                if (recentAutoAddedChatTemps.containsKey(dedupeKey)) {
+                    continue;
+                }
+                recentAutoAddedChatTemps.put(dedupeKey, now);
                 var group = manager.addTempWaypoint(match.x(), match.y(), match.z(),
                         tempLabels.get(i),
                         config.tempDefaultMode(),
@@ -100,6 +110,16 @@ public final class ChatCoordDetector {
 
         return rebuildWithHighlights(msg, visibleMatches, flat,
                 config.autoAddChatTempWaypoints(), tempLabels, senderNames);
+    }
+
+    private void pruneRecentAutoAddedChatTemps(long now) {
+        recentAutoAddedChatTemps.entrySet().removeIf(entry -> entry.getValue() + AUTO_ADD_DEDUPE_MS < now);
+    }
+
+    static String autoAddDedupeKey(String flatText, CoordScanner.Match match) {
+        String line = flatText == null ? "" : flatText;
+        if (match == null) return line;
+        return line + "\n@" + match.x() + "," + match.y() + "," + match.z();
     }
 
     /**
@@ -224,15 +244,14 @@ public final class ChatCoordDetector {
 
     private static Component blockSenderAction(String senderName) {
         if (senderName == null || senderName.isBlank()) return Component.empty();
-        return Component.literal(" [B]")
+        return Component.literal(" [Block]")
                 .withStyle(Style.EMPTY
                         .withColor(ChatFormatting.RED)
-                        .withBold(true)
                         .withClickEvent(new ClickEvent.RunCommand("/waypointer blacklist add " + senderName))
                         .withHoverEvent(new HoverEvent.ShowText(Component.literal(
-                                "Click here to block " + senderName).withStyle(ChatFormatting.RED))));
+                                "Ignore chat coordinates from " + senderName)
+                                .withStyle(ChatFormatting.RED))));
     }
-
     private static Component tempWaypointHover(CoordScanner.Match m, boolean alreadyAdded,
                                                String senderName) {
         MutableComponent out = Component.empty()
@@ -241,8 +260,8 @@ public final class ChatCoordDetector {
                         .withStyle(ChatFormatting.YELLOW));
 
         out.append(Component.literal("\n"));
-        out.append(Component.literal(alreadyAdded ? "Click to open it in Waypointer."
-                : "Click to add and open it in Waypointer.").withStyle(ChatFormatting.AQUA));
+        out.append(Component.literal(alreadyAdded ? "Click to use this temporary waypoint."
+                : "Click to add a temporary waypoint.").withStyle(ChatFormatting.AQUA));
 
         return out;
     }

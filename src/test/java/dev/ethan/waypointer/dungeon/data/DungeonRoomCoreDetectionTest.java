@@ -79,38 +79,6 @@ class DungeonRoomCoreDetectionTest {
     }
 
     @Test
-    /*[[AI-FN-DOC
-Function:
-DungeonRoomCoreDetectionTest.coreHashMatchUsesCurrentSegmentBeforeShapeWhenMapOverMergesRoom
-Purpose:
-Verify that a known room core can name the current room even when the map-derived footprint shape says the room is larger than the catalog definition.
-Why this exists:
-The reported dungeon snapshot showed Long Hall detected as a 1x2 unmatched room, and the matcher must prefer Devonian-style core identity over brittle shape gating.
-When to use:
-Run as part of the dungeon room data test suite whenever room-core matching behavior changes.
-Inputs:
-No external inputs; the test constructs a synthetic two-segment normal room and supplies the bundled Long Hall core hash as the first observed hash.
-Outputs:
-Passes when the synthetic room resolves to the bundled long-hall definition and fails if shape filtering blocks the core match.
-Side effects:
-Reads the static bundled room catalog; does not mutate custom definitions or write files.
-Failure modes:
-Fails if the Long Hall bundled core hash changes without updating the fixture, if core matching is shape-gated again, or if primary segment priority is removed.
-Important invariants:
-The first observed hash represents the segment the player is standing in; the second hash represents an adjacent over-merged segment and must not prevent a unique primary match.
-Internal logic:
-Build a ONE_BY_TWO DungeonRoom with two packed segments, ask the matcher to resolve it with observed hashes [Long Hall, bogus], then assert the id and display name.
-Pseudocode:
-create a normal ONE_BY_TWO room with two segments
-create a fixed lookup returning Long Hall's bundled core first and an unmatched hash second
-call withMatchedDefinition with no block lookup and the fixed core lookup
-assert the matched room id is long-hall
-assert the matched display name is Long Hall
-Implementation notes:
-The fixture intentionally uses the existing bundled catalog instead of copying Devonian's GPL room data.
-AI self-check:
-Verify this test reproduces the snapshot's shape mismatch, exercises current-segment priority, and has no hidden dependency on custom room state.
-]]*/
     void coreHashMatchUsesCurrentSegmentBeforeShapeWhenMapOverMergesRoom() {
         DungeonRoom room = new DungeonRoom(
                 DungeonRoomType.ROOM,
@@ -130,41 +98,40 @@ Verify this test reproduces the snapshot's shape mismatch, exercises current-seg
     }
 
     @Test
-    /*[[AI-FN-DOC
-Function:
-DungeonRoomCoreDetectionTest.definitionForCoreHashFindsBundledLongHall
-Purpose:
-Verify that the direct core-hash lookup used by instant room detection resolves a known bundled room hash.
-Why this exists:
-DungeonStateTracker now starts from the current segment core instead of map shape, so the catalog needs a tested direct hash-to-definition boundary.
-When to use:
-Run with the dungeon room data tests whenever core catalog parsing or instant detection lookup behavior changes.
-Inputs:
-No external inputs; the test uses the bundled Long Hall core hash from the Waypointer catalog.
-Outputs:
-Passes when definitionForCoreHash returns the Long Hall definition for hash 587195362.
-Side effects:
-Reads the static bundled room catalog; does not mutate custom definitions or write files.
-Failure modes:
-Fails if the bundled hash is removed, if core hash parsing breaks, or if direct lookup becomes shape-gated.
-Important invariants:
-The lookup must not require a live DungeonRoom shape because instant detection only has a segment hash at this stage.
-Internal logic:
-Call definitionForCoreHash with the Long Hall hash, then assert id and display name.
-Pseudocode:
-definition = DungeonRoomData.definitionForCoreHash(587195362)
-assert definition id equals long-hall
-assert definition displayName equals Long Hall
-Implementation notes:
-This test deliberately exercises the bundled catalog rather than generated custom data so it protects the runtime path the user hit.
-AI self-check:
-Verify the test is deterministic, uses no client classes, and catches accidental removal of direct core lookup behavior.
-]]*/
+    void coreHashMatchPrefersShapeMatchWhenCurrentSegmentHashBelongsToNeighbor() {
+        DungeonRoom room = new DungeonRoom(
+                DungeonRoomType.ROOM,
+                DungeonRoomShape.ONE_BY_THREE,
+                Direction.NW,
+                -168,
+                -200,
+                List.of(
+                        DungeonRoom.packSegment(-168, -200),
+                        DungeonRoom.packSegment(-136, -200),
+                        DungeonRoom.packSegment(-104, -200)));
+
+        DungeonRoom matched = DungeonRoomData.withMatchedDefinition(
+                room,
+                null,
+                new FixedCoreHashLookup(List.of(-318865360, 136252599, 419670099)));
+
+        assertEquals("slime", matched.roomId());
+        assertEquals("Slime", matched.displayName());
+    }
+
+    @Test
     void definitionForCoreHashFindsBundledLongHall() {
         DungeonRoomDefinition definition = DungeonRoomData.definitionForCoreHash(587195362);
 
         assertEquals("long-hall", definition.id());
         assertEquals("Long Hall", definition.displayName());
+    }
+
+    @Test
+    void definitionForCoreHashDoesNotFindRemovedAltarMisScan() {
+        DungeonRoomDefinition definition = DungeonRoomData.definitionForCoreHash(-318865360);
+
+        assertNull(definition);
     }
 
     @Test
@@ -233,34 +200,6 @@ Verify the test is deterministic, uses no client classes, and catches accidental
     private record FixedCoreHashLookup(List<Integer> coreHashes) implements DungeonRoomData.CoreHashLookup {
 
         @Override
-        /*[[AI-FN-DOC
-Function:
-DungeonRoomCoreDetectionTest.FixedCoreHashLookup.coreHashesFor
-Purpose:
-Return deterministic test core hashes for a detected room without reading a Minecraft client world.
-Why this exists:
-Room matching tests need to exercise core-hash logic in pure JVM tests, where no ClientLevel-backed DungeonRoomCoreScanner is available.
-When to use:
-Use this test double when a test needs exact observed core hashes; do not use it in production code or tests that should validate real block scanning.
-Inputs:
-room is the DungeonRoom passed by the matcher and may be any value; this test double ignores it because each test preconfigures the desired hash sequence.
-Outputs:
-Returns the immutable list of configured integer core hashes in priority order.
-Side effects:
-None.
-Failure modes:
-No runtime failure is expected as long as the record was constructed with a non-null list; null construction would naturally throw when callers use the returned value.
-Important invariants:
-The returned order must be preserved because the matcher treats the first hash as the current/player segment.
-Internal logic:
-Return the record component directly.
-Pseudocode:
-return coreHashes
-Implementation notes:
-Keeping the test double as a record makes each test's supplied hash sequence visible at the call site.
-AI self-check:
-Verify this method is pure, preserves ordering, and does not inspect or mutate the DungeonRoom argument.
-]]*/
         public List<Integer> coreHashesFor(DungeonRoom room) {
             return coreHashes;
         }

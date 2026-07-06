@@ -1,2240 +1,1683 @@
 {
-    "schema":  1,
-    "source":  {
-                   "project":  "odtheking/Odin",
-                   "commit":  "2f96b4481d223287567c8e38efa5bc1ae0a5787d",
-                   "license":  "BSD-3-Clause",
-                   "originalPath":  "src/main/resources/assets/odin/rooms.json"
-               },
-    "rooms":  [
-                  {
-                      "id":  "admin",
-                      "name":  "Admin",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         518379920
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "altar",
-                      "name":  "Altar",
-                      "type":  "ROOM",
-                      "shape":  "L_SHAPE",
-                      "coreHashes":  [
-                                         1591923028,
-                                         1958840063,
-                                         -1927723170
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "andesite",
-                      "name":  "Andesite",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1701988142
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "archway",
-                      "name":  "Archway",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         259768244,
-                                         1440685825
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "arrow-trap",
-                      "name":  "Arrow Trap",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         313879976
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "atlas",
-                      "name":  "Atlas",
-                      "type":  "ROOM",
-                      "shape":  "TWO_BY_TWO",
-                      "coreHashes":  [
-                                         -190201621,
-                                         1910997131,
-                                         740650704,
-                                         -2080722918
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "balcony",
-                      "name":  "Balcony",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         1765345183,
-                                         2133731337
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "banners",
-                      "name":  "Banners",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1092023380
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "basement",
-                      "name":  "Basement",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1491050733
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "beams",
-                      "name":  "Beams",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1764045332
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "big-red-flag",
-                      "name":  "Big Red Flag",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -807913351
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "black-flag",
-                      "name":  "Black Flag",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1779299819
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "blood",
-                      "name":  "Blood",
-                      "type":  "BLOOD",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1898104308,
-                                         698844034
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "blue-skulls",
-                      "name":  "Blue Skulls",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1410316771
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "boulder",
-                      "name":  "Boulder",
-                      "type":  "PUZZLE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1129249963,
-                                         1047612794,
-                                         1280589896,
-                                         -609854937
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "bridges",
-                      "name":  "Bridges",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         1024359556,
-                                         454887921
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "buttons",
-                      "name":  "Buttons",
-                      "type":  "ROOM",
-                      "shape":  "TWO_BY_TWO",
-                      "coreHashes":  [
-                                         -493713078,
-                                         -1578136054,
-                                         1033549564,
-                                         112871973
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "cage",
-                      "name":  "Cage",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -407233803
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "cages",
-                      "name":  "Cages",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1164795630
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "carpets",
-                      "name":  "Carpets",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         238642395,
-                                         -76292695
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "cathedral",
-                      "name":  "Cathedral",
-                      "type":  "ROOM",
-                      "shape":  "TWO_BY_TWO",
-                      "coreHashes":  [
-                                         -1530782553,
-                                         -1999467696,
-                                         950592972,
-                                         -508170344
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "catwalk",
-                      "name":  "Catwalk",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_THREE",
-                      "coreHashes":  [
-                                         -1556782371,
-                                         -2024953154,
-                                         1179970013
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "cell",
-                      "name":  "Cell",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1560740373
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "chains",
-                      "name":  "Chains",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -448181487
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "chambers",
-                      "name":  "Chambers",
-                      "type":  "ROOM",
-                      "shape":  "L_SHAPE",
-                      "coreHashes":  [
-                                         -27291325,
-                                         -2119802509,
-                                         -546080393
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "cobble-wall-pillar",
-                      "name":  "Cobble Wall Pillar",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -170648742
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "creeper-beams",
-                      "name":  "Creeper Beams",
-                      "type":  "PUZZLE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1264110624,
-                                         866773091,
-                                         -1655263707
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "criss-cross",
-                      "name":  "Criss-Cross",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1879625096
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "crypt",
-                      "name":  "Crypt",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         1113194131,
-                                         1376295224
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "deathmite",
-                      "name":  "Deathmite",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_THREE",
-                      "coreHashes":  [
-                                         706341009,
-                                         2089865315,
-                                         -414187054
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "default",
-                      "name":  "Default",
-                      "type":  "MINIBOSS",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1637527174,
-                                         -1199831932
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "diagonal",
-                      "name":  "Diagonal",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_THREE",
-                      "coreHashes":  [
-                                         516895741,
-                                         476976104,
-                                         -959823640
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "dino-site",
-                      "name":  "Dino Site",
-                      "type":  "ROOM",
-                      "shape":  "L_SHAPE",
-                      "coreHashes":  [
-                                         -678116754,
-                                         -970680134,
-                                         1735273877
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "dip",
-                      "name":  "Dip",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1373895553
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "dome",
-                      "name":  "Dome",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1468156116,
-                                         291108944
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "doors",
-                      "name":  "Doors",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         -811830702,
-                                         551939185
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "double-diamond",
-                      "name":  "Double Diamond",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1857926981
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "dragon",
-                      "name":  "Dragon",
-                      "type":  "MINIBOSS",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1334473473
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "drop",
-                      "name":  "Drop",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1779237820
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "dueces",
-                      "name":  "Dueces",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -697416341
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "duncan",
-                      "name":  "Duncan",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1999038851
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "end",
-                      "name":  "End",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -531914593
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "entrance",
-                      "name":  "Entrance",
-                      "type":  "ENTRANCE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -16485885,
-                                         -47045487,
-                                         77375583
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "fairy",
-                      "name":  "Fairy",
-                      "type":  "FAIRY",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -645035252
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "flags",
-                      "name":  "Flags",
-                      "type":  "ROOM",
-                      "shape":  "TWO_BY_TWO",
-                      "coreHashes":  [
-                                         -55302423,
-                                         -611463932,
-                                         -2069105515,
-                                         908422074
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "gold",
-                      "name":  "Gold",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         992885012,
-                                         35550104
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "golden-oasis",
-                      "name":  "Golden Oasis",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         178277726
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "grand-library",
-                      "name":  "Grand Library",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         -1142842273,
-                                         648931278
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "granite",
-                      "name":  "Granite",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -41110951
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "grass-ruin",
-                      "name":  "Grass Ruin",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         -1049958927,
-                                         438605094,
-                                         2015882449,
-                                         -1847986179
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "gravel",
-                      "name":  "Gravel",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_THREE",
-                      "coreHashes":  [
-                                         -1149900195,
-                                         -558347945,
-                                         1422441247,
-                                         244770880
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "hall",
-                      "name":  "Hall",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -442394410
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "hallway",
-                      "name":  "Hallway",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_FOUR",
-                      "coreHashes":  [
-                                         -1326659171,
-                                         1051405699,
-                                         -1454277723,
-                                         1020848351
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "higher-blaze",
-                      "name":  "Higher Blaze",
-                      "type":  "PUZZLE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1752027278,
-                                         -1477567187
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "ice-fill",
-                      "name":  "Ice Fill",
-                      "type":  "PUZZLE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1871216735,
-                                         72131612,
-                                         -1404774853
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "ice-path",
-                      "name":  "Ice Path",
-                      "type":  "PUZZLE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -145184586
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "jumping-skulls",
-                      "name":  "Jumping Skulls",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         205151025
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "king-midas",
-                      "name":  "King Midas",
-                      "type":  "MINIBOSS",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1916395486
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "knight",
-                      "name":  "Knight",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1519890056
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "lava-pit",
-                      "name":  "Lava Pit",
-                      "type":  "RARE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -695235565
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "lava-ravine",
-                      "name":  "Lava Ravine",
-                      "type":  "ROOM",
-                      "shape":  "L_SHAPE",
-                      "coreHashes":  [
-                                         1131013667,
-                                         2036450719,
-                                         -854539536
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "layers",
-                      "name":  "Layers",
-                      "type":  "ROOM",
-                      "shape":  "L_SHAPE",
-                      "coreHashes":  [
-                                         965792061,
-                                         -923498250,
-                                         161195688
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "leaves",
-                      "name":  "Leaves",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         643669164
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "locked-away",
-                      "name":  "Locked Away",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         706748439
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "logs",
-                      "name":  "Logs",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1783642819
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "long-hall",
-                      "name":  "Long Hall",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         587195362
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "lots-of-floors",
-                      "name":  "Lots Of Floors",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1112550874
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "lower-blaze",
-                      "name":  "Lower Blaze",
-                      "type":  "PUZZLE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -441650545,
-                                         911747293
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "mage",
-                      "name":  "Mage",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         1475692888,
-                                         925853313
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "market",
-                      "name":  "Market",
-                      "type":  "ROOM",
-                      "shape":  "L_SHAPE",
-                      "coreHashes":  [
-                                         945592478,
-                                         -1882970229,
-                                         300771790
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "melon",
-                      "name":  "Melon",
-                      "type":  "ROOM",
-                      "shape":  "L_SHAPE",
-                      "coreHashes":  [
-                                         -1164821574,
-                                         578838281,
-                                         -1740446783
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "mines",
-                      "name":  "Mines",
-                      "type":  "ROOM",
-                      "shape":  "TWO_BY_TWO",
-                      "coreHashes":  [
-                                         -42175953,
-                                         1905421134,
-                                         -1565557409,
-                                         -892257050
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "trinity",
-                      "name":  "Trinity",
-                      "type":  "RARE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         302128578
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "mirror",
-                      "name":  "Mirror",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         76347246
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "mossy",
-                      "name":  "Mossy",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_FOUR",
-                      "coreHashes":  [
-                                         -751626537,
-                                         705890228,
-                                         1402530236,
-                                         -408036566
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "multicolored",
-                      "name":  "Multicolored",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -543960045
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "mural",
-                      "name":  "Mural",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -743021993
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "museum",
-                      "name":  "Museum",
-                      "type":  "ROOM",
-                      "shape":  "TWO_BY_TWO",
-                      "coreHashes":  [
-                                         -1505871564,
-                                         1250712883,
-                                         898168212,
-                                         -95130049
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "mushroom",
-                      "name":  "Mushroom",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1461632797
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "new-trap",
-                      "name":  "New Trap",
-                      "type":  "TRAP",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1471076910,
-                                         1043953833,
-                                         -686376510,
-                                         1851993785
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "old-trap",
-                      "name":  "Old Trap",
-                      "type":  "TRAP",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1590699551,
-                                         -85564220
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "overgrown",
-                      "name":  "Overgrown",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -726297434
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "overgrown-chains",
-                      "name":  "Overgrown Chains",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         95969553
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "painting",
-                      "name":  "Painting",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -725718835
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "pedestal",
-                      "name":  "Pedestal",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         -1792508076,
-                                         1549240174
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "perch",
-                      "name":  "Perch",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -444976906
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "pipes",
-                      "name":  "Pipes",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_FOUR",
-                      "coreHashes":  [
-                                         464805832,
-                                         1942538809,
-                                         -1208278490,
-                                         1917735700
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "pirate",
-                      "name":  "Pirate",
-                      "type":  "ROOM",
-                      "shape":  "L_SHAPE",
-                      "coreHashes":  [
-                                         884966227,
-                                         252263088,
-                                         2061161472
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "pit",
-                      "name":  "Pit",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_FOUR",
-                      "coreHashes":  [
-                                         -1477466539,
-                                         -19869269,
-                                         419868305,
-                                         968300381,
-                                         634229450
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "pressure-plates",
-                      "name":  "Pressure Plates",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         763731417,
-                                         -2105744124,
-                                         2023286596
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "prison-cell",
-                      "name":  "Prison Cell",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         845343581
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "purple-flags",
-                      "name":  "Purple Flags",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         1500789482,
-                                         664490773
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "quad-lava",
-                      "name":  "Quad Lava",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1865354448
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "quartz-knight",
-                      "name":  "Quartz Knight",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_FOUR",
-                      "coreHashes":  [
-                                         667192030,
-                                         -22728251,
-                                         -1420471034,
-                                         -215394360
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "quiz",
-                      "name":  "Quiz",
-                      "type":  "PUZZLE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1517679865,
-                                         127714189
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "raccoon",
-                      "name":  "Raccoon",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1723880923
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "rail-track",
-                      "name":  "Rail Track",
-                      "type":  "RARE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1362847550
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "rails",
-                      "name":  "Rails",
-                      "type":  "ROOM",
-                      "shape":  "TWO_BY_TWO",
-                      "coreHashes":  [
-                                         -746461328,
-                                         497837740,
-                                         -1272603595,
-                                         -1882412922
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "rare-carpets",
-                      "name":  "Rare Carpets",
-                      "type":  "RARE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1613728006
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "rare-overgrown",
-                      "name":  "Rare Overgrown",
-                      "type":  "RARE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1907291752
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "rare-pillars",
-                      "name":  "Rare Pillars",
-                      "type":  "RARE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -609209015
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "red-blue",
-                      "name":  "Red Blue",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_THREE",
-                      "coreHashes":  [
-                                         794366741,
-                                         -443330283,
-                                         -362002608,
-                                         -608091458
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "red-green",
-                      "name":  "Red Green",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1800029469
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "redstone-crypt",
-                      "name":  "Redstone Crypt",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1446016334,
-                                         -889320918
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "redstone-key",
-                      "name":  "Redstone Key",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         684588480,
-                                         -1986945620
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "redstone-warrior",
-                      "name":  "Redstone Warrior",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         217300640,
-                                         -380862700
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "ritual",
-                      "name":  "Ritual",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -610787478
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "sand-dragon",
-                      "name":  "Sand Dragon",
-                      "type":  "RARE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1781758146
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "sarcophagus",
-                      "name":  "Sarcophagus",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1167774036,
-                                         -771559429
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "scaffolding",
-                      "name":  "Scaffolding",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -2146618657,
-                                         -2091078305
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "shadow-assassin",
-                      "name":  "Shadow Assassin",
-                      "type":  "MINIBOSS",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         397211721
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "silver-sword",
-                      "name":  "Silver Sword",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1899702429
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "skull",
-                      "name":  "Skull",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_TWO",
-                      "coreHashes":  [
-                                         -1554372511,
-                                         80464378
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "slabs",
-                      "name":  "Slabs",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         568922940
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "slime",
-                      "name":  "Slime",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_THREE",
-                      "coreHashes":  [
-                                         419670099,
-                                         136252599,
-                                         878407749
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "sloth",
-                      "name":  "Sloth",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -566399217
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "small-stairs",
-                      "name":  "Small Stairs",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -998001944
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "small-waterfall",
-                      "name":  "Small Waterfall",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1188349447
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "spider",
-                      "name":  "Spider",
-                      "type":  "ROOM",
-                      "shape":  "L_SHAPE",
-                      "coreHashes":  [
-                                         -716030238,
-                                         -1647063650,
-                                         -40178107
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "spikes",
-                      "name":  "Spikes",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1484939648
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "staircase",
-                      "name":  "Staircase",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -151940807
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "stairs",
-                      "name":  "Stairs",
-                      "type":  "ROOM",
-                      "shape":  "TWO_BY_TWO",
-                      "coreHashes":  [
-                                         157642096,
-                                         1758646790,
-                                         -265444784,
-                                         -2033694003
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "steps",
-                      "name":  "Steps",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         755816704,
-                                         -340486787
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "stone-window",
-                      "name":  "Stone Window",
-                      "type":  "RARE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1740718028
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "supertall",
-                      "name":  "Supertall",
-                      "type":  "ROOM",
-                      "shape":  "TWO_BY_TWO",
-                      "coreHashes":  [
-                                         -296996262,
-                                         1395242314,
-                                         -1760780706,
-                                         -1867603567
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "teleport-maze",
-                      "name":  "Teleport Maze",
-                      "type":  "PUZZLE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         799715466
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "temple",
-                      "name":  "Temple",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         1575914755
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "three-floors",
-                      "name":  "Three Floors",
-                      "type":  "RARE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1444508608
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "three-weirdos",
-                      "name":  "Three Weirdos",
-                      "type":  "PUZZLE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -2056613688
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "tic-tac-toe",
-                      "name":  "Tic Tac Toe",
-                      "type":  "PUZZLE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -738945309,
-                                         29612250
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "tombstone",
-                      "name":  "Tombstone",
-                      "type":  "RARE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         535698739
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "tomioka",
-                      "name":  "Tomioka",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1191537425
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "vinny-8-ball",
-                      "name":  "Vinny 8 Ball",
-                      "type":  "RARE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         872815555
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "water",
-                      "name":  "Water",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -333637832
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "water-board",
-                      "name":  "Water Board",
-                      "type":  "PUZZLE",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         379499781,
-                                         -1229365170,
-                                         -589525429
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "waterfall",
-                      "name":  "Waterfall",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_FOUR",
-                      "coreHashes":  [
-                                         90256084,
-                                         228212335,
-                                         -1682661340,
-                                         520419865
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "well",
-                      "name":  "Well",
-                      "type":  "ROOM",
-                      "shape":  "L_SHAPE",
-                      "coreHashes":  [
-                                         629394370,
-                                         1261773246,
-                                         1276013917
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "withermancer",
-                      "name":  "Withermancer",
-                      "type":  "ROOM",
-                      "shape":  "L_SHAPE",
-                      "coreHashes":  [
-                                         902780459,
-                                         1963543962,
-                                         1140917779
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "wizard",
-                      "name":  "Wizard",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_THREE",
-                      "coreHashes":  [
-                                         -1164862049,
-                                         222124420,
-                                         926568393
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  },
-                  {
-                      "id":  "zodd",
-                      "name":  "Zodd",
-                      "type":  "ROOM",
-                      "shape":  "ONE_BY_ONE",
-                      "coreHashes":  [
-                                         -1403940419
-                                     ],
-                      "fingerprints":  [
-
-                                       ],
-                      "waypoints":  [
-
-                                    ]
-                  }
-              ]
+  "schema": 1,
+  "source": {
+    "project": "odtheking/Odin",
+    "commit": "cb333da402dfbea10cc0f06422646f334dace5bb",
+    "license": "BSD-3-Clause",
+    "originalPath": "src/main/resources/assets/odin/rooms.json"
+  },
+  "rooms": [
+    {
+      "id": "admin",
+      "name": "Admin",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        518379920
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "altar",
+      "name": "Altar",
+      "type": "ROOM",
+      "shape": "L_SHAPE",
+      "coreHashes": [
+        1591923028,
+        1958840063,
+        -1927723170
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "andesite",
+      "name": "Andesite",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1701988142
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "archway",
+      "name": "Archway",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        259768244,
+        1440685825
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "arrow-trap",
+      "name": "Arrow Trap",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        313879976
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "atlas",
+      "name": "Atlas",
+      "type": "ROOM",
+      "shape": "TWO_BY_TWO",
+      "coreHashes": [
+        -190201621,
+        1910997131,
+        740650704,
+        -2080722918
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "balcony",
+      "name": "Balcony",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        1765345183,
+        2133731337
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "banners",
+      "name": "Banners",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1092023380
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "basement",
+      "name": "Basement",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1491050733
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "beams",
+      "name": "Beams",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1764045332
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "big-red-flag",
+      "name": "Big Red Flag",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -807913351
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "black-flag",
+      "name": "Black Flag",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1779299819
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "blood",
+      "name": "Blood",
+      "type": "BLOOD",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1898104308,
+        698844034
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "blue-skulls",
+      "name": "Blue Skulls",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1410316771
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "boulder",
+      "name": "Boulder",
+      "type": "PUZZLE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1129249963,
+        1047612794,
+        1280589896,
+        -609854937
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "bridges",
+      "name": "Bridges",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        1024359556,
+        454887921
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "buttons",
+      "name": "Buttons",
+      "type": "ROOM",
+      "shape": "TWO_BY_TWO",
+      "coreHashes": [
+        -493713078,
+        -1578136054,
+        1033549564,
+        112871973
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "cage",
+      "name": "Cage",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -407233803
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "cages",
+      "name": "Cages",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1164795630
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "carpets",
+      "name": "Carpets",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        238642395,
+        -76292695
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "cathedral",
+      "name": "Cathedral",
+      "type": "ROOM",
+      "shape": "TWO_BY_TWO",
+      "coreHashes": [
+        -1530782553,
+        -1999467696,
+        950592972,
+        -508170344
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "catwalk",
+      "name": "Catwalk",
+      "type": "ROOM",
+      "shape": "ONE_BY_THREE",
+      "coreHashes": [
+        -1556782371,
+        -2024953154,
+        1179970013
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "cell",
+      "name": "Cell",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1560740373
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "chains",
+      "name": "Chains",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -448181487
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "chambers",
+      "name": "Chambers",
+      "type": "ROOM",
+      "shape": "L_SHAPE",
+      "coreHashes": [
+        -27291325,
+        -2119802509,
+        -546080393
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "cobble-wall-pillar",
+      "name": "Cobble Wall Pillar",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -170648742
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "creeper-beams",
+      "name": "Creeper Beams",
+      "type": "PUZZLE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1264110624,
+        866773091,
+        -1655263707
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "criss-cross",
+      "name": "Criss-Cross",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1879625096
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "crypt",
+      "name": "Crypt",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        1113194131,
+        1376295224
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "deathmite",
+      "name": "Deathmite",
+      "type": "ROOM",
+      "shape": "ONE_BY_THREE",
+      "coreHashes": [
+        706341009,
+        2089865315,
+        -414187054
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "default",
+      "name": "Default",
+      "type": "MINIBOSS",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1637527174,
+        -1199831932
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "diagonal",
+      "name": "Diagonal",
+      "type": "ROOM",
+      "shape": "ONE_BY_THREE",
+      "coreHashes": [
+        516895741,
+        476976104,
+        -959823640
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "dino-site",
+      "name": "Dino Site",
+      "type": "ROOM",
+      "shape": "L_SHAPE",
+      "coreHashes": [
+        -678116754,
+        -970680134,
+        1735273877
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "dip",
+      "name": "Dip",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1373895553
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "dome",
+      "name": "Dome",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1468156116,
+        291108944
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "doors",
+      "name": "Doors",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        -811830702,
+        551939185
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "double-diamond",
+      "name": "Double Diamond",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1857926981
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "dragon",
+      "name": "Dragon",
+      "type": "MINIBOSS",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1334473473
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "drop",
+      "name": "Drop",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1779237820
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "dueces",
+      "name": "Dueces",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -697416341
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "duncan",
+      "name": "Duncan",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1999038851
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "end",
+      "name": "End",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -531914593
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "entrance",
+      "name": "Entrance",
+      "type": "ENTRANCE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -16485885,
+        -47045487,
+        77375583
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "fairy",
+      "name": "Fairy",
+      "type": "FAIRY",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -645035252
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "flags",
+      "name": "Flags",
+      "type": "ROOM",
+      "shape": "TWO_BY_TWO",
+      "coreHashes": [
+        -55302423,
+        -611463932,
+        -2069105515,
+        908422074
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "gold",
+      "name": "Gold",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        992885012,
+        35550104
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "golden-oasis",
+      "name": "Golden Oasis",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        178277726
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "grand-library",
+      "name": "Grand Library",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        -1142842273,
+        648931278
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "granite",
+      "name": "Granite",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -41110951
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "grass-ruin",
+      "name": "Grass Ruin",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        -1049958927,
+        438605094,
+        2015882449,
+        -1847986179
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "gravel",
+      "name": "Gravel",
+      "type": "ROOM",
+      "shape": "ONE_BY_THREE",
+      "coreHashes": [
+        -1149900195,
+        -558347945,
+        1422441247,
+        244770880
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "hall",
+      "name": "Hall",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -442394410
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "hallway",
+      "name": "Hallway",
+      "type": "ROOM",
+      "shape": "ONE_BY_FOUR",
+      "coreHashes": [
+        -1326659171,
+        1051405699,
+        -1454277723,
+        1020848351
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "higher-blaze",
+      "name": "Higher Blaze",
+      "type": "PUZZLE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1752027278,
+        -1477567187
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "ice-fill",
+      "name": "Ice Fill",
+      "type": "PUZZLE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1871216735,
+        72131612,
+        -1404774853
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "ice-path",
+      "name": "Ice Path",
+      "type": "PUZZLE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -145184586
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "jumping-skulls",
+      "name": "Jumping Skulls",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        205151025
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "king-midas",
+      "name": "King Midas",
+      "type": "MINIBOSS",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1916395486
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "knight",
+      "name": "Knight",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1519890056
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "lava-pit",
+      "name": "Lava Pit",
+      "type": "RARE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -695235565
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "lava-ravine",
+      "name": "Lava Ravine",
+      "type": "ROOM",
+      "shape": "L_SHAPE",
+      "coreHashes": [
+        1131013667,
+        2036450719,
+        -854539536
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "layers",
+      "name": "Layers",
+      "type": "ROOM",
+      "shape": "L_SHAPE",
+      "coreHashes": [
+        965792061,
+        -923498250,
+        161195688,
+        -91111782
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "leaves",
+      "name": "Leaves",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        643669164
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "locked-away",
+      "name": "Locked Away",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        706748439
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "logs",
+      "name": "Logs",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1783642819
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "long-hall",
+      "name": "Long Hall",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        587195362
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "lots-of-floors",
+      "name": "Lots Of Floors",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1112550874
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "lower-blaze",
+      "name": "Lower Blaze",
+      "type": "PUZZLE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -441650545,
+        911747293
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "mage",
+      "name": "Mage",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        1475692888,
+        925853313
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "market",
+      "name": "Market",
+      "type": "ROOM",
+      "shape": "L_SHAPE",
+      "coreHashes": [
+        945592478,
+        -1882970229,
+        300771790
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "melon",
+      "name": "Melon",
+      "type": "ROOM",
+      "shape": "L_SHAPE",
+      "coreHashes": [
+        -1164821574,
+        578838281,
+        -1740446783
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "mines",
+      "name": "Mines",
+      "type": "ROOM",
+      "shape": "TWO_BY_TWO",
+      "coreHashes": [
+        -42175953,
+        1905421134,
+        -1565557409,
+        -892257050
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "trinity",
+      "name": "Trinity",
+      "type": "RARE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        302128578
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "mirror",
+      "name": "Mirror",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        76347246
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "mossy",
+      "name": "Mossy",
+      "type": "ROOM",
+      "shape": "ONE_BY_FOUR",
+      "coreHashes": [
+        -751626537,
+        705890228,
+        1402530236,
+        -408036566
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "multicolored",
+      "name": "Multicolored",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -543960045
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "mural",
+      "name": "Mural",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -743021993
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "museum",
+      "name": "Museum",
+      "type": "ROOM",
+      "shape": "TWO_BY_TWO",
+      "coreHashes": [
+        -1505871564,
+        1250712883,
+        898168212,
+        -95130049
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "mushroom",
+      "name": "Mushroom",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1461632797
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "new-trap",
+      "name": "New Trap",
+      "type": "TRAP",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1471076910,
+        1043953833,
+        -686376510,
+        1851993785
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "old-trap",
+      "name": "Old Trap",
+      "type": "TRAP",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1590699551,
+        -85564220
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "overgrown",
+      "name": "Overgrown",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -726297434
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "overgrown-chains",
+      "name": "Overgrown Chains",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        95969553
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "painting",
+      "name": "Painting",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -725718835
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "pedestal",
+      "name": "Pedestal",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        -1792508076,
+        1549240174
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "perch",
+      "name": "Perch",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -444976906
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "pipes",
+      "name": "Pipes",
+      "type": "ROOM",
+      "shape": "ONE_BY_FOUR",
+      "coreHashes": [
+        464805832,
+        1942538809,
+        -1208278490,
+        1917735700
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "pirate",
+      "name": "Pirate",
+      "type": "ROOM",
+      "shape": "L_SHAPE",
+      "coreHashes": [
+        884966227,
+        252263088,
+        2061161472
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "pit",
+      "name": "Pit",
+      "type": "ROOM",
+      "shape": "ONE_BY_FOUR",
+      "coreHashes": [
+        -1477466539,
+        -19869269,
+        419868305,
+        968300381,
+        634229450
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "pressure-plates",
+      "name": "Pressure Plates",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        763731417,
+        -2105744124,
+        2023286596
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "prison-cell",
+      "name": "Prison Cell",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        845343581
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "purple-flags",
+      "name": "Purple Flags",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        1500789482,
+        664490773
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "quad-lava",
+      "name": "Quad Lava",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1865354448
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "quartz-knight",
+      "name": "Quartz Knight",
+      "type": "ROOM",
+      "shape": "ONE_BY_FOUR",
+      "coreHashes": [
+        667192030,
+        -22728251,
+        -1420471034,
+        -215394360
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "quiz",
+      "name": "Quiz",
+      "type": "PUZZLE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1517679865,
+        127714189
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "raccoon",
+      "name": "Raccoon",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1723880923
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "rail-track",
+      "name": "Rail Track",
+      "type": "RARE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1362847550
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "rails",
+      "name": "Rails",
+      "type": "ROOM",
+      "shape": "TWO_BY_TWO",
+      "coreHashes": [
+        -746461328,
+        497837740,
+        -1272603595,
+        -1882412922
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "rare-carpets",
+      "name": "Rare Carpets",
+      "type": "RARE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1613728006
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "rare-overgrown",
+      "name": "Rare Overgrown",
+      "type": "RARE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1907291752
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "rare-pillars",
+      "name": "Rare Pillars",
+      "type": "RARE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -609209015
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "red-blue",
+      "name": "Red Blue",
+      "type": "ROOM",
+      "shape": "ONE_BY_THREE",
+      "coreHashes": [
+        794366741,
+        -443330283,
+        -362002608,
+        -608091458
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "red-green",
+      "name": "Red Green",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1800029469
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "redstone-crypt",
+      "name": "Redstone Crypt",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        47559182,
+        1446016334,
+        -889320918,
+        -1978791555
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "redstone-key",
+      "name": "Redstone Key",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        684588480,
+        -1986945620
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "redstone-warrior",
+      "name": "Redstone Warrior",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        217300640,
+        -380862700
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "ritual",
+      "name": "Ritual",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -610787478
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "sand-dragon",
+      "name": "Sand Dragon",
+      "type": "RARE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1781758146
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "sarcophagus",
+      "name": "Sarcophagus",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1167774036,
+        -771559429
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "scaffolding",
+      "name": "Scaffolding",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -2146618657,
+        -2091078305
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "shadow-assassin",
+      "name": "Shadow Assassin",
+      "type": "MINIBOSS",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        397211721
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "silver-sword",
+      "name": "Silver Sword",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1899702429
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "skull",
+      "name": "Skull",
+      "type": "ROOM",
+      "shape": "ONE_BY_TWO",
+      "coreHashes": [
+        -1554372511,
+        80464378
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "slabs",
+      "name": "Slabs",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        568922940
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "slime",
+      "name": "Slime",
+      "type": "ROOM",
+      "shape": "ONE_BY_THREE",
+      "coreHashes": [
+        419670099,
+        136252599,
+        878407749
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "sloth",
+      "name": "Sloth",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -566399217
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "small-stairs",
+      "name": "Small Stairs",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -998001944
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "small-waterfall",
+      "name": "Small Waterfall",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1188349447
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "spider",
+      "name": "Spider",
+      "type": "ROOM",
+      "shape": "L_SHAPE",
+      "coreHashes": [
+        -716030238,
+        -1647063650,
+        -40178107
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "spikes",
+      "name": "Spikes",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1484939648
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "staircase",
+      "name": "Staircase",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -151940807
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "stairs",
+      "name": "Stairs",
+      "type": "ROOM",
+      "shape": "TWO_BY_TWO",
+      "coreHashes": [
+        157642096,
+        1758646790,
+        -265444784,
+        -2033694003
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "steps",
+      "name": "Steps",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        755816704,
+        -340486787
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "stone-window",
+      "name": "Stone Window",
+      "type": "RARE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1740718028
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "supertall",
+      "name": "Supertall",
+      "type": "ROOM",
+      "shape": "TWO_BY_TWO",
+      "coreHashes": [
+        -296996262,
+        1395242314,
+        -1760780706,
+        -1867603567
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "teleport-maze",
+      "name": "Teleport Maze",
+      "type": "PUZZLE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        799715466
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "temple",
+      "name": "Temple",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        1575914755
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "three-floors",
+      "name": "Three Floors",
+      "type": "RARE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1444508608
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "three-weirdos",
+      "name": "Three Weirdos",
+      "type": "PUZZLE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -2056613688
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "tic-tac-toe",
+      "name": "Tic Tac Toe",
+      "type": "PUZZLE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -738945309,
+        29612250
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "tombstone",
+      "name": "Tombstone",
+      "type": "RARE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        535698739
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "tomioka",
+      "name": "Tomioka",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1191537425
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "vinny-8-ball",
+      "name": "Vinny 8 Ball",
+      "type": "RARE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        872815555
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "water",
+      "name": "Water",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -333637832
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "water-board",
+      "name": "Water Board",
+      "type": "PUZZLE",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        379499781,
+        -1229365170,
+        -589525429
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "waterfall",
+      "name": "Waterfall",
+      "type": "ROOM",
+      "shape": "ONE_BY_FOUR",
+      "coreHashes": [
+        90256084,
+        228212335,
+        -1682661340,
+        520419865
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "well",
+      "name": "Well",
+      "type": "ROOM",
+      "shape": "L_SHAPE",
+      "coreHashes": [
+        629394370,
+        1261773246,
+        1276013917
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "withermancer",
+      "name": "Withermancer",
+      "type": "ROOM",
+      "shape": "L_SHAPE",
+      "coreHashes": [
+        902780459,
+        1963543962,
+        1140917779
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "wizard",
+      "name": "Wizard",
+      "type": "ROOM",
+      "shape": "ONE_BY_THREE",
+      "coreHashes": [
+        -1164862049,
+        222124420,
+        926568393
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    },
+    {
+      "id": "zodd",
+      "name": "Zodd",
+      "type": "ROOM",
+      "shape": "ONE_BY_ONE",
+      "coreHashes": [
+        -1403940419
+      ],
+      "fingerprints": [],
+      "waypoints": []
+    }
+  ]
 }

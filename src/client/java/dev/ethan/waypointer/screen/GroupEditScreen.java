@@ -1,18 +1,22 @@
 package dev.ethan.waypointer.screen;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import dev.ethan.waypointer.color.GradientColorizer;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.RouteProgress;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.debug.DebugEventLog;
+import dev.ethan.waypointer.dungeon.DungeonWaypointSkipRules;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.input.WaypointRepositionMode;
 import dev.ethan.waypointer.text.AmpersandFormatting;
 import dev.ethan.waypointer.input.WaypointAddFlow;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
@@ -84,16 +88,52 @@ public final class GroupEditScreen extends Screen {
     private int selectedIndex = -1;
     private int coordinateEditorIndex = -1;
     private boolean syncingCoordinateEditors;
+    private String coordinateEditError;
     private static final int SUBWAY_ACCENT = 0xFF58C878;
-    private static final int SUBWAY_STYLE_ACTION_NONE = 0;
-    private static final int SUBWAY_STYLE_ACTION_SMALL = 1;
-    private static final int SUBWAY_STYLE_ACTION_FILLED = 2;
+    static final int SUBWAY_STYLE_ACTION_NONE = 0;
+    static final int SUBWAY_STYLE_ACTION_SMALL = 1;
+    static final int SUBWAY_STYLE_ACTION_FILLED = 2;
+    static final int SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT = 3;
+    static final int WAYPOINT_CONTROL_ACTION_NONE = 0;
+    static final int WAYPOINT_CONTROL_ACTION_STAND_SKIP = 1;
+    static final int WAYPOINT_CONTROL_ACTION_INTERACT_SKIP = 2;
+    static final int WAYPOINT_CONTROL_ACTION_DEPTH_CHECK = 3;
     private static final int SUBWAY_STYLE_BUTTON_W = 26;
     private static final int SUBWAY_STYLE_BUTTON_H = 18;
     private static final int SUBWAY_STYLE_BUTTON_TOP_PAD = 2;
     private static final int SUBWAY_STYLE_BUTTON_ACTIVE = 0xFF2D6B3E;
     private static final int SUBWAY_STYLE_BUTTON_IDLE = 0xFF20242A;
     private static final int SUBWAY_STYLE_BUTTON_HOVER = 0xFF303844;
+    private static final int DEPTH_CHECK_BUTTON_ACTIVE = 0xFF315F8F;
+    private static final int HEADER_INFO_BUTTON_SIZE = 12;
+    private static final String ROUTE_INFO_TITLE = "Route editor controls";
+    private static final String[] ROUTE_INFO_LABELS = {
+            "Click",
+            "Double-click selected",
+            "Right-click",
+            "Shift-left-click",
+            "Shift-right-click",
+            "Color swatch",
+            "Row buttons"
+    };
+    private static final String[] ROUTE_INFO_DESCRIPTIONS = {
+            "select a waypoint row",
+            "rename that waypoint",
+            "set the current waypoint",
+            "move in world",
+            "toggle subwaypoint",
+            "edit color; Shift-click unlocks",
+            "small, filled, hidden-after-parent, depth"
+    };
+    private static final int[] ROUTE_INFO_LABEL_COLORS = {
+            ACCENT,
+            0xFFFFF080,
+            0xFFFFC878,
+            0xFF8ACBFF,
+            SUBWAY_ACCENT,
+            0xFFFF8A8A,
+            TEXT_DIM
+    };
 
     // Inline per-row label editor: shown only while the user is renaming a waypoint,
     // positioned in render() so it tracks the row through scroll. We hold one EditBox
@@ -132,8 +172,13 @@ public final class GroupEditScreen extends Screen {
                 new GroupEditScreen(parent, manager, config, group, waypointIndex));
     }
 
-        @Override
+    @Override
     protected void init() {
+        int resumeEditingIndex = editingIndex;
+        String resumeEditingValue = labelEditor != null && editingIndex >= 0
+                ? labelEditor.getValue()
+                : "";
+
         int top = PAD_OUTER + 10 + GAP_SECTION;
         int sidebarLeft = PAD_OUTER;
         int sidebarInner = sidebarLeft + GAP;
@@ -223,13 +268,21 @@ public final class GroupEditScreen extends Screen {
           .build());
 
         // Inline label editor -- kept invisible until the user double-clicks a row.
-        // Added last so it paints on top of the row it's editing. A fresh widget per
-        // init() is fine: init() runs on resize and we drop any in-progress edit there.
-        editingIndex = -1;
+        // Added last so it paints on top of the row it's editing.
         labelEditor = new EditBox(font, 0, 0, 100, BTN_H, Component.literal("Label"));
         labelEditor.setMaxLength(64);
         labelEditor.setVisible(false);
         addRenderableWidget(labelEditor);
+        if (resumeEditingIndex >= 0 && resumeEditingIndex < group.size()) {
+            editingIndex = resumeEditingIndex;
+            labelEditor.setValue(resumeEditingValue);
+            labelEditor.setVisible(true);
+            setFocused(labelEditor);
+            labelEditor.setFocused(true);
+            positionLabelEditor(editingIndex);
+        } else {
+            editingIndex = -1;
+        }
         syncCoordinateEditors();
 
         // Footer
@@ -240,9 +293,16 @@ public final class GroupEditScreen extends Screen {
                 Tooltip.create(Component.literal("Add a waypoint at your current position."))));
         left.add(new GuiTokens.ButtonSpec("+ Add Named", -1, this::addNamedHere,
                 Tooltip.create(Component.literal("Name a new waypoint at your current position."))));
-        left.add(new GuiTokens.ButtonSpec("+ Add Temp", -1, this::addTempHere,
-                Tooltip.create(Component.literal("Add a temporary waypoint at your current position."))));
+        left.add(new GuiTokens.ButtonSpec(tempWaypointActionLabel(), -1, this::addTempHere,
+                Tooltip.create(Component.literal(tempWaypointActionTooltip()))));
         left.add(new GuiTokens.ButtonSpec("Export", this::export));
+        left.add(new GuiTokens.ButtonSpec(
+                WaypointRepositionMode.isEditModeEnabled() ? "Exit Edit" : "Edit Mode",
+                92,
+                this::toggleEditModeFromEditor,
+                Tooltip.create(Component.literal(
+                        "Enter or exit world edit mode.\n"
+                      + "Left click an existing waypoint in-world to move it."))));
         left.add(new GuiTokens.ButtonSpec("Remove", this::removeSelected));
         left.add(new GuiTokens.ButtonSpec("^", 24, () -> moveSelected(-1)));
         left.add(new GuiTokens.ButtonSpec("v", 24, () -> moveSelected(+1)));
@@ -251,39 +311,6 @@ public final class GroupEditScreen extends Screen {
         GuiTokens.layoutFooter(width, footerY, left, done, this::addRenderableWidget, font);
     }
 
-    /*[[AI-FN-DOC
-Function:
-addColorModeControls
-Purpose:
-Add only the route-level color controls that match the group's current color mode.
-Why this exists:
-Showing one-color and gradient endpoint buttons at the same time made the sidebar misleading; each mode should expose only the controls that apply.
-When to use:
-Call during init after the color mode button has been added. Do not call outside widget rebuild/layout.
-Inputs:
-sidebarInner is the left x coordinate for sidebar controls; y is the next free row y coordinate; fieldW is the full sidebar control width.
-Outputs:
-Returns the next free y coordinate after any mode-specific controls.
-Side effects:
-Creates and registers ColorSwatchButton widgets, assigns their field references, and leaves hidden-mode button references null.
-Failure modes:
-Unknown/null gradient modes fall through to the one-color behavior through colorModeName/setters elsewhere.
-Important invariants:
-STATIC shows one full-width swatch, AUTO shows two half-width endpoint swatches, and MANUAL shows no route-level swatches.
-Internal logic:
-Clear existing swatch references, inspect group.gradientMode, add the matching widgets, and return y advanced only for visible controls.
-Pseudocode:
-clear static/start/end fields
-if mode is STATIC:
-  create full-width static color swatch and return y + row height
-if mode is AUTO:
-  create Start and End swatches side by side and return y + row height
-return original y for MANUAL
-Implementation notes:
-The screen rebuilds when the mode changes so controls physically disappear instead of merely disabling and leaving gaps.
-AI self-check:
-Verify manual mode leaves no color swatch row and gradient mode never shows the static swatch.
-]]*/
     private int addColorModeControls(int sidebarInner, int y, int fieldW) {
         staticColorBtn = null;
         gradientStartBtn = null;
@@ -327,7 +354,7 @@ Verify manual mode leaves no color swatch row and gradient mode never shows the 
         return Component.literal("Color: " + colorModeName(group.gradientMode()));
     }
 
-        private static String colorModeName(WaypointGroup.GradientMode mode) {
+    static String colorModeName(WaypointGroup.GradientMode mode) {
         if (mode == WaypointGroup.GradientMode.AUTO) return "Gradient";
         if (mode == WaypointGroup.GradientMode.MANUAL) return "Manual";
         return "One";
@@ -341,44 +368,13 @@ Verify manual mode leaves no color swatch row and gradient mode never shows the 
               + "Manual: edit waypoint swatches."));
     }
 
-    /*[[AI-FN-DOC
-Function:
-toggleColorMode
-Purpose:
-Advance the route color mode and rebuild the sidebar so only relevant color controls remain visible.
-Why this exists:
-One color, gradient, and manual modes expose different controls; simply disabling old buttons left misleading gaps and stale controls.
-When to use:
-Used as the Color mode button callback in the route editor sidebar.
-Inputs:
-b is the pressed button from Minecraft's UI event. It is not mutated directly because the full screen is rebuilt.
-Outputs:
-No return value.
-Side effects:
-Mutates group.gradientMode, fires manager data changed, and rebuilds widgets.
-Failure modes:
-None expected; nextColorMode handles null/unknown modes by cycling back to STATIC through its fallback.
-Important invariants:
-STATIC shows only the One color swatch, AUTO shows only Start/End swatches, and MANUAL shows no route-level swatches after rebuild.
-Internal logic:
-Compute the next mode from the current mode, store it on the group, notify persistence/listeners, then rebuild the screen layout.
-Pseudocode:
-next = nextColorMode(current mode)
-group.setGradientMode(next)
-manager.fireDataChanged()
-rebuildWidgets()
-Implementation notes:
-Rebuilding instead of updating button active state physically removes hidden-mode rows and prevents stale layout gaps.
-AI self-check:
-Verify the color mode label and swatch rows match after every click.
-]]*/
     private void toggleColorMode(Button b) {
         group.setGradientMode(nextColorMode(group.gradientMode()));
         manager.fireDataChanged();
         rebuildWidgets();
     }
 
-        private static WaypointGroup.GradientMode nextColorMode(WaypointGroup.GradientMode mode) {
+    static WaypointGroup.GradientMode nextColorMode(WaypointGroup.GradientMode mode) {
         if (mode == WaypointGroup.GradientMode.STATIC) return WaypointGroup.GradientMode.AUTO;
         if (mode == WaypointGroup.GradientMode.AUTO) return WaypointGroup.GradientMode.MANUAL;
         return WaypointGroup.GradientMode.STATIC;
@@ -509,19 +505,41 @@ Verify the color mode label and swatch rows match after every click.
 
     private void updateSelectedCoordinate(int axis, String raw) {
         if (syncingCoordinateEditors) return;
-        if (!hasSelectedWaypoint() || raw.isBlank()) return;
-
-        try {
-            int value = Integer.parseInt(raw.trim());
-            Waypoint w = group.get(selectedIndex);
-            int x = axis == 0 ? value : w.x();
-            int y = axis == 1 ? value : w.y();
-            int z = axis == 2 ? value : w.z();
-            group.set(selectedIndex, w.withPos(x, y, z));
-            manager.fireDataChanged();
-        } catch (NumberFormatException ignored) {
-            // Partial integer edits such as "-" are expected while typing.
+        if (!hasSelectedWaypoint()) {
+            coordinateEditError = null;
+            return;
         }
+
+        Integer value = parseCoordinateInput(raw);
+        if (value == null) {
+            coordinateEditError = coordinateErrorMessage(axis, raw);
+            return;
+        }
+
+        Waypoint w = group.get(selectedIndex);
+        int x = axis == 0 ? value : w.x();
+        int y = axis == 1 ? value : w.y();
+        int z = axis == 2 ? value : w.z();
+        group.set(selectedIndex, w.withPos(x, y, z));
+        coordinateEditError = null;
+        manager.fireDataChanged();
+    }
+
+    static Integer parseCoordinateInput(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return null;
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    static String coordinateErrorMessage(int axis, String raw) {
+        String axisLabel = axis == 0 ? "X" : axis == 1 ? "Y" : "Z";
+        if (raw == null || raw.trim().isEmpty()) {
+            return axisLabel + " coordinate is required.";
+        }
+        return axisLabel + " coordinate must be a whole number.";
     }
 
     // --- actions ----------------------------------------------------------------------------
@@ -532,6 +550,7 @@ Verify the color mode label and swatch rows match after every click.
 
     private void selectWaypoint(int index) {
         selectedIndex = index >= 0 && index < group.size() ? index : -1;
+        coordinateEditError = null;
         syncCoordinateEditors();
     }
 
@@ -585,54 +604,33 @@ Verify the color mode label and swatch rows match after every click.
         AddTempScreen.open(this, manager, config);
     }
 
+    static String tempWaypointActionLabel() {
+        return "+ Temp Marker";
+    }
+
+    static String tempWaypointActionTooltip() {
+        return "Creates a temporary marker in the Temporary list, not this route.";
+    }
+
     private void addNamedHere() {
         AddNamedWaypointScreen.open(this, manager, config, group);
     }
 
-    /*[[AI-FN-DOC
-Function:
-addHere
-Purpose:
-Add a new waypoint at the player's configured placement position using the current default waypoint color.
-Why this exists:
-The group editor needs a direct add button that behaves like /wp add and keybind creation while honoring UI placement and color defaults.
-When to use:
-Used by the + Add Here footer button in GroupEditScreen.
-Inputs:
-No parameters. Reads Minecraft player position, WaypointerConfig placement/default color settings, and the current group.
-Outputs:
-No return value. Adds and selects a waypoint when a player is available.
-Side effects:
-Mutates the group, runs WaypointAddFlow, updates selected index and skip-ahead label, and fires manager data changed.
-Failure modes:
-If no local player exists, returns without changes.
-Important invariants:
-New manually-created waypoints use config.defaultWaypointColor and imported routes remain governed by import color policy.
-Internal logic:
-Read player, derive placement block, add a new waypoint with default color, run shared post-add handling, select it, refresh relevant UI, and persist notification.
-Pseudocode:
-player = Minecraft player
-if player null return
-pos = PlayerWaypointPlacement.fromPlayer(player, config)
-add waypoint at pos with empty name and defaultWaypointColor
-newIndex = group size - 1
-afterWaypointAdded(group, newIndex)
-refresh skip-ahead label if present
-select newIndex
-fire data changed
-Implementation notes:
-The shared post-add flow keeps this path aligned with command and keybind behavior.
-AI self-check:
-Verify the color comes from config.defaultWaypointColor rather than Waypoint.DEFAULT_COLOR.
-]]*/
+    private int defaultNewWaypointFlags(int x, int y, int z) {
+        return isDungeonRoomGroup()
+                ? DungeonWaypointSkipRules.defaultFlagsAt(x, y, z)
+                : 0;
+    }
+
     private void addHere() {
         LocalPlayer p = Minecraft.getInstance().player;
         if (p == null) return;
         PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
                 p.getX(), p.getY(), p.getZ(), config);
+        int flags = defaultNewWaypointFlags(pos.x(), pos.y(), pos.z());
         group.add(new Waypoint(
                 pos.x(), pos.y(), pos.z(),
-                "", config.defaultWaypointColor(), 0, 0.0));
+                "", config.defaultWaypointColor(), flags, 0.0));
         int newIndex = group.size() - 1;
         // Run the shared post-add flow (focus + mode/toast updates) so the
         // GUI add button behaves identically to /wp add and the keybind path.
@@ -644,10 +642,16 @@ Verify the color comes from config.defaultWaypointColor rather than Waypoint.DEF
 
     private void removeSelected() {
         if (selectedIndex < 0 || selectedIndex >= group.size()) return;
+        int removedIndex = selectedIndex;
         group.remove(selectedIndex);
         coordinateEditorIndex = -1;
-        selectWaypoint(Math.min(selectedIndex, group.size() - 1));
+        selectWaypoint(selectedIndexAfterRemoval(removedIndex, group.size()));
         manager.fireDataChanged();
+    }
+
+    static int selectedIndexAfterRemoval(int removedIndex, int sizeAfterRemoval) {
+        if (removedIndex < 0 || sizeAfterRemoval <= 0) return -1;
+        return Math.min(removedIndex, sizeAfterRemoval - 1);
     }
 
     private void moveSelected(int delta) {
@@ -662,59 +666,23 @@ Verify the color comes from config.defaultWaypointColor rather than Waypoint.DEF
         ExportScreen.openForGroup(this, config, group);
     }
 
+    private void toggleEditModeFromEditor() {
+        boolean enabled = WaypointRepositionMode.toggleEditMode(manager, config);
+        if (minecraft == null) return;
+        if (enabled) {
+            minecraft.setScreen(null);
+            return;
+        }
+        rebuildWidgets();
+    }
+
     // --- render -----------------------------------------------------------------------------
 
-    /*[[AI-FN-DOC
-Function:
-render
-Purpose:
-Render the group editor screen, including header, sidebar, waypoint list, and hover tooltips for custom row controls.
-Why this exists:
-GroupEditScreen has custom row rendering in addition to normal Minecraft widgets, so it needs one render method to compose both layers correctly.
-When to use:
-Called by Minecraft every frame while the screen is open. Do not call directly.
-Inputs:
-g is the GUI graphics target; mouseX/mouseY are current pointer coordinates; partial is the frame partial tick value.
-Outputs:
-No return value. Draws the current screen frame.
-Side effects:
-Draws widgets, custom panels, rows, and a tooltip for hovered subwaypoint style buttons.
-Failure modes:
-None expected. Empty routes render an empty-state message through renderMain.
-Important invariants:
-Tooltips render after the scissored waypoint list so they are not clipped by the list region.
-Internal logic:
-Let superclass draw widgets, draw title/status/hints, compute layout bounds, render sidebar and main list, then render any subwaypoint-style tooltip.
-Pseudocode:
-super.render
-draw title, status, and gesture hint
-compute sidebar and main bounds
-render sidebar
-render main list
-if subwaypoint style tooltip exists, render tooltip at mouse
-Implementation notes:
-The tooltip is tied to custom-painted row buttons because vanilla Tooltip only works automatically for widgets.
-AI self-check:
-Verify tooltip text appears above the scissor region and does not affect row click handling.
-]]*/
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
-        super.render(g, mouseX, mouseY, partial);
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        super.extractRenderState(g, mouseX, mouseY, partial);
 
-        // Header
-        g.drawString(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
-        String status = group.mainWaypointCount() + " main / " + group.size() + " pts  .  "
-                + RouteProgress.summary(group) + "  .  @"
-                + group.currentMainOrdinal()
-                + "  .  radius " + String.format("%.1f", group.defaultRadius());
-        g.drawString(font, status, width - PAD_OUTER - font.width(status), PAD_OUTER, TEXT_DIM, false);
-
-        // Discoverability hint for the two non-obvious list gestures. Placed under
-        // the title in TEXT_MUTED so it reads as ambient help rather than UI chrome.
-        // A tooltip would hide these behind a hover the user has to guess at; an
-        // always-visible line is cheaper than documentation they won't read.
-        String hint = "double-click: rename  .  shift-left: reposition  .  right-click: set current  .  shift-right-click: subwaypoint";
-        g.drawString(font, hint, PAD_OUTER, PAD_OUTER + 11, TEXT_MUTED, false);
+        renderHeader(g, mouseX, mouseY);
 
         int top = PAD_OUTER + 10 + GAP_SECTION;
         int bottom = height - FOOTER_H - GAP_SECTION;
@@ -726,46 +694,132 @@ Verify tooltip text appears above the scissor region and does not affect row cli
 
         renderSidebarPanel(g, sidebarLeft, top, sidebarRight, bottom);
         renderMain(g, mainLeft, top, mainRight, bottom, mouseX, mouseY);
-        String subwaypointStyleTooltip = subwaypointStyleTooltipAt(mouseX, mouseY);
-        if (subwaypointStyleTooltip != null) {
-            renderInlineTooltip(g, subwaypointStyleTooltip, mouseX, mouseY);
+        if (isHeaderInfoButtonHovered(mouseX, mouseY)) {
+            renderRouteInfoTooltip(g, mouseX, mouseY);
+        } else {
+            String tooltip = waypointControlTooltipAt(mouseX, mouseY);
+            if (tooltip == null) {
+                tooltip = rowSupplementalTooltipAt(mouseX, mouseY);
+            }
+            if (tooltip != null) {
+                renderInlineTooltip(g, tooltip, mouseX, mouseY);
+            }
         }
     }
 
-    /*[[AI-FN-DOC
-Function:
-renderInlineTooltip
-Purpose:
-Draw a compact tooltip for custom-painted controls that are not Minecraft widget instances.
-Why this exists:
-The subwaypoint style controls are rendered inside a scrolled custom row list, so vanilla widget Tooltip wiring cannot attach to them.
-When to use:
-Use from render after custom controls have been drawn and a hover hit-test returns tooltip text.
-Inputs:
-g is the GUI graphics target; text is the tooltip text to display; mouseX/mouseY are pointer coordinates used to place the tooltip.
-Outputs:
-No return value. Draws a bounded tooltip panel and text.
-Side effects:
-Draws into the current GUI frame.
-Failure modes:
-Very long text is not wrapped, but current callers provide short one-line labels.
-Important invariants:
-The tooltip must stay inside the screen bounds and render after the list scissor is disabled.
-Internal logic:
-Measure text, place the tooltip offset from the pointer, clamp to screen bounds, draw surface and border, then draw text.
-Pseudocode:
-measure width and height from font
-x = mouseX + offset clamped to screen
-y = mouseY + offset clamped above footer
-draw tooltip background
-draw border
-draw text
-Implementation notes:
-This intentionally mirrors the app's translucent surface language rather than trying to recreate vanilla's full rich-tooltip API.
-AI self-check:
-Verify tooltip placement cannot go past the right or bottom screen edge.
-]]*/
-    private void renderInlineTooltip(GuiGraphics g, String text, int mouseX, int mouseY) {
+    private void renderHeader(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+        String title = headerTitleText();
+        String status = headerStatusText();
+        String clippedTitle = clippedHeaderTitle(title, status);
+        g.text(font, clippedTitle, PAD_OUTER, PAD_OUTER, TEXT, false);
+
+        int infoX = headerInfoButtonX(clippedTitle);
+        boolean infoHovered = isHeaderInfoButtonHovered(mouseX, mouseY);
+        if (infoHovered) g.requestCursor(CursorTypes.POINTING_HAND);
+        renderHeaderInfoButton(g, infoX, headerInfoButtonY(), infoHovered);
+
+        g.text(font, status, width - PAD_OUTER - font.width(status), PAD_OUTER, TEXT_DIM, false);
+        if (coordinateEditError != null) {
+            g.text(font, coordinateEditError, PAD_OUTER, PAD_OUTER + 14,
+                    0xFFFF8A8A, false);
+        }
+    }
+
+    private String headerTitleText() {
+        return "Edit: " + group.name();
+    }
+
+    private String headerStatusText() {
+        return group.mainWaypointCount() + " main / " + group.size() + " pts  .  "
+                + RouteProgress.summary(group) + "  .  @"
+                + group.currentMainOrdinal()
+                + "  .  radius " + String.format("%.1f", group.defaultRadius());
+    }
+
+    private String clippedHeaderTitle(String title, String status) {
+        String safeTitle = title == null ? "" : title;
+        String safeStatus = status == null ? "" : status;
+        int statusLeft = width - PAD_OUTER - font.width(safeStatus);
+        int available = statusLeft - PAD_OUTER - HEADER_INFO_BUTTON_SIZE
+                - GAP_TIGHT - GAP_SECTION;
+        if (available <= 0) return "";
+        return font.plainSubstrByWidth(safeTitle, available);
+    }
+
+    private int headerInfoButtonX(String clippedTitle) {
+        return PAD_OUTER + font.width(clippedTitle == null ? "" : clippedTitle) + GAP_TIGHT;
+    }
+
+    private int headerInfoButtonY() {
+        return PAD_OUTER + (font.lineHeight - HEADER_INFO_BUTTON_SIZE) / 2;
+    }
+
+    private boolean isHeaderInfoButtonHovered(int mouseX, int mouseY) {
+        String clippedTitle = clippedHeaderTitle(headerTitleText(), headerStatusText());
+        int x = headerInfoButtonX(clippedTitle);
+        return isInside(mouseX, mouseY, x, headerInfoButtonY(),
+                HEADER_INFO_BUTTON_SIZE, HEADER_INFO_BUTTON_SIZE);
+    }
+
+    private void renderHeaderInfoButton(GuiGraphicsExtractor g, int x, int y, boolean hovered) {
+        int border = hovered ? 0xFFFFFFFF : BORDER;
+        int fill = hovered ? 0xFF26343A : 0xFF1A1F24;
+        g.fill(x, y, x + HEADER_INFO_BUTTON_SIZE, y + HEADER_INFO_BUTTON_SIZE, border);
+        g.fill(x + 1, y + 1, x + HEADER_INFO_BUTTON_SIZE - 1,
+                y + HEADER_INFO_BUTTON_SIZE - 1, fill);
+        String glyph = "i";
+        int glyphX = x + (HEADER_INFO_BUTTON_SIZE - font.width(glyph)) / 2;
+        g.text(font, glyph, glyphX, y + 2, hovered ? ACCENT : TEXT_DIM, false);
+    }
+
+    private void renderRouteInfoTooltip(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+        int lineCount = Math.min(ROUTE_INFO_LABELS.length, ROUTE_INFO_DESCRIPTIONS.length);
+        int pad = 7;
+        int lineGap = 3;
+        int maxLabelWidth = 0;
+        int maxLineWidth = font.width(ROUTE_INFO_TITLE);
+        for (int i = 0; i < lineCount; i++) {
+            maxLabelWidth = Math.max(maxLabelWidth, font.width(ROUTE_INFO_LABELS[i]));
+        }
+        for (int i = 0; i < lineCount; i++) {
+            int lineWidth = maxLabelWidth + GAP
+                    + font.width(ROUTE_INFO_DESCRIPTIONS[i]);
+            maxLineWidth = Math.max(maxLineWidth, lineWidth);
+        }
+
+        int tooltipW = maxLineWidth + pad * 2;
+        int tooltipH = pad * 2 + font.lineHeight + 5
+                + lineCount * font.lineHeight + Math.max(0, lineCount - 1) * lineGap;
+        int x = Math.min(mouseX + 12, Math.max(PAD_OUTER, width - PAD_OUTER - tooltipW));
+        int y = Math.min(mouseY + 12, Math.max(PAD_OUTER, height - FOOTER_H - tooltipH));
+        x = Math.max(PAD_OUTER, x);
+        y = Math.max(PAD_OUTER, y);
+
+        g.fill(x, y, x + tooltipW, y + tooltipH, 0xF0101216);
+        g.fill(x, y, x + tooltipW, y + 1, BORDER);
+        g.fill(x, y + tooltipH - 1, x + tooltipW, y + tooltipH, BORDER);
+        g.fill(x, y, x + 1, y + tooltipH, BORDER);
+        g.fill(x + tooltipW - 1, y, x + tooltipW, y + tooltipH, BORDER);
+
+        int textX = x + pad;
+        int textY = y + pad;
+        g.text(font, ROUTE_INFO_TITLE, textX, textY, ACCENT, false);
+        int separatorY = textY + font.lineHeight + 2;
+        g.fill(textX, separatorY, x + tooltipW - pad, separatorY + 1, 0x55FFFFFF);
+
+        int rowY = separatorY + 4;
+        for (int i = 0; i < lineCount; i++) {
+            int labelColor = i < ROUTE_INFO_LABEL_COLORS.length
+                    ? ROUTE_INFO_LABEL_COLORS[i]
+                    : TEXT;
+            g.text(font, ROUTE_INFO_LABELS[i], textX, rowY, labelColor, false);
+            g.text(font, ROUTE_INFO_DESCRIPTIONS[i],
+                    textX + maxLabelWidth + GAP, rowY, TEXT_DIM, false);
+            rowY += font.lineHeight + lineGap;
+        }
+    }
+
+    private void renderInlineTooltip(GuiGraphicsExtractor g, String text, int mouseX, int mouseY) {
         int pad = 4;
         int tooltipW = font.width(text) + pad * 2;
         int tooltipH = font.lineHeight + pad * 2;
@@ -779,17 +833,17 @@ Verify tooltip placement cannot go past the right or bottom screen edge.
         g.fill(x, y + tooltipH - 1, x + tooltipW, y + tooltipH, BORDER);
         g.fill(x, y, x + 1, y + tooltipH, BORDER);
         g.fill(x + tooltipW - 1, y, x + tooltipW, y + tooltipH, BORDER);
-        g.drawString(font, text, x + pad, y + pad, TEXT, false);
+        g.text(font, text, x + pad, y + pad, TEXT, false);
     }
 
-    private void renderSidebarPanel(GuiGraphics g, int x1, int y1, int x2, int y2) {
+    private void renderSidebarPanel(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         // A faint white-wash instead of another dark fill. Stacking SURFACE / SURFACE_SUBTLE
         // (both dark) behind already-dark EditBox/Button widgets made the whole sidebar
         // read as a black slab against the world. A gentle light overlay separates the
         // region from the scene without compounding darkness on the controls.
         g.fill(x1, y1, x2, y2, SIDEBAR_BG);
         g.fill(x2, y1, x2 + 1, y2, BORDER);
-        g.drawString(font, "Group", x1 + GAP, y1 + 10, TEXT, false);
+        g.text(font, "Group", x1 + GAP, y1 + 10, TEXT, false);
 
         // Inline "Radius 3.0" readout spanning the space between the two bump buttons.
         // The label is co-located with the value so there's no detached header for the
@@ -801,18 +855,18 @@ Verify tooltip placement cannot go past the right or bottom screen edge.
             String text = "Radius " + String.format("%.1f", group.defaultRadius());
             int textW = font.width(text);
             int textX = inlineLeft + ((inlineRight - inlineLeft) - textW) / 2;
-            g.drawString(font, text, textX, rowMidY, TEXT, false);
+            g.text(font, text, textX, rowMidY, TEXT, false);
         }
     }
 
     /** Lighter sidebar wash -- mild white overlay, roughly 12% alpha. */
     private static final int SIDEBAR_BG = 0x20FFFFFF;
 
-    private void renderMain(GuiGraphics g, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
+    private void renderMain(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
         List<Waypoint> pts = group.waypoints();
         if (pts.isEmpty()) {
-            g.drawString(font, "No waypoints yet.", x1, y1 + 8, TEXT, false);
-            g.drawString(font, "Walk somewhere and click \"+ Add Here\".",
+            g.text(font, "No waypoints yet.", x1, y1 + 8, TEXT, false);
+            g.text(font, "Walk somewhere and click \"+ Add Here\".",
                     x1, y1 + 8 + 14, TEXT_DIM, false);
             return;
         }
@@ -832,13 +886,13 @@ Verify tooltip placement cannot go past the right or bottom screen edge.
 
         // Re-place the editor each frame so it follows the row through layout changes
         // (window resize changes column widths; scroll shifts the row Y). The actual
-        // EditBox widget draw is handled by super.render -> addRenderableWidget.
+        // EditBox widget draw is handled by super.extractRenderState -> addRenderableWidget.
         if (editingIndex >= 0 && editingIndex < pts.size()) {
             positionLabelEditor(editingIndex);
         }
     }
 
-    private void renderWaypointConnectors(GuiGraphics g, List<Waypoint> pts,
+    private void renderWaypointConnectors(GuiGraphicsExtractor g, List<Waypoint> pts,
                                           int rowX, int clipTop, int clipBottom,
                                           int firstRowY, int pitch) {
         if (pts.size() < 2) return;
@@ -862,7 +916,7 @@ Verify tooltip placement cannot go past the right or bottom screen edge.
         }
     }
 
-    private static void drawVerticalGradientLine(GuiGraphics g, int centerX, int y1, int y2,
+    private static void drawVerticalGradientLine(GuiGraphicsExtractor g, int centerX, int y1, int y2,
                                                  int color1, int color2,
                                                  int clipTop, int clipBottom) {
         if (y1 == y2) return;
@@ -880,7 +934,7 @@ Verify tooltip placement cannot go past the right or bottom screen edge.
         }
     }
 
-    private static void drawHorizontalGradientLine(GuiGraphics g, int x1, int x2, int centerY,
+    private static void drawHorizontalGradientLine(GuiGraphicsExtractor g, int x1, int x2, int centerY,
                                                    int color1, int color2,
                                                    int clipTop, int clipBottom) {
         if (centerY < clipTop || centerY > clipBottom) return;
@@ -907,51 +961,17 @@ Verify tooltip placement cannot go past the right or bottom screen edge.
         return 0xCC000000 | (r << 16) | (green << 8) | b;
     }
 
-    /*[[AI-FN-DOC
-Function:
-renderWaypointRow
-Purpose:
-Render one waypoint row in the group editor list, including selection state, labels, color swatch, metadata, and subwaypoint style buttons.
-Why this exists:
-Waypoint rows are dense custom UI with route-specific affordances that cannot be represented by a simple vanilla list widget.
-When to use:
-Call from renderMain for each visible row in the scrolled waypoint list.
-Inputs:
-g is the GUI graphics target; w is the waypoint for the row; index is its group index; x1/y1/x2 define row bounds; mouseX/mouseY are pointer coordinates; hasSubwaypoints controls ordinal label formatting.
-Outputs:
-No return value. Paints the row.
-Side effects:
-Draws row backgrounds, text, swatches, and custom subwaypoint style buttons.
-Failure modes:
-Long names can run toward right-side metadata, matching the existing compact row behavior.
-Important invariants:
-Subwaypoint style buttons appear only on subwaypoint rows and reserve right-side space before metadata text is drawn.
-Internal logic:
-Compute state, draw selection/hover background, draw color swatch and labels, render optional name, then draw right-aligned metadata and subwaypoint style buttons.
-Pseudocode:
-compute selected/subwaypoint/current/hovered
-draw background and selected accent
-draw color swatch and lock ring
-draw ordinal/coordinates and optional name
-rightTextX = row right
-if subwaypoint:
-  draw small/filled style buttons
-  reserve text space before buttons
-  draw subwaypoint tag
-draw custom radius or current tag
-Implementation notes:
-The style controls are custom-painted because the row list is scrolled and clipped manually.
-AI self-check:
-Verify main waypoint rows are visually unchanged.
-]]*/
-    private void renderWaypointRow(GuiGraphics g, Waypoint w, int index,
+    private void renderWaypointRow(GuiGraphicsExtractor g, Waypoint w, int index,
                                    int x1, int y1, int x2, int mouseX, int mouseY,
                                    boolean hasSubwaypoints) {
         boolean selected = index == selectedIndex;
         boolean subwaypoint = group.isSubwaypoint(index);
-        boolean isCurrent = !subwaypoint && index == group.currentIndex();
-        boolean subwaypointActive = subwaypoint && group.parentMainIndex(index) == group.currentIndex();
+        boolean isCurrent = index == group.currentIndex();
+        boolean visuallyActive = isWaypointRowVisuallyActive(group, index);
         boolean hovered = mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y1 + ROW_H;
+        if (hovered && !(index == editingIndex && isOverLabelEditor(mouseX, mouseY))) {
+            g.requestCursor(CursorTypes.POINTING_HAND);
+        }
 
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
         if (bg != 0) g.fill(x1, y1, x2, y1 + ROW_H, bg);
@@ -979,127 +999,228 @@ Verify main waypoint rows are visually unchanged.
         // Custom names only replace the number in world-rendered labels.
         String ordinal = hasSubwaypoints ? group.displayIndexLabel(index) : "#" + (index + 1);
         String label = ordinal + "  (" + w.x() + ", " + w.y() + ", " + w.z() + ")";
-        int textColor = isCurrent || subwaypointActive ? 0xFFFFF080
+        int textColor = visuallyActive ? 0xFFFFF080
                 : index < group.currentIndex() ? TEXT_MUTED
                 : subwaypoint ? TEXT_DIM
                 : TEXT;
-        g.drawString(font, label, sx + 20, y1 + 7, textColor, false);
+        boolean showDungeonWaypointControls = isDungeonRoomGroup();
+        int textX = sx + 20;
+        int textRightX = waypointRowTextRightEdge(x2, subwaypoint,
+                showDungeonWaypointControls,
+                waypointRightMetadataWidth(w, subwaypoint, isCurrent));
+        renderWaypointRowLabelAndName(g, label, w, index, textX, textRightX, y1, textColor);
 
-        // Skip the static name while the row is being renamed -- the EditBox widget sits
-        // on top of this slot and drawing the old name behind it leaks through at the
-        // edges of the edit box when the caret is mid-text.
-        if (w.hasName() && index != editingIndex) {
-            g.drawString(font, AmpersandFormatting.translate(w.name()),
-                    sx + 20 + font.width(label) + GAP, y1 + 7, TEXT_DIM, false);
-        }
-
-        int rightTextX = x2 - GAP;
+        renderWaypointControlButtons(g, w, x2, y1, mouseX, mouseY, showDungeonWaypointControls);
+        int rightTextX = waypointControlButtonsLeft(x2, showDungeonWaypointControls) - GAP;
         if (subwaypoint) {
-            renderSubwaypointStyleButtons(g, w, x2, y1, mouseX, mouseY);
-            rightTextX = subwaypointStyleButtonsLeft(x2) - GAP;
+            renderSubwaypointStyleButtons(g, w, x2, y1, mouseX, mouseY,
+                    showDungeonWaypointControls);
+            rightTextX = subwaypointStyleButtonsLeft(x2, showDungeonWaypointControls) - GAP;
             String tag = "subwaypoint";
             int tagW = font.width(tag);
-            g.drawString(font, tag, rightTextX - tagW, y1 + 7, SUBWAY_ACCENT, false);
+            g.text(font, tag, rightTextX - tagW, y1 + 7, SUBWAY_ACCENT, false);
             rightTextX -= tagW + GAP;
         }
         if (w.customRadius() > 0) {
             String r = "r=" + String.format("%.1f", w.customRadius());
-            g.drawString(font, r, rightTextX - font.width(r), y1 + 7, TEXT_DIM, false);
+            g.text(font, r, rightTextX - font.width(r), y1 + 7, TEXT_DIM, false);
         } else if (isCurrent) {
             String tag = "current";
-            g.drawString(font, tag, rightTextX - font.width(tag), y1 + 7, 0xFFFFF080, false);
+            g.text(font, tag, rightTextX - font.width(tag), y1 + 7, 0xFFFFF080, false);
         }
     }
 
-    /*[[AI-FN-DOC
-Function:
-renderSubwaypointStyleButtons
-Purpose:
-Draw the far-right inline buttons that toggle small and filled subwaypoint rendering.
-Why this exists:
-Subwaypoint style needs to be editable per row without opening a modal or crowding the sidebar.
-When to use:
-Call from renderWaypointRow only for rows already known to be subwaypoints.
-Inputs:
-g is the GUI graphics target; waypoint is the row waypoint; rowRight is the row's right edge; rowY is the row top; mouseX/mouseY are current pointer coordinates.
-Outputs:
-No return value. Paints two button-like controls in the row.
-Side effects:
-Draws into the current GUI frame.
-Failure modes:
-If a stale non-subwaypoint waypoint is passed, active state reads false but the caller normally prevents that.
-Important invariants:
-The small button is left of the filled button, both buttons stay within the row, and icon state reflects waypoint flags.
-Internal logic:
-Compute button positions, evaluate hover and active states, then render each icon button.
-Pseudocode:
-smallX = button x for small action
-filledX = button x for filled action
-render small icon button with FLAG_SMALL_SUBWAYPOINT state
-render filled icon button with FLAG_FILLED_SUBWAYPOINT state
-Implementation notes:
-These are custom-painted row controls because the waypoint list is a scrolled custom render surface, not a widget list.
-AI self-check:
-Verify the hit-test helper uses the same button x/y math.
-]]*/
-    private void renderSubwaypointStyleButtons(GuiGraphics g, Waypoint waypoint,
-                                               int rowRight, int rowY,
-                                               int mouseX, int mouseY) {
+    static boolean isWaypointRowVisuallyActive(WaypointGroup group, int index) {
+        if (group == null || index < 0 || index >= group.size()) return false;
+        if (group.loadMode() == WaypointGroup.LoadMode.STATIC) return true;
+
+        int currentIndex = group.currentIndex();
+        int activeSubwaypointParent = group.activeSubwaypointParentIndex();
+        if (group.isSubwaypoint(index)) {
+            if (index == currentIndex) return true;
+            int parent = group.parentMainIndex(index);
+            return parent == activeSubwaypointParent || parent == currentIndex;
+        }
+        return index == currentIndex || index == activeSubwaypointParent;
+    }
+
+    private void renderWaypointRowLabelAndName(GuiGraphicsExtractor g, String label,
+                                               Waypoint waypoint, int index,
+                                               int textX, int textRightX,
+                                               int rowY, int labelColor) {
+        int labelWidth = Math.max(0, textRightX - textX);
+        if (labelWidth <= 0) return;
+
+        String clippedLabel = font.plainSubstrByWidth(label, labelWidth);
+        if (!clippedLabel.isEmpty()) {
+            g.text(font, clippedLabel, textX, rowY + 7, labelColor, false);
+        }
+
+        // Skip the static name while the row is being renamed -- the EditBox widget sits
+        // on top of this slot and drawing the old name behind it leaks through at the
+        // edges of the edit box when the caret is mid-text.
+        if (!waypoint.hasName() || index == editingIndex) return;
+
+        int nameX = textX + font.width(clippedLabel) + GAP;
+        int nameWidth = Math.max(0, textRightX - nameX);
+        if (nameWidth <= 0) return;
+
+        String clippedName = font.plainSubstrByWidth(
+                AmpersandFormatting.translate(waypoint.name()), nameWidth);
+        if (!clippedName.isEmpty()) {
+            g.text(font, clippedName, nameX, rowY + 7, TEXT_DIM, false);
+        }
+    }
+
+    private int waypointRightMetadataWidth(Waypoint waypoint, boolean subwaypoint,
+                                           boolean isCurrent) {
+        int width = 0;
+        if (subwaypoint) {
+            width += font.width("subwaypoint");
+        }
+
+        String trailing = waypointTrailingMetadata(waypoint, isCurrent);
+        if (!trailing.isEmpty()) {
+            if (width > 0) width += GAP;
+            width += font.width(trailing);
+        }
+        return width;
+    }
+
+    private static String waypointTrailingMetadata(Waypoint waypoint, boolean isCurrent) {
+        if (waypoint.customRadius() > 0) {
+            return "r=" + String.format("%.1f", waypoint.customRadius());
+        }
+        return isCurrent ? "current" : "";
+    }
+
+    static int waypointRowTextRightEdge(int rowRight, boolean subwaypoint,
+                                        boolean showDungeonControls,
+                                        int rightMetadataWidth) {
+        int right = subwaypoint
+                ? subwaypointStyleButtonsLeft(rowRight, showDungeonControls) - GAP
+                : waypointControlButtonsLeft(rowRight, showDungeonControls) - GAP;
+        if (rightMetadataWidth > 0) {
+            right -= rightMetadataWidth + GAP;
+        }
+        return right;
+    }
+
+    static int waypointRowTextWidth(int textLeft, int rowRight, boolean subwaypoint,
+                                    boolean showDungeonControls, int rightMetadataWidth) {
+        return Math.max(0, waypointRowTextRightEdge(rowRight, subwaypoint,
+                showDungeonControls, rightMetadataWidth) - textLeft);
+    }
+
+    private void renderWaypointControlButtons(GuiGraphicsExtractor g, Waypoint waypoint,
+                                              int rowRight, int rowY,
+                                              int mouseX, int mouseY,
+                                              boolean showDungeonControls) {
         int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
-        int smallX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_SMALL);
-        int filledX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_FILLED);
+        if (showDungeonControls) {
+            int standX = standSkipButtonX(rowRight);
+            renderWaypointControlButton(g, standX, y,
+                    waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_STAND),
+                    isInside(mouseX, mouseY, standX, y,
+                            SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
+                    WAYPOINT_CONTROL_ACTION_STAND_SKIP);
+
+            int interactX = interactSkipButtonX(rowRight);
+            renderWaypointControlButton(g, interactX, y,
+                    waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT),
+                    isInside(mouseX, mouseY, interactX, y,
+                            SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
+                    WAYPOINT_CONTROL_ACTION_INTERACT_SKIP);
+        }
+        renderDepthCheckButton(g, waypoint, rowRight, rowY, mouseX, mouseY);
+    }
+
+    private void renderWaypointControlButton(GuiGraphicsExtractor g, int x, int y,
+                                             boolean active, boolean hovered,
+                                             int action) {
+        int bg = active ? DEPTH_CHECK_BUTTON_ACTIVE
+                : hovered ? SUBWAY_STYLE_BUTTON_HOVER : SUBWAY_STYLE_BUTTON_IDLE;
+        int border = hovered ? 0xFFFFFFFF : BORDER;
+        g.fill(x, y, x + SUBWAY_STYLE_BUTTON_W, y + SUBWAY_STYLE_BUTTON_H, border);
+        g.fill(x + 1, y + 1, x + SUBWAY_STYLE_BUTTON_W - 1, y + SUBWAY_STYLE_BUTTON_H - 1, bg);
+
+        int cx = x + SUBWAY_STYLE_BUTTON_W / 2;
+        int cy = y + SUBWAY_STYLE_BUTTON_H / 2;
+        int primary = active ? 0xFFFFFFFF : TEXT;
+        int secondary = active ? 0xFFFFFFFF : TEXT_MUTED;
+        if (action == WAYPOINT_CONTROL_ACTION_STAND_SKIP) {
+            g.fill(cx - 6, cy - 5, cx - 2, cy + 1, primary);
+            g.fill(cx - 4, cy + 2, cx, cy + 5, secondary);
+            g.fill(cx + 2, cy - 3, cx + 6, cy + 3, primary);
+            g.fill(cx, cy + 4, cx + 4, cy + 7, secondary);
+            return;
+        }
+
+        g.fill(cx - 6, cy - 4, cx + 4, cy - 2, primary);
+        g.fill(cx - 2, cy - 2, cx, cy + 5, primary);
+        g.fill(cx, cy + 3, cx + 6, cy + 5, secondary);
+        g.fill(cx + 5, cy - 6, cx + 7, cy - 4, active ? 0xFFFFFFFF : ACCENT);
+        g.fill(cx + 7, cy - 4, cx + 9, cy - 2, active ? 0xFFFFFFFF : ACCENT);
+    }
+
+    private void renderDepthCheckButton(GuiGraphicsExtractor g, Waypoint waypoint,
+                                        int rowRight, int rowY,
+                                        int mouseX, int mouseY) {
+        int x = depthCheckButtonX(rowRight);
+        int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
+        boolean active = waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED);
+        boolean hovered = isInside(mouseX, mouseY, x, y,
+                SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H);
+        int bg = active ? DEPTH_CHECK_BUTTON_ACTIVE
+                : hovered ? SUBWAY_STYLE_BUTTON_HOVER : SUBWAY_STYLE_BUTTON_IDLE;
+        int border = hovered ? 0xFFFFFFFF : BORDER;
+        g.fill(x, y, x + SUBWAY_STYLE_BUTTON_W, y + SUBWAY_STYLE_BUTTON_H, border);
+        g.fill(x + 1, y + 1, x + SUBWAY_STYLE_BUTTON_W - 1, y + SUBWAY_STYLE_BUTTON_H - 1, bg);
+
+        int cx = x + SUBWAY_STYLE_BUTTON_W / 2;
+        int cy = y + SUBWAY_STYLE_BUTTON_H / 2;
+        g.fill(cx - 7, cy - 5, cx + 2, cy - 4, TEXT_MUTED);
+        g.fill(cx - 5, cy - 1, cx + 5, cy, TEXT);
+        g.fill(cx - 3, cy + 3, cx + 8, cy + 4, TEXT_MUTED);
+        int markerColor = active ? 0xFFFFFFFF : ACCENT;
+        g.fill(cx + 5, cy - 6, cx + 7, cy + 6, markerColor);
+    }
+
+    private void renderSubwaypointStyleButtons(GuiGraphicsExtractor g, Waypoint waypoint,
+                                               int rowRight, int rowY,
+                                               int mouseX, int mouseY,
+                                               boolean showDungeonControls) {
+        int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
+        int smallX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_SMALL,
+                showDungeonControls);
+        int filledX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_FILLED,
+                showDungeonControls);
+        int hideX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT,
+                showDungeonControls);
         renderSubwaypointStyleButton(g, smallX, y,
                 waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT),
                 isInside(mouseX, mouseY, smallX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
-                true);
+                SUBWAY_STYLE_ACTION_SMALL);
         renderSubwaypointStyleButton(g, filledX, y,
                 waypoint.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT),
                 isInside(mouseX, mouseY, filledX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
-                false);
+                SUBWAY_STYLE_ACTION_FILLED);
+        renderSubwaypointStyleButton(g, hideX, y,
+                waypoint.hasFlag(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED),
+                isInside(mouseX, mouseY, hideX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
+                SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT);
     }
 
-    /*[[AI-FN-DOC
-Function:
-renderSubwaypointStyleButton
-Purpose:
-Paint one large inline icon button for a subwaypoint style toggle.
-Why this exists:
-The row list does not host real Button widgets, so the style toggles need a consistent custom button visual.
-When to use:
-Use from renderSubwaypointStyleButtons for the small and filled controls.
-Inputs:
-g is the GUI graphics target; x/y are button coordinates; active is whether the represented flag is enabled; hovered is whether the pointer is inside the button; smallIcon selects the tiny-cube icon versus filled-square icon.
-Outputs:
-No return value. Paints the button background, border, and icon.
-Side effects:
-Draws into the current GUI frame.
-Failure modes:
-None.
-Important invariants:
-Active buttons use the subwaypoint green accent; inactive buttons remain subdued; hover has a visible border and background change.
-Internal logic:
-Choose fill color from active/hover state, draw a one-pixel border and inner fill, then draw the selected icon.
-Pseudocode:
-background = active ? active color : hovered ? hover color : idle color
-border = hovered ? white : translucent border
-draw border rect
-draw inner rect
-if smallIcon draw tiny outlined cube icon else draw filled square icon
-Implementation notes:
-The icons are drawn with rectangles instead of font glyphs so they remain legible in Minecraft's pixel font and do not depend on Unicode coverage.
-AI self-check:
-Verify both active and inactive states remain readable against selected and hovered row backgrounds.
-]]*/
-    private void renderSubwaypointStyleButton(GuiGraphics g, int x, int y,
+    private void renderSubwaypointStyleButton(GuiGraphicsExtractor g, int x, int y,
                                               boolean active, boolean hovered,
-                                              boolean smallIcon) {
+                                              int action) {
         int bg = active ? SUBWAY_STYLE_BUTTON_ACTIVE
                 : hovered ? SUBWAY_STYLE_BUTTON_HOVER : SUBWAY_STYLE_BUTTON_IDLE;
         int border = hovered ? 0xFFFFFFFF : BORDER;
         g.fill(x, y, x + SUBWAY_STYLE_BUTTON_W, y + SUBWAY_STYLE_BUTTON_H, border);
         g.fill(x + 1, y + 1, x + SUBWAY_STYLE_BUTTON_W - 1, y + SUBWAY_STYLE_BUTTON_H - 1, bg);
 
-        if (smallIcon) {
+        if (action == SUBWAY_STYLE_ACTION_SMALL) {
             int cx = x + SUBWAY_STYLE_BUTTON_W / 2;
             int cy = y + SUBWAY_STYLE_BUTTON_H / 2;
             g.fill(cx - 2, cy - 2, cx + 3, cy - 1, TEXT);
@@ -1110,113 +1231,69 @@ Verify both active and inactive states remain readable against selected and hove
             return;
         }
 
-        int left = x + SUBWAY_STYLE_BUTTON_W / 2 - 4;
-        int top = y + SUBWAY_STYLE_BUTTON_H / 2 - 4;
-        int right = left + 8;
-        int bottom = top + 8;
-        g.fill(left - 1, top - 1, right + 1, bottom + 1, TEXT);
-        g.fill(left, top, right, bottom, active ? SUBWAY_ACCENT : TEXT_MUTED);
+        if (action == SUBWAY_STYLE_ACTION_FILLED) {
+            int left = x + SUBWAY_STYLE_BUTTON_W / 2 - 4;
+            int top = y + SUBWAY_STYLE_BUTTON_H / 2 - 4;
+            int right = left + 8;
+            int bottom = top + 8;
+            g.fill(left - 1, top - 1, right + 1, bottom + 1, TEXT);
+            g.fill(left, top, right, bottom, active ? SUBWAY_ACCENT : TEXT_MUTED);
+            return;
+        }
+
+        int cx = x + SUBWAY_STYLE_BUTTON_W / 2;
+        int cy = y + SUBWAY_STYLE_BUTTON_H / 2;
+        g.fill(cx - 6, cy - 1, cx + 7, cy + 1, TEXT_MUTED);
+        g.fill(cx - 3, cy - 4, cx + 4, cy - 2, TEXT_MUTED);
+        g.fill(cx - 3, cy + 2, cx + 4, cy + 4, TEXT_MUTED);
+        int slashColor = active ? 0xFFFFFFFF : SUBWAY_ACCENT;
+        for (int d = -5; d <= 5; d++) {
+            g.fill(cx + d, cy + d - 1, cx + d + 1, cy + d, slashColor);
+        }
     }
 
-    /*[[AI-FN-DOC
-Function:
-subwaypointStyleButtonsLeft
-Purpose:
-Return the left edge of the two-button subwaypoint style control cluster.
-Why this exists:
-Row text needs to reserve space before the style buttons so labels do not overlap the controls.
-When to use:
-Use while rendering subwaypoint rows before drawing right-aligned text.
-Inputs:
-rowRight is the right edge of the waypoint row.
-Outputs:
-Returns the x coordinate where the small button starts.
-Side effects:
-None.
-Failure modes:
-None.
-Important invariants:
-The returned x coordinate must match subwaypointStyleButtonX for the small action.
-Internal logic:
-Subtract outer gap, both button widths, and the tight gap between buttons from rowRight.
-Pseudocode:
-return rowRight - GAP - button width * 2 - GAP_TIGHT
-Implementation notes:
-Centralizing this avoids mismatches between text layout, button drawing, and hit testing.
-AI self-check:
-Verify filled button still ends at rowRight - GAP.
-]]*/
-    private static int subwaypointStyleButtonsLeft(int rowRight) {
-        return rowRight - GAP - SUBWAY_STYLE_BUTTON_W * 2 - GAP_TIGHT;
+    private static int subwaypointStyleButtonsLeft(int rowRight, boolean showDungeonControls) {
+        return waypointControlButtonsLeft(rowRight, showDungeonControls) - GAP_TIGHT
+                - SUBWAY_STYLE_BUTTON_W * 3 - GAP_TIGHT * 2;
     }
 
-    /*[[AI-FN-DOC
-Function:
-subwaypointStyleButtonX
-Purpose:
-Compute the x coordinate for one subwaypoint style button.
-Why this exists:
-Render and hit-test paths must agree exactly on where the small and filled buttons live.
-When to use:
-Use for SUBWAY_STYLE_ACTION_SMALL and SUBWAY_STYLE_ACTION_FILLED only.
-Inputs:
-rowRight is the row's right edge; action identifies which style button is being positioned.
-Outputs:
-Returns the x coordinate for the requested button, defaulting unknown actions to the small button position.
-Side effects:
-None.
-Failure modes:
-Unknown action values return the small button x so callers do not compute nonsense off-screen positions.
-Important invariants:
-The filled button is immediately to the right of the small button with GAP_TIGHT spacing.
-Internal logic:
-Start at the cluster left edge and add one button width plus gap for the filled action.
-Pseudocode:
-left = subwaypointStyleButtonsLeft(rowRight)
-if action is FILLED return left + button width + GAP_TIGHT
-return left
-Implementation notes:
-The action constants avoid creating a small enum solely for two row controls.
-AI self-check:
-Verify hit testing checks the same coordinates that rendering uses.
-]]*/
-    private static int subwaypointStyleButtonX(int rowRight, int action) {
-        int left = subwaypointStyleButtonsLeft(rowRight);
-        return action == SUBWAY_STYLE_ACTION_FILLED
-                ? left + SUBWAY_STYLE_BUTTON_W + GAP_TIGHT
-                : left;
+    private static int waypointControlButtonsLeft(int rowRight, boolean showDungeonControls) {
+        return showDungeonControls ? standSkipButtonX(rowRight) : depthCheckButtonX(rowRight);
     }
 
-    /*[[AI-FN-DOC
-Function:
-isInside
-Purpose:
-Check whether a point is inside an axis-aligned GUI rectangle.
-Why this exists:
-The custom subwaypoint row buttons need lightweight hover and click hit testing without constructing widget objects.
-When to use:
-Use for custom-painted row controls in this screen.
-Inputs:
-mx/my are pointer coordinates; x/y/w/h define the rectangle.
-Outputs:
-Returns true when the point is inside the half-open rectangle [x,x+w) and [y,y+h).
-Side effects:
-None.
-Failure modes:
-None.
-Important invariants:
-The right and bottom edges are exclusive, matching common GUI hit-test behavior and avoiding double hits between adjacent controls.
-Internal logic:
-Compare the point against the rectangle bounds.
-Pseudocode:
-return mx >= x and mx < x+w and my >= y and my < y+h
-Implementation notes:
-Kept local because these dimensions are tied to GroupEditScreen's row controls.
-AI self-check:
-Verify adjacent small/filled buttons cannot both be hovered at the shared gap.
-]]*/
+    private static int standSkipButtonX(int rowRight) {
+        return depthCheckButtonX(rowRight) - (SUBWAY_STYLE_BUTTON_W + GAP_TIGHT) * 2;
+    }
+
+    private static int interactSkipButtonX(int rowRight) {
+        return depthCheckButtonX(rowRight) - SUBWAY_STYLE_BUTTON_W - GAP_TIGHT;
+    }
+
+    private static int depthCheckButtonX(int rowRight) {
+        return rowRight - GAP - SUBWAY_STYLE_BUTTON_W;
+    }
+
+    private static int subwaypointStyleButtonX(int rowRight, int action,
+                                               boolean showDungeonControls) {
+        int left = subwaypointStyleButtonsLeft(rowRight, showDungeonControls);
+        int pitch = SUBWAY_STYLE_BUTTON_W + GAP_TIGHT;
+        if (action == SUBWAY_STYLE_ACTION_FILLED) return left + pitch;
+        if (action == SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT) return left + pitch * 2;
+        return left;
+    }
+
+    /*
+     * The old two-button layout helpers used to live here. The three-button
+     * versions above intentionally replace them so render, hover, and click
+     * geometry cannot drift apart.
+     */
+
     private static boolean isInside(double mx, double my, int x, int y, int w, int h) {
         return mx >= x && mx < x + w && my >= y && my < y + h;
+    }
+
+    private boolean isDungeonRoomGroup() {
+        return DungeonRoomData.definition(group.zoneId()) != null;
     }
 
     // --- input -------------------------------------------------------------------------------
@@ -1225,43 +1302,9 @@ Verify adjacent small/filled buttons cannot both be hovered at the shared gap.
     private static final int MOUSE_BUTTON_LEFT  = 0;
     private static final int MOUSE_BUTTON_RIGHT = 1;
 
-    /*[[AI-FN-DOC
-Function:
-mouseClicked
-Purpose:
-Handle custom waypoint-list mouse interactions before falling back to normal widget and row selection behavior.
-Why this exists:
-The waypoint list has non-widget interactions, including row selection, right-click progress, shift gestures, color swatches, and subwaypoint style buttons.
-When to use:
-Called by Minecraft for mouse button presses while the screen is open. Do not call directly.
-Inputs:
-event contains mouse coordinates and button id; doubleClick indicates Minecraft's double-click detection.
-Outputs:
-Returns true when this screen consumed the click.
-Side effects:
-May commit label edits, mutate waypoint structure/style/color/progress, select rows, open color picker, start reposition mode, or delegate to child widgets.
-Failure modes:
-Clicks outside actionable areas return false or fall through to default handling.
-Important invariants:
-Subwaypoint style buttons are handled before row selection and shift-left repositioning so icon clicks only toggle the intended style.
-Internal logic:
-Commit open edits when needed, handle right-click route actions, handle subwaypoint style button clicks, handle shift-left repositioning, handle swatch color clicks, delegate to widgets, then handle row select/double-click rename.
-Pseudocode:
-if editing and click outside editor, commit edit
-if right click on row, select and either toggle subwaypoint with shift or set current
-if left click on style button, toggle style and select row
-if shift-left on row outside swatch, start reposition
-if left click on swatch, open picker or unlock color
-if super consumes, return true
-if left click on row, select and maybe begin rename
-return whether consumed
-Implementation notes:
-Ordering is the main safety property here; custom row buttons must win over broader row gestures.
-AI self-check:
-Verify each early return consumes only the click it handled.
-]]*/
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        int selectedBeforeClick = selectedIndex;
         // A click that lands outside the live editor means the user is done with it.
         // Commit first so the click itself still performs whatever it would have done
         // (select another row, open a double-click edit on a new row, press a button).
@@ -1278,26 +1321,51 @@ Verify each early return consumes only the click it handled.
             int idx = rowIndexAt(event.x(), event.y());
             if (idx >= 0) {
                 selectWaypoint(idx);
+                String action;
                 if (hasShiftDown()) {
                     if (group.toggleSubwaypoint(idx)) {
+                        if (group.isSubwaypoint(idx)) {
+                            disableSkipAheadForSequencingEdit();
+                        }
                         coordinateEditorIndex = -1;
                         syncCoordinateEditors();
                         manager.fireDataChanged();
                     }
+                    action = "toggle-subwaypoint";
                 } else {
                     group.setCurrentIndex(idx);
                     manager.fireDataChanged();
+                    action = "goto";
                 }
+                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
+                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                        doubleClick, hasShiftDown(), false, "right-click-row", action);
                 return true;
             }
         }
 
         if (event.button() == MOUSE_BUTTON_LEFT) {
+            int waypointControlAction = waypointControlActionAt(event.x(), event.y());
+            if (waypointControlAction != WAYPOINT_CONTROL_ACTION_NONE) {
+                int idx = rowIndexAt(event.x(), event.y());
+                toggleWaypointControl(idx, waypointControlAction);
+                selectWaypoint(idx);
+                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
+                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                        doubleClick, hasShiftDown(), false, "waypoint-control",
+                        "toggle-control-" + waypointControlAction);
+                return true;
+            }
+
             int subwaypointStyleAction = subwaypointStyleActionAt(event.x(), event.y());
             if (subwaypointStyleAction != SUBWAY_STYLE_ACTION_NONE) {
                 int idx = rowIndexAt(event.x(), event.y());
                 toggleSubwaypointStyle(idx, subwaypointStyleAction);
                 selectWaypoint(idx);
+                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
+                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                        doubleClick, hasShiftDown(), false, "subwaypoint-style",
+                        "toggle-style-" + subwaypointStyleAction);
                 return true;
             }
         }
@@ -1307,8 +1375,11 @@ Verify each early return consumes only the click it handled.
             if (idx >= 0 && swatchIndexAt(event.x(), event.y()) < 0) {
                 selectWaypoint(idx);
                 WaypointRepositionMode.start(manager, config, group, idx);
-                return true;
-            }
+            DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
+                    selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                    doubleClick, true, false, "shift-row", "start-edit-move");
+            return true;
+        }
         }
 
         // Swatch-click: open per-waypoint colour picker. Checked before super
@@ -1329,6 +1400,10 @@ Verify each early return consumes only the click it handled.
                     openWaypointColorPicker(swatchIdx);
                 }
                 selectWaypoint(swatchIdx);
+                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(swatchIdx), swatchIdx,
+                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                        doubleClick, hasShiftDown(), false, "color-swatch",
+                        hasShiftDown() ? "unlock-or-edit-color" : "edit-color");
                 return true;
             }
         }
@@ -1338,10 +1413,42 @@ Verify each early return consumes only the click it handled.
 
         int idx = rowIndexAt(event.x(), event.y());
         if (idx < 0) return false;
+        boolean wasAlreadySelected = idx == selectedIndex;
         selectWaypoint(idx);
 
-        if (doubleClick) beginLabelEdit(idx);
+        boolean startRename = shouldStartRenameFromRowClick(doubleClick, wasAlreadySelected);
+        if (startRename) beginLabelEdit(idx);
+        DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
+                selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                doubleClick, false, false, "waypoint-row",
+                startRename ? "rename" : doubleClick
+                        ? "double-click ignored: waypoint was not already selected"
+                        : "select");
         return true;
+    }
+
+    static boolean shouldStartRenameFromRowClick(boolean doubleClick, boolean wasAlreadySelected) {
+        return doubleClick && wasAlreadySelected;
+    }
+
+    private String selectionDebugLabel(int index) {
+        if (index < 0 || index >= group.size()) return "(none)";
+        return "#" + index;
+    }
+
+    private String waypointDebugId(int index) {
+        if (index < 0 || index >= group.size()) return "(none)";
+        Waypoint waypoint = group.get(index);
+        return "#" + index + "@" + waypoint.x() + "," + waypoint.y() + "," + waypoint.z();
+    }
+
+    private void disableSkipAheadForSequencingEdit() {
+        if (group.skipAheadEnabled()) {
+            group.setSkipAheadEnabled(false);
+        }
+        if (skipAheadBtn != null) {
+            skipAheadBtn.setMessage(skipAheadLabel());
+        }
     }
 
     private static boolean hasShiftDown() {
@@ -1373,41 +1480,32 @@ Verify each early return consumes only the click it handled.
         return -1;
     }
 
-    /*[[AI-FN-DOC
-Function:
-subwaypointStyleActionAt
-Purpose:
-Identify which subwaypoint style button, if any, is under the pointer.
-Why this exists:
-Custom-painted row buttons need a matching click and tooltip hit-test that only activates on subwaypoint rows.
-When to use:
-Use from mouseClicked and tooltip lookup before applying row selection or other list interactions.
-Inputs:
-mx and my are pointer coordinates in screen space.
-Outputs:
-Returns SUBWAY_STYLE_ACTION_SMALL, SUBWAY_STYLE_ACTION_FILLED, or SUBWAY_STYLE_ACTION_NONE.
-Side effects:
-None.
-Failure modes:
-Returns NONE for points outside the list, non-subwaypoint rows, or gaps between buttons.
-Important invariants:
-Only structural subwaypoints expose style actions; main waypoints cannot accidentally receive subwaypoint-only styling through the GUI.
-Internal logic:
-Find the row index, reject invalid/non-subwaypoint rows, compute the row y and button x coordinates, then test filled and small button rectangles.
-Pseudocode:
-idx = rowIndexAt(mx,my)
-if idx invalid or not subwaypoint return NONE
-rowY = row top for idx
-smallX = small button x
-filledX = filled button x
-if point inside small button return SMALL
-if point inside filled button return FILLED
-return NONE
-Implementation notes:
-Small is tested before filled because it is leftmost and the two buttons are separated by a gap.
-AI self-check:
-Verify this mirrors renderSubwaypointStyleButtons geometry.
-]]*/
+    private int waypointControlActionAt(double mx, double my) {
+        int idx = rowIndexAt(mx, my);
+        if (idx < 0) return WAYPOINT_CONTROL_ACTION_NONE;
+
+        int top = PAD_OUTER + 10 + GAP_SECTION;
+        int rowY = top + 4 - scrollOffset + idx * (ROW_H + 2);
+        int rowRight = width - PAD_OUTER - 2;
+        int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
+        if (isDungeonRoomGroup()) {
+            int standX = standSkipButtonX(rowRight);
+            if (isInside(mx, my, standX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
+                return WAYPOINT_CONTROL_ACTION_STAND_SKIP;
+            }
+            int interactX = interactSkipButtonX(rowRight);
+            if (isInside(mx, my, interactX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
+                return WAYPOINT_CONTROL_ACTION_INTERACT_SKIP;
+            }
+        }
+
+        int depthX = depthCheckButtonX(rowRight);
+        if (isInside(mx, my, depthX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
+            return WAYPOINT_CONTROL_ACTION_DEPTH_CHECK;
+        }
+        return WAYPOINT_CONTROL_ACTION_NONE;
+    }
+
     private int subwaypointStyleActionAt(double mx, double my) {
         int idx = rowIndexAt(mx, my);
         if (idx < 0 || !group.isSubwaypoint(idx)) return SUBWAY_STYLE_ACTION_NONE;
@@ -1416,107 +1514,122 @@ Verify this mirrors renderSubwaypointStyleButtons geometry.
         int rowY = top + 4 - scrollOffset + idx * (ROW_H + 2);
         int rowRight = width - PAD_OUTER - 2;
         int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
-        int smallX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_SMALL);
+        boolean showDungeonControls = isDungeonRoomGroup();
+        int smallX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_SMALL,
+                showDungeonControls);
         if (isInside(mx, my, smallX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
             return SUBWAY_STYLE_ACTION_SMALL;
         }
-        int filledX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_FILLED);
+        int filledX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_FILLED,
+                showDungeonControls);
         if (isInside(mx, my, filledX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
             return SUBWAY_STYLE_ACTION_FILLED;
+        }
+        int hideX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT,
+                showDungeonControls);
+        if (isInside(mx, my, hideX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
+            return SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT;
         }
         return SUBWAY_STYLE_ACTION_NONE;
     }
 
-    /*[[AI-FN-DOC
-Function:
-subwaypointStyleTooltipAt
-Purpose:
-Return explanatory hover text for the custom subwaypoint style buttons.
-Why this exists:
-The buttons are icon-only, so hover text is needed to make the small and filled controls discoverable.
-When to use:
-Call from render after row rendering so the tooltip appears above the list.
-Inputs:
-mouseX and mouseY are current pointer coordinates.
-Outputs:
-Returns tooltip text for a hovered style button, or null when no style button is hovered.
-Side effects:
-None.
-Failure modes:
-Returns null for non-subwaypoint rows or gaps.
-Important invariants:
-Tooltip copy names the action in plain terms and avoids changing state.
-Internal logic:
-Resolve hovered action through subwaypointStyleActionAt and map it to the corresponding tooltip text.
-Pseudocode:
-action = subwaypointStyleActionAt(mouseX,mouseY)
-if action SMALL return small tooltip
-if action FILLED return filled tooltip
-return null
-Implementation notes:
-The tooltip is deliberately short so it does not cover too much of the waypoint list.
-AI self-check:
-Verify every icon-only button has tooltip text.
-]]*/
-    private String subwaypointStyleTooltipAt(double mouseX, double mouseY) {
-        int action = subwaypointStyleActionAt(mouseX, mouseY);
-        if (action == SUBWAY_STYLE_ACTION_SMALL) {
-            return "Tiny subwaypoint marker";
+    private String waypointControlTooltipAt(double mouseX, double mouseY) {
+        int action = waypointControlActionAt(mouseX, mouseY);
+        if (action == WAYPOINT_CONTROL_ACTION_STAND_SKIP) {
+            return dungeonStandSkipTooltipText();
         }
-        if (action == SUBWAY_STYLE_ACTION_FILLED) {
-            return "Filled subwaypoint marker";
+        if (action == WAYPOINT_CONTROL_ACTION_INTERACT_SKIP) {
+            return dungeonInteractSkipTooltipText();
+        }
+        if (action == WAYPOINT_CONTROL_ACTION_DEPTH_CHECK) {
+            return "Render in LOS only";
+        }
+        return subwaypointStyleTooltipAt(mouseX, mouseY);
+    }
+
+    private String rowSupplementalTooltipAt(double mouseX, double mouseY) {
+        if (editingIndex >= 0) return null;
+        int rowIndex = rowIndexAt(mouseX, mouseY);
+        if (rowIndex < 0) return null;
+        if (waypointControlActionAt(mouseX, mouseY) != WAYPOINT_CONTROL_ACTION_NONE) return null;
+        if (subwaypointStyleActionAt(mouseX, mouseY) != SUBWAY_STYLE_ACTION_NONE) return null;
+        if (swatchIndexAt(mouseX, mouseY) >= 0) {
+            return swatchGestureTooltipText(hasShiftDown());
         }
         return null;
     }
 
-    /*[[AI-FN-DOC
-Function:
-toggleSubwaypointStyle
-Purpose:
-Toggle one subwaypoint-only visual style flag on a waypoint row.
-Why this exists:
-The new inline buttons need one mutation path that flips the correct flag, preserves other waypoint data, and notifies persistence.
-When to use:
-Use after subwaypointStyleActionAt returns a non-NONE action for a clicked row.
-Inputs:
-index is the waypoint row index; action is SUBWAY_STYLE_ACTION_SMALL or SUBWAY_STYLE_ACTION_FILLED.
-Outputs:
-No return value. The waypoint is updated when the index/action are valid.
-Side effects:
-Mutates one waypoint in the group and fires manager data changed.
-Failure modes:
-Invalid indices, non-subwaypoint rows, and unknown actions return without changes.
-Important invariants:
-Only subwaypoint rows can receive these style flags. Other flags, color, radius, and name are preserved.
-Internal logic:
-Validate index and subwaypoint structure, choose the target flag from action, XOR it into the waypoint flags, update the group row, and notify listeners.
-Pseudocode:
-if index invalid or row not subwaypoint return
-if action SMALL flag = FLAG_SMALL_SUBWAYPOINT
-else if action FILLED flag = FLAG_FILLED_SUBWAYPOINT
-else return
-waypoint = group.get(index)
-group.set(index, waypoint.withFlags(waypoint.flags XOR flag))
-manager.fireDataChanged()
-Implementation notes:
-Using XOR gives a true toggle and leaves the two style options independent.
-AI self-check:
-Verify toggling filled does not implicitly toggle small, and vice versa.
-]]*/
+    static String swatchGestureTooltipText(boolean shiftDown) {
+        return shiftDown
+                ? "Shift-click unlocks locked color"
+                : "Click to edit waypoint color";
+    }
+
+    static String dungeonStandSkipTooltipText() {
+        return "Dungeons: Stand to skip";
+    }
+
+    static String dungeonInteractSkipTooltipText() {
+        return "Dungeons: Interact to skip";
+    }
+
+    private String subwaypointStyleTooltipAt(double mouseX, double mouseY) {
+        int action = subwaypointStyleActionAt(mouseX, mouseY);
+        if (action == SUBWAY_STYLE_ACTION_SMALL) {
+            return "Tiny";
+        }
+        if (action == SUBWAY_STYLE_ACTION_FILLED) {
+            return "Filled";
+        }
+        if (action == SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT) {
+            return "Hide after parent is reached";
+        }
+        return null;
+    }
+
+    private void toggleWaypointControl(int index, int action) {
+        if (index < 0 || index >= group.size()) return;
+        int flag = waypointControlFlagForAction(action, isDungeonRoomGroup());
+        if (flag == 0) return;
+        Waypoint waypoint = group.get(index);
+        group.set(index, waypoint.withFlags(waypoint.flags() ^ flag));
+        manager.fireDataChanged();
+    }
+
+    static int waypointControlFlagForAction(int action, boolean dungeonRoomGroup) {
+        if (action == WAYPOINT_CONTROL_ACTION_STAND_SKIP && dungeonRoomGroup) {
+            return Waypoint.FLAG_SKIP_ON_STAND;
+        }
+        if (action == WAYPOINT_CONTROL_ACTION_INTERACT_SKIP && dungeonRoomGroup) {
+            return Waypoint.FLAG_SKIP_ON_INTERACT;
+        }
+        if (action == WAYPOINT_CONTROL_ACTION_DEPTH_CHECK) {
+            return Waypoint.FLAG_DEPTH_CHECKED;
+        }
+        return 0;
+    }
+
     private void toggleSubwaypointStyle(int index, int action) {
         if (index < 0 || index >= group.size() || !group.isSubwaypoint(index)) return;
-        int flag;
-        if (action == SUBWAY_STYLE_ACTION_SMALL) {
-            flag = Waypoint.FLAG_SMALL_SUBWAYPOINT;
-        } else if (action == SUBWAY_STYLE_ACTION_FILLED) {
-            flag = Waypoint.FLAG_FILLED_SUBWAYPOINT;
-        } else {
-            return;
-        }
+        int flag = subwaypointStyleFlagForAction(action);
+        if (flag == 0) return;
 
         Waypoint waypoint = group.get(index);
         group.set(index, waypoint.withFlags(waypoint.flags() ^ flag));
         manager.fireDataChanged();
+    }
+
+    static int subwaypointStyleFlagForAction(int action) {
+        if (action == SUBWAY_STYLE_ACTION_SMALL) {
+            return Waypoint.FLAG_SMALL_SUBWAYPOINT;
+        }
+        if (action == SUBWAY_STYLE_ACTION_FILLED) {
+            return Waypoint.FLAG_FILLED_SUBWAYPOINT;
+        }
+        if (action == SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT) {
+            return Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED;
+        }
+        return 0;
     }
 
         private void openWaypointColorPicker(int idx) {
@@ -1527,45 +1640,6 @@ Verify toggling filled does not implicitly toggle small, and vice versa.
                 w.color(), this::onWaypointColorPicked);
     }
 
-    /*[[AI-FN-DOC
-Function:
-onWaypointColorPicked
-Purpose:
-Apply a manually picked per-waypoint color and switch the route into Manual mode when needed.
-Why this exists:
-Editing a waypoint swatch is a per-point workflow; if the route was in One color or Gradient mode, the UI should become Manual and hide route-level color controls.
-When to use:
-Used as the ColorPickerScreen callback after opening a waypoint row swatch.
-Inputs:
-picked is the RGB color selected in the picker.
-Outputs:
-No return value.
-Side effects:
-Consumes waypointColorPickerIndex, mutates one waypoint color and locked-color flag, may change group.gradientMode to MANUAL, fires data changed, and may rebuild widgets.
-Failure modes:
-Out-of-range or missing picker index is ignored after clearing the pending index.
-Important invariants:
-The selected waypoint keeps FLAG_LOCKED_COLOR so automatic gradient/static recoloring does not immediately overwrite the user's manual pick.
-Internal logic:
-Read and clear the pending index, validate it, switch to MANUAL and rebuild if the group was not already manual, otherwise update the waypoint and refresh color-mode controls.
-Pseudocode:
-idx = waypointColorPickerIndex
-clear waypointColorPickerIndex
-if idx invalid return
-if group mode is not MANUAL:
-  set mode MANUAL
-  replace waypoint idx with picked color and locked flag
-  fire data changed
-  rebuild widgets
-  return
-replace waypoint idx with picked color and locked flag
-update color-mode buttons
-fire data changed
-Implementation notes:
-The rebuild path makes the One color or Gradient swatches disappear immediately after the first manual per-waypoint edit.
-AI self-check:
-Verify manual edits preserve only the selected waypoint and do not recolor the whole route.
-]]*/
     private void onWaypointColorPicked(int picked) {
         int idx = waypointColorPickerIndex;
         waypointColorPickerIndex = -1;
@@ -1636,8 +1710,8 @@ Verify manual edits preserve only the selected waypoint and do not recolor the w
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        int k = event.key();
         if (editingIndex >= 0) {
-            int k = event.key();
             if (k == GLFW_KEY_ESCAPE) {
                 // Intercept ESC so it cancels the edit instead of closing the screen.
                 cancelLabelEdit();
@@ -1647,6 +1721,18 @@ Verify manual edits preserve only the selected waypoint and do not recolor the w
                 commitLabelEdit();
                 return true;
             }
+        }
+        if (k == GLFW_KEY_ESCAPE
+                && (getFocused() == nameBox
+                || getFocused() == coordXBox
+                || getFocused() == coordYBox
+                || getFocused() == coordZBox)) {
+            setFocused(null);
+            if (nameBox != null) nameBox.setFocused(false);
+            if (coordXBox != null) coordXBox.setFocused(false);
+            if (coordYBox != null) coordYBox.setFocused(false);
+            if (coordZBox != null) coordZBox.setFocused(false);
+            return true;
         }
         return super.keyPressed(event);
     }
@@ -1700,7 +1786,8 @@ Verify manual edits preserve only the selected waypoint and do not recolor the w
 
     /**
      * Places the EditBox over the name slot of the row at {@code index}, sized to fill
-     * the remaining row width. Called every frame while editing so the widget tracks
+     * the remaining row text lane before metadata and controls. Called every frame while
+     * editing so the widget tracks
      * any layout change (resize) and stays aligned with the row number/coord prefix.
      */
     private void positionLabelEditor(int index) {
@@ -1717,12 +1804,20 @@ Verify manual edits preserve only the selected waypoint and do not recolor the w
         int labelStart = sx + 20;
         Waypoint w = group.get(index);
         String prefix = group.displayIndexLabel(index) + "  (" + w.x() + ", " + w.y() + ", " + w.z() + ")";
-        int editorX = labelStart + font.width(prefix) + GAP;
-        int editorW = Math.max(80, rowX2 - GAP - editorX);
+        boolean subwaypoint = group.isSubwaypoint(index);
+        boolean isCurrent = !subwaypoint && index == group.currentIndex();
+        int textRightX = waypointRowTextRightEdge(rowX2, subwaypoint,
+                isDungeonRoomGroup(), waypointRightMetadataWidth(w, subwaypoint, isCurrent));
+        int editorX = Math.min(labelStart + font.width(prefix) + GAP, textRightX);
+        int editorW = labelEditorWidth(editorX, textRightX);
 
         labelEditor.setX(editorX);
         labelEditor.setY(rowY + 1);
         labelEditor.setWidth(editorW);
+    }
+
+    static int labelEditorWidth(int editorX, int textRightX) {
+        return Math.max(0, textRightX - editorX);
     }
 
     private boolean isOverLabelEditor(double mx, double my) {

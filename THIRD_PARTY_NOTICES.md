@@ -1,13 +1,16 @@
 # Third-Party Notices
 
-## Odin room detection data
+## Odin room detection data and algorithm
 
-Waypointer bundles converted Catacombs room core hashes from Odin for named
-dungeon room detection.
+Waypointer bundles converted Catacombs room core hashes from Odin and ports
+Odin-compatible dungeon room grid/core detection behavior for named dungeon
+room detection.
 
 - Project: https://github.com/odtheking/Odin
-- Source commit: `2f96b4481d223287567c8e38efa5bc1ae0a5787d`
-- Source file: `src/main/resources/assets/odin/rooms.json`
+- Room data source commit: `2f96b4481d223287567c8e38efa5bc1ae0a5787d`
+- Room data source file: `src/main/resources/assets/odin/rooms.json`
+- Algorithm source commit: `57c4fa5d7d92a67bda440aedcb45010dafae89c7`
+- Algorithm source file: `src/main/kotlin/com/odtheking/odin/utils/skyblock/dungeon/ScanUtils.kt`
 - License: BSD 3-Clause License
 
 BSD 3-Clause License

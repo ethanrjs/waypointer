@@ -11,13 +11,13 @@ import dev.ethan.waypointer.core.WaypointVisibility;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.ClientAvatarState;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -72,51 +72,11 @@ public final class TracerRenderer implements HudElement {
     }
 
     public void install() {
-        WorldRenderEvents.END_MAIN.register(this::onRender);
+        LevelRenderEvents.END_MAIN.register(this::onRender);
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, HUD_FALLBACK_ID, this);
     }
 
-    /*[[AI-FN-DOC
-Function:
-onRender.
-Purpose:
-Render world-space crosshair tracers from the camera toward each active group's current waypoint.
-Why this exists:
-The normal render path draws through-wall tracer lines in world space when shader fallback is not needed.
-When to use:
-Registered with WorldRenderEvents.END_MAIN by install. Do not call manually from HUD fallback rendering.
-Inputs:
-ctx is the Fabric world render context supplying matrices, buffer consumers, camera state, and tick timing.
-Outputs:
-No return value. Emits tracer line vertices when eligible targets exist.
-Side effects:
-Writes line vertices into the render buffer and ends the line batch.
-Failure modes:
-Missing matrices, buffers, no active groups, disabled tracer config, zero opacity, or hidden targets cause early returns or skips.
-Important invariants:
-Tracer endpoints must use waypoint.centerX/Y/Z so precise small waypoints are targeted at the rendered marker rather than the containing block center.
-Internal logic:
-Skip fallback mode and disabled states, prepare camera-relative rendering, compute the crosshair origin, iterate active groups, filter hidden targets, and emit lines to target centers.
-Pseudocode:
-if Iris fallback active, return
-if no groups or tracer disabled without temp focus, return
-compute alpha and bail when invisible
-resolve matrices, camera, buffers
-translate pose by negative camera position
-compute crosshair origin delta
-for each active group:
-  skip static route if configured
-  target = group.current
-  skip null or near-hidden target
-  lazily get line buffer
-  emit line from crosshair origin to target center
-end batch if used
-Implementation notes:
-Using center methods preserves existing behavior for block waypoints because their precise centers default to x/y/z + 0.5.
-AI self-check:
-Verify temp-focus tracer still renders even when normal tracer config is off.
-]]*/
-    private void onRender(WorldRenderContext ctx) {
+    private void onRender(LevelRenderContext ctx) {
         if (IrisShaderFallback.shouldUse(config)) return;
 
         var groups = manager.activeGroups();
@@ -129,12 +89,12 @@ Verify temp-focus tracer still renders even when normal tracer config is off.
         }
         if (alpha <= 0.0f) return;
 
-        PoseStack ps = ctx.matrices();
+        PoseStack ps = ctx.poseStack();
         if (ps == null) return;
         Minecraft mc = Minecraft.getInstance();
         Camera cam = mc.gameRenderer.getMainCamera();
         Vec3 camPos = cam.position();
-        MultiBufferSource buffers = ctx.consumers();
+        MultiBufferSource buffers = ctx.bufferSource();
         if (buffers == null) return;
 
         ps.pushPose();
@@ -161,6 +121,11 @@ Verify temp-focus tracer still renders even when normal tracer config is off.
         VertexConsumer lines = null;
 
         for (WaypointGroup g : groups) {
+            if (config.showDungeonEntryPathToFirstWaypoint()
+                    && WaypointRenderer.shouldRenderDungeonEntryPath(g,
+                    config.showDungeonEntryPathToFollowingWaypoints())) {
+                continue;
+            }
             if (!tempFocus
                     && config.hideTracerOnStaticRoutes()
                     && g.loadMode() == WaypointGroup.LoadMode.STATIC) {
@@ -187,45 +152,7 @@ Verify temp-focus tracer still renders even when normal tracer config is off.
     }
 
     @Override
-    /*[[AI-FN-DOC
-Function:
-render.
-Purpose:
-Render HUD-space tracer fallback lines when shader conditions prevent reliable world-space tracer drawing.
-Why this exists:
-Some shader configurations hide or distort the world-space tracer, so the HUD fallback projects the target to screen space and draws a 2D line.
-When to use:
-Called by Fabric's HUD element pipeline after install attaches this renderer. Do not use for the normal world render path.
-Inputs:
-g is the GUI graphics context; tick is the delta tracker supplied by the HUD pipeline.
-Outputs:
-No return value. Draws screen-space tracer lines when fallback mode and target filters allow.
-Side effects:
-Draws 2D line geometry to the HUD.
-Failure modes:
-Disabled fallback, missing active groups, disabled tracer config, uninitialized camera, zero opacity, or hidden targets cause early return or skips.
-Important invariants:
-Projection must use waypoint.centerX/Y/Z so HUD fallback points at precise small waypoints consistently with the world renderer.
-Internal logic:
-Validate fallback and visibility settings, prepare the projector, iterate active groups, project target centers or compute offscreen target positions, then draw screen lines.
-Pseudocode:
-if fallback not active, return
-if no groups or tracer disabled without temp focus, return
-resolve player, renderer, camera
-if camera uninitialized, return
-prepare projector and screen center
-for each active group:
-  skip configured static routes
-  target = group.current
-  skip null or near-hidden target
-  if center projection fails, project offscreen target
-  draw centered HUD line to target screen point
-Implementation notes:
-The tick parameter is unused because camera/projector state already comes from Minecraft's current renderer.
-AI self-check:
-Verify the HUD fallback and world renderer use the same endpoint center.
-]]*/
-    public void render(GuiGraphics g, DeltaTracker tick) {
+    public void extractRenderState(GuiGraphicsExtractor g, DeltaTracker tick) {
         if (!IrisShaderFallback.shouldUse(config)) return;
 
         var groups = manager.activeGroups();
@@ -255,6 +182,11 @@ Verify the HUD fallback and world renderer use the same endpoint center.
         double thickness = config.tracerThickness();
 
         for (WaypointGroup group : groups) {
+            if (config.showDungeonEntryPathToFirstWaypoint()
+                    && WaypointRenderer.shouldRenderDungeonEntryPath(group,
+                    config.showDungeonEntryPathToFollowingWaypoints())) {
+                continue;
+            }
             if (!tempFocus
                     && config.hideTracerOnStaticRoutes()
                     && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
@@ -276,42 +208,6 @@ Verify the HUD fallback and world renderer use the same endpoint center.
         }
     }
 
-    /*[[AI-FN-DOC
-Function:
-projectOffscreenTarget.
-Purpose:
-Estimate a screen-edge endpoint for a target that cannot be directly projected by the HUD fallback.
-Why this exists:
-When the waypoint is behind or outside the camera frustum, the fallback tracer should still point in the correct screen direction instead of disappearing abruptly.
-When to use:
-Use only from the HUD fallback when WorldScreenProjector.project returns false.
-Inputs:
-camera supplies position and orientation vectors; target is the waypoint to point toward; screenW/screenH are GUI dimensions; out is a double array with at least two slots for x/y output.
-Outputs:
-Writes the screen-edge x/y coordinate into out[0] and out[1].
-Side effects:
-Mutates the supplied out array.
-Failure modes:
-Degenerate direction vectors fall back to a vertical direction; non-finite or non-positive intersection distances fall back to one screen unit.
-Important invariants:
-Direction must be computed from target.centerX/Y/Z so precise small waypoint fallback tracers point toward the actual marker.
-Internal logic:
-Compute world delta from camera to target center, project that direction onto camera left/up vectors, normalize it to the nearest screen edge, and write the result.
-Pseudocode:
-cameraPos = camera.position
-dx/dy/dz = target center minus camera position
-screenDirX = negative dot delta with camera left
-screenDirY = negative dot delta with camera up
-if direction nearly zero, set screenDirY to 1
-compute center screen point
-find smallest positive t to an edge
-if t invalid, set t to 1
-out = center + direction * t
-Implementation notes:
-This is directional only; it does not need exact depth, just a stable edge hint.
-AI self-check:
-Verify target centers are used instead of block coordinates.
-]]*/
     private static void projectOffscreenTarget(Camera camera, Waypoint target,
                                                int screenW, int screenH,
                                                double[] out) {

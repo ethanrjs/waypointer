@@ -80,6 +80,7 @@ public final class WaypointGroup {
      * and shouldn't interact with the player's route through the zone.
      */
     private boolean temp = false;
+    private boolean runtimeOnly = false;
     /** Single-color route palette used when {@link #gradientMode} is {@link GradientMode#STATIC}. */
     private int staticColor = Waypoint.DEFAULT_COLOR;
     // Per-group gradient endpoints (RGB). Each group can pick its own palette so a
@@ -114,6 +115,8 @@ public final class WaypointGroup {
      * bright until the next main waypoint is reached.
      */
     private transient int activeSubwaypointParentIndex = -1;
+    private transient int standSkipHoldIndex = -1;
+    private transient long standSkipHoldStartedAtMillis;
     /**
      * Set when a static reach pass completes the full set and clears {@link #staticReached}.
      * Lets {@link dev.ethan.waypointer.progression.ProximityTracker} stop scanning for the
@@ -157,6 +160,7 @@ public final class WaypointGroup {
     public int gradientEndColor()   { return gradientEndColor; }
     public boolean skipAheadEnabled() { return skipAheadEnabled; }
     public boolean temp()           { return temp; }
+    public boolean runtimeOnly()    { return runtimeOnly; }
     public List<Waypoint> waypoints() { return Collections.unmodifiableList(waypoints); }
     public int size()             { return waypoints.size(); }
     public boolean isEmpty()      { return waypoints.isEmpty(); }
@@ -271,12 +275,19 @@ public final class WaypointGroup {
                 : current == firstMainIndex();
     }
 
+    public boolean clearActiveSubwaypointParent() {
+        if (activeSubwaypointParentIndex < 0) return false;
+        activeSubwaypointParentIndex = -1;
+        return true;
+    }
+
     public void setName(String newName)                 { this.name = newName == null ? "" : newName; }
         public void setZoneId(String newZoneId)             { this.zoneId = Zone.canonicalId(Objects.requireNonNull(newZoneId)); }
     public void setEnabled(boolean on)                  { this.enabled = on; }
     public void setDefaultRadius(double r)              { this.defaultRadius = Math.max(0.5, r); invalidateProximityIndex(); }
     public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
     public void setTemp(boolean on)                     { this.temp = on; }
+    public void setRuntimeOnly(boolean on)              { this.runtimeOnly = on; }
 
     /**
      * Set the group's gradient endpoints. Setters immediately reapply the gradient
@@ -308,12 +319,6 @@ public final class WaypointGroup {
         this.loadMode = Objects.requireNonNull(mode);
     }
 
-    /**
-     * Which waypoint indices the renderer should surface given the current load
-     * mode. Invokes {@code action} inline instead of allocating an index array;
-     * renderers call this every frame, so the no-allocation path is the primary
-     * API rather than a convenience overload.
-     */
     public void forEachVisibleIndex(IntConsumer action) {
         int n = waypoints.size();
         if (n == 0) return;
@@ -335,7 +340,9 @@ public final class WaypointGroup {
             if (lastMain >= 0) {
                 action.accept(lastMain);
                 for (int child = lastMain + 1; child < n && isSubwaypoint(child); child++) {
-                    action.accept(child);
+                    if (shouldSurfaceSubwaypointForParent(child, lastMain, activeParent)) {
+                        action.accept(child);
+                    }
                 }
             }
             return;
@@ -349,54 +356,40 @@ public final class WaypointGroup {
         if (activeParent >= 0) {
             action.accept(activeParent);
             for (int child = activeParent + 1; child < n && isSubwaypoint(child); child++) {
-                action.accept(child);
+                if (shouldSurfaceSubwaypointForParent(child, activeParent, activeParent)) {
+                    action.accept(child);
+                }
             }
         } else if (prev >= 0) {
             action.accept(prev);
         }
-        action.accept(cur);
+        if (cur != activeParent) action.accept(cur);
         if (activeParent < 0) {
             for (int child = cur + 1; child < n && isSubwaypoint(child); child++) {
-                action.accept(child);
+                if (shouldSurfaceSubwaypointForParent(child, cur, activeParent)) {
+                    action.accept(child);
+                }
             }
         }
         int next = nextMainIndexAfter(cur);
         if (next >= 0) action.accept(next);
     }
 
+    private boolean shouldSurfaceSubwaypointForParent(int childIndex,
+                                                      int parentIndex,
+                                                      int activeParentIndex) {
+        if (childIndex < 0 || childIndex >= waypoints.size() || !isSubwaypoint(childIndex)) {
+            return false;
+        }
+        if (parentIndex != activeParentIndex) return true;
+        return !waypoints.get(childIndex)
+                .hasFlag(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED);
+    }
+
     public Waypoint get(int index) {
         return waypoints.get(index);
     }
 
-    /*[[AI-FN-DOC
-Function:
-current
-Purpose:
-Return the exact waypoint currently targeted by route progression.
-Why this exists:
-Renderers and tracers need one accessor for the active target, and explicit skipto commands can now target subwaypoints directly.
-When to use:
-Use when caller needs the waypoint the player should currently navigate to. Do not use when caller specifically needs the parent main waypoint; use currentMainIndex for that.
-Inputs:
-None.
-Outputs:
-Returns the current Waypoint, or null when the route is empty or complete.
-Side effects:
-None.
-Failure modes:
-Out-of-range currentIndex values return null instead of throwing.
-Important invariants:
-When currentIndex points to a subwaypoint, this method returns that subwaypoint rather than normalizing to its parent.
-Internal logic:
-Check currentIndex bounds against the waypoint list and return the exact element when valid.
-Pseudocode:
-if currentIndex is outside 0 inclusive to size exclusive, return null
-return waypoints[currentIndex]
-Implementation notes:
-This changed from main-waypoint normalization so /wp skipto decimal targets can drive tracers accurately.
-AI self-check:
-Verify callers that need parent context still use currentMainIndex.
-]]*/
     public Waypoint current() {
         if (currentIndex < 0 || currentIndex >= waypoints.size()) return null;
         return waypoints.get(currentIndex);
@@ -422,37 +415,6 @@ Verify callers that need parent context still use currentMainIndex.
         focusNewWaypoint(index);
     }
 
-    /*[[AI-FN-DOC
-Function:
-moveWaypointToPrecise.
-Purpose:
-Move one waypoint to an absolute sixteenth-block center while keeping route visibility/proximity state fresh.
-Why this exists:
-Small subwaypoint repositioning needs finer placement than whole-block coordinates without changing normal waypoint movement semantics.
-When to use:
-Use when a caller has already snapped a small waypoint target to Waypoint.PRECISE_SCALE units. Do not use for block-level coordinate editor changes; use moveWaypointTo instead.
-Inputs:
-index is the waypoint list index to move; preciseX/preciseY/preciseZ are absolute world coordinates multiplied by Waypoint.PRECISE_SCALE.
-Outputs:
-No return value. The waypoint at index is replaced with a precise-position copy.
-Side effects:
-Mutates the waypoint list, normalizes route structure/progress through afterWaypointStructureChanged, clears static reach state through that path, invalidates proximity index, and focuses the moved waypoint.
-Failure modes:
-Invalid indices return without mutation.
-Important invariants:
-The moved waypoint keeps its color, flags, radius, name, and temp metadata; only its center/block position changes.
-Internal logic:
-Guard the index, replace the waypoint with withPreciseSixteenths, run the shared post-structure-change refresh, and focus the moved index.
-Pseudocode:
-if index out of range, return
-waypoints[index] = waypoints[index].withPreciseSixteenths(preciseX, preciseY, preciseZ)
-afterWaypointStructureChanged()
-focusNewWaypoint(index)
-Implementation notes:
-This mirrors moveWaypointTo's side effects so precise and block moves invalidate exactly the same derived state.
-AI self-check:
-Verify normal moveWaypointTo remains block-centered and this path preserves small marker precision.
-]]*/
     public void moveWaypointToPrecise(int index, int preciseX, int preciseY, int preciseZ) {
         if (index < 0 || index >= waypoints.size()) return;
         waypoints.set(index, waypoints.get(index).withPreciseSixteenths(preciseX, preciseY, preciseZ));
@@ -582,42 +544,6 @@ Verify normal moveWaypointTo remains block-centered and this path preserves smal
         return isSubwaypoint(index) ? moveSubwaypointBy(index, delta) : moveMainBlockBy(index, delta);
     }
 
-    /*[[AI-FN-DOC
-Function:
-advancePast
-Purpose:
-Move route progress beyond a reached waypoint while respecting main-waypoint and subwaypoint progression rules.
-Why this exists:
-Automatic progression and explicit subwaypoint targets need one mutation path that advances to the correct next target and preserves visual holds where appropriate.
-When to use:
-Use after proximity logic confirms a waypoint has been reached. Do not use for manual jumps to a specific target; use setCurrentIndex or setCurrentTargetIndex instead.
-Inputs:
-reachedIndex is the zero-based waypoint index that was reached. It may be a main waypoint, subwaypoint, or out-of-range value.
-Outputs:
-No return value. Mutates currentIndex and activeSubwaypointParentIndex.
-Side effects:
-Changes route progress state.
-Failure modes:
-Out-of-range main-like values fall through to completion behavior through next-main lookup. Subwaypoint branches guard by checking isSubwaypoint first.
-Important invariants:
-Main waypoint behavior remains compatible with existing visual hold semantics. Reaching a subwaypoint advances to the next sibling subwaypoint, next main waypoint, or completion.
-Internal logic:
-If the reached index is a subwaypoint, advance within its child chain or to the next main. Otherwise preserve the existing main-waypoint hold and next-main behavior.
-Pseudocode:
-if reached index is a subwaypoint:
-  next = reachedIndex + 1
-  if next exists and is subwaypoint, currentIndex = next and hold parent
-  else currentIndex = next main at/after next or route size and clear hold
-  return
-if reached main has children, set active hold to reached main, else clear hold
-set currentIndex to next main after reached or route size
-normalize currentIndex to main
-validate active hold still matches expected next target
-Implementation notes:
-The subwaypoint branch intentionally avoids normalizeCurrentIndexToMain so explicit child targets can advance through child labels one by one.
-AI self-check:
-Verify existing parent-with-subwaypoints tests still pass and the new explicit child target test advances to the next main.
-]]*/
     public void advancePast(int reachedIndex) {
         if (isSubwaypoint(reachedIndex)) {
             int next = reachedIndex + 1;
@@ -645,49 +571,6 @@ Verify existing parent-with-subwaypoints tests still pass and the new explicit c
         }
     }
 
-    /*[[AI-FN-DOC
-Function:
-retreatToPreviousTarget
-Purpose:
-Move route progress back to the previous target waypoint.
-Why this exists:
-The Previous Waypoint keybind needs one route-owned inverse for Skip Waypoint that understands normal main-waypoint progress, exact subwaypoint targets, held subwaypoint parents, and completed routes.
-When to use:
-Use when an explicit user action should move a route back by one target. Do not use for structural edits, initial route setup, or automatic proximity progression.
-Inputs:
-No parameters. Reads this group's waypoint list, currentIndex, and activeSubwaypointParentIndex.
-Outputs:
-Returns true when current progress moved to an earlier target, or false when the route is empty or already at its first target.
-Side effects:
-Mutates currentIndex and activeSubwaypointParentIndex through setCurrentTargetIndex, and clears proximity suppression through that method.
-Failure modes:
-Empty groups and routes with no previous target return false without mutation. Invalid active subwaypoint hold state is ignored by falling back to last or previous main waypoint lookup.
-Important invariants:
-Retreating from a completed route targets the final main waypoint, retreating from an exact subwaypoint target walks to the previous exact child or parent, and retreating from a main waypoint walks to the previous main waypoint rather than a previous parent's child.
-Internal logic:
-Choose a target based on current progress state, then delegate to setCurrentTargetIndex so exact subwaypoint targeting and suppression clearing stay consistent with skip-to commands.
-Pseudocode:
-if waypoint list is empty, return false
-if route is complete:
-  heldParent = activeParentForCompletionWrap
-  target = heldParent if valid, otherwise last main index
-else if currentIndex is at or before first list entry:
-  return false
-else if currentIndex is a subwaypoint:
-  target = currentIndex - 1
-else if activeSubwaypointParentIndex is a valid active hold:
-  target = activeSubwaypointParentIndex
-else:
-  target = previous main index before currentIndex
-if target is invalid, return false
-before = currentIndex
-setCurrentTargetIndex(target)
-return currentIndex changed from before
-Implementation notes:
-The method deliberately does not call resetProgress because going back one step should preserve the rest of the route state and should work from completion as a one-step undo.
-AI self-check:
-Verify the branch order handles completion before the at-start guard and handles exact subwaypoint current targets before main-waypoint previous-main logic.
-]]*/
     public boolean retreatToPreviousTarget() {
         if (waypoints.isEmpty()) return false;
 
@@ -867,52 +750,22 @@ Verify the branch order handles completion before the at-start guard and handles
         currentIndex = normalizedMainIndexFor(index);
         activeSubwaypointParentIndex = -1;
         clearProximitySuppression();
+        clearStandSkipHold();
     }
 
-    /*[[AI-FN-DOC
-Function:
-setCurrentTargetIndex
-Purpose:
-Set the route's current target to an exact waypoint index, including subwaypoints.
-Why this exists:
-The command surface can address labels like 2.2, and normal setCurrentIndex intentionally canonicalizes subwaypoints back to their parent for older UI flows.
-When to use:
-Use for explicit user navigation commands that target a specific displayed waypoint. Do not use for structural edits that should keep legacy main-waypoint normalization.
-Inputs:
-index is a zero-based waypoint list index. Values below zero clamp to the first waypoint; values at or past size mark the route complete.
-Outputs:
-No return value. Mutates currentIndex and clears temporary route focus/suppression state.
-Side effects:
-Changes progression target, may set activeSubwaypointParentIndex for subwaypoint targets, clears proximity suppression.
-Failure modes:
-Empty groups are marked at index 0 and no exception is thrown. Out-of-range values are clamped to route completion.
-Important invariants:
-Main waypoint targets clear active subwaypoint hold. Subwaypoint targets retain their parent as the active subwaypoint parent for renderer context.
-Internal logic:
-Handle empty and completion cases first, clamp into list bounds, assign the exact index, set visual hold to the parent only for subwaypoints, then clear suppression.
-Pseudocode:
-if route empty, set currentIndex to 0 and clear hold
-else if index >= size, set currentIndex to size and clear hold
-else clamp index to at least 0
-set currentIndex to clamped
-if clamped is subwaypoint, active parent = parentMainIndex(clamped), else clear active parent
-clear proximity suppression
-Implementation notes:
-This method deliberately does not call normalizeCurrentIndexToMain because the whole point is preserving subwaypoint targets from /wp skipto.
-AI self-check:
-Confirm current(), renderer state, and strict proximity progression can now observe an exact subwaypoint current target.
-]]*/
     public void setCurrentTargetIndex(int index) {
         if (waypoints.isEmpty()) {
             currentIndex = 0;
             activeSubwaypointParentIndex = -1;
             clearProximitySuppression();
+            clearStandSkipHold();
             return;
         }
         if (index >= waypoints.size()) {
             currentIndex = waypoints.size();
             activeSubwaypointParentIndex = -1;
             clearProximitySuppression();
+            clearStandSkipHold();
             return;
         }
         currentIndex = Math.max(0, index);
@@ -920,6 +773,7 @@ Confirm current(), renderer state, and strict proximity progression can now obse
                 ? parentMainIndex(currentIndex)
                 : -1;
         clearProximitySuppression();
+        clearStandSkipHold();
     }
 
     /** Radius the tracker should use for a given waypoint (its own override, else the group default). */
@@ -934,6 +788,32 @@ Confirm current(), renderer state, and strict proximity progression can now obse
     public boolean forEachNearbyIndex(double x, double y, double z,
                                       double radius, IntPredicate action) {
         return proximityIndex().forEachNearby(x, y, z, radius, action);
+    }
+
+    public boolean standSkipHeldLongEnough(int index, long nowMillis, long requiredMillis) {
+        if (index < 0 || index >= waypoints.size()) {
+            clearStandSkipHold();
+            return false;
+        }
+        if (standSkipHoldIndex != index) {
+            standSkipHoldIndex = index;
+            standSkipHoldStartedAtMillis = nowMillis;
+            return requiredMillis <= 0;
+        }
+        return nowMillis - standSkipHoldStartedAtMillis >= requiredMillis;
+    }
+
+    public int standSkipHoldIndex() {
+        return standSkipHoldIndex;
+    }
+
+    public void clearStandSkipHold() {
+        standSkipHoldIndex = -1;
+        standSkipHoldStartedAtMillis = 0L;
+    }
+
+    public void clearStandSkipHold(int index) {
+        if (standSkipHoldIndex == index) clearStandSkipHold();
     }
 
         private void applyColorMode() {
@@ -960,6 +840,7 @@ Confirm current(), renderer state, and strict proximity progression can now obse
         if (!isActiveSubwaypointParent(activeSubwaypointParentIndex)) {
             activeSubwaypointParentIndex = -1;
         }
+        clearStandSkipHold();
         staticReached = null;
         invalidateProximityIndex();
     }

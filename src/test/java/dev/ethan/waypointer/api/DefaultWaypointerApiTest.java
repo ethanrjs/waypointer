@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.api;
 
+import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.codec.WaypointImporter;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
@@ -7,7 +8,9 @@ import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -160,6 +163,62 @@ class DefaultWaypointerApiTest {
         assertEquals(2, summary.groupCount());
         assertEquals(2, api.allGroups().size());
         assertEquals(1, changes.get(), "bulk import should notify after the whole import lands");
+    }
+
+    @Test
+    void exportRoutesRoundTripsSelectedGroupsWithoutDataChange() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        AtomicInteger changes = new AtomicInteger();
+        api.onDataChanged(changes::incrementAndGet);
+        String firstId = api.createRoute(RouteSpec.builder()
+                .name("First")
+                .zoneId("hub")
+                .waypoint(WaypointSpec.at(1, 2, 3).name("Start"))
+                .build());
+        String secondId = api.createRoute(RouteSpec.builder()
+                .name("Second")
+                .zoneId("dwarven_mines")
+                .waypoint(WaypointSpec.at(4, 5, 6).name("Stop"))
+                .build());
+
+        String payload = api.exportRoutes(List.of("missing", secondId, firstId),
+                ExportOptions.builder()
+                        .includeNames(true)
+                        .label("API Export")
+                        .build());
+        WaypointCodec.Decoded decoded = WaypointCodec.decodeFull(payload);
+
+        assertEquals("API Export", decoded.label());
+        assertEquals(2, decoded.groups().size());
+        assertEquals("Second", decoded.groups().get(0).name());
+        assertEquals("Stop", decoded.groups().get(0).get(0).name());
+        assertEquals("First", decoded.groups().get(1).name());
+        assertEquals("Start", decoded.groups().get(1).get(0).name());
+        assertEquals(2, changes.get(), "export is read-only and must not notify listeners");
+    }
+
+    @Test
+    void exportRoutesCanUseSkytilsTarget() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        String groupId = api.createRoute(RouteSpec.builder()
+                .name("Route")
+                .zoneId("hub")
+                .waypoint(WaypointSpec.at(1, 2, 3).name("Start"))
+                .build());
+
+        String payload = api.exportRoutes(List.of(groupId),
+                ExportOptions.builder()
+                        .target(ExportTarget.SKYTILS)
+                        .includeNames(true)
+                        .build());
+        String json = new String(Base64.getDecoder().decode(payload), StandardCharsets.UTF_8);
+
+        assertTrue(json.contains("\"categories\""));
+        assertTrue(json.contains("\"name\":\"Route\""));
+        assertFalse(json.contains("\"name\":\"Start\""));
+        assertFalse(payload.startsWith(WaypointCodec.MAGIC));
     }
 
     @Test

@@ -73,6 +73,18 @@ class CodecScannerTest {
     }
 
     @Test
+    void caps_matches_per_message_at_three() {
+        String export = sampleExport();
+        String chat = String.join(" | ", export, export, export, export);
+
+        List<CodecScanner.Match> matches = CodecScanner.scan(chat);
+
+        assertEquals(3, matches.size(), "chat scanner should cap per-message work at three route payloads");
+        assertTrue(matches.stream().allMatch(CodecScanner.Match::valid),
+                "the cap should not mark accepted valid payloads as invalid");
+    }
+
+    @Test
     void extracts_at_start_and_end_of_message() {
         String export = sampleExport();
 

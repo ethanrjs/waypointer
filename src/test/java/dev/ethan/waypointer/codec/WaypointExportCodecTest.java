@@ -41,7 +41,7 @@ class WaypointExportCodecTest {
         WaypointGroup imported = result.groups().get(0);
         assertEquals(WaypointImporter.Source.SKYBLOCKER, result.source());
         assertEquals("the_park", imported.zoneId());
-        assertEquals("start", imported.get(0).name());
+        assertEquals("", imported.get(0).name());
     }
 
     @Test
@@ -54,7 +54,7 @@ class WaypointExportCodecTest {
         WaypointGroup imported = result.groups().get(0);
         assertEquals(WaypointImporter.Source.SKYTILS, result.source());
         assertEquals("galatea", imported.zoneId());
-        assertEquals("start", imported.get(0).name());
+        assertEquals("", imported.get(0).name());
     }
 
     @Test
@@ -66,7 +66,7 @@ class WaypointExportCodecTest {
         JsonArray root = JsonParser.parseString(encoded).getAsJsonArray();
         JsonObject first = root.get(0).getAsJsonObject();
         assertEquals(1, first.get("x").getAsInt());
-        assertEquals("start", first.getAsJsonObject("options").get("name").getAsString());
+        assertEquals(1, first.getAsJsonObject("options").get("name").getAsInt());
         assertEquals(1.0, first.get("r").getAsDouble(), 0.0001);
         assertEquals(0.0, first.get("g").getAsDouble(), 0.0001);
 
@@ -123,6 +123,14 @@ class WaypointExportCodecTest {
         String skyblocker = WaypointExportCodec.encode(List.of(group), opts,
                 WaypointExportCodec.Target.SKYBLOCKER);
         assertTrue(WaypointImporter.importAny(skyblocker).groups().get(0).size() > 0);
+    }
+
+    @Test
+    void third_party_targets_report_names_unsupported() {
+        assertTrue(WaypointExportCodec.Target.WAYPOINTER.supportsNames());
+        assertFalse(WaypointExportCodec.Target.SKYBLOCKER.supportsNames());
+        assertFalse(WaypointExportCodec.Target.SKYTILS.supportsNames());
+        assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsNames());
     }
 
     private static WaypointGroup sampleGroup(String name, String zoneId) {

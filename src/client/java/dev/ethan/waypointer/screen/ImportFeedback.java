@@ -8,27 +8,27 @@ import net.minecraft.network.chat.Component;
 import java.util.List;
 
 /**
- * Post-import UI feedback: toasts for success/failure and navigation into the
- * editor so the newly-imported groups are visible immediately.
+ * Post-import UI feedback: toasts for success/failure so import actions have a
+ * visible result even when chat is not the active focus.
  *
  * <p>Previously every import path (command, clipboard, chat, file) relied on
  * the user to manually open the editor, pick the right zone tab, and find the
  * fresh groups. That was fine when imports always landed in the current zone,
  * but imports often arrive with mismatched or unknown zones (cross-user
  * shares, coleweight routes), leaving users unsure whether the import worked
- * and where the result went. Centralising the feedback here means every
- * import source gets the same "here's what happened, and here's where to see
- * it" treatment.
+ * and where the result went. Centralising the toast feedback here means every
+ * import source gets the same passive "here's what happened" treatment, while
+ * callers decide whether to navigate, select, or simply offer an explicit
+ * editor link.
  */
 public final class ImportFeedback {
 
     private ImportFeedback() {}
 
     /**
-     * Report a successful import via a system toast and open the editor
-     * scrolled/selected to the first imported group. {@code imported} must be
-     * the list of groups that were actually added to the manager so we can
-     * cite their names and navigate to their zone.
+     * Report a successful import via a system toast. {@code imported} must be
+     * the list of groups that were actually added to the manager so we can cite
+     * their names in the toast body.
      *
      * <p>When {@code imported} is empty this is a no-op -- an empty "success"
      * report would just confuse the user. Callers that parsed a payload but
@@ -50,6 +50,18 @@ public final class ImportFeedback {
                 mc.getToastManager(),
                 SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
                 Component.literal("Import OK" + (source == null ? "" : " (" + source + ")")),
+                Component.literal(body));
+    }
+
+    public static void successDungeonRoutes(int roomCount, int waypointCount, String source) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) return;
+
+        String body = roomCount + " room(s), " + waypointCount + " secret waypoint(s)";
+        SystemToast.addOrUpdate(
+                mc.getToastManager(),
+                SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+                Component.literal("Dungeon import OK" + (source == null ? "" : " (" + source + ")")),
                 Component.literal(body));
     }
 

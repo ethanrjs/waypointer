@@ -2,8 +2,11 @@ package dev.ethan.waypointer.debug;
 
 import dev.ethan.waypointer.WaypointerClient;
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.dungeon.Direction;
+import dev.ethan.waypointer.dungeon.DungeonDetectionConfidence;
 import dev.ethan.waypointer.dungeon.DungeonRoom;
 import dev.ethan.waypointer.dungeon.DungeonRoomZoneBridge;
+import dev.ethan.waypointer.dungeon.DungeonRouteSession;
 import dev.ethan.waypointer.dungeon.DungeonStateTracker;
 import dev.ethan.waypointer.location.HypixelApiZoneSource;
 import dev.ethan.waypointer.location.SidebarTexts;
@@ -12,35 +15,87 @@ import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.network.chat.Component;
 
+import java.util.List;
+
 public final class DebugSignals {
 
     private DebugSignals() {}
+
+    public static DungeonDebugSnapshot dungeonDebugSnapshot() {
+        DungeonStateTracker tracker = WaypointerClient.dungeonTracker();
+        DungeonRouteSession session = WaypointerClient.dungeonRouteSession();
+        DungeonRoom room = tracker == null ? null : tracker.currentRoom();
+        DungeonStateTracker.DebugSnapshot trackerSnapshot = tracker == null
+                ? null
+                : tracker.debugSnapshot();
+        DungeonRouteSession.DebugSnapshot routeSnapshot = session == null
+                ? null
+                : session.debugSnapshot(room);
+        return new DungeonDebugSnapshot(
+                trackerSnapshot,
+                DungeonRoomZoneBridge.debugSnapshot(),
+                routeSnapshot,
+                DebugEventLog.snapshot());
+    }
 
     public static String dungeonRoomLine() {
         DungeonStateTracker tracker = WaypointerClient.dungeonTracker();
         if (tracker == null) return "not installed";
 
-        DungeonRoom room = tracker.currentRoom();
-        if (room == null) {
-            return "inDungeon=" + tracker.inDungeon()
-                    + ", room=(none)"
-                    + ", directionOverride=" + valueOrMissing(tracker.directionOverride());
-        }
+        return dungeonRoomLine(tracker.debugSnapshot());
+    }
 
+    static String dungeonRoomLine(DungeonStateTracker.DebugSnapshot snapshot) {
+        if (snapshot == null) return "not installed";
+        if (!snapshot.roomPresent) {
+            return "inDungeon=" + snapshot.inDungeon
+                    + ", room=(none)"
+                    + ", directionOverride=" + snapshot.directionOverride;
+        }
+        return "inDungeon=" + snapshot.inDungeon
+                + ", room=" + snapshot.roomName
+                + ", id=" + snapshot.roomId
+                + ", confidence=" + detectionConfidenceLabel(snapshot.confidence)
+                + ", type=" + snapshot.roomType
+                + ", shape=" + snapshot.roomShape
+                + ", dir=" + snapshot.roomDirection
+                + ", corner=" + snapshot.physicalCornerX + "," + snapshot.physicalCornerZ
+                + ", segments=" + snapshot.roomSegments.size()
+                + ", directionOverride=" + snapshot.directionOverride;
+    }
+
+    static String dungeonRoomLine(boolean inDungeon, DungeonRoom room, Direction directionOverride) {
+        if (room == null) {
+            return "inDungeon=" + inDungeon
+                    + ", room=(none)"
+                    + ", directionOverride=" + valueOrMissing(directionOverride);
+        }
         String roomId = room.hasRoomId() ? room.roomId() : "<unmatched>";
-        return "inDungeon=" + tracker.inDungeon()
+        return "inDungeon=" + inDungeon
                 + ", room=" + room.displayName()
                 + ", id=" + roomId
+                + ", confidence=" + detectionConfidenceLabel(room.confidence())
                 + ", type=" + room.type()
                 + ", shape=" + room.shape()
                 + ", dir=" + room.direction()
                 + ", corner=" + room.physicalCornerX() + "," + room.physicalCornerZ()
                 + ", segments=" + room.segments().size()
-                + ", directionOverride=" + valueOrMissing(tracker.directionOverride());
+                + ", directionOverride=" + valueOrMissing(directionOverride);
+    }
+
+    public static String detectionConfidenceLabel(DungeonDetectionConfidence confidence) {
+        if (confidence == null) return "unknown";
+        return switch (confidence) {
+            case MAP_FALLBACK -> "map fallback (lower confidence)";
+            case CORE_MATCHED -> "core matched";
+            case CORE_CONFIRMED -> "core confirmed";
+            case SKELETON_CONFIRMED -> "skeleton confirmed";
+            case UNKNOWN -> "unknown";
+        };
     }
 
     public static String dungeonBridgeLine() {
-        return DungeonRoomZoneBridge.debugLine();
+        return DungeonRoomZoneBridge.debugSnapshot().line;
     }
 
     public static String dungeonConfigLine() {
@@ -137,5 +192,22 @@ public final class DebugSignals {
             out.append(c);
         }
         return out.toString().trim();
+    }
+
+    public static final class DungeonDebugSnapshot {
+        public final DungeonStateTracker.DebugSnapshot tracker;
+        public final DungeonRoomZoneBridge.DebugSnapshot bridge;
+        public final DungeonRouteSession.DebugSnapshot routeSession;
+        public final List<DebugEventLog.Entry> inputEvents;
+
+        private DungeonDebugSnapshot(DungeonStateTracker.DebugSnapshot tracker,
+                                     DungeonRoomZoneBridge.DebugSnapshot bridge,
+                                     DungeonRouteSession.DebugSnapshot routeSession,
+                                     List<DebugEventLog.Entry> inputEvents) {
+            this.tracker = tracker;
+            this.bridge = bridge;
+            this.routeSession = routeSession;
+            this.inputEvents = inputEvents == null ? List.of() : List.copyOf(inputEvents);
+        }
     }
 }

@@ -129,6 +129,18 @@ public interface WaypointerApi {
     ImportSummary importRoutes(String payload, ImportOptions options);
 
     /**
+     * Export selected routes to a share string.
+     *
+     * <p>Routes are exported in the order supplied by {@code groupIds}. Missing
+     * ids are skipped so callers can race safely with user edits. The operation
+     * is read-only and does not notify data listeners.
+     *
+     * @param groupIds route ids to export
+     * @param options export options, or {@code null} for {@link ExportOptions#defaults()}
+     */
+    String exportRoutes(List<String> groupIds, ExportOptions options);
+
+    /**
      * Listen for route or waypoint changes.
      *
      * <p>Callbacks run on the client thread. Keep them lightweight and close the

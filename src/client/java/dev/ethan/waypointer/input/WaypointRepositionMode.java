@@ -2,30 +2,44 @@ package dev.ethan.waypointer.input;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import dev.ethan.waypointer.chat.WaypointerChatFeedback;
+import com.mojang.blaze3d.platform.InputConstants;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.render.RenderHelpers;
+import dev.ethan.waypointer.render.WaypointRenderer;
 import dev.ethan.waypointer.render.WaypointerRenderPipelines;
 import dev.ethan.waypointer.screen.AddNamedWaypointScreen;
 import dev.ethan.waypointer.screen.GroupEditScreen;
 import dev.ethan.waypointer.screen.WaypointerScreen;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.event.client.player.ClientPreAttackCallback;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
+import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.level.block.ButtonBlock;
+import net.minecraft.world.level.block.ChestBlock;
+import net.minecraft.world.level.block.EnderChestBlock;
+import net.minecraft.world.level.block.LeverBlock;
+import net.minecraft.world.level.block.state.BlockState;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * One-shot "pick a block in the world" mode for waypoint edits.
@@ -35,6 +49,10 @@ import net.minecraft.world.phys.Vec3;
  * active we close the GUI, outline the currently-targeted block, intercept left
  * click to commit, and intercept right click to cancel without placing or using
  * items.
+ *
+ * <p>Persistent edit mode is different from a one-shot placement session: left
+ * click selects an existing visible waypoint for movement, and right-click adds
+ * a waypoint at the targeted block without server interaction.
  */
 public final class WaypointRepositionMode {
 
@@ -43,204 +61,532 @@ public final class WaypointRepositionMode {
     private static final float OUTLINE_WIDTH = 4.0f;
     private static final double OUTLINE_EXPAND = 0.002;
     private static final double PRECISE_SMALL_SIZE = 1.0 / 16.0;
+    private static final double EDIT_PICK_RANGE = 512.0;
+    private static final double EDIT_PICK_PADDING = 0.18;
+    private static final double RAY_AXIS_EPSILON = 1.0E-7;
     private static final Component HELP_MOVE = Component.literal(
-            "Left click to set the new position. Right click to exit.")
+            "Left click to set the new position.")
             .withStyle(ChatFormatting.AQUA);
     private static final Component HELP_MOVE_PRECISE = Component.literal(
-            "Left click to place the small waypoint at the cursor, snapped to 1/16 blocks. Right click to exit.")
+            "Left click to place the small waypoint at the cursor, snapped to 1/16 blocks.")
             .withStyle(ChatFormatting.AQUA);
     private static final Component HELP_ADD = Component.literal(
-            "Left click to place the waypoint. Right click to exit.")
+            "Left click to place the waypoint.")
             .withStyle(ChatFormatting.AQUA);
     private static final Component HELP_ADD_NAMED = Component.literal(
-            "Left click to place the named waypoint. Right click to exit.")
+            "Left click to place the named waypoint.")
+            .withStyle(ChatFormatting.AQUA);
+    private static final Component HELP_ADD_SUBWAYPOINT = Component.literal(
+            "Left click to place the subwaypoint.")
+            .withStyle(ChatFormatting.AQUA);
+    private static final Component HELP_ADD_SMALL_SUBWAYPOINT = Component.literal(
+            "Left click to place the small subwaypoint at the cursor, snapped to 1/16 blocks.")
+            .withStyle(ChatFormatting.AQUA);
+    private static final Component HELP_EDIT_ON = Component.literal(
+            "Edit mode enabled. Left click a waypoint to move it. Right click adds a waypoint.")
+            .withStyle(ChatFormatting.AQUA);
+    private static final Component HELP_EDIT_OFF = Component.literal(
+            "Edit mode disabled.")
+            .withStyle(ChatFormatting.YELLOW);
+    private static final Component HELP_EDIT_UNAVAILABLE = Component.literal(
+            "Edit mode is unavailable until Waypointer has loaded routes.")
+            .withStyle(ChatFormatting.YELLOW);
+    private static final Component HELP_EDIT_NO_TARGET = Component.literal(
+            "No waypoint under crosshair.")
+            .withStyle(ChatFormatting.YELLOW);
+    private static final Component HELP_EDIT_NO_BLOCK_TARGET = Component.literal(
+            "No block under crosshair.")
+            .withStyle(ChatFormatting.YELLOW);
+    private static final Component HELP_EDIT_MOVED = Component.literal(
+            "Waypoint moved. Edit mode is still enabled.")
+            .withStyle(ChatFormatting.AQUA);
+    private static final Component HELP_EDIT_ADDED = Component.literal(
+            "Waypoint added. Edit mode is still enabled.")
             .withStyle(ChatFormatting.AQUA);
 
     private static Session active;
+    private static ActiveGroupManager editManager;
+    private static WaypointerConfig editConfig;
+    private static ClientLevel lastEditModeAddLevel;
+    private static long lastEditModeAddGameTime = Long.MIN_VALUE;
+    private static boolean editModeEnabled;
+    private static WaypointGroup lastEditSelectionGroup;
+    private static int lastEditSelectionIndex = -1;
 
     private WaypointRepositionMode() {}
 
     public static void install() {
-        ClientPreAttackCallback.EVENT.register((client, player, clickCount) -> {
-            if (active == null) return false;
-            if (clickCount == 0) return true;
-            commit(client);
-            return true;
+        ClientPreAttackCallback.EVENT.register(
+                (client, player, clickCount) -> {
+            if (active != null) {
+                if (clickCount == 0) return true;
+                commit(client);
+                return true;
+            }
+            if (!editModeEnabled) return false;
+            return handleEditModeAttack(client, clickCount);
         });
-        UseItemCallback.EVENT.register((player, world, hand) -> {
-            if (active == null || !world.isClientSide()) return InteractionResult.PASS;
-            cancel(Minecraft.getInstance());
-            return InteractionResult.FAIL;
+        UseItemCallback.EVENT.register(
+                (player, world, hand) -> {
+            if (!world.isClientSide()) return InteractionResult.PASS;
+
+            Minecraft mc = Minecraft.getInstance();
+            if (active != null) {
+                return handleEditModeRightClick(mc);
+            }
+            if (!editModeEnabled) return InteractionResult.PASS;
+            return handleEditModeRightClick(mc);
         });
-        UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
-            if (active == null || !world.isClientSide()) return InteractionResult.PASS;
-            cancel(Minecraft.getInstance());
-            return InteractionResult.FAIL;
+        UseBlockCallback.EVENT.register(
+                (player, world, hand, hitResult) -> {
+            if (!world.isClientSide()) return InteractionResult.PASS;
+
+            Minecraft mc = Minecraft.getInstance();
+            if (active != null) {
+                return handleEditModeRightClick(mc);
+            }
+            if (!editModeEnabled) return InteractionResult.PASS;
+            return handleEditModeRightClick(mc);
         });
         ClientTickEvents.END_CLIENT_TICK.register(WaypointRepositionMode::onTick);
-        WorldRenderEvents.END_MAIN.register(WaypointRepositionMode::renderOutline);
+        LevelRenderEvents.END_MAIN.register(WaypointRepositionMode::renderOutline);
     }
 
-    /*[[AI-FN-DOC
-Function:
-start.
-Purpose:
-Start one-shot reposition mode for an existing waypoint from the route editor.
-Why this exists:
-Shift-left-clicking a waypoint row should close the editor, show an in-world placement preview, and commit the new position on the next left click.
-When to use:
-Use from GroupEditScreen when moving an existing waypoint. Do not use for creating new unnamed or named waypoints; use startAdd for those flows.
-Inputs:
-manager is the active group manager; config is the live config; group is the route containing the waypoint; waypointIndex is the index to move.
-Outputs:
-No return value. Creates an active reposition session when inputs are valid.
-Side effects:
-Mutates the static active session, closes the current screen, and shows help text in chat/overlay.
-Failure modes:
-Null manager/config/group or out-of-range waypointIndex return without changing active mode.
-Important invariants:
-Small subwaypoints with FLAG_SMALL_SUBWAYPOINT enter precise sixteenth-block mode; all other waypoints preserve the legacy full-block reposition behavior.
-Internal logic:
-Validate inputs, inspect the selected waypoint's flags, build a MOVE_EXISTING session with the precise mode flag, close the GUI, and show mode-specific help.
-Pseudocode:
-if manager/config/group invalid, return
-if waypointIndex out of group range, return
-waypoint = group.get(waypointIndex)
-precise = waypoint is subwaypoint and has small flag
-active = new Session(manager, config, group, waypointIndex, MOVE_EXISTING, precise)
-close screen
-show help
-Implementation notes:
-The session snapshots whether the move started as precise so later row/style mutations cannot change interaction semantics mid-placement.
-AI self-check:
-Verify normal route waypoints still start block mode and small subwaypoints start precise mode.
-]]*/
+    public static boolean isEditModeEnabled() {
+        return editModeEnabled;
+    }
+
+    public static boolean toggleEditMode(ActiveGroupManager manager, WaypointerConfig config) {
+        setEditModeEnabled(manager, config, !editModeEnabled);
+        return editModeEnabled;
+    }
+
+    public static void setEditModeEnabled(ActiveGroupManager manager, WaypointerConfig config,
+                                          boolean enabled) {
+        Minecraft mc = Minecraft.getInstance();
+        boolean wasEnabled = editModeEnabled;
+        lastEditModeAddLevel = null;
+        lastEditModeAddGameTime = Long.MIN_VALUE;
+        clearEditSelectionCycle();
+        if (enabled) {
+            if (manager == null || config == null) {
+                editModeEnabled = false;
+                editManager = null;
+                editConfig = null;
+                active = null;
+                showStatus(mc, HELP_EDIT_UNAVAILABLE);
+                return;
+            }
+            editManager = manager;
+            editConfig = config;
+            editModeEnabled = true;
+            showStatus(mc, HELP_EDIT_ON);
+            if (!wasEnabled) {
+                playEditSound(mc, config);
+            }
+            return;
+        }
+
+        WaypointerConfig soundConfig = config == null ? editConfig : config;
+        editModeEnabled = false;
+        editManager = null;
+        editConfig = null;
+        active = null;
+        showStatus(mc, HELP_EDIT_OFF);
+        if (wasEnabled) {
+            playEditSound(mc, soundConfig);
+        }
+    }
+
+    private static void clearEditSelectionCycle() {
+        lastEditSelectionGroup = null;
+        lastEditSelectionIndex = -1;
+    }
+
     public static void start(ActiveGroupManager manager, WaypointerConfig config,
                              WaypointGroup group, int waypointIndex) {
+        startMove(manager, config, group, waypointIndex, true);
+    }
+
+    private static void startMove(ActiveGroupManager manager, WaypointerConfig config,
+                                  WaypointGroup group, int waypointIndex,
+                                  boolean reopenEditorAfterCommit) {
         if (manager == null || config == null || group == null) return;
         if (waypointIndex < 0 || waypointIndex >= group.size()) return;
 
         Minecraft mc = Minecraft.getInstance();
         Waypoint waypoint = group.get(waypointIndex);
-        boolean preciseSmallMove = waypoint.isSubwaypoint()
+        boolean preciseSmallPlacement = waypoint.isSubwaypoint()
                 && waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT);
         active = new Session(manager, config, group, waypointIndex,
-                Mode.MOVE_EXISTING, preciseSmallMove);
+                Mode.MOVE_EXISTING, preciseSmallPlacement, reopenEditorAfterCommit);
         mc.setScreen(null);
         showHelp(mc);
     }
 
-    /*[[AI-FN-DOC
-Function:
-startAdd.
-Purpose:
-Start one-shot placement mode for creating a new waypoint at a targeted block.
-Why this exists:
-Keybind add flows need the same safe click-to-place/cancel mechanics as repositioning without requiring the route editor screen to remain open.
-When to use:
-Use for add-current-target keybinds. Do not use for moving an existing waypoint.
-Inputs:
-manager is the active group manager; config is the live config; named selects whether placement opens the name prompt after picking a block.
-Outputs:
-No return value. Creates an add session when the client has a player and level.
-Side effects:
-May create or fetch the active group, mutate the static active session, close the current screen, and show help text.
-Failure modes:
-Null manager/config or missing player/level return without changing state.
-Important invariants:
-Add flows remain block-based; sixteenth-block precision is only for moving existing small waypoints.
-Internal logic:
-Validate inputs and client world, resolve the active route group, create an ADD_NAMED or ADD_UNNAMED session with precise mode disabled, close the GUI, and show help.
-Pseudocode:
-if manager or config null, return
-mc = Minecraft instance
-if no player or level, return
-group = manager.getOrCreateActiveGroup(config skip setting)
-active = new Session(manager, config, group, -1, add mode, false)
-close screen
-show help
-Implementation notes:
-Keeping add placement block-based avoids changing the semantics of existing keybinds.
-AI self-check:
-Verify named and unnamed add sessions pass preciseSmallMove=false.
-]]*/
     public static void startAdd(ActiveGroupManager manager, WaypointerConfig config,
                                 boolean named) {
+        startAddSession(manager, config, named ? Mode.ADD_NAMED : Mode.ADD_UNNAMED,
+                false);
+    }
+
+    public static void startAddSubwaypoint(ActiveGroupManager manager, WaypointerConfig config,
+                                           boolean small) {
+        startAddSession(manager, config,
+                small ? Mode.ADD_SMALL_SUBWAYPOINT : Mode.ADD_SUBWAYPOINT,
+                small);
+    }
+
+    private static void startAddSession(ActiveGroupManager manager, WaypointerConfig config,
+                                        Mode mode, boolean preciseSmallPlacement) {
         if (manager == null || config == null) return;
+        if (mode == null) return;
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
 
         WaypointGroup group = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
-        active = new Session(manager, config, group, -1,
-                named ? Mode.ADD_NAMED : Mode.ADD_UNNAMED, false);
+        active = new Session(manager, config, group, -1, mode, preciseSmallPlacement, true);
         mc.setScreen(null);
         showHelp(mc);
     }
 
     private static void onTick(Minecraft mc) {
-        if (active == null) return;
-        if (mc.player == null || mc.level == null) {
-            active = null;
-            return;
+        boolean missingWorld = mc.player == null || mc.level == null;
+        if (missingWorld) {
+            lastEditModeAddLevel = null;
+            lastEditModeAddGameTime = Long.MIN_VALUE;
+            clearEditSelectionCycle();
         }
-        if (mc.screen != null) {
-            active = null;
-            return;
+        if (active != null) {
+            if (missingWorld || mc.screen != null) {
+                active = null;
+            }
+        }
+        if (editModeEnabled && missingWorld) {
+            editModeEnabled = false;
+            editManager = null;
+            editConfig = null;
         }
     }
 
-    /*[[AI-FN-DOC
-Function:
-commit.
-Purpose:
-Commit the currently active reposition/add session from the player's current target.
-Why this exists:
-The click callbacks need one place that turns the world hit result into a route mutation or named-waypoint prompt according to the active mode.
-When to use:
-Use from the intercepted left-click path while active is non-null. Do not call when no reposition/add session is running.
-Inputs:
-mc is the Minecraft client used to read the current hit result and reopen screens.
-Outputs:
-No return value. May complete, keep, or clear the active session.
-Side effects:
-Moves existing waypoints, adds unnamed waypoints, opens the named prompt, fires data-changed events through helpers, or re-shows help when no valid target exists.
-Failure modes:
-If there is no session or no valid hit target, returns without mutation and shows help for target failures.
-Important invariants:
-Precise small moves must use targetedPrecise and moveWaypointToPrecise; all add flows and normal moves must keep targetedBlock behavior.
-Internal logic:
-Snapshot active session, branch precise small move before block targeting, otherwise resolve the block target and dispatch by mode.
-Pseudocode:
-session = active
-if session null, return
-if session is precise small move:
-  target = targetedPrecise(mc)
-  if target null, show help and return
-  moveExistingPrecise(mc, session, target)
-  return
-pos = targetedBlock(mc)
-if pos null, show help and return
-switch mode:
-  MOVE_EXISTING -> moveExisting
-  ADD_UNNAMED -> addUnnamed
-  ADD_NAMED -> openNamedPrompt
-Implementation notes:
-The precise branch is intentionally limited to MOVE_EXISTING sessions started from a small waypoint row.
-AI self-check:
-Verify normal block reposition remains unchanged and precise failure does not clear active mode.
-]]*/
+    private static boolean handleEditModeAttack(Minecraft mc, int clickCount) {
+        if (clickCount == 0) return true;
+        if (!editModeEnabled) return false;
+
+        SelectedWaypoint selected = findWaypointUnderCrosshair(mc);
+        if (selected == null) {
+            clearEditSelectionCycle();
+            showStatus(mc, HELP_EDIT_NO_TARGET);
+            return true;
+        }
+
+        startMove(editManager, editConfig, selected.group(), selected.waypointIndex(), false);
+        return true;
+    }
+
+    private static InteractionResult handleEditModeRightClick(Minecraft mc) {
+        if (editModeEnabled && isShiftDown()) {
+            return InteractionResult.FAIL;
+        }
+
+        if (active != null) {
+            cancel(mc);
+            return InteractionResult.FAIL;
+        }
+
+        if (!editModeEnabled) return InteractionResult.PASS;
+        return addWaypointFromEditModeRightClick(mc);
+    }
+
+    private static InteractionResult addWaypointFromEditModeRightClick(Minecraft mc) {
+        if (mc == null || mc.player == null || mc.level == null) return InteractionResult.PASS;
+        if (editManager == null || editConfig == null) {
+            showStatus(mc, HELP_EDIT_UNAVAILABLE);
+            return InteractionResult.FAIL;
+        }
+
+        BlockPos pos = targetedBlock(mc);
+        if (pos == null) {
+            showStatus(mc, HELP_EDIT_NO_BLOCK_TARGET);
+            return InteractionResult.FAIL;
+        }
+
+        if (isDuplicateEditModeAdd(mc.level)) return InteractionResult.FAIL;
+        rememberEditModeAdd(mc.level);
+
+        WaypointGroup group = editManager.getOrCreateActiveGroup();
+        int flags = defaultDungeonEditFlags(group, mc.level, pos);
+        group.add(new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
+                "", editConfig.defaultWaypointColor(), flags, 0.0));
+        int index = group.size() - 1;
+        new WaypointAddFlow().afterWaypointAdded(group, index);
+        editManager.fireDataChanged();
+        playEditSound(mc, editConfig);
+        showStatus(mc, HELP_EDIT_ADDED);
+        return InteractionResult.FAIL;
+    }
+
+    private static boolean isDuplicateEditModeAdd(ClientLevel level) {
+        return level != null
+                && lastEditModeAddLevel == level
+                && lastEditModeAddGameTime == level.getGameTime();
+    }
+
+    private static void rememberEditModeAdd(ClientLevel level) {
+        if (level == null) {
+            lastEditModeAddLevel = null;
+            lastEditModeAddGameTime = Long.MIN_VALUE;
+            return;
+        }
+        lastEditModeAddLevel = level;
+        lastEditModeAddGameTime = level.getGameTime();
+    }
+
+    static int defaultDungeonEditFlags(WaypointGroup group) {
+        return defaultDungeonEditFlags(group, false);
+    }
+
+    static int defaultDungeonEditFlags(WaypointGroup group, boolean interactDefaultBlock) {
+        if (!isDungeonRoomGroup(group)) return 0;
+        return interactDefaultBlock
+                ? Waypoint.FLAG_SKIP_ON_INTERACT
+                : Waypoint.FLAG_SKIP_ON_STAND;
+    }
+
+    private static int defaultDungeonEditFlags(WaypointGroup group, ClientLevel level, BlockPos pos) {
+        return defaultDungeonEditFlags(group, isDungeonInteractDefaultBlock(level, pos));
+    }
+
+    private static boolean isDungeonInteractDefaultBlock(ClientLevel level, BlockPos pos) {
+        return level != null && pos != null
+                && isDungeonInteractDefaultBlock(level.getBlockState(pos));
+    }
+
+    static boolean isDungeonInteractDefaultBlock(BlockState state) {
+        if (state == null) return false;
+        Object block = state.getBlock();
+        return block instanceof LeverBlock
+                || block instanceof ButtonBlock
+                || block instanceof ChestBlock
+                || block instanceof EnderChestBlock;
+    }
+
+    private static boolean isDungeonRoomGroup(WaypointGroup group) {
+        return group != null
+                && !group.temp()
+                && DungeonRoomData.definition(group.zoneId()) != null;
+    }
+
+    private static boolean isShiftDown() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.getWindow() == null) return false;
+        var window = mc.getWindow();
+        return InputConstants.isKeyDown(window, InputConstants.KEY_LSHIFT)
+                || InputConstants.isKeyDown(window, 344 /* GLFW_KEY_RIGHT_SHIFT */);
+    }
+
+    private static void playEditSound(Minecraft mc, WaypointerConfig config) {
+        if (mc == null || config == null || !config.editSounds()) return;
+        mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.STONE_HIT, 0.55F, 0.55F));
+    }
+
+    private static SelectedWaypoint findWaypointUnderCrosshair(Minecraft mc) {
+        if (mc == null || mc.player == null || mc.level == null) return null;
+        if (editManager == null || editConfig == null) return null;
+
+        ClientLevel level = mc.level;
+        Vec3 origin = mc.gameRenderer.getMainCamera().position();
+        Vec3 view = mc.player.getViewVector(1.0F);
+        Vec3 direction = normalizedDirection(view);
+        if (direction == null) return null;
+
+        List<SelectedWaypoint> candidates = new ArrayList<>();
+        List<Double> distances = new ArrayList<>();
+
+        for (WaypointGroup group : editManager.activeGroups()) {
+            group.forEachVisibleIndex(
+                    index -> {
+                if (index < 0 || index >= group.size()) return;
+
+                Waypoint waypoint = group.get(index);
+                AABB bounds = WaypointRenderer.waypointBoxBounds(level, waypoint);
+                if (bounds == null) return;
+
+                double distance = rayBoxDistance(origin, direction,
+                        expandedBounds(bounds, EDIT_PICK_PADDING), EDIT_PICK_RANGE);
+                if (distance < 0.0) return;
+
+                insertEditPickCandidate(candidates, distances,
+                        new SelectedWaypoint(group, index), distance);
+            });
+        }
+
+        return chooseEditSelectionCandidate(candidates);
+    }
+
+    private static void insertEditPickCandidate(List<SelectedWaypoint> candidates,
+                                                List<Double> distances,
+                                                SelectedWaypoint candidate,
+                                                double distance) {
+        if (candidates == null
+                || distances == null
+                || candidate == null
+                || !Double.isFinite(distance)
+                || distance < 0.0) {
+            return;
+        }
+        if (candidates.size() != distances.size()) {
+            candidates.clear();
+            distances.clear();
+        }
+
+        int insertAt = 0;
+        while (insertAt < distances.size() && distances.get(insertAt) <= distance) {
+            insertAt++;
+        }
+        candidates.add(insertAt, candidate);
+        distances.add(insertAt, distance);
+    }
+
+    private static SelectedWaypoint chooseEditSelectionCandidate(List<SelectedWaypoint> candidates) {
+        if (candidates == null || candidates.isEmpty()) {
+            clearEditSelectionCycle();
+            return null;
+        }
+
+        int previousPosition = -1;
+        for (int i = 0; i < candidates.size(); i++) {
+            SelectedWaypoint candidate = candidates.get(i);
+            if (candidate.group() == lastEditSelectionGroup
+                    && candidate.waypointIndex() == lastEditSelectionIndex) {
+                previousPosition = i;
+                break;
+            }
+        }
+
+        int chosenIndex = previousPosition >= 0
+                ? (previousPosition + 1) % candidates.size()
+                : 0;
+        SelectedWaypoint chosen = candidates.get(chosenIndex);
+        lastEditSelectionGroup = chosen.group();
+        lastEditSelectionIndex = chosen.waypointIndex();
+        return chosen;
+    }
+
+    private static Vec3 normalizedDirection(Vec3 view) {
+        if (view == null
+                || !Double.isFinite(view.x)
+                || !Double.isFinite(view.y)
+                || !Double.isFinite(view.z)) {
+            return null;
+        }
+
+        double lengthSq = view.x * view.x + view.y * view.y + view.z * view.z;
+        if (lengthSq <= RAY_AXIS_EPSILON * RAY_AXIS_EPSILON) return null;
+
+        double invLength = 1.0 / Math.sqrt(lengthSq);
+        return new Vec3(view.x * invLength, view.y * invLength, view.z * invLength);
+    }
+
+    private static AABB expandedBounds(AABB bounds, double padding) {
+        double safePadding = Double.isFinite(padding) && padding > 0.0 ? padding : 0.0;
+        return new AABB(
+                bounds.minX - safePadding,
+                bounds.minY - safePadding,
+                bounds.minZ - safePadding,
+                bounds.maxX + safePadding,
+                bounds.maxY + safePadding,
+                bounds.maxZ + safePadding);
+    }
+
+    private static double rayBoxDistance(Vec3 origin, Vec3 direction, AABB box,
+                                         double maxDistance) {
+        if (origin == null || direction == null || box == null) return -1.0;
+        if (!Double.isFinite(maxDistance) || maxDistance < 0.0) return -1.0;
+        if (!Double.isFinite(origin.x) || !Double.isFinite(origin.y) || !Double.isFinite(origin.z)) {
+            return -1.0;
+        }
+        if (!Double.isFinite(direction.x)
+                || !Double.isFinite(direction.y)
+                || !Double.isFinite(direction.z)) {
+            return -1.0;
+        }
+
+        double tMin = 0.0;
+        double tMax = maxDistance;
+
+        if (Math.abs(direction.x) < RAY_AXIS_EPSILON) {
+            if (origin.x < box.minX || origin.x > box.maxX) return -1.0;
+        } else {
+            double inv = 1.0 / direction.x;
+            double near = (box.minX - origin.x) * inv;
+            double far = (box.maxX - origin.x) * inv;
+            if (near > far) {
+                double swap = near;
+                near = far;
+                far = swap;
+            }
+            tMin = Math.max(tMin, near);
+            tMax = Math.min(tMax, far);
+            if (tMin > tMax) return -1.0;
+        }
+
+        if (Math.abs(direction.y) < RAY_AXIS_EPSILON) {
+            if (origin.y < box.minY || origin.y > box.maxY) return -1.0;
+        } else {
+            double inv = 1.0 / direction.y;
+            double near = (box.minY - origin.y) * inv;
+            double far = (box.maxY - origin.y) * inv;
+            if (near > far) {
+                double swap = near;
+                near = far;
+                far = swap;
+            }
+            tMin = Math.max(tMin, near);
+            tMax = Math.min(tMax, far);
+            if (tMin > tMax) return -1.0;
+        }
+
+        if (Math.abs(direction.z) < RAY_AXIS_EPSILON) {
+            if (origin.z < box.minZ || origin.z > box.maxZ) return -1.0;
+        } else {
+            double inv = 1.0 / direction.z;
+            double near = (box.minZ - origin.z) * inv;
+            double far = (box.maxZ - origin.z) * inv;
+            if (near > far) {
+                double swap = near;
+                near = far;
+                far = swap;
+            }
+            tMin = Math.max(tMin, near);
+            tMax = Math.min(tMax, far);
+            if (tMin > tMax) return -1.0;
+        }
+
+        return tMin <= maxDistance ? tMin : -1.0;
+    }
+
     private static void commit(Minecraft mc) {
         Session session = active;
         if (session == null) return;
 
-        if (session.preciseSmallMove()) {
+        if (session.mode == Mode.MOVE_EXISTING && session.preciseSmallPlacement) {
             PreciseTarget target = targetedPrecise(mc);
             if (target == null) {
                 showHelp(mc);
                 return;
             }
             moveExistingPrecise(mc, session, target);
+            return;
+        }
+        if (session.mode == Mode.ADD_SMALL_SUBWAYPOINT) {
+            PreciseTarget target = targetedPrecise(mc);
+            if (target == null) {
+                showHelp(mc);
+                return;
+            }
+            addSmallSubwaypoint(mc, session, target);
             return;
         }
 
@@ -254,43 +600,10 @@ Verify normal block reposition remains unchanged and precise failure does not cl
             case MOVE_EXISTING -> moveExisting(mc, session, pos);
             case ADD_UNNAMED -> addUnnamed(mc, session, pos);
             case ADD_NAMED -> openNamedPrompt(mc, session, pos);
+            case ADD_SUBWAYPOINT -> addSubwaypoint(mc, session, pos);
         }
     }
 
-    /*[[AI-FN-DOC
-Function:
-moveExisting.
-Purpose:
-Commit a whole-block reposition for an existing waypoint and reopen the editor.
-Why this exists:
-Normal waypoint movement is still block-oriented and should share the old moveWaypointTo path and UI return behavior.
-When to use:
-Use from commit for MOVE_EXISTING sessions that are not precise small moves.
-Inputs:
-mc is the Minecraft client used to schedule reopening; session is the active move session; pos is the targeted block position.
-Outputs:
-No return value.
-Side effects:
-Mutates the route waypoint position, fires data changed, clears active mode, and reopens the group editor focused on the moved waypoint.
-Failure modes:
-If the stored waypoint index is no longer valid, clears active mode and returns without route mutation.
-Important invariants:
-Block moves reset sub-block precision to the center of the selected block through WaypointGroup.moveWaypointTo.
-Internal logic:
-Validate the waypoint index, call group.moveWaypointTo with pos x/y/z, fire data changed, clear active, and reopen the editor.
-Pseudocode:
-if waypoint index invalid:
-  active = null
-  return
-group.moveWaypointTo(index, pos x, pos y, pos z)
-manager.fireDataChanged()
-active = null
-reopen editor
-Implementation notes:
-This remains separate from moveExistingPrecise so the two movement semantics cannot accidentally mix.
-AI self-check:
-Verify this method still matches the previous full-block reposition behavior.
-]]*/
     private static void moveExisting(Minecraft mc, Session session, BlockPos pos) {
         if (session.waypointIndex < 0 || session.waypointIndex >= session.group.size()) {
             active = null;
@@ -301,43 +614,9 @@ Verify this method still matches the previous full-block reposition behavior.
                 pos.getX(), pos.getY(), pos.getZ());
         session.manager.fireDataChanged();
         active = null;
-        reopenEditor(mc, session);
+        finishMoveSession(mc, session);
     }
 
-    /*[[AI-FN-DOC
-Function:
-moveExistingPrecise.
-Purpose:
-Commit a sixteenth-block precise reposition for an existing small waypoint and reopen the editor.
-Why this exists:
-Small subwaypoints are visually tiny, so moving them by full blocks makes placement feel disconnected from the marker the user is actually editing.
-When to use:
-Use only for MOVE_EXISTING sessions whose preciseSmallMove flag is true.
-Inputs:
-mc is the Minecraft client used to schedule reopening; session is the active move session; target contains snapped absolute sixteenth-block center coordinates.
-Outputs:
-No return value.
-Side effects:
-Mutates the route waypoint's precise center, fires data changed, clears active mode, and reopens the group editor focused on the moved waypoint.
-Failure modes:
-If the stored waypoint index is invalid, clears active mode and returns without mutation.
-Important invariants:
-Only the waypoint position changes; flags, color, radius, temp metadata, and route order are preserved by withPreciseSixteenths.
-Internal logic:
-Validate the waypoint index, call group.moveWaypointToPrecise with the snapped target, fire data changed, clear active, and reopen the editor.
-Pseudocode:
-if waypoint index invalid:
-  active = null
-  return
-group.moveWaypointToPrecise(index, target precise x/y/z)
-manager.fireDataChanged()
-active = null
-reopen editor
-Implementation notes:
-This mirrors moveExisting's lifecycle but stores precise sixteenths instead of integer block coordinates.
-AI self-check:
-Verify the editor reopens on the same waypoint and the saved center matches the preview target.
-]]*/
     private static void moveExistingPrecise(Minecraft mc, Session session, PreciseTarget target) {
         if (session.waypointIndex < 0 || session.waypointIndex >= session.group.size()) {
             active = null;
@@ -348,36 +627,85 @@ Verify the editor reopens on the same waypoint and the saved center matches the 
                 target.preciseX(), target.preciseY(), target.preciseZ());
         session.manager.fireDataChanged();
         active = null;
-        reopenEditor(mc, session);
+        finishMoveSession(mc, session);
+    }
+
+    private static void finishMoveSession(Minecraft mc, Session session) {
+        playEditSound(mc, session.config());
+        if (session.reopenEditorAfterCommit()) {
+            reopenEditor(mc, session);
+            return;
+        }
+        showStatus(mc, HELP_EDIT_MOVED);
     }
 
     private static void addUnnamed(Minecraft mc, Session session, BlockPos pos) {
+        ClientLevel level = mc == null ? null : mc.level;
+        int flags = defaultDungeonEditFlags(session.group, level, pos);
         session.group.add(new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
-                "", session.config.defaultWaypointColor(), 0, 0.0));
+                "", session.config.defaultWaypointColor(), flags, 0.0));
         int index = session.group.size() - 1;
+        finishAddedWaypoint(mc, session, index);
+    }
+
+    private static void addSubwaypoint(Minecraft mc, Session session, BlockPos pos) {
+        ClientLevel level = mc == null ? null : mc.level;
+        int flags = subwaypointCreationFlags(session.group, level, pos, false);
+        session.group.add(new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
+                "", session.config.defaultWaypointColor(), flags, 0.0));
+        int index = session.group.size() - 1;
+        finishAddedWaypoint(mc, session, index);
+    }
+
+    private static void addSmallSubwaypoint(Minecraft mc, Session session, PreciseTarget target) {
+        ClientLevel level = mc == null ? null : mc.level;
+        int blockX = Math.floorDiv(target.preciseX(), Waypoint.PRECISE_SCALE);
+        int blockY = Math.floorDiv(target.preciseY(), Waypoint.PRECISE_SCALE);
+        int blockZ = Math.floorDiv(target.preciseZ(), Waypoint.PRECISE_SCALE);
+        BlockPos pos = new BlockPos(blockX, blockY, blockZ);
+        int flags = subwaypointCreationFlags(session.group, level, pos, true);
+        session.group.add(new Waypoint(blockX, blockY, blockZ,
+                "", session.config.defaultWaypointColor(), flags, 0.0,
+                Waypoint.TEMP_NONE, 0L,
+                target.preciseX(), target.preciseY(), target.preciseZ()));
+        int index = session.group.size() - 1;
+        finishAddedWaypoint(mc, session, index);
+    }
+
+    private static int subwaypointCreationFlags(WaypointGroup group, ClientLevel level,
+                                                BlockPos pos, boolean small) {
+        int flags = defaultDungeonEditFlags(group, level, pos) | Waypoint.FLAG_SUBWAYPOINT;
+        if (small) {
+            flags |= Waypoint.FLAG_SMALL_SUBWAYPOINT;
+        }
+        return flags;
+    }
+
+    private static void finishAddedWaypoint(Minecraft mc, Session session, int index) {
         new WaypointAddFlow().afterWaypointAdded(session.group, index);
         session.manager.fireDataChanged();
+        playEditSound(mc, session.config);
         active = null;
         reopenEditor(mc, session.withWaypointIndex(index));
     }
 
     private static void openNamedPrompt(Minecraft mc, Session session, BlockPos pos) {
         active = null;
-        mc.execute(() -> AddNamedWaypointScreen.openAt(null, session.manager, session.config,
+        mc.execute(
+                () -> AddNamedWaypointScreen.openAt(null, session.manager, session.config,
                 session.group, pos.getX(), pos.getY(), pos.getZ()));
     }
 
     private static void cancel(Minecraft mc) {
+        WaypointerConfig soundConfig = active == null ? editConfig : active.config();
         active = null;
-        if (mc != null && mc.gui != null) {
-            mc.gui.setOverlayMessage(Component.literal("Reposition mode cancelled.")
-                    .withStyle(ChatFormatting.YELLOW), false);
-        }
+        playEditSound(mc, soundConfig);
     }
 
     private static void reopenEditor(Minecraft mc, Session session) {
         if (mc == null) return;
-        mc.execute(() -> {
+        mc.execute(
+                () -> {
             WaypointerScreen parent = new WaypointerScreen(session.manager, session.config);
             GroupEditScreen.openFocused(parent, session.manager, session.config,
                     session.group, session.waypointIndex);
@@ -387,61 +715,19 @@ Verify the editor reopens on the same waypoint and the saved center matches the 
     private static void showHelp(Minecraft mc) {
         if (mc == null) return;
         Component help = active == null ? HELP_MOVE : active.help();
-        if (mc.player != null) {
-            mc.player.displayClientMessage(WaypointerChatFeedback.suppress(help), false);
-        }
-        if (mc.gui != null) {
-            mc.gui.setOverlayMessage(help, false);
-        }
+        showStatus(mc, help);
     }
 
-    /*[[AI-FN-DOC
-Function:
-renderOutline.
-Purpose:
-Render the active reposition/add preview in the world.
-Why this exists:
-Users need visual confirmation of what the next left click will commit, especially now that small waypoint movement can target sixteenth-block centers rather than whole blocks.
-When to use:
-Registered on WorldRenderEvents.END_MAIN and called while active mode may be non-null.
-Inputs:
-ctx is the world render context supplying matrices and buffer consumers.
-Outputs:
-No return value. Emits line-box geometry when there is an active session and a valid target.
-Side effects:
-Writes preview vertices into the line render buffer.
-Failure modes:
-Missing active session, hit target, pose stack, buffers, or camera position causes an early return without rendering.
-Important invariants:
-Precise small sessions draw a 1/16-block cube centered at targetedPrecise; all other sessions draw the old full-block wireframe.
-Internal logic:
-Resolve the active session and render dependencies, branch to precise or block target math, compute camera-relative bounds, emit the line box, and end the batch.
-Pseudocode:
-if no active session, return
-resolve minecraft, pose stack, buffers
-if precise small mode:
-  target = targetedPrecise
-  if target null, return
-  bounds = target center +/- PRECISE_SMALL_SIZE / 2
-else:
-  pos = targetedBlock
-  if pos null, return
-  bounds = full block pos to pos + 1
-subtract camera and OUTLINE_EXPAND from bounds
-emit line box
-end batch
-Implementation notes:
-The preview size duplicates the renderer's small waypoint size intentionally so reposition mode stays independent from private renderer constants.
-AI self-check:
-Verify full-block preview remains identical for normal waypoints and add flows.
-]]*/
-    private static void renderOutline(WorldRenderContext ctx) {
+    private static void showStatus(Minecraft mc, Component message) {
+    }
+
+    private static void renderOutline(LevelRenderContext ctx) {
         if (active == null) return;
 
         Minecraft mc = Minecraft.getInstance();
-        PoseStack ps = ctx.matrices();
+        PoseStack ps = ctx.poseStack();
         if (ps == null) return;
-        var buffers = ctx.consumers();
+        var buffers = ctx.bufferSource();
         if (buffers == null) return;
 
         Vec3 cam = mc.gameRenderer.getMainCamera().position();
@@ -452,19 +738,15 @@ Verify full-block preview remains identical for normal waypoints and add flows.
         double maxY;
         double maxZ;
 
-        if (active.preciseSmallMove()) {
+        if (active.preciseSmallPlacement) {
             PreciseTarget target = targetedPrecise(mc);
             if (target == null) return;
-            double cx = target.x();
-            double cy = target.y();
-            double cz = target.z();
-            double half = PRECISE_SMALL_SIZE * 0.5;
-            minX = cx - half;
-            minY = cy - half;
-            minZ = cz - half;
-            maxX = cx + half;
-            maxY = cy + half;
-            maxZ = cz + half;
+            minX = target.x();
+            minY = target.y();
+            minZ = target.z();
+            maxX = minX + PRECISE_SMALL_SIZE;
+            maxY = minY + PRECISE_SMALL_SIZE;
+            maxZ = minZ + PRECISE_SMALL_SIZE;
         } else {
             BlockPos pos = targetedBlock(mc);
             if (pos == null) return;
@@ -490,37 +772,6 @@ Verify full-block preview remains identical for normal waypoints and add flows.
         RenderHelpers.endBatch(buffers, type);
     }
 
-    /*[[AI-FN-DOC
-Function:
-targetedPrecise.
-Purpose:
-Convert the current block hit location into a snapped sixteenth-block target.
-Why this exists:
-Small waypoint repositioning should follow the cursor hit point on the block face instead of collapsing to the block's integer position.
-When to use:
-Use only for precise small move sessions in commit and renderOutline.
-Inputs:
-mc is the Minecraft client whose hitResult is inspected; it may be null or not currently targeting a block.
-Outputs:
-Returns a PreciseTarget with absolute sixteenth-block coordinates, or null when no block hit is available.
-Side effects:
-None.
-Failure modes:
-Null client, non-block hit results, or miss/entity hits return null.
-Important invariants:
-All returned coordinates are snapped with Waypoint.snapToPreciseSixteenths so preview and commit agree exactly.
-Internal logic:
-Validate that the current hit result is a block hit, read its exact Vec3 location, snap each axis to sixteenths, and return the target.
-Pseudocode:
-if mc null or hitResult not BlockHitResult, return null
-if hit type is not BLOCK, return null
-loc = hit location
-return PreciseTarget(snap loc.x, snap loc.y, snap loc.z)
-Implementation notes:
-BlockHitResult location is used instead of getBlockPos so the user can place the tiny marker on sub-block details.
-AI self-check:
-Verify commit and preview both call this helper rather than duplicating snap math.
-]]*/
     private static PreciseTarget targetedPrecise(Minecraft mc) {
         if (mc == null || !(mc.hitResult instanceof BlockHitResult hit)) return null;
         if (hit.getType() != HitResult.Type.BLOCK) return null;
@@ -540,102 +791,22 @@ Verify commit and preview both call this helper rather than duplicating snap mat
     private enum Mode {
         MOVE_EXISTING,
         ADD_UNNAMED,
-        ADD_NAMED
+        ADD_NAMED,
+        ADD_SUBWAYPOINT,
+        ADD_SMALL_SUBWAYPOINT
     }
 
+    private record SelectedWaypoint(WaypointGroup group, int waypointIndex) {}
+
     private record PreciseTarget(int preciseX, int preciseY, int preciseZ) {
-        /*[[AI-FN-DOC
-Function:
-PreciseTarget.x.
-Purpose:
-Convert the snapped precise X coordinate back into a world-space double for preview rendering.
-Why this exists:
-The preview renderer needs real world coordinates, while the committed target is stored as integer tenths.
-When to use:
-Use when drawing the precise small waypoint preview bounds. Do not use for storage, which should keep preciseX.
-Inputs:
-None.
-Outputs:
-Returns preciseX divided by Waypoint.PRECISE_SCALE.
-Side effects:
-None.
-Failure modes:
-None.
-Important invariants:
-The value must match the center that moveWaypointToPrecise will commit.
-Internal logic:
-Divide preciseX by the shared precision scale.
-Pseudocode:
-return preciseX / Waypoint.PRECISE_SCALE as double
-Implementation notes:
-Keeping conversion on the target record avoids repeating scale math in renderOutline.
-AI self-check:
-Verify this method remains a pure conversion.
-]]*/
         double x() {
             return preciseX / (double) Waypoint.PRECISE_SCALE;
         }
 
-        /*[[AI-FN-DOC
-Function:
-PreciseTarget.y.
-Purpose:
-Convert the snapped precise Y coordinate back into a world-space double for preview rendering.
-Why this exists:
-Precise small waypoint previews need vertical placement to match the committed tenth-block target.
-When to use:
-Use when drawing the precise preview cube's vertical bounds. Do not use for block-level placement.
-Inputs:
-None.
-Outputs:
-Returns preciseY divided by Waypoint.PRECISE_SCALE.
-Side effects:
-None.
-Failure modes:
-None.
-Important invariants:
-The value must match the vertical center saved through moveWaypointToPrecise.
-Internal logic:
-Divide preciseY by the shared precision scale.
-Pseudocode:
-return preciseY / Waypoint.PRECISE_SCALE as double
-Implementation notes:
-This mirrors x and z for readability at render call sites.
-AI self-check:
-Verify this method remains a pure conversion.
-]]*/
         double y() {
             return preciseY / (double) Waypoint.PRECISE_SCALE;
         }
 
-        /*[[AI-FN-DOC
-Function:
-PreciseTarget.z.
-Purpose:
-Convert the snapped precise Z coordinate back into a world-space double for preview rendering.
-Why this exists:
-The preview cube needs the same precise center on every axis that commit will save.
-When to use:
-Use when drawing precise preview bounds. Do not use for JSON persistence, which stores preciseZ directly.
-Inputs:
-None.
-Outputs:
-Returns preciseZ divided by Waypoint.PRECISE_SCALE.
-Side effects:
-None.
-Failure modes:
-None.
-Important invariants:
-The value must match the committed Z center exactly after scale conversion.
-Internal logic:
-Divide preciseZ by the shared precision scale.
-Pseudocode:
-return preciseZ / Waypoint.PRECISE_SCALE as double
-Implementation notes:
-This keeps renderOutline free from raw scale arithmetic for each axis.
-AI self-check:
-Verify this method remains a pure conversion.
-]]*/
         double z() {
             return preciseZ / (double) Waypoint.PRECISE_SCALE;
         }
@@ -643,77 +814,19 @@ Verify this method remains a pure conversion.
 
     private record Session(ActiveGroupManager manager, WaypointerConfig config,
                            WaypointGroup group, int waypointIndex, Mode mode,
-                           boolean preciseSmallMove) {
-        /*[[AI-FN-DOC
-Function:
-Session.withWaypointIndex.
-Purpose:
-Return a copy of the active session focused on a different waypoint index.
-Why this exists:
-Add flows do not know the new waypoint index until after insertion, but reopening the editor needs the completed index in the session.
-When to use:
-Use after adding a waypoint and before reopening the editor. Do not use to switch a move session to a different route group.
-Inputs:
-index is the waypoint index that should be focused after the operation.
-Outputs:
-Returns a new Session with index substituted and all other session state preserved.
-Side effects:
-None.
-Failure modes:
-None.
-Important invariants:
-The preciseSmallMove flag must be preserved so copying a session cannot silently change placement mode.
-Internal logic:
-Construct a new Session with the same manager, config, group, mode, and precise flag but the supplied waypoint index.
-Pseudocode:
-return new Session(manager, config, group, index, mode, preciseSmallMove)
-Implementation notes:
-This is primarily used by addUnnamed, where preciseSmallMove is always false.
-AI self-check:
-Verify all session fields except waypointIndex are unchanged.
-]]*/
+                           boolean preciseSmallPlacement, boolean reopenEditorAfterCommit) {
         Session withWaypointIndex(int index) {
-            return new Session(manager, config, group, index, mode, preciseSmallMove);
+            return new Session(manager, config, group, index, mode, preciseSmallPlacement,
+                    reopenEditorAfterCommit);
         }
 
-        /*[[AI-FN-DOC
-Function:
-Session.help.
-Purpose:
-Return the overlay/chat help text for the active session.
-Why this exists:
-Move, precise move, unnamed add, and named add modes have slightly different user intent and need accurate instructions.
-When to use:
-Use from showHelp whenever a session is active.
-Inputs:
-None.
-Outputs:
-Returns the Component that should be displayed to the user.
-Side effects:
-None.
-Failure modes:
-None.
-Important invariants:
-Precise small move sessions must mention 0.1-block snapping; normal move sessions keep the old wording.
-Internal logic:
-If mode is MOVE_EXISTING and preciseSmallMove is true, return HELP_MOVE_PRECISE; otherwise switch over mode for the standard messages.
-Pseudocode:
-if mode == MOVE_EXISTING and preciseSmallMove return precise help
-switch mode:
-  MOVE_EXISTING -> HELP_MOVE
-  ADD_UNNAMED -> HELP_ADD
-  ADD_NAMED -> HELP_ADD_NAMED
-Implementation notes:
-The explicit pre-check keeps the enum unchanged and avoids adding a separate mode that would duplicate move semantics.
-AI self-check:
-Verify every mode returns a non-null component.
-]]*/
         Component help() {
-            if (mode == Mode.MOVE_EXISTING && preciseSmallMove) return HELP_MOVE_PRECISE;
             return switch (mode) {
-                case MOVE_EXISTING -> HELP_MOVE;
+                case MOVE_EXISTING -> preciseSmallPlacement ? HELP_MOVE_PRECISE : HELP_MOVE;
                 case ADD_UNNAMED -> HELP_ADD;
                 case ADD_NAMED -> HELP_ADD_NAMED;
+                case ADD_SUBWAYPOINT -> HELP_ADD_SUBWAYPOINT;
+                case ADD_SMALL_SUBWAYPOINT -> HELP_ADD_SMALL_SUBWAYPOINT;
             };
         }
     }

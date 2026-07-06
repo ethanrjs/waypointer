@@ -82,6 +82,8 @@ public final class ScoreboardZoneResolver implements ZoneSource {
             if (mineshaftType != null) return mineshaftType;
             Zone dwarvenSub = Zone.tryResolveDwarvenSubAreaFromSidebarBlob(blob);
             if (dwarvenSub != null) return dwarvenSub;
+            Zone catacombsFloor = CatacombsFloorRefiner.tryResolveFromSidebarBlob(blob);
+            if (catacombsFloor != null) return catacombsFloor;
         }
 
         Collection<PlayerScoreEntry> entries = sb.listPlayerScores(side);

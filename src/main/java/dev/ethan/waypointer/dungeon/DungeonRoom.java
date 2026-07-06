@@ -26,7 +26,8 @@ public record DungeonRoom(
         int physicalCornerZ,
         List<Long> segments,
         String roomId,
-        String roomName) {
+        String roomName,
+        DungeonDetectionConfidence confidence) {
 
     public DungeonRoom {
         Objects.requireNonNull(type, "type");
@@ -35,25 +36,38 @@ public record DungeonRoom(
         segments = segments == null ? List.of() : List.copyOf(segments);
         roomId = roomId == null ? "" : roomId;
         roomName = roomName == null ? "" : roomName;
+        confidence = confidence == null ? DungeonDetectionConfidence.UNKNOWN : confidence;
     }
 
     public DungeonRoom(DungeonRoomType type, DungeonRoomShape shape, Direction direction,
                        int physicalCornerX, int physicalCornerZ, List<Long> segments) {
-        this(type, shape, direction, physicalCornerX, physicalCornerZ, segments, "", "");
+        this(type, shape, direction, physicalCornerX, physicalCornerZ, segments, "", "",
+                DungeonDetectionConfidence.MAP_FALLBACK);
+    }
+
+    public DungeonRoom(DungeonRoomType type, DungeonRoomShape shape, Direction direction,
+                       int physicalCornerX, int physicalCornerZ, List<Long> segments,
+                       String roomId, String roomName) {
+        this(type, shape, direction, physicalCornerX, physicalCornerZ, segments, roomId, roomName,
+                DungeonDetectionConfidence.CORE_MATCHED);
+    }
+
+    public DungeonDetectionConfidence confidence() {
+        return confidence;
     }
 
     public static long packSegment(int x, int z) {
         return (((long) x) << 32) | (z & 0xFFFFFFFFL);
     }
 
-    public static int segmentX(long packed) { return (int) (packed >> 32); }
-    public static int segmentZ(long packed) { return (int) packed; }
+    public static int segmentX(long packed) {
+        return (int) (packed >> 32);
+    }
 
-    /**
-     * Stable identity key, used by the state tracker to detect "we just walked
-     * into a different room" without needing per-field equality. Not meant to
-     * be human-readable.
-     */
+    public static int segmentZ(long packed) {
+        return (int) packed;
+    }
+
     public String identityKey() {
         return type.name() + ":" + shape.name() + ":" + direction.name()
                 + ":" + physicalCornerX + "," + physicalCornerZ
@@ -66,15 +80,9 @@ public record DungeonRoom(
 
     public DungeonRoom withDefinition(String id, String name) {
         return new DungeonRoom(type, shape, direction, physicalCornerX, physicalCornerZ,
-                segments, id, name);
+                segments, id, name, confidence);
     }
 
-    /**
-     * Human-readable fallback while named-room fingerprinting is still absent.
-     * This deliberately says "1x2 Room" rather than inventing a named room like
-     * "Lava Ravine"; real names require block-skeleton matching against a
-     * curated room dataset.
-     */
     public String displayName() {
         if (!roomName.isBlank()) return roomName;
         if (type != DungeonRoomType.ROOM) return friendlyType(type);

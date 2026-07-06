@@ -437,52 +437,6 @@ public final class WaypointCodec {
      * confirmation toast) should call this instead of {@link #decode(String)}
      * to avoid re-decoding the payload twice.
      */
-    /*[[AI-FN-DOC
-Function:
-decodeFull.
-Purpose:
-Decode a Waypointer route string into route groups plus the optional sender label while trying every supported wire generation.
-Why this exists:
-Route sharing must keep old chat codes importable after schema bumps, and callers need one public entrypoint that hides the current-vs-legacy fallback details.
-When to use:
-Use whenever importing a WP: payload and the label may matter. Do not use for prefix-only checks; use isCodecString for that cheap path.
-Inputs:
-text is the raw user-provided export string and may contain surrounding whitespace; it must start with MAGIC after trimming.
-Outputs:
-Returns a Decoded record containing decoded waypoint groups and a sanitized label. Throws IllegalArgumentException when no supported decoder accepts the payload.
-Side effects:
-Allocates decoded route objects and intermediate byte arrays; does not mutate global state.
-Failure modes:
-Null input, missing MAGIC, invalid text encoding, bad compression, unsupported versions, or malformed binary fields throw IllegalArgumentException with nested per-version decode messages.
-Important invariants:
-The newest wire version is attempted first, then each legacy version in descending order so valid current payloads are not accidentally interpreted as old schemas.
-Internal logic:
-Trim and validate the prefix, strip MAGIC, try v7, then v6, v5, v4, v3, v2, and v1 decoders, preserving the final failure as the cause while reporting every version's message.
-Pseudocode:
-if text is null, throw IllegalArgumentException
-trim text
-if text does not start with MAGIC, throw IllegalArgumentException
-payload = text after MAGIC
-try decodePayloadCurrent(payload), return on success
-catch current failure:
-  try decodePayloadLegacyV6(payload), return on success
-  catch v6 failure:
-    try decodePayloadLegacyV5(payload), return on success
-    catch v5 failure:
-      try decodePayloadLegacyV4(payload), return on success
-      catch v4 failure:
-        try decodePayloadV3(payload), return on success
-        catch v3 failure:
-          try decodePayloadV2(payload), return on success
-          catch v2 failure:
-            try decodePayloadV1(payload), return on success
-            catch v1 failure:
-              throw combined IllegalArgumentException
-Implementation notes:
-The nested try structure is intentionally explicit so the error text names each attempted schema; this is easier to diagnose than a loop over method references with erased exception context.
-AI self-check:
-Verify adding v7 did not remove v6/v5/v4/v3/v2/v1 fallback coverage and the combined message labels match the attempted versions.
-]]*/
     public static Decoded decodeFull(String text) {
         if (text == null) throw new IllegalArgumentException("null payload");
         String trimmed = text.trim();
@@ -568,41 +522,6 @@ Verify adding v7 did not remove v6/v5/v4/v3/v2/v1 fallback coverage and the comb
      * receive handler -- the click-to-import path will surface the real error
      * when the user actually tries to import.
      */
-    /*[[AI-FN-DOC
-Function:
-peekLabel.
-Purpose:
-Read only the optional human-readable export label from a WP: payload without materializing route groups.
-Why this exists:
-Chat hover UI needs a cheap preview label, while full route decoding is reserved for explicit import actions.
-When to use:
-Use for non-authoritative UI previews where failure should quietly produce Optional.empty. Do not use when importing or validating the full route body.
-Inputs:
-text is a possible Waypointer export string; null, missing prefixes, malformed payloads, or unsupported versions are allowed.
-Outputs:
-Returns Optional.of(label) when a supported payload has a non-empty label, otherwise Optional.empty.
-Side effects:
-Allocates decode buffers for the partial header read; does not mutate route state or config.
-Failure modes:
-All parsing and decompression failures are swallowed because hover preview must not crash chat processing.
-Important invariants:
-The version probing order mirrors decodeFull so current labels win before legacy fallbacks.
-Internal logic:
-Reject null or non-WP strings, strip MAGIC, try current v7 label decode, then v6, v5, v4, v3, v2, and v1, returning the first present label.
-Pseudocode:
-if text is null, return empty
-trim text
-if no MAGIC prefix, return empty
-payload = text after MAGIC
-for each version-specific label decoder from current to oldest:
-  result = decoder(payload)
-  if result present, return it
-return empty
-Implementation notes:
-The explicit sequence stays aligned with decodeFull and keeps the legacy text-layer differences readable.
-AI self-check:
-Verify v6 was inserted between current v7 and legacy v5 and that failures still return Optional.empty.
-]]*/
     public static Optional<String> peekLabel(String text) {
         if (text == null) return Optional.empty();
         String trimmed = text.trim();
@@ -641,51 +560,6 @@ Verify v6 was inserted between current v7 and legacy v5 and that failures still 
      * mode, string-pool entry, and waypoint flag byte observed during parse.
      * Intended for the {@code /wp debug} inspector -- not for the hot path.
      */
-    /*[[AI-FN-DOC
-Function:
-debugDecode.
-Purpose:
-Decode a Waypointer route string while capturing wire-level details for diagnostics.
-Why this exists:
-The debug inspector needs both the decoded route and the exact codec fields that produced it, especially after schema bumps.
-When to use:
-Use from debug tooling and tests that need header, group, and waypoint body metadata. Do not use from normal import/render paths because it performs extra capture work.
-Inputs:
-text is the raw user-provided export string and may include surrounding whitespace; it must start with MAGIC after trimming.
-Outputs:
-Returns a DecodeDebug tree containing byte counts, version info, decoded groups, and captured per-group/per-waypoint fields. Throws IllegalArgumentException when no supported version decodes.
-Side effects:
-Allocates debug capture objects and decoded waypoint groups; reads no files and mutates no global state.
-Failure modes:
-Null, missing prefix, bad text encoding, failed inflate, unsupported versions, or malformed fields throw IllegalArgumentException with per-version failure details.
-Important invariants:
-Debug decode must accept exactly the same supported wire generations as decodeFull, and it must report the actual version that succeeded.
-Internal logic:
-Validate MAGIC, strip the payload, try current v7 debug decode, then v6, v5, v4, v3, v2, and v1 debug decoders, combining errors if none succeed.
-Pseudocode:
-if text is null, throw IllegalArgumentException
-trim text and validate MAGIC
-payload = after MAGIC
-try debugDecodePayloadCurrent
-catch current:
-  try legacy v6
-  catch v6:
-    try legacy v5
-    catch v5:
-      try legacy v4
-      catch v4:
-        try legacy v3
-        catch v3:
-          try legacy v2
-          catch v2:
-            try legacy v1
-            catch v1:
-              throw combined IllegalArgumentException
-Implementation notes:
-This intentionally mirrors decodeFull rather than sharing a generic loop so each fallback can preserve its distinct text unescaping/legacy decoder path.
-AI self-check:
-Verify the fallback list and error labels include v7 and v6 in the correct order.
-]]*/
     public static DecodeDebug debugDecode(String text) {
         if (text == null) throw new IllegalArgumentException("null payload");
         long t0 = System.nanoTime();
@@ -742,35 +616,6 @@ Verify the fallback list and error labels include v7 and v6 in the correct order
         return decodePayloadV3Shape(unescapeHypixelEmotes(payload), WIRE_VERSION);
     }
 
-    /*[[AI-FN-DOC
-Function:
-decodePayloadLegacyV6.
-Purpose:
-Decode a v6 Waypointer payload after the current writer has advanced to v7.
-Why this exists:
-v6 route codes are already in circulation and must remain importable even though v7 adds precise subwaypoint payload fields.
-When to use:
-Use only from decodeFull's fallback path after the current-version decoder rejects a payload. Do not use for new exports.
-Inputs:
-payload is the encoded body after the WP: prefix and before text-layer unescaping.
-Outputs:
-Returns decoded groups and label if the payload is valid v6; throws IOException or IllegalArgumentException on malformed input.
-Side effects:
-Allocates decode buffers and route objects; does not mutate application state.
-Failure modes:
-Invalid text alphabet, inflate errors, wrong wire version, or malformed fields throw through to the caller so the public fallback chain can report them.
-Important invariants:
-This must use the same base-91 text layer and Hypixel emote unescape behavior as current v7, but it must require header version 6.
-Internal logic:
-Unescape Hypixel emote escapes, then delegate to the shared v3-shaped payload decoder with LEGACY_V6_WIRE_VERSION.
-Pseudocode:
-decodedPayload = unescapeHypixelEmotes(payload)
-return decodePayloadV3Shape(decodedPayload, LEGACY_V6_WIRE_VERSION)
-Implementation notes:
-The binary body shape is v3-derived for all modern versions, so only the expected header version differs here.
-AI self-check:
-Verify this helper is called before v5 fallback and that it does not accept v7 payloads.
-]]*/
     private static Decoded decodePayloadLegacyV6(String payload) throws IOException {
         return decodePayloadV3Shape(unescapeHypixelEmotes(payload), LEGACY_V6_WIRE_VERSION);
     }
@@ -877,35 +722,6 @@ Verify this helper is called before v5 fallback and that it does not accept v7 p
         return peekLabel(unescapeHypixelEmotes(payload), WIRE_VERSION, false);
     }
 
-    /*[[AI-FN-DOC
-Function:
-peekLabelLegacyV6.
-Purpose:
-Attempt a label-only decode for legacy v6 route codes.
-Why this exists:
-Chat hover previews should keep showing labels from v6 route codes after the current writer moves to v7.
-When to use:
-Use only from peekLabel's fallback chain. Do not call it for full imports because it intentionally ignores group data.
-Inputs:
-payload is the encoded body after MAGIC, still containing any Hypixel emote escapes.
-Outputs:
-Returns Optional.of(label) when a valid v6 payload has a non-empty label; returns Optional.empty otherwise.
-Side effects:
-Allocates transient decode buffers; does not mutate state.
-Failure modes:
-Malformed input is swallowed inside the shared peekLabel helper and becomes Optional.empty.
-Important invariants:
-The expected version must stay LEGACY_V6_WIRE_VERSION so current v7 payloads are not treated as v6.
-Internal logic:
-Unescape the payload using the modern text escape, then delegate to the shared label peek helper for version 6.
-Pseudocode:
-decodedPayload = unescapeHypixelEmotes(payload)
-return peekLabel(decodedPayload, LEGACY_V6_WIRE_VERSION, false)
-Implementation notes:
-v6 uses the same ASCII stream alphabet as v7, so no separate text codec is needed.
-AI self-check:
-Verify peekLabel calls this helper immediately after current and before v5.
-]]*/
     private static Optional<String> peekLabelLegacyV6(String payload) {
         return peekLabel(unescapeHypixelEmotes(payload), LEGACY_V6_WIRE_VERSION, false);
     }
@@ -918,44 +734,6 @@ Verify peekLabel calls this helper immediately after current and before v5.
         return peekLabel(unescapeHypixelEmotes(payload), LEGACY_V4_WIRE_VERSION, false);
     }
 
-    /*[[AI-FN-DOC
-Function:
-peekLabel version-specific helper.
-Purpose:
-Attempt to read a label from one payload using one expected wire version and text codec path.
-Why this exists:
-The public peekLabel method needs quiet per-version probes without fully decoding route groups or throwing on failed legacy attempts.
-When to use:
-Use only from the public peekLabel fallback chain and version-specific label helpers. Do not use for authoritative import validation.
-Inputs:
-payload is the body text after MAGIC and after any caller-required unescaping; expectedVersion is the wire version to require; legacyV2 selects the v1/v2 base/text handling and old body semantics.
-Outputs:
-Returns Optional.of(label) for a valid payload with a non-empty label, otherwise Optional.empty.
-Side effects:
-Allocates compressed/raw buffers and a DataInputStream; does not mutate route state.
-Failure modes:
-All exceptions are intentionally swallowed and converted to Optional.empty so one failed version probe can fall through to the next.
-Important invariants:
-This helper must stop after the header and optional label; it must not parse group data or consume route bodies.
-Internal logic:
-Decode text bytes according to expectedVersion, inflate, read the header, verify the version nibble, return empty if no label bit is set, otherwise read and return the label when non-empty.
-Pseudocode:
-try:
-  compressed = decode payload using version-specific text codec
-  raw = inflate compressed
-  in = DataInputStream(raw)
-  header = read unsigned byte
-  if header version != expectedVersion, return empty
-  if label bit is absent, return empty
-  label = readLabel(in)
-  return empty if label empty else Optional.of(label)
-catch any exception:
-  return empty
-Implementation notes:
-The broad catch is acceptable here because this is a speculative UI preview path; full import still reports detailed decode failures.
-AI self-check:
-Verify adding new versions updates the public fallback chain and leaves this helper version-parameterized.
-]]*/
     private static Optional<String> peekLabel(String payload, int expectedVersion, boolean legacyV2) {
         try {
             byte[] compressed = expectedVersion == LEGACY_V1_WIRE_VERSION
@@ -985,35 +763,6 @@ Verify adding new versions updates the public fallback chain and leaves this hel
                 startNanos, WIRE_VERSION, false);
     }
 
-    /*[[AI-FN-DOC
-Function:
-debugDecodePayloadLegacyV6.
-Purpose:
-Decode a v6 payload into the debug capture model after v7 becomes the current writer.
-Why this exists:
-The debug inspector should identify existing v6 codes accurately instead of reporting them as unsupported after the version bump.
-When to use:
-Use only from debugDecode's fallback chain. Do not use in normal import paths.
-Inputs:
-input is the original full string, payload is the body after MAGIC, and startNanos is the debug timing origin.
-Outputs:
-Returns a DecodeDebug capture for a valid v6 payload; throws IOException or IllegalArgumentException if v6 decoding fails.
-Side effects:
-Allocates decoded groups and debug capture structures; records elapsed time relative to startNanos.
-Failure modes:
-Invalid text, compression, version, or binary fields throw through so debugDecode can continue to older fallbacks or report all failures.
-Important invariants:
-The reported payload remains the original escaped text body while the decoder consumes the unescaped body.
-Internal logic:
-Unescape the v6 payload and delegate to the shared debug decoder with expected version 6 and non-legacy-v2 semantics.
-Pseudocode:
-decodePayload = unescapeHypixelEmotes(payload)
-return debugDecodePayload(input, payload, decodePayload, startNanos, LEGACY_V6_WIRE_VERSION, false)
-Implementation notes:
-Keeping reported and decoded payloads separate lets the UI show exactly what the user pasted while still parsing the normalized text layer.
-AI self-check:
-Verify debugDecode tries this helper between current v7 and legacy v5.
-]]*/
     private static DecodeDebug debugDecodePayloadLegacyV6(String input, String payload, long startNanos)
             throws IOException {
         return debugDecodePayload(input, payload, unescapeHypixelEmotes(payload),
@@ -1026,74 +775,12 @@ Verify debugDecode tries this helper between current v7 and legacy v5.
                 startNanos, LEGACY_V5_WIRE_VERSION, false);
     }
 
-    /*[[AI-FN-DOC
-Function:
-debugDecodePayload overload for unescaped legacy payloads.
-Purpose:
-Forward debug decoding for payload versions whose reported text and decoded text are identical.
-Why this exists:
-Legacy v3, v2, and v1 debug paths do not need the separate reported-vs-decoded payload split used by Hypixel-escaped modern versions, but they should still share the full debug decoder.
-When to use:
-Use from debug fallback paths that have no modern Hypixel emote escape normalization to apply. Do not use when the displayed payload should differ from the decoded payload.
-Inputs:
-input is the full original route string; payload is the body text after MAGIC; startNanos is the timing origin; expectedVersion is the wire version to require; legacyV2 selects the old zone string-pool semantics.
-Outputs:
-Returns a DecodeDebug capture by delegating to the full overload.
-Side effects:
-No direct side effects beyond the delegated debug decode allocations and byte reads.
-Failure modes:
-Propagates IOException or IllegalArgumentException from the full debug decode path.
-Important invariants:
-The same payload value must be safe to use for both reportedPayload and decodePayload for callers of this overload.
-Internal logic:
-Call the full debugDecodePayload overload with payload passed as both the reported and decoded payload arguments.
-Pseudocode:
-return debugDecodePayload(input, payload, payload, startNanos, expectedVersion, legacyV2)
-Implementation notes:
-This overload keeps older fallback call sites short while the full overload documents the actual parsing pipeline.
-AI self-check:
-Verify modern v7/v6/v5/v4 callers that need unescape behavior use the full overload or a helper that supplies distinct decodePayload.
-]]*/
     private static DecodeDebug debugDecodePayload(String input, String payload, long startNanos,
                                                   int expectedVersion, boolean legacyV2)
             throws IOException {
         return debugDecodePayload(input, payload, payload, startNanos, expectedVersion, legacyV2);
     }
 
-    /*[[AI-FN-DOC
-Function:
-debugDecodePayload.
-Purpose:
-Decode one already-selected wire version into a complete debug capture.
-Why this exists:
-All debug fallback paths share the same inflate, body-parse, timing, and text-encoding-label assembly once the correct text codec and expected version are known.
-When to use:
-Use from debugDecodePayloadCurrent and legacy debug helpers. Do not use directly from public callers because it assumes MAGIC handling and version selection already happened.
-Inputs:
-input is the original full route string; reportedPayload is the body text to show in debug output; decodePayload is the body text after any escape normalization; startNanos is the timing origin; expectedVersion is the wire version to require; legacyV2 selects the old v1/v2 string-pool zone layout.
-Outputs:
-Returns DecodeDebug containing captured wire fields, decoded groups, byte counts, text encoding name, and elapsed decode time.
-Side effects:
-Allocates compressed/raw byte arrays, debug capture builders, and decoded route groups; does not mutate persistent state.
-Failure modes:
-Text decoding, inflate, version mismatch, malformed groups, or invalid fields throw IOException or IllegalArgumentException to the caller's fallback chain.
-Important invariants:
-The textEncoding string must correspond to the version that actually decoded, and reportedPayload must remain the user's visible payload even when decodePayload was unescaped.
-Internal logic:
-Choose the text decoder for expectedVersion, inflate with the codec dictionary, parse the body into DebugCapture, compute elapsed time, map expectedVersion to a display string, and build the immutable debug record.
-Pseudocode:
-compressed = decode decodePayload using the text codec for expectedVersion
-raw = inflate(compressed)
-cap = new DebugCapture
-groups = readBody(raw, cap, null, expectedVersion, legacyV2)
-elapsed = now - startNanos
-encoding = switch expectedVersion to current and legacy display strings
-return cap.build(input, reportedPayload, encoding, compressed, raw, groups, elapsed)
-Implementation notes:
-The switch includes both current and legacy labels so the debug UI can distinguish v7 subwaypoint precision from v6 range-delta support.
-AI self-check:
-Verify every supported version has the intended text label and decodePayload is never displayed in place of reportedPayload.
-]]*/
     private static DecodeDebug debugDecodePayload(String input, String reportedPayload, String decodePayload,
                                                   long startNanos, int expectedVersion, boolean legacyV2)
             throws IOException {
@@ -2001,41 +1688,6 @@ Verify every supported version has the intended text label and decodePayload is 
         return true;
     }
 
-    /*[[AI-FN-DOC
-Function:
-writeWaypointBody.
-Purpose:
-Write one waypoint's optional metadata fields after its coordinates in the compact sharing body.
-Why this exists:
-Coordinate modes share the same all-coordinates-then-all-bodies layout, so waypoint metadata needs one canonical writer that matches the reader's field order.
-When to use:
-Call from coordinate-mode encoders whenever a group is not bodyless. Do not call for anonymous coordinate-only groups.
-Inputs:
-out is the binary destination; w is the waypoint being exported; pool contains shared string refs for group and repeated waypoint names; opts controls optional field families.
-Outputs:
-No return value. Writes wpFlags followed by each flagged field in deterministic order.
-Side effects:
-Writes bytes to out and may query pool indexes; does not mutate waypoints or options.
-Failure modes:
-IOException from the output stream propagates. Pool lookup failures would surface as runtime errors from StringPool and indicate a buildStringPool bug.
-Important invariants:
-The order must stay name, color, radius, extended flags, precise offsets because readGroupRecord consumes fields in that exact sequence.
-Internal logic:
-Compute the wpFlags byte, write it, conditionally write name data, RGB color, radius_x10, extended waypoint flags, and packed precise sixteenth offsets.
-Pseudocode:
-wpFlags = waypointFlags(w, pool, opts)
-write wpFlags
-if HAS_NAME:
-  if NAME_INLINE write UTF-8 name else write pooled name index
-if HAS_COLOR write 3 RGB bytes
-if HAS_RADIUS write radius times ten as varint
-if EXTENDED write exportedWaypointFlags as varint
-if HAS_PRECISE write packedPreciseOffsets as varint
-Implementation notes:
-Precise offsets are deliberately last so older field families keep their byte order and the v7 addition is easy to reason about.
-AI self-check:
-Verify any new wpFlags bit has a matching read path and bodyless detection uses the same waypointFlags helper.
-]]*/
     private static void writeWaypointBody(DataOutputStream out, Waypoint w, StringPool pool, Options opts)
             throws IOException {
         int wpFlags = waypointFlags(w, pool, opts);
@@ -2059,45 +1711,6 @@ Verify any new wpFlags bit has a matching read path and bodyless detection uses 
         if ((wpFlags & WP_FLAG_HAS_PRECISE) != 0) writeVarint(out, packedPreciseOffsets(w));
     }
 
-    /*[[AI-FN-DOC
-Function:
-waypointFlags.
-Purpose:
-Compute the per-waypoint body flag byte that tells the decoder which optional fields follow.
-Why this exists:
-Bodyless detection, size scoring, and actual writing must all agree on exactly which fields a waypoint will emit.
-When to use:
-Use whenever deciding whether a waypoint body is empty or writing that body. Do not duplicate this logic in individual coordinate encoders.
-Inputs:
-w is the waypoint to inspect; pool is the string pool used to decide whether a name is pooled or inline; opts contains export include toggles.
-Outputs:
-Returns an unsigned-byte-shaped int whose bits are WP_FLAG_HAS_NAME, WP_FLAG_HAS_COLOR, WP_FLAG_HAS_RADIUS, WP_FLAG_EXTENDED, WP_FLAG_NAME_INLINE, and WP_FLAG_HAS_PRECISE.
-Side effects:
-Reads StringPool pooling decisions; performs no writes and does not mutate objects.
-Failure modes:
-None for valid non-null inputs. Null inputs would throw NullPointerException and indicate an encoder call-site bug.
-Important invariants:
-If this returns zero, writeWaypointBody must write only a zero flag byte, and bodyless groups may omit all waypoint bodies safely.
-Internal logic:
-Check each export-controlled field family, preserve default subwaypoint metadata through exportedWaypointFlags, include precise offsets when shouldExportPrecisePosition says they are required, and set NAME_INLINE only for unpooled names.
-Pseudocode:
-hasName = includeNames and waypoint has name
-hasColor = includeColors and waypoint color differs from DEFAULT_COLOR
-hasRadius = includeRadii and custom radius is positive
-extended = exportedWaypointFlags is nonzero
-hasPrecise = shouldExportPrecisePosition
-start flags at zero
-if hasName set HAS_NAME and maybe NAME_INLINE
-if hasColor set HAS_COLOR
-if hasRadius set HAS_RADIUS
-if extended set EXTENDED
-if hasPrecise set HAS_PRECISE
-return flags
-Implementation notes:
-Precise placement is not tied to includeWaypointFlags for subwaypoints because tiny subwaypoint placement is route structure/style that users expect to share by default.
-AI self-check:
-Verify unrelated visual flags still strip when includeWaypointFlags is false and no custom precise non-subwaypoint makes a minimal plain route non-bodyless.
-]]*/
     private static int waypointFlags(Waypoint w, StringPool pool, Options opts) {
         // Each "include" toggle gates an entire field family: when the sender
         // opts out, we don't emit the bit OR the value, so the decoder reads
@@ -2121,39 +1734,6 @@ Verify unrelated visual flags still strip when includeWaypointFlags is false and
         return wpFlags;
     }
 
-    /*[[AI-FN-DOC
-Function:
-exportedWaypointFlags.
-Purpose:
-Return the waypoint flag bits that should be written to the shared route payload under the active export options.
-Why this exists:
-Minimal exports should strip unrelated visual/user flags while preserving route-critical subwaypoint metadata, including the small/filled subwaypoint styling users expect to survive sharing.
-When to use:
-Use from waypointFlags and writeWaypointBody when deciding and writing the extended flag field. Do not use for local JSON storage because storage persists the full flag value.
-Inputs:
-w is the waypoint being exported; opts contains the sender's includeWaypointFlags choice.
-Outputs:
-Returns the low byte of flags to write, either all waypoint flags for full-fidelity exports or the default-shared subwaypoint subset for minimal exports.
-Side effects:
-None.
-Failure modes:
-None for valid non-null inputs.
-Important invariants:
-When includeWaypointFlags is false, hide/name/through-wall/locked-color style flags remain stripped, but FLAG_SUBWAYPOINT and valid subwaypoint small/filled style bits survive.
-Internal logic:
-Read the waypoint flags. If full waypoint flags are enabled, return the low byte. Otherwise keep structural flags and, only when the waypoint is actually a subwaypoint, the subwaypoint style flags.
-Pseudocode:
-flags = waypoint.flags
-if includeWaypointFlags, return flags & 0xFF
-sharedFlags = flags & STRUCTURAL_FLAGS
-if sharedFlags includes FLAG_SUBWAYPOINT:
-  sharedFlags |= flags & SUBWAYPOINT_STYLE_FLAGS
-return sharedFlags & 0xFF
-Implementation notes:
-Conditioning style bits on FLAG_SUBWAYPOINT avoids exporting orphaned style flags on normal waypoints.
-AI self-check:
-Verify minimal subwaypoint exports preserve small/filled flags while include_waypoint_flags_false still strips unrelated flags.
-]]*/
     private static int exportedWaypointFlags(Waypoint w, Options opts) {
         int flags = w.flags();
         if (!opts.includeWaypointFlags) {
@@ -2162,76 +1742,15 @@ Verify minimal subwaypoint exports preserve small/filled flags while include_way
                 flags |= w.flags() & Waypoint.SUBWAYPOINT_STYLE_FLAGS;
             }
         }
-        return flags & 0xFF;
+        return flags;
     }
 
-    /*[[AI-FN-DOC
-Function:
-shouldExportPrecisePosition.
-Purpose:
-Decide whether a waypoint's sixteenth-block center should be included in the shared route body.
-Why this exists:
-Small subwaypoints need precise placement to survive sharing by default, but normal minimal routes should not pay bytes for hidden precision data.
-When to use:
-Use only while computing waypoint body flags for the Waypointer binary codec. Do not use for local storage, which has its own persistence policy.
-Inputs:
-w is the waypoint to inspect; opts contains export toggles, especially includeWaypointFlags for full-fidelity exports.
-Outputs:
-Returns true when the waypoint has a non-default precise center and that center should be encoded.
-Side effects:
-None.
-Failure modes:
-None for valid non-null inputs.
-Important invariants:
-Every subwaypoint with custom precision exports that precision even when includeWaypointFlags is false; non-subwaypoint precision exports only in full-fidelity mode.
-Internal logic:
-Return false for block-centered waypoints. Return true for custom-precise subwaypoints. Otherwise return true only when the sender requested full waypoint flags.
-Pseudocode:
-if waypoint has no custom precise position, return false
-if waypoint is subwaypoint, return true
-return opts.includeWaypointFlags
-Implementation notes:
-This preserves the user's small subwaypoint workflow by default without broadening minimal exports for ordinary block-centered routes.
-AI self-check:
-Verify a plain block route remains bodyless under Options.NO_NAMES and a precise subwaypoint does not.
-]]*/
     private static boolean shouldExportPrecisePosition(Waypoint w, Options opts) {
         if (!w.hasCustomPrecisePosition()) return false;
         if (w.isSubwaypoint()) return true;
         return opts.includeWaypointFlags;
     }
 
-    /*[[AI-FN-DOC
-Function:
-packedPreciseOffsets.
-Purpose:
-Pack a waypoint's x/y/z sub-block sixteenth offsets into one compact integer.
-Why this exists:
-The coordinate stream already stores the containing block, so the precise payload only needs the 0..15 offset inside that block for each axis.
-When to use:
-Use only when WP_FLAG_HAS_PRECISE is set for a waypoint body. Do not use for block-level coordinates.
-Inputs:
-w is the waypoint whose preciseX/preciseY/preciseZ fields are absolute world coordinates multiplied by Waypoint.PRECISE_SCALE.
-Outputs:
-Returns a 12-bit integer laid out as xxxx yyyy zzzz, suitable for varint encoding.
-Side effects:
-None.
-Failure modes:
-None while Waypoint.PRECISE_SCALE remains 16. If the scale changes, tests should fail because the 4-bit packing would no longer be sufficient.
-Important invariants:
-Each extracted offset must be in 0..15 and reconstruct with the decoded block coordinate to the original precise coordinate.
-Internal logic:
-Compute each axis offset using floorMod against PRECISE_SCALE, then pack x in bits 8..11, y in bits 4..7, and z in bits 0..3.
-Pseudocode:
-ox = preciseOffset(waypoint.preciseX)
-oy = preciseOffset(waypoint.preciseY)
-oz = preciseOffset(waypoint.preciseZ)
-return (ox << 8) | (oy << 4) | oz
-Implementation notes:
-floorMod handles negative world coordinates correctly because Waypoint's block coordinate uses floor division.
-AI self-check:
-Verify negative precise coordinates round-trip through block floorDiv plus this offset.
-]]*/
     private static int packedPreciseOffsets(Waypoint w) {
         int ox = preciseOffset(w.preciseX());
         int oy = preciseOffset(w.preciseY());
@@ -2239,34 +1758,6 @@ Verify negative precise coordinates round-trip through block floorDiv plus this 
         return (ox << (PRECISE_OFFSET_BITS * 2)) | (oy << PRECISE_OFFSET_BITS) | oz;
     }
 
-    /*[[AI-FN-DOC
-Function:
-preciseOffset.
-Purpose:
-Extract the in-block sixteenth offset from an absolute precise coordinate.
-Why this exists:
-Precise waypoint sharing stores only the sub-block component because the block coordinate is already in the coordinate stream.
-When to use:
-Use from packedPreciseOffsets for each axis. Do not use for display coordinates because it intentionally discards the block component.
-Inputs:
-preciseCoordinate is an absolute world coordinate multiplied by Waypoint.PRECISE_SCALE.
-Outputs:
-Returns an integer offset in the range 0..15.
-Side effects:
-None.
-Failure modes:
-None for integer input.
-Important invariants:
-The returned offset plus floorDiv-derived block coordinate must reconstruct the original preciseCoordinate.
-Internal logic:
-Use Math.floorMod with Waypoint.PRECISE_SCALE so negative coordinates produce non-negative in-block offsets.
-Pseudocode:
-return floorMod(preciseCoordinate, Waypoint.PRECISE_SCALE)
-Implementation notes:
-floorMod is required; the % operator would produce negative offsets west/south/below zero.
-AI self-check:
-Verify preciseCoordinate -1 returns 15 rather than -1.
-]]*/
     private static int preciseOffset(int preciseCoordinate) {
         return Math.floorMod(preciseCoordinate, Waypoint.PRECISE_SCALE);
     }
@@ -2400,52 +1891,6 @@ Verify preciseCoordinate -1 returns 15 rather than -1.
         return group;
     }
 
-    /*[[AI-FN-DOC
-Function:
-readGroupRecord.
-Purpose:
-Read one normal named group record from the Waypointer binary body.
-Why this exists:
-Every non-anonymous modern group and legacy v1/v2 group shares the same high-level parse flow once zone references and a few legacy flags are accounted for.
-When to use:
-Use from readBody for non-anonymous groups. Do not use for anonymous coordinate-only v6+ groups because those have no string pool or waypoint bodies.
-Inputs:
-in reads the binary body; bais tracks byte positions for debug byte counts; pool is the decoded string pool; cap may be null or a debug collector; groupIndex is the zero-based wire group index; legacyV2 selects old zone-ref semantics; expectedVersion is the schema version already validated by readBody.
-Outputs:
-Returns a populated WaypointGroup with decoded waypoints, metadata, and progress reset to import defaults.
-Side effects:
-Consumes bytes from in and mutates cap when debug capture is enabled.
-Failure modes:
-Malformed string-pool indexes, invalid coord modes, truncated fields, invalid precise offsets, or out-of-range counts throw IOException or IllegalArgumentException.
-Important invariants:
-Field consumption order must mirror writeGroup and writeWaypointBody exactly; v7 precise offsets are only consumed when expectedVersion supports them and the HAS_PRECISE bit is set.
-Internal logic:
-Read group header fields, create the group with import defaults, read all coordinates, then for each waypoint read optional name/color/radius/flags/precise fields, materialize a Waypoint, and append it after debug capture.
-Pseudocode:
-read name, zone, group flags, radius, and point count
-create group with default import state and decoded metadata
-capture debug group metadata if requested
-coords = readCoords(...)
-for each point:
-  read wpFlags unless bodyless
-  read name if flagged
-  read color if flagged else default
-  read radius if flagged else zero
-  read extended flags if flagged else zero
-  read packed precise offsets if v7+ and HAS_PRECISE is set
-  waypoint = new block-coordinate Waypoint
-  if precise offsets were present, apply them
-  add debug waypoint info if requested
-  collect waypoint
-add all waypoints to group
-record body byte count
-restore AUTO gradient mode after explicit colors have loaded
-return group
-Implementation notes:
-Legacy payloads may contain unknown high wpFlags bits; the version gate prevents old reserved bits from being misread as v7 precise-offset payloads.
-AI self-check:
-Verify the read order matches writeWaypointBody and precise subwaypoints decode without disturbing old v6/v5 payloads.
-]]*/
     private static WaypointGroup readGroupRecord(DataInputStream in, TrackedByteStream bais, List<String> pool,
                                                  DebugCapture cap, int groupIndex, boolean legacyV2,
                                                  int expectedVersion)
@@ -2508,7 +1953,7 @@ Verify the read order matches writeWaypointBody and precise subwaypoints decode 
                     ? (in.readUnsignedByte() << 16) | (in.readUnsignedByte() << 8) | in.readUnsignedByte()
                     : Waypoint.DEFAULT_COLOR;
             double radiusW = (wpFlags & WP_FLAG_HAS_RADIUS) != 0 ? readVarint(in) / 10.0 : 0.0;
-            int wFlags     = (wpFlags & WP_FLAG_EXTENDED)   != 0 ? readVarint(in) & 0xFF : 0;
+            int wFlags     = (wpFlags & WP_FLAG_EXTENDED)   != 0 ? readVarint(in) : 0;
             boolean hasPrecise = expectedVersion >= PRECISE_WAYPOINT_MIN_VERSION
                     && (wpFlags & WP_FLAG_HAS_PRECISE) != 0;
             int preciseOffsets = hasPrecise ? readVarint(in) : 0;
@@ -2538,41 +1983,6 @@ Verify the read order matches writeWaypointBody and precise subwaypoints decode 
         return g;
     }
 
-    /*[[AI-FN-DOC
-Function:
-applyPreciseOffsets.
-Purpose:
-Apply a packed v7 precise-offset payload to a decoded block-centered waypoint.
-Why this exists:
-The coordinate stream stores whole blocks, while small subwaypoints need their exact one-sixteenth in-block center restored after decoding.
-When to use:
-Use only while reading a waypoint body whose WP_FLAG_HAS_PRECISE bit was present in a v7-or-newer payload.
-Inputs:
-base is the decoded waypoint with block x/y/z already populated; packedOffsets is a 12-bit value laid out as x offset, y offset, z offset.
-Outputs:
-Returns a Waypoint copy with preciseX/preciseY/preciseZ reconstructed from block coordinates plus offsets.
-Side effects:
-None.
-Failure modes:
-Throws IOException if packedOffsets contains bits outside the 12-bit offset payload.
-Important invariants:
-Each offset must be 0..15 and the returned waypoint's block coordinates must remain the same containing blocks after record construction.
-Internal logic:
-Validate the packed value, unpack x/y/z nibbles, multiply each block coordinate by PRECISE_SCALE, add its offset, and delegate to withPreciseSixteenths.
-Pseudocode:
-if packedOffsets has bits outside PRECISE_OFFSET_PACKED_MASK, throw IOException
-ox = packedOffsets >> 8 & mask
-oy = packedOffsets >> 4 & mask
-oz = packedOffsets & mask
-preciseX = base.x * PRECISE_SCALE + ox
-preciseY = base.y * PRECISE_SCALE + oy
-preciseZ = base.z * PRECISE_SCALE + oz
-return base.withPreciseSixteenths(preciseX, preciseY, preciseZ)
-Implementation notes:
-Negative block coordinates work because the block component is already floor-divided and the offset is non-negative within that block.
-AI self-check:
-Verify a waypoint at block -1 with offset 15 reconstructs precise coordinate -1 and still reports block -1.
-]]*/
     private static Waypoint applyPreciseOffsets(Waypoint base, int packedOffsets) throws IOException {
         if ((packedOffsets & ~PRECISE_OFFSET_PACKED_MASK) != 0) {
             throw new IOException("precise waypoint offsets out of range: " + packedOffsets);

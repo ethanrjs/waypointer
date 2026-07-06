@@ -24,8 +24,8 @@ import net.minecraft.network.chat.Component;
 
 import java.util.List;
 import java.util.Locale;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 /**
  * Client-side commands for the dungeon-waypoints subsystem. Registered as a
@@ -49,9 +49,8 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.lit
  *       guess is wrong and secrets render mirrored.</li>
  *   <li>{@code /wpd reset} -- forget every runtime-injected demo / custom
  *       waypoint without restarting the game.</li>
- *   <li>{@code /wpd toggle bounds} / {@code highlights} / {@code waypoints}
- *       -- shortcut toggles for the corresponding {@link DungeonConfig}
- *       flags.</li>
+ *   <li>{@code /wpd toggle enabled} / {@code debug} -- shortcut toggles for
+ *       dungeon room detection and diagnostic logging.</li>
  * </ul>
  */
 public final class DungeonCommands {
@@ -79,7 +78,10 @@ public final class DungeonCommands {
                 .executes(ctx -> runInfo(ctx.getSource()))
                 .then(literal("info").executes(ctx -> runInfo(ctx.getSource())))
                 .then(literal("test").executes(ctx -> runTest(ctx.getSource())))
-                .then(literal("reset").executes(ctx -> runReset(ctx.getSource())))
+                .then(literal("reset")
+                        .executes(ctx -> runReset(ctx.getSource(), false))
+                        .then(literal("confirm")
+                                .executes(ctx -> runReset(ctx.getSource(), true))))
                 .then(literal("room")
                         .then(literal("create")
                                 .then(argument("id", StringArgumentType.word())
@@ -204,11 +206,6 @@ public final class DungeonCommands {
                         .then(literal("se").executes(ctx -> runRotate(ctx.getSource(), Direction.SE))))
                 .then(literal("toggle")
                         .then(literal("enabled").executes(ctx -> runToggle(ctx.getSource(), "enabled")))
-                        .then(literal("waypoints").executes(ctx -> runToggle(ctx.getSource(), "waypoints")))
-                        .then(literal("highlights").executes(ctx -> runToggle(ctx.getSource(), "highlights")))
-                        .then(literal("found").executes(ctx -> runToggle(ctx.getSource(), "found")))
-                        .then(literal("mode").executes(ctx -> runToggle(ctx.getSource(), "mode")))
-                        .then(literal("bounds").executes(ctx -> runToggle(ctx.getSource(), "bounds")))
                         .then(literal("debug").executes(ctx -> runToggle(ctx.getSource(), "debug"))));
         d.register(cmd);
     }
@@ -306,6 +303,7 @@ public final class DungeonCommands {
             String prefix = builder.getRemaining();
             java.util.Set<Integer> seen = new java.util.TreeSet<>();
             for (DungeonWaypoint waypoint : definition.waypoints()) {
+                if (!isProgressSecretWaypoint(waypoint)) continue;
                 if (!seen.add(waypoint.secretIndex())) continue;
                 String value = Integer.toString(waypoint.secretIndex());
                 if (value.startsWith(prefix)) {
@@ -325,9 +323,17 @@ public final class DungeonCommands {
 
     private static String describeWaypoint(DungeonWaypoint waypoint) {
         String name = waypoint.hasName() ? waypoint.name() + " " : "";
-        return name + "#" + waypoint.secretIndex() + " "
+        return name + secretIndexDescriptor(waypoint) + " "
                 + waypoint.category().id + " "
                 + waypoint.trigger().name().toLowerCase(Locale.ROOT);
+    }
+
+    static boolean isProgressSecretWaypoint(DungeonWaypoint waypoint) {
+        return waypoint != null && waypoint.secretIndex() > 0;
+    }
+
+    static String secretIndexDescriptor(DungeonWaypoint waypoint) {
+        return isProgressSecretWaypoint(waypoint) ? "#" + waypoint.secretIndex() : "support";
     }
 
     private static String describeHighlight(DungeonHighlight highlight) {
@@ -453,7 +459,7 @@ public final class DungeonCommands {
         }
         for (int i = 0; i < waypoints.size(); i++) {
             DungeonWaypoint waypoint = waypoints.get(i);
-            info(src, "[" + i + "] #" + waypoint.secretIndex() + " "
+            info(src, "[" + i + "] " + secretIndexDescriptor(waypoint) + " "
                     + waypoint.category().id + " " + waypoint.x() + ", "
                     + waypoint.y() + ", " + waypoint.z()
                     + " trigger=" + waypoint.trigger().name().toLowerCase(java.util.Locale.ROOT)
@@ -636,9 +642,41 @@ public final class DungeonCommands {
     private int runRouteFound(FabricClientCommandSource src, int secretIndex) {
         DungeonRoom room = requireRoom(src);
         if (room == null) return 0;
+        if (!isAuthoredSecretIndex(room, secretIndex)) {
+            String available = availableAuthoredSecretIndexes(room);
+            String suffix = available.isEmpty()
+                    ? " No positive route secrets are authored for this room."
+                    : " Available: " + available + ".";
+            error(src, "Secret #" + secretIndex + " is not authored for "
+                    + room.displayName() + "." + suffix);
+            return 0;
+        }
         session.markFound(room, secretIndex);
         success(src, "Marked secret #" + secretIndex + " found.");
         return 1;
+    }
+
+    static boolean isAuthoredSecretIndex(DungeonRoom room, int secretIndex) {
+        if (room == null || secretIndex <= 0) return false;
+        for (DungeonWaypoint waypoint : DungeonRoomData.waypointsFor(room)) {
+            if (waypoint.secretIndex() == secretIndex) return true;
+        }
+        return false;
+    }
+
+    static String availableAuthoredSecretIndexes(DungeonRoom room) {
+        java.util.Set<Integer> indexes = new java.util.LinkedHashSet<>();
+        for (DungeonWaypoint waypoint : DungeonRoomData.waypointsFor(room)) {
+            int index = waypoint.secretIndex();
+            if (index > 0) indexes.add(index);
+        }
+
+        StringBuilder available = new StringBuilder();
+        for (Integer index : indexes) {
+            if (!available.isEmpty()) available.append(", ");
+            available.append("#").append(index);
+        }
+        return available.toString();
     }
 
     private int runRotate(FabricClientCommandSource src, Direction dir) {
@@ -648,7 +686,12 @@ public final class DungeonCommands {
         return 1;
     }
 
-    private int runReset(FabricClientCommandSource src) {
+    private int runReset(FabricClientCommandSource src, boolean confirmed) {
+        if (!confirmed) {
+            warn(src, "This will clear all custom dungeon room data and waypoints. "
+                    + "Run /wpd reset confirm to proceed.");
+            return 0;
+        }
         DungeonRoomData.clearAllCustom();
         success(src, "Cleared all runtime dungeon waypoints.");
         return 1;
@@ -660,31 +703,6 @@ public final class DungeonCommands {
                 boolean v = !config.enabled();
                 config.setEnabled(v);
                 yield v;
-            }
-            case "waypoints" -> {
-                boolean v = !config.showSecretWaypoints();
-                config.setShowSecretWaypoints(v);
-                yield v;
-            }
-            case "highlights" -> {
-                boolean v = !config.showHighlights();
-                config.setShowHighlights(v);
-                yield v;
-            }
-            case "bounds" -> {
-                boolean v = !config.drawRoomBounds();
-                config.setDrawRoomBounds(v);
-                yield v;
-            }
-            case "found" -> {
-                boolean v = !config.showFoundSecrets();
-                config.setShowFoundSecrets(v);
-                yield v;
-            }
-            case "mode" -> {
-                boolean active = !"ACTIVE".equalsIgnoreCase(config.routeRenderMode());
-                config.setRouteRenderMode(active ? "ACTIVE" : "ALL");
-                yield active;
             }
             case "debug" -> {
                 boolean v = !config.debugLogRoomChanges();
@@ -751,6 +769,11 @@ public final class DungeonCommands {
     private static void success(FabricClientCommandSource src, String msg) {
         src.sendFeedback(WaypointerChatFeedback.suppress(
                 Component.literal(msg).withStyle(ChatFormatting.GREEN)));
+    }
+
+    private static void warn(FabricClientCommandSource src, String msg) {
+        src.sendFeedback(WaypointerChatFeedback.suppress(
+                Component.literal(msg).withStyle(ChatFormatting.YELLOW)));
     }
 
     private static void error(FabricClientCommandSource src, String msg) {

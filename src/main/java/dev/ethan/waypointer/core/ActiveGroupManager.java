@@ -1,5 +1,7 @@
 package dev.ethan.waypointer.core;
 
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -92,10 +94,37 @@ public final class ActiveGroupManager {
 
         List<WaypointGroup> active = new ArrayList<>();
         for (WaypointGroup g : byId.values()) {
-            if (g.enabled() && zoneId.equals(g.zoneId())) active.add(g);
+            if (g.enabled() && zoneId.equals(g.zoneId()) && shouldSurfaceActiveGroup(g)) {
+                active.add(g);
+            }
         }
         cachedActive = List.copyOf(active);
         return cachedActive;
+    }
+
+    private static boolean shouldSurfaceActiveGroup(WaypointGroup group) {
+        return !isCompletedDungeonRoomGroup(group);
+    }
+
+    private static boolean isCompletedDungeonRoomGroup(WaypointGroup group) {
+        return !group.temp()
+                && group.isComplete()
+                && DungeonRoomData.definition(group.zoneId()) != null;
+    }
+
+    public List<WaypointGroup> completedDungeonRoomGroupsInCurrentZone() {
+        if (currentZone == null) return Collections.emptyList();
+
+        String zoneId = currentZone.id();
+        List<WaypointGroup> completed = new ArrayList<>();
+        for (WaypointGroup group : byId.values()) {
+            if (group.enabled()
+                    && zoneId.equals(group.zoneId())
+                    && isCompletedDungeonRoomGroup(group)) {
+                completed.add(group);
+            }
+        }
+        return List.copyOf(completed);
     }
 
     /**
@@ -229,41 +258,6 @@ public final class ActiveGroupManager {
                 Waypoint.DEFAULT_COLOR);
     }
 
-    /*[[AI-FN-DOC
-Function:
-addTempWaypoint
-Purpose:
-Add a temporary waypoint with a caller-supplied default color into the current zone temp bucket.
-Why this exists:
-User-facing temp waypoint flows now honor WaypointerConfig.defaultWaypointColor, while older API/test callers can keep the historical Waypoint.DEFAULT_COLOR overload.
-When to use:
-Use from commands, chat auto-add, and keybinds when a WaypointerConfig is available. Use the shorter overload for compatibility paths that do not have user config.
-Inputs:
-x, y, and z are block coordinates; sourceName is optional label text; tempMode is a Waypoint TEMP_* constant; expiresAtMillis is only used for time-based temps; color is a 24-bit RGB default color.
-Outputs:
-Returns the temp bucket group that owns the new waypoint.
-Side effects:
-Creates or updates the temp bucket, adds a temp waypoint, and fires data changed.
-Failure modes:
-Invalid tempMode is normalized by Waypoint.normalizeTempMode. Color alpha bits are masked by Waypoint.withColor through construction usage.
-Important invariants:
-Temp waypoints remain session-only and static-rendered; this overload changes only their color.
-Internal logic:
-Sanitize source text, get the zone temp group, normalize mode/deadline, build a colored temp waypoint, add it, fire data changed, and return the bucket.
-Pseudocode:
-source = sanitize sourceName
-target = getOrCreateTempGroup(source)
-mode = normalize tempMode
-expiresAt = expiresAtMillis only for time mode else 0
-waypoint = Waypoint.at(x,y,z).withColor(color).withName(source).withTemp(mode, expiresAt)
-target.add waypoint
-fire data changed
-return target
-Implementation notes:
-Keeping the original overload delegates here avoids breaking external callers and tests.
-AI self-check:
-Verify all config-aware temp creation paths call this overload.
-]]*/
     public WaypointGroup addTempWaypoint(int x, int y, int z, String sourceName,
                                          int tempMode, long expiresAtMillis,
                                          int color) {
