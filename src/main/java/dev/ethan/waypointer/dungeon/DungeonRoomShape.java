@@ -1,5 +1,9 @@
 package dev.ethan.waypointer.dungeon;
 
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Set;
+
 /**
  * The footprint of a dungeon room, derived from how many 32x32-block segments
  * share its map color and how those segments are arranged in space.
@@ -17,14 +21,6 @@ public enum DungeonRoomShape {
     L_SHAPE,
     UNKNOWN;
 
-    /**
-     * Classify a set of room segments. Only counts and span dimensions matter --
-     * the actual world location of the segments is irrelevant for shape.
-     *
-     * @param segmentCount number of distinct 32x32 segments in the room
-     * @param spanX        number of distinct segment X coordinates
-     * @param spanZ        number of distinct segment Z coordinates
-     */
     public static DungeonRoomShape classify(int segmentCount, int spanX, int spanZ) {
         if (segmentCount <= 1) return ONE_BY_ONE;
         if (segmentCount == 2) return ONE_BY_TWO;
@@ -38,5 +34,18 @@ public enum DungeonRoomShape {
             return L_SHAPE;
         }
         return UNKNOWN;
+    }
+
+    public static DungeonRoomShape classifySegments(Collection<Long> segments) {
+        if (segments == null) return classify(0, 0, 0);
+        Set<Long> distinctSegments = new HashSet<>();
+        Set<Integer> distinctX = new HashSet<>();
+        Set<Integer> distinctZ = new HashSet<>();
+        for (Long packed : segments) {
+            if (packed == null || !distinctSegments.add(packed)) continue;
+            distinctX.add(DungeonRoom.segmentX(packed));
+            distinctZ.add(DungeonRoom.segmentZ(packed));
+        }
+        return classify(distinctSegments.size(), distinctX.size(), distinctZ.size());
     }
 }

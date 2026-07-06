@@ -266,7 +266,7 @@ public final class PerformanceStressProbe {
         List<String> ids = new ArrayList<>();
         int waypointsRemoved = 0;
         for (WaypointGroup group : manager.allGroups()) {
-            if (isLiveOverlayGroupId(group.id())) {
+            if (group.temp() && isLiveOverlayGroupId(group.id())) {
                 ids.add(group.id());
                 waypointsRemoved += group.size();
             }

@@ -11,6 +11,7 @@ You can:
 - edit waypoints in saved routes
 - show routes owned by your mod
 - import waypoint share strings
+- export selected routes to share strings
 - listen for zone or waypoint changes
 
 ## Quick Start
@@ -159,6 +160,20 @@ ImportSummary summary = waypointer.importRoutes(sharedText, ImportOptions.builde
         .build());
 
 ExampleChat.send("Imported " + summary.groupCount() + " Waypointer route(s)");
+```
+
+### Export A Share String
+
+Use `exportRoutes` when you want to share existing Waypointer routes selected by
+group id. Missing ids are skipped so the call is safe if the user deletes a
+route while your integration is preparing an export.
+
+```java
+String shareText = waypointer.exportRoutes(List.of(groupId), ExportOptions.builder()
+        .target(ExportTarget.WAYPOINTER)
+        .includeNames(true)
+        .label("Example route")
+        .build());
 ```
 
 ### Listen For Changes

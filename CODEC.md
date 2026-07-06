@@ -209,7 +209,7 @@ Corruption can still fail in several places: invalid DEFLATE tokens, truncated i
 Encoder and decoder both set `CodecDictionary.BYTES` as DEFLATE's preset dictionary. The dictionary acts as virtual LZ77 history, so early stream bytes can back-reference common route vocabulary.
 
 ```text
-  virtual history (~600 bytes, never transmitted)
+  virtual history (~360 bytes, never transmitted)
   ┌──────────────────────────────────────────────────────────┐
   │ dungeon_f7 hub crystal_hollows ... Terminal Lever ...    │
   └──────────────────────────────────────────────────────────┘
@@ -230,7 +230,7 @@ Dictionary contents:
 - canonical Hypixel SkyBlock zone IDs, ordered longest-and-most-common first;
 - common waypoint name fragments: `Terminal`, `Lever`, `Puzzle`, `Device`, `Boss`, `Spawn`, `Start`, `End`, `Checkpoint`, `T1..T8`.
 
-The dictionary is about 600 bytes. It must stay short because DEFLATE scans it on every encode and decode. Named routes commonly save 10–40% of compressed output.
+The dictionary is about 360 bytes. It must stay short because DEFLATE scans it on every encode and decode. Named routes commonly save 10–40% of compressed output.
 
 ### 5.3 DEFLATE Strategy Selection
 
@@ -435,7 +435,7 @@ The purpose is to avoid paying wrapper bytes for the most common compressed expo
 
 Each group chooses one coordinate mode during encode.
 
-In v5+, the chosen mode uses `groupFlags[4..5]` for the low two bits and `groupFlags[6]` for bit 2. Legacy v4 and older only used `groupFlags[4..5]`, so they only support modes `0..3`. v6 adds mode `6`; older v5 payloads never contain it, but current decoders understand both v5 and v6.
+In v5+, the chosen mode uses `groupFlags[4..5]` for the low two bits and `groupFlags[6]` for bit 2. Legacy v2-v4 only used `groupFlags[4..5]`, so they only support modes `0..3`; the restored v1 compatibility path only accepts modes `0..2`. v6 adds mode `6`; older v5 payloads never contain it, but current decoders understand v5, v6, and v7.
 
 #### Mode 0: `VECTOR` delta
 
@@ -526,7 +526,7 @@ An axis width of `0` means all deltas on that axis are zero. AUTO only considers
 
 #### Mode 6: `RANGE_DELTA`
 
-v6-only. Stores the first waypoint as absolute zigzag varints, then range-codes fixed-width zigzag deltas by axis.
+Introduced in v6 and still valid in v7. Stores the first waypoint as absolute zigzag varints, then range-codes fixed-width zigzag deltas by axis.
 
 ```text
 first absolute x, y, z
@@ -745,14 +745,15 @@ unsupported wire version N
 
 Current decoders accept:
 
-- v6: current writer, base-91 text layer, anonymous single-group coordinate-only bodies, `RANGE_DELTA`, and best-of-DEFLATE strategy selection;
+- v7: current writer, v6 text/anonymous/range-delta behavior plus default-preserved subwaypoint style flags and packed sixteenth-block precise offsets;
+- v6: base-91 text layer, anonymous single-group coordinate-only bodies, `RANGE_DELTA`, and best-of-DEFLATE strategy selection;
 - v5: `AsciiStreamCodec` base-91 text layer, Hypixel emote escape, extended coordinate modes;
 - v4: `AsciiStreamCodec` base-92 text layer, Hypixel emote escape, v4 header;
 - v3: `AsciiStreamCodec` base-93 text layer, v3 body with `zoneRef`, inline names, and bodyless groups;
 - v2: `AsciiPackCodec` base-85 text layer, v2 body with zone IDs as string-pool indexes, waypoint names always as pool refs, and ignored bit 0 in group flags;
 - v1: `CjkBase16384` text layer with the old pooled-zone body shape.
 
-The encoder only writes v6. v5 and older are decode-only compatibility paths; the separate v5 exporter/comparison UI was removed after v6 won the export-size tests.
+The encoder only writes v7. v6 and older are decode-only compatibility paths; the separate v5 exporter/comparison UI was removed after v6 won the export-size tests.
 
 ### 8.3 `peekLabel`
 
@@ -825,7 +826,7 @@ Example route:
 Binary body before DEFLATE, with whitespace added:
 
 ```text
-16               header: version=6, names flag, no label
+17               header: version=7, names flag, no label
 02               string pool: 2 entries
   00                       ""          reserved at index 0
   07  44 75 6E 67 65 6F 6E              "Dungeon"
@@ -858,7 +859,7 @@ Binary body before DEFLATE, with whitespace added:
 
 - Random access. The format is sequential: no index, no length-prefixed group, no "seek to group 3."
 - Human readability. Base-91 text is intentionally dense. Use `debugDecode` or hex-dump the raw body.
-- Interchange with other mods. `WP:` is Waypointer-native. `WaypointImporter` handles Skyblocker, Skytils/Soopy, SkyHanni, Coleweight, and loose JSON-style payloads separately; those formats do not share bytes with this codec.
+- Interchange with other mods. `WP:` is Waypointer-native. `WaypointImporter` handles Skyblocker, Skytils/Soopy, SkyHanni, Coleweight, Odin, and loose JSON-style payloads separately; those formats do not share bytes with this codec.
 - Cross-version forward compatibility. Older builds refuse newer `WIRE_VERSION` values. Guessing at a newer layout risks silent misreads.
 
 ---
@@ -875,7 +876,8 @@ Binary body before DEFLATE, with whitespace added:
 | `codec/CodecZoneDictionary.java` | Skyblocker-seeded known-zone dictionary. |
 | `codec/DecodeDebug.java` | Immutable debug snapshot returned by `debugDecode`. |
 | `codec/WaypointExportCodec.java` | Waypointer and third-party export target wrapper. |
-| `codec/WaypointImporter.java` | Multi-format import: Waypointer, Skyblocker, Skytils/Soopy, SkyHanni, Coleweight, JSON. |
+| `api/DefaultWaypointerApi.java`, `api/ExportOptions.java`, `api/ExportTarget.java` | Public API layer for export calls and target/options mapping. |
+| `codec/WaypointImporter.java` | Multi-format import: Waypointer, Skyblocker, Skytils/Soopy, SkyHanni, Coleweight, Odin, JSON. |
 | `chat/CodecScanner.java`, `chat/ChatImportDetector.java` | Detect `WP:` substrings in chat lines. |
 
 ## 14. Why so complex?

@@ -2,6 +2,7 @@ package dev.ethan.waypointer.dungeon.data;
 
 import dev.ethan.waypointer.dungeon.Direction;
 import dev.ethan.waypointer.dungeon.DungeonHighlight;
+import dev.ethan.waypointer.dungeon.DungeonMapMath;
 import dev.ethan.waypointer.dungeon.DungeonRoom;
 import dev.ethan.waypointer.dungeon.DungeonRoomShape;
 import dev.ethan.waypointer.dungeon.DungeonRoomType;
@@ -66,6 +67,17 @@ class DungeonRoomDataTest {
     }
 
     @Test
+    void bundledCatalogDoesNotShipAuthoredRoomRoutes() {
+        DungeonRoomDefinition altar = DungeonRoomData.definition("altar");
+        DungeonRoom matched = roomAt(-8, 24).withDefinition(altar.id(), altar.displayName());
+
+        assertTrue(altar.waypoints().isEmpty());
+        assertTrue(DungeonRoomData.allDefinitions().stream()
+                .allMatch(definition -> definition.waypoints().isEmpty()));
+        assertTrue(DungeonRoomData.waypointsFor(matched).isEmpty());
+    }
+
+    @Test
     void addCustomStoresWaypointsByRoomIdentityKeyInOrder() {
         DungeonRoom room = roomAt(-8, 24);
         DungeonWaypoint first = waypoint("first");
@@ -124,6 +136,21 @@ class DungeonRoomDataTest {
     }
 
     @Test
+    void clearWaypointsKeepsRoomDefinitionButEmptiesRoutes() {
+        DungeonRoom room = roomAt(-8, 24);
+        DungeonRoomDefinition definition = DungeonRoomData.defineRoom("clear-waypoints", "Clear Waypoints", room);
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("first"));
+
+        DungeonRoomDefinition cleared = DungeonRoomData.clearWaypoints(definition.id());
+
+        assertEquals(definition.id(), cleared.id());
+        assertEquals(definition.displayName(), cleared.displayName());
+        assertTrue(cleared.waypoints().isEmpty());
+        assertTrue(DungeonRoomData.isCustomDefinition(definition.id()));
+        assertTrue(DungeonRoomData.definition(definition.id()).waypoints().isEmpty());
+    }
+
+    @Test
     void clearAllCustomRemovesEveryRuntimeWaypoint() {
         DungeonRoom room = roomAt(-8, 24);
         DungeonRoomDefinition definition = DungeonRoomData.defineRoom("clear-all", "Clear All", room);
@@ -168,6 +195,31 @@ class DungeonRoomDataTest {
                         : "minecraft:air");
 
         assertEquals("second-room", matched.roomId());
+    }
+
+    @Test
+    void fingerprintMatchTransformsRoomLocalCoordinatesForEveryDirection() {
+        int rx = 3;
+        int ry = 70;
+        int rz = 5;
+
+        for (Direction direction : Direction.values()) {
+            DungeonRoomData.clearAllCustom();
+            DungeonRoom room = roomAt(direction, 100, 200);
+            DungeonRoomDefinition definition = DungeonRoomData.defineRoom(
+                    "rotated-" + direction.name().toLowerCase(), "Rotated " + direction, room);
+            DungeonRoomData.addFingerprint(definition.id(),
+                    new DungeonRoomFingerprint(rx, ry, rz, "minecraft:gold_block"));
+            int[] expectedWorld = DungeonMapMath.relativeToActual(
+                    direction, room.physicalCornerX(), room.physicalCornerZ(), rx, ry, rz);
+
+            DungeonRoom matched = DungeonRoomData.withMatchedDefinition(room,
+                    (x, y, z) -> x == expectedWorld[0] && y == expectedWorld[1] && z == expectedWorld[2]
+                            ? "minecraft:gold_block"
+                            : "minecraft:air");
+
+            assertEquals(definition.id(), matched.roomId(), "direction " + direction);
+        }
     }
 
     @Test
@@ -246,10 +298,14 @@ class DungeonRoomDataTest {
     }
 
     private static DungeonRoom roomAt(int x, int z) {
+        return roomAt(Direction.NW, x, z);
+    }
+
+    private static DungeonRoom roomAt(Direction direction, int x, int z) {
         return new DungeonRoom(
                 DungeonRoomType.ROOM,
                 DungeonRoomShape.ONE_BY_ONE,
-                Direction.NW,
+                direction,
                 x,
                 z,
                 List.of(DungeonRoom.packSegment(x, z)));

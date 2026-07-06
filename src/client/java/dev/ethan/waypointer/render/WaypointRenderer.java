@@ -2,6 +2,7 @@ package dev.ethan.waypointer.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.math.Axis;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
@@ -9,25 +10,44 @@ import dev.ethan.waypointer.core.RouteProgress;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.WaypointVisibility;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
+import dev.ethan.waypointer.input.WaypointRepositionMode;
+import dev.ethan.waypointer.input.WaypointerKeybinds;
 import dev.ethan.waypointer.text.AmpersandFormatting;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.Mth;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.VoxelShape;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.IntPredicate;
 
 /**
  * Draws every active waypoint as an outlined cube (world-space) plus a 2D label
@@ -104,7 +124,21 @@ public final class WaypointRenderer implements HudElement {
     private static final float LABEL_SCALE_MIN = 0.25f;
     private static final float LABEL_SCALE_MAX = 4.0f;
     private static final double SMALL_SUBWAYPOINT_SIZE = 1.0 / 16.0;
-    private static final double SMALL_SUBWAYPOINT_INSET = (1.0 - SMALL_SUBWAYPOINT_SIZE) * 0.5;
+    private static final double BLOCK_SHAPE_EPSILON = 1.0E-6;
+    private static final int EDIT_MODE_SUBTITLE_ARGB = 0xFF55FFFF;
+    private static final String EDIT_MODE_SUBTITLE_BASE_TEXT = "EDIT MODE";
+    private static final int LINE_OF_SIGHT_SAMPLE_COUNT = 9;
+    private static final int BOX_MIN_X = 0;
+    private static final int BOX_MIN_Y = 1;
+    private static final int BOX_MIN_Z = 2;
+    private static final int BOX_MAX_X = 3;
+    private static final int BOX_MAX_Y = 4;
+    private static final int BOX_MAX_Z = 5;
+    private static final float DUNGEON_ENTRY_PATH_ALPHA = 0.9f;
+    private static final long DUNGEON_ENTRY_REPATH_INTERVAL_NANOS = 250_000_000L;
+    private static final int DUNGEON_ENTRY_PATH_CACHE_SIZE = 8;
+    private static final int DUNGEON_ENTRY_MAX_EXPANSIONS = 8_000;
+    private static final int DUNGEON_ENTRY_SEARCH_PADDING = 48;
 
     /**
      * Cap on the pre-baked distance table. 0..4095m covers dense imported route
@@ -143,6 +177,7 @@ public final class WaypointRenderer implements HudElement {
     private final WorldScreenProjector labelProjector = new WorldScreenProjector();
     private final double[] labelScreenScratch = new double[2];
     private final double[] boxScreenScratch = new double[16];
+    private final double[] waypointBoxBoundsScratch = new double[6];
     private final boolean[] boxCornerVisible = new boolean[8];
     private double projectedBoxMinX;
     private double projectedBoxMinY;
@@ -150,6 +185,14 @@ public final class WaypointRenderer implements HudElement {
     private double projectedBoxMaxY;
     private final ArrayList<LabelCandidate> labelCandidates = new ArrayList<>();
     private int labelCandidateCount;
+    private ClientLevel dungeonEntryPathLevel;
+    private final Map<DungeonEntryPathTarget, DungeonEntryPath> dungeonEntryPathCache =
+            new LinkedHashMap<>(DUNGEON_ENTRY_PATH_CACHE_SIZE + 1, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<DungeonEntryPathTarget, DungeonEntryPath> eldest) {
+                    return size() > DUNGEON_ENTRY_PATH_CACHE_SIZE;
+                }
+            };
 
     public WaypointRenderer(ActiveGroupManager manager, WaypointerConfig config) {
         this.manager = manager;
@@ -157,11 +200,20 @@ public final class WaypointRenderer implements HudElement {
     }
 
     public void install() {
-        WorldRenderEvents.END_MAIN.register(this::onWorldRender);
+        LevelRenderEvents.END_MAIN.register(this::onWorldRender);
         // Attaching before CHAT inherits chat's render condition, which means the
         // labels respect the "hide GUI" (F1) toggle the same way chat does. That
         // matches player expectation for any in-world HUD overlay.
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, LABEL_HUD_ID, this);
+    }
+
+    public static AABB waypointBoxBounds(ClientLevel level, Waypoint waypoint) {
+        if (waypoint == null) return null;
+        double[] bounds = new double[6];
+        populateWaypointBoxBounds(level, waypoint, bounds);
+        return new AABB(
+                bounds[BOX_MIN_X], bounds[BOX_MIN_Y], bounds[BOX_MIN_Z],
+                bounds[BOX_MAX_X], bounds[BOX_MAX_Y], bounds[BOX_MAX_Z]);
     }
 
     // ---- world-space path: cube outlines -------------------------------------------------
@@ -176,46 +228,13 @@ public final class WaypointRenderer implements HudElement {
     private static final float FILLED_ALPHA_SCALE = 0.35f;
     private static final float BEAM_ALPHA_SCALE = 0.18f;
     private static final float BEAM_HALF_WIDTH = 0.12f;
+    private static final float BEACON_TEXTURE_SCALE_THRESHOLD = 96.0f;
+    private static final int FULL_BRIGHT_LIGHT = 0x00F000F0;
+    private static final int BEACON_GLOW_BASE_ALPHA_ARGB = 0x20000000;
     private static final int DEFAULT_MIN_BUILD_Y = -64;
     private static final int DEFAULT_MAX_BUILD_Y = 320;
 
-    /*[[AI-FN-DOC
-Function:
-onWorldRender
-Purpose:
-Render world-space waypoint geometry, beacon beams, optional route connector lines, and per-subwaypoint fill overrides for active groups.
-Why this exists:
-Waypoint boxes and connector lines must be drawn in the world render pass so they align with block positions and can use through-walls pipelines.
-When to use:
-Registered by install as the WorldRenderEvents.END_MAIN callback. Do not call directly from HUD label rendering.
-Inputs:
-ctx is Fabric's world render context and may contain null matrices or consumers during unusual render states.
-Outputs:
-No return value. Emits vertices to render buffers when there is visible geometry.
-Side effects:
-Reads active groups, config, camera/player state, writes to render buffers, and flushes render batches.
-Failure modes:
-Returns early for Iris HUD fallback, empty groups, absent buffers/matrices, or disabled geometry. Route lines can still draw when waypoint opacity is zero.
-Important invariants:
-Fills and lines must use separate buffer cycles where required; route connector lines share the line pipeline but remain independent from box outline enablement. A filled subwaypoint can force the fill pass without changing the global box style.
-Internal logic:
-Gather draw flags and render context, include filled subwaypoint overrides in the fill decision, translate to camera-relative coordinates, emit fill/beam quads when enabled, then emit connector and/or box line geometry when enabled.
-Pseudocode:
-if Iris fallback active, return
-get active groups and draw flags, including per-subwaypoint filled overrides
-if nothing to draw, return
-get buffers and pose stack
-compute camera/player positions and culling thresholds
-push pose and translate by negative camera
-if beams or fills enabled, emit quads and flush
-if connector lines or box lines enabled, emit line geometry and flush
-pop pose
-Implementation notes:
-Route lines are checked separately from beaconOpacity so users can turn box opacity down without accidentally disabling connector topology.
-AI self-check:
-Verify drawRouteLines participates in the line batch and does not force boxes to render.
-]]*/
-    private void onWorldRender(WorldRenderContext ctx) {
+    private void onWorldRender(LevelRenderContext ctx) {
         if (IrisShaderFallback.shouldUse(config)) return;
 
         var groups = manager.activeGroups();
@@ -226,18 +245,33 @@ Verify drawRouteLines participates in the line batch and does not force boxes to
         boolean drawGlobalFill = style != WaypointerConfig.BoxStyle.OUTLINED;
         boolean drawFill  = drawGlobalFill || hasFilledSubwaypoint(groups);
         boolean drawBeams = config.beaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF;
+        boolean drawTexturedBeams = drawBeams && config.useBeaconBeamTextures();
+        boolean drawFlatBeams = drawBeams && !drawTexturedBeams;
         boolean drawRouteLines = config.showRouteLines();
-        if (!drawLines && !drawFill && !drawBeams && !drawRouteLines) return;
-        if (config.beaconOpacity() <= 0.0 && !drawRouteLines) return;
+        boolean drawDungeonEntryPaths = config.showDungeonEntryPathToFirstWaypoint();
+        if (!drawLines && !drawFill && !drawBeams && !drawRouteLines && !drawDungeonEntryPaths) return;
+        if (config.beaconOpacity() <= 0.0 && !drawRouteLines && !drawDungeonEntryPaths) return;
+        boolean hasDepthCheckedWaypoints = hasDepthCheckedWaypoint(groups);
+        boolean hasThroughWallWaypoints = hasThroughWallWaypoint(groups) || drawDungeonEntryPaths;
+        if (!hasDepthCheckedWaypoints && !hasThroughWallWaypoints) return;
 
-        MultiBufferSource buffers = ctx.consumers();
+        MultiBufferSource buffers = ctx.bufferSource();
         if (buffers == null) return;
 
-        PoseStack ps = ctx.matrices();
+        PoseStack ps = ctx.poseStack();
         if (ps == null) return;
         Minecraft mc = Minecraft.getInstance();
-        Vec3 camPos = mc.gameRenderer.getMainCamera().position();
+        ClientLevel level = mc.level;
+        GameRenderer renderer = mc.gameRenderer;
+        Camera camera = renderer.getMainCamera();
+        if (!camera.isInitialized()) return;
+        Vec3 camPos = camera.position();
         Vec3 playerPos = mc.player == null ? null : mc.player.position();
+        int screenW = mc.getWindow().getGuiScaledWidth();
+        int screenH = mc.getWindow().getGuiScaledHeight();
+        if (hasDepthCheckedWaypoints) {
+            labelProjector.prepare(renderer, camera);
+        }
         double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
         double nearHideDistanceSq = nearHideDistanceSq();
 
@@ -254,38 +288,109 @@ Verify drawRouteLines participates in the line batch and does not force boxes to
         // We intentionally flush fills before starting the line batch so the
         // outline renders on top of its translucent fill in FILLED_OUTLINED
         // mode and stays crisp.
-        if (drawBeams || drawFill) {
+        if (drawTexturedBeams && hasThroughWallWaypoints) {
+            RenderType beamType = WaypointerRenderPipelines.beaconBeamThroughWalls();
+            VertexConsumer texturedBeams = buffers.getBuffer(beamType);
+            int minY = beamMinY(mc);
+            int maxY = beamMaxY(mc);
+            for (WaypointGroup g : groups) {
+                emitBeaconBeams(ps, texturedBeams, g, camPos, playerPos,
+                        maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
+                        false, mc, level, screenW, screenH, true);
+            }
+            RenderHelpers.endBatch(buffers, beamType);
+        }
+        if (drawTexturedBeams && hasDepthCheckedWaypoints) {
+            RenderType beamType = WaypointerRenderPipelines.beaconBeamDepthTested();
+            VertexConsumer texturedBeams = buffers.getBuffer(beamType);
+            int minY = beamMinY(mc);
+            int maxY = beamMaxY(mc);
+            for (WaypointGroup g : groups) {
+                emitBeaconBeams(ps, texturedBeams, g, camPos, playerPos,
+                        maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
+                        true, mc, level, screenW, screenH, true);
+            }
+            RenderHelpers.endBatch(buffers, beamType);
+        }
+        if ((drawFlatBeams || drawFill) && hasThroughWallWaypoints) {
             RenderType quadType = WaypointerRenderPipelines.quadsThroughWalls();
             VertexConsumer quads = buffers.getBuffer(quadType);
             int minY = beamMinY(mc);
             int maxY = beamMaxY(mc);
-            if (drawBeams) {
+            if (drawFlatBeams) {
                 for (WaypointGroup g : groups) {
                     emitBeaconBeams(ps, quads, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq, minY, maxY);
+                            maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
+                            false, mc, level, screenW, screenH, false);
                 }
             }
             if (drawFill) {
                 for (WaypointGroup g : groups) {
-                    emitFilledBoxes(ps, quads, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq, drawGlobalFill);
+                    emitFilledBoxes(ps, quads, level, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq, drawGlobalFill,
+                            false, mc, screenW, screenH);
                 }
             }
             RenderHelpers.endBatch(buffers, quadType);
         }
-        if (drawLines || drawRouteLines) {
+        if ((drawFlatBeams || drawFill) && hasDepthCheckedWaypoints) {
+            RenderType quadType = WaypointerRenderPipelines.quadsDepthTested();
+            VertexConsumer quads = buffers.getBuffer(quadType);
+            int minY = beamMinY(mc);
+            int maxY = beamMaxY(mc);
+            if (drawFlatBeams) {
+                for (WaypointGroup g : groups) {
+                    emitBeaconBeams(ps, quads, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
+                            true, mc, level, screenW, screenH, false);
+                }
+            }
+            if (drawFill) {
+                for (WaypointGroup g : groups) {
+                    emitFilledBoxes(ps, quads, level, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq, drawGlobalFill,
+                            true, mc, screenW, screenH);
+                }
+            }
+            RenderHelpers.endBatch(buffers, quadType);
+        }
+        if ((drawLines || drawRouteLines || drawDungeonEntryPaths) && hasThroughWallWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
             VertexConsumer lines = buffers.getBuffer(lineType);
+            if (drawDungeonEntryPaths) {
+                emitDungeonEntryPaths(ps, lines, groups, playerPos, level);
+            }
             if (drawRouteLines) {
                 for (WaypointGroup g : groups) {
                     emitRouteLines(ps, lines, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq);
+                            maxStaticDistanceSq, nearHideDistanceSq,
+                            false, mc, level, screenW, screenH);
                 }
             }
             if (drawLines) {
                 for (WaypointGroup g : groups) {
-                    emitLineBoxes(ps, lines, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq);
+                    emitLineBoxes(ps, lines, level, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq,
+                            false, mc, screenW, screenH);
+                }
+            }
+            RenderHelpers.endBatch(buffers, lineType);
+        }
+        if ((drawLines || drawRouteLines) && hasDepthCheckedWaypoints) {
+            RenderType lineType = WaypointerRenderPipelines.linesDepthTested();
+            VertexConsumer lines = buffers.getBuffer(lineType);
+            if (drawRouteLines) {
+                for (WaypointGroup g : groups) {
+                    emitRouteLines(ps, lines, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq,
+                            true, mc, level, screenW, screenH);
+                }
+            }
+            if (drawLines) {
+                for (WaypointGroup g : groups) {
+                    emitLineBoxes(ps, lines, level, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq,
+                            true, mc, screenW, screenH);
                 }
             }
             RenderHelpers.endBatch(buffers, lineType);
@@ -294,105 +399,140 @@ Verify drawRouteLines participates in the line batch and does not force boxes to
         ps.popPose();
     }
 
-    /*[[AI-FN-DOC
-Function:
-emitRouteLines
-Purpose:
-Render connector segments between the centers of currently visible waypoints in one group.
-Why this exists:
-The route topology line is separate from box outlines and tracers: it shows how the visible route context connects without pointing from the player crosshair.
-When to use:
-Use from the world render pass when config.showRouteLines() is true. Do not use for HUD fallback or crosshair tracer rendering.
-Inputs:
-ps is the translated pose stack; lines is the active line vertex consumer; g is the waypoint group; camPos and playerPos are current camera/player positions; maxStaticDistanceSq and nearHideDistanceSq are precomputed culling thresholds.
-Outputs:
-No return value. Appends line vertices to the current render batch.
-Side effects:
-Writes vertices into the line buffer. Does not mutate route state.
-Failure modes:
-Empty or one-point visible routes emit nothing. Segments with hidden/cull-filtered endpoints are skipped.
-Important invariants:
-Connector endpoints must be waypoint centers, use the configured route line color, and respect the same visibility filters as box outlines.
-Internal logic:
-Iterate visible indices in route order, keep the previous renderable index, and emit a segment from previous center to current center when both endpoints pass visibility filters.
-Pseudocode:
-currentIdx = group.currentIndex
-showCompleted = config.showCompleted
-previous = -1
-for each visible index:
-  if index is not connector-renderable, continue
-  if previous exists, draw center-to-center line from previous waypoint to current waypoint
-  previous = index
-Implementation notes:
-Skipping non-renderable endpoints avoids connector lines pointing into markers the player has intentionally hidden through distance, near-hide, completed-hide, or static reached-hide settings.
-AI self-check:
-Verify this method uses routeLineColor(), existing outline thickness, and the same per-waypoint visibility helpers as boxes.
-]]*/
+    private void emitDungeonEntryPaths(PoseStack ps, VertexConsumer lines, Iterable<WaypointGroup> groups,
+                                       Vec3 playerPos, ClientLevel level) {
+        if (playerPos == null || level == null) return;
+
+        float alpha = DUNGEON_ENTRY_PATH_ALPHA;
+        float width = effectiveOutlineThickness();
+        int color = config.dungeonEntryPathColor();
+        for (WaypointGroup group : groups) {
+            if (!shouldRenderDungeonEntryPath(group,
+                    config.showDungeonEntryPathToFollowingWaypoints())) continue;
+
+            Waypoint target = group.current();
+            if (target == null) continue;
+            List<Vec3> points = dungeonEntryPathPoints(level, playerPos, target);
+            for (int i = 1; i < points.size(); i++) {
+                Vec3 a = points.get(i - 1);
+                Vec3 b = points.get(i);
+                RenderHelpers.emitLine(lines, ps,
+                        (float) a.x, (float) a.y, (float) a.z,
+                        (float) b.x, (float) b.y, (float) b.z,
+                        color, alpha, width);
+            }
+        }
+    }
+
+    private List<Vec3> dungeonEntryPathPoints(ClientLevel level, Vec3 playerPos, Waypoint target) {
+        BlockPos start = GroundPathfinder.floorPos(playerPos);
+        DungeonEntryPathTarget targetKey = DungeonEntryPathTarget.from(target);
+        long now = System.nanoTime();
+        if (level != dungeonEntryPathLevel) {
+            dungeonEntryPathLevel = level;
+            dungeonEntryPathCache.clear();
+        }
+
+        DungeonEntryPath cached = dungeonEntryPathCache.get(targetKey);
+        if (cached != null
+                && shouldReuseDungeonEntryPath(cached.start(), cached.computedAtNanos(), start, now)) {
+            GroundPathfinder.moveLineStart(cached.points(), playerPos);
+            return cached.points();
+        }
+
+        List<Vec3> points = GroundPathfinder.findPath(
+                level,
+                playerPos,
+                target,
+                GroundPathfinder.NO_DISTANCE_LIMIT,
+                DUNGEON_ENTRY_MAX_EXPANSIONS,
+                DUNGEON_ENTRY_SEARCH_PADDING,
+                DUNGEON_ENTRY_SEARCH_PADDING);
+        dungeonEntryPathCache.put(targetKey, new DungeonEntryPath(start, points, now));
+        return points;
+    }
+
+    static boolean shouldReuseDungeonEntryPath(BlockPos cachedStart, long computedAtNanos,
+                                               BlockPos start, long nowNanos) {
+        return Objects.equals(start, cachedStart)
+                || nowNanos - computedAtNanos < DUNGEON_ENTRY_REPATH_INTERVAL_NANOS;
+    }
+
+    private record DungeonEntryPathTarget(BlockPos block, double centerX, double centerY, double centerZ) {
+        static DungeonEntryPathTarget from(Waypoint target) {
+            return new DungeonEntryPathTarget(
+                    GroundPathfinder.targetBlock(target),
+                    target.centerX(),
+                    target.centerY(),
+                    target.centerZ());
+        }
+    }
+
+    private record DungeonEntryPath(BlockPos start, List<Vec3> points, long computedAtNanos) {
+    }
+
+    static boolean shouldRenderDungeonEntryPath(WaypointGroup group, boolean includeFollowingWaypoints) {
+        int currentIndex = group == null ? -1 : group.currentIndex();
+        return group != null
+                && !group.temp()
+                && !group.isComplete()
+                && (currentIndex == 0 || includeFollowingWaypoints)
+                && group.size() > 0
+                && !group.isSubwaypoint(currentIndex)
+                && DungeonRoomData.definition(group.zoneId()) != null;
+    }
+
     private void emitRouteLines(PoseStack ps, VertexConsumer lines, WaypointGroup g,
                                 Vec3 camPos, Vec3 playerPos,
-                                double maxStaticDistanceSq, double nearHideDistanceSq) {
+                                double maxStaticDistanceSq, double nearHideDistanceSq,
+                                boolean depthCheckedPass, Minecraft mc, ClientLevel level,
+                                int screenW, int screenH) {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
         float alpha = 0.85f;
-        float width = (float) config.waypointOutlineThickness();
+        float width = effectiveOutlineThickness();
         int color = config.routeLineColor();
-        int[] previous = { -1 };
 
-        g.forEachVisibleIndex(i -> {
-            if (!shouldRenderWaypointWorld(g, i, currentIdx, showCompleted,
-                    camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq)) {
-                return;
-            }
+        List<RouteLineSegment> segments = collectRouteLineSegments(
+                g,
+                depthCheckedPass,
+                i -> shouldRenderRouteLineEndpoint(g, i, currentIdx, showCompleted,
+                        camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq));
+        for (RouteLineSegment segment : segments) {
+            Waypoint a = g.get(segment.fromIndex());
+            Waypoint b = g.get(segment.toIndex());
+            if (!routeSegmentHasDepthVisibility(a, b, depthCheckedPass, mc, level)) continue;
+            RenderHelpers.emitLine(lines, ps,
+                    (float) a.centerX(), (float) a.centerY(), (float) a.centerZ(),
+                    (float) b.centerX(), (float) b.centerY(), (float) b.centerZ(),
+                    color, alpha, width);
+        }
+    }
+
+    static List<RouteLineSegment> collectRouteLineSegments(WaypointGroup group,
+                                                           boolean depthCheckedPass,
+                                                           IntPredicate endpointVisible) {
+        List<RouteLineSegment> segments = new ArrayList<>();
+        int[] previous = { -1 };
+        group.forEachVisibleIndex(i -> {
+            if (group.isSubwaypoint(i)) return;
+            if (endpointVisible != null && !endpointVisible.test(i)) return;
             if (previous[0] >= 0) {
-                Waypoint a = g.get(previous[0]);
-                Waypoint b = g.get(i);
-                RenderHelpers.emitLine(lines, ps,
-                        (float) a.centerX(), (float) a.centerY(), (float) a.centerZ(),
-                        (float) b.centerX(), (float) b.centerY(), (float) b.centerZ(),
-                        color, alpha, width);
+                Waypoint a = group.get(previous[0]);
+                Waypoint b = group.get(i);
+                if (routeSegmentMatchesDepthPass(a, b, depthCheckedPass)) {
+                    segments.add(new RouteLineSegment(previous[0], i));
+                }
             }
             previous[0] = i;
         });
+        return segments;
     }
 
-    /*[[AI-FN-DOC
-Function:
-shouldRenderWaypointWorld
-Purpose:
-Decide whether a waypoint endpoint should participate in world-space box or connector rendering.
-Why this exists:
-Route connector lines need to share the same visibility rules as waypoint boxes so hidden waypoints do not leave stray floating segments behind.
-When to use:
-Use inside world-space waypoint render helpers before emitting geometry tied to a specific waypoint index. Do not use for label-only near-hide because labels intentionally have separate rules.
-Inputs:
-group is the route; index is a waypoint list index; currentIdx is the group's current target index; showCompleted is the config flag; camPos/playerPos are current positions; maxStaticDistanceSq and nearHideDistanceSq are culling thresholds.
-Outputs:
-Returns true when the waypoint should render in the world pass, false when any visibility rule hides it.
-Side effects:
-None.
-Failure modes:
-Out-of-range indices return false. Null player positions simply disable near-hide filtering.
-Important invariants:
-Static reached hiding, player near-hide, static distance culling, and completed sequence hiding must match existing box rendering behavior.
-Internal logic:
-Validate index, fetch waypoint, evaluate each existing visibility helper, then return the final render decision.
-Pseudocode:
-if index out of bounds, return false
-if static reached hide applies, return false
-if near-hide applies, return false
-if static distance limit applies, return false
-state = stateFor group/index/current
-if completed sequence hide applies, return false
-return true
-Implementation notes:
-This helper intentionally does not inspect label-near-hide because route connector lines are world geometry, not HUD labels.
-AI self-check:
-Confirm emitRouteLines and future world helpers can share this without changing label behavior.
-]]*/
-    private boolean shouldRenderWaypointWorld(WaypointGroup group, int index, int currentIdx,
-                                              boolean showCompleted, Vec3 camPos,
-                                              Vec3 playerPos, double maxStaticDistanceSq,
-                                              double nearHideDistanceSq) {
+    private boolean shouldRenderRouteLineEndpoint(WaypointGroup group, int index, int currentIdx,
+                                                  boolean showCompleted, Vec3 camPos,
+                                                  Vec3 playerPos, double maxStaticDistanceSq,
+                                                  double nearHideDistanceSq) {
         if (index < 0 || index >= group.size()) return false;
         if (shouldHideStaticReached(group, index)) return false;
 
@@ -405,37 +545,139 @@ Confirm emitRouteLines and future world helpers can share this without changing 
                 showCompleted, waypoint);
     }
 
-    /*[[AI-FN-DOC
-Function:
-hasFilledSubwaypoint
-Purpose:
-Detect whether any active route contains a subwaypoint that explicitly requests filled rendering.
-Why this exists:
-The global OUTLINED box style normally skips the fill render pass, but per-subwaypoint filled markers need that pass even when the rest of the route stays outlined.
-When to use:
-Use from the world render setup before deciding whether to allocate the quad buffer. Do not use for deciding if a specific waypoint should fill; emitFilledBoxes handles that per waypoint.
-Inputs:
-groups is the active group iterable already selected for rendering.
-Outputs:
-Returns true if any waypoint in any group has FLAG_FILLED_SUBWAYPOINT.
-Side effects:
-None.
-Failure modes:
-Null groups are not expected; empty groups return false through normal iteration.
-Important invariants:
-This helper only gates whether the fill pass exists. Visibility, distance, near-hide, and completed-hide filters still run later per waypoint.
-Internal logic:
-Loop through every group and waypoint, returning true on the first filled subwaypoint flag.
-Pseudocode:
-for group in groups:
-  for each waypoint:
-    if waypoint has filled subwaypoint flag return true
-return false
-Implementation notes:
-The scan is cheap relative to rendering and avoids running a quad pass for routes that do not need per-subwaypoint fill.
-AI self-check:
-Verify the actual fill emitter still skips unflagged waypoints when global fill is off.
-]]*/
+    private boolean routeSegmentHasDepthVisibility(Waypoint a, Waypoint b,
+                                                   boolean depthCheckedPass,
+                                                   Minecraft mc, ClientLevel level) {
+        if (!depthCheckedPass) return true;
+        if (a.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)
+                && !shouldRenderDepthCheckedWaypoint(mc, level, a)) {
+            return false;
+        }
+        return !b.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)
+                || shouldRenderDepthCheckedWaypoint(mc, level, b);
+    }
+
+    record RouteLineSegment(int fromIndex, int toIndex) {}
+
+    private boolean shouldRenderWaypointWorld(WaypointGroup group, int index, int currentIdx,
+                                              boolean showCompleted, Vec3 camPos,
+                                              Vec3 playerPos, double maxStaticDistanceSq,
+                                              double nearHideDistanceSq,
+                                              boolean depthCheckedPass, Minecraft mc,
+                                              ClientLevel level, int screenW, int screenH) {
+        if (!shouldRenderRouteLineEndpoint(group, index, currentIdx, showCompleted,
+                camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq)) return false;
+        Waypoint waypoint = group.get(index);
+        if (waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED) != depthCheckedPass) return false;
+        if (depthCheckedPass && !shouldRenderDepthCheckedWaypoint(mc, level, waypoint)) {
+            return false;
+        }
+        return true;
+    }
+
+    static boolean hasDepthCheckedWaypoint(Iterable<WaypointGroup> groups) {
+        for (WaypointGroup group : groups) {
+            for (Waypoint waypoint : group.waypoints()) {
+                if (waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)) return true;
+            }
+        }
+        return false;
+    }
+
+    static boolean hasThroughWallWaypoint(Iterable<WaypointGroup> groups) {
+        for (WaypointGroup group : groups) {
+            for (Waypoint waypoint : group.waypoints()) {
+                if (!waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)) return true;
+            }
+        }
+        return false;
+    }
+
+    static boolean routeSegmentMatchesDepthPass(Waypoint a, Waypoint b,
+                                                boolean depthCheckedPass) {
+        boolean segmentDepthChecked = a.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)
+                || b.hasFlag(Waypoint.FLAG_DEPTH_CHECKED);
+        return segmentDepthChecked == depthCheckedPass;
+    }
+
+    private boolean shouldRenderDepthCheckedWaypoint(Minecraft mc, ClientLevel level,
+                                                     Waypoint waypoint) {
+        if (mc == null || level == null || waypoint == null) {
+            return false;
+        }
+        return hasLineOfSightToWaypointBox(mc, level, waypoint);
+    }
+
+    private static boolean shouldRenderProjectedDepthCheckedWaypoint(Minecraft mc,
+                                                                    ClientLevel level,
+                                                                    Waypoint waypoint,
+                                                                    double sx,
+                                                                    double sy,
+                                                                    int screenW,
+                                                                    int screenH) {
+        if (mc == null || level == null || waypoint == null) return false;
+        if (!isOnScreen(sx, sy, screenW, screenH)) return false;
+        return hasLineOfSightToWaypointBox(mc, level, waypoint);
+    }
+
+    private static boolean hasLineOfSightToWaypointBox(Minecraft mc, ClientLevel level,
+                                                       Waypoint waypoint) {
+        if (mc == null || level == null || waypoint == null) return false;
+        AABB bounds = waypointBoxBounds(level, waypoint);
+        if (bounds == null) return false;
+        for (int sample = 0; sample < LINE_OF_SIGHT_SAMPLE_COUNT; sample++) {
+            if (hasLineOfSightToPoint(mc, level, waypoint,
+                    lineOfSightSamplePoint(bounds, sample))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasLineOfSightToPoint(Minecraft mc, ClientLevel level,
+                                                 Waypoint waypoint, Vec3 target) {
+        if (target == null) return false;
+        Vec3 from = mc.gameRenderer.getMainCamera().position();
+        HitResult hit = level.clip(new ClipContext(from, target,
+                ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE,
+                mc.getCameraEntity()));
+        if (hit == null || hit.getType() == HitResult.Type.MISS) return true;
+        if (hit instanceof BlockHitResult blockHit
+                && blockHit.getBlockPos().equals(new BlockPos(
+                        waypoint.x(), waypoint.y(), waypoint.z()))) {
+            return true;
+        }
+
+        double hitDistanceSq = hit.getLocation().distanceToSqr(from);
+        double targetDistanceSq = target.distanceToSqr(from);
+        return hitDistanceSq + 1.0E-4 >= targetDistanceSq;
+    }
+
+    static Vec3 lineOfSightSamplePoint(AABB bounds, int sampleIndex) {
+        if (sampleIndex == 0) {
+            return new Vec3(
+                    (bounds.minX + bounds.maxX) * 0.5,
+                    (bounds.minY + bounds.maxY) * 0.5,
+                    (bounds.minZ + bounds.maxZ) * 0.5);
+        }
+        int corner = Math.floorMod(sampleIndex - 1, 8);
+        return new Vec3(
+                (corner & 1) == 0 ? bounds.minX : bounds.maxX,
+                (corner & 2) == 0 ? bounds.minY : bounds.maxY,
+                (corner & 4) == 0 ? bounds.minZ : bounds.maxZ);
+    }
+
+    static boolean isOnScreen(double sx, double sy, int screenW, int screenH) {
+        return Double.isFinite(sx)
+                && Double.isFinite(sy)
+                && screenW > 0
+                && screenH > 0
+                && sx >= 0.0
+                && sx <= screenW
+                && sy >= 0.0
+                && sy <= screenH;
+    }
+
     private static boolean hasFilledSubwaypoint(Iterable<WaypointGroup> groups) {
         for (WaypointGroup group : groups) {
             for (Waypoint waypoint : group.waypoints()) {
@@ -445,266 +687,180 @@ Verify the actual fill emitter still skips unflagged waypoints when global fill 
         return false;
     }
 
-    /*[[AI-FN-DOC
-Function:
-isSmallSubwaypoint
-Purpose:
-Determine whether a waypoint should render with the tiny centered subwaypoint marker bounds.
-Why this exists:
-The small style is meaningful only for subwaypoints, and render code should not shrink a main waypoint just because stale flags exist in old or hand-edited data.
-When to use:
-Use anywhere marker bounds are computed for world or HUD fallback rendering.
-Inputs:
-waypoint is the waypoint being rendered and may be null only from defensive callers.
-Outputs:
-Returns true when the waypoint is non-null, structurally a subwaypoint, and has FLAG_SMALL_SUBWAYPOINT.
-Side effects:
-None.
-Failure modes:
-Null returns false.
-Important invariants:
-Main waypoints always keep full block bounds even if the small flag appears in legacy data.
-Internal logic:
-Check non-null, isSubwaypoint, and hasFlag for the small style bit.
-Pseudocode:
-return waypoint not null and waypoint.isSubwaypoint and waypoint has FLAG_SMALL_SUBWAYPOINT
-Implementation notes:
-The structural check mirrors the GUI, which only exposes these toggles on subwaypoint rows.
-AI self-check:
-Verify normal route markers cannot shrink accidentally.
-]]*/
     private static boolean isSmallSubwaypoint(Waypoint waypoint) {
         return waypoint != null
                 && waypoint.isSubwaypoint()
                 && waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT);
     }
 
-    /*[[AI-FN-DOC
-Function:
-isFilledSubwaypoint
-Purpose:
-Determine whether a waypoint asks for per-subwaypoint filled-box rendering.
-Why this exists:
-The fill flag is only intended for subwaypoints, so renderer decisions should ignore stale filled flags on main waypoints.
-When to use:
-Use when deciding whether to force a fill pass or fill a specific waypoint outside global filled box styles.
-Inputs:
-waypoint is the waypoint being considered and may be null only from defensive callers.
-Outputs:
-Returns true when the waypoint is non-null, structurally a subwaypoint, and has FLAG_FILLED_SUBWAYPOINT.
-Side effects:
-None.
-Failure modes:
-Null returns false.
-Important invariants:
-Per-waypoint fill never applies to main waypoints.
-Internal logic:
-Check non-null, subwaypoint structure, and the filled style flag.
-Pseudocode:
-return waypoint not null and waypoint.isSubwaypoint and waypoint has FLAG_FILLED_SUBWAYPOINT
-Implementation notes:
-Keeping this guard centralized lets storage retain raw flags while rendering remains conservative.
-AI self-check:
-Verify hasFilledSubwaypoint and emitFilledBoxes both call this helper.
-]]*/
     private static boolean isFilledSubwaypoint(Waypoint waypoint) {
         return waypoint != null
                 && waypoint.isSubwaypoint()
                 && waypoint.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT);
     }
 
-    /*[[AI-FN-DOC
-Function:
-waypointBoxMin
-Purpose:
-Calculate the minimum coordinate for a waypoint marker box on one axis.
-Why this exists:
-Small subwaypoints render as a centered 1/16-block cube and can now have sixteenth-block centers, while all other waypoints keep full block bounds.
-When to use:
-Use for x, y, or z box minimums before emitting world vertices or projecting HUD fallback corners.
-Inputs:
-blockCoordinate is the integer waypoint coordinate for one axis; centerCoordinate is the precise world-space center for that axis; waypoint is the marker whose style flags determine the bounds.
-Outputs:
-Returns a double minimum coordinate in world space.
-Side effects:
-None.
-Failure modes:
-None. Null waypoints are treated as normal full-size boxes through isSmallSubwaypoint.
-Important invariants:
-Small boxes remain centered around centerCoordinate and keep exactly SMALL_SUBWAYPOINT_SIZE length.
-Internal logic:
-Return centerCoordinate minus half the small size for small subwaypoints, otherwise the raw block coordinate.
-Pseudocode:
-if isSmallSubwaypoint waypoint return centerCoordinate - SMALL_SUBWAYPOINT_SIZE / 2
-return blockCoordinate
-Implementation notes:
-Passing centerCoordinate keeps the helper axis-agnostic while allowing small waypoints to preserve sub-block precision.
-AI self-check:
-Verify waypointBoxMax uses the complementary center math so size is exactly 1/16.
-]]*/
-    private static double waypointBoxMin(int blockCoordinate, double centerCoordinate, Waypoint waypoint) {
-        return isSmallSubwaypoint(waypoint)
-                ? centerCoordinate - SMALL_SUBWAYPOINT_SIZE * 0.5
-                : blockCoordinate;
+    private static void populateWaypointBoxBounds(ClientLevel level, Waypoint waypoint,
+                                                  double[] bounds) {
+        if (tryPopulateBlockShapeBounds(level, waypoint, bounds)) return;
+        if (isSmallSubwaypoint(waypoint)) {
+            setSmallSubwaypointBounds(waypoint, bounds);
+            return;
+        }
+        setFullBlockBounds(waypoint, bounds);
     }
 
-    /*[[AI-FN-DOC
-Function:
-waypointBoxMax
-Purpose:
-Calculate the maximum coordinate for a waypoint marker box on one axis.
-Why this exists:
-Small subwaypoints need matching max bounds so their rendered cube is one sixteenth of normal size around the stored precise center.
-When to use:
-Use with waypointBoxMin for every axis when emitting or projecting marker boxes.
-Inputs:
-blockCoordinate is the integer waypoint coordinate for one axis; centerCoordinate is the precise world-space center for that axis; waypoint is the marker whose style flags determine the bounds.
-Outputs:
-Returns a double maximum coordinate in world space.
-Side effects:
-None.
-Failure modes:
-None. Null waypoints are treated as normal full-size boxes through isSmallSubwaypoint.
-Important invariants:
-For small subwaypoints, max minus min equals SMALL_SUBWAYPOINT_SIZE.
-Internal logic:
-Return centerCoordinate plus half the small size for small subwaypoints, otherwise blockCoordinate plus one.
-Pseudocode:
-if isSmallSubwaypoint waypoint return centerCoordinate + SMALL_SUBWAYPOINT_SIZE / 2
-return blockCoordinate + 1
-Implementation notes:
-The helper keeps world and HUD fallback boxes visually identical while respecting precise small-waypoint centers.
-AI self-check:
-Verify full-size markers still cover the original [coord, coord + 1] block range.
-]]*/
-    private static double waypointBoxMax(int blockCoordinate, double centerCoordinate, Waypoint waypoint) {
-        return isSmallSubwaypoint(waypoint)
-                ? centerCoordinate + SMALL_SUBWAYPOINT_SIZE * 0.5
-                : blockCoordinate + 1.0;
+    private static boolean tryPopulateBlockShapeBounds(ClientLevel level, Waypoint waypoint,
+                                                       double[] bounds) {
+        if (level == null || !usesBlockShapeBounds(waypoint)) return false;
+
+        BlockPos pos = new BlockPos(waypoint.x(), waypoint.y(), waypoint.z());
+        BlockState state = level.getBlockState(pos);
+        VoxelShape shape = state.getShape(level, pos);
+        if (shape.isEmpty()) return false;
+
+        AABB shapeBounds = blockShapeWaypointBounds(waypoint, shape.bounds());
+        if (shapeBounds == null) return false;
+
+        setAabbBounds(shapeBounds, bounds);
+        return true;
     }
 
-    /*[[AI-FN-DOC
-Function:
-emitLineBoxes
-Purpose:
-Emit world-space outline boxes for every visible waypoint in a group, using precise small bounds for styled subwaypoints.
-Why this exists:
-Outlined marker geometry needs to honor route visibility, completed/near-hide rules, and the new per-subwaypoint small marker flag.
-When to use:
-Use from onWorldRender when the global box style includes outlines.
-Inputs:
-ps is the translated pose stack; lines is the line vertex consumer; g is the route group; camPos/playerPos are current positions; maxStaticDistanceSq and nearHideDistanceSq are precomputed culling thresholds.
-Outputs:
-No return value. Appends line-box vertices to the line buffer.
-Side effects:
-Writes vertices into the active render buffer.
-Failure modes:
-Hidden, culled, completed-hidden, or near-hidden waypoints emit nothing.
-Important invariants:
-Normal waypoints render as one-block boxes; small subwaypoints render as 1/16-block boxes centered on the waypoint's precise center.
-Internal logic:
-Iterate visible indices, apply existing visibility filters, compute alpha and styled box bounds, then emit a line box.
-Pseudocode:
-for each visible index:
-  skip static reached, near-hidden, distance-hidden, or completed-hidden waypoint
-  alpha = state alpha times opacity
-  bounds = waypointBoxMin/Max for x,y,z
-  emit line box with bounds
-Implementation notes:
-Bounds are calculated through shared helpers so HUD fallback, fill boxes, line boxes, and precise reposition previews stay aligned.
-AI self-check:
-Verify normal markers still cover a full block and small markers honor precise centers.
-]]*/
-    private void emitLineBoxes(PoseStack ps, VertexConsumer lines, WaypointGroup g,
+    static boolean usesBlockShapeBounds(Waypoint waypoint) {
+        if (waypoint == null) return false;
+        if (isSmallSubwaypoint(waypoint)) return false;
+        if (waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT)) return true;
+        return waypoint.isSubwaypoint();
+    }
+
+    static AABB blockShapeWaypointBounds(Waypoint waypoint, AABB localBounds) {
+        if (!usesBlockShapeBounds(waypoint)) return null;
+        if (!hasUsableShapeBounds(localBounds) || isFullBlockShapeBounds(localBounds)) {
+            return null;
+        }
+        return new AABB(
+                waypoint.x() + localBounds.minX,
+                waypoint.y() + localBounds.minY,
+                waypoint.z() + localBounds.minZ,
+                waypoint.x() + localBounds.maxX,
+                waypoint.y() + localBounds.maxY,
+                waypoint.z() + localBounds.maxZ);
+    }
+
+    static AABB subwaypointShapeBounds(Waypoint waypoint, AABB localBounds) {
+        if (waypoint == null || !waypoint.isSubwaypoint()) return null;
+        return blockShapeWaypointBounds(waypoint, localBounds);
+    }
+
+    private static boolean hasUsableShapeBounds(AABB localBounds) {
+        return localBounds != null
+                && Double.isFinite(localBounds.minX)
+                && Double.isFinite(localBounds.minY)
+                && Double.isFinite(localBounds.minZ)
+                && Double.isFinite(localBounds.maxX)
+                && Double.isFinite(localBounds.maxY)
+                && Double.isFinite(localBounds.maxZ)
+                && localBounds.maxX > localBounds.minX
+                && localBounds.maxY > localBounds.minY
+                && localBounds.maxZ > localBounds.minZ;
+    }
+
+    private static boolean isFullBlockShapeBounds(AABB localBounds) {
+        return Math.abs(localBounds.minX) <= BLOCK_SHAPE_EPSILON
+                && Math.abs(localBounds.minY) <= BLOCK_SHAPE_EPSILON
+                && Math.abs(localBounds.minZ) <= BLOCK_SHAPE_EPSILON
+                && Math.abs(localBounds.maxX - 1.0) <= BLOCK_SHAPE_EPSILON
+                && Math.abs(localBounds.maxY - 1.0) <= BLOCK_SHAPE_EPSILON
+                && Math.abs(localBounds.maxZ - 1.0) <= BLOCK_SHAPE_EPSILON;
+    }
+
+    private static void setAabbBounds(AABB source, double[] bounds) {
+        bounds[BOX_MIN_X] = source.minX;
+        bounds[BOX_MIN_Y] = source.minY;
+        bounds[BOX_MIN_Z] = source.minZ;
+        bounds[BOX_MAX_X] = source.maxX;
+        bounds[BOX_MAX_Y] = source.maxY;
+        bounds[BOX_MAX_Z] = source.maxZ;
+    }
+
+    private static void setSmallSubwaypointBounds(Waypoint waypoint, double[] bounds) {
+        bounds[BOX_MIN_X] = waypoint.preciseX() / (double) Waypoint.PRECISE_SCALE;
+        bounds[BOX_MIN_Y] = waypoint.preciseY() / (double) Waypoint.PRECISE_SCALE;
+        bounds[BOX_MIN_Z] = waypoint.preciseZ() / (double) Waypoint.PRECISE_SCALE;
+        bounds[BOX_MAX_X] = bounds[BOX_MIN_X] + SMALL_SUBWAYPOINT_SIZE;
+        bounds[BOX_MAX_Y] = bounds[BOX_MIN_Y] + SMALL_SUBWAYPOINT_SIZE;
+        bounds[BOX_MAX_Z] = bounds[BOX_MIN_Z] + SMALL_SUBWAYPOINT_SIZE;
+    }
+
+    private static void setFullBlockBounds(Waypoint waypoint, double[] bounds) {
+        bounds[BOX_MIN_X] = waypoint.x();
+        bounds[BOX_MIN_Y] = waypoint.y();
+        bounds[BOX_MIN_Z] = waypoint.z();
+        bounds[BOX_MAX_X] = waypoint.x() + 1.0;
+        bounds[BOX_MAX_Y] = waypoint.y() + 1.0;
+        bounds[BOX_MAX_Z] = waypoint.z() + 1.0;
+    }
+
+    private void emitLineBoxes(PoseStack ps, VertexConsumer lines, ClientLevel level, WaypointGroup g,
                                Vec3 camPos, Vec3 playerPos,
-                               double maxStaticDistanceSq, double nearHideDistanceSq) {
+                               double maxStaticDistanceSq, double nearHideDistanceSq,
+                               boolean depthCheckedPass, Minecraft mc, int screenW, int screenH) {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
-        float outlineThickness = (float) config.waypointOutlineThickness();
+        float outlineThickness = effectiveOutlineThickness();
 
-        g.forEachVisibleIndex(i -> {
-            if (shouldHideStaticReached(g, i)) return;
+        g.forEachVisibleIndex(
+                i -> {
+            if (!shouldRenderWaypointWorld(g, i, currentIdx, showCompleted,
+                    camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
+                    depthCheckedPass, mc, level, screenW, screenH)) {
+                return;
+            }
 
             Waypoint w = g.get(i);
-            if (shouldHideNearPlayer(w, playerPos, nearHideDistanceSq)) return;
-            if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
-
             State state = stateFor(g, i, currentIdx);
-            if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
-
             float alpha = alphaFor(g, state) * beaconOpacity;
-            float x1 = (float) waypointBoxMin(w.x(), w.centerX(), w);
-            float y1 = (float) waypointBoxMin(w.y(), w.centerY(), w);
-            float z1 = (float) waypointBoxMin(w.z(), w.centerZ(), w);
-            float x2 = (float) waypointBoxMax(w.x(), w.centerX(), w);
-            float y2 = (float) waypointBoxMax(w.y(), w.centerY(), w);
-            float z2 = (float) waypointBoxMax(w.z(), w.centerZ(), w);
+            populateWaypointBoxBounds(level, w, waypointBoxBoundsScratch);
+            float x1 = (float) waypointBoxBoundsScratch[BOX_MIN_X];
+            float y1 = (float) waypointBoxBoundsScratch[BOX_MIN_Y];
+            float z1 = (float) waypointBoxBoundsScratch[BOX_MIN_Z];
+            float x2 = (float) waypointBoxBoundsScratch[BOX_MAX_X];
+            float y2 = (float) waypointBoxBoundsScratch[BOX_MAX_Y];
+            float z2 = (float) waypointBoxBoundsScratch[BOX_MAX_Z];
             RenderHelpers.emitLineBox(lines, ps, x1, y1, z1, x2, y2, z2,
                     w.color(), alpha, outlineThickness);
         });
     }
 
-    /*[[AI-FN-DOC
-Function:
-emitFilledBoxes
-Purpose:
-Emit world-space filled boxes for globally filled markers or subwaypoints with the filled override.
-Why this exists:
-Filled subwaypoint styling should work even when the user's global box style is outlined, without filling every other waypoint.
-When to use:
-Use from onWorldRender whenever the global style asks for fill or any active subwaypoint has FLAG_FILLED_SUBWAYPOINT.
-Inputs:
-ps is the translated pose stack; quads is the quad vertex consumer; g is the route group; camPos/playerPos are current positions; maxStaticDistanceSq and nearHideDistanceSq are precomputed culling thresholds; fillAllWaypoints is true when the global box style fills every waypoint.
-Outputs:
-No return value. Appends filled-box quad vertices to the quad buffer.
-Side effects:
-Writes vertices into the active render buffer.
-Failure modes:
-Hidden or culled waypoints emit nothing. When fillAllWaypoints is false, unfilled subwaypoints and normal waypoints are skipped.
-Important invariants:
-Per-subwaypoint fill does not change global box style, and small filled subwaypoints use the same precise 1/16-block bounds as their outline.
-Internal logic:
-Iterate visible indices, apply visibility filters, skip unfilled waypoints when not globally filling, compute alpha and styled precise bounds, then emit a filled box.
-Pseudocode:
-for each visible index:
-  skip static reached, near-hidden, distance-hidden waypoint
-  if not fillAllWaypoints and waypoint is not filled subwaypoint, continue
-  skip completed-hidden waypoint
-  alpha = state alpha times opacity
-  bounds = waypointBoxMin/Max for x,y,z
-  emit filled box with bounds
-Implementation notes:
-The filled flag is checked before state classification where possible to avoid extra work for unfilled waypoints in outlined mode.
-AI self-check:
-Verify global FILLED and FILLED_OUTLINED styles still fill all visible waypoints, and small filled waypoints align to their outline.
-]]*/
-    private void emitFilledBoxes(PoseStack ps, VertexConsumer quads, WaypointGroup g,
+    private void emitFilledBoxes(PoseStack ps, VertexConsumer quads, ClientLevel level, WaypointGroup g,
                                  Vec3 camPos, Vec3 playerPos,
                                  double maxStaticDistanceSq, double nearHideDistanceSq,
-                                 boolean fillAllWaypoints) {
+                                 boolean fillAllWaypoints, boolean depthCheckedPass,
+                                 Minecraft mc, int screenW, int screenH) {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
 
-        g.forEachVisibleIndex(i -> {
-            if (shouldHideStaticReached(g, i)) return;
+        g.forEachVisibleIndex(
+                i -> {
+            if (!shouldRenderWaypointWorld(g, i, currentIdx, showCompleted,
+                    camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
+                    depthCheckedPass, mc, level, screenW, screenH)) {
+                return;
+            }
 
             Waypoint w = g.get(i);
-            if (shouldHideNearPlayer(w, playerPos, nearHideDistanceSq)) return;
-            if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
             if (!fillAllWaypoints && !isFilledSubwaypoint(w)) return;
 
             State state = stateFor(g, i, currentIdx);
-            if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
-
             float alpha = alphaFor(g, state) * beaconOpacity;
-            float x1 = (float) waypointBoxMin(w.x(), w.centerX(), w);
-            float y1 = (float) waypointBoxMin(w.y(), w.centerY(), w);
-            float z1 = (float) waypointBoxMin(w.z(), w.centerZ(), w);
-            float x2 = (float) waypointBoxMax(w.x(), w.centerX(), w);
-            float y2 = (float) waypointBoxMax(w.y(), w.centerY(), w);
-            float z2 = (float) waypointBoxMax(w.z(), w.centerZ(), w);
+            populateWaypointBoxBounds(level, w, waypointBoxBoundsScratch);
+            float x1 = (float) waypointBoxBoundsScratch[BOX_MIN_X];
+            float y1 = (float) waypointBoxBoundsScratch[BOX_MIN_Y];
+            float z1 = (float) waypointBoxBoundsScratch[BOX_MIN_Z];
+            float x2 = (float) waypointBoxBoundsScratch[BOX_MAX_X];
+            float y2 = (float) waypointBoxBoundsScratch[BOX_MAX_Y];
+            float z2 = (float) waypointBoxBoundsScratch[BOX_MAX_Z];
             RenderHelpers.emitFilledBox(quads, ps, x1, y1, z1, x2, y2, z2,
                     w.color(), alpha * FILLED_ALPHA_SCALE);
         });
@@ -713,7 +869,9 @@ Verify global FILLED and FILLED_OUTLINED styles still fill all visible waypoints
     private void emitBeaconBeams(PoseStack ps, VertexConsumer quads, WaypointGroup g,
                                  Vec3 camPos, Vec3 playerPos,
                                  double maxStaticDistanceSq, double nearHideDistanceSq,
-                                 int minY, int maxY) {
+                                 int minY, int maxY, boolean depthCheckedPass,
+                                 Minecraft mc, ClientLevel level, int screenW, int screenH,
+                                 boolean texturedBeams) {
         WaypointerConfig.BeaconBeamMode mode = config.beaconBeamMode();
         if (mode == WaypointerConfig.BeaconBeamMode.OFF || g.isEmpty()) return;
 
@@ -724,38 +882,164 @@ Verify global FILLED and FILLED_OUTLINED styles still fill all visible waypoints
             int beamIndex = currentBeamIndex(g);
             emitBeaconBeamIfVisible(ps, quads, g, beamIndex, currentIdx,
                     showCompleted, camPos, playerPos, maxStaticDistanceSq,
-                    nearHideDistanceSq, minY, maxY);
+                    nearHideDistanceSq, minY, maxY, depthCheckedPass, mc, level,
+                    screenW, screenH, texturedBeams);
             return;
         }
 
-        g.forEachVisibleIndex(i -> emitBeaconBeamIfVisible(ps, quads, g, i,
-                currentIdx, showCompleted, camPos, playerPos, maxStaticDistanceSq,
-                nearHideDistanceSq, minY, maxY));
+        g.forEachVisibleIndex(
+                i -> emitBeaconBeamIfVisible(ps, quads, g, i,
+                        currentIdx, showCompleted, camPos, playerPos, maxStaticDistanceSq,
+                        nearHideDistanceSq, minY, maxY, depthCheckedPass, mc, level,
+                        screenW, screenH, texturedBeams));
     }
 
     private void emitBeaconBeamIfVisible(PoseStack ps, VertexConsumer quads,
                                          WaypointGroup g, int i, int currentIdx,
                                          boolean showCompleted, Vec3 camPos,
-                                         Vec3 playerPos, double maxStaticDistanceSq,
-                                         double nearHideDistanceSq, int minY, int maxY) {
-        if (i < 0 || i >= g.size()) return;
-        if (shouldHideStaticReached(g, i)) return;
+                                          Vec3 playerPos, double maxStaticDistanceSq,
+                                          double nearHideDistanceSq, int minY, int maxY,
+                                          boolean depthCheckedPass, Minecraft mc,
+                                          ClientLevel level, int screenW, int screenH,
+                                          boolean texturedBeams) {
+        if (!shouldRenderWaypointWorld(g, i, currentIdx, showCompleted,
+                camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
+                depthCheckedPass, mc, level, screenW, screenH)) {
+            return;
+        }
 
         Waypoint w = g.get(i);
-        if (shouldHideNearPlayer(w, playerPos, nearHideDistanceSq)) return;
-        if (isStaticBeyondDistanceLimit(g, w, camPos, maxStaticDistanceSq)) return;
-
         State state = stateFor(g, i, currentIdx);
-        if (shouldHideCompletedSequenceWaypoint(g, i, currentIdx, state, showCompleted, w)) return;
-
-        float alpha = alphaFor(g, state) * (float) config.beaconOpacity() * BEAM_ALPHA_SCALE;
+        float alpha = alphaFor(g, state) * (float) config.beaconOpacity();
+        if (!texturedBeams) {
+            alpha *= BEAM_ALPHA_SCALE;
+        }
         if (alpha <= 0.0f) return;
 
         float y1 = config.beaconBeamExtendsBelowWaypoint() ? minY : w.y();
         float y2 = Math.max(y1 + 1.0f, maxY);
-        RenderHelpers.emitVerticalColumn(quads, ps,
-                (float) w.centerX(), y1, (float) w.centerZ(),
-                y2, BEAM_HALF_WIDTH, w.color(), alpha);
+        if (texturedBeams) {
+            emitTexturedBeaconBeam(quads, ps, w, y1, y2, alpha, mc, camPos);
+        } else {
+            RenderHelpers.emitVerticalColumn(quads, ps,
+                    (float) w.centerX(), y1, (float) w.centerZ(),
+                    y2, BEAM_HALF_WIDTH, w.color(), alpha);
+        }
+    }
+
+    private void emitTexturedBeaconBeam(VertexConsumer consumer, PoseStack ps,
+                                        Waypoint waypoint, float y1, float y2,
+                                        float alpha, Minecraft mc, Vec3 camPos) {
+        float height = y2 - y1;
+        if (height <= 0.0f) return;
+
+        float animationTime = mc.level == null
+                ? 0.0f
+                : (float) Math.floorMod(mc.level.getGameTime(), 40L);
+        float radiusScale = beaconTextureRadiusScale(waypoint, camPos);
+        int coreColor = RenderHelpers.withAlpha(0xFF000000 | (waypoint.color() & 0xFFFFFF), alpha);
+        int glowColor = RenderHelpers.withAlpha(BEACON_GLOW_BASE_ALPHA_ARGB | (waypoint.color() & 0xFFFFFF), alpha);
+
+        ps.pushPose();
+        ps.translate(waypoint.centerX(), y1, waypoint.centerZ());
+        ps.pushPose();
+        ps.mulPose(Axis.YP.rotationDegrees(animationTime * 2.25f - 45.0f));
+        emitBeaconTexturePart(ps.last(), consumer, coreColor, 0, height,
+                BeaconRenderer.SOLID_BEAM_RADIUS * radiusScale,
+                BeaconRenderer.SOLID_BEAM_RADIUS * radiusScale,
+                animationTime, true);
+        ps.popPose();
+        emitBeaconTexturePart(ps.last(), consumer, glowColor, 0, height,
+                BeaconRenderer.BEAM_GLOW_RADIUS * radiusScale,
+                BeaconRenderer.BEAM_GLOW_RADIUS * radiusScale,
+                animationTime, false);
+        ps.popPose();
+    }
+
+    private static float beaconTextureRadiusScale(Waypoint waypoint, Vec3 camPos) {
+        if (camPos == null) return 1.0f;
+        double dx = waypoint.centerX() - camPos.x;
+        double dz = waypoint.centerZ() - camPos.z;
+        double horizontalDistance = Math.sqrt(dx * dx + dz * dz);
+        return (float) Math.max(1.0, horizontalDistance / BEACON_TEXTURE_SCALE_THRESHOLD);
+    }
+
+    private static void emitBeaconTexturePart(PoseStack.Pose pose,
+                                              VertexConsumer consumer,
+                                              int argb, float startY,
+                                              float height, float radiusA,
+                                              float radiusB,
+                                              float animationTime,
+                                              boolean core) {
+        if (height <= 0.0f) return;
+        float scrollDirection = -animationTime;
+        float textureOffset = Mth.frac(scrollDirection * 0.2F - Mth.floor(scrollDirection * 0.1F));
+        float vTop = -1.0F + textureOffset;
+        float uvScale = core ? 0.5F / radiusA : 1.0F;
+        float vBottom = height * uvScale + vTop;
+        float endY = startY + height;
+
+        if (core) {
+            emitBeaconTextureQuads(pose, consumer, argb, startY, endY,
+                    0.0F, radiusA,
+                    radiusA, 0.0F,
+                    -radiusA, 0.0F,
+                    0.0F, -radiusA,
+                    vBottom, vTop);
+        } else {
+            emitBeaconTextureQuads(pose, consumer, argb, startY, endY,
+                    -radiusB, -radiusB,
+                    radiusB, -radiusB,
+                    radiusB, radiusB,
+                    -radiusB, radiusB,
+                    vBottom, vTop);
+        }
+    }
+
+    private static void emitBeaconTextureQuads(PoseStack.Pose pose,
+                                               VertexConsumer consumer,
+                                               int argb,
+                                               float startY, float endY,
+                                               float x1, float z1,
+                                               float x2, float z2,
+                                               float x3, float z3,
+                                               float x4, float z4,
+                                               float vBottom, float vTop) {
+        emitBeaconTextureQuad(pose, consumer, argb, startY, endY, x1, z1, x2, z2,
+                0.0F, 1.0F, vBottom, vTop);
+        emitBeaconTextureQuad(pose, consumer, argb, startY, endY, x3, z3, x4, z4,
+                0.0F, 1.0F, vBottom, vTop);
+        emitBeaconTextureQuad(pose, consumer, argb, startY, endY, x2, z2, x3, z3,
+                0.0F, 1.0F, vBottom, vTop);
+        emitBeaconTextureQuad(pose, consumer, argb, startY, endY, x4, z4, x1, z1,
+                0.0F, 1.0F, vBottom, vTop);
+    }
+
+    private static void emitBeaconTextureQuad(PoseStack.Pose pose,
+                                              VertexConsumer consumer,
+                                              int argb,
+                                              float startY, float endY,
+                                              float x1, float z1,
+                                              float x2, float z2,
+                                              float u1, float u2,
+                                              float vBottom, float vTop) {
+        addBeaconTextureVertex(pose, consumer, argb, x1, endY, z1, u1, vBottom);
+        addBeaconTextureVertex(pose, consumer, argb, x1, startY, z1, u1, vTop);
+        addBeaconTextureVertex(pose, consumer, argb, x2, startY, z2, u2, vTop);
+        addBeaconTextureVertex(pose, consumer, argb, x2, endY, z2, u2, vBottom);
+    }
+
+    private static void addBeaconTextureVertex(PoseStack.Pose pose,
+                                               VertexConsumer consumer,
+                                               int argb,
+                                               float x, float y, float z,
+                                               float u, float v) {
+        consumer.addVertex(pose, x, y, z)
+                .setColor(argb)
+                .setUv(u, v)
+                .setOverlay(OverlayTexture.NO_OVERLAY)
+                .setLight(FULL_BRIGHT_LIGHT)
+                .setNormal(pose, 0.0F, 1.0F, 0.0F);
     }
 
     private static int currentBeamIndex(WaypointGroup g) {
@@ -774,16 +1058,18 @@ Verify global FILLED and FILLED_OUTLINED styles still fill all visible waypoints
 
     // ---- HUD path: 2D labels projected from world anchors --------------------------------
 
-        @Override
-    public void render(GuiGraphics g, DeltaTracker tick) {
+    @Override
+    public void extractRenderState(GuiGraphicsExtractor g, DeltaTracker tick) {
         boolean showNames = config.showWaypointNames();
         boolean showRouteProgress = config.showRouteProgress();
         boolean showDistances = config.showWaypointDistances();
         boolean drawHudFallback = IrisShaderFallback.shouldUse(config);
-        if (!showNames && !showRouteProgress && !showDistances && !drawHudFallback) return;
+        boolean drawEditModeSubtitle = config.showEditModeSubtitle()
+                && WaypointRepositionMode.isEditModeEnabled();
+        if (!showNames && !showRouteProgress && !showDistances && !drawHudFallback
+                && !drawEditModeSubtitle) return;
 
         var groups = manager.activeGroups();
-        if (groups.isEmpty()) return;
 
         Minecraft mc = Minecraft.getInstance();
         GameRenderer renderer = mc.gameRenderer;
@@ -791,11 +1077,16 @@ Verify global FILLED and FILLED_OUTLINED styles still fill all visible waypoints
         if (!camera.isInitialized()) return;
 
         Font font = mc.font;
+        ClientLevel level = mc.level;
         Vec3 camPos = camera.position();
         Vec3 playerPos = mc.player == null ? null : mc.player.position();
         labelProjector.prepare(renderer, camera);
         int screenW = g.guiWidth();
         int screenH = g.guiHeight();
+        if (drawEditModeSubtitle) {
+            drawEditModeSubtitle(g, font, screenW, screenH);
+        }
+        if (groups.isEmpty()) return;
         int labelBudget = config.maxWaypointLabels();
         double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
         double nearHideDistanceSq = nearHideDistanceSq();
@@ -804,13 +1095,13 @@ Verify global FILLED and FILLED_OUTLINED styles still fill all visible waypoints
         labelCandidateCount = 0;
 
         if (drawHudFallback && config.beaconOpacity() > 0.0) {
-            drawHudFallbackBoxes(g, camPos, playerPos, screenW, screenH, groups,
+            drawHudFallbackBoxes(g, mc, level, camPos, playerPos, screenW, screenH, groups,
                     maxStaticDistanceSq, nearHideDistanceSq);
         }
 
         if (showNames || showRouteProgress || showDistances) {
             for (WaypointGroup group : groups) {
-                drawGroupLabels(g, font, camPos, playerPos, screenW, screenH, group,
+                drawGroupLabels(g, font, mc, level, camPos, playerPos, screenW, screenH, group,
                         showNames, showRouteProgress, showDistances, labelBudget,
                         maxStaticDistanceSq, nearHideDistanceSq, labelNearHideDistanceSq);
             }
@@ -822,55 +1113,71 @@ Verify global FILLED and FILLED_OUTLINED styles still fill all visible waypoints
         clearLabelCandidates();
     }
 
-    private void drawHudFallbackBoxes(GuiGraphics g, Vec3 camPos, Vec3 playerPos, int screenW,
-                                      int screenH, Iterable<WaypointGroup> groups,
+    private static void drawEditModeSubtitle(GuiGraphicsExtractor g, Font font,
+                                             int screenW, int screenH) {
+        String subtitle = editModeSubtitleText(WaypointerKeybinds.exitEditModeKeyName());
+        int x = Math.max(0, (screenW - font.width(subtitle)) / 2);
+        int y = Math.max(0, screenH / 2 + 14);
+        g.text(font, subtitle, x, y, EDIT_MODE_SUBTITLE_ARGB, true);
+    }
+
+    static String editModeSubtitleText(String exitKeyName) {
+        if (exitKeyName == null || exitKeyName.isBlank()) return EDIT_MODE_SUBTITLE_BASE_TEXT;
+        return EDIT_MODE_SUBTITLE_BASE_TEXT + " (" + exitKeyName.trim() + " to exit)";
+    }
+
+    private void drawHudFallbackBoxes(GuiGraphicsExtractor g, Minecraft mc, ClientLevel level,
+                                      Vec3 camPos, Vec3 playerPos, int screenW, int screenH,
+                                      Iterable<WaypointGroup> groups,
                                       double maxStaticDistanceSq, double nearHideDistanceSq) {
-        WaypointerConfig.BoxStyle style = config.boxStyle();
-        if (style == WaypointerConfig.BoxStyle.FILLED) {
-            // The HUD fallback cannot faithfully preserve translucent 3D faces
-            // after projection. Draw an outline anyway so FILLED users still get
-            // a visible shader-safe marker instead of losing boxes entirely.
-            style = WaypointerConfig.BoxStyle.OUTLINED;
-        }
+        WaypointerConfig.BoxStyle style = hudFallbackBoxStyle(config.boxStyle());
         if (style == WaypointerConfig.BoxStyle.OUTLINED
                 || style == WaypointerConfig.BoxStyle.FILLED_OUTLINED) {
             for (WaypointGroup group : groups) {
-                drawHudFallbackGroupBoxes(g, camPos, playerPos, screenW, screenH,
+                drawHudFallbackGroupBoxes(g, mc, level, camPos, playerPos, screenW, screenH,
                         group, maxStaticDistanceSq, nearHideDistanceSq);
             }
         }
     }
 
-    private void drawHudFallbackGroupBoxes(GuiGraphics g, Vec3 camPos, Vec3 playerPos, int screenW,
-                                           int screenH, WaypointGroup group,
-                                           double maxStaticDistanceSq, double nearHideDistanceSq) {
+    static WaypointerConfig.BoxStyle hudFallbackBoxStyle(WaypointerConfig.BoxStyle style) {
+        if (style == WaypointerConfig.BoxStyle.FILLED) {
+            // The HUD fallback cannot faithfully preserve translucent 3D faces
+            // after projection. Draw an outline anyway so FILLED users still get
+            // a visible shader-safe marker instead of losing boxes entirely.
+            return WaypointerConfig.BoxStyle.OUTLINED;
+        }
+        return style;
+    }
+
+    private void drawHudFallbackGroupBoxes(GuiGraphicsExtractor g, Minecraft mc, ClientLevel level,
+                                           Vec3 camPos, Vec3 playerPos, int screenW, int screenH,
+                                           WaypointGroup group, double maxStaticDistanceSq,
+                                           double nearHideDistanceSq) {
         int currentIdx = group.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
 
-        group.forEachVisibleIndex(i -> {
-            if (shouldHideStaticReached(group, i)) return;
-
+        group.forEachVisibleIndex(
+                i -> {
             Waypoint waypoint = group.get(i);
-            if (shouldHideNearPlayer(waypoint, playerPos, nearHideDistanceSq)) return;
-            if (isStaticBeyondDistanceLimit(group, waypoint, camPos, maxStaticDistanceSq)) return;
-
-            State state = stateFor(group, i, currentIdx);
-            if (shouldHideCompletedSequenceWaypoint(
-                    group, i, currentIdx, state, showCompleted, waypoint)) {
+            boolean depthChecked = waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED);
+            if (!shouldRenderWaypointWorld(group, i, currentIdx, showCompleted,
+                    camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
+                    depthChecked, mc, level, screenW, screenH)) {
                 return;
             }
-
+            State state = stateFor(group, i, currentIdx);
             float alpha = alphaFor(group, state) * beaconOpacity;
             int argb = RenderHelpers.withAlpha(0xFF000000 | (waypoint.color() & 0xFFFFFF), alpha);
-            if (!projectBoxCorners(waypoint, screenW, screenH)) return;
+            if (!projectBoxCorners(level, waypoint, screenW, screenH)) return;
 
-            double outlineThickness = config.waypointOutlineThickness();
+            double outlineThickness = effectiveOutlineThickness();
             for (int edge = 0; edge < BOX_EDGE_A.length; edge++) {
                 int a = BOX_EDGE_A[edge];
                 int b = BOX_EDGE_B[edge];
                 if (!boxCornerVisible[a] || !boxCornerVisible[b]) continue;
-                drawFastScreenLine(g,
+                drawConfiguredScreenLine(g,
                         boxScreenScratch[a * 2], boxScreenScratch[a * 2 + 1],
                         boxScreenScratch[b * 2], boxScreenScratch[b * 2 + 1],
                         argb, outlineThickness);
@@ -878,51 +1185,19 @@ Verify global FILLED and FILLED_OUTLINED styles still fill all visible waypoints
         });
     }
 
-    /*[[AI-FN-DOC
-Function:
-projectBoxCorners
-Purpose:
-Project a waypoint marker box's eight corners for the Iris HUD fallback outline renderer.
-Why this exists:
-The HUD fallback draws screen-space box edges and needs the same full-size or small-subwaypoint bounds as the world renderer.
-When to use:
-Use from drawHudFallbackGroupBoxes before drawing projected box edges.
-Inputs:
-waypoint is the marker to project; screenW and screenH are current GUI dimensions.
-Outputs:
-Returns true when at least part of the projected box is inside the padded screen bounds. Updates boxScreenScratch and boxCornerVisible arrays.
-Side effects:
-Mutates reusable projection scratch fields on the renderer instance.
-Failure modes:
-Returns false when all corners fail projection or the projected bounds are outside the cull margin.
-Important invariants:
-Small subwaypoints project a centered 1/16-block cube, matching world-space outline/fill geometry.
-Internal logic:
-Reset projected min/max bounds, compute styled min/max world coordinates, project all eight corners, and compare projected bounds to a screen margin.
-Pseudocode:
-reset projected bounds
-x/y/z min = waypointBoxMin
-x/y/z max = waypointBoxMax
-project eight box corners
-if no finite projected corner return false
-return projected bounds intersect screen plus margin
-Implementation notes:
-The helper intentionally projects all corners even if some fail so partially visible boxes still draw their visible edges.
-AI self-check:
-Verify world and HUD fallback marker sizes cannot diverge.
-]]*/
-    private boolean projectBoxCorners(Waypoint waypoint, int screenW, int screenH) {
+    private boolean projectBoxCorners(ClientLevel level, Waypoint waypoint, int screenW, int screenH) {
         projectedBoxMinX = Double.POSITIVE_INFINITY;
         projectedBoxMinY = Double.POSITIVE_INFINITY;
         projectedBoxMaxX = Double.NEGATIVE_INFINITY;
         projectedBoxMaxY = Double.NEGATIVE_INFINITY;
 
-        double x1 = waypointBoxMin(waypoint.x(), waypoint.centerX(), waypoint);
-        double y1 = waypointBoxMin(waypoint.y(), waypoint.centerY(), waypoint);
-        double z1 = waypointBoxMin(waypoint.z(), waypoint.centerZ(), waypoint);
-        double x2 = waypointBoxMax(waypoint.x(), waypoint.centerX(), waypoint);
-        double y2 = waypointBoxMax(waypoint.y(), waypoint.centerY(), waypoint);
-        double z2 = waypointBoxMax(waypoint.z(), waypoint.centerZ(), waypoint);
+        populateWaypointBoxBounds(level, waypoint, waypointBoxBoundsScratch);
+        double x1 = waypointBoxBoundsScratch[BOX_MIN_X];
+        double y1 = waypointBoxBoundsScratch[BOX_MIN_Y];
+        double z1 = waypointBoxBoundsScratch[BOX_MIN_Z];
+        double x2 = waypointBoxBoundsScratch[BOX_MAX_X];
+        double y2 = waypointBoxBoundsScratch[BOX_MAX_Y];
+        double z2 = waypointBoxBoundsScratch[BOX_MAX_Z];
 
         projectBoxCorner(0, x1, y1, z1, screenW, screenH);
         projectBoxCorner(1, x2, y1, z1, screenW, screenH);
@@ -955,9 +1230,10 @@ Verify world and HUD fallback marker sizes cannot diverge.
         projectedBoxMaxY = Math.max(projectedBoxMaxY, labelScreenScratch[1]);
     }
 
-        private void drawGroupLabels(GuiGraphics g, Font font, Vec3 camPos, Vec3 playerPos,
-                                 int screenW, int screenH, WaypointGroup group,
-                                 boolean showNames, boolean showRouteProgress, boolean showDistances,
+    private void drawGroupLabels(GuiGraphicsExtractor g, Font font, Minecraft mc, ClientLevel level,
+                                 Vec3 camPos, Vec3 playerPos, int screenW, int screenH,
+                                 WaypointGroup group, boolean showNames,
+                                 boolean showRouteProgress, boolean showDistances,
                                  int labelBudget, double maxStaticDistanceSq,
                                  double nearHideDistanceSq, double labelNearHideDistanceSq) {
         int currentIdx = group.currentIndex();
@@ -969,10 +1245,11 @@ Verify world and HUD fallback marker sizes cannot diverge.
         boolean scaleLabelsWithDistance = config.scaleWaypointTextWithDistance();
         double configuredLabelScale = config.labelScale();
         boolean hasSubwaypoints = group.hasSubwaypoints();
-        String routeProgressText = showRouteProgress ? routeProgressText(group) : null;
+        boolean showRouteProgressForGroup = showRouteProgress && !group.temp();
+        String routeProgressText = showRouteProgressForGroup ? routeProgressText(group) : null;
 
         group.forEachVisibleIndex(
-                                i -> {
+                i -> {
             if (shouldHideStaticReached(group, i)) return;
 
             Waypoint w = group.get(i);
@@ -996,6 +1273,11 @@ Verify world and HUD fallback marker sizes cannot diverge.
             }
             double sx = labelScreenScratch[0];
             double sy = labelScreenScratch[1];
+            if (w.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)
+                    && !shouldRenderProjectedDepthCheckedWaypoint(
+                            mc, level, w, sx, sy, screenW, screenH)) {
+                return;
+            }
             if (!isNearScreen(sx, sy, screenW, screenH)) return;
 
             float labelScale = labelScaleForDepth(
@@ -1022,7 +1304,7 @@ Verify world and HUD fallback marker sizes cannot diverge.
                         RenderHelpers.withAlpha(nameColor, alpha), alpha, labelScale);
                 rowY += labelRowAdvance(font, labelScale);
             }
-            if (showRouteProgress) {
+            if (showRouteProgressForGroup) {
                 drawCenteredLabel(g, font, routeProgressText, sx, rowY,
                         RenderHelpers.withAlpha(DISTANCE_ARGB, alpha), alpha, labelScale);
                 rowY += labelRowAdvance(font, labelScale);
@@ -1036,7 +1318,7 @@ Verify world and HUD fallback marker sizes cannot diverge.
         });
     }
 
-    private void drawBudgetedLabels(GuiGraphics g, Font font, int count,
+    private void drawBudgetedLabels(GuiGraphicsExtractor g, Font font, int count,
                                     boolean showNames, boolean showRouteProgress,
                                     boolean showDistances) {
         if (count <= 0) return;
@@ -1052,7 +1334,7 @@ Verify world and HUD fallback marker sizes cannot diverge.
         }
     }
 
-    private void drawCandidateLabel(GuiGraphics g, Font font, LabelCandidate candidate,
+    private void drawCandidateLabel(GuiGraphicsExtractor g, Font font, LabelCandidate candidate,
                                     boolean showNames, boolean showRouteProgress,
                                     boolean showDistances) {
         double rowY = candidate.screenY;
@@ -1064,7 +1346,7 @@ Verify world and HUD fallback marker sizes cannot diverge.
                     candidate.alpha, candidate.scale);
             rowY += labelRowAdvance(font, candidate.scale);
         }
-        if (showRouteProgress) {
+        if (showRouteProgress && candidate.routeProgressText != null) {
             drawCenteredLabel(g, font, candidate.routeProgressText, candidate.screenX, rowY,
                     RenderHelpers.withAlpha(DISTANCE_ARGB, candidate.alpha),
                     candidate.alpha, candidate.scale);
@@ -1144,8 +1426,8 @@ Verify world and HUD fallback marker sizes cannot diverge.
         return distanceScratch.toString();
     }
 
-        private static float labelScaleForDepth(double depth, float fovDegrees,
-                                            boolean enabled, double userScale) {
+        static float labelScaleForDepth(double depth, float fovDegrees,
+                                        boolean enabled, double userScale) {
         double baseScale = clampLabelScale(userScale);
         if (!enabled) return (float) baseScale;
         if (depth <= 0.0 || !Double.isFinite(depth)) {
@@ -1181,7 +1463,7 @@ Verify world and HUD fallback marker sizes cannot diverge.
      * backdrop, the half-width, and the {@code drawString} call all reused the
      * same value, saving two redundant glyph-table lookups per label.
      */
-    private void drawCenteredLabel(GuiGraphics g, Font font, String text,
+    private void drawCenteredLabel(GuiGraphicsExtractor g, Font font, String text,
                                    double cx, double top, int argb, float alpha,
                                    float scale) {
         int width = font.width(text);
@@ -1203,7 +1485,7 @@ Verify world and HUD fallback marker sizes cannot diverge.
         }
         // drawString's shadow flag stays on in both modes -- without the backdrop the
         // drop shadow is doing all the work keeping text readable against bright biomes.
-        g.drawString(font, text, 0, 0, argb, true);
+        g.text(font, text, 0, 0, argb, true);
         g.pose().popMatrix();
     }
 
@@ -1211,7 +1493,7 @@ Verify world and HUD fallback marker sizes cannot diverge.
         return formatProgressPercent(RouteProgress.snapshot(group).percentComplete);
     }
 
-    private static String formatProgressPercent(double percent) {
+    static String formatProgressPercent(double percent) {
         double safePercent = Double.isFinite(percent)
                 ? Math.max(0.0, Math.min(100.0, percent))
                 : 0.0;
@@ -1242,45 +1524,6 @@ Verify world and HUD fallback marker sizes cannot diverge.
         return cached;
     }
 
-    /*[[AI-FN-DOC
-Function:
-stateFor
-Purpose:
-Classify a waypoint as completed, current, or upcoming for sequence rendering.
-Why this exists:
-Boxes, labels, beams, and connector endpoint filtering all need a consistent route-state interpretation.
-When to use:
-Use from rendering visibility and alpha decisions. Do not use for mutating route progress.
-Inputs:
-group is the route; i is the waypoint index being classified; currentIdx is the group's current target index.
-Outputs:
-Returns a State enum value describing render status.
-Side effects:
-None.
-Failure modes:
-Out-of-range indices are not validated here; callers are expected to pass valid indices from group iteration.
-Important invariants:
-Static routes always render waypoints as current. Exact subwaypoint current targets must classify as current.
-Internal logic:
-Return current for static routes, then handle subwaypoint parent/current relationships, active visual holds, completed indices, and upcoming indices.
-Pseudocode:
-if group load mode is static, return CURRENT
-activeParent = group.activeSubwaypointParentIndex
-if index is subwaypoint:
-  if index equals currentIdx, return CURRENT
-  parent = parent main index
-  if parent equals activeParent or currentIdx, return CURRENT
-  if parent is before currentIdx, return COMPLETED
-  return UPCOMING
-if index equals active parent, return CURRENT
-if index before currentIdx, return COMPLETED
-if index equals currentIdx, return CURRENT
-return UPCOMING
-Implementation notes:
-The exact subwaypoint check is required for /wp skipto decimal targets to highlight the chosen child instead of only its parent.
-AI self-check:
-Verify the child current case runs before parent-based classification.
-]]*/
     private static State stateFor(WaypointGroup group, int i, int currentIdx) {
         if (group.loadMode() == WaypointGroup.LoadMode.STATIC) return State.CURRENT;
         int activeSubwayParent = group.activeSubwaypointParentIndex();
@@ -1298,36 +1541,6 @@ Verify the child current case runs before parent-based classification.
         return State.UPCOMING;
     }
 
-    /*[[AI-FN-DOC
-Function:
-shouldHideCompletedSequenceWaypoint
-Purpose:
-Decide whether a sequence waypoint classified as completed should be hidden from world rendering.
-Why this exists:
-The renderer needs one consistent gate for completed sequence markers so boxes, beams, labels, tracers, and connector endpoints agree.
-When to use:
-Use during per-waypoint render filtering after stateFor has classified the waypoint. Do not use for static route reached markers.
-Inputs:
-group is the waypoint group being rendered; index is the waypoint index; currentIdx is the current route target; state is the classified waypoint state; showCompleted is the config value; waypoint is the waypoint data.
-Outputs:
-Returns true when the completed waypoint should be skipped entirely.
-Side effects:
-None.
-Failure modes:
-Null waypoint is not expected because callers iterate concrete group entries.
-Important invariants:
-Only State.COMPLETED can be hidden by this setting. Current targets and active subwaypoint holds must remain visible because stateFor classifies them as CURRENT.
-Internal logic:
-Ignore non-completed states, always respect the per-waypoint hide beacon flag for completed waypoints, otherwise hide completed waypoints whenever showCompleted is false.
-Pseudocode:
-if state is not COMPLETED return false
-if waypoint has hide-beacon flag return true
-return not showCompleted
-Implementation notes:
-The group, index, and currentIdx parameters remain for call-site clarity and future route-state decisions even though the current rule no longer needs contextual previous-waypoint exceptions.
-AI self-check:
-Verify the previous completed waypoint is hidden when Show completed waypoints is off and current/held waypoints are unaffected.
-]]*/
     private boolean shouldHideCompletedSequenceWaypoint(WaypointGroup group,
                                                         int index,
                                                         int currentIdx,
@@ -1375,38 +1588,6 @@ Verify the previous completed waypoint is hidden when Show completed waypoints i
         return distance <= 0.0 ? 0.0 : distance * distance;
     }
 
-    /*[[AI-FN-DOC
-Function:
-isStaticBeyondDistanceLimit.
-Purpose:
-Decide whether a static-route waypoint is far enough from the camera to skip rendering.
-Why this exists:
-Static overlays can contain many points, so distance culling keeps the world render pass light while sequence routes remain unaffected.
-When to use:
-Use before rendering waypoint-linked world or label elements for static routes. Do not use for route progression, which has separate reach logic.
-Inputs:
-group is the waypoint group; waypoint is the marker being checked; camPos is the camera position; maxStaticDistanceSq is the squared static render distance limit.
-Outputs:
-Returns true when the waypoint should be culled for static distance, false otherwise.
-Side effects:
-None.
-Failure modes:
-None expected for finite camera positions; disabled limits and non-static routes return false.
-Important invariants:
-Distance must be measured from waypoint.centerX/Y/Z so precise small waypoint render filters match their actual marker position.
-Internal logic:
-Return false when static culling is disabled or the group is not static, otherwise compute squared distance from camera to waypoint center and delegate to the scalar overload.
-Pseudocode:
-if maxStaticDistanceSq <= 0 or group load mode is not STATIC, return false
-dx = waypoint.centerX - cam x
-dy = waypoint.centerY - cam y
-dz = waypoint.centerZ - cam z
-return scalar isStaticBeyondDistanceLimit(group, distanceSq, maxStaticDistanceSq)
-Implementation notes:
-Using the center methods preserves old behavior for block-centered waypoints because their default precise center is x/y/z + 0.5.
-AI self-check:
-Verify static route culling is unchanged for normal waypoints and aligned for precise small waypoints.
-]]*/
     private static boolean isStaticBeyondDistanceLimit(WaypointGroup group, Waypoint waypoint,
                                                        Vec3 camPos, double maxStaticDistanceSq) {
         if (maxStaticDistanceSq <= 0.0 || group.loadMode() != WaypointGroup.LoadMode.STATIC) {
@@ -1437,12 +1618,28 @@ Verify static route culling is unchanged for normal waypoints and aligned for pr
         return state.alpha;
     }
 
-    static void drawScreenLine(GuiGraphics g, double x1, double y1,
+    static void drawScreenLine(GuiGraphicsExtractor g, double x1, double y1,
                                double x2, double y2, int argb, double thickness) {
         drawFastScreenLine(g, x1, y1, x2, y2, argb, thickness);
     }
 
-    private static void drawFastScreenLine(GuiGraphics g, double x1, double y1,
+    private void drawConfiguredScreenLine(GuiGraphicsExtractor g, double x1, double y1,
+                                          double x2, double y2, int argb,
+                                          double thickness) {
+        double effectiveThickness = config.sharpWaypointEdges()
+                ? Math.max(1.0, Math.floor(thickness))
+                : thickness;
+        drawFastScreenLine(g, x1, y1, x2, y2, argb, effectiveThickness);
+    }
+
+    private float effectiveOutlineThickness() {
+        double thickness = config.waypointOutlineThickness();
+        return (float) (config.sharpWaypointEdges()
+                ? Math.max(1.0, Math.floor(thickness))
+                : thickness);
+    }
+
+    private static void drawFastScreenLine(GuiGraphicsExtractor g, double x1, double y1,
                                            double x2, double y2, int argb,
                                            double thickness) {
         double guiScale = Minecraft.getInstance().getWindow().getGuiScale();

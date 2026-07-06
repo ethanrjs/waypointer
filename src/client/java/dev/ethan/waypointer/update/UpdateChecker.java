@@ -1,5 +1,10 @@
 package dev.ethan.waypointer.update;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParseException;
+import com.google.gson.JsonParser;
 import dev.ethan.waypointer.Waypointer;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -10,10 +15,14 @@ import net.minecraft.network.chat.Style;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.metadata.ModOrigin;
 
+import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.io.InputStream;
+import java.security.MessageDigest;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -21,10 +30,12 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.util.HexFormat;
 import java.util.concurrent.CompletableFuture;
 import java.util.Locale;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 
 /**
  * Background update checker. Fetches the latest release tag from GitHub,
@@ -53,6 +64,9 @@ public final class UpdateChecker {
     private static final String RELEASES_PAGE =
             "https://github.com/ethanrjs/waypointer/releases/latest";
     private static final URI RELEASES_PAGE_URI = URI.create(RELEASES_PAGE);
+    private static final String RELEASE_ASSET_HOST = "github.com";
+    private static final String RELEASE_ASSET_PATH_PREFIX =
+            "/ethanrjs/waypointer/releases/download/";
 
     /**
      * How long after construction to fire the first (and only) check.
@@ -61,13 +75,10 @@ public final class UpdateChecker {
      */
     private static final Duration INITIAL_DELAY = Duration.ofSeconds(5);
 
-    /** Rough "tag_name": "vX.Y.Z" pattern. Accepts the v-prefix optionally. */
-    private static final Pattern TAG_PATTERN =
-            Pattern.compile("\"tag_name\"\\s*:\\s*\"v?([0-9.]+(?:[-+][A-Za-z0-9.-]+)?)\"");
-    private static final Pattern HTML_URL_PATTERN =
-            Pattern.compile("\"html_url\"\\s*:\\s*\"([^\"]+)\"");
-private static final Pattern DOWNLOAD_URL_PATTERN =
-            Pattern.compile("\"browser_download_url\"\\s*:\\s*\"([^\"]+\\.jar)\"");
+    private static final Pattern VERSION_TAG_PATTERN =
+            Pattern.compile("[0-9]+(?:\\.[0-9]+)*(?:[-+][A-Za-z0-9.-]+)?");
+    private static final Pattern SHA256_DIGEST_PATTERN =
+            Pattern.compile("[0-9a-f]{64}");
     private static final String WINDOWS_UPDATE_SCRIPT_PREFIX = "waypointer-update-";
 
     private final String localVersion;
@@ -78,9 +89,12 @@ private static final Pattern DOWNLOAD_URL_PATTERN =
                               boolean updateAvailable,
                               URI releasePageUri,
                               URI downloadUri,
+                              String downloadSha256,
                               String failureMessage) {}
 
-        private record ReleaseInfo(String latestVersion, URI releasePageUri, URI downloadUri) {}
+        record ReleaseInfo(String latestVersion, URI releasePageUri, URI downloadUri, String downloadSha256) {}
+
+        private record JarAsset(URI downloadUri, String sha256) {}
 
         public record DownloadResult(boolean success,
                                  Path downloadedJar,
@@ -142,7 +156,7 @@ private static final Pattern DOWNLOAD_URL_PATTERN =
             } catch (Exception e) {
                 Waypointer.LOGGER.debug("Manual update check failed: {}", e.toString());
                 return new CheckResult(localVersion, null, false,
-                        RELEASES_PAGE_URI, RELEASES_PAGE_URI,
+                        RELEASES_PAGE_URI, RELEASES_PAGE_URI, null,
                 "Could not check GitHub releases.");
             }
         });
@@ -168,6 +182,11 @@ private static final Pattern DOWNLOAD_URL_PATTERN =
         URI downloadUri = result.downloadUri();
         if (!isJarDownloadUri(downloadUri)) {
             return new DownloadResult(false, null, null, "Release has no jar asset.");
+        }
+        String expectedSha256 = normalizedSha256Digest(result.downloadSha256());
+        if (expectedSha256 == null) {
+            return new DownloadResult(false, null, null,
+                    "Release jar has no SHA-256 digest; update was not installed.");
         }
 
         Path modsDir = FabricLoader.getInstance().getGameDir()
@@ -209,6 +228,15 @@ private static final Pattern DOWNLOAD_URL_PATTERN =
             if (!Files.exists(temp) || Files.size(temp) <= 0L) {
                 return new DownloadResult(false, null, null, "Downloaded jar was empty.");
             }
+            String actualSha256 = sha256Hex(temp);
+            if (!expectedSha256.equals(actualSha256)) {
+                return new DownloadResult(false, null, null,
+                        "Downloaded jar failed SHA-256 verification.");
+            }
+            String verificationError = verifyDownloadedJar(temp, result.latestVersion());
+            if (verificationError != null) {
+                return new DownloadResult(false, null, null, verificationError);
+            }
 
             moveReplacing(temp, target);
 
@@ -238,8 +266,45 @@ private static final Pattern DOWNLOAD_URL_PATTERN =
         public static boolean isJarDownloadUri(URI uri) {
         if (uri == null || uri.getScheme() == null || uri.getPath() == null) return false;
         String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
-        if (!scheme.equals("http") && !scheme.equals("https")) return false;
-        return uri.getPath().toLowerCase(Locale.ROOT).endsWith(".jar");
+        if (!scheme.equals("https")) return false;
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+        if (!RELEASE_ASSET_HOST.equals(host)) return false;
+        String path = uri.getPath().toLowerCase(Locale.ROOT);
+        if (!path.startsWith(RELEASE_ASSET_PATH_PREFIX)) return false;
+        int slash = path.lastIndexOf('/');
+        String fileName = slash >= 0 ? path.substring(slash + 1) : path;
+        return fileName.startsWith("waypointer-")
+                && fileName.endsWith(".jar")
+                && !fileName.contains("-sources")
+                && !fileName.contains("-dev")
+                && !fileName.contains("-javadoc");
+    }
+
+        public static boolean hasSha256Digest(String digest) {
+        return normalizedSha256Digest(digest) != null;
+    }
+
+        static String verifyDownloadedJar(Path jar, String expectedVersion) {
+        String expected = expectedVersion == null ? "" : expectedVersion.trim();
+        if (expected.isBlank()) return "Release did not include an expected jar version.";
+        try (ZipFile zip = new ZipFile(jar.toFile())) {
+            ZipEntry metadataEntry = zip.getEntry("fabric.mod.json");
+            if (metadataEntry == null) return "Downloaded jar is missing fabric.mod.json.";
+            try (Reader reader = new InputStreamReader(
+                    zip.getInputStream(metadataEntry), StandardCharsets.UTF_8)) {
+                JsonElement parsed = JsonParser.parseReader(reader);
+                if (!parsed.isJsonObject()) return "Downloaded jar metadata could not be read.";
+                JsonObject metadata = parsed.getAsJsonObject();
+                String id = normalizedString(metadata.get("id"));
+                if (!Waypointer.MOD_ID.equals(id)) return "Downloaded jar is not a Waypointer mod.";
+                String version = normalizedString(metadata.get("version"));
+                if (version == null || version.isBlank()) return "Downloaded jar has no version.";
+                if (!expected.equals(version)) return "Downloaded jar version did not match release.";
+                return null;
+            }
+        } catch (Exception e) {
+            return "Downloaded jar metadata could not be read.";
+        }
     }
 
         private static Path currentWaypointerJarPath() {
@@ -296,7 +361,7 @@ private static final Pattern DOWNLOAD_URL_PATTERN =
         return out.isEmpty() ? "latest" : out.toString();
     }
 
-        private static void moveReplacing(Path source, Path target) throws java.io.IOException {
+    private static void moveReplacing(Path source, Path target) throws java.io.IOException {
         try {
             Files.move(source, target,
                     StandardCopyOption.REPLACE_EXISTING,
@@ -304,6 +369,20 @@ private static final Pattern DOWNLOAD_URL_PATTERN =
         } catch (AtomicMoveNotSupportedException e) {
             Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
         }
+    }
+
+        private static String sha256Hex(Path path) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        byte[] buffer = new byte[8192];
+        try (InputStream in = Files.newInputStream(path)) {
+            int read;
+            while ((read = in.read(buffer)) >= 0) {
+                if (read > 0) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+        }
+        return HexFormat.of().formatHex(digest.digest());
     }
 
         private static Path uniqueDisabledPath(Path currentJar) {
@@ -368,7 +447,7 @@ private static final Pattern DOWNLOAD_URL_PATTERN =
         }
         boolean updateAvailable = compareSemver(localVersion, release.latestVersion()) < 0;
         return new CheckResult(localVersion, release.latestVersion(), updateAvailable,
-                release.releasePageUri(), release.downloadUri(), null);
+                release.releasePageUri(), release.downloadUri(), release.downloadSha256(), null);
     }
 
         private static ReleaseInfo fetchLatestRelease() throws Exception {
@@ -387,24 +466,84 @@ private static final Pattern DOWNLOAD_URL_PATTERN =
         return parseReleaseInfo(resp.body());
     }
 
-        private static ReleaseInfo parseReleaseInfo(String body) {
-        if (body == null) return null;
-        Matcher tagMatcher = TAG_PATTERN.matcher(body);
-        if (!tagMatcher.find()) return null;
+        static ReleaseInfo parseReleaseInfo(String body) {
+        if (body == null || body.isBlank()) return null;
 
-        URI releasePage = RELEASES_PAGE_URI;
-        Matcher pageMatcher = HTML_URL_PATTERN.matcher(body);
-        if (pageMatcher.find()) {
-            releasePage = URI.create(pageMatcher.group(1));
+        JsonObject root;
+        try {
+            JsonElement parsed = JsonParser.parseString(body);
+            if (!parsed.isJsonObject()) return null;
+            root = parsed.getAsJsonObject();
+        } catch (JsonParseException | IllegalStateException e) {
+            return null;
         }
 
-        URI download = null;
-        Matcher downloadMatcher = DOWNLOAD_URL_PATTERN.matcher(body);
-        if (downloadMatcher.find()) {
-            download = URI.create(downloadMatcher.group(1));
-        }
+        String latestVersion = normalizedVersionTag(root.get("tag_name"));
+        if (latestVersion == null) return null;
 
-        return new ReleaseInfo(tagMatcher.group(1), releasePage, download);
+        URI releasePage = safeUri(normalizedString(root.get("html_url")), RELEASES_PAGE_URI);
+        JarAsset asset = firstJarAsset(root.get("assets"));
+        return new ReleaseInfo(latestVersion, releasePage,
+                asset == null ? null : asset.downloadUri(),
+                asset == null ? null : asset.sha256());
+    }
+
+        private static JarAsset firstJarAsset(JsonElement assetsElement) {
+        if (assetsElement == null || !assetsElement.isJsonArray()) return null;
+        JsonArray assets = assetsElement.getAsJsonArray();
+        for (JsonElement assetElement : assets) {
+            if (!assetElement.isJsonObject()) continue;
+            JsonObject asset = assetElement.getAsJsonObject();
+            URI candidate = safeUri(normalizedString(asset.get("browser_download_url")), null);
+            if (isJarDownloadUri(candidate)) {
+                return new JarAsset(candidate, normalizedSha256Digest(asset.get("digest")));
+            }
+        }
+        return null;
+    }
+
+        private static URI safeUri(String raw, URI fallback) {
+        if (raw == null || raw.isBlank()) return fallback;
+        try {
+            return URI.create(raw.trim());
+        } catch (IllegalArgumentException e) {
+            return fallback;
+        }
+    }
+
+        private static String normalizedSha256Digest(JsonElement element) {
+        return normalizedSha256Digest(normalizedString(element));
+    }
+
+        private static String normalizedSha256Digest(String raw) {
+        if (raw == null || raw.isBlank()) return null;
+        String value = raw.trim().toLowerCase(Locale.ROOT);
+        if (value.startsWith("sha256:")) {
+            value = value.substring("sha256:".length()).trim();
+        }
+        if (!SHA256_DIGEST_PATTERN.matcher(value).matches()) return null;
+        return value;
+    }
+
+        private static String normalizedVersionTag(JsonElement element) {
+        String value = normalizedString(element);
+        if (value == null) return null;
+        if (value.startsWith("v") || value.startsWith("V")) {
+            value = value.substring(1).trim();
+        }
+        if (!VERSION_TAG_PATTERN.matcher(value).matches()) return null;
+        return value;
+    }
+
+        private static String normalizedString(JsonElement element) {
+        if (element == null || element.isJsonNull() || !element.isJsonPrimitive()) return null;
+        if (!element.getAsJsonPrimitive().isString()) return null;
+        try {
+            String value = element.getAsString();
+            return value == null ? null : value.trim();
+        } catch (ClassCastException | IllegalStateException e) {
+            return null;
+        }
     }
 
     /**
@@ -450,7 +589,7 @@ private static final Pattern DOWNLOAD_URL_PATTERN =
         return out;
     }
 
-        private void postNotice(CheckResult result) {
+    private void postNotice(CheckResult result) {
         // Hop onto the render thread before poking the chat gui. HttpClient's
         // callback runs on a pool thread, and touching Minecraft state from
         // there is undefined behaviour.
@@ -467,7 +606,7 @@ private static final Pattern DOWNLOAD_URL_PATTERN =
                             .withColor(ChatFormatting.YELLOW)
                             .withUnderlined(true)
                             .withClickEvent(new ClickEvent.OpenUrl(result.releasePageUri())));
-            mc.gui.getChat().addMessage(prefix.append(body));
+            mc.gui.getChat().addClientSystemMessage(prefix.append(body));
         });
     }
 }

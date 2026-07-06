@@ -1,7 +1,7 @@
 package dev.ethan.waypointer.screen;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.InputWithModifiers;
@@ -54,7 +54,7 @@ public final class ColorSwatchButton extends AbstractButton {
     }
 
     @Override
-    protected void renderContents(GuiGraphics g, int mouseX, int mouseY, float partial) {
+    protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
         int x1 = getX();
         int y1 = getY();
         int x2 = x1 + getWidth();
@@ -81,8 +81,8 @@ public final class ColorSwatchButton extends AbstractButton {
         String clipped = font.plainSubstrByWidth(caption, getWidth() - 8);
         int textX = x1 + (getWidth() - font.width(clipped)) / 2;
         int textY = y1 + (getHeight() - 8) / 2;
-        g.drawString(font, clipped, textX + 1, textY + 1, shadow, false);
-        g.drawString(font, clipped, textX, textY, textColor, false);
+        g.text(font, clipped, textX + 1, textY + 1, shadow, false);
+        g.text(font, clipped, textX, textY, textColor, false);
     }
 
     /** Cheap perceptual-luminance threshold to flip caption colour for contrast. */

@@ -1,10 +1,13 @@
 package dev.ethan.waypointer.render;
 
 import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
+import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.platform.DepthTestFunction;
+import com.mojang.blaze3d.platform.CompareOp;
 import dev.ethan.waypointer.Waypointer;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
@@ -28,6 +31,12 @@ public final class WaypointerRenderPipelines {
 
     private static RenderType linesThroughWalls;
     private static RenderType quadsThroughWalls;
+    private static RenderType linesDepthTested;
+    private static RenderType quadsDepthTested;
+    private static RenderType beaconBeamThroughWalls;
+    private static RenderType beaconBeamDepthTested;
+    private static final DepthStencilState NO_DEPTH_TEST = new DepthStencilState(CompareOp.ALWAYS_PASS, false);
+    private static final DepthStencilState LEQUAL_DEPTH_TEST = new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false);
 
     private WaypointerRenderPipelines() {}
 
@@ -47,11 +56,40 @@ public final class WaypointerRenderPipelines {
         return quadsThroughWalls;
     }
 
+    public static RenderType linesDepthTested() {
+        if (linesDepthTested == null) linesDepthTested = buildDepthTestedLinesType();
+        return linesDepthTested;
+    }
+
+    public static RenderType quadsDepthTested() {
+        if (quadsDepthTested == null) quadsDepthTested = buildDepthTestedQuadsType();
+        return quadsDepthTested;
+    }
+
+    public static RenderType beaconBeamThroughWalls() {
+        if (beaconBeamThroughWalls == null) {
+            beaconBeamThroughWalls = buildBeaconBeamType(
+                    "waypointer_beacon_beam_through_walls",
+                    "beacon_beam_through_walls",
+                    NO_DEPTH_TEST);
+        }
+        return beaconBeamThroughWalls;
+    }
+
+    public static RenderType beaconBeamDepthTested() {
+        if (beaconBeamDepthTested == null) {
+            beaconBeamDepthTested = buildBeaconBeamType(
+                    "waypointer_beacon_beam_depth_tested",
+                    "beacon_beam_depth_tested",
+                    LEQUAL_DEPTH_TEST);
+        }
+        return beaconBeamDepthTested;
+    }
+
     private static RenderType buildLinesType() {
         RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
                 .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "lines_through_walls"))
-                .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-                .withDepthWrite(false)
+                .withDepthStencilState(NO_DEPTH_TEST)
                 .build();
         return RenderType.create("waypointer_lines_through_walls",
                 RenderSetup.builder(pipeline).createRenderSetup());
@@ -67,12 +105,47 @@ public final class WaypointerRenderPipelines {
         // around the cube.
         RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
                 .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "quads_through_walls"))
-                .withDepthTestFunction(DepthTestFunction.NO_DEPTH_TEST)
-                .withDepthWrite(false)
-                .withBlend(BlendFunction.TRANSLUCENT)
+                .withDepthStencilState(NO_DEPTH_TEST)
+                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                 .withCull(false)
                 .build();
         return RenderType.create("waypointer_quads_through_walls",
+                RenderSetup.builder(pipeline).createRenderSetup());
+    }
+
+    private static RenderType buildDepthTestedLinesType() {
+        RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
+                .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "lines_depth_tested"))
+                .withDepthStencilState(LEQUAL_DEPTH_TEST)
+                .build();
+        return RenderType.create("waypointer_lines_depth_tested",
+                RenderSetup.builder(pipeline).createRenderSetup());
+    }
+
+    private static RenderType buildBeaconBeamType(String renderTypeName,
+                                                  String pipelinePath,
+                                                  DepthStencilState depthState) {
+        RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.BEACON_BEAM_SNIPPET)
+                .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, pipelinePath))
+                .withDepthStencilState(depthState)
+                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+                .withCull(false)
+                .build();
+        RenderSetup setup = RenderSetup.builder(pipeline)
+                .withTexture("Sampler0", BeaconRenderer.BEAM_LOCATION)
+                .sortOnUpload()
+                .createRenderSetup();
+        return RenderType.create(renderTypeName, setup);
+    }
+
+    private static RenderType buildDepthTestedQuadsType() {
+        RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+                .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "quads_depth_tested"))
+                .withDepthStencilState(LEQUAL_DEPTH_TEST)
+                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+                .withCull(false)
+                .build();
+        return RenderType.create("waypointer_quads_depth_tested",
                 RenderSetup.builder(pipeline).createRenderSetup());
     }
 

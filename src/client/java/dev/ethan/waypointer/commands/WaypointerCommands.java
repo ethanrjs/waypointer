@@ -2,6 +2,7 @@ package dev.ethan.waypointer.commands;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
@@ -20,12 +21,13 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.dungeon.DungeonWaypointSkipRules;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.input.WaypointAddFlow;
+import dev.ethan.waypointer.input.WaypointRepositionMode;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import dev.ethan.waypointer.screen.DebugInspectScreen;
-import dev.ethan.waypointer.screen.GroupEditScreen;
 import dev.ethan.waypointer.screen.ImportFeedback;
-import dev.ethan.waypointer.screen.WaypointerScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
@@ -46,11 +48,13 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.argument;
-import static net.fabricmc.fabric.api.client.command.v2.ClientCommandManager.literal;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 /**
  * Registers {@code /waypointer} and short aliases as client-side commands.
@@ -83,12 +87,14 @@ public final class WaypointerCommands {
     }
 
     public void install() {
+        WaypointerCommandSuggestionOverride suggestionOverride = new WaypointerCommandSuggestionOverride();
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registry) -> {
             register(dispatcher, "waypointer");
             register(dispatcher, "wptr");
             register(dispatcher, "wp");
+            suggestionOverride.setClientRoot(dispatcher.getRoot().getChild("wp"));
         });
-        new WaypointerCommandSuggestionOverride().install();
+        suggestionOverride.install();
     }
 
     private void register(CommandDispatcher<FabricClientCommandSource> d, String root) {
@@ -98,6 +104,7 @@ public final class WaypointerCommands {
                 // /wp help                  -> page 1
                 // /wp help <n>              -> nth page (1-based)
                 // /wp help <section>        -> jump to a section by name/alias
+                // /wp help all              -> show every section
                 // The StringArgumentType.word() arg accepts both shapes because
                 // Brigadier can't dispatch on "integer-or-word" directly -- we
                 // parse it ourselves in runHelp so tab-complete can offer both
@@ -114,6 +121,32 @@ public final class WaypointerCommands {
                                 .suggests(suggestSkipTargets())
                                 .executes(ctx -> runSkipTo(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "target")))))
+                .then(currentSubwayCommand("sub"))
+                .then(currentFlagCommand("tiny", Waypoint.FLAG_SMALL_SUBWAYPOINT, "Tiny", true))
+                .then(currentFlagCommand("filled", Waypoint.FLAG_FILLED_SUBWAYPOINT, "Filled", true))
+                .then(currentFlagCommand("hap", Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED,
+                        "Hide after parent", true))
+                .then(currentFlagCommand("sts", Waypoint.FLAG_SKIP_ON_STAND, "Stand to skip", false))
+                .then(currentFlagCommand("its", Waypoint.FLAG_SKIP_ON_INTERACT, "Interact to skip", false))
+                .then(currentFlagCommand("los", Waypoint.FLAG_DEPTH_CHECKED, "Line-of-sight only", false))
+                .then(literal("reset").executes(ctx -> runResetActiveGroup(ctx.getSource())))
+                .then(literal("mode")
+                        .then(argument("mode", StringArgumentType.word())
+                                .suggests(suggestLoadModes())
+                                .executes(ctx -> runSetActiveGroupMode(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "mode")))))
+                .then(literal("radius")
+                        .then(argument("radius", DoubleArgumentType.doubleArg(0.5))
+                                .executes(ctx -> runSetActiveGroupRadius(ctx.getSource(),
+                                        DoubleArgumentType.getDouble(ctx, "radius")))))
+                .then(literal("move")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestActiveGroupIndices())
+                                .then(argument("slot", IntegerArgumentType.integer(0))
+                                        .suggests(suggestActiveGroupIndices())
+                                        .executes(ctx -> runMoveWaypointToSlot(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                IntegerArgumentType.getInteger(ctx, "slot"))))))
                 // "add" uses an explicit "at" literal for coord input so we never have to
                 // disambiguate "/wp add 100" (a name) from "/wp add 100 64 200" (coords).
                 // Brigadier's greedy-string fallback was flagging ambiguity warnings and --
@@ -189,19 +222,7 @@ public final class WaypointerCommands {
                         .then(argument("index", IntegerArgumentType.integer(0))
                                 .suggests(suggestActiveGroupIndices())
                                 .executes(ctx -> runRemove(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "index")))))
-                // "insert" reuses the player's current position so the workflow is
-                // identical to /wp add -- you stand where you want it, you type the
-                // index, and you're done. Coord-form insertion would just be a copy
-                // of /wp add at; if a user wants that, they can add then move.
-                .then(literal("insert")
-                        .then(argument("index", IntegerArgumentType.integer(0))
-                                .suggests(suggestInsertSlots())
-                                .executes(ctx -> runInsert(ctx.getSource(),
-                                        IntegerArgumentType.getInteger(ctx, "index"), ""))
-                                .then(argument("name", StringArgumentType.greedyString())
-                                        .executes(ctx -> runInsert(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                StringArgumentType.getString(ctx, "name"))))))
+                .then(insertCommand())
                 .then(literal("clear")
                         .executes(ctx -> runClearZone(ctx.getSource(), false))
                         .then(literal("confirm").executes(ctx -> runClearZone(ctx.getSource(), true))))
@@ -223,89 +244,282 @@ public final class WaypointerCommands {
                                 .executes(ctx -> runImportFile(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "path")))))
                 .then(literal("debug").executes(ctx -> { scheduleOpenDebugInspector(); return 1; }))
+                .then(literal("editmode").executes(this::runToggleEditModeCommand))
+                .then(literal("edit")
+                        .then(literal("mode").executes(this::runToggleEditModeCommand)))
                 .then(literal("importchat")
                         .then(argument("handle", StringArgumentType.word())
                                 .suggests(suggestChatHandles())
                                 .executes(ctx -> runImportChat(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "handle")))))
-                .then(literal("group")
-                        .then(literal("create")
-                                .then(argument("name", StringArgumentType.greedyString())
-                                        .suggests(suggestGroupNames())
-                                        .executes(ctx -> runCreateGroup(ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "name")))))
-                        .then(literal("list").executes(ctx -> runListGroups(ctx.getSource())))
-                        .then(literal("delete")
-                                .then(argument("index", IntegerArgumentType.integer(0))
-                                        .suggests(suggestAllGroupIndices())
-                                        .executes(ctx -> runDeleteGroup(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"))))));
+                .then(waypointCommand())
+                .then(areaCommand())
+                .then(groupCommand());
         d.register(cmd);
+    }
+
+    private LiteralArgumentBuilder<FabricClientCommandSource> currentSubwayCommand(String name) {
+        return literal(name)
+                .executes(ctx -> runToggleSubwaypoint(ctx.getSource(), null))
+                .then(argument("index", IntegerArgumentType.integer(0))
+                        .suggests(suggestActiveGroupIndices())
+                        .executes(ctx -> runToggleSubwaypoint(ctx.getSource(),
+                                IntegerArgumentType.getInteger(ctx, "index"))));
+    }
+
+    private LiteralArgumentBuilder<FabricClientCommandSource> currentFlagCommand(String name, int flag,
+                                                                                String label,
+                                                                                boolean subwaypointOnly) {
+        return literal(name)
+                .executes(ctx -> runToggleWaypointFlag(ctx.getSource(), null, flag, label, subwaypointOnly))
+                .then(argument("index", IntegerArgumentType.integer(0))
+                        .suggests(suggestActiveGroupIndices())
+                        .executes(ctx -> runToggleWaypointFlag(ctx.getSource(),
+                                IntegerArgumentType.getInteger(ctx, "index"), flag, label, subwaypointOnly)));
+    }
+
+    private LiteralArgumentBuilder<FabricClientCommandSource> insertCommand() {
+        return literal("insert")
+                .then(argument("index", IntegerArgumentType.integer(0))
+                        .suggests(suggestInsertSlots())
+                        .executes(ctx -> runInsert(ctx.getSource(),
+                                IntegerArgumentType.getInteger(ctx, "index"), ""))
+                        .then(literal("at")
+                                .then(argument("x", IntegerArgumentType.integer())
+                                        .suggests(suggestPlayerCoord(Axis.X))
+                                        .then(argument("y", IntegerArgumentType.integer())
+                                                .suggests(suggestPlayerCoord(Axis.Y))
+                                                .then(argument("z", IntegerArgumentType.integer())
+                                                        .suggests(suggestPlayerCoord(Axis.Z))
+                                                        .executes(ctx -> runInsertAt(ctx.getSource(),
+                                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                                IntegerArgumentType.getInteger(ctx, "x"),
+                                                                IntegerArgumentType.getInteger(ctx, "y"),
+                                                                IntegerArgumentType.getInteger(ctx, "z"),
+                                                                ""))
+                                                        .then(argument("name", StringArgumentType.greedyString())
+                                                                .executes(ctx -> runInsertAt(ctx.getSource(),
+                                                                        IntegerArgumentType.getInteger(ctx, "index"),
+                                                                        IntegerArgumentType.getInteger(ctx, "x"),
+                                                                        IntegerArgumentType.getInteger(ctx, "y"),
+                                                                        IntegerArgumentType.getInteger(ctx, "z"),
+                                                                        StringArgumentType.getString(ctx, "name"))))))))
+                        .then(argument("name", StringArgumentType.greedyString())
+                                .executes(ctx -> runInsert(ctx.getSource(),
+                                        IntegerArgumentType.getInteger(ctx, "index"),
+                                        StringArgumentType.getString(ctx, "name")))));
+    }
+
+    private LiteralArgumentBuilder<FabricClientCommandSource> waypointCommand() {
+        return literal("waypoint")
+                .then(literal("move")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestActiveGroupIndices())
+                                .then(literal("here")
+                                        .executes(ctx -> runMoveWaypointHere(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"))))
+                                .then(literal("at")
+                                        .then(argument("x", IntegerArgumentType.integer())
+                                                .suggests(suggestPlayerCoord(Axis.X))
+                                                .then(argument("y", IntegerArgumentType.integer())
+                                                        .suggests(suggestPlayerCoord(Axis.Y))
+                                                        .then(argument("z", IntegerArgumentType.integer())
+                                                                .suggests(suggestPlayerCoord(Axis.Z))
+                                                                .executes(ctx -> runMoveWaypointAt(ctx.getSource(),
+                                                                        IntegerArgumentType.getInteger(ctx, "index"),
+                                                                        IntegerArgumentType.getInteger(ctx, "x"),
+                                                                        IntegerArgumentType.getInteger(ctx, "y"),
+                                                                        IntegerArgumentType.getInteger(ctx, "z")))))))))
+                .then(literal("rename")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestActiveGroupIndices())
+                                .then(argument("name", StringArgumentType.greedyString())
+                                        .executes(ctx -> runRenameWaypoint(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                StringArgumentType.getString(ctx, "name"))))))
+                .then(literal("color")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestActiveGroupIndices())
+                                .then(argument("hex", StringArgumentType.word())
+                                        .suggests(suggestHexColors())
+                                        .executes(ctx -> runSetWaypointColor(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                StringArgumentType.getString(ctx, "hex"))))))
+                .then(literal("radius")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestActiveGroupIndices())
+                                .then(argument("radius", DoubleArgumentType.doubleArg(0.0))
+                                        .executes(ctx -> runSetWaypointRadius(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                DoubleArgumentType.getDouble(ctx, "radius"))))))
+                .then(literal("sub")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestActiveGroupIndices())
+                                .executes(ctx -> runToggleSubwaypoint(ctx.getSource(),
+                                        IntegerArgumentType.getInteger(ctx, "index")))));
+    }
+
+    private LiteralArgumentBuilder<FabricClientCommandSource> areaCommand() {
+        return literal("area")
+                .then(argument("group", IntegerArgumentType.integer(0))
+                        .suggests(suggestAllGroupIndices())
+                        .then(literal("current")
+                                .executes(ctx -> runSetGroupZone(ctx.getSource(),
+                                        IntegerArgumentType.getInteger(ctx, "group"), "current")))
+                        .then(argument("zone", StringArgumentType.greedyString())
+                                .suggests(suggestZoneTargets())
+                                .executes(ctx -> runSetGroupZone(ctx.getSource(),
+                                        IntegerArgumentType.getInteger(ctx, "group"),
+                                        StringArgumentType.getString(ctx, "zone")))));
+    }
+
+    private LiteralArgumentBuilder<FabricClientCommandSource> groupCommand() {
+        return literal("group")
+                .then(literal("create")
+                        .then(argument("name", StringArgumentType.greedyString())
+                                .suggests(suggestGroupNames())
+                                .executes(ctx -> runCreateGroup(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "name")))))
+                .then(literal("list").executes(ctx -> runListGroups(ctx.getSource())))
+                .then(literal("rename")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .then(argument("name", StringArgumentType.greedyString())
+                                        .executes(ctx -> runRenameGroup(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                StringArgumentType.getString(ctx, "name"))))))
+                .then(literal("zone")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .then(literal("current")
+                                        .executes(ctx -> runSetGroupZone(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"), "current")))
+                                .then(argument("zone", StringArgumentType.greedyString())
+                                        .suggests(suggestZoneTargets())
+                                        .executes(ctx -> runSetGroupZone(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                StringArgumentType.getString(ctx, "zone"))))))
+                .then(literal("area")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .then(literal("current")
+                                        .executes(ctx -> runSetGroupZone(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"), "current")))
+                                .then(argument("zone", StringArgumentType.greedyString())
+                                        .suggests(suggestZoneTargets())
+                                        .executes(ctx -> runSetGroupZone(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                StringArgumentType.getString(ctx, "zone"))))))
+                .then(literal("mode")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .then(argument("mode", StringArgumentType.word())
+                                        .suggests(suggestLoadModes())
+                                        .executes(ctx -> runSetGroupMode(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                StringArgumentType.getString(ctx, "mode"))))))
+                .then(literal("radius")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .then(argument("radius", DoubleArgumentType.doubleArg(0.5))
+                                        .executes(ctx -> runSetGroupRadius(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                DoubleArgumentType.getDouble(ctx, "radius"))))))
+                .then(literal("skipahead")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .executes(ctx -> runSetGroupSkipAhead(ctx.getSource(),
+                                        IntegerArgumentType.getInteger(ctx, "index"), "toggle"))
+                                .then(argument("state", StringArgumentType.word())
+                                        .suggests(suggestToggleStates())
+                                        .executes(ctx -> runSetGroupSkipAhead(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                StringArgumentType.getString(ctx, "state"))))))
+                .then(literal("enable")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .executes(ctx -> runSetGroupEnabled(ctx.getSource(),
+                                        IntegerArgumentType.getInteger(ctx, "index"), true))))
+                .then(literal("disable")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .executes(ctx -> runSetGroupEnabled(ctx.getSource(),
+                                        IntegerArgumentType.getInteger(ctx, "index"), false))))
+                .then(literal("colormode")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .then(argument("mode", StringArgumentType.word())
+                                        .suggests(suggestColorModes())
+                                        .executes(ctx -> runSetGroupColorMode(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                StringArgumentType.getString(ctx, "mode"))))))
+                .then(literal("color")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .then(argument("hex", StringArgumentType.word())
+                                        .suggests(suggestHexColors())
+                                        .executes(ctx -> runSetGroupStaticColor(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                                StringArgumentType.getString(ctx, "hex"))))))
+                .then(literal("gradient")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .then(argument("start", StringArgumentType.word())
+                                        .suggests(suggestHexColors())
+                                        .then(argument("end", StringArgumentType.word())
+                                                .suggests(suggestHexColors())
+                                                .executes(ctx -> runSetGroupGradient(ctx.getSource(),
+                                                        IntegerArgumentType.getInteger(ctx, "index"),
+                                                        StringArgumentType.getString(ctx, "start"),
+                                                        StringArgumentType.getString(ctx, "end")))))))
+                .then(literal("delete")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestAllGroupIndices())
+                                .executes(ctx -> runDeleteGroup(ctx.getSource(),
+                                        IntegerArgumentType.getInteger(ctx, "index"), false))
+                                .then(literal("confirm")
+                                        .executes(ctx -> runDeleteGroup(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"), true)))));
     }
 
     // --- tab-complete suggestion providers ----------------------------------------------------
 
     /**
-     * Suggests numeric indices into the first active group's waypoints, with
-     * the waypoint's short label as the Brigadier tooltip. Mirrors what the
-     * user would see in {@code /wp list}, so the completion is self-documenting
-     * -- they don't have to run list, pick an index, and then re-type.
+     * Suggests zero-based numeric indices into the first active group's waypoints.
+     * Tooltips include the matching display label so the split between command
+     * indices and {@code /wp skipto} labels is visible while tab-completing.
      */
     private SuggestionProvider<FabricClientCommandSource> suggestActiveGroupIndices() {
         return (ctx, builder) -> {
             WaypointGroup g = manager.firstActiveGroup();
             if (g == null) return builder.buildFuture();
-            return CommandHelpers.suggestIndexed(builder, g.size(), i -> describeWaypoint(g.get(i)));
+            return CommandHelpers.suggestIndexed(builder, g.size(),
+                    i -> activeGroupIndexTooltip(g, i));
         };
     }
 
-    /*[[AI-FN-DOC
-Function:
-suggestSkipTargets
-Purpose:
-Suggest displayed waypoint labels for the /wp skipto command.
-Why this exists:
-skipto uses user-facing numbering such as 2 and 2.2 instead of raw zero-based list indices, so tab completion needs a custom suggestion source.
-When to use:
-Use only as the Brigadier suggestion provider for the skipto target argument.
-Inputs:
-ctx is Brigadier command context; builder contains the partially typed target text and collects suggestions.
-Outputs:
-Returns a future Suggestions object from builder.buildFuture().
-Side effects:
-Reads the first active group from the manager but does not mutate route state.
-Failure modes:
-If no active group exists, returns no suggestions. Null waypoint names are handled by describeWaypoint.
-Important invariants:
-Suggestions must omit the leading # from display labels because the command syntax is /wp skipto 2.2, not /wp skipto #2.2.
-Internal logic:
-Fetch first active group, filter each displayed label by the typed prefix, and suggest matching labels with waypoint coordinate tooltips.
-Pseudocode:
-get first active group
-if absent, return empty suggestions
-prefix = builder remaining text lower-cased
-for each waypoint index:
-  label = display label without leading #
-  if label starts with prefix, suggest it with waypoint description
-return built suggestions future
-Implementation notes:
-Using the display label keeps tab completion aligned with the route editor and label renderer.
-AI self-check:
-Confirm main and subwaypoint labels are both suggested and no raw zero-based indices leak into the command UI.
-]]*/
     private SuggestionProvider<FabricClientCommandSource> suggestSkipTargets() {
         return (ctx, builder) -> {
-            WaypointGroup g = manager.firstActiveGroup();
-            if (g == null) return builder.buildFuture();
-            String prefix = builder.getRemainingLowerCase();
-            for (int i = 0; i < g.size(); i++) {
-                String label = skipTargetLabel(g, i);
-                if (label.toLowerCase(Locale.ROOT).startsWith(prefix)) {
-                    builder.suggest(label, Component.literal(describeWaypoint(g.get(i))));
-                }
-            }
+            suggestSkipTargets(manager.activeGroups(), builder);
             return builder.buildFuture();
         };
+    }
+
+    static int suggestSkipTargets(List<WaypointGroup> groups, SuggestionsBuilder builder) {
+        String prefix = builder.getRemainingLowerCase();
+        Set<String> suggested = new LinkedHashSet<>();
+        for (WaypointGroup group : groups) {
+            if (group == null) continue;
+            for (int i = 0; i < group.size(); i++) {
+                String label = skipTargetLabel(group, i);
+                if (label.toLowerCase(Locale.ROOT).startsWith(prefix)) {
+                    if (suggested.add(label)) {
+                        builder.suggest(label, Component.literal(describeWaypoint(group.get(i))));
+                    }
+                }
+            }
+        }
+        return suggested.size();
     }
 
     /**
@@ -325,8 +539,9 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
                 String s = Integer.toString(i);
                 if (!s.startsWith(prefix)) continue;
                 String tip = i == size
-                        ? "append (after " + (size - 1) + ")"
-                        : "before " + describeWaypoint(g.get(i));
+                        ? "0-based slot " + i + " appends"
+                        : "0-based slot " + i + ", before #"
+                                + g.displayIndexLabel(i) + " " + describeWaypoint(g.get(i));
                 builder.suggest(i, Component.literal(tip));
             }
             return builder.buildFuture();
@@ -334,7 +549,7 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
     }
 
     /**
-     * Suggests numeric indices into the full group list, with each group's
+     * Suggests zero-based numeric indices into the full group list, with each group's
      * name + point count as a tooltip so an accidental {@code delete 4} is
      * harder to mis-fire.
      */
@@ -342,7 +557,8 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
         return (ctx, builder) -> {
             List<WaypointGroup> all = manager.allGroupsList();
             return CommandHelpers.suggestIndexed(builder, all.size(),
-                    i -> all.get(i).name() + " (" + all.get(i).size() + " pts)");
+                    i -> "index " + i + ": " + all.get(i).name()
+                            + " (" + all.get(i).size() + " pts)");
         };
     }
 
@@ -420,9 +636,63 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
         };
     }
 
+    private SuggestionProvider<FabricClientCommandSource> suggestLoadModes() {
+        return (ctx, builder) -> {
+            CommandHelpers.suggestText(builder, "sequence", "show previous/current/next route points");
+            CommandHelpers.suggestText(builder, "static", "show every waypoint at once");
+            return builder.buildFuture();
+        };
+    }
+
+    private SuggestionProvider<FabricClientCommandSource> suggestColorModes() {
+        return (ctx, builder) -> {
+            CommandHelpers.suggestText(builder, "gradient", "auto color waypoints between endpoints");
+            CommandHelpers.suggestText(builder, "manual", "keep per-waypoint colors");
+            CommandHelpers.suggestText(builder, "one", "use one route color");
+            return builder.buildFuture();
+        };
+    }
+
+    private SuggestionProvider<FabricClientCommandSource> suggestToggleStates() {
+        return (ctx, builder) -> {
+            CommandHelpers.suggestText(builder, "toggle", "flip current state");
+            CommandHelpers.suggestText(builder, "on", "turn on");
+            CommandHelpers.suggestText(builder, "off", "turn off");
+            return builder.buildFuture();
+        };
+    }
+
+    private SuggestionProvider<FabricClientCommandSource> suggestZoneTargets() {
+        return (ctx, builder) -> {
+            Zone current = manager.currentZone();
+            if (current != null) {
+                CommandHelpers.suggestText(builder, "current", "current area: " + current.displayName());
+                CommandHelpers.suggestText(builder, current.id(), current.displayName());
+            }
+            for (String zoneId : manager.knownZoneIds()) {
+                CommandHelpers.suggestText(builder, zoneId, Zone.fromId(zoneId).displayName());
+            }
+            return builder.buildFuture();
+        };
+    }
+
+    private SuggestionProvider<FabricClientCommandSource> suggestHexColors() {
+        return (ctx, builder) -> {
+            CommandHelpers.suggestText(builder, "4FE05A", "Waypointer green");
+            CommandHelpers.suggestText(builder, "00BFFF", "cool route start");
+            CommandHelpers.suggestText(builder, "FF3040", "hot route end");
+            return builder.buildFuture();
+        };
+    }
+
     private static String describeWaypoint(Waypoint w) {
         String coords = w.x() + ", " + w.y() + ", " + w.z();
         return w.hasName() ? w.name() + "  " + coords : coords;
+    }
+
+    static String activeGroupIndexTooltip(WaypointGroup group, int index) {
+        return "index " + index + " (" + group.displayIndexLabel(index) + ") "
+                + describeWaypoint(group.get(index));
     }
 
     private enum Axis { X, Y, Z }
@@ -442,6 +712,17 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
         Minecraft.getInstance().execute(() -> DebugInspectScreen.open(null, manager, config));
     }
 
+    private int runToggleEditModeCommand(CommandContext<FabricClientCommandSource> ctx) {
+        FabricClientCommandSource src = ctx.getSource();
+        if (manager == null || config == null) {
+            error(src, "Edit mode is unavailable until Waypointer has loaded routes.");
+            return 0;
+        }
+
+        WaypointRepositionMode.toggleEditMode(manager, config);
+        return 1;
+    }
+
     /**
      * Target left-column width for help rows. Chosen to match the longest usage
      * we print ("/wp export [names|nonames]" at 26 chars) plus one space of
@@ -450,8 +731,6 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
      * aligns the descriptions because spaces render at a fixed narrow pixel
      * width and the usage lines are all ASCII.
      */
-    private static final int HELP_USAGE_COLUMN = 27;
-
     /**
      * Paginated help is organized by topic: each {@link HelpSection} is one
      * page. Keeping sections small (4-5 rows) means every page fits on screen
@@ -466,31 +745,127 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
     private static final List<HelpSection> HELP_SECTIONS = List.of(
             new HelpSection("basics", "Basics",
                     List.of(
-                            new HelpRow("",                         "open the editor GUI"),
-                            new HelpRow(" gui",                     "open the editor GUI"),
-                            new HelpRow(" list",                    "list active groups and waypoints"),
-                            new HelpRow(" help [page|section]",     "show this help; page number or section name"))),
-            new HelpSection("editing", "Waypoint editing",
+                            new HelpRow("", "Open the Waypointer editor.", "", "gui"),
+                            new HelpRow(" gui", "Open the Waypointer editor.", "gui"),
+                            new HelpRow(" list", "List active groups and their waypoints.", "list"),
+                            new HelpRow(" help [all|section|command]", "Show all help or jump to one topic.",
+                                    "help", "help subway"))),
+            new HelpSection("route", "Route editing",
                     List.of(
-                            new HelpRow(" add [name]",              "add waypoint at your position"),
-                            new HelpRow(" add at <x> <y> <z>",      "add waypoint at the given coordinates"),
-                            new HelpRow(" insert [index] [name]",  "insert at index, your position"),
-                            new HelpRow(" remove <index>",          "remove waypoint by index"),
-                            new HelpRow(" skipto <n[.sub]>",        "jump to displayed waypoint number"),
-                            new HelpRow(" clear [confirm]",         "clear all groups in current zone"))),
+                            new HelpRow(" add [name]", "Add a waypoint at your current block position.",
+                                    "add", "add Fairy Soul"),
+                            new HelpRow(" add at <x> <y> <z> [name]", "Add a waypoint at exact block coordinates.",
+                                    "add at 12 70 -4", "add at 12 70 -4 Lever"),
+                            new HelpRow(" insert <slot> [name]", "Insert a waypoint at your position before a 0-based slot.",
+                                    "insert 2", "insert 2 Secret"),
+                            new HelpRow(" insert <slot> at <x> <y> <z> [name]", "Insert a waypoint at exact coordinates.",
+                                    "insert 2 at 12 70 -4", "insert 2 at 12 70 -4 Chest"),
+                            new HelpRow(" remove <index>", "Remove a waypoint by 0-based index.",
+                                    "remove 3"),
+                            new HelpRow(" move <index> <slot>", "Reorder a waypoint or main-waypoint block.",
+                                    "move 4 2"),
+                            new HelpRow(" skipto <n[.sub]>", "Jump active routes to a displayed waypoint label.",
+                                    "skipto 3", "skipto 3.2"),
+                            new HelpRow(" reset", "Reset the active route to its first waypoint.",
+                                    "reset"),
+                            new HelpRow(" mode <static|sequence>", "Set active route visibility mode.",
+                                    "mode sequence", "mode static"),
+                            new HelpRow(" radius <blocks>", "Set active route reach radius.",
+                                    "radius 4.5"),
+                            new HelpRow(" editmode", "Toggle in-world edit mode.",
+                                    "editmode"),
+                            new HelpRow(" edit mode", "Toggle in-world edit mode.",
+                                    "edit mode"),
+                            new HelpRow(" clear [confirm]", "Delete all groups in the current area after confirmation.",
+                                    "clear", "clear confirm"))),
+            new HelpSection("subway", "Subwaypoints & waypoint flags",
+                    List.of(
+                            new HelpRow(" sub [index]", "Toggle the current or indexed waypoint as a subwaypoint.",
+                                    "sub", "sub 4"),
+                            new HelpRow(" tiny [index]", "Toggle tiny 1/16-block rendering on a subwaypoint.",
+                                    "tiny", "tiny 4"),
+                            new HelpRow(" filled [index]", "Toggle filled-box rendering on a subwaypoint.",
+                                    "filled", "filled 4"),
+                            new HelpRow(" hap [index]", "Hide a subwaypoint after its parent waypoint is reached.",
+                                    "hap", "hap 4"),
+                            new HelpRow(" sts [index]", "Toggle dungeon stand-to-skip on the current or indexed waypoint.",
+                                    "sts", "sts 4"),
+                            new HelpRow(" its [index]", "Toggle dungeon interact-to-skip on the current or indexed waypoint.",
+                                    "its", "its 4"),
+                            new HelpRow(" los [index]", "Render the current or indexed waypoint only when line-of-sight passes.",
+                                    "los", "los 4"))),
+            new HelpSection("waypoint", "Waypoint details",
+                    List.of(
+                            new HelpRow(" waypoint move <index> here", "Move a waypoint to your current block position.",
+                                    "waypoint move 3 here"),
+                            new HelpRow(" waypoint move <index> at <x> <y> <z>", "Move a waypoint to exact block coordinates.",
+                                    "waypoint move 3 at 12 70 -4"),
+                            new HelpRow(" waypoint rename <index> <name>", "Rename one waypoint.",
+                                    "waypoint rename 3 Fairy Soul"),
+                            new HelpRow(" waypoint color <index> <hex>", "Set and lock one waypoint color.",
+                                    "waypoint color 3 58C878"),
+                            new HelpRow(" waypoint radius <index> <blocks>", "Override one waypoint reach radius.",
+                                    "waypoint radius 3 1.5"),
+                            new HelpRow(" waypoint sub <index>", "Toggle an indexed waypoint as a subwaypoint.",
+                                    "waypoint sub 4"))),
+            new HelpSection("groups", "Groups & areas",
+                    List.of(
+                            new HelpRow(" group create <name>", "Create a new group in the current area.",
+                                    "group create Foraging Route"),
+                            new HelpRow(" group list", "List every group across all areas.",
+                                    "group list"),
+                            new HelpRow(" group rename <index> <name>", "Rename a group by group-list index.",
+                                    "group rename 1 Park Route"),
+                            new HelpRow(" group zone <index> <zone|current>", "Attach a group to a zone or the current area.",
+                                    "group zone 1 current", "group zone 1 the_park"),
+                            new HelpRow(" group area <index> <zone|current>", "Alias for attaching a group to an area.",
+                                    "group area 1 current"),
+                            new HelpRow(" area <group> <zone|current>", "Short form for attaching a group to an area.",
+                                    "area 1 current"),
+                            new HelpRow(" group mode <index> <static|sequence>", "Set one group's visibility mode.",
+                                    "group mode 1 static"),
+                            new HelpRow(" group radius <index> <blocks>", "Set one group's reach radius.",
+                                    "group radius 1 4.5"),
+                            new HelpRow(" group skipahead <index> [on|off|toggle]", "Control skip-ahead for one group.",
+                                    "group skipahead 1 off"),
+                            new HelpRow(" group enable <index>", "Enable one group.",
+                                    "group enable 1"),
+                            new HelpRow(" group disable <index>", "Disable one group.",
+                                    "group disable 1"),
+                            new HelpRow(" group colormode <index> <one|gradient|manual>", "Set one group's color mode.",
+                                    "group colormode 1 gradient"),
+                            new HelpRow(" group color <index> <hex>", "Set one group's single route color.",
+                                    "group color 1 4FE05A"),
+                            new HelpRow(" group gradient <index> <start> <end>", "Set one group's gradient endpoints.",
+                                    "group gradient 1 00BFFF FF3040"),
+                            new HelpRow(" group delete <index> [confirm]", "Delete a group by group-list index after confirmation.",
+                                    "group delete 1", "group delete 1 confirm"))),
             new HelpSection("sharing", "Sharing (import/export)",
                     List.of(
-                            new HelpRow(" export [names|nonames]",  "copy route to clipboard as a codec"),
-                            new HelpRow(" import [payload]",        "import from clipboard or inline payload"),
-                            new HelpRow(" importfile <path>",       "import a JSON file (e.g. coleweight)"),
-                            new HelpRow(" importchat <handle>",     "import from a chat pill"))),
-            new HelpSection("groups", "Groups & debug",
+                            new HelpRow(" export [names|nonames]", "Copy current-area routes to the clipboard as a codec.",
+                                    "export", "export names"),
+                            new HelpRow(" import [payload]", "Import from the clipboard or an inline payload.",
+                                    "import", "import WP:..."),
+                            new HelpRow(" importfile <path>", "Import a waypoint JSON file from disk.",
+                                    "importfile C:\\routes\\waypoints.json"),
+                            new HelpRow(" importchat <handle>", "Import from a cached chat pill.",
+                                    "importchat A1b2"))),
+            new HelpSection("chat", "Temporary & chat waypoints",
                     List.of(
-                            new HelpRow(" group create <name>",     "make a new group in the current zone"),
-                            new HelpRow(" group list",              "list every group across zones"),
-                            new HelpRow(" group delete <index>",    "delete a group by list index"),
-                            new HelpRow(" blacklist",               "show chat waypoint sender blacklist"),
-                            new HelpRow(" debug",                   "copy performance stats or inspect a codec")))
+                            new HelpRow(" addtemp at <x> <y> <z> [source]", "Add a temporary waypoint at coordinates.",
+                                    "addtemp at 12 70 -4 Party"),
+                            new HelpRow(" chattemp <x> <y> <z> <sender> <source>", "Handle a detected chat-coordinate click.",
+                                    "chattemp 12 70 -4 Babbur party"),
+                            new HelpRow(" blacklist", "Show the chat waypoint sender blacklist.",
+                                    "blacklist"),
+                            new HelpRow(" blacklist add <name>", "Block detected coordinates from a sender.",
+                                    "blacklist add Babbur"),
+                            new HelpRow(" blacklist remove <name>", "Allow detected coordinates from a sender again.",
+                                    "blacklist remove Babbur"))),
+            new HelpSection("debug", "Debug",
+                    List.of(
+                            new HelpRow(" debug", "Open the Waypointer debug inspector.",
+                                    "debug")))
     );
 
     /**
@@ -500,27 +875,34 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
      *               section id / title substring.
      */
     private int runHelp(FabricClientCommandSource src, String root, String target) {
+        String prefix = "/" + root;
+        if (target != null && "all".equalsIgnoreCase(target.trim())) {
+            info(src, Component.literal("Waypointer help")
+                    .withStyle(ChatFormatting.AQUA)
+                    .append(Component.literal("  hover commands for details")
+                            .withStyle(ChatFormatting.DARK_GRAY)));
+            for (HelpSection section : HELP_SECTIONS) {
+                renderHelpSection(src, prefix, section);
+            }
+            renderHelpFooter(src, root, -1);
+            return 1;
+        }
+
         int pageIdx = resolveHelpPage(target);
         if (pageIdx < 0) {
-            error(src, "Unknown help section: '" + target + "'. Try /" + root + " help for page 1.");
+            error(src, "Unknown help section: '" + target + "'. Try /" + root + " help.");
             return 0;
         }
 
         HelpSection section = HELP_SECTIONS.get(pageIdx);
-        int totalPages = HELP_SECTIONS.size();
-        String prefix = "/" + root;
 
-        info(src, Component.literal("Waypointer help -- ")
+        info(src, Component.literal("Waypointer help: ")
                 .withStyle(ChatFormatting.AQUA)
-                .append(Component.literal(section.title()).withStyle(ChatFormatting.WHITE))
-                .append(Component.literal("  (page " + (pageIdx + 1) + "/" + totalPages + ")")
-                        .withStyle(ChatFormatting.DARK_GRAY)));
+                .append(Component.literal(section.title()).withStyle(ChatFormatting.WHITE)));
 
-        for (HelpRow row : section.rows()) {
-            helpLine(src, prefix + row.usage(), row.description());
-        }
+        renderHelpSection(src, prefix, section);
 
-        renderHelpFooter(src, root, pageIdx, totalPages);
+        renderHelpFooter(src, root, pageIdx);
         return 1;
     }
 
@@ -528,13 +910,16 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
      * Resolves a user-supplied help target to a zero-based section index, or
      * -1 for an unrecognized target. {@code null} (no arg) is page 1. Digits
      * map to the 1-based page number. Any other word is matched against
-     * section ids and title prefixes, case-insensitively, so both
-     * {@code /wp help groups} and {@code /wp help group} land on the same
-     * page.
+     * section ids, title prefixes, and the first word in each help row,
+     * case-insensitively, so both {@code /wp help groups} and
+     * {@code /wp help import} land on useful pages.
      */
     private static int resolveHelpPage(String target) {
         if (target == null || target.isBlank()) return 0;
         String t = target.trim().toLowerCase(Locale.ROOT);
+        if ("editing".equals(t)) return 1;
+        if ("flags".equals(t)) return 2;
+        if ("areas".equals(t)) return 4;
 
         if (t.chars().allMatch(Character::isDigit)) {
             int page = Integer.parseInt(t) - 1;
@@ -544,6 +929,12 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
         for (int i = 0; i < HELP_SECTIONS.size(); i++) {
             HelpSection s = HELP_SECTIONS.get(i);
             if (s.id().equals(t) || s.title().toLowerCase(Locale.ROOT).startsWith(t)) return i;
+            for (HelpRow row : s.rows()) {
+                String usage = row.usage().trim().toLowerCase(Locale.ROOT);
+                int firstSpace = usage.indexOf(' ');
+                String commandWord = firstSpace < 0 ? usage : usage.substring(0, firstSpace);
+                if (commandWord.equals(t)) return i;
+            }
         }
         return -1;
     }
@@ -555,36 +946,18 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
      * boundaries) render dim and stay unclickable -- handing them a
      * RunCommand to an out-of-range page would just print an error.
      */
-    private void renderHelpFooter(FabricClientCommandSource src, String root,
-                                  int pageIdx, int totalPages) {
+    private void renderHelpSection(FabricClientCommandSource src, String prefix, HelpSection section) {
+        src.sendFeedback(WaypointerChatFeedback.suppress(
+                Component.literal(section.title()).withStyle(ChatFormatting.YELLOW)));
+        for (HelpRow row : section.rows()) {
+            helpLine(src, prefix, row);
+        }
+    }
+
+    private void renderHelpFooter(FabricClientCommandSource src, String root, int pageIdx) {
         MutableComponent footer = Component.empty();
 
-        boolean hasPrev = pageIdx > 0;
-        MutableComponent prev = Component.literal("<< prev");
-        prev.withStyle(hasPrev
-                ? Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
-                        .withClickEvent(new ClickEvent.RunCommand("/" + root + " help " + pageIdx))
-                        .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
-                                Component.literal("Page " + pageIdx + "/" + totalPages)))
-                : Style.EMPTY.withColor(ChatFormatting.DARK_GRAY));
-        footer.append(prev);
-
-        footer.append(Component.literal("  .  ").withStyle(ChatFormatting.DARK_GRAY));
-
-        boolean hasNext = pageIdx + 1 < totalPages;
-        MutableComponent next = Component.literal("next >>");
-        next.withStyle(hasNext
-                ? Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
-                        .withClickEvent(new ClickEvent.RunCommand("/" + root + " help " + (pageIdx + 2)))
-                        .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
-                                Component.literal("Page " + (pageIdx + 2) + "/" + totalPages)))
-                : Style.EMPTY.withColor(ChatFormatting.DARK_GRAY));
-        footer.append(next);
-
-        footer.append(Component.literal("    sections: ").withStyle(ChatFormatting.DARK_GRAY));
-        // Append jump links for every section so users can skip directly. We
-        // render the current page's link dim (unclickable) to make the
-        // "you are here" state visible without a separate marker.
+        footer.append(Component.literal("sections: ").withStyle(ChatFormatting.DARK_GRAY));
         for (int i = 0; i < HELP_SECTIONS.size(); i++) {
             HelpSection s = HELP_SECTIONS.get(i);
             boolean current = i == pageIdx;
@@ -596,10 +969,17 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
                             .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
                                     Component.literal(s.title()))));
             footer.append(jump);
-            if (i < HELP_SECTIONS.size() - 1) {
-                footer.append(Component.literal(" ").withStyle(ChatFormatting.DARK_GRAY));
-            }
+            footer.append(Component.literal(" ").withStyle(ChatFormatting.DARK_GRAY));
         }
+
+        MutableComponent all = Component.literal("all");
+        all.withStyle(pageIdx < 0
+                ? Style.EMPTY.withColor(ChatFormatting.GRAY)
+                : Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
+                        .withClickEvent(new ClickEvent.RunCommand("/" + root + " help all"))
+                        .withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
+                                Component.literal("Show every command"))));
+        footer.append(all);
         src.sendFeedback(WaypointerChatFeedback.suppress(footer));
     }
 
@@ -612,6 +992,7 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
     private SuggestionProvider<FabricClientCommandSource> suggestHelpTargets() {
         return (ctx, builder) -> {
             String prefix = builder.getRemainingLowerCase();
+            CommandHelpers.suggestText(builder, "all", "show every command");
             for (int i = 0; i < HELP_SECTIONS.size(); i++) {
                 String n = Integer.toString(i + 1);
                 if (n.startsWith(prefix)) {
@@ -623,26 +1004,83 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
                     builder.suggest(s.id(), Component.literal(s.title()));
                 }
             }
+            Set<String> commandWords = new LinkedHashSet<>();
+            for (HelpSection s : HELP_SECTIONS) {
+                for (HelpRow row : s.rows()) {
+                    String commandWord = helpCommandWord(row.usage());
+                    if (!commandWord.isEmpty() && commandWords.add(commandWord)
+                            && commandWord.startsWith(prefix)) {
+                        builder.suggest(commandWord, Component.literal(s.title()));
+                    }
+                }
+            }
+            CommandHelpers.suggestText(builder, "all", "show every command");
             return builder.buildFuture();
         };
     }
 
-    /**
-     * Emit a single help row with the usage padded to {@link #HELP_USAGE_COLUMN}
-     * so every {@code " -- description"} separator starts at the same visual
-     * column. If a usage ever exceeds the column width we let it overflow and
-     * still print the description -- truncating usage would be worse than
-     * mildly misaligned output.
-     */
-    private static void helpLine(FabricClientCommandSource src, String usage, String description) {
-        StringBuilder sb = new StringBuilder(usage);
-        while (sb.length() < HELP_USAGE_COLUMN) sb.append(' ');
-        sb.append(" -- ").append(description);
-        info(src, sb.toString());
+    private static void helpLine(FabricClientCommandSource src, String prefix, HelpRow row) {
+        MutableComponent line = highlightedCommand(prefix, row.usage());
+        line.withStyle(line.getStyle().withHoverEvent(new net.minecraft.network.chat.HoverEvent.ShowText(
+                helpHover(prefix, row))));
+        src.sendFeedback(WaypointerChatFeedback.suppress(line));
+    }
+
+    private static Component helpHover(String prefix, HelpRow row) {
+        MutableComponent hover = Component.empty();
+        hover.append(Component.literal(row.description()).withStyle(ChatFormatting.YELLOW));
+        hover.append(Component.literal("\n\nUsage:\n").withStyle(ChatFormatting.AQUA));
+        hover.append(highlightedCommand(prefix, row.usage()));
+        if (!row.examples().isEmpty()) {
+            hover.append(Component.literal("\n\nExample(s):").withStyle(ChatFormatting.GREEN));
+            for (String example : row.examples()) {
+                hover.append(Component.literal("\n").withStyle(ChatFormatting.GRAY));
+                hover.append(highlightedCommand(prefix, example));
+            }
+        }
+        return hover;
+    }
+
+    private static MutableComponent highlightedCommand(String prefix, String usage) {
+        MutableComponent out = Component.literal(prefix)
+                .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA));
+        String trimmed = usage == null ? "" : usage.trim();
+        if (trimmed.isEmpty()) return out;
+        for (String token : trimmed.split(" ")) {
+            if (token.isEmpty()) continue;
+            out.append(Component.literal(" ").withStyle(ChatFormatting.DARK_GRAY));
+            out.append(highlightedToken(token));
+        }
+        return out;
+    }
+
+    private static MutableComponent highlightedToken(String token) {
+        ChatFormatting color;
+        if (token.startsWith("<") && token.endsWith(">")) {
+            color = ChatFormatting.GREEN;
+        } else if (token.startsWith("[") && token.endsWith("]")) {
+            color = ChatFormatting.GRAY;
+        } else if (token.contains("|")) {
+            color = ChatFormatting.LIGHT_PURPLE;
+        } else {
+            color = ChatFormatting.WHITE;
+        }
+        return Component.literal(token).withStyle(color);
+    }
+
+    private static String helpCommandWord(String usage) {
+        String trimmed = usage == null ? "" : usage.trim().toLowerCase(Locale.ROOT);
+        if (trimmed.isEmpty()) return "";
+        int firstSpace = trimmed.indexOf(' ');
+        return firstSpace < 0 ? trimmed : trimmed.substring(0, firstSpace);
     }
 
     /** One row in a help section: the usage shape (minus the root prefix) and what it does. */
-    private record HelpRow(String usage, String description) {}
+    private record HelpRow(String usage, String description, List<String> examples) {
+        HelpRow(String usage, String description, String... examples) {
+            this(usage, description, List.of(examples));
+        }
+    }
 
     /**
      * One page of help. {@code id} is the short lookup key ({@code "groups"}),
@@ -659,9 +1097,14 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
             return 0;
         }
         for (WaypointGroup g : active) {
+            String currentIndexText = Integer.toString(g.currentIndex());
+            if (g.currentIndex() >= 0 && g.currentIndex() < g.size()) {
+                currentIndexText += " (#" + g.displayIndexLabel(g.currentIndex()) + ")";
+            }
             info(src, Component.literal("Group: ")
                     .append(Component.literal(g.name()).withStyle(ChatFormatting.AQUA))
-                    .append(Component.literal(" (" + g.size() + " points, @" + g.currentIndex() + ")")
+                    .append(Component.literal(" (" + g.size()
+                            + " points, current index " + currentIndexText + ")")
                             .withStyle(ChatFormatting.GRAY)));
             int shown = Math.min(g.size(), 16);
             for (int i = 0; i < shown; i++) {
@@ -669,7 +1112,7 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
                 ChatFormatting color = i < g.currentIndex() ? ChatFormatting.DARK_GRAY
                         : i == g.currentIndex() ? ChatFormatting.YELLOW
                         : ChatFormatting.WHITE;
-                info(src, Component.literal("  [" + i + "] ")
+                info(src, Component.literal("  [#" + g.displayIndexLabel(i) + " / index " + i + "] ")
                         .append(Component.literal(w.x() + ", " + w.y() + ", " + w.z()).withStyle(color))
                         .append(w.hasName() ? Component.literal(" " + w.name()).withStyle(ChatFormatting.GRAY)
                                 : Component.empty()));
@@ -679,100 +1122,47 @@ Confirm main and subwaypoint labels are both suggested and no raw zero-based ind
         return active.size();
     }
 
-    /*[[AI-FN-DOC
-Function:
-runSkipTo
-Purpose:
-Handle /wp skipto by setting the first active group's current target to a displayed waypoint label.
-Why this exists:
-Players asked for command-based route jumps, and the UI displays one-based decimal labels rather than raw list indices.
-When to use:
-Use as the command executor for /wp skipto <target>. Do not use for automatic proximity advancement or editor insert/remove actions.
-Inputs:
-src is the Fabric client command source for feedback; target is a user-entered label such as 2 or 2.2.
-Outputs:
-Returns 1 when the route target changes, 0 when validation fails.
-Side effects:
-Mutates the first active group's current target, clears its proximity suppression through WaypointGroup, fires manager data-changed notification, and sends chat feedback.
-Failure modes:
-Fails with an error when there is no active group, the target syntax is invalid, the main waypoint is out of range, or the child waypoint is out of range.
-Important invariants:
-Target labels are one-based. A decimal child component addresses subwaypoints under the selected main waypoint, also one-based.
-Internal logic:
-Validate active group, resolve the displayed target into a zero-based route index, set that exact current target, notify the manager, and report the chosen label.
-Pseudocode:
-get first active group
-if absent, error and return 0
-parse target with resolveSkipTargetIndex
-if parse result has error, send error and return 0
-set group current target index to parsed index
-fire data changed
-send success with display label and coordinates
-return 1
-Implementation notes:
-The command deliberately targets firstActiveGroup to match list/remove/insert command behavior already established in this class.
-AI self-check:
-Confirm /wp skipto 2 and /wp skipto 2.2 both address displayed labels, not zero-based indices.
-]]*/
     private int runSkipTo(FabricClientCommandSource src, String target) {
-        WaypointGroup group = manager.firstActiveGroup();
-        if (group == null) {
+        List<WaypointGroup> activeGroups = manager.activeGroups();
+        if (activeGroups.isEmpty()) {
             error(src, "No active group to skip in");
             return 0;
         }
-        SkipTarget resolved = resolveSkipTargetIndex(group, target);
-        if (resolved.error() != null) {
-            error(src, resolved.error());
+        SkipToOutcome outcome = skipActiveGroupsToTarget(activeGroups, target);
+        if (outcome.moved() == 0) {
+            error(src, outcome.error() == null
+                    ? "No active route has target '" + target + "'."
+                    : outcome.error());
             return 0;
         }
-        group.setCurrentTargetIndex(resolved.index());
         manager.fireDataChanged();
 
-        Waypoint waypoint = group.get(resolved.index());
-        success(src, "Skipped to " + skipTargetLabel(group, resolved.index())
-                + " (" + waypoint.x() + ", " + waypoint.y() + ", " + waypoint.z() + ")");
-        return 1;
+        success(src, "Skipped " + outcome.moved() + " active route"
+                + (outcome.moved() == 1 ? "" : "s")
+                + " to " + outcome.firstMovedLabel());
+        return outcome.moved();
     }
 
-    /*[[AI-FN-DOC
-Function:
-resolveSkipTargetIndex
-Purpose:
-Resolve a displayed skip target string into a zero-based waypoint list index.
-Why this exists:
-The command accepts labels like 2.2 that are meaningful to users but do not directly match internal storage indices.
-When to use:
-Use before changing route progress from /wp skipto. Do not use for raw edit commands that intentionally accept zero-based indices.
-Inputs:
-group is the route to search; rawTarget is the command argument and may be null, blank, malformed, or out of range.
-Outputs:
-Returns a SkipTarget record containing either a valid index or a user-facing error string.
-Side effects:
-None.
-Failure modes:
-Malformed numbers, zero/negative ordinals, multiple decimals, missing decimals, out-of-range main waypoints, and out-of-range child waypoints all return explanatory errors.
-Important invariants:
-Main and child ordinals are one-based. Child ordinals count only subwaypoints immediately following the selected main waypoint.
-Internal logic:
-Trim an optional leading #, split on a single decimal, parse positive ordinals, locate the requested main waypoint, then locate the requested child when present.
-Pseudocode:
-normalize raw target
-if empty, return usage error
-remove leading # if present
-split by dot preserving empty parts
-if not one or two parts, return syntax error
-parse main ordinal as positive int
-find matching main index
-if no child part, return main index
-parse child ordinal as positive int
-scan children after main until next main
-if matching child found, return child index
-otherwise return out-of-range child error
-Implementation notes:
-Accepting #2.2 costs nothing and makes copy/paste from labels forgiving, but suggestions still emit plain 2.2.
-AI self-check:
-Verify 2.2 maps to the second subwaypoint under main waypoint two and 2 maps to main waypoint two.
-]]*/
+    static SkipToOutcome skipActiveGroupsToTarget(List<WaypointGroup> activeGroups, String target) {
+        int moved = 0;
+        String firstError = null;
+        String firstMovedLabel = null;
+        for (WaypointGroup group : activeGroups) {
+            if (group == null || group.isEmpty()) continue;
+            SkipTarget resolved = resolveSkipTargetIndex(group, target);
+            if (resolved.error() != null) {
+                if (firstError == null) firstError = resolved.error();
+                continue;
+            }
+            group.setCurrentTargetIndex(resolved.index());
+            if (firstMovedLabel == null) {
+                firstMovedLabel = skipTargetLabel(group, resolved.index());
+            }
+            moved++;
+        }
+        return new SkipToOutcome(moved, firstMovedLabel, firstError);
+    }
+
     private static SkipTarget resolveSkipTargetIndex(WaypointGroup group, String rawTarget) {
         String target = rawTarget == null ? "" : rawTarget.trim();
         if (target.startsWith("#")) target = target.substring(1);
@@ -815,37 +1205,6 @@ Verify 2.2 maps to the second subwaypoint under main waypoint two and 2 maps to 
         return SkipTarget.index(childIndex);
     }
 
-    /*[[AI-FN-DOC
-Function:
-parsePositiveOrdinal
-Purpose:
-Parse a command label component into a positive waypoint ordinal.
-Why this exists:
-/wp skipto needs consistent validation for both the main and subwaypoint parts of decimal labels.
-When to use:
-Use from skip target parsing for one-based numeric components. Do not use for coordinates or raw zero-based editor indices.
-Inputs:
-raw is a string component that may contain digits or invalid text.
-Outputs:
-Returns the parsed positive integer, or -1 when parsing fails, overflows, or is less than one.
-Side effects:
-None.
-Failure modes:
-NumberFormatException is caught and converted to -1. Integer overflow also returns -1.
-Important invariants:
-Only positive ordinals are valid command labels.
-Internal logic:
-Trim the component, parse it as an int, and reject values below one.
-Pseudocode:
-try parse trimmed raw as integer
-if parsed < 1, return -1
-return parsed
-catch number format, return -1
-Implementation notes:
-Returning a sentinel keeps user-facing error wording centralized in resolveSkipTargetIndex.
-AI self-check:
-Confirm 0, negative values, blanks, and huge values all fail.
-]]*/
     private static int parsePositiveOrdinal(String raw) {
         try {
             int parsed = Integer.parseInt(raw.trim());
@@ -855,39 +1214,6 @@ Confirm 0, negative values, blanks, and huge values all fail.
         }
     }
 
-    /*[[AI-FN-DOC
-Function:
-indexForMainOrdinal
-Purpose:
-Find the zero-based list index for a one-based main waypoint ordinal.
-Why this exists:
-Main waypoint labels skip subwaypoints, so converting a displayed number requires scanning route structure.
-When to use:
-Use while resolving displayed route labels for commands or suggestions. Do not use when a caller already has a raw list index.
-Inputs:
-group is the route to scan; ordinal is a one-based main waypoint number.
-Outputs:
-Returns the matching list index, or -1 when the ordinal does not exist.
-Side effects:
-None.
-Failure modes:
-Empty groups and out-of-range ordinals return -1.
-Important invariants:
-Only non-subwaypoint entries increment the main ordinal counter.
-Internal logic:
-Scan waypoints from start to finish, count main waypoints, and return the index where the count reaches the requested ordinal.
-Pseudocode:
-count = 0
-for each index:
-  if index is subwaypoint, continue
-  increment count
-  if count equals ordinal, return index
-return -1
-Implementation notes:
-This mirrors WaypointGroup.mainOrdinal in reverse without exposing route internals.
-AI self-check:
-Verify subwaypoints do not affect the count.
-]]*/
     private static int indexForMainOrdinal(WaypointGroup group, int ordinal) {
         int count = 0;
         for (int i = 0; i < group.size(); i++) {
@@ -898,39 +1224,6 @@ Verify subwaypoints do not affect the count.
         return -1;
     }
 
-    /*[[AI-FN-DOC
-Function:
-indexForChildOrdinal
-Purpose:
-Find the zero-based list index for a one-based subwaypoint ordinal under a specific main waypoint.
-Why this exists:
-Displayed labels like 2.2 address the second subwaypoint under main waypoint 2, not the second raw index after it in every case.
-When to use:
-Use while resolving decimal skip targets. Do not use for moving subwaypoints, where raw indices are already known.
-Inputs:
-group is the route; mainIndex is the parent main waypoint index; childOrdinal is a one-based child number.
-Outputs:
-Returns the matching subwaypoint index, or -1 when the child does not exist.
-Side effects:
-None.
-Failure modes:
-Invalid parent indices, parent subwaypoints, and out-of-range child ordinals return -1.
-Important invariants:
-Scanning stops at the next main waypoint so children never bleed into the following parent.
-Internal logic:
-Validate parent, scan forward through contiguous subwaypoints, count them, and return the index for the requested ordinal.
-Pseudocode:
-if parent invalid or is subwaypoint, return -1
-count = 0
-for each index after parent while index is subwaypoint:
-  increment count
-  if count equals childOrdinal, return index
-return -1
-Implementation notes:
-The route model stores children contiguously after their parent, so a forward scan is simple and stable.
-AI self-check:
-Confirm 2.1 maps to the first child and 2.2 maps to the second child.
-]]*/
     private static int indexForChildOrdinal(WaypointGroup group, int mainIndex, int childOrdinal) {
         if (mainIndex < 0 || mainIndex >= group.size() || group.isSubwaypoint(mainIndex)) {
             return -1;
@@ -943,37 +1236,6 @@ Confirm 2.1 maps to the first child and 2.2 maps to the second child.
         return -1;
     }
 
-    /*[[AI-FN-DOC
-Function:
-childCount
-Purpose:
-Count the subwaypoints attached to a main waypoint for helpful skipto error messages.
-Why this exists:
-When a user asks for an out-of-range decimal target, the command should say how many child points actually exist.
-When to use:
-Use in skip target validation errors. Do not use for hot render paths because it scans route structure.
-Inputs:
-group is the route; mainIndex is the parent main waypoint index.
-Outputs:
-Returns the number of contiguous subwaypoints after the parent, or 0 for invalid parents.
-Side effects:
-None.
-Failure modes:
-Invalid parent indices return 0.
-Important invariants:
-Only contiguous subwaypoints immediately after the parent count.
-Internal logic:
-Validate the parent and count child entries until the next main waypoint or route end.
-Pseudocode:
-if parent invalid or subwaypoint, return 0
-count = 0
-for each following subwaypoint, increment count
-return count
-Implementation notes:
-Duplicating a tiny scan keeps the error path readable instead of overloading indexForChildOrdinal with extra output.
-AI self-check:
-Confirm the count matches the decimal suffix labels shown by WaypointGroup.displayIndexLabel.
-]]*/
     private static int childCount(WaypointGroup group, int mainIndex) {
         if (mainIndex < 0 || mainIndex >= group.size() || group.isSubwaypoint(mainIndex)) {
             return 0;
@@ -985,106 +1247,383 @@ Confirm the count matches the decimal suffix labels shown by WaypointGroup.displ
         return count;
     }
 
-    /*[[AI-FN-DOC
-Function:
-skipTargetLabel
-Purpose:
-Return the command-friendly displayed label for a waypoint index.
-Why this exists:
-WaypointGroup display labels include a leading # for UI text, while /wp skipto syntax should be plain 2 or 2.2.
-When to use:
-Use for skipto suggestions and success feedback. Do not use where the UI intentionally wants the # prefix.
-Inputs:
-group is the route; index is the waypoint list index to label.
-Outputs:
-Returns a label string without a leading # when present.
-Side effects:
-None.
-Failure modes:
-Invalid indices are delegated to WaypointGroup display fallback behavior.
-Important invariants:
-The returned label must match what resolveSkipTargetIndex accepts.
-Internal logic:
-Ask the group for its display index label and strip one leading # if present.
-Pseudocode:
-label = group.displayIndexLabel(index)
-if label starts with #, return substring after #
-return label
-Implementation notes:
-Centralizing this prevents suggestions and success messages from drifting apart.
-AI self-check:
-Confirm display label #2.2 becomes command target 2.2.
-]]*/
     private static String skipTargetLabel(WaypointGroup group, int index) {
         String label = group.displayIndexLabel(index);
         return label.startsWith("#") ? label.substring(1) : label;
     }
 
+    record SkipToOutcome(int moved, String firstMovedLabel, String error) {}
+
     private record SkipTarget(int index, String error) {
-        /*[[AI-FN-DOC
-Function:
-SkipTarget.index
-Purpose:
-Create a successful skip target parse result.
-Why this exists:
-The parser returns either an index or an error, and named factories make call sites self-documenting.
-When to use:
-Use when resolveSkipTargetIndex has found a valid waypoint index.
-Inputs:
-index is the zero-based waypoint list index resolved from the displayed label.
-Outputs:
-Returns a SkipTarget with the index set and no error.
-Side effects:
-None.
-Failure modes:
-No validation is performed here; the parser is responsible for passing a valid index.
-Important invariants:
-Successful results must have error equal to null.
-Internal logic:
-Construct a new record with the given index and null error.
-Pseudocode:
-return new SkipTarget(index, null)
-Implementation notes:
-This keeps success and error construction symmetric.
-AI self-check:
-Confirm runSkipTo treats null error as success.
-]]*/
         static SkipTarget index(int index) {
             return new SkipTarget(index, null);
         }
 
-        /*[[AI-FN-DOC
-Function:
-SkipTarget.error
-Purpose:
-Create a failed skip target parse result with a user-facing error message.
-Why this exists:
-The parser needs to return specific validation failures without throwing through Brigadier.
-When to use:
-Use when resolveSkipTargetIndex detects malformed or out-of-range input.
-Inputs:
-message is the error text to send to chat; null is normalized to a generic invalid-target message.
-Outputs:
-Returns a SkipTarget with index -1 and the error populated.
-Side effects:
-None.
-Failure modes:
-Null messages are replaced so callers never send null feedback.
-Important invariants:
-Error results must have an invalid index and non-null error text.
-Internal logic:
-Normalize the message and construct a new record.
-Pseudocode:
-if message is null, use generic message
-return new SkipTarget(-1, message)
-Implementation notes:
-Using a record avoids an exception class for normal command validation flow.
-AI self-check:
-Confirm runSkipTo checks error before reading index.
-]]*/
         static SkipTarget error(String message) {
             return new SkipTarget(-1, message == null ? "Invalid skip target" : message);
         }
+    }
+
+    private int runResetActiveGroup(FabricClientCommandSource src) {
+        WaypointGroup group = activeGroupOrError(src);
+        if (group == null) return 0;
+        group.resetProgress();
+        manager.fireDataChanged();
+        success(src, "Reset \"" + group.name() + "\" to the first waypoint");
+        return 1;
+    }
+
+    private int runSetActiveGroupMode(FabricClientCommandSource src, String rawMode) {
+        WaypointGroup group = activeGroupOrError(src);
+        if (group == null) return 0;
+        WaypointGroup.LoadMode mode = parseLoadMode(rawMode);
+        if (mode == null) {
+            error(src, "Mode must be static or sequence.");
+            return 0;
+        }
+        group.setLoadMode(mode);
+        manager.fireDataChanged();
+        success(src, "Set \"" + group.name() + "\" mode to " + mode.name().toLowerCase(Locale.ROOT));
+        return 1;
+    }
+
+    private int runSetActiveGroupRadius(FabricClientCommandSource src, double radius) {
+        WaypointGroup group = activeGroupOrError(src);
+        if (group == null) return 0;
+        group.setDefaultRadius(radius);
+        manager.fireDataChanged();
+        success(src, "Set \"" + group.name() + "\" reach radius to "
+                + String.format(Locale.ROOT, "%.1f", group.defaultRadius()));
+        return 1;
+    }
+
+    private int runMoveWaypointToSlot(FabricClientCommandSource src, int index, int slot) {
+        WaypointGroup group = activeGroupOrError(src);
+        if (group == null || !validateWaypointIndex(src, group, index)) return 0;
+        if (slot < 0 || slot >= group.size()) {
+            error(src, "0-based move slot " + slot
+                    + " out of range (0.." + (group.size() - 1) + ")");
+            return 0;
+        }
+        group.move(index, slot);
+        manager.fireDataChanged();
+        success(src, "Moved waypoint index " + index + " toward slot " + slot);
+        return 1;
+    }
+
+    private int runToggleSubwaypoint(FabricClientCommandSource src, Integer requestedIndex) {
+        WaypointGroup group = activeGroupOrError(src);
+        int index = resolveActiveWaypointIndex(src, group, requestedIndex);
+        if (index < 0) return 0;
+
+        boolean wasSubwaypoint = group.isSubwaypoint(index);
+        if (!group.toggleSubwaypoint(index)) {
+            error(src, index == 0
+                    ? "The first waypoint cannot be a subwaypoint."
+                    : "Waypoint index " + index + " cannot be made into a subwaypoint.");
+            return 0;
+        }
+        if (!wasSubwaypoint && group.isSubwaypoint(index)) {
+            group.setSkipAheadEnabled(false);
+        }
+        manager.fireDataChanged();
+        success(src, "Waypoint " + group.displayIndexLabel(index)
+                + (group.isSubwaypoint(index) ? " is now a subwaypoint" : " is now a main waypoint"));
+        return 1;
+    }
+
+    private int runToggleWaypointFlag(FabricClientCommandSource src, Integer requestedIndex,
+                                      int flag, String label, boolean subwaypointOnly) {
+        WaypointGroup group = activeGroupOrError(src);
+        int index = resolveActiveWaypointIndex(src, group, requestedIndex);
+        if (index < 0) return 0;
+        if (subwaypointOnly && !group.isSubwaypoint(index)) {
+            error(src, "Waypoint " + group.displayIndexLabel(index)
+                    + " is not a subwaypoint. Run /wp sub " + index + " first.");
+            return 0;
+        }
+
+        Waypoint waypoint = group.get(index);
+        int nextFlags = waypoint.flags() ^ flag;
+        group.set(index, waypoint.withFlags(nextFlags));
+        manager.fireDataChanged();
+        success(src, label + " " + (((nextFlags & flag) != 0) ? "enabled" : "disabled")
+                + " for waypoint " + group.displayIndexLabel(index));
+        return 1;
+    }
+
+    private int runMoveWaypointHere(FabricClientCommandSource src, int index) {
+        LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) { error(src, "Not in a world"); return 0; }
+        PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
+                player.getX(), player.getY(), player.getZ(), config);
+        return runMoveWaypointAt(src, index, pos.x(), pos.y(), pos.z());
+    }
+
+    private int runMoveWaypointAt(FabricClientCommandSource src, int index, int x, int y, int z) {
+        WaypointGroup group = activeGroupOrError(src);
+        if (group == null || !validateWaypointIndex(src, group, index)) return 0;
+        group.moveWaypointTo(index, x, y, z);
+        manager.fireDataChanged();
+        success(src, "Moved waypoint " + group.displayIndexLabel(index)
+                + " to " + x + ", " + y + ", " + z);
+        return 1;
+    }
+
+    private int runRenameWaypoint(FabricClientCommandSource src, int index, String name) {
+        WaypointGroup group = activeGroupOrError(src);
+        if (group == null || !validateWaypointIndex(src, group, index)) return 0;
+        group.set(index, group.get(index).withName(name == null ? "" : name.trim()));
+        manager.fireDataChanged();
+        success(src, "Renamed waypoint " + group.displayIndexLabel(index));
+        return 1;
+    }
+
+    private int runSetWaypointColor(FabricClientCommandSource src, int index, String rawColor) {
+        WaypointGroup group = activeGroupOrError(src);
+        if (group == null || !validateWaypointIndex(src, group, index)) return 0;
+        Integer color = parseRgb(rawColor);
+        if (color == null) {
+            error(src, "Color must be 6-digit hex, like 58C878.");
+            return 0;
+        }
+
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        Waypoint waypoint = group.get(index);
+        group.set(index, waypoint.withColor(color).withFlags(waypoint.flags() | Waypoint.FLAG_LOCKED_COLOR));
+        manager.fireDataChanged();
+        success(src, "Set waypoint " + group.displayIndexLabel(index)
+                + " color to " + formatRgb(color));
+        return 1;
+    }
+
+    private int runSetWaypointRadius(FabricClientCommandSource src, int index, double radius) {
+        WaypointGroup group = activeGroupOrError(src);
+        if (group == null || !validateWaypointIndex(src, group, index)) return 0;
+        group.set(index, group.get(index).withRadius(radius));
+        manager.fireDataChanged();
+        success(src, "Set waypoint " + group.displayIndexLabel(index)
+                + " radius to " + String.format(Locale.ROOT, "%.1f", radius));
+        return 1;
+    }
+
+    private int runRenameGroup(FabricClientCommandSource src, int index, String name) {
+        WaypointGroup group = groupAtIndexOrError(src, index);
+        if (group == null) return 0;
+        group.setName(name == null ? "" : name.trim());
+        manager.fireDataChanged();
+        success(src, "Renamed group [" + index + "] to \"" + group.name() + "\"");
+        return 1;
+    }
+
+    private int runSetGroupZone(FabricClientCommandSource src, int index, String rawZone) {
+        WaypointGroup group = groupAtIndexOrError(src, index);
+        if (group == null) return 0;
+        Zone zone = resolveCommandZone(src, rawZone);
+        if (zone == null) return 0;
+        group.setZoneId(zone.id());
+        manager.fireDataChanged();
+        success(src, "Attached group [" + index + "] \"" + group.name()
+                + "\" to " + zone.displayName());
+        return 1;
+    }
+
+    private int runSetGroupMode(FabricClientCommandSource src, int index, String rawMode) {
+        WaypointGroup group = groupAtIndexOrError(src, index);
+        WaypointGroup.LoadMode mode = parseLoadMode(rawMode);
+        if (group == null) return 0;
+        if (mode == null) {
+            error(src, "Mode must be static or sequence.");
+            return 0;
+        }
+        group.setLoadMode(mode);
+        manager.fireDataChanged();
+        success(src, "Set group [" + index + "] mode to " + mode.name().toLowerCase(Locale.ROOT));
+        return 1;
+    }
+
+    private int runSetGroupRadius(FabricClientCommandSource src, int index, double radius) {
+        WaypointGroup group = groupAtIndexOrError(src, index);
+        if (group == null) return 0;
+        group.setDefaultRadius(radius);
+        manager.fireDataChanged();
+        success(src, "Set group [" + index + "] radius to "
+                + String.format(Locale.ROOT, "%.1f", group.defaultRadius()));
+        return 1;
+    }
+
+    private int runSetGroupSkipAhead(FabricClientCommandSource src, int index, String rawState) {
+        WaypointGroup group = groupAtIndexOrError(src, index);
+        if (group == null) return 0;
+        Boolean state = parseToggleState(rawState, group.skipAheadEnabled());
+        if (state == null) {
+            error(src, "State must be on, off, or toggle.");
+            return 0;
+        }
+        group.setSkipAheadEnabled(state);
+        manager.fireDataChanged();
+        success(src, "Set group [" + index + "] skip ahead "
+                + (group.skipAheadEnabled() ? "on" : "off"));
+        return 1;
+    }
+
+    private int runSetGroupEnabled(FabricClientCommandSource src, int index, boolean enabled) {
+        WaypointGroup group = groupAtIndexOrError(src, index);
+        if (group == null) return 0;
+        group.setEnabled(enabled);
+        manager.fireDataChanged();
+        success(src, (enabled ? "Enabled" : "Disabled") + " group [" + index + "] \"" + group.name() + "\"");
+        return 1;
+    }
+
+    private int runSetGroupColorMode(FabricClientCommandSource src, int index, String rawMode) {
+        WaypointGroup group = groupAtIndexOrError(src, index);
+        WaypointGroup.GradientMode mode = parseGradientMode(rawMode);
+        if (group == null) return 0;
+        if (mode == null) {
+            error(src, "Color mode must be one, gradient, or manual.");
+            return 0;
+        }
+        group.setGradientMode(mode);
+        manager.fireDataChanged();
+        success(src, "Set group [" + index + "] color mode to " + rawMode.toLowerCase(Locale.ROOT));
+        return 1;
+    }
+
+    private int runSetGroupStaticColor(FabricClientCommandSource src, int index, String rawColor) {
+        WaypointGroup group = groupAtIndexOrError(src, index);
+        Integer color = parseRgb(rawColor);
+        if (group == null) return 0;
+        if (color == null) {
+            error(src, "Color must be 6-digit hex, like 58C878.");
+            return 0;
+        }
+        group.setStaticColor(color);
+        group.setGradientMode(WaypointGroup.GradientMode.STATIC);
+        manager.fireDataChanged();
+        success(src, "Set group [" + index + "] color to " + formatRgb(color));
+        return 1;
+    }
+
+    private int runSetGroupGradient(FabricClientCommandSource src, int index,
+                                    String rawStart, String rawEnd) {
+        WaypointGroup group = groupAtIndexOrError(src, index);
+        Integer start = parseRgb(rawStart);
+        Integer end = parseRgb(rawEnd);
+        if (group == null) return 0;
+        if (start == null || end == null) {
+            error(src, "Gradient colors must be 6-digit hex, like 00BFFF FF3040.");
+            return 0;
+        }
+        group.setGradientStartColor(start);
+        group.setGradientEndColor(end);
+        group.setGradientMode(WaypointGroup.GradientMode.AUTO);
+        manager.fireDataChanged();
+        success(src, "Set group [" + index + "] gradient to "
+                + formatRgb(start) + " -> " + formatRgb(end));
+        return 1;
+    }
+
+    private WaypointGroup activeGroupOrError(FabricClientCommandSource src) {
+        WaypointGroup group = manager.firstActiveGroup();
+        if (group == null) error(src, "No active group in the current area.");
+        return group;
+    }
+
+    private WaypointGroup groupAtIndexOrError(FabricClientCommandSource src, int index) {
+        List<WaypointGroup> all = manager.allGroupsList();
+        if (index < 0 || index >= all.size()) {
+            error(src, "0-based group index " + index
+                    + " out of range (0.." + (all.size() - 1) + ")");
+            return null;
+        }
+        return all.get(index);
+    }
+
+    private int resolveActiveWaypointIndex(FabricClientCommandSource src, WaypointGroup group,
+                                           Integer requestedIndex) {
+        if (group == null) return -1;
+        int index = requestedIndex == null ? group.currentIndex() : requestedIndex;
+        if (requestedIndex == null && (index < 0 || index >= group.size())) {
+            error(src, "No current waypoint in the active group.");
+            return -1;
+        }
+        if (!validateWaypointIndex(src, group, index)) {
+            return -1;
+        }
+        return index;
+    }
+
+    private boolean validateWaypointIndex(FabricClientCommandSource src, WaypointGroup group, int index) {
+        if (group != null && index >= 0 && index < group.size()) return true;
+        int max = group == null ? -1 : group.size() - 1;
+        error(src, "0-based waypoint index " + index + " out of range (0.." + max + ")");
+        return false;
+    }
+
+    private Zone resolveCommandZone(FabricClientCommandSource src, String rawZone) {
+        String cleaned = stripQuotes(rawZone == null ? "" : rawZone).trim();
+        if (cleaned.isEmpty()) {
+            error(src, "Usage: /wp group zone <group> <zone|current>");
+            return null;
+        }
+        if ("current".equalsIgnoreCase(cleaned)) {
+            Zone current = manager.currentZone();
+            if (current == null) {
+                error(src, "No current area is detected.");
+                return null;
+            }
+            return current;
+        }
+        return cleaned.indexOf(' ') >= 0 || cleaned.indexOf('\'') >= 0
+                ? Zone.resolveFromDisplayName(cleaned)
+                : Zone.fromId(cleaned);
+    }
+
+    private static WaypointGroup.LoadMode parseLoadMode(String rawMode) {
+        String mode = rawMode == null ? "" : rawMode.trim().toLowerCase(Locale.ROOT);
+        return switch (mode) {
+            case "static", "all" -> WaypointGroup.LoadMode.STATIC;
+            case "sequence", "sequenced", "seq" -> WaypointGroup.LoadMode.SEQUENCE;
+            default -> null;
+        };
+    }
+
+    private static WaypointGroup.GradientMode parseGradientMode(String rawMode) {
+        String mode = rawMode == null ? "" : rawMode.trim().toLowerCase(Locale.ROOT);
+        return switch (mode) {
+            case "one", "static", "solid" -> WaypointGroup.GradientMode.STATIC;
+            case "gradient", "auto" -> WaypointGroup.GradientMode.AUTO;
+            case "manual" -> WaypointGroup.GradientMode.MANUAL;
+            default -> null;
+        };
+    }
+
+    private static Boolean parseToggleState(String rawState, boolean current) {
+        String state = rawState == null ? "toggle" : rawState.trim().toLowerCase(Locale.ROOT);
+        return switch (state) {
+            case "", "toggle", "flip" -> !current;
+            case "on", "true", "yes", "1" -> true;
+            case "off", "false", "no", "0" -> false;
+            default -> null;
+        };
+    }
+
+    static Integer parseRgb(String rawColor) {
+        if (rawColor == null) return null;
+        String cleaned = rawColor.trim();
+        if (cleaned.startsWith("#")) cleaned = cleaned.substring(1);
+        if (cleaned.startsWith("0x") || cleaned.startsWith("0X")) cleaned = cleaned.substring(2);
+        if (cleaned.length() != 6) return null;
+        try {
+            return Integer.parseInt(cleaned, 16) & 0xFFFFFF;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private static String formatRgb(int color) {
+        return String.format(Locale.ROOT, "#%06X", color & 0xFFFFFF);
     }
 
     private int runAdd(FabricClientCommandSource src, String name) {
@@ -1097,13 +1636,37 @@ Confirm runSkipTo checks error before reading index.
     }
 
     private int runAddAt(FabricClientCommandSource src, int x, int y, int z, String name) {
-        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
-        target.add(new Waypoint(x, y, z, name == null ? "" : name,
-                config.defaultWaypointColor(), 0, 0.0));
-        addFlow.afterWaypointAdded(target, target.size() - 1);
-        manager.fireDataChanged();
-
+        addPersistentWaypointAt(manager, config, addFlow, x, y, z, name);
         return 1;
+    }
+
+    static int addPersistentWaypointAt(ActiveGroupManager manager, WaypointerConfig config,
+                                       WaypointAddFlow addFlow, int x, int y, int z,
+                                       String name) {
+        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
+        target.add(commandWaypoint(target, config, x, y, z, name));
+        int index = target.size() - 1;
+        addFlow.afterWaypointAdded(target, index);
+        manager.fireDataChanged();
+        return index;
+    }
+
+    static int insertPersistentWaypointAt(WaypointGroup target, WaypointerConfig config,
+                                          WaypointAddFlow addFlow, int index,
+                                          int x, int y, int z, String name) {
+        if (target == null || index < 0 || index > target.size()) return -1;
+        target.insert(index, commandWaypoint(target, config, x, y, z, name));
+        addFlow.afterWaypointAdded(target, index);
+        return index;
+    }
+
+    private static Waypoint commandWaypoint(WaypointGroup target, WaypointerConfig config,
+                                            int x, int y, int z, String name) {
+        int flags = target != null && DungeonRoomData.definition(target.zoneId()) != null
+                ? DungeonWaypointSkipRules.defaultFlagsAt(x, y, z)
+                : 0;
+        return new Waypoint(x, y, z, name == null ? "" : name,
+                config.defaultWaypointColor(), flags, 0.0);
     }
 
     private int runAddTempAt(FabricClientCommandSource src, int x, int y, int z, String sourceName) {
@@ -1117,7 +1680,6 @@ Confirm runSkipTo checks error before reading index.
                 + defaultTempExpiryDescription() + ")");
         return 1;
     }
-
     private int runChatTempClick(FabricClientCommandSource src, int x, int y, int z,
                                  String senderArg, String encodedSource) {
         String senderName = "-".equals(senderArg) ? "" : senderArg;
@@ -1140,21 +1702,22 @@ Confirm runSkipTo checks error before reading index.
         }
 
         ActiveGroupManager.TempWaypointSelection selection = manager.findTempWaypoint(x, y, z, senderName);
+        boolean created = false;
         if (selection == null) {
             WaypointGroup target = addConfiguredTempWaypoint(x, y, z, sourceName);
             int index = target.size() - 1;
-            if (config.focusTempWaypoints()) {
-                manager.focusTempWaypoint(target, index);
-            }
             selection = new ActiveGroupManager.TempWaypointSelection(target, index);
+            created = true;
         }
 
-        ActiveGroupManager.TempWaypointSelection focused = selection;
-        Minecraft.getInstance().execute(() -> {
-            WaypointerScreen parent = new WaypointerScreen(manager, config);
-            GroupEditScreen.openFocused(parent, manager, config, focused.group(), focused.index());
-        });
-        success(src, "Opened temporary waypoint at " + x + ", " + y + ", " + z);
+        if (config.focusTempWaypoints()) {
+            manager.focusTempWaypoint(selection.group(), selection.index());
+            success(src, "Focused temporary waypoint at " + x + ", " + y + ", " + z);
+            return 1;
+        }
+
+        success(src, (created ? "Added" : "Temporary waypoint already exists at")
+                + " " + x + ", " + y + ", " + z);
         return 1;
     }
 
@@ -1165,10 +1728,9 @@ Confirm runSkipTo checks error before reading index.
                 config.defaultTempExpiresAtMillis(now),
                 config.defaultWaypointColor());
     }
-
     private String defaultTempExpiryDescription() {
         return switch (config.tempDefaultMode()) {
-            case Waypoint.TEMP_TIME -> "expires after " + config.tempDefaultDurationMin() + " min";
+            case Waypoint.TEMP_TIME -> "expires after " + config.tempDefaultDurationSec() + " sec";
             case Waypoint.TEMP_UNTIL_REACHED -> "expires when reached";
             case Waypoint.TEMP_UNTIL_LEAVE -> "expires on disconnect";
             default -> "temporary";
@@ -1222,18 +1784,30 @@ Confirm runSkipTo checks error before reading index.
         if (index < 0 || index > target.size()) {
             // Mirror the inclusive upper bound from the suggest tooltip so the
             // error message and the completion list agree on what's legal.
-            error(src, "Index " + index + " out of range (0.." + target.size() + ")");
+            error(src, "0-based insert slot " + index
+                    + " out of range (0.." + target.size() + ")");
             return 0;
         }
 
         PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
                 player.getX(), player.getY(), player.getZ(), config);
-        target.insert(index, new Waypoint(
-                pos.x(), pos.y(), pos.z(), name == null ? "" : name,
-                config.defaultWaypointColor(), 0, 0.0));
-        addFlow.afterWaypointAdded(target, index);
+        insertPersistentWaypointAt(target, config, addFlow, index, pos.x(), pos.y(), pos.z(), name);
         manager.fireDataChanged();
 
+        return 1;
+    }
+
+    private int runInsertAt(FabricClientCommandSource src, int index,
+                            int x, int y, int z, String name) {
+        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
+        if (index < 0 || index > target.size()) {
+            error(src, "0-based insert slot " + index
+                    + " out of range (0.." + target.size() + ")");
+            return 0;
+        }
+
+        insertPersistentWaypointAt(target, config, addFlow, index, x, y, z, name);
+        manager.fireDataChanged();
         return 1;
     }
 
@@ -1241,14 +1815,23 @@ Confirm runSkipTo checks error before reading index.
         WaypointGroup target = manager.firstActiveGroup();
         if (target == null) { error(src, "No active group to remove from"); return 0; }
         if (index < 0 || index >= target.size()) {
-            error(src, "Index " + index + " out of range (0.." + (target.size() - 1) + ")");
+            error(src, "0-based waypoint index " + index
+                    + " out of range (0.." + (target.size() - 1) + ")");
             return 0;
         }
+        String displayLabel = target.displayIndexLabel(index);
+        Waypoint removed = removeWaypointAt(target, index);
+        manager.fireDataChanged();
+        success(src, "Removed index " + index + " (#" + displayLabel + ") "
+                + removed.x() + ", " + removed.y() + ", " + removed.z());
+        return 1;
+    }
+
+    static Waypoint removeWaypointAt(WaypointGroup target, int index) {
+        if (target == null || index < 0 || index >= target.size()) return null;
         Waypoint removed = target.get(index);
         target.remove(index);
-        manager.fireDataChanged();
-        success(src, "Removed [" + index + "] " + removed.x() + ", " + removed.y() + ", " + removed.z());
-        return 1;
+        return removed;
     }
 
     private int runClearZone(FabricClientCommandSource src, boolean confirmed) {
@@ -1261,14 +1844,24 @@ Confirm runSkipTo checks error before reading index.
                     + zone.displayName() + ". Run /waypointer clear confirm to proceed.");
             return 0;
         }
-        for (WaypointGroup g : here) manager.remove(g.id());
+        int cleared = clearCurrentZoneGroups(manager, true);
         success(src, "Cleared " + here.size() + " group(s) in " + zone.displayName());
+        return cleared;
+    }
+
+    static int clearCurrentZoneGroups(ActiveGroupManager manager, boolean confirmed) {
+        Zone zone = manager.currentZone();
+        if (!confirmed || zone == null) return 0;
+        List<WaypointGroup> here = List.copyOf(manager.groupsForZone(zone.id()));
+        for (WaypointGroup group : here) {
+            manager.remove(group.id());
+        }
         return here.size();
     }
 
     private int runExport(FabricClientCommandSource src, WaypointCodec.Options opts) {
         Zone zone = manager.currentZone();
-        List<WaypointGroup> toExport = zone == null ? manager.allGroupsList() : manager.groupsForZone(zone.id());
+        List<WaypointGroup> toExport = cliExportGroups(manager);
         if (toExport.isEmpty()) { info(src, "Nothing to export" + zoneSuffix()); return 0; }
 
         String payload = WaypointCodec.encode(toExport, opts);
@@ -1283,6 +1876,11 @@ Confirm runSkipTo checks error before reading index.
                         .withClickEvent(new ClickEvent.CopyToClipboard(payload))));
         src.sendFeedback(WaypointerChatFeedback.suppress(line));
         return toExport.size();
+    }
+
+    static List<WaypointGroup> cliExportGroups(ActiveGroupManager manager) {
+        Zone zone = manager.currentZone();
+        return zone == null ? manager.allGroupsList() : manager.groupsForZone(zone.id());
     }
 
     private int runImportFromClipboard(FabricClientCommandSource src) {
@@ -1429,18 +2027,16 @@ Confirm runSkipTo checks error before reading index.
                                 .withStyle(ChatFormatting.WHITE)));
             }
 
-            // Toast + editor open on top of the chat feedback. The chat
+            // Toast + explicit editor link on top of the chat feedback. The chat
             // message is the authoritative record (includes format + retarget
             // details); the toast is a passive glance-indicator so users who
             // ran the command in the middle of gameplay notice without
-            // reading chat. Opening the editor is scheduled via the client
-            // executor so we don't fight brigadier's command-completion
-            // rendering on the same frame.
+            // reading chat. Command imports deliberately do not auto-open the
+            // editor because that can interrupt gameplay; users can click the
+            // link when they want to inspect the imported routes.
             ImportFeedback.success(result.groups(), origin);
             if (!result.groups().isEmpty()) {
-                WaypointGroup focus = result.groups().get(0);
-                Minecraft.getInstance().execute(() ->
-                        WaypointerScreen.openFocused(manager, config, focus));
+                info(src, importEditorHintComponent());
             }
             return result.groups().size();
         } catch (IllegalArgumentException e) {
@@ -1448,6 +2044,16 @@ Confirm runSkipTo checks error before reading index.
             ImportFeedback.failure(e.getMessage());
             return 0;
         }
+    }
+
+    static Component importEditorHintComponent() {
+        return Component.literal("Open editor to view imported routes ")
+                .withStyle(ChatFormatting.GRAY)
+                .append(Component.literal("[Open]")
+                        .withStyle(Style.EMPTY
+                                .withColor(ChatFormatting.AQUA)
+                                .withUnderlined(true)
+                                .withClickEvent(new ClickEvent.RunCommand("/waypointer gui"))));
     }
 
     /**
@@ -1508,13 +2114,21 @@ Confirm runSkipTo checks error before reading index.
         return all.size();
     }
 
-    private int runDeleteGroup(FabricClientCommandSource src, int index) {
+    private int runDeleteGroup(FabricClientCommandSource src, int index, boolean confirmed) {
         List<WaypointGroup> all = manager.allGroupsList();
         if (index < 0 || index >= all.size()) {
-            error(src, "Index " + index + " out of range (0.." + (all.size() - 1) + ")");
+            error(src, "0-based group index " + index
+                    + " out of range (0.." + (all.size() - 1) + ")");
             return 0;
         }
         WaypointGroup g = all.get(index);
+        if (!confirmed) {
+            warn(src, "This will delete group [" + index + "] \"" + g.name()
+                    + "\" with " + g.size()
+                    + " waypoint(s). Run /waypointer group delete " + index
+                    + " confirm to proceed.");
+            return 0;
+        }
         manager.remove(g.id());
         success(src, "Deleted group \"" + g.name() + "\"");
         return 1;

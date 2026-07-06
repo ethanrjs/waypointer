@@ -1,15 +1,17 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.WaypointerClient;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.config.WaypointerConfigCodec;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.update.UpdateChecker;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
@@ -62,6 +64,7 @@ public final class ConfigScreen extends Screen {
     private final Set<String> searchSeenSettingKeys = new HashSet<>();
     private static final int SETTINGS_SEARCH_W = 160;
     private static final int SETTINGS_SEARCH_MIN_W = 104;
+    private static final int SETTINGS_SEARCH_CLEAR_W = 52;
     private static final int CONFIRM_NONE = 0;
     private static final int CONFIRM_DISABLE_ALL = 1;
     private static final int CONFIRM_RESET_DEFAULTS = 2;
@@ -73,6 +76,7 @@ public final class ConfigScreen extends Screen {
     private int pendingConfirmationAction = CONFIRM_NONE;
     private long pendingConfirmationUntilMillis;
     private Page searchPageContext;
+    private Button settingsSearchClearButton;
     private int searchCol1;
     private int searchCol2;
     private int searchColW;
@@ -105,46 +109,12 @@ public final class ConfigScreen extends Screen {
         this.settingsSearchQuery = settingsSearchQuery == null ? "" : settingsSearchQuery;
     }
 
-    /*[[AI-FN-DOC
-Function:
-init
-Purpose:
-Build the Waypointer settings screen, including tab navigation, search, page rows, and footer actions.
-Why this exists:
-Minecraft screens are rebuilt from scratch whenever state changes, so this method is the single place that translates current settings UI state into live widgets.
-When to use:
-Called by Minecraft when the screen opens or rebuildWidgets requests a rebuild. Do not call directly from row callbacks except through rebuildSettingsWidgets/rebuildWidgets.
-Inputs:
-No parameters. Reads the screen width, height, selected page, current search query, confirmation state, update state, and config-code status from instance fields.
-Outputs:
-No return value. Populates renderable widgets and header positions for the current screen state.
-Side effects:
-Clears and recreates widgets, resets dependent-control tracking, may clear expired confirmation state, and records header coordinates for render.
-Failure modes:
-Very narrow screens may skip the search box; search mode may omit non-matching rows. Existing config values are not mutated while the layout is built.
-Important invariants:
-The footer stays below page content, tab wrapping reserves room for search, and search rendering uses the same page builders as normal page rendering.
-Internal logic:
-Reset transient layout collections, compute navigation and row geometry, add wrapped tabs plus optional search, render either filtered search results or the selected page, then add footer actions.
-Pseudocode:
-clear dependent controls and search state
-compute navY
-add tabs and read their first-row end plus bottom y
-add search box beside first-row tabs when space allows
-compute content top below the deepest tab row
-if search query active render search results else render selected page
-build footer actions, including destructive actions on Other only
-record header coordinates for render
-Implementation notes:
-Tabs can wrap to a second row so Colors and Import / Export do not crowd the top bar or squeeze search into an unusable width.
-AI self-check:
-Verify every Page enum value is handled in both normal rendering and search rendering.
-]]*/
     @Override
     protected void init() {
         dependentControls.clear();
         searchSeenSettingKeys.clear();
         settingsSearchBox = null;
+        settingsSearchClearButton = null;
         searchPageContext = null;
         searchTotalMatches = 0;
         searchRenderedMatches = 0;
@@ -217,43 +187,6 @@ Verify every Page enum value is handled in both normal rendering and search rend
         }
     }
 
-    /*[[AI-FN-DOC
-Function:
-addPageTabs
-Purpose:
-Create the page-tab buttons and wrap them before they collide with the search field.
-Why this exists:
-The settings screen now has enough top-level pages that a single fixed tab row can become crowded on smaller GUI scales.
-When to use:
-Call during init before computing the content rows. Do not call after rows are laid out because the returned bottom y determines content placement.
-Inputs:
-y is the first tab-row y coordinate.
-Outputs:
-Returns an int array where index 0 is the end x of first-row tabs for search placement and index 1 is the y coordinate below the deepest tab row.
-Side effects:
-Adds tab button widgets to the screen.
-Failure modes:
-Extremely narrow screens may still force a large tab onto a row by itself. Search placement handles insufficient space separately.
-Important invariants:
-The first row reserves at least SETTINGS_SEARCH_MIN_W plus padding for search; later rows can use the full content width.
-Internal logic:
-Iterate pages, compute each tab width, wrap when the next tab would exceed the current row limit, add the button, and track first-row end plus bottom y.
-Pseudocode:
-x = outer padding
-rowY = y
-firstRowLimit = right edge minus search minimum
-for each page:
-  compute width
-  if current row has content and tab would exceed row limit, move to next row
-  add button at x,rowY
-  if on first row update firstRowEnd
-  advance x
-return firstRowEnd and rowY + button height
-Implementation notes:
-The return is a tiny primitive array instead of a record to avoid adding extra generated methods for a one-use layout carrier.
-AI self-check:
-Confirm the Import / Export tab can wrap cleanly and the search box still appears when the first row leaves enough space.
-]]*/
     private int[] addPageTabs(int y) {
         int x = PAD_OUTER;
         int rowY = y;
@@ -289,13 +222,16 @@ Confirm the Import / Export tab can wrap cleanly and the search box still appear
         int right = width - PAD_OUTER;
         int leftLimit = tabsEnd + GAP;
         int available = right - leftLimit;
-        if (available < SETTINGS_SEARCH_MIN_W) {
+        int clearW = SETTINGS_SEARCH_CLEAR_W;
+        int searchAvailable = available - clearW - GAP_TIGHT;
+        if (searchAvailable < SETTINGS_SEARCH_MIN_W) {
             refocusSettingsSearchAfterRebuild = false;
             return;
         }
 
-        int searchW = Math.min(SETTINGS_SEARCH_W, available);
-        int searchX = right - searchW;
+        int searchW = Math.min(SETTINGS_SEARCH_W, searchAvailable);
+        int clearX = right - clearW;
+        int searchX = clearX - GAP_TIGHT - searchW;
         settingsSearchBox = new EditBox(font, searchX, y, searchW, BTN_H,
                 Component.literal("Search settings"));
         settingsSearchBox.setMaxLength(80);
@@ -304,6 +240,13 @@ Confirm the Import / Export tab can wrap cleanly and the search box still appear
         settingsSearchBox.setResponder(
                 this::onSettingsSearchChanged);
         addRenderableWidget(settingsSearchBox);
+
+        settingsSearchClearButton = Button.builder(Component.literal("Clear"), this::clearSettingsSearch)
+                .bounds(clearX, y, clearW, BTN_H)
+                .tooltip(Tooltip.create(Component.literal("Clear settings search.")))
+                .build();
+        updateSettingsSearchClearButton();
+        addRenderableWidget(settingsSearchClearButton);
         if (refocusSettingsSearchAfterRebuild) {
             setFocused(settingsSearchBox);
             settingsSearchBox.setFocused(true);
@@ -317,6 +260,24 @@ Confirm the Import / Export tab can wrap cleanly and the search box still appear
         settingsSearchQuery = next;
         settingsSearchRebuildPending = true;
         refocusSettingsSearchAfterRebuild = true;
+        updateSettingsSearchClearButton();
+    }
+
+    private void clearSettingsSearch(Button button) {
+        if (settingsSearchBox != null) {
+            settingsSearchBox.setValue("");
+        }
+        onSettingsSearchChanged("");
+    }
+
+    private void updateSettingsSearchClearButton() {
+        if (settingsSearchClearButton != null) {
+            settingsSearchClearButton.active = settingsSearchClearButtonActive(settingsSearchQuery);
+        }
+    }
+
+    static boolean settingsSearchClearButtonActive(String query) {
+        return query != null && !query.isEmpty();
     }
 
     private void rebuildSettingsWidgets() {
@@ -429,7 +390,11 @@ Confirm the Import / Export tab can wrap cleanly and the search box still appear
                 || config.showRouteProgress();
     }
 
-        private void addVisualsPage(int col1, int col2, int colW, int rowsY, int rowH) {
+    private boolean beaconBeamsEnabled() {
+        return config.beaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF;
+    }
+
+    private void addVisualsPage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Markers";
         rightHeader = "Labels & Tracers";
 
@@ -443,6 +408,10 @@ Confirm the Import / Export tab can wrap cleanly and the search box still appear
         addNumberRow(col1, y, colW, "Outline thickness (px)",
                 config.waypointOutlineThickness(), config::setWaypointOutlineThickness,
                 "Controls waypoint outline width.");
+        y += rowH;
+        addBoolRow(col1, y, "Sharp waypoint edges",
+                config.sharpWaypointEdges(), config::setSharpWaypointEdges,
+                "Use crisper projected waypoint outline edges.");
         y += rowH;
         addBeamModeRow(col1, y, colW);
         y += rowH;
@@ -486,6 +455,10 @@ Confirm the Import / Export tab can wrap cleanly and the search box still appear
                 this::anyWaypointLabelTextEnabled,
                 "Raises labels above waypoint boxes.");
         y2 += rowH;
+        addBoolRow(col2, y2, "Show EDIT MODE subtitle",
+                config.showEditModeSubtitle(), config::setShowEditModeSubtitle,
+                "Show an aqua EDIT MODE label while edit mode is active.");
+        y2 += rowH;
         addBoolRow(col2, y2, "Hide labels when near",
                 config.hideWaypointLabelsNearPlayer(), config::setHideWaypointLabelsNearPlayer,
                 this::anyWaypointLabelTextEnabled,
@@ -515,36 +488,6 @@ Confirm the Import / Export tab can wrap cleanly and the search box still appear
                 "Use active waypoint color for tracer lines.");
     }
 
-    /*[[AI-FN-DOC
-Function:
-addColorsPage
-Purpose:
-Lay out global color defaults and inheritance controls in one dedicated settings tab.
-Why this exists:
-Color settings were scattered across Visuals, Routes, and Chat, making it hard to audit defaults or understand which colors affect future waypoints versus imported routes.
-When to use:
-Called from init and search-result rendering when the Colors page or matching color settings are being built. Do not use for per-route color editing, which belongs in GroupEditScreen.
-Inputs:
-col1 and col2 are column x positions; colW is each column width; rowsY is the first row y coordinate; rowH is the vertical spacing per row.
-Outputs:
-No return value. Adds color setting widgets and updates section headers.
-Side effects:
-Mutates screen widget lists, dependent controls, and the live config through row callbacks.
-Failure modes:
-Rows can be skipped by search filtering. Color rows ignore invalid partial hex text while the user is typing.
-Important invariants:
-This page edits defaults and global inheritance only; it never bulk-recolors existing saved routes.
-Internal logic:
-Place direct color defaults in the left column and inheritance/color-mode toggles in the right column.
-Pseudocode:
-set headers to Defaults and Behavior
-left column: default waypoint color, tracer fallback color, imported route default color, route connector color
-right column: waypoint text inheritance, tracer inheritance, imported-route color mode, route connector visibility
-Implementation notes:
-The rows reuse the same swatch plus hex helper used elsewhere so color editing is visually and behaviorally consistent.
-AI self-check:
-Verify new default waypoint color is described as future-created only and imported route color remains separate.
-]]*/
     private void addColorsPage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Defaults";
         rightHeader = "Behavior";
@@ -583,7 +526,7 @@ Verify new default waypoint color is described as future-created only and import
 
     private void addPerformancePage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Budgets";
-        rightHeader = "Label Performance";
+        rightHeader = "Labels & Beams";
 
         int y = rowsY;
         addNumberRow(col1, y, colW, "Max waypoint labels (0 = unlimited)",
@@ -599,6 +542,13 @@ Verify new default waypoint color is described as future-created only and import
                 performanceTooltip(
                         "Hides far static-route markers beyond this distance.",
                         Impact.HIGH));
+        y += rowH;
+        addBoolRow(col1, y, "Use beacon textures",
+                config.useBeaconBeamTextures(), config::setUseBeaconBeamTextures,
+                this::beaconBeamsEnabled,
+                performanceTooltip(
+                        "Uses the vanilla core/glow beacon texture. Off uses flat beams and saves roughly one textured batch plus 16 vertices per visible beam; usually tiny in Current mode, medium in All visible or dense static routes.",
+                        Impact.MEDIUM));
 
         int y2 = rowsY;
         addBoolRow(col2, y2, "Show waypoint names",
@@ -620,39 +570,6 @@ Verify new default waypoint color is described as future-created only and import
                         "Label backdrops add extra HUD quads.",
                         Impact.LOW));
     }
-
-    /*[[AI-FN-DOC
-Function:
-addRoutesPage
-Purpose:
-Lay out route progression and route display settings on the Routes tab.
-Why this exists:
-Route behavior controls are numerous enough to need a dedicated tab with two clear columns rather than being mixed into visuals or chat settings.
-When to use:
-Called from init and search-result rendering when the Routes page or matching settings are being built. Do not call after widget layout is finalized except through screen rebuilds.
-Inputs:
-col1 and col2 are the left and right column x coordinates; colW is the column width; rowsY is the first row y coordinate; rowH is the vertical spacing per row.
-Outputs:
-No return value. Adds route-related widgets to the screen and updates section headers.
-Side effects:
-Mutates screen widget/renderable lists, dependent-control tracking, and left/right header text.
-Failure modes:
-Rows may be skipped by active search filtering. Dependent controls are disabled rather than removed when their parent setting is off.
-Important invariants:
-Progression controls stay in the left column and display-density controls stay in the right column. Route connector color is disabled unless connector lines are enabled.
-Internal logic:
-Set headers, add progression rows top-to-bottom in the left column, then add route display/temp rows top-to-bottom in the right column.
-Pseudocode:
-set left header to Progression and right header to Route Display
-y = rowsY
-add default radius, skip-ahead, visible-only skip, reset, restart, and placement rows
-y2 = rowsY
-add progress, dimming, tracer/static, near-hide, static-hide, route-line, route-line-color, temp focus, temp expiry, and temp duration rows
-Implementation notes:
-The route line color row reuses the swatch-plus-hex picker pattern so it matches tracer and imported-route color controls.
-AI self-check:
-Verify row dependencies line up with their parent booleans and no controls overlap after adding the new rows.
-]]*/
     private void addRoutesPage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Progression";
         rightHeader = "Route Display";
@@ -709,11 +626,25 @@ Verify row dependencies line up with their parent booleans and no controls overl
         addBoolRow(col2, y2, "Hide reached static waypoints",
                 config.hideReachedStaticWaypointsUntilCycleComplete(),
                 config::setHideReachedStaticWaypointsUntilCycleComplete,
-                "Hide reached static waypoints until the route resets.");
+                hideReachedStaticWaypointsTooltip());
         y2 += rowH;
         addBoolRow(col2, y2, "Show route connector lines",
                 config.showRouteLines(), config::setShowRouteLines,
                 "Draw lines between the centers of visible route waypoints.");
+        y2 += rowH;
+        addBoolRow(col2, y2, "Dungeon entry path to first waypoint",
+                config.showDungeonEntryPathToFirstWaypoint(),
+                config::setShowDungeonEntryPathToFirstWaypoint,
+                "Draw a teleport-friendly path to waypoint #1 while entering a dungeon room.");
+        y2 += rowH;
+        addBoolRow(col2, y2, "Continue dungeon path after first",
+                config.showDungeonEntryPathToFollowingWaypoints(),
+                config::setShowDungeonEntryPathToFollowingWaypoints,
+                config::showDungeonEntryPathToFirstWaypoint,
+                "Keep drawing the dungeon path to later active route waypoints.");
+        y2 += rowH;
+        addDungeonEntryPathColorRow(col2, y2, colW, config::showDungeonEntryPathToFirstWaypoint,
+                "Color for the dungeon entry path and arrows.");
         y2 += rowH;
         addRouteLineColorRow(col2, y2, colW, config::showRouteLines,
                 "Color for route connector lines.");
@@ -724,42 +655,14 @@ Verify row dependencies line up with their parent booleans and no controls overl
         y2 += rowH;
         addBoolRow(col2, y2, "Temp waypoints expire",
                 config.tempWaypointsExpireByDefault(), config::setTempWaypointsExpireByDefault,
-                "New temp waypoints expire by default.");
+                (Component) null);
         y2 += rowH;
-        addNumberRow(col2, y2, colW, "Temp duration (min)",
-                config.tempDefaultDurationMin(), this::setTempDefaultDuration,
+        addNumberRow(col2, y2, colW, "Temp duration (sec)",
+                config.tempDefaultDurationSec(), this::setTempDefaultDurationSeconds,
                 config::tempWaypointsExpireByDefault,
-                "Default lifetime for expiring temp waypoints.");
+                "Default lifetime in seconds for expiring temp waypoints.");
     }
 
-    /*[[AI-FN-DOC
-Function:
-addRouteLineColorRow
-Purpose:
-Add the settings row that edits the world route connector line color.
-Why this exists:
-Route connector lines have their own color setting, and the UI should match the existing swatch-plus-hex color picker pattern used elsewhere.
-When to use:
-Use from the Routes settings page when laying out route connector controls. Do not use for imported route defaults or tracer colors because those have separate labels and setters.
-Inputs:
-x and y are row coordinates; colW is the column width; enabled determines whether the row controls are active; tooltip is the explanatory text shown on hover.
-Outputs:
-No return value. Adds a label, hex input, and color swatch widget to the screen when the row matches current search filtering.
-Side effects:
-Mutates the screen's widget list, updates config.routeLineColor from text input or color picker callbacks, and tracks enabled-state dependencies.
-Failure modes:
-Invalid partial hex input is ignored while typing. Search filtering can skip rendering the row entirely.
-Important invariants:
-The swatch and hex field must stay synchronized, and the row must disable when route connector lines are off.
-Internal logic:
-Delegate to the shared RGB color-row helper with route-line labels, current value, setter, picker title, and dependency.
-Pseudocode:
-addRgbColorRow with route-line label, current routeLineColor, setRouteLineColor callback, dependency, and tooltip
-Implementation notes:
-The shared helper keeps this row visually identical to default waypoint, tracer, and imported-route color rows.
-AI self-check:
-Confirm the callback masks colors through WaypointerConfig and the swatch visually updates after both picker and hex edits.
-]]*/
     private void addRouteLineColorRow(int x, int y, int colW, BooleanSupplier enabled,
                                       String tooltip) {
         addRgbColorRow(x, y, colW,
@@ -773,34 +676,19 @@ Confirm the callback masks colors through WaypointerConfig and the swatch visual
                 "Pick route connector line color.");
     }
 
-    /*[[AI-FN-DOC
-Function:
-addDefaultWaypointColorRow
-Purpose:
-Add the settings row that edits the default color for future manually-created waypoints.
-Why this exists:
-Users need one central default waypoint color that applies to new route points and temp waypoints without changing existing saved routes.
-When to use:
-Use from the Colors page when laying out global color defaults. Do not use for imported-route colors because imports have their own policy.
-Inputs:
-x and y are row coordinates; colW is the column width; tooltip explains the future-only behavior.
-Outputs:
-No return value. Adds label, hex input, and swatch controls when the row passes search filtering.
-Side effects:
-Updates WaypointerConfig.defaultWaypointColor from either the picker or six-digit hex input.
-Failure modes:
-Invalid partial hex input is ignored. The setter masks alpha bits.
-Important invariants:
-This setting affects future waypoint creation paths only and must not recolor existing route data.
-Internal logic:
-Delegate to the shared RGB color-row helper with the default waypoint color getter value and setter callback.
-Pseudocode:
-addRgbColorRow with default-waypoint label, current defaultWaypointColor, setDefaultWaypointColor callback, always enabled, and color picker metadata
-Implementation notes:
-The row intentionally uses the same picker mechanics as imported/tracer/connector color rows for muscle memory.
-AI self-check:
-Confirm imported routes still use importedRouteDefaultColor instead of this default.
-]]*/
+    private void addDungeonEntryPathColorRow(int x, int y, int colW, BooleanSupplier enabled,
+                                             String tooltip) {
+        addRgbColorRow(x, y, colW,
+                "Dungeon entry path color (hex RRGGBB)",
+                "Dungeon entry path color",
+                config.dungeonEntryPathColor(),
+                config::setDungeonEntryPathColor,
+                enabled,
+                tooltip,
+                "Dungeon Entry Path Colour",
+                "Pick dungeon entry path color.");
+    }
+
     private void addDefaultWaypointColorRow(int x, int y, int colW, String tooltip) {
         addRgbColorRow(x, y, colW,
                 "Waypoint color (hex RRGGBB)",
@@ -813,43 +701,6 @@ Confirm imported routes still use importedRouteDefaultColor instead of this defa
                 "Pick default waypoint color.");
     }
 
-    /*[[AI-FN-DOC
-Function:
-addRgbColorRow
-Purpose:
-Render a consistent swatch-plus-hex settings row for a 24-bit RGB config color.
-Why this exists:
-Several settings expose colors, and sharing the control wiring keeps text parsing, picker behavior, disabled states, and visual affordances identical.
-When to use:
-Use for global/settings colors whose value is a single RGB integer and whose setter persists immediately. Do not use for per-waypoint route swatches inside GroupEditScreen.
-Inputs:
-x and y are row coordinates; colW is the column width; label is visible row text; editorName labels the hex box; currentColor is the initial RGB value; setter persists parsed colors; enabled controls active state; tooltip is hover text; pickerTitle names ColorPickerScreen; swatchTooltip labels the swatch.
-Outputs:
-No return value. Adds a label renderable, an EditBox, and a ColorSwatchButton when the row is visible.
-Side effects:
-Adds widgets, tracks dependent enabled state, opens ColorPickerScreen from the swatch, and calls setter when a valid color is picked or typed.
-Failure modes:
-Invalid or incomplete hex text is ignored while the user types. A null enabled supplier is not expected by callers.
-Important invariants:
-Only exactly six typed hex digits commit. The swatch and text box must stay synchronized after both picker and text edits.
-Internal logic:
-Normalize tooltip, apply search filtering, compute row geometry, create label/box/swatch, wire picker callback, wire parser callback, track dependencies, and add widgets.
-Pseudocode:
-tooltipComponent = normalized tooltip
-if row is filtered out, return
-geometry = settingRowGeometry
-create label
-create edit box initialized to currentColor as RRGGBB
-create swatch initialized to currentColor
-picker callback calls setter, updates box, updates swatch
-box callback ignores empty/non-six-digit values; parses hex; calls setter; updates swatch
-track box and swatch dependency
-add box and swatch
-Implementation notes:
-The helper accepts currentColor as a value because settings screens are rebuilt after structural state changes; live synchronization inside a single row is handled locally.
-AI self-check:
-Verify all callers pass a setter that masks or validates RGB values at the config boundary.
-]]*/
     private void addRgbColorRow(int x, int y, int colW, String label, String editorName,
                                 int currentColor, IntConsumer setter, BooleanSupplier enabled,
                                 String tooltip, String pickerTitle, String swatchTooltip) {
@@ -876,7 +727,8 @@ Verify all callers pass a setter that masks or validates RGB values at the confi
                 "Pick color", currentColor,
                 () -> {
                     int pickerColor = swatchRef[0] == null ? currentColor : swatchRef[0].getColor();
-                    ColorPickerScreen.open(this, pickerTitle, pickerColor, picked -> {
+                    ColorPickerScreen.open(this, pickerTitle, pickerColor,
+                            picked -> {
                             setter.accept(picked);
                             box.setValue(String.format("%06X", picked & 0xFFFFFF));
                             if (swatchRef[0] != null) swatchRef[0].setColor(picked);
@@ -885,56 +737,29 @@ Verify all callers pass a setter that masks or validates RGB values at the confi
         swatchRef[0] = swatch;
         swatch.setTooltip(Tooltip.create(Component.literal(swatchTooltip)));
 
-        box.setResponder(v -> {
-            if (v.isEmpty()) return;
-            String trimmed = v.trim();
-            if (trimmed.length() != 6) return;
-            try {
-                int parsed = Integer.parseInt(trimmed, 16) & 0xFFFFFF;
-                setter.accept(parsed);
-                swatch.setColor(parsed);
-            } catch (NumberFormatException ignored) {
-                // Partial edits are expected while typing; keep the last valid color.
-            }
+        box.setResponder(
+                v -> {
+            Integer parsed = parseRgbHexColor(v);
+            if (parsed == null) return;
+            setter.accept(parsed);
+            swatch.setColor(parsed);
         });
 
-        trackDependent(box, enabled);
-        trackDependent(swatch, enabled);
         addRenderableWidget(box);
         addRenderableWidget(swatch);
     }
 
-    /*[[AI-FN-DOC
-Function:
-addChatPage
-Purpose:
-Lay out settings that control chat scanning and chat-originated temporary waypoints.
-Why this exists:
-Chat detection is a distinct workflow from route import/export defaults, so it stays focused instead of sharing a mixed defaults page.
-When to use:
-Called from init and search rendering when the Chat page or matching chat settings are being built.
-Inputs:
-col1 and col2 are column x positions; colW is each column width; rowsY is the first row y coordinate; rowH is the vertical spacing per row.
-Outputs:
-No return value. Adds chat-related widgets and updates section headers.
-Side effects:
-Adds widgets and mutates WaypointerConfig when the user clicks rows.
-Failure modes:
-Rows may be skipped by search filtering. Dependent rows disable when chat coordinate detection is off.
-Important invariants:
-This page controls detection behavior only; import route color and export include defaults live on Import / Export.
-Internal logic:
-Place scan toggles in the left column and chat-created temp waypoint behavior in the right column.
-Pseudocode:
-set headers
-add chat coordinate detection row
-add chat code detection row
-add auto-add chat temp waypoint row dependent on coordinate detection
-Implementation notes:
-The auto-add row remains here because it is triggered by chat coordinate detection, not by manual import.
-AI self-check:
-Verify no imported-route color or export include rows are left on this page.
-]]*/
+    static Integer parseRgbHexColor(String rawValue) {
+        if (rawValue == null) return null;
+        String trimmed = rawValue.trim();
+        if (trimmed.length() != 6) return null;
+        try {
+            return Integer.parseInt(trimmed, 16) & 0xFFFFFF;
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
     private void addChatPage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Chat Detection";
         rightHeader = "Chat Temp Waypoints";
@@ -946,6 +771,10 @@ Verify no imported-route color or export include rows are left on this page.
         addBoolRow(col1, y, "Chat codec detection (imports)",
                 config.chatCodecDetection(), config::setChatCodecDetection,
                 "Detect Waypointer share codes in chat.");
+        y += rowH;
+        addBoolRow(col1, y, "Contributor badges",
+                config.showContributorBadges(), config::setShowContributorBadges,
+                "Show Waypointer contributor badges in chat and the player list.");
 
         int y2 = rowsY;
         addBoolRow(col2, y2, "Auto-add chat temp waypoints",
@@ -954,36 +783,6 @@ Verify no imported-route color or export include rows are left on this page.
                 "Create temp waypoints automatically from chat coordinates.");
     }
 
-    /*[[AI-FN-DOC
-Function:
-addImportExportPage
-Purpose:
-Lay out settings that decide how imports are recolored and what metadata exports include by default.
-Why this exists:
-Import/export behavior grew beyond chat detection and needs one predictable page for route sharing defaults.
-When to use:
-Called from init and search rendering for the Import / Export page or matching rows.
-Inputs:
-col1 and col2 are column x coordinates; colW is the width of each settings column; rowsY is the first row y coordinate; rowH is the vertical spacing per row.
-Outputs:
-No return value. Adds import/export widgets and updates section headers.
-Side effects:
-Adds widgets and mutates WaypointerConfig from row callbacks.
-Failure modes:
-Rows can be skipped by search filtering. The imported color row disables outside One color import mode.
-Important invariants:
-Imported route color policy remains separate from the new default waypoint color, and export toggles only affect future share-code generation.
-Internal logic:
-Put import recolor defaults in the left column and export include toggles in the right column.
-Pseudocode:
-set headers
-left column add imported route color mode and static color
-right column add export include names, colors, radii, waypoint flags, and group metadata toggles
-Implementation notes:
-Keeping these rows together makes the route-sharing behavior clear without putting unrelated color defaults into Chat.
-AI self-check:
-Verify every export include flag has a row and imported route color mode still controls whether the color picker is active.
-]]*/
     private void addImportExportPage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Import Defaults";
         rightHeader = "Export Defaults";
@@ -1062,34 +861,6 @@ Verify every export include flag has a row and imported route color mode still c
         return config.importedRouteColorMode() == WaypointGroup.GradientMode.STATIC;
     }
 
-    /*[[AI-FN-DOC
-Function:
-addImportedRouteColorRow
-Purpose:
-Add the settings row that edits the static default color applied to imported routes.
-Why this exists:
-Imported route recoloring is a separate policy from normal waypoint creation, so it needs a clearly labeled color row.
-When to use:
-Use from Import / Export or Colors pages when showing imported-route color defaults. Do not use for route connector or tracer colors.
-Inputs:
-x and y are row coordinates; colW is the column width; enabled controls whether one-color import mode is active; tooltip describes when the value applies.
-Outputs:
-No return value. Adds color controls if the row passes search filtering.
-Side effects:
-Updates WaypointerConfig.importedRouteDefaultColor through the shared RGB row helper.
-Failure modes:
-Invalid hex text is ignored by the helper. The row disables outside one-color import mode.
-Important invariants:
-Changing this value affects import policy only and must not alter existing saved route waypoint colors.
-Internal logic:
-Delegate to addRgbColorRow with imported-route labels, current default color, setter, dependency, and picker metadata.
-Pseudocode:
-addRgbColorRow with imported color label, importedRouteDefaultColor, setImportedRouteDefaultColor, enabled supplier, tooltip, and picker strings
-Implementation notes:
-This row intentionally uses the same helper as the default waypoint color row so the two defaults are visually comparable but behaviorally distinct.
-AI self-check:
-Confirm the row stays disabled unless importedRouteColorMode is STATIC.
-]]*/
     private void addImportedRouteColorRow(int x, int y, int colW, BooleanSupplier enabled,
                                           String tooltip) {
         addRgbColorRow(x, y, colW,
@@ -1103,7 +874,7 @@ Confirm the row stays disabled unless importedRouteColorMode is STATIC.
                 "Pick imported route color.");
     }
 
-        private void addOtherPage(int col1, int col2, int colW, int rowsY, int rowH) {
+    private void addOtherPage(int col1, int col2, int colW, int rowsY, int rowH) {
         leftHeader = "Maintenance";
         rightHeader = "Updates";
 
@@ -1116,6 +887,10 @@ Confirm the row stays disabled unless importedRouteColorMode is STATIC.
                 config.irisShaderHudFallback(), config::setIrisShaderHudFallback,
                 "Render waypoint HUD fallback when Iris shaders are active.");
         y += rowH;
+        addBoolRow(col1, y, "Edit mode sounds",
+                config.editSounds(), config::setEditSounds,
+                "Play local UI sounds for edit-mode actions.");
+        y += rowH;
         addConfigCodeControlsRow(col1, y, colW);
         y += rowH;
         addConfigCodeStatusRow(col1, y, colW);
@@ -1126,45 +901,11 @@ Confirm the row stays disabled unless importedRouteColorMode is STATIC.
         addUpdateStatusRow(col2, y2, colW);
     }
 
-    /*[[AI-FN-DOC
-Function:
-addConfigCodeControlsRow
-Purpose:
-Add the Copy config code and Import config code buttons to the Other settings page.
-Why this exists:
-Users asked for compact WPC: config import/export controls that live with maintenance actions rather than route sharing.
-When to use:
-Call from addOtherPage while laying out maintenance rows. Do not call from Import / Export because these controls replace settings, not routes.
-Inputs:
-x and y are row coordinates; colW is the available column width.
-Outputs:
-No return value. Adds two buttons when the row passes search filtering.
-Side effects:
-Button callbacks read/write the clipboard, encode/decode settings, may replace the live config, save settings, update status, and rebuild the screen.
-Failure modes:
-The row can be hidden by search filtering. Clipboard failures or malformed codes are reported in the status row without partial config mutation.
-Important invariants:
-Copy and import actions are explicit button presses; malformed imports must not modify the current config.
-Internal logic:
-Create equal-width buttons with clear labels and tooltips, wiring them to copyConfigCode and importConfigCode.
-Pseudocode:
-build tooltip
-if filtered, return
-compute row geometry
-buttonW = half width after gap
-add Copy config code button
-add Import config code button
-Implementation notes:
-The buttons occupy the full row instead of using a left label so their text remains legible on compact settings widths.
-AI self-check:
-Verify both buttons remain reachable after tab wrapping and search filtering.
-]]*/
     private void addConfigCodeControlsRow(int x, int y, int colW) {
-        Component tooltipComponent = normalizedTooltipComponent(Component.literal(
-                "Copy exports only Waypointer settings as a compact WPC: code.\n"
-              + "Import reads a WPC: code from your clipboard and replaces all Waypointer settings."));
+        Component importTooltipComponent = normalizedTooltipComponent(Component.literal(
+                "Import settings. This will overwrite existing settings."));
         String label = "Config code";
-        if (!shouldRenderSettingRow(label, tooltipComponent)) return;
+        if (!shouldRenderSettingRow(label, importTooltipComponent)) return;
         int[] geometry = settingRowGeometry(x, y, colW);
         x = geometry[0];
         y = geometry[1];
@@ -1173,47 +914,15 @@ Verify both buttons remain reachable after tab wrapping and search filtering.
 
         Button copy = Button.builder(Component.literal("Copy config code"), this::copyConfigCode)
                 .bounds(x, y, buttonW, BTN_H)
-                .tooltip(Tooltip.create(tooltipComponent))
                 .build();
         Button importButton = Button.builder(Component.literal("Import config code"), this::importConfigCode)
                 .bounds(x + buttonW + GAP, y, colW - buttonW - GAP, BTN_H)
-                .tooltip(Tooltip.create(tooltipComponent))
+                .tooltip(Tooltip.create(importTooltipComponent))
                 .build();
         addRenderableWidget(copy);
         addRenderableWidget(importButton);
     }
 
-    /*[[AI-FN-DOC
-Function:
-addConfigCodeStatusRow
-Purpose:
-Render inline feedback for the most recent config-code copy/import action.
-Why this exists:
-Clipboard and decode actions need immediate success or error feedback without opening a modal.
-When to use:
-Call directly below addConfigCodeControlsRow on the Other page.
-Inputs:
-x and y are row coordinates; colW is the maximum status text width.
-Outputs:
-No return value. Adds a text-only renderable if the row passes search filtering.
-Side effects:
-Mutates renderable-only widget list.
-Failure modes:
-Long status text is clipped by ComponentLabelWidget. Search filtering can hide the row.
-Important invariants:
-Status display never performs import/export work; it only reflects configCodeStatus.
-Internal logic:
-Choose the saved status component or a neutral clipboard hint, then add a component label.
-Pseudocode:
-if filtered, return
-geometry = settingRowGeometry
-status = configCodeStatus or neutral hint
-add component label with status
-Implementation notes:
-The neutral hint keeps the controls discoverable before any action has run.
-AI self-check:
-Verify success and error statuses are styled by their Component formatting.
-]]*/
     private void addConfigCodeStatusRow(int x, int y, int colW) {
         Component tooltipComponent = normalizedTooltipComponent(Component.literal(
                 "Shows the result of copying or importing a Waypointer config code."));
@@ -1226,39 +935,6 @@ Verify success and error statuses are styled by their Component formatting.
                 status, geometry[2], TEXT_DIM, ConfigScreen::alwaysEnabled));
     }
 
-    /*[[AI-FN-DOC
-Function:
-copyConfigCode
-Purpose:
-Encode current Waypointer settings as a compact WPC: code and copy it to the Minecraft clipboard.
-Why this exists:
-Users wanted a short, fun config export path that does not include route data.
-When to use:
-Used only as the Copy config code button callback.
-Inputs:
-b is the pressed button supplied by Minecraft; it is not mutated.
-Outputs:
-No return value. The clipboard receives a WPC: code on success.
-Side effects:
-Reads the live config, writes Minecraft clipboard, updates inline status, and rebuilds widgets to display feedback.
-Failure modes:
-Encoding or clipboard errors are caught and reported as an error status.
-Important invariants:
-Copying config never changes settings.
-Internal logic:
-Try to encode config and write clipboard; set green success status on success, otherwise set red failure status; rebuild widgets.
-Pseudocode:
-try code = encode config
-  clipboard = code
-  status success
-catch runtime/throwable
-  status failure
-rebuild settings widgets
-Implementation notes:
-The broad catch keeps GUI button callbacks from crashing the screen on platform clipboard issues.
-AI self-check:
-Verify status is updated for both success and failure paths.
-]]*/
     private void copyConfigCode(Button b) {
         try {
             String code = WaypointerConfigCodec.encode(config);
@@ -1270,42 +946,6 @@ Verify status is updated for both success and failure paths.
         rebuildSettingsWidgets();
     }
 
-    /*[[AI-FN-DOC
-Function:
-importConfigCode
-Purpose:
-Read a WPC: config code from the clipboard, validate it completely, and replace current settings with the decoded snapshot.
-Why this exists:
-Config import must be compact and convenient while still avoiding partial application of malformed user input.
-When to use:
-Used only as the Import config code button callback.
-Inputs:
-b is the pressed button supplied by Minecraft; it is not mutated.
-Outputs:
-No return value. On success, the live config is replaced and saved; on failure, status explains the issue.
-Side effects:
-Reads Minecraft clipboard, may replace and save WaypointerConfig, clears search/confirmation state after success, updates status, and rebuilds widgets.
-Failure modes:
-Clipboard read errors, empty clipboard, bad prefix, unsupported version, corrupt body, or unknown fields all produce red status without mutating the live config.
-Important invariants:
-Decode must complete before config.replaceWith is called, so malformed codes never partially apply.
-Internal logic:
-Read clipboard text, reject clipboard failures/blanks, decode into a fresh config, replace live config, clear transient UI filters, set success status, or report failure.
-Pseudocode:
-text = clipboard, or report clipboard read failure
-if blank, set red status and rebuild
-try decoded = WaypointerConfigCodec.decode(text)
-  config.replaceWith(decoded)
-  clear search and confirmations
-  set green status
-catch runtime
-  set red status
-rebuild widgets
-Implementation notes:
-Import intentionally resets omitted fields to defaults because decoded config starts from a fresh WaypointerConfig.
-AI self-check:
-Verify config.replaceWith is only reachable after decode returns successfully.
-]]*/
     private void importConfigCode(Button b) {
         String text;
         try {
@@ -1323,51 +963,131 @@ Verify config.replaceWith is only reachable after decode returns successfully.
 
         try {
             WaypointerConfig decoded = WaypointerConfigCodec.decode(text);
-            config.replaceWith(decoded);
-            settingsSearchQuery = "";
-            clearPendingConfirmation();
-            setConfigCodeStatus(Component.literal("Config imported. Settings replaced.").withStyle(ChatFormatting.GREEN));
+            int changedSettings = countChangedSettings(decoded);
+            showImportConfigConfirmation(decoded, changedSettings);
+            return;
         } catch (RuntimeException e) {
             setConfigCodeStatus(Component.literal("Invalid config code.").withStyle(ChatFormatting.RED));
         }
         rebuildSettingsWidgets();
     }
 
-    /*[[AI-FN-DOC
-Function:
-setConfigCodeStatus
-Purpose:
-Store the formatted status text shown under config-code controls.
-Why this exists:
-Copy and import callbacks both need to update the same inline feedback row before rebuilding the screen.
-When to use:
-Call after a config-code action succeeds or fails. Do not use for update-check status, which has separate state.
-Inputs:
-status is the formatted component to render; null clears the status and restores the neutral hint.
-Outputs:
-No return value.
-Side effects:
-Mutates the configCodeStatus field.
-Failure modes:
-None. Null is explicitly supported.
-Important invariants:
-The component may carry color formatting that ComponentLabelWidget should preserve when unclipped.
-Internal logic:
-Assign the field directly.
-Pseudocode:
-configCodeStatus = status
-Implementation notes:
-Separated mostly to keep copy/import callbacks symmetrical and easy to audit.
-AI self-check:
-Verify no unrelated status fields are touched.
-]]*/
+    private void showImportConfigConfirmation(WaypointerConfig decoded, int changedSettings) {
+        if (decoded == null) {
+            setConfigCodeStatus(Component.literal("Invalid config code.").withStyle(ChatFormatting.RED));
+            rebuildSettingsWidgets();
+            return;
+        }
+
+        String settingWord = changedSettings == 1 ? "setting" : "settings";
+        Component title = Component.literal("Import config code?");
+        Component message = Component.literal(
+                "Import settings. This will overwrite existing settings.\n"
+              + changedSettings + " " + settingWord
+              + " will be changed from their current states.");
+        ConfirmScreen confirmScreen = new ConfirmScreen(
+                confirmed -> {
+            if (confirmed) {
+                applyConfirmedConfigImport(decoded, changedSettings);
+            } else {
+                setConfigCodeStatus(Component.literal("Config import cancelled.").withStyle(ChatFormatting.GRAY));
+            }
+            minecraft.setScreen(this);
+        }, title, message, Component.literal("Import settings"), Component.literal("Cancel"));
+        minecraft.setScreen(confirmScreen);
+    }
+
+    private void applyConfirmedConfigImport(WaypointerConfig decoded, int changedSettings) {
+        if (decoded == null) {
+            setConfigCodeStatus(Component.literal("Invalid config code.").withStyle(ChatFormatting.RED));
+            return;
+        }
+        config.replaceWith(decoded);
+        settingsSearchQuery = "";
+        clearPendingConfirmation();
+        String settingWord = changedSettings == 1 ? "setting" : "settings";
+        setConfigCodeStatus(Component.literal("Config imported. " + changedSettings + " "
+                + settingWord + " changed.").withStyle(ChatFormatting.GREEN));
+    }
+    private int countChangedSettings(WaypointerConfig decoded) {
+        if (decoded == null) return 0;
+
+        int changed = 0;
+        if (Double.compare(config.defaultReachRadius(), decoded.defaultReachRadius()) != 0) changed++;
+        if (config.resetProgressOnWorldJoin() != decoded.resetProgressOnWorldJoin()) changed++;
+        if (config.restartRouteWhenComplete() != decoded.restartRouteWhenComplete()) changed++;
+        if (config.defaultWaypointColor() != decoded.defaultWaypointColor()) changed++;
+        if (config.tracerColor() != decoded.tracerColor()) changed++;
+        if (config.matchTracerToWaypointColor() != decoded.matchTracerToWaypointColor()) changed++;
+        if (Double.compare(config.tracerOpacity(), decoded.tracerOpacity()) != 0) changed++;
+        if (Double.compare(config.tracerThickness(), decoded.tracerThickness()) != 0) changed++;
+        if (Double.compare(config.waypointOutlineThickness(), decoded.waypointOutlineThickness()) != 0) changed++;
+        if (config.sharpWaypointEdges() != decoded.sharpWaypointEdges()) changed++;
+        if (Double.compare(config.beaconOpacity(), decoded.beaconOpacity()) != 0) changed++;
+        if (config.showWaypointNames() != decoded.showWaypointNames()) changed++;
+        if (config.showWaypointDistances() != decoded.showWaypointDistances()) changed++;
+        if (config.showRouteProgress() != decoded.showRouteProgress()) changed++;
+        if (Double.compare(config.labelScale(), decoded.labelScale()) != 0) changed++;
+        if (config.scaleWaypointTextWithDistance() != decoded.scaleWaypointTextWithDistance()) changed++;
+        if (config.matchWaypointTextToWaypointColor() != decoded.matchWaypointTextToWaypointColor()) changed++;
+        if (config.showCompleted() != decoded.showCompleted()) changed++;
+        if (config.showTracer() != decoded.showTracer()) changed++;
+        if (config.dimSequenceContextWaypoints() != decoded.dimSequenceContextWaypoints()) changed++;
+        if (config.hideTracerOnStaticRoutes() != decoded.hideTracerOnStaticRoutes()) changed++;
+        if (config.hideWaypointsNearPlayer() != decoded.hideWaypointsNearPlayer()) changed++;
+        if (Double.compare(config.hideWaypointsNearRadius(), decoded.hideWaypointsNearRadius()) != 0) changed++;
+        if (config.hideWaypointLabelsNearPlayer() != decoded.hideWaypointLabelsNearPlayer()) changed++;
+        if (Double.compare(config.hideWaypointLabelsNearRadius(), decoded.hideWaypointLabelsNearRadius()) != 0) changed++;
+        if (config.hideReachedStaticWaypointsUntilCycleComplete()
+                != decoded.hideReachedStaticWaypointsUntilCycleComplete()) changed++;
+        if (config.skipAheadOnlyVisibleWaypoints() != decoded.skipAheadOnlyVisibleWaypoints()) changed++;
+        if (config.showRouteLines() != decoded.showRouteLines()) changed++;
+        if (config.showDungeonEntryPathToFirstWaypoint()
+                != decoded.showDungeonEntryPathToFirstWaypoint()) changed++;
+        if (config.showDungeonEntryPathToFollowingWaypoints()
+                != decoded.showDungeonEntryPathToFollowingWaypoints()) changed++;
+        if (config.dungeonEntryPathColor() != decoded.dungeonEntryPathColor()) changed++;
+        if (config.routeLineColor() != decoded.routeLineColor()) changed++;
+        if (config.showLabelBackdrop() != decoded.showLabelBackdrop()) changed++;
+        if (config.maxWaypointLabels() != decoded.maxWaypointLabels()) changed++;
+        if (Double.compare(config.maxStaticWaypointRenderDistance(),
+                decoded.maxStaticWaypointRenderDistance()) != 0) changed++;
+        if (Double.compare(config.labelHeightOffset(), decoded.labelHeightOffset()) != 0) changed++;
+        if (config.boxStyle() != decoded.boxStyle()) changed++;
+        if (config.beaconBeamMode() != decoded.beaconBeamMode()) changed++;
+        if (config.beaconBeamExtendsBelowWaypoint() != decoded.beaconBeamExtendsBelowWaypoint()) changed++;
+        if (config.useBeaconBeamTextures() != decoded.useBeaconBeamTextures()) changed++;
+        if (config.editSounds() != decoded.editSounds()) changed++;
+        if (config.showEditModeSubtitle() != decoded.showEditModeSubtitle()) changed++;
+        if (config.chatCoordDetection() != decoded.chatCoordDetection()) changed++;
+        if (!config.chatCoordSenderBlacklist().equals(decoded.chatCoordSenderBlacklist())) changed++;
+        if (config.autoAddChatTempWaypoints() != decoded.autoAddChatTempWaypoints()) changed++;
+        if (config.placeNewWaypointsBelowPlayer() != decoded.placeNewWaypointsBelowPlayer()) changed++;
+        if (config.focusTempWaypoints() != decoded.focusTempWaypoints()) changed++;
+        if (config.chatCodecDetection() != decoded.chatCodecDetection()) changed++;
+        if (config.importedRouteColorMode() != decoded.importedRouteColorMode()) changed++;
+        if (config.importedRouteDefaultColor() != decoded.importedRouteDefaultColor()) changed++;
+        if (config.exportIncludeNames() != decoded.exportIncludeNames()) changed++;
+        if (config.exportIncludeColors() != decoded.exportIncludeColors()) changed++;
+        if (config.exportIncludeRadii() != decoded.exportIncludeRadii()) changed++;
+        if (config.exportIncludeWaypointFlags() != decoded.exportIncludeWaypointFlags()) changed++;
+        if (config.exportIncludeGroupMeta() != decoded.exportIncludeGroupMeta()) changed++;
+        if (config.dungeonWaypointsFeatureEnabled() != decoded.dungeonWaypointsFeatureEnabled()) changed++;
+        if (config.skipAheadMechanicEnabled() != decoded.skipAheadMechanicEnabled()) changed++;
+        if (config.checkForUpdates() != decoded.checkForUpdates()) changed++;
+        if (config.irisShaderHudFallback() != decoded.irisShaderHudFallback()) changed++;
+        if (config.tempDefaultMode() != decoded.tempDefaultMode()) changed++;
+        if (config.tempDefaultDurationSec() != decoded.tempDefaultDurationSec()) changed++;
+        return changed;
+    }
+
     private void setConfigCodeStatus(Component status) {
         configCodeStatus = status;
     }
 
         private void addUpdateControlsRow(int x, int y, int colW) {
         Component tooltipComponent = normalizedTooltipComponent(Component.literal(
-                "Download saves the latest release jar to your Minecraft mods folder.\n"
+                "Download asks for confirmation, then saves a verified release jar to your Minecraft mods folder.\n"
               + "Restart Minecraft after it finishes. The refresh button checks GitHub now."));
         String label = "Latest release";
         if (!shouldRenderSettingRow(label, tooltipComponent)) return;
@@ -1394,6 +1114,11 @@ Verify no unrelated status fields are touched.
         refresh.setTooltip(Tooltip.create(Component.literal("Check for updates now.")));
         refresh.active = !updateCheckInProgress && !updateDownloadInProgress;
         addRenderableWidget(refresh);
+    }
+
+    static String hideReachedStaticWaypointsTooltip() {
+        return "Static routes hide reached main markers until the cycle resets; "
+                + "current/tracer does not advance, and subwaypoints are ignored.";
     }
 
         private void addUpdateStatusRow(int x, int y, int colW) {
@@ -1451,6 +1176,18 @@ Verify no unrelated status fields are touched.
             return updateCheckResult.failureMessage() + " Try again.";
         }
         if (updateCheckResult.updateAvailable()) {
+            if (!UpdateChecker.isJarDownloadUri(updateCheckResult.downloadUri())) {
+                return updateCheckResult.latestVersion() == null
+                        ? "Update available, but no jar asset was found."
+                        : "Update available v" + updateCheckResult.latestVersion()
+                                + ", but no jar asset was found.";
+            }
+            if (!UpdateChecker.hasSha256Digest(updateCheckResult.downloadSha256())) {
+                return updateCheckResult.latestVersion() == null
+                        ? "Update available, but the jar has no SHA-256 digest."
+                        : "Update available v" + updateCheckResult.latestVersion()
+                                + ", but the jar has no SHA-256 digest.";
+            }
             return updateCheckResult.latestVersion() == null
                     ? "Update available"
                     : "Update available v" + updateCheckResult.latestVersion();
@@ -1465,7 +1202,8 @@ Verify no unrelated status fields are touched.
                 && !updateDownloadInProgress
                 && updateCheckResult != null
                 && updateCheckResult.updateAvailable()
-                && UpdateChecker.isJarDownloadUri(updateCheckResult.downloadUri());
+                && UpdateChecker.isJarDownloadUri(updateCheckResult.downloadUri())
+                && UpdateChecker.hasSha256Digest(updateCheckResult.downloadSha256());
     }
 
         private void startManualUpdateCheck(Button b) {
@@ -1481,7 +1219,7 @@ Verify no unrelated status fields are touched.
             UpdateChecker.CheckResult safeResult = result;
             if (error != null) {
                 safeResult = new UpdateChecker.CheckResult(UpdateChecker.currentModVersion(),
-                        null, false, null, null, "Could not check GitHub releases.");
+                        null, false, null, null, null, "Could not check GitHub releases.");
             }
             UpdateChecker.CheckResult finalResult = safeResult;
             net.minecraft.client.Minecraft.getInstance().execute(
@@ -1494,7 +1232,7 @@ Verify no unrelated status fields are touched.
         updateCheckInProgress = false;
         updateCheckResult = result == null
                 ? new UpdateChecker.CheckResult(UpdateChecker.currentModVersion(),
-                        null, false, null, null, "Could not check GitHub releases.")
+                        null, false, null, null, null, "Could not check GitHub releases.")
                 : result;
         if (minecraft != null && minecraft.screen == this) {
             rebuildSettingsWidgets();
@@ -1503,14 +1241,31 @@ Verify no unrelated status fields are touched.
 
         private void downloadLatestUpdate(Button b) {
         if (!canDownloadUpdate()) return;
+        UpdateChecker.CheckResult result = updateCheckResult;
+        String version = result.latestVersion() == null ? "the latest release" : "v" + result.latestVersion();
+        Component title = Component.literal("Download Waypointer update?");
+        Component message = Component.literal(
+                "Download " + version + " to your Minecraft mods folder?\n"
+              + "Waypointer will verify the jar before installing it. Restart Minecraft after it finishes.");
+        ConfirmScreen confirmScreen = new ConfirmScreen(confirmed -> {
+            minecraft.setScreen(this);
+            if (confirmed) {
+                beginLatestUpdateDownload(result);
+            }
+        }, title, message, Component.literal("Download update"), Component.literal("Cancel"));
+        minecraft.setScreen(confirmScreen);
+    }
+
+        private void beginLatestUpdateDownload(UpdateChecker.CheckResult result) {
+        if (result == null || !canDownloadUpdate()) return;
         long requestId = ++updateDownloadRequestSeq;
         updateDownloadInProgress = true;
         updateDownloadResult = null;
         rebuildSettingsWidgets();
 
-        UpdateChecker.downloadLatestJarAsync(updateCheckResult).whenComplete(
-                                (result, error) -> {
-            UpdateChecker.DownloadResult safeResult = result;
+        UpdateChecker.downloadLatestJarAsync(result).whenComplete(
+                                (downloadResult, error) -> {
+            UpdateChecker.DownloadResult safeResult = downloadResult;
             if (error != null) {
                 safeResult = new UpdateChecker.DownloadResult(false, null, null,
                         "Could not download update. Try again.");
@@ -1630,10 +1385,11 @@ Verify no unrelated status fields are touched.
         return new int[]{resultX, resultY, searchColW};
     }
 
-    private static boolean fuzzySettingMatch(String query, String searchable) {
+    static boolean fuzzySettingMatch(String query, String searchable) {
         if (query == null || query.isBlank()) return true;
+        String normalizedQuery = query.toLowerCase(Locale.ROOT);
         String haystack = searchable == null ? "" : searchable.toLowerCase(Locale.ROOT);
-        for (String token : query.split("\\s+")) {
+        for (String token : normalizedQuery.split("\\s+")) {
             if (token.isEmpty()) continue;
             if (haystack.contains(token)) continue;
             if (!isSubsequence(token, haystack)) return false;
@@ -1708,34 +1464,6 @@ Verify no unrelated status fields are touched.
         addRenderableWidget(box);
     }
 
-    /*[[AI-FN-DOC
-Function:
-addTracerColorRow
-Purpose:
-Add the settings row that edits the fallback tracer color.
-Why this exists:
-Tracer color is only used when tracer color inheritance is off, but users need a consistent place to set that fallback.
-When to use:
-Use from Colors or related settings pages when showing tracer fallback color. Do not use for waypoint labels or route connector colors.
-Inputs:
-x and y are row coordinates; colW is the column width; enabled controls whether the row can currently be edited; tooltip describes when the color applies.
-Outputs:
-No return value. Adds the color row if it matches current search filtering.
-Side effects:
-Updates WaypointerConfig.tracerColor through the shared RGB row helper.
-Failure modes:
-Invalid hex input is ignored by the helper; disabled state prevents interaction while preserving visibility.
-Important invariants:
-Changing this value must not disable tracer inheritance or change waypoint colors.
-Internal logic:
-Delegate to addRgbColorRow with tracer labels, current tracer color, setter, dependency, and picker metadata.
-Pseudocode:
-addRgbColorRow with tracer color label, tracerColor, setTracerColor, enabled supplier, tooltip, and picker strings
-Implementation notes:
-The helper keeps parsing and swatch synchronization consistent with other settings colors.
-AI self-check:
-Verify the row is disabled when tracer inheritance makes this fallback inactive.
-]]*/
     private void addTracerColorRow(int x, int y, int colW, BooleanSupplier enabled,
                                    String tooltip) {
         addRgbColorRow(x, y, colW,
@@ -1836,12 +1564,11 @@ Verify the row is disabled when tracer inheritance makes this fallback inactive.
         int clamped = rounded > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) rounded;
         config.setMaxWaypointLabels(clamped);
     }
-
-    private void setTempDefaultDuration(double value) {
+    private void setTempDefaultDurationSeconds(double value) {
         if (!Double.isFinite(value)) return;
         long rounded = Math.round(value);
         int clamped = rounded > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) rounded;
-        config.setTempDefaultDurationMin(clamped);
+        config.setTempDefaultDurationSec(clamped);
     }
 
     private void addBoolRow(int x, int y, String label, boolean initial,
@@ -1874,7 +1601,9 @@ Verify the row is disabled when tracer inheritance makes this fallback inactive.
                 .onValueChange(
                         (b, v) -> setter.accept(v))
                 .build();
-        cb.setTooltip(Tooltip.create(tooltipComponent));
+        if (!tooltipComponent.getString().isEmpty()) {
+            cb.setTooltip(Tooltip.create(tooltipComponent));
+        }
         trackDependent(cb, enabled);
         addRenderableWidget(cb);
     }
@@ -1891,18 +1620,18 @@ Verify the row is disabled when tracer inheritance makes this fallback inactive.
     }
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
         refreshDependentControls();
         g.fill(0, 0, width, height, SURFACE);
 
-        super.render(g, mouseX, mouseY, partial);
-        g.drawString(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
-        g.drawString(font, "Changes save automatically.",
+        super.extractRenderState(g, mouseX, mouseY, partial);
+        g.text(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
+        g.text(font, "Changes save automatically.",
                 width - PAD_OUTER - font.width("Changes save automatically."),
                 PAD_OUTER, TEXT_DIM, false);
 
-        g.drawString(font, leftHeader, leftHeaderX, sectionHeaderY, TEXT_DIM, false);
-        g.drawString(font, rightHeader, rightHeaderX, sectionHeaderY, TEXT_DIM, false);
+        g.text(font, leftHeader, leftHeaderX, sectionHeaderY, TEXT_DIM, false);
+        g.text(font, rightHeader, rightHeaderX, sectionHeaderY, TEXT_DIM, false);
     }
 
     @Override
@@ -1917,15 +1646,15 @@ Verify the row is disabled when tracer inheritance makes this fallback inactive.
                                         BooleanSupplier enabled)
             implements net.minecraft.client.gui.components.Renderable {
                 @Override
-        public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
+        public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
             var font = net.minecraft.client.Minecraft.getInstance().font;
             Component safeText = text == null ? Component.empty() : text;
             if (font.width(safeText) <= maxW) {
-                g.drawString(font, safeText, x, y, enabled.getAsBoolean() ? TEXT : TEXT_DIM, false);
+                g.text(font, safeText, x, y, enabled.getAsBoolean() ? TEXT : TEXT_DIM, false);
                 return;
             }
             String clipped = font.plainSubstrByWidth(safeText.getString(), maxW);
-            g.drawString(font, clipped, x, y, enabled.getAsBoolean() ? fallbackColor : TEXT_DIM, false);
+            g.text(font, clipped, x, y, enabled.getAsBoolean() ? fallbackColor : TEXT_DIM, false);
         }
     }
 
@@ -1940,8 +1669,8 @@ Verify the row is disabled when tracer inheritance makes this fallback inactive.
                     DEFAULT_NARRATION);
         }
 
-                @Override
-        protected void renderContents(GuiGraphics g, int mouseX, int mouseY, float partial) {
+        @Override
+        protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
             var font = net.minecraft.client.Minecraft.getInstance().font;
             int iconW = font.width(REFRESH_ICON);
             float scaledW = iconW * ICON_SCALE;
@@ -1953,7 +1682,7 @@ Verify the row is disabled when tracer inheritance makes this fallback inactive.
             g.pose().pushMatrix();
             g.pose().translate(drawX, drawY);
             g.pose().scale(ICON_SCALE, ICON_SCALE);
-            g.drawString(font, REFRESH_ICON, 0, 0, color, false);
+            g.text(font, REFRESH_ICON, 0, 0, color, false);
             g.pose().popMatrix();
         }
     }
@@ -1961,10 +1690,10 @@ Verify the row is disabled when tracer inheritance makes this fallback inactive.
     private record LabelWidget(int x, int y, String text, int maxW, BooleanSupplier enabled)
             implements net.minecraft.client.gui.components.Renderable {
         @Override
-        public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
+        public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
             var font = net.minecraft.client.Minecraft.getInstance().font;
             String clipped = font.plainSubstrByWidth(text, maxW);
-            g.drawString(font, clipped, x, y, enabled.getAsBoolean() ? TEXT : TEXT_DIM, false);
+            g.text(font, clipped, x, y, enabled.getAsBoolean() ? TEXT : TEXT_DIM, false);
         }
     }
 

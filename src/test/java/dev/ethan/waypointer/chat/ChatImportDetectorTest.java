@@ -5,6 +5,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.MutableComponent;
@@ -14,8 +15,10 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,19 +29,19 @@ class ChatImportDetectorTest {
         String export = sampleExport();
         MutableComponent message = Component.empty()
                 .append(Component.literal("[MVP++] ").withStyle(ChatFormatting.GOLD))
-                .append(Component.literal("Ethan").withStyle(ChatFormatting.LIGHT_PURPLE))
+                .append(Component.literal("Babbur").withStyle(ChatFormatting.LIGHT_PURPLE))
                 .append(Component.literal(": ").withStyle(ChatFormatting.GRAY))
                 .append(Component.literal(export).withStyle(ChatFormatting.WHITE));
 
         ChatImportCache cache = new ChatImportCache();
         Component out = invokeDetector(message, cache);
 
-        assertEquals("[MVP++] Ethan: [◆ Click to import Waypoints]", out.getString());
+        assertEquals("[MVP++] Babbur: [◆ Click to import Waypoints]", out.getString());
         assertEquals(1, cache.size(), "valid codec should be cached behind a short click handle");
 
         List<StyledRun> runs = runs(out);
         assertRun(runs, "[MVP++] ", ChatFormatting.GOLD);
-        assertRun(runs, "Ethan", ChatFormatting.LIGHT_PURPLE);
+        assertRun(runs, "Babbur", ChatFormatting.LIGHT_PURPLE);
         assertRun(runs, ": ", ChatFormatting.GRAY);
         assertTrue(runs.stream().anyMatch(run ->
                         run.text().contains("Click to import Waypoints")
@@ -73,6 +76,38 @@ class ChatImportDetectorTest {
 
         assertEquals("[MVP++] Babbur: [Invalid Waypoints]", out.getString());
         assertEquals(0, cache.size(), "invalid payloads should not get clickable import handles");
+    }
+
+    @Test
+    void multipleExportsBecomeSeparateClickableImportHandles() throws Exception {
+        String first = sampleExport();
+        String second = secondSampleExport();
+        MutableComponent message = Component.empty()
+                .append(Component.literal("[VIP] ").withStyle(ChatFormatting.GREEN))
+                .append(Component.literal("Guide").withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(": first ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(first).withStyle(ChatFormatting.WHITE))
+                .append(Component.literal(" and second ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(second).withStyle(ChatFormatting.WHITE));
+
+        ChatImportCache cache = new ChatImportCache();
+        Component out = invokeDetector(message, cache);
+
+        assertEquals(2, countOccurrences(out.getString(), "Click to import Waypoints"));
+        assertEquals(2, cache.size(), "each valid payload should get its own cache handle");
+        Set<String> importCommands = new LinkedHashSet<>();
+        for (StyledRun run : runs(out)) {
+            ClickEvent clickEvent = run.style().getClickEvent();
+            if (clickEvent instanceof ClickEvent.RunCommand runCommand
+                    && runCommand.command().startsWith("/waypointer importchat ")) {
+                importCommands.add(runCommand.command());
+            }
+        }
+        assertEquals(2, importCommands.size(), "each visible import pill should target a distinct command");
+        for (String command : importCommands) {
+            String handle = command.substring("/waypointer importchat ".length());
+            assertNotNull(cache.get(handle), "import command handle should resolve to cached payload");
+        }
     }
 
     private static Component invokeDetector(Component message, ChatImportCache cache) throws Exception {
@@ -112,6 +147,23 @@ class ChatImportDetectorTest {
         WaypointGroup group = WaypointGroup.create("Shared", "hub");
         group.add(new Waypoint(10, 70, 20, "start", Waypoint.DEFAULT_COLOR, 0, 0));
         return WaypointCodec.encode(List.of(group), WaypointCodec.Options.WITH_NAMES);
+    }
+
+    private static String secondSampleExport() {
+        WaypointGroup group = WaypointGroup.create("Shared Two", "hub");
+        group.add(new Waypoint(30, 75, -12, "finish", Waypoint.DEFAULT_COLOR, 0, 0));
+        return WaypointCodec.encode(List.of(group), WaypointCodec.Options.WITH_NAMES);
+    }
+
+    private static int countOccurrences(String text, String needle) {
+        int count = 0;
+        int cursor = 0;
+        while (true) {
+            int next = text.indexOf(needle, cursor);
+            if (next < 0) return count;
+            count++;
+            cursor = next + needle.length();
+        }
     }
 
     private static String truncatedRealChatExport() {

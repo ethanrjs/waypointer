@@ -95,4 +95,22 @@ class RouteStressTest {
         assertEquals(64, cleared.waypointsRemoved);
         assertNull(manager.get(installed.groupId));
     }
+
+    @Test
+    void clearLiveOverlaysDoesNotRemoveNonTempGroupsWithDebugPrefix() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Zone zone = new Zone("hub", "Hub");
+        manager.onZoneChanged(zone);
+        WaypointGroup userGroup = new WaypointGroup(
+                "debug-stress-live::hub", "User Route", "hub");
+        userGroup.add(dev.ethan.waypointer.core.Waypoint.at(1, 65, 1));
+        manager.add(userGroup);
+
+        PerformanceStressProbe.ClearOverlayResult cleared =
+                PerformanceStressProbe.clearLiveOverlays(manager);
+
+        assertEquals(0, cleared.groupsRemoved);
+        assertEquals(0, cleared.waypointsRemoved);
+        assertNotNull(manager.get("debug-stress-live::hub"));
+    }
 }

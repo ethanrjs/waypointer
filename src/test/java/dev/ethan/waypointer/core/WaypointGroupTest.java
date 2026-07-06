@@ -76,39 +76,6 @@ class WaypointGroupTest {
         assertEquals(3, g.currentIndex());
     }
 
-    /*[[AI-FN-DOC
-Function:
-retreatToPreviousTarget_movesBackOneMainWaypoint
-Purpose:
-Verify route progress can move back from a later main waypoint to the immediately previous main waypoint.
-Why this exists:
-The Previous Waypoint keybind depends on WaypointGroup.retreatToPreviousTarget for the normal inverse of skipping a current waypoint.
-When to use:
-Run with core waypoint group tests whenever route progress, skip, or keybind backtracking behavior changes.
-Inputs:
-No runtime inputs; builds an in-memory four-waypoint route and advances it to index 2.
-Outputs:
-Assertions pass when retreat returns true, currentIndex becomes 1, and no active subwaypoint hold remains.
-Side effects:
-Mutates only the local test route.
-Failure modes:
-Fails if retreat is a no-op from a middle route step, skips too far backward, or leaves stale subwaypoint hold state.
-Important invariants:
-Main-waypoint retreat walks by main waypoint, not by physical list mutation or proximity state.
-Internal logic:
-Create a route, advance past index 1 so currentIndex is 2, retreat once, then assert the new progress target.
-Pseudocode:
-g = route
-g.advancePast(1)
-moved = g.retreatToPreviousTarget
-assert moved is true
-assert currentIndex equals 1
-assert activeSubwaypointParentIndex equals -1
-Implementation notes:
-This is intentionally narrow because subwaypoint and completion variants are covered by separate tests.
-AI self-check:
-Verify the test exercises the same group method the keybind calls.
-]]*/
     @Test
     void retreatToPreviousTarget_movesBackOneMainWaypoint() {
         WaypointGroup g = route();
@@ -120,37 +87,6 @@ Verify the test exercises the same group method the keybind calls.
         assertEquals(-1, g.activeSubwaypointParentIndex());
     }
 
-    /*[[AI-FN-DOC
-Function:
-retreatToPreviousTarget_returnsFalseAtFirstWaypoint
-Purpose:
-Verify retreat reports a no-op when the route is already at its first waypoint.
-Why this exists:
-The keybind needs a reliable false return so it can show "nothing to go back to" feedback instead of saving unchanged route data.
-When to use:
-Run with core route progress tests after changing retreat guards or first-waypoint normalization.
-Inputs:
-No runtime inputs; builds a fresh in-memory route at its initial currentIndex.
-Outputs:
-Assertions pass when retreat returns false and currentIndex remains 0.
-Side effects:
-Mutates only the local test route if the implementation is wrong; the expected behavior has no mutation.
-Failure modes:
-Fails if retreat underflows progress or claims a successful move at the route start.
-Important invariants:
-The first waypoint has no previous target.
-Internal logic:
-Create a route, call retreat immediately, then assert false and unchanged progress.
-Pseudocode:
-g = route
-moved = g.retreatToPreviousTarget
-assert moved is false
-assert currentIndex equals 0
-Implementation notes:
-This protects the keybind from firing manager.fireDataChanged for no-op presses at the start of a route.
-AI self-check:
-Verify the test does not depend on any active manager state.
-]]*/
     @Test
     void retreatToPreviousTarget_returnsFalseAtFirstWaypoint() {
         WaypointGroup g = route();
@@ -160,40 +96,6 @@ Verify the test does not depend on any active manager state.
         assertEquals(0, g.currentIndex());
     }
 
-    /*[[AI-FN-DOC
-Function:
-retreatToPreviousTarget_fromCompleteRouteTargetsLastMainWaypoint
-Purpose:
-Verify a route that has been skipped or advanced past its end can move back to the final main waypoint.
-Why this exists:
-Previous Waypoint should feel like an inverse of Skip Waypoint even after Skip Waypoint completes the route.
-When to use:
-Run with route completion and keybind progress tests when changing completion, restart, or retreat behavior.
-Inputs:
-No runtime inputs; builds a route and advances past the last waypoint.
-Outputs:
-Assertions pass when the route starts complete, retreat returns true, the route is no longer complete, and currentIndex points at the final waypoint.
-Side effects:
-Mutates only the local test route.
-Failure modes:
-Fails if completed routes are treated as unable to retreat or retreat to the wrong target.
-Important invariants:
-Completion is represented by currentIndex == size, and retreat from that state should choose the last main waypoint.
-Internal logic:
-Create a route, advance past the final index, assert completion, retreat, then assert the final waypoint is current.
-Pseudocode:
-g = route
-g.advancePast(3)
-assert g is complete
-moved = g.retreatToPreviousTarget
-assert moved is true
-assert g is not complete
-assert currentIndex equals 3
-Implementation notes:
-The keybind intentionally does not filter complete groups before calling retreat, and this test locks in why.
-AI self-check:
-Verify restartRouteWhenComplete is not involved in this test.
-]]*/
     @Test
     void retreatToPreviousTarget_fromCompleteRouteTargetsLastMainWaypoint() {
         WaypointGroup g = route();
@@ -206,40 +108,6 @@ Verify restartRouteWhenComplete is not involved in this test.
         assertEquals(3, g.currentIndex());
     }
 
-    /*[[AI-FN-DOC
-Function:
-retreatToPreviousTarget_walksExplicitSubwaypointTargetsBackward
-Purpose:
-Verify exact subwaypoint targets retreat through sibling children and then back to their parent.
-Why this exists:
-Skip-to commands can make currentIndex point at subwaypoints directly, and the keybind should reverse that exact target sequence instead of normalizing straight to main-waypoint progress.
-When to use:
-Run with subwaypoint route progress tests whenever advancePast, setCurrentTargetIndex, or retreat behavior changes.
-Inputs:
-No runtime inputs; builds an in-memory route and turns indices 1 and 2 into subwaypoints under index 0.
-Outputs:
-Assertions pass when retreat from child 2 targets child 1 exactly with parent lookup intact, then retreat from child 1 targets parent 0 and clears visible hold.
-Side effects:
-Mutates only the local test route.
-Failure modes:
-Fails if retreat normalizes subwaypoints too early, skips sibling children, loses parent lookup for the child, or leaves an incorrect visible hold on the parent.
-Important invariants:
-Exact subwaypoint current targets are allowed only through setCurrentTargetIndex-style progress, and retreat must preserve that exactness for child-to-child movement.
-Internal logic:
-Create a route, mark two subwaypoints, target the second child exactly, retreat once and assert child 1, retreat again and assert parent 0.
-Pseudocode:
-g = route
-toggle indices 1 and 2 to subwaypoints
-set exact current target to index 2
-assert retreat returns true
-assert currentIndex equals 1, current equals waypoint 1, parentMainIndex equals 0, and visible active parent accessor equals -1
-assert retreat returns true
-assert currentIndex equals 0 and active parent equals -1
-Implementation notes:
-This test uses setCurrentTargetIndex because normal setCurrentIndex intentionally canonicalizes subwaypoints back to their parent.
-AI self-check:
-Verify the route's first waypoint remains a main waypoint.
-]]*/
     @Test
     void retreatToPreviousTarget_walksExplicitSubwaypointTargetsBackward() {
         WaypointGroup g = route();
@@ -260,41 +128,6 @@ Verify the route's first waypoint remains a main waypoint.
         assertEquals(-1, g.activeSubwaypointParentIndex());
     }
 
-    /*[[AI-FN-DOC
-Function:
-retreatToPreviousTarget_fromHeldSubwaypointParentReturnsToThatParent
-Purpose:
-Verify retreat from the visual-hold state created by skipping a parent with subwaypoints returns to that held parent.
-Why this exists:
-Skipping a main waypoint with subwaypoints advances the tracer to the next main while keeping the skipped parent visually active, and Previous Waypoint should undo that exact user-visible skip.
-When to use:
-Run with route rendering/progress tests when changing activeSubwaypointParentIndex, sequence visibility, or retreat behavior.
-Inputs:
-No runtime inputs; builds a sequence-mode route with two subwaypoints under the first parent.
-Outputs:
-Assertions pass when advancePast creates the hold and retreat targets the held parent while clearing the hold.
-Side effects:
-Mutates only the local test route.
-Failure modes:
-Fails if retreat ignores activeSubwaypointParentIndex and returns to some other previous target.
-Important invariants:
-The held parent is a visual context for the current next-main target and is the correct inverse target for a back key press.
-Internal logic:
-Create a sequence route, add subwaypoints, advance past the parent, assert the hold, retreat, then assert currentIndex is the parent and hold is cleared.
-Pseudocode:
-g = route
-set load mode to sequence
-toggle indices 1 and 2 to subwaypoints
-advance past index 0
-assert currentIndex equals 3 and active parent equals 0
-assert retreat returns true
-assert currentIndex equals 0
-assert active parent equals -1
-Implementation notes:
-The visible-index assertion is covered elsewhere; this test focuses on progress state returned by the group method.
-AI self-check:
-Verify this covers the state produced by Skip Waypoint on a subwaypoint parent.
-]]*/
     @Test
     void retreatToPreviousTarget_fromHeldSubwaypointParentReturnsToThatParent() {
         WaypointGroup g = route();
@@ -339,42 +172,6 @@ Verify this covers the state produced by Skip Waypoint on a subwaypoint parent.
         assertFalse(g.isStaticWaypointReached(0));
     }
 
-    /*[[AI-FN-DOC
-Function:
-moveWaypointToPrecise_focusesMovedWaypointAndStoresSixteenths.
-Purpose:
-Verify precise waypoint movement stores sixteenth-block centers while preserving the same focus/static-reach refresh behavior as block moves.
-Why this exists:
-Small waypoint repositioning commits through WaypointGroup.moveWaypointToPrecise, and regressions there would make the UI preview disagree with saved route state.
-When to use:
-Run with core waypoint group tests whenever precise position, move, focus, or static reach logic changes.
-Inputs:
-No runtime inputs; builds an in-memory route and moves one waypoint to explicit precise sixteenths.
-Outputs:
-Assertions pass when the moved waypoint has the expected precise fields, derived block coordinates, current index, suppression, and static reach reset.
-Side effects:
-Mutates only the local test route.
-Failure modes:
-Fails if precise movement resets to block center, does not derive negative block coordinates correctly, or misses the same refresh side effects as moveWaypointTo.
-Important invariants:
-Precise coordinates are absolute sixteenths, and x/y/z are the floor block coordinates that contain those precise centers.
-Internal logic:
-Create a route, mark static reached state, move index 2 to precise sixteenths, then assert precision, center values, derived block coordinates, focus, suppression, and static state.
-Pseudocode:
-g = route
-mark static waypoint 0 reached
-move index 2 to precise 403, 1144, -21
-moved = g.get(2)
-assert precise fields equal target
-assert centers equal 25.1875, 71.5, -1.3125
-assert x/y/z equal 25, 71, -2
-assert current index 2 and suppression true
-assert static reached state cleared
-Implementation notes:
-The negative Z target exercises Math.floorDiv behavior in Waypoint's canonical constructor.
-AI self-check:
-Verify this test does not depend on client rendering or Minecraft classes.
-]]*/
     @Test
     void moveWaypointToPrecise_focusesMovedWaypointAndStoresSixteenths() {
         WaypointGroup g = route();
@@ -585,41 +382,6 @@ Verify this test does not depend on client rendering or Minecraft classes.
         assertEquals(4, g.mainWaypointCount());
     }
 
-    /*[[AI-FN-DOC
-Function:
-subwaypoint_toggle_clearsSubwaypointOnlyStyleFlagsWhenPromoted
-Purpose:
-Verify small and filled subwaypoint style flags are removed when a subwaypoint becomes a main waypoint again.
-Why this exists:
-Small and filled controls are only meaningful for subwaypoints, and stale style bits on main waypoints would be confusing if the row later became a subwaypoint again.
-When to use:
-Run with core route-structure tests after changing Waypoint.withSubwaypoint or WaypointGroup subwaypoint normalization.
-Inputs:
-No parameters. Builds an in-memory route and mutates one waypoint's flags.
-Outputs:
-No return value. Assertions fail if style flags remain after promotion.
-Side effects:
-Mutates only the local test route.
-Failure modes:
-Fails if withSubwaypoint(false) stops clearing SUBWAYPOINT_STYLE_FLAGS or toggleSubwaypoint bypasses that helper.
-Important invariants:
-Promoting back to main clears FLAG_SUBWAYPOINT, FLAG_SMALL_SUBWAYPOINT, and FLAG_FILLED_SUBWAYPOINT together.
-Internal logic:
-Create a route, make index 1 a subwaypoint, add both style flags, assert they exist, toggle it back to main, and assert all subwaypoint-only flags are gone.
-Pseudocode:
-g = route
-toggle index 1 to subwaypoint
-styled = waypoint flags OR small OR filled
-set waypoint with styled flags
-assert small and filled flags exist
-toggle index 1 to main
-assert not subwaypoint
-assert small and filled flags absent
-Implementation notes:
-This tests through WaypointGroup because that is the same mutation path the GUI uses for structural toggles.
-AI self-check:
-Verify the test does not depend on rendering or GUI classes.
-]]*/
     @Test
     void subwaypoint_toggle_clearsSubwaypointOnlyStyleFlagsWhenPromoted() {
         WaypointGroup g = route();
@@ -627,16 +389,58 @@ Verify the test does not depend on rendering or GUI classes.
 
         Waypoint styled = g.get(1).withFlags(g.get(1).flags()
                 | Waypoint.FLAG_SMALL_SUBWAYPOINT
-                | Waypoint.FLAG_FILLED_SUBWAYPOINT);
+                | Waypoint.FLAG_FILLED_SUBWAYPOINT
+                | Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED);
         g.set(1, styled);
         assertTrue(g.get(1).hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT));
         assertTrue(g.get(1).hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT));
+        assertTrue(g.get(1).hasFlag(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED));
 
         assertTrue(g.toggleSubwaypoint(1));
 
         assertFalse(g.isSubwaypoint(1));
         assertFalse(g.get(1).hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT));
         assertFalse(g.get(1).hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT));
+        assertFalse(g.get(1).hasFlag(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED));
+    }
+
+    @Test
+    void forEachVisibleIndex_hidesFlaggedSubwaypointAfterParentIsReached() {
+        WaypointGroup g = route();
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(2);
+        g.set(1, g.get(1).withFlags(g.get(1).flags()
+                | Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED));
+
+        assertArrayEquals(new int[] { 0, 1, 2, 3 }, visibleIndices(g));
+
+        g.advancePast(0);
+
+        assertArrayEquals(new int[] { 0, 2, 3 }, visibleIndices(g));
+    }
+
+    @Test
+    void forEachVisibleIndex_oneWaypointHideAfterParentSubwaypointReappearsAfterReset() {
+        WaypointGroup g = WaypointGroup.create("single", "test_zone");
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        g.add(Waypoint.at(0, 0, 0));
+        g.add(Waypoint.at(1, 0, 0)
+                .withFlags(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED));
+        g.toggleSubwaypoint(1);
+
+        assertArrayEquals(new int[] { 0, 1 }, visibleIndices(g));
+
+        g.advancePast(0);
+        g.restartIfRouteCompleted(true);
+
+        assertEquals(0, g.activeSubwaypointParentIndex());
+        assertArrayEquals(new int[] { 0 }, visibleIndices(g));
+
+        g.resetProgress();
+
+        assertEquals(-1, g.activeSubwaypointParentIndex());
+        assertArrayEquals(new int[] { 0, 1 }, visibleIndices(g));
     }
 
     @Test

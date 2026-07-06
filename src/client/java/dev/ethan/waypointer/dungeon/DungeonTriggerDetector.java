@@ -4,7 +4,6 @@ import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
-import net.fabricmc.fabric.api.event.player.AttackBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -12,15 +11,15 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.ambient.AmbientCreature;
+import net.minecraft.world.entity.ambient.Bat;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -41,6 +40,7 @@ public final class DungeonTriggerDetector {
     private final Map<Integer, EntityPosition> nearbyItemEntities = new HashMap<>();
     private final Map<Integer, EntityPosition> nearbyBatEntities = new HashMap<>();
 
+    private String entityCacheRoomKey;
     private int tickCounter;
 
     public DungeonTriggerDetector(DungeonStateTracker tracker, DungeonRouteSession session) {
@@ -53,10 +53,6 @@ public final class DungeonTriggerDetector {
             if (world.isClientSide()) {
                 onUseBlock(hit.getBlockPos(), player.getItemInHand(hand));
             }
-            return InteractionResult.PASS;
-        });
-        AttackBlockCallback.EVENT.register((player, world, hand, pos, direction) -> {
-            if (world.isClientSide()) onAttackBlock(pos);
             return InteractionResult.PASS;
         });
         ClientReceiveMessageEvents.GAME.register(this::onChatMessage);
@@ -78,30 +74,15 @@ public final class DungeonTriggerDetector {
         }
     }
 
-    private void onAttackBlock(BlockPos pos) {
-        DungeonRoom room = tracker.currentRoom();
-        if (room == null) return;
-        List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
-
-        for (DungeonWaypoint waypoint : waypoints) {
-            if ((waypoint.trigger() == DungeonWaypointTrigger.BREAK_BLOCKS
-                    || waypoint.trigger() == DungeonWaypointTrigger.DUNGEONBREAKER)
-                    && matchesAnyTarget(room, waypoint, pos)) {
-                session.markFound(room, waypoint.secretIndex());
-            }
-        }
-    }
-
     private void onChatMessage(Component message, boolean overlay) {
         DungeonRoom room = tracker.currentRoom();
         if (room == null) return;
 
-        String text = message.getString().toLowerCase(Locale.ROOT);
+        String text = message.getString();
         List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
         for (DungeonWaypoint waypoint : waypoints) {
             if (waypoint.trigger() != DungeonWaypointTrigger.CHAT_MESSAGE) continue;
-            String needle = waypoint.hasName() ? waypoint.name() : waypoint.category().id;
-            if (!needle.isBlank() && text.contains(needle.toLowerCase(Locale.ROOT))) {
+            if (DungeonTriggerSelection.chatMessageMatchesWaypoint(text, waypoint)) {
                 session.markFound(room, waypoint.secretIndex());
             }
         }
@@ -116,7 +97,14 @@ public final class DungeonTriggerDetector {
         if (room == null || level == null) {
             nearbyItemEntities.clear();
             nearbyBatEntities.clear();
+            entityCacheRoomKey = null;
             return;
+        }
+        String roomKey = room.identityKey();
+        if (entityCacheRoomKey == null || !entityCacheRoomKey.equals(roomKey)) {
+            nearbyItemEntities.clear();
+            nearbyBatEntities.clear();
+            entityCacheRoomKey = roomKey;
         }
         List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
 
@@ -153,7 +141,7 @@ public final class DungeonTriggerDetector {
             if (entity instanceof ItemEntity
                     && nearAnyEntityTrigger(room, waypoints, entity, DungeonWaypointTrigger.PICKUP_ITEM)) {
                 itemsNow.put(entity.getId(), EntityPosition.of(entity));
-            } else if (entity instanceof AmbientCreature
+            } else if (entity instanceof Bat
                     && nearAnyEntityTrigger(room, waypoints, entity, DungeonWaypointTrigger.KILL_BAT)) {
                 batsNow.put(entity.getId(), EntityPosition.of(entity));
             }
@@ -176,14 +164,12 @@ public final class DungeonTriggerDetector {
             case OPEN_CHEST -> state != null
                     && (state.is(Blocks.CHEST) || state.is(Blocks.TRAPPED_CHEST));
             case FLIP_LEVER -> state != null && state.is(Blocks.LEVER);
-            case USE_SUPERBOOM -> itemNameContains(held, "superboom");
+            case USE_SUPERBOOM -> held != null
+                    && held.is(Items.TNT)
+                    && DungeonTriggerSelection.itemNameMatchesSuperboom(
+                    held.getHoverName().getString());
             default -> false;
         };
-    }
-
-    private static boolean itemNameContains(ItemStack stack, String needle) {
-        if (stack == null || stack.isEmpty()) return false;
-        return stack.getHoverName().getString().toLowerCase(Locale.ROOT).contains(needle);
     }
 
     private static boolean nearAnyEntityTrigger(

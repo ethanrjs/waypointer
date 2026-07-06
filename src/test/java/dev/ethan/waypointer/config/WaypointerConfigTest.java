@@ -123,6 +123,36 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void beaconTextureSettingDefaultsDisablesAndResets() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertTrue(config.useBeaconBeamTextures());
+
+        config.setUseBeaconBeamTextures(false);
+        assertFalse(config.useBeaconBeamTextures());
+
+        config.setUseBeaconBeamTextures(true);
+        config.disableAllSettings();
+        assertFalse(config.useBeaconBeamTextures());
+
+        config.resetToDefaults();
+        assertTrue(config.useBeaconBeamTextures());
+    }
+
+    @Test
+    void contributorBadgesDefaultOnAndResetWithOtherToggles() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertTrue(config.showContributorBadges());
+
+        config.disableAllSettings();
+        assertFalse(config.showContributorBadges());
+
+        config.resetToDefaults();
+        assertTrue(config.showContributorBadges());
+    }
+
+    @Test
     void performanceBudgetsDefaultToUnlimitedAndClampToDisabled() {
         WaypointerConfig config = new WaypointerConfig();
 
@@ -250,6 +280,24 @@ class WaypointerConfigTest {
         config.setTempDefaultDurationMin(9_999);
         assertEquals(24 * 60, config.tempDefaultDurationMin());
     }
+    @Test
+    void tempWaypointDurationSupportsSecondGranularity() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setTempDefaultDurationSec(45);
+        assertEquals(45, config.tempDefaultDurationSec());
+        assertEquals(46_000L, config.defaultTempExpiresAtMillis(1_000L));
+
+        config.setTempDefaultDurationSec(0);
+        assertEquals(1, config.tempDefaultDurationSec());
+
+        config.setTempDefaultDurationSec(999_999);
+        assertEquals(24 * 60 * 60, config.tempDefaultDurationSec());
+
+        config.setTempDefaultDurationMin(2);
+        assertEquals(120, config.tempDefaultDurationSec());
+        assertEquals(2, config.tempDefaultDurationMin());
+    }
 
     @Test
     void colorSettersMaskAlphaChannel() {
@@ -260,41 +308,6 @@ class WaypointerConfigTest {
         assertEquals(0x112233, config.tracerColor());
     }
 
-    /*[[AI-FN-DOC
-Function:
-defaultWaypointColorDefaultsMasksResetsAndLoadsFromJson
-Purpose:
-Verify the new default waypoint color setting defaults correctly, stores only RGB bits, resets, and loads from persisted JSON.
-Why this exists:
-Default waypoint color now feeds future manual/temp waypoint creation, so it needs the same masking and default behavior as other color settings.
-When to use:
-Run with the config unit tests after changing WaypointerConfig color fields or JSON schema.
-Inputs:
-No parameters. Creates in-memory config instances and one JSON fixture.
-Outputs:
-No return value. Assertions fail if default, masking, reset, or JSON loading behavior regresses.
-Side effects:
-Mutates only local WaypointerConfig test instances.
-Failure modes:
-Fails if alpha bits persist, reset misses the field, or Gson loading does not populate the field.
-Important invariants:
-The stored color must always be a 24-bit RGB value and reset must restore Waypoint.DEFAULT_COLOR.
-Internal logic:
-Assert a fresh default, set an ARGB color and assert masked RGB, reset and assert default, then load a schema-3 JSON value and assert it persists.
-Pseudocode:
-config = new config
-assert defaultWaypointColor equals Waypoint.DEFAULT_COLOR
-set defaultWaypointColor to ARGB
-assert low RGB bits
-reset to defaults
-assert Waypoint.DEFAULT_COLOR
-loaded = fromJson with configSchemaVersion 3 and defaultWaypointColor
-assert loaded color
-Implementation notes:
-JSON load covers persistence without needing to touch the filesystem or AsyncSaver.
-AI self-check:
-Confirm this test does not assert any imported-route color behavior.
-]]*/
     @Test
     void defaultWaypointColorDefaultsMasksResetsAndLoadsFromJson() {
         WaypointerConfig config = new WaypointerConfig();
@@ -460,48 +473,15 @@ Confirm this test does not assert any imported-route color behavior.
         assertEquals(0x112233, config.importedRouteDefaultColor());
     }
 
-    /*[[AI-FN-DOC
-Function:
-routeNavigationDefaultsCoverVisibleSkipAndConnectorLines
-Purpose:
-Verify the default and setter behavior for the new visible-only skip and route connector settings.
-Why this exists:
-These settings control new navigation behavior and render density, so defaults must preserve safe behavior while exposing customization.
-When to use:
-Run with the config test suite after changing WaypointerConfig progression or route display fields.
-Inputs:
-No parameters. Creates a fresh in-memory WaypointerConfig.
-Outputs:
-No return value. Assertions fail the test if defaults, masks, or disable behavior regress.
-Side effects:
-None outside the test object.
-Failure modes:
-Fails if visible-only skip is not default-on, route lines are not default-off, color masking breaks, or disableAllSettings leaves route lines enabled.
-Important invariants:
-Automatic skip should be visibility-limited by default; connector lines should be opt-in; connector color should stay 24-bit RGB.
-Internal logic:
-Assert defaults, toggle values, verify color masking, then disable all settings and assert the relevant booleans are off.
-Pseudocode:
-create config
-assert skip visible only true
-assert route lines false
-assert route line color green
-set skip visible only false and assert false
-enable route lines and assert true
-set ARGB route color and assert low RGB bits
-disable all settings
-assert skip visible only false and route lines false
-Implementation notes:
-This mirrors the imported-route color default test without requiring disk persistence.
-AI self-check:
-Confirm the test covers all new WaypointerConfig fields added for this feature request.
-]]*/
     @Test
     void routeNavigationDefaultsCoverVisibleSkipAndConnectorLines() {
         WaypointerConfig config = new WaypointerConfig();
 
         assertTrue(config.skipAheadOnlyVisibleWaypoints());
         assertFalse(config.showRouteLines());
+        assertFalse(config.showDungeonEntryPathToFirstWaypoint());
+        assertFalse(config.showDungeonEntryPathToFollowingWaypoints());
+        assertEquals(0x00FF00, config.dungeonEntryPathColor());
         assertEquals(0x00FF00, config.routeLineColor());
 
         config.setSkipAheadOnlyVisibleWaypoints(false);
@@ -510,47 +490,25 @@ Confirm the test covers all new WaypointerConfig fields added for this feature r
         config.setShowRouteLines(true);
         assertTrue(config.showRouteLines());
 
+        config.setShowDungeonEntryPathToFirstWaypoint(true);
+        assertTrue(config.showDungeonEntryPathToFirstWaypoint());
+
+        config.setShowDungeonEntryPathToFollowingWaypoints(true);
+        assertTrue(config.showDungeonEntryPathToFollowingWaypoints());
+
+        config.setDungeonEntryPathColor(0xCC123456);
+        assertEquals(0x123456, config.dungeonEntryPathColor());
+
         config.setRouteLineColor(0xAA445566);
         assertEquals(0x445566, config.routeLineColor());
 
         config.disableAllSettings();
         assertFalse(config.skipAheadOnlyVisibleWaypoints());
         assertFalse(config.showRouteLines());
+        assertFalse(config.showDungeonEntryPathToFirstWaypoint());
+        assertFalse(config.showDungeonEntryPathToFollowingWaypoints());
     }
 
-    /*[[AI-FN-DOC
-Function:
-configCodecRoundTripsRepresentativeSettings
-Purpose:
-Verify WPC: config codes preserve representative booleans, numbers, enums, colors, and lists.
-Why this exists:
-The compact config codec is a new public sharing surface and must round-trip the settings it claims to replace.
-When to use:
-Run with config tests after changing WaypointerConfigCodec tags or adding config fields.
-Inputs:
-No parameters. Creates a non-default in-memory config and decodes its encoded code.
-Outputs:
-No return value. Assertions fail if encoded values are missing or decoded incorrectly.
-Side effects:
-None outside local config instances.
-Failure modes:
-Fails if encoding omits a field, decode maps a tag incorrectly, or setters normalize differently than expected.
-Important invariants:
-The code starts with WPC: and decoded settings are applied over defaults, not over the source instance.
-Internal logic:
-Mutate a broad sample of config values, encode, decode, then assert every sampled setting survived.
-Pseudocode:
-config = defaults
-set representative non-default fields
-code = encode config
-assert code prefix
-decoded = decode code
-assert every sampled getter equals source value
-Implementation notes:
-The sample includes the new default waypoint color plus import/export, route-line, label, temp, enum, and list settings.
-AI self-check:
-Verify at least one field from each major settings page is covered.
-]]*/
     @Test
     void configCodecRoundTripsRepresentativeSettings() {
         WaypointerConfig config = new WaypointerConfig();
@@ -564,7 +522,15 @@ Verify at least one field from each major settings page is covered.
         config.setHideWaypointLabelsNearRadius(9.5);
         config.setSkipAheadOnlyVisibleWaypoints(false);
         config.setShowRouteLines(true);
+        config.setShowDungeonEntryPathToFirstWaypoint(true);
+        config.setShowDungeonEntryPathToFollowingWaypoints(true);
+        config.setDungeonEntryPathColor(0x0A0B0C);
         config.setRouteLineColor(0x010203);
+        config.setSharpWaypointEdges(true);
+        config.setUseBeaconBeamTextures(false);
+        config.setEditSounds(false);
+        config.setShowEditModeSubtitle(false);
+        config.setShowContributorBadges(false);
         config.setBoxStyle(WaypointerConfig.BoxStyle.FILLED_OUTLINED);
         config.addChatCoordSenderBlacklist("Babbur");
         config.setImportedRouteColorMode(WaypointGroup.GradientMode.AUTO);
@@ -587,7 +553,15 @@ Verify at least one field from each major settings page is covered.
         assertEquals(9.5, decoded.hideWaypointLabelsNearRadius());
         assertFalse(decoded.skipAheadOnlyVisibleWaypoints());
         assertTrue(decoded.showRouteLines());
+        assertTrue(decoded.showDungeonEntryPathToFirstWaypoint());
+        assertTrue(decoded.showDungeonEntryPathToFollowingWaypoints());
+        assertEquals(0x0A0B0C, decoded.dungeonEntryPathColor());
         assertEquals(0x010203, decoded.routeLineColor());
+        assertTrue(decoded.sharpWaypointEdges());
+        assertFalse(decoded.useBeaconBeamTextures());
+        assertFalse(decoded.editSounds());
+        assertFalse(decoded.showEditModeSubtitle());
+        assertFalse(decoded.showContributorBadges());
         assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED, decoded.boxStyle());
         assertEquals(List.of("Babbur"), decoded.chatCoordSenderBlacklist());
         assertEquals(WaypointGroup.GradientMode.AUTO, decoded.importedRouteColorMode());
@@ -596,39 +570,17 @@ Verify at least one field from each major settings page is covered.
         assertTrue(decoded.exportIncludeRadii());
         assertEquals(44, decoded.tempDefaultDurationMin());
     }
+    @Test
+    void configCodecPreservesSecondGranularityForTempDuration() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setTempDefaultDurationSec(75);
 
-    /*[[AI-FN-DOC
-Function:
-configCodecRejectsBadPrefixVersionAndBody
-Purpose:
-Verify malformed WPC: config codes are rejected before they can be applied.
-Why this exists:
-Config-code import replaces all settings, so decode failures must be explicit and safe.
-When to use:
-Run with config codec tests after changing prefix validation, compression, or version handling.
-Inputs:
-No parameters. Builds invalid string fixtures and one unsupported-version fixture.
-Outputs:
-No return value. Assertions fail if decode accepts malformed inputs.
-Side effects:
-Allocates a tiny unsupported-version payload through the test helper.
-Failure modes:
-Fails if the codec no longer rejects wrong prefixes, empty bodies, corrupt bodies, or unsupported versions.
-Important invariants:
-Decode returns only for fully valid codes; callers can safely replace config after successful return.
-Internal logic:
-Assert IllegalArgumentException for wrong prefix, empty body, corrupt body, and a validly-compressed payload with a bad version byte.
-Pseudocode:
-assert decode WP: throws
-assert decode WPC: throws
-assert decode WPC:not-valid throws
-badVersion = configCodeForRawPayload(version 99, END)
-assert decode badVersion throws
-Implementation notes:
-The unsupported-version fixture uses the same ASCII stream alphabet and raw DEFLATE wrapper as production encoding so the failure reaches version validation.
-AI self-check:
-Confirm every assertion expects IllegalArgumentException.
-]]*/
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config));
+
+        assertEquals(75, decoded.tempDefaultDurationSec());
+        assertEquals(76_000L, decoded.defaultTempExpiresAtMillis(1_000L));
+    }
+
     @Test
     void configCodecRejectsBadPrefixVersionAndBody() throws IOException {
         assertThrows(IllegalArgumentException.class,
@@ -643,37 +595,6 @@ Confirm every assertion expects IllegalArgumentException.
                 () -> WaypointerConfigCodec.decode(badVersion));
     }
 
-    /*[[AI-FN-DOC
-Function:
-configCodeReplacementResetsOmittedFieldsToDefaults
-Purpose:
-Verify importing a sparse/default config snapshot replaces old values instead of merging with them.
-Why this exists:
-The requested config-code import behavior is complete replacement, meaning omitted fields must reset to defaults.
-When to use:
-Run after changing WaypointerConfig.replaceWith or WaypointerConfigCodec default-diff behavior.
-Inputs:
-No parameters. Builds one live config with non-default values and one decoded default replacement.
-Outputs:
-No return value. Assertions fail if old values survive replacement.
-Side effects:
-Mutates only local WaypointerConfig instances.
-Failure modes:
-Fails if replaceWith merges fields, misses a new field, or decoded default codes no longer produce defaults.
-Important invariants:
-Replacement copies from the decoded snapshot and performs one save on the live object.
-Internal logic:
-Set live values away from defaults, decode a default config code, replace live with decoded, and assert the old values reset.
-Pseudocode:
-live = config with non-default defaultWaypointColor, showRouteLines, importedRouteColorMode, blacklist
-replacement = decode encode defaults
-live.replaceWith(replacement)
-assert fields equal default values and blacklist is empty
-Implementation notes:
-This models the UI import callback without needing clipboard or Minecraft screen classes.
-AI self-check:
-Verify both a color field and a boolean/enum/list field reset.
-]]*/
     @Test
     void configCodeReplacementResetsOmittedFieldsToDefaults() {
         WaypointerConfig live = new WaypointerConfig();
@@ -760,40 +681,6 @@ Verify both a color field and a boolean/enum/list field reset.
         assertTrue(config.irisShaderHudFallback());
     }
 
-    /*[[AI-FN-DOC
-Function:
-configCodeForRawPayload
-Purpose:
-Build a syntactically valid WPC: code around an arbitrary raw binary payload for decoder rejection tests.
-Why this exists:
-Unsupported-version tests need the payload to pass ASCII decoding and raw DEFLATE inflation so decode reaches its version validation branch.
-When to use:
-Use only inside WaypointerConfigTest for deliberately malformed or future-version payload fixtures.
-Inputs:
-raw is the exact uncompressed binary payload to wrap; callers supply small byte arrays.
-Outputs:
-Returns a WPC: string containing the compressed and ASCII-stream-encoded payload.
-Side effects:
-Allocates compression buffers and ends the Deflater.
-Failure modes:
-Throws IOException if the compression stream fails unexpectedly.
-Important invariants:
-The helper must use the same raw nowrap DEFLATE setting as WaypointerConfigCodec.deflate.
-Internal logic:
-Create an output stream, compress raw bytes with a raw DeflaterOutputStream, end the deflater, ASCII-encode the compressed bytes, and add the WPC: prefix.
-Pseudocode:
-out = byte array stream
-deflater = new raw deflater
-try deflater stream:
-  write raw
-finally:
-  end deflater
-return MAGIC + AsciiStreamCodec.encode(out bytes)
-Implementation notes:
-This duplicates only enough production behavior to target a specific decode branch; the production deflate helper remains private.
-AI self-check:
-Verify callers pass a version byte followed by END when testing unsupported versions.
-]]*/
     private static String configCodeForRawPayload(byte... raw) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION, true);

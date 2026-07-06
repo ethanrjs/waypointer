@@ -6,6 +6,8 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Zone;
 import net.fabricmc.loader.api.FabricLoader;
 
+import java.util.function.BooleanSupplier;
+
 /**
  * Picks the best available {@link ZoneSource} at boot and routes its signals into
  * {@link ActiveGroupManager#onZoneChanged(Zone)}.
@@ -23,23 +25,32 @@ public final class LocationTracker {
 
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
+    private final BooleanSupplier hypixelApiLoaded;
     private ZoneSource source;
 
     public LocationTracker(ActiveGroupManager manager, WaypointerConfig config) {
+        this(manager, config, () -> FabricLoader.getInstance().isModLoaded("hypixel-mod-api"));
+    }
+
+    LocationTracker(ActiveGroupManager manager, WaypointerConfig config, BooleanSupplier hypixelApiLoaded) {
         this.manager = manager;
         this.config = config;
+        this.hypixelApiLoaded = hypixelApiLoaded;
     }
 
     public void install() {
-        boolean hypixelApi = FabricLoader.getInstance().isModLoaded("hypixel-mod-api");
-        if (hypixelApi) {
-            source = new HypixelApiZoneSource();
+        boolean hypixelApi = hypixelApiLoaded.getAsBoolean();
+        source = createSource(hypixelApi);
+        if (source instanceof HypixelApiZoneSource) {
             Waypointer.LOGGER.info("Location: using Hypixel Mod API source");
         } else {
-            source = new ScoreboardZoneResolver();
             Waypointer.LOGGER.info("Location: using scoreboard fallback (hypixel-mod-api missing)");
         }
         source.register(manager::onZoneChanged);
+    }
+
+    static ZoneSource createSource(boolean hypixelApiLoaded) {
+        return hypixelApiLoaded ? new HypixelApiZoneSource() : new ScoreboardZoneResolver();
     }
 
     public ZoneSource source() {

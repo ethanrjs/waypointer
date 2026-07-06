@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.dungeon;
 
+import dev.ethan.waypointer.core.Zone;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class DungeonRouteSessionTest {
 
@@ -107,12 +109,34 @@ class DungeonRouteSessionTest {
         List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(room);
 
         assertEquals(1, session.currentSecretIndex(room));
-        assertEquals(DungeonRouteSession.Status.UPCOMING, session.status(room, waypoints.get(0)));
+        assertEquals(DungeonRouteSession.Status.NON_PROGRESS, session.status(room, waypoints.get(0)));
 
         session.markFound(room, 0);
 
         assertEquals(1, session.currentSecretIndex(room));
-        assertEquals(DungeonRouteSession.Status.UPCOMING, session.status(room, waypoints.get(0)));
+        assertEquals(DungeonRouteSession.Status.NON_PROGRESS, session.status(room, waypoints.get(0)));
+    }
+
+    @Test
+    void debugSnapshotDoesNotCreateProgressForUnseenRoom() {
+        DungeonRoom base = room();
+        var definition = DungeonRoomData.defineRoom("debug-room", "Debug Room", base);
+        DungeonWaypoint waypoint = waypoint("first", 1);
+        DungeonRoomData.addWaypoint(definition.id(), waypoint);
+        DungeonRoom room = base.withDefinition(definition.id(), definition.displayName());
+
+        DungeonRouteSession session = new DungeonRouteSession();
+        DungeonRouteSession.DebugSnapshot snapshot = session.debugSnapshot(room);
+
+        assertFalse(snapshot.progressInitialized);
+        assertEquals(1, snapshot.currentSecretIndex);
+        assertEquals(1, snapshot.currentCount);
+        assertEquals(0, snapshot.progressEntryCount);
+        assertEquals(DungeonRouteSession.Status.CURRENT, session.peekStatus(room, waypoint));
+
+        DungeonRouteSession.DebugSnapshot snapshotAgain = session.debugSnapshot(room);
+        assertFalse(snapshotAgain.progressInitialized);
+        assertEquals(0, snapshotAgain.progressEntryCount);
     }
 
     @Test
@@ -133,6 +157,51 @@ class DungeonRouteSessionTest {
                 session.status(matched, waypoints.get(0)));
         assertEquals(DungeonRouteSession.Status.CURRENT,
                 session.status(matched, waypoints.get(1)));
+    }
+
+    @Test
+    void progressSurvivesMatchedRoomReturningAsPhysicalRoom() {
+        DungeonRoom base = room();
+        var definition = DungeonRoomData.defineRoom("return-room", "Return Room", base);
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("first", 1));
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("second", 2));
+        DungeonRoom matched = base.withDefinition(definition.id(), definition.displayName());
+
+        DungeonRouteSession session = new DungeonRouteSession();
+        session.markFound(matched, 1);
+
+        List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(matched);
+
+        assertEquals(DungeonRouteSession.Status.FOUND, session.status(base, waypoints.get(0)));
+        assertEquals(DungeonRouteSession.Status.CURRENT, session.status(base, waypoints.get(1)));
+        assertEquals(2, session.currentSecretIndex(base));
+    }
+
+    @Test
+    void resetAllClearsPhysicalAndNamedAliases() {
+        DungeonRoom base = room();
+        var definition = DungeonRoomData.defineRoom("reset-all-room", "Reset All Room", base);
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("first", 1));
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("second", 2));
+        DungeonRoom matched = base.withDefinition(definition.id(), definition.displayName());
+
+        DungeonRouteSession session = new DungeonRouteSession();
+        session.markFound(matched, 1);
+        assertEquals(2, session.currentSecretIndex(base));
+
+        session.resetAll();
+
+        List<DungeonWaypoint> waypoints = DungeonRoomData.waypointsFor(matched);
+        assertEquals(DungeonRouteSession.Status.CURRENT, session.status(matched, waypoints.get(0)));
+        assertEquals(DungeonRouteSession.Status.CURRENT, session.status(base, waypoints.get(0)));
+    }
+
+    @Test
+    void dungeonHubIsNotBroadDungeonRunZone() {
+        assertEquals(false, DungeonRoomZoneBridge.isBroadDungeonZone(new Zone("dungeon_hub", "Dungeon Hub")));
+        assertEquals(true, DungeonRoomZoneBridge.isBroadDungeonZone(new Zone("dungeon", "Catacombs")));
+        assertEquals(true, DungeonRoomZoneBridge.isBroadDungeonZone(new Zone("dungeon_f7", "Catacombs F7")));
+        assertEquals(true, DungeonRoomZoneBridge.isBroadDungeonZone(new Zone("dungeon_m7", "Master Mode M7")));
     }
 
     private static DungeonRoom room() {

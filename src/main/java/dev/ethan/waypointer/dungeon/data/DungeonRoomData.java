@@ -8,7 +8,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.config.AsyncSaver;
-import dev.ethan.waypointer.dungeon.Direction;
 import dev.ethan.waypointer.dungeon.DungeonHighlight;
 import dev.ethan.waypointer.dungeon.DungeonHighlightStyle;
 import dev.ethan.waypointer.dungeon.DungeonMapMath;
@@ -73,6 +72,7 @@ public final class DungeonRoomData {
 
     private static Path customFile;
     private static AsyncSaver saver;
+    private static final List<Runnable> CHANGE_LISTENERS = new ArrayList<>();
 
     private DungeonRoomData() {}
 
@@ -91,8 +91,37 @@ public final class DungeonRoomData {
         if (saver != null) saver.flush();
     }
 
+    public static void addChangeListener(Runnable listener) {
+        if (listener != null) CHANGE_LISTENERS.add(listener);
+    }
+
+    public static void removeChangeListener(Runnable listener) {
+        CHANGE_LISTENERS.remove(listener);
+    }
+
     public static Collection<DungeonRoomDefinition> customDefinitions() {
         return CUSTOM.get().values();
+    }
+
+    public static int importCustomDefinitions(Collection<DungeonRoomDefinition> definitions) {
+        if (definitions == null || definitions.isEmpty()) return 0;
+        List<DungeonRoomDefinition> valid = new ArrayList<>();
+        for (DungeonRoomDefinition definition : definitions) {
+            if (definition != null && !definition.id().isBlank()) valid.add(definition);
+        }
+        if (valid.isEmpty()) return 0;
+
+        CUSTOM.updateAndGet(
+                prev -> {
+                    Map<String, DungeonRoomDefinition> next = new LinkedHashMap<>(prev);
+                    for (DungeonRoomDefinition definition : valid) {
+                        next.put(definition.id(),
+                                withInheritedCoreHashes(definition, BUNDLED.get(definition.id())));
+                    }
+                    return Map.copyOf(next);
+                });
+        markDirty();
+        return valid.size();
     }
 
     public static Collection<DungeonRoomDefinition> allDefinitions() {
@@ -109,39 +138,10 @@ public final class DungeonRoomData {
         return custom != null ? custom : BUNDLED.get(norm);
     }
 
-    /*[[AI-FN-DOC
-Function:
-DungeonRoomData.definitionForCoreHash
-Purpose:
-Resolve a single observed room-core hash to the unique bundled or custom dungeon room definition that owns it.
-Why this exists:
-Odin-style instant room detection starts from the current segment's core hash, so the scanner needs a direct core-to-definition lookup without first deriving map shape.
-When to use:
-Use when a live dungeon segment has been hashed and should identify its room; do not use for route import, normal island zones, or non-core block fingerprints.
-Inputs:
-coreHash is the integer String.hashCode value produced by the room core scanner for one dungeon segment.
-Outputs:
-Returns the unique DungeonRoomDefinition containing that core hash, or null when no definition or multiple definitions contain it.
-Side effects:
-Reads the current merged custom/bundled definition catalog; does not mutate catalog state.
-Failure modes:
-Returns null for unknown hashes and for ambiguous hashes shared by multiple definitions so callers do not activate the wrong room.
-Important invariants:
-Custom definitions with the same id as bundled definitions inherit bundled core hashes through allDefinitions, so user overrides still win without duplicating core data.
-Internal logic:
-Iterate merged definitions in catalog order, test each core hash list, keep the first match, and abort with null if a second different definition also matches.
-Pseudocode:
-matched = null
-for each definition in allDefinitions:
-  if definition does not contain coreHash continue
-  if matched is already set return null
-  matched = definition
-return matched
-Implementation notes:
-The catalog is small, and this lookup is usually hit only when entering or background-scanning a new segment; avoiding a separate mutable index keeps custom overrides simple and safe.
-AI self-check:
-Verify unknown hashes are null, unique hashes return the expected definition, and duplicate hashes never silently pick an arbitrary room.
-]]*/
+    public static DungeonRoomDefinition customDefinition(String id) {
+        return CUSTOM.get().get(DungeonRoomDefinition.normalizeId(id));
+    }
+
     public static DungeonRoomDefinition definitionForCoreHash(int coreHash) {
         DungeonRoomDefinition matched = null;
         for (DungeonRoomDefinition definition : allDefinitions()) {
@@ -162,6 +162,7 @@ Verify unknown hashes are null, unique hashes return the expected definition, an
 
     public static DungeonRoom withMatchedDefinition(DungeonRoom room, BlockLookup lookup,
                                                     CoreHashLookup coreHashLookup) {
+        if (room == null) return null;
         DungeonRoomDefinition definition = match(room, lookup, coreHashLookup);
         return definition == null ? room : room.withDefinition(definition.id(), definition.displayName());
     }
@@ -170,49 +171,6 @@ Verify unknown hashes are null, unique hashes return the expected definition, an
         return match(room, lookup, null);
     }
 
-    /*[[AI-FN-DOC
-Function:
-DungeonRoomData.match(DungeonRoom room, BlockLookup lookup, CoreHashLookup coreHashLookup)
-Purpose:
-Resolve a live dungeon room footprint into the best known authored room definition using room ids, core hashes, fingerprints, and finally safe generic fallbacks.
-Why this exists:
-The renderer and zone bridge need a stable catalog id for the current physical dungeon room, and the matching rules need to live in one place instead of being split across scanners and UI code.
-When to use:
-Call this when a DungeonRoom has been detected from the map or world and should be associated with a bundled or custom room definition; do not use it for normal island zones or non-dungeon route groups.
-Inputs:
-room is the detected DungeonRoom and may be null; lookup reads world block ids for fingerprint matching and may be null; coreHashLookup reads one or more room-core hashes and may be null.
-Outputs:
-Returns the matched DungeonRoomDefinition, or null when the room is unknown, ambiguous, or cannot be safely fingerprinted.
-Side effects:
-May call the supplied lookup/coreHashLookup, which can read client world state; this method does not mutate catalog state.
-Failure modes:
-Null rooms, unknown ids, missing lookups for fingerprinted rooms, ambiguous core/fingerprint matches, and unmatched known-core rooms all return null instead of guessing.
-Important invariants:
-An existing room id wins immediately; core hashes are authoritative across same-type rooms even when the map-derived shape is wrong; ambiguous matches never fall back to a generic shape-only definition.
-Internal logic:
-First honor explicit room ids, then gather the merged definition catalog once. If core hashes are available, try the first/current-segment hash before all observed hashes so an over-merged map footprint still names the segment the player occupies. Only after core matching fails safely should shape-filtered fingerprints and generic fallbacks run.
-Pseudocode:
-if room is null return null
-if room already has an id return definition(id)
-load all definitions and observed core hashes when available
-if observed core hashes exist:
-  match same-type definitions containing the first observed hash
-  if exactly one primary match return it
-  if multiple primary matches return null
-  match same-type definitions containing any observed hash
-  if exactly one match return it
-  if multiple matches return null
-  if the catalog has any same-type core definitions return null
-shape-filter custom and full candidates
-if no candidates return null
-try fingerprinted candidates when present and lookup is available
-if fingerprints matched exactly one candidate return it, otherwise return null
-try custom no-fingerprint fallback, then bundled no-fingerprint fallback, each only when unique
-Implementation notes:
-The current-segment-first rule is a deliberate Devonian-style migration point: maps can merge adjacent same-colored segments, but the first segment comes from the player-facing flood-fill seed and is the most specific identity signal available here.
-AI self-check:
-Verify the implementation follows the pseudocode, preserves previous ambiguity handling, does not copy GPL code or data, and keeps fallback behavior conservative.
-]]*/
     public static DungeonRoomDefinition match(DungeonRoom room, BlockLookup lookup,
                                               CoreHashLookup coreHashLookup) {
         if (room == null) return null;
@@ -224,13 +182,18 @@ Verify the implementation follows the pseudocode, preserves previous ambiguity h
             if (observed != null && !observed.isEmpty()) {
                 List<DungeonRoomDefinition> primaryCoreMatches =
                         matchingCoreDefinitions(room, allDefinitions, List.of(observed.get(0)));
-                if (primaryCoreMatches.size() == 1) return primaryCoreMatches.get(0);
-                if (primaryCoreMatches.size() > 1) return null;
-
                 List<DungeonRoomDefinition> coreMatches =
                         matchingCoreDefinitions(room, allDefinitions, observed);
+                if (primaryCoreMatches.size() == 1) {
+                    DungeonRoomDefinition primary = primaryCoreMatches.get(0);
+                    DungeonRoomDefinition shapeMatch = uniqueShapeMatch(room, coreMatches);
+                    if (shapeMatch != null && primary.shape() != room.shape()) return shapeMatch;
+                    return primary;
+                }
+                if (primaryCoreMatches.size() > 1) return null;
+
                 if (coreMatches.size() == 1) return coreMatches.get(0);
-                if (coreMatches.size() > 1) return null;
+                if (coreMatches.size() > 1) return uniqueShapeMatch(room, coreMatches);
                 if (hasCoreDefinitionsForType(room, allDefinitions)) return null;
             }
         }
@@ -269,39 +232,6 @@ Verify the implementation follows the pseudocode, preserves previous ambiguity h
         return custom.withCoreHashes(bundled.coreHashes());
     }
 
-    /*[[AI-FN-DOC
-Function:
-DungeonRoomData.matchingCoreDefinitions(DungeonRoom room, Collection<DungeonRoomDefinition> definitions, List<Integer> observedCoreHashes)
-Purpose:
-Find every same-type room definition whose authored core hash appears in the observed hashes from the detected physical room.
-Why this exists:
-Core hashes identify named rooms more reliably than map-derived shape, so the core matching logic needs a shape-independent helper that can be reused for primary-segment and full-footprint checks.
-When to use:
-Use inside room matching whenever observed room-core hashes should be compared against bundled or custom definitions; do not use for fingerprint matching or shape-only fallback.
-Inputs:
-room is the detected DungeonRoom and must be non-null; definitions is the catalog slice to scan and must be non-null; observedCoreHashes is a non-null list of integer hashes ordered by segment priority.
-Outputs:
-Returns a mutable list containing definitions with the same DungeonRoomType as the room and at least one matching core hash.
-Side effects:
-None.
-Failure modes:
-Definitions without core hashes, different room types, and non-matching hashes are ignored; malformed null collection contents are not expected from the catalog and would throw naturally.
-Important invariants:
-The helper must not compare room shape, because the map can over-merge adjacent same-color components; type remains required so puzzle/trap/normal rooms do not collide.
-Internal logic:
-Iterate definitions in catalog order, skip entries whose type differs from the detected room, then reuse coreHashesMatch to test whether any authored hash appears in the observed hash list.
-Pseudocode:
-create empty matches list
-for each definition in definitions:
-  if definition type differs from room type, continue
-  if definition core hashes do not intersect observed hashes, continue
-  add definition to matches
-return matches
-Implementation notes:
-The input sizes are tiny, so list intersection via coreHashesMatch stays clearer than adding temporary sets.
-AI self-check:
-Verify shape is intentionally absent from the predicate and the helper preserves deterministic catalog order for ambiguity handling.
-]]*/
     private static List<DungeonRoomDefinition> matchingCoreDefinitions(
             DungeonRoom room,
             Collection<DungeonRoomDefinition> definitions,
@@ -316,37 +246,18 @@ Verify shape is intentionally absent from the predicate and the helper preserves
         return matches;
     }
 
-    /*[[AI-FN-DOC
-Function:
-DungeonRoomData.hasCoreDefinitionsForType(DungeonRoom room, Collection<DungeonRoomDefinition> definitions)
-Purpose:
-Report whether the catalog has any core-hashed definition for the detected room's broad type.
-Why this exists:
-When an observed core hash fails to match a catalog that does contain core data for that room type, falling back to a generic shape-only room would produce misleading route activation.
-When to use:
-Use after a core lookup produced observed hashes but found no unique match; do not use as a general room-existence check.
-Inputs:
-room is the detected DungeonRoom and must be non-null; definitions is the merged catalog collection and must be non-null.
-Outputs:
-Returns true when at least one definition has the same DungeonRoomType and one or more authored core hashes.
-Side effects:
-None.
-Failure modes:
-Returns false for empty catalogs or catalogs without same-type core hashes.
-Important invariants:
-Only room type is considered here; shape is intentionally ignored for the same reason core matching ignores shape.
-Internal logic:
-Scan definitions until finding an entry with matching type and hasCoreHashes true, then return true; otherwise return false.
-Pseudocode:
-for each definition:
-  if definition type equals room type and definition has core hashes:
-    return true
-return false
-Implementation notes:
-This keeps the conservative no-generic-fallback behavior from the previous matcher while widening core search beyond shape-gated candidates.
-AI self-check:
-Verify the function is pure, handles an empty catalog, and does not accidentally allow shape-only fallback for known-core normal rooms.
-]]*/
+    private static DungeonRoomDefinition uniqueShapeMatch(
+            DungeonRoom room,
+            List<DungeonRoomDefinition> definitions) {
+        DungeonRoomDefinition matched = null;
+        for (DungeonRoomDefinition definition : definitions) {
+            if (definition.type() != room.type() || definition.shape() != room.shape()) continue;
+            if (matched != null) return null;
+            matched = definition;
+        }
+        return matched;
+    }
+
     private static boolean hasCoreDefinitionsForType(
             DungeonRoom room,
             Collection<DungeonRoomDefinition> definitions) {
@@ -397,8 +308,20 @@ Verify the function is pure, handles an empty catalog, and does not accidentally
     }
 
     public static List<DungeonWaypoint> waypointsFor(DungeonRoom room) {
-        DungeonRoomDefinition definition = room == null ? null : definitionForRoom(room);
+        DungeonRoomDefinition definition = customDefinitionForRoom(room);
         return definition == null ? List.of() : definition.waypoints();
+    }
+
+    private static DungeonRoomDefinition customDefinitionForRoom(DungeonRoom room) {
+        if (room == null) return null;
+        if (room.hasRoomId()) return customDefinition(room.roomId());
+
+        List<DungeonRoomDefinition> candidates = matchingDefinitions(room, CUSTOM.get().values());
+        List<DungeonRoomDefinition> fingerprintedCandidates = withFingerprints(candidates);
+        if (!fingerprintedCandidates.isEmpty()) return null;
+
+        List<DungeonRoomDefinition> fallback = withoutFingerprints(candidates);
+        return fallback.size() == 1 ? fallback.get(0) : null;
     }
 
     public static DungeonRoomDefinition defineRoom(String id, String displayName, DungeonRoom room) {
@@ -458,8 +381,18 @@ Verify the function is pure, handles an empty catalog, and does not accidentally
         return updated;
     }
 
+    public static DungeonRoomDefinition clearWaypoints(String roomId) {
+        DungeonRoomDefinition definition = definition(roomId);
+        if (definition == null) throw new IllegalArgumentException("Unknown room: " + roomId);
+        DungeonRoomDefinition updated = withInheritedCoreHashes(
+                definition.withWaypoints(List.of()),
+                BUNDLED.get(definition.id()));
+        putCustom(updated);
+        return updated;
+    }
+
     public static DungeonRoomDefinition setWaypointTrigger(String roomId, int waypointIndex,
-                                                          DungeonWaypointTrigger trigger) {
+                                                           DungeonWaypointTrigger trigger) {
         DungeonRoomDefinition definition = requireCustom(roomId);
         List<DungeonWaypoint> waypoints = new ArrayList<>(definition.waypoints());
         waypoints.set(waypointIndex, waypoints.get(waypointIndex).withTrigger(trigger));
@@ -506,12 +439,13 @@ Verify the function is pure, handles an empty catalog, and does not accidentally
 
     public static void clearCustom(String roomId) {
         String norm = DungeonRoomDefinition.normalizeId(roomId);
-        CUSTOM.updateAndGet(prev -> {
-            if (!prev.containsKey(norm)) return prev;
-            Map<String, DungeonRoomDefinition> next = new LinkedHashMap<>(prev);
-            next.remove(norm);
-            return Map.copyOf(next);
-        });
+        CUSTOM.updateAndGet(
+                prev -> {
+                    if (!prev.containsKey(norm)) return prev;
+                    Map<String, DungeonRoomDefinition> next = new LinkedHashMap<>(prev);
+                    next.remove(norm);
+                    return Map.copyOf(next);
+                });
         markDirty();
     }
 
@@ -602,16 +536,20 @@ Verify the function is pure, handles an empty catalog, and does not accidentally
     }
 
     private static void putCustom(DungeonRoomDefinition definition) {
-        CUSTOM.updateAndGet(prev -> {
-            Map<String, DungeonRoomDefinition> next = new LinkedHashMap<>(prev);
-            next.put(definition.id(), definition);
-            return Map.copyOf(next);
-        });
+        CUSTOM.updateAndGet(
+                prev -> {
+                    Map<String, DungeonRoomDefinition> next = new LinkedHashMap<>(prev);
+                    next.put(definition.id(), definition);
+                    return Map.copyOf(next);
+                });
         markDirty();
     }
 
     private static void markDirty() {
         if (saver != null) saver.markDirty();
+        for (Runnable listener : List.copyOf(CHANGE_LISTENERS)) {
+            listener.run();
+        }
     }
 
     private static void writeCustomStore() {

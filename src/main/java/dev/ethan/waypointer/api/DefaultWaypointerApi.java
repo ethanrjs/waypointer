@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.api;
 
+import dev.ethan.waypointer.codec.WaypointExportCodec;
 import dev.ethan.waypointer.codec.WaypointImporter;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.WaypointGroup;
@@ -123,6 +124,16 @@ public final class DefaultWaypointerApi implements WaypointerApi {
     }
 
     @Override
+    public String exportRoutes(List<String> groupIds, ExportOptions options) {
+        Objects.requireNonNull(groupIds, "groupIds");
+        ExportOptions actualOptions = options == null ? ExportOptions.defaults() : options;
+        return WaypointExportCodec.encode(
+                exportGroups(groupIds),
+                actualOptions.toCodecOptions(),
+                actualOptions.target().toCodecTarget());
+    }
+
+    @Override
     public WaypointerHandle onDataChanged(Runnable listener) {
         Objects.requireNonNull(listener, "listener");
         manager.addDataListener(listener);
@@ -186,5 +197,15 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         Zone zone = manager.currentZone();
         if (!options.targetCurrentZoneWhenUnknown() || zone == null) return;
         if (Zone.UNKNOWN.id().equals(group.zoneId())) group.setZoneId(zone.id());
+    }
+
+    private List<WaypointGroup> exportGroups(List<String> groupIds) {
+        List<WaypointGroup> groups = new ArrayList<>(groupIds.size());
+        for (String groupId : groupIds) {
+            if (groupId == null) continue;
+            WaypointGroup group = manager.get(groupId);
+            if (group != null) groups.add(group);
+        }
+        return groups;
     }
 }

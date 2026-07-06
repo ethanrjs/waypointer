@@ -56,7 +56,10 @@ public final class WaypointerConfig {
 
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int CONFIG_SCHEMA_VERSION = 3;
+    private static final int CONFIG_SCHEMA_VERSION = 4;
+    private static final int TEMP_DURATION_MIN_SECONDS = 1;
+    private static final int TEMP_DURATION_MAX_SECONDS = 24 * 60 * 60;
+    private static final int SECONDS_PER_MINUTE = 60;
 
     // Progression
     private int configSchemaVersion = CONFIG_SCHEMA_VERSION;
@@ -103,6 +106,12 @@ public final class WaypointerConfig {
      * users often want a subtle box but a stronger navigation line.
      */
     private double waypointOutlineThickness = 3.0;
+    /**
+     * Optional crisp edge mode for waypoint outlines. Default-off keeps the
+     * current softer/thicker outline presentation unless the player opts into
+     * harder screen-space corners.
+     */
+    private boolean sharpWaypointEdges = false;
     private double beaconOpacity = 0.8;
     private boolean showWaypointNames = true;
     private boolean showWaypointDistances = true;
@@ -170,6 +179,18 @@ public final class WaypointerConfig {
     private boolean skipAheadOnlyVisibleWaypoints = true;
     /** Draw route connector segments between currently visible waypoints. */
     private boolean showRouteLines = false;
+    /**
+     * Draw a short ground path from the player to the first waypoint of the
+     * current dungeon room while that first waypoint is still the active target.
+     */
+    private boolean showDungeonEntryPathToFirstWaypoint = false;
+    /**
+     * Extend the dungeon entry path to later active waypoints in sequenced room
+     * routes. Default-off keeps the historical entry-only behavior.
+     */
+    private boolean showDungeonEntryPathToFollowingWaypoints = false;
+    /** RGB color for the dungeon entry path and its arrows. */
+    private int dungeonEntryPathColor = 0x00FF00;
     /** RGB color for route connector segments. Defaults to import green. */
     private int routeLineColor = 0x00FF00;
     /**
@@ -211,6 +232,23 @@ public final class WaypointerConfig {
     private BoxStyle boxStyle = BoxStyle.OUTLINED;
     private BeaconBeamMode beaconBeamMode = BeaconBeamMode.OFF;
     private boolean beaconBeamExtendsBelowWaypoint = false;
+    /**
+     * When enabled, beacon beams use Minecraft's real beacon beam texture with
+     * core/glow layers. Turning it off keeps the older flat colored quad beam,
+     * which is cheaper for dense overlays.
+     */
+    private boolean useBeaconBeamTextures = true;
+    /**
+     * When enabled, edit-mode transitions and commits play small local UI cues.
+     * Default-on makes mode changes feel acknowledged without sending anything
+     * to the server.
+     */
+    private boolean editSounds = true;
+    /**
+     * When enabled, persistent edit mode draws a small aqua EDIT MODE subtitle on
+     * the HUD so players know their clicks are modal.
+     */
+    private boolean showEditModeSubtitle = true;
 
     // Quality-of-life
     private boolean chatCoordDetection = true;
@@ -241,6 +279,7 @@ public final class WaypointerConfig {
      */
     private boolean focusTempWaypoints = false;
     private boolean chatCodecDetection = true;
+    private boolean showContributorBadges = true;
     /** Default color mode applied after any route import. */
     private WaypointGroup.GradientMode importedRouteColorMode = WaypointGroup.GradientMode.STATIC;
     /** Default one-color import palette: pure green, requested as RGB (0, 255, 0). */
@@ -312,8 +351,8 @@ public final class WaypointerConfig {
      * 1 = time-based, 2 = until reached, 3 = until server leave.
      */
     private int tempDefaultMode = Waypoint.TEMP_TIME;
-    /** Default duration (minutes) for time-based temp waypoints. */
-    private int tempDefaultDurationMin = 1;
+    /** Default duration (seconds) for time-based temp waypoints. */
+    private int tempDefaultDurationSec = SECONDS_PER_MINUTE;
 
     /**
      * Debounce window for config writes. Configs mutate in bursts (EditBox
@@ -349,11 +388,12 @@ public final class WaypointerConfig {
         if (config.migratedDuringLoad) config.save();
         return config;
     }
-
     static WaypointerConfig fromJson(String raw) {
         WaypointerConfig config = GSON.fromJson(raw, WaypointerConfig.class);
         if (config == null) config = new WaypointerConfig();
-        config.applyMigrations(schemaVersion(raw));
+        int loadedSchemaVersion = schemaVersion(raw);
+        config.migrateLegacyTempDurationMinutes(raw, loadedSchemaVersion);
+        config.applyMigrations(loadedSchemaVersion);
         return config;
     }
 
@@ -369,14 +409,40 @@ public final class WaypointerConfig {
             return CONFIG_SCHEMA_VERSION;
         }
     }
-
     private void applyMigrations(int schemaVersion) {
         if (schemaVersion < 2) {
             migrateIssue31TempDefaults();
         }
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
     }
+    private void migrateLegacyTempDurationMinutes(String raw, int schemaVersion) {
+        int originalDurationSec = tempDefaultDurationSec;
+        Integer legacyDurationMin = null;
+        try {
+            JsonElement parsed = JsonParser.parseString(raw);
+            if (parsed != null && parsed.isJsonObject()) {
+                JsonObject root = parsed.getAsJsonObject();
+                if (!root.has("tempDefaultDurationSec") && root.has("tempDefaultDurationMin")) {
+                    legacyDurationMin = root.get("tempDefaultDurationMin").getAsInt();
+                }
+            }
+        } catch (Exception ignored) {
+            legacyDurationMin = null;
+        }
 
+        if (legacyDurationMin != null) {
+            int migratedMinutes = schemaVersion < 2 && legacyDurationMin == 10
+                    ? 1
+                    : legacyDurationMin;
+            tempDefaultDurationSec = clampTempDefaultDurationSec((long) migratedMinutes * SECONDS_PER_MINUTE);
+        } else {
+            tempDefaultDurationSec = clampTempDefaultDurationSec(tempDefaultDurationSec);
+        }
+
+        if (tempDefaultDurationSec != originalDurationSec) {
+            migratedDuringLoad = true;
+        }
+    }
     private void migrateIssue31TempDefaults() {
         boolean changed = false;
         if (autoAddChatTempWaypoints) {
@@ -387,11 +453,9 @@ public final class WaypointerConfig {
             tempDefaultMode = Waypoint.TEMP_TIME;
             changed = true;
         }
-        if (tempDefaultDurationMin == 10) {
-            tempDefaultDurationMin = 1;
-            changed = true;
+        if (changed) {
+            migratedDuringLoad = true;
         }
-        migratedDuringLoad = changed;
     }
 
     /**
@@ -430,40 +494,13 @@ public final class WaypointerConfig {
     public double defaultReachRadius()        { return defaultReachRadius; }
     public boolean resetProgressOnWorldJoin() { return resetProgressOnWorldJoin; }
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
-    /*[[AI-FN-DOC
-Function:
-defaultWaypointColor
-Purpose:
-Expose the RGB color assigned to newly-created user waypoints by default.
-Why this exists:
-Creation flows need one persisted source of truth instead of hardcoding Waypoint.DEFAULT_COLOR at every command and UI entrypoint.
-When to use:
-Use when creating new user-facing waypoints or showing the default waypoint color in settings. Do not use for imported routes, which have their own import color policy.
-Inputs:
-None.
-Outputs:
-Returns a 24-bit 0xRRGGBB color.
-Side effects:
-None.
-Failure modes:
-Malformed persisted alpha bits are masked away before returning.
-Important invariants:
-The returned color never includes alpha bits, and the default remains Waypoint.DEFAULT_COLOR.
-Internal logic:
-Mask the stored integer to 24 RGB bits and return it.
-Pseudocode:
-return defaultWaypointColor & 0xFFFFFF
-Implementation notes:
-This mirrors tracerColor, routeLineColor, and importedRouteDefaultColor normalization.
-AI self-check:
-Verify every user-created waypoint path reads this getter instead of Waypoint.DEFAULT_COLOR.
-]]*/
     public int defaultWaypointColor()         { return defaultWaypointColor & 0xFFFFFF; }
     public int tracerColor()                  { return tracerColor; }
     public boolean matchTracerToWaypointColor() { return matchTracerToWaypointColor; }
     public double tracerOpacity()             { return tracerOpacity; }
     public double tracerThickness()           { return clamp(tracerThickness, 1.0, 12.0); }
     public double waypointOutlineThickness()  { return clamp(waypointOutlineThickness, 1.0, 12.0); }
+    public boolean sharpWaypointEdges()        { return sharpWaypointEdges; }
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showWaypointDistances()    { return showWaypointDistances; }
@@ -480,92 +517,11 @@ Verify every user-created waypoint path reads this getter instead of Waypoint.DE
         public boolean hideWaypointLabelsNearPlayer() { return hideWaypointLabelsNearPlayer; }
         public double hideWaypointLabelsNearRadius() { return Math.max(0.5, hideWaypointLabelsNearRadius); }
     public boolean hideReachedStaticWaypointsUntilCycleComplete() { return hideReachedStaticWaypointsUntilCycleComplete; }
-    /*[[AI-FN-DOC
-Function:
-skipAheadOnlyVisibleWaypoints
-Purpose:
-Expose whether automatic skip-ahead should be capped to visible route-context waypoints.
-Why this exists:
-Progression code needs a stable getter so config validation and defaults stay centralized in WaypointerConfig.
-When to use:
-Use from proximity progression and settings UI. Do not use for manual skip commands, which intentionally bypass automatic visibility caps.
-Inputs:
-None.
-Outputs:
-Returns true when automatic future waypoint skips should require current visibility, false for legacy farthest-nearby behavior.
-Side effects:
-None.
-Failure modes:
-None; the field is a primitive boolean with a constructor default.
-Important invariants:
-The default value is true so users do not skip to invisible far-future route points by accident.
-Internal logic:
-Return the stored boolean field directly.
-Pseudocode:
-return skipAheadOnlyVisibleWaypoints
-Implementation notes:
-No null handling or clamping is needed.
-AI self-check:
-Verify ProximityTracker reads this getter from the tick path.
-]]*/
     public boolean skipAheadOnlyVisibleWaypoints() { return skipAheadOnlyVisibleWaypoints; }
-    /*[[AI-FN-DOC
-Function:
-showRouteLines
-Purpose:
-Expose whether route connector line rendering is enabled.
-Why this exists:
-The renderer and settings UI need a single persisted flag for the optional connector overlay.
-When to use:
-Use from world rendering and settings controls. Do not use for crosshair tracer visibility.
-Inputs:
-None.
-Outputs:
-Returns true when visible route connector segments should be drawn.
-Side effects:
-None.
-Failure modes:
-None; the field is a primitive boolean.
-Important invariants:
-The default remains false so existing users do not get extra route geometry without opting in.
-Internal logic:
-Return the stored boolean field directly.
-Pseudocode:
-return showRouteLines
-Implementation notes:
-Kept separate from showTracer so users can configure topology lines and navigation tracers independently.
-AI self-check:
-Verify WaypointRenderer gates connector drawing on this getter.
-]]*/
     public boolean showRouteLines()           { return showRouteLines; }
-    /*[[AI-FN-DOC
-Function:
-routeLineColor
-Purpose:
-Expose the 24-bit RGB color used for route connector lines.
-Why this exists:
-Connector rendering and settings UI need a normalized color value that ignores accidental alpha bits in persisted JSON.
-When to use:
-Use anywhere the connector line color is displayed or rendered. Do not use for tracer, waypoint, or import colors.
-Inputs:
-None.
-Outputs:
-Returns the stored color masked to 0xRRGGBB.
-Side effects:
-None.
-Failure modes:
-None; masking makes even malformed persisted integer values safe to render as RGB.
-Important invariants:
-The returned value must never include alpha bits.
-Internal logic:
-Return routeLineColor bitwise-and 0xFFFFFF.
-Pseudocode:
-return routeLineColor & 0xFFFFFF
-Implementation notes:
-Matches the normalization style of other color getters in this config class.
-AI self-check:
-Verify tests cover alpha masking for this getter.
-]]*/
+    public boolean showDungeonEntryPathToFirstWaypoint() { return showDungeonEntryPathToFirstWaypoint; }
+    public boolean showDungeonEntryPathToFollowingWaypoints() { return showDungeonEntryPathToFollowingWaypoints; }
+    public int dungeonEntryPathColor()        { return dungeonEntryPathColor & 0xFFFFFF; }
     public int routeLineColor()               { return routeLineColor & 0xFFFFFF; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
     public int maxWaypointLabels()            { return Math.max(0, maxWaypointLabels); }
@@ -578,6 +534,9 @@ Verify tests cover alpha masking for this getter.
         return beaconBeamMode == null ? BeaconBeamMode.OFF : beaconBeamMode;
     }
     public boolean beaconBeamExtendsBelowWaypoint() { return beaconBeamExtendsBelowWaypoint; }
+    public boolean useBeaconBeamTextures() { return useBeaconBeamTextures; }
+    public boolean editSounds() { return editSounds; }
+    public boolean showEditModeSubtitle() { return showEditModeSubtitle; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
     public List<String> chatCoordSenderBlacklist() {
         ensureChatCoordSenderBlacklist();
@@ -596,6 +555,7 @@ Verify tests cover alpha masking for this getter.
     public boolean placeNewWaypointsBelowPlayer() { return placeNewWaypointsBelowPlayer; }
     public boolean focusTempWaypoints()       { return focusTempWaypoints; }
     public boolean chatCodecDetection()       { return chatCodecDetection; }
+    public boolean showContributorBadges()    { return showContributorBadges; }
         public WaypointGroup.GradientMode importedRouteColorMode() {
         return importedRouteColorMode == null
                 ? WaypointGroup.GradientMode.STATIC
@@ -616,46 +576,23 @@ Verify tests cover alpha masking for this getter.
                 ? Waypoint.TEMP_TIME
                 : tempDefaultMode;
     }
-    public int tempDefaultDurationMin()         { return Math.max(1, Math.min(24 * 60, tempDefaultDurationMin)); }
+    public int tempDefaultDurationSec() {
+        return clampTempDefaultDurationSec(tempDefaultDurationSec);
+    }
+    public int tempDefaultDurationMin() {
+        int roundedUpMinutes = (tempDefaultDurationSec() + SECONDS_PER_MINUTE - 1) / SECONDS_PER_MINUTE;
+        return Math.max(1, Math.min(24 * 60, roundedUpMinutes));
+    }
     public boolean tempWaypointsExpireByDefault() { return tempDefaultMode() == Waypoint.TEMP_TIME; }
     public long defaultTempExpiresAtMillis(long nowMillis) {
         return tempDefaultMode() == Waypoint.TEMP_TIME
-                ? nowMillis + (long) tempDefaultDurationMin() * 60_000L
+                ? nowMillis + (long) tempDefaultDurationSec() * 1_000L
                 : 0L;
     }
 
     public void setDefaultReachRadius(double v)        { this.defaultReachRadius = clamp(v, 0.5, 100); save(); }
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
-    /*[[AI-FN-DOC
-Function:
-setDefaultWaypointColor
-Purpose:
-Persist the RGB color used for newly-created user waypoints.
-Why this exists:
-The Colors tab lets users choose the color future waypoints start with, so config needs a validated setter matching the other color settings.
-When to use:
-Use from settings UI and config-code import when changing the future waypoint default. Do not use to recolor existing route waypoints.
-Inputs:
-v is an integer color; only the lower 24 RGB bits are kept.
-Outputs:
-No return value. Mutates config and schedules a save.
-Side effects:
-Calls save(), which may write config.json asynchronously in normal runtime.
-Failure modes:
-Out-of-range or alpha-bearing integers are normalized by masking. Save failures are handled by the saver path.
-Important invariants:
-Stored value is always 0xRRGGBB and does not imply any bulk route recolor.
-Internal logic:
-Mask v to 24 bits, assign it, then mark the config dirty.
-Pseudocode:
-defaultWaypointColor = v & 0xFFFFFF
-save
-Implementation notes:
-The masking policy matches every other color setter in this class.
-AI self-check:
-Confirm tests cover alpha masking and future waypoint creation uses this getter.
-]]*/
     public void setDefaultWaypointColor(int v)         { this.defaultWaypointColor = v & 0xFFFFFF; save(); }
     public void setTracerColor(int v)                  { this.tracerColor = v & 0xFFFFFF; save(); }
     public void setMatchTracerToWaypointColor(boolean v) { this.matchTracerToWaypointColor = v; save(); }
@@ -668,6 +605,10 @@ Confirm tests cover alpha masking and future waypoint creation uses this getter.
     public void setWaypointOutlineThickness(double v) {
         if (!Double.isFinite(v)) return;
         this.waypointOutlineThickness = clamp(v, 1.0, 12.0);
+        save();
+    }
+    public void setSharpWaypointEdges(boolean v) {
+        this.sharpWaypointEdges = v;
         save();
     }
     public void setBeaconOpacity(double v)             { this.beaconOpacity = clamp(v, 0, 1); save(); }
@@ -704,101 +645,26 @@ Confirm tests cover alpha masking and future waypoint creation uses this getter.
         this.hideReachedStaticWaypointsUntilCycleComplete = v;
         save();
     }
-    /*[[AI-FN-DOC
-Function:
-setSkipAheadOnlyVisibleWaypoints
-Purpose:
-Persist whether automatic waypoint skip-ahead may target only currently visible route-context waypoints.
-Why this exists:
-The global skip-ahead mechanic is useful, but long contextual routes should not jump to invisible far-future points by default.
-When to use:
-Use from settings UI or tests when toggling the visibility-aware cap for proximity skip-ahead. Do not use for manual /wp skipto, which intentionally targets explicit indices.
-Inputs:
-v is the requested boolean state; true restricts automatic skips to visible route context, false preserves legacy farthest-nearby skip behavior.
-Outputs:
-No return value. Mutates the config field and schedules an async save.
-Side effects:
-Updates persisted config state and calls save(), which may write config.json after the debounce window.
-Failure modes:
-The save helper may be absent during tests or early construction; save() handles that by returning without throwing.
-Important invariants:
-The setting must default true and must not disable normal current-waypoint progression.
-Internal logic:
-Assign the boolean directly, then mark the config dirty.
-Pseudocode:
-set skipAheadOnlyVisibleWaypoints to v
-call save
-Implementation notes:
-No clamping is needed for a boolean. This intentionally lives beside the progression settings so reset/disable can copy it explicitly.
-AI self-check:
-Verify the field is copied by resetToDefaults, disabled by disableAllSettings, and read by ProximityTracker.
-]]*/
     public void setSkipAheadOnlyVisibleWaypoints(boolean v) {
         this.skipAheadOnlyVisibleWaypoints = v;
         save();
     }
-    /*[[AI-FN-DOC
-Function:
-setShowRouteLines
-Purpose:
-Persist whether visible route connector segments should be rendered between waypoint centers.
-Why this exists:
-Players requested an optional line between waypoints without forcing that extra visual density on every route.
-When to use:
-Use from settings UI when toggling the connector overlay. Do not use to control tracer lines, which have their own setting.
-Inputs:
-v is the requested boolean state; true enables route connector rendering, false disables it.
-Outputs:
-No return value. Mutates the config field and schedules an async save.
-Side effects:
-Updates config state and calls save().
-Failure modes:
-The debounced saver may be null in tests; save() already handles that safely.
-Important invariants:
-Route connector visibility must be independent from waypoint boxes, beams, and crosshair tracers.
-Internal logic:
-Assign the new flag, then mark the config dirty.
-Pseudocode:
-set showRouteLines to v
-call save
-Implementation notes:
-Keeping this separate from showTracer lets users keep crosshair navigation off while still seeing route topology.
-AI self-check:
-Confirm renderer gates connector drawing on this getter and reset/disable copy the field.
-]]*/
     public void setShowRouteLines(boolean v) {
         this.showRouteLines = v;
         save();
     }
-    /*[[AI-FN-DOC
-Function:
-setRouteLineColor
-Purpose:
-Persist the RGB color used for optional route connector segments.
-Why this exists:
-Connector lines need their own color so they can be readable without changing waypoint, tracer, or import colors.
-When to use:
-Use from settings UI or tests when the user picks a connector color. Do not pass ARGB alpha; only RGB is stored.
-Inputs:
-v is an integer color. Only the low 24 bits are used, so callers may pass standard 0xRRGGBB values.
-Outputs:
-No return value. Mutates the config field and schedules an async save.
-Side effects:
-Updates config state and calls save().
-Failure modes:
-Out-of-range integers are normalized by masking; save failures are logged by the saver path rather than thrown here.
-Important invariants:
-The stored value is always a 24-bit RGB color.
-Internal logic:
-Mask the color to 0xFFFFFF, assign it, and mark config dirty.
-Pseudocode:
-routeLineColor = v bitwise-and 0xFFFFFF
-call save
-Implementation notes:
-Masking matches the existing tracer and import color setters.
-AI self-check:
-Confirm the settings swatch and renderer both read routeLineColor().
-]]*/
+    public void setShowDungeonEntryPathToFirstWaypoint(boolean v) {
+        this.showDungeonEntryPathToFirstWaypoint = v;
+        save();
+    }
+    public void setShowDungeonEntryPathToFollowingWaypoints(boolean v) {
+        this.showDungeonEntryPathToFollowingWaypoints = v;
+        save();
+    }
+    public void setDungeonEntryPathColor(int v) {
+        this.dungeonEntryPathColor = v & 0xFFFFFF;
+        save();
+    }
     public void setRouteLineColor(int v) {
         this.routeLineColor = v & 0xFFFFFF;
         save();
@@ -834,6 +700,7 @@ Confirm the settings swatch and renderer both read routeLineColor().
     public void setPlaceNewWaypointsBelowPlayer(boolean v) { this.placeNewWaypointsBelowPlayer = v; save(); }
     public void setFocusTempWaypoints(boolean v)       { this.focusTempWaypoints = v; save(); }
     public void setChatCodecDetection(boolean v)       { this.chatCodecDetection = v; save(); }
+    public void setShowContributorBadges(boolean v)    { this.showContributorBadges = v; save(); }
         public void setImportedRouteColorMode(WaypointGroup.GradientMode v) {
         this.importedRouteColorMode = v == null ? WaypointGroup.GradientMode.STATIC : v;
         save();
@@ -872,6 +739,18 @@ Confirm the settings swatch and renderer both read routeLineColor().
         this.beaconBeamExtendsBelowWaypoint = v;
         save();
     }
+    public void setUseBeaconBeamTextures(boolean v) {
+        this.useBeaconBeamTextures = v;
+        save();
+    }
+    public void setEditSounds(boolean v) {
+        this.editSounds = v;
+        save();
+    }
+    public void setShowEditModeSubtitle(boolean v) {
+        this.showEditModeSubtitle = v;
+        save();
+    }
     public void setSkipAheadMechanicEnabled(boolean v) { this.skipAheadMechanicEnabled = v; save(); }
     public void setCheckForUpdates(boolean v)          { this.checkForUpdates = v; save(); }
     public void setIrisShaderHudFallback(boolean v)    { this.irisShaderHudFallback = v; save(); }
@@ -882,45 +761,18 @@ Confirm the settings swatch and renderer both read routeLineColor().
         this.tempDefaultMode = clamped;
         save();
     }
+    public void setTempDefaultDurationSec(int v) {
+        this.tempDefaultDurationSec = clampTempDefaultDurationSec(v);
+        save();
+    }
     public void setTempDefaultDurationMin(int v) {
-        this.tempDefaultDurationMin = Math.max(1, Math.min(24 * 60, v));
+        int clampedMinutes = Math.max(1, Math.min(24 * 60, v));
+        this.tempDefaultDurationSec = clampedMinutes * SECONDS_PER_MINUTE;
         save();
     }
     public void setTempWaypointsExpireByDefault(boolean v) {
         setTempDefaultMode(v ? Waypoint.TEMP_TIME : Waypoint.TEMP_UNTIL_LEAVE);
     }
-
-    /*[[AI-FN-DOC
-Function:
-replaceWith
-Purpose:
-Replace this live config object's persisted settings with another config snapshot.
-Why this exists:
-The compact config codec decodes into a fresh default-backed config, but runtime screens and managers hold references to the existing WaypointerConfig instance.
-When to use:
-Use when importing a config code or restoring a complete settings snapshot. Do not use for partial setting changes; call individual setters instead.
-Inputs:
-replacement is a WaypointerConfig snapshot. Null is ignored to avoid clobbering settings from a failed decode path.
-Outputs:
-No return value. Mutates this config to match replacement and schedules a save.
-Side effects:
-Updates every persisted field, replaces the chat sender blacklist list, clears migration state, and calls save().
-Failure modes:
-Null input returns without mutation. Save may be skipped in tests when no saver is attached.
-Important invariants:
-Transient file/saver references remain on this live object. Omitted fields in a decoded replacement remain replacement defaults.
-Internal logic:
-Guard null, copy scalar fields and defensive-copy lists, reset migration flag, then save once.
-Pseudocode:
-if replacement is null, return
-copy every persisted primitive, enum, and list field from replacement
-set migratedDuringLoad false
-save
-Implementation notes:
-This intentionally assigns fields directly instead of calling dozens of setters so importing one config code performs one save and cannot observe a half-applied state.
-AI self-check:
-Verify newly-added config fields are present here and in resetToDefaults.
-]]*/
     public void replaceWith(WaypointerConfig replacement) {
         if (replacement == null) return;
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
@@ -933,6 +785,7 @@ Verify newly-added config fields are present here and in resetToDefaults.
         tracerOpacity = replacement.tracerOpacity;
         tracerThickness = replacement.tracerThickness;
         waypointOutlineThickness = replacement.waypointOutlineThickness;
+        sharpWaypointEdges = replacement.sharpWaypointEdges;
         beaconOpacity = replacement.beaconOpacity;
         showWaypointNames = replacement.showWaypointNames;
         showWaypointDistances = replacement.showWaypointDistances;
@@ -951,6 +804,9 @@ Verify newly-added config fields are present here and in resetToDefaults.
         hideReachedStaticWaypointsUntilCycleComplete = replacement.hideReachedStaticWaypointsUntilCycleComplete;
         skipAheadOnlyVisibleWaypoints = replacement.skipAheadOnlyVisibleWaypoints;
         showRouteLines = replacement.showRouteLines;
+        showDungeonEntryPathToFirstWaypoint = replacement.showDungeonEntryPathToFirstWaypoint;
+        showDungeonEntryPathToFollowingWaypoints = replacement.showDungeonEntryPathToFollowingWaypoints;
+        dungeonEntryPathColor = replacement.dungeonEntryPathColor;
         routeLineColor = replacement.routeLineColor;
         showLabelBackdrop = replacement.showLabelBackdrop;
         maxWaypointLabels = replacement.maxWaypointLabels;
@@ -959,12 +815,16 @@ Verify newly-added config fields are present here and in resetToDefaults.
         boxStyle = replacement.boxStyle;
         beaconBeamMode = replacement.beaconBeamMode;
         beaconBeamExtendsBelowWaypoint = replacement.beaconBeamExtendsBelowWaypoint;
+        useBeaconBeamTextures = replacement.useBeaconBeamTextures;
+        editSounds = replacement.editSounds;
+        showEditModeSubtitle = replacement.showEditModeSubtitle;
         chatCoordDetection = replacement.chatCoordDetection;
         chatCoordSenderBlacklist = new ArrayList<>(replacement.chatCoordSenderBlacklist);
         autoAddChatTempWaypoints = replacement.autoAddChatTempWaypoints;
         placeNewWaypointsBelowPlayer = replacement.placeNewWaypointsBelowPlayer;
         focusTempWaypoints = replacement.focusTempWaypoints;
         chatCodecDetection = replacement.chatCodecDetection;
+        showContributorBadges = replacement.showContributorBadges;
         importedRouteColorMode = replacement.importedRouteColorMode;
         importedRouteDefaultColor = replacement.importedRouteDefaultColor;
         exportIncludeNames = replacement.exportIncludeNames;
@@ -977,18 +837,19 @@ Verify newly-added config fields are present here and in resetToDefaults.
         checkForUpdates = replacement.checkForUpdates;
         irisShaderHudFallback = replacement.irisShaderHudFallback;
         tempDefaultMode = replacement.tempDefaultMode;
-        tempDefaultDurationMin = replacement.tempDefaultDurationMin;
+        tempDefaultDurationSec = replacement.tempDefaultDurationSec;
         migratedDuringLoad = false;
         save();
     }
 
-        public void disableAllSettings() {
+    public void disableAllSettings() {
         resetProgressOnWorldJoin = false;
         restartRouteWhenComplete = false;
         matchTracerToWaypointColor = false;
         showWaypointNames = false;
         showWaypointDistances = false;
         showRouteProgress = false;
+        sharpWaypointEdges = false;
         scaleWaypointTextWithDistance = false;
         matchWaypointTextToWaypointColor = false;
         showCompleted = false;
@@ -1000,13 +861,19 @@ Verify newly-added config fields are present here and in resetToDefaults.
         hideReachedStaticWaypointsUntilCycleComplete = false;
         skipAheadOnlyVisibleWaypoints = false;
         showRouteLines = false;
+        showDungeonEntryPathToFirstWaypoint = false;
+        showDungeonEntryPathToFollowingWaypoints = false;
         showLabelBackdrop = false;
         beaconBeamExtendsBelowWaypoint = false;
+        useBeaconBeamTextures = false;
+        editSounds = false;
+        showEditModeSubtitle = false;
         chatCoordDetection = false;
         autoAddChatTempWaypoints = false;
         placeNewWaypointsBelowPlayer = false;
         focusTempWaypoints = false;
         chatCodecDetection = false;
+        showContributorBadges = false;
         importedRouteColorMode = WaypointGroup.GradientMode.MANUAL;
         exportIncludeNames = false;
         exportIncludeColors = false;
@@ -1021,8 +888,7 @@ Verify newly-added config fields are present here and in resetToDefaults.
         tempDefaultMode = Waypoint.TEMP_UNTIL_LEAVE;
         save();
     }
-
-        public void resetToDefaults() {
+    public void resetToDefaults() {
         WaypointerConfig defaults = new WaypointerConfig();
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
         defaultReachRadius = defaults.defaultReachRadius;
@@ -1034,6 +900,7 @@ Verify newly-added config fields are present here and in resetToDefaults.
         tracerOpacity = defaults.tracerOpacity;
         tracerThickness = defaults.tracerThickness;
         waypointOutlineThickness = defaults.waypointOutlineThickness;
+        sharpWaypointEdges = defaults.sharpWaypointEdges;
         beaconOpacity = defaults.beaconOpacity;
         showWaypointNames = defaults.showWaypointNames;
         showWaypointDistances = defaults.showWaypointDistances;
@@ -1052,6 +919,9 @@ Verify newly-added config fields are present here and in resetToDefaults.
         hideReachedStaticWaypointsUntilCycleComplete = defaults.hideReachedStaticWaypointsUntilCycleComplete;
         skipAheadOnlyVisibleWaypoints = defaults.skipAheadOnlyVisibleWaypoints;
         showRouteLines = defaults.showRouteLines;
+        showDungeonEntryPathToFirstWaypoint = defaults.showDungeonEntryPathToFirstWaypoint;
+        showDungeonEntryPathToFollowingWaypoints = defaults.showDungeonEntryPathToFollowingWaypoints;
+        dungeonEntryPathColor = defaults.dungeonEntryPathColor;
         routeLineColor = defaults.routeLineColor;
         showLabelBackdrop = defaults.showLabelBackdrop;
         maxWaypointLabels = defaults.maxWaypointLabels;
@@ -1060,12 +930,16 @@ Verify newly-added config fields are present here and in resetToDefaults.
         boxStyle = defaults.boxStyle;
         beaconBeamMode = defaults.beaconBeamMode;
         beaconBeamExtendsBelowWaypoint = defaults.beaconBeamExtendsBelowWaypoint;
+        useBeaconBeamTextures = defaults.useBeaconBeamTextures;
+        editSounds = defaults.editSounds;
+        showEditModeSubtitle = defaults.showEditModeSubtitle;
         chatCoordDetection = defaults.chatCoordDetection;
         chatCoordSenderBlacklist = new ArrayList<>(defaults.chatCoordSenderBlacklist);
         autoAddChatTempWaypoints = defaults.autoAddChatTempWaypoints;
         placeNewWaypointsBelowPlayer = defaults.placeNewWaypointsBelowPlayer;
         focusTempWaypoints = defaults.focusTempWaypoints;
         chatCodecDetection = defaults.chatCodecDetection;
+        showContributorBadges = defaults.showContributorBadges;
         importedRouteColorMode = defaults.importedRouteColorMode;
         importedRouteDefaultColor = defaults.importedRouteDefaultColor;
         exportIncludeNames = defaults.exportIncludeNames;
@@ -1078,9 +952,14 @@ Verify newly-added config fields are present here and in resetToDefaults.
         checkForUpdates = defaults.checkForUpdates;
         irisShaderHudFallback = defaults.irisShaderHudFallback;
         tempDefaultMode = defaults.tempDefaultMode;
-        tempDefaultDurationMin = defaults.tempDefaultDurationMin;
+        tempDefaultDurationSec = defaults.tempDefaultDurationSec;
         migratedDuringLoad = false;
         save();
+    }
+    private static int clampTempDefaultDurationSec(long seconds) {
+        if (seconds < TEMP_DURATION_MIN_SECONDS) return TEMP_DURATION_MIN_SECONDS;
+        if (seconds > TEMP_DURATION_MAX_SECONDS) return TEMP_DURATION_MAX_SECONDS;
+        return (int) seconds;
     }
 
     private void ensureChatCoordSenderBlacklist() {

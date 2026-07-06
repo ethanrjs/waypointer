@@ -34,41 +34,52 @@ public final class HypixelApiZoneSource implements ZoneSource {
     private Zone lastEmitted;
     /** Last raw zone from {@link Zone#resolve(String, String, String)} before sidebar refinement. */
     private Zone lastRawPacketZone;
+    private Consumer<Zone> listener;
     private int tickCounter;
 
     @Override
     public void register(Consumer<Zone> listener) {
+        this.listener = listener;
         HypixelModAPI api = HypixelModAPI.getInstance();
         api.subscribeToEventPacket(ClientboundLocationPacket.class);
-        api.createHandler(ClientboundLocationPacket.class, packet -> {
-            String serverType = packet.getServerType().map(s -> s.name()).orElse(null);
-            String map  = packet.getMap().orElse(null);
-            String mode = packet.getMode().orElse(null);
+        api.createHandler(ClientboundLocationPacket.class, this::handleLocationPacket);
 
-            Zone raw = Zone.resolve(serverType, map, mode);
-            lastRawPacketZone = raw;
-            emitRefined(listener, serverType, map, mode);
-        });
-
-        ClientTickEvents.END_CLIENT_TICK.register(mc -> onTick(mc, listener));
+        ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
     }
 
-    private void onTick(Minecraft mc, Consumer<Zone> listener) {
+    private void handleLocationPacket(ClientboundLocationPacket packet) {
+        String serverType = packet.getServerType().map(s -> s.name()).orElse(null);
+        String map  = packet.getMap().orElse(null);
+        String mode = packet.getMode().orElse(null);
+
+        lastRawPacketZone = Zone.resolve(serverType, map, mode);
+        emitRefined(serverType, map, mode);
+    }
+
+    private void onTick(Minecraft mc) {
         if (++tickCounter < REFINE_POLL_TICKS) return;
         tickCounter = 0;
         if (lastRawPacketZone == null) return;
-        String id = lastRawPacketZone.id();
-        if (!"dwarven_mines".equals(id) && !"mineshaft".equals(id)) return;
-        emitRefined(listener, null, null, null);
+        if (!shouldPollSidebarRefinement(lastRawPacketZone)) return;
+        emitRefined(null, null, null);
+    }
+
+    private static boolean shouldPollSidebarRefinement(Zone zone) {
+        if (zone == null || zone.id() == null) return false;
+        String id = zone.id();
+        if ("dwarven_mines".equals(id) || "mineshaft".equals(id)) return true;
+        return CatacombsFloorRefiner.shouldPoll(zone);
     }
 
     /**
      * @param serverType map mode only used for logging on packet path; may be null on tick path
      */
-    private void emitRefined(Consumer<Zone> listener, String serverType, String map, String mode) {
+    private void emitRefined(String serverType, String map, String mode) {
         Minecraft mc = Minecraft.getInstance();
         String blob = SidebarTexts.collectColorStripped(mc);
-        Zone refined = Zone.refineIfDwarvenMinesContext(lastRawPacketZone, blob != null ? blob : "");
+        String sidebarText = blob != null ? blob : "";
+        Zone refined = Zone.refineIfDwarvenMinesContext(lastRawPacketZone, sidebarText);
+        refined = CatacombsFloorRefiner.refine(refined, sidebarText);
         lastDebugSnapshot = new DebugSnapshot(serverType, map, mode, lastRawPacketZone, refined, Instant.now());
 
         if (!Objects.equals(refined, lastEmitted)) {
@@ -79,7 +90,7 @@ public final class HypixelApiZoneSource implements ZoneSource {
             } else {
                 Waypointer.LOGGER.debug("Location refine (tick): raw={} -> zone={}", lastRawPacketZone, refined);
             }
-            listener.accept(refined);
+            if (listener != null) listener.accept(refined);
         }
     }
 

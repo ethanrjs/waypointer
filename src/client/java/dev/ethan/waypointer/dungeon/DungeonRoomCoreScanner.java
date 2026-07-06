@@ -1,8 +1,8 @@
 package dev.ethan.waypointer.dungeon;
 
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
-import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -17,7 +17,6 @@ final class DungeonRoomCoreScanner implements DungeonRoomData.CoreHashLookup {
     private static final int MIN_SCAN_Y = 11;
     private static final int LOWEST_BLOCK_Y = 12;
     private static final int MAX_SCAN_Y = 140;
-    private static final int TOP_SEARCH_Y = 160;
     private static final int EARLY_AIR_BREAK_Y = 69;
 
     private final ClientLevel level;
@@ -38,69 +37,52 @@ final class DungeonRoomCoreScanner implements DungeonRoomData.CoreHashLookup {
         return hashes;
     }
 
-    /*[[AI-FN-DOC
-Function:
-DungeonRoomCoreScanner.coreHashForSegment
-Purpose:
-Compute the stable Odin-style vertical room-core hash for one 32x32 dungeon segment.
-Why this exists:
-Room identity is determined from the center-column block skeleton of a segment, and callers need a reusable primitive for both current-room matching and adjacent-component expansion.
-When to use:
-Use when the caller has a packed DungeonRoom segment corner and needs to identify which authored room core occupies that segment; do not use for non-dungeon worlds or arbitrary block positions.
-Inputs:
-packedSegment is a DungeonRoom packed long whose X and Z values are the north-west corner of a 32x32 dungeon segment.
-Outputs:
-Returns the Java String.hashCode value for the normalized vertical block skeleton at that segment's center.
-Side effects:
-Reads chunk/block state from the client level through the scanner's mutable BlockPos; does not mutate world state.
-Failure modes:
-Unloaded or empty chunks can produce a hash that does not match the catalog, which callers should treat as an unknown segment rather than a fatal error.
-Important invariants:
-The center offset, top-layer search, ignored blocks, zero padding, bedrock-air early break, and hash algorithm must remain compatible with the bundled Odin-derived core hashes.
-Internal logic:
-Unpack the segment corner, offset to the center probe column, read the containing chunk, find the top room layer, then hash the normalized vertical column at that height.
-Pseudocode:
-centerX = segmentX + center offset
-centerZ = segmentZ + center offset
-chunk = level chunk containing center
-roomHeight = topLayerAt(centerX, centerZ, chunk)
-return coreHashAtHeight(centerX, centerZ, roomHeight, chunk)
-Implementation notes:
-This method is package-private so DungeonStateTracker can perform Odin-style direct core scans without constructing temporary DungeonRoom objects for every adjacent segment.
-AI self-check:
-Verify the method preserves the previous hashing behavior exactly and only broadens access for scanner users in the dungeon package.
-]]*/
     int coreHashForSegment(long packedSegment) {
+        return coreSignatureForSegment(packedSegment).hash();
+    }
+
+    static DungeonCoreSignature coreSignatureForChunk(LevelChunk chunk) {
+        if (chunk == null) return DungeonCoreSignature.UNKNOWN;
+        int centerX = chunk.getPos().x() * 16 + 7;
+        int centerZ = chunk.getPos().z() * 16 + 7;
+        return new DungeonRoomCoreScanner(null).coreSignatureAt(centerX, centerZ, chunk);
+    }
+
+    DungeonCoreSignature coreSignatureForSegment(long packedSegment) {
+        if (level == null) return DungeonCoreSignature.UNKNOWN;
         int centerX = DungeonRoom.segmentX(packedSegment) + ROOM_CENTER_OFFSET;
         int centerZ = DungeonRoom.segmentZ(packedSegment) + ROOM_CENTER_OFFSET;
-        LevelChunk chunk = level.getChunk(centerX >> 4, centerZ >> 4);
-        int roomHeight = topLayerAt(centerX, centerZ, chunk);
-        return coreHashAtHeight(centerX, centerZ, roomHeight, chunk);
+        int chunkX = centerX >> 4;
+        int chunkZ = centerZ >> 4;
+        if (!level.hasChunk(chunkX, chunkZ)) return DungeonCoreSignature.UNKNOWN;
+        return coreSignatureAt(centerX, centerZ, level.getChunk(chunkX, chunkZ));
     }
 
-    private int topLayerAt(int centerX, int centerZ, LevelChunk chunk) {
-        for (int y = TOP_SEARCH_Y; y >= LOWEST_BLOCK_Y; y--) {
+    private DungeonCoreSignature coreSignatureAt(int centerX, int centerZ, LevelChunk chunk) {
+        StringBuilder builder = new StringBuilder(150);
+        boolean foundHighest = false;
+        int roofY = 0;
+        int consecutiveBedrock = 0;
+        int sampleCount = 0;
+        for (int y = MAX_SCAN_Y; y >= LOWEST_BLOCK_Y; y--) {
             mutableBlockPos.set(centerX, y, centerZ);
             BlockState state = chunk.getBlockState(mutableBlockPos);
-            if (!state.isAir()) {
-                return state.is(Blocks.GOLD_BLOCK) ? y - 1 : y;
+            Block block = state.getBlock();
+
+            if (!foundHighest) {
+                if (state.isAir() || block == Blocks.GOLD_BLOCK) {
+                    builder.append('0');
+                    sampleCount++;
+                    continue;
+                }
+                foundHighest = true;
+                roofY = y;
             }
-        }
-        return 0;
-    }
 
-    private int coreHashAtHeight(int centerX, int centerZ, int roomHeight, LevelChunk chunk) {
-        StringBuilder builder = new StringBuilder(150);
-        int clampedHeight = Math.max(MIN_SCAN_Y, Math.min(MAX_SCAN_Y, roomHeight));
-        appendZeros(builder, MAX_SCAN_Y - clampedHeight);
-
-        int consecutiveBedrock = 0;
-        for (int y = clampedHeight; y >= LOWEST_BLOCK_Y; y--) {
-            mutableBlockPos.set(centerX, y, centerZ);
-            Block block = chunk.getBlockState(mutableBlockPos).getBlock();
-
-            if (block == Blocks.AIR && consecutiveBedrock >= 2 && y < EARLY_AIR_BREAK_Y) {
-                appendZeros(builder, y - MIN_SCAN_Y);
+            if (state.isAir() && consecutiveBedrock >= 2 && y < EARLY_AIR_BREAK_Y) {
+                int trailingZeros = Math.max(0, y - MIN_SCAN_Y);
+                appendZeros(builder, trailingZeros);
+                sampleCount += trailingZeros;
                 break;
             }
 
@@ -112,9 +94,10 @@ Verify the method preserves the previous hashing behavior exactly and only broad
             }
 
             builder.append(block);
+            sampleCount++;
         }
 
-        return builder.toString().hashCode();
+        return new DungeonCoreSignature(builder.toString().hashCode(), roofY, sampleCount);
     }
 
     private static void appendZeros(StringBuilder builder, int count) {
