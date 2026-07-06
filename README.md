@@ -4,12 +4,14 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 
 ## Features
 
-- Waypoints organized per Skyblock world type
+- Per-zone waypoints
+- Dungeon rooms support
 - Ordered routes
 - World rendering
 - Extremely compact export format
 - Importable from chat messages
 - Keybindings
+- Editor mode
 - Clean UI for editing and management
 - Waypoint skipping in sequence
 - Temporary Waypoints
@@ -27,16 +29,17 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 - Skyblocker (I/E)
 - Soopy (I)
 - Generic JSON-based (I)
+- Odin Client (I)
 
 ## Requirements
 
-- Minecraft 1.21.11
+- Minecraft 26.1.x
 - Fabric Loader 0.18.2+
 - [Fabric API](https://modrinth.com/mod/fabric-api)
 - [owo-lib](https://modrinth.com/mod/owo-lib) 0.13.0+
-- *(optional)* Hypixel Mod API 1.0+. Improves zone detection
+- *(optional)* Hypixel Mod API 1.0.2-26.1+. Improves zone detection
 
-Compiles with Java 21 for 1.21.11
+Compiles with Java 25 for 26.1.2
 
 ## Building
 
