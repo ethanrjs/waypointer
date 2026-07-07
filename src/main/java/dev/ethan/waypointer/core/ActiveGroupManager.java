@@ -213,11 +213,44 @@ public final class ActiveGroupManager {
      * all of these buckets under its virtual Temporary zone instead of exposing
      * the implementation detail in each group's name.
      */
+    /*[[AI-FN-DOC
+Function:
+getOrCreateTempGroup
+Purpose:
+Return the current zone's isolated temporary waypoint bucket, creating it when absent.
+Why this exists:
+Temporary markers need to render together without polluting real user routes, sequence progress, or persisted waypoint storage.
+When to use:
+Use whenever a caller needs the per-zone temp group before adding or inspecting temporary waypoints. Do not use it to represent a source-specific bucket; source names belong on individual temp waypoints.
+Inputs:
+No parameters. Reads currentZone, falling back to Zone.UNKNOWN when no zone is active.
+Outputs:
+Returns a WaypointGroup marked temp, static, manual-gradient, and keyed as temp::<zoneId>. May return an existing matching temp group.
+Side effects:
+Creates and adds a new temp group when none exists for the current zone, which fires the usual add/data-change side effects through add.
+Failure modes:
+No checked failures. If an existing group with the temp id is not marked temp, a new temp group cannot be inserted without replacing semantics elsewhere, so the normal add path governs behavior.
+Important invariants:
+There is one temp bucket per zone. The bucket display name stays "Temporary". Source labels are stored on waypoints, not on the bucket.
+Internal logic:
+Resolve the current zone, derive the temp id, return and normalize an existing temp group if present, otherwise create/configure/add a new temp group and return it.
+Pseudocode:
+Set zone to currentZone or UNKNOWN.
+Build tempId as "temp::" plus zone id.
+Look up existing group by tempId.
+If existing is temp, set its name to "Temporary" and return it.
+Create a new WaypointGroup with tempId, name "Temporary", and zone id.
+Set load mode STATIC.
+Set gradient mode MANUAL.
+Mark group temp.
+Add group to manager.
+Return group.
+Implementation notes:
+The removed sourceName parameter was misleading because the bucket never varied by source. Keeping one bucket per zone preserves UI and renderer behavior.
+AI self-check:
+Verify source-specific behavior remains on addTempWaypoint, the temp group is not persisted, and callers get the same bucket for repeated calls in one zone.
+]]*/
     public WaypointGroup getOrCreateTempGroup() {
-        return getOrCreateTempGroup("");
-    }
-
-    public WaypointGroup getOrCreateTempGroup(String sourceName) {
         Zone zone = currentZone == null ? Zone.UNKNOWN : currentZone;
         String tempId = "temp::" + zone.id();
         WaypointGroup existing = byId.get(tempId);
@@ -258,11 +291,49 @@ public final class ActiveGroupManager {
                 Waypoint.DEFAULT_COLOR);
     }
 
+    /*[[AI-FN-DOC
+Function:
+addTempWaypoint
+Purpose:
+Add a temporary waypoint to the current zone's temp bucket with caller-supplied source label, lifecycle, expiration, and color.
+Why this exists:
+Chat detection, commands, and API overlays all need one shared path for temporary markers so lifecycle normalization and data-change notifications stay consistent.
+When to use:
+Use when creating a temp waypoint from untrusted chat, commands, keybinds, or API calls. Do not use for persisted route waypoints.
+Inputs:
+x, y, z are integer block coordinates. sourceName is nullable/raw display text for the waypoint name and is sanitized by sanitizeTempSourceName. tempMode is normalized by Waypoint.normalizeTempMode. expiresAtMillis is used only for time-based temp mode. color is masked to RGB.
+Outputs:
+Returns the temp WaypointGroup that now contains the waypoint.
+Side effects:
+Creates a temp group when needed, appends a waypoint, fires data changed listeners, and may schedule autosave listeners even though temp groups are skipped by storage.
+Failure modes:
+No checked failures. Invalid temp modes are normalized. Negative time expirations are clamped to zero for time-based temps.
+Important invariants:
+The temp group is chosen only by zone, not source. Source names are stored on the waypoint itself. Temp waypoints never become persisted route points.
+Internal logic:
+Sanitize the source name, get/create the current temp group, normalize lifecycle mode and expiration, build a colored named temp waypoint, add it to the group, fire data changed, and return the group.
+Pseudocode:
+Sanitize sourceName into source.
+Get the current zone temp group.
+Normalize tempMode.
+If mode is TEMP_TIME, clamp expiresAtMillis to at least zero; otherwise use zero.
+Create Waypoint.at(x, y, z).
+Apply RGB color.
+Apply source as waypoint name.
+Apply temp lifecycle.
+Add waypoint to target group.
+Fire data changed.
+Return target.
+Implementation notes:
+Dropping the sourceName bucket parameter avoids a false API contract while preserving visible source labeling on each temp waypoint.
+AI self-check:
+Verify temp source labeling still works, group selection remains per-zone, data listeners still fire once, and lifecycle/color normalization is unchanged.
+]]*/
     public WaypointGroup addTempWaypoint(int x, int y, int z, String sourceName,
                                          int tempMode, long expiresAtMillis,
                                          int color) {
         String source = sanitizeTempSourceName(sourceName);
-        WaypointGroup target = getOrCreateTempGroup(source);
+        WaypointGroup target = getOrCreateTempGroup();
         int mode = Waypoint.normalizeTempMode(tempMode);
         long expiresAt = mode == Waypoint.TEMP_TIME ? Math.max(0L, expiresAtMillis) : 0L;
         Waypoint waypoint = Waypoint.at(x, y, z)
