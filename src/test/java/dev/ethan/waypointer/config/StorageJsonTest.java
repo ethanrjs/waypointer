@@ -123,6 +123,64 @@ class StorageJsonTest {
     }
 
     @Test
+    /*[[AI-FN-DOC
+Function:
+attached_save_writes_captured_snapshot_not_later_live_mutation
+Purpose:
+Verify that attached async waypoint saves write the JSON snapshot captured at the data-change event instead of walking a later-mutated live waypoint list.
+Why this exists:
+The async saver runs off-thread, so storage must detach route JSON on the manager mutation thread to avoid ConcurrentModificationException and torn writes.
+When to use:
+Run with storage tests when changing Storage.attach, Storage.save, Storage.flush, or AsyncSaver handoff behavior. Do not use this as a full waypoint JSON round-trip test.
+Inputs:
+No parameters. The test uses a temporary file, an ActiveGroupManager, and one group whose waypoint list is mutated after the manager change event but before flush.
+Outputs:
+No return value. Assertions require the saved file to contain only the waypoint present in the captured snapshot.
+Side effects:
+Creates a temporary waypoint JSON file through Storage.flush. Does not touch the real Fabric config directory or network.
+Failure modes:
+If writeToDisk serializes live manager/group collections on flush, the later unsignaled waypoint mutation appears in the file and the assertions fail.
+Important invariants:
+manager.add(group) is the data-change event that captures the snapshot. The later direct group.add intentionally does not notify the manager, so it must not appear in the already-captured write.
+Internal logic:
+Attach storage to a manager, add a group with one waypoint to trigger snapshot capture, mutate the group with a second waypoint, flush the pending save, parse the file, and assert only the first waypoint was saved.
+Pseudocode:
+Create manager and storage at a temp file.
+Attach storage to manager.
+Create a group with waypoint "before".
+Add the group to manager, triggering the storage listener.
+Add waypoint "after" directly to the group without another manager event.
+Flush storage.
+Parse the saved file.
+Read the first group's waypoints array.
+Assert the array size is 1 and the saved waypoint name is "before".
+Implementation notes:
+The test intentionally avoids sleeping for the debounce window; flush is the synchronous completion point that exercises the same writer body.
+AI self-check:
+Verify the test fails against the old live-collection writer, avoids undocumented callbacks, and uses only temp files.
+]]*/
+    void attached_save_writes_captured_snapshot_not_later_live_mutation() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Path file = tempDir.resolve("waypoints.json");
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+
+        WaypointGroup group = WaypointGroup.create("snap", "hub");
+        group.add(Waypoint.at(1, 2, 3).withName("before"));
+        manager.add(group);
+        group.add(Waypoint.at(4, 5, 6).withName("after"));
+
+        storage.flush();
+
+        JsonObject root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        JsonObject savedGroup = root.getAsJsonArray("groups").get(0).getAsJsonObject();
+
+        assertEquals(1, savedGroup.getAsJsonArray("waypoints").size());
+        assertEquals("before", savedGroup.getAsJsonArray("waypoints")
+                .get(0).getAsJsonObject().get("name").getAsString());
+    }
+
+    @Test
     void load_replacesGroupsOnlyAfterWholeFileParses() throws Exception {
         ActiveGroupManager manager = managerWithExistingGroup();
         Path file = tempDir.resolve("waypoints.json");
