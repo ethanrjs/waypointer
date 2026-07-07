@@ -408,7 +408,43 @@ public final class WaypointGroup {
      * Repositioning a waypoint is a visibility-affecting edit, not just a data
      * replacement: if static reach hiding had already hidden this index, the
      * moved marker would stay invisible until the whole static cycle reset.
+     *
+     * Block-coordinate moves intentionally re-center precise coordinates in the
+     * target block. Use {@link #moveWaypointToPrecise(int, int, int, int)} for
+     * sub-block editing flows that should preserve or set sixteenth-block offsets.
      */
+    /*[[AI-FN-DOC
+Function:
+moveWaypointTo
+Purpose:
+Move an existing waypoint to an integer block position and reset its precise position to that block's center.
+Why this exists:
+Block-based UI and command flows need a simple reposition operation that matches the player's selected/supporting block instead of preserving a hidden sub-block offset.
+When to use:
+Use for whole-block moves from commands, player-position moves, and block-targeted edit modes. Do not use when a precise/sub-block placement should be preserved or explicitly set; use moveWaypointToPrecise for that.
+Inputs:
+index is the waypoint index to replace and must be valid for the current waypoint list. x, y, and z are integer block coordinates for the new position.
+Outputs:
+No return value. Replaces the waypoint at index with a block-centered copy and updates group bookkeeping.
+Side effects:
+Mutates the group's waypoint list, recalculates waypoint structure/progress hiding through afterWaypointStructureChanged, and focuses the moved waypoint.
+Failure modes:
+Invalid index behavior matches the underlying list access and can throw IndexOutOfBoundsException. Coordinate values are accepted as provided.
+Important invariants:
+This method is block-semantic by design: precise sixteenth offsets are not preserved. Group structure and static reach state must be refreshed after the replacement.
+Internal logic:
+Fetch the waypoint at index, create a block-position copy with withPos, store it back at the same index, refresh group structure, and focus the moved waypoint.
+Pseudocode:
+Get the waypoint at index.
+Create replacement by calling withPos(x, y, z).
+Set replacement at index.
+Call afterWaypointStructureChanged.
+Call focusNewWaypoint(index).
+Implementation notes:
+The explicit re-centering contract avoids surprising future changes that would make block commands retain stale precise offsets. Precise edit mode already routes through moveWaypointToPrecise.
+AI self-check:
+Verify the implementation keeps block move semantics, updates visibility/progress state, focuses the moved waypoint, and does not duplicate precise movement logic.
+]]*/
     public void moveWaypointTo(int index, int x, int y, int z) {
         waypoints.set(index, waypoints.get(index).withPos(x, y, z));
         afterWaypointStructureChanged();
