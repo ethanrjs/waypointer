@@ -2,7 +2,8 @@
 
 ## Odin room detection data and algorithm
 
-Waypointer bundles converted Catacombs room core hashes from Odin and ports
+Waypointer bundles converted Catacombs room core hashes and per-room
+metadata (secret, crypt, and trapped-chest counts) from Odin and ports
 Odin-compatible dungeon room grid/core detection behavior for named dungeon
 room detection.
 

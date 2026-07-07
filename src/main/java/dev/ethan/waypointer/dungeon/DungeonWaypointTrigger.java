@@ -19,7 +19,15 @@ public enum DungeonWaypointTrigger {
     KILL_BAT,
     BREAK_BLOCKS,
     DUNGEONBREAKER,
-    CHAT_MESSAGE;
+    CHAT_MESSAGE,
+    /** Completes when the player etherwarps onto (or next to) the waypoint. */
+    ETHERWARP,
+    /**
+     * Completes on the first observed secret action near the waypoint --
+     * interact, item pickup, or bat kill. The right default for imported data
+     * (Odin packs, SecretRoutes) that doesn't record which kind a secret is.
+     */
+    ANY_SECRET;
 
     public static DungeonWaypointTrigger fromId(String id) {
         if (id == null || id.isBlank()) return MANUAL;

@@ -24,13 +24,34 @@ public final class DungeonRouteSession {
     private static final int NO_CURRENT_SECRET = 0;
 
     private final Map<String, RoomProgress> progressByRoom = new HashMap<>();
+    private final List<Runnable> changeListeners = new ArrayList<>();
     private String lastResetReason = "(none)";
     private long lastResetAtMillis;
+
+    /**
+     * Listener fired after any progress mutation (found, advance, reset,
+     * room completion). Lets the route mirror rebuild the visible group so
+     * found secrets disappear from the world as they're collected.
+     */
+    public void addChangeListener(Runnable listener) {
+        if (listener != null) changeListeners.add(listener);
+    }
+
+    public void removeChangeListener(Runnable listener) {
+        changeListeners.remove(listener);
+    }
+
+    private void fireChanged() {
+        for (Runnable listener : List.copyOf(changeListeners)) {
+            listener.run();
+        }
+    }
 
     public void resetAll() {
         progressByRoom.clear();
         lastResetReason = "resetAll";
         lastResetAtMillis = System.currentTimeMillis();
+        fireChanged();
     }
 
     public void resetRoom(DungeonRoom room) {
@@ -44,15 +65,17 @@ public final class DungeonRouteSession {
         if (room.hasRoomId()) {
             progressByRoom.remove(room.roomId());
         }
+        fireChanged();
     }
 
     public void markFound(DungeonRoom room, int secretIndex) {
         if (room == null || secretIndex <= 0) return;
         RoomProgress progress = progressFor(room);
-        progress.foundSecretIndices.add(secretIndex);
+        if (!progress.foundSecretIndices.add(secretIndex)) return;
         if (secretIndex == progress.currentSecretIndex) {
             progress.currentSecretIndex = nextUnfoundSecret(room, progress);
         }
+        fireChanged();
     }
 
     public void advance(DungeonRoom room) {
@@ -62,6 +85,43 @@ public final class DungeonRouteSession {
 
         progress.foundSecretIndices.add(progress.currentSecretIndex);
         progress.currentSecretIndex = nextUnfoundSecret(room, progress);
+        fireChanged();
+    }
+
+    /**
+     * Mark every authored progress secret in the room found. Driven by the
+     * dungeon map's green checkmark: Hypixel paints it once a room is cleared
+     * with all secrets collected, which is authoritative even when a teammate
+     * collected them.
+     */
+    public void markRoomComplete(DungeonRoom room) {
+        if (room == null) return;
+        RoomProgress progress = progressFor(room);
+        boolean changed = false;
+        for (DungeonWaypoint waypoint : DungeonRoomData.waypointsFor(room)) {
+            if (waypoint.secretIndex() > 0) {
+                changed |= progress.foundSecretIndices.add(waypoint.secretIndex());
+            }
+        }
+        if (progress.currentSecretIndex != NO_CURRENT_SECRET) {
+            progress.currentSecretIndex = NO_CURRENT_SECRET;
+            changed = true;
+        }
+        if (changed) fireChanged();
+    }
+
+    /** True when the room has authored progress secrets and every one is found. */
+    public boolean isRoomComplete(DungeonRoom room) {
+        if (room == null) return false;
+        RoomProgress progress = peekProgressFor(room);
+        boolean sawProgressSecret = false;
+        for (DungeonWaypoint waypoint : DungeonRoomData.waypointsFor(room)) {
+            int index = waypoint.secretIndex();
+            if (index <= 0) continue;
+            sawProgressSecret = true;
+            if (!progress.foundSecretIndices.contains(index)) return false;
+        }
+        return sawProgressSecret;
     }
 
     public int currentSecretIndex(DungeonRoom room) {

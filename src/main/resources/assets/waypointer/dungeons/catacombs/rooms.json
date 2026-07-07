@@ -12,6 +12,7 @@
       "name": "Admin",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "crypts": 34,
       "coreHashes": [
         518379920
       ],
@@ -23,6 +24,8 @@
       "name": "Altar",
       "type": "ROOM",
       "shape": "L_SHAPE",
+      "secrets": 6,
+      "crypts": 3,
       "coreHashes": [
         1591923028,
         1958840063,
@@ -36,6 +39,7 @@
       "name": "Andesite",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
       "coreHashes": [
         -1701988142
       ],
@@ -47,6 +51,8 @@
       "name": "Archway",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 3,
+      "crypts": 4,
       "coreHashes": [
         259768244,
         1440685825
@@ -59,6 +65,8 @@
       "name": "Arrow Trap",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 1,
       "coreHashes": [
         313879976
       ],
@@ -70,6 +78,8 @@
       "name": "Atlas",
       "type": "ROOM",
       "shape": "TWO_BY_TWO",
+      "secrets": 6,
+      "crypts": 5,
       "coreHashes": [
         -190201621,
         1910997131,
@@ -84,6 +94,7 @@
       "name": "Balcony",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 4,
       "coreHashes": [
         1765345183,
         2133731337
@@ -96,6 +107,8 @@
       "name": "Banners",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 1,
       "coreHashes": [
         -1092023380
       ],
@@ -107,6 +120,7 @@
       "name": "Basement",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         1491050733
       ],
@@ -118,6 +132,8 @@
       "name": "Beams",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 2,
       "coreHashes": [
         -1764045332
       ],
@@ -129,6 +145,8 @@
       "name": "Big Red Flag",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 1,
       "coreHashes": [
         -807913351
       ],
@@ -140,6 +158,8 @@
       "name": "Black Flag",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 1,
       "coreHashes": [
         -1779299819
       ],
@@ -163,6 +183,8 @@
       "name": "Blue Skulls",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 4,
       "coreHashes": [
         -1410316771
       ],
@@ -188,6 +210,8 @@
       "name": "Bridges",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 6,
+      "crypts": 6,
       "coreHashes": [
         1024359556,
         454887921
@@ -200,6 +224,9 @@
       "name": "Buttons",
       "type": "ROOM",
       "shape": "TWO_BY_TWO",
+      "secrets": 5,
+      "crypts": 21,
+      "trappedChests": 1,
       "coreHashes": [
         -493713078,
         -1578136054,
@@ -214,6 +241,7 @@
       "name": "Cage",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         -407233803
       ],
@@ -225,6 +253,7 @@
       "name": "Cages",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
       "coreHashes": [
         -1164795630
       ],
@@ -236,6 +265,8 @@
       "name": "Carpets",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 3,
       "coreHashes": [
         238642395,
         -76292695
@@ -248,6 +279,8 @@
       "name": "Cathedral",
       "type": "ROOM",
       "shape": "TWO_BY_TWO",
+      "secrets": 8,
+      "crypts": 5,
       "coreHashes": [
         -1530782553,
         -1999467696,
@@ -262,6 +295,8 @@
       "name": "Catwalk",
       "type": "ROOM",
       "shape": "ONE_BY_THREE",
+      "secrets": 6,
+      "crypts": 5,
       "coreHashes": [
         -1556782371,
         -2024953154,
@@ -275,6 +310,7 @@
       "name": "Cell",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         1560740373
       ],
@@ -286,6 +322,7 @@
       "name": "Chains",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
       "coreHashes": [
         -448181487
       ],
@@ -297,6 +334,8 @@
       "name": "Chambers",
       "type": "ROOM",
       "shape": "L_SHAPE",
+      "secrets": 5,
+      "crypts": 6,
       "coreHashes": [
         -27291325,
         -2119802509,
@@ -310,6 +349,8 @@
       "name": "Cobble Wall Pillar",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 1,
       "coreHashes": [
         -170648742
       ],
@@ -334,6 +375,8 @@
       "name": "Criss-Cross",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 6,
       "coreHashes": [
         -1879625096
       ],
@@ -345,6 +388,8 @@
       "name": "Crypt",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 5,
+      "crypts": 2,
       "coreHashes": [
         1113194131,
         1376295224
@@ -357,6 +402,8 @@
       "name": "Deathmite",
       "type": "ROOM",
       "shape": "ONE_BY_THREE",
+      "secrets": 6,
+      "crypts": 4,
       "coreHashes": [
         706341009,
         2089865315,
@@ -382,6 +429,8 @@
       "name": "Diagonal",
       "type": "ROOM",
       "shape": "ONE_BY_THREE",
+      "secrets": 4,
+      "crypts": 3,
       "coreHashes": [
         516895741,
         476976104,
@@ -395,6 +444,8 @@
       "name": "Dino Site",
       "type": "ROOM",
       "shape": "L_SHAPE",
+      "secrets": 4,
+      "crypts": 4,
       "coreHashes": [
         -678116754,
         -970680134,
@@ -408,6 +459,8 @@
       "name": "Dip",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 3,
       "coreHashes": [
         -1373895553
       ],
@@ -419,6 +472,8 @@
       "name": "Dome",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 2,
       "coreHashes": [
         -1468156116,
         291108944
@@ -431,6 +486,8 @@
       "name": "Doors",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 5,
+      "crypts": 7,
       "coreHashes": [
         -811830702,
         551939185
@@ -443,6 +500,7 @@
       "name": "Double Diamond",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
       "coreHashes": [
         1857926981
       ],
@@ -465,6 +523,8 @@
       "name": "Drop",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 6,
       "coreHashes": [
         -1779237820
       ],
@@ -476,6 +536,9 @@
       "name": "Dueces",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 6,
+      "trappedChests": 1,
       "coreHashes": [
         -697416341
       ],
@@ -487,6 +550,7 @@
       "name": "Duncan",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         -1999038851
       ],
@@ -498,6 +562,8 @@
       "name": "End",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 1,
       "coreHashes": [
         -531914593
       ],
@@ -533,6 +599,8 @@
       "name": "Flags",
       "type": "ROOM",
       "shape": "TWO_BY_TWO",
+      "secrets": 7,
+      "crypts": 8,
       "coreHashes": [
         -55302423,
         -611463932,
@@ -547,6 +615,7 @@
       "name": "Gold",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 1,
       "coreHashes": [
         992885012,
         35550104
@@ -559,6 +628,8 @@
       "name": "Golden Oasis",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 1,
       "coreHashes": [
         178277726
       ],
@@ -570,6 +641,8 @@
       "name": "Grand Library",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 4,
+      "crypts": 2,
       "coreHashes": [
         -1142842273,
         648931278
@@ -582,6 +655,7 @@
       "name": "Granite",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
       "coreHashes": [
         -41110951
       ],
@@ -593,6 +667,8 @@
       "name": "Grass Ruin",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 3,
+      "crypts": 4,
       "coreHashes": [
         -1049958927,
         438605094,
@@ -607,6 +683,8 @@
       "name": "Gravel",
       "type": "ROOM",
       "shape": "ONE_BY_THREE",
+      "secrets": 6,
+      "crypts": 2,
       "coreHashes": [
         -1149900195,
         -558347945,
@@ -632,6 +710,8 @@
       "name": "Hallway",
       "type": "ROOM",
       "shape": "ONE_BY_FOUR",
+      "secrets": 3,
+      "crypts": 1,
       "coreHashes": [
         -1326659171,
         1051405699,
@@ -646,6 +726,7 @@
       "name": "Higher Blaze",
       "type": "PUZZLE",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         -1752027278,
         -1477567187
@@ -682,6 +763,7 @@
       "name": "Jumping Skulls",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         205151025
       ],
@@ -693,6 +775,7 @@
       "name": "King Midas",
       "type": "MINIBOSS",
       "shape": "ONE_BY_ONE",
+      "crypts": 1,
       "coreHashes": [
         -1916395486
       ],
@@ -704,6 +787,7 @@
       "name": "Knight",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
       "coreHashes": [
         -1519890056
       ],
@@ -715,6 +799,7 @@
       "name": "Lava Pit",
       "type": "RARE",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
       "coreHashes": [
         -695235565
       ],
@@ -726,6 +811,8 @@
       "name": "Lava Ravine",
       "type": "ROOM",
       "shape": "L_SHAPE",
+      "secrets": 6,
+      "crypts": 4,
       "coreHashes": [
         1131013667,
         2036450719,
@@ -739,6 +826,7 @@
       "name": "Layers",
       "type": "ROOM",
       "shape": "L_SHAPE",
+      "secrets": 8,
       "coreHashes": [
         965792061,
         -923498250,
@@ -753,6 +841,8 @@
       "name": "Leaves",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 1,
       "coreHashes": [
         643669164
       ],
@@ -764,6 +854,8 @@
       "name": "Locked Away",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 1,
       "coreHashes": [
         706748439
       ],
@@ -775,6 +867,7 @@
       "name": "Logs",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 4,
       "coreHashes": [
         1783642819
       ],
@@ -786,6 +879,8 @@
       "name": "Long Hall",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 3,
       "coreHashes": [
         587195362
       ],
@@ -797,6 +892,8 @@
       "name": "Lots Of Floors",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 1,
       "coreHashes": [
         -1112550874
       ],
@@ -808,6 +905,7 @@
       "name": "Lower Blaze",
       "type": "PUZZLE",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         -441650545,
         911747293
@@ -820,6 +918,7 @@
       "name": "Mage",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 4,
       "coreHashes": [
         1475692888,
         925853313
@@ -832,6 +931,8 @@
       "name": "Market",
       "type": "ROOM",
       "shape": "L_SHAPE",
+      "secrets": 5,
+      "crypts": 4,
       "coreHashes": [
         945592478,
         -1882970229,
@@ -845,6 +946,8 @@
       "name": "Melon",
       "type": "ROOM",
       "shape": "L_SHAPE",
+      "secrets": 7,
+      "crypts": 4,
       "coreHashes": [
         -1164821574,
         578838281,
@@ -858,6 +961,8 @@
       "name": "Mines",
       "type": "ROOM",
       "shape": "TWO_BY_TWO",
+      "secrets": 10,
+      "crypts": 11,
       "coreHashes": [
         -42175953,
         1905421134,
@@ -872,6 +977,8 @@
       "name": "Trinity",
       "type": "RARE",
       "shape": "ONE_BY_ONE",
+      "secrets": 4,
+      "crypts": 3,
       "coreHashes": [
         302128578
       ],
@@ -883,6 +990,7 @@
       "name": "Mirror",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         76347246
       ],
@@ -894,6 +1002,8 @@
       "name": "Mossy",
       "type": "ROOM",
       "shape": "ONE_BY_FOUR",
+      "secrets": 4,
+      "crypts": 2,
       "coreHashes": [
         -751626537,
         705890228,
@@ -908,6 +1018,7 @@
       "name": "Multicolored",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         -543960045
       ],
@@ -919,6 +1030,7 @@
       "name": "Mural",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         -743021993
       ],
@@ -930,6 +1042,8 @@
       "name": "Museum",
       "type": "ROOM",
       "shape": "TWO_BY_TWO",
+      "secrets": 5,
+      "crypts": 4,
       "coreHashes": [
         -1505871564,
         1250712883,
@@ -944,6 +1058,7 @@
       "name": "Mushroom",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         1461632797
       ],
@@ -955,6 +1070,9 @@
       "name": "New Trap",
       "type": "TRAP",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 1,
+      "trappedChests": 1,
       "coreHashes": [
         -1471076910,
         1043953833,
@@ -969,6 +1087,8 @@
       "name": "Old Trap",
       "type": "TRAP",
       "shape": "ONE_BY_ONE",
+      "secrets": 4,
+      "crypts": 2,
       "coreHashes": [
         1590699551,
         -85564220
@@ -981,6 +1101,7 @@
       "name": "Overgrown",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
       "coreHashes": [
         -726297434
       ],
@@ -992,6 +1113,8 @@
       "name": "Overgrown Chains",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 1,
       "coreHashes": [
         95969553
       ],
@@ -1003,6 +1126,7 @@
       "name": "Painting",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
       "coreHashes": [
         -725718835
       ],
@@ -1014,6 +1138,8 @@
       "name": "Pedestal",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 5,
+      "crypts": 1,
       "coreHashes": [
         -1792508076,
         1549240174
@@ -1026,6 +1152,8 @@
       "name": "Perch",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 1,
       "coreHashes": [
         -444976906
       ],
@@ -1037,6 +1165,8 @@
       "name": "Pipes",
       "type": "ROOM",
       "shape": "ONE_BY_FOUR",
+      "secrets": 7,
+      "crypts": 9,
       "coreHashes": [
         464805832,
         1942538809,
@@ -1051,6 +1181,8 @@
       "name": "Pirate",
       "type": "ROOM",
       "shape": "L_SHAPE",
+      "secrets": 6,
+      "crypts": 2,
       "coreHashes": [
         884966227,
         252263088,
@@ -1064,6 +1196,8 @@
       "name": "Pit",
       "type": "ROOM",
       "shape": "ONE_BY_FOUR",
+      "secrets": 5,
+      "crypts": 4,
       "coreHashes": [
         -1477466539,
         -19869269,
@@ -1079,6 +1213,8 @@
       "name": "Pressure Plates",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 6,
+      "crypts": 6,
       "coreHashes": [
         763731417,
         -2105744124,
@@ -1092,6 +1228,8 @@
       "name": "Prison Cell",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 1,
       "coreHashes": [
         845343581
       ],
@@ -1103,6 +1241,8 @@
       "name": "Purple Flags",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 5,
+      "crypts": 7,
       "coreHashes": [
         1500789482,
         664490773
@@ -1115,6 +1255,7 @@
       "name": "Quad Lava",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
       "coreHashes": [
         1865354448
       ],
@@ -1126,6 +1267,8 @@
       "name": "Quartz Knight",
       "type": "ROOM",
       "shape": "ONE_BY_FOUR",
+      "secrets": 7,
+      "crypts": 9,
       "coreHashes": [
         667192030,
         -22728251,
@@ -1152,6 +1295,8 @@
       "name": "Raccoon",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 4,
+      "crypts": 2,
       "coreHashes": [
         -1723880923
       ],
@@ -1163,6 +1308,8 @@
       "name": "Rail Track",
       "type": "RARE",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 3,
       "coreHashes": [
         -1362847550
       ],
@@ -1174,6 +1321,8 @@
       "name": "Rails",
       "type": "ROOM",
       "shape": "TWO_BY_TWO",
+      "secrets": 9,
+      "crypts": 1,
       "coreHashes": [
         -746461328,
         497837740,
@@ -1188,6 +1337,7 @@
       "name": "Rare Carpets",
       "type": "RARE",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         1613728006
       ],
@@ -1199,6 +1349,7 @@
       "name": "Rare Overgrown",
       "type": "RARE",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
       "coreHashes": [
         -1907291752
       ],
@@ -1210,6 +1361,7 @@
       "name": "Rare Pillars",
       "type": "RARE",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         -609209015
       ],
@@ -1221,6 +1373,8 @@
       "name": "Red Blue",
       "type": "ROOM",
       "shape": "ONE_BY_THREE",
+      "secrets": 4,
+      "crypts": 1,
       "coreHashes": [
         794366741,
         -443330283,
@@ -1235,6 +1389,8 @@
       "name": "Red Green",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 2,
       "coreHashes": [
         -1800029469
       ],
@@ -1246,6 +1402,7 @@
       "name": "Redstone Crypt",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
       "coreHashes": [
         47559182,
         1446016334,
@@ -1260,6 +1417,9 @@
       "name": "Redstone Key",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 4,
+      "trappedChests": 1,
       "coreHashes": [
         684588480,
         -1986945620
@@ -1272,6 +1432,8 @@
       "name": "Redstone Warrior",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 3,
+      "crypts": 4,
       "coreHashes": [
         217300640,
         -380862700
@@ -1284,6 +1446,8 @@
       "name": "Ritual",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 1,
       "coreHashes": [
         -610787478
       ],
@@ -1295,6 +1459,8 @@
       "name": "Sand Dragon",
       "type": "RARE",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 1,
       "coreHashes": [
         1781758146
       ],
@@ -1306,6 +1472,8 @@
       "name": "Sarcophagus",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 1,
       "coreHashes": [
         -1167774036,
         -771559429
@@ -1318,6 +1486,7 @@
       "name": "Scaffolding",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
       "coreHashes": [
         -2146618657,
         -2091078305
@@ -1330,6 +1499,7 @@
       "name": "Shadow Assassin",
       "type": "MINIBOSS",
       "shape": "ONE_BY_ONE",
+      "crypts": 2,
       "coreHashes": [
         397211721
       ],
@@ -1341,6 +1511,7 @@
       "name": "Silver Sword",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         -1899702429
       ],
@@ -1352,6 +1523,7 @@
       "name": "Skull",
       "type": "ROOM",
       "shape": "ONE_BY_TWO",
+      "secrets": 2,
       "coreHashes": [
         -1554372511,
         80464378
@@ -1364,6 +1536,8 @@
       "name": "Slabs",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 2,
       "coreHashes": [
         568922940
       ],
@@ -1375,6 +1549,9 @@
       "name": "Slime",
       "type": "ROOM",
       "shape": "ONE_BY_THREE",
+      "secrets": 5,
+      "crypts": 1,
+      "trappedChests": 1,
       "coreHashes": [
         419670099,
         136252599,
@@ -1388,6 +1565,8 @@
       "name": "Sloth",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 1,
       "coreHashes": [
         -566399217
       ],
@@ -1399,6 +1578,8 @@
       "name": "Small Stairs",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 1,
       "coreHashes": [
         -998001944
       ],
@@ -1410,6 +1591,8 @@
       "name": "Small Waterfall",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 5,
       "coreHashes": [
         -1188349447
       ],
@@ -1421,6 +1604,8 @@
       "name": "Spider",
       "type": "ROOM",
       "shape": "L_SHAPE",
+      "secrets": 9,
+      "crypts": 3,
       "coreHashes": [
         -716030238,
         -1647063650,
@@ -1434,6 +1619,8 @@
       "name": "Spikes",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 2,
       "coreHashes": [
         1484939648
       ],
@@ -1445,6 +1632,8 @@
       "name": "Staircase",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
+      "crypts": 2,
       "coreHashes": [
         -151940807
       ],
@@ -1456,6 +1645,8 @@
       "name": "Stairs",
       "type": "ROOM",
       "shape": "TWO_BY_TWO",
+      "secrets": 4,
+      "crypts": 1,
       "coreHashes": [
         157642096,
         1758646790,
@@ -1470,6 +1661,8 @@
       "name": "Steps",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 1,
       "coreHashes": [
         755816704,
         -340486787
@@ -1482,6 +1675,8 @@
       "name": "Stone Window",
       "type": "RARE",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
+      "crypts": 1,
       "coreHashes": [
         -1740718028
       ],
@@ -1493,6 +1688,8 @@
       "name": "Supertall",
       "type": "ROOM",
       "shape": "TWO_BY_TWO",
+      "secrets": 6,
+      "crypts": 6,
       "coreHashes": [
         -296996262,
         1395242314,
@@ -1518,6 +1715,7 @@
       "name": "Temple",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 3,
       "coreHashes": [
         1575914755
       ],
@@ -1529,6 +1727,7 @@
       "name": "Three Floors",
       "type": "RARE",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         -1444508608
       ],
@@ -1551,6 +1750,7 @@
       "name": "Tic Tac Toe",
       "type": "PUZZLE",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         -738945309,
         29612250
@@ -1563,6 +1763,7 @@
       "name": "Tombstone",
       "type": "RARE",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
       "coreHashes": [
         535698739
       ],
@@ -1585,6 +1786,7 @@
       "name": "Vinny 8 Ball",
       "type": "RARE",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
       "coreHashes": [
         872815555
       ],
@@ -1596,6 +1798,7 @@
       "name": "Water",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 2,
       "coreHashes": [
         -333637832
       ],
@@ -1620,6 +1823,8 @@
       "name": "Waterfall",
       "type": "ROOM",
       "shape": "ONE_BY_FOUR",
+      "secrets": 8,
+      "crypts": 3,
       "coreHashes": [
         90256084,
         228212335,
@@ -1634,6 +1839,8 @@
       "name": "Well",
       "type": "ROOM",
       "shape": "L_SHAPE",
+      "secrets": 7,
+      "crypts": 5,
       "coreHashes": [
         629394370,
         1261773246,
@@ -1647,6 +1854,8 @@
       "name": "Withermancer",
       "type": "ROOM",
       "shape": "L_SHAPE",
+      "secrets": 4,
+      "crypts": 6,
       "coreHashes": [
         902780459,
         1963543962,
@@ -1660,6 +1869,8 @@
       "name": "Wizard",
       "type": "ROOM",
       "shape": "ONE_BY_THREE",
+      "secrets": 4,
+      "crypts": 8,
       "coreHashes": [
         -1164862049,
         222124420,
@@ -1673,6 +1884,8 @@
       "name": "Zodd",
       "type": "ROOM",
       "shape": "ONE_BY_ONE",
+      "secrets": 1,
+      "crypts": 1,
       "coreHashes": [
         -1403940419
       ],

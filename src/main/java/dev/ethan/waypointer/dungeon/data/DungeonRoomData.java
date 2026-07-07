@@ -259,9 +259,18 @@ Verify pending old writes are flushed before the path changes, the new saver sti
     private static DungeonRoomDefinition withInheritedCoreHashes(
             DungeonRoomDefinition custom,
             DungeonRoomDefinition bundled) {
-        if (custom == null || bundled == null || custom.hasCoreHashes()) return custom;
-        if (!bundled.hasCoreHashes()) return custom;
-        return custom.withCoreHashes(bundled.coreHashes());
+        if (custom == null || bundled == null) return custom;
+        DungeonRoomDefinition merged = custom;
+        if (!merged.hasCoreHashes() && bundled.hasCoreHashes()) {
+            merged = merged.withCoreHashes(bundled.coreHashes());
+        }
+        if (!merged.hasSecretCount() && !merged.hasCryptCount() && !merged.hasTrappedChestCount()
+                && (bundled.hasSecretCount() || bundled.hasCryptCount()
+                || bundled.hasTrappedChestCount())) {
+            merged = merged.withCounts(
+                    bundled.secretCount(), bundled.cryptCount(), bundled.trappedChestCount());
+        }
+        return merged;
     }
 
     private static List<DungeonRoomDefinition> matchingCoreDefinitions(
@@ -626,6 +635,11 @@ Verify pending old writes are flushed before the path changes, the new saver sti
         json.addProperty("name", definition.displayName());
         json.addProperty("type", definition.type().name());
         json.addProperty("shape", definition.shape().name());
+        if (definition.hasSecretCount()) json.addProperty("secrets", definition.secretCount());
+        if (definition.hasCryptCount()) json.addProperty("crypts", definition.cryptCount());
+        if (definition.hasTrappedChestCount()) {
+            json.addProperty("trappedChests", definition.trappedChestCount());
+        }
 
         JsonArray coreHashes = new JsonArray();
         for (Integer coreHash : definition.coreHashes()) {
@@ -684,7 +698,10 @@ Verify pending old writes are flushed before the path changes, the new saver sti
             }
         }
 
-        return new DungeonRoomDefinition(id, name, type, shape, coreHashes, fingerprints, waypoints);
+        return new DungeonRoomDefinition(id, name, type, shape, coreHashes, fingerprints, waypoints,
+                integer(json, "secrets", DungeonRoomDefinition.UNKNOWN_COUNT),
+                integer(json, "crypts", DungeonRoomDefinition.UNKNOWN_COUNT),
+                integer(json, "trappedChests", DungeonRoomDefinition.UNKNOWN_COUNT));
     }
 
     private static JsonObject waypointToJson(DungeonWaypoint waypoint) {
@@ -697,6 +714,7 @@ Verify pending old writes are flushed before the path changes, the new saver sti
         json.addProperty("y", waypoint.y());
         json.addProperty("z", waypoint.z());
         if (waypoint.hasName()) json.addProperty("name", waypoint.name());
+        if (waypoint.hasOwnColor()) json.addProperty("color", waypoint.customColor());
 
         JsonArray highlights = new JsonArray();
         for (DungeonHighlight highlight : waypoint.highlights()) {
@@ -734,7 +752,8 @@ Verify pending old writes are flushed before the path changes, the new saver sti
                 integer(json, "y", 70),
                 integer(json, "z", 0),
                 string(json, "name", ""),
-                highlights);
+                highlights,
+                integer(json, "color", DungeonWaypoint.INHERIT_COLOR));
     }
 
     private static Map<DungeonRoomShape, List<DungeonWaypoint>> buildDemo() {

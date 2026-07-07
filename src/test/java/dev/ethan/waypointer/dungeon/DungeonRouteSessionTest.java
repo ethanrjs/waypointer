@@ -10,6 +10,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DungeonRouteSessionTest {
 
@@ -202,6 +203,59 @@ class DungeonRouteSessionTest {
         assertEquals(true, DungeonRoomZoneBridge.isBroadDungeonZone(new Zone("dungeon", "Catacombs")));
         assertEquals(true, DungeonRoomZoneBridge.isBroadDungeonZone(new Zone("dungeon_f7", "Catacombs F7")));
         assertEquals(true, DungeonRoomZoneBridge.isBroadDungeonZone(new Zone("dungeon_m7", "Master Mode M7")));
+    }
+
+    @Test
+    void markRoomCompleteFindsEverySecretAndFiresListenersOnce() {
+        DungeonRoom base = room();
+        var definition = DungeonRoomData.defineRoom("complete-room", "Complete Room", base);
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("first", 1));
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("second", 2));
+        DungeonRoom room = base.withDefinition(definition.id(), definition.displayName());
+
+        DungeonRouteSession session = new DungeonRouteSession();
+        int[] fired = new int[1];
+        session.addChangeListener(() -> fired[0]++);
+
+        assertFalse(session.isRoomComplete(room));
+        session.markRoomComplete(room);
+
+        assertTrue(session.isRoomComplete(room));
+        assertEquals(0, session.currentSecretIndex(room));
+        assertEquals(1, fired[0]);
+
+        session.markRoomComplete(room);
+        assertEquals(1, fired[0], "already-complete rooms must not re-fire listeners");
+    }
+
+    @Test
+    void isRoomCompleteRequiresAuthoredProgressSecrets() {
+        DungeonRoom base = room();
+        var definition = DungeonRoomData.defineRoom("marker-room", "Marker Room", base);
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("marker", 0));
+        DungeonRoom room = base.withDefinition(definition.id(), definition.displayName());
+
+        DungeonRouteSession session = new DungeonRouteSession();
+
+        assertFalse(session.isRoomComplete(room),
+                "marker-only rooms are never 'complete' -- there is no route to finish");
+    }
+
+    @Test
+    void markFoundFiresChangeListenerOnlyForNewSecrets() {
+        DungeonRoom base = room();
+        var definition = DungeonRoomData.defineRoom("listener-room", "Listener Room", base);
+        DungeonRoomData.addWaypoint(definition.id(), waypoint("first", 1));
+        DungeonRoom room = base.withDefinition(definition.id(), definition.displayName());
+
+        DungeonRouteSession session = new DungeonRouteSession();
+        int[] fired = new int[1];
+        session.addChangeListener(() -> fired[0]++);
+
+        session.markFound(room, 1);
+        session.markFound(room, 1);
+
+        assertEquals(1, fired[0]);
     }
 
     private static DungeonRoom room() {

@@ -1,7 +1,9 @@
 package dev.ethan.waypointer.dungeon;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 /**
  * Shared trigger matching logic kept free of Minecraft runtime types so route
@@ -43,13 +45,26 @@ final class DungeonTriggerSelection {
             double entityY,
             double entityZ,
             double maxDistanceSq) {
-        if (room == null || waypoints == null || trigger == null) return null;
+        if (trigger == null) return null;
+        return nearestEntityTrigger(room, waypoints, EnumSet.of(trigger),
+                entityX, entityY, entityZ, maxDistanceSq);
+    }
+
+    static DungeonWaypoint nearestEntityTrigger(
+            DungeonRoom room,
+            List<DungeonWaypoint> waypoints,
+            Set<DungeonWaypointTrigger> triggers,
+            double entityX,
+            double entityY,
+            double entityZ,
+            double maxDistanceSq) {
+        if (room == null || waypoints == null || triggers == null || triggers.isEmpty()) return null;
 
         DungeonWaypoint nearest = null;
         double nearestDistanceSq = Double.POSITIVE_INFINITY;
         for (DungeonWaypoint waypoint : waypoints) {
             if (waypoint == null || waypoint.secretIndex() <= 0) continue;
-            if (waypoint.trigger() != trigger) continue;
+            if (!triggers.contains(waypoint.trigger())) continue;
 
             double distanceSq = distanceToWaypointSq(room, waypoint, entityX, entityY, entityZ);
             if (distanceSq <= maxDistanceSq && distanceSq < nearestDistanceSq) {
