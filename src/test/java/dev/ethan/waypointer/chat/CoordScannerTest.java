@@ -331,6 +331,39 @@ class CoordScannerTest {
     }
 
     @Test
+    /*[[AI-FN-DOC
+Function:
+autoAddChatTempWaypointsSuppressesDuplicateMessageDelivery
+Purpose:
+Verify that receiving the exact same auto-add chat coordinate message twice creates only one temporary waypoint.
+Why this exists:
+Minecraft/chat hooks can deliver duplicate message events, and auto-add should not spam duplicate temp markers for the same chat line.
+When to use:
+Run when changing ChatCoordDetector duplicate suppression, temp waypoint creation, or temp group lookup behavior. Do not use it to test distinct-message behavior.
+Inputs:
+No parameters. The test creates config, manager, detector, and one literal chat component containing coordinates.
+Outputs:
+No return value. Assertions require the current temp group to contain exactly one waypoint after the duplicate deliveries.
+Side effects:
+Mutates an in-memory ActiveGroupManager by invoking the detector. Does not write files, network, or real chat state.
+Failure modes:
+If duplicate suppression regresses or temp bucket lookup changes incorrectly, the temp group size will be greater than one.
+Important invariants:
+The temp bucket is per-zone and retrieved with getOrCreateTempGroup. The same Component/message content should be treated as duplicate delivery.
+Internal logic:
+Enable auto-add, create detector, invoke it twice with the same message, then assert the temp bucket size is one.
+Pseudocode:
+Create config and enable auto-add.
+Create manager and detector.
+Create one coordinate chat message.
+Invoke detector with message.
+Invoke detector with the same message again.
+Assert manager.getOrCreateTempGroup().size is 1.
+Implementation notes:
+The assertion uses the no-arg temp bucket because source names are waypoint metadata, not group selectors.
+AI self-check:
+Verify the test uses identical message input, checks the manager state after both invokes, and avoids undocumented callback functions.
+]]*/
     void autoAddChatTempWaypointsSuppressesDuplicateMessageDelivery() throws Exception {
         WaypointerConfig config = new WaypointerConfig();
         config.setAutoAddChatTempWaypoints(true);
@@ -341,11 +374,43 @@ class CoordScannerTest {
         invokeCoordDetector(detector, message);
         invokeCoordDetector(detector, message);
 
-        assertEquals(1, manager.getOrCreateTempGroup("").size(),
+        assertEquals(1, manager.getOrCreateTempGroup().size(),
                 "replayed identical chat delivery should not create duplicate temp waypoints");
     }
 
     @Test
+    /*[[AI-FN-DOC
+Function:
+autoAddChatTempWaypointsKeepsDifferentChatLinesWithSameCoords
+Purpose:
+Verify that different chat messages with the same coordinates still create separate temporary waypoints.
+Why this exists:
+Duplicate suppression should target repeated delivery of the same chat line, not collapse distinct user messages that happen to share coordinates.
+When to use:
+Run when changing ChatCoordDetector duplicate keys, auto-add behavior, or temp group lookup. Do not use it to test exact duplicate suppression.
+Inputs:
+No parameters. The test creates config, manager, detector, and two literal coordinate chat components with different text.
+Outputs:
+No return value. Assertions require the current temp group to contain two waypoints.
+Side effects:
+Mutates an in-memory ActiveGroupManager by invoking the detector twice. Does not write files, network, or real chat state.
+Failure modes:
+If duplicate suppression keys only on coordinates or temp bucket lookup breaks, the temp group size will not be two.
+Important invariants:
+Messages with distinct text are distinct auto-add events even when x/y/z match. The temp group remains per-zone, not per-source.
+Internal logic:
+Enable auto-add, invoke the detector with two distinct messages sharing coordinates, and assert the temp bucket size is two.
+Pseudocode:
+Create config and enable auto-add.
+Create manager and detector.
+Invoke detector with first coordinate message.
+Invoke detector with second distinct coordinate message using the same coordinates.
+Assert manager.getOrCreateTempGroup().size is 2.
+Implementation notes:
+Using the no-arg temp bucket reflects the cleaned-up manager API; source/message text affects waypoint metadata and duplicate keys, not bucket selection.
+AI self-check:
+Verify the two messages differ, coordinates match, the final size assertion targets the temp bucket, and no undocumented callbacks are introduced.
+]]*/
     void autoAddChatTempWaypointsKeepsDifferentChatLinesWithSameCoords() throws Exception {
         WaypointerConfig config = new WaypointerConfig();
         config.setAutoAddChatTempWaypoints(true);
@@ -357,7 +422,7 @@ class CoordScannerTest {
         invokeCoordDetector(detector,
                 Component.literal("[CHAT] [334] [MVP++] Babbur: still x: 1, y: 2, z: 3"));
 
-        assertEquals(2, manager.getOrCreateTempGroup("").size(),
+        assertEquals(2, manager.getOrCreateTempGroup().size(),
                 "a later distinct chat line with the same coordinates should remain actionable");
     }
 
