@@ -307,9 +307,9 @@ public final class WaypointerConfig {
      */
     private boolean exportIncludeGroupMeta = true;
     /**
-     * Hidden feature flag for the in-progress dungeon waypoint subsystem.
-     * Default-off keeps beta builds from registering commands, renderers, tick
-     * hooks, or dungeon data stores until the feature is ready to ship.
+     * Legacy hidden flag retained so older config files and config-code imports
+     * keep round-tripping. The dungeon subsystem now installs unconditionally;
+     * {@code DungeonConfig.enabled()} is the runtime feature switch.
      */
     private boolean dungeonWaypointsFeatureEnabled = false;
     /**
