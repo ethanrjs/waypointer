@@ -10,16 +10,7 @@ A recipient pastes the string in chat and imports the route as waypoint groups.
 
 Current wire version: **7**.
 
-Reference implementation: `src/main/java/dev/ethan/waypointer/codec/`
-
-| File | Responsibility |
-| --- | --- |
-| `WaypointCodec.java` | Binary body format, coordinate modes, chat escaping, encode/decode. |
-| `AsciiStreamCodec.java` | ASCII text alphabet and streaming base-91 pack/unpack. |
-| `AsciiPackCodec.java` | Retired v2 base-85 packer, kept for tests/history. |
-| `CjkBase16384.java` | Restored decode-only v1 CJK base-16384 packer. |
-| `CodecDictionary.java` | Preset DEFLATE dictionary. |
-| `CodecZoneDictionary.java` | Compact known-zone references seeded from Skyblocker. |
+Reference implementation: `src/main/java/dev/ethan/waypointer/codec/` — see the file map in section 13.
 
 v7 keeps v6's chat-safe base-91 text layer and binary coordinate modes, then adds default-preserved subwaypoint detail:
 
@@ -71,7 +62,7 @@ Sender and receiver run the same stages in opposite order.
 
 ## 2. Design Constraints
 
-Minecraft refuses to send chat commands whose packet exceeds **256 UTF-8 bytes**. The 256-character textbox limit is separate and less important; the server-side byte cap is problematic limit.
+Minecraft refuses to send chat commands whose packet exceeds **256 UTF-8 bytes**. The 256-character textbox limit is separate and less important; the server-side byte cap is the problematic limit.
 
 ```text
   Total budget: 256 wire bytes per /command
@@ -110,7 +101,7 @@ The body decodes to compressed bytes. Raw DEFLATE inflates those bytes into the 
 
 ### 4.1 Characters
 
-v6 and v7 use 91 printable ASCII characters. The alphabet includes every printable ASCII character except space, comma, `.`, and backtick.
+v5 and newer use 91 printable ASCII characters. The alphabet includes every printable ASCII character except space, comma, `.`, and backtick.
 
 ```text
   ! " # $ % & ' ( ) * + - /
@@ -130,7 +121,7 @@ Each body character must be:
 - not backtick
 - printable ASCII.
 
-The following random occurence emoticons are converted in the codec:
+The encoder escapes `~` (the escape character itself) and Hypixel's MVP++ emote triggers after text packing:
 
 ```text
 ~   -> ~~
@@ -234,7 +225,7 @@ The dictionary is about 360 bytes. It must stay short because DEFLATE scans it o
 
 ### 5.3 DEFLATE Strategy Selection
 
-v6 scores the final escaped text length after compression. When writing the actual payload, the encoder tries the normal DEFLATE strategy and the filtered strategy, then keeps whichever produces the shorter escaped base-91 string.
+Since v6, the encoder scores the final escaped text length after compression. When writing the actual payload, the encoder tries the normal DEFLATE strategy and the filtered strategy, then keeps whichever produces the shorter escaped base-91 string.
 
 This matters because the best raw compressed byte count is not always the best chat string. The base-91 layer and the Hypixel emote escape can make two equal-byte compressed streams differ by a character, and a one-character win is real under the `/pc` byte cap.
 
@@ -316,7 +307,7 @@ Constraints:
 
 ### 6.4 String Pool
 
-The string pool is a flat UTF-8 table. Groups and waypoints reference it by index. It exists only in regular bodies; v6 anonymous coordinate-only bodies omit it.
+The string pool is a flat UTF-8 table. Groups and waypoints reference it by index. It exists only in regular bodies; anonymous coordinate-only bodies (v6+) omit it.
 
 ```text
 string-pool := varint count
@@ -370,13 +361,13 @@ custom zone: poolIndex << 1
 
 The built-in zone dictionary starts from Skyblocker's `Location` enum, which provides Hypixel location IDs and friendly names. Waypointer adds canonical aliases plus dungeon and mineshaft refinements. Unknown and user-created zone IDs round-trip through the string pool.
 
-Anonymous v6 bodies do not have a string pool, so their zone reference keeps odd dictionary refs for known zones and uses `0` followed by an inline UTF-8 zone ID for custom zones. Other nonzero even zone refs are invalid in the anonymous layout.
+Anonymous bodies (v6+) do not have a string pool, so their zone reference keeps odd dictionary refs for known zones and uses `0` followed by an inline UTF-8 zone ID for custom zones. Other nonzero even zone refs are invalid in the anonymous layout.
 
 When `GROUP_FLAG_CUSTOM_RADIUS` is set, `radius_x10` stores the radius in tenths. For example, `3.5m` stores as `35`. A float would spend three extra bytes per group without adding useful precision.
 
 ### 6.6 Group Metadata and Omitted Session State
 
-In regular bodies, group name and zone are always part of the group record. `includeNames` only controls waypoint names; it does not remove group names. In v6 anonymous coordinate-only bodies, the single group name is intentionally blank and the zone is still written.
+In regular bodies, group name and zone are always part of the group record. `includeNames` only controls waypoint names; it does not remove group names. In anonymous coordinate-only bodies (v6+), the single group name is intentionally blank and the zone is still written.
 
 `Options.includeGroupMeta` controls the group metadata bits:
 
@@ -429,7 +420,7 @@ Eligibility is intentionally strict:
 
 Labels and group metadata can still be kept. The optional label lives next to the header, and the anonymous group record can still carry zone, load mode, and custom default radius.
 
-The purpose is to avoid paying wrapper bytes for the most common compressed export target: one ordered list of coordinates. If the route needs any richer waypoint body data, v6 writes the regular body instead.
+The purpose is to avoid paying wrapper bytes for the most common compressed export target: one ordered list of coordinates. If the route needs any richer waypoint body data, the encoder writes the regular body instead.
 
 ### 6.8 Coordinate Block
 
@@ -541,7 +532,7 @@ This is best for long ordered coordinate routes where the next movement is predi
 
 #### AUTO Mode Selection
 
-The encoder tries every eligible coordinate mode. For each candidate, it scores the body prefix plus the candidate group through the same DEFLATE, base-91, and Hypixel-escape path used by real exports, then picks the shortest scored text. Anonymous v6 bodies use a separate scorer because their wrapper bytes differ from regular groups.
+The encoder tries every eligible coordinate mode. For each candidate, it scores the body prefix plus the candidate group through the same DEFLATE, base-91, and Hypixel-escape path used by real exports, then picks the shortest scored text. Anonymous bodies (v6+) use a separate scorer because their wrapper bytes differ from regular groups.
 
 The score is a per-group heuristic, not a full recompression of the final export with all later groups included. It still beats raw-byte comparison because DEFLATE and the text layer can rank candidates differently from their uncompressed size. A repetitive `VECTOR` delta stream can compress to almost nothing, while a dense `FIT_COMPACT` bitstream may compress poorly.
 
@@ -576,13 +567,13 @@ name-ref      := varint nameIdx         ; pooled name, iff WP_FLAG_NAME_INLINE u
       ┌───┬───┬───┬───┬───┬───┬───┬───┐
       │ r │ r │ P │ I │ X │ R │ C │ N │
       └───┴───┴───┴───┴───┴───┴───┴───┘
-                            │   │   │   │
-                            │   │   │   └── WP_FLAG_HAS_NAME
-                            │   │   └────── WP_FLAG_HAS_COLOR, else DEFAULT_COLOR
-                            │   └────────── WP_FLAG_HAS_RADIUS, else inherit group
-                            └────────────── WP_FLAG_EXTENDED, else no user flags
-                        └────────────── WP_FLAG_NAME_INLINE; name-ref is inline UTF-8
-                    └────────────── WP_FLAG_HAS_PRECISE; v7+ packed sixteenth offsets
+                │   │   │   │   │   │
+                │   │   │   │   │   └── WP_FLAG_HAS_NAME
+                │   │   │   │   └────── WP_FLAG_HAS_COLOR, else DEFAULT_COLOR
+                │   │   │   └────────── WP_FLAG_HAS_RADIUS, else inherit group
+                │   │   └────────────── WP_FLAG_EXTENDED, else no user flags
+                │   └────────────────── WP_FLAG_NAME_INLINE; name-ref is inline UTF-8
+                └────────────────────── WP_FLAG_HAS_PRECISE; v7+ packed sixteenth offsets
 ```
 
 Unique waypoint names are inlined instead of added to the string pool. Pooling a one-use name costs the string bytes plus a separate index. Repeated names still pool, so labels such as `Terminal` or `Lever` store once and reference by index.
@@ -725,7 +716,7 @@ read header byte -> require the version currently being probed
 if HEADER_FLAG_LABEL: read + sanitize label
      │
      ▼
-read anonymous group if v6 bit 6 is set, else read string pool
+read anonymous group if header bit 6 is set (v6+), else read string pool
      │
      ▼
 for each group:
@@ -868,8 +859,8 @@ Binary body before DEFLATE, with whitespace added:
 
 | Path | Responsibility |
 | --- | --- |
-| `codec/WaypointCodec.java` | Body format, coordinate modes, v6 anonymous layout, options, encode/decode. |
-| `codec/AsciiStreamCodec.java` | v6/v5 base-91 text alphabet, legacy v4/v3 stream alphabets, streaming pack/unpack, validation. |
+| `codec/WaypointCodec.java` | Body format, coordinate modes, anonymous layout (v6+), options, encode/decode. |
+| `codec/AsciiStreamCodec.java` | v5+ base-91 text alphabet, legacy v4/v3 stream alphabets, streaming pack/unpack, validation. |
 | `codec/AsciiPackCodec.java` | Retired v2 base-85 packer, kept for regression tests/history. |
 | `codec/CjkBase16384.java` | Retired v1 CJK base-16384 packer, restored for decode compatibility. |
 | `codec/CodecDictionary.java` | Preset DEFLATE dictionary. |
@@ -883,7 +874,7 @@ Binary body before DEFLATE, with whitespace added:
 ## 14. Why so complex?
 
 Lots of research and time was spent trying to optimize codecs. This project initially came around because I, Babbur, hated sharing waypoints over Discord when I wanted to do it in-game.
-It is mostly a passion project, and absolutely does not need this level of complexity. I do not recommend implementing this codec into your own project, atleast by hand. Far more work than it's worth for most people.
+It is mostly a passion project, and absolutely does not need this level of complexity. I do not recommend implementing this codec into your own project, at least by hand. Far more work than it's worth for most people.
 Part of the philosophy of why I made this mod is because I wanted to overengineer the simple things in a simple mod, and make this mod damn good at the one thing it does best: waypoints.
 There are so many moving parts and complex processes that all mesh together to create a beautifully efficient and stunningly compact encoder/decoder. 
 I understand that this is no easy task to implement into your own projects for support. I recommend you simply reference the API of this project.
