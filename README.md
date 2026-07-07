@@ -5,7 +5,13 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 ## Features
 
 - Per-zone waypoints
-- Dungeon rooms support
+- Dungeon rooms support (Odin-compatible room detection, all 140 Catacombs rooms)
+- Dungeon secret routes with automatic progress: chest/lever/essence clicks,
+  item pickups, bat kills, and etherwarps are detected and completed secrets
+  disappear from the route; a green map checkmark clears the whole room
+- One-click community route install (`/wpd routes download`, prompted on first
+  dungeon join) plus `/wpd import <file>` for SecretRoutes `routes.json` and
+  Odin waypoint packs
 - Ordered routes
 - World rendering
 - Extremely compact export format
@@ -30,6 +36,12 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 - Soopy (I)
 - Generic JSON-based (I)
 - Odin Client (I)
+
+### Dungeon route import
+
+- SecretRoutes `routes.json` (I) — `/wpd import <file>` or `/wpd routes download`
+- Odin dungeon waypoint packs (I) — pack file or shared Base64 string
+- Waypointer `WPD:` share payloads (I/E)
 
 ## Requirements
 

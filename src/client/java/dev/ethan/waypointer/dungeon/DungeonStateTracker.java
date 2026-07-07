@@ -129,6 +129,18 @@ public final class DungeonStateTracker {
         return currentRoom;
     }
 
+    /**
+     * Every distinct resolved room so far this run. Client tick thread only --
+     * same thread that mutates the segment cache.
+     */
+    public List<DungeonRoom> knownRooms() {
+        List<DungeonRoom> out = new ArrayList<>();
+        for (DungeonRoom room : knownRoomsBySegment.values()) {
+            if (!out.contains(room)) out.add(room);
+        }
+        return out;
+    }
+
     public Direction directionOverride() {
         return directionOverride;
     }
@@ -538,11 +550,77 @@ public final class DungeonStateTracker {
             int markerY,
             DungeonRoomData.BlockLookup lookup) {
         if (segments == null || segments.isEmpty() || lookup == null) return null;
+        List<Long> sorted = sortedSegments(segments);
+        if (sorted.isEmpty()) return null;
+
+        // Rectangular rooms (1x1, 1xN, 2x2) can only carry their marker at a
+        // bounding-box corner, and every direction maps to a distinct corner,
+        // so four probes suffice and inner segment corners -- where decorative
+        // blue terracotta can sit mid-wall -- never produce a false candidate.
+        // L-shapes may keep the marker at the elbow segment's corner, which is
+        // not a bounding-box corner, so they fall back to per-segment probing.
+        if (hasFullBoundingBoxCoverage(sorted)) {
+            return detectMarkerAtBoundingBoxCorners(sorted, markerY, lookup);
+        }
+        return detectMarkerAtSegmentCorners(sorted, markerY, lookup);
+    }
+
+    private static boolean hasFullBoundingBoxCoverage(List<Long> sorted) {
+        int minX = Integer.MAX_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxZ = Integer.MIN_VALUE;
+        for (long segment : sorted) {
+            int x = DungeonRoom.segmentX(segment);
+            int z = DungeonRoom.segmentZ(segment);
+            minX = Math.min(minX, x);
+            minZ = Math.min(minZ, z);
+            maxX = Math.max(maxX, x);
+            maxZ = Math.max(maxZ, z);
+        }
+        int spanX = (maxX - minX) / DungeonMapMath.SEGMENT_BLOCKS + 1;
+        int spanZ = (maxZ - minZ) / DungeonMapMath.SEGMENT_BLOCKS + 1;
+        return sorted.size() == spanX * spanZ;
+    }
+
+    private static RoomMarker detectMarkerAtBoundingBoxCorners(
+            List<Long> sorted,
+            int markerY,
+            DungeonRoomData.BlockLookup lookup) {
+        int minX = Integer.MAX_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int maxZ = Integer.MIN_VALUE;
+        for (long segment : sorted) {
+            int x = DungeonRoom.segmentX(segment);
+            int z = DungeonRoom.segmentZ(segment);
+            minX = Math.min(minX, x);
+            minZ = Math.min(minZ, z);
+            maxX = Math.max(maxX, x);
+            maxZ = Math.max(maxZ, z);
+        }
 
         RoomMarker matched = null;
         int matchCount = 0;
-        int segmentCount = segments.size();
-        for (Long segment : sortedSegments(segments)) {
+        for (Direction candidate : Direction.values()) {
+            int[] corner = DungeonMapMath.physicalCorner(candidate, minX, minZ, maxX, maxZ);
+            if (!roomMarkerMatches(corner[0], markerY, corner[1], sorted.size(), lookup)) {
+                continue;
+            }
+            matched = new RoomMarker(candidate, corner[0], corner[1]);
+            matchCount++;
+        }
+        return matchCount == 1 ? matched : null;
+    }
+
+    private static RoomMarker detectMarkerAtSegmentCorners(
+            List<Long> sorted,
+            int markerY,
+            DungeonRoomData.BlockLookup lookup) {
+        RoomMarker matched = null;
+        int matchCount = 0;
+        int segmentCount = sorted.size();
+        for (Long segment : sorted) {
             if (segment == null) continue;
             for (Direction candidate : Direction.values()) {
                 int[] corner = componentCorner(candidate, segment);

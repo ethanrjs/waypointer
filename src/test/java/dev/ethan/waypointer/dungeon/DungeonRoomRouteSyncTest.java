@@ -74,7 +74,8 @@ class DungeonRoomRouteSyncTest {
         assertEquals("sync-room", group.zoneId());
         assertEquals(WaypointGroup.LoadMode.STATIC, group.loadMode());
         assertEquals(WaypointGroup.GradientMode.MANUAL, group.gradientMode());
-        assertEquals(2, group.size(), "support/non-progress records should not render as route points");
+        assertEquals(3, group.size(),
+                "secret + its highlight + the support marker should all render");
 
         Waypoint secret = group.get(0);
         assertEquals(93, secret.x());
@@ -92,6 +93,12 @@ class DungeonRoomRouteSyncTest {
         assertTrue(highlight.isSubwaypoint());
         assertTrue(highlight.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT));
         assertEquals(0x123456, highlight.color());
+
+        Waypoint marker = group.get(2);
+        assertTrue(marker.isSubwaypoint(),
+                "non-progress records render as persistent markers outside route progression");
+        assertFalse(marker.hasFlag(Waypoint.FLAG_SKIP_ON_STAND));
+        assertFalse(marker.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT));
     }
 
     @Test
@@ -113,6 +120,61 @@ class DungeonRoomRouteSyncTest {
 
         assertTrue(group.get(0).hasFlag(Waypoint.FLAG_SKIP_ON_STAND));
         assertFalse(group.get(0).hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT));
+    }
+
+    @Test
+    void foundSecretsDropOutOfTheMirroredGroupAndCompletedRoomsHideIt() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
+        DungeonRouteSession session = new DungeonRouteSession();
+        sync = new DungeonRoomRouteSync(manager, tracker, session, new DungeonConfig());
+        sync.install();
+
+        DungeonRoom room = room("progress-room", "Progress Room");
+        DungeonRoomDefinition definition =
+                DungeonRoomData.defineRoom("progress-room", "Progress Room", room);
+        DungeonRoomData.addWaypoint(definition.id(),
+                DungeonWaypoint.plain("first", DungeonSecretCategory.CHEST, 4, 70, 7, ""));
+        DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "second", 2, DungeonSecretCategory.LEVER, 8, 70, 9, "", List.of()));
+        tracker.setCurrentRoom(room);
+
+        String groupId = DungeonRoomRouteSync.generatedGroupId("progress-room");
+        assertEquals(2, manager.get(groupId).size());
+
+        session.markFound(room, 1);
+        assertEquals(1, manager.get(groupId).size(),
+                "found secrets should disappear from the mirrored group");
+
+        session.markFound(room, 2);
+        assertNull(manager.get(groupId),
+                "a fully completed room should drop its route group");
+
+        session.resetRoom(room);
+        assertEquals(2, manager.get(groupId).size(),
+                "resetting the room should bring the route back");
+    }
+
+    @Test
+    void markRoomCompleteHidesTheGroupLikeAGreenCheckmarkWould() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
+        DungeonRouteSession session = new DungeonRouteSession();
+        sync = new DungeonRoomRouteSync(manager, tracker, session, new DungeonConfig());
+        sync.install();
+
+        DungeonRoom room = room("check-room", "Check Room");
+        DungeonRoomDefinition definition =
+                DungeonRoomData.defineRoom("check-room", "Check Room", room);
+        DungeonRoomData.addWaypoint(definition.id(),
+                DungeonWaypoint.plain("only", DungeonSecretCategory.CHEST, 4, 70, 7, ""));
+        tracker.setCurrentRoom(room);
+        assertNotNull(manager.get(DungeonRoomRouteSync.generatedGroupId("check-room")));
+
+        session.markRoomComplete(room);
+
+        assertTrue(session.isRoomComplete(room));
+        assertNull(manager.get(DungeonRoomRouteSync.generatedGroupId("check-room")));
     }
 
     @Test

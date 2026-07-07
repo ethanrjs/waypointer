@@ -4,6 +4,7 @@ import dev.ethan.waypointer.core.Waypoint;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.BlockPos;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.world.level.block.AbstractSkullBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -32,7 +33,8 @@ public final class DungeonWaypointSkipRules {
     private static boolean isInteractTrigger(DungeonWaypointTrigger trigger) {
         return trigger == DungeonWaypointTrigger.OPEN_CHEST
                 || trigger == DungeonWaypointTrigger.FLIP_LEVER
-                || trigger == DungeonWaypointTrigger.INTERACT_BLOCK;
+                || trigger == DungeonWaypointTrigger.INTERACT_BLOCK
+                || trigger == DungeonWaypointTrigger.ANY_SECRET;
     }
 
     private static boolean isInteractBlock(BlockState state) {
@@ -41,7 +43,8 @@ public final class DungeonWaypointSkipRules {
                 || state.is(Blocks.TRAPPED_CHEST)
                 || state.is(Blocks.ENDER_CHEST)
                 || state.is(Blocks.LEVER)
-                || state.is(BlockTags.BUTTONS);
+                || state.is(BlockTags.BUTTONS)
+                || state.getBlock() instanceof AbstractSkullBlock;
     }
 
     private static BlockState blockStateAt(int x, int y, int z) {

@@ -55,6 +55,27 @@ public final class DungeonConfig {
      */
     private String defaultDirection = "NW";
 
+    /**
+     * Remove a room's route group once every authored secret in it is found
+     * (by the player, by trigger detection, or by the map's green checkmark).
+     * Mirrors Devonian's "remove on done" -- a finished room shouldn't keep
+     * shouting waypoints at the player.
+     */
+    private boolean hideCompletedRooms = true;
+
+    /**
+     * Treat the dungeon map's green checkmark as "all secrets found" for that
+     * room. Authoritative even when a teammate collected the secrets, which
+     * client-side trigger detection can never see.
+     */
+    private boolean autoCompleteRoomsOnGreenCheckmark = true;
+
+    /**
+     * User clicked "don't ask again" on the first-join community-routes
+     * download prompt. {@code /wpd routes download} keeps working regardless.
+     */
+    private boolean routesPromptDismissed = false;
+
     private transient Path file;
     private transient AsyncSaver saver;
 
@@ -100,9 +121,18 @@ public final class DungeonConfig {
     public boolean enabled()              { return enabled; }
     public boolean debugLogRoomChanges()  { return debugLogRoomChanges; }
     public String  defaultDirection()     { return defaultDirection == null ? "NW" : defaultDirection; }
+    public boolean hideCompletedRooms()   { return hideCompletedRooms; }
+    public boolean autoCompleteRoomsOnGreenCheckmark() { return autoCompleteRoomsOnGreenCheckmark; }
+    public boolean routesPromptDismissed()  { return routesPromptDismissed; }
 
     public void setEnabled(boolean v)             { this.enabled = v; save(); }
     public void setDebugLogRoomChanges(boolean v) { this.debugLogRoomChanges = v; save(); }
+    public void setHideCompletedRooms(boolean v)  { this.hideCompletedRooms = v; save(); }
+    public void setAutoCompleteRoomsOnGreenCheckmark(boolean v) {
+        this.autoCompleteRoomsOnGreenCheckmark = v;
+        save();
+    }
+    public void setRoutesPromptDismissed(boolean v) { this.routesPromptDismissed = v; save(); }
     public void setDefaultDirection(String v) {
         if (v == null) return;
         String upper = v.trim().toUpperCase(java.util.Locale.ROOT);

@@ -16,6 +16,10 @@ import java.util.Objects;
  *
  * <p>Immutable by design -- mirrors the immutability contract of
  * {@link dev.ethan.waypointer.core.Waypoint}.
+ *
+ * @param customColor {@code 0xRRGGBB}, or {@link #INHERIT_COLOR} to use the
+ *                    category's default color. Imported data (Odin packs)
+ *                    carries author-chosen colors that should survive the trip.
  */
 public record DungeonWaypoint(
         String id,
@@ -24,7 +28,10 @@ public record DungeonWaypoint(
         DungeonWaypointTrigger trigger,
         int x, int y, int z,
         String name,
-        List<DungeonHighlight> highlights) {
+        List<DungeonHighlight> highlights,
+        int customColor) {
+
+    public static final int INHERIT_COLOR = DungeonHighlight.INHERIT_COLOR;
 
     public DungeonWaypoint {
         Objects.requireNonNull(id, "id");
@@ -35,9 +42,17 @@ public record DungeonWaypoint(
     }
 
     public DungeonWaypoint(String id, int secretIndex, DungeonSecretCategory category,
+                           DungeonWaypointTrigger trigger,
                            int x, int y, int z, String name,
                            List<DungeonHighlight> highlights) {
-        this(id, secretIndex, category, defaultTrigger(category), x, y, z, name, highlights);
+        this(id, secretIndex, category, trigger, x, y, z, name, highlights, INHERIT_COLOR);
+    }
+
+    public DungeonWaypoint(String id, int secretIndex, DungeonSecretCategory category,
+                           int x, int y, int z, String name,
+                           List<DungeonHighlight> highlights) {
+        this(id, secretIndex, category, defaultTrigger(category), x, y, z, name, highlights,
+                INHERIT_COLOR);
     }
 
     /** Builder helper for waypoints that have no highlights. */
@@ -50,18 +65,28 @@ public record DungeonWaypoint(
 
     public boolean hasName() { return !name.isEmpty(); }
 
-    public int color() { return category.defaultColor; }
+    public boolean hasOwnColor() { return customColor != INHERIT_COLOR; }
+
+    public int color() { return hasOwnColor() ? customColor : category.defaultColor; }
 
     public DungeonWaypoint withTrigger(DungeonWaypointTrigger next) {
-        return new DungeonWaypoint(id, secretIndex, category, next, x, y, z, name, highlights);
+        return new DungeonWaypoint(id, secretIndex, category, next, x, y, z, name, highlights,
+                customColor);
     }
 
     public DungeonWaypoint withPosition(int nx, int ny, int nz) {
-        return new DungeonWaypoint(id, secretIndex, category, trigger, nx, ny, nz, name, highlights);
+        return new DungeonWaypoint(id, secretIndex, category, trigger, nx, ny, nz, name, highlights,
+                customColor);
     }
 
     public DungeonWaypoint withHighlights(List<DungeonHighlight> next) {
-        return new DungeonWaypoint(id, secretIndex, category, trigger, x, y, z, name, next);
+        return new DungeonWaypoint(id, secretIndex, category, trigger, x, y, z, name, next,
+                customColor);
+    }
+
+    public DungeonWaypoint withCustomColor(int nextColor) {
+        return new DungeonWaypoint(id, secretIndex, category, trigger, x, y, z, name, highlights,
+                nextColor);
     }
 
     public static DungeonWaypointTrigger defaultTrigger(DungeonSecretCategory category) {
@@ -73,6 +98,7 @@ public record DungeonWaypoint(
             case BAT -> DungeonWaypointTrigger.KILL_BAT;
             case SUPERBOOM -> DungeonWaypointTrigger.USE_SUPERBOOM;
             case STONK, DUNGEONBREAKER -> DungeonWaypointTrigger.BREAK_BLOCKS;
+            case AOTV -> DungeonWaypointTrigger.ETHERWARP;
             default -> DungeonWaypointTrigger.MANUAL;
         };
     }

@@ -12,8 +12,10 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Zone;
 import dev.ethan.waypointer.dungeon.DungeonCommands;
+import dev.ethan.waypointer.dungeon.DungeonMapCheckmarks;
 import dev.ethan.waypointer.dungeon.DungeonRoomRouteSync;
 import dev.ethan.waypointer.dungeon.DungeonRoomZoneBridge;
+import dev.ethan.waypointer.dungeon.DungeonRouteDownloader;
 import dev.ethan.waypointer.dungeon.DungeonRouteSession;
 import dev.ethan.waypointer.dungeon.DungeonStateTracker;
 import dev.ethan.waypointer.dungeon.DungeonTriggerDetector;
@@ -181,9 +183,14 @@ public final class WaypointerClient implements ClientModInitializer {
         if (currentZone != null) onDungeonRouteSessionZoneChanged(currentZone);
         dungeonTracker.install();
         new DungeonRoomZoneBridge(manager, dungeonTracker).install();
-        new DungeonRoomRouteSync(manager, dungeonTracker).install();
+        new DungeonRoomRouteSync(manager, dungeonTracker, dungeonRouteSession, dungeonConfig).install();
         new DungeonTriggerDetector(dungeonTracker, dungeonRouteSession).install();
-        new DungeonCommands(dungeonTracker, dungeonConfig, dungeonRouteSession).install();
+        new DungeonMapCheckmarks(dungeonTracker, dungeonRouteSession, dungeonConfig).install();
+        DungeonRouteDownloader dungeonRouteDownloader =
+                new DungeonRouteDownloader(manager, dungeonConfig);
+        dungeonRouteDownloader.install();
+        new DungeonCommands(dungeonTracker, dungeonConfig, dungeonRouteSession,
+                dungeonRouteDownloader).install();
     }
 
     private static void onDungeonRouteSessionZoneChanged(Zone zone) {

@@ -267,6 +267,37 @@ class DungeonRoomDataTest {
     }
 
     @Test
+    void jsonRoundTripsRoomCountsAndWaypointColors() {
+        DungeonRoomDefinition definition = new DungeonRoomDefinition(
+                "counted",
+                "Counted",
+                DungeonRoomType.ROOM,
+                DungeonRoomShape.ONE_BY_ONE,
+                List.of(),
+                List.of(),
+                List.of(waypoint("first").withCustomColor(0xABCDEF)),
+                6, 2, 1);
+
+        Map<String, DungeonRoomDefinition> parsed =
+                DungeonRoomData.parseDefinitions(DungeonRoomData.toJson(List.of(definition)));
+
+        DungeonRoomDefinition roundTripped = parsed.get("counted");
+        assertEquals(definition, roundTripped);
+        assertEquals(6, roundTripped.secretCount());
+        assertEquals(2, roundTripped.cryptCount());
+        assertEquals(1, roundTripped.trappedChestCount());
+        assertEquals(0xABCDEF, roundTripped.waypoints().get(0).color());
+    }
+
+    @Test
+    void bundledRoomsCarrySecretCounts() {
+        DungeonRoomDefinition altar = DungeonRoomData.definition("altar");
+        assertNotNull(altar);
+        assertTrue(altar.hasSecretCount(), "bundled catalog should include Odin's secret counts");
+        assertEquals(6, altar.secretCount());
+    }
+
+    @Test
     void waypointTriggerCanBeUpdatedAndPersistsThroughJson() {
         DungeonRoom room = roomAt(-8, 24);
         DungeonRoomDefinition definition = DungeonRoomData.defineRoom("trigger-room", "Trigger Room", room);

@@ -4,6 +4,7 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomDefinition;
 
@@ -18,6 +19,12 @@ import java.util.function.Consumer;
  * existing waypoint renderer/progression pipeline expects world coordinates.
  * This adapter does the one translation step when a physical room is detected,
  * then leaves rendering, labels, and progress to the ordinary route system.
+ *
+ * <p>The mirror is progress-aware: secrets the {@link DungeonRouteSession}
+ * already saw collected are left out of the rebuilt group, and a fully
+ * completed room drops its group entirely (when
+ * {@link DungeonConfig#hideCompletedRooms()} is on), so trigger detection and
+ * the map's green checkmark visibly clean up the world as the run progresses.
  */
 public final class DungeonRoomRouteSync {
 
@@ -25,14 +32,23 @@ public final class DungeonRoomRouteSync {
 
     private final ActiveGroupManager manager;
     private final DungeonStateTracker tracker;
+    private final DungeonRouteSession session;
+    private final DungeonConfig config;
     private final Consumer<DungeonRoom> roomListener = room -> syncCurrentRoom();
     private final Consumer<Zone> zoneListener = this::onZoneChanged;
     private final Runnable syncListener = this::syncCurrentRoom;
     private boolean syncing;
 
     public DungeonRoomRouteSync(ActiveGroupManager manager, DungeonStateTracker tracker) {
+        this(manager, tracker, null, null);
+    }
+
+    public DungeonRoomRouteSync(ActiveGroupManager manager, DungeonStateTracker tracker,
+                                DungeonRouteSession session, DungeonConfig config) {
         this.manager = manager;
         this.tracker = tracker;
+        this.session = session;
+        this.config = config;
     }
 
     public void install() {
@@ -40,6 +56,7 @@ public final class DungeonRoomRouteSync {
         manager.addZoneListener(zoneListener);
         manager.addDataListener(syncListener);
         DungeonRoomData.addChangeListener(syncListener);
+        if (session != null) session.addChangeListener(syncListener);
         syncCurrentRoom();
     }
 
@@ -48,6 +65,7 @@ public final class DungeonRoomRouteSync {
         manager.removeZoneListener(zoneListener);
         manager.removeDataListener(syncListener);
         DungeonRoomData.removeChangeListener(syncListener);
+        if (session != null) session.removeChangeListener(syncListener);
     }
 
     private void onZoneChanged(Zone zone) {
@@ -78,12 +96,24 @@ public final class DungeonRoomRouteSync {
         DungeonRoomDefinition definition = DungeonRoomData.customDefinition(roomId);
         if (definition == null
                 || definition.waypoints().isEmpty()
-                || hasUserRouteGroup(roomId)) {
+                || hasUserRouteGroup(roomId)
+                || isCompletedAndHidden(room)) {
             removeGeneratedGroup(generatedId);
             return;
         }
 
-        manager.add(routeGroupForRoom(room, definition));
+        WaypointGroup group = routeGroupForRoom(room, definition, session);
+        if (group.isEmpty()) {
+            removeGeneratedGroup(generatedId);
+            return;
+        }
+        manager.add(group);
+    }
+
+    private boolean isCompletedAndHidden(DungeonRoom room) {
+        return session != null
+                && (config == null || config.hideCompletedRooms())
+                && session.isRoomComplete(room);
     }
 
     private boolean hasUserRouteGroup(String roomId) {
@@ -111,6 +141,11 @@ public final class DungeonRoomRouteSync {
     }
 
     static WaypointGroup routeGroupForRoom(DungeonRoom room, DungeonRoomDefinition definition) {
+        return routeGroupForRoom(room, definition, null);
+    }
+
+    static WaypointGroup routeGroupForRoom(DungeonRoom room, DungeonRoomDefinition definition,
+                                           DungeonRouteSession session) {
         WaypointGroup group = new WaypointGroup(
                 generatedGroupId(definition.id()),
                 "Dungeon Secrets -- " + definition.displayName(),
@@ -121,16 +156,21 @@ public final class DungeonRoomRouteSync {
 
         List<Waypoint> waypoints = new ArrayList<>();
         for (DungeonWaypoint dungeonWaypoint : definition.waypoints()) {
+            if (isAlreadyFound(session, room, dungeonWaypoint)) continue;
             addWaypoint(room, dungeonWaypoint, waypoints);
         }
         group.addAll(waypoints);
         return group;
     }
 
+    private static boolean isAlreadyFound(DungeonRouteSession session, DungeonRoom room,
+                                          DungeonWaypoint waypoint) {
+        return session != null
+                && session.peekStatus(room, waypoint) == DungeonRouteSession.Status.FOUND;
+    }
+
     private static void addWaypoint(DungeonRoom room, DungeonWaypoint dungeonWaypoint,
                                     List<Waypoint> out) {
-        if (dungeonWaypoint.secretIndex() <= 0) return;
-
         int[] actual = DungeonMapMath.relativeToActual(
                 room.direction(),
                 room.physicalCornerX(),
@@ -138,6 +178,21 @@ public final class DungeonRoomRouteSync {
                 dungeonWaypoint.x(),
                 dungeonWaypoint.y(),
                 dungeonWaypoint.z());
+
+        if (dungeonWaypoint.secretIndex() <= 0) {
+            // Persistent marker (e.g. imported Odin NORMAL waypoints): renders
+            // like a highlight and never participates in route progression.
+            out.add(new Waypoint(
+                    actual[0],
+                    actual[1],
+                    actual[2],
+                    dungeonWaypoint.name(),
+                    dungeonWaypoint.color(),
+                    Waypoint.FLAG_SUBWAYPOINT,
+                    0.0));
+            return;
+        }
+
         out.add(new Waypoint(
                 actual[0],
                 actual[1],
