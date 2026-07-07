@@ -397,6 +397,43 @@ public final class UpdateChecker {
         return candidate;
     }
 
+        /*[[AI-FN-DOC
+Function:
+disableCurrentJarForNextLaunch
+Purpose:
+Move the currently running mod jar out of Fabric's load path so the downloaded replacement is the only active Waypointer jar on the next launch.
+Why this exists:
+Fabric refuses duplicate mod ids, and Windows cannot move the running jar until Minecraft exits, so update installation needs a platform-specific delayed move path.
+When to use:
+Use after a replacement jar has been downloaded and verified, and only when currentJar and disabledPath point at the old jar and its disabled destination. Do not use before checksum/metadata verification succeeds.
+Inputs:
+currentJar is the existing jar path to disable. disabledPath is the target path, usually a unique .disabled sibling. Both are Path values from the local filesystem and may contain spaces.
+Outputs:
+No return value. Throws IOException when immediate non-Windows move or Windows script creation/launch fails.
+Side effects:
+On non-Windows, moves currentJar immediately. On Windows, writes a temporary .cmd script beside the jar and starts it minimized; that script waits for the current process to exit, attempts the move, writes a .failed.txt marker if the move fails, and deletes itself.
+Failure modes:
+Non-Windows Files.move can fail due to permissions or locks. Windows script writing or process launch can fail immediately. The delayed Windows move can fail after this method returns, in which case the script writes a failure marker next to the disabled target.
+Important invariants:
+The Windows script path must be quoted when passed through cmd start so user or mods directories with spaces do not split. The old and disabled paths are assigned with set quotes inside the script. The running process must be allowed to exit before the Windows move runs.
+Internal logic:
+If not Windows, move the jar directly. Otherwise build a per-process script path, write a script that waits for this PID, moves OLD to DISABLED when possible, records move failure in a marker file, deletes itself, then launch it through cmd /c start with the script path quoted.
+Pseudocode:
+If the OS is not Windows, move currentJar to disabledPath and return.
+Create script path beside currentJar using the process id.
+Build a batch script with PID, OLD, DISABLED, and FAILED variables.
+In the script, loop while tasklist finds PID.
+After exit, if OLD exists, move OLD to DISABLED.
+If move returns an error, write FAILED marker text.
+Delete the script itself.
+Write the script as UTF-8.
+Build a cmd start command with the script path quoted.
+Start cmd.exe /c command.
+Implementation notes:
+Windows paths cannot contain double quotes, but replace them defensively before embedding. A marker file is the least invasive way to surface delayed failure without adding a startup notification system here.
+AI self-check:
+Verify spaces in script/current/disabled paths are quoted, the non-Windows behavior is unchanged, delayed failures are no longer completely silent, and no unverified replacement jar is enabled by this method.
+]]*/
         private static void disableCurrentJarForNextLaunch(Path currentJar, Path disabledPath)
             throws java.io.IOException {
         if (!isWindows()) {
@@ -406,26 +443,33 @@ public final class UpdateChecker {
 
         Path script = currentJar.getParent().resolve(WINDOWS_UPDATE_SCRIPT_PREFIX
                 + ProcessHandle.current().pid() + ".cmd");
+        Path failedPath = disabledPath.resolveSibling(disabledPath.getFileName() + ".failed.txt");
         String body = """
                 @echo off
                 setlocal
                 set "PID=%d"
                 set "OLD=%s"
                 set "DISABLED=%s"
+                set "FAILED=%s"
                 :wait
                 tasklist /FI "PID eq %%PID%%" 2>NUL | findstr /R /C:"%%PID%%" >NUL
                 if not errorlevel 1 (
                   timeout /T 1 /NOBREAK >NUL
                   goto wait
                 )
-                if exist "%%OLD%%" move /Y "%%OLD%%" "%%DISABLED%%" >NUL
+                if exist "%%OLD%%" (
+                  move /Y "%%OLD%%" "%%DISABLED%%" >NUL
+                  if errorlevel 1 echo Failed to disable old Waypointer jar: %%OLD%% ^> %%DISABLED%%>"%%FAILED%%"
+                )
                 del /F /Q "%%~f0" >NUL 2>NUL
                 """.formatted(
                 ProcessHandle.current().pid(),
                 currentJar.toString().replace("\"", ""),
-                disabledPath.toString().replace("\"", ""));
+                disabledPath.toString().replace("\"", ""),
+                failedPath.toString().replace("\"", ""));
         Files.writeString(script, body, StandardCharsets.UTF_8);
-        new ProcessBuilder("cmd.exe", "/c", "start", "\"\"", "/min", script.toString()).start();
+        String startCommand = "start \"\" /min \"" + script.toString().replace("\"", "") + "\"";
+        new ProcessBuilder("cmd.exe", "/c", startCommand).start();
     }
 
         private static boolean isWindows() {
