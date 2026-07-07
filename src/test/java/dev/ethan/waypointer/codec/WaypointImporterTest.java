@@ -76,6 +76,57 @@ class WaypointImporterTest {
     }
 
     @Test
+    /*[[AI-FN-DOC
+Function:
+sanitizes_group_and_waypoint_names_from_json_imports
+Purpose:
+Verify that third-party JSON import paths strip unsafe Minecraft formatting/control characters from group and waypoint names.
+Why this exists:
+JSON imports are untrusted external input, and names imported from them are later rendered in chat, lists, and HUD labels as literal components.
+When to use:
+Run with importer tests when changing JSON parsing, name handling, or sanitizer rules. Do not use this to validate native WP: codec decoding.
+Inputs:
+No parameters. The test uses a small raw JSON route whose group and waypoint names contain section signs plus newline/tab control characters.
+Outputs:
+No return value. Assertions require the imported names to equal WaypointCodec.Options.sanitizeLabel of the hostile inputs.
+Side effects:
+Parses an in-memory JSON string and allocates import result objects only. Does not read or write files, network, config, or route storage.
+Failure modes:
+If parseGroup or waypointFromLoose store raw JSON names, the assertions fail because the imported model will retain unsafe characters.
+Important invariants:
+Sanitization must happen before external names enter Waypointer's core model. Safe visible characters should remain in order after unsafe characters are removed.
+Internal logic:
+Build hostile group and waypoint name strings, embed them in a minimal JSON route, import it, then compare the imported model names with the production sanitizer output.
+Pseudocode:
+Set hostile groupName and waypointName.
+Build JSON containing those names and one valid coordinate.
+Import the JSON through WaypointImporter.importAny.
+Get the first imported group.
+Assert group.name equals sanitizeLabel(groupName).
+Assert first waypoint.name equals sanitizeLabel(waypointName).
+Assert neither imported name contains section signs.
+Implementation notes:
+The expected strings come from the same sanitizer used at production boundaries so intentional sanitizer-policy changes require only one policy update.
+AI self-check:
+Verify the test exercises the non-native JSON path, avoids undocumented callback functions, and would fail if either group or waypoint name sanitization is removed.
+]]*/
+    void sanitizes_group_and_waypoint_names_from_json_imports() {
+        String groupName = "\u00A7cBad\nGroup";
+        String waypointName = "\u00A7aBad\tPoint";
+        String json = "{\"name\":\"\\u00A7cBad\\nGroup\",\"island\":\"hub\",\"waypoints\":["
+                + "{\"name\":\"\\u00A7aBad\\tPoint\",\"x\":0,\"y\":70,\"z\":0}"
+                + "]}";
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
+        WaypointGroup group = result.groups().get(0);
+
+        assertEquals(WaypointCodec.Options.sanitizeLabel(groupName), group.name());
+        assertEquals(WaypointCodec.Options.sanitizeLabel(waypointName), group.get(0).name());
+        assertFalse(group.name().contains("\u00A7"));
+        assertFalse(group.get(0).name().contains("\u00A7"));
+    }
+
+    @Test
     void parses_skytils_style_object() {
         String json = "{\"name\":\"Fetchur\",\"island\":\"mining-hub\",\"waypoints\":["
                 + "{\"name\":\"stop1\",\"x\":1,\"y\":70,\"z\":2,\"color\":\"0.5:ff:10:20:30\"},"
