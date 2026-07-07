@@ -81,7 +81,39 @@ public final class DungeonRoomData {
         loadCustomStore(dir.resolve(CUSTOM_FILE_NAME));
     }
 
+    /*[[AI-FN-DOC
+Function:
+loadCustomStore
+Purpose:
+Load custom dungeon room definitions from a specific file and install that file as the active custom-store save target.
+Why this exists:
+The dungeon subsystem has bundled read-only room data plus user-editable custom data, and tests/dev reloads need to point the custom store at a concrete path.
+When to use:
+Use during dungeon subsystem startup or tests before reading/writing custom dungeon room definitions. Do not use to clear custom data; clearAllCustom persists an empty active store for that workflow.
+Inputs:
+file is the Path to the custom dungeon room JSON file. It may be absent, in which case readDefinitions supplies an empty custom map.
+Outputs:
+No return value. Updates static customFile, saver, and CUSTOM state.
+Side effects:
+Flushes any previous saver, replaces the active custom-store path, creates a new AsyncSaver, reads definitions from disk, and replaces the CUSTOM atomic reference.
+Failure modes:
+readDefinitions handles malformed/missing files according to its own rules. Flushing the old saver may log write failures through AsyncSaver/writeCustomStore.
+Important invariants:
+Pending writes for the previous customFile must complete before customFile is replaced, otherwise a delayed saver could write old data to the wrong path. CHANGE_LISTENERS are not modified here.
+Internal logic:
+Flush the currently installed saver if present, assign the new custom file path, create a saver bound to writeCustomStore, read definitions from the new file, and publish them to CUSTOM.
+Pseudocode:
+Call flush.
+Set customFile to file.
+Create new AsyncSaver named dungeon-rooms with writeCustomStore and debounce delay.
+Set CUSTOM to readDefinitions(file).
+Implementation notes:
+This fixes the static reload hazard without changing user-facing reset behavior or listener registration semantics.
+AI self-check:
+Verify pending old writes are flushed before the path changes, the new saver still writes through writeCustomStore, and custom definitions come from the requested file.
+]]*/
     public static void loadCustomStore(Path file) {
+        flush();
         customFile = file;
         saver = new AsyncSaver("dungeon-rooms", DungeonRoomData::writeCustomStore, SAVE_DEBOUNCE_MS);
         CUSTOM.set(readDefinitions(file));
