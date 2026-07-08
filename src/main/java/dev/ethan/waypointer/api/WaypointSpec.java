@@ -124,35 +124,6 @@ public record WaypointSpec(
          * Short source name for temp waypoints, used to label markers such as
          * {@code "Example Mod"} or {@code "Party Chat"}.
          */
-        /*[[AI-FN-DOC
-Function:
-WaypointSpec.Builder.source
-Purpose:
-Set the short source/provenance label stored on temporary waypoints created from this spec.
-Why this exists:
-API callers need a compact way to identify where temp markers came from without controlling Waypointer's internal temp-bucket grouping.
-When to use:
-Use when building temp waypoint specs for markers from another mod, chat source, or transient workflow. Do not use it to request a separate temp group; temp groups are per-zone.
-Inputs:
-source is a nullable String. Null is accepted and later normalized by WaypointSpec construction/temp waypoint conversion.
-Outputs:
-Returns this Builder for fluent chaining. The builder's source field is updated.
-Side effects:
-Mutates only this builder instance. Does not create groups, add waypoints, write files, or notify listeners.
-Failure modes:
-No checked failures. Overly long or unsafe source text is sanitized later at the temp waypoint boundary.
-Important invariants:
-The source field is metadata for the waypoint, not a grouping key. The builder remains reusable after setting it.
-Internal logic:
-Assign the provided source value to the builder field and return this builder.
-Pseudocode:
-Set this.source to source.
-Return this.
-Implementation notes:
-Keeping the method as a simple setter preserves existing API shape while the clarified docs remove the old misleading grouping promise.
-AI self-check:
-Verify the method only sets builder state, keeps fluent chaining, and does not imply source-specific temp buckets.
-]]*/
         public Builder source(String source) {
             this.source = source;
             return this;

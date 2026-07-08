@@ -242,41 +242,6 @@ class WaypointCodecTest {
     }
 
     @Test
-    /*[[AI-FN-DOC
-Function:
-rejects_unbounded_group_count_payloads
-Purpose:
-Verify that a hostile native codec payload with too many groups is rejected by both scanner validation and full decode.
-Why this exists:
-The chat scanner calls isValidCodec on untrusted remote text, so an oversized group count must fail as a normal invalid payload instead of allocating a huge ArrayList or escaping as an Error.
-When to use:
-Run as part of codec regression tests whenever decode limits or chat validation behavior changes. Do not use this as a general round-trip test.
-Inputs:
-No parameters. The test constructs a minimal current-version binary body with an empty string pool and groupCount one above WaypointImporter.MAX_GROUPS_PER_IMPORT.
-Outputs:
-No return value. Assertions require isValidCodec to return false and decodeFull to throw IllegalArgumentException.
-Side effects:
-Allocates in-memory byte streams and compressed payload text only. Does not touch files, network, global state, or persistent route storage.
-Failure modes:
-If group-count validation is removed or delayed until after allocation, scanner validation may throw or decode may accept/attempt the payload, failing the assertions.
-Important invariants:
-The payload should be syntactically close enough to reach readBody's group-count guard. The accepted group cap is shared with WaypointImporter.MAX_GROUPS_PER_IMPORT.
-Internal logic:
-Write the current wire header, an empty string-pool count, and an oversized group count. Compress and text-encode it using existing test helpers. Assert scanner rejection and decode failure.
-Pseudocode:
-Create a byte output stream and data stream.
-Write current wire version as the header byte.
-Write varint 0 for string-pool count.
-Write varint MAX_GROUPS_PER_IMPORT + 1 for group count.
-Flush the stream.
-Encode the raw body as WP: escaped AsciiStreamCodec(deflate(raw)).
-Assert isValidCodec returns false.
-Assert decodeFull throws IllegalArgumentException.
-Implementation notes:
-The test avoids creating actual group records because the guard must fire before any per-group parsing. Existing deflate/text helpers keep the fixture aligned with current codec encoding.
-AI self-check:
-Verify the test targets the allocation guard, does not depend on exact exception text, and would fail if the scanner let the hostile payload through.
-]]*/
     void rejects_unbounded_group_count_payloads() throws Exception {
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         DataOutputStream out = new DataOutputStream(raw);
@@ -298,36 +263,6 @@ Verify the test targets the allocation guard, does not depend on exact exception
     }
 
     @Test
-    /*[[AI-FN-DOC
-Function:
-rejects_varints_that_overflow_signed_ints
-Purpose:
-Verify that the shared varint reader rejects encodings above Java's non-negative int range.
-Why this exists:
-Counts, lengths, flags, and radius fields all flow through readVarint, so rejecting overflow once prevents crafted five-byte values from becoming negative or arbitrary ints downstream.
-When to use:
-Run as part of codec tests when changing varint encoding/decoding. Do not use this to validate zigzag coordinate semantics.
-Inputs:
-No parameters. The test supplies the byte sequence ff ff ff ff 0f, which encodes an unsigned value above Integer.MAX_VALUE.
-Outputs:
-No return value. Assertion requires readVarint to throw IOException.
-Side effects:
-Consumes bytes from an in-memory DataInputStream only.
-Failure modes:
-If readVarint accepts overflowing five-byte encodings, the assertion fails because no IOException is thrown.
-Important invariants:
-Overflow must be rejected in readVarint itself before callers can interpret the value as a count, length, radius, or flag field.
-Internal logic:
-Wrap the hostile bytes in a DataInputStream and assert readVarint throws IOException.
-Pseudocode:
-Create byte array {0xff, 0xff, 0xff, 0xff, 0x0f}.
-Create a DataInputStream over it.
-Assert WaypointCodec.readVarint throws IOException.
-Implementation notes:
-The test uses readVarint directly because it is package-visible to codec tests and gives a smaller, clearer regression than building a full payload for this lower-level rule.
-AI self-check:
-Verify the byte fixture is above the accepted signed-int range, the assertion catches IOException specifically, and the test does not rely on localized error text.
-]]*/
     void rejects_varints_that_overflow_signed_ints() {
         byte[] overflowing = {
                 (byte) 0xFF,
@@ -346,40 +281,6 @@ Verify the byte fixture is above the accepted signed-int range, the assertion ca
     }
 
     @Test
-    /*[[AI-FN-DOC
-Function:
-sanitizes_imported_group_and_waypoint_names_from_native_payloads
-Purpose:
-Verify that native codec decode strips Minecraft formatting and control characters from imported group and waypoint names.
-Why this exists:
-Labels were already sanitized, but group and waypoint names also render into HUD/chat/list UI and therefore need the same trust-boundary protection.
-When to use:
-Run with codec tests when changing name encoding, decoding, or sanitizer rules. Do not use this to test label truncation, which has its own sanitizer test.
-Inputs:
-No parameters. The test builds one group and one named waypoint containing section signs and newline/control content.
-Outputs:
-No return value. Assertions require decoded names to match the sanitized values and contain no section signs or newlines.
-Side effects:
-Allocates model objects and encoded payload text in memory. Does not mutate storage, config, network, or UI state.
-Failure modes:
-If readGroupRecord stores raw names from the string pool or inline name field, decoded values will retain unsafe characters and assertions will fail.
-Important invariants:
-Sanitization must happen at decode/import time, not merely at the export UI label boundary. Safe visible text should remain intact after unsafe characters are stripped.
-Internal logic:
-Create a hostile group and waypoint, encode with full-fidelity options, decode the payload, and compare the decoded names to Options.sanitizeLabel of the hostile inputs.
-Pseudocode:
-Create hostile groupName and waypointName strings.
-Create a group with the hostile groupName and one waypoint with hostile waypointName.
-Encode with FULL_FIDELITY so names are present.
-Decode the payload.
-Assert decoded group name equals sanitizeLabel(groupName).
-Assert decoded waypoint name equals sanitizeLabel(waypointName).
-Assert neither decoded name contains section signs or newline characters.
-Implementation notes:
-The assertion uses the production sanitizer for expected values so the test stays correct if the sanitizer's safe-character policy changes intentionally.
-AI self-check:
-Verify the encoded payload includes names, the decoded objects are checked rather than the source objects, and the test fails if decode-boundary sanitization is removed.
-]]*/
     void sanitizes_imported_group_and_waypoint_names_from_native_payloads() {
         String groupName = "\u00A7cBad\nGroup";
         String waypointName = "\u00A7aBad\tPoint";

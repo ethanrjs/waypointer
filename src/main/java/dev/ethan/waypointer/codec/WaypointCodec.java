@@ -504,37 +504,6 @@ public final class WaypointCodec {
      *         group. Empty decodes count as invalid because a zero-group
      *         export has no reason to exist and is almost certainly a truncation.
      */
-    /*[[AI-FN-DOC
-Function:
-isValidCodec
-Purpose:
-Probe a candidate chat string and report whether it is a complete Waypointer codec payload with at least one decoded group.
-Why this exists:
-Chat scanning needs a boolean integrity check before showing import UI, but it must not let malformed remote text escape into the chat receive handler as an exception or Error.
-When to use:
-Use this for cheap validation of untrusted text that may contain a WP: payload. Do not use it when callers need decoded groups or an error message; call decodeFull/decode instead.
-Inputs:
-text is a nullable String. Null returns false. Non-null values may be arbitrary user or network supplied chat text.
-Outputs:
-Returns true only when decodeFull succeeds and produces a non-empty group list. Returns false for null, malformed payloads, empty exports, runtime decode failures, and Error-level decode failures.
-Side effects:
-Performs CPU and memory work through decodeFull, but does not mutate persistent state, global state, or the DOM/UI. It does not log failures.
-Failure modes:
-Malformed data, unsupported versions, allocation guard failures, decompression errors, and other RuntimeException/Error failures are intentionally swallowed so chat scanning remains non-fatal.
-Important invariants:
-This predicate must never propagate failures from untrusted chat text. A zero-group export is invalid for scanner purposes. The decoder remains the single source of format truth.
-Internal logic:
-Reject null first. Decode the full payload inside a broad catch because previous malformed payloads could trigger Error subclasses. Return true only if the decoded group list is non-empty.
-Pseudocode:
-If text is null, return false.
-Try to decode the full text.
-If decoding succeeds, return whether decoded.groups is not empty.
-If decoding throws any Throwable, return false.
-Implementation notes:
-Catching Throwable is intentionally broad at this chat boundary: the function is only a yes/no probe over untrusted remote text, and decode-specific caps now make hostile allocation attempts normal decode failures.
-AI self-check:
-Verify the implementation follows the pseudocode, keeps all error paths false, does not hide useful errors from import actions, and does not add hidden state or logging.
-]]*/
     public static boolean isValidCodec(String text) {
         if (text == null) return false;
         try {
@@ -1797,45 +1766,6 @@ Verify the implementation follows the pseudocode, keeps all error paths false, d
 
     // --- reader -------------------------------------------------------------------------------
 
-    /*[[AI-FN-DOC
-Function:
-readBody
-Purpose:
-Decode the binary body of a Waypointer payload into waypoint groups while enforcing wire-version and allocation limits.
-Why this exists:
-All current and legacy decode entrypoints share the same binary record reader, so group-count validation and allocation safety belong here instead of in every caller.
-When to use:
-Use this after the outer text codec and DEFLATE layers have produced raw bytes. Do not call it for arbitrary text or for partially decoded labels; those paths have their own wrappers.
-Inputs:
-bytes is the raw inflated payload and must contain a header byte followed by fields for the expected schema. cap may be null or a mutable debug capture populated during decode. headerOut may be null or a holder for the sanitized label. expectedVersion is the exact low-nibble wire version accepted by this decode pass. legacyV2 selects the old group-record shape.
-Outputs:
-Returns a mutable List of decoded WaypointGroup instances. Throws IOException when the body is malformed, unsupported, truncated, or exceeds decode limits.
-Side effects:
-Mutates cap/headerOut when supplied. Allocates decoded groups and waypoints. Reads only from in-memory byte streams.
-Failure modes:
-Unsupported versions, bad labels, oversized string pools, oversized group counts, malformed records, invalid references, and truncated streams throw IOException.
-Important invariants:
-The group count must be bounded before any group-list allocation. Anonymous single-group payloads bypass the count because their shape always contains exactly one group. Imported labels are sanitized before exposure.
-Internal logic:
-Create tracked input streams, validate the header version, capture the optional sanitized label, handle the anonymous single-group shortcut, read the bounded string pool, read and validate the bounded group count, then decode each group with the correct legacy/current reader.
-Pseudocode:
-Open byte and data streams over bytes.
-Read header and verify expected version.
-Store header in debug capture if present.
-If the label flag is set, read and sanitize the label.
-Copy the label into capture/headerOut if requested.
-If this is an anonymous single-group payload, decode one anonymous group and return it.
-Read the string pool.
-Read groupCount.
-If groupCount is negative or above MAX_WIRE_GROUPS, throw IOException.
-Create a group list with a capped initial capacity.
-For each group index from 0 to groupCount - 1, decode a legacy or current group and append it.
-Return the decoded groups.
-Implementation notes:
-The capped ArrayList size prevents hostile counts from forcing giant backing arrays while preserving normal imports. The group cap matches WaypointImporter so both native and JSON imports share the same outer route limit.
-AI self-check:
-Verify groupCount is checked before allocation, the anonymous path stays unchanged, debug label behavior is preserved, and legacy/current group dispatch still matches the requested version.
-]]*/
     private static List<WaypointGroup> readBody(byte[] bytes, DebugCapture cap, DecodedHeader headerOut,
                                                 int expectedVersion, boolean legacyV2)
             throws IOException {
@@ -1966,50 +1896,6 @@ Verify groupCount is checked before allocation, the anonymous path stays unchang
         return group;
     }
 
-    /*[[AI-FN-DOC
-Function:
-readGroupRecord
-Purpose:
-Decode one named waypoint-group record from the native wire format into a WaypointGroup.
-Why this exists:
-Current and legacy-v2 payloads share most group decoding; one function keeps waypoint/body parsing, debug capture, and imported-name sanitization consistent.
-When to use:
-Use from readGroup or readLegacyV2Group after readBody has validated the outer header, string pool, and group count. Do not use for anonymous coordinate-only groups.
-Inputs:
-in is positioned at the group record. bais tracks byte offsets for debug accounting. pool contains already decoded string-pool entries. cap may be null or receive debug details. groupIndex is the zero-based group position. legacyV2 selects the older zone/body interpretation. expectedVersion controls version-gated coordinate and precision fields.
-Outputs:
-Returns a WaypointGroup populated with decoded waypoints, enabled state, load mode, radius, and gradient mode. Throws IOException for malformed references, counts, coordinates, or precision data.
-Side effects:
-Consumes bytes from in/bais, mutates cap when provided, allocates a group and waypoint list, and sanitizes untrusted group and waypoint names before storing them.
-Failure modes:
-Out-of-bounds string-pool indexes, invalid flags, oversized waypoint counts, malformed coordinate streams, invalid UTF-8 lengths, bad precision offsets, or truncated data throw IOException.
-Important invariants:
-Names from the wire are untrusted and must be sanitized before entering the core model. readCoords must validate pointCount before any waypoint-body loop relies on it. AUTO gradient mode is restored after adding waypoints so explicit colors are not overwritten during import.
-Internal logic:
-Read and sanitize the group name, read the zone, decode flags and optional default radius, construct the group, read pointCount, optionally initialize debug capture, decode coordinates, then read each waypoint body with sanitized optional names and version-gated precision offsets.
-Pseudocode:
-Read group name index and sanitize the pooled name.
-Read the zone reference according to legacy/current rules.
-Read group flags and derive bodyless, gradient, sequence, radius, and coordinate mode.
-Read custom default radius when flagged.
-Create and configure the group.
-Read pointCount.
-If debug capture exists, record static group metadata.
-Decode coordinates with readCoords.
-Create a waypoint list sized for pointCount.
-For each point, read waypoint flags unless bodyless.
-If a name is present, read it from inline UTF-8 or the pool, then sanitize it.
-Read optional color, radius, extended flags, and precision offsets.
-Create the waypoint, apply precision offsets when present, record debug data, and append it.
-Add all waypoints to the group.
-Record body byte count when debugging.
-Restore AUTO gradient mode when requested.
-Return the group.
-Implementation notes:
-Sanitization happens at the decode boundary so later HUD/chat rendering can safely use Component.literal with imported names. The existing coordinate validator remains the waypoint-count allocation guard.
-AI self-check:
-Verify sanitized names are the names stored on model objects and debug output, existing legacy behavior remains otherwise unchanged, and every optional field is still read in the same order.
-]]*/
     private static WaypointGroup readGroupRecord(DataInputStream in, TrackedByteStream bais, List<String> pool,
                                                  DebugCapture cap, int groupIndex, boolean legacyV2,
                                                  int expectedVersion)
@@ -2274,41 +2160,6 @@ Verify sanitized names are the names stored on model objects and debug output, e
         out.writeByte(v & 0x7F);
     }
 
-    /*[[AI-FN-DOC
-Function:
-readVarint
-Purpose:
-Read one unsigned, non-negative int varint from a binary Waypointer payload.
-Why this exists:
-The codec stores counts, lengths, radii, flags, and zigzag-encoded coordinates as compact varints, so one strict reader keeps malformed input handling consistent.
-When to use:
-Use when reading wire fields that were written by writeVarint and are expected to fit in Java's non-negative int range. Do not use for values that intentionally require a signed or wider-than-int representation.
-Inputs:
-in is a non-null DataInputStream positioned at the first byte of a varint. The stream may contain hostile or truncated data.
-Outputs:
-Returns a non-negative int. Throws IOException when the varint is too long, overflows the accepted signed-int range, or the stream cannot provide the needed byte.
-Side effects:
-Consumes one to five bytes from in. Does not mutate global state or allocate collections.
-Failure modes:
-EOF propagates from DataInputStream as IOException. More than five bytes, continuation past the fifth byte, or a fifth byte above 0x07 throws IOException before a negative int can be produced.
-Important invariants:
-Returned values must never be negative. The fifth byte may only contain the top three payload bits for values up to Integer.MAX_VALUE. Existing normal Minecraft coordinate ranges remain representable after zigzag encoding.
-Internal logic:
-Accumulate seven-bit payload chunks with increasing shifts. Before accepting a fifth byte, reject high bits that would exceed Integer.MAX_VALUE or continue into a sixth byte. Return as soon as a byte has no continuation bit.
-Pseudocode:
-Set result to 0 and shift to 0.
-Loop:
-Read the next unsigned byte.
-If shift is 28 and the byte has any bits outside the low three payload bits, throw overflow.
-OR the low seven bits shifted by shift into result.
-If the continuation bit is clear, return result.
-Increase shift by 7.
-If shift is 35 or more, throw too-long.
-Implementation notes:
-Rejecting values above Integer.MAX_VALUE prevents crafted count/radius fields from wrapping negative. That is safer than allowing the full unsigned 32-bit range because all current callers store the result in int and validate non-negative domain values.
-AI self-check:
-Verify the reader still accepts one-to-five byte normal values, rejects negative-producing encodings, consumes no extra bytes after a valid varint, and leaves error reporting as IOException.
-]]*/
     static int readVarint(DataInputStream in) throws IOException {
         int result = 0;
         int shift = 0;
@@ -2784,38 +2635,6 @@ Verify the reader still accepts one-to-five byte normal values, rejects negative
             }
         }
 
-        /*[[AI-FN-DOC
-Function:
-StringPool.readFrom
-Purpose:
-Decode the shared string pool used by group, zone, and waypoint-name references.
-Why this exists:
-The wire format interns repeated strings once, and the decoder needs a single bounded reader before group records can resolve indexes.
-When to use:
-Use from readBody after the header/label and before reading group records. Do not use for inline waypoint names or labels, which are separate UTF-8 fields.
-Inputs:
-in is a non-null DataInputStream positioned at the string-pool count. The count and strings are untrusted wire data.
-Outputs:
-Returns a mutable List of decoded strings in pool-index order. Throws IOException for oversized counts, invalid string lengths, invalid UTF-8 reads, or stream failures.
-Side effects:
-Consumes bytes from in and allocates a list plus decoded String instances. It does not mutate global state.
-Failure modes:
-Negative or too-large counts, malformed varints, oversized strings, truncated data, and IO failures throw IOException.
-Important invariants:
-The count must be validated before list allocation. Initial list capacity is capped independently of the accepted wire count so a valid-but-large pool cannot demand a huge contiguous backing array up front.
-Internal logic:
-Read the count with the strict varint reader, validate it against the string-pool limit, create an ArrayList with capped capacity, read each UTF-8 string, append it, and return the list.
-Pseudocode:
-Read count.
-If count is negative or greater than 65536, throw IOException.
-Create output list with min(count, MAX_ARRAYLIST_PRESIZE) capacity.
-For each pool entry index from 0 to count - 1, read one UTF-8 string and add it.
-Return output.
-Implementation notes:
-The accepted pool-size limit is unchanged for compatibility; only the eager backing-array size is capped. ArrayList will grow as real entries are appended.
-AI self-check:
-Verify count validation still precedes allocation, all strings are read in order, and the cap changes memory behavior without changing valid decoded output.
-]]*/
         static List<String> readFrom(DataInputStream in) throws IOException {
             int count = readVarint(in);
             if (count < 0 || count > 1 << 16) throw new IOException("string pool too large: " + count);

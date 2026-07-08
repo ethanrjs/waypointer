@@ -467,36 +467,6 @@ public final class WaypointerConfig {
      * quiet window (see {@link AsyncSaver}). Shutdown paths must call
      * {@link #flush()} to guarantee the last write completes.
      */
-    /*[[AI-FN-DOC
-Function:
-save
-Purpose:
-Capture the current config values and mark the debounced config writer dirty.
-Why this exists:
-Config setters should stay cheap on the caller thread while the actual disk write happens later, but the background writer must not reflect over live mutable fields.
-When to use:
-Use from config mutation methods after updating fields that should be persisted. Do not use before load/defaultLocation has installed the saver because a standalone config object has nowhere to write.
-Inputs:
-No parameters. Reads this WaypointerConfig instance, including nullable enum/list fields and transient saver state.
-Outputs:
-No return value. Updates pendingSnapshotJson and schedules a debounced write when saver exists.
-Side effects:
-Serializes this config into an immutable JSON string on the caller thread and calls AsyncSaver.markDirty. Does not write to disk synchronously.
-Failure modes:
-If saver is null, returns without work as before. Gson serialization failures propagate to the caller because the config object should be serializable by construction.
-Important invariants:
-The JSON snapshot must be captured before markDirty so the saver thread writes detached data. Gson must not serialize transient file/saver/pending fields.
-Internal logic:
-Return early when saver is absent. Serialize this config to JSON and store it in pendingSnapshotJson. Mark the saver dirty.
-Pseudocode:
-If saver is null, return.
-Set pendingSnapshotJson to GSON.toJson(this).
-Call saver.markDirty.
-Implementation notes:
-Capturing JSON rather than cloning every field is the smallest safe fix: it copies chatCoordSenderBlacklist and all scalar settings using the same serializer that writes the file.
-AI self-check:
-Verify serialization happens on the mutation thread, markDirty happens afterward, and no live mutable list is handed to the background thread.
-]]*/
     public void save() {
         if (saver == null) return;
         pendingSnapshotJson = GSON.toJson(this);
@@ -511,40 +481,6 @@ Verify serialization happens on the mutation thread, markDirty happens afterward
         if (saver != null) saver.flush();
     }
 
-    /*[[AI-FN-DOC
-Function:
-writeToDisk
-Purpose:
-Write the latest captured config JSON snapshot to config.json with an atomic replace.
-Why this exists:
-AsyncSaver invokes this method on a background thread, so it must write pre-captured immutable data instead of reflecting over the live WaypointerConfig object.
-When to use:
-Use only as the AsyncSaver writer installed by load after save has populated pendingSnapshotJson. Do not call it to capture current config state; save owns that boundary.
-Inputs:
-No parameters. Reads file and pendingSnapshotJson from this config instance.
-Outputs:
-No return value. On success, the config file contains the latest captured snapshot.
-Side effects:
-Creates the parent config directory, writes a temporary JSON file, atomically replaces config.json, and logs IOException failures.
-Failure modes:
-Returns without work when file or pendingSnapshotJson is null. Directory creation, file write, or atomic move failures are caught and logged.
-Important invariants:
-This method must not call GSON.toJson(this) because that would read live mutable config fields on the saver thread. Each write uses one local snapshot string for consistency.
-Internal logic:
-Copy pendingSnapshotJson to a local variable. If file or json is null, return. Create directories, write json to a sibling tmp path, and atomically move it into place.
-Pseudocode:
-Copy pendingSnapshotJson into json.
-If file is null or json is null, return.
-Try to create parent directories.
-Build tmp path beside file.
-Write json to tmp.
-Move tmp to file with replace existing and atomic move.
-On IOException, log the failure.
-Implementation notes:
-The local json copy means a newer save can update pendingSnapshotJson while this write still finishes the older, internally consistent snapshot.
-AI self-check:
-Verify the method writes json rather than serializing this, preserves atomic file semantics, and handles absent snapshot/file as a no-op.
-]]*/
     private void writeToDisk() {
         if (file == null) return;
         String json = pendingSnapshotJson;
