@@ -1,13 +1,14 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.WaypointerClient;
 import dev.ethan.waypointer.codec.DecodeDebug;
 import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.debug.DebugEventLog;
 import dev.ethan.waypointer.debug.DebugSignals;
-import dev.ethan.waypointer.debug.PerformanceStressProbe;
 import dev.ethan.waypointer.debug.PerformanceStats;
+import dev.ethan.waypointer.screen.settings.SettingsCatalog;
 import dev.ethan.waypointer.dungeon.DungeonCoreSignature;
 import dev.ethan.waypointer.dungeon.DungeonRoom;
 import dev.ethan.waypointer.dungeon.DungeonRoomZoneBridge;
@@ -75,23 +76,6 @@ public final class DebugInspectScreen extends Screen {
     }
 
     private record SectionAnchor(String label, String subtitle, int rowIndex) {}
-
-    private static final class LiveOverlaySnapshot {
-        final PerformanceStressProbe.LiveOverlayResult result;
-        final PerformanceStats stats;
-        final String warning;
-        final boolean fallbackZone;
-
-        LiveOverlaySnapshot(PerformanceStressProbe.LiveOverlayResult result,
-                            PerformanceStats stats,
-                            String warning,
-                            boolean fallbackZone) {
-            this.result = result;
-            this.stats = stats;
-            this.warning = warning;
-            this.fallbackZone = fallbackZone;
-        }
-    }
 
     /** How many rows a single wheel notch advances the scroll. */
     private static final int SCROLL_ROWS_PER_NOTCH = 3;
@@ -165,8 +149,9 @@ public final class DebugInspectScreen extends Screen {
     protected void init() {
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
         left.add(new GuiTokens.ButtonSpec("Refresh", this::loadCombinedReport));
-        left.add(new GuiTokens.ButtonSpec("Run stress", 88, this::runStressProbe));
-        left.add(new GuiTokens.ButtonSpec("Clear stress", 92, this::clearStressOverlay));
+        if (config != null) {
+            left.add(new GuiTokens.ButtonSpec("Perf test", 88, this::openPerfStressTest));
+        }
         left.add(new GuiTokens.ButtonSpec("Copy report", this::copyReportToClipboard));
         GuiTokens.ButtonSpec back = new GuiTokens.ButtonSpec("Back", this::onClose);
 
@@ -189,48 +174,14 @@ public final class DebugInspectScreen extends Screen {
 
     // --- actions ---------------------------------------------------------------------------
 
-    private void runStressProbe() {
-        resetReportState();
-
-        try {
-            PerformanceStressProbe.Result result = PerformanceStressProbe.runDefault();
-            buildStressReport(result, readOnlyStressSnapshot(), rows, sections);
-        } catch (RuntimeException e) {
-            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            this.lastError = "Stress probe failed.\n" + detail;
-        }
-    }
-
-    private void clearStressOverlay() {
-        resetReportState();
-
-        if (manager == null) {
-            addSection(rows, sections, "Stress Overlay", "unavailable");
-            rows.add(new Row.KVWarn("Unavailable",
-                    "Open this screen through /wp debug to clear live stress overlays."));
-            return;
-        }
-
-        try {
-            PerformanceStressProbe.ClearOverlayResult result =
-                    PerformanceStressProbe.clearLiveOverlays(manager);
-            addSection(rows, sections, "Stress Overlay", "cleared");
-            rows.add(new Row.KV("Groups removed", String.valueOf(result.groupsRemoved)));
-            rows.add(new Row.KV("Waypoints removed", String.valueOf(result.waypointsRemoved)));
-            rows.add(new Row.KVDim("Scope", "debug stress overlays only"));
-        } catch (RuntimeException e) {
-            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            this.lastError = "Stress overlay cleanup failed.\n" + detail;
-        }
-    }
-
-    private static LiveOverlaySnapshot readOnlyStressSnapshot() {
-        return new LiveOverlaySnapshot(null, null, readOnlyStressWarningText(), false);
-    }
-
-    static String readOnlyStressWarningText() {
-        return "Run stress is read-only and does not add live waypoints. "
-                + "Use Clear stress to remove overlays left by older builds.";
+    /**
+     * The FPS stress test lives on the settings screen (System > Diagnostics);
+     * this deep-links there rather than duplicating the sweep UI here. Back
+     * from settings returns to this inspector.
+     */
+    private void openPerfStressTest() {
+        minecraft.setScreen(SettingsScreen.atSetting(this, config,
+                WaypointerClient.dungeonConfig(), SettingsCatalog.ACTION_PERF_TEST));
     }
 
     private void resetReportState() {
@@ -870,109 +821,6 @@ public final class DebugInspectScreen extends Screen {
                             + group.proximityIndexVisitsPerTick() + " tick candidates, "
                             + group.loadMode().toLowerCase(Locale.ROOT)));
         }
-    }
-
-    private static void buildStressReport(PerformanceStressProbe.Result result,
-                                          LiveOverlaySnapshot liveOverlay,
-                                          List<Row> rows,
-                                          List<SectionAnchor> sections) {
-        PerformanceStats worst = result.worstCaseStats;
-        PerformanceStats localized = result.localizedStats;
-        int worstVisits = worst.estimatedProximityIndexVisitsPerTick();
-        int localizedVisits = localized.estimatedProximityIndexVisitsPerTick();
-        String localizedShare = worstVisits <= 0
-                ? "n/a"
-                : String.format(Locale.ROOT, "%.3f%% of worst-case",
-                localizedVisits * 100.0 / worstVisits);
-
-        addSection(rows, sections, "Stress Probe", result.waypointCount + " pts");
-        rows.add(new Row.KV("Scenario", "static route, " + result.waypointSpacingBlocks
-                + " block spacing"));
-        rows.add(new Row.KVDim("Zone", worst.currentZoneName() + " (" + worst.currentZoneId() + ")"));
-        rows.add(new Row.KV("Setup time", formatNanos(result.setupNanos)));
-        rows.add(new Row.KV("Worst capture", formatNanos(result.worstCaseCaptureNanos)));
-        rows.add(new Row.KV("Localized capture", formatNanos(result.localizedCaptureNanos)));
-        rows.add(new Row.KV("Scenarios", String.valueOf(result.scenarios.size())));
-        rows.add(new Row.KVDim("Probe point", "#" + result.localizedProbeIndex));
-        rows.add(new Row.KVDim("Probe position", String.format(Locale.ROOT,
-                "%.1f, %.1f, %.1f",
-                result.localizedPlayerX, result.localizedPlayerY, result.localizedPlayerZ)));
-
-        addSection(rows, sections, "Stress Scenario Matrix",
-                String.valueOf(result.scenarios.size()));
-        for (PerformanceStressProbe.ScenarioResult scenario : result.scenarios) {
-            rows.add(new Row.KV(scenario.name, scenarioSummary(scenario)));
-            rows.add(new Row.KVDim("Shape", scenario.routeShape));
-        }
-
-        addSection(rows, sections, "Stress Render Result",
-                worst.activeVisibleWaypoints() + " renderable");
-        rows.add(new Row.KV("Active points", String.valueOf(worst.activeWaypoints())));
-        rows.add(new Row.KV("Renderable", worst.activeVisibleWaypoints() + " waypoint slots"));
-        rows.add(new Row.KV("Label candidates", worst.activeLabelCandidates() + " before budget"));
-        rows.add(new Row.KV("Line vertices", String.valueOf(worst.estimatedLineBoxVertices())));
-        rows.add(new Row.KV("Fill vertices", String.valueOf(worst.estimatedFillBoxVertices())));
-        rows.add(new Row.KV("Beam vertices", String.valueOf(worst.estimatedBeamVertices())));
-
-        addSection(rows, sections, "Stress Tick Result", localizedVisits + " localized");
-        rows.add(new Row.KV("Worst visits", worstVisits + " candidates/tick"));
-        rows.add(new Row.KV("Localized visits", localizedVisits + " candidates/tick"));
-        rows.add(new Row.KV("Localized share", localizedShare));
-        rows.add(new Row.KVDim("Meaning",
-                "localized should stay far below worst-case when the spatial index is healthy"));
-
-        addSection(rows, sections, "Stress Live Overlay",
-                liveOverlay.result == null ? "not installed" : liveOverlay.result.waypointCount + " pts");
-        if (liveOverlay.warning != null) {
-            rows.add(new Row.KVWarn("Warning", liveOverlay.warning));
-        }
-        if (liveOverlay.result != null) {
-            PerformanceStressProbe.LiveOverlayResult overlay = liveOverlay.result;
-            rows.add(new Row.KV("Installed", overlay.waypointCount + " temporary waypoints"));
-            rows.add(new Row.KV("Zone", overlay.zoneName + " (" + overlay.zoneId + ")"));
-            rows.add(new Row.KV("Grid", overlay.columns + " x " + overlay.rows
-                    + ", " + overlay.spacingBlocks + " block spacing"));
-            rows.add(new Row.KV("Center", overlay.centerX + ", " + overlay.centerY + ", " + overlay.centerZ));
-            rows.add(new Row.KVDim("Previous overlay", overlay.replacedWaypointCount == 0
-                    ? "none" : overlay.replacedWaypointCount + " waypoints replaced"));
-            rows.add(new Row.KVDim("View", "press Back/Esc, then look around your position"));
-            rows.add(new Row.KVDim("Clear", "return to /wp debug and click Clear stress"));
-            if (liveOverlay.fallbackZone) {
-                rows.add(new Row.KVWarn("Zone fallback",
-                        "No zone was detected, so Unknown was selected for this debug overlay."));
-            }
-        }
-        if (liveOverlay.stats != null) {
-            rows.add(new Row.KV("Live active", liveOverlay.stats.activeWaypoints() + " pts, "
-                    + liveOverlay.stats.activeVisibleWaypoints() + " renderable"));
-            rows.add(new Row.KV("Live labels", liveOverlay.stats.activeLabelCandidates() + " candidates"));
-        }
-
-        addSection(rows, sections, "Stress Active Group",
-                String.valueOf(worst.activeGroupStats().size()));
-        if (worst.activeGroupStats().isEmpty()) {
-            rows.add(new Row.KVWarn("Missing", "Generated stress route was not active."));
-            return;
-        }
-        PerformanceStats.GroupStats group = worst.activeGroupStats().get(0);
-        rows.add(new Row.KV("Group", shortGroupName(group)));
-        rows.add(new Row.KV("Load mode", group.loadMode().toLowerCase(Locale.ROOT)));
-        rows.add(new Row.KV("Waypoints", String.valueOf(group.waypoints())));
-        rows.add(new Row.KV("Renderable", String.valueOf(group.renderableWaypoints())));
-        rows.add(new Row.KV("Labels", String.valueOf(group.labelCandidates())));
-    }
-
-    private static String scenarioSummary(PerformanceStressProbe.ScenarioResult scenario) {
-        PerformanceStats worst = scenario.worstCaseStats;
-        PerformanceStats localized = scenario.localizedStats;
-        return scenario.waypointCount + " pts, "
-                + worst.activeVisibleWaypoints() + " renderable, "
-                + worst.activeLabelCandidates() + " labels, "
-                + "visits " + worst.estimatedProximityIndexVisitsPerTick()
-                + " -> " + localized.estimatedProximityIndexVisitsPerTick()
-                + ", setup " + formatNanos(scenario.setupNanos)
-                + ", captures " + formatNanos(scenario.worstCaseCaptureNanos)
-                + "/" + formatNanos(scenario.localizedCaptureNanos);
     }
 
     private static void addSection(List<Row> rows, List<SectionAnchor> sections,

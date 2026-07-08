@@ -55,6 +55,7 @@ public final class WaypointerClient implements ClientModInitializer {
     private static DungeonConfig dungeonConfig;
     private static DungeonStateTracker dungeonTracker;
     private static DungeonRouteSession dungeonRouteSession;
+    private static DungeonRouteDownloader dungeonRouteDownloader;
     private static boolean dungeonRouteSessionInDungeonContext;
     private static Screen suspendedWaypointerGuiScreen;
 
@@ -84,6 +85,10 @@ public final class WaypointerClient implements ClientModInitializer {
 
     public static DungeonRouteSession dungeonRouteSession() {
         return dungeonRouteSession;
+    }
+
+    public static DungeonRouteDownloader dungeonRouteDownloader() {
+        return dungeonRouteDownloader;
     }
 
     @Override
@@ -186,8 +191,7 @@ public final class WaypointerClient implements ClientModInitializer {
         new DungeonRoomRouteSync(manager, dungeonTracker, dungeonRouteSession, dungeonConfig).install();
         new DungeonTriggerDetector(dungeonTracker, dungeonRouteSession).install();
         new DungeonMapCheckmarks(dungeonTracker, dungeonRouteSession, dungeonConfig).install();
-        DungeonRouteDownloader dungeonRouteDownloader =
-                new DungeonRouteDownloader(manager, dungeonConfig);
+        dungeonRouteDownloader = new DungeonRouteDownloader(manager, dungeonConfig);
         dungeonRouteDownloader.install();
         new DungeonCommands(dungeonTracker, dungeonConfig, dungeonRouteSession,
                 dungeonRouteDownloader).install();

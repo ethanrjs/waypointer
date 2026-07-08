@@ -19,6 +19,15 @@ public final class DungeonWaypointSkipRules {
     public static int flagsForTriggerAt(DungeonWaypointTrigger trigger, int x, int y, int z) {
         BlockState state = blockStateAt(x, y, z);
         if (state != null) return flagsForBlock(state);
+        return flagsForTrigger(trigger);
+    }
+
+    /**
+     * Trigger-only mapping with no world lookup. Use for room-local coordinates
+     * (e.g. converting a secret-route definition into a stored route), where a
+     * block lookup would read whatever happens to be at the raw local position.
+     */
+    public static int flagsForTrigger(DungeonWaypointTrigger trigger) {
         return isInteractTrigger(trigger)
                 ? Waypoint.FLAG_SKIP_ON_INTERACT
                 : Waypoint.FLAG_SKIP_ON_STAND;

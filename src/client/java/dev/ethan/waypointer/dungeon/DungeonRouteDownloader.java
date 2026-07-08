@@ -46,6 +46,11 @@ public final class DungeonRouteDownloader {
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(6);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
 
+    /** Attribution shown wherever the download is offered (chat prompt, GUI tooltip). */
+    public static String attributionText() {
+        return ATTRIBUTION;
+    }
+
     private final ActiveGroupManager manager;
     private final DungeonConfig config;
     private final AtomicBoolean downloadInFlight = new AtomicBoolean();
@@ -154,6 +159,10 @@ public final class DungeonRouteDownloader {
         feedback.accept(Component.literal("Installed " + result.waypointCount()
                         + " secret waypoints across " + rooms + " rooms.")
                 .withStyle(ChatFormatting.GREEN));
+        feedback.accept(Component.literal(
+                        "Each room now lists its secret route in the Waypointer GUI;"
+                                + " waypoints appear in-world when you enter the room.")
+                .withStyle(ChatFormatting.GRAY));
         feedback.accept(Component.literal(ATTRIBUTION).withStyle(ChatFormatting.GRAY));
         if (!result.unmatchedRooms().isEmpty()) {
             feedback.accept(Component.literal(result.unmatchedRooms().size()

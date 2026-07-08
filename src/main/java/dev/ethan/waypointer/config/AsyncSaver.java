@@ -85,6 +85,18 @@ public final class AsyncSaver {
         }
     }
 
+    /**
+     * Drop any pending write without running it. Used when the backing data is
+     * about to be replaced wholesale from disk, so a queued in-memory write
+     * would otherwise clobber the file we are about to read.
+     */
+    public void discard() {
+        synchronized (lock) {
+            if (pending != null) { pending.cancel(false); pending = null; }
+            dirty = false;
+        }
+    }
+
     private void runScheduled() {
         synchronized (lock) {
             pending = null;

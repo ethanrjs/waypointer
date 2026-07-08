@@ -91,6 +91,11 @@ class WaypointerKeybindsTest {
     }
 
     @Test
+    void nullScreenDoesNotBlockScreenOpenCloseKey() {
+        assertFalse(WaypointerKeybinds.focusedEditBox(null));
+    }
+
+    @Test
     void previousCanRecoverHiddenCompletedDungeonRoomRoute() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("spider", "Spider"));
@@ -105,11 +110,17 @@ class WaypointerKeybindsTest {
 
         assertEquals(0, manager.activeGroups().size());
 
+        // The completed stored route is still reachable through the retreat
+        // fallback and moves its persisted progress...
         assertEquals(1, WaypointerKeybinds.retreatPreviousWaypointTargets(manager));
         manager.fireDataChanged();
-
-        assertEquals(List.of(group), manager.activeGroups());
         assertEquals(1, group.currentIndex());
+
+        // ...but stored dungeon-room routes hold room-local coordinates, so
+        // they never render directly: DungeonRoomRouteSync projects them into
+        // a runtime mirror while the player is in the room (covered by
+        // DungeonRoomRouteSyncTest).
+        assertEquals(0, manager.activeGroups().size());
     }
 
     private static TextColor legacyColor(ChatFormatting color) {

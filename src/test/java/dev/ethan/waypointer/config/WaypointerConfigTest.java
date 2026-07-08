@@ -105,7 +105,9 @@ class WaypointerConfigTest {
         assertEquals(WaypointerConfig.BeaconBeamMode.OFF, config.beaconBeamMode());
         assertFalse(config.beaconBeamExtendsBelowWaypoint());
         assertTrue(config.showWaypointDistances());
-        assertEquals(0, config.maxWaypointLabels());
+        // Labels are the most expensive render feature (see the perf stress
+        // test), so the default budgets them to the 32 nearest.
+        assertEquals(32, config.maxWaypointLabels());
         assertEquals(0.0, config.maxStaticWaypointRenderDistance());
     }
 
@@ -153,7 +155,7 @@ class WaypointerConfigTest {
     }
 
     @Test
-    void performanceBudgetsDefaultToUnlimitedAndClampToDisabled() {
+    void performanceBudgetSettersClampNegativesToDisabled() {
         WaypointerConfig config = new WaypointerConfig();
 
         config.setMaxWaypointLabels(75);

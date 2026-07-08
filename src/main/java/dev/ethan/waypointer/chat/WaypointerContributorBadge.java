@@ -5,7 +5,11 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.contents.PlainTextContents;
+
+import java.util.ArrayList;
+import java.util.List;
 
 public final class WaypointerContributorBadge {
     private static final String CONTRIBUTOR = "Babbur";
@@ -22,14 +26,7 @@ public final class WaypointerContributorBadge {
     static Component replace(Component component) {
         String fullText = component.getString();
         int levelStart = contributorLevelStart(fullText);
-        if (levelStart >= 0) {
-            int levelEnd = fullText.indexOf(']', levelStart);
-            MutableComponent out = Component.empty().withStyle(component.getStyle());
-            out.append(Component.literal(fullText.substring(0, levelStart)).withStyle(component.getStyle()));
-            out.append(badge());
-            out.append(Component.literal(fullText.substring(levelEnd + 1)).withStyle(component.getStyle()));
-            return out;
-        }
+        if (levelStart >= 0) return replaceLevelSpan(component, levelStart, fullText.indexOf(']', levelStart) + 1);
 
         MutableComponent out = replaceOwnText(component);
         for (Component sibling : component.getSiblings()) {
@@ -73,6 +70,43 @@ public final class WaypointerContributorBadge {
         return -1;
     }
 
+    private static MutableComponent replaceLevelSpan(Component component, int levelStart, int levelEnd) {
+        List<Segment> segments = new ArrayList<>();
+        collectSegments(component, segments);
+
+        MutableComponent out = Component.empty().withStyle(component.getStyle());
+        int cursor = 0;
+        boolean badgeAdded = false;
+        for (Segment segment : segments) {
+            int segmentStart = cursor;
+            int segmentEnd = cursor + segment.text.length();
+            appendRange(out, segment, segmentStart, Math.min(levelStart, segmentEnd), segmentStart);
+            if (!badgeAdded && segmentEnd >= levelStart) {
+                out.append(badge());
+                badgeAdded = true;
+            }
+            appendRange(out, segment, Math.max(levelEnd, segmentStart), segmentEnd, segmentStart);
+            cursor = segmentEnd;
+        }
+        return out;
+    }
+
+    private static void collectSegments(Component component, List<Segment> segments) {
+        if (component.getContents() instanceof PlainTextContents text && !text.text().isEmpty()) {
+            segments.add(new Segment(text.text(), component.getStyle()));
+        }
+        for (Component sibling : component.getSiblings()) {
+            collectSegments(sibling, segments);
+        }
+    }
+
+    private static void appendRange(MutableComponent out, Segment segment, int start, int end, int segmentStart) {
+        if (end > start) {
+            out.append(Component.literal(segment.text.substring(start - segmentStart, end - segmentStart))
+                    .withStyle(segment.style));
+        }
+    }
+
     private static boolean isDigits(String raw, int startInclusive, int endExclusive) {
         for (int i = startInclusive; i < endExclusive; i++) {
             if (!Character.isDigit(raw.charAt(i))) return false;
@@ -94,5 +128,8 @@ public final class WaypointerContributorBadge {
 
     private static HoverEvent hover() {
         return new HoverEvent.ShowText(Component.literal(HOVER_TEXT));
+    }
+
+    private record Segment(String text, Style style) {
     }
 }

@@ -17,6 +17,9 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.resources.Identifier;
@@ -227,6 +230,7 @@ public final class WaypointerKeybinds {
             if (!WaypointerGuiScreens.owns(screen)) return;
             ScreenKeyboardEvents.allowKeyPress(screen).register((ownedScreen, event) -> {
                 if (!isOpenEditorKey(event)) return true;
+                if (focusedEditBox(ownedScreen)) return true;
                 WaypointerClient.openGui();
                 return false;
             });
@@ -240,6 +244,12 @@ public final class WaypointerKeybinds {
         return event.key() == OPEN_EDITOR_DEFAULT_KEY;
     }
 
+    static boolean focusedEditBox(Screen screen) {
+        if (screen == null) return false;
+        GuiEventListener focused = screen.getFocused();
+        return focused instanceof EditBox editBox && editBox.isFocused();
+    }
+
     public static String exitEditModeKeyName() {
         KeyMapping mapping = registeredExitEditMode;
         if (mapping == null || mapping.isUnbound()) return "";
@@ -248,6 +258,10 @@ public final class WaypointerKeybinds {
 
     private void onTick(Minecraft mc) {
         if (mc.screen != null) {
+            if (focusedEditBox(mc.screen)) {
+                drainWaypointKeybindClicks();
+                return;
+            }
             while (openEditor.consumeClick()) {
                 if (WaypointerGuiScreens.owns(mc.screen)) {
                     openGui.run();

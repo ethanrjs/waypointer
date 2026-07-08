@@ -11,7 +11,7 @@ import java.util.function.Consumer;
 /**
  * Shared GUI tokens for Waypointer screens.
  *
- * Centralized so all three screens (WaypointerScreen, GroupEditScreen, ConfigScreen)
+ * Centralized so all three screens (WaypointerScreen, GroupEditScreen, SettingsScreen)
  * share the same spacing rhythm, surface colors, and footer behavior. Before this,
  * each screen invented its own PADDING and ad-hoc pixel gaps, which is how the
  * footer-overlap bug crept in: buttons laid out left-to-right with fixed widths

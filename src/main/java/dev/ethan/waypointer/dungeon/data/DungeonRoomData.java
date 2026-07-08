@@ -95,25 +95,35 @@ file is the Path to the custom dungeon room JSON file. It may be absent, in whic
 Outputs:
 No return value. Updates static customFile, saver, and CUSTOM state.
 Side effects:
-Flushes any previous saver, replaces the active custom-store path, creates a new AsyncSaver, reads definitions from disk, and replaces the CUSTOM atomic reference.
+Flushes or discards any previous saver, replaces the active custom-store path, creates a new AsyncSaver, reads definitions from disk, and replaces the CUSTOM atomic reference.
 Failure modes:
 readDefinitions handles malformed/missing files according to its own rules. Flushing the old saver may log write failures through AsyncSaver/writeCustomStore.
 Important invariants:
-Pending writes for the previous customFile must complete before customFile is replaced, otherwise a delayed saver could write old data to the wrong path. CHANGE_LISTENERS are not modified here.
+Reloading the SAME file makes disk authoritative, so a pending in-memory write for that path is discarded rather than flushed -- otherwise a queued write (e.g. a not-yet-debounced clearAllCustom) would clobber the data we are about to read. Switching to a DIFFERENT file still flushes so the previous store's unsaved edits reach the previous path before customFile changes. CHANGE_LISTENERS are not modified here.
 Internal logic:
-Flush the currently installed saver if present, assign the new custom file path, create a saver bound to writeCustomStore, read definitions from the new file, and publish them to CUSTOM.
+If a saver is installed, discard its pending write when file equals the current customFile, otherwise flush it; then assign the new custom file path, create a saver bound to writeCustomStore, read definitions from the new file, and publish them to CUSTOM.
 Pseudocode:
-Call flush.
+If saver present: discard when file equals customFile, else flush.
 Set customFile to file.
 Create new AsyncSaver named dungeon-rooms with writeCustomStore and debounce delay.
 Set CUSTOM to readDefinitions(file).
 Implementation notes:
-This fixes the static reload hazard without changing user-facing reset behavior or listener registration semantics.
+This fixes the static reload hazard and the same-file reload clobber without changing user-facing reset behavior or listener registration semantics.
 AI self-check:
-Verify pending old writes are flushed before the path changes, the new saver still writes through writeCustomStore, and custom definitions come from the requested file.
+Verify a same-file reload discards the pending write and reads disk, a file switch flushes to the old path first, the new saver still writes through writeCustomStore, and custom definitions come from the requested file.
 ]]*/
     public static void loadCustomStore(Path file) {
-        flush();
+        if (saver != null) {
+            // Reloading the same file: disk wins, so drop any queued in-memory
+            // write (e.g. a clearAllCustom awaiting debounce) instead of flushing
+            // it over the data we are about to read. A different file still
+            // flushes so the previous store's edits reach the previous path.
+            if (file != null && file.equals(customFile)) {
+                saver.discard();
+            } else {
+                saver.flush();
+            }
+        }
         customFile = file;
         saver = new AsyncSaver("dungeon-rooms", DungeonRoomData::writeCustomStore, SAVE_DEBOUNCE_MS);
         CUSTOM.set(readDefinitions(file));
