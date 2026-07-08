@@ -693,44 +693,6 @@ public final class WaypointImporter {
         return p.getAsJsonObject("options").get("name").getAsInt();
     }
 
-    /*[[AI-FN-DOC
-Function:
-parseGroup
-Purpose:
-Convert one third-party JSON group object into a Waypointer WaypointGroup with normalized zone and sanitized display name.
-Why this exists:
-External import formats all express groups differently, and this function centralizes the common group-shape normalization before waypoints enter the core model.
-When to use:
-Use when an import parser has identified a JSON object that represents a waypoint group or route. Do not use for native WP: payloads, which are decoded by WaypointCodec.
-Inputs:
-o is a non-null JsonObject from an untrusted import payload. It may contain name/label, island/zone/world/category, enabled, ordered, and waypoints/points fields with missing or malformed values.
-Outputs:
-Returns a WaypointGroup. Invalid waypoint entries are skipped. Missing group names fall back to the normalized zone id. Imported group names are sanitized to remove Minecraft formatting/control characters.
-Side effects:
-Allocates a WaypointGroup and waypoint list. Does not mutate global state, perform IO, or write config/storage.
-Failure modes:
-Malformed optional fields may be ignored by helper readers. Runtime exceptions from primitive conversions can still surface when fields claim a type but contain invalid data outside the helpers' tolerance.
-Important invariants:
-Untrusted names must be sanitized before model construction. Imported groups default to sequence routes with manual colors unless the source explicitly marks the route ordered. Enabled state is honored only when present as a primitive boolean.
-Internal logic:
-Read the first group name candidate and sanitize it. Read and normalize the zone. Create the group using the sanitized name or zone fallback. Derive the ordered flag. Configure default gradient/load modes and optional enabled state. Parse each waypoint object through waypointFromLoose, skipping nulls. Add parsed waypoints and switch to AUTO gradient when ordered.
-Pseudocode:
-Read name from name/label and sanitize it.
-Read zone from island/zone/world/category and normalize it.
-Create group with sanitized name unless empty, otherwise zone.
-Read ordered boolean when present.
-Find waypoint array from waypoints or points.
-Set gradient MANUAL and load mode SEQUENCE.
-If enabled exists as a primitive, copy its boolean.
-If waypoint array exists, create list sized to the array and parse each object waypoint.
-Add non-null waypoints to the group.
-If ordered is true, set gradient AUTO.
-Return group.
-Implementation notes:
-Using WaypointCodec.Options.sanitizeLabel avoids creating a second sanitizer with slightly different rules. The name fallback happens after sanitization so a name made only of unsafe characters becomes the zone fallback.
-AI self-check:
-Verify the function follows the pseudocode, sanitizes before WaypointGroup.create, keeps existing import defaults, skips bad waypoint elements, and does not introduce hidden side effects.
-]]*/
     private static WaypointGroup parseGroup(JsonObject o) {
         String name = WaypointCodec.Options.sanitizeLabel(firstString(o, "", "name", "label"));
         String zone = firstString(o, Zone.UNKNOWN.id(), "island", "zone", "world", "category");
@@ -764,39 +726,6 @@ Verify the function follows the pseudocode, sanitizes before WaypointGroup.creat
         return g;
     }
 
-    /*[[AI-FN-DOC
-Function:
-waypointFromLoose
-Purpose:
-Convert one loosely shaped third-party JSON waypoint object into a Waypointer waypoint.
-Why this exists:
-Imported waypoint formats disagree on coordinate, name, color, and radius keys, so this function keeps the tolerant per-point normalization in one place.
-When to use:
-Use from JSON import paths after confirming an element is a JsonObject that may represent a waypoint. Do not use for native codec waypoint records.
-Inputs:
-o is a non-null JsonObject from an untrusted import payload. It may include coordinate fields/arrays, name/label/title, color data, and optional radius fields.
-Outputs:
-Returns a Waypoint when valid coordinates can be extracted, or null when coordinates are absent or malformed. Imported names are sanitized. Color and radius fall back to defaults when absent.
-Side effects:
-Allocates a Waypoint on success. Does not mutate global state, perform IO, or register callbacks.
-Failure modes:
-Coordinate extraction can return null for malformed coordinates. parseColor falls back internally for malformed colors. Numeric radius conversion may throw if a value advertises itself as a primitive but cannot be read as a double.
-Important invariants:
-Coordinates are required. Untrusted names must be sanitized before entering the model. Legacy Skytils radius handling must not steal Skyblocker/Coleweight red-channel fields.
-Internal logic:
-Extract coordinates first and return null when they are invalid. Read and sanitize the first available name. Parse color. Treat r as radius only for the legacy scalar-radius shape. Construct and return the waypoint.
-Pseudocode:
-Extract x/y/z coordinates.
-If coordinates are null, return null.
-Read name from name/label/title and sanitize it.
-Parse color with existing helper.
-If r is a numeric primitive and not a byte color and no coordinate array was used, read it as radius; otherwise use 0.
-Return a new Waypoint with parsed coordinates, sanitized name, color, no flags, and radius.
-Implementation notes:
-Sanitizing here keeps all third-party import names safe before later HUD/chat/list rendering. The coordinate-first return avoids doing extra work for invalid point objects.
-AI self-check:
-Verify the implementation matches the pseudocode, preserves existing color/radius behavior, handles missing coordinates intentionally, and does not duplicate parsing logic.
-]]*/
     private static Waypoint waypointFromLoose(JsonObject o) {
         int[] pos = extractCoordinates(o);
         if (pos == null) return null;

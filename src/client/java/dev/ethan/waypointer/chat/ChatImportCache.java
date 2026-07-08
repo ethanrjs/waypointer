@@ -98,41 +98,6 @@ public final class ChatImportCache {
      * because the handle ends up inside the click command and eats into the chat
      * input limit if the user ever manually expands the pill.
      */
-    /*[[AI-FN-DOC
-Function:
-nextHandle
-Purpose:
-Generate the next short cache handle that is not currently live in the chat import cache.
-Why this exists:
-Click events need a compact token instead of embedding the full codec payload, and the cache must not overwrite a still-live entry if the counter ever wraps far in the future.
-When to use:
-Use only from synchronized cache mutation paths immediately after pruning expired entries. Do not call it without holding this cache's monitor because it reads entries.
-Inputs:
-No parameters. Reads and increments the instance counter and checks the live entries map.
-Outputs:
-Returns a lowercase alphabetic handle string. The returned handle is absent from entries at the moment it is returned.
-Side effects:
-Increments counter at least once and may increment it more if a generated handle is still live. Does not mutate entries or order directly.
-Failure modes:
-If counter wraps and every possible generated live-window handle is occupied, the loop continues until it finds a free generated value; with capacity 16 this is bounded in practice.
-Important invariants:
-Generated handles must remain compact for normal operation. A returned handle must not collide with a live cache entry. put remains responsible for storing the returned handle.
-Internal logic:
-Increment the counter, encode it as base-26 lowercase letters, and repeat while entries already contains that handle.
-Pseudocode:
-Declare handle.
-Do:
-Increment counter into n.
-Create a string builder.
-Append base-26 letters for n until n reaches zero.
-Set handle to the builder string.
-While entries contains handle, repeat.
-Return handle.
-Implementation notes:
-The do/while collision guard is simpler than documenting a theoretical monotonic invariant, and CAPACITY keeps the live set tiny.
-AI self-check:
-Verify the method still returns short handles normally, does not overwrite live entries after wrap, and remains private to synchronized callers.
-]]*/
     private String nextHandle() {
         String handle;
         do {
