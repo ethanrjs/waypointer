@@ -90,4 +90,30 @@ class OdinDungeonWaypointImportTest {
         assertEquals(1, group.size());
         assertEquals(0x0000FF, group.get(0).color());
     }
+
+    @Test
+    void odin_import_sanitizes_unknown_room_and_waypoint_names() {
+        String json = """
+                {
+                  "\\u00A7cFuture\\n Room": [
+                    {
+                      "blockPos": {
+                        "field_11175": 1,
+                        "field_11174": 2,
+                        "field_11173": 3
+                      },
+                      "title": "\\u00A7aSecret\\nChest"
+                    }
+                  ]
+                }
+                """;
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
+        WaypointGroup group = result.groups().get(0);
+
+        assertEquals(WaypointCodec.Options.sanitizeLabel("\u00A7cFuture\n Room"),
+                group.name());
+        assertEquals(WaypointCodec.Options.sanitizeLabel("\u00A7aSecret\nChest"),
+                group.get(0).name());
+    }
 }

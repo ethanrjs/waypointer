@@ -109,6 +109,21 @@ class DefaultWaypointerApiTest {
     }
 
     @Test
+    void addTempWaypointUsesSourceAsFallbackLabel() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+
+        WaypointGroupSnapshot bucket = api.addTempWaypoint(WaypointSpec.builder()
+                .position(100, 64, -20)
+                .source("Example Mod")
+                .build());
+
+        assertEquals("Example Mod", bucket.waypoints().get(0).name());
+        assertTrue(bucket.waypoints().get(0).temporary());
+    }
+
+    @Test
     void routeOverlayCanBeClosedWithoutTouchingUserRoutes() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerApi api = new DefaultWaypointerApi(manager);

@@ -23,6 +23,7 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
@@ -308,12 +309,12 @@ public final class DungeonTriggerDetector {
     }
 
     private static List<BlockPos> worldTargets(DungeonRoom room, DungeonWaypoint waypoint) {
-        if (!waypoint.highlights().isEmpty()) {
-            return waypoint.highlights().stream()
-                    .map(h -> worldPos(room, h.x(), h.y(), h.z()))
-                    .toList();
+        List<BlockPos> targets = new ArrayList<>(1 + waypoint.highlights().size());
+        targets.add(worldPos(room, waypoint.x(), waypoint.y(), waypoint.z()));
+        for (DungeonHighlight highlight : waypoint.highlights()) {
+            targets.add(worldPos(room, highlight.x(), highlight.y(), highlight.z()));
         }
-        return List.of(worldPos(room, waypoint.x(), waypoint.y(), waypoint.z()));
+        return List.copyOf(targets);
     }
 
     private static BlockPos worldPos(DungeonRoom room, int x, int y, int z) {

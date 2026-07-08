@@ -209,6 +209,13 @@ class WaypointCodecTest {
     }
 
     @Test
+    void legacy_cjk_decoder_rejects_bodyless_nonzero_padding() {
+        String invalid = String.valueOf((char) (CjkBase16384.ALPHABET_BASE + 1));
+
+        assertThrows(IllegalArgumentException.class, () -> CjkBase16384.decode(invalid));
+    }
+
+    @Test
     void decodes_legacy_v2_base85_exports() {
         WaypointCodec.Decoded decoded = WaypointCodec.decodeFull(LEGACY_V2_SAMPLE);
         assertEquals("Codec V2", decoded.label());

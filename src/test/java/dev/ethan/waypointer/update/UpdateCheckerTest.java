@@ -140,6 +140,14 @@ class UpdateCheckerTest {
     }
 
     @Test
+    void compareSemverOrdersPrereleasesBeforeStableReleases() {
+        assertTrue(UpdateChecker.compareSemver("1.8.0-beta", "1.8.0") < 0);
+        assertTrue(UpdateChecker.compareSemver("1.8.0", "1.8.0-beta") > 0);
+        assertTrue(UpdateChecker.compareSemver("1.8.0-beta.2", "1.8.0-beta.10") < 0);
+        assertEquals(0, UpdateChecker.compareSemver("1.8.0+26.1", "1.8.0"));
+    }
+
+    @Test
     void downloadedJarVerifierAcceptsMatchingWaypointerJar(@TempDir Path tempDir) throws Exception {
         Path jar = writeJar(tempDir, """
                 {

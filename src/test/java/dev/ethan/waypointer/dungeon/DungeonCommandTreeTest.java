@@ -51,10 +51,9 @@ class DungeonCommandTreeTest {
                 "wpd route reset",
                 "wpd route found 1",
                 "wpd rotate sw",
-                "wpd toggle waypoints",
-                "wpd toggle highlights",
-                "wpd toggle bounds",
-                "wpd toggle mode",
+                "wpd toggle enabled",
+                "wpd toggle greencheck",
+                "wpd toggle hidecompleted",
                 "wpd toggle debug");
 
         for (String command : commands) {

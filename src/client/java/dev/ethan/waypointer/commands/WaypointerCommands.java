@@ -21,6 +21,7 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import dev.ethan.waypointer.dungeon.DungeonWaypointSkipRules;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.input.WaypointAddFlow;
@@ -1650,7 +1651,7 @@ public final class WaypointerCommands {
                                        WaypointAddFlow addFlow, int x, int y, int z,
                                        String name) {
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
-        target.add(commandWaypoint(target, config, x, y, z, name));
+        target.add(storedCommandWaypoint(target, config, x, y, z, name));
         int index = target.size() - 1;
         addFlow.afterWaypointAdded(target, index);
         manager.fireDataChanged();
@@ -1661,9 +1662,15 @@ public final class WaypointerCommands {
                                           WaypointAddFlow addFlow, int index,
                                           int x, int y, int z, String name) {
         if (target == null || index < 0 || index > target.size()) return -1;
-        target.insert(index, commandWaypoint(target, config, x, y, z, name));
+        target.insert(index, storedCommandWaypoint(target, config, x, y, z, name));
         addFlow.afterWaypointAdded(target, index);
         return index;
+    }
+
+    private static Waypoint storedCommandWaypoint(WaypointGroup target, WaypointerConfig config,
+                                                  int x, int y, int z, String name) {
+        return DungeonRoomWaypointPlacement.toStoredWaypoint(
+                target, commandWaypoint(target, config, x, y, z, name));
     }
 
     private static Waypoint commandWaypoint(WaypointGroup target, WaypointerConfig config,

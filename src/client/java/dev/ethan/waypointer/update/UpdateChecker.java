@@ -16,6 +16,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.metadata.ModOrigin;
 
 import java.io.InputStreamReader;
+import java.math.BigInteger;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -76,7 +77,7 @@ public final class UpdateChecker {
     private static final Duration INITIAL_DELAY = Duration.ofSeconds(5);
 
     private static final Pattern VERSION_TAG_PATTERN =
-            Pattern.compile("[0-9]+(?:\\.[0-9]+)*(?:[-+][A-Za-z0-9.-]+)?");
+            Pattern.compile("[0-9]+(?:\\.[0-9]+)*(?:-[A-Za-z0-9.-]+)?(?:\\+[A-Za-z0-9.-]+)?");
     private static final Pattern SHA256_DIGEST_PATTERN =
             Pattern.compile("[0-9a-f]{64}");
     private static final String WINDOWS_UPDATE_SCRIPT_PREFIX = "waypointer-update-";
@@ -100,6 +101,8 @@ public final class UpdateChecker {
                                  Path downloadedJar,
                                  Path disabledCurrentJar,
                                  String message) {}
+
+        private record ParsedVersion(int[] numeric, String prerelease) {}
 
     public UpdateChecker(String localVersion, boolean enabled) {
         this.localVersion = localVersion;
@@ -553,40 +556,45 @@ public final class UpdateChecker {
         }
     }
 
-    /**
-     * Semver-ish comparison. Handles the common {@code X.Y.Z} case and ignores
-     * pre-release / build metadata by stripping everything after the first
-     * {@code -} or {@code +}. Returns negative when {@code a < b}, zero when
-     * equal, positive when {@code a > b}.
-     *
-     * <p>Unknown or malformed versions sort as "oldest" so a garbage local
-     * version would trigger a notice rather than silently suppress one. That
-     * biases toward "bother the user" which is the correct default for a check
-     * that's explicitly opt-in via config.
-     */
     static int compareSemver(String a, String b) {
-        int[] ap = parseNumeric(a);
-        int[] bp = parseNumeric(b);
+        ParsedVersion av = parseVersion(a);
+        ParsedVersion bv = parseVersion(b);
+        int[] ap = av.numeric();
+        int[] bp = bv.numeric();
         int len = Math.max(ap.length, bp.length);
         for (int i = 0; i < len; i++) {
-            int av = i < ap.length ? ap[i] : 0;
-            int bv = i < bp.length ? bp[i] : 0;
-            if (av != bv) return Integer.compare(av, bv);
+            int ai = i < ap.length ? ap[i] : 0;
+            int bi = i < bp.length ? bp[i] : 0;
+            if (ai != bi) return Integer.compare(ai, bi);
         }
-        return 0;
+        boolean aPrerelease = !av.prerelease().isBlank();
+        boolean bPrerelease = !bv.prerelease().isBlank();
+        if (!aPrerelease && !bPrerelease) return 0;
+        if (!aPrerelease) return 1;
+        if (!bPrerelease) return -1;
+        return comparePrerelease(av.prerelease(), bv.prerelease());
+    }
+
+    private static ParsedVersion parseVersion(String v) {
+        if (v == null) return new ParsedVersion(new int[]{0, 0, 0}, "");
+        String stripped = v.trim();
+        if (stripped.startsWith("v") || stripped.startsWith("V")) {
+            stripped = stripped.substring(1);
+        }
+        int build = stripped.indexOf('+');
+        if (build >= 0) stripped = stripped.substring(0, build);
+        String prerelease = "";
+        int prereleaseStart = stripped.indexOf('-');
+        if (prereleaseStart >= 0) {
+            prerelease = stripped.substring(prereleaseStart + 1);
+            stripped = stripped.substring(0, prereleaseStart);
+        }
+        return new ParsedVersion(parseNumeric(stripped), prerelease == null ? "" : prerelease);
     }
 
     private static int[] parseNumeric(String v) {
         if (v == null) return new int[]{0, 0, 0};
-        // Strip leading 'v', trailing pre-release/build metadata.
         String stripped = v.trim();
-        if (stripped.startsWith("v")) stripped = stripped.substring(1);
-        int cut = stripped.length();
-        for (int i = 0; i < stripped.length(); i++) {
-            char c = stripped.charAt(i);
-            if (c == '-' || c == '+') { cut = i; break; }
-        }
-        stripped = stripped.substring(0, cut);
         String[] parts = stripped.split("\\.");
         int[] out = new int[parts.length];
         for (int i = 0; i < parts.length; i++) {
@@ -594,6 +602,37 @@ public final class UpdateChecker {
             catch (NumberFormatException ignored) { out[i] = 0; }
         }
         return out;
+    }
+
+    private static int comparePrerelease(String a, String b) {
+        String[] ap = a.split("\\.", -1);
+        String[] bp = b.split("\\.", -1);
+        int len = Math.min(ap.length, bp.length);
+        for (int i = 0; i < len; i++) {
+            int cmp = comparePrereleaseIdentifier(ap[i], bp[i]);
+            if (cmp != 0) return cmp;
+        }
+        return Integer.compare(ap.length, bp.length);
+    }
+
+    private static int comparePrereleaseIdentifier(String a, String b) {
+        boolean aNumeric = isNumericIdentifier(a);
+        boolean bNumeric = isNumericIdentifier(b);
+        if (aNumeric && bNumeric) {
+            return new BigInteger(a).compareTo(new BigInteger(b));
+        }
+        if (aNumeric) return -1;
+        if (bNumeric) return 1;
+        return a.compareTo(b);
+    }
+
+    private static boolean isNumericIdentifier(String value) {
+        if (value == null || value.isEmpty()) return false;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c < '0' || c > '9') return false;
+        }
+        return true;
     }
 
     private void postNotice(CheckResult result) {

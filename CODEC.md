@@ -876,6 +876,6 @@ Binary body before DEFLATE, with whitespace added:
 Lots of research and time was spent trying to optimize codecs. This project initially came around because I, Babbur, hated sharing waypoints over Discord when I wanted to do it in-game.
 It is mostly a passion project, and absolutely does not need this level of complexity. I do not recommend implementing this codec into your own project, at least by hand. Far more work than it's worth for most people.
 Part of the philosophy of why I made this mod is because I wanted to overengineer the simple things in a simple mod, and make this mod damn good at the one thing it does best: waypoints.
-There are so many moving parts and complex processes that all mesh together to create a beautifully efficient and stunningly compact encoder/decoder. 
+There are so many moving parts and complex processes that all mesh together to create a beautifully efficient and stunningly compact encoder/decoder.
 I understand that this is no easy task to implement into your own projects for support. I recommend you simply reference the API of this project.
 In the future, I will create an online web API that will allow you to convert any set of waypoints between mods, i.e. SkyHanni -> Waypointer, Skytils -> Soopy, etc., but that's not yet available.

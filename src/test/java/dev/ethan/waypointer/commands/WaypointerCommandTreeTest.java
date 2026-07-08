@@ -4,6 +4,7 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.ParseResults;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.mojang.brigadier.tree.CommandNode;
+import dev.ethan.waypointer.WaypointerClient;
 import dev.ethan.waypointer.chat.ChatImportCache;
 import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.config.WaypointerConfig;
@@ -11,12 +12,21 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.dungeon.Direction;
+import dev.ethan.waypointer.dungeon.DungeonDetectionConfidence;
+import dev.ethan.waypointer.dungeon.DungeonRoom;
+import dev.ethan.waypointer.dungeon.DungeonRoomShape;
+import dev.ethan.waypointer.dungeon.DungeonRoomType;
+import dev.ethan.waypointer.dungeon.DungeonStateTracker;
+import dev.ethan.waypointer.dungeon.config.DungeonConfig;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.input.WaypointAddFlow;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
@@ -191,6 +201,49 @@ class WaypointerCommandTreeTest {
         assertEquals(64, waypoint.y());
         assertEquals(-20, waypoint.z());
         assertEquals("", waypoint.name());
+    }
+
+    @Test
+    void addPersistentWaypointAtStoresDungeonRoomLocalCoordinates() throws Exception {
+        DungeonRoomData.clearAllCustom();
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerConfig config = new WaypointerConfig();
+        DungeonRoom room = new DungeonRoom(
+                DungeonRoomType.PUZZLE,
+                DungeonRoomShape.ONE_BY_ONE,
+                Direction.SE,
+                -74,
+                -138,
+                List.of(DungeonRoom.packSegment(-104, -168)),
+                "command-room",
+                "Command Room",
+                DungeonDetectionConfidence.CORE_CONFIRMED);
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
+        Field trackerField = WaypointerClient.class.getDeclaredField("dungeonTracker");
+        trackerField.setAccessible(true);
+        Object previousTracker = trackerField.get(null);
+        Method setCurrentRoom = DungeonStateTracker.class.getDeclaredMethod(
+                "setCurrentRoom", DungeonRoom.class);
+        setCurrentRoom.setAccessible(true);
+
+        try {
+            DungeonRoomData.defineRoom("command-room", "Command Room", room);
+            trackerField.set(null, tracker);
+            setCurrentRoom.invoke(tracker, room);
+            manager.onZoneChanged(new Zone("command-room", "Command Room"));
+
+            int index = WaypointerCommands.addPersistentWaypointAt(manager, config,
+                    new WaypointAddFlow(), -95, 68, -121, "beam");
+
+            Waypoint waypoint = manager.groupsForZone("command-room").get(0).get(index);
+            assertEquals(21, waypoint.x());
+            assertEquals(68, waypoint.y());
+            assertEquals(-17, waypoint.z());
+            assertEquals("beam", waypoint.name());
+        } finally {
+            trackerField.set(null, previousTracker);
+            DungeonRoomData.clearAllCustom();
+        }
     }
 
     @Test

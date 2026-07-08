@@ -509,6 +509,8 @@ public final class WaypointImporter {
         String fallbackName = roomName == null || roomName.isBlank()
                 ? "Odin Dungeon Waypoints"
                 : roomName.trim();
+        fallbackName = WaypointCodec.Options.sanitizeLabel(fallbackName);
+        if (fallbackName.isEmpty()) fallbackName = "Odin Dungeon Waypoints";
         String groupName = definition == null ? fallbackName : definition.displayName();
         WaypointGroup group = WaypointGroup.create(groupName, zoneId);
         group.setLoadMode(WaypointGroup.LoadMode.STATIC);
@@ -581,7 +583,7 @@ public final class WaypointImporter {
         if (!json.has("title") || !json.get("title").isJsonPrimitive()) return "";
         String name = json.get("title").getAsString().trim();
         if (name.isEmpty() || "Enter text".equalsIgnoreCase(name)) return "";
-        return name;
+        return WaypointCodec.Options.sanitizeLabel(name);
     }
 
     private static boolean looksLikeGroupArray(JsonArray arr) {

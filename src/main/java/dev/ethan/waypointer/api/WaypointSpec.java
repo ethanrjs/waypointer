@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.api;
 
+import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.core.Waypoint;
 
 /**
@@ -69,7 +70,9 @@ public record WaypointSpec(
     }
 
     Waypoint toTempWaypoint() {
-        return toWaypoint().withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L);
+        String label = name.isBlank() ? WaypointCodec.Options.sanitizeLabel(source) : name;
+        return new Waypoint(x, y, z, label, color, flags, radius)
+                .withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L);
     }
 
     public static final class Builder {
