@@ -202,7 +202,11 @@ public final class ActiveGroupManager {
 
         String zoneId = currentZone.id();
         for (WaypointGroup g : byId.values()) {
-            if (!g.temp() && g.enabled() && zoneId.equals(g.zoneId())) return g;
+            // Never hand out runtime mirrors as an add target: waypoints added
+            // to a projected dungeon-room mirror vanish on its next rebuild.
+            if (!g.temp() && !g.runtimeOnly() && g.enabled() && zoneId.equals(g.zoneId())) {
+                return g;
+            }
         }
         return null;
     }

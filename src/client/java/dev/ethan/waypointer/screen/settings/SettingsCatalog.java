@@ -497,7 +497,7 @@ public final class SettingsCatalog {
                                 "Include each waypoint's hide and through-wall flags in exported share codes.",
                                 (c, d) -> c.exportIncludeWaypointFlags(),
                                 (c, d, v) -> c.setExportIncludeWaypointFlags((Boolean) v)),
-                        Setting.bool("exportIncludeGroupMeta", MAIN, "Include group metadata",
+                        Setting.bool("exportIncludeGroupMeta", MAIN, "Include route metadata",
                                 "Include route name, mode, and route-level metadata in exported share codes.",
                                 (c, d) -> c.exportIncludeGroupMeta(),
                                 (c, d, v) -> c.setExportIncludeGroupMeta((Boolean) v))));

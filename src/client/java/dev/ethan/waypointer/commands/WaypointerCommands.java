@@ -60,7 +60,7 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
  * Registers {@code /waypointer} and short aliases as client-side commands.
  *
  * We lean on Brigadier's help-text for each subcommand's usage; the feedback messages
- * intentionally use the same vocabulary as the in-game UI ("group", "waypoint", "zone")
+ * intentionally use the same vocabulary as the in-game UI ("route", "waypoint", "zone")
  * so the user doesn't have to translate concepts between CLI and GUI.
  *
  * Every state-mutating command ends by firing {@link ActiveGroupManager#fireDataChanged()}
@@ -254,7 +254,11 @@ public final class WaypointerCommands {
                                         StringArgumentType.getString(ctx, "handle")))))
                 .then(waypointCommand())
                 .then(areaCommand())
-                .then(groupCommand());
+                // "route" is the primary spelling (matches the GUI); "group"
+                // stays registered so existing muscle memory and macros keep
+                // working.
+                .then(groupCommand("route"))
+                .then(groupCommand("group"));
         d.register(cmd);
     }
 
@@ -373,8 +377,8 @@ public final class WaypointerCommands {
                                         StringArgumentType.getString(ctx, "zone")))));
     }
 
-    private LiteralArgumentBuilder<FabricClientCommandSource> groupCommand() {
-        return literal("group")
+    private LiteralArgumentBuilder<FabricClientCommandSource> groupCommand(String literalName) {
+        return literal(literalName)
                 .then(literal("create")
                         .then(argument("name", StringArgumentType.greedyString())
                                 .suggests(suggestGroupNames())
@@ -747,7 +751,7 @@ public final class WaypointerCommands {
                     List.of(
                             new HelpRow("", "Open the Waypointer editor.", "", "gui"),
                             new HelpRow(" gui", "Open the Waypointer editor.", "gui"),
-                            new HelpRow(" list", "List active groups and their waypoints.", "list"),
+                            new HelpRow(" list", "List active routes and their waypoints.", "list"),
                             new HelpRow(" help [all|section|command]", "Show all help or jump to one topic.",
                                     "help", "help subway"))),
             new HelpSection("route", "Route editing",
@@ -776,7 +780,7 @@ public final class WaypointerCommands {
                                     "editmode"),
                             new HelpRow(" edit mode", "Toggle in-world edit mode.",
                                     "edit mode"),
-                            new HelpRow(" clear [confirm]", "Delete all groups in the current area after confirmation.",
+                            new HelpRow(" clear [confirm]", "Delete all routes in the current area after confirmation.",
                                     "clear", "clear confirm"))),
             new HelpSection("subway", "Subwaypoints & waypoint flags",
                     List.of(
@@ -808,38 +812,40 @@ public final class WaypointerCommands {
                                     "waypoint radius 3 1.5"),
                             new HelpRow(" waypoint sub <index>", "Toggle an indexed waypoint as a subwaypoint.",
                                     "waypoint sub 4"))),
-            new HelpSection("groups", "Groups & areas",
+            new HelpSection("routes", "Routes & areas",
                     List.of(
-                            new HelpRow(" group create <name>", "Create a new group in the current area.",
-                                    "group create Foraging Route"),
-                            new HelpRow(" group list", "List every group across all areas.",
-                                    "group list"),
-                            new HelpRow(" group rename <index> <name>", "Rename a group by group-list index.",
-                                    "group rename 1 Park Route"),
-                            new HelpRow(" group zone <index> <zone|current>", "Attach a group to a zone or the current area.",
-                                    "group zone 1 current", "group zone 1 the_park"),
-                            new HelpRow(" group area <index> <zone|current>", "Alias for attaching a group to an area.",
-                                    "group area 1 current"),
-                            new HelpRow(" area <group> <zone|current>", "Short form for attaching a group to an area.",
+                            new HelpRow(" route create <name>", "Create a new route in the current area.",
+                                    "route create Foraging Route"),
+                            new HelpRow(" route list", "List every route across all areas.",
+                                    "route list"),
+                            new HelpRow(" route rename <index> <name>", "Rename a route by route-list index.",
+                                    "route rename 1 Park Route"),
+                            new HelpRow(" route zone <index> <zone|current>", "Attach a route to a zone or the current area.",
+                                    "route zone 1 current", "route zone 1 the_park"),
+                            new HelpRow(" route area <index> <zone|current>", "Alias for attaching a route to an area.",
+                                    "route area 1 current"),
+                            new HelpRow(" area <route> <zone|current>", "Short form for attaching a route to an area.",
                                     "area 1 current"),
-                            new HelpRow(" group mode <index> <static|sequence>", "Set one group's visibility mode.",
-                                    "group mode 1 static"),
-                            new HelpRow(" group radius <index> <blocks>", "Set one group's reach radius.",
-                                    "group radius 1 4.5"),
-                            new HelpRow(" group skipahead <index> [on|off|toggle]", "Control skip-ahead for one group.",
-                                    "group skipahead 1 off"),
-                            new HelpRow(" group enable <index>", "Enable one group.",
-                                    "group enable 1"),
-                            new HelpRow(" group disable <index>", "Disable one group.",
-                                    "group disable 1"),
-                            new HelpRow(" group colormode <index> <one|gradient|manual>", "Set one group's color mode.",
-                                    "group colormode 1 gradient"),
-                            new HelpRow(" group color <index> <hex>", "Set one group's single route color.",
-                                    "group color 1 4FE05A"),
-                            new HelpRow(" group gradient <index> <start> <end>", "Set one group's gradient endpoints.",
-                                    "group gradient 1 00BFFF FF3040"),
-                            new HelpRow(" group delete <index> [confirm]", "Delete a group by group-list index after confirmation.",
-                                    "group delete 1", "group delete 1 confirm"))),
+                            new HelpRow(" route mode <index> <static|sequence>", "Set one route's visibility mode.",
+                                    "route mode 1 static"),
+                            new HelpRow(" route radius <index> <blocks>", "Set one route's reach radius.",
+                                    "route radius 1 4.5"),
+                            new HelpRow(" route skipahead <index> [on|off|toggle]", "Control skip-ahead for one route.",
+                                    "route skipahead 1 off"),
+                            new HelpRow(" route enable <index>", "Enable one route.",
+                                    "route enable 1"),
+                            new HelpRow(" route disable <index>", "Disable one route.",
+                                    "route disable 1"),
+                            new HelpRow(" route colormode <index> <one|gradient|manual>", "Set one route's color mode.",
+                                    "route colormode 1 gradient"),
+                            new HelpRow(" route color <index> <hex>", "Set one route's single color.",
+                                    "route color 1 4FE05A"),
+                            new HelpRow(" route gradient <index> <start> <end>", "Set one route's gradient endpoints.",
+                                    "route gradient 1 00BFFF FF3040"),
+                            new HelpRow(" route delete <index> [confirm]", "Delete a route by route-list index after confirmation.",
+                                    "route delete 1", "route delete 1 confirm"),
+                            new HelpRow(" group ...", "Alias: every route subcommand also works as /wp group.",
+                                    "group list"))),
             new HelpSection("sharing", "Sharing (import/export)",
                     List.of(
                             new HelpRow(" export [names|nonames]", "Copy current-area routes to the clipboard as a codec.",
@@ -871,7 +877,7 @@ public final class WaypointerCommands {
     /**
      * Render one page of the paginated help.
      *
-     * @param target null → page 1; digits → that page (1-based); otherwise a
+     * @param target null â†’ page 1; digits â†’ that page (1-based); otherwise a
      *               section id / title substring.
      */
     private int runHelp(FabricClientCommandSource src, String root, String target) {
@@ -1093,7 +1099,7 @@ public final class WaypointerCommands {
     private int runList(FabricClientCommandSource src) {
         List<WaypointGroup> active = manager.activeGroups();
         if (active.isEmpty()) {
-            info(src, "No active waypoint groups in this zone" + zoneSuffix());
+            info(src, "No active routes in this zone" + zoneSuffix());
             return 0;
         }
         for (WaypointGroup g : active) {
@@ -1101,7 +1107,7 @@ public final class WaypointerCommands {
             if (g.currentIndex() >= 0 && g.currentIndex() < g.size()) {
                 currentIndexText += " (#" + g.displayIndexLabel(g.currentIndex()) + ")";
             }
-            info(src, Component.literal("Group: ")
+            info(src, Component.literal("Route: ")
                     .append(Component.literal(g.name()).withStyle(ChatFormatting.AQUA))
                     .append(Component.literal(" (" + g.size()
                             + " points, current index " + currentIndexText + ")")
@@ -1125,7 +1131,7 @@ public final class WaypointerCommands {
     private int runSkipTo(FabricClientCommandSource src, String target) {
         List<WaypointGroup> activeGroups = manager.activeGroups();
         if (activeGroups.isEmpty()) {
-            error(src, "No active group to skip in");
+            error(src, "No active route to skip in");
             return 0;
         }
         SkipToOutcome outcome = skipActiveGroupsToTarget(activeGroups, target);
@@ -1412,7 +1418,7 @@ public final class WaypointerCommands {
         if (group == null) return 0;
         group.setName(name == null ? "" : name.trim());
         manager.fireDataChanged();
-        success(src, "Renamed group [" + index + "] to \"" + group.name() + "\"");
+        success(src, "Renamed route [" + index + "] to \"" + group.name() + "\"");
         return 1;
     }
 
@@ -1423,7 +1429,7 @@ public final class WaypointerCommands {
         if (zone == null) return 0;
         group.setZoneId(zone.id());
         manager.fireDataChanged();
-        success(src, "Attached group [" + index + "] \"" + group.name()
+        success(src, "Attached route [" + index + "] \"" + group.name()
                 + "\" to " + zone.displayName());
         return 1;
     }
@@ -1438,7 +1444,7 @@ public final class WaypointerCommands {
         }
         group.setLoadMode(mode);
         manager.fireDataChanged();
-        success(src, "Set group [" + index + "] mode to " + mode.name().toLowerCase(Locale.ROOT));
+        success(src, "Set route [" + index + "] mode to " + mode.name().toLowerCase(Locale.ROOT));
         return 1;
     }
 
@@ -1447,7 +1453,7 @@ public final class WaypointerCommands {
         if (group == null) return 0;
         group.setDefaultRadius(radius);
         manager.fireDataChanged();
-        success(src, "Set group [" + index + "] radius to "
+        success(src, "Set route [" + index + "] radius to "
                 + String.format(Locale.ROOT, "%.1f", group.defaultRadius()));
         return 1;
     }
@@ -1462,7 +1468,7 @@ public final class WaypointerCommands {
         }
         group.setSkipAheadEnabled(state);
         manager.fireDataChanged();
-        success(src, "Set group [" + index + "] skip ahead "
+        success(src, "Set route [" + index + "] skip ahead "
                 + (group.skipAheadEnabled() ? "on" : "off"));
         return 1;
     }
@@ -1472,7 +1478,7 @@ public final class WaypointerCommands {
         if (group == null) return 0;
         group.setEnabled(enabled);
         manager.fireDataChanged();
-        success(src, (enabled ? "Enabled" : "Disabled") + " group [" + index + "] \"" + group.name() + "\"");
+        success(src, (enabled ? "Enabled" : "Disabled") + " route [" + index + "] \"" + group.name() + "\"");
         return 1;
     }
 
@@ -1486,7 +1492,7 @@ public final class WaypointerCommands {
         }
         group.setGradientMode(mode);
         manager.fireDataChanged();
-        success(src, "Set group [" + index + "] color mode to " + rawMode.toLowerCase(Locale.ROOT));
+        success(src, "Set route [" + index + "] color mode to " + rawMode.toLowerCase(Locale.ROOT));
         return 1;
     }
 
@@ -1501,7 +1507,7 @@ public final class WaypointerCommands {
         group.setStaticColor(color);
         group.setGradientMode(WaypointGroup.GradientMode.STATIC);
         manager.fireDataChanged();
-        success(src, "Set group [" + index + "] color to " + formatRgb(color));
+        success(src, "Set route [" + index + "] color to " + formatRgb(color));
         return 1;
     }
 
@@ -1519,21 +1525,21 @@ public final class WaypointerCommands {
         group.setGradientEndColor(end);
         group.setGradientMode(WaypointGroup.GradientMode.AUTO);
         manager.fireDataChanged();
-        success(src, "Set group [" + index + "] gradient to "
+        success(src, "Set route [" + index + "] gradient to "
                 + formatRgb(start) + " -> " + formatRgb(end));
         return 1;
     }
 
     private WaypointGroup activeGroupOrError(FabricClientCommandSource src) {
         WaypointGroup group = manager.firstActiveGroup();
-        if (group == null) error(src, "No active group in the current area.");
+        if (group == null) error(src, "No active route in the current area.");
         return group;
     }
 
     private WaypointGroup groupAtIndexOrError(FabricClientCommandSource src, int index) {
         List<WaypointGroup> all = manager.allGroupsList();
         if (index < 0 || index >= all.size()) {
-            error(src, "0-based group index " + index
+            error(src, "0-based route index " + index
                     + " out of range (0.." + (all.size() - 1) + ")");
             return null;
         }
@@ -1545,7 +1551,7 @@ public final class WaypointerCommands {
         if (group == null) return -1;
         int index = requestedIndex == null ? group.currentIndex() : requestedIndex;
         if (requestedIndex == null && (index < 0 || index >= group.size())) {
-            error(src, "No current waypoint in the active group.");
+            error(src, "No current waypoint in the active route.");
             return -1;
         }
         if (!validateWaypointIndex(src, group, index)) {
@@ -1564,7 +1570,7 @@ public final class WaypointerCommands {
     private Zone resolveCommandZone(FabricClientCommandSource src, String rawZone) {
         String cleaned = stripQuotes(rawZone == null ? "" : rawZone).trim();
         if (cleaned.isEmpty()) {
-            error(src, "Usage: /wp group zone <group> <zone|current>");
+            error(src, "Usage: /wp route zone <route> <zone|current>");
             return null;
         }
         if ("current".equalsIgnoreCase(cleaned)) {
@@ -1813,7 +1819,7 @@ public final class WaypointerCommands {
 
     private int runRemove(FabricClientCommandSource src, int index) {
         WaypointGroup target = manager.firstActiveGroup();
-        if (target == null) { error(src, "No active group to remove from"); return 0; }
+        if (target == null) { error(src, "No active route to remove from"); return 0; }
         if (index < 0 || index >= target.size()) {
             error(src, "0-based waypoint index " + index
                     + " out of range (0.." + (target.size() - 1) + ")");
@@ -1840,12 +1846,12 @@ public final class WaypointerCommands {
         List<WaypointGroup> here = manager.groupsForZone(zone.id());
         if (here.isEmpty()) { info(src, "Nothing to clear in " + zone.displayName()); return 0; }
         if (!confirmed) {
-            warn(src, "This will delete " + here.size() + " group(s) in "
+            warn(src, "This will delete " + here.size() + " route(s) in "
                     + zone.displayName() + ". Run /waypointer clear confirm to proceed.");
             return 0;
         }
         int cleared = clearCurrentZoneGroups(manager, true);
-        success(src, "Cleared " + here.size() + " group(s) in " + zone.displayName());
+        success(src, "Cleared " + here.size() + " route(s) in " + zone.displayName());
         return cleared;
     }
 
@@ -1867,7 +1873,7 @@ public final class WaypointerCommands {
         String payload = WaypointCodec.encode(toExport, opts);
         boolean copied = setClipboard(payload);
 
-        MutableComponent line = Component.literal("Exported " + toExport.size() + " group(s) (" + payload.length() + " chars)")
+        MutableComponent line = Component.literal("Exported " + toExport.size() + " route(s) (" + payload.length() + " chars)")
                 .withStyle(ChatFormatting.GREEN);
         if (!opts.includeNames) line.append(Component.literal(" without names").withStyle(ChatFormatting.GRAY));
         if (copied) line.append(Component.literal(" (copied to clipboard)").withStyle(ChatFormatting.GRAY));
@@ -2010,10 +2016,10 @@ public final class WaypointerCommands {
             RouteColorPolicy.applyImportedRouteDefaults(result.groups(), config);
 
             for (WaypointGroup g : result.groups()) manager.add(g);
-            success(src, "Imported " + result.groups().size() + " group(s) from " + origin
+            success(src, "Imported " + result.groups().size() + " route(s) from " + origin
                     + " (format: " + result.source() + ")");
             if (retargeted > 0 && targetZone != null) {
-                info(src, retargeted + (retargeted == 1 ? " group" : " groups")
+                info(src, retargeted + (retargeted == 1 ? " route" : " routes")
                         + " without zone info assigned to " + targetZone.displayName());
             }
             // Surface the sender's label as a separate gray line so it doesn't
@@ -2098,14 +2104,14 @@ public final class WaypointerCommands {
         Zone zone = manager.currentZone() == null ? Zone.UNKNOWN : manager.currentZone();
         WaypointGroup g = WaypointGroup.create(name, zone.id(), config.skipAheadMechanicEnabled());
         manager.add(g);
-        success(src, "Created group \"" + name + "\" in " + zone.displayName());
+        success(src, "Created route \"" + name + "\" in " + zone.displayName());
         return 1;
     }
 
     private int runListGroups(FabricClientCommandSource src) {
         List<WaypointGroup> all = manager.allGroupsList();
-        if (all.isEmpty()) { info(src, "No groups defined."); return 0; }
-        info(src, all.size() + " group(s) total:");
+        if (all.isEmpty()) { info(src, "No routes defined."); return 0; }
+        info(src, all.size() + " route(s) total:");
         for (int i = 0; i < all.size(); i++) {
             WaypointGroup g = all.get(i);
             info(src, "  [" + i + "] " + g.name() + " -- zone=" + g.zoneId()
@@ -2117,20 +2123,20 @@ public final class WaypointerCommands {
     private int runDeleteGroup(FabricClientCommandSource src, int index, boolean confirmed) {
         List<WaypointGroup> all = manager.allGroupsList();
         if (index < 0 || index >= all.size()) {
-            error(src, "0-based group index " + index
+            error(src, "0-based route index " + index
                     + " out of range (0.." + (all.size() - 1) + ")");
             return 0;
         }
         WaypointGroup g = all.get(index);
         if (!confirmed) {
-            warn(src, "This will delete group [" + index + "] \"" + g.name()
+            warn(src, "This will delete route [" + index + "] \"" + g.name()
                     + "\" with " + g.size()
-                    + " waypoint(s). Run /waypointer group delete " + index
+                    + " waypoint(s). Run /waypointer route delete " + index
                     + " confirm to proceed.");
             return 0;
         }
         manager.remove(g.id());
-        success(src, "Deleted group \"" + g.name() + "\"");
+        success(src, "Deleted route \"" + g.name() + "\"");
         return 1;
     }
 

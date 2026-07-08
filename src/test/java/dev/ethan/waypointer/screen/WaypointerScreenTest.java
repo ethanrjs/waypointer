@@ -34,6 +34,24 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void nextRouteNamePicksTheSmallestFreeNumber() {
+        assertEquals("Route 1", WaypointerScreen.nextRouteName(List.of()));
+
+        WaypointGroup first = WaypointGroup.create("Route 1", "hub");
+        WaypointGroup third = WaypointGroup.create("Route 3", "hub");
+        assertEquals("Route 2", WaypointerScreen.nextRouteName(List.of(first, third)));
+
+        WaypointGroup custom = WaypointGroup.create("Foraging", "hub");
+        assertEquals("Route 1", WaypointerScreen.nextRouteName(List.of(custom)));
+    }
+
+    @Test
+    void mainContentRightCapsWideScreensButNotNarrowOnes() {
+        assertEquals(500, WaypointerScreen.mainContentRight(180, 500));
+        assertEquals(180 + 660, WaypointerScreen.mainContentRight(180, 2000));
+    }
+
+    @Test
     void sidebarScrollClampsToVisibleZoneContent() {
         int rowHeight = GuiTokens.ROW_H;
         int viewportHeight = rowHeight * 3;

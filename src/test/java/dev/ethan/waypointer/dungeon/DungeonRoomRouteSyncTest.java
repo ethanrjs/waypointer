@@ -309,6 +309,35 @@ class DungeonRoomRouteSyncTest {
     }
 
     @Test
+    void writeThroughHelpersDescribeTheRoomState() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonRoom room = room("helper-room", "Helper Room");
+        DungeonRoomDefinition definition =
+                DungeonRoomData.defineRoom("helper-room", "Helper Room", room);
+        DungeonRoomData.addWaypoint(definition.id(), DungeonWaypoint.plain(
+                "secret", DungeonSecretCategory.CHEST, 4, 70, 7, ""));
+
+        // Secrets installed, no user route: in-world edits must be refused
+        // until the user converts the secrets into their own route.
+        assertNull(DungeonRoomRouteSync.storedRouteForRoom(manager, "helper-room"));
+        assertTrue(DungeonRoomRouteSync.secretsRequireConversion(manager, "helper-room"));
+
+        WaypointGroup stored = WaypointGroup.create("User Route", "helper-room");
+        stored.add(Waypoint.at(1, 70, 1));
+        manager.add(stored);
+
+        assertEquals(stored, DungeonRoomRouteSync.storedRouteForRoom(manager, "helper-room"));
+        assertFalse(DungeonRoomRouteSync.secretsRequireConversion(manager, "helper-room"));
+
+        WaypointGroup mirror = new WaypointGroup(
+                DungeonRoomRouteSync.generatedGroupId("helper-room"), "User Route", "helper-room");
+        mirror.setRuntimeOnly(true);
+        assertEquals(stored, DungeonRoomRouteSync.storedSourceForMirror(manager, mirror));
+        assertNull(DungeonRoomRouteSync.storedSourceForMirror(manager, stored),
+                "only generated mirrors have a stored source");
+    }
+
+    @Test
     void storedDungeonRoomGroupsNeverSurfaceAsActiveGroups() {
         ActiveGroupManager manager = new ActiveGroupManager();
         DungeonRoom room = room("surface-room", "Surface Room");

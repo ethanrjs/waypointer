@@ -4,6 +4,7 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import dev.ethan.waypointer.input.WaypointAddFlow;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import net.minecraft.client.Minecraft;
@@ -172,8 +173,9 @@ public final class AddNamedWaypointScreen extends Screen {
                 ? manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled())
                 : targetGroup;
 
-        target.add(new Waypoint(x, y, z, name,
-                config.defaultWaypointColor(), 0, 0.0));
+        // Stored dungeon-room routes keep room-local coordinates.
+        target.add(DungeonRoomWaypointPlacement.toStoredWaypoint(target,
+                new Waypoint(x, y, z, name, config.defaultWaypointColor(), 0, 0.0)));
         new WaypointAddFlow().afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
 

@@ -44,7 +44,7 @@ public final class ImportFeedback {
         WaypointGroup first = imported.get(0);
         String body = imported.size() == 1
                 ? "\"" + first.name() + "\" -> " + first.waypoints().size() + " waypoint(s)"
-                : imported.size() + " groups added";
+                : imported.size() + " routes added";
 
         SystemToast.addOrUpdate(
                 mc.getToastManager(),

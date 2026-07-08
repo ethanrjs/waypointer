@@ -192,7 +192,7 @@ public final class GroupEditScreen extends Screen {
         nameBox.setValue(group.name());
         nameBox.setResponder(group::setName);
         nameBox.setTooltip(Tooltip.create(Component.literal(
-                "Group display name.\n"
+                "Route display name.\n"
               + "Used in lists and exports.")));
         addRenderableWidget(nameBox);
         y += BTN_H + GAP;
@@ -241,7 +241,7 @@ public final class GroupEditScreen extends Screen {
         skipAheadBtn = Button.builder(skipAheadLabel(), this::toggleSkipAhead)
                 .bounds(sidebarInner, y, fieldW, BTN_H)
                 .tooltip(Tooltip.create(Component.literal(
-                        "Toggle skipping waypoints for this group.")))
+                        "Toggle skipping waypoints for this route.")))
                 .build();
         addRenderableWidget(skipAheadBtn);
         y += BTN_H + GAP;
@@ -843,7 +843,7 @@ public final class GroupEditScreen extends Screen {
         // region from the scene without compounding darkness on the controls.
         g.fill(x1, y1, x2, y2, SIDEBAR_BG);
         g.fill(x2, y1, x2 + 1, y2, BORDER);
-        g.text(font, "Group", x1 + GAP, y1 + 10, TEXT, false);
+        g.text(font, "Route", x1 + GAP, y1 + 10, TEXT, false);
 
         // Inline "Radius 3.0" readout spanning the space between the two bump buttons.
         // The label is co-located with the value so there's no detached header for the
