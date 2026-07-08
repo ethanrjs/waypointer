@@ -176,10 +176,40 @@ public final class DungeonRoomRouteSync {
      * caller also needs its enabled state.
      */
     private WaypointGroup firstUserRouteGroup(String roomId) {
+        return storedRouteForRoom(manager, roomId);
+    }
+
+    /** The stored (persisted, room-local) route for a room, or null. */
+    public static WaypointGroup storedRouteForRoom(ActiveGroupManager manager, String roomId) {
+        if (manager == null || roomId == null) return null;
         for (WaypointGroup group : manager.groupsForZone(roomId)) {
             if (!group.runtimeOnly() && !group.isEmpty()) return group;
         }
         return null;
+    }
+
+    /**
+     * The stored group a runtime mirror was projected from, or null when the
+     * mirror reflects downloaded secrets (definition-backed) rather than a
+     * user route. Mirror and source share waypoint order, so an index into one
+     * addresses the same waypoint in the other.
+     */
+    public static WaypointGroup storedSourceForMirror(ActiveGroupManager manager,
+                                                      WaypointGroup mirror) {
+        if (!isGeneratedGroup(mirror)) return null;
+        return storedRouteForRoom(manager, mirror.zoneId());
+    }
+
+    /**
+     * True when in-world edits in this room should be refused because the room
+     * shows downloaded secrets that the user has not converted into their own
+     * route yet — editing the throwaway mirror would silently discard changes.
+     */
+    public static boolean secretsRequireConversion(ActiveGroupManager manager, String zoneId) {
+        if (manager == null || zoneId == null) return false;
+        DungeonRoomDefinition definition = DungeonRoomData.customDefinition(zoneId);
+        if (definition == null || definition.waypoints().isEmpty()) return false;
+        return storedRouteForRoom(manager, zoneId) == null;
     }
 
     private void removeGeneratedGroups() {

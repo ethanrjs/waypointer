@@ -7,6 +7,8 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.dungeon.DungeonRoomRouteSync;
+import dev.ethan.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.render.RenderHelpers;
 import dev.ethan.waypointer.render.WaypointRenderer;
@@ -103,6 +105,10 @@ public final class WaypointRepositionMode {
     private static final Component HELP_EDIT_ADDED = Component.literal(
             "Waypoint added. Edit mode is still enabled.")
             .withStyle(ChatFormatting.AQUA);
+    private static final Component HELP_CONVERT_SECRETS_FIRST = Component.literal(
+            "This room shows downloaded secrets. Double-click its secret route in the "
+                    + "Waypointer GUI to convert it into an editable route first.")
+            .withStyle(ChatFormatting.YELLOW);
 
     private static Session active;
     private static ActiveGroupManager editManager;
@@ -215,6 +221,14 @@ public final class WaypointRepositionMode {
         if (waypointIndex < 0 || waypointIndex >= group.size()) return;
 
         Minecraft mc = Minecraft.getInstance();
+        // A definition-backed mirror (downloaded secrets, no user route) has no
+        // stored group to write the move into; the edit would silently vanish
+        // on the mirror's next rebuild.
+        if (DungeonRoomRouteSync.isGeneratedGroup(group)
+                && DungeonRoomRouteSync.storedSourceForMirror(manager, group) == null) {
+            showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
+            return;
+        }
         Waypoint waypoint = group.get(waypointIndex);
         boolean preciseSmallPlacement = waypoint.isSubwaypoint()
                 && waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT);
@@ -244,6 +258,7 @@ public final class WaypointRepositionMode {
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.level == null) return;
+        if (addBlockedByInstalledSecrets(mc, manager)) return;
 
         WaypointGroup group = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         active = new Session(manager, config, group, -1, mode, preciseSmallPlacement, true);
@@ -313,11 +328,12 @@ public final class WaypointRepositionMode {
         }
 
         if (isDuplicateEditModeAdd(mc.level)) return InteractionResult.FAIL;
+        if (addBlockedByInstalledSecrets(mc, editManager)) return InteractionResult.FAIL;
         rememberEditModeAdd(mc.level);
 
         WaypointGroup group = editManager.getOrCreateActiveGroup();
         int flags = defaultDungeonEditFlags(group, mc.level, pos);
-        group.add(new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
+        addStored(group, new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
                 "", editConfig.defaultWaypointColor(), flags, 0.0));
         int index = group.size() - 1;
         new WaypointAddFlow().afterWaypointAdded(group, index);
@@ -610,8 +626,23 @@ public final class WaypointRepositionMode {
             return;
         }
 
-        session.group.moveWaypointTo(session.waypointIndex,
-                pos.getX(), pos.getY(), pos.getZ());
+        WaypointGroup target = moveWriteTarget(session);
+        if (target == null) {
+            active = null;
+            showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
+            return;
+        }
+        if (isDungeonRoomGroup(target)) {
+            // Stored room routes are room-local; convert the picked world block
+            // into the room frame before writing.
+            int[] stored = DungeonRoomWaypointPlacement.toStoredPrecisePosition(target,
+                    pos.getX() * Waypoint.PRECISE_SCALE,
+                    pos.getY() * Waypoint.PRECISE_SCALE,
+                    pos.getZ() * Waypoint.PRECISE_SCALE);
+            target.moveWaypointToPrecise(session.waypointIndex, stored[0], stored[1], stored[2]);
+        } else {
+            target.moveWaypointTo(session.waypointIndex, pos.getX(), pos.getY(), pos.getZ());
+        }
         session.manager.fireDataChanged();
         active = null;
         finishMoveSession(mc, session);
@@ -623,11 +654,33 @@ public final class WaypointRepositionMode {
             return;
         }
 
-        session.group.moveWaypointToPrecise(session.waypointIndex,
+        WaypointGroup writeTarget = moveWriteTarget(session);
+        if (writeTarget == null) {
+            active = null;
+            showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
+            return;
+        }
+        int[] stored = DungeonRoomWaypointPlacement.toStoredPrecisePosition(writeTarget,
                 target.preciseX(), target.preciseY(), target.preciseZ());
+        writeTarget.moveWaypointToPrecise(session.waypointIndex, stored[0], stored[1], stored[2]);
         session.manager.fireDataChanged();
         active = null;
         finishMoveSession(mc, session);
+    }
+
+    /**
+     * The group a committed move must mutate. Edit-mode picks select the
+     * runtime mirror (that is what renders), but the mirror is rebuilt on
+     * every data change — the durable edit goes to the stored room-local
+     * source at the same index (mirror and source share waypoint order).
+     * Returns null when the mirror has no stored source (downloaded secrets).
+     */
+    private static WaypointGroup moveWriteTarget(Session session) {
+        if (!DungeonRoomRouteSync.isGeneratedGroup(session.group)) return session.group;
+        WaypointGroup source = DungeonRoomRouteSync.storedSourceForMirror(
+                session.manager, session.group);
+        if (source == null || session.waypointIndex >= source.size()) return null;
+        return source;
     }
 
     private static void finishMoveSession(Minecraft mc, Session session) {
@@ -642,7 +695,7 @@ public final class WaypointRepositionMode {
     private static void addUnnamed(Minecraft mc, Session session, BlockPos pos) {
         ClientLevel level = mc == null ? null : mc.level;
         int flags = defaultDungeonEditFlags(session.group, level, pos);
-        session.group.add(new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
+        addStored(session.group, new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
                 "", session.config.defaultWaypointColor(), flags, 0.0));
         int index = session.group.size() - 1;
         finishAddedWaypoint(mc, session, index);
@@ -651,10 +704,33 @@ public final class WaypointRepositionMode {
     private static void addSubwaypoint(Minecraft mc, Session session, BlockPos pos) {
         ClientLevel level = mc == null ? null : mc.level;
         int flags = subwaypointCreationFlags(session.group, level, pos, false);
-        session.group.add(new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
+        addStored(session.group, new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
                 "", session.config.defaultWaypointColor(), flags, 0.0));
         int index = session.group.size() - 1;
         finishAddedWaypoint(mc, session, index);
+    }
+
+    /**
+     * Append with room-local conversion: stored dungeon-room routes keep
+     * room-local coordinates, so a waypoint picked in world space converts
+     * before it lands in the group. Identity for every other group.
+     */
+    private static void addStored(WaypointGroup group, Waypoint actualWaypoint) {
+        group.add(DungeonRoomWaypointPlacement.toStoredWaypoint(group, actualWaypoint));
+    }
+
+    /**
+     * In a room showing downloaded secrets with no user route, an add would
+     * either land on the throwaway mirror or silently suppress the secrets.
+     * Refuse and point at the conversion flow instead.
+     */
+    private static boolean addBlockedByInstalledSecrets(Minecraft mc, ActiveGroupManager manager) {
+        if (manager == null || manager.currentZone() == null) return false;
+        if (!DungeonRoomRouteSync.secretsRequireConversion(manager, manager.currentZone().id())) {
+            return false;
+        }
+        showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
+        return true;
     }
 
     private static void addSmallSubwaypoint(Minecraft mc, Session session, PreciseTarget target) {
@@ -664,7 +740,7 @@ public final class WaypointRepositionMode {
         int blockZ = Math.floorDiv(target.preciseZ(), Waypoint.PRECISE_SCALE);
         BlockPos pos = new BlockPos(blockX, blockY, blockZ);
         int flags = subwaypointCreationFlags(session.group, level, pos, true);
-        session.group.add(new Waypoint(blockX, blockY, blockZ,
+        addStored(session.group, new Waypoint(blockX, blockY, blockZ,
                 "", session.config.defaultWaypointColor(), flags, 0.0,
                 Waypoint.TEMP_NONE, 0L,
                 target.preciseX(), target.preciseY(), target.preciseZ()));

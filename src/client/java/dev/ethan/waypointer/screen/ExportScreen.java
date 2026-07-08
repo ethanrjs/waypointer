@@ -163,7 +163,7 @@ public final class ExportScreen extends Screen {
     public static void openForGroups(Screen parent, WaypointerConfig config,
                                      List<WaypointGroup> groups, String zoneLabel) {
         int totalPts = groups.stream().mapToInt(WaypointGroup::size).sum();
-        String title = "Zone: " + zoneLabel + "  --  " + groups.size() + " group"
+        String title = "Zone: " + zoneLabel + "  --  " + groups.size() + " route"
                 + (groups.size() == 1 ? "" : "s") + ", " + totalPts + " waypoints";
         Minecraft.getInstance().setScreen(new ExportScreen(parent, config, groups, title));
     }
@@ -218,9 +218,9 @@ public final class ExportScreen extends Screen {
         registerToggle(ToggleKind.WAYPOINT_FLAGS, "WP Flags", optsBuilder.includeWaypointFlags(),
                 "Preserve subwaypoints and per-waypoint flag bits.",
                 "Only Waypointer exports can preserve hide/through-wall flags.");
-        registerToggle(ToggleKind.GROUP_META, "Group Meta", optsBuilder.includeGroupMeta(),
-                "Include group settings (gradient, ordered/sequenced, etc) in export",
-                "This format keeps basic route/category names, but not Waypointer group settings.");
+        registerToggle(ToggleKind.GROUP_META, "Route Meta", optsBuilder.includeGroupMeta(),
+                "Include route settings (gradient, ordered/sequenced, etc) in export",
+                "This format keeps basic route/category names, but not Waypointer route settings.");
 
         layoutToggles();
         layoutRoutePickerControls();

@@ -122,9 +122,9 @@ public final class WaypointerScreen extends Screen {
             "Hide every shown route in this zone.\n"
           + "Double click to confirm.";
     private static final String CONFIRM_LABEL = "Confirm?";
-    private static final String NO_SEL_LABEL  = "Pick group";
+    private static final String NO_SEL_LABEL  = "Pick route";
     private static final String DELETE_TOOLTIP_DEFAULT =
-            "Remove the selected group permanently.\n"
+            "Remove the selected route permanently.\n"
           + "Double click to confirm.";
     private static final int SEARCH_CLEAR_BTN_W = 52;
     private static final long MAIN_NOTICE_MS = 2500L;
@@ -134,12 +134,21 @@ public final class WaypointerScreen extends Screen {
     private static final int DELETE_BTN_W = 72;
     private static final int HIDE_ALL_ROUTES_BTN_W = 76;
     private static final int DOWNLOAD_ROUTES_BTN_W = 112;
+    private static final int SETTINGS_BTN_W = 76;
+    /**
+     * Cap on the route-list content width. Rows anchor text left and the
+     * Shown/Hidden chip right; on wide screens an uncapped row separates the
+     * two by over a thousand pixels and the chip stops reading as part of its
+     * row.
+     */
+    private static final int MAIN_CONTENT_MAX_W = 660;
     private Button editBtn;
     private Button hideAllRoutesBtn;
     private Button deleteBtn;
     private EditBox searchBox;
     private OverlayButton clearSearchButton;
     private OverlayButton downloadRoutesButton;
+    private OverlayButton settingsButton;
     private String searchQuery = "";
     private long hideAllArmedUntil = 0L;
     private final LinkedHashSet<String> hideAllArmedGroupIds = new LinkedHashSet<>();
@@ -149,6 +158,9 @@ public final class WaypointerScreen extends Screen {
     private long mainNoticeUntil = 0L;
 
     private List<GuiTokens.ButtonSpec> footerActions() {
+        // Constructive actions first, Delete isolated at the end of the
+        // cluster; Settings lives in the header (it navigates, it doesn't act
+        // on route data).
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
         left.add(new GuiTokens.ButtonSpec("New Route", 92, this::createGroup));
         left.add(new GuiTokens.ButtonSpec("Edit", 64, this::editSelected));
@@ -160,7 +172,6 @@ public final class WaypointerScreen extends Screen {
                 Tooltip.create(Component.literal(
                         "Export the selected route.\n"
                       + "If none is selected, export every visible route."))));
-        left.add(new GuiTokens.ButtonSpec("Settings", 88, this::openSettings));
         left.add(new GuiTokens.ButtonSpec(DELETE_LABEL, DELETE_BTN_W, this::onDeleteClicked));
         return left;
     }
@@ -220,6 +231,7 @@ public final class WaypointerScreen extends Screen {
         searchBox = null;
         clearSearchButton = null;
         downloadRoutesButton = null;
+        settingsButton = null;
 
         // Fixed width so the label can toggle between "Delete" and "Confirm?" without
         // the footer re-flowing or the text sliding past the bevel.
@@ -266,6 +278,12 @@ public final class WaypointerScreen extends Screen {
                         + DungeonRouteDownloader.attributionText())));
         syncSearchBoxGeometry();
         addRenderableWidget(downloadRoutesButton);
+
+        settingsButton = new OverlayButton(width - PAD_OUTER - SETTINGS_BTN_W,
+                PAD_OUTER - 5, SETTINGS_BTN_W, BTN_H,
+                Component.literal("Settings"), b -> openSettings());
+        settingsButton.setTooltip(Tooltip.create(Component.literal("Open Waypointer settings.")));
+        addRenderableWidget(settingsButton);
 
         // Resolve pending focus requests from open/openFocused(). We do this here
         // rather than in the constructor because the zone's group list can
@@ -750,11 +768,14 @@ public final class WaypointerScreen extends Screen {
             status = TEMPORARY_ZONE_LABEL + "  .  " + waypointCount
                     + " waypoint" + (waypointCount == 1 ? "" : "s");
         } else {
-            int groupCount = visibleGroups().size();
+            int routeCount = visibleGroups().size();
             status = displayZoneLabel(selectedZoneId) + "  ."
-                    + "  " + groupCount + " group" + (groupCount == 1 ? "" : "s");
+                    + "  " + routeCount + " route" + (routeCount == 1 ? "" : "s");
         }
-        g.text(font, status, width - PAD_OUTER - font.width(status), PAD_OUTER, TEXT_DIM, false);
+        int statusRight = settingsButton != null
+                ? settingsButton.getX() - GAP
+                : width - PAD_OUTER;
+        g.text(font, status, statusRight - font.width(status), PAD_OUTER, TEXT_DIM, false);
 
         // Region geometry
         Layout layout = layout();
@@ -776,6 +797,9 @@ public final class WaypointerScreen extends Screen {
         }
         if (downloadRoutesButton != null && downloadRoutesButton.visible) {
             downloadRoutesButton.extractOverlay(g, mouseX, mouseY, partial);
+        }
+        if (settingsButton != null) {
+            settingsButton.extractOverlay(g, mouseX, mouseY, partial);
         }
     }
 
@@ -923,7 +947,12 @@ public final class WaypointerScreen extends Screen {
         String label = displayZoneLabel(zoneId);
         int count = temporary ? temporaryWaypointCount() : normalGroupCountForZone(zoneId);
         int textColor = isUnknown && !temporary ? TEXT_MUTED : selected ? TEXT : TEXT_DIM;
-        if (temporary && count == 0 && !selected) textColor = TEXT_MUTED;
+        // Zones with nothing in them recede so the populated ones carry the
+        // sidebar's hierarchy. (Dungeon Rooms keeps normal weight while it has
+        // installed secrets even with zero user routes.)
+        boolean emptyZone = count == 0
+                && !(dungeonParent && !DungeonRoomData.customDefinitions().isEmpty());
+        if (emptyZone && !selected && !isCurrent) textColor = TEXT_MUTED;
 
         String countStr = Integer.toString(count);
         int countX = (isCurrent ? x2 - GAP - 12 : x2 - GAP) - font.width(countStr);
@@ -954,29 +983,36 @@ public final class WaypointerScreen extends Screen {
 
         g.enableScissor(x1, rowsTop, x2, y2);
 
+        // Rows render inside the capped content column so a row's text and its
+        // Shown/Hidden chip stay one visual unit on wide screens.
+        int rowRight = mainContentRight(x1, x2);
         int y = rowsTop - scrollOffset;
-        int listW = x2 - x1;
+        int listW = rowRight - x1;
         for (int i = 0; i < rows.size(); i++, y += ROUTE_ROW_PITCH) {
             int rowTop = y;
             int rowBot = y + ROW_H + 2;
             if (rowBot < rowsTop || rowTop > y2) continue;
 
-            boolean hovered = mouseX >= x1 + 2 && mouseX <= x2 - 2
+            boolean hovered = mouseX >= x1 + 2 && mouseX <= rowRight - 2
                     && mouseY >= rowTop && mouseY <= rowBot;
             RouteListRow row = rows.get(i);
             if (hovered) g.requestCursor(CursorTypes.POINTING_HAND);
             if (row.roomHeader) {
-                renderRoomHeader(g, row, x1 + 2, rowTop, x2 - 2, hovered);
+                renderRoomHeader(g, row, x1 + 2, rowTop, rowRight - 2, hovered);
             } else if (row.secretRoute) {
-                renderSecretRouteRow(g, row, x1 + 2, rowTop, x2 - 2, hovered);
+                renderSecretRouteRow(g, row, x1 + 2, rowTop, rowRight - 2, hovered);
             } else if (row.group != null) {
                 boolean selected = selectedGroupIds.contains(row.group.id());
-                renderGroupRow(g, row.group, i, x1 + 2, rowTop, x2 - 2, listW,
+                renderGroupRow(g, row.group, i, x1 + 2, rowTop, rowRight - 2, listW,
                         hovered, selected, row.roomZoneId != null);
             }
         }
         g.disableScissor();
-        renderListScrollbar(g, x2 - 4, rowsTop, y2, rows.size(), scrollOffset);
+        renderListScrollbar(g, rowRight - 4, rowsTop, y2, rows.size(), scrollOffset);
+    }
+
+    static int mainContentRight(int mainLeft, int mainRight) {
+        return Math.min(mainRight, mainLeft + MAIN_CONTENT_MAX_W);
     }
 
     private static int mainRowsTop(int panelTop) {
@@ -1006,9 +1042,9 @@ public final class WaypointerScreen extends Screen {
                     textX, y1 + 8 + 14, TEXT_DIM, false);
             return;
         }
-        g.text(font, "No waypoint groups in this zone.",
+        g.text(font, "No routes in this zone.",
                 textX, y1 + 8, TEXT, false);
-        g.text(font, "Click \"New Group\" to start, or paste a codec into chat.",
+        g.text(font, "Click \"New Route\" to start, or paste a share code into chat.",
                 textX, y1 + 8 + 14, TEXT_DIM, false);
     }
 
@@ -1182,10 +1218,7 @@ public final class WaypointerScreen extends Screen {
         g.text(font, font.plainSubstrByWidth(name, textMaxW), textX, y1 + 4,
                 textColor, false);
 
-        String sub = group.temp()
-                ? group.size() + " temp pts  " + displayZoneLabel(group.zoneId())
-                : group.size() + " pts  " + RouteProgress.summary(group)
-                        + "  " + loadModeLabel(group);
+        String sub = routeRowSubtitle(group);
         g.text(font, font.plainSubstrByWidth(sub, textMaxW), textX, y1 + 14,
                 TEXT_DIM, false);
 
@@ -1225,6 +1258,21 @@ public final class WaypointerScreen extends Screen {
 
     static String routeToggleLabel(boolean enabled) {
         return enabled ? "Shown" : "Hidden";
+    }
+
+    /**
+     * Empty routes previously rendered "0 pts 0 pts sequenced" (size and
+     * progress summary both report zero); tell the user what to do instead.
+     */
+    String routeRowSubtitle(WaypointGroup group) {
+        if (group.temp()) {
+            return group.size() + " temp pts  " + displayZoneLabel(group.zoneId());
+        }
+        if (group.isEmpty()) {
+            return "empty - select and press Edit to add waypoints";
+        }
+        return group.size() + " pts  " + RouteProgress.summary(group)
+                + "  " + loadModeLabel(group);
     }
 
     private static String displayGroupName(WaypointGroup group) {
@@ -1333,8 +1381,8 @@ public final class WaypointerScreen extends Screen {
         refreshActionButtons();
         String selectedAfter = selectedGroupId == null ? "(none)" : selectedGroupId;
 
-        // Toggle-chip hit test -- rightmost region of the row.
-        int rowRight = layout.mainRight() - 2;
+        // Toggle-chip hit test -- rightmost region of the (capped) row.
+        int rowRight = mainContentRight(layout.mainLeft(), layout.mainRight()) - 2;
         if (mx >= routeToggleHitLeft(rowRight) && mx <= rowRight) {
             group.setEnabled(!group.enabled());
             manager.fireDataChanged();
@@ -1580,13 +1628,29 @@ public final class WaypointerScreen extends Screen {
             return;
         }
         WaypointGroup g = WaypointGroup.create(
-                "New group", targetZoneId, config.skipAheadMechanicEnabled());
+                nextRouteName(manager.groupsForZone(targetZoneId)),
+                targetZoneId, config.skipAheadMechanicEnabled());
         g.setDefaultRadius(config.defaultReachRadius());
         manager.add(g);
         selectedZoneId = sidebarSelectionForZoneId(targetZoneId);
         if (isDungeonRoomZone(targetZoneId)) expandedDungeonRoomZoneIds.add(targetZoneId);
         selectOnlyGroupId(g.id());
         minecraft.setScreen(new GroupEditScreen(this, manager, config, g));
+    }
+
+    /**
+     * Smallest free "Route N" in the zone, so two fresh routes never share a
+     * name and a row is identifiable without opening it.
+     */
+    static String nextRouteName(Iterable<WaypointGroup> zoneGroups) {
+        Set<String> taken = new HashSet<>();
+        for (WaypointGroup group : zoneGroups) {
+            taken.add(group.name().trim());
+        }
+        for (int n = 1; ; n++) {
+            String candidate = "Route " + n;
+            if (!taken.contains(candidate)) return candidate;
+        }
     }
 
     static String newRouteTargetZoneId(String selectedZoneId, String currentZoneId) {
@@ -1685,7 +1749,7 @@ public final class WaypointerScreen extends Screen {
             // Nothing selected. Don't silently no-op -- briefly borrow the button label
             // to tell the user what they need to do.
             flashDeleteLabel(NO_SEL_LABEL,
-                    "Select a group from the list on the right first.");
+                    "Select a route from the list on the right first.");
             return;
         }
         LinkedHashSet<String> currentSelectedIds = new LinkedHashSet<>();

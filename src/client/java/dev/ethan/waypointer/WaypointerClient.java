@@ -135,7 +135,7 @@ public final class WaypointerClient implements ClientModInitializer {
                 .orElse("0.0.0");
         new UpdateChecker(modVersion, config.checkForUpdates()).start();
 
-        Waypointer.LOGGER.info("Waypointer client ready -- {} group(s) loaded", manager.allGroups().size());
+        Waypointer.LOGGER.info("Waypointer client ready -- {} route(s) loaded", manager.allGroups().size());
     }
 
     private static void onClientStopping(Minecraft client) {
