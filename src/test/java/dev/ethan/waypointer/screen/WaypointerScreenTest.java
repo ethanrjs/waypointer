@@ -24,6 +24,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointerScreenTest {
 
     @Test
+    void roomHeaderSubtitleShowsInstalledSecretsSoImportsDoNotReadAsEmpty() {
+        assertEquals("0 routes", WaypointerScreen.roomHeaderSubtitle(0, 0, false, false));
+        assertEquals("0 routes  3 secrets", WaypointerScreen.roomHeaderSubtitle(0, 3, false, false));
+        assertEquals("1 route  1 secret  current",
+                WaypointerScreen.roomHeaderSubtitle(1, 1, true, false));
+        assertEquals("2 routes  5 secrets  current  search",
+                WaypointerScreen.roomHeaderSubtitle(2, 5, true, true));
+    }
+
+    @Test
     void sidebarScrollClampsToVisibleZoneContent() {
         int rowHeight = GuiTokens.ROW_H;
         int viewportHeight = rowHeight * 3;
@@ -62,6 +72,16 @@ class WaypointerScreenTest {
         assertEquals(436, WaypointerScreen.routeToggleHitLeft(rowRight));
         assertEquals("Shown", WaypointerScreen.routeToggleLabel(true));
         assertEquals("Hidden", WaypointerScreen.routeToggleLabel(false));
+    }
+
+    @Test
+    void dungeonRoomRouteRowsIndentUnderRoomHeader() {
+        int rowLeft = 24;
+
+        assertEquals(rowLeft + GuiTokens.GAP + 2,
+                WaypointerScreen.routeRowTextX(rowLeft, false));
+        assertTrue(WaypointerScreen.routeRowTextX(rowLeft, true)
+                > WaypointerScreen.routeRowTextX(rowLeft, false));
     }
 
     @Test

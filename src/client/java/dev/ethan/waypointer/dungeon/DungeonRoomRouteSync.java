@@ -30,6 +30,14 @@ public final class DungeonRoomRouteSync {
 
     static final String GENERATED_GROUP_ID_PREFIX = "dungeon:auto:";
 
+    /**
+     * Uniform route colors: every progress secret shares one color and every
+     * support marker (highlights, non-progress markers) another, so an
+     * imported route reads as one route instead of a per-category confetti.
+     */
+    public static final int SECRET_WAYPOINT_COLOR = 0x2EE0FF;
+    public static final int SUPPORT_WAYPOINT_COLOR = 0xFFB300;
+
     private final ActiveGroupManager manager;
     private final DungeonStateTracker tracker;
     private final DungeonRouteSession session;
@@ -93,10 +101,25 @@ public final class DungeonRoomRouteSync {
     private void syncRoom(DungeonRoom room) {
         String roomId = room.roomId();
         String generatedId = generatedGroupId(roomId);
+
+        // A user-authored route wins over downloaded secrets. Stored room
+        // routes are room-local, so the mirror is what projects them into this
+        // run's room placement; the stored group itself never renders (see
+        // ActiveGroupManager#activeGroups).
+        WaypointGroup userRoute = firstUserRouteGroup(roomId);
+        if (userRoute != null) {
+            if (!userRoute.enabled()) {
+                removeGeneratedGroup(generatedId);
+                return;
+            }
+            replaceGeneratedGroup(generatedId,
+                    transformedRouteGroupForRoom(room, userRoute, session));
+            return;
+        }
+
         DungeonRoomDefinition definition = DungeonRoomData.customDefinition(roomId);
         if (definition == null
                 || definition.waypoints().isEmpty()
-                || hasUserRouteGroup(roomId)
                 || isCompletedAndHidden(room)) {
             removeGeneratedGroup(generatedId);
             return;
@@ -107,7 +130,34 @@ public final class DungeonRoomRouteSync {
             removeGeneratedGroup(generatedId);
             return;
         }
-        manager.add(group);
+        replaceGeneratedGroup(generatedId, group);
+    }
+
+    /**
+     * Swap in a rebuilt mirror without losing view progress: rebuilds happen on
+     * every data/session change, and a SEQUENCE group that snapped back to
+     * waypoint #1 each time would fight the player's advancement.
+     */
+    private void replaceGeneratedGroup(String generatedId, WaypointGroup next) {
+        carryOverProgress(manager.get(generatedId), next);
+        manager.add(next);
+    }
+
+    static void carryOverProgress(WaypointGroup previous, WaypointGroup next) {
+        if (previous == null || next == null) return;
+        int previousCurrent = previous.currentIndex();
+        if (previousCurrent <= 0 || previousCurrent >= previous.size()) return;
+        Waypoint current = previous.get(previousCurrent);
+        for (int i = 0; i < next.size(); i++) {
+            Waypoint candidate = next.get(i);
+            if (candidate.preciseX() == current.preciseX()
+                    && candidate.preciseY() == current.preciseY()
+                    && candidate.preciseZ() == current.preciseZ()
+                    && candidate.isSubwaypoint() == current.isSubwaypoint()) {
+                next.setCurrentIndex(i);
+                return;
+            }
+        }
     }
 
     private boolean isCompletedAndHidden(DungeonRoom room) {
@@ -116,11 +166,20 @@ public final class DungeonRoomRouteSync {
                 && session.isRoomComplete(room);
     }
 
-    private boolean hasUserRouteGroup(String roomId) {
+    /**
+     * The user-authored route that suppresses downloaded community secrets —
+     * but only when it actually contains waypoints. Empty leftovers (a
+     * clicked-away "New Route", an aborted import) must not silently suppress
+     * an installed secret route. Disabled routes still suppress (the user hid
+     * their route deliberately; resurrecting the community secrets would undo
+     * that), which is why this returns the group instead of a boolean — the
+     * caller also needs its enabled state.
+     */
+    private WaypointGroup firstUserRouteGroup(String roomId) {
         for (WaypointGroup group : manager.groupsForZone(roomId)) {
-            if (!group.runtimeOnly()) return true;
+            if (!group.runtimeOnly() && !group.isEmpty()) return group;
         }
-        return false;
+        return null;
     }
 
     private void removeGeneratedGroups() {
@@ -144,6 +203,74 @@ public final class DungeonRoomRouteSync {
         return routeGroupForRoom(room, definition, null);
     }
 
+    /**
+     * Project a user-authored room route (waypoints stored room-local, see
+     * {@link DungeonRoomWaypointPlacement}) into actual world positions for the
+     * given room placement. Precise sub-block offsets survive the projection.
+     * The mirror carries the generated id so zone-exit cleanup catches it; the
+     * stored group keeps its own id and never renders directly. The session
+     * parameter mirrors {@link #routeGroupForRoom}'s filtering hook; user
+     * routes carry no secret indices yet, so no waypoints are filtered.
+     */
+    static WaypointGroup transformedRouteGroupForRoom(DungeonRoom room, WaypointGroup source,
+                                                      DungeonRouteSession session) {
+        WaypointGroup group = new WaypointGroup(
+                generatedGroupId(source.zoneId()), source.name(), source.zoneId());
+        group.setRuntimeOnly(true);
+        group.setLoadMode(source.loadMode());
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.setDefaultRadius(source.defaultRadius());
+        group.setSkipAheadEnabled(source.skipAheadEnabled());
+
+        List<Waypoint> waypoints = new ArrayList<>(source.size());
+        for (Waypoint stored : source.waypoints()) {
+            waypoints.add(DungeonRoomWaypointPlacement.toActualWaypoint(room, stored));
+        }
+        group.addAll(waypoints);
+        // Seed from the stored group's progress (persisted, or moved by the
+        // next/previous keybinds); a previous mirror's carry-over then wins on
+        // rebuilds within the session.
+        group.setCurrentIndex(source.currentIndex());
+        return group;
+    }
+
+    /**
+     * Convert an installed secret-route definition into a normal, persisted,
+     * user-editable route group. Coordinates stay room-local (the definition's
+     * own frame) — the sync mirror projects them into each run's room
+     * placement, so the converted route keeps working across runs. Once added,
+     * the user route suppresses the definition-generated group; deleting it
+     * brings the installed secrets back.
+     */
+    public static WaypointGroup editableRouteFromDefinition(DungeonRoomDefinition definition) {
+        WaypointGroup group = WaypointGroup.create("Secret Route", definition.id());
+        group.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+
+        List<Waypoint> waypoints = new ArrayList<>();
+        for (DungeonWaypoint dungeonWaypoint : definition.waypoints()) {
+            if (dungeonWaypoint.secretIndex() <= 0) {
+                waypoints.add(new Waypoint(
+                        dungeonWaypoint.x(), dungeonWaypoint.y(), dungeonWaypoint.z(),
+                        dungeonWaypoint.name(), SUPPORT_WAYPOINT_COLOR,
+                        Waypoint.FLAG_SUBWAYPOINT, 0.0));
+                continue;
+            }
+            waypoints.add(new Waypoint(
+                    dungeonWaypoint.x(), dungeonWaypoint.y(), dungeonWaypoint.z(),
+                    dungeonWaypoint.name(), SECRET_WAYPOINT_COLOR,
+                    DungeonWaypointSkipRules.flagsForTrigger(dungeonWaypoint.trigger()), 0.0));
+            for (DungeonHighlight highlight : dungeonWaypoint.highlights()) {
+                waypoints.add(new Waypoint(
+                        highlight.x(), highlight.y(), highlight.z(),
+                        "", SUPPORT_WAYPOINT_COLOR,
+                        Waypoint.FLAG_SUBWAYPOINT | highlightFlags(highlight.style()), 0.0));
+            }
+        }
+        group.addAll(waypoints);
+        return group;
+    }
+
     static WaypointGroup routeGroupForRoom(DungeonRoom room, DungeonRoomDefinition definition,
                                            DungeonRouteSession session) {
         WaypointGroup group = new WaypointGroup(
@@ -151,7 +278,10 @@ public final class DungeonRoomRouteSync {
                 "Dungeon Secrets -- " + definition.displayName(),
                 definition.id());
         group.setRuntimeOnly(true);
-        group.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        // SEQUENCE so the route navigates one secret at a time: the current
+        // secret gets the tracer/entry path and prev/next render as context,
+        // instead of every secret in the room shouting at once.
+        group.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
 
         List<Waypoint> waypoints = new ArrayList<>();
@@ -187,7 +317,7 @@ public final class DungeonRoomRouteSync {
                     actual[1],
                     actual[2],
                     dungeonWaypoint.name(),
-                    dungeonWaypoint.color(),
+                    SUPPORT_WAYPOINT_COLOR,
                     Waypoint.FLAG_SUBWAYPOINT,
                     0.0));
             return;
@@ -198,7 +328,7 @@ public final class DungeonRoomRouteSync {
                 actual[1],
                 actual[2],
                 dungeonWaypoint.name(),
-                dungeonWaypoint.color(),
+                SECRET_WAYPOINT_COLOR,
                 DungeonWaypointSkipRules.flagsForTriggerAt(
                         dungeonWaypoint.trigger(), actual[0], actual[1], actual[2]),
                 0.0));
@@ -211,13 +341,12 @@ public final class DungeonRoomRouteSync {
                     highlight.x(),
                     highlight.y(),
                     highlight.z());
-            int color = highlight.hasOwnColor() ? highlight.color() : dungeonWaypoint.color();
             out.add(new Waypoint(
                     highlightActual[0],
                     highlightActual[1],
                     highlightActual[2],
                     "",
-                    color,
+                    SUPPORT_WAYPOINT_COLOR,
                     Waypoint.FLAG_SUBWAYPOINT | highlightFlags(highlight.style()),
                     0.0));
         }

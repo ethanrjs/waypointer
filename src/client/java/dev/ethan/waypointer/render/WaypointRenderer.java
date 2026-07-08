@@ -2,7 +2,6 @@ package dev.ethan.waypointer.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import com.mojang.math.Axis;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
@@ -161,6 +160,15 @@ public final class WaypointRenderer implements HudElement {
      * unnamed labels every render frame.
      */
     private static final int INDEX_LABEL_CACHE_MAX = 256;
+
+    /**
+     * Bounded LRU for {@code &}-formatted name translations. Names without
+     * codes take {@link AmpersandFormatting}'s same-instance fast path, but
+     * Skyblock-style names ({@code &e&lMineshaft}) are the norm on imported
+     * routes and used to allocate a fresh translated string per label per
+     * frame.
+     */
+    private static final int NAME_TRANSLATION_CACHE_MAX = 1024;
     private static final Comparator<LabelCandidate> LABEL_NEAREST_FIRST =
             Comparator.comparingDouble(c -> c.distanceSquared);
 
@@ -174,6 +182,13 @@ public final class WaypointRenderer implements HudElement {
      */
     private final StringBuilder distanceScratch = new StringBuilder(8);
     private final String[] indexLabelCache = new String[INDEX_LABEL_CACHE_MAX];
+    private final Map<String, String> nameTranslationCache =
+            new LinkedHashMap<>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                    return size() > NAME_TRANSLATION_CACHE_MAX;
+                }
+            };
     private final WorldScreenProjector labelProjector = new WorldScreenProjector();
     private final double[] labelScreenScratch = new double[2];
     private final double[] boxScreenScratch = new double[16];
@@ -185,6 +200,10 @@ public final class WaypointRenderer implements HudElement {
     private double projectedBoxMaxY;
     private final ArrayList<LabelCandidate> labelCandidates = new ArrayList<>();
     private int labelCandidateCount;
+    // Shared per-tick beam-core rotation; see updateBeamRotation.
+    private float beamRotationAnimationTime = Float.NaN;
+    private float beamRotationCos;
+    private float beamRotationSin;
     private ClientLevel dungeonEntryPathLevel;
     private final Map<DungeonEntryPathTarget, DungeonEntryPath> dungeonEntryPathCache =
             new LinkedHashMap<>(DUNGEON_ENTRY_PATH_CACHE_SIZE + 1, 0.75f, true) {
@@ -936,24 +955,48 @@ public final class WaypointRenderer implements HudElement {
         float animationTime = mc.level == null
                 ? 0.0f
                 : (float) Math.floorMod(mc.level.getGameTime(), 40L);
+        updateBeamRotation(animationTime);
         float radiusScale = beaconTextureRadiusScale(waypoint, camPos);
         int coreColor = RenderHelpers.withAlpha(0xFF000000 | (waypoint.color() & 0xFFFFFF), alpha);
         int glowColor = RenderHelpers.withAlpha(BEACON_GLOW_BASE_ALPHA_ARGB | (waypoint.color() & 0xFFFFFF), alpha);
 
-        ps.pushPose();
-        ps.translate(waypoint.centerX(), y1, waypoint.centerZ());
-        ps.pushPose();
-        ps.mulPose(Axis.YP.rotationDegrees(animationTime * 2.25f - 45.0f));
-        emitBeaconTexturePart(ps.last(), consumer, coreColor, 0, height,
-                BeaconRenderer.SOLID_BEAM_RADIUS * radiusScale,
-                BeaconRenderer.SOLID_BEAM_RADIUS * radiusScale,
+        PoseStack.Pose pose = ps.last();
+        float cx = (float) waypoint.centerX();
+        float cz = (float) waypoint.centerZ();
+
+        // Rotated core diamond: unrotated corners (0,r),(r,0),(-r,0),(0,-r)
+        // mapped through the shared per-tick rotation.
+        float r = BeaconRenderer.SOLID_BEAM_RADIUS * radiusScale;
+        float sr = beamRotationSin * r;
+        float cr = beamRotationCos * r;
+        emitBeaconTexturePart(pose, consumer, coreColor, cx, cz, y1, height, r,
+                sr, cr,
+                cr, -sr,
+                -cr, sr,
+                -sr, -cr,
                 animationTime, true);
-        ps.popPose();
-        emitBeaconTexturePart(ps.last(), consumer, glowColor, 0, height,
-                BeaconRenderer.BEAM_GLOW_RADIUS * radiusScale,
-                BeaconRenderer.BEAM_GLOW_RADIUS * radiusScale,
+
+        float glow = BeaconRenderer.BEAM_GLOW_RADIUS * radiusScale;
+        emitBeaconTexturePart(pose, consumer, glowColor, cx, cz, y1, height, glow,
+                -glow, -glow,
+                glow, -glow,
+                glow, glow,
+                -glow, glow,
                 animationTime, false);
-        ps.popPose();
+    }
+
+    /**
+     * The beam core's spin angle depends only on the game tick, so the
+     * rotation is shared by every beam in the frame. Computing it once here
+     * replaces the previous per-waypoint PoseStack push + quaternion, which
+     * dense routes paid thousands of times per frame.
+     */
+    private void updateBeamRotation(float animationTime) {
+        if (animationTime == beamRotationAnimationTime) return;
+        beamRotationAnimationTime = animationTime;
+        double radians = Math.toRadians(animationTime * 2.25f - 45.0f);
+        beamRotationCos = (float) Math.cos(radians);
+        beamRotationSin = (float) Math.sin(radians);
     }
 
     private static float beaconTextureRadiusScale(Waypoint waypoint, Vec3 camPos) {
@@ -964,55 +1007,38 @@ public final class WaypointRenderer implements HudElement {
         return (float) Math.max(1.0, horizontalDistance / BEACON_TEXTURE_SCALE_THRESHOLD);
     }
 
+    /**
+     * Emit one beam part (core or glow) as four vertical quads. Corner offsets
+     * arrive pre-rotated and relative to {@code (cx, cz)}; coordinates are
+     * world-space so no per-waypoint pose transform is needed.
+     */
     private static void emitBeaconTexturePart(PoseStack.Pose pose,
                                               VertexConsumer consumer,
-                                              int argb, float startY,
-                                              float height, float radiusA,
-                                              float radiusB,
+                                              int argb, float cx, float cz,
+                                              float startY, float height,
+                                              float uvRadius,
+                                              float x1, float z1,
+                                              float x2, float z2,
+                                              float x3, float z3,
+                                              float x4, float z4,
                                               float animationTime,
                                               boolean core) {
         if (height <= 0.0f) return;
         float scrollDirection = -animationTime;
         float textureOffset = Mth.frac(scrollDirection * 0.2F - Mth.floor(scrollDirection * 0.1F));
         float vTop = -1.0F + textureOffset;
-        float uvScale = core ? 0.5F / radiusA : 1.0F;
+        float uvScale = core ? 0.5F / uvRadius : 1.0F;
         float vBottom = height * uvScale + vTop;
         float endY = startY + height;
 
-        if (core) {
-            emitBeaconTextureQuads(pose, consumer, argb, startY, endY,
-                    0.0F, radiusA,
-                    radiusA, 0.0F,
-                    -radiusA, 0.0F,
-                    0.0F, -radiusA,
-                    vBottom, vTop);
-        } else {
-            emitBeaconTextureQuads(pose, consumer, argb, startY, endY,
-                    -radiusB, -radiusB,
-                    radiusB, -radiusB,
-                    radiusB, radiusB,
-                    -radiusB, radiusB,
-                    vBottom, vTop);
-        }
-    }
-
-    private static void emitBeaconTextureQuads(PoseStack.Pose pose,
-                                               VertexConsumer consumer,
-                                               int argb,
-                                               float startY, float endY,
-                                               float x1, float z1,
-                                               float x2, float z2,
-                                               float x3, float z3,
-                                               float x4, float z4,
-                                               float vBottom, float vTop) {
-        emitBeaconTextureQuad(pose, consumer, argb, startY, endY, x1, z1, x2, z2,
-                0.0F, 1.0F, vBottom, vTop);
-        emitBeaconTextureQuad(pose, consumer, argb, startY, endY, x3, z3, x4, z4,
-                0.0F, 1.0F, vBottom, vTop);
-        emitBeaconTextureQuad(pose, consumer, argb, startY, endY, x2, z2, x3, z3,
-                0.0F, 1.0F, vBottom, vTop);
-        emitBeaconTextureQuad(pose, consumer, argb, startY, endY, x4, z4, x1, z1,
-                0.0F, 1.0F, vBottom, vTop);
+        emitBeaconTextureQuad(pose, consumer, argb, startY, endY,
+                cx + x1, cz + z1, cx + x2, cz + z2, 0.0F, 1.0F, vBottom, vTop);
+        emitBeaconTextureQuad(pose, consumer, argb, startY, endY,
+                cx + x3, cz + z3, cx + x4, cz + z4, 0.0F, 1.0F, vBottom, vTop);
+        emitBeaconTextureQuad(pose, consumer, argb, startY, endY,
+                cx + x2, cz + z2, cx + x3, cz + z3, 0.0F, 1.0F, vBottom, vTop);
+        emitBeaconTextureQuad(pose, consumer, argb, startY, endY,
+                cx + x4, cz + z4, cx + x1, cz + z1, 0.0F, 1.0F, vBottom, vTop);
     }
 
     private static void emitBeaconTextureQuad(PoseStack.Pose pose,
@@ -1503,7 +1529,7 @@ public final class WaypointRenderer implements HudElement {
 
     private String labelFor(WaypointGroup g, int i, Waypoint w,
                             boolean hasSubwaypoints) {
-        if (w.hasName()) return AmpersandFormatting.translate(w.name());
+        if (w.hasName()) return translatedName(w.name());
         if (g.isSubwaypoint(i) || (hasSubwaypoints && g.loadMode() == WaypointGroup.LoadMode.STATIC)) {
             return g.displayIndexLabel(i);
         }
@@ -1511,6 +1537,17 @@ public final class WaypointRenderer implements HudElement {
 
         int mainOrdinal = hasSubwaypoints ? g.mainOrdinal(i) : i + 1;
         return indexLabel(mainOrdinal);
+    }
+
+    private String translatedName(String raw) {
+        // Plain names return the same instance from translate(); skip the map.
+        if (raw.indexOf('&') < 0) return raw;
+        String cached = nameTranslationCache.get(raw);
+        if (cached == null) {
+            cached = AmpersandFormatting.translate(raw);
+            nameTranslationCache.put(raw, cached);
+        }
+        return cached;
     }
 
     private String indexLabel(int number) {

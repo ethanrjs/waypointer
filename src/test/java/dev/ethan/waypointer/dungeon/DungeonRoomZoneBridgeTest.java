@@ -12,6 +12,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DungeonRoomZoneBridgeTest {
 
@@ -21,27 +22,38 @@ class DungeonRoomZoneBridgeTest {
         ActiveGroupManager manager = new ActiveGroupManager();
         DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
         DungeonRoomZoneBridge bridge = new DungeonRoomZoneBridge(manager, tracker);
+        DungeonRoomRouteSync sync = new DungeonRoomRouteSync(manager, tracker);
         WaypointGroup floorRoute = route("F7 Route", "dungeon_f7", 0);
         WaypointGroup roomRoute = route("Spider Route", "spider", 1);
         manager.add(floorRoute);
         manager.add(roomRoute);
         bridge.install();
+        sync.install();
 
-        Zone broadFloor = new Zone("dungeon_f7", "Catacombs F7");
-        tracker.onZoneChanged(broadFloor);
-        manager.onZoneChanged(broadFloor);
+        try {
+            Zone broadFloor = new Zone("dungeon_f7", "Catacombs F7");
+            tracker.onZoneChanged(broadFloor);
+            manager.onZoneChanged(broadFloor);
 
-        assertEquals(List.of(floorRoute), manager.activeGroups());
+            assertEquals(List.of(floorRoute), manager.activeGroups());
 
-        tracker.setCurrentRoom(namedSpiderRoom());
+            tracker.setCurrentRoom(namedSpiderRoom());
 
-        assertEquals("spider", manager.currentZone().id());
-        assertEquals(List.of(roomRoute), manager.activeGroups());
+            assertEquals("spider", manager.currentZone().id());
+            // Stored room routes hold room-local coordinates, so what surfaces
+            // is the runtime mirror the sync projects for this room placement.
+            List<WaypointGroup> active = manager.activeGroups();
+            assertEquals(1, active.size());
+            assertEquals("Spider Route", active.get(0).name());
+            assertTrue(active.get(0).runtimeOnly());
 
-        tracker.setCurrentRoom(null);
+            tracker.setCurrentRoom(null);
 
-        assertEquals("dungeon_f7", manager.currentZone().id());
-        assertEquals(List.of(floorRoute), manager.activeGroups());
+            assertEquals("dungeon_f7", manager.currentZone().id());
+            assertEquals(List.of(floorRoute), manager.activeGroups());
+        } finally {
+            sync.uninstall();
+        }
     }
 
     @Test

@@ -201,12 +201,14 @@ public final class WaypointerConfig {
      */
     private boolean showLabelBackdrop = true;
     /**
-     * Maximum number of waypoint labels drawn per frame, nearest first.
-     * {@code 0} means unlimited so existing configs keep their historical
-     * "draw everything" behaviour until the user opts into the performance
-     * tradeoff.
+     * Maximum number of waypoint labels drawn per frame, nearest first;
+     * {@code 0} means unlimited. Defaults to the 32 nearest: labels are the
+     * most expensive render feature by far (the perf stress test measured
+     * unlimited labels on a dense route at -86% FPS), and more than ~30 are
+     * not legible at once anyway. Existing installs keep whatever their saved
+     * config says — Gson persists every field explicitly.
      */
-    private int maxWaypointLabels = 0;
+    private int maxWaypointLabels = 32;
     /**
      * Optional distance gate for STATIC route markers. Sequenced routes remain
      * uncapped because their current target is navigationally important even

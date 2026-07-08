@@ -103,7 +103,19 @@ public final class ActiveGroupManager {
     }
 
     private static boolean shouldSurfaceActiveGroup(WaypointGroup group) {
-        return !isCompletedDungeonRoomGroup(group);
+        return !isCompletedDungeonRoomGroup(group) && !isStoredDungeonRoomGroup(group);
+    }
+
+    /**
+     * Stored (persisted) dungeon-room routes hold room-local coordinates, so
+     * rendering them directly would paint boxes at raw local positions. They
+     * act in-world only through the runtime mirror {@code DungeonRoomRouteSync}
+     * projects for the current room placement.
+     */
+    private static boolean isStoredDungeonRoomGroup(WaypointGroup group) {
+        return !group.temp()
+                && !group.runtimeOnly()
+                && DungeonRoomData.definition(group.zoneId()) != null;
     }
 
     private static boolean isCompletedDungeonRoomGroup(WaypointGroup group) {

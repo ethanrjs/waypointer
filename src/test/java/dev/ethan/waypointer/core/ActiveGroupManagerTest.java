@@ -79,7 +79,11 @@ class ActiveGroupManagerTest {
         assertNotNull(DungeonRoomData.definition("spider"));
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("spider", "Spider"));
-        WaypointGroup group = WaypointGroup.create("Room Route", "spider");
+        // Runtime mirror: the projected form DungeonRoomRouteSync surfaces for
+        // the current room placement. Stored room groups never surface (they
+        // hold room-local coordinates); see the test below.
+        WaypointGroup group = new WaypointGroup("dungeon:auto:spider", "Room Route", "spider");
+        group.setRuntimeOnly(true);
         group.add(Waypoint.at(0, 0, 0));
         manager.add(group);
 
@@ -91,6 +95,20 @@ class ActiveGroupManagerTest {
         assertEquals(0, manager.activeGroups().size());
         assertTrue(manager.allGroups().contains(group));
         assertEquals(List.of(group), manager.completedDungeonRoomGroupsInCurrentZone());
+    }
+
+    @Test
+    void storedDungeonRoomRoutesActOnlyThroughTheirRuntimeMirror() {
+        assertNotNull(DungeonRoomData.definition("spider"));
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("spider", "Spider"));
+        WaypointGroup stored = WaypointGroup.create("Room Route", "spider");
+        stored.add(Waypoint.at(0, 0, 0));
+        manager.add(stored);
+
+        assertEquals(0, manager.activeGroups().size(),
+                "room-local stored groups must not render at raw local coordinates");
+        assertTrue(manager.allGroups().contains(stored));
     }
 
     @Test

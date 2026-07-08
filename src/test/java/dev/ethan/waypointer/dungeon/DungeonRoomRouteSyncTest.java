@@ -72,7 +72,8 @@ class DungeonRoomRouteSyncTest {
         assertNotNull(group);
         assertTrue(group.runtimeOnly());
         assertEquals("sync-room", group.zoneId());
-        assertEquals(WaypointGroup.LoadMode.STATIC, group.loadMode());
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, group.loadMode(),
+                "secrets navigate one at a time");
         assertEquals(WaypointGroup.GradientMode.MANUAL, group.gradientMode());
         assertEquals(3, group.size(),
                 "secret + its highlight + the support marker should all render");
@@ -82,7 +83,8 @@ class DungeonRoomRouteSyncTest {
         assertEquals(70, secret.y());
         assertEquals(204, secret.z());
         assertFalse(secret.hasName(), "normal route labels will fall back to index labels");
-        assertEquals(DungeonSecretCategory.CHEST.defaultColor, secret.color());
+        assertEquals(DungeonRoomRouteSync.SECRET_WAYPOINT_COLOR, secret.color(),
+                "every progress secret shares the uniform route color");
         assertTrue(secret.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT));
         assertFalse(secret.hasFlag(Waypoint.FLAG_SKIP_ON_STAND));
 
@@ -92,7 +94,8 @@ class DungeonRoomRouteSyncTest {
         assertEquals(205, highlight.z());
         assertTrue(highlight.isSubwaypoint());
         assertTrue(highlight.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT));
-        assertEquals(0x123456, highlight.color());
+        assertEquals(DungeonRoomRouteSync.SUPPORT_WAYPOINT_COLOR, highlight.color(),
+                "support markers share the uniform subwaypoint color");
 
         Waypoint marker = group.get(2);
         assertTrue(marker.isSubwaypoint(),
@@ -191,7 +194,7 @@ class DungeonRoomRouteSyncTest {
     }
 
     @Test
-    void userRoomRouteGroupTakesPrecedenceOverGeneratedDungeonGroup() {
+    void userRoomRouteGroupProjectsIntoTheGeneratedMirrorInsteadOfTheSecrets() {
         ActiveGroupManager manager = new ActiveGroupManager();
         DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
         sync = new DungeonRoomRouteSync(manager, tracker);
@@ -206,14 +209,118 @@ class DungeonRoomRouteSyncTest {
                 7,
                 ""));
         tracker.setCurrentRoom(room);
-        assertNotNull(manager.get(DungeonRoomRouteSync.generatedGroupId("sync-room")));
+        assertEquals("Dungeon Secrets -- Sync Room",
+                manager.get(DungeonRoomRouteSync.generatedGroupId("sync-room")).name());
 
         WaypointGroup userRoute = WaypointGroup.create("User Route", "sync-room");
-        userRoute.add(Waypoint.at(1, 2, 3));
+        userRoute.add(Waypoint.at(4, 70, 7));
         manager.add(userRoute);
 
-        assertNull(manager.get(DungeonRoomRouteSync.generatedGroupId("sync-room")));
-        assertEquals(List.of(userRoute), manager.groupsForZone("sync-room"));
+        WaypointGroup mirror = manager.get(DungeonRoomRouteSync.generatedGroupId("sync-room"));
+        assertNotNull(mirror, "the user route projects into the generated mirror");
+        assertEquals("User Route", mirror.name());
+        assertTrue(mirror.runtimeOnly());
+        // Same room-local coordinates as the definition secret, so the same
+        // world projection (NE room, corner 100/200).
+        assertEquals(93, mirror.get(0).x());
+        assertEquals(70, mirror.get(0).y());
+        assertEquals(204, mirror.get(0).z());
+    }
+
+    @Test
+    void disabledUserRouteHidesTheMirrorWithoutResurrectingSecrets() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
+        sync = new DungeonRoomRouteSync(manager, tracker);
+        sync.install();
+        DungeonRoom room = room("sync-room", "Sync Room");
+        DungeonRoomDefinition definition = DungeonRoomData.defineRoom("sync-room", "Sync Room", room);
+        DungeonRoomData.addWaypoint(definition.id(), DungeonWaypoint.plain(
+                "secret", DungeonSecretCategory.CHEST, 4, 70, 7, ""));
+        tracker.setCurrentRoom(room);
+
+        WaypointGroup userRoute = WaypointGroup.create("User Route", "sync-room");
+        userRoute.add(Waypoint.at(1, 70, 1));
+        userRoute.setEnabled(false);
+        manager.add(userRoute);
+
+        assertNull(manager.get(DungeonRoomRouteSync.generatedGroupId("sync-room")),
+                "a hidden user route hides the room outright rather than falling back to secrets");
+    }
+
+    @Test
+    void mirrorRebuildsKeepTheCurrentWaypoint() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
+        sync = new DungeonRoomRouteSync(manager, tracker);
+        sync.install();
+        DungeonRoom room = room("sync-room", "Sync Room");
+        DungeonRoomDefinition definition = DungeonRoomData.defineRoom("sync-room", "Sync Room", room);
+        DungeonRoomData.addWaypoint(definition.id(),
+                DungeonWaypoint.plain("first", DungeonSecretCategory.CHEST, 4, 70, 7, ""));
+        DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "second", 2, DungeonSecretCategory.LEVER, 8, 70, 9, "", List.of()));
+        tracker.setCurrentRoom(room);
+
+        String groupId = DungeonRoomRouteSync.generatedGroupId("sync-room");
+        manager.get(groupId).setCurrentIndex(1);
+
+        // Any unrelated data change rebuilds the mirror; progress must survive.
+        manager.fireDataChanged();
+
+        assertEquals(1, manager.get(groupId).currentIndex(),
+                "rebuilding the mirror must not snap the route back to waypoint #1");
+    }
+
+    @Test
+    void editableRouteFromDefinitionKeepsRoomLocalCoordinatesAndUniformColors() {
+        DungeonRoom room = room("convert-room", "Convert Room");
+        DungeonRoomDefinition definition =
+                DungeonRoomData.defineRoom("convert-room", "Convert Room", room);
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "secret", 1, DungeonSecretCategory.CHEST, DungeonWaypointTrigger.OPEN_CHEST,
+                4, 70, 7, "Secret 1",
+                List.of(new DungeonHighlight(5, 71, 8, DungeonHighlightStyle.OUTLINE, 0x123456))));
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "marker", 0, DungeonSecretCategory.DEFAULT, DungeonWaypointTrigger.MANUAL,
+                9, 70, 9, "support", List.of()));
+
+        WaypointGroup route = DungeonRoomRouteSync.editableRouteFromDefinition(definition);
+
+        assertEquals("convert-room", route.zoneId());
+        assertFalse(route.runtimeOnly(), "converted routes persist like any user route");
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, route.loadMode());
+        assertEquals(3, route.size());
+
+        Waypoint secret = route.get(0);
+        assertEquals(4, secret.x(), "coordinates stay room-local; the sync mirror projects them");
+        assertEquals(70, secret.y());
+        assertEquals(7, secret.z());
+        assertEquals(DungeonRoomRouteSync.SECRET_WAYPOINT_COLOR, secret.color());
+        assertTrue(secret.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT));
+
+        Waypoint highlight = route.get(1);
+        assertTrue(highlight.isSubwaypoint());
+        assertEquals(DungeonRoomRouteSync.SUPPORT_WAYPOINT_COLOR, highlight.color());
+
+        Waypoint marker = route.get(2);
+        assertTrue(marker.isSubwaypoint());
+        assertEquals(DungeonRoomRouteSync.SUPPORT_WAYPOINT_COLOR, marker.color());
+    }
+
+    @Test
+    void storedDungeonRoomGroupsNeverSurfaceAsActiveGroups() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonRoom room = room("surface-room", "Surface Room");
+        DungeonRoomData.defineRoom("surface-room", "Surface Room", room);
+
+        WaypointGroup stored = WaypointGroup.create("User Route", "surface-room");
+        stored.add(Waypoint.at(4, 70, 7));
+        manager.add(stored);
+        manager.onZoneChanged(new dev.ethan.waypointer.core.Zone("surface-room", "Surface Room"));
+
+        assertTrue(manager.activeGroups().isEmpty(),
+                "room-local stored groups only act through the projected mirror");
     }
 
     @Test
