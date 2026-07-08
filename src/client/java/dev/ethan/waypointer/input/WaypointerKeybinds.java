@@ -3,10 +3,12 @@ package dev.ethan.waypointer.input;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.WaypointerClient;
+import dev.ethan.waypointer.chat.WaypointerChatFeedback;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.dungeon.DungeonRoomRouteSync;
 import dev.ethan.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
@@ -16,6 +18,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.EditBox;
@@ -23,6 +26,7 @@ import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
@@ -120,6 +124,10 @@ public final class WaypointerKeybinds {
 
     private static final KeyMapping.Category CATEGORY =
             KeyMapping.Category.register(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "main"));
+    private static final Component HELP_CONVERT_SECRETS_FIRST = Component.literal(
+            "This room shows downloaded secrets. Double-click its secret route in the "
+                    + "Waypointer GUI to convert it into an editable route first.")
+            .withStyle(ChatFormatting.YELLOW);
     private static KeyMapping registeredOpenEditor;
     private static KeyMapping registeredExitEditMode;
 
@@ -400,13 +408,15 @@ public final class WaypointerKeybinds {
     private void addWaypointAtPlayer(Minecraft mc) {
         LocalPlayer p = mc.player;
         if (p == null) return;
+        if (addBlockedByInstalledSecrets(mc)) return;
 
         PlayerWaypointPlacement.BlockPosition pos = playerWaypointPosition(p);
 
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
+        int flags = WaypointRepositionMode.defaultDungeonEditFlags(target);
         // Stored dungeon-room routes keep room-local coordinates.
         target.add(DungeonRoomWaypointPlacement.toStoredWaypoint(target, new Waypoint(
-                pos.x(), pos.y(), pos.z(), "", config.defaultWaypointColor(), 0, 0.0)));
+                pos.x(), pos.y(), pos.z(), "", config.defaultWaypointColor(), flags, 0.0)));
         addFlow.afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
     }
@@ -414,11 +424,33 @@ public final class WaypointerKeybinds {
     private void openNamedWaypointPrompt(Minecraft mc) {
         LocalPlayer p = mc.player;
         if (p == null) return;
+        if (addBlockedByInstalledSecrets(mc)) return;
         PlayerWaypointPlacement.BlockPosition pos = playerWaypointPosition(p);
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
+        int flags = WaypointRepositionMode.defaultDungeonEditFlags(target);
         AddNamedWaypointScreen.openAt(
-                null, manager, config, target, pos.x(), pos.y(), pos.z());
+                null, manager, config, target, pos.x(), pos.y(), pos.z(), flags);
     }
+
+    private boolean addBlockedByInstalledSecrets(Minecraft mc) {
+        if (manager == null || manager.currentZone() == null) return false;
+        if (!DungeonRoomRouteSync.secretsRequireConversion(manager, manager.currentZone().id())) {
+            return false;
+        }
+        showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
+        return true;
+    }
+
+    private static void showStatus(Minecraft mc, Component message) {
+        if (mc == null || message == null) return;
+        if (mc.player != null) {
+            mc.player.sendSystemMessage(WaypointerChatFeedback.suppress(message));
+        }
+        if (mc.gui != null) {
+            mc.gui.setOverlayMessage(message, false);
+        }
+    }
+
     private void addTempWaypointAtPlayer(Minecraft mc) {
         LocalPlayer p = mc.player;
         if (p == null) return;

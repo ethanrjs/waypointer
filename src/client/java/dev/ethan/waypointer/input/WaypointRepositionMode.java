@@ -3,6 +3,7 @@ package dev.ethan.waypointer.input;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.ethan.waypointer.chat.WaypointerChatFeedback;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
@@ -766,10 +767,13 @@ public final class WaypointRepositionMode {
     }
 
     private static void openNamedPrompt(Minecraft mc, Session session, BlockPos pos) {
+        ClientLevel level = mc == null ? null : mc.level;
+        int flags = defaultDungeonEditFlags(session.group, level, pos);
         active = null;
+        if (mc == null) return;
         mc.execute(
                 () -> AddNamedWaypointScreen.openAt(null, session.manager, session.config,
-                session.group, pos.getX(), pos.getY(), pos.getZ()));
+                session.group, pos.getX(), pos.getY(), pos.getZ(), flags));
     }
 
     private static void cancel(Minecraft mc) {
@@ -795,6 +799,13 @@ public final class WaypointRepositionMode {
     }
 
     private static void showStatus(Minecraft mc, Component message) {
+        if (mc == null || message == null) return;
+        if (mc.player != null) {
+            mc.player.sendSystemMessage(WaypointerChatFeedback.suppress(message));
+        }
+        if (mc.gui != null) {
+            mc.gui.setOverlayMessage(message, false);
+        }
     }
 
     private static void renderOutline(LevelRenderContext ctx) {

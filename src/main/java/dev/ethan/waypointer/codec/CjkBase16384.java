@@ -71,6 +71,7 @@ public final class CjkBase16384 {
 
         int groups = bodyLen / GROUP_CHARS;
         byte[] out = new byte[groups * GROUP_BYTES];
+        if (pad > out.length) throw new IllegalArgumentException("invalid padding");
         for (int group = 0; group < groups; group++) {
             long value = 0L;
             for (int i = 0; i < GROUP_CHARS; i++) {

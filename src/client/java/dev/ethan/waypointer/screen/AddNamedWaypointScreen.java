@@ -42,6 +42,7 @@ public final class AddNamedWaypointScreen extends Screen {
     private final int fixedX;
     private final int fixedY;
     private final int fixedZ;
+    private final int fixedFlags;
 
     private EditBox nameBox;
     private Button confirmButton;
@@ -50,12 +51,13 @@ public final class AddNamedWaypointScreen extends Screen {
 
     public AddNamedWaypointScreen(Screen parent, ActiveGroupManager manager,
                                   WaypointerConfig config, WaypointGroup targetGroup) {
-        this(parent, manager, config, targetGroup, false, 0, 0, 0);
+        this(parent, manager, config, targetGroup, false, 0, 0, 0, 0);
     }
 
     private AddNamedWaypointScreen(Screen parent, ActiveGroupManager manager,
                                    WaypointerConfig config, WaypointGroup targetGroup,
-                                   boolean useFixedPosition, int fixedX, int fixedY, int fixedZ) {
+                                   boolean useFixedPosition, int fixedX, int fixedY, int fixedZ,
+                                   int fixedFlags) {
         super(Component.literal("Create Named Waypoint"));
         this.parent = parent;
         this.manager = manager;
@@ -65,6 +67,7 @@ public final class AddNamedWaypointScreen extends Screen {
         this.fixedX = fixedX;
         this.fixedY = fixedY;
         this.fixedZ = fixedZ;
+        this.fixedFlags = fixedFlags;
     }
 
     public static void open(Screen parent, ActiveGroupManager manager,
@@ -76,8 +79,14 @@ public final class AddNamedWaypointScreen extends Screen {
     public static void openAt(Screen parent, ActiveGroupManager manager,
                               WaypointerConfig config, WaypointGroup targetGroup,
                               int x, int y, int z) {
+        openAt(parent, manager, config, targetGroup, x, y, z, 0);
+    }
+
+    public static void openAt(Screen parent, ActiveGroupManager manager,
+                              WaypointerConfig config, WaypointGroup targetGroup,
+                              int x, int y, int z, int flags) {
         Minecraft.getInstance().setScreen(
-                new AddNamedWaypointScreen(parent, manager, config, targetGroup, true, x, y, z));
+                new AddNamedWaypointScreen(parent, manager, config, targetGroup, true, x, y, z, flags));
     }
 
     @Override
@@ -153,10 +162,12 @@ public final class AddNamedWaypointScreen extends Screen {
         int x;
         int y;
         int z;
+        int flags = 0;
         if (useFixedPosition) {
             x = fixedX;
             y = fixedY;
             z = fixedZ;
+            flags = fixedFlags;
         } else {
             LocalPlayer player = Minecraft.getInstance().player;
             if (player == null) {
@@ -175,7 +186,7 @@ public final class AddNamedWaypointScreen extends Screen {
 
         // Stored dungeon-room routes keep room-local coordinates.
         target.add(DungeonRoomWaypointPlacement.toStoredWaypoint(target,
-                new Waypoint(x, y, z, name, config.defaultWaypointColor(), 0, 0.0)));
+                new Waypoint(x, y, z, name, config.defaultWaypointColor(), flags, 0.0)));
         new WaypointAddFlow().afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
 
