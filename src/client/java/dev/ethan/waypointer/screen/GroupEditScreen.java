@@ -67,6 +67,7 @@ public final class GroupEditScreen extends Screen {
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
     private final WaypointGroup group;
+    private String lastPublishedName;
 
     private EditBox nameBox;
     private Button colorModeBtn;
@@ -155,6 +156,7 @@ public final class GroupEditScreen extends Screen {
         this.manager = manager;
         this.config = config;
         this.group = group;
+        this.lastPublishedName = group.name();
     }
 
     public GroupEditScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config,
@@ -1848,6 +1850,19 @@ public final class GroupEditScreen extends Screen {
 
     @Override
     public boolean isPauseScreen() { return false; }
+
+    @Override
+    public void removed() {
+        lastPublishedName = publishNameChangeIfNeeded(manager, group, lastPublishedName);
+        super.removed();
+    }
+
+    static String publishNameChangeIfNeeded(ActiveGroupManager manager, WaypointGroup group,
+                                             String lastPublishedName) {
+        String currentName = group.name();
+        if (!currentName.equals(lastPublishedName)) manager.fireDataChanged();
+        return currentName;
+    }
 
     @Override
     public void onClose() {
