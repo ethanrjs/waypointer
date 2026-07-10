@@ -1366,11 +1366,11 @@ public final class WaypointerScreen extends Screen {
         if (group == null) return false;
         String selectedBefore = selectedGroupId == null ? "(none)" : selectedGroupId;
         if (rightClick) {
-            hideAllRoutesInSelectedZone();
+            onHideAllRoutesClicked();
             String selectedAfter = selectedGroupId == null ? "(none)" : selectedGroupId;
             DebugEventLog.record("WaypointerScreen", "route", group.id(), idx,
                     selectedBefore, selectedAfter, doubleClick, false, false,
-                    "route-row", "hide-all-routes");
+                    "route-row", "confirm-hide-all-routes");
             return true;
         }
         boolean wasAlreadyPrimarySelected = group.id().equals(selectedGroupId)
@@ -1698,10 +1698,6 @@ public final class WaypointerScreen extends Screen {
         }
 
         hideShownRoutes(shownRoutes);
-    }
-
-    private void hideAllRoutesInSelectedZone() {
-        hideShownRoutes(shownRoutesForSelectedZone());
     }
 
     private void hideShownRoutes(List<WaypointGroup> shownRoutes) {
