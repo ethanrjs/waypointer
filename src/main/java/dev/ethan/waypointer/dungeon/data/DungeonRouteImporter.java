@@ -471,8 +471,10 @@ public final class DungeonRouteImporter {
     }
 
     /**
-     * Odin serializes color as {@code "#AARRGGBB"}; older configs used the raw
-     * HSB field object. Unparseable colors fall back to the category default.
+     * Odin serializes color as {@code "#RRGGBBAA"}. The previous importer
+     * documented {@code "#AARRGGBB"}, so the common old opaque-leading form
+     * with a zero trailing byte remains accepted. Older configs also
+     * used raw HSB field objects. Unparseable colors use the category default.
      */
     private static int odinColor(JsonElement element) {
         if (element == null) return DungeonWaypoint.INHERIT_COLOR;
@@ -481,6 +483,15 @@ public final class DungeonRouteImporter {
             if (hex.startsWith("#")) hex = hex.substring(1);
             try {
                 long value = Long.parseLong(hex, 16);
+                if (hex.length() == 8) {
+                    int leadingByte = (int) ((value >>> 24) & 0xFF);
+                    int trailingByte = (int) (value & 0xFF);
+                    if (leadingByte == 0xFF && trailingByte == 0x00) {
+                        return (int) (value & 0xFFFFFF);
+                    }
+                    return (int) ((value >>> 8) & 0xFFFFFF);
+                }
+                if (hex.length() != 6) return DungeonWaypoint.INHERIT_COLOR;
                 return (int) (value & 0xFFFFFF);
             } catch (NumberFormatException e) {
                 return DungeonWaypoint.INHERIT_COLOR;

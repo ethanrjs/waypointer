@@ -16,9 +16,9 @@ class OdinDungeonWaypointImportTest {
                   "Altar": [
                     {
                       "blockPos": {
-                        "field_11175": 19,
-                        "field_11174": 83,
-                        "field_11173": 43
+                        "x": 19,
+                        "y": 83,
+                        "z": 43
                       },
                       "color": "#00FF00FF",
                       "filled": false,
@@ -62,6 +62,34 @@ class OdinDungeonWaypointImportTest {
         Waypoint second = group.get(1);
         assertEquals(0xFF0000, second.color());
         assertEquals("", second.name());
+    }
+
+    @Test
+    void imports_current_odin_rgba_color_with_non_opaque_alpha() {
+        String json = """
+                {
+                  "Altar": [
+                    {
+                      "blockPos": {"x": 9, "y": 72, "z": 11},
+                      "color": "#12AB3480",
+                      "filled": false,
+                      "depth": false,
+                      "aabb": {
+                        "minX": 9.0, "minY": 72.0, "minZ": 11.0,
+                        "maxX": 10.0, "maxY": 73.0, "maxZ": 12.0
+                      },
+                      "title": "Current Odin"
+                    }
+                  ]
+                }
+                """;
+
+        Waypoint waypoint = WaypointImporter.importAny(json).groups().get(0).get(0);
+
+        assertEquals(9, waypoint.x());
+        assertEquals(72, waypoint.y());
+        assertEquals(11, waypoint.z());
+        assertEquals(0x12AB34, waypoint.color());
     }
 
     @Test
