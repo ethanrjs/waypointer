@@ -48,6 +48,8 @@ public final class Storage {
     private AsyncSaver saver;
     private ActiveGroupManager managerRef;
     private volatile String pendingSnapshotJson;
+    private int snapshotCount;
+    private volatile int writeCount;
 
     public Storage(Path file) {
         this.file = file;
@@ -76,17 +78,19 @@ public final class Storage {
     }
 
     /**
-     * Wire the storage up as a data-change listener. The listener-triggered
-     * path is the only live-save channel we support -- callers don't invoke
+     * Wire storage to persistent data changes. Transient temp markers, API
+     * overlays, and generated dungeon mirrors still invalidate render/API data
+     * listeners, but never serialize the user's route library. The persistent
+     * listener path is the only live-save channel -- callers don't invoke
      * {@link #save(ActiveGroupManager)} directly any more. Kept separate from
      * {@link #load} so callers can rehydrate without immediately writing the
      * canonical form back.
      */
     public void attach(ActiveGroupManager manager) {
         this.managerRef = manager;
-        this.pendingSnapshotJson = snapshotToJson(manager);
+        this.pendingSnapshotJson = captureSnapshot(manager);
         this.saver = new AsyncSaver("waypoints", this::writeToDisk, SAVE_DEBOUNCE_MS);
-        manager.addDataListener(this::markDirtyFromManager);
+        manager.addPersistentDataListener(this::markDirtyFromManager);
     }
 
     /**
@@ -97,7 +101,7 @@ public final class Storage {
     public void save(ActiveGroupManager manager) {
         boolean attachedToSameManager = saver != null && managerRef == manager;
         this.managerRef = manager;
-        this.pendingSnapshotJson = snapshotToJson(manager);
+        this.pendingSnapshotJson = captureSnapshot(manager);
         if (attachedToSameManager) {
             saver.markDirty();
             return;
@@ -116,7 +120,7 @@ public final class Storage {
     private void markDirtyFromManager() {
         ActiveGroupManager manager = managerRef;
         if (manager == null) return;
-        pendingSnapshotJson = snapshotToJson(manager);
+        pendingSnapshotJson = captureSnapshot(manager);
         if (saver != null) saver.markDirty();
     }
 
@@ -128,6 +132,7 @@ public final class Storage {
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
             Files.writeString(tmp, json);
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            writeCount++;
         } catch (IOException e) {
             Waypointer.LOGGER.error("Failed to save waypoints to {}", file, e);
         }
@@ -143,6 +148,19 @@ public final class Storage {
         }
         root.add("groups", groups);
         return GSON.toJson(root);
+    }
+
+    private String captureSnapshot(ActiveGroupManager manager) {
+        snapshotCount++;
+        return snapshotToJson(manager);
+    }
+
+    int snapshotCount() {
+        return snapshotCount;
+    }
+
+    int writeCount() {
+        return writeCount;
     }
 
     // --- JSON codec -----------------------------------------------------------------

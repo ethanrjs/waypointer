@@ -235,9 +235,7 @@ public final class DungeonRoomRouteSync {
         for (WaypointGroup group : manager.allGroups()) {
             if (isGeneratedGroup(group)) ids.add(group.id());
         }
-        for (String id : ids) {
-            manager.remove(id);
-        }
+        manager.removeAll(ids);
     }
 
     private void removeGeneratedGroup(String id) {

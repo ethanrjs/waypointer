@@ -43,6 +43,7 @@ public final class ActiveGroupManager {
     private String focusedTempGroupId;
 
     private final List<Runnable> dataListeners = new ArrayList<>();
+    private final List<Runnable> persistentDataListeners = new ArrayList<>();
     private static final Pattern USERNAME_TOKEN = Pattern.compile("\\b[A-Za-z0-9_]{3,16}\\b");
     private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]");
 
@@ -282,7 +283,7 @@ public final class ActiveGroupManager {
                 .withName(source)
                 .withTemp(mode, expiresAt);
         target.add(waypoint);
-        fireDataChanged();
+        fireTransientDataChanged();
         return target;
     }
 
@@ -331,7 +332,7 @@ public final class ActiveGroupManager {
         for (WaypointGroup group : byId.values()) {
             if (group.temp()) removed += group.removeAllTemp();
         }
-        if (removed > 0) fireDataChanged();
+        if (removed > 0) fireTransientDataChanged();
         return removed;
     }
 
@@ -374,7 +375,7 @@ public final class ActiveGroupManager {
                 }
             }
         }
-        if (removed > 0) fireDataChanged();
+        if (removed > 0) fireTransientDataChanged();
         return removed;
     }
 
@@ -444,8 +445,8 @@ public final class ActiveGroupManager {
     }
 
     public void add(WaypointGroup group) {
-        byId.put(group.id(), group);
-        fireDataChanged();
+        WaypointGroup previous = byId.put(group.id(), group);
+        fireDataChanged(isPersistent(previous) || isPersistent(group));
     }
 
     /**
@@ -455,8 +456,12 @@ public final class ActiveGroupManager {
      */
     public void addAll(Collection<WaypointGroup> groups) {
         if (groups.isEmpty()) return;
-        for (WaypointGroup group : groups) byId.put(group.id(), group);
-        fireDataChanged();
+        boolean persistent = false;
+        for (WaypointGroup group : groups) {
+            WaypointGroup previous = byId.put(group.id(), group);
+            persistent |= isPersistent(previous) || isPersistent(group);
+        }
+        fireDataChanged(persistent);
     }
 
     /**
@@ -465,23 +470,62 @@ public final class ActiveGroupManager {
      * the live manager until malformed files have already been rejected.
      */
     public void replaceAll(Collection<WaypointGroup> groups) {
+        boolean persistent = false;
+        for (WaypointGroup group : byId.values()) persistent |= isPersistent(group);
         byId.clear();
-        for (WaypointGroup group : groups) byId.put(group.id(), group);
-        fireDataChanged();
+        for (WaypointGroup group : groups) {
+            byId.put(group.id(), group);
+            persistent |= isPersistent(group);
+        }
+        fireDataChanged(persistent);
     }
 
     public void remove(String id) {
-        if (byId.remove(id) != null) fireDataChanged();
+        WaypointGroup removed = byId.remove(id);
+        if (removed != null) fireDataChanged(isPersistent(removed));
+    }
+
+    public void removeAll(Collection<String> ids) {
+        boolean changed = false;
+        boolean persistent = false;
+        for (String id : ids) {
+            WaypointGroup removed = byId.remove(id);
+            if (removed == null) continue;
+            changed = true;
+            persistent |= isPersistent(removed);
+        }
+        if (changed) fireDataChanged(persistent);
     }
 
     public void clear() {
+        boolean persistent = false;
+        for (WaypointGroup group : byId.values()) persistent |= isPersistent(group);
         byId.clear();
-        fireDataChanged();
+        fireDataChanged(persistent);
     }
 
     public void fireDataChanged() {
+        fireDataChanged(true);
+    }
+
+    public void fireDataChangedFor(WaypointGroup group) {
+        fireDataChanged(isPersistent(group));
+    }
+
+    public void fireTransientDataChanged() {
+        fireDataChanged(false);
+    }
+
+    private void fireDataChanged(boolean persistent) {
         cachedActive = null;
         for (Runnable l : List.copyOf(dataListeners)) l.run();
+        if (persistent) {
+            for (Runnable l : List.copyOf(persistentDataListeners)) l.run();
+        }
+    }
+
+    private static boolean isPersistent(WaypointGroup group) {
+        return group != null && !group.temp() && !group.runtimeOnly();
     }
 
     private WaypointGroup focusedTempGroupForZone(String zoneId) {
@@ -509,6 +553,8 @@ public final class ActiveGroupManager {
 
     public void addDataListener(Runnable listener)        { dataListeners.add(listener); }
     public void removeDataListener(Runnable listener)     { dataListeners.remove(listener); }
+    public void addPersistentDataListener(Runnable listener) { persistentDataListeners.add(listener); }
+    public void removePersistentDataListener(Runnable listener) { persistentDataListeners.remove(listener); }
 
     public record TempWaypointSelection(WaypointGroup group, int index) {}
 }

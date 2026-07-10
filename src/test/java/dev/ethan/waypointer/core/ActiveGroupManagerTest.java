@@ -28,6 +28,31 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void persistentListenersIgnoreTransientChangesWhileDataListenersSeeAllChanges() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        WaypointGroup temp = new WaypointGroup("temp", "Temp", "hub");
+        temp.setTemp(true);
+        WaypointGroup runtime = new WaypointGroup("runtime", "Runtime", "hub");
+        runtime.setRuntimeOnly(true);
+        manager.add(temp);
+        manager.add(runtime);
+        manager.removeAll(List.of(temp.id(), runtime.id()));
+
+        assertEquals(3, allChanges.get());
+        assertEquals(0, persistentChanges.get());
+
+        manager.add(WaypointGroup.create("Persistent", "hub"));
+
+        assertEquals(4, allChanges.get());
+        assertEquals(1, persistentChanges.get());
+    }
+
+    @Test
     void dataListenersCanAddAndRemoveListenersDuringCallback() {
         ActiveGroupManager manager = new ActiveGroupManager();
         List<String> calls = new ArrayList<>();

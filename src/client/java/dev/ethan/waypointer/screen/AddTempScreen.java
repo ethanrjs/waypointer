@@ -182,7 +182,7 @@ public final class AddTempScreen extends Screen {
         if (config.focusTempWaypoints()) {
             manager.focusTempWaypoint(target, target.size() - 1);
         }
-        manager.fireDataChanged();
+        manager.fireTransientDataChanged();
 
         // Persist the user's last picks so the next "add temp" (whether from
         // here or the keybind) starts on the same settings.
