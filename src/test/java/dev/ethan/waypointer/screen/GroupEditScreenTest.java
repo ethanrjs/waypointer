@@ -1,8 +1,11 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static dev.ethan.waypointer.screen.GuiTokens.GAP;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -202,6 +205,26 @@ class GroupEditScreenTest {
                 "removing the only row should leave no selection");
         assertEquals(-1, GroupEditScreen.selectedIndexAfterRemoval(-1, 3),
                 "invalid removal indexes should not invent a selection");
+    }
+
+    @Test
+    void routeNameChangePublishesOnceWhenEditorIsRemoved() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup group = WaypointGroup.create("Original", "hub");
+        manager.add(group);
+        AtomicInteger dataChanges = new AtomicInteger();
+        manager.addDataListener(dataChanges::incrementAndGet);
+        String publishedName = group.name();
+
+        publishedName = GroupEditScreen.publishNameChangeIfNeeded(manager, group, publishedName);
+        assertEquals(0, dataChanges.get(), "closing without a rename should not schedule a save");
+
+        group.setName("Renamed");
+        publishedName = GroupEditScreen.publishNameChangeIfNeeded(manager, group, publishedName);
+        GroupEditScreen.publishNameChangeIfNeeded(manager, group, publishedName);
+
+        assertEquals(1, dataChanges.get(),
+                "a completed rename should publish once instead of once per keystroke");
     }
 
     private static WaypointGroup routeWithSubwaypoints() {
