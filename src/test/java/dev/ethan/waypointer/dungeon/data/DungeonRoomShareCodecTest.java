@@ -45,9 +45,10 @@ class DungeonRoomShareCodecTest {
     }
 
     @Test
-    void importCustomDefinitionsReplacesExistingRoomDefinitionById() {
-        DungeonRoomData.importCustomDefinitions(List.of(definition("replace-me", "Old",
-                DungeonWaypoint.plain("old", DungeonSecretCategory.CHEST, 1, 70, 1, "Old"))));
+    void importCustomDefinitionsPreservesExistingAuthoredRouteById() {
+        DungeonRoomDefinition existing = definition("replace-me", "Old",
+                DungeonWaypoint.plain("old", DungeonSecretCategory.CHEST, 1, 70, 1, "Old"));
+        DungeonRoomData.importCustomDefinitions(List.of(existing));
         DungeonRoomDefinition unrelated = definition("keep-me", "Keep",
                 DungeonWaypoint.plain("keep", DungeonSecretCategory.CHEST, 3, 72, 3, "Keep"));
         DungeonRoomData.importCustomDefinitions(List.of(unrelated));
@@ -56,8 +57,8 @@ class DungeonRoomShareCodecTest {
                 DungeonWaypoint.plain("new", DungeonSecretCategory.LEVER, 2, 71, 2, "New"));
         int imported = DungeonRoomData.importCustomDefinitions(List.of(replacement));
 
-        assertEquals(1, imported);
-        assertEquals(replacement, DungeonRoomData.customDefinition("replace-me"));
+        assertEquals(0, imported);
+        assertEquals(existing, DungeonRoomData.customDefinition("replace-me"));
         assertEquals(unrelated, DungeonRoomData.customDefinition("keep-me"));
     }
 
