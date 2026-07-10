@@ -80,6 +80,7 @@ jar {
 	from("LICENSE") {
 		rename { "${it}_${inputs.properties.archivesName}" }
 	}
+	from("THIRD_PARTY_NOTICES.md")
 }
 
 publishing {

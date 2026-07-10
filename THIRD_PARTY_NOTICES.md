@@ -1,5 +1,23 @@
 # Third-Party Notices
 
+## Skyblocker dungeon coordinate algorithms
+
+Parts of `DungeonMapMath` and the dungeon `Direction` model are adapted from
+Skyblocker's dungeon room mapping and coordinate-transform algorithms.
+
+- Project: https://github.com/SkyblockerMod/Skyblocker
+- Source files:
+  - `src/main/java/de/hysky/skyblocker/skyblock/dungeon/secrets/Room.java`
+  - `src/main/java/de/hysky/skyblocker/skyblock/dungeon/DungeonMapUtils.java`
+- License: GNU Lesser General Public License v3.0
+- License text: https://github.com/SkyblockerMod/Skyblocker/blob/master/LICENSE
+
+The adapted portions remain available under the GNU Lesser General Public
+License v3.0. Waypointer's changes include representing coordinates with Java
+primitive arrays, adding explicit bounds and failure handling, and separating
+map-grid detection from room-local waypoint projection. The complete modified
+source is distributed in this repository.
+
 ## Odin room detection data and algorithm
 
 Waypointer bundles converted Catacombs room core hashes and per-room
