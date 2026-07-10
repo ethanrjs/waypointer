@@ -12,7 +12,10 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -266,6 +269,65 @@ class DefaultWaypointerApiTest {
 
         assertEquals(0, dataChanges.get());
         assertEquals(0, zoneChanges.get());
+    }
+
+    @Test
+    void offThreadCallsRunSynchronouslyOnConfiguredClientExecutor() throws Exception {
+        AtomicReference<Thread> clientThread = new AtomicReference<>();
+        ExecutorService clientExecutor = Executors.newSingleThreadExecutor();
+        try {
+            clientExecutor.submit(() -> clientThread.set(Thread.currentThread())).get();
+            ActiveGroupManager manager = new ActiveGroupManager();
+            WaypointerApi api = new DefaultWaypointerApi(
+                    manager,
+                    () -> Thread.currentThread() == clientThread.get(),
+                    clientExecutor);
+            AtomicReference<Thread> listenerThread = new AtomicReference<>();
+            AtomicInteger changes = new AtomicInteger();
+            WaypointerHandle handle = api.onDataChanged(() -> {
+                listenerThread.set(Thread.currentThread());
+                changes.incrementAndGet();
+            });
+
+            String routeId = api.createRoute(RouteSpec.builder().name("Threaded route").build());
+
+            assertNotNull(routeId);
+            assertSame(clientThread.get(), listenerThread.get());
+            assertEquals(1, changes.get());
+            assertEquals("Threaded route", api.allGroups().get(0).name());
+
+            handle.close();
+            api.createRoute(RouteSpec.builder().name("After close").build());
+            assertEquals(1, changes.get(), "closing off-thread must remove on the client thread before returning");
+        } finally {
+            clientExecutor.shutdownNow();
+        }
+    }
+
+    @Test
+    void failingPublicListenersDoNotAbortOtherListenersOrInternalUpdates() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        AtomicInteger dataChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        AtomicInteger zoneChanges = new AtomicInteger();
+        api.onDataChanged(() -> {
+            throw new IllegalStateException("broken data consumer");
+        });
+        api.onDataChanged(dataChanges::incrementAndGet);
+        api.onZoneChanged(zone -> {
+            throw new IllegalStateException("broken zone consumer");
+        });
+        api.onZoneChanged(zone -> zoneChanges.incrementAndGet());
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        api.createRoute(RouteSpec.builder().name("Survives listener").build());
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+
+        assertEquals(1, dataChanges.get());
+        assertEquals(1, persistentChanges.get());
+        assertEquals(1, zoneChanges.get());
+        assertEquals("Survives listener", api.allGroups().get(0).name());
     }
 
     @Test

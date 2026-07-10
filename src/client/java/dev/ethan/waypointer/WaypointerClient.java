@@ -99,7 +99,8 @@ public final class WaypointerClient implements ClientModInitializer {
         storage.load(manager);
         // attach AFTER load so rehydration doesn't trigger a no-op write.
         storage.attach(manager);
-        api = new DefaultWaypointerApi(manager);
+        Minecraft minecraft = Minecraft.getInstance();
+        api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft);
 
         new LocationTracker(manager, config).install();
         new ProximityTracker(manager, config).install();
