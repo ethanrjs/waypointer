@@ -10,6 +10,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.ethan.waypointer.Waypointer;
+import dev.ethan.waypointer.WaypointerClient;
 import dev.ethan.waypointer.chat.ChatImportCache;
 import dev.ethan.waypointer.chat.WaypointerChatFeedback;
 import dev.ethan.waypointer.codec.WaypointCodec;
@@ -247,6 +248,12 @@ public final class WaypointerCommands {
                                 .executes(ctx -> runImportFile(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "path")))))
                 .then(literal("debug").executes(ctx -> { scheduleOpenDebugInspector(); return 1; }))
+                .then(literal("devmode")
+                        .executes(ctx -> runSetDeveloperMode(ctx.getSource(), null))
+                        .then(literal("on").executes(ctx -> runSetDeveloperMode(ctx.getSource(), true)))
+                        .then(literal("off").executes(ctx -> runSetDeveloperMode(ctx.getSource(), false)))
+                        .then(literal("status").executes(ctx -> runDeveloperModeStatus(ctx.getSource())))
+                        .then(literal("report").executes(ctx -> runDeveloperModeReport(ctx.getSource()))))
                 .then(literal("editmode").executes(this::runToggleEditModeCommand))
                 .then(literal("edit")
                         .then(literal("mode").executes(this::runToggleEditModeCommand)))
@@ -721,6 +728,49 @@ public final class WaypointerCommands {
         Minecraft.getInstance().execute(() -> DebugInspectScreen.open(null, manager, config));
     }
 
+    private int runSetDeveloperMode(FabricClientCommandSource src, Boolean requestedState) {
+        var monitor = WaypointerClient.developerModeMonitor();
+        if (monitor == null) {
+            error(src, "Developer mode is unavailable because dungeon diagnostics did not initialize.");
+            return 0;
+        }
+        boolean enable = requestedState == null ? !monitor.enabled() : requestedState;
+        try {
+            Path file = enable ? monitor.enable() : monitor.disable();
+            if (enable) {
+                success(src, "Developer mode enabled for this session. Log: " + file);
+            } else {
+                success(src, "Developer mode disabled. Log: " + (file == null ? "(none)" : file));
+            }
+            return 1;
+        } catch (RuntimeException e) {
+            Waypointer.LOGGER.error("Could not change developer mode", e);
+            error(src, "Could not change developer mode. See latest.log for details.");
+            return 0;
+        }
+    }
+
+    private int runDeveloperModeStatus(FabricClientCommandSource src) {
+        var monitor = WaypointerClient.developerModeMonitor();
+        if (monitor == null) {
+            error(src, "Developer mode is unavailable because dungeon diagnostics did not initialize.");
+            return 0;
+        }
+        info(src, monitor.statusLine());
+        return 1;
+    }
+
+    private int runDeveloperModeReport(FabricClientCommandSource src) {
+        var monitor = WaypointerClient.developerModeMonitor();
+        if (monitor == null || !monitor.enabled()) {
+            warn(src, "Developer mode is off. Use /wp devmode on first.");
+            return 0;
+        }
+        monitor.writeReport("manual command");
+        success(src, "Developer report written to " + monitor.logFile());
+        return 1;
+    }
+
     private int runToggleEditModeCommand(CommandContext<FabricClientCommandSource> ctx) {
         FabricClientCommandSource src = ctx.getSource();
         if (manager == null || config == null) {
@@ -876,7 +926,10 @@ public final class WaypointerCommands {
             new HelpSection("debug", "Debug",
                     List.of(
                             new HelpRow(" debug", "Open the Waypointer debug inspector.",
-                                    "debug")))
+                                    "debug"),
+                            new HelpRow(" devmode [on|off|status|report]",
+                                    "Monitor dungeon room detection and write diagnostic reports.",
+                                    "devmode on", "devmode report")))
     );
 
     /**

@@ -11,6 +11,7 @@ import dev.ethan.waypointer.config.Storage;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.debug.DeveloperModeMonitor;
 import dev.ethan.waypointer.dungeon.DungeonCommands;
 import dev.ethan.waypointer.dungeon.DungeonMapCheckmarks;
 import dev.ethan.waypointer.dungeon.DungeonRoomRouteSync;
@@ -56,6 +57,7 @@ public final class WaypointerClient implements ClientModInitializer {
     private static DungeonStateTracker dungeonTracker;
     private static DungeonRouteSession dungeonRouteSession;
     private static DungeonRouteDownloader dungeonRouteDownloader;
+    private static DeveloperModeMonitor developerModeMonitor;
     private static boolean dungeonRouteSessionInDungeonContext;
     private static Screen suspendedWaypointerGuiScreen;
 
@@ -89,6 +91,10 @@ public final class WaypointerClient implements ClientModInitializer {
 
     public static DungeonRouteDownloader dungeonRouteDownloader() {
         return dungeonRouteDownloader;
+    }
+
+    public static DeveloperModeMonitor developerModeMonitor() {
+        return developerModeMonitor;
     }
 
     @Override
@@ -144,6 +150,7 @@ public final class WaypointerClient implements ClientModInitializer {
         config.flush();
         if (dungeonConfig != null) dungeonConfig.flush();
         DungeonRoomData.flush();
+        if (developerModeMonitor != null) developerModeMonitor.flushAndShutdown();
     }
 
     private static String modVersionFromContainer(ModContainer container) {
@@ -192,6 +199,8 @@ public final class WaypointerClient implements ClientModInitializer {
         new DungeonRoomRouteSync(manager, dungeonTracker, dungeonRouteSession, dungeonConfig).install();
         new DungeonTriggerDetector(dungeonTracker, dungeonRouteSession).install();
         new DungeonMapCheckmarks(dungeonTracker, dungeonRouteSession, dungeonConfig).install();
+        developerModeMonitor = new DeveloperModeMonitor(dungeonTracker, dungeonConfig, manager);
+        developerModeMonitor.install();
         dungeonRouteDownloader = new DungeonRouteDownloader(manager, dungeonConfig);
         dungeonRouteDownloader.install();
         new DungeonCommands(dungeonTracker, dungeonConfig, dungeonRouteSession,
