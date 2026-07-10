@@ -8,12 +8,15 @@ import dev.ethan.waypointer.dungeon.DungeonWaypoint;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DungeonRoomCoreDetectionTest {
@@ -62,6 +65,54 @@ class DungeonRoomCoreDetectionTest {
         DungeonRoomDefinition definition = DungeonRoomData.parseDefinitions(json).get("old-room");
 
         assertTrue(definition.coreHashes().isEmpty());
+    }
+
+    @Test
+    void identifiedRoomPersistsItsCoreIdentityAndMatchesNextRun(@TempDir Path dir) {
+        Path file = dir.resolve("dungeon_rooms.json");
+        DungeonRoom firstRun = roomAt(DungeonRoomType.ROOM, DungeonRoomShape.ONE_BY_ONE);
+        DungeonRoomData.loadCustomStore(file);
+
+        DungeonRoomDefinition definition = DungeonRoomData.defineIdentifiedRoom(
+                "authored-room", "Authored Room", firstRun, new FixedCoreHashLookup(List.of(123456)));
+        DungeonRoomData.flush();
+        DungeonRoomData.loadCustomStore(file);
+
+        DungeonRoom secondRun = new DungeonRoom(
+                DungeonRoomType.ROOM,
+                DungeonRoomShape.ONE_BY_ONE,
+                Direction.NW,
+                56,
+                88,
+                List.of(DungeonRoom.packSegment(56, 88)));
+        DungeonRoom matched = DungeonRoomData.withMatchedDefinition(
+                secondRun, null, new FixedCoreHashLookup(List.of(123456)));
+
+        assertEquals(List.of(123456), DungeonRoomData.customDefinition(definition.id()).coreHashes());
+        assertEquals(definition.id(), matched.roomId());
+        assertEquals(definition.displayName(), matched.displayName());
+    }
+
+    @Test
+    void identifiedRoomRejectsUnavailableCoreIdentityWithoutSaving() {
+        DungeonRoom room = roomAt(DungeonRoomType.ROOM, DungeonRoomShape.ONE_BY_ONE);
+
+        assertThrows(IllegalStateException.class, () -> DungeonRoomData.defineIdentifiedRoom(
+                "dead-room", "Dead Room", room, new FixedCoreHashLookup(List.of())));
+
+        DungeonRoom multiSegment = new DungeonRoom(
+                DungeonRoomType.ROOM,
+                DungeonRoomShape.ONE_BY_TWO,
+                Direction.NW,
+                8,
+                8,
+                List.of(DungeonRoom.packSegment(8, 8), DungeonRoom.packSegment(40, 8)));
+        assertThrows(IllegalStateException.class, () -> DungeonRoomData.defineIdentifiedRoom(
+                "partial-room", "Partial Room", multiSegment,
+                new FixedCoreHashLookup(List.of(123456))));
+
+        assertNull(DungeonRoomData.customDefinition("dead-room"));
+        assertNull(DungeonRoomData.customDefinition("partial-room"));
     }
 
     @Test

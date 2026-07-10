@@ -438,8 +438,17 @@ public final class DungeonCommands {
     private int runRoomCreate(FabricClientCommandSource src, String id, String name) {
         DungeonRoom room = requireRoom(src);
         if (room == null) return 0;
-        DungeonRoomDefinition definition = DungeonRoomData.defineRoom(id,
-                name == null || name.isBlank() ? room.displayName() : name, room);
+        DungeonRoomDefinition definition;
+        try {
+            definition = DungeonRoomData.defineIdentifiedRoom(
+                    id,
+                    name == null || name.isBlank() ? room.displayName() : name,
+                    room,
+                    new DungeonRoomCoreScanner(Minecraft.getInstance().level));
+        } catch (IllegalStateException unavailableIdentity) {
+            error(src, "Room core identity is not available yet. Wait for the room to load and try again.");
+            return 0;
+        }
         tracker.applyCurrentRoomDefinition(definition.id(), definition.displayName());
         success(src, "Dungeon room definition \"" + definition.displayName()
                 + "\" created as " + definition.id());
