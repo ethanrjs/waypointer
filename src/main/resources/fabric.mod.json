@@ -28,8 +28,9 @@
         "fabricloader": ">=0.19.3",
         "minecraft": ">=26.1 <26.2",
         "java": ">=25",
-        "fabric-api": "*",
-        "owo": ">=0.13.0",
+        "fabric-api": "*"
+    },
+    "suggests": {
         "hypixel-mod-api": ">=1.0"
     }
 }
