@@ -626,6 +626,13 @@ public final class WaypointImporter {
         if (!json.has("blockPos") || !json.get("blockPos").isJsonObject()) return null;
         JsonObject blockPos = json.getAsJsonObject("blockPos");
         try {
+            if (blockPos.has("x") && blockPos.has("y") && blockPos.has("z")) {
+                return new int[]{
+                        blockPos.get("x").getAsInt(),
+                        blockPos.get("y").getAsInt(),
+                        blockPos.get("z").getAsInt()
+                };
+            }
             return new int[]{
                     blockPos.get("field_11175").getAsInt(),
                     blockPos.get("field_11174").getAsInt(),

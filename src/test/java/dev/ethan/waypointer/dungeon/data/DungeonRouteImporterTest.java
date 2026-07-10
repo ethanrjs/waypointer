@@ -113,7 +113,7 @@ class DungeonRouteImporterTest {
               "Altar": [
                 {
                   "blockPos": {"x": 10, "y": 70, "z": 12},
-                  "color": "#FF00FF00",
+                  "color": "#00FF00FF",
                   "filled": false,
                   "depth": false,
                   "aabb": {"minX": 0, "minY": 0, "minZ": 0, "maxX": 1, "maxY": 1, "maxZ": 1},
@@ -122,7 +122,7 @@ class DungeonRouteImporterTest {
                 },
                 {
                   "blockPos": {"x": 15, "y": 82, "z": 3},
-                  "color": "#FFFFAA00",
+                  "color": "#FFAA00FF",
                   "filled": true,
                   "depth": false,
                   "aabb": {"minX": 0, "minY": 0, "minZ": 0, "maxX": 1, "maxY": 1, "maxZ": 1},
@@ -130,7 +130,7 @@ class DungeonRouteImporterTest {
                 },
                 {
                   "x": 4, "y": 70, "z": 4,
-                  "color": "#FF112233",
+                  "color": "#112233FF",
                   "filled": false,
                   "depth": true,
                   "aabb": {"minX": 0, "minY": 0, "minZ": 0, "maxX": 1, "maxY": 1, "maxZ": 1},
@@ -171,7 +171,7 @@ class DungeonRouteImporterTest {
         assertEquals(1, secret.secretIndex());
         assertEquals(DungeonWaypointTrigger.ANY_SECRET, secret.trigger());
         assertEquals("lever here", secret.name());
-        assertEquals(0x00FF00, secret.color(), "hex #AARRGGBB should keep its RGB");
+        assertEquals(0x00FF00, secret.color(), "current Odin #RRGGBBAA should keep its RGB");
         assertEquals(10, secret.x());
 
         DungeonWaypoint ether = altar.waypoints().get(1);
@@ -189,6 +189,16 @@ class DungeonRouteImporterTest {
         assertEquals(0, marker.secretIndex(), "untyped waypoints import as persistent markers");
         assertEquals(DungeonWaypointTrigger.MANUAL, marker.trigger());
         assertEquals("watch the trap", marker.name());
+    }
+
+    @Test
+    void keepsPreviouslyAcceptedOpaqueLeadingAlphaColors() {
+        String legacy = ODIN_PACK_JSON.replace("#00FF00FF", "#FF00FF00");
+
+        DungeonWaypoint secret = DungeonRouteImporter.parse(legacy)
+                .definitions().get(0).waypoints().get(0);
+
+        assertEquals(0x00FF00, secret.color());
     }
 
     @Test
