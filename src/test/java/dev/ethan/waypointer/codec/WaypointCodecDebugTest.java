@@ -42,7 +42,7 @@ class WaypointCodecDebugTest {
         assertEquals(encoded.length(), d.inputChars());
         assertEquals(WaypointCodec.MAGIC, d.magic());
         assertEquals(encoded.length() - WaypointCodec.MAGIC.length(), d.payloadChars());
-        assertEquals("ASCII base-91 stream + subwaypoint precision", d.textEncoding());
+        assertEquals("ASCII base-91 stream + CRC-32", d.textEncoding());
         assertTrue(d.rawBodyBytes() > 0, "raw body must be non-empty");
         assertTrue(d.compressedBytes() > 0, "compressed must be non-empty");
     }

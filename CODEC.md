@@ -8,11 +8,17 @@ WP:4BdPN0BU%k[nFq#[FH-++?AX6bO}NHVtY(cx5KE...
 
 A recipient pastes the string in chat and imports the route as waypoint groups.
 
-Current wire version: **7**.
+Current wire version: **8**.
 
 Reference implementation: `src/main/java/dev/ethan/waypointer/codec/` — see the file map in section 13.
 
-v7 keeps v6's chat-safe base-91 text layer and binary coordinate modes, then adds default-preserved subwaypoint detail:
+v8 keeps v7's body and text layouts, then adds an integrity frame around the binary body:
+
+- a four-byte CRC-32 of the uncompressed binary body detects mutations that raw DEFLATE cannot;
+- decoders reject compressed bytes or binary-body bytes left after a complete payload;
+- inflation stops at 16 MiB, preventing small DEFLATE inputs from expanding without bound.
+
+v7 added default-preserved subwaypoint detail:
 
 - minimal exports now keep subwaypoint small/filled style bits along with the structural subwaypoint bit;
 - subwaypoints with custom one-sixteenth placement write a packed 12-bit in-block offset so shared tiny markers import at the same precise center.
@@ -133,7 +139,7 @@ o/  -> o~/
 
 ### 4.2 Packing
 
-v5, v6, and v7 use the basE91 streaming scheme with a 91-symbol alphabet. The packer accumulates source bits and emits two output characters carrying either 13 or 14 bits, depending on whether the current 14-bit value fits inside `91²`.
+v5 and newer use the basE91 streaming scheme with a 91-symbol alphabet. The packer accumulates source bits and emits two output characters carrying either 13 or 14 bits, depending on whether the current 14-bit value fits inside `91²`.
 
 ```text
 91² = 8281
@@ -163,12 +169,12 @@ The budget is UTF-8 bytes, not visible glyphs.
 | --- | ---: | ---: | ---: | --- |
 | base64 | 6.00 | 1 | 6.00 | Safe, lower density. |
 | v2 base-85 | 6.41 | 1 | 6.41 | Fixed 4-byte/5-char groups plus one trailer. |
-| v5/v6/v7 base-91 stream | ~6.51 | 1 | ~6.51 | No trailer; variable 13/14-bit pairs. |
+| v5-v8 base-91 stream | ~6.51 | 1 | ~6.51 | No text-packing trailer; variable 13/14-bit pairs. |
 | v4 base-92 stream | ~6.52 | 1 | ~6.52 | Legacy; includes comma. |
 | v3 base-93 stream | ~6.53 | 1 | ~6.53 | Legacy; includes backtick. |
 | CJK base-16384 | 14.00 | 3 | 4.67 | Short visually, expensive on the wire. |
 
-CJK carries more bits per glyph, but each glyph costs three UTF-8 bytes. That makes it worse under the server byte cap. v1 optimized for textbox length. v2 switched to base-85 for byte efficiency. v3 removed the base-85 pad trailer. v4 spent one symbol to remove backticks. v5 spent one more symbol to remove commas and added extended coordinate modes. v6 kept the same base-91 text layer, then improved the binary body with a coordinate-only shortcut and a new range-delta coordinate mode. v7 keeps that text layer and adds exact tiny-subwaypoint sharing.
+CJK carries more bits per glyph, but each glyph costs three UTF-8 bytes. That makes it worse under the server byte cap. v1 optimized for textbox length. v2 switched to base-85 for byte efficiency. v3 removed the base-85 pad trailer. v4 spent one symbol to remove backticks. v5 spent one more symbol to remove commas and added extended coordinate modes. v6 kept the same base-91 text layer, then improved the binary body with a coordinate-only shortcut and a new range-delta coordinate mode. v7 added exact tiny-subwaypoint sharing. v8 adds CRC-32 integrity without changing the text alphabet.
 
 ### 4.4 Decode Safety
 
@@ -191,9 +197,15 @@ The codec uses raw DEFLATE:
 Deflater(..., nowrap=true)
 ```
 
-It omits the zlib header and Adler-32 trailer. That saves six wrapper bytes per share, but it also removes the wrapper checksum and the zlib `DICTID` field. The decoder binds the preset dictionary manually by calling `Inflater.setDictionary(...)` before inflating.
+It omits the zlib header and Adler-32 trailer. That saves six wrapper bytes per share and removes the zlib `DICTID` field. The decoder binds the preset dictionary manually by calling `Inflater.setDictionary(...)` before inflating.
 
-Corruption can still fail in several places: invalid DEFLATE tokens, truncated inflate input, unsupported header versions, out-of-bounds string-pool references, invalid zone dictionary references, oversized strings, and malformed varints. The format does not carry a checksum.
+v8 passes this frame to raw DEFLATE:
+
+```text
+binary body || crc32(binary body, 4 bytes, big-endian)
+```
+
+The receiver inflates at most 16 MiB, requires the DEFLATE stream to consume every compressed byte, verifies the CRC-32, removes it, parses the binary body, and requires that parser to consume every remaining byte. v1-v7 payloads remain decode-compatible but have no checksum and are therefore legacy unchecked payloads; they still receive the inflate bound and exact-consumption checks.
 
 ### 5.2 Preset Dictionary
 
@@ -231,7 +243,7 @@ This matters because the best raw compressed byte count is not always the best c
 
 ### 5.4 Dictionary Versioning
 
-The dictionary bytes are part of the wire contract. Raw DEFLATE does not advertise a dictionary ID, so old payloads are not protected by a zlib-level dictionary checksum. If `CodecDictionary.RAW` changes, old strings may inflate to the wrong bytes, fail inflation, or fail later while parsing the binary body.
+The dictionary bytes are part of the wire contract. Raw DEFLATE does not advertise a dictionary ID, so v1-v7 payloads are not protected against a dictionary mismatch. v8's CRC-32 detects wrong uncompressed output. If `CodecDictionary.RAW` changes, old strings may still inflate incorrectly or fail, so any dictionary edit requires another wire-version bump.
 
 Do not edit the dictionary without bumping `WaypointCodec.WIRE_VERSION`.
 
@@ -426,7 +438,7 @@ The purpose is to avoid paying wrapper bytes for the most common compressed expo
 
 Each group chooses one coordinate mode during encode.
 
-In v5+, the chosen mode uses `groupFlags[4..5]` for the low two bits and `groupFlags[6]` for bit 2. Legacy v2-v4 only used `groupFlags[4..5]`, so they only support modes `0..3`; the restored v1 compatibility path only accepts modes `0..2`. v6 adds mode `6`; older v5 payloads never contain it, but current decoders understand v5, v6, and v7.
+In v5+, the chosen mode uses `groupFlags[4..5]` for the low two bits and `groupFlags[6]` for bit 2. Legacy v2-v4 only used `groupFlags[4..5]`, so they only support modes `0..3`; the restored v1 compatibility path only accepts modes `0..2`. v6 adds mode `6`; older v5 payloads never contain it, but current decoders understand v5-v8.
 
 #### Mode 0: `VECTOR` delta
 
@@ -517,7 +529,7 @@ An axis width of `0` means all deltas on that axis are zero. AUTO only considers
 
 #### Mode 6: `RANGE_DELTA`
 
-Introduced in v6 and still valid in v7. Stores the first waypoint as absolute zigzag varints, then range-codes fixed-width zigzag deltas by axis.
+Introduced in v6 and still valid in v8. Stores the first waypoint as absolute zigzag varints, then range-codes fixed-width zigzag deltas by axis.
 
 ```text
 first absolute x, y, z
@@ -736,7 +748,8 @@ unsupported wire version N
 
 Current decoders accept:
 
-- v7: current writer, v6 text/anonymous/range-delta behavior plus default-preserved subwaypoint style flags and packed sixteenth-block precise offsets;
+- v8: current writer, v7 body/text behavior plus a CRC-32 integrity trailer;
+- v7: v6 text/anonymous/range-delta behavior plus default-preserved subwaypoint style flags and packed sixteenth-block precise offsets;
 - v6: base-91 text layer, anonymous single-group coordinate-only bodies, `RANGE_DELTA`, and best-of-DEFLATE strategy selection;
 - v5: `AsciiStreamCodec` base-91 text layer, Hypixel emote escape, extended coordinate modes;
 - v4: `AsciiStreamCodec` base-92 text layer, Hypixel emote escape, v4 header;
@@ -744,7 +757,7 @@ Current decoders accept:
 - v2: `AsciiPackCodec` base-85 text layer, v2 body with zone IDs as string-pool indexes, waypoint names always as pool refs, and ignored bit 0 in group flags;
 - v1: `CjkBase16384` text layer with the old pooled-zone body shape.
 
-The encoder only writes v7. v6 and older are decode-only compatibility paths; the separate v5 exporter/comparison UI was removed after v6 won the export-size tests.
+The encoder only writes v8. v7 and older are decode-only, checksum-free compatibility paths; the separate v5 exporter/comparison UI was removed after v6 won the export-size tests.
 
 ### 8.3 `peekLabel`
 
@@ -752,15 +765,16 @@ The encoder only writes v7. v6 and older are decode-only compatibility paths; th
 
 ```text
 peekLabel(text):
-  run the same prefix / v6 text decode / inflate path as decode,
-  then try v5, v4, v3, v2, and v1 fallbacks
+  copy at most the first 1024 payload characters after WP:
+  try the v8 text decode, then v7 through v1 fallbacks
+  inflate at most header + maximum label bytes; completion is not required
   read header byte
   if version mismatch or HEADER_FLAG_LABEL unset -> Optional.empty()
   read label and return it
-  swallow all exceptions -> Optional.empty()
+  malformed input -> Optional.empty()
 ```
 
-The label appears before the string pool so this path never walks the full payload.
+The label appears before the string pool, so this path never walks or allocates from the full payload. This is intentionally an unchecked preview: only `decodeFull()` verifies the v8 CRC and exact stream consumption before import.
 
 Current implementation note: `decodeFull()` sanitizes labels during the normal read path. `peekLabel()` currently returns the label read from the payload without applying `Options.sanitizeLabel()`. Either sanitize inside `peekLabel()` or sanitize at every hover-render call before relying on the stronger tooltip-safety claim.
 
@@ -814,10 +828,10 @@ Example route:
 - label: none
 - export options: names and colors included
 
-Binary body before DEFLATE, with whitespace added:
+Binary body before the v8 CRC-32 is appended and the frame is DEFLATE-compressed, with whitespace added:
 
 ```text
-17               header: version=7, names flag, no label
+18               header: version=8, names flag, no label
 02               string pool: 2 entries
   00                       ""          reserved at index 0
   07  44 75 6E 67 65 6F 6E              "Dungeon"
@@ -841,7 +855,7 @@ Binary body before DEFLATE, with whitespace added:
 
 - Bit I/O is byte-aligned at section boundaries. After a `FIXED_COMPACT`, `FIT_COMPACT`, `DELTA_FIT_AXIS_SEPARATED`, or `RANGE_DELTA` coordinate stream, `BitReader.alignToByteBoundary()` drops buffered partial-byte bits so waypoint-body reads resume cleanly. `BitWriter.flush()` mirrors this on encode.
 - All pool lookups go through `poolGet`, which bounds-checks against pool size and throws `IOException` on out-of-range indices. Malformed payloads report `string pool OOB: N` instead of `IndexOutOfBoundsException`.
-- `decodeFull()` sanitizes labels even though encode already sanitizes them. `peekLabel()` should do the same before hover text renders a label from an untrusted payload.
+- `decodeFull()` sanitizes labels even though encode already sanitizes them. `peekLabel()` is an unchecked bounded preview and should not be treated as authenticated route metadata.
 - AUTO gradient imports may recolor unlocked waypoints using the recipient/default gradient endpoints. The wire format does not store gradient endpoint colors.
 
 ---

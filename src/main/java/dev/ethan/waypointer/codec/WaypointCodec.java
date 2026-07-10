@@ -10,12 +10,14 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
@@ -26,7 +28,7 @@ import java.util.zip.Inflater;
  *
  * Wire format:
  *
- *     WP:<base-91 body of raw DEFLATE(bin)>
+ *     WP:<base-91 body of raw DEFLATE(bin || crc32(bin))>
  *
  * The {@code WP:} prefix is just a scanner anchor; the schema version lives
  * in the low nibble of the first body byte (see below). Keeping the version
@@ -127,7 +129,8 @@ public final class WaypointCodec {
      * scanner. Version 0 is reserved as "invalid" so a corrupted header byte
      * can't accidentally decode as an older schema.
      *
-     * v7 (current): v6 plus default-preserved subwaypoint style flags and
+     * v8 (current): v7 plus a CRC-32 trailer over the uncompressed body.
+     * v7: v6 plus default-preserved subwaypoint style flags and
      *               optional sixteenth-block waypoint-center offsets.
      * v6: base-91 streaming outer alphabet plus the anonymous single-group
      *     shortcut, RANGE_DELTA coord mode, and DEFLATE strategy selection.
@@ -143,10 +146,11 @@ public final class WaypointCodec {
      *               FIT_COMPACT coord mode.
      * v1 (retired): CJK base-16384 alphabet; same binary body shape.
      *
-     * v6, v5, v4, v3, v2, and v1 payloads still decode through legacy paths so
+     * v7, v6, v5, v4, v3, v2, and v1 payloads still decode through legacy paths so
      * existing shared routes keep importing after text-layer changes.
      */
-    static final int WIRE_VERSION = 7;
+    static final int WIRE_VERSION = 8;
+    static final int LEGACY_V7_WIRE_VERSION = 7;
     private static final int LEGACY_V6_WIRE_VERSION = 6;
     private static final int LEGACY_V5_WIRE_VERSION = 5;
     private static final int LEGACY_V4_WIRE_VERSION = 4;
@@ -216,6 +220,9 @@ public final class WaypointCodec {
     private static final int MAX_WIRE_WAYPOINTS_PER_GROUP = 100_000;
     private static final int MAX_WIRE_GROUPS = WaypointImporter.MAX_GROUPS_PER_IMPORT;
     private static final int MAX_ARRAYLIST_PRESIZE = 1024;
+    static final int MAX_INFLATED_BYTES = 16 << 20;
+    private static final int CHECKSUM_BYTES = Integer.BYTES;
+    private static final int MAX_PEEK_PAYLOAD_CHARS = 1024;
 
     private static final int WP_FLAG_HAS_NAME   = 1;
     private static final int WP_FLAG_HAS_COLOR  = 1 << 1;
@@ -228,6 +235,7 @@ public final class WaypointCodec {
     private static final int PRECISE_OFFSET_BITS = 4;
     private static final int PRECISE_OFFSET_MASK = (1 << PRECISE_OFFSET_BITS) - 1;
     private static final int PRECISE_OFFSET_PACKED_MASK = (1 << (PRECISE_OFFSET_BITS * 3)) - 1;
+    private static final String TEXT_ENCODING_V8 = "ASCII base-91 stream + CRC-32";
     private static final String TEXT_ENCODING_V7 = "ASCII base-91 stream + subwaypoint precision";
     private static final String TEXT_ENCODING_V6 = "ASCII base-91 stream + range-delta coord mode";
     private static final String TEXT_ENCODING_V5 = "ASCII base-91 stream + extended coord modes";
@@ -420,7 +428,7 @@ public final class WaypointCodec {
     static String encode(List<WaypointGroup> groups, Options opts, PackingMode mode) {
         try {
             byte[] raw = writeBody(groups, opts, mode, WIRE_VERSION, true, true);
-            byte[] compressed = deflate(raw);
+            byte[] compressed = deflate(appendChecksum(raw));
             return MAGIC + escapeHypixelEmotes(AsciiStreamCodec.encode(compressed));
         } catch (IOException e) {
             throw new IllegalStateException("codec encode failed", e);
@@ -449,38 +457,24 @@ public final class WaypointCodec {
         try {
             return decodePayloadCurrent(payload);
         } catch (IOException | IllegalArgumentException e) {
-            try {
-                return decodePayloadLegacyV6(payload);
-            } catch (IOException | IllegalArgumentException legacyV6) {
+            if (e instanceof InflatedPayloadLimitException) {
+                throw new IllegalArgumentException("codec decode failed: " + e.getMessage(), e);
+            }
+            StringBuilder failures = new StringBuilder("v8=").append(e.getMessage());
+            Exception lastFailure = e;
+            for (int version = LEGACY_V7_WIRE_VERSION; version >= LEGACY_V1_WIRE_VERSION; version--) {
                 try {
-                    return decodePayloadLegacyV5(payload);
-                } catch (IOException | IllegalArgumentException legacyV5) {
-                    try {
-                        return decodePayloadLegacyV4(payload);
-                    } catch (IOException | IllegalArgumentException legacyV4) {
-                        try {
-                            return decodePayloadV3(payload);
-                        } catch (IOException | IllegalArgumentException legacyV3) {
-                            try {
-                                return decodePayloadV2(payload);
-                            } catch (IOException | IllegalArgumentException legacyV2) {
-                                try {
-                                    return decodePayloadV1(payload);
-                                } catch (IOException | IllegalArgumentException legacyV1) {
-                                    throw new IllegalArgumentException(
-                                            "codec decode failed: v7=" + e.getMessage()
-                                                    + "; v6=" + legacyV6.getMessage()
-                                                    + "; v5=" + legacyV5.getMessage()
-                                                    + "; v4=" + legacyV4.getMessage()
-                                                    + "; v3=" + legacyV3.getMessage()
-                                                    + "; v2=" + legacyV2.getMessage()
-                                                    + "; v1=" + legacyV1.getMessage(), legacyV1);
-                                }
-                            }
-                        }
+                    return decodeLegacyPayload(payload, version);
+                } catch (IOException | IllegalArgumentException legacyFailure) {
+                    if (legacyFailure instanceof InflatedPayloadLimitException) {
+                        throw new IllegalArgumentException("codec decode failed: "
+                                + legacyFailure.getMessage(), legacyFailure);
                     }
+                    failures.append("; v").append(version).append('=').append(legacyFailure.getMessage());
+                    lastFailure = legacyFailure;
                 }
             }
+            throw new IllegalArgumentException("codec decode failed: " + failures, lastFailure);
         }
     }
 
@@ -489,16 +483,9 @@ public final class WaypointCodec {
      * whether a candidate codec deserves an interactive pill or the stripped
      * {@code [Invalid Waypointer Code]} fallback.
      *
-     * <p>Implemented as "try to fully decode and discard" because every
-     * corruption surface the wire format cares about lives in the decoder
-     * path: the ASCII alphabet check, the DEFLATE bit-stream self-check (raw
-     * DEFLATE doesn't carry a CRC, but any corrupted token sequence surfaces
-     * as a {@code DataFormatException} on inflate), the header-version guard,
-     * and the per-field length sanity scattered through {@link #readBody}.
-     * Any bit-flip survives at most one of these -- two layers of self-check
-     * in practice -- so a full decode is strictly stronger than a quick
-     * prefix/length probe, and on the microsecond scale a chat-receive
-     * handler can afford per detected match.
+     * <p>Implemented as "try to fully decode and discard" so v8 payloads pass
+     * their CRC-32 and exact-consumption checks and legacy payloads pass every
+     * structural decoder check before the chat UI treats them as importable.
      *
      * @return {@code true} iff the payload decodes cleanly into at least one
      *         group. Empty decodes count as invalid because a zero-group
@@ -509,7 +496,7 @@ public final class WaypointCodec {
         try {
             Decoded decoded = decodeFull(text);
             return !decoded.groups().isEmpty();
-        } catch (Throwable ignored) {
+        } catch (IllegalArgumentException ignored) {
             return false;
         }
     }
@@ -519,18 +506,22 @@ public final class WaypointCodec {
      * {@link Optional#empty()} if the payload has none / fails to decode.
      *
      * Used by chat-hover tooltips where we want to surface the label without
-     * paying for a full group parse on every received chat line. Failures
-     * swallow silently because a malformed codec shouldn't crash a chat
-     * receive handler -- the click-to-import path will surface the real error
-     * when the user actually tries to import.
+     * paying for a full group parse on every received chat line. Only a bounded
+     * payload prefix and bounded inflated prefix are inspected. This preview is
+     * intentionally unchecked; the click-to-import path performs full v8
+     * integrity validation and surfaces malformed input.
      */
     public static Optional<String> peekLabel(String text) {
         if (text == null) return Optional.empty();
         String trimmed = text.trim();
         if (!trimmed.startsWith(MAGIC)) return Optional.empty();
-        String payload = trimmed.substring(MAGIC.length());
+        String payload = trimmed.substring(MAGIC.length(),
+                Math.min(trimmed.length(), MAGIC.length() + MAX_PEEK_PAYLOAD_CHARS));
         Optional<String> current = peekLabelCurrent(payload);
         if (current.isPresent()) return current;
+
+        Optional<String> v7 = peekLabelLegacyV7(payload);
+        if (v7.isPresent()) return v7;
 
         Optional<String> v6 = peekLabelLegacyV6(payload);
         if (v6.isPresent()) return v6;
@@ -556,6 +547,12 @@ public final class WaypointCodec {
         String label = "";
     }
 
+    private static final class InflatedPayloadLimitException extends IOException {
+        InflatedPayloadLimitException(int maxOutputBytes) {
+            super("inflated payload exceeds " + maxOutputBytes + " bytes");
+        }
+    }
+
     /**
      * Decode with full wire-level introspection. Returns the same group list that
      * {@link #decode(String)} would, plus every header byte, per-group flag, coord
@@ -573,39 +570,24 @@ public final class WaypointCodec {
         try {
             return debugDecodePayloadCurrent(text, payload, t0);
         } catch (IOException | IllegalArgumentException e) {
-            try {
-                return debugDecodePayloadLegacyV6(text, payload, t0);
-            } catch (IOException | IllegalArgumentException legacyV6) {
+            if (e instanceof InflatedPayloadLimitException) {
+                throw new IllegalArgumentException("codec debug decode failed: " + e.getMessage(), e);
+            }
+            StringBuilder failures = new StringBuilder("v8=").append(e.getMessage());
+            Exception lastFailure = e;
+            for (int version = LEGACY_V7_WIRE_VERSION; version >= LEGACY_V1_WIRE_VERSION; version--) {
                 try {
-                    return debugDecodePayloadLegacyV5(text, payload, t0);
-                } catch (IOException | IllegalArgumentException legacyV5) {
-                    try {
-                        return debugDecodePayload(text, payload, unescapeHypixelEmotes(payload),
-                                t0, LEGACY_V4_WIRE_VERSION, false);
-                    } catch (IOException | IllegalArgumentException legacyV4) {
-                        try {
-                            return debugDecodePayload(text, payload, t0, LEGACY_V3_WIRE_VERSION, false);
-                        } catch (IOException | IllegalArgumentException legacyV3) {
-                            try {
-                                return debugDecodePayload(text, payload, t0, LEGACY_V2_WIRE_VERSION, true);
-                            } catch (IOException | IllegalArgumentException legacyV2) {
-                                try {
-                                    return debugDecodePayload(text, payload, t0, LEGACY_V1_WIRE_VERSION, true);
-                                } catch (IOException | IllegalArgumentException legacyV1) {
-                                    throw new IllegalArgumentException(
-                                            "codec debug decode failed: v7=" + e.getMessage()
-                                                    + "; v6=" + legacyV6.getMessage()
-                                                    + "; v5=" + legacyV5.getMessage()
-                                                    + "; v4=" + legacyV4.getMessage()
-                                                    + "; v3=" + legacyV3.getMessage()
-                                                    + "; v2=" + legacyV2.getMessage()
-                                                    + "; v1=" + legacyV1.getMessage(), legacyV1);
-                                }
-                            }
-                        }
+                    return debugDecodeLegacyPayload(text, payload, t0, version);
+                } catch (IOException | IllegalArgumentException legacyFailure) {
+                    if (legacyFailure instanceof InflatedPayloadLimitException) {
+                        throw new IllegalArgumentException("codec debug decode failed: "
+                                + legacyFailure.getMessage(), legacyFailure);
                     }
+                    failures.append("; v").append(version).append('=').append(legacyFailure.getMessage());
+                    lastFailure = legacyFailure;
                 }
             }
+            throw new IllegalArgumentException("codec debug decode failed: " + failures, lastFailure);
         }
     }
 
@@ -615,7 +597,26 @@ public final class WaypointCodec {
     }
 
     private static Decoded decodePayloadCurrent(String payload) throws IOException {
-        return decodePayloadV3Shape(unescapeHypixelEmotes(payload), WIRE_VERSION);
+        byte[] compressed = AsciiStreamCodec.decode(unescapeHypixelEmotes(payload));
+        byte[] raw = verifyAndStripChecksum(inflate(compressed));
+        return decodeBody(raw, WIRE_VERSION, false);
+    }
+
+    private static Decoded decodeLegacyPayload(String payload, int version) throws IOException {
+        return switch (version) {
+            case LEGACY_V7_WIRE_VERSION -> decodePayloadLegacyV7(payload);
+            case LEGACY_V6_WIRE_VERSION -> decodePayloadLegacyV6(payload);
+            case LEGACY_V5_WIRE_VERSION -> decodePayloadLegacyV5(payload);
+            case LEGACY_V4_WIRE_VERSION -> decodePayloadLegacyV4(payload);
+            case LEGACY_V3_WIRE_VERSION -> decodePayloadV3(payload);
+            case LEGACY_V2_WIRE_VERSION -> decodePayloadV2(payload);
+            case LEGACY_V1_WIRE_VERSION -> decodePayloadV1(payload);
+            default -> throw new IllegalArgumentException("unsupported legacy wire version " + version);
+        };
+    }
+
+    private static Decoded decodePayloadLegacyV7(String payload) throws IOException {
+        return decodePayloadV3Shape(unescapeHypixelEmotes(payload), LEGACY_V7_WIRE_VERSION);
     }
 
     private static Decoded decodePayloadLegacyV6(String payload) throws IOException {
@@ -641,8 +642,12 @@ public final class WaypointCodec {
             default -> AsciiStreamCodec.decode(payload);
         };
         byte[] raw = inflate(compressed);
+        return decodeBody(raw, expectedVersion, false);
+    }
+
+    private static Decoded decodeBody(byte[] raw, int expectedVersion, boolean legacyV2) throws IOException {
         DecodedHeader headerOut = new DecodedHeader();
-        List<WaypointGroup> groups = readBody(raw, null, headerOut, expectedVersion, false);
+        List<WaypointGroup> groups = readBody(raw, null, headerOut, expectedVersion, legacyV2);
         return new Decoded(groups, headerOut.label);
     }
 
@@ -724,6 +729,10 @@ public final class WaypointCodec {
         return peekLabel(unescapeHypixelEmotes(payload), WIRE_VERSION, false);
     }
 
+    private static Optional<String> peekLabelLegacyV7(String payload) {
+        return peekLabel(unescapeHypixelEmotes(payload), LEGACY_V7_WIRE_VERSION, false);
+    }
+
     private static Optional<String> peekLabelLegacyV6(String payload) {
         return peekLabel(unescapeHypixelEmotes(payload), LEGACY_V6_WIRE_VERSION, false);
     }
@@ -747,7 +756,7 @@ public final class WaypointCodec {
                         case LEGACY_V4_WIRE_VERSION -> AsciiStreamCodec.decodeLegacyV4(payload);
                         default -> AsciiStreamCodec.decode(payload);
                     };
-            byte[] raw = inflate(compressed);
+            byte[] raw = inflatePrefix(compressed, 1 + 5 + MAX_LABEL_BYTES);
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(raw));
             int header = in.readUnsignedByte();
             if ((header & HEADER_VERSION_MASK) != expectedVersion) return Optional.empty();
@@ -761,8 +770,31 @@ public final class WaypointCodec {
 
     private static DecodeDebug debugDecodePayloadCurrent(String input, String payload, long startNanos)
             throws IOException {
+        String decodePayload = unescapeHypixelEmotes(payload);
+        byte[] compressed = AsciiStreamCodec.decode(decodePayload);
+        byte[] raw = verifyAndStripChecksum(inflate(compressed));
+        return buildDebugDecode(input, payload, startNanos, WIRE_VERSION, false, compressed, raw);
+    }
+
+    private static DecodeDebug debugDecodeLegacyPayload(String input, String payload, long startNanos,
+                                                        int version) throws IOException {
+        return switch (version) {
+            case LEGACY_V7_WIRE_VERSION -> debugDecodePayloadLegacyV7(input, payload, startNanos);
+            case LEGACY_V6_WIRE_VERSION -> debugDecodePayloadLegacyV6(input, payload, startNanos);
+            case LEGACY_V5_WIRE_VERSION -> debugDecodePayloadLegacyV5(input, payload, startNanos);
+            case LEGACY_V4_WIRE_VERSION -> debugDecodePayload(input, payload,
+                    unescapeHypixelEmotes(payload), startNanos, version, false);
+            case LEGACY_V3_WIRE_VERSION -> debugDecodePayload(input, payload, startNanos, version, false);
+            case LEGACY_V2_WIRE_VERSION, LEGACY_V1_WIRE_VERSION ->
+                    debugDecodePayload(input, payload, startNanos, version, true);
+            default -> throw new IllegalArgumentException("unsupported legacy wire version " + version);
+        };
+    }
+
+    private static DecodeDebug debugDecodePayloadLegacyV7(String input, String payload, long startNanos)
+            throws IOException {
         return debugDecodePayload(input, payload, unescapeHypixelEmotes(payload),
-                startNanos, WIRE_VERSION, false);
+                startNanos, LEGACY_V7_WIRE_VERSION, false);
     }
 
     private static DecodeDebug debugDecodePayloadLegacyV6(String input, String payload, long startNanos)
@@ -796,11 +828,18 @@ public final class WaypointCodec {
                     default -> AsciiStreamCodec.decode(decodePayload);
                 };
         byte[] raw = inflate(compressed);
+        return buildDebugDecode(input, reportedPayload, startNanos, expectedVersion, legacyV2, compressed, raw);
+    }
+
+    private static DecodeDebug buildDebugDecode(String input, String reportedPayload, long startNanos,
+                                                int expectedVersion, boolean legacyV2,
+                                                byte[] compressed, byte[] raw) throws IOException {
         DebugCapture cap = new DebugCapture();
         List<WaypointGroup> groups = readBody(raw, cap, null, expectedVersion, legacyV2);
         long elapsed = System.nanoTime() - startNanos;
         String encoding = switch (expectedVersion) {
-            case WIRE_VERSION -> TEXT_ENCODING_V7;
+            case WIRE_VERSION -> TEXT_ENCODING_V8;
+            case LEGACY_V7_WIRE_VERSION -> TEXT_ENCODING_V7;
             case LEGACY_V6_WIRE_VERSION -> TEXT_ENCODING_V6;
             case LEGACY_V5_WIRE_VERSION -> TEXT_ENCODING_V5;
             case LEGACY_V4_WIRE_VERSION -> TEXT_ENCODING_V4;
@@ -1801,6 +1840,7 @@ public final class WaypointCodec {
             if (cap != null) cap.stringPool = List.of();
             List<WaypointGroup> groups = new ArrayList<>(1);
             groups.add(readAnonymousGroupRecord(in, bais, cap, 0, expectedVersion));
+            requireFullyConsumed(bais);
             return groups;
         }
 
@@ -1817,7 +1857,14 @@ public final class WaypointCodec {
                     ? readLegacyV2Group(in, bais, pool, cap, gi, expectedVersion)
                     : readGroup(in, bais, pool, cap, gi, expectedVersion));
         }
+        requireFullyConsumed(bais);
         return groups;
+    }
+
+    private static void requireFullyConsumed(TrackedByteStream input) throws IOException {
+        if (input.available() != 0) {
+            throw new IOException("trailing binary body bytes: " + input.available());
+        }
     }
 
     private static WaypointGroup readGroup(DataInputStream in, TrackedByteStream bais, List<String> pool,
@@ -2480,10 +2527,9 @@ public final class WaypointCodec {
 
     /**
      * Raw DEFLATE with a preset dictionary. Raw (nowrap=true) skips the 2-byte
-     * zlib header and 4-byte adler trailer that we'd otherwise waste on every
-     * share -- the dictionary mismatch detection we'd normally get from that
-     * trailer is provided instead by the Adler-32 inside the DEFLATE stream's
-     * dictionary id record.
+     * zlib header and 4-byte Adler-32 trailer that would otherwise cost six
+     * bytes per share. v8 integrity comes from the CRC-32 appended to the
+     * uncompressed body before this method is called.
      */
     private static byte[] deflate(byte[] raw) throws IOException {
         byte[] defaultBytes = deflateWithStrategy(raw, Deflater.DEFAULT_STRATEGY);
@@ -2564,13 +2610,52 @@ public final class WaypointCodec {
 
     private static int encodedScore(byte[] raw) {
         try {
-            return escapeHypixelEmotes(AsciiStreamCodec.encode(deflate(raw))).length();
+            return escapeHypixelEmotes(AsciiStreamCodec.encode(deflate(appendChecksum(raw)))).length();
         } catch (IOException ioe) {
             return Integer.MAX_VALUE;
         }
     }
 
+    private static byte[] appendChecksum(byte[] raw) {
+        CRC32 checksum = new CRC32();
+        checksum.update(raw);
+        long value = checksum.getValue();
+        byte[] framed = Arrays.copyOf(raw, raw.length + CHECKSUM_BYTES);
+        int offset = raw.length;
+        framed[offset] = (byte) (value >>> 24);
+        framed[offset + 1] = (byte) (value >>> 16);
+        framed[offset + 2] = (byte) (value >>> 8);
+        framed[offset + 3] = (byte) value;
+        return framed;
+    }
+
+    private static byte[] verifyAndStripChecksum(byte[] framed) throws IOException {
+        if (framed.length < CHECKSUM_BYTES) {
+            throw new IOException("missing CRC-32 trailer");
+        }
+        int bodyLength = framed.length - CHECKSUM_BYTES;
+        long expected = ((long) (framed[bodyLength] & 0xFF) << 24)
+                | ((long) (framed[bodyLength + 1] & 0xFF) << 16)
+                | ((long) (framed[bodyLength + 2] & 0xFF) << 8)
+                | (long) (framed[bodyLength + 3] & 0xFF);
+        CRC32 checksum = new CRC32();
+        checksum.update(framed, 0, bodyLength);
+        if (checksum.getValue() != expected) {
+            throw new IOException("CRC-32 mismatch");
+        }
+        return Arrays.copyOf(framed, bodyLength);
+    }
+
     private static byte[] inflate(byte[] compressed) throws IOException {
+        return inflate(compressed, MAX_INFLATED_BYTES, true);
+    }
+
+    private static byte[] inflatePrefix(byte[] compressed, int maxOutputBytes) throws IOException {
+        return inflate(compressed, maxOutputBytes, false);
+    }
+
+    private static byte[] inflate(byte[] compressed, int maxOutputBytes, boolean requireFinished)
+            throws IOException {
         Inflater inf = new Inflater(true);
         try {
             inf.setInput(compressed);
@@ -2578,16 +2663,31 @@ public final class WaypointCodec {
             // so setDictionary before the first inflate() call is the sole
             // binding of encoder dictionary to decoder dictionary.
             inf.setDictionary(CodecDictionary.BYTES);
-            ByteArrayOutputStream out = new ByteArrayOutputStream(compressed.length * 2);
+            int initialSize = (int) Math.min((long) maxOutputBytes,
+                    Math.max(32L, (long) compressed.length * 2L));
+            ByteArrayOutputStream out = new ByteArrayOutputStream(initialSize);
             byte[] buf = new byte[256];
             while (!inf.finished()) {
-                int n = inf.inflate(buf);
+                int remainingCapacity = maxOutputBytes - out.size();
+                if (remainingCapacity == 0) {
+                    if (requireFinished) {
+                        throw new InflatedPayloadLimitException(maxOutputBytes);
+                    }
+                    return out.toByteArray();
+                }
+                int n = inf.inflate(buf, 0, Math.min(buf.length, remainingCapacity));
                 if (n == 0) {
-                    if (inf.needsInput() || inf.needsDictionary()) {
+                    if (inf.needsInput()) {
+                        if (!requireFinished) return out.toByteArray();
                         throw new IOException("truncated deflate stream");
                     }
+                    if (inf.needsDictionary()) throw new IOException("deflate dictionary mismatch");
+                    throw new IOException("deflate stream made no progress");
                 }
                 out.write(buf, 0, n);
+            }
+            if (requireFinished && inf.getRemaining() != 0) {
+                throw new IOException("trailing compressed bytes: " + inf.getRemaining());
             }
             return out.toByteArray();
         } catch (DataFormatException e) {
