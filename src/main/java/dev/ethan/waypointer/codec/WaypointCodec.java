@@ -1847,7 +1847,8 @@ public final class WaypointCodec {
         boolean customRadius = (groupFlags & GROUP_FLAG_CUSTOM_RADIUS) != 0;
         CoordMode coordMode = decodeCoordMode(groupFlags, expectedVersion);
 
-        double radius = customRadius ? readVarint(in) / 10.0 : 3.0;
+        double radius = Waypoint.normalizeDefaultRadius(
+                customRadius ? readVarint(in) / 10.0 : Waypoint.DEFAULT_REACH_RADIUS);
 
         WaypointGroup group = WaypointGroup.create(name, zone);
         group.setDefaultRadius(radius);
@@ -1909,7 +1910,8 @@ public final class WaypointCodec {
         boolean customRadius = (groupFlags & GROUP_FLAG_CUSTOM_RADIUS) != 0;
         CoordMode coordMode  = decodeCoordMode(groupFlags, expectedVersion);
 
-        double radius = customRadius ? readVarint(in) / 10.0 : 3.0;
+        double radius = Waypoint.normalizeDefaultRadius(
+                customRadius ? readVarint(in) / 10.0 : Waypoint.DEFAULT_REACH_RADIUS);
 
         WaypointGroup g = WaypointGroup.create(name, zone);
         g.setDefaultRadius(radius);
@@ -1958,7 +1960,8 @@ public final class WaypointCodec {
             int color    = (wpFlags & WP_FLAG_HAS_COLOR) != 0
                     ? (in.readUnsignedByte() << 16) | (in.readUnsignedByte() << 8) | in.readUnsignedByte()
                     : Waypoint.DEFAULT_COLOR;
-            double radiusW = (wpFlags & WP_FLAG_HAS_RADIUS) != 0 ? readVarint(in) / 10.0 : 0.0;
+            double radiusW = Waypoint.normalizeCustomRadius(
+                    (wpFlags & WP_FLAG_HAS_RADIUS) != 0 ? readVarint(in) / 10.0 : 0.0);
             int wFlags     = (wpFlags & WP_FLAG_EXTENDED)   != 0 ? readVarint(in) : 0;
             boolean hasPrecise = expectedVersion >= PRECISE_WAYPOINT_MIN_VERSION
                     && (wpFlags & WP_FLAG_HAS_PRECISE) != 0;

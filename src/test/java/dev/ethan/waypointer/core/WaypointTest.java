@@ -33,4 +33,13 @@ class WaypointTest {
         assertEquals(64.5, normal.centerY(), 0.0001);
         assertEquals(-4.5, normal.centerZ(), 0.0001);
     }
+
+    @Test
+    void customRadiusIsAlwaysFiniteAndBounded() {
+        assertEquals(0.0, Waypoint.at(0, 0, 0).withRadius(Double.NaN).customRadius());
+        assertEquals(0.0, Waypoint.at(0, 0, 0).withRadius(Double.POSITIVE_INFINITY).customRadius());
+        assertEquals(0.0, Waypoint.at(0, 0, 0).withRadius(-1.0).customRadius());
+        assertEquals(Waypoint.MAX_REACH_RADIUS,
+                Waypoint.at(0, 0, 0).withRadius(1_000_000.0).customRadius());
+    }
 }

@@ -270,6 +270,28 @@ class WaypointCodecTest {
     }
 
     @Test
+    void boundsUntrustedWireRadiusBeforeItReachesTheModel() throws Exception {
+        ByteArrayOutputStream raw = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(raw);
+        out.writeByte(WaypointCodec.WIRE_VERSION | 0x40);
+        WaypointCodec.writeVarint(out, 0);
+        WaypointCodec.writeVarint(out, 3);
+        out.writeBytes("hub");
+        out.writeByte(0x01 | 0x08);
+        WaypointCodec.writeVarint(out, Integer.MAX_VALUE);
+        WaypointCodec.writeVarint(out, 0);
+        out.flush();
+
+        String encoded = WaypointCodec.MAGIC
+                + WaypointCodec.escapeHypixelEmotes(AsciiStreamCodec.encode(deflateForTest(raw.toByteArray())));
+        WaypointCodec.Decoded decoded = WaypointCodec.decodeFull(encoded);
+
+        assertEquals(Waypoint.MAX_REACH_RADIUS, decoded.groups().get(0).defaultRadius());
+        assertEquals(Waypoint.MAX_REACH_RADIUS,
+                WaypointCodec.debugDecode(encoded).groups().get(0).defaultRadius());
+    }
+
+    @Test
     void rejects_varints_that_overflow_signed_ints() {
         byte[] overflowing = {
                 (byte) 0xFF,

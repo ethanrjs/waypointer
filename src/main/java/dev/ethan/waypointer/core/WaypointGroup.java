@@ -30,6 +30,7 @@ public final class WaypointGroup {
      * still being coarse enough that large imports don't create huge maps.
      */
     private static final int PROXIMITY_CELL_SIZE = 16;
+    private static final int MAX_PROXIMITY_CELL_VISITS = 4096;
 
     public enum GradientMode {
         /** Every waypoint uses the group's single static color. */
@@ -134,7 +135,7 @@ public final class WaypointGroup {
         this.enabled = true;
         this.gradientMode = GradientMode.AUTO;
         this.loadMode = LoadMode.SEQUENCE;
-        this.defaultRadius = 3.0;
+        this.defaultRadius = Waypoint.DEFAULT_REACH_RADIUS;
     }
 
     public static WaypointGroup create(String name, String zoneId) {
@@ -284,7 +285,7 @@ public final class WaypointGroup {
     public void setName(String newName)                 { this.name = newName == null ? "" : newName; }
         public void setZoneId(String newZoneId)             { this.zoneId = Zone.canonicalId(Objects.requireNonNull(newZoneId)); }
     public void setEnabled(boolean on)                  { this.enabled = on; }
-    public void setDefaultRadius(double r)              { this.defaultRadius = Math.max(0.5, r); invalidateProximityIndex(); }
+    public void setDefaultRadius(double r)              { this.defaultRadius = Waypoint.normalizeDefaultRadius(r); invalidateProximityIndex(); }
     public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
     public void setTemp(boolean on)                     { this.temp = on; }
     public void setRuntimeOnly(boolean on)              { this.runtimeOnly = on; }
@@ -1098,6 +1099,21 @@ public final class WaypointGroup {
             int maxX = cell(x + radius);
             int maxY = cell(y + radius);
             int maxZ = cell(z + radius);
+
+            long cellsX = (long) maxX - minX + 1;
+            long cellsY = (long) maxY - minY + 1;
+            long cellsZ = (long) maxZ - minZ + 1;
+            if (cellsX <= 0 || cellsY <= 0 || cellsZ <= 0
+                    || cellsX > MAX_PROXIMITY_CELL_VISITS
+                    || cellsY > MAX_PROXIMITY_CELL_VISITS / cellsX
+                    || cellsZ > MAX_PROXIMITY_CELL_VISITS / (cellsX * cellsY)) {
+                for (IntBucket bucket : buckets.values()) {
+                    for (int i = 0; i < bucket.size; i++) {
+                        if (!action.test(bucket.values[i])) return false;
+                    }
+                }
+                return true;
+            }
 
             for (int cx = minX; cx <= maxX; cx++) {
                 for (int cy = minY; cy <= maxY; cy++) {

@@ -63,7 +63,7 @@ public final class WaypointerConfig {
 
     // Progression
     private int configSchemaVersion = CONFIG_SCHEMA_VERSION;
-    private double defaultReachRadius = 3.0;
+    private double defaultReachRadius = Waypoint.DEFAULT_REACH_RADIUS;
     /**
      * When {@code true}, every waypoint group's progress index resets to 0 each time
      * the client connects to a world (single-player load or multiplayer join).
@@ -497,7 +497,7 @@ public final class WaypointerConfig {
 
     // --- getters/setters ---------------------------------------------------------------------
 
-    public double defaultReachRadius()        { return defaultReachRadius; }
+    public double defaultReachRadius()        { return Waypoint.normalizeDefaultRadius(defaultReachRadius); }
     public boolean resetProgressOnWorldJoin() { return resetProgressOnWorldJoin; }
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
     public int defaultWaypointColor()         { return defaultWaypointColor & 0xFFFFFF; }
@@ -596,7 +596,7 @@ public final class WaypointerConfig {
                 : 0L;
     }
 
-    public void setDefaultReachRadius(double v)        { this.defaultReachRadius = clamp(v, 0.5, 100); save(); }
+    public void setDefaultReachRadius(double v)        { this.defaultReachRadius = Waypoint.normalizeDefaultRadius(v); save(); }
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
     public void setDefaultWaypointColor(int v)         { this.defaultWaypointColor = v & 0xFFFFFF; save(); }

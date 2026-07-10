@@ -19,6 +19,17 @@ import static org.junit.jupiter.api.Assertions.*;
 class DefaultWaypointerApiTest {
 
     @Test
+    void publicSpecsBoundUnsafeReachRadii() {
+        RouteSpec route = RouteSpec.builder()
+                .defaultRadius(Double.POSITIVE_INFINITY)
+                .waypoint(WaypointSpec.at(0, 64, 0).radius(1_000_000.0))
+                .build();
+
+        assertEquals(Waypoint.DEFAULT_REACH_RADIUS, route.defaultRadius());
+        assertEquals(Waypoint.MAX_REACH_RADIUS, route.waypoints().get(0).radius());
+    }
+
+    @Test
     void createRoute_returnsImmutableSnapshotData() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerApi api = new DefaultWaypointerApi(manager);

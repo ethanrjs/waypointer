@@ -137,7 +137,8 @@ public final class WaypointerCommands {
                                 .executes(ctx -> runSetActiveGroupMode(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "mode")))))
                 .then(literal("radius")
-                        .then(argument("radius", DoubleArgumentType.doubleArg(0.5))
+                        .then(argument("radius", DoubleArgumentType.doubleArg(
+                                Waypoint.MIN_REACH_RADIUS, Waypoint.MAX_REACH_RADIUS))
                                 .executes(ctx -> runSetActiveGroupRadius(ctx.getSource(),
                                         DoubleArgumentType.getDouble(ctx, "radius")))))
                 .then(literal("move")
@@ -353,7 +354,8 @@ public final class WaypointerCommands {
                 .then(literal("radius")
                         .then(argument("index", IntegerArgumentType.integer(0))
                                 .suggests(suggestActiveGroupIndices())
-                                .then(argument("radius", DoubleArgumentType.doubleArg(0.0))
+                                .then(argument("radius", DoubleArgumentType.doubleArg(
+                                        0.0, Waypoint.MAX_REACH_RADIUS))
                                         .executes(ctx -> runSetWaypointRadius(ctx.getSource(),
                                                 IntegerArgumentType.getInteger(ctx, "index"),
                                                 DoubleArgumentType.getDouble(ctx, "radius"))))))
@@ -426,7 +428,8 @@ public final class WaypointerCommands {
                 .then(literal("radius")
                         .then(argument("index", IntegerArgumentType.integer(0))
                                 .suggests(suggestAllGroupIndices())
-                                .then(argument("radius", DoubleArgumentType.doubleArg(0.5))
+                                .then(argument("radius", DoubleArgumentType.doubleArg(
+                                        Waypoint.MIN_REACH_RADIUS, Waypoint.MAX_REACH_RADIUS))
                                         .executes(ctx -> runSetGroupRadius(ctx.getSource(),
                                                 IntegerArgumentType.getInteger(ctx, "index"),
                                                 DoubleArgumentType.getDouble(ctx, "radius"))))))

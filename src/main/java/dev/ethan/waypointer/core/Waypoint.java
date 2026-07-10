@@ -66,11 +66,15 @@ public record Waypoint(
     public static final int TEMP_UNTIL_LEAVE = 3;
 
     public static final int DEFAULT_COLOR = 0x4FE05A; // bright green -- reads clearly against most biomes
+    public static final double MIN_REACH_RADIUS = 0.5;
+    public static final double DEFAULT_REACH_RADIUS = 3.0;
+    public static final double MAX_REACH_RADIUS = 100.0;
     public static final int PRECISE_SCALE = 16;
     private static final int PRECISE_BLOCK_CENTER_OFFSET = PRECISE_SCALE / 2;
 
     public Waypoint {
         name = name == null ? "" : name;
+        customRadius = normalizeCustomRadius(customRadius);
         x = blockCoordinateFromPrecise(preciseX);
         y = blockCoordinateFromPrecise(preciseY);
         z = blockCoordinateFromPrecise(preciseZ);
@@ -92,6 +96,16 @@ public record Waypoint(
 
     public static Waypoint at(int x, int y, int z) {
         return new Waypoint(x, y, z, "", DEFAULT_COLOR, 0, 0.0);
+    }
+
+    public static double normalizeCustomRadius(double radius) {
+        if (!Double.isFinite(radius) || radius <= 0.0) return 0.0;
+        return Math.min(radius, MAX_REACH_RADIUS);
+    }
+
+    public static double normalizeDefaultRadius(double radius) {
+        if (!Double.isFinite(radius)) return DEFAULT_REACH_RADIUS;
+        return Math.clamp(radius, MIN_REACH_RADIUS, MAX_REACH_RADIUS);
     }
 
     public boolean hasName() {
