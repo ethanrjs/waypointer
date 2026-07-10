@@ -7,6 +7,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -51,10 +52,8 @@ class WaypointRendererTest {
     void routeLineCollectorKeepsMixedDepthSegmentsInDepthPass() {
         WaypointGroup group = groupWith(waypoint(0), waypoint(Waypoint.FLAG_DEPTH_CHECKED));
 
-        assertEquals(List.of(),
-                WaypointRenderer.collectRouteLineSegments(group, false, i -> true));
-        assertEquals(List.of(new WaypointRenderer.RouteLineSegment(0, 1)),
-                WaypointRenderer.collectRouteLineSegments(group, true, i -> true));
+        assertEquals(List.of(), routeLineSegments(group, false));
+        assertEquals(List.of("0-1"), routeLineSegments(group, true));
     }
 
     @Test
@@ -65,10 +64,30 @@ class WaypointRendererTest {
                 waypoint(Waypoint.FLAG_DEPTH_CHECKED));
         assertTrue(group.toggleSubwaypoint(1));
 
-        assertEquals(List.of(new WaypointRenderer.RouteLineSegment(0, 2)),
-                WaypointRenderer.collectRouteLineSegments(group, true, i -> true));
-        assertEquals(List.of(),
-                WaypointRenderer.collectRouteLineSegments(group, false, i -> true));
+        assertEquals(List.of("0-2"), routeLineSegments(group, true));
+        assertEquals(List.of(), routeLineSegments(group, false));
+    }
+
+    @Test
+    void routeLineTraversalStreamsDenseRoutesInOrder() {
+        WaypointGroup group = WaypointGroup.create("Dense Render Test", "hub");
+        group.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        for (int i = 0; i < 2_048; i++) {
+            group.add(waypointAt(i, 64, 0, 0));
+        }
+
+        int[] segmentCount = { 0 };
+        int[] lastFrom = { -1 };
+        int[] lastTo = { -1 };
+        WaypointRenderer.forEachRouteLineSegment(group, false, i -> true, (from, to) -> {
+            segmentCount[0]++;
+            lastFrom[0] = from;
+            lastTo[0] = to;
+        });
+
+        assertEquals(2_047, segmentCount[0]);
+        assertEquals(2_046, lastFrom[0]);
+        assertEquals(2_047, lastTo[0]);
     }
 
     @Test
@@ -279,6 +298,13 @@ class WaypointRendererTest {
 
     private static Waypoint waypointAt(int x, int y, int z, int flags) {
         return new Waypoint(x, y, z, "", Waypoint.DEFAULT_COLOR, flags, 0.0);
+    }
+
+    private static List<String> routeLineSegments(WaypointGroup group, boolean depthCheckedPass) {
+        List<String> segments = new ArrayList<>();
+        WaypointRenderer.forEachRouteLineSegment(group, depthCheckedPass, i -> true,
+                (from, to) -> segments.add(from + "-" + to));
+        return segments;
     }
 
     private static void assertAabbEquals(AABB expected, AABB actual) {

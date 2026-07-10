@@ -512,26 +512,26 @@ public final class WaypointRenderer implements HudElement {
         float width = effectiveOutlineThickness();
         int color = config.routeLineColor();
 
-        List<RouteLineSegment> segments = collectRouteLineSegments(
+        forEachRouteLineSegment(
                 g,
                 depthCheckedPass,
                 i -> shouldRenderRouteLineEndpoint(g, i, currentIdx, showCompleted,
-                        camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq));
-        for (RouteLineSegment segment : segments) {
-            Waypoint a = g.get(segment.fromIndex());
-            Waypoint b = g.get(segment.toIndex());
-            if (!routeSegmentHasDepthVisibility(a, b, depthCheckedPass, mc, level)) continue;
+                        camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq),
+                (fromIndex, toIndex) -> {
+            Waypoint a = g.get(fromIndex);
+            Waypoint b = g.get(toIndex);
+            if (!routeSegmentHasDepthVisibility(a, b, depthCheckedPass, mc, level)) return;
             RenderHelpers.emitLine(lines, ps,
                     (float) a.centerX(), (float) a.centerY(), (float) a.centerZ(),
                     (float) b.centerX(), (float) b.centerY(), (float) b.centerZ(),
                     color, alpha, width);
-        }
+        });
     }
 
-    static List<RouteLineSegment> collectRouteLineSegments(WaypointGroup group,
-                                                           boolean depthCheckedPass,
-                                                           IntPredicate endpointVisible) {
-        List<RouteLineSegment> segments = new ArrayList<>();
+    static void forEachRouteLineSegment(WaypointGroup group,
+                                        boolean depthCheckedPass,
+                                        IntPredicate endpointVisible,
+                                        RouteLineSegmentConsumer consumer) {
         int[] previous = { -1 };
         group.forEachVisibleIndex(i -> {
             if (group.isSubwaypoint(i)) return;
@@ -540,12 +540,11 @@ public final class WaypointRenderer implements HudElement {
                 Waypoint a = group.get(previous[0]);
                 Waypoint b = group.get(i);
                 if (routeSegmentMatchesDepthPass(a, b, depthCheckedPass)) {
-                    segments.add(new RouteLineSegment(previous[0], i));
+                    consumer.accept(previous[0], i);
                 }
             }
             previous[0] = i;
         });
-        return segments;
     }
 
     private boolean shouldRenderRouteLineEndpoint(WaypointGroup group, int index, int currentIdx,
@@ -576,7 +575,10 @@ public final class WaypointRenderer implements HudElement {
                 || shouldRenderDepthCheckedWaypoint(mc, level, b);
     }
 
-    record RouteLineSegment(int fromIndex, int toIndex) {}
+    @FunctionalInterface
+    interface RouteLineSegmentConsumer {
+        void accept(int fromIndex, int toIndex);
+    }
 
     private boolean shouldRenderWaypointWorld(WaypointGroup group, int index, int currentIdx,
                                               boolean showCompleted, Vec3 camPos,
