@@ -36,6 +36,7 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
 	implementation "net.hypixel:mod-api:${project.hypixel_mod_api_version}"
+	include implementation('org.brotli:dec:0.1.2')
 
 	testImplementation platform("org.junit:junit-bom:5.10.2")
 	testImplementation 'org.junit.jupiter:junit-jupiter'

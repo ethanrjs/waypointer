@@ -8,9 +8,7 @@ import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -242,11 +240,12 @@ class DefaultWaypointerApiTest {
                         .target(ExportTarget.SKYTILS)
                         .includeNames(true)
                         .build());
-        String json = new String(Base64.getDecoder().decode(payload), StandardCharsets.UTF_8);
+        WaypointImporter.ImportResult imported = WaypointImporter.importAny(payload);
 
-        assertTrue(json.contains("\"categories\""));
-        assertTrue(json.contains("\"name\":\"Route\""));
-        assertFalse(json.contains("\"name\":\"Start\""));
+        assertEquals(WaypointImporter.Source.SKYTILS, imported.source());
+        assertEquals(1, imported.groups().size());
+        assertEquals("Route", imported.groups().get(0).name());
+        assertEquals("Start", imported.groups().get(0).get(0).name());
         assertFalse(payload.startsWith(WaypointCodec.MAGIC));
     }
 

@@ -33,9 +33,18 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 - Coleweight/SkyHanni (I/E)
 - Skytils (I/E)
 - Skyblocker (I/E)
-- Soopy (I)
+- Soopy V1 binary share strings (I)
+- Firmament `FIRM_WAYPOINTS/` absolute share strings (I)
 - Generic JSON-based (I)
 - Odin Client (I)
+
+Soopy support targets its versioned `/savewaypoints` binary format, not an
+assumed generic JSON shape. Firmament relative shares are rejected with an
+explicit origin error because their coordinates are offsets resolved against
+the importing player's position; importing them as absolute coordinates would
+silently put every waypoint in the wrong place. Formats are verified against
+the current upstream implementations: [Soopy V1](https://github.com/Soopyboo32/SoopyV2/blob/d8862d1dde6bfcaec5324236e699b50affba38b0/src/features/waypoints/index.js)
+and [Firmament](https://github.com/FirmamentMC/Firmament/blob/e86d4692ac19e71a687c84a5e1808235ade73d21/src/main/kotlin/features/world/FirmWaypointManager.kt).
 
 ### Dungeon route import
 
