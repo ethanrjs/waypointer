@@ -68,6 +68,8 @@ public final class DungeonStateTracker {
     private static final int OVER_ROOM_SUPPRESSION_BLOCKS = 10;
     private static final int ROOM_MARKER_SEARCH_MIN_Y = 12;
     private static final int ROOM_MARKER_SEARCH_MAX_Y = 160;
+    private static final int UNRESOLVED_RETRY_INITIAL_DELAY_TICKS = 5;
+    private static final int UNRESOLVED_RETRY_MAX_DELAY_TICKS = 80;
     private static final String BLUE_TERRACOTTA_BLOCK_ID = "minecraft:blue_terracotta";
     private static final String AIR_BLOCK_ID = "minecraft:air";
     private static final String CAVE_AIR_BLOCK_ID = "minecraft:cave_air";
@@ -89,6 +91,10 @@ public final class DungeonStateTracker {
     private ClientLevel observedLevel;
 
     private int tickCounter;
+    private long dungeonTick;
+    private long nextUnresolvedRetryTick = Long.MAX_VALUE;
+    private int unresolvedRetryDelayTicks = UNRESOLVED_RETRY_INITIAL_DELAY_TICKS;
+    private boolean unresolvedRetryRequested;
     private volatile long lastScanAtMillis;
     private volatile long lastScanDurationNanos;
     private volatile String lastScanStage = "not started";
@@ -242,6 +248,7 @@ public final class DungeonStateTracker {
 
     private void onClientTick(Minecraft client) {
         long startedNanos = System.nanoTime();
+        dungeonTick++;
         if (!config.enabled()) {
             rememberScanResult("skipped", "config disabled", startedNanos,
                     Long.MIN_VALUE, null, null);
@@ -306,7 +313,9 @@ public final class DungeonStateTracker {
 
     private void onChunkLoad(ClientLevel level, LevelChunk chunk) {
         rememberLevel(level);
-        if (chunk == null || !isRoomCenterChunk(chunk.getPos())) return;
+        if (chunk == null) return;
+        if (inDungeon && !unresolvedAssemblies.isEmpty()) requestUnresolvedRetry();
+        if (!isRoomCenterChunk(chunk.getPos())) return;
         if (!inDungeon) {
             pendingChunks.put(chunkKey(chunk.getPos()), chunk);
             return;
@@ -342,6 +351,9 @@ public final class DungeonStateTracker {
         coreSignaturesBySegment.clear();
         assembliesByDefinition.clear();
         unresolvedAssemblies.clear();
+        nextUnresolvedRetryTick = Long.MAX_VALUE;
+        unresolvedRetryDelayTicks = UNRESOLVED_RETRY_INITIAL_DELAY_TICKS;
+        unresolvedRetryRequested = false;
         loggedUnknownCoreSegments.clear();
         if (!keepPendingChunks) pendingChunks.clear();
     }
@@ -372,7 +384,6 @@ public final class DungeonStateTracker {
         RoomAssembly assembly = attachScannedSegment(definition, segment, signature.topY());
         if (assembly != null && assembly.isComplete()) {
             queueAssemblyForResolution(assembly);
-            retryUnresolvedAssemblies(level);
         }
     }
 
@@ -429,13 +440,27 @@ public final class DungeonStateTracker {
     }
 
     private void queueAssemblyForResolution(RoomAssembly assembly) {
-        if (assembly == null || assembly.resolved || unresolvedAssemblies.contains(assembly)) return;
-        unresolvedAssemblies.add(assembly);
+        if (assembly == null || assembly.resolved) return;
+        if (!unresolvedAssemblies.contains(assembly)) {
+            unresolvedAssemblies.add(assembly);
+            unresolvedRetryDelayTicks = UNRESOLVED_RETRY_INITIAL_DELAY_TICKS;
+        }
+        requestUnresolvedRetry();
+    }
+
+    private void requestUnresolvedRetry() {
+        unresolvedRetryRequested = true;
     }
 
     private void retryUnresolvedAssemblies(ClientLevel level) {
-        if (level == null || unresolvedAssemblies.isEmpty()) return;
-        DungeonRoomData.BlockLookup lookup = new DungeonRoomBlockLookup(level);
+        if (level == null || !unresolvedRetryDue()) return;
+        retryUnresolvedAssemblies(new DungeonRoomBlockLookup(level));
+    }
+
+    void retryUnresolvedAssemblies(DungeonRoomData.BlockLookup lookup) {
+        if (lookup == null || !unresolvedRetryDue()) return;
+        unresolvedRetryRequested = false;
+        boolean resolvedAny = false;
         for (int i = 0; i < unresolvedAssemblies.size(); ) {
             RoomAssembly assembly = unresolvedAssemblies.get(i);
             DungeonRoom room = resolveCoreRoom(assembly, lookup);
@@ -446,7 +471,25 @@ public final class DungeonStateTracker {
             assembly.resolved = true;
             cacheRoom(room);
             unresolvedAssemblies.remove(i);
+            resolvedAny = true;
         }
+        if (unresolvedAssemblies.isEmpty()) {
+            nextUnresolvedRetryTick = Long.MAX_VALUE;
+            unresolvedRetryDelayTicks = UNRESOLVED_RETRY_INITIAL_DELAY_TICKS;
+            return;
+        }
+        if (resolvedAny) {
+            unresolvedRetryDelayTicks = UNRESOLVED_RETRY_INITIAL_DELAY_TICKS;
+        }
+        nextUnresolvedRetryTick = dungeonTick + unresolvedRetryDelayTicks;
+        unresolvedRetryDelayTicks = Math.min(
+                UNRESOLVED_RETRY_MAX_DELAY_TICKS,
+                unresolvedRetryDelayTicks * 2);
+    }
+
+    private boolean unresolvedRetryDue() {
+        return !unresolvedAssemblies.isEmpty()
+                && (unresolvedRetryRequested || dungeonTick >= nextUnresolvedRetryTick);
     }
 
     private DungeonRoom resolveCoreRoom(
