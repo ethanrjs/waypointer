@@ -6,7 +6,9 @@
  * saved waypoint data have loaded. Callbacks run on the Minecraft client
  * initialization thread, and listener callbacks are invoked on the same client
  * thread that changes Waypointer state. Keep callbacks lightweight; schedule
- * expensive work in the consuming mod.
+ * expensive work in the consuming mod. API calls made from worker threads wait
+ * for their client-thread work to finish so return values always reflect the
+ * completed operation.
  *
  * <p>Snapshots returned by this package are immutable copies. Route mutations
  * must go through {@link dev.ethan.waypointer.api.WaypointerApi} so Waypointer

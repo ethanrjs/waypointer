@@ -9,6 +9,8 @@ import java.util.function.Consumer;
  * <p>All returned group and waypoint data is immutable snapshot data. Any
  * operation that changes Waypointer state goes through this interface so the
  * renderer, autosave listener, and UI caches all observe the same change.
+ * Calls from worker threads are dispatched synchronously to the Minecraft
+ * client thread before returning.
  */
 public interface WaypointerApi {
 
