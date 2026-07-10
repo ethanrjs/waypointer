@@ -395,11 +395,29 @@ public final class DungeonStateTracker {
                 ignored -> new ArrayList<>());
 
         if (definition.type() != DungeonRoomType.ENTRANCE) {
+            List<RoomAssembly> adjacent = new ArrayList<>();
             for (RoomAssembly assembly : assemblies) {
                 if (assembly.contains(segment)) return assembly;
-                if (assembly.canAccept(segment)) {
+                if (assembly.isAdjacent(segment)) adjacent.add(assembly);
+            }
+
+            if (!adjacent.isEmpty()) {
+                RoomAssembly assembly = adjacent.getFirst();
+                if (assembly.canMerge(segment, adjacent)) {
                     assembly.add(segment, roofY);
+                    for (int i = 1; i < adjacent.size(); i++) {
+                        RoomAssembly absorbed = adjacent.get(i);
+                        assembly.merge(absorbed);
+                        assemblies.remove(absorbed);
+                        unresolvedAssemblies.remove(absorbed);
+                    }
                     return assembly;
+                }
+
+                for (RoomAssembly candidate : adjacent) {
+                    if (!candidate.canAccept(segment)) continue;
+                    candidate.add(segment, roofY);
+                    return candidate;
                 }
             }
         }
@@ -812,12 +830,30 @@ public final class DungeonStateTracker {
         }
 
         private boolean canAccept(long segment) {
-            return segments.size() < maxTileCount(definition) && isAdjacent(segment);
+            if (segments.size() >= maxTileCount(definition) || !isAdjacent(segment)) return false;
+            Set<Long> combined = new HashSet<>(segments);
+            combined.add(segment);
+            return shapeCanContain(definition.shape(), combined);
+        }
+
+        private boolean canMerge(long segment, List<RoomAssembly> adjacent) {
+            Set<Long> combined = new HashSet<>();
+            combined.add(segment);
+            for (RoomAssembly assembly : adjacent) combined.addAll(assembly.segments);
+            return combined.size() <= maxTileCount(definition)
+                    && shapeCanContain(definition.shape(), combined);
         }
 
         private void add(long segment, int nextRoofY) {
             if (!segments.add(segment)) return;
             roofY = Math.max(roofY, nextRoofY);
+            resolved = false;
+        }
+
+        private void merge(RoomAssembly other) {
+            if (other == null || other == this) return;
+            segments.addAll(other.segments);
+            roofY = Math.max(roofY, other.roofY);
             resolved = false;
         }
 
@@ -841,6 +877,25 @@ public final class DungeonStateTracker {
                 }
             }
             return false;
+        }
+
+        private static boolean shapeCanContain(DungeonRoomShape shape, Set<Long> segments) {
+            if (segments.isEmpty()) return true;
+            Set<Integer> xCoordinates = new HashSet<>();
+            Set<Integer> zCoordinates = new HashSet<>();
+            for (long segment : segments) {
+                xCoordinates.add(DungeonRoom.segmentX(segment));
+                zCoordinates.add(DungeonRoom.segmentZ(segment));
+            }
+            return switch (shape) {
+                case ONE_BY_THREE, ONE_BY_FOUR -> xCoordinates.size() == 1 || zCoordinates.size() == 1;
+                case TWO_BY_TWO -> xCoordinates.size() <= 2 && zCoordinates.size() <= 2;
+                case L_SHAPE -> segments.size() < 4
+                        || (xCoordinates.size() > 1
+                        && zCoordinates.size() > 1
+                        && !(xCoordinates.size() == 2 && zCoordinates.size() == 2));
+                case ONE_BY_ONE, ONE_BY_TWO, UNKNOWN -> true;
+            };
         }
     }
 
