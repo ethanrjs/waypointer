@@ -975,7 +975,7 @@ public final class ExportScreen extends Screen {
                         + "Subwaypoints export as regular waypoints.";
                 case SKYTILS -> "For Skytils. Preserves coordinates and colors.\n"
                         + "Subwaypoints export as regular waypoints.";
-                case SKYHANNI -> "For SkyHanni. Preserves coordinates and colors.\n"
+                case SKYHANNI -> "For SkyHanni. Preserves coordinates and route order.\n"
                         + "Subwaypoints export as regular waypoints.";
             };
         }

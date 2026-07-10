@@ -11,8 +11,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class SkyHanniFixtureImportTest {
 
     @Test
-    void importsCommittedSkyHanniFlatRouteFixture() throws Exception {
-        String json = Files.readString(Path.of("src/test/resources/fixtures/skyhanni-flat-route.json"));
+    void importsCommittedCurrentSkyHanniRouteFixture() throws Exception {
+        String json = Files.readString(Path.of("src/test/resources/fixtures/skyhanni-current-route.json"));
 
         WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
 

@@ -37,9 +37,10 @@ import static dev.ethan.waypointer.util.MathUtil.clampByte;
  *   - Skytils / Soopy style: raw JSON or base64(JSON) with either a top-level
  *     array of groups, a {@code categories} array, or a single object with a
  *     {@code waypoints} array.
- *   - SkyHanni / Coleweight-style: a flat JSON array where each entry carries
- *     {@code x/y/z}, float {@code r/g/b} in [0,1], and an {@code options}
- *     object holding {@code name} (string or sequence number).
+ *   - SkyHanni / Coleweight-style: a {@code {"waypoints": [...]}} object (or
+ *     legacy flat array) where each entry carries {@code x/y/z}, float
+ *     {@code r/g/b} in [0,1], and an {@code options} object holding the step
+ *     number as {@code name}.
  *
  * Unknown fields are ignored. Missing fields fall back to defaults so a partially
  * malformed payload from a third-party tool still imports the coordinates cleanly.
@@ -418,8 +419,14 @@ public final class WaypointImporter {
             }
         } else if (root.isJsonObject()) {
             JsonObject obj = root.getAsJsonObject();
+            if (obj.has("waypoints") && obj.get("waypoints").isJsonArray()
+                    && looksLikeColeweightArray(obj.getAsJsonArray("waypoints"))) {
+                JsonArray waypoints = obj.getAsJsonArray("waypoints");
+                WaypointGroup group = parseColeweightRoute(waypoints);
+                if (!group.isEmpty()) groups.add(group);
+                source = hasNullCoordinatePlaceholder(waypoints) ? Source.SOOPY : Source.SKYHANNI;
             // Soopy/Skytils-esque single-group object.
-            if (obj.has("categories") && obj.get("categories").isJsonArray()) {
+            } else if (obj.has("categories") && obj.get("categories").isJsonArray()) {
                 for (JsonElement el : obj.getAsJsonArray("categories")) {
                     if (el.isJsonObject()) groups.add(parseGroup(el.getAsJsonObject()));
                 }
@@ -684,9 +691,11 @@ public final class WaypointImporter {
             JsonObject opts = p.getAsJsonObject("options");
             if (!opts.has("name") || !opts.get("name").isJsonPrimitive()) return false;
             JsonPrimitive n = opts.get("name").getAsJsonPrimitive();
-            if (!n.isNumber()) return false;
-            double d = n.getAsDouble();
-            if (d != Math.floor(d) || Double.isInfinite(d)) return false;
+            try {
+                Integer.parseInt(n.getAsString());
+            } catch (NumberFormatException e) {
+                return false;
+            }
         }
         return true;
     }

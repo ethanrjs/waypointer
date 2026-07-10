@@ -271,6 +271,24 @@ class WaypointImporterTest {
     }
 
     @Test
+    void parses_current_skyhanni_wrapper_and_string_step_numbers() {
+        String json = "{\"waypoints\":["
+                + "{\"x\":30,\"y\":70,\"z\":40,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":\"2\"}},"
+                + "{\"x\":10,\"y\":68,\"z\":20,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":\"1\"}}"
+                + "]}";
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
+
+        assertEquals(WaypointImporter.Source.SKYHANNI, result.source());
+        WaypointGroup group = result.groups().get(0);
+        assertEquals(2, group.size());
+        assertEquals("1", group.get(0).name());
+        assertEquals(10, group.get(0).x());
+        assertEquals("2", group.get(1).name());
+        assertTrue(group.enabled());
+    }
+
+    @Test
     void parses_soopy_options_array_and_skips_null_coordinate_placeholders() {
         String json = "["
                 + "{\"x\":null,\"y\":null,\"z\":null,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":1}},"
