@@ -17,9 +17,12 @@ import dev.ethan.waypointer.dungeon.DungeonDetectionConfidence;
 import dev.ethan.waypointer.dungeon.DungeonRoom;
 import dev.ethan.waypointer.dungeon.DungeonRoomShape;
 import dev.ethan.waypointer.dungeon.DungeonRoomType;
+import dev.ethan.waypointer.dungeon.DungeonSecretCategory;
 import dev.ethan.waypointer.dungeon.DungeonStateTracker;
+import dev.ethan.waypointer.dungeon.DungeonWaypoint;
 import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomDefinition;
 import dev.ethan.waypointer.input.WaypointAddFlow;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
@@ -255,6 +258,38 @@ class WaypointerCommandTreeTest {
             assertEquals("beam", waypoint.name());
         } finally {
             trackerField.set(null, previousTracker);
+            DungeonRoomData.clearAllCustom();
+        }
+    }
+
+    @Test
+    void addPersistentWaypointRefusesDefinitionOnlyDungeonSecrets() {
+        DungeonRoomData.clearAllCustom();
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerConfig config = new WaypointerConfig();
+        DungeonRoom room = new DungeonRoom(
+                DungeonRoomType.PUZZLE,
+                DungeonRoomShape.ONE_BY_ONE,
+                Direction.NW,
+                -74,
+                -138,
+                List.of(DungeonRoom.packSegment(-104, -168)),
+                "downloaded-room",
+                "Downloaded Room",
+                DungeonDetectionConfidence.CORE_CONFIRMED);
+
+        try {
+            DungeonRoomDefinition definition = DungeonRoomData.defineRoom(
+                    "downloaded-room", "Downloaded Room", room);
+            DungeonRoomData.addWaypoint(definition.id(), DungeonWaypoint.plain(
+                    "secret", DungeonSecretCategory.CHEST, 4, 70, 7, ""));
+            manager.onZoneChanged(new Zone("downloaded-room", "Downloaded Room"));
+
+            assertTrue(WaypointerCommands.definitionOnlyRouteRequiresConversion(manager));
+            assertEquals(-1, WaypointerCommands.addPersistentWaypointAt(
+                    manager, config, new WaypointAddFlow(), 10, 64, -20, "blocked"));
+            assertTrue(manager.allGroups().isEmpty());
+        } finally {
             DungeonRoomData.clearAllCustom();
         }
     }

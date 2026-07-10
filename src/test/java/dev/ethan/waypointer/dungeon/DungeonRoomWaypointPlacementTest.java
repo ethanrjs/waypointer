@@ -1,14 +1,28 @@
 package dev.ethan.waypointer.dungeon;
 
+import dev.ethan.waypointer.WaypointerClient;
+import dev.ethan.waypointer.config.Storage;
+import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.dungeon.config.DungeonConfig;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
+import java.lang.reflect.Field;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class DungeonRoomWaypointPlacementTest {
+
+    @TempDir
+    Path tempDir;
 
     @Test
     void actualRoomWaypointStoresLocalAndProjectsBackToSameRunPosition() {
@@ -69,6 +83,64 @@ class DungeonRoomWaypointPlacementTest {
         assertEquals(-96, editedActual.x());
         assertEquals(actual.y(), editedActual.y());
         assertEquals(actual.z(), editedActual.z());
+    }
+
+    @ParameterizedTest
+    @EnumSource(Direction.class)
+    void durableMirrorMoveStoresRoomLocalCoordinatesAndSurvivesReload(Direction direction)
+            throws Exception {
+        DungeonRoomData.clearAllCustom();
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonRoom room = room(direction, -74, -138);
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
+        Field trackerField = WaypointerClient.class.getDeclaredField("dungeonTracker");
+        trackerField.setAccessible(true);
+        Object previousTracker = trackerField.get(null);
+
+        try {
+            DungeonRoomData.defineRoom("creeper-beams", "Creeper Beams", room);
+            tracker.setCurrentRoom(room);
+            trackerField.set(null, tracker);
+
+            WaypointGroup stored = new WaypointGroup("stored", "User Route", "creeper-beams");
+            stored.add(Waypoint.at(1, 68, 2).withName("move me"));
+            manager.add(stored);
+
+            WaypointGroup mirror = new WaypointGroup(
+                    DungeonRoomRouteSync.generatedGroupId("creeper-beams"),
+                    "User Route", "creeper-beams");
+            mirror.setRuntimeOnly(true);
+            mirror.add(DungeonRoomWaypointPlacement.toActualWaypoint(room, stored.get(0)));
+            manager.add(mirror);
+
+            WaypointGroup editTarget = DungeonRoomRouteSync.durableEditTarget(manager, mirror);
+            assertEquals(stored, editTarget);
+
+            Waypoint desiredLocal = Waypoint.at(7, 70, -5);
+            Waypoint desiredActual = DungeonRoomWaypointPlacement.toActualWaypoint(room, desiredLocal);
+            assertNotEquals(desiredActual.x(), desiredLocal.x());
+            DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(editTarget, 0,
+                    desiredActual.x(), desiredActual.y(), desiredActual.z());
+            manager.fireDataChanged();
+
+            Storage storage = new Storage(tempDir.resolve(direction.name() + "-waypoints.json"));
+            storage.save(manager);
+            ActiveGroupManager loadedManager = new ActiveGroupManager();
+            storage.load(loadedManager);
+
+            WaypointGroup loaded = loadedManager.get("stored");
+            Waypoint reprojected = DungeonRoomWaypointPlacement.toActualWaypoint(room, loaded.get(0));
+            assertEquals(desiredLocal.x(), loaded.get(0).x());
+            assertEquals(desiredLocal.y(), loaded.get(0).y());
+            assertEquals(desiredLocal.z(), loaded.get(0).z());
+            assertEquals(desiredActual.x(), reprojected.x());
+            assertEquals(desiredActual.y(), reprojected.y());
+            assertEquals(desiredActual.z(), reprojected.z());
+            assertEquals("move me", loaded.get(0).name());
+        } finally {
+            trackerField.set(null, previousTracker);
+            DungeonRoomData.clearAllCustom();
+        }
     }
 
     private static DungeonRoom room(Direction direction, int cornerX, int cornerZ) {

@@ -201,6 +201,19 @@ public final class DungeonRoomRouteSync {
     }
 
     /**
+     * Resolve the group that an edit must mutate to survive the next dungeon
+     * route rebuild. Normal and stored groups are already durable. Generated
+     * mirrors must write through to their stored room-local source; a null
+     * result means the mirror only reflects downloaded secrets and must be
+     * explicitly converted before editing.
+     */
+    public static WaypointGroup durableEditTarget(ActiveGroupManager manager,
+                                                   WaypointGroup visibleGroup) {
+        if (!isGeneratedGroup(visibleGroup)) return visibleGroup;
+        return storedSourceForMirror(manager, visibleGroup);
+    }
+
+    /**
      * True when in-world edits in this room should be refused because the room
      * shows downloaded secrets that the user has not converted into their own
      * route yet — editing the throwaway mirror would silently discard changes.

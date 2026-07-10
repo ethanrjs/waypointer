@@ -225,8 +225,7 @@ public final class WaypointRepositionMode {
         // A definition-backed mirror (downloaded secrets, no user route) has no
         // stored group to write the move into; the edit would silently vanish
         // on the mirror's next rebuild.
-        if (DungeonRoomRouteSync.isGeneratedGroup(group)
-                && DungeonRoomRouteSync.storedSourceForMirror(manager, group) == null) {
+        if (DungeonRoomRouteSync.durableEditTarget(manager, group) == null) {
             showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
             return;
         }
@@ -677,11 +676,10 @@ public final class WaypointRepositionMode {
      * Returns null when the mirror has no stored source (downloaded secrets).
      */
     private static WaypointGroup moveWriteTarget(Session session) {
-        if (!DungeonRoomRouteSync.isGeneratedGroup(session.group)) return session.group;
-        WaypointGroup source = DungeonRoomRouteSync.storedSourceForMirror(
+        WaypointGroup target = DungeonRoomRouteSync.durableEditTarget(
                 session.manager, session.group);
-        if (source == null || session.waypointIndex >= source.size()) return null;
-        return source;
+        if (target == null || session.waypointIndex >= target.size()) return null;
+        return target;
     }
 
     private static void finishMoveSession(Minecraft mc, Session session) {
@@ -787,8 +785,11 @@ public final class WaypointRepositionMode {
         mc.execute(
                 () -> {
             WaypointerScreen parent = new WaypointerScreen(session.manager, session.config);
+            WaypointGroup editTarget = DungeonRoomRouteSync.durableEditTarget(
+                    session.manager, session.group);
+            if (editTarget == null) return;
             GroupEditScreen.openFocused(parent, session.manager, session.config,
-                    session.group, session.waypointIndex);
+                    editTarget, session.waypointIndex);
         });
     }
 
