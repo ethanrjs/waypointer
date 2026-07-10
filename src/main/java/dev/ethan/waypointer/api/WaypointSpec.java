@@ -22,7 +22,7 @@ public record WaypointSpec(
     public WaypointSpec {
         name = name == null ? "" : name;
         color &= 0xFFFFFF;
-        radius = Math.max(0.0, radius);
+        radius = Waypoint.normalizeCustomRadius(radius);
         source = source == null ? "" : source.trim();
     }
 

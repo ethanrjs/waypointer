@@ -153,6 +153,19 @@ class WaypointerCommandTreeTest {
     }
 
     @Test
+    void reachRadiusCommandsRejectValuesAboveTheCanonicalMaximum() throws Exception {
+        CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
+
+        for (String command : List.of(
+                "wp radius 100.1",
+                "wp waypoint radius 0 100.1",
+                "wp group radius 0 100.1")) {
+            ParseResults<FabricClientCommandSource> parsed = dispatcher.parse(command, null);
+            assertFalse(parsed.getExceptions().isEmpty(), command + " should reject unsafe reach radii");
+        }
+    }
+
+    @Test
     void cliExportGroupsUseCurrentZoneOrAllGroupsWhenNoZoneIsKnown() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup hub = WaypointGroup.create("Hub", "hub");

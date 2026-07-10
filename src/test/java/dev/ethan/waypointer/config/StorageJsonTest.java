@@ -24,6 +24,24 @@ class StorageJsonTest {
     Path tempDir;
 
     @Test
+    void loadBoundsUnsafePersistedReachRadii() {
+        JsonObject groupJson = new JsonObject();
+        groupJson.addProperty("zone", "hub");
+        groupJson.addProperty("defaultRadius", Double.POSITIVE_INFINITY);
+        WaypointGroup group = Storage.groupFromJson(groupJson);
+
+        JsonObject waypointJson = new JsonObject();
+        waypointJson.addProperty("x", 0);
+        waypointJson.addProperty("y", 64);
+        waypointJson.addProperty("z", 0);
+        waypointJson.addProperty("radius", 1_000_000.0);
+        Waypoint waypoint = Storage.waypointFromJson(waypointJson);
+
+        assertEquals(Waypoint.DEFAULT_REACH_RADIUS, group.defaultRadius());
+        assertEquals(Waypoint.MAX_REACH_RADIUS, waypoint.customRadius());
+    }
+
+    @Test
     void waypoint_roundTripPreservesAllFields() {
         Waypoint original = new Waypoint(-123, 67, 512, "Terminal 3", 0xABCDEF,
                 Waypoint.FLAG_THROUGH_WALL | Waypoint.FLAG_LOCKED_COLOR, 4.5);

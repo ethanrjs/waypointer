@@ -14,6 +14,18 @@ import static org.junit.jupiter.api.Assertions.*;
 class WaypointImporterTest {
 
     @Test
+    void boundsUnsafeLooseJsonReachRadii() {
+        String json = "{\"name\":\"unsafe\",\"waypoints\":["
+                + "{\"x\":0,\"y\":64,\"z\":0,\"r\":1e309},"
+                + "{\"x\":1,\"y\":64,\"z\":0,\"r\":1000000}]}";
+
+        WaypointGroup group = WaypointImporter.importAny(json).groups().get(0);
+
+        assertEquals(0.0, group.get(0).customRadius());
+        assertEquals(Waypoint.MAX_REACH_RADIUS, group.get(1).customRadius());
+    }
+
+    @Test
     void delegates_to_native_codec_for_wptr1_payload() {
         WaypointGroup g = WaypointGroup.create("Gold", "dungeon_f7");
         g.add(Waypoint.at(1, 2, 3));

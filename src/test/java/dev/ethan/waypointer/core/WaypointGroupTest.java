@@ -2,6 +2,7 @@ package dev.ethan.waypointer.core;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -221,6 +222,32 @@ class WaypointGroupTest {
         Waypoint thin = wp(0, 0, 0);
         assertEquals(8.5, g.effectiveRadius(wide));
         assertEquals(3.0, g.effectiveRadius(thin));
+    }
+
+    @Test
+    void defaultRadiusIsAlwaysFiniteAndBounded() {
+        WaypointGroup group = route();
+
+        group.setDefaultRadius(Double.POSITIVE_INFINITY);
+        assertEquals(Waypoint.DEFAULT_REACH_RADIUS, group.defaultRadius());
+
+        group.setDefaultRadius(1_000_000.0);
+        assertEquals(Waypoint.MAX_REACH_RADIUS, group.defaultRadius());
+    }
+
+    @Test
+    void oversizedProximityScanFallsBackWithoutWalkingBillionsOfCells() {
+        WaypointGroup group = route();
+        List<Integer> visited = new ArrayList<>();
+
+        assertTimeoutPreemptively(Duration.ofSeconds(1),
+                () -> group.forEachNearbyIndex(0, 70, 0, Double.POSITIVE_INFINITY, index -> {
+                    visited.add(index);
+                    return true;
+                }));
+
+        assertEquals(List.of(0, 1, 2, 3).stream().sorted().toList(),
+                visited.stream().sorted().toList());
     }
 
     @Test

@@ -20,6 +20,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointerConfigTest {
 
     @Test
+    void defaultReachRadiusIsAlwaysFiniteAndBounded() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setDefaultReachRadius(Double.POSITIVE_INFINITY);
+        assertEquals(Waypoint.DEFAULT_REACH_RADIUS, config.defaultReachRadius());
+
+        config.setDefaultReachRadius(1_000_000.0);
+        assertEquals(Waypoint.MAX_REACH_RADIUS, config.defaultReachRadius());
+    }
+
+    @Test
     void labelHeightOffsetDefaultsToHistoricalPlacement() {
         WaypointerConfig config = new WaypointerConfig();
 
