@@ -5,12 +5,27 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class ActiveGroupManagerTest {
+
+    @Test
+    void addAllPublishesMultiGroupImportAsOneDataChange() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        AtomicInteger dataChanges = new AtomicInteger();
+        manager.addDataListener(dataChanges::incrementAndGet);
+
+        WaypointGroup first = WaypointGroup.create("First", "hub");
+        WaypointGroup second = WaypointGroup.create("Second", "hub");
+        manager.addAll(List.of(first, second));
+
+        assertEquals(1, dataChanges.get());
+        assertEquals(List.of(first, second), List.copyOf(manager.allGroups()));
+    }
 
     @Test
     void dataListenersCanAddAndRemoveListenersDuringCallback() {
