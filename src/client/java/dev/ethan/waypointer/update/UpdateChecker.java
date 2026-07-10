@@ -241,22 +241,36 @@ public final class UpdateChecker {
                 return new DownloadResult(false, null, null, verificationError);
             }
 
-            moveReplacing(temp, target);
-
             Path disabledPath = null;
             if (currentJar != null
                     && currentJar.getParent() != null
                     && samePath(currentJar.getParent(), modsDir)
                     && !samePath(currentJar, target)) {
                 disabledPath = uniqueDisabledPath(currentJar);
-                try {
-                    disableCurrentJarForNextLaunch(currentJar, disabledPath);
-                } catch (java.io.IOException e) {
-                    Waypointer.LOGGER.debug("Downloaded update but could not disable old jar: {}",
-                            e.toString());
-                    return new DownloadResult(false, target, disabledPath,
-                            "Downloaded, but remove old Waypointer jar before restart.");
+                if (isWindows()) {
+                    Path pending = uniquePendingPath(target);
+                    moveReplacing(temp, pending);
+                    try {
+                        stageWindowsUpdate(currentJar, disabledPath, pending, target);
+                    } catch (java.io.IOException e) {
+                        Files.deleteIfExists(pending);
+                        Waypointer.LOGGER.debug("Could not stage Windows update: {}", e.toString());
+                        return new DownloadResult(false, null, disabledPath,
+                                "Downloaded, but the update could not be safely staged.");
+                    }
+                    return new DownloadResult(true, target, disabledPath,
+                            "Update staged. Restart Minecraft to finish installing it.");
                 }
+
+                Files.move(currentJar, disabledPath, StandardCopyOption.REPLACE_EXISTING);
+                try {
+                    moveReplacing(temp, target);
+                } catch (java.io.IOException e) {
+                    Files.move(disabledPath, currentJar, StandardCopyOption.REPLACE_EXISTING);
+                    throw e;
+                }
+            } else {
+                moveReplacing(temp, target);
             }
 
             return new DownloadResult(true, target, disabledPath,
@@ -388,7 +402,7 @@ public final class UpdateChecker {
         return HexFormat.of().formatHex(digest.digest());
     }
 
-        private static Path uniqueDisabledPath(Path currentJar) {
+    private static Path uniqueDisabledPath(Path currentJar) {
         Path parent = currentJar.getParent();
         String base = currentJar.getFileName().toString() + ".disabled";
         Path candidate = parent.resolve(base);
@@ -400,22 +414,47 @@ public final class UpdateChecker {
         return candidate;
     }
 
-        private static void disableCurrentJarForNextLaunch(Path currentJar, Path disabledPath)
-            throws java.io.IOException {
-        if (!isWindows()) {
-            Files.move(currentJar, disabledPath, StandardCopyOption.REPLACE_EXISTING);
-            return;
+    static Path uniquePendingPath(Path target) {
+        Path parent = target.getParent();
+        String base = target.getFileName().toString() + ".pending";
+        Path candidate = parent.resolve(base);
+        int counter = 1;
+        while (Files.exists(candidate)) {
+            candidate = parent.resolve(base + "." + counter);
+            counter++;
         }
+        return candidate;
+    }
 
-        Path script = currentJar.getParent().resolve(WINDOWS_UPDATE_SCRIPT_PREFIX
-                + ProcessHandle.current().pid() + ".cmd");
+    private static void stageWindowsUpdate(Path currentJar, Path disabledPath,
+                                           Path pendingJar, Path targetJar)
+            throws java.io.IOException {
+        Path script = Files.createTempFile(currentJar.getParent(),
+                WINDOWS_UPDATE_SCRIPT_PREFIX + ProcessHandle.current().pid() + "-", ".cmd");
         Path failedPath = disabledPath.resolveSibling(disabledPath.getFileName() + ".failed.txt");
+        try {
+            String body = windowsUpdateScriptBody(ProcessHandle.current().pid(), currentJar,
+                    disabledPath, pendingJar, targetJar, failedPath);
+            Files.writeString(script, body, StandardCharsets.UTF_8,
+                    StandardOpenOption.TRUNCATE_EXISTING);
+            String startCommand = "start \"\" /min \"" + script.toString().replace("\"", "") + "\"";
+            new ProcessBuilder("cmd.exe", "/c", startCommand).start();
+        } catch (java.io.IOException e) {
+            Files.deleteIfExists(script);
+            throw e;
+        }
+    }
+
+    static String windowsUpdateScriptBody(long pid, Path currentJar, Path disabledPath,
+                                          Path pendingJar, Path targetJar, Path failedPath) {
         String body = """
                 @echo off
                 setlocal
                 set "PID=%d"
                 set "OLD=%s"
                 set "DISABLED=%s"
+                set "PENDING=%s"
+                set "TARGET=%s"
                 set "FAILED=%s"
                 :wait
                 tasklist /FI "PID eq %%PID%%" 2>NUL | findstr /R /C:"%%PID%%" >NUL
@@ -425,17 +464,32 @@ public final class UpdateChecker {
                 )
                 if exist "%%OLD%%" (
                   move /Y "%%OLD%%" "%%DISABLED%%" >NUL
-                  if errorlevel 1 echo Failed to disable old Waypointer jar: %%OLD%% ^> %%DISABLED%%>"%%FAILED%%"
+                  if errorlevel 1 goto fail_disable
                 )
+                move /Y "%%PENDING%%" "%%TARGET%%" >NUL
+                if errorlevel 1 goto fail_activate
+                del /F /Q "%%FAILED%%" >NUL 2>NUL
+                goto cleanup
+                :fail_activate
+                if exist "%%DISABLED%%" move /Y "%%DISABLED%%" "%%OLD%%" >NUL
+                echo Failed to activate new Waypointer jar; the old jar was restored.>"%%FAILED%%"
+                goto cleanup
+                :fail_disable
+                echo Failed to disable old Waypointer jar; the update remains inactive.>"%%FAILED%%"
+                :cleanup
                 del /F /Q "%%~f0" >NUL 2>NUL
                 """.formatted(
-                ProcessHandle.current().pid(),
-                currentJar.toString().replace("\"", ""),
-                disabledPath.toString().replace("\"", ""),
-                failedPath.toString().replace("\"", ""));
-        Files.writeString(script, body, StandardCharsets.UTF_8);
-        String startCommand = "start \"\" /min \"" + script.toString().replace("\"", "") + "\"";
-        new ProcessBuilder("cmd.exe", "/c", startCommand).start();
+                pid,
+                batchPath(currentJar),
+                batchPath(disabledPath),
+                batchPath(pendingJar),
+                batchPath(targetJar),
+                batchPath(failedPath));
+        return body;
+    }
+
+    private static String batchPath(Path path) {
+        return path.toString().replace("\"", "").replace("%", "%%");
     }
 
         private static boolean isWindows() {

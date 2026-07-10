@@ -200,6 +200,38 @@ class UpdateCheckerTest {
                 UpdateChecker.verifyDownloadedJar(notZip, "1.8.0+26.1"));
     }
 
+    @Test
+    void windowsUpdateKeepsNewJarInactiveUntilOldJarIsDisabled(@TempDir Path tempDir) throws Exception {
+        Path oldJar = tempDir.resolve("waypointer-old.jar");
+        Path disabledJar = tempDir.resolve("waypointer-old.jar.disabled");
+        Path targetJar = tempDir.resolve("waypointer-new.jar");
+        Path pendingJar = UpdateChecker.uniquePendingPath(targetJar);
+        Path failed = tempDir.resolve("update.failed.txt");
+
+        String script = UpdateChecker.windowsUpdateScriptBody(
+                42L, oldJar, disabledJar, pendingJar, targetJar, failed);
+
+        assertFalse(pendingJar.getFileName().toString().endsWith(".jar"));
+        int disableOld = script.indexOf("move /Y \"%OLD%\" \"%DISABLED%\"");
+        int activateNew = script.indexOf("move /Y \"%PENDING%\" \"%TARGET%\"");
+        assertTrue(disableOld >= 0);
+        assertTrue(activateNew > disableOld);
+        assertTrue(script.contains("if errorlevel 1 goto fail_disable"));
+        assertTrue(script.contains("if errorlevel 1 goto fail_activate"));
+        assertTrue(script.contains("move /Y \"%DISABLED%\" \"%OLD%\""));
+    }
+
+    @Test
+    void windowsUpdateUsesAUniqueInactivePendingName(@TempDir Path tempDir) throws Exception {
+        Path targetJar = tempDir.resolve("waypointer-new.jar");
+        Path firstPending = targetJar.resolveSibling("waypointer-new.jar.pending");
+        Files.writeString(firstPending, "already staged", StandardCharsets.UTF_8);
+
+        Path pending = UpdateChecker.uniquePendingPath(targetJar);
+
+        assertEquals("waypointer-new.jar.pending.1", pending.getFileName().toString());
+    }
+
     private static Path writeJar(Path tempDir, String metadataJson) throws Exception {
         return writeJar(tempDir, "waypointer-test.jar", metadataJson);
     }
