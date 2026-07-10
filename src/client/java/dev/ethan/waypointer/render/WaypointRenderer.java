@@ -474,7 +474,7 @@ public final class WaypointRenderer implements HudElement {
     static boolean shouldReuseDungeonEntryPath(BlockPos cachedStart, long computedAtNanos,
                                                BlockPos start, long nowNanos) {
         return Objects.equals(start, cachedStart)
-                || nowNanos - computedAtNanos < DUNGEON_ENTRY_REPATH_INTERVAL_NANOS;
+                && nowNanos - computedAtNanos < DUNGEON_ENTRY_REPATH_INTERVAL_NANOS;
     }
 
     private record DungeonEntryPathTarget(BlockPos block, double centerX, double centerY, double centerZ) {

@@ -65,6 +65,42 @@ class GroundPathfinderTest {
     }
 
     @Test
+    void doesNotCutDiagonallyThroughBlockedCorners() {
+        Set<BlockPos> walkable = Set.of(
+                new BlockPos(0, 0, 0),
+                new BlockPos(1, 0, 1));
+        GroundPathfinder.Grid grid = (x, y, z) -> walkable.contains(new BlockPos(x, y, z));
+
+        List<BlockPos> path = GroundPathfinder.findPath(
+                grid,
+                new BlockPos(0, 0, 0),
+                new BlockPos(1, 0, 1),
+                4,
+                16);
+
+        assertTrue(path.isEmpty());
+    }
+
+    @Test
+    void allowsDiagonalMovementWhenBothSidesOfCornerAreWalkable() {
+        Set<BlockPos> walkable = Set.of(
+                new BlockPos(0, 0, 0),
+                new BlockPos(1, 0, 0),
+                new BlockPos(0, 0, 1),
+                new BlockPos(1, 0, 1));
+        GroundPathfinder.Grid grid = (x, y, z) -> walkable.contains(new BlockPos(x, y, z));
+
+        List<BlockPos> path = GroundPathfinder.findPath(
+                grid,
+                new BlockPos(0, 0, 0),
+                new BlockPos(1, 0, 1),
+                4,
+                16);
+
+        assertEquals(List.of(new BlockPos(0, 0, 0), new BlockPos(1, 0, 1)), path);
+    }
+
+    @Test
     void returnsEmptyWhenGoalIsOutsideBoundedSearch() {
         GroundPathfinder.Grid grid = (x, y, z) -> true;
 
