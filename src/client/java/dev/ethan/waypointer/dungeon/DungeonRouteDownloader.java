@@ -23,10 +23,13 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.HexFormat;
 
 /**
  * Fetches the community secret-route set and installs it through the normal
@@ -44,8 +47,12 @@ import java.util.function.Consumer;
  */
 public final class DungeonRouteDownloader {
 
+    static final String ROUTES_COMMIT = "9cf484146cbffceb93c9e27c2ee1ae3c5ce9e112";
+    static final String ROUTES_SHA256 =
+            "d7ddc92bb72a93aa86e3d062152d16d29ea04342510b9360c776e43463ecb1b8";
     private static final URI ROUTES_URI = URI.create(
-            "https://raw.githubusercontent.com/yourboykyle/SecretRoutes/main/routes.json");
+            "https://raw.githubusercontent.com/yourboykyle/SecretRoutes/"
+                    + ROUTES_COMMIT + "/routes.json");
     private static final String ATTRIBUTION =
             "Routes by yourboykyle & R-aMcC (SecretRoutes, GPL-3.0), downloaded to your local config.";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(6);
@@ -153,7 +160,12 @@ public final class DungeonRouteDownloader {
             if (response.statusCode() / 100 != 2) {
                 throw new IllegalArgumentException("HTTP " + response.statusCode());
             }
-            String payload = readBoundedUtf8(body, MAX_DOWNLOAD_BYTES);
+            byte[] payloadBytes = readBounded(body, MAX_DOWNLOAD_BYTES);
+            String actualSha256 = sha256Hex(payloadBytes);
+            if (!ROUTES_SHA256.equals(actualSha256)) {
+                throw new IllegalArgumentException("route payload failed integrity verification");
+            }
+            String payload = new String(payloadBytes, StandardCharsets.UTF_8);
             return DungeonRouteImporter.parse(payload);
         } catch (IOException e) {
             throw new CompletionException("could not read the response", e);
@@ -163,6 +175,10 @@ public final class DungeonRouteDownloader {
     }
 
     static String readBoundedUtf8(InputStream input, int maxBytes) throws IOException {
+        return new String(readBounded(input, maxBytes), StandardCharsets.UTF_8);
+    }
+
+    private static byte[] readBounded(InputStream input, int maxBytes) throws IOException {
         if (input == null) throw new IOException("response body is missing");
         if (maxBytes < 0) throw new IllegalArgumentException("maxBytes must be non-negative");
 
@@ -177,7 +193,15 @@ public final class DungeonRouteDownloader {
             }
             output.write(buffer, 0, read);
         }
-        return output.toString(StandardCharsets.UTF_8);
+        return output.toByteArray();
+    }
+
+    static String sha256Hex(byte[] payload) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(payload));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 is unavailable", impossible);
+        }
     }
 
     private static Throwable unwrapCompletionError(Throwable error) {
