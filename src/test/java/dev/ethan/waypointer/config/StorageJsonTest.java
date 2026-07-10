@@ -8,6 +8,7 @@ import dev.ethan.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -161,6 +162,29 @@ class StorageJsonTest {
         assertEquals(1, savedGroup.getAsJsonArray("waypoints").size());
         assertEquals("before", savedGroup.getAsJsonArray("waypoints")
                 .get(0).getAsJsonObject().get("name").getAsString());
+    }
+
+    @Test
+    void failedFlushRemainsDirtyAndRetriesTheSameSnapshot() throws Exception {
+        Path blockedParent = tempDir.resolve("not-a-directory");
+        Files.writeString(blockedParent, "occupied");
+        Path file = blockedParent.resolve("waypoints.json");
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+        manager.add(WaypointGroup.create("Retry me", "hub"));
+
+        assertThrows(UncheckedIOException.class, storage::flush);
+        assertEquals(0, storage.writeCount());
+
+        Files.delete(blockedParent);
+        Files.createDirectory(blockedParent);
+        storage.flush();
+
+        assertEquals(1, storage.writeCount());
+        JsonObject root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertEquals("Retry me", root.getAsJsonArray("groups").get(0)
+                .getAsJsonObject().get("name").getAsString());
     }
 
     @Test
