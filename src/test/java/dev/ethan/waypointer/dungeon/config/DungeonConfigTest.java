@@ -63,6 +63,30 @@ class DungeonConfigTest {
     }
 
     @Test
+    void resetToDefaultsRestoresEveryDungeonSettingAndNotifiesMasterSwitch() {
+        DungeonConfig config = new DungeonConfig();
+        AtomicInteger enabledChanges = new AtomicInteger();
+        config.addEnabledListener(enabledChanges::incrementAndGet);
+        config.setEnabled(false);
+        config.setDebugLogRoomChanges(true);
+        config.setDefaultDirection("SE");
+        config.setHideCompletedRooms(false);
+        config.setAutoCompleteRoomsOnGreenCheckmark(false);
+        config.setRoutesPromptDismissed(true);
+        enabledChanges.set(0);
+
+        config.resetToDefaults();
+
+        assertTrue(config.enabled());
+        assertFalse(config.debugLogRoomChanges());
+        assertEquals("NW", config.defaultDirection());
+        assertTrue(config.hideCompletedRooms());
+        assertTrue(config.autoCompleteRoomsOnGreenCheckmark());
+        assertFalse(config.routesPromptDismissed());
+        assertEquals(1, enabledChanges.get());
+    }
+
+    @Test
     void defaultDirectionAcceptsOnlyCardinalDungeonRotations() {
         DungeonConfig config = new DungeonConfig();
 

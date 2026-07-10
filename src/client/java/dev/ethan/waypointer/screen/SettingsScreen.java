@@ -924,6 +924,7 @@ public final class SettingsScreen extends Screen {
 
     private void confirmedResetDefaults() {
         config.resetToDefaults();
+        dungeonConfig.resetToDefaults();
         afterBulkConfigChange();
     }
 
@@ -1009,7 +1010,11 @@ public final class SettingsScreen extends Screen {
 
     private void applyPreset(String presetId) {
         if ("default".equals(presetId)) {
-            confirmPreset("Default", new WaypointerConfig(), confirmed -> {
+            WaypointerConfig defaultMain = new WaypointerConfig();
+            DungeonConfig defaultDungeon = new DungeonConfig();
+            int changed = SettingsCatalog.countChangedSettings(
+                    config, dungeonConfig, defaultMain, defaultDungeon);
+            confirmPreset("Default", changed, confirmed -> {
                 if (confirmed) confirmedResetDefaults();
             });
             return;
@@ -1018,7 +1023,7 @@ public final class SettingsScreen extends Screen {
                 ? SettingsPresets.minimal(config)
                 : SettingsPresets.everything(config);
         String name = "minimal".equals(presetId) ? "Minimal" : "Everything";
-        confirmPreset(name, preset, confirmed -> {
+        confirmPreset(name, SettingsCatalog.countChangedSettings(config, preset), confirmed -> {
             if (confirmed) {
                 config.replaceWith(preset);
                 afterBulkConfigChange();
@@ -1026,9 +1031,8 @@ public final class SettingsScreen extends Screen {
         });
     }
 
-    private void confirmPreset(String name, WaypointerConfig preset,
+    private void confirmPreset(String name, int changed,
                                java.util.function.Consumer<Boolean> onResult) {
-        int changed = SettingsCatalog.countChangedSettings(config, preset);
         String settingWord = changed == 1 ? " setting" : " settings";
         ConfirmScreen confirmScreen = new ConfirmScreen(
                 confirmed -> {
