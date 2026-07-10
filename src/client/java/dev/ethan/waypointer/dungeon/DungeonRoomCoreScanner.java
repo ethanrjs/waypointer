@@ -30,11 +30,23 @@ final class DungeonRoomCoreScanner implements DungeonRoomData.CoreHashLookup {
     public List<Integer> coreHashesFor(DungeonRoom room) {
         if (room == null || room.segments().isEmpty()) return List.of();
 
-        List<Integer> hashes = new ArrayList<>(room.segments().size());
+        List<DungeonCoreSignature> signatures = new ArrayList<>(room.segments().size());
         for (long packedSegment : room.segments()) {
-            hashes.add(coreHashForSegment(packedSegment));
+            signatures.add(coreSignatureForSegment(packedSegment));
         }
-        return hashes;
+        return coreHashesFromSignatures(signatures);
+    }
+
+    static List<Integer> coreHashesFromSignatures(List<DungeonCoreSignature> signatures) {
+        if (signatures == null || signatures.isEmpty()) return List.of();
+        List<Integer> hashes = new ArrayList<>(signatures.size());
+        for (DungeonCoreSignature signature : signatures) {
+            if (signature == null || signature.topY() == 0 || signature.sampleCount() == 0) {
+                return List.of();
+            }
+            hashes.add(signature.hash());
+        }
+        return List.copyOf(hashes);
     }
 
     int coreHashForSegment(long packedSegment) {

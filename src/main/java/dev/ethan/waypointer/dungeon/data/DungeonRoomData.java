@@ -358,6 +358,31 @@ public final class DungeonRoomData {
         return definition;
     }
 
+    public static DungeonRoomDefinition defineIdentifiedRoom(
+            String id,
+            String displayName,
+            DungeonRoom room,
+            CoreHashLookup coreHashLookup) {
+        if (room == null) throw new IllegalArgumentException("room is required");
+        List<Integer> coreHashes = coreHashLookup == null ? null : coreHashLookup.coreHashesFor(room);
+        if (coreHashes == null || coreHashes.size() != room.segments().size()) {
+            throw new IllegalStateException("room core identity is unavailable");
+        }
+        for (Integer coreHash : coreHashes) {
+            if (coreHash == null) throw new IllegalStateException("room core identity is unavailable");
+        }
+        DungeonRoomDefinition definition = new DungeonRoomDefinition(
+                id,
+                displayName,
+                room.type(),
+                room.shape(),
+                coreHashes,
+                List.of(),
+                List.of());
+        putCustom(definition);
+        return definition;
+    }
+
     public static DungeonRoomDefinition renameRoom(String roomId, String displayName) {
         DungeonRoomDefinition definition = requireCustom(roomId);
         DungeonRoomDefinition renamed = definition.withDisplayName(displayName);
