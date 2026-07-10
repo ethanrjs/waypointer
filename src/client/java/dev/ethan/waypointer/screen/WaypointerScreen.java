@@ -1972,7 +1972,7 @@ public final class WaypointerScreen extends Screen {
             String targetZoneId = importTargetZoneId();
             retargetUnknownImportedGroups(result.groups(), targetZoneId);
             RouteColorPolicy.applyImportedRouteDefaults(result.groups(), config);
-            for (WaypointGroup g : result.groups()) manager.add(g);
+            manager.addAll(result.groups());
 
             ImportFeedback.success(result.groups(), "clipboard");
             // Navigate the user to the first imported group so the import

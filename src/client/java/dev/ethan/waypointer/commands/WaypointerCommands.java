@@ -2055,7 +2055,7 @@ public final class WaypointerCommands {
             int retargeted = retargetUnknownGroups(result.groups(), targetZone);
             RouteColorPolicy.applyImportedRouteDefaults(result.groups(), config);
 
-            for (WaypointGroup g : result.groups()) manager.add(g);
+            manager.addAll(result.groups());
             success(src, "Imported " + result.groups().size() + " route(s) from " + origin
                     + " (format: " + result.source() + ")");
             if (retargeted > 0 && targetZone != null) {
