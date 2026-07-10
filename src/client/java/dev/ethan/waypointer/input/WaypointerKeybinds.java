@@ -467,7 +467,7 @@ public final class WaypointerKeybinds {
         if (config.focusTempWaypoints()) {
             manager.focusTempWaypoint(target, target.size() - 1);
         }
-        manager.fireDataChanged();
+        manager.fireTransientDataChanged();
     }
 
     private PlayerWaypointPlacement.BlockPosition playerWaypointPosition(LocalPlayer player) {

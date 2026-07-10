@@ -56,7 +56,7 @@ public final class ProximityTracker {
         for (WaypointGroup group : manager.activeGroups()) {
             boolean advanced = advanceIfInteractedWithBlock(group, pos.getX(), pos.getY(), pos.getZ(), restart);
             if (advanced && shouldHideCompletedDungeonRoomRoute(group)) {
-                manager.fireDataChanged();
+                manager.fireTransientDataChanged();
             }
         }
         return InteractionResult.PASS;
@@ -81,7 +81,7 @@ public final class ProximityTracker {
             boolean changed = updateGroupProgress(group, px, py, pz, loop, globalSkipAhead,
                     skipOnlyVisible, hideReachedStatic);
             if (changed && shouldHideCompletedDungeonRoomRoute(group)) {
-                manager.fireDataChanged();
+                manager.fireTransientDataChanged();
             }
         }
     }

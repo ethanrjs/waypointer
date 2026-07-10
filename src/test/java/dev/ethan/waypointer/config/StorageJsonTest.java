@@ -163,6 +163,52 @@ class StorageJsonTest {
     }
 
     @Test
+    void attachedStorageIgnoresTransientGroupsAndSnapshotsPersistentChangesOnce() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Storage storage = new Storage(tempDir.resolve("waypoints.json"));
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+
+        WaypointGroup temp = new WaypointGroup("temp::hub", "Temporary", "hub");
+        temp.setTemp(true);
+        temp.add(Waypoint.at(1, 2, 3).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L));
+        manager.add(temp);
+        manager.clearTemporaryWaypoints();
+
+        WaypointGroup overlay = new WaypointGroup("api-overlay::test", "Overlay", "hub");
+        overlay.setTemp(true);
+        overlay.add(Waypoint.at(4, 5, 6).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L));
+        manager.add(overlay);
+        manager.remove(overlay.id());
+
+        WaypointGroup runtime = new WaypointGroup("dungeon:auto:test", "Runtime", "hub");
+        runtime.setRuntimeOnly(true);
+        manager.add(runtime);
+        WaypointGroup rebuiltRuntime = new WaypointGroup(runtime.id(), "Rebuilt", "hub");
+        rebuiltRuntime.setRuntimeOnly(true);
+        manager.add(rebuiltRuntime);
+        manager.removeAll(List.of(rebuiltRuntime.id()));
+        storage.flush();
+
+        assertEquals(snapshotsAfterAttach, storage.snapshotCount());
+        assertEquals(0, storage.writeCount());
+
+        boolean[] nestedRuntimeAdded = {false};
+        manager.addDataListener(() -> {
+            if (nestedRuntimeAdded[0]) return;
+            nestedRuntimeAdded[0] = true;
+            WaypointGroup nestedRuntime = new WaypointGroup(
+                    "dungeon:auto:nested", "Nested runtime", "hub");
+            nestedRuntime.setRuntimeOnly(true);
+            manager.add(nestedRuntime);
+        });
+        manager.add(WaypointGroup.create("Persistent", "hub"));
+        assertEquals(snapshotsAfterAttach + 1, storage.snapshotCount());
+        storage.flush();
+        assertEquals(1, storage.writeCount());
+    }
+
+    @Test
     void load_replacesGroupsOnlyAfterWholeFileParses() throws Exception {
         ActiveGroupManager manager = managerWithExistingGroup();
         Path file = tempDir.resolve("waypoints.json");

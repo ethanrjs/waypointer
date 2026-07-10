@@ -74,7 +74,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         WaypointGroup group = manager.get(groupId);
         if (group == null) return false;
         group.add(waypoint.toWaypoint());
-        manager.fireDataChanged();
+        manager.fireDataChangedFor(group);
         return true;
     }
 
@@ -87,7 +87,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         if (waypointIndex < 0 || waypointIndex >= group.size()) return false;
 
         group.set(waypointIndex, replacement.toWaypoint());
-        manager.fireDataChanged();
+        manager.fireDataChangedFor(group);
         return true;
     }
 
@@ -96,7 +96,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         Objects.requireNonNull(waypoint, "waypoint");
         WaypointGroup group = manager.getOrCreateTempGroup();
         group.add(waypoint.toTempWaypoint());
-        manager.fireDataChanged();
+        manager.fireTransientDataChanged();
         return WaypointGroupSnapshot.from(group);
     }
 
