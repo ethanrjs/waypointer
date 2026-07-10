@@ -15,11 +15,16 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -45,6 +50,7 @@ public final class DungeonRouteDownloader {
             "Routes by yourboykyle & R-aMcC (SecretRoutes, GPL-3.0), downloaded to your local config.";
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(6);
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
+    static final int MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024;
 
     /** Attribution shown wherever the download is offered (chat prompt, GUI tooltip). */
     public static String attributionText() {
@@ -126,35 +132,71 @@ public final class DungeonRouteDownloader {
                 .GET()
                 .build();
 
-        client.sendAsync(request, HttpResponse.BodyHandlers.ofString())
-                .whenComplete((response, error) -> Minecraft.getInstance().execute(() -> {
+        client.sendAsync(request, HttpResponse.BodyHandlers.ofInputStream())
+                .thenApplyAsync(DungeonRouteDownloader::parseDownloadResponse)
+                .whenComplete((result, error) -> Minecraft.getInstance().execute(() -> {
                     downloadInFlight.set(false);
                     if (error != null) {
-                        Waypointer.LOGGER.warn("Route download failed", error);
+                        Throwable cause = unwrapCompletionError(error);
+                        Waypointer.LOGGER.warn("Route download failed", cause);
                         feedback.accept(Component.literal(
-                                        "Route download failed: " + error.getMessage())
+                                        "Route download failed: " + safeErrorMessage(cause))
                                 .withStyle(ChatFormatting.RED));
                         return;
                     }
-                    if (response.statusCode() / 100 != 2) {
-                        feedback.accept(Component.literal(
-                                        "Route download failed (HTTP " + response.statusCode() + ").")
-                                .withStyle(ChatFormatting.RED));
-                        return;
-                    }
-                    importDownloadedRoutes(response.body(), feedback);
+                    importDownloadedRoutes(result, feedback);
                 }));
     }
 
-    private void importDownloadedRoutes(String payload, Consumer<Component> feedback) {
-        DungeonRouteImporter.Result result;
-        try {
-            result = DungeonRouteImporter.parse(payload);
+    static DungeonRouteImporter.Result parseDownloadResponse(HttpResponse<InputStream> response) {
+        try (InputStream body = response.body()) {
+            if (response.statusCode() / 100 != 2) {
+                throw new IllegalArgumentException("HTTP " + response.statusCode());
+            }
+            String payload = readBoundedUtf8(body, MAX_DOWNLOAD_BYTES);
+            return DungeonRouteImporter.parse(payload);
+        } catch (IOException e) {
+            throw new CompletionException("could not read the response", e);
         } catch (IllegalArgumentException e) {
-            feedback.accept(Component.literal("Downloaded routes could not be parsed: "
-                    + e.getMessage()).withStyle(ChatFormatting.RED));
-            return;
+            throw new CompletionException(e);
         }
+    }
+
+    static String readBoundedUtf8(InputStream input, int maxBytes) throws IOException {
+        if (input == null) throw new IOException("response body is missing");
+        if (maxBytes < 0) throw new IllegalArgumentException("maxBytes must be non-negative");
+
+        ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(maxBytes, 8192));
+        byte[] buffer = new byte[8192];
+        int total = 0;
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            total += read;
+            if (total > maxBytes) {
+                throw new IOException("response is too large (max " + maxBytes + " bytes)");
+            }
+            output.write(buffer, 0, read);
+        }
+        return output.toString(StandardCharsets.UTF_8);
+    }
+
+    private static Throwable unwrapCompletionError(Throwable error) {
+        Throwable current = error;
+        while ((current instanceof CompletionException) && current.getCause() != null) {
+            current = current.getCause();
+        }
+        return current;
+    }
+
+    private static String safeErrorMessage(Throwable error) {
+        if (error == null || error.getMessage() == null || error.getMessage().isBlank()) {
+            return "unknown error";
+        }
+        return error.getMessage();
+    }
+
+    private void importDownloadedRoutes(DungeonRouteImporter.Result result,
+                                        Consumer<Component> feedback) {
         int rooms = DungeonRoomData.importCustomDefinitions(result.definitions());
         feedback.accept(Component.literal("Installed " + result.waypointCount()
                         + " secret waypoints across " + rooms + " rooms.")
