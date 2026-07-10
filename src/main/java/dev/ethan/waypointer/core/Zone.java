@@ -525,13 +525,13 @@ public record Zone(String id, String displayName) {
 
     // ---- helpers ---------------------------------------------------------
 
-        public static String canonicalId(String id) {
+    public static String canonicalId(String id) {
         if (id == null || id.isBlank()) return "unknown";
-        String trimmed = id.trim();
-        if (trimmed.startsWith("mineshaft_") && trimmed.endsWith("_crystal")) {
+        String normalized = id.trim().toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("mineshaft_") && normalized.endsWith("_crystal")) {
             return MINESHAFT_CRYSTAL_ZONE_ID;
         }
-        return trimmed;
+        return normalized;
     }
 
     private static String prettify(String id) {
