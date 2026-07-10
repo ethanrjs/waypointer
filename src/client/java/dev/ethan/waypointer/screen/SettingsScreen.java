@@ -902,6 +902,9 @@ public final class SettingsScreen extends Screen {
         WaypointerConfig preview = WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config));
         preview.disableAllSettings();
         int changed = SettingsCatalog.countChangedSettings(config, preview);
+        if (dungeonConfig.enabled()) changed++;
+        if (dungeonConfig.hideCompletedRooms()) changed++;
+        if (dungeonConfig.autoCompleteRoomsOnGreenCheckmark()) changed++;
         String settingWord = changed == 1 ? " setting" : " settings";
         ConfirmScreen confirmScreen = new ConfirmScreen(
                 confirmed -> {
@@ -915,7 +918,7 @@ public final class SettingsScreen extends Screen {
     }
 
     private void confirmedDisableAll() {
-        config.disableAllSettings();
+        config.disableAllSettings(dungeonConfig);
         afterBulkConfigChange();
     }
 

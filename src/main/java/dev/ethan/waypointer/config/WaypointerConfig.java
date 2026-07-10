@@ -8,6 +8,7 @@ import com.google.gson.JsonParser;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -856,6 +857,7 @@ public final class WaypointerConfig {
         showWaypointDistances = false;
         showRouteProgress = false;
         sharpWaypointEdges = false;
+        beaconOpacity = 0.0;
         scaleWaypointTextWithDistance = false;
         matchWaypointTextToWaypointColor = false;
         showCompleted = false;
@@ -893,6 +895,11 @@ public final class WaypointerConfig {
         beaconBeamMode = BeaconBeamMode.OFF;
         tempDefaultMode = Waypoint.TEMP_UNTIL_LEAVE;
         save();
+    }
+
+    public void disableAllSettings(DungeonConfig dungeonConfig) {
+        disableAllSettings();
+        if (dungeonConfig != null) dungeonConfig.disableAllSettings();
     }
     public void resetToDefaults() {
         WaypointerConfig defaults = new WaypointerConfig();

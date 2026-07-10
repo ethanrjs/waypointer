@@ -181,6 +181,34 @@ class DungeonRoomRouteSyncTest {
     }
 
     @Test
+    void dungeonMasterSwitchRemovesAndRestoresTheRuntimeMirror() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonConfig config = new DungeonConfig();
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, config);
+        sync = new DungeonRoomRouteSync(manager, tracker, new DungeonRouteSession(), config);
+        sync.install();
+
+        DungeonRoom room = room("switch-room", "Switch Room");
+        DungeonRoomDefinition definition =
+                DungeonRoomData.defineRoom("switch-room", "Switch Room", room);
+        DungeonRoomData.addWaypoint(definition.id(),
+                DungeonWaypoint.plain("only", DungeonSecretCategory.CHEST, 4, 70, 7, ""));
+        tracker.setCurrentRoom(room);
+        String generatedId = DungeonRoomRouteSync.generatedGroupId("switch-room");
+        assertNotNull(manager.get(generatedId));
+
+        config.setEnabled(false);
+
+        assertNull(tracker.currentRoom(), "disabled dungeon consumers must not see a stale room");
+        assertNull(manager.get(generatedId), "disabling must remove the rendered runtime mirror");
+
+        config.setEnabled(true);
+
+        assertEquals(room, tracker.currentRoom());
+        assertNotNull(manager.get(generatedId), "re-enabling should restore the current room route");
+    }
+
+    @Test
     void bundledDungeonDefinitionsDoNotCreateRuntimeRouteGroups() {
         ActiveGroupManager manager = new ActiveGroupManager();
         DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());

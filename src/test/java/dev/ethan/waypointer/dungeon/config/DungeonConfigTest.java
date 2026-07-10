@@ -2,6 +2,8 @@ package dev.ethan.waypointer.dungeon.config;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -26,6 +28,38 @@ class DungeonConfigTest {
 
         assertFalse(config.enabled());
         assertTrue(config.debugLogRoomChanges());
+    }
+
+    @Test
+    void enabledListenersOnlyRunWhenTheMasterSwitchChanges() {
+        DungeonConfig config = new DungeonConfig();
+        AtomicInteger changes = new AtomicInteger();
+        Runnable listener = changes::incrementAndGet;
+        config.addEnabledListener(listener);
+
+        config.setEnabled(true);
+        config.setEnabled(false);
+        config.setEnabled(false);
+        config.setEnabled(true);
+
+        assertEquals(2, changes.get());
+
+        config.removeEnabledListener(listener);
+        config.setEnabled(false);
+        assertEquals(2, changes.get());
+    }
+
+    @Test
+    void disableAllSettingsTurnsOffEveryDungeonBehaviorToggle() {
+        DungeonConfig config = new DungeonConfig();
+        config.setDebugLogRoomChanges(true);
+
+        config.disableAllSettings();
+
+        assertFalse(config.enabled());
+        assertFalse(config.debugLogRoomChanges());
+        assertFalse(config.hideCompletedRooms());
+        assertFalse(config.autoCompleteRoomsOnGreenCheckmark());
     }
 
     @Test
