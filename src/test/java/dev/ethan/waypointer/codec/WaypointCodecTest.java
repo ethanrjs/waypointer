@@ -13,10 +13,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.zip.CRC32;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.Inflater;
@@ -252,7 +254,7 @@ class WaypointCodecTest {
     void rejects_unbounded_group_count_payloads() throws Exception {
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         DataOutputStream out = new DataOutputStream(raw);
-        out.writeByte(WaypointCodec.WIRE_VERSION);
+        out.writeByte(WaypointCodec.LEGACY_V7_WIRE_VERSION);
         WaypointCodec.writeVarint(out, 0);
         WaypointCodec.writeVarint(out, WaypointImporter.MAX_GROUPS_PER_IMPORT + 1);
         out.flush();
@@ -273,7 +275,7 @@ class WaypointCodecTest {
     void boundsUntrustedWireRadiusBeforeItReachesTheModel() throws Exception {
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         DataOutputStream out = new DataOutputStream(raw);
-        out.writeByte(WaypointCodec.WIRE_VERSION | 0x40);
+        out.writeByte(WaypointCodec.LEGACY_V7_WIRE_VERSION | 0x40);
         WaypointCodec.writeVarint(out, 0);
         WaypointCodec.writeVarint(out, 3);
         out.writeBytes("hub");
@@ -335,6 +337,76 @@ class WaypointCodecTest {
     void rejects_garbled_payload() {
         assertThrows(IllegalArgumentException.class,
                 () -> WaypointCodec.decode(WaypointCodec.MAGIC + "ZZZZZZZ"));
+    }
+
+    @Test
+    void current_payload_rejects_binary_mutation_without_a_matching_checksum() throws Exception {
+        String encoded = WaypointCodec.encode(List.of(sampleGroup("checksum", "hub")), FULL_FIDELITY);
+        byte[] framed = currentFramedBody(encoded);
+        framed[1] ^= 1;
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> WaypointCodec.decode(encodeCompressedForTest(deflateForTest(framed))));
+
+        assertTrue(error.getMessage().contains("CRC-32 mismatch"));
+    }
+
+    @Test
+    void current_payload_rejects_a_single_character_mutation() {
+        String encoded = WaypointCodec.encode(List.of(sampleGroup("character-mutation", "hub")), FULL_FIDELITY);
+        int index = encoded.length() / 2;
+        char replacement = encoded.charAt(index) == '!' ? '"' : '!';
+        String mutated = encoded.substring(0, index) + replacement + encoded.substring(index + 1);
+
+        assertThrows(IllegalArgumentException.class, () -> WaypointCodec.decode(mutated));
+        assertFalse(WaypointCodec.isValidCodec(mutated));
+    }
+
+    @Test
+    void current_payload_rejects_trailing_compressed_bytes() throws Exception {
+        String encoded = WaypointCodec.encode(List.of(sampleGroup("compressed-tail", "hub")), FULL_FIDELITY);
+        byte[] compressed = currentCompressedBody(encoded);
+        byte[] withTail = Arrays.copyOf(compressed, compressed.length + 1);
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> WaypointCodec.decode(encodeCompressedForTest(withTail)));
+
+        assertTrue(error.getMessage().contains("trailing compressed bytes"));
+    }
+
+    @Test
+    void current_payload_rejects_trailing_binary_body_bytes_even_with_a_valid_checksum() throws Exception {
+        String encoded = WaypointCodec.encode(List.of(sampleGroup("binary-tail", "hub")), FULL_FIDELITY);
+        byte[] body = stripCurrentChecksum(currentFramedBody(encoded));
+        byte[] withTail = Arrays.copyOf(body, body.length + 1);
+        withTail[body.length] = 42;
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> WaypointCodec.decode(encodeCompressedForTest(
+                        deflateForTest(appendChecksumForTest(withTail)))));
+
+        assertTrue(error.getMessage().contains("trailing binary body bytes"));
+    }
+
+    @Test
+    void rejects_deflate_payloads_over_the_inflated_size_limit() throws Exception {
+        byte[] bomb = new byte[WaypointCodec.MAX_INFLATED_BYTES + 1];
+        bomb[0] = (byte) WaypointCodec.WIRE_VERSION;
+        String encoded = encodeCompressedForTest(deflateForTest(bomb));
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> WaypointCodec.decode(encoded));
+
+        assertTrue(error.getMessage().contains("inflated payload exceeds"));
+    }
+
+    @Test
+    void peek_label_only_reads_a_bounded_payload_prefix() {
+        String encoded = WaypointCodec.encode(List.of(sampleGroup("peek", "hub")),
+                WaypointCodec.Options.builder().label("Trusted label").build());
+        String hostileSuffix = "!".repeat(1_000_000);
+
+        assertEquals("Trusted label", WaypointCodec.peekLabel(encoded + hostileSuffix).orElseThrow());
     }
 
     @Test
@@ -473,8 +545,8 @@ class WaypointCodecTest {
 
     @Test
     void current_wire_version_keeps_hypixel_emote_escape() {
-        // v7 keeps the v4+ chat escape while adding precise subwaypoint payloads.
-        assertEquals(7, WaypointCodec.WIRE_VERSION);
+        // v8 keeps the v4+ chat escape while adding payload integrity checks.
+        assertEquals(8, WaypointCodec.WIRE_VERSION);
 
         String raw = "abc<3defo/ghi~~jkl<~3mno~/pqr";
         String escaped = WaypointCodec.escapeHypixelEmotes(raw);
@@ -1109,7 +1181,7 @@ class WaypointCodecTest {
         DecodeDebug debug = WaypointCodec.debugDecode(encoded);
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
 
-        assertEquals(7, debug.version());
+        assertEquals(8, debug.version());
         assertTrue(debug.reservedBit6(), "v6+ bit 6 marks the anonymous coordinate-only body");
         assertTrue(debug.stringPool().isEmpty(), "anonymous coordinate export should not write a string pool");
         assertEquals(1, debug.groups().size());
@@ -1126,13 +1198,30 @@ class WaypointCodecTest {
     }
 
     @Test
-    void legacy_v6_payloads_still_decode_after_v7_bump() throws Exception {
+    void legacy_v7_payloads_still_decode_after_v8_bump() throws Exception {
+        WaypointGroup g = sampleGroup("legacy-v7", "dungeon_f7");
+        String current = WaypointCodec.encode(List.of(g), FULL_FIDELITY,
+                WaypointCodec.PackingMode.FORCE_VECTOR);
+        byte[] raw = stripCurrentChecksum(currentFramedBody(current));
+        raw[0] = (byte) ((raw[0] & 0xF0) | WaypointCodec.LEGACY_V7_WIRE_VERSION);
+
+        String legacyV7 = encodeCompressedForTest(deflateForTest(raw));
+        WaypointGroup decoded = WaypointCodec.decode(legacyV7).get(0);
+        DecodeDebug debug = WaypointCodec.debugDecode(legacyV7);
+
+        assertGroupsEqual(g, decoded);
+        assertEquals(WaypointCodec.LEGACY_V7_WIRE_VERSION, debug.version());
+        assertEquals("ASCII base-91 stream + subwaypoint precision", debug.textEncoding());
+    }
+
+    @Test
+    void legacy_v6_payloads_still_decode_after_v8_bump() throws Exception {
         WaypointGroup g = sampleGroup("legacy-v6", "dungeon_f7");
         String current = WaypointCodec.encode(List.of(g), FULL_FIDELITY,
                 WaypointCodec.PackingMode.FORCE_VECTOR);
         String body = current.substring(WaypointCodec.MAGIC.length());
         byte[] compressed = AsciiStreamCodec.decode(WaypointCodec.unescapeHypixelEmotes(body));
-        byte[] raw = inflateForTest(compressed);
+        byte[] raw = stripCurrentChecksum(inflateForTest(compressed));
         raw[0] = (byte) ((raw[0] & 0xF0) | 6);
 
         String legacyV6 = WaypointCodec.MAGIC
@@ -1146,13 +1235,13 @@ class WaypointCodecTest {
     }
 
     @Test
-    void legacy_v5_payloads_still_decode_after_v7_bump() throws Exception {
+    void legacy_v5_payloads_still_decode_after_v8_bump() throws Exception {
         WaypointGroup g = sampleGroup("legacy-v5", "dungeon_f7");
         String current = WaypointCodec.encode(List.of(g), FULL_FIDELITY,
                 WaypointCodec.PackingMode.FORCE_VECTOR);
         String body = current.substring(WaypointCodec.MAGIC.length());
         byte[] compressed = AsciiStreamCodec.decode(WaypointCodec.unescapeHypixelEmotes(body));
-        byte[] raw = inflateForTest(compressed);
+        byte[] raw = stripCurrentChecksum(inflateForTest(compressed));
         raw[0] = (byte) ((raw[0] & 0xF0) | 5);
 
         String legacyV5 = WaypointCodec.MAGIC
@@ -1262,15 +1351,45 @@ class WaypointCodecTest {
     private static String asLegacyV3(String v4Export) throws Exception {
         String body = v4Export.substring(WaypointCodec.MAGIC.length());
         byte[] compressed = AsciiStreamCodec.decode(WaypointCodec.unescapeHypixelEmotes(body));
-        byte[] raw = inflateForTest(compressed);
+        byte[] raw = stripCurrentChecksum(inflateForTest(compressed));
         raw[0] = (byte) ((raw[0] & 0xF0) | 3);
         return WaypointCodec.MAGIC + AsciiStreamCodec.encodeLegacyV3(deflateForTest(raw));
+    }
+
+    private static byte[] currentCompressedBody(String encoded) {
+        String body = encoded.substring(WaypointCodec.MAGIC.length());
+        return AsciiStreamCodec.decode(WaypointCodec.unescapeHypixelEmotes(body));
+    }
+
+    private static byte[] currentFramedBody(String encoded) throws Exception {
+        return inflateForTest(currentCompressedBody(encoded));
+    }
+
+    private static String encodeCompressedForTest(byte[] compressed) {
+        return WaypointCodec.MAGIC
+                + WaypointCodec.escapeHypixelEmotes(AsciiStreamCodec.encode(compressed));
+    }
+
+    private static byte[] appendChecksumForTest(byte[] body) {
+        CRC32 checksum = new CRC32();
+        checksum.update(body);
+        long value = checksum.getValue();
+        byte[] framed = Arrays.copyOf(body, body.length + Integer.BYTES);
+        framed[body.length] = (byte) (value >>> 24);
+        framed[body.length + 1] = (byte) (value >>> 16);
+        framed[body.length + 2] = (byte) (value >>> 8);
+        framed[body.length + 3] = (byte) value;
+        return framed;
+    }
+
+    private static byte[] stripCurrentChecksum(byte[] framed) {
+        return Arrays.copyOf(framed, framed.length - Integer.BYTES);
     }
 
     private static String asLegacyV4WithComma(String v5Export) throws Exception {
         String body = v5Export.substring(WaypointCodec.MAGIC.length());
         byte[] compressed = AsciiStreamCodec.decode(WaypointCodec.unescapeHypixelEmotes(body));
-        byte[] raw = inflateForTest(compressed);
+        byte[] raw = stripCurrentChecksum(inflateForTest(compressed));
         raw[0] = (byte) ((raw[0] & 0xF0) | 4);
 
         return WaypointCodec.MAGIC
