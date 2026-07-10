@@ -22,6 +22,8 @@ import java.util.concurrent.TimeUnit;
  * the writer runs on the shared background thread. {@link #flush()} forces an
  * immediate synchronous write on the calling thread -- used on shutdown so the
  * atomic-rename step has a guaranteed completion point before the JVM exits.
+ * A failed write remains dirty; scheduled failures are logged, while flush
+ * failures propagate so shutdown cannot silently report unsaved state as safe.
  *
  * <p>Not reusable after a flush race: serializing with {@code synchronized} on
  * {@code lock} keeps the writer body single-threaded and cheap, which matters
@@ -76,7 +78,8 @@ public final class AsyncSaver {
     /**
      * Write synchronously on the calling thread if anything is pending.
      * Safe to call from a shutdown hook -- the guaranteed-completion semantics
-     * here are the reason saves aren't purely async.
+     * here are the reason saves aren't purely async. Writer failures propagate
+     * and leave the saver dirty so a later flush can retry the same snapshot.
      */
     public void flush() {
         synchronized (lock) {
@@ -100,16 +103,17 @@ public final class AsyncSaver {
     private void runScheduled() {
         synchronized (lock) {
             pending = null;
-            if (dirty) doWrite();
+            if (!dirty) return;
+            try {
+                doWrite();
+            } catch (RuntimeException t) {
+                Waypointer.LOGGER.error("AsyncSaver[{}] write failed", name, t);
+            }
         }
     }
 
     private void doWrite() {
+        writer.run();
         dirty = false;
-        try {
-            writer.run();
-        } catch (Throwable t) {
-            Waypointer.LOGGER.error("AsyncSaver[{}] write failed", name, t);
-        }
     }
 }

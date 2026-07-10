@@ -12,6 +12,8 @@ import dev.ethan.waypointer.core.WaypointGroup;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -146,10 +148,14 @@ public final class Storage {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
             Files.writeString(tmp, json);
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            try {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
             writeCount++;
         } catch (IOException e) {
-            Waypointer.LOGGER.error("Failed to save waypoints to {}", file, e);
+            throw new UncheckedIOException("Failed to save waypoints to " + file, e);
         }
     }
 
