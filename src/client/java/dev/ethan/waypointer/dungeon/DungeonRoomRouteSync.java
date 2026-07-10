@@ -65,6 +65,7 @@ public final class DungeonRoomRouteSync {
         manager.addDataListener(syncListener);
         DungeonRoomData.addChangeListener(syncListener);
         if (session != null) session.addChangeListener(syncListener);
+        if (config != null) config.addEnabledListener(syncListener);
         syncCurrentRoom();
     }
 
@@ -74,6 +75,7 @@ public final class DungeonRoomRouteSync {
         manager.removeDataListener(syncListener);
         DungeonRoomData.removeChangeListener(syncListener);
         if (session != null) session.removeChangeListener(syncListener);
+        if (config != null) config.removeEnabledListener(syncListener);
     }
 
     private void onZoneChanged(Zone zone) {
@@ -87,11 +89,14 @@ public final class DungeonRoomRouteSync {
 
     private void syncCurrentRoom() {
         if (syncing) return;
-        DungeonRoom room = tracker.currentRoom();
-        if (room == null || !room.hasRoomId()) return;
-
         syncing = true;
         try {
+            if (config != null && !config.enabled()) {
+                removeGeneratedGroups();
+                return;
+            }
+            DungeonRoom room = tracker.currentRoom();
+            if (room == null || !room.hasRoomId()) return;
             syncRoom(room);
         } finally {
             syncing = false;

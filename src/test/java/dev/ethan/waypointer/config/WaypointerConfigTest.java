@@ -4,6 +4,7 @@ import dev.ethan.waypointer.codec.AsciiStreamCodec;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -351,6 +352,21 @@ class WaypointerConfigTest {
 
         assertEquals(0.0, config.tracerOpacity());
         assertEquals(1.0, config.beaconOpacity());
+    }
+
+    @Test
+    void disableAllStopsRenderingAndTheDungeonSubsystem() {
+        WaypointerConfig config = new WaypointerConfig();
+        DungeonConfig dungeonConfig = new DungeonConfig();
+
+        config.disableAllSettings(dungeonConfig);
+
+        assertEquals(0.0, config.beaconOpacity());
+        assertFalse(config.showRouteLines());
+        assertFalse(config.showDungeonEntryPathToFirstWaypoint());
+        assertFalse(dungeonConfig.enabled());
+        assertFalse(dungeonConfig.hideCompletedRooms());
+        assertFalse(dungeonConfig.autoCompleteRoomsOnGreenCheckmark());
     }
 
     @Test

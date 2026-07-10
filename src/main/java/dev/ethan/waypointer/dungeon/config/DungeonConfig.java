@@ -10,6 +10,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * User-tunable runtime settings for the dungeon-waypoints feature.
@@ -78,6 +80,7 @@ public final class DungeonConfig {
 
     private transient Path file;
     private transient AsyncSaver saver;
+    private transient final List<Runnable> enabledListeners = new ArrayList<>();
 
     public static DungeonConfig load() {
         Path dir = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
@@ -104,6 +107,14 @@ public final class DungeonConfig {
 
     public void flush() { if (saver != null) saver.flush(); }
 
+    public void addEnabledListener(Runnable listener) {
+        if (listener != null) enabledListeners.add(listener);
+    }
+
+    public void removeEnabledListener(Runnable listener) {
+        enabledListeners.remove(listener);
+    }
+
     private void writeToDisk() {
         if (file == null) return;
         try {
@@ -125,7 +136,24 @@ public final class DungeonConfig {
     public boolean autoCompleteRoomsOnGreenCheckmark() { return autoCompleteRoomsOnGreenCheckmark; }
     public boolean routesPromptDismissed()  { return routesPromptDismissed; }
 
-    public void setEnabled(boolean v)             { this.enabled = v; save(); }
+    public void setEnabled(boolean v) {
+        if (enabled == v) return;
+        enabled = v;
+        save();
+        for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
+    }
+
+    public void disableAllSettings() {
+        boolean notifyEnabledListeners = enabled;
+        enabled = false;
+        debugLogRoomChanges = false;
+        hideCompletedRooms = false;
+        autoCompleteRoomsOnGreenCheckmark = false;
+        save();
+        if (notifyEnabledListeners) {
+            for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
+        }
+    }
     public void setDebugLogRoomChanges(boolean v) { this.debugLogRoomChanges = v; save(); }
     public void setHideCompletedRooms(boolean v)  { this.hideCompletedRooms = v; save(); }
     public void setAutoCompleteRoomsOnGreenCheckmark(boolean v) {

@@ -126,7 +126,7 @@ public final class DungeonStateTracker {
     }
 
     public DungeonRoom currentRoom() {
-        return currentRoom;
+        return config.enabled() ? currentRoom : null;
     }
 
     /**
