@@ -857,6 +857,7 @@ Binary body before the v8 CRC-32 is appended and the frame is DEFLATE-compressed
 - All pool lookups go through `poolGet`, which bounds-checks against pool size and throws `IOException` on out-of-range indices. Malformed payloads report `string pool OOB: N` instead of `IndexOutOfBoundsException`.
 - `decodeFull()` sanitizes labels even though encode already sanitizes them. `peekLabel()` is an unchecked bounded preview and should not be treated as authenticated route metadata.
 - AUTO gradient imports may recolor unlocked waypoints using the recipient/default gradient endpoints. The wire format does not store gradient endpoint colors.
+- Skytils clipboard compatibility follows the current 1.x `Waypoints.kt` schema: V1 is `<Skytils-Waypoint-Data>(V1):` plus base64(gzip(`CategoryList` JSON)); V2 replaces gzip with Brotli. Waypointer imports both versions and exports V1, which current Skytils still accepts without its optional native Brotli encoder. Categories import as static groups because Skytils stores their waypoints in sets, and signed ARGB colors plus per-waypoint enabled state are preserved. The implementation is fixture-tested against [Skytils 1.x source at commit `276c07e`](https://github.com/Skytils/SkytilsMod/blob/276c07edf0f1e64956424016f438a5059c63a863/src/main/kotlin/gg/skytils/skytilsmod/features/impl/handlers/Waypoints.kt).
 
 ---
 

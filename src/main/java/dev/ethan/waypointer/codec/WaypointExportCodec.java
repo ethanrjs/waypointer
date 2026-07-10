@@ -30,7 +30,7 @@ public final class WaypointExportCodec {
     public enum Target {
         WAYPOINTER("Waypointer", true, true, true, true, true, true),
         SKYBLOCKER("Skyblocker", true, true, false, false, false, false),
-        SKYTILS("Skytils", false, true, false, false, false, false),
+        SKYTILS("Skytils", true, true, false, false, false, false),
         SKYHANNI("SkyHanni", false, false, false, false, false, false);
 
         private final String displayName;
@@ -118,8 +118,8 @@ public final class WaypointExportCodec {
             case WAYPOINTER -> WaypointCodec.encode(groups, safeOpts);
             case SKYBLOCKER -> WaypointImporter.SKYBLOCKER_V1_PREFIX
                     + Base64.getEncoder().encodeToString(gzip(skyblockerJson(groups, safeOpts)));
-            case SKYTILS -> Base64.getEncoder().encodeToString(skytilsJson(groups, safeOpts)
-                    .getBytes(StandardCharsets.UTF_8));
+            case SKYTILS -> WaypointImporter.SKYTILS_V1_PREFIX
+                    + Base64.getEncoder().encodeToString(gzip(skytilsJson(groups, safeOpts)));
             case SKYHANNI -> skyhanniJson(groups);
         };
     }
@@ -128,7 +128,7 @@ public final class WaypointExportCodec {
         return switch (target) {
             case WAYPOINTER -> "Export Preview (Waypointer export code)";
             case SKYBLOCKER -> "Export Preview (Skyblocker share string)";
-            case SKYTILS -> "Export Preview (Skytils base64 JSON)";
+            case SKYTILS -> "Export Preview (Skytils V1 share string)";
             case SKYHANNI -> "Export Preview (SkyHanni route JSON)";
         };
     }
@@ -164,6 +164,7 @@ public final class WaypointExportCodec {
     private static String skytilsJson(List<WaypointGroup> groups, WaypointCodec.Options opts) {
         JsonObject root = new JsonObject();
         JsonArray categories = new JsonArray();
+        long exportedAt = System.currentTimeMillis();
         for (WaypointGroup group : groups) {
             JsonObject category = new JsonObject();
             category.addProperty("name", groupName(group));
@@ -175,13 +176,15 @@ public final class WaypointExportCodec {
                 point.addProperty("x", waypoint.x());
                 point.addProperty("y", waypoint.y());
                 point.addProperty("z", waypoint.z());
-                point.addProperty("enabled", true);
-                if (opts.includeNames && waypoint.hasName()) {
-                    point.addProperty("name", waypoint.name());
-                }
+                point.addProperty("name", opts.includeNames && waypoint.hasName()
+                        ? waypoint.name() : "Unnamed");
+                point.addProperty("enabled", group.enabled()
+                        && (!waypoint.hasFlag(Waypoint.FLAG_HIDE_BEACON)
+                        || !waypoint.hasFlag(Waypoint.FLAG_HIDE_NAME)));
                 if (opts.includeColors) {
-                    point.addProperty("color", 0x7F000000 | (waypoint.color() & 0xFFFFFF));
+                    point.addProperty("color", 0xFF000000 | (waypoint.color() & 0xFFFFFF));
                 }
+                point.addProperty("addedAt", exportedAt);
                 waypoints.add(point);
             }
             category.add("waypoints", waypoints);

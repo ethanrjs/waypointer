@@ -10,13 +10,17 @@ import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomDefinition;
+import org.brotli.dec.BrotliInputStream;
 
 import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -34,9 +38,11 @@ import static dev.ethan.waypointer.util.MathUtil.clampByte;
  *   - Native {@code WP:} codec payloads (delegated to {@link WaypointCodec}).
  *   - Skyblocker-style: Base64(Gzip(JSON)) where JSON is an array of groups or a
  *     map of {@code {"island": [points...]}}.
- *   - Skytils / Soopy style: raw JSON or base64(JSON) with either a top-level
+ *   - Skytils style: raw JSON or base64(JSON) with either a top-level
  *     array of groups, a {@code categories} array, or a single object with a
  *     {@code waypoints} array.
+ *   - Soopy's versioned V1 binary clipboard share format.
+ *   - Firmament's Base64 {@code FIRM_WAYPOINTS/} absolute share format.
  *   - SkyHanni / Coleweight-style: a {@code {"waypoints": [...]}} object (or
  *     legacy flat array) where each entry carries {@code x/y/z}, float
  *     {@code r/g/b} in [0,1], and an {@code options} object holding the step
@@ -47,10 +53,15 @@ import static dev.ethan.waypointer.util.MathUtil.clampByte;
  */
 public final class WaypointImporter {
 
-    public enum Source { WAYPOINTER, SKYBLOCKER, SKYTILS, SKYHANNI, SOOPY, COLEWEIGHT, ODIN, JSON }
+    public enum Source { WAYPOINTER, SKYBLOCKER, SKYTILS, SKYHANNI, SOOPY, FIRMAMENT, COLEWEIGHT, ODIN, JSON }
 
     /** Skyblocker's current (V1) share-string prefix. Payload after it is base64(gzip(json)). */
     static final String SKYBLOCKER_V1_PREFIX = "[Skyblocker-Waypoint-Data-V1]";
+    static final String SKYTILS_V1_PREFIX = "<Skytils-Waypoint-Data>(V1):";
+    static final String SKYTILS_PREFIX = "<Skytils-Waypoint-Data>(V";
+    static final String FIRMAMENT_SHARE_PREFIX = "FIRM_WAYPOINTS/";
+    static final String FIRMAMENT_ENCODED_PREFIX = "RklSTV9XQVlQT0lOVFMv";
+    static final int SOOPY_SHARE_VERSION = 1;
     static final int MAX_TEXT_PAYLOAD_CHARS = 8 * 1024 * 1024;
     static final int MAX_DECODED_JSON_CHARS = 8 * 1024 * 1024;
     static final int MAX_GROUPS_PER_IMPORT = 256;
@@ -152,6 +163,15 @@ public final class WaypointImporter {
         if (trimmed.startsWith(SKYBLOCKER_LEGACY_ORDERED_PREFIX)) {
             return decodeSkyblockerPrefixed(trimmed, SKYBLOCKER_LEGACY_ORDERED_PREFIX);
         }
+        if (trimmed.startsWith(SKYTILS_PREFIX)) {
+            return decodeSkytilsPrefixed(trimmed);
+        }
+        if (trimmed.startsWith(FIRMAMENT_ENCODED_PREFIX)) {
+            return checkedImport(decodeFirmamentShare(trimmed));
+        }
+        if (looksLikeSoopyShare(trimmed)) {
+            return checkedImport(decodeSoopyShare(trimmed));
+        }
 
         // Prefer JSON if it looks like JSON -- saves us from trying a base64 decode that
         // would succeed by coincidence on short JSON payloads.
@@ -178,7 +198,7 @@ public final class WaypointImporter {
         }
 
         throw new IllegalArgumentException(
-                "unrecognized waypoint payload (tried Waypointer, Skyblocker, Skytils, SkyHanni, JSON)");
+                "unrecognized waypoint payload (tried Waypointer, Skyblocker, Skytils, SkyHanni, Soopy, Firmament, JSON)");
     }
 
     private static void enforceTextPayloadLimit(String text) {
@@ -449,6 +469,250 @@ public final class WaypointImporter {
         if (name.isJsonPrimitive()) return name.getAsString();
         if (name.isJsonObject()) return firstString(name.getAsJsonObject(), "", "text");
         return "";
+    }
+
+    private static ImportResult decodeSkytilsPrefixed(String payload) {
+        int headerEnd = payload.indexOf("):", SKYTILS_PREFIX.length());
+        if (headerEnd < 0) {
+            throw new IllegalArgumentException("Skytils payload is missing its version terminator");
+        }
+
+        String versionText = payload.substring(SKYTILS_PREFIX.length(), headerEnd);
+        String body = payload.substring(headerEnd + 2).trim();
+        String json;
+        try {
+            json = switch (versionText) {
+                case "1" -> decodeBase64Gzip(body);
+                case "2" -> decodeBase64Brotli(body);
+                default -> throw new IllegalArgumentException("unknown Skytils waypoint version " + versionText);
+            };
+        } catch (IOException | RuntimeException e) {
+            throw new IllegalArgumentException("Skytils V" + versionText
+                    + " payload failed to decode: " + e.getMessage(), e);
+        }
+
+        return checkedImport(importSkytilsCategoryList(json));
+    }
+
+    private static ImportResult importSkytilsCategoryList(String json) {
+        JsonElement parsed = JsonParser.parseString(json);
+        if (!parsed.isJsonObject()) {
+            throw new IllegalArgumentException("Skytils payload must contain a category object");
+        }
+        JsonObject root = parsed.getAsJsonObject();
+        if (!root.has("categories") || !root.get("categories").isJsonArray()) {
+            throw new IllegalArgumentException("Skytils payload is missing categories");
+        }
+
+        List<WaypointGroup> groups = new ArrayList<>();
+        for (JsonElement element : root.getAsJsonArray("categories")) {
+            if (!element.isJsonObject()) {
+                throw new IllegalArgumentException("Skytils category must be an object");
+            }
+            WaypointGroup group = parseSkytilsCategory(element.getAsJsonObject());
+            if (!group.isEmpty()) groups.add(group);
+        }
+        if (groups.isEmpty()) {
+            throw new IllegalArgumentException("Skytils payload contained no waypoints");
+        }
+        return new ImportResult(Source.SKYTILS, groups, "");
+    }
+
+    private static WaypointGroup parseSkytilsCategory(JsonObject category) {
+        if (!category.has("island") || !category.get("island").isJsonPrimitive()
+                || !category.has("waypoints") || !category.get("waypoints").isJsonArray()) {
+            throw new IllegalArgumentException("Skytils category is missing island or waypoints");
+        }
+
+        String island = category.get("island").getAsString();
+        String name = "Uncategorized";
+        if (category.has("name") && category.get("name").isJsonPrimitive()) {
+            name = WaypointCodec.Options.sanitizeLabel(category.get("name").getAsString());
+            if (name.isBlank()) name = "Uncategorized";
+        }
+
+        WaypointGroup group = WaypointGroup.create(name, normalizeZone(island));
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        List<Waypoint> waypoints = new ArrayList<>();
+        for (JsonElement element : category.getAsJsonArray("waypoints")) {
+            if (!element.isJsonObject()) {
+                throw new IllegalArgumentException("Skytils waypoint must be an object");
+            }
+            waypoints.add(waypointFromSkytils(element.getAsJsonObject()));
+        }
+        group.addAll(waypoints);
+        return group;
+    }
+
+    private static Waypoint waypointFromSkytils(JsonObject json) {
+        if (!json.has("name") || !json.get("name").isJsonPrimitive()) {
+            throw new IllegalArgumentException("Skytils waypoint is missing its name");
+        }
+        int[] pos = extractCoordinates(json);
+        if (pos == null) {
+            throw new IllegalArgumentException("Skytils waypoint has invalid coordinates");
+        }
+
+        String name = WaypointCodec.Options.sanitizeLabel(json.get("name").getAsString());
+        boolean enabled = !json.has("enabled") || json.get("enabled").getAsBoolean();
+        int flags = enabled ? 0 : Waypoint.FLAG_HIDE_BEACON | Waypoint.FLAG_HIDE_NAME;
+        int color = 0xFF0000;
+        if (json.has("color")) {
+            if (!json.get("color").isJsonPrimitive()
+                    || !json.get("color").getAsJsonPrimitive().isNumber()) {
+                throw new IllegalArgumentException("Skytils waypoint has an invalid color");
+            }
+            color = json.get("color").getAsInt() & 0xFFFFFF;
+        }
+        return new Waypoint(pos[0], pos[1], pos[2], name, color, flags, 0.0);
+    }
+
+    private static boolean looksLikeSoopyShare(String payload) {
+        try {
+            byte[] bytes = decodeBase64Bytes(payload);
+            if (bytes.length < 5 || Byte.toUnsignedInt(bytes[0]) != SOOPY_SHARE_VERSION) return false;
+            int count = (Byte.toUnsignedInt(bytes[1]) << 24)
+                    | (Byte.toUnsignedInt(bytes[2]) << 16)
+                    | (Byte.toUnsignedInt(bytes[3]) << 8)
+                    | Byte.toUnsignedInt(bytes[4]);
+            return count > 0 && count <= MAX_TOTAL_WAYPOINTS_PER_IMPORT;
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    private static ImportResult decodeSoopyShare(String payload) {
+        byte[] bytes = decodeBase64Bytes(payload);
+        try (DataInputStream input = new DataInputStream(new ByteArrayInputStream(bytes))) {
+            int version = input.readUnsignedByte();
+            if (version != SOOPY_SHARE_VERSION) {
+                throw new IllegalArgumentException("unsupported Soopy waypoint version " + version);
+            }
+            int count = input.readInt();
+            if (count <= 0 || count > MAX_TOTAL_WAYPOINTS_PER_IMPORT) {
+                throw new IllegalArgumentException("invalid Soopy waypoint count " + count);
+            }
+
+            Map<String, WaypointGroup> groupsByArea = new LinkedHashMap<>();
+            for (int i = 0; i < count; i++) {
+                String id = input.readUTF();
+                float x = input.readFloat();
+                float y = input.readFloat();
+                float z = input.readFloat();
+                int red = soopyColorChannel(input.readByte());
+                int green = soopyColorChannel(input.readByte());
+                int blue = soopyColorChannel(input.readByte());
+                String area = input.readUTF();
+                String name = WaypointCodec.Options.sanitizeLabel(input.readUTF());
+                if (name.isBlank()) name = WaypointCodec.Options.sanitizeLabel(id);
+                if (!Float.isFinite(x) || !Float.isFinite(y) || !Float.isFinite(z)
+                        || x < Integer.MIN_VALUE || x > Integer.MAX_VALUE
+                        || y < Integer.MIN_VALUE || y > Integer.MAX_VALUE
+                        || z < Integer.MIN_VALUE || z > Integer.MAX_VALUE) {
+                    throw new IllegalArgumentException("Soopy waypoint has invalid coordinates");
+                }
+
+                String areaKey = area.trim();
+                WaypointGroup group = groupsByArea.computeIfAbsent(areaKey, WaypointImporter::newSoopyGroup);
+                group.add(new Waypoint((int) x, (int) y, (int) z, name,
+                        (red << 16) | (green << 8) | blue, 0, 0.0));
+            }
+            if (input.available() != 0) {
+                throw new IllegalArgumentException("Soopy payload has trailing data");
+            }
+            return new ImportResult(Source.SOOPY, new ArrayList<>(groupsByArea.values()), "");
+        } catch (IOException e) {
+            throw new IllegalArgumentException("Soopy waypoint payload is truncated or malformed", e);
+        }
+    }
+
+    private static int soopyColorChannel(byte encoded) {
+        if (encoded < 0) {
+            throw new IllegalArgumentException("Soopy waypoint color is outside the V1 range");
+        }
+        return clampByte(Math.round(encoded * 2.0f));
+    }
+
+    private static WaypointGroup newSoopyGroup(String area) {
+        String name = area.isBlank() ? "Soopy Waypoints" : "Soopy - " + area;
+        WaypointGroup group = WaypointGroup.create(
+                WaypointCodec.Options.sanitizeLabel(name), normalizeZone(area));
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        return group;
+    }
+
+    private static ImportResult decodeFirmamentShare(String payload) {
+        String decoded;
+        try {
+            decoded = decodeBase64Utf8(payload);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("Firmament waypoint payload is not valid Base64", e);
+        }
+        if (!decoded.startsWith(FIRMAMENT_SHARE_PREFIX)) {
+            throw new IllegalArgumentException("Firmament waypoint payload has an invalid prefix");
+        }
+
+        JsonElement parsed = JsonParser.parseString(decoded.substring(FIRMAMENT_SHARE_PREFIX.length()));
+        if (!parsed.isJsonObject()) {
+            throw new IllegalArgumentException("Firmament waypoint payload must contain an object");
+        }
+        JsonObject root = parsed.getAsJsonObject();
+        if (!root.has("label") || !root.get("label").isJsonPrimitive()
+                || !root.getAsJsonPrimitive("label").isString()
+                || !root.has("id") || !root.get("id").isJsonPrimitive()
+                || !root.getAsJsonPrimitive("id").isString()
+                || !root.has("waypoints") || !root.get("waypoints").isJsonArray()
+                || !root.has("isOrdered") || !root.get("isOrdered").isJsonPrimitive()
+                || !root.getAsJsonPrimitive("isOrdered").isBoolean()) {
+            throw new IllegalArgumentException("Firmament waypoint payload is missing required fields");
+        }
+        if (root.has("isRelativeTo") && !root.get("isRelativeTo").isJsonNull()) {
+            throw new IllegalArgumentException(
+                    "relative Firmament waypoints require the sender's import origin and cannot be placed safely");
+        }
+
+        String label = WaypointCodec.Options.sanitizeLabel(root.get("label").getAsString());
+        if (label.isBlank()) label = WaypointCodec.Options.sanitizeLabel(root.get("id").getAsString());
+        if (label.isBlank()) label = "Firmament Waypoints";
+        boolean ordered = root.get("isOrdered").getAsBoolean();
+        WaypointGroup group = WaypointGroup.create(label, Zone.UNKNOWN.id());
+        group.setLoadMode(ordered ? WaypointGroup.LoadMode.SEQUENCE : WaypointGroup.LoadMode.STATIC);
+        group.setGradientMode(ordered
+                ? WaypointGroup.GradientMode.AUTO
+                : WaypointGroup.GradientMode.MANUAL);
+
+        int index = 1;
+        for (JsonElement element : root.getAsJsonArray("waypoints")) {
+            if (!element.isJsonObject()) {
+                throw new IllegalArgumentException("Firmament waypoint must be an object");
+            }
+            JsonObject waypoint = element.getAsJsonObject();
+            if (!hasFirmamentIntegerCoordinate(waypoint, "x")
+                    || !hasFirmamentIntegerCoordinate(waypoint, "y")
+                    || !hasFirmamentIntegerCoordinate(waypoint, "z")) {
+                throw new IllegalArgumentException("Firmament waypoint has invalid coordinates");
+            }
+            int[] position = extractCoordinates(waypoint);
+            if (position == null) {
+                throw new IllegalArgumentException("Firmament waypoint has invalid coordinates");
+            }
+            group.add(new Waypoint(position[0], position[1], position[2],
+                    ordered ? Integer.toString(index) : "", Waypoint.DEFAULT_COLOR, 0, 0.0));
+            index++;
+        }
+        return new ImportResult(Source.FIRMAMENT, List.of(group), "");
+    }
+
+    private static boolean hasFirmamentIntegerCoordinate(JsonObject waypoint, String key) {
+        if (!waypoint.has(key) || !waypoint.get(key).isJsonPrimitive()
+                || !waypoint.getAsJsonPrimitive(key).isNumber()) {
+            return false;
+        }
+        double value = waypoint.get(key).getAsDouble();
+        return Double.isFinite(value) && value == Math.rint(value)
+                && value >= Integer.MIN_VALUE && value <= Integer.MAX_VALUE;
     }
 
     // --- JSON path ---------------------------------------------------------------------------
@@ -946,9 +1210,16 @@ public final class WaypointImporter {
         return c == '{' || c == '[';
     }
 
-    private static String decodeBase64Gzip(String s) throws Exception {
+    private static String decodeBase64Gzip(String s) throws IOException {
         byte[] data = decodeBase64Bytes(s);
         try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(data))) {
+            return readUtf8WithLimit(in);
+        }
+    }
+
+    private static String decodeBase64Brotli(String s) throws IOException {
+        byte[] data = decodeBase64Bytes(s);
+        try (BrotliInputStream in = new BrotliInputStream(new ByteArrayInputStream(data))) {
             return readUtf8WithLimit(in);
         }
     }
@@ -962,7 +1233,7 @@ public final class WaypointImporter {
         return new String(data, StandardCharsets.UTF_8);
     }
 
-    private static String readUtf8WithLimit(GZIPInputStream in) throws IOException {
+    private static String readUtf8WithLimit(InputStream in) throws IOException {
         byte[] buffer = new byte[8192];
         java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
         int total = 0;

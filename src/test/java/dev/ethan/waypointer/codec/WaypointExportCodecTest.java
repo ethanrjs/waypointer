@@ -54,7 +54,7 @@ class WaypointExportCodecTest {
         WaypointGroup imported = result.groups().get(0);
         assertEquals(WaypointImporter.Source.SKYTILS, result.source());
         assertEquals("galatea", imported.zoneId());
-        assertEquals("", imported.get(0).name());
+        assertEquals("start", imported.get(0).name());
     }
 
     @Test
@@ -122,7 +122,7 @@ class WaypointExportCodecTest {
     void third_party_targets_report_name_capabilities() {
         assertTrue(WaypointExportCodec.Target.WAYPOINTER.supportsNames());
         assertTrue(WaypointExportCodec.Target.SKYBLOCKER.supportsNames());
-        assertFalse(WaypointExportCodec.Target.SKYTILS.supportsNames());
+        assertTrue(WaypointExportCodec.Target.SKYTILS.supportsNames());
         assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsNames());
         assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsColors());
     }
