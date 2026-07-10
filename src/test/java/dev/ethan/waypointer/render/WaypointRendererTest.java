@@ -234,12 +234,13 @@ class WaypointRendererTest {
     }
 
     @Test
-    void dungeonEntryPathReusePolicyKeepsSameBlockOrFreshCachedPath() {
+    void dungeonEntryPathReuseRequiresSameStartAndFreshCachedPath() {
         BlockPos oldStart = new BlockPos(0, 64, 0);
         BlockPos newStart = new BlockPos(1, 64, 0);
 
-        assertTrue(WaypointRenderer.shouldReuseDungeonEntryPath(oldStart, 0L, oldStart, 1_000_000_000L));
-        assertTrue(WaypointRenderer.shouldReuseDungeonEntryPath(oldStart, 0L, newStart, 249_999_999L));
+        assertTrue(WaypointRenderer.shouldReuseDungeonEntryPath(oldStart, 0L, oldStart, 249_999_999L));
+        assertFalse(WaypointRenderer.shouldReuseDungeonEntryPath(oldStart, 0L, oldStart, 250_000_000L));
+        assertFalse(WaypointRenderer.shouldReuseDungeonEntryPath(oldStart, 0L, newStart, 249_999_999L));
         assertFalse(WaypointRenderer.shouldReuseDungeonEntryPath(oldStart, 0L, newStart, 250_000_000L));
     }
 

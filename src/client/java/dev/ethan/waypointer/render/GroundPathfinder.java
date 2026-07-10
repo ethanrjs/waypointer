@@ -71,7 +71,7 @@ final class GroundPathfinder {
         BlockPos goal = nearestPassable(level, rawGoal, TARGET_SEARCH_RADIUS, TARGET_SEARCH_RADIUS);
         if (start == null || goal == null) return List.of();
 
-        Grid grid = (x, y, z) -> isPassableForPlayer(level, x, y, z);
+        Grid grid = (x, y, z) -> isWalkableForPlayer(level, x, y, z);
         List<BlockPos> cells = findPath(grid, start, goal, maxDistance, maxExpansions,
                 searchPadding, searchVerticalPadding);
         if (cells.isEmpty()) return List.of();
@@ -132,7 +132,7 @@ final class GroundPathfinder {
                         current.cell.z + neighbor[2]);
                 if (!inside(next, minX, maxX, minY, maxY, minZ, maxZ)) continue;
                 if (distanceSquared(startCell, next) > maxDistanceSq) continue;
-                if (!grid.walkable(next.x, next.y, next.z)) continue;
+                if (!canTraverse(grid, current.cell, next)) continue;
 
                 double nextCost = current.cost
                         + Math.sqrt(neighbor[0] * neighbor[0]
@@ -161,7 +161,7 @@ final class GroundPathfinder {
                         int x = center.getX() + dx;
                         int y = center.getY() + dy;
                         int z = center.getZ() + dz;
-                        if (!isPassableForPlayer(level, x, y, z)) continue;
+                        if (!isWalkableForPlayer(level, x, y, z)) continue;
 
                         int score = Math.abs(dx) + Math.abs(dz) + Math.abs(dy);
                         if (score >= bestScore) continue;
@@ -175,10 +175,13 @@ final class GroundPathfinder {
         return null;
     }
 
-    private static boolean isPassableForPlayer(ClientLevel level, int x, int y, int z) {
+    private static boolean isWalkableForPlayer(ClientLevel level, int x, int y, int z) {
         BlockPos feet = new BlockPos(x, y, z);
         BlockPos head = new BlockPos(x, y + 1, z);
-        return isPassable(level, feet) && isPassable(level, head);
+        BlockPos support = new BlockPos(x, y - 1, z);
+        return isPassable(level, feet)
+                && isPassable(level, head)
+                && !isPassable(level, support);
     }
 
     private static boolean isPassable(ClientLevel level, BlockPos pos) {
@@ -244,14 +247,32 @@ final class GroundPathfinder {
         double dz = to.z - from.z;
         double length = Math.sqrt(dx * dx + dy * dy + dz * dz);
         int samples = Math.max(1, (int) Math.ceil(length / LINE_SAMPLE_STEP));
+        Cell previous = from;
         for (int i = 0; i <= samples; i++) {
             double t = i / (double) samples;
-            int x = blockCoordinate(from.x + dx * t);
-            int y = blockCoordinate(from.y + dy * t);
-            int z = blockCoordinate(from.z + dz * t);
-            if (!grid.walkable(x, y, z)) return false;
+            Cell current = new Cell(
+                    blockCoordinate(from.x + dx * t),
+                    blockCoordinate(from.y + dy * t),
+                    blockCoordinate(from.z + dz * t));
+            if (!current.equals(previous) && !canTraverse(grid, previous, current)) return false;
+            previous = current;
         }
         return true;
+    }
+
+    private static boolean canTraverse(Grid grid, Cell from, Cell to) {
+        int dx = Integer.compare(to.x, from.x);
+        int dz = Integer.compare(to.z, from.z);
+        if (Math.abs(to.x - from.x) > 1
+                || Math.abs(to.y - from.y) > 1
+                || Math.abs(to.z - from.z) > 1) return false;
+        if (!grid.walkable(to.x, to.y, to.z)) return false;
+
+        if (dx == 0 || dz == 0) return true;
+
+        int cornerY = Math.max(from.y, to.y);
+        return grid.walkable(from.x + dx, cornerY, from.z)
+                && grid.walkable(from.x, cornerY, from.z + dz);
     }
 
     private static Cell cell(BlockPos pos) {
