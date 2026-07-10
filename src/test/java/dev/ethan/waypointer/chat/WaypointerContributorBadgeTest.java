@@ -38,6 +38,22 @@ class WaypointerContributorBadgeTest {
     }
 
     @Test
+    void ignoresMentionsAndUsernameSubstrings() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        Component mention = WaypointerContributorBadge.apply(
+                Component.literal("[338] SomeoneElse: Babbur found a secret"), config);
+        Component substring = WaypointerContributorBadge.apply(
+                Component.literal("[338] NotBabbur: hi"), config);
+        Component suffix = WaypointerContributorBadge.apply(
+                Component.literal("[338] BabburTwo: hi"), config);
+
+        assertEquals("[338] SomeoneElse: Babbur found a secret", mention.getString());
+        assertEquals("[338] NotBabbur: hi", substring.getString());
+        assertEquals("[338] BabburTwo: hi", suffix.getString());
+    }
+
+    @Test
     void preservesExistingColorsOutsideLevelBadge() {
         WaypointerConfig config = new WaypointerConfig();
         Component message = Component.literal("[338] ").withStyle(ChatFormatting.GOLD)

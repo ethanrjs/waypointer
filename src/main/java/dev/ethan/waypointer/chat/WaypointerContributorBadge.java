@@ -56,18 +56,46 @@ public final class WaypointerContributorBadge {
 
     private static int contributorLevelStart(String raw) {
         int nameStart = raw.indexOf(CONTRIBUTOR);
-        if (nameStart < 0) return -1;
-
-        int searchFrom = 0;
-        while (searchFrom < nameStart) {
-            int start = raw.indexOf('[', searchFrom);
-            if (start < 0 || start >= nameStart) return -1;
-            int end = raw.indexOf(']', start);
-            if (end < 0 || end >= nameStart) return -1;
-            if (start + 1 < end && isDigits(raw, start + 1, end)) return start;
-            searchFrom = end + 1;
+        while (nameStart >= 0) {
+            if (isUsernameToken(raw, nameStart)) {
+                int levelStart = levelPrefixStart(raw, nameStart);
+                if (levelStart >= 0) return levelStart;
+            }
+            nameStart = raw.indexOf(CONTRIBUTOR, nameStart + CONTRIBUTOR.length());
         }
         return -1;
+    }
+
+    private static boolean isUsernameToken(String raw, int start) {
+        int before = start - 1;
+        int after = start + CONTRIBUTOR.length();
+        return (before < 0 || !isUsernameCharacter(raw.charAt(before)))
+                && (after >= raw.length() || !isUsernameCharacter(raw.charAt(after)));
+    }
+
+    private static boolean isUsernameCharacter(char character) {
+        return Character.isLetterOrDigit(character) || character == '_';
+    }
+
+    private static int levelPrefixStart(String raw, int nameStart) {
+        int cursor = 0;
+        while (cursor < nameStart && Character.isWhitespace(raw.charAt(cursor))) cursor++;
+        if (cursor >= nameStart || raw.charAt(cursor) != '[') return -1;
+
+        int levelEnd = raw.indexOf(']', cursor + 1);
+        if (levelEnd < 0 || levelEnd >= nameStart
+                || !isDigits(raw, cursor + 1, levelEnd)) return -1;
+
+        int between = levelEnd + 1;
+        while (between < nameStart) {
+            while (between < nameStart && Character.isWhitespace(raw.charAt(between))) between++;
+            if (between == nameStart) return cursor;
+            if (raw.charAt(between) != '[') return -1;
+            int rankEnd = raw.indexOf(']', between + 1);
+            if (rankEnd < 0 || rankEnd >= nameStart) return -1;
+            between = rankEnd + 1;
+        }
+        return between == nameStart ? cursor : -1;
     }
 
     private static MutableComponent replaceLevelSpan(Component component, int levelStart, int levelEnd) {
