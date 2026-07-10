@@ -58,21 +58,26 @@ class WaypointExportCodecTest {
     }
 
     @Test
-    void skyhanni_export_emits_flat_route_json() {
+    void skyhanni_export_emits_current_wrapped_route_json() {
         WaypointGroup group = sampleGroup("Ignored Group Name", "hub");
         String encoded = WaypointExportCodec.encode(List.of(group), FULL_EXTERNAL,
                 WaypointExportCodec.Target.SKYHANNI);
 
-        JsonArray root = JsonParser.parseString(encoded).getAsJsonArray();
-        JsonObject first = root.get(0).getAsJsonObject();
+        JsonObject root = JsonParser.parseString(encoded).getAsJsonObject();
+        JsonArray waypoints = root.getAsJsonArray("waypoints");
+        JsonObject first = waypoints.get(0).getAsJsonObject();
         assertEquals(1, first.get("x").getAsInt());
-        assertEquals(1, first.getAsJsonObject("options").get("name").getAsInt());
-        assertEquals(1.0, first.get("r").getAsDouble(), 0.0001);
-        assertEquals(0.0, first.get("g").getAsDouble(), 0.0001);
+        assertEquals("1", first.getAsJsonObject("options").get("name").getAsString());
+        assertEquals(0.0, first.get("r").getAsDouble(), 0.0001);
+        assertEquals(1.0, first.get("g").getAsDouble(), 0.0001);
+        assertEquals(0.0, first.get("b").getAsDouble(), 0.0001);
+        assertFalse(root.has("enabled"));
+        assertFalse(first.has("enabled"));
 
         WaypointImporter.ImportResult result = WaypointImporter.importAny(encoded);
         assertEquals(WaypointImporter.Source.SKYHANNI, result.source());
         assertEquals(2, result.groups().get(0).size());
+        assertTrue(result.groups().get(0).enabled());
     }
 
     @Test
@@ -86,19 +91,20 @@ class WaypointExportCodecTest {
         String encoded = WaypointExportCodec.encode(List.of(group), opts,
                 WaypointExportCodec.Target.SKYHANNI);
 
-        JsonArray root = JsonParser.parseString(encoded).getAsJsonArray();
-        JsonObject first = root.get(0).getAsJsonObject();
-        assertEquals(1, first
-                .getAsJsonObject("options").get("name").getAsInt());
-        assertEquals(2, root.get(1).getAsJsonObject()
-                .getAsJsonObject("options").get("name").getAsInt());
-        assertFalse(first.has("r"));
-        assertFalse(first.has("g"));
-        assertFalse(first.has("b"));
+        JsonArray waypoints = JsonParser.parseString(encoded).getAsJsonObject()
+                .getAsJsonArray("waypoints");
+        JsonObject first = waypoints.get(0).getAsJsonObject();
+        assertEquals("1", first
+                .getAsJsonObject("options").get("name").getAsString());
+        assertEquals("2", waypoints.get(1).getAsJsonObject()
+                .getAsJsonObject("options").get("name").getAsString());
+        assertTrue(first.has("r"));
+        assertTrue(first.has("g"));
+        assertTrue(first.has("b"));
     }
 
     @Test
-    void third_party_normalized_color_channels_are_short_but_precise() {
+    void skyblocker_normalized_color_channels_are_short_but_precise() {
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         group.add(new Waypoint(1, 64, 2, "colored", 0x4F38E0, 0, 0.0));
@@ -106,19 +112,6 @@ class WaypointExportCodecTest {
                 .includeNames(true)
                 .includeColors(true)
                 .build();
-
-        String skyhanni = WaypointExportCodec.encode(List.of(group), opts,
-                WaypointExportCodec.Target.SKYHANNI);
-        assertTrue(skyhanni.contains("\"r\":0.31"));
-        assertTrue(skyhanni.contains("\"g\":0.22"));
-        assertTrue(skyhanni.contains("\"b\":0.878"));
-        assertFalse(skyhanni.contains("0.30980392156862746"));
-        JsonObject first = JsonParser.parseString(skyhanni).getAsJsonArray()
-                .get(0).getAsJsonObject();
-        assertEquals(0x4F38E0, WaypointImporter.coleweightRgb(
-                first.get("r").getAsDouble(),
-                first.get("g").getAsDouble(),
-                first.get("b").getAsDouble()));
 
         String skyblocker = WaypointExportCodec.encode(List.of(group), opts,
                 WaypointExportCodec.Target.SKYBLOCKER);
@@ -131,6 +124,7 @@ class WaypointExportCodecTest {
         assertFalse(WaypointExportCodec.Target.SKYBLOCKER.supportsNames());
         assertFalse(WaypointExportCodec.Target.SKYTILS.supportsNames());
         assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsNames());
+        assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsColors());
     }
 
     private static WaypointGroup sampleGroup(String name, String zoneId) {

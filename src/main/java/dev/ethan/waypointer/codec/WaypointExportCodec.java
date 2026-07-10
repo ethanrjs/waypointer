@@ -31,7 +31,7 @@ public final class WaypointExportCodec {
         WAYPOINTER("Waypointer", true, true, true, true, true, true),
         SKYBLOCKER("Skyblocker", false, true, false, false, false, false),
         SKYTILS("Skytils", false, true, false, false, false, false),
-        SKYHANNI("SkyHanni", false, true, false, false, false, false);
+        SKYHANNI("SkyHanni", false, false, false, false, false, false);
 
         private final String displayName;
         private final boolean supportsNames;
@@ -120,7 +120,7 @@ public final class WaypointExportCodec {
                     + Base64.getEncoder().encodeToString(gzip(skyblockerJson(groups, safeOpts)));
             case SKYTILS -> Base64.getEncoder().encodeToString(skytilsJson(groups, safeOpts)
                     .getBytes(StandardCharsets.UTF_8));
-            case SKYHANNI -> skyhanniJson(groups, safeOpts);
+            case SKYHANNI -> skyhanniJson(groups);
         };
     }
 
@@ -189,8 +189,9 @@ public final class WaypointExportCodec {
         return root.toString();
     }
 
-    private static String skyhanniJson(List<WaypointGroup> groups, WaypointCodec.Options opts) {
-        JsonArray root = new JsonArray();
+    private static String skyhanniJson(List<WaypointGroup> groups) {
+        JsonObject root = new JsonObject();
+        JsonArray waypoints = new JsonArray();
         int step = 1;
         for (WaypointGroup group : groups) {
             for (Waypoint waypoint : group.waypoints()) {
@@ -199,24 +200,19 @@ public final class WaypointExportCodec {
                 point.addProperty("y", waypoint.y());
                 point.addProperty("z", waypoint.z());
 
-                if (opts.includeColors) {
-                    point.addProperty("r", normalizedChannel(waypoint.color(), 16));
-                    point.addProperty("g", normalizedChannel(waypoint.color(), 8));
-                    point.addProperty("b", normalizedChannel(waypoint.color(), 0));
-                }
+                point.addProperty("r", 0.0);
+                point.addProperty("g", 1.0);
+                point.addProperty("b", 0.0);
 
                 JsonObject options = new JsonObject();
-                if (opts.includeNames && waypoint.hasName()) {
-                    options.addProperty("name", waypoint.name());
-                } else {
-                    options.addProperty("name", step);
-                }
+                options.addProperty("name", Integer.toString(step));
                 point.add("options", options);
 
-                root.add(point);
+                waypoints.add(point);
                 step++;
             }
         }
+        root.add("waypoints", waypoints);
         return root.toString();
     }
 
