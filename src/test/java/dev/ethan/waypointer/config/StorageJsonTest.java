@@ -11,6 +11,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -237,11 +238,14 @@ class StorageJsonTest {
     @Test
     void load_keepsExistingGroupsWhenRootOrGroupsAreMalformed() throws Exception {
         List<String> malformedFiles = List.of(
+                " ",
                 "null",
                 "[]",
-                "{\"groups\": null}",
-                "{\"groups\": {\"id\": \"not-array\"}}",
-                "{\"groups\": [null]}"
+                "{\"groups\": []}",
+                "{\"schema\": 1.5, \"groups\": []}",
+                "{\"schema\": 1, \"groups\": null}",
+                "{\"schema\": 1, \"groups\": {\"id\": \"not-array\"}}",
+                "{\"schema\": 1, \"groups\": [null]}"
         );
 
         for (int i = 0; i < malformedFiles.size(); i++) {
@@ -252,14 +256,74 @@ class StorageJsonTest {
             new Storage(file).load(manager);
 
             assertExistingGroupSurvived(manager, "case " + i);
+            assertQuarantined(file, malformedFiles.get(i));
         }
+    }
+
+    @Test
+    void load_quarantinesUnsupportedSchemaBeforeItCanBeOverwritten() throws Exception {
+        ActiveGroupManager manager = managerWithExistingGroup();
+        Path file = tempDir.resolve("future-schema.json");
+        String raw = """
+                {
+                  "schema": 2,
+                  "groups": [{"id": "future", "name": "Future", "zone": "hub"}]
+                }
+                """;
+        Files.writeString(file, raw);
+
+        new Storage(file).load(manager);
+
+        assertExistingGroupSurvived(manager, "future schema must not replace live data");
+        assertQuarantined(file, raw);
+    }
+
+    @Test
+    void load_quarantinesDuplicateGroupIdsInsteadOfSilentlyDroppingOne() throws Exception {
+        ActiveGroupManager manager = managerWithExistingGroup();
+        Path file = tempDir.resolve("duplicate-ids.json");
+        String raw = """
+                {
+                  "schema": 1,
+                  "groups": [
+                    {"id": "same", "name": "First", "zone": "hub"},
+                    {"id": "same", "name": "Second", "zone": "hub"}
+                  ]
+                }
+                """;
+        Files.writeString(file, raw);
+
+        new Storage(file).load(manager);
+
+        assertExistingGroupSurvived(manager, "duplicate ids must reject the whole file");
+        assertQuarantined(file, raw);
+    }
+
+    @Test
+    void laterSavesCannotDestroyQuarantinedStartupData() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Path file = tempDir.resolve("startup-corruption.json");
+        String invalidData = "{not-json";
+        Files.writeString(file, invalidData);
+        Storage storage = new Storage(file);
+
+        storage.load(manager);
+        storage.attach(manager);
+        manager.add(WaypointGroup.create("Replacement", "hub"));
+        storage.flush();
+
+        assertTrue(Files.exists(file), "new valid state may use the canonical path");
+        assertEquals(invalidData, Files.readString(findQuarantine(file)),
+                "the rejected startup data must survive later saves unchanged");
+        assertEquals(1, JsonParser.parseString(Files.readString(file)).getAsJsonObject()
+                .getAsJsonArray("groups").size());
     }
 
     @Test
     void load_keepsExistingGroupsWhenLaterGroupFailsToParse() throws Exception {
         ActiveGroupManager manager = managerWithExistingGroup();
         Path file = tempDir.resolve("mid-array-failure.json");
-        Files.writeString(file, """
+        String raw = """
                 {
                   "schema": 1,
                   "groups": [
@@ -277,11 +341,13 @@ class StorageJsonTest {
                     }
                   ]
                 }
-                """);
+                """;
+        Files.writeString(file, raw);
 
         new Storage(file).load(manager);
 
         assertExistingGroupSurvived(manager, "partially parsed file must not replace live state");
+        assertQuarantined(file, raw);
     }
 
     @Test
@@ -405,5 +471,21 @@ class StorageJsonTest {
         assertNotNull(manager.get("existing"), message);
         assertEquals(1, manager.allGroups().size(), message);
         assertEquals("keeper", manager.get("existing").get(0).name(), message);
+    }
+
+    private static void assertQuarantined(Path original, String expectedContents) throws Exception {
+        assertFalse(Files.exists(original), "invalid source should be moved out of the live storage path");
+        assertEquals(expectedContents, Files.readString(findQuarantine(original)));
+    }
+
+    private static Path findQuarantine(Path original) throws Exception {
+        String prefix = original.getFileName() + ".invalid";
+        try (Stream<Path> files = Files.list(original.getParent())) {
+            List<Path> matches = files
+                    .filter(path -> path.getFileName().toString().startsWith(prefix))
+                    .toList();
+            assertEquals(1, matches.size(), "exactly one quarantine copy should be kept");
+            return matches.get(0);
+        }
     }
 }
