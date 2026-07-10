@@ -16,8 +16,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Reads and writes the user's waypoint groups as JSON at
@@ -50,6 +52,7 @@ public final class Storage {
     private volatile String pendingSnapshotJson;
     private int snapshotCount;
     private volatile int writeCount;
+    private volatile boolean writesBlocked;
 
     public Storage(Path file) {
         this.file = file;
@@ -65,16 +68,28 @@ public final class Storage {
     }
 
     public void load(ActiveGroupManager manager) {
+        if (!Files.exists(file)) return;
+
+        String raw;
         try {
-            if (!Files.exists(file)) return;
-            String raw = Files.readString(file);
-            if (raw.isBlank()) return;
-            List<WaypointGroup> groups = parseGroups(raw);
-            manager.replaceAll(groups);
-            Waypointer.LOGGER.info("Loaded {} waypoint group(s) from {}", groups.size(), file);
-        } catch (Exception e) {
+            raw = Files.readString(file);
+        } catch (IOException e) {
+            writesBlocked = true;
             Waypointer.LOGGER.error("Failed to load waypoints from {}", file, e);
+            return;
         }
+
+        List<WaypointGroup> groups;
+        try {
+            groups = parseGroups(raw);
+        } catch (RuntimeException e) {
+            quarantineInvalidFile(e);
+            return;
+        }
+
+        writesBlocked = false;
+        manager.replaceAll(groups);
+        Waypointer.LOGGER.info("Loaded {} waypoint group(s) from {}", groups.size(), file);
     }
 
     /**
@@ -126,7 +141,7 @@ public final class Storage {
 
     private void writeToDisk() {
         String json = pendingSnapshotJson;
-        if (json == null) return;
+        if (json == null || writesBlocked) return;
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
@@ -135,6 +150,27 @@ public final class Storage {
             writeCount++;
         } catch (IOException e) {
             Waypointer.LOGGER.error("Failed to save waypoints to {}", file, e);
+        }
+    }
+
+    private void quarantineInvalidFile(RuntimeException cause) {
+        writesBlocked = true;
+        Path quarantine = file.resolveSibling(file.getFileName() + ".invalid");
+        int suffix = 1;
+        while (Files.exists(quarantine)) {
+            quarantine = file.resolveSibling(file.getFileName() + ".invalid." + suffix++);
+        }
+
+        try {
+            Files.move(file, quarantine);
+            writesBlocked = false;
+            Waypointer.LOGGER.error("Invalid waypoint data moved from {} to {}", file, quarantine, cause);
+        } catch (IOException quarantineFailure) {
+            writesBlocked = true;
+            cause.addSuppressed(quarantineFailure);
+            Waypointer.LOGGER.error(
+                    "Invalid waypoint data at {} could not be quarantined; saves are disabled to prevent data loss",
+                    file, cause);
         }
     }
 
@@ -166,13 +202,30 @@ public final class Storage {
     // --- JSON codec -----------------------------------------------------------------
 
     private static List<WaypointGroup> parseGroups(String raw) {
+        if (raw.isBlank()) {
+            throw new IllegalArgumentException("waypoints file must not be blank");
+        }
         JsonElement parsed = GSON.fromJson(raw, JsonElement.class);
         if (parsed == null || !parsed.isJsonObject()) {
             throw new IllegalArgumentException("waypoints root must be a JSON object");
         }
 
         JsonObject root = parsed.getAsJsonObject();
-        if (!root.has("groups")) return List.of();
+        JsonElement schemaElement = root.get("schema");
+        if (schemaElement == null
+                || schemaElement.isJsonNull()
+                || !schemaElement.isJsonPrimitive()
+                || !schemaElement.getAsJsonPrimitive().isNumber()) {
+            throw new IllegalArgumentException("waypoints schema must be " + SCHEMA_VERSION);
+        }
+        int schema = schemaElement.getAsBigDecimal().intValueExact();
+        if (schema != SCHEMA_VERSION) {
+            throw new IllegalArgumentException("unsupported waypoints schema " + schema);
+        }
+
+        if (!root.has("groups")) {
+            throw new IllegalArgumentException("waypoints groups are missing");
+        }
 
         JsonElement groupsElement = root.get("groups");
         if (groupsElement == null || groupsElement.isJsonNull() || !groupsElement.isJsonArray()) {
@@ -181,11 +234,16 @@ public final class Storage {
 
         JsonArray groupsJson = groupsElement.getAsJsonArray();
         List<WaypointGroup> groups = new ArrayList<>(groupsJson.size());
+        Set<String> groupIds = new HashSet<>(groupsJson.size());
         for (JsonElement el : groupsJson) {
             if (el == null || !el.isJsonObject()) {
                 throw new IllegalArgumentException("waypoint group entry must be a JSON object");
             }
-            groups.add(groupFromJson(el.getAsJsonObject()));
+            WaypointGroup group = groupFromJson(el.getAsJsonObject());
+            if (!groupIds.add(group.id())) {
+                throw new IllegalArgumentException("duplicate waypoint group id " + group.id());
+            }
+            groups.add(group);
         }
         return groups;
     }
