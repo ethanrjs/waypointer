@@ -119,6 +119,7 @@ public final class DungeonMapMath {
     }
 
     private static void offer(Deque<int[]> q, Set<Long> seen, int x, int z) {
+        if (x < 0 || z < 0 || x >= 128 || z >= 128) return;
         long packed = packPx(x, z);
         if (seen.add(packed)) q.add(new int[] { x, z });
     }

@@ -1,11 +1,70 @@
 package dev.ethan.waypointer.dungeon;
 
+import net.minecraft.SharedConstants;
+import net.minecraft.server.Bootstrap;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.saveddata.maps.MapDecoration;
+import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
+import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
 import org.junit.jupiter.api.Test;
+
+import java.time.Duration;
+import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 class DungeonMapMathTest {
+
+    @Test
+    void findEntranceAndRoomSize_returnsNullWhenEntranceIsMissing() {
+        MapItemSavedData map = mapWithPlayerAtCenter();
+
+        assertTimeoutPreemptively(Duration.ofMillis(250),
+                () -> assertNull(DungeonMapMath.findEntranceAndRoomSize(map)));
+    }
+
+    @Test
+    void findEntranceAndRoomSize_returnsNullWhenEntranceIsIncomplete() {
+        MapItemSavedData map = mapWithPlayerAtCenter();
+        for (int z = 60; z < 65; z++) {
+            for (int x = 50; x < 55; x++) {
+                map.setColor(x, z, DungeonMapMath.ENTRANCE_COLOR);
+            }
+        }
+
+        assertTimeoutPreemptively(Duration.ofMillis(250),
+                () -> assertNull(DungeonMapMath.findEntranceAndRoomSize(map)));
+    }
+
+    @Test
+    void findEntranceAndRoomSize_findsCompleteEntrance() {
+        MapItemSavedData map = mapWithPlayerAtCenter();
+        for (int z = 60; z < 76; z++) {
+            for (int x = 40; x < 56; x++) {
+                map.setColor(x, z, DungeonMapMath.ENTRANCE_COLOR);
+            }
+        }
+
+        assertArrayEquals(new int[] { 40, 60, 16 },
+                DungeonMapMath.findEntranceAndRoomSize(map));
+    }
+
+    private static MapItemSavedData mapWithPlayerAtCenter() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        MapItemSavedData map = MapItemSavedData.createForClient((byte) 0, false, Level.OVERWORLD);
+        map.addClientSideDecorations(List.of(new MapDecoration(
+                MapDecorationTypes.FRAME,
+                (byte) 0,
+                (byte) 0,
+                (byte) 0,
+                Optional.empty())));
+        return map;
+    }
 
     @Test
     void physicalSegmentCorner_snapsToHypixelGridOffset() {
