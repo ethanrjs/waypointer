@@ -422,9 +422,10 @@ public final class ActiveGroupManager {
     }
 
     public List<WaypointGroup> groupsForZone(String zoneId) {
+        String canonicalZoneId = Zone.canonicalId(Objects.requireNonNull(zoneId, "zoneId"));
         List<WaypointGroup> out = new ArrayList<>();
         for (WaypointGroup g : byId.values()) {
-            if (zoneId.equals(g.zoneId())) out.add(g);
+            if (canonicalZoneId.equals(g.zoneId())) out.add(g);
         }
         return out;
     }
