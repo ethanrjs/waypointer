@@ -294,23 +294,41 @@ public final class DungeonRoomRouteSync {
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
 
         List<Waypoint> waypoints = new ArrayList<>();
+        List<Waypoint> leadingSupportWaypoints = new ArrayList<>();
+        boolean hasProgressWaypoint = false;
         for (DungeonWaypoint dungeonWaypoint : definition.waypoints()) {
             if (dungeonWaypoint.secretIndex() <= 0) {
-                waypoints.add(new Waypoint(
+                Waypoint supportWaypoint = new Waypoint(
                         dungeonWaypoint.x(), dungeonWaypoint.y(), dungeonWaypoint.z(),
                         dungeonWaypoint.name(), SUPPORT_WAYPOINT_COLOR,
-                        Waypoint.FLAG_SUBWAYPOINT, 0.0));
+                        Waypoint.FLAG_SUBWAYPOINT, 0.0);
+                if (hasProgressWaypoint) {
+                    waypoints.add(supportWaypoint);
+                } else {
+                    leadingSupportWaypoints.add(supportWaypoint);
+                }
                 continue;
             }
             waypoints.add(new Waypoint(
                     dungeonWaypoint.x(), dungeonWaypoint.y(), dungeonWaypoint.z(),
                     dungeonWaypoint.name(), SECRET_WAYPOINT_COLOR,
                     DungeonWaypointSkipRules.flagsForTrigger(dungeonWaypoint.trigger()), 0.0));
+            if (!hasProgressWaypoint) {
+                hasProgressWaypoint = true;
+                waypoints.addAll(leadingSupportWaypoints);
+                leadingSupportWaypoints.clear();
+            }
             for (DungeonHighlight highlight : dungeonWaypoint.highlights()) {
                 waypoints.add(new Waypoint(
                         highlight.x(), highlight.y(), highlight.z(),
                         "", SUPPORT_WAYPOINT_COLOR,
-                        Waypoint.FLAG_SUBWAYPOINT | highlightFlags(highlight.style()), 0.0));
+                Waypoint.FLAG_SUBWAYPOINT | highlightFlags(highlight.style()), 0.0));
+            }
+        }
+        if (!hasProgressWaypoint) {
+            group.setLoadMode(WaypointGroup.LoadMode.STATIC);
+            for (Waypoint supportWaypoint : leadingSupportWaypoints) {
+                waypoints.add(supportWaypoint.withSubwaypoint(false));
             }
         }
         group.addAll(waypoints);

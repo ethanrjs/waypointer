@@ -337,6 +337,44 @@ class DungeonRoomRouteSyncTest {
     }
 
     @Test
+    void leadingSupportMarkersNeverBecomeSequenceProgress() {
+        DungeonRoom room = room("leading-support-room", "Leading Support Room");
+        DungeonRoomDefinition definition = DungeonRoomData.defineRoom(
+                "leading-support-room", "Leading Support Room", room);
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "marker", 0, DungeonSecretCategory.DEFAULT, DungeonWaypointTrigger.MANUAL,
+                2, 70, 2, "support", List.of()));
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "secret", 1, DungeonSecretCategory.CHEST, DungeonWaypointTrigger.OPEN_CHEST,
+                4, 70, 7, "Secret 1", List.of()));
+
+        WaypointGroup route = DungeonRoomRouteSync.editableRouteFromDefinition(definition);
+
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, route.loadMode());
+        assertEquals("Secret 1", route.get(0).name());
+        assertFalse(route.get(0).isSubwaypoint());
+        assertEquals("support", route.get(1).name());
+        assertTrue(route.get(1).isSubwaypoint());
+        assertEquals(1, route.mainWaypointCount());
+    }
+
+    @Test
+    void supportOnlyDefinitionsConvertToStaticMarkers() {
+        DungeonRoom room = room("support-only-room", "Support Only Room");
+        DungeonRoomDefinition definition = DungeonRoomData.defineRoom(
+                "support-only-room", "Support Only Room", room);
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "marker", 0, DungeonSecretCategory.DEFAULT, DungeonWaypointTrigger.MANUAL,
+                2, 70, 2, "support", List.of()));
+
+        WaypointGroup route = DungeonRoomRouteSync.editableRouteFromDefinition(definition);
+
+        assertEquals(WaypointGroup.LoadMode.STATIC, route.loadMode());
+        assertEquals(1, route.size());
+        assertFalse(route.get(0).isSubwaypoint());
+    }
+
+    @Test
     void writeThroughHelpersDescribeTheRoomState() {
         ActiveGroupManager manager = new ActiveGroupManager();
         DungeonRoom room = room("helper-room", "Helper Room");
