@@ -48,7 +48,7 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 - Minecraft 26.1.x
 - Fabric Loader 0.19.3+
 - [Fabric API](https://modrinth.com/mod/fabric-api)
-- *(optional)* Hypixel Mod API 1.0.2-26.1+. Improves zone detection
+- Hypixel Mod API 1.0.2-26.1+
 
 Compiles with Java 25 for 26.1.2
 
