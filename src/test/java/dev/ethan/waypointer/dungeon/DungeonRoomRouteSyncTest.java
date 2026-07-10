@@ -333,8 +333,14 @@ class DungeonRoomRouteSyncTest {
                 DungeonRoomRouteSync.generatedGroupId("helper-room"), "User Route", "helper-room");
         mirror.setRuntimeOnly(true);
         assertEquals(stored, DungeonRoomRouteSync.storedSourceForMirror(manager, mirror));
+        assertEquals(stored, DungeonRoomRouteSync.durableEditTarget(manager, mirror));
+        assertEquals(stored, DungeonRoomRouteSync.durableEditTarget(manager, stored));
         assertNull(DungeonRoomRouteSync.storedSourceForMirror(manager, stored),
                 "only generated mirrors have a stored source");
+
+        manager.remove(stored.id());
+        assertNull(DungeonRoomRouteSync.durableEditTarget(manager, mirror),
+                "downloaded definition-only mirrors must require explicit conversion");
     }
 
     @Test

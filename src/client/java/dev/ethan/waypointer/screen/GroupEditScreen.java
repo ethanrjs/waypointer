@@ -9,6 +9,8 @@ import dev.ethan.waypointer.core.RouteProgress;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.debug.DebugEventLog;
+import dev.ethan.waypointer.dungeon.DungeonRoomRouteSync;
+import dev.ethan.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import dev.ethan.waypointer.dungeon.DungeonWaypointSkipRules;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.input.WaypointRepositionMode;
@@ -586,12 +588,16 @@ public final class GroupEditScreen extends Screen {
     private void moveSelectedHere() {
         if (!hasSelectedWaypoint()) return;
 
+        WaypointGroup editTarget = durableEditTarget();
+        if (editTarget == null || selectedIndex >= editTarget.size()) return;
+
         LocalPlayer p = Minecraft.getInstance().player;
         if (p == null) return;
 
         PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
                 p.getX(), p.getY(), p.getZ(), config);
-        group.moveWaypointTo(selectedIndex, pos.x(), pos.y(), pos.z());
+        DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(
+                editTarget, selectedIndex, pos.x(), pos.y(), pos.z());
         coordinateEditorIndex = -1;
         syncCoordinateEditors();
         manager.fireDataChanged();
@@ -623,21 +629,32 @@ public final class GroupEditScreen extends Screen {
     }
 
     private void addHere() {
+        WaypointGroup editTarget = durableEditTarget();
+        if (editTarget == null) return;
+
         LocalPlayer p = Minecraft.getInstance().player;
         if (p == null) return;
         PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
                 p.getX(), p.getY(), p.getZ(), config);
         int flags = defaultNewWaypointFlags(pos.x(), pos.y(), pos.z());
-        group.add(new Waypoint(
+        editTarget.add(DungeonRoomWaypointPlacement.toStoredWaypoint(editTarget, new Waypoint(
                 pos.x(), pos.y(), pos.z(),
-                "", config.defaultWaypointColor(), flags, 0.0));
-        int newIndex = group.size() - 1;
+                "", config.defaultWaypointColor(), flags, 0.0)));
+        int newIndex = editTarget.size() - 1;
         // Run the shared post-add flow (focus + mode/toast updates) so the
         // GUI add button behaves identically to /wp add and the keybind path.
-        new WaypointAddFlow().afterWaypointAdded(group, newIndex);
+        new WaypointAddFlow().afterWaypointAdded(editTarget, newIndex);
         if (skipAheadBtn != null) skipAheadBtn.setMessage(skipAheadLabel());
-        selectWaypoint(newIndex);
+        if (editTarget == group) selectWaypoint(newIndex);
         manager.fireDataChanged();
+    }
+
+    private WaypointGroup durableEditTarget() {
+        WaypointGroup editTarget = DungeonRoomRouteSync.durableEditTarget(manager, group);
+        if (editTarget == null) {
+            coordinateEditError = "Convert downloaded dungeon secrets to an editable route first.";
+        }
+        return editTarget;
     }
 
     private void removeSelected() {

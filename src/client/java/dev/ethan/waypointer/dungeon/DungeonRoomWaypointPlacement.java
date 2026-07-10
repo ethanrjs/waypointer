@@ -67,6 +67,16 @@ public final class DungeonRoomWaypointPlacement {
                 actualPreciseZ);
     }
 
+    public static void moveWaypointToStoredPosition(WaypointGroup group, int index,
+                                                     int actualX, int actualY, int actualZ) {
+        Waypoint actualWaypoint = group.get(index).withPos(actualX, actualY, actualZ);
+        Waypoint storedWaypoint = toStoredWaypoint(group, actualWaypoint);
+        group.moveWaypointToPrecise(index,
+                storedWaypoint.preciseX(),
+                storedWaypoint.preciseY(),
+                storedWaypoint.preciseZ());
+    }
+
     public static void normalizeActualWaypointsForCurrentRoom(WaypointGroup group) {
         DungeonRoom room = currentRoomFor(group);
         if (room == null || group.isEmpty()) return;

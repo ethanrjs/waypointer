@@ -21,6 +21,7 @@ import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.dungeon.DungeonRoomRouteSync;
 import dev.ethan.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import dev.ethan.waypointer.dungeon.DungeonWaypointSkipRules;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
@@ -1275,8 +1276,11 @@ public final class WaypointerCommands {
     }
 
     private int runResetActiveGroup(FabricClientCommandSource src) {
-        WaypointGroup group = activeGroupOrError(src);
-        if (group == null) return 0;
+        WaypointGroup group = manager.firstActiveGroup();
+        if (group == null) {
+            error(src, "No active route in the current area.");
+            return 0;
+        }
         group.resetProgress();
         manager.fireDataChanged();
         success(src, "Reset \"" + group.name() + "\" to the first waypoint");
@@ -1373,7 +1377,7 @@ public final class WaypointerCommands {
     private int runMoveWaypointAt(FabricClientCommandSource src, int index, int x, int y, int z) {
         WaypointGroup group = activeGroupOrError(src);
         if (group == null || !validateWaypointIndex(src, group, index)) return 0;
-        group.moveWaypointTo(index, x, y, z);
+        DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(group, index, x, y, z);
         manager.fireDataChanged();
         success(src, "Moved waypoint " + group.displayIndexLabel(index)
                 + " to " + x + ", " + y + ", " + z);
@@ -1535,9 +1539,16 @@ public final class WaypointerCommands {
     }
 
     private WaypointGroup activeGroupOrError(FabricClientCommandSource src) {
-        WaypointGroup group = manager.firstActiveGroup();
-        if (group == null) error(src, "No active route in the current area.");
-        return group;
+        WaypointGroup visibleGroup = manager.firstActiveGroup();
+        if (visibleGroup == null) {
+            error(src, "No active route in the current area.");
+            return null;
+        }
+        WaypointGroup editTarget = DungeonRoomRouteSync.durableEditTarget(manager, visibleGroup);
+        if (editTarget == null) {
+            error(src, "Convert the downloaded dungeon secrets to an editable route first.");
+        }
+        return editTarget;
     }
 
     private WaypointGroup groupAtIndexOrError(FabricClientCommandSource src, int index) {
@@ -1646,13 +1657,18 @@ public final class WaypointerCommands {
     }
 
     private int runAddAt(FabricClientCommandSource src, int x, int y, int z, String name) {
-        addPersistentWaypointAt(manager, config, addFlow, x, y, z, name);
+        int index = addPersistentWaypointAt(manager, config, addFlow, x, y, z, name);
+        if (index < 0) {
+            error(src, "Convert the downloaded dungeon secrets to an editable route first.");
+            return 0;
+        }
         return 1;
     }
 
     static int addPersistentWaypointAt(ActiveGroupManager manager, WaypointerConfig config,
                                        WaypointAddFlow addFlow, int x, int y, int z,
                                        String name) {
+        if (definitionOnlyRouteRequiresConversion(manager)) return -1;
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         target.add(storedCommandWaypoint(target, config, x, y, z, name));
         int index = target.size() - 1;
@@ -1795,6 +1811,10 @@ public final class WaypointerCommands {
     private int runInsert(FabricClientCommandSource src, int index, String name) {
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null) { error(src, "Not in a world"); return 0; }
+        if (definitionOnlyRouteRequiresConversion(manager)) {
+            error(src, "Convert the downloaded dungeon secrets to an editable route first.");
+            return 0;
+        }
 
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         if (index < 0 || index > target.size()) {
@@ -1815,6 +1835,10 @@ public final class WaypointerCommands {
 
     private int runInsertAt(FabricClientCommandSource src, int index,
                             int x, int y, int z, String name) {
+        if (definitionOnlyRouteRequiresConversion(manager)) {
+            error(src, "Convert the downloaded dungeon secrets to an editable route first.");
+            return 0;
+        }
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         if (index < 0 || index > target.size()) {
             error(src, "0-based insert slot " + index
@@ -1828,8 +1852,8 @@ public final class WaypointerCommands {
     }
 
     private int runRemove(FabricClientCommandSource src, int index) {
-        WaypointGroup target = manager.firstActiveGroup();
-        if (target == null) { error(src, "No active route to remove from"); return 0; }
+        WaypointGroup target = activeGroupOrError(src);
+        if (target == null) return 0;
         if (index < 0 || index >= target.size()) {
             error(src, "0-based waypoint index " + index
                     + " out of range (0.." + (target.size() - 1) + ")");
@@ -1841,6 +1865,12 @@ public final class WaypointerCommands {
         success(src, "Removed index " + index + " (#" + displayLabel + ") "
                 + removed.x() + ", " + removed.y() + ", " + removed.z());
         return 1;
+    }
+
+    static boolean definitionOnlyRouteRequiresConversion(ActiveGroupManager manager) {
+        Zone currentZone = manager.currentZone();
+        return currentZone != null
+                && DungeonRoomRouteSync.secretsRequireConversion(manager, currentZone.id());
     }
 
     static Waypoint removeWaypointAt(WaypointGroup target, int index) {
