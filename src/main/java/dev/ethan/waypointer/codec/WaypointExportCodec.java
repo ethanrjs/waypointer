@@ -29,7 +29,7 @@ public final class WaypointExportCodec {
      */
     public enum Target {
         WAYPOINTER("Waypointer", true, true, true, true, true, true),
-        SKYBLOCKER("Skyblocker", false, true, false, false, false, false),
+        SKYBLOCKER("Skyblocker", true, true, false, false, false, false),
         SKYTILS("Skytils", false, true, false, false, false, false),
         SKYHANNI("SkyHanni", false, false, false, false, false, false);
 
@@ -140,17 +140,19 @@ public final class WaypointExportCodec {
             out.addProperty("name", groupName(group));
             out.addProperty("island", thirdPartyIslandId(group.zoneId()));
             out.addProperty("ordered", group.loadMode() == WaypointGroup.LoadMode.SEQUENCE);
+            out.addProperty("renderThroughWalls", !group.isEmpty() && group.waypoints().stream()
+                    .allMatch(waypoint -> waypoint.hasFlag(Waypoint.FLAG_THROUGH_WALL)));
 
             JsonArray waypoints = new JsonArray();
             for (Waypoint waypoint : group.waypoints()) {
                 JsonObject point = new JsonObject();
                 point.add("pos", position(waypoint));
-                if (opts.includeNames && waypoint.hasName()) {
-                    point.addProperty("name", waypoint.name());
-                }
-                if (opts.includeColors) {
-                    point.add("colorComponents", colorComponents(waypoint.color()));
-                }
+                point.addProperty("name", opts.includeNames ? waypoint.name() : "");
+                point.add("colorComponents", colorComponents(
+                        opts.includeColors ? waypoint.color() : Waypoint.DEFAULT_COLOR));
+                point.addProperty("alpha", 0.5f);
+                point.addProperty("shouldRender", !waypoint.hasFlag(Waypoint.FLAG_HIDE_BEACON)
+                        || !waypoint.hasFlag(Waypoint.FLAG_HIDE_NAME));
                 waypoints.add(point);
             }
             out.add("waypoints", waypoints);

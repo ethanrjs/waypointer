@@ -1,0 +1,25 @@
+[
+  {
+    "name": "Current Skyblocker Route",
+    "island": "foraging_1",
+    "waypoints": [
+      {
+        "pos": [30, 80, 40],
+        "name": "First",
+        "colorComponents": [1.0, 0.5019608, 0.0],
+        "alpha": 0.75,
+        "shouldRender": true
+      },
+      {
+        "pos": [10, 70, 20],
+        "name": {"text": "Second"},
+        "colorComponents": [0.0, 0.0, 1.0],
+        "alpha": 0.25,
+        "shouldRender": false
+      }
+    ],
+    "ordered": true,
+    "renderThroughWalls": true,
+    "waypointType": "waypoint"
+  }
+]

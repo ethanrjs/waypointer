@@ -382,8 +382,73 @@ public final class WaypointImporter {
             throw new IllegalArgumentException(
                     "Skyblocker payload decoded but didn't contain JSON");
         }
-        ImportResult r = importJson(json);
+        ImportResult r = prefix.equals(SKYBLOCKER_V1_PREFIX)
+                ? importSkyblockerV1Json(json)
+                : importJson(json);
         return checkedImport(new ImportResult(Source.SKYBLOCKER, r.groups(), ""));
+    }
+
+    private static ImportResult importSkyblockerV1Json(String json) {
+        JsonElement root = JsonParser.parseString(json);
+        if (!root.isJsonArray()) {
+            throw new IllegalArgumentException("Skyblocker V1 payload must contain a group array");
+        }
+
+        List<WaypointGroup> groups = new ArrayList<>();
+        for (JsonElement element : root.getAsJsonArray()) {
+            if (!element.isJsonObject()) continue;
+            WaypointGroup group = parseSkyblockerV1Group(element.getAsJsonObject());
+            if (!group.isEmpty()) groups.add(group);
+        }
+        if (groups.isEmpty()) {
+            throw new IllegalArgumentException("Skyblocker V1 payload contained no waypoints");
+        }
+        return new ImportResult(Source.SKYBLOCKER, groups, "");
+    }
+
+    private static WaypointGroup parseSkyblockerV1Group(JsonObject json) {
+        String zone = firstString(json, Zone.UNKNOWN.id(), "island");
+        String name = WaypointCodec.Options.sanitizeLabel(firstString(json, zone, "name"));
+        boolean ordered = json.has("ordered") && json.get("ordered").isJsonPrimitive()
+                && json.get("ordered").getAsBoolean();
+        boolean throughWalls = !json.has("renderThroughWalls")
+                || !json.get("renderThroughWalls").isJsonPrimitive()
+                || json.get("renderThroughWalls").getAsBoolean();
+
+        WaypointGroup group = WaypointGroup.create(name, normalizeZone(zone));
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.setLoadMode(ordered ? WaypointGroup.LoadMode.SEQUENCE : WaypointGroup.LoadMode.STATIC);
+
+        JsonArray points = firstArray(json, "waypoints");
+        if (points == null) return group;
+        List<Waypoint> waypoints = new ArrayList<>(points.size());
+        for (JsonElement element : points) {
+            if (!element.isJsonObject()) continue;
+            Waypoint waypoint = waypointFromSkyblockerV1(element.getAsJsonObject(), throughWalls);
+            if (waypoint != null) waypoints.add(waypoint);
+        }
+        group.addAll(waypoints);
+        return group;
+    }
+
+    private static Waypoint waypointFromSkyblockerV1(JsonObject json, boolean throughWalls) {
+        int[] pos = extractCoordinates(json);
+        if (pos == null) return null;
+
+        String name = WaypointCodec.Options.sanitizeLabel(skyblockerComponentText(json.get("name")));
+        int flags = throughWalls ? Waypoint.FLAG_THROUGH_WALL : 0;
+        if (json.has("shouldRender") && json.get("shouldRender").isJsonPrimitive()
+                && !json.get("shouldRender").getAsBoolean()) {
+            flags |= Waypoint.FLAG_HIDE_BEACON | Waypoint.FLAG_HIDE_NAME;
+        }
+        return new Waypoint(pos[0], pos[1], pos[2], name, parseColor(json), flags, 0.0);
+    }
+
+    private static String skyblockerComponentText(JsonElement name) {
+        if (name == null || name.isJsonNull()) return "";
+        if (name.isJsonPrimitive()) return name.getAsString();
+        if (name.isJsonObject()) return firstString(name.getAsJsonObject(), "", "text");
+        return "";
     }
 
     // --- JSON path ---------------------------------------------------------------------------
