@@ -6,6 +6,7 @@ import dev.ethan.waypointer.codec.WaypointCodec;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Predicate;
 
 /**
  * Finds {@link WaypointCodec} export strings embedded in chat messages.
@@ -23,14 +24,14 @@ import java.util.List;
  *     paste (e.g. {@code ",WP:…"}). Without this, a line like
  *     {@code "helloWP:stuff"} would fire a false pill on every mid-word substring.
  *   - Body characters are extended greedily while they fall in the codec
- *     alphabet.
+ *     alphabet, up to Minecraft's chat-command limit.
  *   - The body must be at least {@value #MIN_BODY} characters so a bare magic
  *     prefix surrounded by ordinary text isn't flagged as a codec.
  *
- * When greedy extension could swallow trailing sentence punctuation that is also
- * an alphabet character, we trim those suffixes only while {@link WaypointCodec#isValidCodec}
- * rejects the candidate (cheap integrity probe), so prose delimiters do not corrupt
- * an otherwise valid paste.
+ * The greedy candidate is validated once. When extension could swallow trailing
+ * sentence punctuation that is also an alphabet character, only a few known
+ * delimiters are tested as removable suffixes. This keeps prose delimiters out of
+ * valid pastes without decoder work proportional to candidate length.
  */
 public final class CodecScanner {
 
@@ -39,6 +40,12 @@ public final class CodecScanner {
 
     /** Upper bound per chat line; stops pathological inputs from hanging the extractor. */
     private static final int MAX_MATCHES_PER_MESSAGE = 3;
+
+    /** A complete codec cannot exceed Minecraft's 256-byte chat-command limit. */
+    private static final int MAX_CODEC_CHARS = 256;
+
+    /** Enough for normal sentence punctuation without reopening an unbounded backscan. */
+    private static final int MAX_SUFFIX_TRIMS = 3;
 
     private CodecScanner() {}
 
@@ -51,6 +58,10 @@ public final class CodecScanner {
     }
 
     public static List<Match> scan(String message) {
+        return scan(message, WaypointCodec::isValidCodec);
+    }
+
+    static List<Match> scan(String message, Predicate<String> validator) {
         if (message == null || message.isEmpty()) return List.of();
 
         List<Match> out = new ArrayList<>();
@@ -60,37 +71,29 @@ public final class CodecScanner {
 
             int bodyStart = i + WaypointCodec.MAGIC.length();
             int bodyEnd = bodyStart;
-            while (bodyEnd < message.length() && isCodecBodyChar(message.charAt(bodyEnd))) {
+            int candidateLimit = Math.min(message.length(), i + MAX_CODEC_CHARS);
+            while (bodyEnd < candidateLimit && isCodecBodyChar(message.charAt(bodyEnd))) {
                 bodyEnd++;
             }
             int greedyBodyEnd = bodyEnd;
-            boolean valid = false;
-            // Printable-ASCII bodies share most punctuation with normal prose. Without a
-            // backscan, greedy extension can swallow trailing delimiters (e.g. commas)
-            // that belong to the surrounding sentence. Shrink the end only while
-            // {@link WaypointCodec#isValidCodec} rejects the candidate (cheap probe).
-            while (bodyEnd > bodyStart + MIN_BODY - 1) {
-                if (WaypointCodec.isValidCodec(message.substring(i, bodyEnd))) {
+            boolean valid = bodyEnd - bodyStart >= MIN_BODY
+                    && validator.test(message.substring(i, bodyEnd));
+            for (int trims = 0;
+                 trims < MAX_SUFFIX_TRIMS
+                         && bodyEnd > bodyStart + MIN_BODY
+                         && isClauseSuffixDelim(message.charAt(bodyEnd - 1));
+                 trims++) {
+                boolean shorterValid = validator.test(message.substring(i, bodyEnd - 1));
+                if (shorterValid) {
+                    bodyEnd--;
                     valid = true;
+                } else if (valid) {
                     break;
+                } else {
+                    bodyEnd--;
                 }
-                bodyEnd--;
             }
-            // If the greedy span is valid as a whole but a clause delimiter at the end
-            // is prose (not payload), the payload-with-delimiter can still decode as an
-            // unrelated blob — trim when dropping that suffix keeps a valid decode.
-            if (valid) {
-                while (bodyEnd > bodyStart + MIN_BODY) {
-                    char last = message.charAt(bodyEnd - 1);
-                    if (!isClauseSuffixDelim(last)) break;
-                    String shorter = message.substring(i, bodyEnd - 1);
-                    if (WaypointCodec.isValidCodec(shorter)) {
-                        bodyEnd--;
-                    } else {
-                        break;
-                    }
-                }
-            } else {
+            if (!valid) {
                 // A WP: body that never decodes is still useful to surface: it is
                 // almost always a truncated/corrupted route paste, and silently
                 // ignoring it makes the sender think nothing happened.

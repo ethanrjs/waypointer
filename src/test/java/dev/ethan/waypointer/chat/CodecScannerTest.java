@@ -6,6 +6,7 @@ import dev.ethan.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -182,6 +183,41 @@ class CodecScannerTest {
         // codec DOES match, so the rule above is doing real work.
         assertEquals(1, CodecScanner.scan("hello " + export).size(),
                 "magic with a whitespace boundary must still match");
+    }
+
+    @Test
+    void bounds_decoder_work_for_large_invalid_candidates() {
+        AtomicInteger validations = new AtomicInteger();
+        String message = "WP:" + "A".repeat(1_000_000);
+
+        List<CodecScanner.Match> matches = CodecScanner.scan(message, candidate -> {
+            validations.incrementAndGet();
+            return false;
+        });
+
+        assertEquals(1, matches.size());
+        assertEquals(256, matches.get(0).text().length(),
+                "scanner should expose only a realistic chat-sized invalid payload");
+        assertFalse(matches.get(0).valid());
+        assertEquals(1, validations.get(),
+                "an invalid alphabet run must not trigger a decoder call for every suffix");
+    }
+
+    @Test
+    void limits_validation_to_greedy_candidate_and_known_suffixes() {
+        AtomicInteger validations = new AtomicInteger();
+        String message = "WP:abcdef)))";
+
+        List<CodecScanner.Match> matches = CodecScanner.scan(message, candidate -> {
+            validations.incrementAndGet();
+            return candidate.equals("WP:abcdef");
+        });
+
+        assertEquals(1, matches.size());
+        assertEquals("WP:abcdef", matches.get(0).text());
+        assertTrue(matches.get(0).valid());
+        assertEquals(4, validations.get(),
+                "validation should be capped at the greedy candidate plus three suffix trims");
     }
 
     private static String sampleExport() {
