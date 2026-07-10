@@ -48,10 +48,9 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
  *   <li>{@code /wpd test} -- inject the built-in demo waypoint at the current
  *       room's segment so rendering can be verified end-to-end without curated
  *       data.</li>
- *   <li>{@code /wpd rotate (nw|ne|sw|se)} -- override the assumed
- *       {@link Direction} of the current room. Until block fingerprinting
- *       lands, this is the player's escape hatch when the canonical-frame
- *       guess is wrong and secrets render mirrored.</li>
+ *   <li>{@code /wpd rotate (nw|ne|sw|se|auto)} -- override the detected
+ *       {@link Direction} of the current room for this dungeon run, or restore
+ *       automatic detection.</li>
  *   <li>{@code /wpd reset} -- forget every runtime-injected demo / custom
  *       waypoint without restarting the game.</li>
  *   <li>{@code /wpd toggle enabled} / {@code debug} -- shortcut toggles for
@@ -228,7 +227,8 @@ public final class DungeonCommands {
                         .then(literal("nw").executes(ctx -> runRotate(ctx.getSource(), Direction.NW)))
                         .then(literal("ne").executes(ctx -> runRotate(ctx.getSource(), Direction.NE)))
                         .then(literal("sw").executes(ctx -> runRotate(ctx.getSource(), Direction.SW)))
-                        .then(literal("se").executes(ctx -> runRotate(ctx.getSource(), Direction.SE))))
+                        .then(literal("se").executes(ctx -> runRotate(ctx.getSource(), Direction.SE)))
+                        .then(literal("auto").executes(ctx -> runRotate(ctx.getSource(), null))))
                 .then(literal("toggle")
                         .then(literal("enabled").executes(ctx -> runToggle(ctx.getSource(), "enabled")))
                         .then(literal("debug").executes(ctx -> runToggle(ctx.getSource(), "debug")))
@@ -819,9 +819,15 @@ public final class DungeonCommands {
     }
 
     private int runRotate(FabricClientCommandSource src, Direction dir) {
-        tracker.setDirectionOverride(dir);
-        success(src, "Rotated current room to " + dir + ". Persisting as default.");
-        config.setDefaultDirection(dir.name());
+        if (!tracker.setDirectionOverride(dir)) {
+            error(src, "No detected dungeon room to rotate.");
+            return 0;
+        }
+        if (dir == null) {
+            success(src, "Restored automatic rotation for the current room.");
+        } else {
+            success(src, "Rotated the current room to " + dir + " for this dungeon run.");
+        }
         return 1;
     }
 

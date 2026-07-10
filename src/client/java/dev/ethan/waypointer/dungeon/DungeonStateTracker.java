@@ -84,10 +84,10 @@ public final class DungeonStateTracker {
     private final Map<String, List<RoomAssembly>> assembliesByDefinition = new HashMap<>();
     private final List<RoomAssembly> unresolvedAssemblies = new ArrayList<>();
     private final Set<Long> loggedUnknownCoreSegments = new HashSet<>();
+    private final Map<List<Long>, RoomDirectionOverride> directionOverridesByRoom = new HashMap<>();
 
     private volatile boolean inDungeon;
     private volatile DungeonRoom currentRoom;
-    private volatile Direction directionOverride;
     private ClientLevel observedLevel;
 
     private int tickCounter;
@@ -148,11 +148,16 @@ public final class DungeonStateTracker {
     }
 
     public Direction directionOverride() {
-        return directionOverride;
+        DungeonRoom room = currentRoom;
+        RoomDirectionOverride override = room == null
+                ? null
+                : directionOverridesByRoom.get(sortedSegments(room.segments()));
+        return override == null ? null : override.direction;
     }
 
     public DebugSnapshot debugSnapshot() {
         DungeonRoom room = currentRoom;
+        Direction directionOverride = directionOverride();
         Direction effectiveDirection = directionOverride != null
                 ? directionOverride
                 : room == null ? defaultDirection() : room.direction();
@@ -192,32 +197,39 @@ public final class DungeonStateTracker {
         fireRoomChanged(updated);
     }
 
-    public void setDirectionOverride(Direction dir) {
-        this.directionOverride = dir;
-        clearResolvedRoomState(false);
-        // Drop the cached room so the next tick picks the new direction up.
+    public boolean setDirectionOverride(Direction dir) {
         DungeonRoom prev = currentRoom;
-        if (prev != null) {
-            Direction effectiveDirection = dir == null ? defaultDirection() : dir;
-            int[] corner = physicalCornerForSegments(
-                    effectiveDirection,
-                    prev.segments(),
-                    prev.physicalCornerX(),
-                    prev.physicalCornerZ());
-            DungeonRoom rotated = new DungeonRoom(
-                    prev.type(),
-                    prev.shape(),
-                    effectiveDirection,
-                    corner[0],
-                    corner[1],
-                    prev.segments(),
-                    prev.roomId(),
-                    prev.roomName(),
-                    prev.confidence());
-            currentRoom = rotated;
-            cacheRoom(rotated);
-            fireRoomChanged(rotated);
+        if (prev == null) return false;
+
+        List<Long> roomKey = sortedSegments(prev.segments());
+        RoomDirectionOverride existing = directionOverridesByRoom.get(roomKey);
+        Direction detectedDirection = existing == null ? prev.direction() : existing.detectedDirection;
+        Direction effectiveDirection = dir == null ? detectedDirection : dir;
+        if (dir == null) {
+            directionOverridesByRoom.remove(roomKey);
+        } else {
+            directionOverridesByRoom.put(roomKey, new RoomDirectionOverride(dir, detectedDirection));
         }
+
+        int[] corner = physicalCornerForSegments(
+                effectiveDirection,
+                prev.segments(),
+                prev.physicalCornerX(),
+                prev.physicalCornerZ());
+        DungeonRoom rotated = new DungeonRoom(
+                prev.type(),
+                prev.shape(),
+                effectiveDirection,
+                corner[0],
+                corner[1],
+                prev.segments(),
+                prev.roomId(),
+                prev.roomName(),
+                prev.confidence());
+        currentRoom = rotated;
+        cacheRoom(rotated);
+        fireRoomChanged(rotated);
+        return true;
     }
 
     // ---- zone -> dungeon state -----------------------------------------
@@ -355,6 +367,7 @@ public final class DungeonStateTracker {
         unresolvedRetryDelayTicks = UNRESOLVED_RETRY_INITIAL_DELAY_TICKS;
         unresolvedRetryRequested = false;
         loggedUnknownCoreSegments.clear();
+        directionOverridesByRoom.clear();
         if (!keepPendingChunks) pendingChunks.clear();
     }
 
@@ -520,9 +533,10 @@ public final class DungeonStateTracker {
             List<Long> segments,
             int markerY,
             DungeonRoomData.BlockLookup lookup) {
-        if (directionOverride != null) {
-            int[] corner = physicalCornerForSegments(directionOverride, segments, 0, 0);
-            return new RoomMarker(directionOverride, corner[0], corner[1]);
+        RoomDirectionOverride override = directionOverridesByRoom.get(sortedSegments(segments));
+        if (override != null) {
+            int[] corner = physicalCornerForSegments(override.direction, segments, 0, 0);
+            return new RoomMarker(override.direction, corner[0], corner[1]);
         }
         if (definition.type() == DungeonRoomType.FAIRY && !segments.isEmpty()) {
             long segment = segments.get(0);
@@ -857,6 +871,8 @@ public final class DungeonStateTracker {
     }
 
     private record RoomMarker(Direction direction, int anchorX, int anchorZ) {}
+
+    private record RoomDirectionOverride(Direction direction, Direction detectedDirection) {}
 
     private static final class RoomAssembly {
         private final DungeonRoomDefinition definition;
