@@ -3,6 +3,7 @@ package dev.ethan.waypointer.screen.settings;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -100,6 +101,23 @@ public final class SettingsCatalog {
         for (Setting setting : ALL_SETTINGS) {
             if (setting.store() != MAIN) continue;
             if (!Objects.equals(setting.get(live, null), setting.get(decoded, null))) changed++;
+        }
+        return changed;
+    }
+
+    public static int countChangedSettings(
+            WaypointerConfig liveMain,
+            DungeonConfig liveDungeon,
+            WaypointerConfig nextMain,
+            DungeonConfig nextDungeon) {
+        if (liveMain == null || liveDungeon == null || nextMain == null || nextDungeon == null) {
+            return 0;
+        }
+        int changed = 0;
+        for (Setting setting : ALL_SETTINGS) {
+            Object live = setting.get(liveMain, liveDungeon);
+            Object next = setting.get(nextMain, nextDungeon);
+            if (!Objects.equals(live, next)) changed++;
         }
         return changed;
     }

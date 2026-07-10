@@ -154,6 +154,22 @@ public final class DungeonConfig {
             for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
         }
     }
+
+    public void resetToDefaults() {
+        DungeonConfig defaults = new DungeonConfig();
+        boolean notifyEnabledListeners = enabled != defaults.enabled;
+        enabled = defaults.enabled;
+        debugLogRoomChanges = defaults.debugLogRoomChanges;
+        defaultDirection = defaults.defaultDirection;
+        hideCompletedRooms = defaults.hideCompletedRooms;
+        autoCompleteRoomsOnGreenCheckmark = defaults.autoCompleteRoomsOnGreenCheckmark;
+        routesPromptDismissed = defaults.routesPromptDismissed;
+        save();
+        if (notifyEnabledListeners) {
+            for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
+        }
+    }
+
     public void setDebugLogRoomChanges(boolean v) { this.debugLogRoomChanges = v; save(); }
     public void setHideCompletedRooms(boolean v)  { this.hideCompletedRooms = v; save(); }
     public void setAutoCompleteRoomsOnGreenCheckmark(boolean v) {

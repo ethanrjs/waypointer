@@ -184,6 +184,19 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void combinedDiffIncludesMainAndDungeonSettings() {
+        WaypointerConfig liveMain = new WaypointerConfig();
+        DungeonConfig liveDungeon = new DungeonConfig();
+        WaypointerConfig nextMain = new WaypointerConfig();
+        DungeonConfig nextDungeon = new DungeonConfig();
+        nextMain.setShowTracer(false);
+        nextDungeon.setEnabled(false);
+
+        assertEquals(2, SettingsCatalog.countChangedSettings(
+                liveMain, liveDungeon, nextMain, nextDungeon));
+    }
+
+    @Test
     void actionEntriesNeverDiffOrReportModified() {
         WaypointerConfig a = new WaypointerConfig();
         WaypointerConfig b = new WaypointerConfig();
