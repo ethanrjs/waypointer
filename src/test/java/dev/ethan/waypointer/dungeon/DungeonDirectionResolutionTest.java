@@ -1,6 +1,7 @@
 package dev.ethan.waypointer.dungeon;
 
 import dev.ethan.waypointer.core.ActiveGroupManager;
+import dev.ethan.waypointer.core.Zone;
 import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomDefinition;
@@ -12,8 +13,10 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DungeonDirectionResolutionTest {
 
@@ -175,7 +178,7 @@ class DungeonDirectionResolutionTest {
                 DungeonDetectionConfidence.CORE_CONFIRMED);
         tracker.setCurrentRoom(room);
 
-        tracker.setDirectionOverride(Direction.NE);
+        assertTrue(tracker.setDirectionOverride(Direction.NE));
 
         DungeonRoom rotated = tracker.currentRoom();
         assertNotNull(rotated);
@@ -193,6 +196,105 @@ class DungeonDirectionResolutionTest {
                 first.z());
 
         assertArrayEquals(new int[] { -76, 77, -143 }, firstWorld);
+    }
+
+    @Test
+    void manualDirectionOverrideOnlyAppliesToItsRoomAssembly() {
+        DungeonStateTracker tracker = new DungeonStateTracker(
+                new ActiveGroupManager(),
+                new DungeonConfig());
+        DungeonRoom first = roomAt(-104, -168, Direction.NW, "first");
+        DungeonRoom second = roomAt(-72, -168, Direction.SE, "second");
+        tracker.setCurrentRoom(first);
+
+        assertTrue(tracker.setDirectionOverride(Direction.NE));
+        DungeonRoom rotatedFirst = tracker.currentRoom();
+        assertNotNull(rotatedFirst);
+        assertEquals(Direction.NE, rotatedFirst.direction());
+        assertEquals(Direction.NE, tracker.directionOverride());
+
+        tracker.setCurrentRoom(second);
+
+        assertEquals(Direction.SE, tracker.currentRoom().direction());
+        assertNull(tracker.directionOverride());
+
+        tracker.setCurrentRoom(rotatedFirst);
+        assertEquals(Direction.NE, tracker.directionOverride());
+    }
+
+    @Test
+    void clearingManualDirectionRestoresDetectedDirection() {
+        DungeonStateTracker tracker = new DungeonStateTracker(
+                new ActiveGroupManager(),
+                new DungeonConfig());
+        tracker.setCurrentRoom(roomAt(-104, -168, Direction.SW, "clearable"));
+
+        assertTrue(tracker.setDirectionOverride(Direction.NE));
+        assertTrue(tracker.setDirectionOverride(null));
+
+        DungeonRoom restored = tracker.currentRoom();
+        assertNotNull(restored);
+        assertEquals(Direction.SW, restored.direction());
+        assertNull(tracker.directionOverride());
+    }
+
+    @Test
+    void manualDirectionOverrideRequiresDetectedCurrentRoom() {
+        DungeonStateTracker tracker = new DungeonStateTracker(
+                new ActiveGroupManager(),
+                new DungeonConfig());
+
+        assertFalse(tracker.setDirectionOverride(Direction.NE));
+        assertNull(tracker.directionOverride());
+    }
+
+    @Test
+    void manualDirectionOverrideKeepsOtherResolvedRoomsCached() {
+        DungeonStateTracker tracker = new DungeonStateTracker(
+                new ActiveGroupManager(),
+                new DungeonConfig());
+        DungeonRoom first = roomAt(-104, -168, Direction.NW, "first");
+        DungeonRoom second = roomAt(-72, -168, Direction.SE, "second");
+        tracker.setCurrentRoom(first);
+        tracker.applyCurrentRoomDefinition(first.roomId(), first.roomName());
+        tracker.setCurrentRoom(second);
+        tracker.applyCurrentRoomDefinition(second.roomId(), second.roomName());
+        tracker.setCurrentRoom(first);
+
+        assertTrue(tracker.setDirectionOverride(Direction.NE));
+
+        assertEquals(2, tracker.knownRooms().size());
+    }
+
+    @Test
+    void manualDirectionOverrideExpiresWhenDungeonRunEnds() {
+        DungeonStateTracker tracker = new DungeonStateTracker(
+                new ActiveGroupManager(),
+                new DungeonConfig());
+        DungeonRoom room = roomAt(-104, -168, Direction.NW, "run-scoped");
+        tracker.onZoneChanged(new Zone("dungeon_f7", "Catacombs F7"));
+        tracker.setCurrentRoom(room);
+        assertTrue(tracker.setDirectionOverride(Direction.NE));
+
+        tracker.onZoneChanged(new Zone("hub", "Hub"));
+        tracker.onZoneChanged(new Zone("dungeon_f7", "Catacombs F7"));
+        tracker.setCurrentRoom(room);
+
+        assertNull(tracker.directionOverride());
+        assertEquals(Direction.NW, tracker.currentRoom().direction());
+    }
+
+    private static DungeonRoom roomAt(int x, int z, Direction direction, String id) {
+        return new DungeonRoom(
+                DungeonRoomType.ROOM,
+                DungeonRoomShape.ONE_BY_ONE,
+                direction,
+                x,
+                z,
+                List.of(DungeonRoom.packSegment(x, z)),
+                id,
+                id,
+                DungeonDetectionConfidence.CORE_CONFIRMED);
     }
 
     private static DungeonWaypoint waypointAt(int x, int y, int z) {

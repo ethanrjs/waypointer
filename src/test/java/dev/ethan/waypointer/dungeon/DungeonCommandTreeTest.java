@@ -51,6 +51,7 @@ class DungeonCommandTreeTest {
                 "wpd route reset",
                 "wpd route found 1",
                 "wpd rotate sw",
+                "wpd rotate auto",
                 "wpd toggle enabled",
                 "wpd toggle greencheck",
                 "wpd toggle hidecompleted",
