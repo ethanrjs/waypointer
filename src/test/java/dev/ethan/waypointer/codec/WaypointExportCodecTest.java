@@ -41,7 +41,7 @@ class WaypointExportCodecTest {
         WaypointGroup imported = result.groups().get(0);
         assertEquals(WaypointImporter.Source.SKYBLOCKER, result.source());
         assertEquals("the_park", imported.zoneId());
-        assertEquals("", imported.get(0).name());
+        assertEquals("start", imported.get(0).name());
     }
 
     @Test
@@ -119,9 +119,9 @@ class WaypointExportCodecTest {
     }
 
     @Test
-    void third_party_targets_report_names_unsupported() {
+    void third_party_targets_report_name_capabilities() {
         assertTrue(WaypointExportCodec.Target.WAYPOINTER.supportsNames());
-        assertFalse(WaypointExportCodec.Target.SKYBLOCKER.supportsNames());
+        assertTrue(WaypointExportCodec.Target.SKYBLOCKER.supportsNames());
         assertFalse(WaypointExportCodec.Target.SKYTILS.supportsNames());
         assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsNames());
         assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsColors());

@@ -459,18 +459,17 @@ class WaypointImporterTest {
         assertEquals(2, g.size());
         assertEquals(10, g.get(0).x());
         assertEquals("A", g.get(0).name());
-        // Default groups are sequence routes, but MANUAL preserves explicit per-point colors.
-        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
+        // Skyblocker renders all points in unordered groups; MANUAL preserves explicit colors.
+        assertEquals(WaypointGroup.LoadMode.STATIC, g.loadMode());
         assertEquals(WaypointGroup.GradientMode.MANUAL, g.gradientMode());
         assertEquals(0xFF8000, g.get(0).color());
         assertEquals(0x0000FF, g.get(1).color());
     }
 
     @Test
-    void skyblocker_ordered_groups_flip_to_auto_gradient() throws Exception {
-        // Same as above but the group is flagged ordered:true -- importer should
-        // choose AUTO so route direction is visually readable, matching the
-        // rationale already documented on the Coleweight path.
+    void skyblocker_ordered_groups_preserve_explicit_colors() throws Exception {
+        // The upstream codec carries both order and per-point colors. Sequence mode
+        // represents the order without overwriting the sender's colors.
         String json = "[{"
                 + "\"name\":\"Path\","
                 + "\"island\":\"hub\","
@@ -485,7 +484,9 @@ class WaypointImporterTest {
 
         WaypointImporter.ImportResult result = WaypointImporter.importAny(packed);
         WaypointGroup g = result.groups().get(0);
-        assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
+        assertEquals(WaypointGroup.GradientMode.MANUAL, g.gradientMode());
+        assertEquals(0x00FF00, g.get(0).color());
         assertEquals(3, g.size());
     }
 
