@@ -122,17 +122,21 @@ public final class DungeonRoomData {
         }
         if (valid.isEmpty()) return 0;
 
+        int[] imported = {0};
         CUSTOM.updateAndGet(
                 prev -> {
                     Map<String, DungeonRoomDefinition> next = new LinkedHashMap<>(prev);
                     for (DungeonRoomDefinition definition : valid) {
+                        DungeonRoomDefinition existing = next.get(definition.id());
+                        if (existing != null && !existing.waypoints().isEmpty()) continue;
                         next.put(definition.id(),
                                 withInheritedCoreHashes(definition, BUNDLED.get(definition.id())));
+                        imported[0]++;
                     }
                     return Map.copyOf(next);
                 });
-        markDirty();
-        return valid.size();
+        if (imported[0] > 0) markDirty();
+        return imported[0];
     }
 
     public static Collection<DungeonRoomDefinition> allDefinitions() {

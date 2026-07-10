@@ -108,6 +108,43 @@ class DungeonRoomDataTest {
     }
 
     @Test
+    void importsNeverSilentlyOverwriteExistingAuthoredRoutes() {
+        DungeonRoom room = roomAt(-8, 24);
+        DungeonWaypoint authored = waypoint("authored");
+        DungeonWaypoint downloaded = waypoint("downloaded");
+        DungeonRoomDefinition existing = DungeonRoomData.defineRoom(
+                "shared-room", "My Route", room);
+        DungeonRoomData.addWaypoint(existing.id(), authored);
+        DungeonRoomDefinition incoming = new DungeonRoomDefinition(
+                existing.id(), "Downloaded Route", room.type(), room.shape(),
+                List.of(), List.of(), List.of(downloaded));
+
+        int imported = DungeonRoomData.importCustomDefinitions(List.of(incoming));
+
+        assertEquals(0, imported);
+        DungeonRoomDefinition preserved = DungeonRoomData.customDefinition(existing.id());
+        assertEquals("My Route", preserved.displayName());
+        assertEquals(List.of(authored), preserved.waypoints());
+    }
+
+    @Test
+    void importsCanFillAnExplicitlyEmptyRoomDefinition() {
+        DungeonRoom room = roomAt(-8, 24);
+        DungeonWaypoint downloaded = waypoint("downloaded");
+        DungeonRoomDefinition empty = DungeonRoomData.defineRoom(
+                "empty-room", "Empty", room);
+        DungeonRoomDefinition incoming = new DungeonRoomDefinition(
+                empty.id(), "Downloaded Route", room.type(), room.shape(),
+                List.of(), List.of(), List.of(downloaded));
+
+        int imported = DungeonRoomData.importCustomDefinitions(List.of(incoming));
+
+        assertEquals(1, imported);
+        assertEquals(List.of(downloaded),
+                DungeonRoomData.customDefinition(empty.id()).waypoints());
+    }
+
+    @Test
     void customWaypointListsReturnedToCallersAreImmutable() {
         DungeonRoom room = roomAt(-8, 24);
         DungeonRoomData.addCustom(room.identityKey(), waypoint("first"));
