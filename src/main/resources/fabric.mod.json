@@ -29,6 +29,6 @@
         "minecraft": ">=26.1 <26.2",
         "java": ">=25",
         "fabric-api": "*",
-        "hypixel-mod-api": ">=1.0"
+        "hypixel-mod-api": ">=1.0.2"
     }
 }
