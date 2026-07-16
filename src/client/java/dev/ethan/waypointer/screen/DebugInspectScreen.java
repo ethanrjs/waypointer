@@ -6,6 +6,7 @@ import dev.ethan.waypointer.codec.DecodeDebug;
 import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
+import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.debug.DebugEventLog;
 import dev.ethan.waypointer.debug.DebugSignals;
 import dev.ethan.waypointer.debug.PerformanceStats;
@@ -554,12 +555,12 @@ public final class DebugInspectScreen extends Screen {
             cx += font.width(name) + GAP;
         }
         if (wp.hasRadius() && cx < xEnd) {
-            String r = String.format(Locale.ROOT, "r=%.1f", wp.customRadius());
+            String r = "r=" + formatRadius(wp.customRadius());
             g.text(font, r, cx, y, NUMBER_TONE, false);
             cx += font.width(r) + GAP;
         }
         if (wp.extended() && cx < xEnd) {
-            g.text(font, "ext=" + shortByte(wp.extendedFlags()), cx, y, HEX_TONE, false);
+            g.text(font, "ext=" + formatIntHex(wp.extendedFlags()), cx, y, HEX_TONE, false);
         }
     }
 
@@ -612,10 +613,29 @@ public final class DebugInspectScreen extends Screen {
         addSection(rows, sections, "Codec Header", shortByte(d.headerByte()));
         rows.add(new Row.KV("Byte",    formatByteFull(d.headerByte())));
         rows.add(new Row.KV("Version", "v" + d.version() + " (bits 0..3)"));
-        rows.add(new Row.Bit(4, "includesNames", d.includesNames()));
-        rows.add(new Row.Bit(5, "hasLabel",      d.hasLabel()));
-        rows.add(new Row.Bit(6, "reserved",      d.reservedBit6()));
-        rows.add(new Row.Bit(7, "reserved",      d.reservedBit7()));
+        if (d.version() == 9) {
+            int contentKind = (d.headerByte() >>> 4) & 0b111;
+            String contentKindName = switch (contentKind) {
+                case 0 -> "general route";
+                case 1 -> "compact full route";
+                case 2 -> "coordinate-only route";
+                case 3 -> "config (reserved)";
+                case 4 -> "dungeon route (reserved)";
+                case 5 -> "coordinate route with metadata";
+                default -> "reserved";
+            };
+            rows.add(new Row.BitNote("bits 4-6  content kind = " + contentKind
+                    + " (" + contentKindName + ")"));
+            rows.add(new Row.Bit(4, "contentKind bit 0", (contentKind & 0b001) != 0));
+            rows.add(new Row.Bit(5, "contentKind bit 1", (contentKind & 0b010) != 0));
+            rows.add(new Row.Bit(6, "contentKind bit 2", (contentKind & 0b100) != 0));
+            rows.add(new Row.Bit(7, "hasLabel", d.hasLabel()));
+        } else {
+            rows.add(new Row.Bit(4, "includesNames", d.includesNames()));
+            rows.add(new Row.Bit(5, "hasLabel",      d.hasLabel()));
+            rows.add(new Row.Bit(6, "anonymous",     d.reservedBit6()));
+            rows.add(new Row.Bit(7, "reserved",      d.reservedBit7()));
+        }
         if (d.hasLabel()) {
             // Show the sanitized label inline; useful both as proof the bit
             // matches reality and so debugging weird labels (truncation, hidden
@@ -633,21 +653,44 @@ public final class DebugInspectScreen extends Screen {
         for (DecodeDebug.GroupDebug gd : d.groups()) {
             String subtitle = gd.name().isEmpty() ? "(unnamed)" : gd.name();
             addSection(rows, sections, "Codec Group " + gd.index(), subtitle);
+            WaypointGroup decodedGroup = d.decodedGroups().get(gd.index());
 
             rows.add(new Row.KV("Zone",          gd.zoneId().isEmpty() ? "(none)" : gd.zoneId()));
-            rows.add(new Row.KV("Group flags",   formatByteFull(gd.groupFlagsByte())));
-            rows.add(new Row.Bit(0, d.version() == 2 ? "enabled" : "bodyless",
-                    d.version() == 2 ? gd.enabled() : (gd.groupFlagsByte() & 1) != 0));
-            rows.add(new Row.Bit(1, "gradientAuto", gd.gradientAuto()));
-            rows.add(new Row.Bit(2, "loadSequence", gd.loadSequence()));
-            rows.add(new Row.Bit(3, "customRadius", gd.customRadius()));
-            rows.add(new Row.BitNote("bits 4-5  coord mode = " + gd.coordMode()
-                    + " (ord " + gd.coordModeOrdinal() + ")"));
-            rows.add(new Row.KV("Default radius", String.format(Locale.ROOT, "%.1f", gd.defaultRadius())));
+            if (gd.groupFlagsByte() < 0) {
+                rows.add(new Row.KV("Group flags", "n/a (compact v9 layout)"));
+                rows.add(new Row.KV("Coordinate model", gd.coordMode()));
+            } else {
+                rows.add(new Row.KV("Group flags", formatByteFull(gd.groupFlagsByte())));
+                rows.add(new Row.Bit(0, d.version() == 2 ? "enabled" : "bodyless",
+                        d.version() == 2 ? gd.enabled() : (gd.groupFlagsByte() & 1) != 0));
+                rows.add(new Row.Bit(1, "gradientAuto", gd.gradientAuto()));
+                rows.add(new Row.Bit(2, "loadSequence", gd.loadSequence()));
+                rows.add(new Row.Bit(3, "customRadius", gd.customRadius()));
+                rows.add(new Row.BitNote("bits 4-5  coord mode = " + gd.coordMode()
+                        + " (ord " + gd.coordModeOrdinal() + ")"));
+                if (d.version() >= 5) {
+                    rows.add(new Row.Bit(6, "coordMode bit 2", (gd.groupFlagsByte() & 0x40) != 0));
+                }
+                if (d.version() == 9) {
+                    rows.add(new Row.Bit(7, "persistentMeta", (gd.groupFlagsByte() & 0x80) != 0));
+                }
+            }
+            rows.add(new Row.KV("Gradient mode", decodedGroup.gradientMode().name()));
+            rows.add(new Row.KV("Skip ahead", String.valueOf(decodedGroup.skipAheadEnabled())));
+            rows.add(new Row.KV("Static color", String.format(Locale.ROOT, "#%06X",
+                    decodedGroup.staticColor() & 0xFFFFFF)));
+            rows.add(new Row.KV("Gradient colors", String.format(Locale.ROOT, "#%06X -> #%06X",
+                    decodedGroup.gradientStartColor() & 0xFFFFFF,
+                    decodedGroup.gradientEndColor() & 0xFFFFFF)));
+            rows.add(new Row.KV("Default radius", formatRadius(gd.defaultRadius())));
             rows.add(new Row.KV("Current index",  String.valueOf(gd.currentIndex())));
             rows.add(new Row.KV("Point count",    String.valueOf(gd.pointCount())));
-            rows.add(new Row.KV("Coord bytes",    gd.coordBlockBytes() + " (" + gd.coordMode() + ")"));
-            rows.add(new Row.KV("Body bytes",     String.valueOf(gd.bodyBlockBytes())));
+            if (gd.coordBlockBytes() < 0) {
+                rows.add(new Row.KV("Compact payload", gd.bodyBlockBytes() + " bytes"));
+            } else {
+                rows.add(new Row.KV("Coord bytes", gd.coordBlockBytes() + " (" + gd.coordMode() + ")"));
+                rows.add(new Row.KV("Body bytes", String.valueOf(gd.bodyBlockBytes())));
+            }
 
             if (!gd.waypoints().isEmpty()) {
                 rows.add(new Row.Blank());
@@ -899,8 +942,8 @@ public final class DebugInspectScreen extends Screen {
                 wp.index(), wp.x(), wp.y(), wp.z(), formatByteFull(wp.wpFlagsByte())));
         if (wp.hasName())   sb.append("  name=\"").append(wp.name()).append('"');
         if (wp.hasColor())  sb.append(String.format(Locale.ROOT, "  color=#%06X", wp.color() & 0xFFFFFF));
-        if (wp.hasRadius()) sb.append(String.format(Locale.ROOT, "  r=%.1f", wp.customRadius()));
-        if (wp.extended())  sb.append("  ext=").append(formatByteFull(wp.extendedFlags()));
+        if (wp.hasRadius()) sb.append("  r=").append(formatRadius(wp.customRadius()));
+        if (wp.extended())  sb.append("  ext=").append(formatIntHex(wp.extendedFlags()));
         return sb.toString();
     }
 
@@ -916,6 +959,14 @@ public final class DebugInspectScreen extends Screen {
         // consumed by a blanket zero-fill.
         String bin = String.format(Locale.ROOT, "%8s", Integer.toBinaryString(b)).replace(' ', '0');
         return String.format(Locale.ROOT, "0x%02X  0b%s", b, bin);
+    }
+
+    private static String formatRadius(double radius) {
+        return Double.toString(radius);
+    }
+
+    private static String formatIntHex(int value) {
+        return String.format(Locale.ROOT, "0x%08X", value);
     }
 
     private static String formatBytes(long bytes) {

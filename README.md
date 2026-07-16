@@ -63,6 +63,9 @@ and [Odin](https://github.com/odtheking/Odin/blob/ea0883587f5a352165c98b5467e5cb
   - Minecraft 26.2: 0.147.1+26.2 or newer compatible 26.2 release
 - [Hypixel Mod API](https://modrinth.com/mod/hypixel-mod-api) 1.0.2+
 
+Install and update Waypointer and its dependencies through your launcher or
+Modrinth-managed instance. Waypointer does not modify the instance's mod files.
+
 ## Building
 
 ```powershell
@@ -72,11 +75,11 @@ and [Odin](https://github.com/odtheking/Odin/blob/ea0883587f5a352165c98b5467e5cb
 This builds and tests both targets serially and produces separate runnable jars;
 it does not produce one universal jar:
 
-- `build/libs/waypointer-26.1.2-<mod-version>.jar`
-- `build/libs/waypointer-26.2-<mod-version>.jar`
+- `build/libs/waypointer-<mod-version>-mc26.1.2.jar`
+- `build/libs/waypointer-<mod-version>-mc26.2.jar`
 
 Matching `-sources.jar` files are also generated. The current mod version is
-`1.8.0-beta`.
+`1.8.1`.
 
 ## Testing
 

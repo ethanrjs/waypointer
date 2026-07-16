@@ -12,7 +12,6 @@ import dev.ethan.waypointer.screen.settings.Setting;
 import dev.ethan.waypointer.screen.settings.SettingsCatalog;
 import dev.ethan.waypointer.screen.settings.SettingsPresets;
 import dev.ethan.waypointer.screen.settings.SettingsSearch;
-import dev.ethan.waypointer.update.UpdateChecker;
 import dev.ethan.waypointer.util.MathUtil;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -123,12 +122,6 @@ public final class SettingsScreen extends Screen {
     private long pendingConfirmationUntilMillis;
 
     private Component configCodeStatus;
-    private boolean updateCheckInProgress;
-    private long updateCheckRequestSeq;
-    private UpdateChecker.CheckResult updateCheckResult;
-    private boolean updateDownloadInProgress;
-    private long updateDownloadRequestSeq;
-    private UpdateChecker.DownloadResult updateDownloadResult;
 
     public SettingsScreen(Screen parent, WaypointerConfig config, DungeonConfig dungeonConfig) {
         super(Component.literal("Waypointer Settings"));
@@ -316,7 +309,7 @@ public final class SettingsScreen extends Screen {
         String chip;                // "Tracers >" category chip on search/Recent rows
         String jumpTargetId;        // label click jumps to this setting in its category
         WidgetSlot dot;             // modified-from-default indicator / per-row reset
-        Supplier<Component> status; // live status line (config code / update results)
+        Supplier<Component> status; // live status line (config code / performance results)
 
         Row(Setting setting, String caption, boolean header, boolean expanded, boolean child,
             int y, int height) {
@@ -335,8 +328,8 @@ public final class SettingsScreen extends Screen {
      * A control widget plus its unscrolled Y; each frame it renders at
      * {@code homeY - scrollOffset}. When {@code activeWhen} is non-null it owns
      * the widget's {@code active} state each frame instead of the row's shared
-     * enabled predicate (e.g. the update download button, which grays itself
-     * out until a downloadable update has been found).
+     * enabled predicate for controls whose availability is independent of the
+     * surrounding setting row.
      */
     private record WidgetSlot(AbstractWidget widget, int homeY, Supplier<Boolean> activeWhen) {
         WidgetSlot(AbstractWidget widget, int homeY) {
@@ -401,11 +394,9 @@ public final class SettingsScreen extends Screen {
         contentHeight = y;
     }
 
-    /** Config-code and update action rows carry a live status line beneath them. */
     private int addStatusRowFor(Setting setting, int y) {
         Supplier<Component> status = switch (setting.id()) {
             case SettingsCatalog.ACTION_CONFIG_CODE -> this::configCodeStatusComponent;
-            case SettingsCatalog.ACTION_UPDATES -> this::updateStatusComponent;
             case SettingsCatalog.ACTION_PERF_TEST ->
                     () -> Component.literal(PerfStressTestController.statusLine());
             default -> null;
@@ -581,7 +572,6 @@ public final class SettingsScreen extends Screen {
     private void buildActionControls(Row row, Setting setting, int controlRight, int rowTop) {
         switch (setting.id()) {
             case SettingsCatalog.ACTION_CONFIG_CODE -> buildConfigCodeControls(row, setting, controlRight, rowTop);
-            case SettingsCatalog.ACTION_UPDATES -> buildUpdateControls(row, setting, controlRight, rowTop);
             case SettingsCatalog.ACTION_PRESETS -> buildPresetControls(row, setting, controlRight, rowTop);
             case SettingsCatalog.ACTION_DISABLE_ALL -> buildDialogActionControl(row, setting,
                     controlRight, rowTop, "Disable All", this::confirmDisableAll);
@@ -636,27 +626,6 @@ public final class SettingsScreen extends Screen {
                 .build();
         registerRowWidget(row, copyButton, rowTop + 2);
         registerRowWidget(row, importButton, rowTop + 2);
-    }
-
-    private void buildUpdateControls(Row row, Setting setting, int controlRight, int rowTop) {
-        int refreshW = BTN_H + 8;
-        int downloadW = 132;
-
-        Button download = Button.builder(Component.literal(updateDownloadButtonLabel()),
-                        this::downloadLatestUpdate)
-                .bounds(controlRight - refreshW - GAP - downloadW, 0, downloadW, BTN_H)
-                .tooltip(tooltipOrNull(setting))
-                .build();
-
-        LargeRefreshButton refresh = new LargeRefreshButton(
-                controlRight - refreshW, 0, refreshW, BTN_H, this::startManualUpdateCheck);
-        refresh.setTooltip(Tooltip.create(Component.literal("Check for updates now.")));
-
-        // These manage their own active state each frame; the shared row-enabled
-        // pass would otherwise force the download button active with no update.
-        registerRowWidget(row, download, rowTop + 2, this::canDownloadUpdate);
-        registerRowWidget(row, refresh, rowTop + 2,
-                () -> !updateCheckInProgress && !updateDownloadInProgress);
     }
 
     private void buildPresetControls(Row row, Setting setting, int controlRight, int rowTop) {
@@ -1044,166 +1013,6 @@ public final class SettingsScreen extends Screen {
                 Component.literal(changed + settingWord + " will change from their current states."),
                 Component.literal("Apply preset"), Component.literal("Cancel"));
         MinecraftCompat.setScreen(minecraft, confirmScreen);
-    }
-
-    // --- update checker -------------------------------------------------------------------------
-
-    private String updateDownloadButtonLabel() {
-        if (updateCheckInProgress) return "Checking...";
-        if (updateDownloadInProgress) return "Downloading...";
-        if (updateCheckResult != null
-                && updateCheckResult.updateAvailable()
-                && updateCheckResult.latestVersion() != null) {
-            return "Download v" + updateCheckResult.latestVersion();
-        }
-        return "Download update";
-    }
-
-    private Component updateStatusComponent() {
-        MutableComponent out = Component.literal("Status: ").withStyle(ChatFormatting.GRAY);
-        ChatFormatting color;
-        if (updateDownloadInProgress) {
-            color = ChatFormatting.YELLOW;
-        } else if (updateDownloadResult != null) {
-            color = updateDownloadResult.success() ? ChatFormatting.GREEN : ChatFormatting.RED;
-        } else if (updateCheckInProgress || updateCheckResult == null) {
-            color = ChatFormatting.GRAY;
-        } else if (updateCheckResult.failureMessage() != null
-                && !updateCheckResult.failureMessage().isBlank()) {
-            color = ChatFormatting.RED;
-        } else if (updateCheckResult.updateAvailable()) {
-            color = ChatFormatting.GREEN;
-        } else {
-            color = ChatFormatting.DARK_GREEN;
-        }
-        out.append(Component.literal(updateStatusText()).withStyle(color));
-        return out;
-    }
-
-    private String updateStatusText() {
-        if (updateDownloadInProgress) return "Downloading update...";
-        if (updateDownloadResult != null) {
-            String message = updateDownloadResult.message();
-            return message == null || message.isBlank()
-                    ? "Could not download update. Try again."
-                    : message;
-        }
-        if (updateCheckInProgress) return "Checking GitHub releases...";
-        if (updateCheckResult == null) return "Not checked yet.";
-        if (updateCheckResult.failureMessage() != null && !updateCheckResult.failureMessage().isBlank()) {
-            return updateCheckResult.failureMessage() + " Try again.";
-        }
-        if (updateCheckResult.updateAvailable()) {
-            if (!UpdateChecker.isJarDownloadUri(updateCheckResult.downloadUri())) {
-                return updateCheckResult.latestVersion() == null
-                        ? "Update available, but no jar asset was found."
-                        : "Update available v" + updateCheckResult.latestVersion()
-                                + ", but no jar asset was found.";
-            }
-            if (!UpdateChecker.hasSha256Digest(updateCheckResult.downloadSha256())) {
-                return updateCheckResult.latestVersion() == null
-                        ? "Update available, but the jar has no SHA-256 digest."
-                        : "Update available v" + updateCheckResult.latestVersion()
-                                + ", but the jar has no SHA-256 digest.";
-            }
-            return updateCheckResult.latestVersion() == null
-                    ? "Update available"
-                    : "Update available v" + updateCheckResult.latestVersion();
-        }
-        String local = updateCheckResult.localVersion() == null ? UpdateChecker.currentModVersion()
-                : updateCheckResult.localVersion();
-        return "Up to date v" + local;
-    }
-
-    private boolean canDownloadUpdate() {
-        return !updateCheckInProgress
-                && !updateDownloadInProgress
-                && updateCheckResult != null
-                && updateCheckResult.updateAvailable()
-                && UpdateChecker.isJarDownloadUri(updateCheckResult.downloadUri())
-                && UpdateChecker.hasSha256Digest(updateCheckResult.downloadSha256());
-    }
-
-    private void startManualUpdateCheck(Button b) {
-        if (updateCheckInProgress || updateDownloadInProgress) return;
-        long requestId = ++updateCheckRequestSeq;
-        updateCheckInProgress = true;
-        updateCheckResult = null;
-        updateDownloadResult = null;
-        rebuildPending = true;
-
-        UpdateChecker.checkLatestAsync(UpdateChecker.currentModVersion()).whenComplete(
-                (result, error) -> {
-                    UpdateChecker.CheckResult safeResult = result;
-                    if (error != null) {
-                        safeResult = new UpdateChecker.CheckResult(UpdateChecker.currentModVersion(),
-                                null, false, null, null, null, "Could not check GitHub releases.");
-                    }
-                    UpdateChecker.CheckResult finalResult = safeResult;
-                    Minecraft.getInstance().execute(
-                            () -> handleManualUpdateCheckResult(requestId, finalResult));
-                });
-    }
-
-    private void handleManualUpdateCheckResult(long requestId, UpdateChecker.CheckResult result) {
-        if (requestId != updateCheckRequestSeq) return;
-        updateCheckInProgress = false;
-        updateCheckResult = result == null
-                ? new UpdateChecker.CheckResult(UpdateChecker.currentModVersion(),
-                        null, false, null, null, null, "Could not check GitHub releases.")
-                : result;
-        if (minecraft != null && MinecraftCompat.screen(minecraft) == this) {
-            rebuildPending = true;
-        }
-    }
-
-    private void downloadLatestUpdate(Button b) {
-        if (!canDownloadUpdate()) return;
-        UpdateChecker.CheckResult result = updateCheckResult;
-        String version = result.latestVersion() == null ? "the latest release" : "v" + result.latestVersion();
-        Component title = Component.literal("Download Waypointer update?");
-        Component message = Component.literal(
-                "Download " + version + " to your Minecraft mods folder?\n"
-              + "Waypointer will verify the jar before installing it. Restart Minecraft after it finishes.");
-        ConfirmScreen confirmScreen = new ConfirmScreen(confirmed -> {
-            MinecraftCompat.setScreen(minecraft, this);
-            if (confirmed) {
-                beginLatestUpdateDownload(result);
-            }
-        }, title, message, Component.literal("Download update"), Component.literal("Cancel"));
-        MinecraftCompat.setScreen(minecraft, confirmScreen);
-    }
-
-    private void beginLatestUpdateDownload(UpdateChecker.CheckResult result) {
-        if (result == null || !canDownloadUpdate()) return;
-        long requestId = ++updateDownloadRequestSeq;
-        updateDownloadInProgress = true;
-        updateDownloadResult = null;
-        rebuildPending = true;
-
-        UpdateChecker.downloadLatestJarAsync(result).whenComplete(
-                (downloadResult, error) -> {
-                    UpdateChecker.DownloadResult safeResult = downloadResult;
-                    if (error != null) {
-                        safeResult = new UpdateChecker.DownloadResult(false, null, null,
-                                "Could not download update. Try again.");
-                    }
-                    UpdateChecker.DownloadResult finalResult = safeResult;
-                    Minecraft.getInstance().execute(
-                            () -> handleUpdateDownloadResult(requestId, finalResult));
-                });
-    }
-
-    private void handleUpdateDownloadResult(long requestId, UpdateChecker.DownloadResult result) {
-        if (requestId != updateDownloadRequestSeq) return;
-        updateDownloadInProgress = false;
-        updateDownloadResult = result == null
-                ? new UpdateChecker.DownloadResult(false, null, null,
-                        "Could not download update. Try again.")
-                : result;
-        if (minecraft != null && MinecraftCompat.screen(minecraft) == this) {
-            rebuildPending = true;
-        }
     }
 
     // --- render ------------------------------------------------------------------------------
@@ -1643,36 +1452,6 @@ public final class SettingsScreen extends Screen {
             return true;
         }
         return false;
-    }
-
-    /** Oversized ↻ glyph button for the manual update check. */
-    private static final class LargeRefreshButton extends Button {
-        private static final String REFRESH_ICON = "↻";
-        private static final float ICON_SCALE = 2.35f;
-
-        private LargeRefreshButton(int x, int y, int width, int height, OnPress onPress) {
-            super(x, y, width, height,
-                    Component.literal("Check for updates now"),
-                    onPress,
-                    DEFAULT_NARRATION);
-        }
-
-        @Override
-        protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
-            var font = Minecraft.getInstance().font;
-            int iconW = font.width(REFRESH_ICON);
-            float scaledW = iconW * ICON_SCALE;
-            float scaledH = font.lineHeight * ICON_SCALE;
-            float drawX = getX() + (getWidth() - scaledW) / 2.0f;
-            float drawY = getY() + (getHeight() - scaledH) / 2.0f + 0.5f;
-            int color = active ? TEXT : TEXT_MUTED;
-
-            g.pose().pushMatrix();
-            g.pose().translate(drawX, drawY);
-            g.pose().scale(ICON_SCALE, ICON_SCALE);
-            g.text(font, REFRESH_ICON, 0, 0, color, false);
-            g.pose().popMatrix();
-        }
     }
 
     /** Modified-from-default indicator that doubles as a one-click reset. */

@@ -57,7 +57,6 @@ public final class SettingsCatalog {
         }
     }
 
-    public static final String ACTION_UPDATES = "action.updates";
     public static final String ACTION_CONFIG_CODE = "action.configCode";
     public static final String ACTION_PRESETS = "action.presets";
     public static final String ACTION_DISABLE_ALL = "action.disableAll";
@@ -524,14 +523,6 @@ public final class SettingsCatalog {
     private static Category system() {
         return Category.of("system", "System",
                 Group.plain(null,
-                        Setting.bool("checkForUpdates", MAIN, "Check for updates on startup",
-                                null,
-                                (c, d) -> c.checkForUpdates(),
-                                (c, d, v) -> c.setCheckForUpdates((Boolean) v)),
-                        Setting.action(ACTION_UPDATES, "Latest release",
-                                "Download asks for confirmation, then saves a verified release jar to your Minecraft "
-                                        + "mods folder.\nRestart Minecraft after it finishes. The refresh button checks GitHub now.")
-                                .aliases("update", "download", "version"),
                         Setting.bool("irisShaderHudFallback", MAIN, "Experimental Iris HUD fallback",
                                 "Draw waypoints with a shader-safe fallback renderer while an Iris shader pack "
                                         + "is active. Try this if waypoints disappear when shaders are on.",

@@ -39,28 +39,33 @@ import java.util.Set;
 
 import static dev.ethan.waypointer.screen.GuiTokens.*;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
 
 /**
  * Top-level editor screen.
  *
  * Layout (clinical / utility aesthetic):
  *   +------------------------------------------+
- *   | Waypointer                   Hub -- 3 gp |
+ *   | [Settings]    Waypointer (i)  [> Hub   ] |
  *   |                                          |
- *   | Zones          | group list ...           |
- *   | > Hub        3|                          |
- *   |   Garden     1|                          |
+ *   |        | search...        [Hide All] |   |
+ *   |        | route list ...               |  |
+ *   |        | route list ...               |  |
  *   |                                          |
- *   | [New Group][Edit][Delete]...      [Done] |
+ *   | [Import/Export][New Route][Delete][Done] |
  *   +------------------------------------------+
  *
- * The sidebar keeps the current and populated zones visible. Empty zones the
- * player is not currently in stay behind an inline Show More row, then append
- * alphabetically and end with Show Less when expanded.
+ * The old zone sidebar is gone: an island selector button in the top-right
+ * (defaulting to the island the player is standing on) opens a dropdown with
+ * Temporary and Dungeon Rooms first, then islands -- current island on top,
+ * populated islands next, empty islands dimmed at the bottom. The reclaimed
+ * width goes to the route list, which lives in a centered, width-capped
+ * column so rows stay scannable on wide screens.
  *
- * Footer uses {@link GuiTokens#layoutFooter} -- primary actions on the left,
- * Done pinned right. Compact, label-safe widths keep the supported GUI-scale
- * layouts on one row; the generic helper still wraps below that safety floor.
+ * Editing is double-click on a row (no Edit button). Import and Export share
+ * one footer button that opens a two-item menu. Footer uses
+ * {@link GuiTokens#layoutFooter} -- primary actions on the left, Done pinned
+ * right, both aligned to the content column.
  *
  * Hand-rolled list (rather than ObjectSelectionList) so we can render custom
  * row content. The whole list fits in a few hundred lines and handles clicks
@@ -82,8 +87,6 @@ public final class WaypointerScreen extends Screen {
     private static final int DUNGEON_ROUTE_CHILD_INDENT = 18;
     private static final int MOUSE_BUTTON_LEFT = 0;
     private static final int MOUSE_BUTTON_RIGHT = 1;
-    private static String lastSelectedZoneId;
-    private static String lastCurrentZoneIdWhenRemembered;
     private static final Set<String> expandedDungeonRoomZoneIds = new HashSet<>();
 
     private final ActiveGroupManager manager;
@@ -91,7 +94,6 @@ public final class WaypointerScreen extends Screen {
     private String selectedZoneId;
     private String selectedDungeonRoomZoneId;
     private int scrollOffset;
-    private int sidebarScrollOffset;
     private String selectedGroupId;
     private final LinkedHashSet<String> selectedGroupIds = new LinkedHashSet<>();
     private String selectionAnchorGroupId;
@@ -128,38 +130,60 @@ public final class WaypointerScreen extends Screen {
             "Remove the selected route permanently.\n"
           + "Double click to confirm.";
     private static final int SEARCH_CLEAR_BTN_W = 52;
-    private static final String SHOW_MORE_ZONE_ID = "__show_more_zones__";
-    private static final String SHOW_LESS_ZONE_ID = "__show_less_zones__";
-    private static final int ZONE_DISCLOSURE_ACCENT = 0xFFFFC247;
     private static final long MAIN_NOTICE_MS = 2500L;
     // Sized for the widest transient state label ("Confirm?") so the button doesn't
     // visibly grow or shrink when arming/disarming. Leave some horizontal slack so
     // vanilla's "hover" narration arrow has room without clipping the text.
     private static final int NEW_ROUTE_BTN_W = 72;
-    private static final int EDIT_BTN_W = 48;
     private static final int HIDE_ALL_ROUTES_BTN_W = 64;
-    private static final int IMPORT_BTN_W = 56;
-    private static final int EXPORT_BTN_W = 56;
+    private static final int IMPORT_EXPORT_BTN_W = 96;
     private static final int DELETE_BTN_W = 56;
     private static final int DONE_BTN_W = 56;
     private static final int DOWNLOAD_ROUTES_BTN_W = 112;
     private static final int SETTINGS_BTN_W = 76;
+    private static final int ISLAND_SELECTOR_W = 150;
+    private static final int ISLAND_DROPDOWN_W = 210;
+    /** Header widgets sit slightly above the title baseline, mirroring the old settings button. */
+    private static final int HEADER_BTN_Y = PAD_OUTER - 5;
+    private static final String IMPORT_EXPORT_LABEL = "Import/Export";
+    private static final String MENU_IMPORT_LABEL = "Import from clipboard";
+    private static final String MENU_EXPORT_LABEL = "Export...";
+    private static final int INFO_BUTTON_SIZE = 12;
+    private static final String ROUTE_LIST_INFO_TITLE = "Route list controls";
+    private static final String[] ROUTE_LIST_INFO_LABELS = {
+            "Double-click",
+            "Shown/Hidden chip",
+            "Ctrl / Shift-click",
+            "Delete key",
+            "Right-click",
+    };
+    private static final String[] ROUTE_LIST_INFO_DESCRIPTIONS = {
+            "open a route in the editor",
+            "toggle a route in the world",
+            "select multiple routes",
+            "delete the selection (confirm)",
+            "hide all shown routes here",
+    };
     /**
      * Cap on the route-list content width. Rows anchor text left and the
      * Shown/Hidden chip right; on wide screens an uncapped row separates the
      * two by over a thousand pixels and the chip stops reading as part of its
-     * row.
+     * row. With the sidebar gone the whole content column is centered at this
+     * cap instead of hugging the left edge.
      */
     private static final int MAIN_CONTENT_MAX_W = 660;
-    private Button editBtn;
-    private Button hideAllRoutesBtn;
+    private OverlayButton hideAllRoutesBtn;
     private Button deleteBtn;
+    private Button importExportBtn;
+    private Button islandSelectorBtn;
     private EditBox searchBox;
     private OverlayButton clearSearchButton;
     private OverlayButton downloadRoutesButton;
     private Button settingsButton;
     private String searchQuery = "";
-    private boolean zoneListExpanded;
+    private boolean islandDropdownOpen;
+    private int dropdownScrollOffset;
+    private boolean importExportMenuOpen;
     private long hideAllArmedUntil = 0L;
     private final LinkedHashSet<String> hideAllArmedGroupIds = new LinkedHashSet<>();
     private long deleteArmedUntil = 0L;
@@ -168,29 +192,25 @@ public final class WaypointerScreen extends Screen {
     private long mainNoticeUntil = 0L;
 
     private List<GuiTokens.ButtonSpec> footerActions() {
-        // Constructive actions first, Delete isolated at the end of the
-        // cluster; Settings lives in the header (it navigates, it doesn't act
-        // on route data).
+        // Import/Export leads (matching the reference layout), New Route next,
+        // Delete isolated at the end of the cluster. Edit is gone -- rows open
+        // on double-click. Hide All lives in the list toolbar (it acts on the
+        // visible zone, not the selection); Settings lives in the header.
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("New Route", NEW_ROUTE_BTN_W, this::createGroup));
-        left.add(new GuiTokens.ButtonSpec("Edit", EDIT_BTN_W, this::editSelected));
-        left.add(new GuiTokens.ButtonSpec(HIDE_ALL_ROUTES_LABEL, HIDE_ALL_ROUTES_BTN_W,
-                this::onHideAllRoutesClicked,
-                Tooltip.create(Component.literal(HIDE_ALL_ROUTES_TOOLTIP_DEFAULT))));
-        left.add(new GuiTokens.ButtonSpec("Import", IMPORT_BTN_W, this::importFromClipboard));
-        left.add(new GuiTokens.ButtonSpec("Export", EXPORT_BTN_W, this::exportZone,
+        left.add(new GuiTokens.ButtonSpec(IMPORT_EXPORT_LABEL, IMPORT_EXPORT_BTN_W,
+                this::toggleImportExportMenu,
                 Tooltip.create(Component.literal(
-                        "Export the selected route.\n"
-                      + "If none is selected, export every visible route."))));
+                        "Import routes from your clipboard, or export routes\n"
+                      + "as a share code."))));
+        left.add(new GuiTokens.ButtonSpec("New Route", NEW_ROUTE_BTN_W, this::createGroup));
         left.add(new GuiTokens.ButtonSpec(DELETE_LABEL, DELETE_BTN_W, this::onDeleteClicked));
         return left;
     }
 
     static int footerRequiredWidth() {
         return PAD_OUTER
-                + NEW_ROUTE_BTN_W + EDIT_BTN_W + HIDE_ALL_ROUTES_BTN_W
-                + IMPORT_BTN_W + EXPORT_BTN_W + DELETE_BTN_W
-                + GAP * 5 + GAP_SECTION + DONE_BTN_W + PAD_OUTER;
+                + IMPORT_EXPORT_BTN_W + NEW_ROUTE_BTN_W + DELETE_BTN_W
+                + GAP * 2 + GAP_SECTION + DONE_BTN_W + PAD_OUTER;
     }
 
     public WaypointerScreen(ActiveGroupManager manager, WaypointerConfig config) {
@@ -216,7 +236,7 @@ public final class WaypointerScreen extends Screen {
             // route row after it knows the list ordering for the zone.
             screen.selectedZoneId = focus.temp()
                     ? TEMPORARY_ZONE_ID
-                    : sidebarSelectionForZoneId(focus.zoneId());
+                    : selectorEntryForZoneId(focus.zoneId());
             if (!focus.temp() && isDungeonRoomZone(focus.zoneId())) {
                 screen.pendingFocusRoomZoneId = focus.zoneId();
                 screen.selectedDungeonRoomZoneId = focus.zoneId();
@@ -244,36 +264,38 @@ public final class WaypointerScreen extends Screen {
         hideAllArmedGroupIds.clear();
         deleteArmedUntil = 0L;
         deleteArmedGroupIds.clear();
-        editBtn = null;
         hideAllRoutesBtn = null;
         deleteBtn = null;
+        importExportBtn = null;
+        islandSelectorBtn = null;
         searchBox = null;
         clearSearchButton = null;
         downloadRoutesButton = null;
         settingsButton = null;
+        islandDropdownOpen = false;
+        importExportMenuOpen = false;
 
         // Fixed width so the label can toggle between "Delete" and "Confirm?" without
         // the footer re-flowing or the text sliding past the bevel.
+        Layout layout = layout();
         List<GuiTokens.ButtonSpec> left = footerActions();
         GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec("Done", DONE_BTN_W, this::onClose);
 
         // We need references to stateful footer buttons so we can refresh labels and
         // enabled state after selection or route visibility changes. Intercept every
-        // built button and still register all of them exactly once.
+        // built button and still register all of them exactly once. The footer is
+        // aligned to the content column so list and actions read as one region.
         GuiTokens.layoutFooter(width, footerY, left, done,
                 b -> {
-            if ("Edit".contentEquals(b.getMessage().getString())) {
-                editBtn = b;
-            }
-            if (HIDE_ALL_ROUTES_LABEL.contentEquals(b.getMessage().getString())) {
-                hideAllRoutesBtn = b;
+            if (IMPORT_EXPORT_LABEL.contentEquals(b.getMessage().getString())) {
+                importExportBtn = b;
             }
             if (DELETE_LABEL.contentEquals(b.getMessage().getString())) {
                 deleteBtn = b;
                 deleteBtn.setTooltip(Tooltip.create(Component.literal(DELETE_TOOLTIP_DEFAULT)));
             }
             addRenderableWidget(b);
-        }, font);
+        }, font, layout.mainLeft(), width - layout.mainRight());
 
         searchBox = new EditBox(font, 0, 0, 100, BTN_H, Component.literal("Search routes"));
         searchBox.setMaxLength(80);
@@ -290,6 +312,15 @@ public final class WaypointerScreen extends Screen {
         syncSearchBoxGeometry();
         addRenderableWidget(clearSearchButton);
 
+        // Zone-scoped, so it lives with the list rather than in the footer: it
+        // hides every shown route in whichever zone the selector points at.
+        OverlayButton hideAll = new OverlayButton(0, 0, HIDE_ALL_ROUTES_BTN_W, BTN_H,
+                Component.literal(HIDE_ALL_ROUTES_LABEL), b -> onHideAllRoutesClicked());
+        hideAll.setTooltip(Tooltip.create(Component.literal(HIDE_ALL_ROUTES_TOOLTIP_DEFAULT)));
+        hideAllRoutesBtn = hideAll;
+        syncSearchBoxGeometry();
+        addRenderableWidget(hideAll);
+
         downloadRoutesButton = new OverlayButton(0, 0, DOWNLOAD_ROUTES_BTN_W, BTN_H,
                 Component.literal("Download routes"), b -> startRouteDownload());
         downloadRoutesButton.setTooltip(Tooltip.create(Component.literal(
@@ -299,11 +330,19 @@ public final class WaypointerScreen extends Screen {
         addRenderableWidget(downloadRoutesButton);
 
         settingsButton = Button.builder(Component.literal("Settings"), b -> openSettings())
-                .bounds(width - PAD_OUTER - SETTINGS_BTN_W, PAD_OUTER - 5,
-                        SETTINGS_BTN_W, BTN_H)
+                .bounds(PAD_OUTER, HEADER_BTN_Y, SETTINGS_BTN_W, BTN_H)
                 .tooltip(Tooltip.create(Component.literal("Open Waypointer settings.")))
                 .build();
         addRenderableWidget(settingsButton);
+
+        islandSelectorBtn = Button.builder(islandSelectorLabel(), b -> toggleIslandDropdown())
+                .bounds(width - PAD_OUTER - ISLAND_SELECTOR_W, HEADER_BTN_Y,
+                        ISLAND_SELECTOR_W, BTN_H)
+                .tooltip(Tooltip.create(Component.literal(
+                        "Choose which island's routes to show.\n"
+                      + "Opens on the island you're currently on.")))
+                .build();
+        addRenderableWidget(islandSelectorBtn);
 
         // Resolve pending focus requests from open/openFocused(). We do this here
         // rather than in the constructor because the zone's group list can
@@ -321,16 +360,14 @@ public final class WaypointerScreen extends Screen {
         refreshActionButtons();
     }
 
+    /**
+     * The selector always opens on the island the player is standing on --
+     * that's the zone whose routes they most likely came to manage. No
+     * remembered selection: the dropdown makes switching cheap.
+     */
     private static String initialSelectedZoneId(ActiveGroupManager manager) {
         List<String> ids = zoneIdsForManager(manager);
-        String currentZoneId = currentZoneId(manager);
-        String fallback = sidebarSelectionForZoneId(currentZoneId);
-        if (rememberedCurrentZoneChanged(currentZoneId) && ids.contains(fallback)) {
-            return fallback;
-        }
-        if (lastSelectedZoneId != null && ids.contains(lastSelectedZoneId)) {
-            return lastSelectedZoneId;
-        }
+        String fallback = selectorEntryForZoneId(currentZoneId(manager));
         if (ids.contains(fallback)) {
             return fallback;
         }
@@ -340,12 +377,6 @@ public final class WaypointerScreen extends Screen {
     private static String currentZoneId(ActiveGroupManager manager) {
         Zone current = manager.currentZone();
         return current == null ? Zone.UNKNOWN.id() : current.id();
-    }
-
-    private static boolean rememberedCurrentZoneChanged(String currentZoneId) {
-        String normalized = currentZoneId == null ? Zone.UNKNOWN.id() : currentZoneId;
-        return lastCurrentZoneIdWhenRemembered != null
-                && !lastCurrentZoneIdWhenRemembered.equals(normalized);
     }
 
     private void selectGroupById(String id) {
@@ -425,24 +456,36 @@ public final class WaypointerScreen extends Screen {
         if (searchBox == null) return;
         Layout layout = layout();
         int left = layout.mainLeft() + GAP;
+        int toolbarY = layout.top() + 4;
         searchBox.setX(left);
-        searchBox.setY(layout.top() + 4);
+        searchBox.setY(toolbarY);
         int availableWidth = layout.mainRight() - layout.mainLeft() - GAP * 2;
         int clearWidth = clearSearchButton == null ? 0 : SEARCH_CLEAR_BTN_W + GAP_TIGHT;
         boolean showDownloadButton = isDungeonRoomsZone(selectedZoneId)
                 && WaypointerClient.dungeonRouteDownloader() != null;
+        int hideAllWidth = hideAllRoutesBtn == null ? 0 : HIDE_ALL_ROUTES_BTN_W + GAP;
         int downloadWidth = showDownloadButton ? DOWNLOAD_ROUTES_BTN_W + GAP : 0;
-        int searchWidth = Math.max(80, Math.min(180, availableWidth - clearWidth - downloadWidth));
+        int searchWidth = Math.max(80,
+                Math.min(180, availableWidth - clearWidth - downloadWidth - hideAllWidth));
         searchBox.setWidth(searchWidth);
         if (clearSearchButton != null) {
             clearSearchButton.setX(left + searchWidth + GAP_TIGHT);
-            clearSearchButton.setY(layout.top() + 4);
+            clearSearchButton.setY(toolbarY);
             clearSearchButton.setWidth(SEARCH_CLEAR_BTN_W);
+        }
+        // Right cluster: Hide All pinned at the edge (always present), the
+        // contextual Download routes button slots in to its left.
+        int rightEdge = layout.mainRight() - GAP;
+        if (hideAllRoutesBtn != null) {
+            hideAllRoutesBtn.setX(rightEdge - HIDE_ALL_ROUTES_BTN_W);
+            hideAllRoutesBtn.setY(toolbarY);
+            hideAllRoutesBtn.setWidth(HIDE_ALL_ROUTES_BTN_W);
+            rightEdge -= HIDE_ALL_ROUTES_BTN_W + GAP;
         }
         if (downloadRoutesButton != null) {
             downloadRoutesButton.visible = showDownloadButton;
-            downloadRoutesButton.setX(layout.mainRight() - GAP - DOWNLOAD_ROUTES_BTN_W);
-            downloadRoutesButton.setY(layout.top() + 4);
+            downloadRoutesButton.setX(rightEdge - DOWNLOAD_ROUTES_BTN_W);
+            downloadRoutesButton.setY(toolbarY);
             downloadRoutesButton.setWidth(DOWNLOAD_ROUTES_BTN_W);
         }
     }
@@ -464,51 +507,38 @@ public final class WaypointerScreen extends Screen {
                 new SettingsScreen(this, config, WaypointerClient.dungeonConfig()));
     }
 
-    private List<String> zoneIds() {
-        return zoneIdsForManager(manager);
+    private List<String> islandDropdownIds() {
+        return islandDropdownIdsForManager(manager);
     }
 
-    private List<String> sidebarRows() {
-        return sidebarRowsForManager(manager, zoneListExpanded);
-    }
-
-    static List<String> sidebarZoneIdsForManager(ActiveGroupManager manager, boolean expanded) {
+    /**
+     * Ordering for the island selector dropdown: the two special sections
+     * first (Temporary, then Dungeon Rooms when it exists), the island the
+     * player is standing on next, then every island with routes, and finally
+     * empty islands alphabetically. Empty islands render dimmed, so the
+     * populated ones carry the visual hierarchy without a Show More fold.
+     */
+    static List<String> islandDropdownIdsForManager(ActiveGroupManager manager) {
         List<String> all = zoneIdsForManager(manager);
-        String currentSelection = sidebarSelectionForZoneId(currentZoneId(manager));
-        List<String> prioritized = new ArrayList<>();
+        String currentSelection = selectorEntryForZoneId(currentZoneId(manager));
+        List<String> out = new ArrayList<>();
         List<String> emptyInactive = new ArrayList<>();
 
-        for (String id : all) {
-            if (id.equals(currentSelection)) prioritized.add(id);
+        out.add(TEMPORARY_ZONE_ID);
+        if (all.contains(DUNGEON_ROOMS_ZONE_ID)) out.add(DUNGEON_ROOMS_ZONE_ID);
+        if (all.contains(currentSelection) && !out.contains(currentSelection)) {
+            out.add(currentSelection);
         }
         for (String id : all) {
-            if (id.equals(currentSelection)) continue;
-            if (zoneHasRoutes(manager, id)) prioritized.add(id);
+            if (out.contains(id)) continue;
+            if (zoneHasRoutes(manager, id)) out.add(id);
             else emptyInactive.add(id);
         }
         emptyInactive.sort(Comparator
                 .comparing((String id) -> displayZoneLabel(id).toLowerCase(Locale.ROOT))
                 .thenComparing(id -> id));
-        if (expanded) prioritized.addAll(emptyInactive);
-        return prioritized;
-    }
-
-    static List<String> sidebarRowsForManager(ActiveGroupManager manager, boolean expanded) {
-        List<String> collapsed = sidebarZoneIdsForManager(manager, false);
-        List<String> all = sidebarZoneIdsForManager(manager, true);
-        if (all.size() == collapsed.size()) return collapsed;
-
-        List<String> rows = new ArrayList<>(expanded ? all : collapsed);
-        rows.add(expanded ? SHOW_LESS_ZONE_ID : SHOW_MORE_ZONE_ID);
-        return rows;
-    }
-
-    static boolean isZoneDisclosureRow(String id) {
-        return SHOW_MORE_ZONE_ID.equals(id) || SHOW_LESS_ZONE_ID.equals(id);
-    }
-
-    static String zoneDisclosureLabel(String id) {
-        return SHOW_MORE_ZONE_ID.equals(id) ? "Show More..." : "Show Less";
+        out.addAll(emptyInactive);
+        return out;
     }
 
     private static boolean zoneHasRoutes(ActiveGroupManager manager, String zoneId) {
@@ -806,7 +836,7 @@ public final class WaypointerScreen extends Screen {
         return isDungeonRoomZone(zoneId) ? zoneId : null;
     }
 
-    static String sidebarSelectionForZoneId(String zoneId) {
+    static String selectorEntryForZoneId(String zoneId) {
         if (zoneId != null && isDungeonRoomZone(zoneId)) {
             return DUNGEON_ROOMS_ZONE_ID;
         }
@@ -847,36 +877,57 @@ public final class WaypointerScreen extends Screen {
             }
         }
 
-        // Header
-        String headerTitle = "Waypointer";
-        g.text(font, headerTitle, PAD_OUTER, PAD_OUTER, TEXT, false);
-        String status;
-        if (isTemporaryZone(selectedZoneId)) {
-            int waypointCount = temporaryWaypointCount();
-            status = TEMPORARY_ZONE_LABEL + "  .  " + waypointCount
-                    + " waypoint" + (waypointCount == 1 ? "" : "s");
-        } else {
-            int routeCount = visibleGroups().size();
-            status = displayZoneLabel(selectedZoneId) + "  ."
-                    + "  " + routeCount + " route" + (routeCount == 1 ? "" : "s");
+        // Header: Settings (widget, top-left), centered title with the info
+        // button beside it, island selector (widget, top-right). The selector
+        // label re-syncs every frame so zone changes from any path (import,
+        // focus, New Route) are always reflected.
+        if (islandSelectorBtn != null) {
+            islandSelectorBtn.setMessage(islandSelectorLabel());
         }
-        int statusRight = settingsButton != null
-                ? settingsButton.getX() - GAP
-                : width - PAD_OUTER;
-        int statusLeft = PAD_OUTER + font.width(headerTitle) + GAP_SECTION;
-        String clippedStatus = font.plainSubstrByWidth(status,
-                Math.max(0, statusRight - statusLeft));
-        g.text(font, clippedStatus, statusRight - font.width(clippedStatus),
-                PAD_OUTER, TEXT_DIM, false);
+        // The title centers between the header buttons but never under them:
+        // at tiny GUI widths it clips (and drops the info button) rather than
+        // colliding with Settings or the island selector.
+        String headerTitle = "Waypointer";
+        int titleLeftLimit = PAD_OUTER + SETTINGS_BTN_W + GAP;
+        int titleRightLimit = width - PAD_OUTER - ISLAND_SELECTOR_W - GAP;
+        int infoSpan = GAP_TIGHT + 1 + INFO_BUTTON_SIZE;
+        String clippedTitle = font.plainSubstrByWidth(headerTitle,
+                Math.max(0, titleRightLimit - titleLeftLimit - infoSpan));
+        int titleW = font.width(clippedTitle);
+        int titleX = MathUtil.clamp((width - titleW) / 2,
+                titleLeftLimit, Math.max(titleLeftLimit, titleRightLimit - titleW - infoSpan));
+        boolean infoHovered = false;
+        if (!clippedTitle.isEmpty()) {
+            g.text(font, clippedTitle, titleX, PAD_OUTER, TEXT, false);
+            int infoX = headerInfoButtonX(titleX, titleW);
+            int infoY = headerInfoButtonY();
+            infoHovered = isInside(mouseX, mouseY, infoX, infoY,
+                    INFO_BUTTON_SIZE, INFO_BUTTON_SIZE);
+            renderHeaderInfoButton(g, infoX, infoY, infoHovered);
+        }
 
         // Region geometry
         Layout layout = layout();
 
-        renderSidebar(g, layout.sidebarLeft(), layout.top(), layout.sidebarRight(),
-                layout.bottom(), mouseX, mouseY);
         renderMain(g, layout.mainLeft(), layout.top(), layout.mainRight(),
                 layout.bottom(), mouseX, mouseY);
         renderSearchBox(g, mouseX, mouseY, partial);
+
+        // Overlays paint above everything drawn so far.
+        if (islandDropdownOpen) {
+            renderIslandDropdown(g, mouseX, mouseY);
+        }
+        if (importExportMenuOpen) {
+            renderImportExportMenu(g, mouseX, mouseY);
+        }
+        if (infoHovered) {
+            renderRouteListInfoTooltip(g, mouseX, mouseY);
+        }
+    }
+
+    private Component islandSelectorLabel() {
+        return Component.literal((islandDropdownOpen ? "v " : "> ")
+                + displayZoneLabel(selectedZoneId));
     }
 
     private void renderSearchBox(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
@@ -887,25 +938,31 @@ public final class WaypointerScreen extends Screen {
         if (clearSearchButton != null) {
             clearSearchButton.extractOverlay(g, mouseX, mouseY, partial);
         }
+        if (hideAllRoutesBtn != null) {
+            hideAllRoutesBtn.extractOverlay(g, mouseX, mouseY, partial);
+        }
         if (downloadRoutesButton != null && downloadRoutesButton.visible) {
             downloadRoutesButton.extractOverlay(g, mouseX, mouseY, partial);
         }
     }
 
     private Layout layout() {
+        // The list is a centered, width-capped column: at common GUI scales the
+        // cap exceeds the screen and the column is simply full width, while on
+        // wide screens rows stay a scannable unit instead of smearing across
+        // the monitor. The footer aligns to the same column edges.
+        int colW = Math.min(width - PAD_OUTER * 2, MAIN_CONTENT_MAX_W);
+        int mainLeft = Math.max(PAD_OUTER, (width - colW) / 2);
+        int mainRight = mainLeft + colW;
         GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec("Done", DONE_BTN_W, this::onClose);
-        int footerSpace = GuiTokens.footerHeight(width, footerActions(), done, font);
-        int top = PAD_OUTER + font.lineHeight + GAP;
+        int footerSpace = GuiTokens.footerHeight(width, footerActions(), done, font,
+                mainLeft, width - mainRight);
+        int top = HEADER_BTN_Y + BTN_H + GAP;
         int bottom = height - footerSpace - GAP_SECTION;
-        int sidebarLeft = PAD_OUTER;
-        int sidebarRight = sidebarLeft + SIDEBAR_W;
-        int mainLeft = sidebarRight + GAP;
-        int mainRight = width - PAD_OUTER;
-        return new Layout(top, bottom, sidebarLeft, sidebarRight, mainLeft, mainRight);
+        return new Layout(top, bottom, mainLeft, mainRight);
     }
 
-    private record Layout(int top, int bottom, int sidebarLeft, int sidebarRight,
-                          int mainLeft, int mainRight) {}
+    private record Layout(int top, int bottom, int mainLeft, int mainRight) {}
 
     private static final class OverlayButton extends Button {
         private OverlayButton(int x, int y, int width, int height,
@@ -959,83 +1016,83 @@ public final class WaypointerScreen extends Screen {
         }
     }
 
-    private void renderSidebar(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
-        g.fill(x1, y1, x2, y2, SURFACE);
-        g.fill(x2, y1, x2 + 1, y2, BORDER);
+    // --- island selector dropdown --------------------------------------------------------------
 
-        g.text(font, "Zones", x1 + GAP, y1 + 10, TEXT, false);
+    /** Near-opaque fill for floating overlays (dropdown, menu, info tooltip). */
+    private static final int OVERLAY_SURFACE = 0xF0101216;
 
-        int rowsTop = sidebarRowsTop(y1);
-        int rowsBottom = y2 - GAP_TIGHT;
-        if (rowsBottom <= rowsTop) return;
+    private record DropdownGeometry(int x1, int y1, int x2, int y2, int rowsTop, int rowsBottom) {}
 
-        List<String> ids = sidebarRows();
+    private DropdownGeometry islandDropdownGeometry(int rowCount) {
+        int x2 = width - PAD_OUTER;
+        int x1 = x2 - ISLAND_DROPDOWN_W;
+        int y1 = HEADER_BTN_Y + BTN_H + GAP_TIGHT;
+        int maxBottom = Math.max(y1 + ROW_H + 2, layout().bottom());
+        int y2 = Math.min(y1 + rowCount * ROW_H + 2, maxBottom);
+        return new DropdownGeometry(x1, y1, x2, y2, y1 + 1, y2 - 1);
+    }
+
+    private void toggleIslandDropdown() {
+        islandDropdownOpen = !islandDropdownOpen;
+        importExportMenuOpen = false;
+        if (islandDropdownOpen) {
+            dropdownScrollOffset = dropdownScrollForSelectedZone();
+        }
+    }
+
+    /** Opening scrolls the selected zone into the middle of the dropdown viewport. */
+    private int dropdownScrollForSelectedZone() {
+        List<String> ids = islandDropdownIds();
+        int index = ids.indexOf(selectedZoneId);
+        if (index <= 0) return 0;
+        DropdownGeometry geo = islandDropdownGeometry(ids.size());
+        int viewport = geo.rowsBottom() - geo.rowsTop();
+        int target = index * ROW_H - Math.max(0, viewport / 2 - ROW_H / 2);
+        return MathUtil.clamp(target, 0, maxDropdownScroll(ids.size(), viewport));
+    }
+
+    private void renderIslandDropdown(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+        List<String> ids = islandDropdownIds();
+        if (ids.isEmpty()) return;
+        DropdownGeometry geo = islandDropdownGeometry(ids.size());
+        fillOutlinedOverlay(g, geo.x1(), geo.y1(), geo.x2(), geo.y2());
+
+        int viewport = geo.rowsBottom() - geo.rowsTop();
+        dropdownScrollOffset = MathUtil.clamp(dropdownScrollOffset, 0,
+                maxDropdownScroll(ids.size(), viewport));
         String currentId = manager.currentZone() == null ? null : manager.currentZone().id();
-        sidebarScrollOffset = MathUtil.clamp(sidebarScrollOffset, 0,
-                maxSidebarScroll(ids.size(), rowsBottom - rowsTop));
-        g.enableScissor(x1, rowsTop, x2, rowsBottom);
+        g.enableScissor(geo.x1(), geo.rowsTop(), geo.x2(), geo.rowsBottom());
         for (int i = 0; i < ids.size(); i++) {
-            int rowY = rowsTop - sidebarScrollOffset + i * ROW_H;
-            if (rowY + ROW_H <= rowsTop) continue;
-            if (rowY >= rowsBottom) break;
+            int rowY = geo.rowsTop() - dropdownScrollOffset + i * ROW_H;
+            if (rowY + ROW_H <= geo.rowsTop()) continue;
+            if (rowY >= geo.rowsBottom()) break;
             String id = ids.get(i);
-            if (isZoneDisclosureRow(id)) {
-                boolean hovered = mouseX >= x1 && mouseX <= x2
-                        && mouseY >= rowY && mouseY <= Math.min(rowsBottom, rowY + ROW_H);
-                if (hovered) g.requestCursor(CursorTypes.POINTING_HAND);
-                drawZoneDisclosureRow(g, x1, rowY, x2, id, hovered);
-                continue;
-            }
-            boolean selected = id.equals(selectedZoneId);
-            boolean temporary = isTemporaryZone(id);
-            boolean dungeonParent = isDungeonRoomsZone(id);
-            boolean dungeonRoom = isDungeonRoomZone(id);
-            boolean hovered = mouseX >= x1 && mouseX <= x2
-                    && mouseY >= rowY && mouseY <= Math.min(rowsBottom, rowY + ROW_H);
+            boolean hovered = mouseX >= geo.x1() && mouseX < geo.x2()
+                    && mouseY >= Math.max(rowY, geo.rowsTop())
+                    && mouseY < Math.min(rowY + ROW_H, geo.rowsBottom());
             if (hovered) g.requestCursor(CursorTypes.POINTING_HAND);
-            boolean current = id.equals(currentId)
-                    || (dungeonParent && isDungeonRoomZone(currentId));
-            drawZoneRow(g, x1, rowY, x2, id, selected, hovered,
-                    !temporary && current, temporary, dungeonParent, dungeonRoom);
+            drawDropdownZoneRow(g, geo.x1() + 1, rowY, geo.x2() - 1, id, hovered, currentId);
         }
         g.disableScissor();
-    }
 
-    static int sidebarRowsTop(int panelTop) {
-        return panelTop + 24;
-    }
-
-    static int maxSidebarScroll(int zoneCount, int viewportHeight) {
-        return Math.max(0, zoneCount * ROW_H - Math.max(0, viewportHeight));
-    }
-
-    static int sidebarScrollAfterWheel(int currentOffset, double wheelDelta,
-                                       int zoneCount, int viewportHeight) {
-        int maxScroll = maxSidebarScroll(zoneCount, viewportHeight);
-        return MathUtil.clamp(currentOffset - (int) (wheelDelta * ROW_H), 0, maxScroll);
-    }
-
-    static int sidebarIndexAt(double mouseY, int rowsTop, int rowsBottom,
-                              int scrollOffset, int zoneCount) {
-        if (mouseY < rowsTop || mouseY >= rowsBottom) return -1;
-        int index = (int) ((mouseY - rowsTop + scrollOffset) / ROW_H);
-        return index >= 0 && index < zoneCount ? index : -1;
-    }
-
-    private void drawZoneDisclosureRow(GuiGraphicsExtractor g, int x1, int y, int x2,
-                                       String rowId, boolean hovered) {
-        if (hovered) {
-            g.fill(x1, y, x2, y + ROW_H, HOVER);
-            g.fill(x1, y, x1 + 2, y + ROW_H, ZONE_DISCLOSURE_ACCENT);
+        int contentHeight = ids.size() * ROW_H;
+        if (contentHeight > viewport) {
+            int thumbH = Math.max(8, viewport * viewport / contentHeight);
+            int travel = viewport - thumbH;
+            int maxScroll = maxDropdownScroll(ids.size(), viewport);
+            int thumbY = geo.rowsTop()
+                    + (maxScroll == 0 ? 0 : dropdownScrollOffset * travel / maxScroll);
+            g.fill(geo.x2() - 3, thumbY, geo.x2() - 1, thumbY + thumbH, TEXT_MUTED);
         }
-        String label = zoneDisclosureLabel(rowId);
-        g.text(font, label, x1 + GAP + 2, y + 6, hovered ? TEXT : TEXT_DIM, false);
     }
 
-    private void drawZoneRow(GuiGraphicsExtractor g, int x1, int y, int x2,
-                             String zoneId, boolean selected, boolean hovered,
-                             boolean isCurrent, boolean temporary,
-                             boolean dungeonParent, boolean dungeonRoom) {
+    private void drawDropdownZoneRow(GuiGraphicsExtractor g, int x1, int y, int x2,
+                                     String zoneId, boolean hovered, String currentId) {
+        boolean selected = zoneId.equals(selectedZoneId);
+        boolean temporary = isTemporaryZone(zoneId);
+        boolean dungeonParent = isDungeonRoomsZone(zoneId);
+        boolean isCurrent = !temporary
+                && (zoneId.equals(currentId) || (dungeonParent && isDungeonRoomZone(currentId)));
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
         if (bg != 0) g.fill(x1, y, x2, y + ROW_H, bg);
 
@@ -1043,7 +1100,7 @@ public final class WaypointerScreen extends Screen {
         // point of an empty state. So it never gets the accent bar and renders in muted text.
         boolean isUnknown = Zone.UNKNOWN.id().equals(zoneId);
         int accent = temporary ? TEMPORARY_ACCENT
-                : (dungeonParent || dungeonRoom) ? DUNGEON_ROOM_ACCENT
+                : dungeonParent ? DUNGEON_ROOM_ACCENT
                 : ACCENT;
         if (selected && (!isUnknown || temporary)) {
             g.fill(x1, y, x1 + 2, y + ROW_H, accent);
@@ -1053,7 +1110,7 @@ public final class WaypointerScreen extends Screen {
         int count = temporary ? temporaryWaypointCount() : normalGroupCountForZone(zoneId);
         int textColor = isUnknown && !temporary ? TEXT_MUTED : selected ? TEXT : TEXT_DIM;
         // Zones with nothing in them recede so the populated ones carry the
-        // sidebar's hierarchy. (Dungeon Rooms keeps normal weight while it has
+        // dropdown's hierarchy. (Dungeon Rooms keeps normal weight while it has
         // installed secrets even with zero user routes.)
         boolean emptyZone = count == 0
                 && !(dungeonParent && !DungeonRoomData.customDefinitions().isEmpty());
@@ -1061,19 +1118,185 @@ public final class WaypointerScreen extends Screen {
 
         String countStr = Integer.toString(count);
         int countX = (isCurrent ? x2 - GAP - 12 : x2 - GAP) - font.width(countStr);
-        int labelX = x1 + GAP + 2 + (dungeonRoom ? 8 : 0);
+        int labelX = x1 + GAP + 2;
         int labelMaxW = Math.max(12, countX - GAP_TIGHT - labelX);
-        String clippedLabel = font.plainSubstrByWidth(label, labelMaxW);
-        g.text(font, clippedLabel, labelX, y + 6, textColor, false);
+        g.text(font, font.plainSubstrByWidth(label, labelMaxW), labelX, y + 6, textColor, false);
 
         // live "current zone" indicator -- a tiny filled dot, no color, just a glyph
         if (isCurrent) {
             int dotX = x2 - GAP - 6;
             g.fill(dotX, y + ROW_H / 2 - 2, dotX + 4, y + ROW_H / 2 + 2, accent);
         }
-
-        // Group count, right-aligned next to the dot (or at the edge if no dot)
         g.text(font, countStr, countX, y + 6, TEXT_MUTED, false);
+    }
+
+    static int maxDropdownScroll(int zoneCount, int viewportHeight) {
+        return Math.max(0, zoneCount * ROW_H - Math.max(0, viewportHeight));
+    }
+
+    static int dropdownScrollAfterWheel(int currentOffset, double wheelDelta,
+                                        int zoneCount, int viewportHeight) {
+        int maxScroll = maxDropdownScroll(zoneCount, viewportHeight);
+        return MathUtil.clamp(currentOffset - (int) (wheelDelta * ROW_H), 0, maxScroll);
+    }
+
+    static int dropdownRowIndexAt(double mouseY, int rowsTop, int rowsBottom,
+                                  int scrollOffset, int zoneCount) {
+        if (mouseY < rowsTop || mouseY >= rowsBottom) return -1;
+        int index = (int) ((mouseY - rowsTop + scrollOffset) / ROW_H);
+        return index >= 0 && index < zoneCount ? index : -1;
+    }
+
+    private boolean handleIslandDropdownClick(double mx, double my) {
+        List<String> ids = islandDropdownIds();
+        DropdownGeometry geo = islandDropdownGeometry(ids.size());
+        boolean inside = mx >= geo.x1() && mx < geo.x2() && my >= geo.y1() && my < geo.y2();
+        if (!inside) {
+            // Any outside click closes the dropdown and is swallowed so it
+            // doesn't also activate whatever sits underneath (including the
+            // selector button, which would immediately reopen it).
+            islandDropdownOpen = false;
+            return true;
+        }
+        int idx = dropdownRowIndexAt(my, geo.rowsTop(), geo.rowsBottom(),
+                dropdownScrollOffset, ids.size());
+        if (idx >= 0 && idx < ids.size()) {
+            selectZoneFromDropdown(ids.get(idx));
+        }
+        return true;
+    }
+
+    private void selectZoneFromDropdown(String zoneId) {
+        islandDropdownOpen = false;
+        if (zoneId.equals(selectedZoneId)) return;
+        selectedZoneId = zoneId;
+        selectedDungeonRoomZoneId = null;
+        scrollOffset = 0;
+        clearRouteSelection();
+        refreshActionButtons();
+        syncSearchBoxGeometry();
+    }
+
+    // --- import/export split menu --------------------------------------------------------------
+
+    private record MenuGeometry(int x1, int y1, int x2, int y2) {}
+
+    private MenuGeometry importExportMenuGeometry() {
+        int w = Math.max(importExportBtn == null ? 0 : importExportBtn.getWidth(),
+                Math.max(font.width(MENU_IMPORT_LABEL), font.width(MENU_EXPORT_LABEL))
+                        + GAP * 2) + 2;
+        int h = ROW_H * 2 + 2;
+        int x1 = importExportBtn == null ? PAD_OUTER : importExportBtn.getX();
+        int y2 = importExportBtn == null ? height - FOOTER_H : importExportBtn.getY() - GAP_TIGHT;
+        x1 = Math.max(PAD_OUTER, Math.min(x1, width - PAD_OUTER - w));
+        return new MenuGeometry(x1, y2 - h, x1 + w, y2);
+    }
+
+    private void toggleImportExportMenu() {
+        importExportMenuOpen = !importExportMenuOpen;
+        islandDropdownOpen = false;
+    }
+
+    private void renderImportExportMenu(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+        MenuGeometry geo = importExportMenuGeometry();
+        fillOutlinedOverlay(g, geo.x1(), geo.y1(), geo.x2(), geo.y2());
+        String[] labels = {MENU_IMPORT_LABEL, MENU_EXPORT_LABEL};
+        for (int i = 0; i < labels.length; i++) {
+            int rowY = geo.y1() + 1 + i * ROW_H;
+            boolean hovered = mouseX >= geo.x1() && mouseX < geo.x2()
+                    && mouseY >= rowY && mouseY < rowY + ROW_H;
+            if (hovered) {
+                g.fill(geo.x1() + 1, rowY, geo.x2() - 1, rowY + ROW_H, HOVER);
+                g.requestCursor(CursorTypes.POINTING_HAND);
+            }
+            g.text(font, labels[i], geo.x1() + GAP, rowY + 6, hovered ? TEXT : TEXT_DIM, false);
+        }
+    }
+
+    private boolean handleImportExportMenuClick(double mx, double my) {
+        MenuGeometry geo = importExportMenuGeometry();
+        importExportMenuOpen = false;
+        boolean inside = mx >= geo.x1() && mx < geo.x2() && my >= geo.y1() && my < geo.y2();
+        if (!inside) return true; // swallow, so the anchor button doesn't re-toggle
+        int idx = (int) ((my - geo.y1() - 1) / ROW_H);
+        if (idx == 0) {
+            importFromClipboard();
+        } else if (idx == 1) {
+            exportZone();
+        }
+        return true;
+    }
+
+    private void fillOutlinedOverlay(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
+        g.fill(x1, y1, x2, y2, OVERLAY_SURFACE);
+        g.fill(x1, y1, x2, y1 + 1, BORDER);
+        g.fill(x1, y2 - 1, x2, y2, BORDER);
+        g.fill(x1, y1, x1 + 1, y2, BORDER);
+        g.fill(x2 - 1, y1, x2, y2, BORDER);
+    }
+
+    // --- header info button --------------------------------------------------------------------
+
+    private int headerInfoButtonX(int titleX, int titleW) {
+        return titleX + titleW + GAP_TIGHT + 1;
+    }
+
+    private int headerInfoButtonY() {
+        return PAD_OUTER + (font.lineHeight - INFO_BUTTON_SIZE) / 2;
+    }
+
+    private void renderHeaderInfoButton(GuiGraphicsExtractor g, int x, int y, boolean hovered) {
+        int border = hovered ? 0xFFFFFFFF : BORDER;
+        int fill = hovered ? 0xFF26343A : 0xFF1A1F24;
+        g.fill(x, y, x + INFO_BUTTON_SIZE, y + INFO_BUTTON_SIZE, border);
+        g.fill(x + 1, y + 1, x + INFO_BUTTON_SIZE - 1, y + INFO_BUTTON_SIZE - 1, fill);
+        String glyph = "i";
+        int glyphX = x + (INFO_BUTTON_SIZE - font.width(glyph)) / 2;
+        g.text(font, glyph, glyphX, y + 2, hovered ? ACCENT : TEXT_DIM, false);
+    }
+
+    private void renderRouteListInfoTooltip(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+        int lineCount = Math.min(ROUTE_LIST_INFO_LABELS.length,
+                ROUTE_LIST_INFO_DESCRIPTIONS.length);
+        int pad = 7;
+        int lineGap = 3;
+        int maxLabelWidth = 0;
+        int maxLineWidth = font.width(ROUTE_LIST_INFO_TITLE);
+        for (int i = 0; i < lineCount; i++) {
+            maxLabelWidth = Math.max(maxLabelWidth, font.width(ROUTE_LIST_INFO_LABELS[i]));
+        }
+        for (int i = 0; i < lineCount; i++) {
+            maxLineWidth = Math.max(maxLineWidth,
+                    maxLabelWidth + GAP + font.width(ROUTE_LIST_INFO_DESCRIPTIONS[i]));
+        }
+
+        int tooltipW = maxLineWidth + pad * 2;
+        int tooltipH = pad * 2 + font.lineHeight + 5
+                + lineCount * font.lineHeight + Math.max(0, lineCount - 1) * lineGap;
+        int x = Math.min(mouseX + 12, Math.max(PAD_OUTER, width - PAD_OUTER - tooltipW));
+        int y = Math.min(mouseY + 12, Math.max(PAD_OUTER, layout().bottom() - tooltipH));
+        x = Math.max(PAD_OUTER, x);
+        y = Math.max(PAD_OUTER, y);
+
+        fillOutlinedOverlay(g, x, y, x + tooltipW, y + tooltipH);
+
+        int textX = x + pad;
+        int textY = y + pad;
+        g.text(font, ROUTE_LIST_INFO_TITLE, textX, textY, ACCENT, false);
+        int separatorY = textY + font.lineHeight + 2;
+        g.fill(textX, separatorY, x + tooltipW - pad, separatorY + 1, 0x55FFFFFF);
+
+        int rowY = separatorY + 4;
+        for (int i = 0; i < lineCount; i++) {
+            g.text(font, ROUTE_LIST_INFO_LABELS[i], textX, rowY, TEXT, false);
+            g.text(font, ROUTE_LIST_INFO_DESCRIPTIONS[i], textX + maxLabelWidth + GAP,
+                    rowY, TEXT_DIM, false);
+            rowY += font.lineHeight + lineGap;
+        }
+    }
+
+    private static boolean isInside(int mx, int my, int x, int y, int w, int h) {
+        return mx >= x && mx < x + w && my >= y && my < y + h;
     }
 
     private void renderMain(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
@@ -1171,9 +1394,13 @@ public final class WaypointerScreen extends Screen {
         if (clearSearchButton != null) {
             noticeX = Math.max(noticeX, clearSearchButton.getX() + clearSearchButton.getWidth() + GAP);
         }
-        int rightLimit = downloadRoutesButton != null && downloadRoutesButton.visible
-                ? downloadRoutesButton.getX() - GAP
-                : x2 - GAP;
+        int rightLimit = x2 - GAP;
+        if (hideAllRoutesBtn != null) {
+            rightLimit = Math.min(rightLimit, hideAllRoutesBtn.getX() - GAP);
+        }
+        if (downloadRoutesButton != null && downloadRoutesButton.visible) {
+            rightLimit = Math.min(rightLimit, downloadRoutesButton.getX() - GAP);
+        }
         int maxWidth = rightLimit - noticeX;
         if (maxWidth < 24) return;
 
@@ -1376,7 +1603,7 @@ public final class WaypointerScreen extends Screen {
             return group.size() + " temp pts  " + displayZoneLabel(group.zoneId());
         }
         if (group.isEmpty()) {
-            return "empty - select and press Edit to add waypoints";
+            return "empty - double-click to add waypoints";
         }
         return group.size() + " pts  " + RouteProgress.summary(group)
                 + "  " + loadModeLabel(group);
@@ -1393,6 +1620,10 @@ public final class WaypointerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        // Floating overlays eat clicks before widgets: they render above
+        // everything, so they must also hit-test above everything.
+        if (islandDropdownOpen && handleIslandDropdownClick(event.x(), event.y())) return true;
+        if (importExportMenuOpen && handleImportExportMenuClick(event.x(), event.y())) return true;
         if (super.mouseClicked(event, doubleClick)) return true;
         boolean leftClick = event.button() == MOUSE_BUTTON_LEFT;
         boolean rightClick = event.button() == MOUSE_BUTTON_RIGHT;
@@ -1402,37 +1633,6 @@ public final class WaypointerScreen extends Screen {
         double my = event.y();
 
         Layout layout = layout();
-
-        // Sidebar click -> select zone
-        if (leftClick && mx >= layout.sidebarLeft() && mx <= layout.sidebarRight()
-                && my >= layout.top() && my <= layout.bottom()) {
-            int rowY = sidebarRowsTop(layout.top());
-            int rowsBottom = layout.bottom() - GAP_TIGHT;
-            if (my >= rowY && my < rowsBottom) {
-                List<String> ids = sidebarRows();
-                sidebarScrollOffset = MathUtil.clamp(sidebarScrollOffset, 0,
-                        maxSidebarScroll(ids.size(), rowsBottom - rowY));
-                int idx = sidebarIndexAt(my, rowY, rowsBottom, sidebarScrollOffset, ids.size());
-                if (idx >= 0 && idx < ids.size()) {
-                    String rowId = ids.get(idx);
-                    if (isZoneDisclosureRow(rowId)) {
-                        zoneListExpanded = SHOW_MORE_ZONE_ID.equals(rowId);
-                        if (!zoneListExpanded) {
-                            sidebarScrollOffset = maxSidebarScroll(
-                                    sidebarRows().size(), rowsBottom - rowY);
-                        }
-                        return true;
-                    }
-                    selectedZoneId = rowId;
-                    selectedDungeonRoomZoneId = null;
-                    scrollOffset = 0;
-                    clearRouteSelection();
-                    refreshActionButtons();
-                    syncSearchBoxGeometry();
-                }
-            }
-            return true;
-        }
 
         // Main area click -> select group row (and toggle chip if within the right edge)
         if (mx < layout.mainLeft() || mx > layout.mainRight()
@@ -1705,22 +1905,18 @@ public final class WaypointerScreen extends Screen {
     }
 
     @Override
-    public void onClose() {
-        rememberSelectedZone();
-        super.onClose();
-    }
-
-    @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
-        Layout layout = layout();
-        if (mouseX >= layout.sidebarLeft() && mouseX <= layout.sidebarRight()
-                && mouseY >= layout.top() && mouseY <= layout.bottom()) {
-            int rowsTop = sidebarRowsTop(layout.top());
-            int listHeight = layout.bottom() - GAP_TIGHT - rowsTop;
-            sidebarScrollOffset = sidebarScrollAfterWheel(sidebarScrollOffset, vert,
-                    sidebarRows().size(), listHeight);
-            return true;
+        if (islandDropdownOpen) {
+            List<String> ids = islandDropdownIds();
+            DropdownGeometry geo = islandDropdownGeometry(ids.size());
+            if (mouseX >= geo.x1() && mouseX < geo.x2()
+                    && mouseY >= geo.y1() && mouseY < geo.y2()) {
+                dropdownScrollOffset = dropdownScrollAfterWheel(dropdownScrollOffset, vert,
+                        ids.size(), geo.rowsBottom() - geo.rowsTop());
+                return true;
+            }
         }
+        Layout layout = layout();
         int rowsTop = mainRowsTop(layout.top());
         int listHeight = layout.bottom() - rowsTop;
         int maxScroll = maxMainScroll(routeListRows().size(), listHeight);
@@ -1730,6 +1926,12 @@ public final class WaypointerScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        // Esc dismisses an open overlay before it can close the whole screen.
+        if (event.key() == GLFW_KEY_ESCAPE && (islandDropdownOpen || importExportMenuOpen)) {
+            islandDropdownOpen = false;
+            importExportMenuOpen = false;
+            return true;
+        }
         if (super.keyPressed(event)) return true;
         if (event.key() == GLFW_KEY_DELETE) {
             onDeleteClicked();
@@ -1739,13 +1941,6 @@ public final class WaypointerScreen extends Screen {
     }
 
     // --- actions -----------------------------------------------------------------------------
-
-    private void rememberSelectedZone() {
-        if (selectedZoneId != null && zoneIds().contains(selectedZoneId)) {
-            lastSelectedZoneId = selectedZoneId;
-            lastCurrentZoneIdWhenRemembered = currentZoneId(manager);
-        }
-    }
 
     private void createGroup() {
         Zone current = manager.currentZone();
@@ -1761,7 +1956,7 @@ public final class WaypointerScreen extends Screen {
                 targetZoneId, config.skipAheadMechanicEnabled());
         g.setDefaultRadius(config.defaultReachRadius());
         manager.add(g);
-        selectedZoneId = sidebarSelectionForZoneId(targetZoneId);
+        selectedZoneId = selectorEntryForZoneId(targetZoneId);
         if (isDungeonRoomZone(targetZoneId)) {
             selectedDungeonRoomZoneId = targetZoneId;
             expandedDungeonRoomZoneIds.add(targetZoneId);
@@ -1811,13 +2006,6 @@ public final class WaypointerScreen extends Screen {
         return "Choose a route zone first.";
     }
 
-    private void editSelected() {
-        WaypointGroup g = currentSelection();
-        if (g != null) {
-            MinecraftCompat.setScreen(minecraft, new GroupEditScreen(this, manager, config, g));
-        }
-    }
-
     private void onHideAllRoutesClicked() {
         List<WaypointGroup> shownRoutes = shownRoutesForSelectedZone();
         if (shownRoutes.isEmpty()) {
@@ -1857,7 +2045,6 @@ public final class WaypointerScreen extends Screen {
     }
 
     private void refreshActionButtons() {
-        if (editBtn != null) editBtn.active = currentSelection() != null;
         if (hideAllRoutesBtn != null) {
             boolean hasShownRoutes = !shownRoutesForSelectedZone().isEmpty();
             hideAllRoutesBtn.active = hasShownRoutes;
@@ -1888,7 +2075,7 @@ public final class WaypointerScreen extends Screen {
             // Nothing selected. Don't silently no-op -- briefly borrow the button label
             // to tell the user what they need to do.
             flashDeleteLabel(NO_SEL_LABEL,
-                    "Select a route from the list on the right first.");
+                    "Select a route in the list first.");
             return;
         }
         LinkedHashSet<String> currentSelectedIds = new LinkedHashSet<>();
@@ -1958,11 +2145,6 @@ public final class WaypointerScreen extends Screen {
         deleteBtn.setMessage(Component.literal(msg));
         deleteBtn.setTooltip(Tooltip.create(Component.literal(tooltipText)));
         labelFlashUntil = System.currentTimeMillis() + 1500L;
-    }
-
-    private WaypointGroup currentSelection() {
-        List<WaypointGroup> selectedGroups = selectedVisibleGroups();
-        return selectedGroups.size() == 1 ? selectedGroups.get(0) : null;
     }
 
     private List<WaypointGroup> selectedVisibleGroups() {
@@ -2121,7 +2303,7 @@ public final class WaypointerScreen extends Screen {
                 WaypointGroup first = result.groups().get(0);
                 searchQuery = "";
                 if (searchBox != null) searchBox.setValue("");
-                selectedZoneId = sidebarSelectionForZoneId(first.zoneId());
+                selectedZoneId = selectorEntryForZoneId(first.zoneId());
                 selectGroupById(first.id());
             }
         } catch (IllegalArgumentException e) {
