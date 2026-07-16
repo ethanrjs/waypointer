@@ -7,6 +7,20 @@ import static org.junit.jupiter.api.Assertions.*;
 class ZoneTest {
 
     @Test
+    void knownZonesExposeOfflineRouteTargetsWithoutLegacyMineshaftBucket() {
+        assertTrue(Zone.knownZones().contains(Zone.fromId("hub")));
+        assertTrue(Zone.knownZones().contains(Zone.fromId("dungeon_f7")));
+        assertTrue(Zone.knownZones().contains(Zone.fromId("torrhus_canyon")));
+        assertTrue(Zone.knownZones().contains(Zone.fromId("safari")));
+        assertTrue(Zone.knownZones().contains(Zone.fromId("mineshaft_topaz_1")));
+        assertTrue(Zone.knownZones().contains(Zone.fromId("mineshaft_littlefoots_den")));
+        assertEquals(1, Zone.knownZones().stream()
+                .filter(zone -> "mineshaft_crystal".equals(zone.id()))
+                .count());
+        assertFalse(Zone.knownZones().stream().anyMatch(zone -> "mineshaft".equals(zone.id())));
+    }
+
+    @Test
     void resolve_returnsNullForNonSkyblock() {
         assertNull(Zone.resolve("BEDWARS", "anything", null));
         assertNull(Zone.resolve(null, "anything", null));
@@ -128,6 +142,12 @@ class ZoneTest {
         assertEquals("winter",          Zone.resolve("SKYBLOCK", null, "winter").id());
         assertEquals("winter",          Zone.resolve("SKYBLOCK", "Jerry's Workshop", null).id());
         assertEquals("mineshaft",       Zone.resolve("SKYBLOCK", null, "mineshaft").id());
+        assertEquals("lotus_atoll",     Zone.resolve("SKYBLOCK", null, "lotus_atoll").id());
+        assertEquals("lotus_atoll",     Zone.resolve("SKYBLOCK", "Lotus Atoll", null).id());
+        assertEquals("torrhus_canyon",  Zone.resolve("SKYBLOCK", null, "foraging_3").id());
+        assertEquals("torrhus_canyon",  Zone.resolve("SKYBLOCK", "Torrhus Canyon", null).id());
+        assertEquals("safari",          Zone.resolve("SKYBLOCK", null, "safari").id());
+        assertEquals("safari",          Zone.resolve("SKYBLOCK", "Safari Zone", null).id());
     }
 
     @Test

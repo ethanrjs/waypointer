@@ -41,6 +41,7 @@ public final class ActiveGroupManager {
     private Zone currentZone;
     private final List<Consumer<Zone>> zoneListeners = new ArrayList<>();
     private String focusedTempGroupId;
+    private String focusedAuthoringGroupId;
 
     private final List<Runnable> dataListeners = new ArrayList<>();
     private final List<Runnable> persistentDataListeners = new ArrayList<>();
@@ -48,7 +49,7 @@ public final class ActiveGroupManager {
     private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]");
 
     // Cached result of activeGroups(). The renderer calls this every frame from two
-    // separate END_MAIN handlers, so rebuilding on every call burns avoidable
+    // separate COLLECT_SUBMITS handlers, so rebuilding on every call burns avoidable
     // young-gen garbage. Invalidated on zone change and on fireDataChanged(),
     // which every mutation path funnels through.
     private List<WaypointGroup> cachedActive;
@@ -68,12 +69,9 @@ public final class ActiveGroupManager {
      * Groups that should render right now: matching current zone AND enabled.
      *
      * If no zone has been detected (non-Skyblock world, menu, or before the zone
-     * source has reported in) we return empty. Previously this fell back to the
-     * {@link Zone#UNKNOWN} id so waypoints created on non-Skyblock servers could
-     * still render, but that meant the mod painted boxes in singleplayer and
-     * non-Skyblock Hypixel gamemodes too. Since Waypointer is explicitly a
-     * Skyblock tool, gating on a resolved zone is the honest behaviour -- users
-     * who want generic multiplayer waypoints can run a different mod.
+     * source has reported in), only the one route explicitly selected for
+     * authoring may render. This keeps offline editing usable without falling
+     * back to every route in an arbitrary zone.
      *
      * Returned list is cached and reused across frames -- callers must treat it as
      * read-only. The cache is rebuilt lazily on the next call after any
@@ -83,7 +81,10 @@ public final class ActiveGroupManager {
         if (cachedActive != null) return cachedActive;
 
         if (currentZone == null) {
-            cachedActive = Collections.emptyList();
+            WaypointGroup focused = focusedAuthoringGroup();
+            cachedActive = focused != null && focused.enabled() && shouldSurfaceActiveGroup(focused)
+                    ? List.of(focused)
+                    : Collections.emptyList();
             return cachedActive;
         }
         String zoneId = currentZone.id();
@@ -174,6 +175,34 @@ public final class ActiveGroupManager {
     }
 
     /**
+     * Selects the one persisted route that may be previewed and edited while no
+     * Hypixel zone is available. Temp/runtime groups and room-local dungeon
+     * routes are deliberately excluded from this direct world-space preview.
+     */
+    public void focusRouteForAuthoring(WaypointGroup group) {
+        String nextId = group != null
+                && byId.get(group.id()) == group
+                && !group.temp()
+                && !group.runtimeOnly()
+                && shouldSurfaceActiveGroup(group)
+                ? group.id()
+                : null;
+        if (Objects.equals(nextId, focusedAuthoringGroupId)) return;
+        focusedAuthoringGroupId = nextId;
+        cachedActive = null;
+    }
+
+    private WaypointGroup focusedAuthoringGroup() {
+        if (focusedAuthoringGroupId == null) return null;
+        WaypointGroup group = byId.get(focusedAuthoringGroupId);
+        if (group == null || group.temp() || group.runtimeOnly() || !shouldSurfaceActiveGroup(group)) {
+            focusedAuthoringGroupId = null;
+            return null;
+        }
+        return group;
+    }
+
+    /**
      * Returns the first active non-temp route group, or creates a fresh group in
      * the current zone and returns that. The newly-created group's name is built via
      * {@code "Route -- " + zone.displayName()} so first-time users get a labelled
@@ -199,7 +228,10 @@ public final class ActiveGroupManager {
     }
 
     private WaypointGroup firstActiveRouteGroup() {
-        if (currentZone == null) return null;
+        if (currentZone == null) {
+            WaypointGroup focused = focusedAuthoringGroup();
+            return focused != null && focused.enabled() ? focused : null;
+        }
 
         String zoneId = currentZone.id();
         for (WaypointGroup g : byId.values()) {

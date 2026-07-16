@@ -106,6 +106,24 @@ class DungeonRouteImporterTest {
                 "custom room must keep matching by the bundled core hash after import");
     }
 
+    @Test
+    void importsPinnedSecretRoutesNamesWhoseUpstreamCoreHashesMatchCatalogRooms() {
+        String json = """
+                {
+                  "Four-Banner-1": [{"secret":{"type":"interact","location":[1,70,1]}}],
+                  "Double-Stair-3": [{"secret":{"type":"item","location":[2,71,2]}}],
+                  "Redstone-Skull-3": [{"secret":{"type":"interact","location":[3,72,3]}}]
+                }
+                """;
+
+        DungeonRouteImporter.Result result = DungeonRouteImporter.parse(json);
+
+        assertEquals(List.of("banners", "staircase", "redstone-crypt"),
+                result.definitions().stream().map(DungeonRoomDefinition::id).toList());
+        assertEquals(3, result.waypointCount());
+        assertTrue(result.unmatchedRooms().isEmpty());
+    }
+
     // ---- Odin packs -----------------------------------------------------------
 
     private static final String ODIN_PACK_JSON = """

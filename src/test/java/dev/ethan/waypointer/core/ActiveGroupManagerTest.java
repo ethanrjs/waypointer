@@ -115,6 +115,36 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void offlineAuthoringFocusSurfacesAndEditsOnlyTheSelectedRoute() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup first = WaypointGroup.create("First", "hub");
+        WaypointGroup selected = WaypointGroup.create("Selected", "the_park");
+        manager.addAll(List.of(first, selected));
+
+        manager.focusRouteForAuthoring(selected);
+
+        assertEquals(List.of(selected), manager.activeGroups());
+        assertSame(selected, manager.getOrCreateActiveGroup());
+
+        manager.focusRouteForAuthoring(null);
+
+        assertTrue(manager.activeGroups().isEmpty());
+    }
+
+    @Test
+    void detectedZoneTakesPriorityOverOfflineAuthoringFocus() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup hub = WaypointGroup.create("Hub", "hub");
+        WaypointGroup selected = WaypointGroup.create("Selected", "the_park");
+        manager.addAll(List.of(hub, selected));
+        manager.focusRouteForAuthoring(selected);
+
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+
+        assertEquals(List.of(hub), manager.activeGroups());
+    }
+
+    @Test
     void completedDungeonRoomRouteIsHiddenFromActiveGroups() {
         assertNotNull(DungeonRoomData.definition("spider"));
         ActiveGroupManager manager = new ActiveGroupManager();

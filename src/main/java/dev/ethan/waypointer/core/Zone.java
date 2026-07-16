@@ -1,7 +1,9 @@
 package dev.ethan.waypointer.core;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 
@@ -16,8 +18,8 @@ import java.util.function.Predicate;
  * <ul>
  *   <li>{@link #resolve(String, String, String)} -- authoritative: Hypixel Mod API
  *       location packet fields {@code serverType}, {@code map}, {@code mode}.</li>
- *   <li>{@link #resolveFromDisplayName(String)} -- fallback when the mod-API isn't
- *       available, pulling the island name out of the sidebar.</li>
+ *   <li>{@link #resolveFromDisplayName(String)} -- fallback/refinement from the
+ *       visible sidebar location.</li>
  *   <li>{@link #fromId(String)} -- replay on-disk group ids back to a {@code Zone}
  *       with the current canonical display name.</li>
  * </ul>
@@ -240,6 +242,7 @@ public record Zone(String id, String displayName) {
                     anyDisplay(MINESHAFT_CRYSTAL_DISPLAY_NAME, "Crystal Mineshaft")),
 
             new Def("backwater_bayou",   "Backwater Bayou",      tokens("fishing_1", "Backwater Bayou")),
+            new Def("lotus_atoll",       "Lotus Atoll",          tokens("lotus_atoll", "Lotus Atoll")),
 
             new Def("garden",            "Garden",               tokens("garden", "Garden", "The Garden"),
                     anyDisplay("Garden", "The Garden")),
@@ -256,6 +259,12 @@ public record Zone(String id, String displayName) {
             new Def("galatea",           "Galatea",
                     prefixTokens("foraging_2", "Galatea"),
                     displayStartsWithAny("Galatea")),
+            new Def("torrhus_canyon",    "Torrhus Canyon",
+                    tokens("foraging_3", "Torrhus Canyon"),
+                    anyDisplay("Torrhus Canyon")),
+            new Def("safari",            "Safari",
+                    tokens("safari", "Safari", "Safari Zone"),
+                    anyDisplay("Safari", "Safari Zone")),
 
             new Def("dungeon", "Catacombs", Zone::genericDungeon,
                     anyDisplay("Catacombs", "Dungeon")),
@@ -365,8 +374,29 @@ public record Zone(String id, String displayName) {
         return isCrystalMineshaftType(t) ? MINESHAFT_CRYSTAL_DISPLAY_NAME : "Mineshaft: " + t.rawName();
     }
 
-        private static boolean isCrystalMineshaftType(MineshaftType t) {
+    private static boolean isCrystalMineshaftType(MineshaftType t) {
         return t.idSuffix().endsWith("_crystal");
+    }
+
+    /**
+     * Canonical zones users can target without first visiting Hypixel.
+     * The legacy broad mineshaft bucket is intentionally omitted because the
+     * runtime always refines it to a concrete or unknown mineshaft layout.
+     */
+    private static final List<Zone> KNOWN_ZONES = buildKnownZones();
+
+    private static List<Zone> buildKnownZones() {
+        Map<String, Zone> zones = new LinkedHashMap<>();
+        for (Def def : KNOWN) {
+            if (!"mineshaft".equals(def.id)) {
+                zones.put(def.id, new Zone(def.id, def.displayName));
+            }
+        }
+        for (MineshaftType type : MINESHAFT_TYPES) {
+            Zone zone = new Zone(canonicalMineshaftId(type), canonicalMineshaftDisplayName(type));
+            zones.putIfAbsent(zone.id(), zone);
+        }
+        return List.copyOf(zones.values());
     }
 
     // ---- resolve ---------------------------------------------------------
@@ -390,6 +420,10 @@ public record Zone(String id, String displayName) {
         String rawId = display + (mode != null && !mode.isBlank() && !display.equals(mode)
                 ? "_" + mode : "");
         return new Zone(sanitizeId(rawId), display);
+    }
+
+    public static List<Zone> knownZones() {
+        return KNOWN_ZONES;
     }
 
         public static Zone fromId(String id) {

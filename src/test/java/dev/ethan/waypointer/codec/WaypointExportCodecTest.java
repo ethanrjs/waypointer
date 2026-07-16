@@ -5,12 +5,16 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -46,14 +50,14 @@ class WaypointExportCodecTest {
 
     @Test
     void skytils_export_round_trips_through_skytils_importer() {
-        WaypointGroup group = sampleGroup("Galatea Route", "galatea");
+        WaypointGroup group = sampleGroup("Park Route", "the_park");
         String encoded = WaypointExportCodec.encode(List.of(group), FULL_EXTERNAL,
                 WaypointExportCodec.Target.SKYTILS);
 
         WaypointImporter.ImportResult result = WaypointImporter.importAny(encoded);
         WaypointGroup imported = result.groups().get(0);
         assertEquals(WaypointImporter.Source.SKYTILS, result.source());
-        assertEquals("galatea", imported.zoneId());
+        assertEquals("the_park", imported.zoneId());
         assertEquals("start", imported.get(0).name());
     }
 
@@ -125,6 +129,65 @@ class WaypointExportCodecTest {
         assertTrue(WaypointExportCodec.Target.SKYTILS.supportsNames());
         assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsNames());
         assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsColors());
+    }
+
+    @Test
+    void every_known_zone_maps_to_a_real_skyblocker_location_id() {
+        Set<String> accepted = Set.of(
+                "dynamic", "garden", "hub", "farming_1", "foraging_1", "foraging_2", "foraging_3",
+                "combat_1", "combat_2", "combat_3", "crimson_isle", "mining_1",
+                "mining_2", "mining_3", "fishing_1", "dungeon_hub", "winter", "rift",
+                "dark_auction", "crystal_hollows", "dungeon", "kuudra", "mineshaft",
+                "lotus_atoll", "safari", "unknown");
+
+        for (Zone zone : Zone.knownZones()) {
+            assertTrue(accepted.contains(WaypointExportCodec.skyblockerIslandId(zone.id())),
+                    () -> "unsupported Skyblocker zone " + zone.id());
+        }
+        DungeonRoomData.allDefinitions().forEach(room ->
+                assertEquals("dungeon", WaypointExportCodec.skyblockerIslandId(room.id())));
+    }
+
+    @Test
+    void every_representable_known_zone_maps_to_a_real_skytils_island_id() {
+        Set<String> accepted = Set.of(
+                "dynamic", "garden", "combat_1", "crimson_isle", "combat_3", "fishing_1",
+                "mining_1", "mining_2", "mining_3", "crystal_hollows", "farming_1",
+                "foraging_1", "dungeon", "dungeon_hub", "hub", "dark_auction", "winter",
+                "kuudra", "mineshaft", "rift");
+
+        for (Zone zone : Zone.knownZones()) {
+            if (zone.id().equals("galatea")
+                    || zone.id().equals("lotus_atoll")
+                    || zone.id().equals("torrhus_canyon")
+                    || zone.id().equals("safari")) {
+                assertThrows(IllegalArgumentException.class,
+                        () -> WaypointExportCodec.skytilsIslandId(zone.id()));
+            } else {
+                assertTrue(accepted.contains(WaypointExportCodec.skytilsIslandId(zone.id())),
+                        () -> "unsupported Skytils zone " + zone.id());
+            }
+        }
+        DungeonRoomData.allDefinitions().forEach(room ->
+                assertEquals("dungeon", WaypointExportCodec.skytilsIslandId(room.id())));
+    }
+
+    @Test
+    void refinements_and_catacombs_zones_collapse_to_recipient_coarse_ids() {
+        assertEquals("mining_3", WaypointExportCodec.skyblockerIslandId("great_glacite_lake"));
+        assertEquals("mining_3", WaypointExportCodec.skyblockerIslandId("glacite_tunnels"));
+        assertEquals("mining_3", WaypointExportCodec.skyblockerIslandId("dwarven_base_camp"));
+        assertEquals("mineshaft", WaypointExportCodec.skyblockerIslandId("mineshaft_topaz_1"));
+        assertEquals("mineshaft", WaypointExportCodec.skyblockerIslandId("mineshaft_crystal"));
+        assertEquals("dungeon_hub", WaypointExportCodec.skyblockerIslandId("dungeon_hub"));
+        assertEquals("dungeon", WaypointExportCodec.skyblockerIslandId("dungeon"));
+        assertEquals("dungeon", WaypointExportCodec.skyblockerIslandId("dungeon_f7"));
+        assertEquals("dungeon", WaypointExportCodec.skyblockerIslandId("dungeon_m7"));
+        assertEquals("dungeon", WaypointExportCodec.skyblockerIslandId("entrance"));
+        assertEquals("dungeon", WaypointExportCodec.skyblockerIslandId("altar"));
+        assertEquals("lotus_atoll", WaypointExportCodec.skyblockerIslandId("lotus_atoll"));
+        assertEquals("foraging_3", WaypointExportCodec.skyblockerIslandId("torrhus_canyon"));
+        assertEquals("safari", WaypointExportCodec.skyblockerIslandId("safari"));
     }
 
     private static WaypointGroup sampleGroup(String name, String zoneId) {

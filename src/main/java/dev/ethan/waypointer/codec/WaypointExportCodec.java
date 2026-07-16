@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -14,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.zip.GZIPOutputStream;
 
 /**
@@ -89,12 +91,15 @@ public final class WaypointExportCodec {
             Map.entry("the_farming_isles", "farming_1"),
             Map.entry("the_park", "foraging_1"),
             Map.entry("galatea", "foraging_2"),
+            Map.entry("torrhus_canyon", "foraging_3"),
+            Map.entry("safari", "safari"),
             Map.entry("spiders_den", "combat_1"),
             Map.entry("the_end", "combat_3"),
             Map.entry("gold_mine", "mining_1"),
             Map.entry("deep_caverns", "mining_2"),
             Map.entry("dwarven_mines", "mining_3"),
             Map.entry("backwater_bayou", "fishing_1"),
+            Map.entry("lotus_atoll", "lotus_atoll"),
             Map.entry("mineshaft", "mineshaft"),
             Map.entry("mineshaft_unknown", "mineshaft"),
             Map.entry("dungeon", "dungeon"),
@@ -109,6 +114,20 @@ public final class WaypointExportCodec {
             Map.entry("dark_auction", "dark_auction"),
             Map.entry("unknown", "unknown")
     );
+
+    private static final Set<String> SKYBLOCKER_RECIPIENT_ISLAND_IDS = Set.of(
+            "dynamic", "garden", "hub", "farming_1", "foraging_1", "foraging_2", "foraging_3",
+            "combat_1", "combat_2", "combat_3", "crimson_isle", "mining_1",
+            "mining_2", "mining_3", "fishing_1", "dungeon_hub", "winter", "rift",
+            "dark_auction", "crystal_hollows", "dungeon", "kuudra", "mineshaft",
+            "lotus_atoll", "safari", "unknown");
+
+    /** Skytils 1.x {@code SkyblockIsland.mode} values at the supported upstream revision. */
+    private static final Set<String> SKYTILS_RECIPIENT_ISLAND_IDS = Set.of(
+            "dynamic", "garden", "combat_1", "crimson_isle", "combat_3", "fishing_1",
+            "mining_1", "mining_2", "mining_3", "crystal_hollows", "farming_1",
+            "foraging_1", "dungeon", "dungeon_hub", "hub", "dark_auction", "winter",
+            "kuudra", "mineshaft", "rift");
 
     private WaypointExportCodec() {}
 
@@ -138,7 +157,7 @@ public final class WaypointExportCodec {
         for (WaypointGroup group : groups) {
             JsonObject out = new JsonObject();
             out.addProperty("name", groupName(group));
-            out.addProperty("island", thirdPartyIslandId(group.zoneId()));
+            out.addProperty("island", skyblockerIslandId(group.zoneId()));
             out.addProperty("ordered", group.loadMode() == WaypointGroup.LoadMode.SEQUENCE);
             out.addProperty("renderThroughWalls", !group.isEmpty() && group.waypoints().stream()
                     .allMatch(waypoint -> waypoint.hasFlag(Waypoint.FLAG_THROUGH_WALL)));
@@ -168,7 +187,7 @@ public final class WaypointExportCodec {
         for (WaypointGroup group : groups) {
             JsonObject category = new JsonObject();
             category.addProperty("name", groupName(group));
-            category.addProperty("island", thirdPartyIslandId(group.zoneId()));
+            category.addProperty("island", skytilsIslandId(group.zoneId()));
 
             JsonArray waypoints = new JsonArray();
             for (Waypoint waypoint : group.waypoints()) {
@@ -227,9 +246,54 @@ public final class WaypointExportCodec {
         return zone.displayName();
     }
 
-    private static String thirdPartyIslandId(String zoneId) {
+    static String skyblockerIslandId(String zoneId) {
+        String recipientId = coarseThirdPartyIslandId(zoneId);
+        if (!SKYBLOCKER_RECIPIENT_ISLAND_IDS.contains(recipientId)) {
+            throw unsupportedZone("Skyblocker", zoneId);
+        }
+        return recipientId;
+    }
+
+    static String skytilsIslandId(String zoneId) {
+        String recipientId = coarseThirdPartyIslandId(zoneId);
+        if (!SKYTILS_RECIPIENT_ISLAND_IDS.contains(recipientId)) {
+            throw unsupportedZone("Skytils", zoneId);
+        }
+        return recipientId;
+    }
+
+    private static IllegalArgumentException unsupportedZone(String target, String zoneId) {
+        return new IllegalArgumentException(target + " does not recognize the "
+                + Zone.fromId(zoneId).displayName() + " zone; use Waypointer export instead");
+    }
+
+    private static String coarseThirdPartyIslandId(String zoneId) {
         String mapped = SKYBLOCKER_ISLAND_IDS.get(zoneId);
-        return mapped == null ? zoneId : mapped;
+        if (mapped != null) return mapped;
+        if (zoneId == null || zoneId.isBlank()) return "unknown";
+
+        // Skyblocker and Skytils only model the coarse Hypixel locations. Waypointer's
+        // scoreboard refinements must collapse back to those ids or the recipient
+        // resolves them as UNKNOWN and never renders the exported group.
+        if (zoneId.equals("great_glacite_lake")
+                || zoneId.equals("glacite_tunnels")
+                || zoneId.equals("dwarven_base_camp")) {
+            return "mining_3";
+        }
+        if (zoneId.startsWith("mineshaft_")) return "mineshaft";
+        if (isCatacombsFloor(zoneId) || DungeonRoomData.definition(zoneId) != null) {
+            return "dungeon";
+        }
+        return zoneId;
+    }
+
+    private static boolean isCatacombsFloor(String zoneId) {
+        if (zoneId.length() != "dungeon_f1".length() || !zoneId.startsWith("dungeon_")) {
+            return false;
+        }
+        char mode = zoneId.charAt("dungeon_".length());
+        char floor = zoneId.charAt(zoneId.length() - 1);
+        return (mode == 'f' || mode == 'm') && floor >= '1' && floor <= '7';
     }
 
     private static JsonArray position(Waypoint waypoint) {
