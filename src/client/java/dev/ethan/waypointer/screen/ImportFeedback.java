@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.core.WaypointGroup;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.toasts.SystemToast;
@@ -47,7 +48,7 @@ public final class ImportFeedback {
                 : imported.size() + " routes added";
 
         SystemToast.addOrUpdate(
-                mc.getToastManager(),
+                MinecraftCompat.toastManager(mc),
                 SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
                 Component.literal("Import OK" + (source == null ? "" : " (" + source + ")")),
                 Component.literal(body));
@@ -59,7 +60,7 @@ public final class ImportFeedback {
 
         String body = roomCount + " room(s), " + waypointCount + " secret waypoint(s)";
         SystemToast.addOrUpdate(
-                mc.getToastManager(),
+                MinecraftCompat.toastManager(mc),
                 SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
                 Component.literal("Dungeon import OK" + (source == null ? "" : " (" + source + ")")),
                 Component.literal(body));
@@ -75,7 +76,7 @@ public final class ImportFeedback {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
         SystemToast.addOrUpdate(
-                mc.getToastManager(),
+                MinecraftCompat.toastManager(mc),
                 SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
                 Component.literal("Import failed"),
                 Component.literal(reason == null ? "No waypoints found." : reason));

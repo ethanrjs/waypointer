@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.chat;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
@@ -407,7 +408,7 @@ public final class ChatCoordDetector {
             return;
         }
         for (ChatFormatting formatting : ChatFormatting.values()) {
-            Integer rgb = formatting.getColor();
+            Integer rgb = MinecraftCompat.legacyColor(formatting);
             if (rgb != null && (rgb & 0xFFFFFF) == (color.getValue() & 0xFFFFFF)) {
                 out.append(formatting);
                 return;

@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import dev.ethan.waypointer.config.WaypointerConfig;
@@ -263,7 +264,7 @@ public final class SettingsScreen extends Screen {
     @Override
     public void onClose() {
         PerfStressTestController.cancelIfRunning();
-        minecraft.setScreen(parent);
+        MinecraftCompat.setScreen(minecraft, parent);
     }
 
     // --- layout ------------------------------------------------------------------------------
@@ -909,12 +910,12 @@ public final class SettingsScreen extends Screen {
         ConfirmScreen confirmScreen = new ConfirmScreen(
                 confirmed -> {
                     if (confirmed) confirmedDisableAll();
-                    minecraft.setScreen(this);
+                    MinecraftCompat.setScreen(minecraft, this);
                 },
                 Component.literal("Disable all settings?"),
                 Component.literal(changed + settingWord + " will change from their current states."),
                 Component.literal("Disable all"), Component.literal("Cancel"));
-        minecraft.setScreen(confirmScreen);
+        MinecraftCompat.setScreen(minecraft, confirmScreen);
     }
 
     private void confirmedDisableAll() {
@@ -982,9 +983,9 @@ public final class SettingsScreen extends Screen {
                         setConfigCodeStatus(Component.literal("Config import cancelled.")
                                 .withStyle(ChatFormatting.GRAY));
                     }
-                    minecraft.setScreen(this);
+                    MinecraftCompat.setScreen(minecraft, this);
                 }, title, message, Component.literal("Import settings"), Component.literal("Cancel"));
-        minecraft.setScreen(confirmScreen);
+        MinecraftCompat.setScreen(minecraft, confirmScreen);
     }
 
     private void applyConfirmedConfigImport(WaypointerConfig decoded, int changedSettings) {
@@ -1037,12 +1038,12 @@ public final class SettingsScreen extends Screen {
         ConfirmScreen confirmScreen = new ConfirmScreen(
                 confirmed -> {
                     onResult.accept(confirmed);
-                    minecraft.setScreen(this);
+                    MinecraftCompat.setScreen(minecraft, this);
                 },
                 Component.literal("Apply " + name + " preset?"),
                 Component.literal(changed + settingWord + " will change from their current states."),
                 Component.literal("Apply preset"), Component.literal("Cancel"));
-        minecraft.setScreen(confirmScreen);
+        MinecraftCompat.setScreen(minecraft, confirmScreen);
     }
 
     // --- update checker -------------------------------------------------------------------------
@@ -1151,7 +1152,7 @@ public final class SettingsScreen extends Screen {
                 ? new UpdateChecker.CheckResult(UpdateChecker.currentModVersion(),
                         null, false, null, null, null, "Could not check GitHub releases.")
                 : result;
-        if (minecraft != null && minecraft.screen == this) {
+        if (minecraft != null && MinecraftCompat.screen(minecraft) == this) {
             rebuildPending = true;
         }
     }
@@ -1165,12 +1166,12 @@ public final class SettingsScreen extends Screen {
                 "Download " + version + " to your Minecraft mods folder?\n"
               + "Waypointer will verify the jar before installing it. Restart Minecraft after it finishes.");
         ConfirmScreen confirmScreen = new ConfirmScreen(confirmed -> {
-            minecraft.setScreen(this);
+            MinecraftCompat.setScreen(minecraft, this);
             if (confirmed) {
                 beginLatestUpdateDownload(result);
             }
         }, title, message, Component.literal("Download update"), Component.literal("Cancel"));
-        minecraft.setScreen(confirmScreen);
+        MinecraftCompat.setScreen(minecraft, confirmScreen);
     }
 
     private void beginLatestUpdateDownload(UpdateChecker.CheckResult result) {
@@ -1200,7 +1201,7 @@ public final class SettingsScreen extends Screen {
                 ? new UpdateChecker.DownloadResult(false, null, null,
                         "Could not download update. Try again.")
                 : result;
-        if (minecraft != null && minecraft.screen == this) {
+        if (minecraft != null && MinecraftCompat.screen(minecraft) == this) {
             rebuildPending = true;
         }
     }

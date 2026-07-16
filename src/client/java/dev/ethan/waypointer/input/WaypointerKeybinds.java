@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.input;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import com.mojang.blaze3d.platform.InputConstants;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.WaypointerClient;
@@ -266,13 +267,14 @@ public final class WaypointerKeybinds {
     }
 
     private void onTick(Minecraft mc) {
-        if (mc.screen != null) {
-            if (focusedEditBox(mc.screen)) {
+        Screen currentScreen = MinecraftCompat.screen(mc);
+        if (currentScreen != null) {
+            if (focusedEditBox(currentScreen)) {
                 drainWaypointKeybindClicks();
                 return;
             }
             while (openEditor.consumeClick()) {
-                if (WaypointerGuiScreens.owns(mc.screen)) {
+                if (WaypointerGuiScreens.owns(currentScreen)) {
                     openGui.run();
                 }
                 drainWaypointKeybindClicks();
@@ -447,7 +449,7 @@ public final class WaypointerKeybinds {
             mc.player.sendSystemMessage(WaypointerChatFeedback.suppress(message));
         }
         if (mc.gui != null) {
-            mc.gui.setOverlayMessage(message, false);
+            MinecraftCompat.setOverlayMessage(mc, message, false);
         }
     }
 

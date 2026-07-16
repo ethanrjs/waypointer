@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.codec.WaypointExportCodec;
 import dev.ethan.waypointer.config.WaypointerConfig;
@@ -142,6 +143,7 @@ public final class ExportScreen extends Screen {
     private long copyCodeBlockFeedbackUntil = 0L;
 
     private String encoded = "";
+    private String encodingError = "";
 
     public ExportScreen(Screen parent, WaypointerConfig config, List<WaypointGroup> groups, String subtitle) {
         super(Component.literal("Export Waypoints"));
@@ -157,7 +159,8 @@ public final class ExportScreen extends Screen {
     public static void openForGroup(Screen parent, WaypointerConfig config, WaypointGroup group) {
         String title = "Route: " + routeDisplayName(group)
                 + "  --  " + group.size() + " waypoint" + (group.size() == 1 ? "" : "s");
-        Minecraft.getInstance().setScreen(new ExportScreen(parent, config, List.of(group), title));
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new ExportScreen(parent, config, List.of(group), title));
     }
 
     public static void openForGroups(Screen parent, WaypointerConfig config,
@@ -165,7 +168,8 @@ public final class ExportScreen extends Screen {
         int totalPts = groups.stream().mapToInt(WaypointGroup::size).sum();
         String title = "Zone: " + zoneLabel + "  --  " + groups.size() + " route"
                 + (groups.size() == 1 ? "" : "s") + ", " + totalPts + " waypoints";
-        Minecraft.getInstance().setScreen(new ExportScreen(parent, config, groups, title));
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new ExportScreen(parent, config, groups, title));
     }
 
     // --- lifecycle ----------------------------------------------------------------------------
@@ -330,7 +334,7 @@ public final class ExportScreen extends Screen {
     }
 
     private void openExportTargetMenu(Button button) {
-        minecraft.setScreen(new ExportTargetScreen(this));
+        MinecraftCompat.setScreen(minecraft, new ExportTargetScreen(this));
     }
 
     private void selectExportTarget(WaypointExportCodec.Target target) {
@@ -342,7 +346,7 @@ public final class ExportScreen extends Screen {
     }
 
     private void goBackToParent() {
-        minecraft.setScreen(parent);
+        MinecraftCompat.setScreen(minecraft, parent);
     }
 
     private void resetToConfigDefaults() {
@@ -372,7 +376,16 @@ public final class ExportScreen extends Screen {
     private void reencode() {
         List<WaypointGroup> selected = selectedGroupsForExport();
         WaypointCodec.Options options = optsBuilder.build();
-        this.encoded = WaypointExportCodec.encode(selected, options, exportTarget);
+        try {
+            this.encoded = WaypointExportCodec.encode(selected, options, exportTarget);
+            this.encodingError = "";
+        } catch (IllegalArgumentException error) {
+            this.encoded = "";
+            this.encodingError = error.getMessage() == null ? "Export is not supported" : error.getMessage();
+        }
+        boolean canCopy = encodingError.isEmpty();
+        if (copyButton != null) copyButton.active = canCopy;
+        if (copyCodeBlockButton != null) copyCodeBlockButton.active = canCopy;
     }
 
     private void refreshToggleButtons() {
@@ -661,6 +674,10 @@ public final class ExportScreen extends Screen {
     }
 
     private void drawSizeSummary(GuiGraphicsExtractor g, int x, int y) {
+        if (!encodingError.isEmpty()) {
+            g.text(font, encodingError, x, y, 0xFFDD7070, false);
+            return;
+        }
         int chars = encoded.length();
         ExportFitSummary fit = exportFitSummary(encoded);
 
@@ -905,7 +922,7 @@ public final class ExportScreen extends Screen {
     public boolean isPauseScreen() { return false; }
 
     @Override
-    public void onClose() { minecraft.setScreen(parent); }
+    public void onClose() { MinecraftCompat.setScreen(minecraft, parent); }
 
     /**
      * Standalone target picker for the export screen. A dedicated screen keeps
@@ -955,10 +972,10 @@ public final class ExportScreen extends Screen {
         public boolean isPauseScreen() { return false; }
 
         @Override
-        public void onClose() { minecraft.setScreen(owner); }
+        public void onClose() { MinecraftCompat.setScreen(minecraft, owner); }
 
         private void returnToOwner(Button button) {
-            minecraft.setScreen(owner);
+            MinecraftCompat.setScreen(minecraft, owner);
         }
 
         private Component targetLabel(WaypointExportCodec.Target target) {
@@ -990,7 +1007,7 @@ public final class ExportScreen extends Screen {
             @Override
             public void onPress(Button button) {
                 owner.selectExportTarget(target);
-                minecraft.setScreen(owner);
+                MinecraftCompat.setScreen(minecraft, owner);
             }
         }
     }

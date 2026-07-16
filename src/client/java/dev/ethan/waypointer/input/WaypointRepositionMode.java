@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.input;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -12,6 +13,7 @@ import dev.ethan.waypointer.dungeon.DungeonRoomRouteSync;
 import dev.ethan.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.render.RenderHelpers;
+import dev.ethan.waypointer.render.RenderSubmission;
 import dev.ethan.waypointer.render.WaypointRenderer;
 import dev.ethan.waypointer.render.WaypointerRenderPipelines;
 import dev.ethan.waypointer.screen.AddNamedWaypointScreen;
@@ -156,7 +158,7 @@ public final class WaypointRepositionMode {
             return handleEditModeRightClick(mc);
         });
         ClientTickEvents.END_CLIENT_TICK.register(WaypointRepositionMode::onTick);
-        LevelRenderEvents.END_MAIN.register(WaypointRepositionMode::renderOutline);
+        LevelRenderEvents.COLLECT_SUBMITS.register(WaypointRepositionMode::renderOutline);
     }
 
     public static boolean isEditModeEnabled() {
@@ -234,7 +236,7 @@ public final class WaypointRepositionMode {
                 && waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT);
         active = new Session(manager, config, group, waypointIndex,
                 Mode.MOVE_EXISTING, preciseSmallPlacement, reopenEditorAfterCommit);
-        mc.setScreen(null);
+        MinecraftCompat.setScreen(mc, null);
         showHelp(mc);
     }
 
@@ -262,7 +264,7 @@ public final class WaypointRepositionMode {
 
         WaypointGroup group = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         active = new Session(manager, config, group, -1, mode, preciseSmallPlacement, true);
-        mc.setScreen(null);
+        MinecraftCompat.setScreen(mc, null);
         showHelp(mc);
     }
 
@@ -274,7 +276,7 @@ public final class WaypointRepositionMode {
             clearEditSelectionCycle();
         }
         if (active != null) {
-            if (missingWorld || mc.screen != null) {
+            if (missingWorld || MinecraftCompat.screen(mc) != null) {
                 active = null;
             }
         }
@@ -412,7 +414,7 @@ public final class WaypointRepositionMode {
         if (editManager == null || editConfig == null) return null;
 
         ClientLevel level = mc.level;
-        Vec3 origin = mc.gameRenderer.getMainCamera().position();
+        Vec3 origin = MinecraftCompat.mainCamera(mc.gameRenderer).position();
         Vec3 view = mc.player.getViewVector(1.0F);
         Vec3 direction = normalizedDirection(view);
         if (direction == null) return null;
@@ -805,7 +807,7 @@ public final class WaypointRepositionMode {
             mc.player.sendSystemMessage(WaypointerChatFeedback.suppress(message));
         }
         if (mc.gui != null) {
-            mc.gui.setOverlayMessage(message, false);
+            MinecraftCompat.setOverlayMessage(mc, message, false);
         }
     }
 
@@ -815,10 +817,8 @@ public final class WaypointRepositionMode {
         Minecraft mc = Minecraft.getInstance();
         PoseStack ps = ctx.poseStack();
         if (ps == null) return;
-        var buffers = ctx.bufferSource();
-        if (buffers == null) return;
 
-        Vec3 cam = mc.gameRenderer.getMainCamera().position();
+        Vec3 cam = MinecraftCompat.mainCamera(mc.gameRenderer).position();
         double minX;
         double minY;
         double minZ;
@@ -854,10 +854,10 @@ public final class WaypointRepositionMode {
         float z2 = (float) (maxZ - cam.z + OUTLINE_EXPAND);
 
         var type = WaypointerRenderPipelines.linesThroughWalls();
-        VertexConsumer lines = buffers.getBuffer(type);
-        RenderHelpers.emitLineBox(lines, ps, x1, y1, z1, x2, y2, z2,
-                OUTLINE_COLOR, OUTLINE_ALPHA, OUTLINE_WIDTH);
-        RenderHelpers.endBatch(buffers, type);
+        RenderSubmission.submit(ctx, ps, type, (lines, submittedPose) ->
+                RenderHelpers.emitLineBox(lines, submittedPose,
+                        x1, y1, z1, x2, y2, z2,
+                        OUTLINE_COLOR, OUTLINE_ALPHA, OUTLINE_WIDTH));
     }
 
     private static PreciseTarget targetedPrecise(Minecraft mc) {

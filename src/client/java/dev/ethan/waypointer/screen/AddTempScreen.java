@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
@@ -58,7 +59,7 @@ public final class AddTempScreen extends Screen {
     }
 
     public static void open(Screen parent, ActiveGroupManager manager, WaypointerConfig config) {
-        Minecraft.getInstance().setScreen(new AddTempScreen(parent, manager, config));
+        MinecraftCompat.setScreen(Minecraft.getInstance(), new AddTempScreen(parent, manager, config));
     }
     @Override
     protected void init() {
@@ -194,7 +195,7 @@ public final class AddTempScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        MinecraftCompat.setScreen(minecraft, parent);
     }
 
     @Override

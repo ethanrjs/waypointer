@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.dungeon;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Zone;
@@ -243,6 +244,6 @@ public final class DungeonRouteDownloader {
 
     private static void sendChat(Component message) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null) mc.gui.getChat().addClientSystemMessage(message);
+        if (mc.player != null) MinecraftCompat.addClientSystemMessage(mc, message);
     }
 }

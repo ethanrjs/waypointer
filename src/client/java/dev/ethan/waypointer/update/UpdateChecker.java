@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.update;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -706,7 +707,7 @@ public final class UpdateChecker {
                             .withColor(ChatFormatting.YELLOW)
                             .withUnderlined(true)
                             .withClickEvent(new ClickEvent.OpenUrl(result.releasePageUri())));
-            mc.gui.getChat().addClientSystemMessage(prefix.append(body));
+            MinecraftCompat.addClientSystemMessage(mc, prefix.append(body));
         });
     }
 }

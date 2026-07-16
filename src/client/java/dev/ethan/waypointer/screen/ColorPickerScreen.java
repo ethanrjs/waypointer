@@ -2,6 +2,7 @@ package dev.ethan.waypointer.screen;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import dev.ethan.waypointer.Waypointer;
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -95,7 +96,8 @@ public final class ColorPickerScreen extends Screen {
 
     /** Convenience opener so call sites read like "pick a colour → here's what to do". */
     public static void open(Screen parent, String title, int initialRgb, IntConsumer onPicked) {
-        Minecraft.getInstance().setScreen(new ColorPickerScreen(parent, title, initialRgb, onPicked));
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new ColorPickerScreen(parent, title, initialRgb, onPicked));
     }
 
     @Override
@@ -332,7 +334,7 @@ public final class ColorPickerScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        MinecraftCompat.setScreen(minecraft, parent);
     }
 
     private int currentRgb() {

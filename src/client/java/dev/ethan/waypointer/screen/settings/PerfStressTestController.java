@@ -3,6 +3,7 @@ package dev.ethan.waypointer.screen.settings;
 import com.mojang.blaze3d.systems.RenderSystem;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.WaypointerClient;
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.config.WaypointerConfigCodec;
 import dev.ethan.waypointer.update.UpdateChecker;
@@ -290,9 +291,10 @@ public final class PerfStressTestController {
         try {
             var device = RenderSystem.tryGetDevice();
             if (device != null) {
-                gpuVendor = device.getVendor();
-                gpuBackend = device.getBackendName();
-                gpuInfo = device.getImplementationInformation();
+                MinecraftCompat.GpuInfo info = MinecraftCompat.gpuInfo(device);
+                gpuVendor = info.vendor();
+                gpuBackend = info.backend();
+                gpuInfo = info.implementation();
             }
         } catch (Throwable ignored) {
         }

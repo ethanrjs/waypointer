@@ -4,15 +4,7 @@ import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.core.Zone;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.world.scores.DisplaySlot;
-import net.minecraft.world.scores.Objective;
-import net.minecraft.world.scores.PlayerScoreEntry;
-import net.minecraft.world.scores.PlayerTeam;
-import net.minecraft.world.scores.Scoreboard;
-import net.minecraft.network.chat.Component;
 
-import java.util.Collection;
 import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
@@ -34,7 +26,8 @@ public final class ScoreboardZoneResolver implements ZoneSource {
      * Skyblock prefixes every location line with the ⏣ symbol. Capture everything after it
      * up to whitespace-comma (because the scoreboard sometimes appends " , (Coords)").
      */
-    private static final Pattern LOCATION_LINE = Pattern.compile("⏣\\s*([^,]+?)\\s*(?:,|$)");
+    private static final Pattern LOCATION_LINE = Pattern.compile(
+            "(?m)⏣[\\t ]*([^,\\r\\n]+?)[\\t ]*(?:,|$)");
 
     private static final int POLL_INTERVAL_TICKS = 2;
 
@@ -61,13 +54,12 @@ public final class ScoreboardZoneResolver implements ZoneSource {
     }
 
     private Zone detect(Minecraft mc) {
-        ClientLevel level = mc.level;
-        if (level == null || mc.player == null) return null;
+        if (mc == null || mc.level == null || mc.player == null) return null;
+        return resolveSidebarText(SidebarTexts.collectColorStripped(mc));
+    }
 
-        Scoreboard sb = level.getScoreboard();
-        Objective side = sb.getDisplayObjective(DisplaySlot.SIDEBAR);
-        if (side == null) return null;
-
+    static Zone resolveSidebarText(String blob) {
+        if (blob == null || blob.isBlank()) return null;
         // Glacite sub-areas (Tunnels, Lake, Base Camp, Mineshafts) share the same
         // broad Hypixel location id as central Dwarven Mines. Scan the entire
         // sidebar first -- substring order matches Skyblocker's Area.DwarvenMines.
@@ -76,42 +68,15 @@ public final class ScoreboardZoneResolver implements ZoneSource {
         // the generic "Glacite Mineshafts" line when both are visible: the
         // variant is strictly more specific and is what users keyed route
         // waypoints to.
-        String blob = SidebarTexts.collectColorStripped(mc);
-        if (blob != null) {
-            Zone mineshaftType = Zone.tryResolveMineshaftTypeFromSidebarBlob(blob);
-            if (mineshaftType != null) return mineshaftType;
-            Zone dwarvenSub = Zone.tryResolveDwarvenSubAreaFromSidebarBlob(blob);
-            if (dwarvenSub != null) return dwarvenSub;
-            Zone catacombsFloor = CatacombsFloorRefiner.tryResolveFromSidebarBlob(blob);
-            if (catacombsFloor != null) return catacombsFloor;
-        }
+        Zone mineshaftType = Zone.tryResolveMineshaftTypeFromSidebarBlob(blob);
+        if (mineshaftType != null) return mineshaftType;
+        Zone dwarvenSub = Zone.tryResolveDwarvenSubAreaFromSidebarBlob(blob);
+        if (dwarvenSub != null) return dwarvenSub;
+        Zone catacombsFloor = CatacombsFloorRefiner.tryResolveFromSidebarBlob(blob);
+        if (catacombsFloor != null) return catacombsFloor;
 
-        Collection<PlayerScoreEntry> entries = sb.listPlayerScores(side);
-        for (PlayerScoreEntry entry : entries) {
-            String line = renderLine(sb, entry);
-            if (line == null) continue;
-            Matcher m = LOCATION_LINE.matcher(line);
-            if (m.find()) {
-                String name = stripColors(m.group(1)).trim();
-                return Zone.resolveFromDisplayName(name);
-            }
-        }
+        Matcher location = LOCATION_LINE.matcher(blob);
+        if (location.find()) return Zone.resolveFromDisplayName(location.group(1).trim());
         return null;
-    }
-
-    /** Turn a scoreboard entry into its rendered string (resolves team prefix/suffix + formatting). */
-    private static String renderLine(Scoreboard sb, PlayerScoreEntry entry) {
-        String owner = entry.owner();
-        PlayerTeam team = sb.getPlayersTeam(owner);
-        Component formatted = team == null
-                ? Component.literal(owner)
-                : PlayerTeam.formatNameForTeam(team, Component.literal(owner));
-        return formatted.getString();
-    }
-
-    private static final Pattern COLOR_CODE = Pattern.compile("(?i)§[0-9A-FK-OR]");
-
-    private static String stripColors(String s) {
-        return COLOR_CODE.matcher(s).replaceAll("");
     }
 }
