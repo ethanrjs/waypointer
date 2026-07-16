@@ -186,10 +186,9 @@ public final class DungeonRouteImporter {
     /**
      * DungeonRoomsMod-lineage names that differ from the Odin-lineage catalog
      * names. Every alias was cross-checked against the catalog's room shape
-     * and secret count before being added; names whose target is ambiguous
-     * (e.g. {@code Four-Banner}, {@code Double-Stair}, {@code Redstone-Skull})
-     * are deliberately absent -- importing a route into the wrong room is
-     * worse than reporting it unmatched.
+     * and upstream core hashes before being added. The less-obvious aliases at
+     * the end use exact core-hash matches between SecretRoutes' room catalog and
+     * Waypointer's bundled catalog, rather than spelling guesses.
      */
     private static final Map<String, String> DRM_NAME_ALIASES = Map.ofEntries(
             Map.entry("silvers-sword", "silver-sword"),
@@ -200,7 +199,10 @@ public final class DungeonRouteImporter {
             Map.entry("mithril-cave", "mines"),
             Map.entry("dino-dig-site", "dino-site"),
             Map.entry("withermancers", "withermancer"),
-            Map.entry("draw-bridge", "bridges"));
+            Map.entry("draw-bridge", "bridges"),
+            Map.entry("four-banner", "banners"),
+            Map.entry("double-stair", "staircase"),
+            Map.entry("redstone-skull", "redstone-crypt"));
 
     private static Map<String, DungeonRoomDefinition> catalogIndex() {
         Map<String, DungeonRoomDefinition> index = new HashMap<>();

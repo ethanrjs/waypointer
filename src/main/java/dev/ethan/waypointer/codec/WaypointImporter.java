@@ -103,6 +103,7 @@ public final class WaypointImporter {
             Map.entry("mining_2",        "deep_caverns"),
             Map.entry("mining_3",        "dwarven_mines"),
             Map.entry("fishing_1",       "backwater_bayou"),
+            Map.entry("lotus_atoll",     "lotus_atoll"),
             Map.entry("dungeon_hub",     "dungeon_hub"),
             Map.entry("dungeon",         Zone.UNKNOWN.id()),
             Map.entry("rift",            "rift"),
