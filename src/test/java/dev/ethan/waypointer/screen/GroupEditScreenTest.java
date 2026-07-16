@@ -77,6 +77,25 @@ class GroupEditScreenTest {
     }
 
     @Test
+    void shortScreenGeometryReservesWrappedFooterAndScrollsSidebarOverflow() {
+        assertEquals(190, GroupEditScreen.contentBottom(262, 56),
+                "a two-row footer at GUI scale 5 must be outside the content panel");
+        assertEquals(116, GroupEditScreen.maxSidebarScroll(236, 120));
+        assertEquals(0, GroupEditScreen.maxSidebarScroll(120, 236));
+        assertEquals(236, GroupEditScreen.maxSidebarScroll(236, 0));
+    }
+
+    @Test
+    void keyboardFocusScrollsSidebarControlFullyIntoView() {
+        assertEquals(116, GroupEditScreen.sidebarScrollOffsetToReveal(
+                0, 278, 20, 62, 182, 116));
+        assertEquals(0, GroupEditScreen.sidebarScrollOffsetToReveal(
+                116, 62, 20, 62, 182, 116));
+        assertEquals(50, GroupEditScreen.sidebarScrollOffsetToReveal(
+                50, 150, 20, 62, 182, 116));
+    }
+
+    @Test
     void sameSelectedWaypointDoubleClickStartsRenameDecision() {
         assertTrue(GroupEditScreen.shouldStartRenameFromRowClick(true, true));
         assertFalse(GroupEditScreen.shouldStartRenameFromRowClick(false, true));

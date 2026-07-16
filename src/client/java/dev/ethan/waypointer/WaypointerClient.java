@@ -7,6 +7,7 @@ import dev.ethan.waypointer.chat.ChatCoordDetector;
 import dev.ethan.waypointer.chat.ChatImportCache;
 import dev.ethan.waypointer.chat.ChatImportDetector;
 import dev.ethan.waypointer.commands.WaypointerCommands;
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.config.Storage;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
@@ -159,16 +160,17 @@ public final class WaypointerClient implements ClientModInitializer {
 
     public static void openGui() {
         Minecraft mc = Minecraft.getInstance();
-        if (WaypointerGuiScreens.owns(mc.screen)) {
-            suspendedWaypointerGuiScreen = mc.screen;
-            mc.setScreen(null);
+        Screen currentScreen = MinecraftCompat.screen(mc);
+        if (WaypointerGuiScreens.owns(currentScreen)) {
+            suspendedWaypointerGuiScreen = currentScreen;
+            MinecraftCompat.setScreen(mc, null);
             return;
         }
 
         Screen resume = resumableWaypointerGuiScreen();
         if (resume != null) {
             suspendedWaypointerGuiScreen = null;
-            mc.setScreen(resume);
+            MinecraftCompat.setScreen(mc, resume);
             return;
         }
 

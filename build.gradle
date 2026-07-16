@@ -3,11 +3,37 @@ plugins {
 	id 'maven-publish'
 }
 
+def minecraftTargets = [
+		'26.1.2': [fabricApi: '0.154.2+26.1.2', dependency: '>=26.1.2 <26.2'],
+		'26.2'  : [fabricApi: '0.154.2+26.2',   dependency: '>=26.2 <26.3']
+]
+def targetMinecraft = project.minecraft_version.toString()
+def target = minecraftTargets[targetMinecraft]
+if (target == null) {
+	throw new GradleException("Unsupported minecraft_version ${targetMinecraft}; use ${minecraftTargets.keySet().join(' or ')}")
+}
+
+def wrapperCommand = System.getProperty('os.name').startsWith('Windows')
+		? ['cmd', '/d', '/c', file('gradlew.bat').absolutePath]
+		: [file('gradlew').absolutePath]
+def buildMinecraft26_1_2 = tasks.register('buildMinecraft26_1_2', Exec) {
+	commandLine wrapperCommand + ['clean', 'build', '-Pminecraft_version=26.1.2', '--console=plain']
+}
+def buildMinecraft26_2 = tasks.register('buildMinecraft26_2', Exec) {
+	dependsOn buildMinecraft26_1_2
+	commandLine wrapperCommand + ['build', '-Pminecraft_version=26.2', '--console=plain']
+}
+tasks.register('buildAllTargets') {
+	group = 'build'
+	description = 'Builds and tests every supported Minecraft target serially.'
+	dependsOn buildMinecraft26_2
+}
+
 version = project.mod_version
 group = project.maven_group
 
 base {
-	archivesName = project.archives_base_name
+	archivesName = "${project.archives_base_name}-${targetMinecraft}"
 }
 
 repositories {
@@ -15,6 +41,7 @@ repositories {
 		name = 'Hypixel'
 		url = 'https://repo.hypixel.net/repository/Hypixel/'
 	}
+	mavenCentral()
 }
 
 loom {
@@ -33,9 +60,9 @@ loom {
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
-
+	implementation "net.fabricmc.fabric-api:fabric-api:${target.fabricApi}"
 	implementation "net.hypixel:mod-api:${project.hypixel_mod_api_version}"
+
 	include implementation('org.brotli:dec:0.1.2')
 
 	testImplementation platform("org.junit:junit-bom:5.10.2")
@@ -54,9 +81,11 @@ test {
 
 processResources {
 	inputs.property "version", project.version
+	inputs.property "minecraft_dependency", target.dependency
 
 	filesMatching("fabric.mod.json") {
-		expand "version": inputs.properties.version
+		expand "version": inputs.properties.version,
+				"minecraft_dependency": inputs.properties.minecraft_dependency
 	}
 }
 

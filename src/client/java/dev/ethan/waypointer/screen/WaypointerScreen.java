@@ -3,6 +3,7 @@ package dev.ethan.waypointer.screen;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import dev.ethan.waypointer.WaypointerClient;
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.codec.WaypointImporter;
 import dev.ethan.waypointer.color.RouteColorPolicy;
 import dev.ethan.waypointer.config.WaypointerConfig;
@@ -46,21 +47,20 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE;
  *   +------------------------------------------+
  *   | Waypointer                   Hub -- 3 gp |
  *   |                                          |
- *   | [ Zones      ] | group list ...          |
+ *   | Zones          | group list ...           |
  *   | > Hub        3|                          |
  *   |   Garden     1|                          |
- *   |   Unknown    0|                          |
  *   |                                          |
  *   | [New Group][Edit][Delete]...      [Done] |
  *   +------------------------------------------+
  *
- * The sidebar replaces the old horizontal tab strip so the "Unknown" zone stops
- * being a lone aqua pill in the corner, and so adding many zones doesn't force
- * users to horizontal-scroll mentally.
+ * The sidebar keeps the current and populated zones visible. Empty zones the
+ * player is not currently in stay behind an inline Show More row, then append
+ * alphabetically and end with Show Less when expanded.
  *
  * Footer uses {@link GuiTokens#layoutFooter} -- primary actions on the left,
- * Done pinned right, with wrap-above when the screen is narrow. This is what
- * fixes the overlap bug at small GUI scales.
+ * Done pinned right. Compact, label-safe widths keep the supported GUI-scale
+ * layouts on one row; the generic helper still wraps below that safety floor.
  *
  * Hand-rolled list (rather than ObjectSelectionList) so we can render custom
  * row content. The whole list fits in a few hundred lines and handles clicks
@@ -89,6 +89,7 @@ public final class WaypointerScreen extends Screen {
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
     private String selectedZoneId;
+    private String selectedDungeonRoomZoneId;
     private int scrollOffset;
     private int sidebarScrollOffset;
     private String selectedGroupId;
@@ -127,12 +128,20 @@ public final class WaypointerScreen extends Screen {
             "Remove the selected route permanently.\n"
           + "Double click to confirm.";
     private static final int SEARCH_CLEAR_BTN_W = 52;
+    private static final String SHOW_MORE_ZONE_ID = "__show_more_zones__";
+    private static final String SHOW_LESS_ZONE_ID = "__show_less_zones__";
+    private static final int ZONE_DISCLOSURE_ACCENT = 0xFFFFC247;
     private static final long MAIN_NOTICE_MS = 2500L;
     // Sized for the widest transient state label ("Confirm?") so the button doesn't
     // visibly grow or shrink when arming/disarming. Leave some horizontal slack so
     // vanilla's "hover" narration arrow has room without clipping the text.
-    private static final int DELETE_BTN_W = 72;
-    private static final int HIDE_ALL_ROUTES_BTN_W = 76;
+    private static final int NEW_ROUTE_BTN_W = 72;
+    private static final int EDIT_BTN_W = 48;
+    private static final int HIDE_ALL_ROUTES_BTN_W = 64;
+    private static final int IMPORT_BTN_W = 56;
+    private static final int EXPORT_BTN_W = 56;
+    private static final int DELETE_BTN_W = 56;
+    private static final int DONE_BTN_W = 56;
     private static final int DOWNLOAD_ROUTES_BTN_W = 112;
     private static final int SETTINGS_BTN_W = 76;
     /**
@@ -148,8 +157,9 @@ public final class WaypointerScreen extends Screen {
     private EditBox searchBox;
     private OverlayButton clearSearchButton;
     private OverlayButton downloadRoutesButton;
-    private OverlayButton settingsButton;
+    private Button settingsButton;
     private String searchQuery = "";
+    private boolean zoneListExpanded;
     private long hideAllArmedUntil = 0L;
     private final LinkedHashSet<String> hideAllArmedGroupIds = new LinkedHashSet<>();
     private long deleteArmedUntil = 0L;
@@ -162,18 +172,25 @@ public final class WaypointerScreen extends Screen {
         // cluster; Settings lives in the header (it navigates, it doesn't act
         // on route data).
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("New Route", 92, this::createGroup));
-        left.add(new GuiTokens.ButtonSpec("Edit", 64, this::editSelected));
+        left.add(new GuiTokens.ButtonSpec("New Route", NEW_ROUTE_BTN_W, this::createGroup));
+        left.add(new GuiTokens.ButtonSpec("Edit", EDIT_BTN_W, this::editSelected));
         left.add(new GuiTokens.ButtonSpec(HIDE_ALL_ROUTES_LABEL, HIDE_ALL_ROUTES_BTN_W,
                 this::onHideAllRoutesClicked,
                 Tooltip.create(Component.literal(HIDE_ALL_ROUTES_TOOLTIP_DEFAULT))));
-        left.add(new GuiTokens.ButtonSpec("Import", 74, this::importFromClipboard));
-        left.add(new GuiTokens.ButtonSpec("Export", 74, this::exportZone,
+        left.add(new GuiTokens.ButtonSpec("Import", IMPORT_BTN_W, this::importFromClipboard));
+        left.add(new GuiTokens.ButtonSpec("Export", EXPORT_BTN_W, this::exportZone,
                 Tooltip.create(Component.literal(
                         "Export the selected route.\n"
                       + "If none is selected, export every visible route."))));
         left.add(new GuiTokens.ButtonSpec(DELETE_LABEL, DELETE_BTN_W, this::onDeleteClicked));
         return left;
+    }
+
+    static int footerRequiredWidth() {
+        return PAD_OUTER
+                + NEW_ROUTE_BTN_W + EDIT_BTN_W + HIDE_ALL_ROUTES_BTN_W
+                + IMPORT_BTN_W + EXPORT_BTN_W + DELETE_BTN_W
+                + GAP * 5 + GAP_SECTION + DONE_BTN_W + PAD_OUTER;
     }
 
     public WaypointerScreen(ActiveGroupManager manager, WaypointerConfig config) {
@@ -186,7 +203,7 @@ public final class WaypointerScreen extends Screen {
     public static void open(ActiveGroupManager manager, WaypointerConfig config) {
         WaypointerScreen screen = new WaypointerScreen(manager, config);
         screen.focusCurrentDungeonRoomOnOpen();
-        Minecraft.getInstance().setScreen(screen);
+        MinecraftCompat.setScreen(Minecraft.getInstance(), screen);
     }
 
     public static void openFocused(ActiveGroupManager manager, WaypointerConfig config,
@@ -202,17 +219,19 @@ public final class WaypointerScreen extends Screen {
                     : sidebarSelectionForZoneId(focus.zoneId());
             if (!focus.temp() && isDungeonRoomZone(focus.zoneId())) {
                 screen.pendingFocusRoomZoneId = focus.zoneId();
+                screen.selectedDungeonRoomZoneId = focus.zoneId();
                 expandedDungeonRoomZoneIds.add(focus.zoneId());
             }
             screen.pendingFocusGroupId = focus.id();
         }
-        Minecraft.getInstance().setScreen(screen);
+        MinecraftCompat.setScreen(Minecraft.getInstance(), screen);
     }
 
     private void focusCurrentDungeonRoomOnOpen() {
         String roomZoneId = currentDungeonRoomZoneId(manager);
         if (roomZoneId == null) return;
         selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
+        selectedDungeonRoomZoneId = roomZoneId;
         expandedDungeonRoomZoneIds.add(roomZoneId);
         clearRouteSelection();
         pendingFocusRoomZoneId = roomZoneId;
@@ -236,7 +255,7 @@ public final class WaypointerScreen extends Screen {
         // Fixed width so the label can toggle between "Delete" and "Confirm?" without
         // the footer re-flowing or the text sliding past the bevel.
         List<GuiTokens.ButtonSpec> left = footerActions();
-        GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec("Done", this::onClose);
+        GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec("Done", DONE_BTN_W, this::onClose);
 
         // We need references to stateful footer buttons so we can refresh labels and
         // enabled state after selection or route visibility changes. Intercept every
@@ -279,10 +298,11 @@ public final class WaypointerScreen extends Screen {
         syncSearchBoxGeometry();
         addRenderableWidget(downloadRoutesButton);
 
-        settingsButton = new OverlayButton(width - PAD_OUTER - SETTINGS_BTN_W,
-                PAD_OUTER - 5, SETTINGS_BTN_W, BTN_H,
-                Component.literal("Settings"), b -> openSettings());
-        settingsButton.setTooltip(Tooltip.create(Component.literal("Open Waypointer settings.")));
+        settingsButton = Button.builder(Component.literal("Settings"), b -> openSettings())
+                .bounds(width - PAD_OUTER - SETTINGS_BTN_W, PAD_OUTER - 5,
+                        SETTINGS_BTN_W, BTN_H)
+                .tooltip(Tooltip.create(Component.literal("Open Waypointer settings.")))
+                .build();
         addRenderableWidget(settingsButton);
 
         // Resolve pending focus requests from open/openFocused(). We do this here
@@ -333,6 +353,7 @@ public final class WaypointerScreen extends Screen {
         WaypointGroup storedGroup = manager.get(id);
         if (storedGroup != null && !storedGroup.temp() && isDungeonRoomZone(storedGroup.zoneId())) {
             selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
+            selectedDungeonRoomZoneId = storedGroup.zoneId();
             expandedDungeonRoomZoneIds.add(storedGroup.zoneId());
         }
         List<RouteListRow> rows = routeListRows();
@@ -349,6 +370,7 @@ public final class WaypointerScreen extends Screen {
     private void focusRoomByZoneId(String roomZoneId) {
         if (!isDungeonRoomZone(roomZoneId)) return;
         selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
+        selectedDungeonRoomZoneId = roomZoneId;
         expandedDungeonRoomZoneIds.add(roomZoneId);
         clearRouteSelection();
         List<RouteListRow> rows = routeListRows();
@@ -438,16 +460,78 @@ public final class WaypointerScreen extends Screen {
     }
 
     private void openSettings() {
-        minecraft.setScreen(new SettingsScreen(this, config, WaypointerClient.dungeonConfig()));
+        MinecraftCompat.setScreen(minecraft,
+                new SettingsScreen(this, config, WaypointerClient.dungeonConfig()));
     }
 
     private List<String> zoneIds() {
         return zoneIdsForManager(manager);
     }
 
-    private static List<String> zoneIdsForManager(ActiveGroupManager manager) {
+    private List<String> sidebarRows() {
+        return sidebarRowsForManager(manager, zoneListExpanded);
+    }
+
+    static List<String> sidebarZoneIdsForManager(ActiveGroupManager manager, boolean expanded) {
+        List<String> all = zoneIdsForManager(manager);
+        String currentSelection = sidebarSelectionForZoneId(currentZoneId(manager));
+        List<String> prioritized = new ArrayList<>();
+        List<String> emptyInactive = new ArrayList<>();
+
+        for (String id : all) {
+            if (id.equals(currentSelection)) prioritized.add(id);
+        }
+        for (String id : all) {
+            if (id.equals(currentSelection)) continue;
+            if (zoneHasRoutes(manager, id)) prioritized.add(id);
+            else emptyInactive.add(id);
+        }
+        emptyInactive.sort(Comparator
+                .comparing((String id) -> displayZoneLabel(id).toLowerCase(Locale.ROOT))
+                .thenComparing(id -> id));
+        if (expanded) prioritized.addAll(emptyInactive);
+        return prioritized;
+    }
+
+    static List<String> sidebarRowsForManager(ActiveGroupManager manager, boolean expanded) {
+        List<String> collapsed = sidebarZoneIdsForManager(manager, false);
+        List<String> all = sidebarZoneIdsForManager(manager, true);
+        if (all.size() == collapsed.size()) return collapsed;
+
+        List<String> rows = new ArrayList<>(expanded ? all : collapsed);
+        rows.add(expanded ? SHOW_LESS_ZONE_ID : SHOW_MORE_ZONE_ID);
+        return rows;
+    }
+
+    static boolean isZoneDisclosureRow(String id) {
+        return SHOW_MORE_ZONE_ID.equals(id) || SHOW_LESS_ZONE_ID.equals(id);
+    }
+
+    static String zoneDisclosureLabel(String id) {
+        return SHOW_MORE_ZONE_ID.equals(id) ? "Show More..." : "Show Less";
+    }
+
+    private static boolean zoneHasRoutes(ActiveGroupManager manager, String zoneId) {
+        if (isTemporaryZone(zoneId)) {
+            for (WaypointGroup group : manager.allGroups()) {
+                if (group.temp() && !group.isEmpty()) return true;
+            }
+            return false;
+        }
+        if (isDungeonRoomsZone(zoneId)) {
+            if (dungeonRoomGroupCount(manager) > 0) return true;
+            for (DungeonRoomDefinition definition : DungeonRoomData.customDefinitions()) {
+                if (definition != null && !definition.waypoints().isEmpty()) return true;
+            }
+            return false;
+        }
+        return normalGroupCountForZone(manager, zoneId) > 0;
+    }
+
+    static List<String> zoneIdsForManager(ActiveGroupManager manager) {
         List<String> zones = new ArrayList<>();
         zones.add(TEMPORARY_ZONE_ID);
+        zones.add(Zone.UNKNOWN.id());
         List<String> dungeonRooms = new ArrayList<>();
         for (String zoneId : manager.knownZoneIds()) {
             if (isDungeonRoomZone(zoneId)) {
@@ -464,17 +548,20 @@ public final class WaypointerScreen extends Screen {
             String currentId = currentZone.id();
             if (isDungeonRoomZone(currentId)) {
                 if (!dungeonRooms.contains(currentId)) dungeonRooms.add(0, currentId);
-            } else if (!zones.contains(currentId)) {
+            } else {
+                zones.remove(currentId);
                 zones.add(1, currentId);
             }
         }
-        for (DungeonRoomDefinition definition : dungeonDefinitionsForExport(DungeonRoomData.customDefinitions())) {
+        for (Zone zone : Zone.knownZones()) {
+            if (!zones.contains(zone.id())) zones.add(zone.id());
+        }
+        for (DungeonRoomDefinition definition : DungeonRoomData.customDefinitions()) {
             if (!dungeonRooms.contains(definition.id())) dungeonRooms.add(definition.id());
         }
         if (!dungeonRooms.isEmpty()) {
             zones.add(DUNGEON_ROOMS_ZONE_ID);
         }
-        if (zones.size() == 1) zones.add(Zone.UNKNOWN.id());
         return zones;
     }
 
@@ -761,7 +848,8 @@ public final class WaypointerScreen extends Screen {
         }
 
         // Header
-        g.text(font, "Waypointer", PAD_OUTER, PAD_OUTER, TEXT, false);
+        String headerTitle = "Waypointer";
+        g.text(font, headerTitle, PAD_OUTER, PAD_OUTER, TEXT, false);
         String status;
         if (isTemporaryZone(selectedZoneId)) {
             int waypointCount = temporaryWaypointCount();
@@ -775,7 +863,11 @@ public final class WaypointerScreen extends Screen {
         int statusRight = settingsButton != null
                 ? settingsButton.getX() - GAP
                 : width - PAD_OUTER;
-        g.text(font, status, statusRight - font.width(status), PAD_OUTER, TEXT_DIM, false);
+        int statusLeft = PAD_OUTER + font.width(headerTitle) + GAP_SECTION;
+        String clippedStatus = font.plainSubstrByWidth(status,
+                Math.max(0, statusRight - statusLeft));
+        g.text(font, clippedStatus, statusRight - font.width(clippedStatus),
+                PAD_OUTER, TEXT_DIM, false);
 
         // Region geometry
         Layout layout = layout();
@@ -798,13 +890,10 @@ public final class WaypointerScreen extends Screen {
         if (downloadRoutesButton != null && downloadRoutesButton.visible) {
             downloadRoutesButton.extractOverlay(g, mouseX, mouseY, partial);
         }
-        if (settingsButton != null) {
-            settingsButton.extractOverlay(g, mouseX, mouseY, partial);
-        }
     }
 
     private Layout layout() {
-        GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec("Done", this::onClose);
+        GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec("Done", DONE_BTN_W, this::onClose);
         int footerSpace = GuiTokens.footerHeight(width, footerActions(), done, font);
         int top = PAD_OUTER + font.lineHeight + GAP;
         int bottom = height - footerSpace - GAP_SECTION;
@@ -874,14 +963,13 @@ public final class WaypointerScreen extends Screen {
         g.fill(x1, y1, x2, y2, SURFACE);
         g.fill(x2, y1, x2 + 1, y2, BORDER);
 
-        int labelY = y1 + 10;
-        g.text(font, "Zones", x1 + GAP, labelY, TEXT_DIM, false);
+        g.text(font, "Zones", x1 + GAP, y1 + 10, TEXT, false);
 
         int rowsTop = sidebarRowsTop(y1);
         int rowsBottom = y2 - GAP_TIGHT;
         if (rowsBottom <= rowsTop) return;
 
-        List<String> ids = zoneIds();
+        List<String> ids = sidebarRows();
         String currentId = manager.currentZone() == null ? null : manager.currentZone().id();
         sidebarScrollOffset = MathUtil.clamp(sidebarScrollOffset, 0,
                 maxSidebarScroll(ids.size(), rowsBottom - rowsTop));
@@ -891,6 +979,13 @@ public final class WaypointerScreen extends Screen {
             if (rowY + ROW_H <= rowsTop) continue;
             if (rowY >= rowsBottom) break;
             String id = ids.get(i);
+            if (isZoneDisclosureRow(id)) {
+                boolean hovered = mouseX >= x1 && mouseX <= x2
+                        && mouseY >= rowY && mouseY <= Math.min(rowsBottom, rowY + ROW_H);
+                if (hovered) g.requestCursor(CursorTypes.POINTING_HAND);
+                drawZoneDisclosureRow(g, x1, rowY, x2, id, hovered);
+                continue;
+            }
             boolean selected = id.equals(selectedZoneId);
             boolean temporary = isTemporaryZone(id);
             boolean dungeonParent = isDungeonRoomsZone(id);
@@ -925,6 +1020,16 @@ public final class WaypointerScreen extends Screen {
         if (mouseY < rowsTop || mouseY >= rowsBottom) return -1;
         int index = (int) ((mouseY - rowsTop + scrollOffset) / ROW_H);
         return index >= 0 && index < zoneCount ? index : -1;
+    }
+
+    private void drawZoneDisclosureRow(GuiGraphicsExtractor g, int x1, int y, int x2,
+                                       String rowId, boolean hovered) {
+        if (hovered) {
+            g.fill(x1, y, x2, y + ROW_H, HOVER);
+            g.fill(x1, y, x1 + 2, y + ROW_H, ZONE_DISCLOSURE_ACCENT);
+        }
+        String label = zoneDisclosureLabel(rowId);
+        g.text(font, label, x1 + GAP + 2, y + 6, hovered ? TEXT : TEXT_DIM, false);
     }
 
     private void drawZoneRow(GuiGraphicsExtractor g, int x1, int y, int x2,
@@ -1079,7 +1184,9 @@ public final class WaypointerScreen extends Screen {
     private void renderRoomHeader(GuiGraphicsExtractor g, RouteListRow row,
                                   int x1, int y1, int x2, boolean hovered) {
         int rowBot = y1 + ROW_H + 2;
-        boolean selected = row.currentRoom && !hasSelectedGroupInRoom(row.roomZoneId);
+        boolean selected = !hasSelectedGroupInRoom(row.roomZoneId)
+                && (row.roomZoneId.equals(selectedDungeonRoomZoneId)
+                || selectedDungeonRoomZoneId == null && row.currentRoom);
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
         if (bg != 0) g.fill(x1, y1, x2, rowBot, bg);
         if (selected) g.fill(x1, y1, x1 + 2, rowBot, DUNGEON_ROOM_ACCENT);
@@ -1171,7 +1278,7 @@ public final class WaypointerScreen extends Screen {
         DebugEventLog.record("WaypointerScreen", "secret-route", roomZoneId,
                 -1, "(none)", route.id(), true, false, false,
                 "secret-route-row", "convert-to-editable");
-        minecraft.setScreen(new GroupEditScreen(this, manager, config, route));
+        MinecraftCompat.setScreen(minecraft, new GroupEditScreen(this, manager, config, route));
     }
 
     private boolean hasSelectedGroupInRoom(String roomZoneId) {
@@ -1302,15 +1409,26 @@ public final class WaypointerScreen extends Screen {
             int rowY = sidebarRowsTop(layout.top());
             int rowsBottom = layout.bottom() - GAP_TIGHT;
             if (my >= rowY && my < rowsBottom) {
-                List<String> ids = zoneIds();
+                List<String> ids = sidebarRows();
                 sidebarScrollOffset = MathUtil.clamp(sidebarScrollOffset, 0,
                         maxSidebarScroll(ids.size(), rowsBottom - rowY));
                 int idx = sidebarIndexAt(my, rowY, rowsBottom, sidebarScrollOffset, ids.size());
                 if (idx >= 0 && idx < ids.size()) {
-                    selectedZoneId = ids.get(idx);
+                    String rowId = ids.get(idx);
+                    if (isZoneDisclosureRow(rowId)) {
+                        zoneListExpanded = SHOW_MORE_ZONE_ID.equals(rowId);
+                        if (!zoneListExpanded) {
+                            sidebarScrollOffset = maxSidebarScroll(
+                                    sidebarRows().size(), rowsBottom - rowY);
+                        }
+                        return true;
+                    }
+                    selectedZoneId = rowId;
+                    selectedDungeonRoomZoneId = null;
                     scrollOffset = 0;
                     clearRouteSelection();
                     refreshActionButtons();
+                    syncSearchBoxGeometry();
                 }
             }
             return true;
@@ -1335,6 +1453,7 @@ public final class WaypointerScreen extends Screen {
         RouteListRow row = rows.get(idx);
         if (row.secretRoute) {
             if (rightClick) return false;
+            selectedDungeonRoomZoneId = row.roomZoneId;
             if (doubleClick && !row.secretSuppressed) {
                 convertSecretRouteToEditable(row.roomZoneId);
                 return true;
@@ -1349,6 +1468,7 @@ public final class WaypointerScreen extends Screen {
         if (row.roomHeader) {
             if (rightClick) return false;
             String selectedBefore = selectedGroupId == null ? "(none)" : selectedGroupId;
+            selectedDungeonRoomZoneId = row.roomZoneId;
             toggleDungeonRoomSection(row.roomZoneId);
             clearRouteSelection();
             int listHeight = layout.bottom() - rowsTop;
@@ -1364,6 +1484,7 @@ public final class WaypointerScreen extends Screen {
 
         WaypointGroup group = row.group;
         if (group == null) return false;
+        if (row.roomZoneId != null) selectedDungeonRoomZoneId = row.roomZoneId;
         String selectedBefore = selectedGroupId == null ? "(none)" : selectedGroupId;
         if (rightClick) {
             onHideAllRoutesClicked();
@@ -1398,7 +1519,7 @@ public final class WaypointerScreen extends Screen {
             DebugEventLog.record("WaypointerScreen", "route", group.id(), idx,
                     selectedBefore, selectedAfter, true, false, false,
                     "route-row", "open-editor");
-            minecraft.setScreen(new GroupEditScreen(this, manager, config, group));
+            MinecraftCompat.setScreen(minecraft, new GroupEditScreen(this, manager, config, group));
         } else {
             DebugEventLog.record("WaypointerScreen", "route", group.id(), idx,
                     selectedBefore, selectedAfter, doubleClick, shiftDown, controlDown,
@@ -1447,6 +1568,7 @@ public final class WaypointerScreen extends Screen {
         } else {
             selectedGroupId = firstVisibleSelectedGroupId(visibleGroupIds, selectedGroupIds);
         }
+        syncAuthoringRouteFocus();
     }
 
     private static boolean routeSelectionShiftDown() {
@@ -1555,14 +1677,20 @@ public final class WaypointerScreen extends Screen {
         singleton.add(groupId);
         replaceRouteSelection(singleton);
         selectionAnchorGroupId = groupId;
+        syncAuthoringRouteFocus();
     }
 
     private void clearRouteSelection() {
         selectedGroupIds.clear();
         selectedGroupId = null;
         selectionAnchorGroupId = null;
+        syncAuthoringRouteFocus();
         clearHideAllConfirmation();
         clearDeleteConfirmation();
+    }
+
+    private void syncAuthoringRouteFocus() {
+        manager.focusRouteForAuthoring(selectedGroupId == null ? null : manager.get(selectedGroupId));
     }
 
     private void clearHideAllConfirmation() {
@@ -1590,7 +1718,7 @@ public final class WaypointerScreen extends Screen {
             int rowsTop = sidebarRowsTop(layout.top());
             int listHeight = layout.bottom() - GAP_TIGHT - rowsTop;
             sidebarScrollOffset = sidebarScrollAfterWheel(sidebarScrollOffset, vert,
-                    zoneIds().size(), listHeight);
+                    sidebarRows().size(), listHeight);
             return true;
         }
         int rowsTop = mainRowsTop(layout.top());
@@ -1622,7 +1750,8 @@ public final class WaypointerScreen extends Screen {
     private void createGroup() {
         Zone current = manager.currentZone();
         String currentZoneId = current == null ? null : current.id();
-        String targetZoneId = newRouteTargetZoneId(selectedZoneId, currentZoneId);
+        String targetZoneId = newRouteTargetZoneId(
+                selectedZoneId, selectedDungeonRoomZoneId, currentZoneId);
         if (targetZoneId == null) {
             flashMainNotice(newRouteBlockedNotice(selectedZoneId));
             return;
@@ -1633,9 +1762,12 @@ public final class WaypointerScreen extends Screen {
         g.setDefaultRadius(config.defaultReachRadius());
         manager.add(g);
         selectedZoneId = sidebarSelectionForZoneId(targetZoneId);
-        if (isDungeonRoomZone(targetZoneId)) expandedDungeonRoomZoneIds.add(targetZoneId);
+        if (isDungeonRoomZone(targetZoneId)) {
+            selectedDungeonRoomZoneId = targetZoneId;
+            expandedDungeonRoomZoneIds.add(targetZoneId);
+        }
         selectOnlyGroupId(g.id());
-        minecraft.setScreen(new GroupEditScreen(this, manager, config, g));
+        MinecraftCompat.setScreen(minecraft, new GroupEditScreen(this, manager, config, g));
     }
 
     /**
@@ -1654,10 +1786,19 @@ public final class WaypointerScreen extends Screen {
     }
 
     static String newRouteTargetZoneId(String selectedZoneId, String currentZoneId) {
+        return newRouteTargetZoneId(selectedZoneId, null, currentZoneId);
+    }
+
+    static String newRouteTargetZoneId(String selectedZoneId,
+                                       String selectedDungeonRoomZoneId,
+                                       String currentZoneId) {
         if (isTemporaryZone(selectedZoneId)) {
             return currentZoneId == null ? Zone.UNKNOWN.id() : currentZoneId;
         }
         if (isDungeonRoomsZone(selectedZoneId)) {
+            if (isDungeonRoomZone(selectedDungeonRoomZoneId)) {
+                return selectedDungeonRoomZoneId;
+            }
             return isDungeonRoomZone(currentZoneId) ? currentZoneId : null;
         }
         return selectedZoneId == null ? Zone.UNKNOWN.id() : selectedZoneId;
@@ -1672,7 +1813,9 @@ public final class WaypointerScreen extends Screen {
 
     private void editSelected() {
         WaypointGroup g = currentSelection();
-        if (g != null) minecraft.setScreen(new GroupEditScreen(this, manager, config, g));
+        if (g != null) {
+            MinecraftCompat.setScreen(minecraft, new GroupEditScreen(this, manager, config, g));
+        }
     }
 
     private void onHideAllRoutesClicked() {

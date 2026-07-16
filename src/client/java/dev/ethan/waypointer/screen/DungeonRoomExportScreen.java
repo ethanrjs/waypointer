@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -43,7 +44,8 @@ final class DungeonRoomExportScreen extends Screen {
     }
 
     static void open(Screen parent, String payload, int roomCount, int waypointCount) {
-        Minecraft.getInstance().setScreen(new DungeonRoomExportScreen(parent, payload, roomCount, waypointCount));
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new DungeonRoomExportScreen(parent, payload, roomCount, waypointCount));
     }
 
     @Override
@@ -75,7 +77,7 @@ final class DungeonRoomExportScreen extends Screen {
     }
 
     private void goBackToParent() {
-        minecraft.setScreen(parent);
+        MinecraftCompat.setScreen(minecraft, parent);
     }
 
     private void copyToClipboard(Button button) {
@@ -151,6 +153,6 @@ final class DungeonRoomExportScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        MinecraftCompat.setScreen(minecraft, parent);
     }
 }

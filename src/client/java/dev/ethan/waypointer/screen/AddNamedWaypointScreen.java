@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
@@ -72,7 +73,7 @@ public final class AddNamedWaypointScreen extends Screen {
 
     public static void open(Screen parent, ActiveGroupManager manager,
                             WaypointerConfig config, WaypointGroup targetGroup) {
-        Minecraft.getInstance().setScreen(
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new AddNamedWaypointScreen(parent, manager, config, targetGroup));
     }
 
@@ -85,7 +86,7 @@ public final class AddNamedWaypointScreen extends Screen {
     public static void openAt(Screen parent, ActiveGroupManager manager,
                               WaypointerConfig config, WaypointGroup targetGroup,
                               int x, int y, int z, int flags) {
-        Minecraft.getInstance().setScreen(
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new AddNamedWaypointScreen(parent, manager, config, targetGroup, true, x, y, z, flags));
     }
 
@@ -216,7 +217,7 @@ public final class AddNamedWaypointScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        MinecraftCompat.setScreen(minecraft, parent);
     }
 
     @Override

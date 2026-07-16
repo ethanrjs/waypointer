@@ -3,6 +3,7 @@ package dev.ethan.waypointer.screen;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import dev.ethan.waypointer.color.GradientColorizer;
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.RouteProgress;
@@ -19,6 +20,7 @@ import dev.ethan.waypointer.input.WaypointAddFlow;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
@@ -88,6 +90,11 @@ public final class GroupEditScreen extends Screen {
     private int waypointColorPickerIndex = -1;
 
     private int scrollOffset;
+    private int sidebarScrollOffset;
+    private int sidebarContentHeight;
+    private final List<SidebarWidget> sidebarWidgets = new ArrayList<>();
+    private List<GuiTokens.ButtonSpec> footerActionSpecs = List.of();
+    private GuiTokens.ButtonSpec footerDoneSpec;
     private int selectedIndex = -1;
     private int coordinateEditorIndex = -1;
     private boolean syncingCoordinateEditors;
@@ -145,9 +152,10 @@ public final class GroupEditScreen extends Screen {
     private EditBox labelEditor;
     private int editingIndex = -1;
 
-    // GLFW key constants -- inlined to avoid dragging in LWJGL for three numbers.
+    // GLFW key constants -- inlined to avoid dragging in LWJGL for four numbers.
     private static final int GLFW_KEY_ESCAPE   = 256;
     private static final int GLFW_KEY_ENTER    = 257;
+    private static final int GLFW_KEY_TAB      = 258;
     private static final int GLFW_KEY_KP_ENTER = 335;
 
     public GroupEditScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config, WaypointGroup group) {
@@ -172,7 +180,7 @@ public final class GroupEditScreen extends Screen {
 
     public static void openFocused(Screen parent, ActiveGroupManager manager, WaypointerConfig config,
                                    WaypointGroup group, int waypointIndex) {
-        Minecraft.getInstance().setScreen(
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new GroupEditScreen(parent, manager, config, group, waypointIndex));
     }
 
@@ -183,8 +191,12 @@ public final class GroupEditScreen extends Screen {
                 ? labelEditor.getValue()
                 : "";
 
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int sidebarLeft = PAD_OUTER;
+        sidebarWidgets.clear();
+        footerActionSpecs = buildFooterActions();
+        footerDoneSpec = new GuiTokens.ButtonSpec("Done", this::onClose);
+        Layout layout = layout();
+        int top = layout.top();
+        int sidebarLeft = layout.sidebarLeft();
         int sidebarInner = sidebarLeft + GAP;
         int fieldW = SIDEBAR_W - GAP * 2;
 
@@ -198,7 +210,7 @@ public final class GroupEditScreen extends Screen {
         nameBox.setTooltip(Tooltip.create(Component.literal(
                 "Route display name.\n"
               + "Used in lists and exports.")));
-        addRenderableWidget(nameBox);
+        addSidebarWidget(nameBox);
         y += BTN_H + GAP;
 
         // Route color mode
@@ -206,7 +218,7 @@ public final class GroupEditScreen extends Screen {
                 .bounds(sidebarInner, y, fieldW, BTN_H)
                 .tooltip(colorModeTooltip())
                 .build();
-        addRenderableWidget(colorModeBtn);
+        addSidebarWidget(colorModeBtn);
         y += BTN_H + GAP_TIGHT;
 
         y = addColorModeControls(sidebarInner, y, fieldW);
@@ -216,7 +228,7 @@ public final class GroupEditScreen extends Screen {
                 .bounds(sidebarInner, y, fieldW, BTN_H)
                 .tooltip(modeTooltip())
                 .build();
-        addRenderableWidget(modeBtn);
+        addSidebarWidget(modeBtn);
         y += BTN_H + GAP;
 
         // Radius row: [-]  Radius 6.0  [+]
@@ -238,8 +250,8 @@ public final class GroupEditScreen extends Screen {
                         "Grow reach radius.\n"
                       + "+0.5 blocks.")))
                 .build();
-        addRenderableWidget(radiusMinusBtn);
-        addRenderableWidget(radiusPlusBtn);
+        addSidebarWidget(radiusMinusBtn);
+        addSidebarWidget(radiusPlusBtn);
         y += BTN_H + GAP;
 
         skipAheadBtn = Button.builder(skipAheadLabel(), this::toggleSkipAhead)
@@ -247,7 +259,7 @@ public final class GroupEditScreen extends Screen {
                 .tooltip(Tooltip.create(Component.literal(
                         "Toggle skipping waypoints for this route.")))
                 .build();
-        addRenderableWidget(skipAheadBtn);
+        addSidebarWidget(skipAheadBtn);
         y += BTN_H + GAP;
 
         addCoordinateEditors(sidebarInner, y, fieldW);
@@ -259,17 +271,25 @@ public final class GroupEditScreen extends Screen {
                         "Replace the selected waypoint's coordinates with your\n"
                       + "current block position.")))
                 .build();
-        addRenderableWidget(moveSelectedHereBtn);
+        addSidebarWidget(moveSelectedHereBtn);
 
-        int sidebarBottom = height - FOOTER_H - GAP_SECTION;
-        int resetY = sidebarBottom - BTN_H - GAP;
-        addRenderableWidget(Button.builder(Component.literal("Reset Progress"), b -> {
+        int naturalResetY = y + BTN_H + GAP;
+        int viewportBottom = sidebarViewportBottom(layout);
+        sidebarContentHeight = naturalResetY + BTN_H - sidebarViewportTop(layout);
+        int maxSidebarScroll = maxSidebarScroll(
+                sidebarContentHeight, viewportBottom - sidebarViewportTop(layout));
+        int resetY = maxSidebarScroll == 0
+                ? viewportBottom - BTN_H
+                : naturalResetY;
+        addSidebarWidget(Button.builder(Component.literal("Reset Progress"), b -> {
             group.resetProgress();
             manager.fireDataChanged();
         }).bounds(sidebarInner, resetY, fieldW, BTN_H)
           .tooltip(Tooltip.create(Component.literal(
                   "Set current waypoint to #1.")))
           .build());
+        sidebarScrollOffset = Math.max(0, Math.min(maxSidebarScroll, sidebarScrollOffset));
+        refreshSidebarWidgets(layout);
 
         // Inline label editor -- kept invisible until the user double-clicks a row.
         // Added last so it paints on top of the row it's editing.
@@ -289,9 +309,11 @@ public final class GroupEditScreen extends Screen {
         }
         syncCoordinateEditors();
 
-        // Footer
-        int footerY = height - FOOTER_H;
+        GuiTokens.layoutFooter(width, height - FOOTER_H, footerActionSpecs, footerDoneSpec,
+                this::addRenderableWidget, font);
+    }
 
+    private List<GuiTokens.ButtonSpec> buildFooterActions() {
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
         left.add(new GuiTokens.ButtonSpec("+ Add Here", -1, this::addHere,
                 Tooltip.create(Component.literal("Add a waypoint at your current position."))));
@@ -310,9 +332,94 @@ public final class GroupEditScreen extends Screen {
         left.add(new GuiTokens.ButtonSpec("Remove", this::removeSelected));
         left.add(new GuiTokens.ButtonSpec("^", 24, () -> moveSelected(-1)));
         left.add(new GuiTokens.ButtonSpec("v", 24, () -> moveSelected(+1)));
-        GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec("Done", this::onClose);
+        return left;
+    }
 
-        GuiTokens.layoutFooter(width, footerY, left, done, this::addRenderableWidget, font);
+    private <T extends AbstractWidget> T addSidebarWidget(T widget) {
+        sidebarWidgets.add(new SidebarWidget(widget, widget.getY()));
+        addRenderableWidget(widget);
+        return widget;
+    }
+
+    private Layout layout() {
+        int footerSpace = GuiTokens.footerHeight(width, footerActionSpecs, footerDoneSpec, font);
+        int top = PAD_OUTER + 10 + GAP_SECTION;
+        int bottom = contentBottom(height, footerSpace);
+        int sidebarLeft = PAD_OUTER;
+        int sidebarRight = sidebarLeft + SIDEBAR_W;
+        int mainLeft = sidebarRight + GAP_SECTION;
+        int mainRight = width - PAD_OUTER;
+        return new Layout(top, bottom, sidebarLeft, sidebarRight, mainLeft, mainRight);
+    }
+
+    static int contentBottom(int screenHeight, int footerSpace) {
+        return screenHeight - footerSpace - GAP_SECTION;
+    }
+
+    private static int sidebarViewportTop(Layout layout) {
+        return layout.top() + 20;
+    }
+
+    private static int sidebarViewportBottom(Layout layout) {
+        return Math.max(sidebarViewportTop(layout), layout.bottom() - GAP);
+    }
+
+    static int maxSidebarScroll(int contentHeight, int viewportHeight) {
+        return Math.max(0, contentHeight - Math.max(0, viewportHeight));
+    }
+
+    static int sidebarScrollOffsetToReveal(int currentOffset, int widgetHomeY, int widgetHeight,
+                                           int viewportTop, int viewportBottom, int maxScroll) {
+        int revealedOffset = currentOffset;
+        if (widgetHomeY - currentOffset < viewportTop) {
+            revealedOffset = widgetHomeY - viewportTop;
+        } else if (widgetHomeY + widgetHeight - currentOffset > viewportBottom) {
+            revealedOffset = widgetHomeY + widgetHeight - viewportBottom;
+        }
+        return Math.max(0, Math.min(maxScroll, revealedOffset));
+    }
+
+    private void refreshSidebarWidgets(Layout layout) {
+        int viewportTop = sidebarViewportTop(layout);
+        int viewportBottom = sidebarViewportBottom(layout);
+        for (SidebarWidget slot : sidebarWidgets) {
+            int y = slot.homeY() - sidebarScrollOffset;
+            slot.widget().setY(y);
+            slot.widget().visible = y >= viewportTop
+                    && y + slot.widget().getHeight() <= viewportBottom;
+        }
+    }
+
+    private boolean focusAdjacentSidebarWidget(boolean backwards) {
+        int focusedIndex = -1;
+        for (int i = 0; i < sidebarWidgets.size(); i++) {
+            if (sidebarWidgets.get(i).widget() == getFocused()) {
+                focusedIndex = i;
+                break;
+            }
+        }
+        if (focusedIndex < 0) return false;
+
+        int step = backwards ? -1 : 1;
+        for (int i = focusedIndex + step; i >= 0 && i < sidebarWidgets.size(); i += step) {
+            SidebarWidget target = sidebarWidgets.get(i);
+            if (!target.widget().active) continue;
+
+            Layout layout = layout();
+            int viewportTop = sidebarViewportTop(layout);
+            int viewportBottom = sidebarViewportBottom(layout);
+            int maxScroll = maxSidebarScroll(sidebarContentHeight, viewportBottom - viewportTop);
+            sidebarScrollOffset = sidebarScrollOffsetToReveal(
+                    sidebarScrollOffset, target.homeY(), target.widget().getHeight(),
+                    viewportTop, viewportBottom, maxScroll);
+            refreshSidebarWidgets(layout);
+
+            if (getFocused() instanceof AbstractWidget focused) focused.setFocused(false);
+            setFocused(target.widget());
+            target.widget().setFocused(true);
+            return true;
+        }
+        return false;
     }
 
     private int addColorModeControls(int sidebarInner, int y, int fieldW) {
@@ -327,7 +434,7 @@ public final class GroupEditScreen extends Screen {
             staticColorBtn.setTooltip(Tooltip.create(Component.literal(
                     "One route color.\n"
                   + "Applies in One color mode.")));
-            addRenderableWidget(staticColorBtn);
+            addSidebarWidget(staticColorBtn);
             return y + BTN_H + GAP_TIGHT;
         }
 
@@ -344,8 +451,8 @@ public final class GroupEditScreen extends Screen {
             gradientEndBtn.setTooltip(Tooltip.create(Component.literal(
                     "Gradient end colour.\n"
                   + "Applies in Gradient mode.")));
-            addRenderableWidget(gradientStartBtn);
-            addRenderableWidget(gradientEndBtn);
+            addSidebarWidget(gradientStartBtn);
+            addSidebarWidget(gradientEndBtn);
             return y + BTN_H + GAP_TIGHT;
         }
 
@@ -492,9 +599,9 @@ public final class GroupEditScreen extends Screen {
         coordYBox.setWidth(boxW);
         coordZBox.setWidth(width - boxW * 2 - GAP_TIGHT * 2);
 
-        addRenderableWidget(coordXBox);
-        addRenderableWidget(coordYBox);
-        addRenderableWidget(coordZBox);
+        addSidebarWidget(coordXBox);
+        addSidebarWidget(coordYBox);
+        addSidebarWidget(coordZBox);
     }
 
     private EditBox createCoordinateEditor(String label, int axis) {
@@ -689,7 +796,7 @@ public final class GroupEditScreen extends Screen {
         boolean enabled = WaypointRepositionMode.toggleEditMode(manager, config);
         if (minecraft == null) return;
         if (enabled) {
-            minecraft.setScreen(null);
+            MinecraftCompat.setScreen(minecraft, null);
             return;
         }
         rebuildWidgets();
@@ -702,17 +809,11 @@ public final class GroupEditScreen extends Screen {
         super.extractRenderState(g, mouseX, mouseY, partial);
 
         renderHeader(g, mouseX, mouseY);
-
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int bottom = height - FOOTER_H - GAP_SECTION;
-
-        int sidebarLeft = PAD_OUTER;
-        int sidebarRight = sidebarLeft + SIDEBAR_W;
-        int mainLeft = sidebarRight + GAP_SECTION;
-        int mainRight = width - PAD_OUTER;
-
-        renderSidebarPanel(g, sidebarLeft, top, sidebarRight, bottom);
-        renderMain(g, mainLeft, top, mainRight, bottom, mouseX, mouseY);
+        Layout layout = layout();
+        renderSidebarPanel(g, layout.sidebarLeft(), layout.top(),
+                layout.sidebarRight(), layout.bottom());
+        renderMain(g, layout.mainLeft(), layout.top(),
+                layout.mainRight(), layout.bottom(), mouseX, mouseY);
         if (isHeaderInfoButtonHovered(mouseX, mouseY)) {
             renderRouteInfoTooltip(g, mouseX, mouseY);
         } else {
@@ -810,7 +911,8 @@ public final class GroupEditScreen extends Screen {
         int tooltipH = pad * 2 + font.lineHeight + 5
                 + lineCount * font.lineHeight + Math.max(0, lineCount - 1) * lineGap;
         int x = Math.min(mouseX + 12, Math.max(PAD_OUTER, width - PAD_OUTER - tooltipW));
-        int y = Math.min(mouseY + 12, Math.max(PAD_OUTER, height - FOOTER_H - tooltipH));
+        int y = Math.min(mouseY + 12,
+                Math.max(PAD_OUTER, layout().bottom() - tooltipH));
         x = Math.max(PAD_OUTER, x);
         y = Math.max(PAD_OUTER, y);
 
@@ -843,7 +945,8 @@ public final class GroupEditScreen extends Screen {
         int tooltipW = font.width(text) + pad * 2;
         int tooltipH = font.lineHeight + pad * 2;
         int x = Math.min(mouseX + 12, Math.max(PAD_OUTER, width - PAD_OUTER - tooltipW));
-        int y = Math.min(mouseY + 12, Math.max(PAD_OUTER, height - FOOTER_H - tooltipH));
+        int y = Math.min(mouseY + 12,
+                Math.max(PAD_OUTER, layout().bottom() - tooltipH));
         x = Math.max(PAD_OUTER, x);
         y = Math.max(PAD_OUTER, y);
 
@@ -867,7 +970,8 @@ public final class GroupEditScreen extends Screen {
         // Inline "Radius 3.0" readout spanning the space between the two bump buttons.
         // The label is co-located with the value so there's no detached header for the
         // user to miss, and the whole row visually reads as one control.
-        if (radiusMinusBtn != null && radiusPlusBtn != null) {
+        if (radiusMinusBtn != null && radiusPlusBtn != null
+                && radiusMinusBtn.visible && radiusPlusBtn.visible) {
             int rowMidY = radiusMinusBtn.getY() + BTN_H / 2 - 4;
             int inlineLeft = radiusMinusBtn.getX() + radiusMinusBtn.getWidth();
             int inlineRight = radiusPlusBtn.getX();
@@ -876,6 +980,23 @@ public final class GroupEditScreen extends Screen {
             int textX = inlineLeft + ((inlineRight - inlineLeft) - textW) / 2;
             g.text(font, text, textX, rowMidY, TEXT, false);
         }
+
+        renderSidebarScrollbar(g, x2 - 3, y1 + 20, Math.max(y1 + 20, y2 - GAP));
+    }
+
+    private void renderSidebarScrollbar(GuiGraphicsExtractor g, int x, int y1, int y2) {
+        int viewportHeight = y2 - y1;
+        int maxScroll = maxSidebarScroll(sidebarContentHeight, viewportHeight);
+        if (viewportHeight <= 0 || maxScroll <= 0) return;
+
+        int thumbHeight = Math.max(12, viewportHeight * viewportHeight / sidebarContentHeight);
+        int travel = viewportHeight - thumbHeight;
+        if (travel <= 0) return;
+
+        int thumbY = y1 + Math.max(0, Math.min(maxScroll, sidebarScrollOffset))
+                * travel / maxScroll;
+        g.fill(x, y1 + 2, x + 2, y2 - 2, BORDER);
+        g.fill(x, thumbY, x + 2, thumbY + thumbHeight, TEXT_MUTED);
     }
 
     /** Lighter sidebar wash -- mild white overlay, roughly 12% alpha. */
@@ -1482,18 +1603,17 @@ public final class GroupEditScreen extends Screen {
      * used by {@link #renderWaypointRow}: row pitch, list clip, swatch X/Y offsets.
      */
     private int swatchIndexAt(double mx, double my) {
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int bottom = height - FOOTER_H - GAP_SECTION;
-        int mainLeft = PAD_OUTER + SIDEBAR_W + GAP_SECTION;
-        int mainRight = width - PAD_OUTER;
-        if (mx < mainLeft || mx > mainRight || my < top || my > bottom) return -1;
+        Layout layout = layout();
+        if (mx < layout.mainLeft() || mx > layout.mainRight()
+                || my < layout.top() || my > layout.bottom()) return -1;
 
         int pitch = ROW_H + 2;
-        int idx = (int) ((my - (top + 4) + scrollOffset) / pitch);
+        int idx = (int) ((my - (layout.top() + 4) + scrollOffset) / pitch);
         if (idx < 0 || idx >= group.size()) return -1;
 
-        int rowY = top + 4 - scrollOffset + idx * pitch;
-        int sx = (mainLeft + 2) + GAP + 2 + (group.isSubwaypoint(idx) ? 16 : 0);
+        int rowY = layout.top() + 4 - scrollOffset + idx * pitch;
+        int sx = (layout.mainLeft() + 2) + GAP + 2
+                + (group.isSubwaypoint(idx) ? 16 : 0);
         int sy = rowY + 4;
         if (mx >= sx && mx < sx + 14 && my >= sy && my < sy + 14) return idx;
         return -1;
@@ -1503,9 +1623,9 @@ public final class GroupEditScreen extends Screen {
         int idx = rowIndexAt(mx, my);
         if (idx < 0) return WAYPOINT_CONTROL_ACTION_NONE;
 
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int rowY = top + 4 - scrollOffset + idx * (ROW_H + 2);
-        int rowRight = width - PAD_OUTER - 2;
+        Layout layout = layout();
+        int rowY = layout.top() + 4 - scrollOffset + idx * (ROW_H + 2);
+        int rowRight = layout.mainRight() - 2;
         int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
         if (isDungeonRoomGroup()) {
             int standX = standSkipButtonX(rowRight);
@@ -1529,9 +1649,9 @@ public final class GroupEditScreen extends Screen {
         int idx = rowIndexAt(mx, my);
         if (idx < 0 || !group.isSubwaypoint(idx)) return SUBWAY_STYLE_ACTION_NONE;
 
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int rowY = top + 4 - scrollOffset + idx * (ROW_H + 2);
-        int rowRight = width - PAD_OUTER - 2;
+        Layout layout = layout();
+        int rowY = layout.top() + 4 - scrollOffset + idx * (ROW_H + 2);
+        int rowRight = layout.mainRight() - 2;
         int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
         boolean showDungeonControls = isDungeonRoomGroup();
         int smallX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_SMALL,
@@ -1699,27 +1819,41 @@ public final class GroupEditScreen extends Screen {
      * updated once.
      */
     private int rowIndexAt(double mx, double my) {
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int bottom = height - FOOTER_H - GAP_SECTION;
-        int mainLeft = PAD_OUTER + SIDEBAR_W + GAP_SECTION;
-        int mainRight = width - PAD_OUTER;
-        if (mx < mainLeft || mx > mainRight || my < top || my > bottom) return -1;
+        Layout layout = layout();
+        if (mx < layout.mainLeft() || mx > layout.mainRight()
+                || my < layout.top() || my > layout.bottom()) return -1;
 
         int pitch = ROW_H + 2;
-        int idx = (int) ((my - (top + 4) + scrollOffset) / pitch);
+        int idx = (int) ((my - (layout.top() + 4) + scrollOffset) / pitch);
         return (idx >= 0 && idx < group.size()) ? idx : -1;
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
+        Layout layout = layout();
+        if (mouseX >= layout.sidebarLeft() && mouseX <= layout.sidebarRight()
+                && mouseY >= layout.top() && mouseY <= layout.bottom()) {
+            int viewportHeight = sidebarViewportBottom(layout) - sidebarViewportTop(layout);
+            int maxScroll = maxSidebarScroll(sidebarContentHeight, viewportHeight);
+            sidebarScrollOffset = Math.max(0, Math.min(maxScroll,
+                    sidebarScrollOffset - (int) (vert * (BTN_H + GAP_TIGHT))));
+            refreshSidebarWidgets(layout);
+            if (getFocused() instanceof AbstractWidget focused && !focused.visible) {
+                focused.setFocused(false);
+                setFocused(null);
+            }
+            return true;
+        }
+
+        if (mouseX < layout.mainLeft() || mouseX > layout.mainRight()
+                || mouseY < layout.top() || mouseY > layout.bottom()) return false;
+
         // Scrolling while editing would drift the EditBox away from its row (the widget
         // x/y is cached by focus/caret logic mid-frame). Committing keeps the edit tied
         // to the row the user aimed at -- less surprising than silently cancelling it.
         if (editingIndex >= 0) commitLabelEdit();
 
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int bottom = height - FOOTER_H - GAP_SECTION;
-        int listHeight = bottom - top;
+        int listHeight = layout.bottom() - layout.top();
         int pitch = ROW_H + 2;
         int content = group.size() * pitch;
         int maxScroll = Math.max(0, content - listHeight + 8);
@@ -1753,6 +1887,7 @@ public final class GroupEditScreen extends Screen {
             if (coordZBox != null) coordZBox.setFocused(false);
             return true;
         }
+        if (k == GLFW_KEY_TAB && focusAdjacentSidebarWidget(hasShiftDown())) return true;
         return super.keyPressed(event);
     }
 
@@ -1810,15 +1945,13 @@ public final class GroupEditScreen extends Screen {
      * any layout change (resize) and stays aligned with the row number/coord prefix.
      */
     private void positionLabelEditor(int index) {
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int mainLeft = PAD_OUTER + SIDEBAR_W + GAP_SECTION;
-        int mainRight = width - PAD_OUTER;
+        Layout layout = layout();
 
         int pitch = ROW_H + 2;
-        int rowY = top + 4 - scrollOffset + index * pitch;
+        int rowY = layout.top() + 4 - scrollOffset + index * pitch;
 
-        int rowX1 = mainLeft + 2;
-        int rowX2 = mainRight - 2;
+        int rowX1 = layout.mainLeft() + 2;
+        int rowX2 = layout.mainRight() - 2;
         int sx = rowX1 + GAP + 2 + (group.isSubwaypoint(index) ? 16 : 0);
         int labelStart = sx + 20;
         Waypoint w = group.get(index);
@@ -1864,8 +1997,16 @@ public final class GroupEditScreen extends Screen {
         return currentName;
     }
 
+    private record SidebarWidget(AbstractWidget widget, int homeY) {
+    }
+
+    private record Layout(int top, int bottom,
+                          int sidebarLeft, int sidebarRight,
+                          int mainLeft, int mainRight) {
+    }
+
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        MinecraftCompat.setScreen(minecraft, parent);
     }
 }

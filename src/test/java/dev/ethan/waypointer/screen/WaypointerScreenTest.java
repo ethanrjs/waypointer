@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.Zone;
 import dev.ethan.waypointer.core.WaypointGroup;
@@ -194,6 +195,110 @@ class WaypointerScreenTest {
                 WaypointerScreen.DUNGEON_ROOMS_ZONE_ID, "dungeon_hub"));
         assertEquals("Stand in a detected dungeon room to create a room route.",
                 WaypointerScreen.newRouteBlockedNotice(WaypointerScreen.DUNGEON_ROOMS_ZONE_ID));
+    }
+
+    @Test
+    void newRouteTargetUsesSelectedDungeonRoomWhilePlayerIsElsewhere() {
+        DungeonRoomData.clearAllCustom();
+        try {
+            defineRoom("offline-room", "Offline Room");
+
+            assertEquals("offline-room", WaypointerScreen.newRouteTargetZoneId(
+                    WaypointerScreen.DUNGEON_ROOMS_ZONE_ID,
+                    "offline-room",
+                    "dungeon_hub"));
+        } finally {
+            DungeonRoomData.clearAllCustom();
+        }
+    }
+
+    @Test
+    void offlineZoneListIncludesHypixelTargetsWithoutExistingRoutes() {
+        List<String> zones = WaypointerScreen.zoneIdsForManager(new ActiveGroupManager());
+
+        assertEquals(WaypointerScreen.TEMPORARY_ZONE_ID, zones.get(0));
+        assertEquals(Zone.UNKNOWN.id(), zones.get(1));
+        assertTrue(zones.contains("hub"));
+        assertTrue(zones.contains("dungeon_f7"));
+        assertTrue(zones.contains("torrhus_canyon"));
+        assertTrue(zones.contains("safari"));
+    }
+
+    @Test
+    void collapsedZoneListKeepsCurrentAndPopulatedZonesOnly() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        manager.add(WaypointGroup.create("Garden route", "garden"));
+
+        List<String> collapsed = WaypointerScreen.sidebarZoneIdsForManager(manager, false);
+
+        assertTrue(collapsed.contains("hub"));
+        assertTrue(collapsed.contains("garden"));
+        assertFalse(collapsed.contains(Zone.UNKNOWN.id()));
+        assertFalse(collapsed.contains("dungeon_f7"));
+        assertTrue(WaypointerScreen.sidebarZoneIdsForManager(manager, true)
+                .contains("dungeon_f7"));
+    }
+
+    @Test
+    void expandedZoneListOrdersCurrentAndPopulatedBeforeEmptyInactiveZones() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        manager.add(WaypointGroup.create("Garden route", "garden"));
+
+        List<String> expanded = WaypointerScreen.sidebarZoneIdsForManager(manager, true);
+        List<String> collapsed = WaypointerScreen.sidebarZoneIdsForManager(manager, false);
+        List<String> hiddenLabels = expanded.subList(collapsed.size(), expanded.size()).stream()
+                .map(id -> Zone.fromId(id).displayName())
+                .toList();
+        List<String> sortedHiddenLabels = hiddenLabels.stream()
+                .sorted(String.CASE_INSENSITIVE_ORDER)
+                .toList();
+
+        assertEquals("hub", expanded.get(0));
+        assertTrue(expanded.indexOf("garden") < expanded.indexOf("dungeon_f7"));
+        assertTrue(expanded.contains("safari"));
+        assertTrue(expanded.contains("torrhus_canyon"));
+        assertEquals(sortedHiddenLabels, hiddenLabels);
+    }
+
+    @Test
+    void zoneDisclosureRowsBookendTheHiddenCatalog() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+
+        List<String> collapsed = WaypointerScreen.sidebarRowsForManager(manager, false);
+        List<String> expanded = WaypointerScreen.sidebarRowsForManager(manager, true);
+
+        assertEquals("Show More...",
+                WaypointerScreen.zoneDisclosureLabel(collapsed.get(collapsed.size() - 1)));
+        assertEquals("Show Less",
+                WaypointerScreen.zoneDisclosureLabel(expanded.get(expanded.size() - 1)));
+        assertTrue(WaypointerScreen.isZoneDisclosureRow(collapsed.get(collapsed.size() - 1)));
+        assertTrue(WaypointerScreen.isZoneDisclosureRow(expanded.get(expanded.size() - 1)));
+    }
+
+    @Test
+    void compactFooterFitsOnOneLineAtFiveHundredTwelvePixels() {
+        assertTrue(WaypointerScreen.footerRequiredWidth() <= 512);
+    }
+
+    @Test
+    void offlineZoneListIncludesEmptyCustomDungeonRoomDefinitions() {
+        DungeonRoomData.clearAllCustom();
+        try {
+            defineRoom("empty-offline-room", "Empty Offline Room");
+
+            List<String> zones = WaypointerScreen.zoneIdsForManager(new ActiveGroupManager());
+
+            assertTrue(zones.contains(WaypointerScreen.DUNGEON_ROOMS_ZONE_ID));
+            assertEquals("empty-offline-room", WaypointerScreen.newRouteTargetZoneId(
+                    WaypointerScreen.DUNGEON_ROOMS_ZONE_ID,
+                    "empty-offline-room",
+                    null));
+        } finally {
+            DungeonRoomData.clearAllCustom();
+        }
     }
 
     @Test

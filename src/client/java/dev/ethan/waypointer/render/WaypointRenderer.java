@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.config.WaypointerConfig;
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.RouteProgress;
 import dev.ethan.waypointer.core.Waypoint;
@@ -25,7 +26,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.blockentity.BeaconRenderer;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.OverlayTexture;
@@ -219,7 +219,7 @@ public final class WaypointRenderer implements HudElement {
     }
 
     public void install() {
-        LevelRenderEvents.END_MAIN.register(this::onWorldRender);
+        LevelRenderEvents.COLLECT_SUBMITS.register(this::onWorldRender);
         // Attaching before CHAT inherits chat's render condition, which means the
         // labels respect the "hide GUI" (F1) toggle the same way chat does. That
         // matches player expectation for any in-world HUD overlay.
@@ -274,15 +274,12 @@ public final class WaypointRenderer implements HudElement {
         boolean hasThroughWallWaypoints = hasThroughWallWaypoint(groups) || drawDungeonEntryPaths;
         if (!hasDepthCheckedWaypoints && !hasThroughWallWaypoints) return;
 
-        MultiBufferSource buffers = ctx.bufferSource();
-        if (buffers == null) return;
-
         PoseStack ps = ctx.poseStack();
         if (ps == null) return;
         Minecraft mc = Minecraft.getInstance();
         ClientLevel level = mc.level;
         GameRenderer renderer = mc.gameRenderer;
-        Camera camera = renderer.getMainCamera();
+        Camera camera = MinecraftCompat.mainCamera(renderer);
         if (!camera.isInitialized()) return;
         Vec3 camPos = camera.position();
         Vec3 playerPos = mc.player == null ? null : mc.player.position();
@@ -309,110 +306,110 @@ public final class WaypointRenderer implements HudElement {
         // mode and stays crisp.
         if (drawTexturedBeams && hasThroughWallWaypoints) {
             RenderType beamType = WaypointerRenderPipelines.beaconBeamThroughWalls();
-            VertexConsumer texturedBeams = buffers.getBuffer(beamType);
             int minY = beamMinY(mc);
             int maxY = beamMaxY(mc);
-            for (WaypointGroup g : groups) {
-                emitBeaconBeams(ps, texturedBeams, g, camPos, playerPos,
-                        maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
-                        false, mc, level, screenW, screenH, true);
-            }
-            RenderHelpers.endBatch(buffers, beamType);
+            RenderSubmission.submit(ctx, ps, beamType, (texturedBeams, submittedPose) -> {
+                for (WaypointGroup g : groups) {
+                    emitBeaconBeams(submittedPose, texturedBeams, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
+                            false, mc, level, screenW, screenH, true);
+                }
+            });
         }
         if (drawTexturedBeams && hasDepthCheckedWaypoints) {
             RenderType beamType = WaypointerRenderPipelines.beaconBeamDepthTested();
-            VertexConsumer texturedBeams = buffers.getBuffer(beamType);
             int minY = beamMinY(mc);
             int maxY = beamMaxY(mc);
-            for (WaypointGroup g : groups) {
-                emitBeaconBeams(ps, texturedBeams, g, camPos, playerPos,
-                        maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
-                        true, mc, level, screenW, screenH, true);
-            }
-            RenderHelpers.endBatch(buffers, beamType);
+            RenderSubmission.submit(ctx, ps, beamType, (texturedBeams, submittedPose) -> {
+                for (WaypointGroup g : groups) {
+                    emitBeaconBeams(submittedPose, texturedBeams, g, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
+                            true, mc, level, screenW, screenH, true);
+                }
+            });
         }
         if ((drawFlatBeams || drawFill) && hasThroughWallWaypoints) {
             RenderType quadType = WaypointerRenderPipelines.quadsThroughWalls();
-            VertexConsumer quads = buffers.getBuffer(quadType);
             int minY = beamMinY(mc);
             int maxY = beamMaxY(mc);
-            if (drawFlatBeams) {
-                for (WaypointGroup g : groups) {
-                    emitBeaconBeams(ps, quads, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
-                            false, mc, level, screenW, screenH, false);
+            RenderSubmission.submit(ctx, ps, quadType, (quads, submittedPose) -> {
+                if (drawFlatBeams) {
+                    for (WaypointGroup g : groups) {
+                        emitBeaconBeams(submittedPose, quads, g, camPos, playerPos,
+                                maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
+                                false, mc, level, screenW, screenH, false);
+                    }
                 }
-            }
-            if (drawFill) {
-                for (WaypointGroup g : groups) {
-                    emitFilledBoxes(ps, quads, level, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq, drawGlobalFill,
-                            false, mc, screenW, screenH);
+                if (drawFill) {
+                    for (WaypointGroup g : groups) {
+                        emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
+                                maxStaticDistanceSq, nearHideDistanceSq, drawGlobalFill,
+                                false, mc, screenW, screenH);
+                    }
                 }
-            }
-            RenderHelpers.endBatch(buffers, quadType);
+            });
         }
         if ((drawFlatBeams || drawFill) && hasDepthCheckedWaypoints) {
             RenderType quadType = WaypointerRenderPipelines.quadsDepthTested();
-            VertexConsumer quads = buffers.getBuffer(quadType);
             int minY = beamMinY(mc);
             int maxY = beamMaxY(mc);
-            if (drawFlatBeams) {
-                for (WaypointGroup g : groups) {
-                    emitBeaconBeams(ps, quads, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
-                            true, mc, level, screenW, screenH, false);
+            RenderSubmission.submit(ctx, ps, quadType, (quads, submittedPose) -> {
+                if (drawFlatBeams) {
+                    for (WaypointGroup g : groups) {
+                        emitBeaconBeams(submittedPose, quads, g, camPos, playerPos,
+                                maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
+                                true, mc, level, screenW, screenH, false);
+                    }
                 }
-            }
-            if (drawFill) {
-                for (WaypointGroup g : groups) {
-                    emitFilledBoxes(ps, quads, level, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq, drawGlobalFill,
-                            true, mc, screenW, screenH);
+                if (drawFill) {
+                    for (WaypointGroup g : groups) {
+                        emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
+                                maxStaticDistanceSq, nearHideDistanceSq, drawGlobalFill,
+                                true, mc, screenW, screenH);
+                    }
                 }
-            }
-            RenderHelpers.endBatch(buffers, quadType);
+            });
         }
         if ((drawLines || drawRouteLines || drawDungeonEntryPaths) && hasThroughWallWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
-            VertexConsumer lines = buffers.getBuffer(lineType);
-            if (drawDungeonEntryPaths) {
-                emitDungeonEntryPaths(ps, lines, groups, playerPos, level);
-            }
-            if (drawRouteLines) {
-                for (WaypointGroup g : groups) {
-                    emitRouteLines(ps, lines, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq,
-                            false, mc, level, screenW, screenH);
+            RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
+                if (drawDungeonEntryPaths) {
+                    emitDungeonEntryPaths(submittedPose, lines, groups, playerPos, level);
                 }
-            }
-            if (drawLines) {
-                for (WaypointGroup g : groups) {
-                    emitLineBoxes(ps, lines, level, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq,
-                            false, mc, screenW, screenH);
+                if (drawRouteLines) {
+                    for (WaypointGroup g : groups) {
+                        emitRouteLines(submittedPose, lines, g, camPos, playerPos,
+                                maxStaticDistanceSq, nearHideDistanceSq,
+                                false, mc, level, screenW, screenH);
+                    }
                 }
-            }
-            RenderHelpers.endBatch(buffers, lineType);
+                if (drawLines) {
+                    for (WaypointGroup g : groups) {
+                        emitLineBoxes(submittedPose, lines, level, g, camPos, playerPos,
+                                maxStaticDistanceSq, nearHideDistanceSq,
+                                false, mc, screenW, screenH);
+                    }
+                }
+            });
         }
         if ((drawLines || drawRouteLines) && hasDepthCheckedWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesDepthTested();
-            VertexConsumer lines = buffers.getBuffer(lineType);
-            if (drawRouteLines) {
-                for (WaypointGroup g : groups) {
-                    emitRouteLines(ps, lines, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq,
-                            true, mc, level, screenW, screenH);
+            RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
+                if (drawRouteLines) {
+                    for (WaypointGroup g : groups) {
+                        emitRouteLines(submittedPose, lines, g, camPos, playerPos,
+                                maxStaticDistanceSq, nearHideDistanceSq,
+                                true, mc, level, screenW, screenH);
+                    }
                 }
-            }
-            if (drawLines) {
-                for (WaypointGroup g : groups) {
-                    emitLineBoxes(ps, lines, level, g, camPos, playerPos,
-                            maxStaticDistanceSq, nearHideDistanceSq,
-                            true, mc, screenW, screenH);
+                if (drawLines) {
+                    for (WaypointGroup g : groups) {
+                        emitLineBoxes(submittedPose, lines, level, g, camPos, playerPos,
+                                maxStaticDistanceSq, nearHideDistanceSq,
+                                true, mc, screenW, screenH);
+                    }
                 }
-            }
-            RenderHelpers.endBatch(buffers, lineType);
+            });
         }
 
         ps.popPose();
@@ -658,7 +655,7 @@ public final class WaypointRenderer implements HudElement {
     private static boolean hasLineOfSightToPoint(Minecraft mc, ClientLevel level,
                                                  Waypoint waypoint, Vec3 target) {
         if (target == null) return false;
-        Vec3 from = mc.gameRenderer.getMainCamera().position();
+        Vec3 from = MinecraftCompat.mainCamera(mc.gameRenderer).position();
         HitResult hit = level.clip(new ClipContext(from, target,
                 ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE,
                 mc.getCameraEntity()));
@@ -1101,7 +1098,7 @@ public final class WaypointRenderer implements HudElement {
 
         Minecraft mc = Minecraft.getInstance();
         GameRenderer renderer = mc.gameRenderer;
-        Camera camera = renderer.getMainCamera();
+        Camera camera = MinecraftCompat.mainCamera(renderer);
         if (!camera.isInitialized()) return;
 
         Font font = mc.font;

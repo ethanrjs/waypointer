@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.WaypointerClient;
 import dev.ethan.waypointer.codec.DecodeDebug;
 import dev.ethan.waypointer.codec.WaypointCodec;
@@ -131,7 +132,7 @@ public final class DebugInspectScreen extends Screen {
     }
 
     public static void open(Screen parent) {
-        Minecraft.getInstance().setScreen(new DebugInspectScreen(parent));
+        MinecraftCompat.setScreen(Minecraft.getInstance(), new DebugInspectScreen(parent));
     }
 
     public DebugInspectScreen(Screen parent) {
@@ -140,7 +141,8 @@ public final class DebugInspectScreen extends Screen {
 
     public static void open(Screen parent, ActiveGroupManager manager,
                             WaypointerConfig config) {
-        Minecraft.getInstance().setScreen(new DebugInspectScreen(parent, manager, config));
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new DebugInspectScreen(parent, manager, config));
     }
 
     // --- lifecycle -------------------------------------------------------------------------
@@ -180,7 +182,7 @@ public final class DebugInspectScreen extends Screen {
      * from settings returns to this inspector.
      */
     private void openPerfStressTest() {
-        minecraft.setScreen(SettingsScreen.atSetting(this, config,
+        MinecraftCompat.setScreen(minecraft, SettingsScreen.atSetting(this, config,
                 WaypointerClient.dungeonConfig(), SettingsCatalog.ACTION_PERF_TEST));
     }
 
@@ -671,7 +673,7 @@ public final class DebugInspectScreen extends Screen {
         addSection(rows, sections, "Dungeon Overview",
                 tracker == null ? "not installed" : tracker.roomName);
         rows.add(new Row.KVDim("Config", DebugSignals.dungeonConfigLine()));
-        rows.add(new Row.KVDim("Hypixel API", DebugSignals.hypixelApiLine()));
+        rows.add(new Row.KVDim("Zone source", "Scoreboard sidebar"));
         if (tracker == null) {
             rows.add(new Row.KVWarn("Tracker", "Dungeon tracker is not installed."));
         } else {
@@ -944,5 +946,5 @@ public final class DebugInspectScreen extends Screen {
     public boolean isPauseScreen() { return false; }
 
     @Override
-    public void onClose() { minecraft.setScreen(parent); }
+    public void onClose() { MinecraftCompat.setScreen(minecraft, parent); }
 }
