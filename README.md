@@ -30,44 +30,53 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 
 ## Waypoint Import/Export Compatibility
 
-- Coleweight/SkyHanni (I/E)
-- Skytils (I/E)
-- Skyblocker (I/E)
+- Coleweight/SkyHanni ordered-route JSON (I/E)
+- Skytils 1.x V1 (I/E) and V2 (I)
+- Skyblocker V1 (I/E)
 - Soopy V1 binary share strings (I)
 - Firmament `FIRM_WAYPOINTS/` absolute share strings (I)
 - Generic JSON-based (I)
-- Odin Client (I)
 
-Soopy support targets its versioned `/savewaypoints` binary format, not an
-assumed generic JSON shape. Firmament relative shares are rejected with an
-explicit origin error because their coordinates are offsets resolved against
-the importing player's position; importing them as absolute coordinates would
-silently put every waypoint in the wrong place. Formats are verified against
-the current upstream implementations: [Soopy V1](https://github.com/Soopyboo32/SoopyV2/blob/d8862d1dde6bfcaec5324236e699b50affba38b0/src/features/waypoints/index.js)
+Formats are verified against the upstream
+implementations: [Skyblocker](https://github.com/SkyblockerMod/Skyblocker/tree/223a6e48cfd8302c50db3010df04412f61580123),
+[Skytils](https://github.com/Skytils/SkytilsMod/tree/276c07edf0f1e64956424016f438a5059c63a863),
+[SkyHanni](https://github.com/hannibal002/SkyHanni/tree/9597afac8ac1216fcc965069447c2a719470ecce),
+[Soopy V1](https://github.com/Soopyboo32/SoopyV2/blob/d8862d1dde6bfcaec5324236e699b50affba38b0/src/features/waypoints/index.js),
 and [Firmament](https://github.com/FirmamentMC/Firmament/blob/e86d4692ac19e71a687c84a5e1808235ade73d21/src/main/kotlin/features/world/FirmWaypointManager.kt).
 
 ### Dungeon route import
 
 - SecretRoutes `routes.json` (I) — `/wpd import <file>` or `/wpd routes download`
-- Odin dungeon waypoint packs (I) — pack file or shared Base64 string
+- Odin dungeon waypoint packs (I) — JSON pack file or shared Base64+GZIP string
 - Waypointer `WPD:` share payloads (I/E)
+
+Dungeon formats are verified against [SecretRoutes](https://github.com/yourboykyle/SecretRoutes/blob/9cf484146cbffceb93c9e27c2ee1ae3c5ce9e112/routes.json)
+and [Odin](https://github.com/odtheking/Odin/blob/ea0883587f5a352165c98b5467e5cb171ab32043/src/main/kotlin/com/odtheking/odin/config/DungeonWaypointConfig.kt).
 
 ## Requirements
 
-- Minecraft 26.1.x
+- Minecraft 26.1.2 or 26.2 — install the jar matching your Minecraft version
+- Java 25+
 - Fabric Loader 0.19.3+
-- [Fabric API](https://modrinth.com/mod/fabric-api)
-- Hypixel Mod API 1.0.2-26.1+
-
-Compiles with Java 25 for 26.1.2
+- [Fabric API](https://modrinth.com/mod/fabric-api):
+  - Minecraft 26.1.2: 0.145.4+26.1.2 or newer compatible 26.1.2 release
+  - Minecraft 26.2: 0.147.1+26.2 or newer compatible 26.2 release
+- [Hypixel Mod API](https://modrinth.com/mod/hypixel-mod-api) 1.0.2+
 
 ## Building
 
 ```powershell
-./gradlew build
+./gradlew buildAllTargets
 ```
 
-- `build/libs/waypointer-<version>.jar` — standard Fabric/intermediary jar.
+This builds and tests both targets serially and produces separate runnable jars;
+it does not produce one universal jar:
+
+- `build/libs/waypointer-26.1.2-<mod-version>.jar`
+- `build/libs/waypointer-26.2-<mod-version>.jar`
+
+Matching `-sources.jar` files are also generated. The current mod version is
+`1.8.0-beta`.
 
 ## Testing
 
