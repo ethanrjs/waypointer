@@ -14,6 +14,18 @@ import static org.junit.jupiter.api.Assertions.*;
 class WaypointImporterTest {
 
     @Test
+    void boundsUnsafeLooseJsonReachRadii() {
+        String json = "{\"name\":\"unsafe\",\"waypoints\":["
+                + "{\"x\":0,\"y\":64,\"z\":0,\"r\":1e309},"
+                + "{\"x\":1,\"y\":64,\"z\":0,\"r\":1000000}]}";
+
+        WaypointGroup group = WaypointImporter.importAny(json).groups().get(0);
+
+        assertEquals(0.0, group.get(0).customRadius());
+        assertEquals(Waypoint.MAX_REACH_RADIUS, group.get(1).customRadius());
+    }
+
+    @Test
     void delegates_to_native_codec_for_wptr1_payload() {
         WaypointGroup g = WaypointGroup.create("Gold", "dungeon_f7");
         g.add(Waypoint.at(1, 2, 3));
@@ -73,6 +85,23 @@ class WaypointImporterTest {
         WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
         assertNotNull(result.label());
         assertEquals("", result.label());
+    }
+
+    @Test
+    void sanitizes_group_and_waypoint_names_from_json_imports() {
+        String groupName = "\u00A7cBad\nGroup";
+        String waypointName = "\u00A7aBad\tPoint";
+        String json = "{\"name\":\"\\u00A7cBad\\nGroup\",\"island\":\"hub\",\"waypoints\":["
+                + "{\"name\":\"\\u00A7aBad\\tPoint\",\"x\":0,\"y\":70,\"z\":0}"
+                + "]}";
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
+        WaypointGroup group = result.groups().get(0);
+
+        assertEquals(WaypointCodec.Options.sanitizeLabel(groupName), group.name());
+        assertEquals(WaypointCodec.Options.sanitizeLabel(waypointName), group.get(0).name());
+        assertFalse(group.name().contains("\u00A7"));
+        assertFalse(group.get(0).name().contains("\u00A7"));
     }
 
     @Test
@@ -239,6 +268,24 @@ class WaypointImporterTest {
         // AUTO gradient rewrites colors on insert; what matters is the group picked AUTO
         // (so users can see route direction), not the specific post-gradient color.
         assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());
+    }
+
+    @Test
+    void parses_current_skyhanni_wrapper_and_string_step_numbers() {
+        String json = "{\"waypoints\":["
+                + "{\"x\":30,\"y\":70,\"z\":40,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":\"2\"}},"
+                + "{\"x\":10,\"y\":68,\"z\":20,\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":\"1\"}}"
+                + "]}";
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
+
+        assertEquals(WaypointImporter.Source.SKYHANNI, result.source());
+        WaypointGroup group = result.groups().get(0);
+        assertEquals(2, group.size());
+        assertEquals("1", group.get(0).name());
+        assertEquals(10, group.get(0).x());
+        assertEquals("2", group.get(1).name());
+        assertTrue(group.enabled());
     }
 
     @Test
@@ -412,18 +459,17 @@ class WaypointImporterTest {
         assertEquals(2, g.size());
         assertEquals(10, g.get(0).x());
         assertEquals("A", g.get(0).name());
-        // Default groups are sequence routes, but MANUAL preserves explicit per-point colors.
-        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
+        // Skyblocker renders all points in unordered groups; MANUAL preserves explicit colors.
+        assertEquals(WaypointGroup.LoadMode.STATIC, g.loadMode());
         assertEquals(WaypointGroup.GradientMode.MANUAL, g.gradientMode());
         assertEquals(0xFF8000, g.get(0).color());
         assertEquals(0x0000FF, g.get(1).color());
     }
 
     @Test
-    void skyblocker_ordered_groups_flip_to_auto_gradient() throws Exception {
-        // Same as above but the group is flagged ordered:true -- importer should
-        // choose AUTO so route direction is visually readable, matching the
-        // rationale already documented on the Coleweight path.
+    void skyblocker_ordered_groups_preserve_explicit_colors() throws Exception {
+        // The upstream codec carries both order and per-point colors. Sequence mode
+        // represents the order without overwriting the sender's colors.
         String json = "[{"
                 + "\"name\":\"Path\","
                 + "\"island\":\"hub\","
@@ -438,7 +484,9 @@ class WaypointImporterTest {
 
         WaypointImporter.ImportResult result = WaypointImporter.importAny(packed);
         WaypointGroup g = result.groups().get(0);
-        assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
+        assertEquals(WaypointGroup.GradientMode.MANUAL, g.gradientMode());
+        assertEquals(0x00FF00, g.get(0).color());
         assertEquals(3, g.size());
     }
 

@@ -12,12 +12,16 @@ import dev.ethan.waypointer.core.WaypointGroup;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Reads and writes the user's waypoint groups as JSON at
@@ -47,6 +51,10 @@ public final class Storage {
     private final Path file;
     private AsyncSaver saver;
     private ActiveGroupManager managerRef;
+    private volatile String pendingSnapshotJson;
+    private int snapshotCount;
+    private volatile int writeCount;
+    private volatile boolean writesBlocked;
 
     public Storage(Path file) {
         this.file = file;
@@ -62,29 +70,44 @@ public final class Storage {
     }
 
     public void load(ActiveGroupManager manager) {
+        if (!Files.exists(file)) return;
+
+        String raw;
         try {
-            if (!Files.exists(file)) return;
-            String raw = Files.readString(file);
-            if (raw.isBlank()) return;
-            List<WaypointGroup> groups = parseGroups(raw);
-            manager.replaceAll(groups);
-            Waypointer.LOGGER.info("Loaded {} waypoint group(s) from {}", groups.size(), file);
-        } catch (Exception e) {
+            raw = Files.readString(file);
+        } catch (IOException e) {
+            writesBlocked = true;
             Waypointer.LOGGER.error("Failed to load waypoints from {}", file, e);
+            return;
         }
+
+        List<WaypointGroup> groups;
+        try {
+            groups = parseGroups(raw);
+        } catch (RuntimeException e) {
+            quarantineInvalidFile(e);
+            return;
+        }
+
+        writesBlocked = false;
+        manager.replaceAll(groups);
+        Waypointer.LOGGER.info("Loaded {} waypoint group(s) from {}", groups.size(), file);
     }
 
     /**
-     * Wire the storage up as a data-change listener. The listener-triggered
-     * path is the only live-save channel we support -- callers don't invoke
+     * Wire storage to persistent data changes. Transient temp markers, API
+     * overlays, and generated dungeon mirrors still invalidate render/API data
+     * listeners, but never serialize the user's route library. The persistent
+     * listener path is the only live-save channel -- callers don't invoke
      * {@link #save(ActiveGroupManager)} directly any more. Kept separate from
      * {@link #load} so callers can rehydrate without immediately writing the
      * canonical form back.
      */
     public void attach(ActiveGroupManager manager) {
         this.managerRef = manager;
+        this.pendingSnapshotJson = captureSnapshot(manager);
         this.saver = new AsyncSaver("waypoints", this::writeToDisk, SAVE_DEBOUNCE_MS);
-        manager.addDataListener(saver::markDirty);
+        manager.addPersistentDataListener(this::markDirtyFromManager);
     }
 
     /**
@@ -93,11 +116,13 @@ public final class Storage {
      * driven by {@link #attach}'s listener.
      */
     public void save(ActiveGroupManager manager) {
-        if (saver != null && managerRef == manager) {
+        boolean attachedToSameManager = saver != null && managerRef == manager;
+        this.managerRef = manager;
+        this.pendingSnapshotJson = captureSnapshot(manager);
+        if (attachedToSameManager) {
             saver.markDirty();
             return;
         }
-        this.managerRef = manager;
         writeToDisk();
     }
 
@@ -109,36 +134,104 @@ public final class Storage {
         if (saver != null) saver.flush();
     }
 
+    private void markDirtyFromManager() {
+        ActiveGroupManager manager = managerRef;
+        if (manager == null) return;
+        pendingSnapshotJson = captureSnapshot(manager);
+        if (saver != null) saver.markDirty();
+    }
+
     private void writeToDisk() {
-        if (managerRef == null) return;
+        String json = pendingSnapshotJson;
+        if (json == null || writesBlocked) return;
         try {
             Files.createDirectories(file.getParent());
-            JsonObject root = new JsonObject();
-            root.addProperty("schema", SCHEMA_VERSION);
-            JsonArray groups = new JsonArray();
-            for (WaypointGroup g : managerRef.allGroups()) {
-                if (!g.temp()) groups.add(groupToJson(g));
-            }
-            root.add("groups", groups);
-
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, GSON.toJson(root));
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            Files.writeString(tmp, json);
+            try {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
+            writeCount++;
         } catch (IOException e) {
-            Waypointer.LOGGER.error("Failed to save waypoints to {}", file, e);
+            throw new UncheckedIOException("Failed to save waypoints to " + file, e);
         }
+    }
+
+    private void quarantineInvalidFile(RuntimeException cause) {
+        writesBlocked = true;
+        Path quarantine = file.resolveSibling(file.getFileName() + ".invalid");
+        int suffix = 1;
+        while (Files.exists(quarantine)) {
+            quarantine = file.resolveSibling(file.getFileName() + ".invalid." + suffix++);
+        }
+
+        try {
+            Files.move(file, quarantine);
+            writesBlocked = false;
+            Waypointer.LOGGER.error("Invalid waypoint data moved from {} to {}", file, quarantine, cause);
+        } catch (IOException quarantineFailure) {
+            writesBlocked = true;
+            cause.addSuppressed(quarantineFailure);
+            Waypointer.LOGGER.error(
+                    "Invalid waypoint data at {} could not be quarantined; saves are disabled to prevent data loss",
+                    file, cause);
+        }
+    }
+
+    private static String snapshotToJson(ActiveGroupManager manager) {
+        if (manager == null) return null;
+        JsonObject root = new JsonObject();
+        root.addProperty("schema", SCHEMA_VERSION);
+        JsonArray groups = new JsonArray();
+        for (WaypointGroup g : manager.allGroups()) {
+            if (!g.temp() && !g.runtimeOnly()) groups.add(groupToJson(g));
+        }
+        root.add("groups", groups);
+        return GSON.toJson(root);
+    }
+
+    private String captureSnapshot(ActiveGroupManager manager) {
+        snapshotCount++;
+        return snapshotToJson(manager);
+    }
+
+    int snapshotCount() {
+        return snapshotCount;
+    }
+
+    int writeCount() {
+        return writeCount;
     }
 
     // --- JSON codec -----------------------------------------------------------------
 
     private static List<WaypointGroup> parseGroups(String raw) {
+        if (raw.isBlank()) {
+            throw new IllegalArgumentException("waypoints file must not be blank");
+        }
         JsonElement parsed = GSON.fromJson(raw, JsonElement.class);
         if (parsed == null || !parsed.isJsonObject()) {
             throw new IllegalArgumentException("waypoints root must be a JSON object");
         }
 
         JsonObject root = parsed.getAsJsonObject();
-        if (!root.has("groups")) return List.of();
+        JsonElement schemaElement = root.get("schema");
+        if (schemaElement == null
+                || schemaElement.isJsonNull()
+                || !schemaElement.isJsonPrimitive()
+                || !schemaElement.getAsJsonPrimitive().isNumber()) {
+            throw new IllegalArgumentException("waypoints schema must be " + SCHEMA_VERSION);
+        }
+        int schema = schemaElement.getAsBigDecimal().intValueExact();
+        if (schema != SCHEMA_VERSION) {
+            throw new IllegalArgumentException("unsupported waypoints schema " + schema);
+        }
+
+        if (!root.has("groups")) {
+            throw new IllegalArgumentException("waypoints groups are missing");
+        }
 
         JsonElement groupsElement = root.get("groups");
         if (groupsElement == null || groupsElement.isJsonNull() || !groupsElement.isJsonArray()) {
@@ -147,16 +240,21 @@ public final class Storage {
 
         JsonArray groupsJson = groupsElement.getAsJsonArray();
         List<WaypointGroup> groups = new ArrayList<>(groupsJson.size());
+        Set<String> groupIds = new HashSet<>(groupsJson.size());
         for (JsonElement el : groupsJson) {
             if (el == null || !el.isJsonObject()) {
                 throw new IllegalArgumentException("waypoint group entry must be a JSON object");
             }
-            groups.add(groupFromJson(el.getAsJsonObject()));
+            WaypointGroup group = groupFromJson(el.getAsJsonObject());
+            if (!groupIds.add(group.id())) {
+                throw new IllegalArgumentException("duplicate waypoint group id " + group.id());
+            }
+            groups.add(group);
         }
         return groups;
     }
 
-    static JsonObject groupToJson(WaypointGroup g) {
+        static JsonObject groupToJson(WaypointGroup g) {
         JsonObject o = new JsonObject();
         o.addProperty("id", g.id());
         o.addProperty("name", g.name());
@@ -167,6 +265,7 @@ public final class Storage {
         o.addProperty("loadMode", g.loadMode().name());
         o.addProperty("defaultRadius", g.defaultRadius());
         o.addProperty("skipAheadEnabled", g.skipAheadEnabled());
+        o.addProperty("staticColor", g.staticColor());
         // Per-group gradient endpoints. Stored as ints rather than hex strings
         // because the rest of the waypoint colour fields are already ints -- one
         // less parser branch in load().
@@ -184,13 +283,14 @@ public final class Storage {
         return o;
     }
 
-    static WaypointGroup groupFromJson(JsonObject o) {
+        static WaypointGroup groupFromJson(JsonObject o) {
         String id = o.has("id") ? o.get("id").getAsString() : java.util.UUID.randomUUID().toString();
         String name = o.has("name") ? o.get("name").getAsString() : "";
         String zone = o.has("zone") ? o.get("zone").getAsString() : "unknown";
         WaypointGroup g = new WaypointGroup(id, name, zone);
         if (o.has("enabled"))       g.setEnabled(o.get("enabled").getAsBoolean());
         if (o.has("defaultRadius")) g.setDefaultRadius(o.get("defaultRadius").getAsDouble());
+        if (o.has("staticColor"))   g.setStaticColor(o.get("staticColor").getAsInt());
         if (o.has("gradientMode")) parseEnum(WaypointGroup.GradientMode.class,
                 o.get("gradientMode").getAsString()).ifPresent(g::setGradientMode);
         if (o.has("loadMode")) parseEnum(WaypointGroup.LoadMode.class,
@@ -220,6 +320,11 @@ public final class Storage {
         o.addProperty("color", w.color());
         if (w.flags() != 0)          o.addProperty("flags", w.flags());
         if (w.customRadius() > 0)    o.addProperty("radius", w.customRadius());
+        if (w.hasCustomPrecisePosition()) {
+            o.addProperty("preciseX", w.preciseX());
+            o.addProperty("preciseY", w.preciseY());
+            o.addProperty("preciseZ", w.preciseZ());
+        }
         return o;
     }
 
@@ -231,7 +336,11 @@ public final class Storage {
         int color    = o.has("color")  ? o.get("color").getAsInt()     : Waypoint.DEFAULT_COLOR;
         int flags    = o.has("flags")  ? o.get("flags").getAsInt()     : 0;
         double rad   = o.has("radius") ? o.get("radius").getAsDouble() : 0.0;
-        return new Waypoint(x, y, z, name, color, flags, rad);
+        Waypoint base = new Waypoint(x, y, z, name, color, flags, rad);
+        int preciseX = o.has("preciseX") ? o.get("preciseX").getAsInt() : base.preciseX();
+        int preciseY = o.has("preciseY") ? o.get("preciseY").getAsInt() : base.preciseY();
+        int preciseZ = o.has("preciseZ") ? o.get("preciseZ").getAsInt() : base.preciseZ();
+        return base.withPreciseSixteenths(preciseX, preciseY, preciseZ);
     }
 
     private static <E extends Enum<E>> Optional<E> parseEnum(Class<E> type, String raw) {

@@ -4,9 +4,18 @@ import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.InteractionResult;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 
 /**
  * Watches the local player each client tick and advances any active group whose
@@ -23,6 +32,9 @@ import net.minecraft.client.player.LocalPlayer;
  */
 public final class ProximityTracker {
 
+    private static final double STAND_SKIP_SCAN_RADIUS = 1.75D;
+    static final long STAND_SKIP_HOLD_MS = 500L;
+
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
 
@@ -33,6 +45,21 @@ public final class ProximityTracker {
 
     public void install() {
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
+        UseBlockCallback.EVENT.register(this::onUseBlock);
+    }
+
+    private InteractionResult onUseBlock(Player player, Level world, InteractionHand hand,
+                                         BlockHitResult hit) {
+        if (!world.isClientSide()) return InteractionResult.PASS;
+        BlockPos pos = hit.getBlockPos();
+        boolean restart = config.restartRouteWhenComplete();
+        for (WaypointGroup group : manager.activeGroups()) {
+            boolean advanced = advanceIfInteractedWithBlock(group, pos.getX(), pos.getY(), pos.getZ(), restart);
+            if (advanced && shouldHideCompletedDungeonRoomRoute(group)) {
+                manager.fireTransientDataChanged();
+            }
+        }
+        return InteractionResult.PASS;
     }
 
     private void onTick(Minecraft mc) {
@@ -48,32 +75,65 @@ public final class ProximityTracker {
         // player's preferred feel is baked in from day one.
         boolean loop = config.restartRouteWhenComplete();
         boolean globalSkipAhead = config.skipAheadMechanicEnabled();
+        boolean skipOnlyVisible = config.skipAheadOnlyVisibleWaypoints();
         boolean hideReachedStatic = config.hideReachedStaticWaypointsUntilCycleComplete();
         for (WaypointGroup group : manager.activeGroups()) {
-            updateGroupProgress(group, px, py, pz, loop, globalSkipAhead, hideReachedStatic);
+            boolean changed = updateGroupProgress(group, px, py, pz, loop, globalSkipAhead,
+                    skipOnlyVisible, hideReachedStatic);
+            if (changed && shouldHideCompletedDungeonRoomRoute(group)) {
+                manager.fireTransientDataChanged();
+            }
         }
     }
 
-    public static void updateGroupProgress(WaypointGroup group,
-                                           double px, double py, double pz,
-                                           boolean restartWhenComplete,
-                                           boolean globalSkipAhead,
-                                           boolean hideReachedStatic) {
+    public static boolean updateGroupProgress(WaypointGroup group,
+                                              double px, double py, double pz,
+                                              boolean restartWhenComplete,
+                                              boolean globalSkipAhead,
+                                              boolean skipOnlyVisible,
+                                              boolean hideReachedStatic) {
         // Temp-only bucket groups don't participate in progression -- they hold
         // ad-hoc markers whose own expiry modes handle cleanup. Running proximity
         // on them would re-enter the "advance past waypoint" logic on a container
         // whose order is meaningless.
-        if (group.temp()) return;
+        if (group.temp()) return false;
+
+        boolean releasedSubwaypointParentHold =
+                releaseCompletionWrappedSubwaypointParentHoldIfOutsideReach(group, px, py, pz);
 
         if (hideReachedStatic && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
-            markReachedStaticWaypoints(group, px, py, pz);
-            return;
+            boolean markedStatic = markReachedStaticWaypoints(group, px, py, pz);
+            return releasedSubwaypointParentHold || markedStatic;
         }
 
         // Group-level skip-ahead gate. Global off always wins over group on --
         // the config is the master switch; the group flag is a per-route opt-out.
         boolean allowSkip = globalSkipAhead && group.skipAheadEnabled();
-        advanceIfReached(group, px, py, pz, restartWhenComplete, allowSkip);
+        boolean restart = restartWhenComplete && !isDungeonRoomRouteGroup(group);
+        boolean advanced = advanceIfReached(group, px, py, pz, restart, allowSkip, skipOnlyVisible);
+        return releasedSubwaypointParentHold || advanced;
+    }
+
+    public static boolean updateGroupProgress(WaypointGroup group,
+                                              double px, double py, double pz,
+                                              boolean restartWhenComplete,
+                                              boolean globalSkipAhead,
+                                              boolean hideReachedStatic) {
+        return updateGroupProgress(group, px, py, pz, restartWhenComplete, globalSkipAhead,
+                false, hideReachedStatic);
+    }
+
+    private static boolean releaseCompletionWrappedSubwaypointParentHoldIfOutsideReach(WaypointGroup group,
+                                                                                       double px,
+                                                                                       double py,
+                                                                                       double pz) {
+        int activeParent = group.activeSubwaypointParentIndex();
+        if (activeParent < 0) return false;
+        if (group.nextMainIndexAfter(activeParent) >= 0) return false;
+
+        Waypoint parent = group.get(activeParent);
+        if (isWithinReach(group, parent, px, py, pz)) return false;
+        return group.clearActiveSubwaypointParent();
     }
 
     /**
@@ -84,19 +144,23 @@ public final class ProximityTracker {
      */
     public static boolean markReachedStaticWaypoints(WaypointGroup group,
                                                      double px, double py, double pz) {
+        return markReachedStaticWaypoints(group, px, py, pz, System.currentTimeMillis());
+    }
+
+    static boolean markReachedStaticWaypoints(WaypointGroup group,
+                                             double px, double py, double pz,
+                                             long nowMillis) {
         updateProximitySuppression(group, px, py, pz);
+        resetStandSkipHoldIfNotStanding(group, px, py, pz);
         boolean[] changed = { false };
-        group.forEachNearbyIndex(px, py, pz, group.maxEffectiveRadius(), i -> {
+        double scanRadius = Math.max(group.maxEffectiveRadius(), STAND_SKIP_SCAN_RADIUS);
+        group.forEachNearbyIndex(px, py, pz, scanRadius, i -> {
             if (group.isSubwaypoint(i)) return true;
             if (group.isStaticWaypointReached(i)) return true;
             if (group.isProximitySuppressed(i)) return true;
 
             Waypoint w = group.get(i);
-            double r = group.effectiveRadius(w);
-            double dx = (w.x() + 0.5) - px;
-            double dy = (w.y() + 0.5) - py;
-            double dz = (w.z() + 0.5) - pz;
-            if (dx * dx + dy * dy + dz * dz <= r * r) {
+            if (isReachedByRadiusOrStand(group, i, w, px, py, pz, nowMillis)) {
                 if (group.markStaticWaypointReached(i)) {
                     changed[0] = true;
                     if (group.consumeStaticCycleJustCompleted()) {
@@ -139,20 +203,61 @@ public final class ProximityTracker {
      */
     public static boolean advanceIfReached(WaypointGroup group, double px, double py, double pz,
                                            boolean restartWhenComplete, boolean allowSkipAhead) {
+        return advanceIfReached(group, px, py, pz, restartWhenComplete, allowSkipAhead, false);
+    }
+
+    public static boolean advanceIfReached(WaypointGroup group, double px, double py, double pz,
+                                           boolean restartWhenComplete, boolean allowSkipAhead,
+                                           boolean skipOnlyVisible) {
+        return advanceIfReached(group, px, py, pz, restartWhenComplete, allowSkipAhead,
+                skipOnlyVisible, System.currentTimeMillis());
+    }
+
+    static boolean advanceIfReached(WaypointGroup group, double px, double py, double pz,
+                                    boolean restartWhenComplete, boolean allowSkipAhead,
+                                    boolean skipOnlyVisible, long nowMillis) {
         if (group.isComplete()) return false;
         updateProximitySuppression(group, px, py, pz);
+        resetStandSkipHoldIfNotStanding(group, px, py, pz);
 
         int size = group.size();
         int from = group.currentIndex();
 
-        int reachedIndex = allowSkipAhead
-                ? highestNearbyReachedIndex(group, from, px, py, pz)
-                : currentReachedIndex(group, from, px, py, pz);
+        int reachedIndex;
+        if (allowSkipAhead) {
+            reachedIndex = group.isSubwaypoint(from)
+                    ? currentReachedIndex(group, from, px, py, pz, nowMillis)
+                    : -1;
+            if (reachedIndex < 0) {
+                reachedIndex = highestNearbyReachedIndex(group, from, px, py, pz,
+                        skipOnlyVisible, nowMillis);
+            }
+        } else {
+            reachedIndex = currentReachedIndex(group, from, px, py, pz, nowMillis);
+        }
         if (reachedIndex < 0) return false;
 
-        // Collect reach-based temps in [from..reachedIndex] BEFORE advancing,
-        // because advancing changes currentIndex which we use to bound the scan.
-        // Remove in reverse so earlier indices don't shift under us.
+        return advancePastReachedIndex(group, from, reachedIndex, restartWhenComplete);
+    }
+
+    public static boolean advanceIfInteractedWithBlock(WaypointGroup group,
+                                                       int blockX, int blockY, int blockZ,
+                                                       boolean restartWhenComplete) {
+        if (!isEligibleDungeonTriggerGroup(group)) return false;
+        int from = group.currentIndex();
+        for (int i = group.size() - 1; i >= from; i--) {
+            Waypoint waypoint = group.get(i);
+            if (!waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT)) continue;
+            if (!waypointMatchesBlock(waypoint, blockX, blockY, blockZ)) continue;
+            return advancePastReachedIndex(group, from, i,
+                    restartWhenComplete && !isDungeonRoomRouteGroup(group));
+        }
+        return false;
+    }
+
+    private static boolean advancePastReachedIndex(WaypointGroup group, int from,
+                                                   int reachedIndex,
+                                                   boolean restartWhenComplete) {
         group.advancePast(reachedIndex);
         for (int j = reachedIndex; j >= from; j--) {
             if (group.isSubwaypoint(j)) continue;
@@ -161,31 +266,54 @@ public final class ProximityTracker {
                 group.remove(j);
             }
         }
-        group.restartIfRouteCompleted(restartWhenComplete);
+        group.restartIfRouteCompleted(restartWhenComplete && !isDungeonRoomRouteGroup(group));
         return true;
     }
 
     private static int currentReachedIndex(WaypointGroup group, int index,
-                                            double px, double py, double pz) {
+                                           double px, double py, double pz,
+                                           long nowMillis) {
         if (index < 0 || index >= group.size()) return -1;
-        if (group.isSubwaypoint(index)) return -1;
         if (group.isProximitySuppressed(index)) return -1;
-        return isWithinReach(group, group.get(index), px, py, pz) ? index : -1;
+        return isReachedByRadiusOrStand(group, index, group.get(index), px, py, pz, nowMillis)
+                ? index
+                : -1;
     }
 
     private static int highestNearbyReachedIndex(WaypointGroup group, int from,
-                                                 double px, double py, double pz) {
+                                                 double px, double py, double pz,
+                                                 boolean skipOnlyVisible,
+                                                 long nowMillis) {
+        boolean[] visible = skipOnlyVisible ? visibleIndexMask(group) : null;
         int[] reachedIndex = { -1 };
-        group.forEachNearbyIndex(px, py, pz, group.maxEffectiveRadius(), i -> {
+        double scanRadius = Math.max(group.maxEffectiveRadius(), STAND_SKIP_SCAN_RADIUS);
+        group.forEachNearbyIndex(px, py, pz, scanRadius, i -> {
             if (i < from || group.isProximitySuppressed(i)) return true;
-            if (group.isSubwaypoint(i)) return true;
+            if (visible != null && (i >= visible.length || !visible[i])) return true;
+            if (i > from && !isAutomaticSkipAheadCandidate(group, i)) return true;
             if (i <= reachedIndex[0]) return true;
-            if (isWithinReach(group, group.get(i), px, py, pz)) {
+            if (isReachedByRadiusOrStand(group, i, group.get(i), px, py, pz, nowMillis)) {
                 reachedIndex[0] = i;
             }
             return true;
         });
         return reachedIndex[0];
+    }
+
+    private static boolean isAutomaticSkipAheadCandidate(WaypointGroup group, int index) {
+        if (index < 0 || index >= group.size()) return false;
+        if (group.isSubwaypoint(index)) return false;
+        Waypoint waypoint = group.get(index);
+        return !waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_STAND)
+                && !waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT);
+    }
+
+    private static boolean[] visibleIndexMask(WaypointGroup group) {
+        boolean[] visible = new boolean[group.size()];
+        group.forEachVisibleIndex(i -> {
+            if (i >= 0 && i < visible.length) visible[i] = true;
+        });
+        return visible;
     }
 
     private static void updateProximitySuppression(WaypointGroup group,
@@ -203,12 +331,111 @@ public final class ProximityTracker {
         }
     }
 
+    private static boolean isReachedByRadiusOrStand(WaypointGroup group, int index, Waypoint w,
+                                                    double px, double py, double pz,
+                                                    long nowMillis) {
+        if (isDungeonStandSkipWaypoint(group, w)) {
+            return isStandSkipReached(group, index, w, px, py, pz, nowMillis);
+        }
+        if (isDungeonInteractSkipWaypoint(group, w)) return false;
+        return isWithinReach(group, w, px, py, pz);
+    }
+
+    private static boolean isDungeonStandSkipWaypoint(WaypointGroup group, Waypoint w) {
+        return isEligibleDungeonTriggerGroup(group)
+                && w != null
+                && w.hasFlag(Waypoint.FLAG_SKIP_ON_STAND);
+    }
+
+    private static boolean isDungeonInteractSkipWaypoint(WaypointGroup group, Waypoint w) {
+        return isEligibleDungeonTriggerGroup(group)
+                && w != null
+                && w.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT);
+    }
+
+    private static boolean isStandSkipReached(WaypointGroup group, int index, Waypoint w,
+                                              double px, double py, double pz,
+                                              long nowMillis) {
+        return isStandSkipReached(group, index, w, px, py, pz, nowMillis,
+                standSkipRequiresExactBlock(w));
+    }
+
+    static boolean isStandSkipReached(WaypointGroup group, int index, Waypoint w,
+                                      double px, double py, double pz,
+                                      long nowMillis,
+                                      boolean requiresExactBlock) {
+        if (!w.hasFlag(Waypoint.FLAG_SKIP_ON_STAND)) return false;
+        boolean standingOnBlock = isStandingOnWaypointBlock(w, px, py, pz);
+        if (standingOnBlock) {
+            return group.standSkipHeldLongEnough(index, nowMillis, STAND_SKIP_HOLD_MS);
+        }
+        group.clearStandSkipHold(index);
+        if (requiresExactBlock) {
+            return false;
+        }
+        return isWithinReach(group, w, px, py, pz);
+    }
+
+    private static boolean standSkipRequiresExactBlock(Waypoint w) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null || mc.level == null || w == null) return true;
+        BlockPos pos = new BlockPos(w.x(), w.y(), w.z());
+        BlockState state = mc.level.getBlockState(pos);
+        return state == null || !state.getCollisionShape(mc.level, pos).isEmpty();
+    }
+
+    private static void resetStandSkipHoldIfNotStanding(WaypointGroup group,
+                                                        double px, double py, double pz) {
+        int heldIndex = group.standSkipHoldIndex();
+        if (heldIndex < 0) return;
+        if (heldIndex >= group.size()) {
+            group.clearStandSkipHold();
+            return;
+        }
+        Waypoint held = group.get(heldIndex);
+        if (!isDungeonStandSkipWaypoint(group, held)
+                || !isStandingOnWaypointBlock(held, px, py, pz)) {
+            group.clearStandSkipHold(heldIndex);
+        }
+    }
+
+    private static boolean isStandingOnWaypointBlock(Waypoint w,
+                                                     double px, double py, double pz) {
+        int feetX = blockCoordinate(px);
+        int feetY = blockCoordinate(py);
+        int feetZ = blockCoordinate(pz);
+        return waypointMatchesBlock(w, feetX, feetY, feetZ)
+                || waypointMatchesBlock(w, feetX, blockCoordinate(py - 0.01D), feetZ);
+    }
+
+    private static boolean shouldHideCompletedDungeonRoomRoute(WaypointGroup group) {
+        return isDungeonRoomRouteGroup(group) && group.isComplete();
+    }
+
+    private static boolean isDungeonRoomRouteGroup(WaypointGroup group) {
+        return group != null
+                && !group.temp()
+                && DungeonRoomData.definition(group.zoneId()) != null;
+    }
+
+    private static boolean isEligibleDungeonTriggerGroup(WaypointGroup group) {
+        return isDungeonRoomRouteGroup(group) && !group.isComplete();
+    }
+
+    private static boolean waypointMatchesBlock(Waypoint w, int blockX, int blockY, int blockZ) {
+        return w.x() == blockX && w.y() == blockY && w.z() == blockZ;
+    }
+
+    private static int blockCoordinate(double value) {
+        return (int) Math.floor(value);
+    }
+
     private static boolean isWithinReach(WaypointGroup group, Waypoint w,
-                                         double px, double py, double pz) {
+                                          double px, double py, double pz) {
         double r = group.effectiveRadius(w);
-        double dx = (w.x() + 0.5) - px;
-        double dy = (w.y() + 0.5) - py;
-        double dz = (w.z() + 0.5) - pz;
+        double dx = w.centerX() - px;
+        double dy = w.centerY() - py;
+        double dz = w.centerZ() - pz;
         return dx * dx + dy * dy + dz * dz <= r * r;
     }
 }

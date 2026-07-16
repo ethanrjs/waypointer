@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.api;
 
+import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.codec.WaypointImporter;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
@@ -9,11 +10,25 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class DefaultWaypointerApiTest {
+
+    @Test
+    void publicSpecsBoundUnsafeReachRadii() {
+        RouteSpec route = RouteSpec.builder()
+                .defaultRadius(Double.POSITIVE_INFINITY)
+                .waypoint(WaypointSpec.at(0, 64, 0).radius(1_000_000.0))
+                .build();
+
+        assertEquals(Waypoint.DEFAULT_REACH_RADIUS, route.defaultRadius());
+        assertEquals(Waypoint.MAX_REACH_RADIUS, route.waypoints().get(0).radius());
+    }
 
     @Test
     void createRoute_returnsImmutableSnapshotData() {
@@ -106,6 +121,21 @@ class DefaultWaypointerApiTest {
     }
 
     @Test
+    void addTempWaypointUsesSourceAsFallbackLabel() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+
+        WaypointGroupSnapshot bucket = api.addTempWaypoint(WaypointSpec.builder()
+                .position(100, 64, -20)
+                .source("Example Mod")
+                .build());
+
+        assertEquals("Example Mod", bucket.waypoints().get(0).name());
+        assertTrue(bucket.waypoints().get(0).temporary());
+    }
+
+    @Test
     void routeOverlayCanBeClosedWithoutTouchingUserRoutes() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerApi api = new DefaultWaypointerApi(manager);
@@ -163,6 +193,63 @@ class DefaultWaypointerApiTest {
     }
 
     @Test
+    void exportRoutesRoundTripsSelectedGroupsWithoutDataChange() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        AtomicInteger changes = new AtomicInteger();
+        api.onDataChanged(changes::incrementAndGet);
+        String firstId = api.createRoute(RouteSpec.builder()
+                .name("First")
+                .zoneId("hub")
+                .waypoint(WaypointSpec.at(1, 2, 3).name("Start"))
+                .build());
+        String secondId = api.createRoute(RouteSpec.builder()
+                .name("Second")
+                .zoneId("dwarven_mines")
+                .waypoint(WaypointSpec.at(4, 5, 6).name("Stop"))
+                .build());
+
+        String payload = api.exportRoutes(List.of("missing", secondId, firstId),
+                ExportOptions.builder()
+                        .includeNames(true)
+                        .label("API Export")
+                        .build());
+        WaypointCodec.Decoded decoded = WaypointCodec.decodeFull(payload);
+
+        assertEquals("API Export", decoded.label());
+        assertEquals(2, decoded.groups().size());
+        assertEquals("Second", decoded.groups().get(0).name());
+        assertEquals("Stop", decoded.groups().get(0).get(0).name());
+        assertEquals("First", decoded.groups().get(1).name());
+        assertEquals("Start", decoded.groups().get(1).get(0).name());
+        assertEquals(2, changes.get(), "export is read-only and must not notify listeners");
+    }
+
+    @Test
+    void exportRoutesCanUseSkytilsTarget() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        String groupId = api.createRoute(RouteSpec.builder()
+                .name("Route")
+                .zoneId("hub")
+                .waypoint(WaypointSpec.at(1, 2, 3).name("Start"))
+                .build());
+
+        String payload = api.exportRoutes(List.of(groupId),
+                ExportOptions.builder()
+                        .target(ExportTarget.SKYTILS)
+                        .includeNames(true)
+                        .build());
+        WaypointImporter.ImportResult imported = WaypointImporter.importAny(payload);
+
+        assertEquals(WaypointImporter.Source.SKYTILS, imported.source());
+        assertEquals(1, imported.groups().size());
+        assertEquals("Route", imported.groups().get(0).name());
+        assertEquals("Start", imported.groups().get(0).get(0).name());
+        assertFalse(payload.startsWith(WaypointCodec.MAGIC));
+    }
+
+    @Test
     void listenerHandlesUnsubscribeCleanly() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerApi api = new DefaultWaypointerApi(manager);
@@ -181,6 +268,65 @@ class DefaultWaypointerApiTest {
 
         assertEquals(0, dataChanges.get());
         assertEquals(0, zoneChanges.get());
+    }
+
+    @Test
+    void offThreadCallsRunSynchronouslyOnConfiguredClientExecutor() throws Exception {
+        AtomicReference<Thread> clientThread = new AtomicReference<>();
+        ExecutorService clientExecutor = Executors.newSingleThreadExecutor();
+        try {
+            clientExecutor.submit(() -> clientThread.set(Thread.currentThread())).get();
+            ActiveGroupManager manager = new ActiveGroupManager();
+            WaypointerApi api = new DefaultWaypointerApi(
+                    manager,
+                    () -> Thread.currentThread() == clientThread.get(),
+                    clientExecutor);
+            AtomicReference<Thread> listenerThread = new AtomicReference<>();
+            AtomicInteger changes = new AtomicInteger();
+            WaypointerHandle handle = api.onDataChanged(() -> {
+                listenerThread.set(Thread.currentThread());
+                changes.incrementAndGet();
+            });
+
+            String routeId = api.createRoute(RouteSpec.builder().name("Threaded route").build());
+
+            assertNotNull(routeId);
+            assertSame(clientThread.get(), listenerThread.get());
+            assertEquals(1, changes.get());
+            assertEquals("Threaded route", api.allGroups().get(0).name());
+
+            handle.close();
+            api.createRoute(RouteSpec.builder().name("After close").build());
+            assertEquals(1, changes.get(), "closing off-thread must remove on the client thread before returning");
+        } finally {
+            clientExecutor.shutdownNow();
+        }
+    }
+
+    @Test
+    void failingPublicListenersDoNotAbortOtherListenersOrInternalUpdates() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        AtomicInteger dataChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        AtomicInteger zoneChanges = new AtomicInteger();
+        api.onDataChanged(() -> {
+            throw new IllegalStateException("broken data consumer");
+        });
+        api.onDataChanged(dataChanges::incrementAndGet);
+        api.onZoneChanged(zone -> {
+            throw new IllegalStateException("broken zone consumer");
+        });
+        api.onZoneChanged(zone -> zoneChanges.incrementAndGet());
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        api.createRoute(RouteSpec.builder().name("Survives listener").build());
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+
+        assertEquals(1, dataChanges.get());
+        assertEquals(1, persistentChanges.get());
+        assertEquals(1, zoneChanges.get());
+        assertEquals("Survives listener", api.allGroups().get(0).name());
     }
 
     @Test

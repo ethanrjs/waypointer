@@ -1,15 +1,21 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.codec.WaypointExportCodec;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomDefinition;
+import dev.ethan.waypointer.util.MathUtil;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FormattedText;
@@ -18,6 +24,7 @@ import net.minecraft.util.FormattedCharSequence;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 import static dev.ethan.waypointer.screen.GuiTokens.BTN_H;
 import static dev.ethan.waypointer.screen.GuiTokens.PAD_OUTER;
@@ -51,11 +58,12 @@ import static dev.ethan.waypointer.screen.GuiTokens.SURFACE_SUBTLE;
  *   4. Reset-to-defaults button so users who experimented can recover the
  *      sensible config preset without leaving the screen.
  *   5. Size summary: char count + paste-fit indicator.
- *   6. Preview box labelled "Encoded preview (this is what gets copied)".
+ *   6. Preview box labelled "Export Preview".
  */
 public final class ExportScreen extends Screen {
 
     private static final int PREVIEW_INSET = 6;
+    private static final String DUNGEON_ROOM_LABEL_PREFIX = "Dungeons: ";
 
     /** Reference chat textbox size used only for paste-fit messaging. */
     private static final int CHAT_INPUT_LIMIT = 256;
@@ -99,7 +107,16 @@ public final class ExportScreen extends Screen {
     /** Fixed width of each toggle button so the row stays scannable across screen sizes. */
     private static final int TOGGLE_W = 96;
     private static final int EXPORT_FOR_W = 124;
-    private static final int ROUTE_TOGGLE_W = 148;
+    private static final int ROUTE_PICKER_TOGGLE_W = 86;
+    private static final int ROUTE_PICKER_SELECT_ALL_W = 76;
+    private static final int ROUTE_PICKER_COLLAPSE_THRESHOLD = 9;
+    private static final int MAX_EXPANDED_ROUTE_ROWS = 6;
+    private static final int ROUTE_ROW_H = 24;
+    private static final int ROUTE_ROW_GAP = 2;
+    private static final int ROUTE_ROW_PITCH = ROUTE_ROW_H + ROUTE_ROW_GAP;
+    private static final int ROUTE_PICKER_INSET = 4;
+    private static final int ROUTE_SCROLLBAR_W = 3;
+    private static final int MIN_PREVIEW_H = 34;
 
     private final Screen parent;
     private final WaypointerConfig config;
@@ -115,41 +132,44 @@ public final class ExportScreen extends Screen {
     private EditBox labelInput;
     private final List<ToggleSpec> toggleSpecs = new ArrayList<>();
     private final List<Button> toggleButtons = new ArrayList<>();
-    private final List<Button> routeButtons = new ArrayList<>();
     private Button exportForButton;
+    private Button routePickerToggleButton;
+    private Button routeSelectAllButton;
     private Button copyButton;
     private Button copyCodeBlockButton;
+    private boolean routePickerExpanded;
+    private int routeScrollOffset;
     private long copyFeedbackUntil = 0L;
     private long copyCodeBlockFeedbackUntil = 0L;
 
     private String encoded = "";
+    private String encodingError = "";
 
-    /** Builds an export for every group in {@code groups} with a readable subtitle. */
     public ExportScreen(Screen parent, WaypointerConfig config, List<WaypointGroup> groups, String subtitle) {
         super(Component.literal("Export Waypoints"));
         this.parent = parent;
         this.config = config;
         this.groups = groups;
-        this.selectedGroups = new boolean[groups.size()];
-        Arrays.fill(this.selectedGroups, true);
+        this.selectedGroups = initialRouteSelection(groups.size());
         this.subtitle = subtitle;
-        this.optsBuilder = builderFromConfig(config);
+        this.routePickerExpanded = shouldStartRoutePickerExpanded(groups.size());
+        this.optsBuilder = builderFromConfig(config, selectedGroupsForExport(groups, selectedGroups));
     }
 
-    /** Entry point for a single-group export; wraps the group in a list with a title. */
     public static void openForGroup(Screen parent, WaypointerConfig config, WaypointGroup group) {
-        String title = "Route: " + (group.name().isEmpty() ? "(unnamed)" : group.name())
+        String title = "Route: " + routeDisplayName(group)
                 + "  --  " + group.size() + " waypoint" + (group.size() == 1 ? "" : "s");
-        Minecraft.getInstance().setScreen(new ExportScreen(parent, config, List.of(group), title));
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new ExportScreen(parent, config, List.of(group), title));
     }
 
-    /** Entry point for a multi-group export (e.g. the whole zone). */
     public static void openForGroups(Screen parent, WaypointerConfig config,
                                      List<WaypointGroup> groups, String zoneLabel) {
         int totalPts = groups.stream().mapToInt(WaypointGroup::size).sum();
-        String title = "Zone: " + zoneLabel + "  --  " + groups.size() + " group"
+        String title = "Zone: " + zoneLabel + "  --  " + groups.size() + " route"
                 + (groups.size() == 1 ? "" : "s") + ", " + totalPts + " waypoints";
-        Minecraft.getInstance().setScreen(new ExportScreen(parent, config, groups, title));
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new ExportScreen(parent, config, groups, title));
     }
 
     // --- lifecycle ----------------------------------------------------------------------------
@@ -158,7 +178,8 @@ public final class ExportScreen extends Screen {
     protected void init() {
         toggleSpecs.clear();
         toggleButtons.clear();
-        routeButtons.clear();
+        routePickerToggleButton = null;
+        routeSelectAllButton = null;
 
         // Label input lives directly under the header so it reads as the
         // primary "what is this export for?" field. Vanilla EditBox enforces
@@ -178,7 +199,7 @@ public final class ExportScreen extends Screen {
         labelInput.setResponder(this::onLabelChanged);
         addRenderableWidget(labelInput);
 
-        this.exportForButton = Button.builder(exportForButtonLabel(), b -> openExportTargetMenu())
+        this.exportForButton = Button.builder(exportForButtonLabel(), this::openExportTargetMenu)
                 .bounds(PAD_OUTER + labelW + GAP, labelY, EXPORT_FOR_W, BTN_H)
                 .tooltip(Tooltip.create(Component.literal("Choose who this export is for")))
                 .build();
@@ -189,29 +210,24 @@ public final class ExportScreen extends Screen {
         // they're declared, wrapping to a second row if the screen is too narrow
         // to fit them all. Each button's label flips between "X On" / "X Off"
         // and is colored to match the state so the row reads at a glance.
-        registerToggle("Names", optsBuilder.includeNames(), () -> exportTarget.supportsNames(),
+        registerToggle(ToggleKind.NAMES, "Names", optsBuilder.includeNames(),
                 "Include waypoint names in export",
-                "This format can only preserve coordinates and colors.",
-                v -> { optsBuilder.includeNames(v); reencode(); });
-        registerToggle("Colors", optsBuilder.includeColors(), () -> exportTarget.supportsColors(),
+                "This format can only preserve coordinates and colors.");
+        registerToggle(ToggleKind.COLORS, "Colors", optsBuilder.includeColors(),
                 "Include waypoint colors in export",
-                "This format does not support waypoint colors.",
-                v -> { optsBuilder.includeColors(v); reencode(); });
-        registerToggle("Radii", optsBuilder.includeRadii(), () -> exportTarget.supportsRadii(),
+                "This format does not support waypoint colors.");
+        registerToggle(ToggleKind.RADII, "Radii", optsBuilder.includeRadii(),
                 "Include reach radius of each waypoint in export",
-                "Only Waypointer exports can preserve custom reach radii.",
-                v -> { optsBuilder.includeRadii(v); reencode(); });
-        registerToggle("WP Flags", optsBuilder.includeWaypointFlags(), () -> exportTarget.supportsWaypointFlags(),
-                "Per-waypoint flag bits, safe to leave off for now.",
-                "Only Waypointer exports can preserve hide/through-wall flags.",
-                v -> { optsBuilder.includeWaypointFlags(v); reencode(); });
-        registerToggle("Group Meta", optsBuilder.includeGroupMeta(), () -> exportTarget.supportsGroupMeta(),
-                "Include group settings (gradient, ordered/sequenced, etc) in export",
-                "This format keeps basic route/category names, but not Waypointer group settings.",
-                v -> { optsBuilder.includeGroupMeta(v); reencode(); });
+                "Only Waypointer exports can preserve custom reach radii.");
+        registerToggle(ToggleKind.WAYPOINT_FLAGS, "WP Flags", optsBuilder.includeWaypointFlags(),
+                "Preserve subwaypoints and per-waypoint flag bits.",
+                "Only Waypointer exports can preserve hide/through-wall flags.");
+        registerToggle(ToggleKind.GROUP_META, "Route Meta", optsBuilder.includeGroupMeta(),
+                "Include route settings (gradient, ordered/sequenced, etc) in export",
+                "This format keeps basic route/category names, but not Waypointer route settings.");
 
         layoutToggles();
-        layoutRouteToggles();
+        layoutRoutePickerControls();
 
         // Footer: Back/Reset on the left, copy actions on the right. The plain
         // copy button stays far-right because it is the most common action;
@@ -221,7 +237,7 @@ public final class ExportScreen extends Screen {
         // grouping it with Back makes its scope (the whole screen) clearer.
         int footerY = height - FOOTER_H;
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("Back", () -> minecraft.setScreen(parent)));
+        left.add(new GuiTokens.ButtonSpec("Back", this::goBackToParent));
         left.add(new GuiTokens.ButtonSpec("Reset", this::resetToConfigDefaults));
 
         int copyW = 140;
@@ -232,11 +248,11 @@ public final class ExportScreen extends Screen {
         Tooltip codeBlockTooltip = Tooltip.create(Component.literal(
                 "Wraps export code in 3 backticks. Useful for sending waypoints over Discord"));
         this.copyCodeBlockButton = Button.builder(Component.literal("Copy as code block"),
-                        b -> copyAsCodeBlock())
+                        this::copyAsCodeBlock)
                 .bounds(codeBlockCopyX, footerY, codeBlockCopyW, BTN_H)
                 .tooltip(codeBlockTooltip)
                 .build();
-        this.copyButton = Button.builder(Component.literal("Copy to Clipboard"), b -> copyToClipboard())
+        this.copyButton = Button.builder(Component.literal("Copy to Clipboard"), this::copyToClipboard)
                 .bounds(copyX, footerY, copyW, BTN_H).build();
 
         GuiTokens.layoutFooter(width, footerY, left, null, this::addRenderableWidget,
@@ -245,23 +261,15 @@ public final class ExportScreen extends Screen {
         addRenderableWidget(copyButton);
 
         setInitialFocus(labelInput);
+        clampRouteScrollOffset();
         reencode();
     }
 
-    private void registerToggle(String label, boolean initialValue,
-                                java.util.function.BooleanSupplier supported,
-                                String tooltip, String unsupportedTooltip,
-                                java.util.function.Consumer<Boolean> sink) {
-        toggleSpecs.add(new ToggleSpec(label, initialValue, supported,
-                tooltip, unsupportedTooltip, sink));
+    private void registerToggle(ToggleKind kind, String label, boolean initialValue,
+                                String tooltip, String unsupportedTooltip) {
+        toggleSpecs.add(new ToggleSpec(kind, label, initialValue, tooltip, unsupportedTooltip));
     }
 
-    /**
-     * Build buttons from {@link #toggleSpecs} in document order. The fixed
-     * TOGGLE_W keeps each cell scannable; on a narrow window we wrap to a
-     * second row so the layout stays usable instead of overflowing the
-     * preview area.
-     */
     private void layoutToggles() {
         int rowY = PAD_OUTER + HEADER_H + BTN_H + GAP + EXPORT_SETTINGS_HEADER_H;
         int x = PAD_OUTER;
@@ -272,54 +280,40 @@ public final class ExportScreen extends Screen {
                 x = PAD_OUTER;
                 rowY += BTN_H + GAP;
             }
-            // Capture spec.value() as a stable reference so the lambda toggles
-            // the live state stored on the spec, not a snapshot taken at
-            // construction time.
-            Button b = Button.builder(toggleLabel(spec), btn -> {
-                        spec.value = !spec.value;
-                        spec.sink.accept(spec.value);
-                        btn.setMessage(toggleLabel(spec));
-                    })
+            Button b = Button.builder(toggleLabel(spec), new TogglePressHandler(spec))
                     .bounds(x, rowY, TOGGLE_W, BTN_H)
-                    .tooltip(Tooltip.create(Component.literal(spec.tooltip())))
+                    .tooltip(Tooltip.create(Component.literal(toggleTooltip(spec))))
                     .build();
-            b.active = spec.supported();
+            b.active = toggleSupported(spec);
             addRenderableWidget(b);
             toggleButtons.add(b);
             x += TOGGLE_W + GAP;
         }
     }
 
-    private void layoutRouteToggles() {
+    private void layoutRoutePickerControls() {
         if (!isZoneExport()) return;
 
-        int y = controlsBottom() + GAP_SECTION + LINE_H * 2;
-        int x = PAD_OUTER;
+        int y = routePickerTop();
         int rightEdge = width - PAD_OUTER;
+        int selectAllX = rightEdge - ROUTE_PICKER_SELECT_ALL_W;
+        int toggleX = Math.max(PAD_OUTER, selectAllX - GAP - ROUTE_PICKER_TOGGLE_W);
 
-        for (int i = 0; i < groups.size(); i++) {
-            if (x + ROUTE_TOGGLE_W > rightEdge) {
-                x = PAD_OUTER;
-                y += BTN_H + GAP;
-            }
-            final int idx = i;
-            Button b = Button.builder(routeToggleLabel(idx), btn -> {
-                        if (selectedGroups[idx] && selectedGroupCount() == 1) return;
-                        selectedGroups[idx] = !selectedGroups[idx];
-                        refreshRouteButtons();
-                        reencode();
-                    })
-                    .bounds(x, y, ROUTE_TOGGLE_W, BTN_H)
-                    .tooltip(Tooltip.create(Component.literal(routeTooltip(idx))))
-                    .build();
-            addRenderableWidget(b);
-            routeButtons.add(b);
-            x += ROUTE_TOGGLE_W + GAP;
-        }
+        routePickerToggleButton = Button.builder(routePickerToggleLabel(), this::toggleRoutePicker)
+                .bounds(toggleX, y, ROUTE_PICKER_TOGGLE_W, BTN_H)
+                .tooltip(Tooltip.create(Component.literal("Show or hide the route selection list")))
+                .build();
+        routeSelectAllButton = Button.builder(Component.literal("Select all"), this::selectAllRoutes)
+                .bounds(selectAllX, y, ROUTE_PICKER_SELECT_ALL_W, BTN_H)
+                .tooltip(Tooltip.create(Component.literal("Include every route in this export")))
+                .build();
+        addRenderableWidget(routePickerToggleButton);
+        addRenderableWidget(routeSelectAllButton);
+        refreshRoutePickerButtons();
     }
 
-    private static Component toggleLabel(ToggleSpec spec) {
-        if (!spec.supported()) {
+    private Component toggleLabel(ToggleSpec spec) {
+        if (!toggleSupported(spec)) {
             return Component.literal("[-] " + spec.label).withStyle(ChatFormatting.DARK_GRAY);
         }
         ChatFormatting fmt = spec.value ? ChatFormatting.AQUA : ChatFormatting.DARK_GRAY;
@@ -339,8 +333,8 @@ public final class ExportScreen extends Screen {
         reencode();
     }
 
-    private void openExportTargetMenu() {
-        minecraft.setScreen(new ExportTargetScreen(this));
+    private void openExportTargetMenu(Button button) {
+        MinecraftCompat.setScreen(minecraft, new ExportTargetScreen(this));
     }
 
     private void selectExportTarget(WaypointExportCodec.Target target) {
@@ -351,8 +345,12 @@ public final class ExportScreen extends Screen {
         reencode();
     }
 
+    private void goBackToParent() {
+        MinecraftCompat.setScreen(minecraft, parent);
+    }
+
     private void resetToConfigDefaults() {
-        optsBuilder = builderFromConfig(config);
+        optsBuilder = builderFromConfig(config, selectedGroupsForExport());
         currentLabel = "";
         labelInput.setValue("");
         // Re-apply each toggle's value from the freshly-built options and
@@ -362,12 +360,6 @@ public final class ExportScreen extends Screen {
         reencode();
     }
 
-    /**
-     * Refresh the {@link ToggleSpec#value} cache from the current builder.
-     * The toggle specs hold their own boolean so the button label can be
-     * recomputed without re-introspecting the builder; this keeps them in
-     * sync after a reset.
-     */
     private void applyBuilderToToggleSpecs() {
         boolean[] values = {
                 optsBuilder.includeNames(),
@@ -382,26 +374,95 @@ public final class ExportScreen extends Screen {
     }
 
     private void reencode() {
-        this.encoded = WaypointExportCodec.encode(selectedGroupsForExport(),
-                optsBuilder.build(), exportTarget);
+        List<WaypointGroup> selected = selectedGroupsForExport();
+        WaypointCodec.Options options = optsBuilder.build();
+        try {
+            this.encoded = WaypointExportCodec.encode(selected, options, exportTarget);
+            this.encodingError = "";
+        } catch (IllegalArgumentException error) {
+            this.encoded = "";
+            this.encodingError = error.getMessage() == null ? "Export is not supported" : error.getMessage();
+        }
+        boolean canCopy = encodingError.isEmpty();
+        if (copyButton != null) copyButton.active = canCopy;
+        if (copyCodeBlockButton != null) copyCodeBlockButton.active = canCopy;
     }
 
     private void refreshToggleButtons() {
         for (int i = 0; i < toggleSpecs.size(); i++) {
             ToggleSpec spec = toggleSpecs.get(i);
             Button button = toggleButtons.get(i);
-            button.active = spec.supported();
-            button.setTooltip(Tooltip.create(Component.literal(spec.tooltip())));
+            button.active = toggleSupported(spec);
+            button.setTooltip(Tooltip.create(Component.literal(toggleTooltip(spec))));
             button.setMessage(toggleLabel(spec));
         }
     }
 
-    private void refreshRouteButtons() {
-        for (int i = 0; i < routeButtons.size(); i++) {
-            Button button = routeButtons.get(i);
-            button.setMessage(routeToggleLabel(i));
-            button.setTooltip(Tooltip.create(Component.literal(routeTooltip(i))));
+    private void refreshRoutePickerButtons() {
+        if (routePickerToggleButton != null) {
+            routePickerToggleButton.setMessage(routePickerToggleLabel());
         }
+        if (routeSelectAllButton != null) {
+            routeSelectAllButton.active = hasExcludedRoutes();
+        }
+    }
+
+    private Component routePickerToggleLabel() {
+        return Component.literal(routePickerExpanded ? "Hide routes" : "Show routes")
+                .withStyle(ChatFormatting.AQUA);
+    }
+
+    private void toggleRoutePicker(Button button) {
+        routePickerExpanded = !routePickerExpanded;
+        clampRouteScrollOffset();
+        refreshRoutePickerButtons();
+    }
+
+    private void selectAllRoutes(Button button) {
+        selectAllRouteSelectionState(selectedGroups);
+        refreshRoutePickerButtons();
+        reencode();
+    }
+
+    static boolean[] initialRouteSelection(int groupCount) {
+        int safeCount = Math.max(0, groupCount);
+        boolean[] selected = new boolean[safeCount];
+        Arrays.fill(selected, true);
+        return selected;
+    }
+
+    static boolean shouldStartRoutePickerExpanded(int groupCount) {
+        return groupCount > 1 && groupCount < ROUTE_PICKER_COLLAPSE_THRESHOLD;
+    }
+
+    static void selectAllRouteSelectionState(boolean[] selectedGroups) {
+        if (selectedGroups == null) return;
+        Arrays.fill(selectedGroups, true);
+    }
+
+    private void toggleRouteSelection(int idx) {
+        if (!toggleRouteSelectionState(selectedGroups, idx)) return;
+        refreshRoutePickerButtons();
+        reencode();
+    }
+
+    static boolean toggleRouteSelectionState(boolean[] selectedGroups, int idx) {
+        if (selectedGroups == null || idx < 0 || idx >= selectedGroups.length) return false;
+        if (selectedGroups[idx] && selectedGroupCount(selectedGroups) == 1) return false;
+        selectedGroups[idx] = !selectedGroups[idx];
+        return true;
+    }
+
+    private boolean hasExcludedRoutes() {
+        return hasExcludedRoutes(selectedGroups);
+    }
+
+    static boolean hasExcludedRoutes(boolean[] selectedGroups) {
+        if (selectedGroups == null) return false;
+        for (boolean selected : selectedGroups) {
+            if (!selected) return true;
+        }
+        return false;
     }
 
     private boolean isZoneExport() {
@@ -410,8 +471,12 @@ public final class ExportScreen extends Screen {
 
     private int selectedGroupCount() {
         if (!isZoneExport()) return groups.size();
+        return selectedGroupCount(selectedGroups);
+    }
 
+    static int selectedGroupCount(boolean[] selectedGroups) {
         int count = 0;
+        if (selectedGroups == null) return count;
         for (boolean selected : selectedGroups) {
             if (selected) count++;
         }
@@ -428,139 +493,206 @@ public final class ExportScreen extends Screen {
     }
 
     private List<WaypointGroup> selectedGroupsForExport() {
-        if (!isZoneExport()) return groups;
+        return selectedGroupsForExport(groups, selectedGroups);
+    }
 
+    static List<WaypointGroup> selectedGroupsForExport(List<WaypointGroup> groups,
+                                                       boolean[] selectedGroups) {
+        if (groups == null) return List.of();
+        if (groups.size() <= 1) return groups;
         List<WaypointGroup> selected = new ArrayList<>();
         for (int i = 0; i < groups.size(); i++) {
-            if (selectedGroups[i]) selected.add(groups.get(i));
+            if (selectedGroups != null && i < selectedGroups.length && selectedGroups[i]) {
+                selected.add(groups.get(i));
+            }
         }
         return selected;
     }
 
-    private Component routeToggleLabel(int idx) {
-        WaypointGroup group = groups.get(idx);
-        ChatFormatting color = selectedGroups[idx] ? ChatFormatting.AQUA : ChatFormatting.DARK_GRAY;
-        String name = group.name().isBlank() ? "(unnamed)" : group.name();
-        String clipped = font == null ? name : font.plainSubstrByWidth(name, ROUTE_TOGGLE_W - 28);
-        return Component.literal((selectedGroups[idx] ? "[x] " : "[ ] ") + clipped)
-                .withStyle(color);
+    private static String routeDisplayName(WaypointGroup group) {
+        String name = group.name().trim();
+        if (!name.isEmpty()) return name;
+        return displayZoneLabel(group.zoneId());
     }
 
-    private String routeTooltip(int idx) {
-        WaypointGroup group = groups.get(idx);
-        String name = group.name().isBlank() ? "(unnamed)" : group.name();
-        String action = selectedGroups[idx] && selectedGroupCount() == 1
-                ? "At least one route must stay selected."
-                : "Click to " + (selectedGroups[idx] ? "exclude" : "include") + " this route.";
-        return name + "\n" + group.size() + " waypoints, "
-                + group.loadMode().name().toLowerCase(java.util.Locale.ROOT) + "\n" + action;
+    private static String displayZoneLabel(String zoneId) {
+        DungeonRoomDefinition definition = DungeonRoomData.definition(zoneId);
+        if (definition != null) return DUNGEON_ROOM_LABEL_PREFIX + definition.displayName();
+        return Zone.fromId(zoneId).displayName();
     }
 
     private void updateLabelInputState() {
         labelInput.active = exportTarget.supportsLabel();
-        labelInput.setTooltip(Tooltip.create(Component.literal(exportTarget.supportsLabel()
+        labelInput.setTooltip(Tooltip.create(Component.literal(labelInputTooltipText(exportTarget))));
+    }
+
+    static String labelInputTooltipText(WaypointExportCodec.Target target) {
+        return target.supportsLabel()
                 ? "Optional title shown by Waypointer imports"
-                : exportTarget.displayName() + " exports do not support Waypointer labels")));
+                : target.displayName() + " exports do not support Waypointer labels";
     }
 
     private Component exportForButtonLabel() {
         return Component.literal("Export for...").withStyle(ChatFormatting.AQUA);
     }
 
-    private void copyToClipboard() {
+    private void copyToClipboard(Button button) {
         minecraft.keyboardHandler.setClipboard(encoded);
         copyFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
         copyButton.setMessage(Component.literal("Copied!").withStyle(ChatFormatting.GREEN));
     }
 
-    private void copyAsCodeBlock() {
-        minecraft.keyboardHandler.setClipboard("```\n" + encoded + "\n```");
+    private void copyAsCodeBlock(Button button) {
+        minecraft.keyboardHandler.setClipboard(codeBlockPayload(encoded));
         copyCodeBlockFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
         copyCodeBlockButton.setMessage(Component.literal("Copied!").withStyle(ChatFormatting.GREEN));
+    }
+
+    static String codeBlockPayload(String payload) {
+        return "```\n" + (payload == null ? "" : payload) + "\n```";
     }
 
     // --- rendering ----------------------------------------------------------------------------
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
-        super.render(g, mouseX, mouseY, partial);
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        super.extractRenderState(g, mouseX, mouseY, partial);
 
-        if (copyFeedbackUntil != 0 && System.currentTimeMillis() > copyFeedbackUntil) {
-            copyFeedbackUntil = 0;
-            copyButton.setMessage(Component.literal("Copy to Clipboard"));
-        }
-        if (copyCodeBlockFeedbackUntil != 0 && System.currentTimeMillis() > copyCodeBlockFeedbackUntil) {
-            copyCodeBlockFeedbackUntil = 0;
-            copyCodeBlockButton.setMessage(Component.literal("Copy as code block"));
-        }
+        updateCopyFeedback();
 
-        g.drawString(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
-        g.drawString(font, subtitle, PAD_OUTER, PAD_OUTER + LINE_H, TEXT_DIM, false);
+        g.text(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
+        g.text(font, subtitle, PAD_OUTER, PAD_OUTER + LINE_H, TEXT_DIM, false);
 
         int settingsY = PAD_OUTER + HEADER_H + BTN_H + GAP;
-        g.drawString(font, "Export Settings", PAD_OUTER, settingsY, TEXT_DIM, false);
+        g.text(font, "Export Settings", PAD_OUTER, settingsY, TEXT_DIM, false);
         int settingsHelpColor = showSubwaypointCompatibilityWarning() ? 0xFFFFB060 : TEXT_MUTED;
-        g.drawString(font, settingsHelpText(), PAD_OUTER, settingsY + LINE_H,
+        g.text(font, settingsHelpText(), PAD_OUTER, settingsY + LINE_H,
                 settingsHelpColor, false);
 
-        // Rows after the toggle grid: size summary, then preview. The toggle
-        // grid's actual bottom depends on how many rows it wrapped to, so we
-        // recompute by walking the registered button positions instead of
-        // hard-coding a y offset.
+        int contentBottom = controlsBottom();
         if (isZoneExport()) {
-            int routeY = controlsBottom(toggleButtons) + GAP_SECTION;
-            g.drawString(font, "Routes", PAD_OUTER, routeY, TEXT_DIM, false);
-            String routeSummary = selectedGroupCount() + " of " + groups.size()
-                    + " selected, " + selectedWaypointCount() + " waypoints";
-            g.drawString(font, routeSummary, PAD_OUTER, routeY + LINE_H, TEXT_MUTED, false);
+            renderRoutePicker(g, mouseX, mouseY);
+            contentBottom = routePickerBottom();
         }
 
-        int y = controlsBottom() + GAP_SECTION;
+        int y = contentBottom + GAP_SECTION;
 
         drawSizeSummary(g, PAD_OUTER, y);
         // Size summary spans two lines (counter + paste fit). Keep the gap tight
         // so the preview still has room at small window sizes.
         y += LINE_H * 2 + GAP_SECTION;
 
-        g.drawString(font, WaypointExportCodec.previewLabel(exportTarget), PAD_OUTER, y, TEXT_DIM, false);
+        g.text(font, WaypointExportCodec.previewLabel(exportTarget), PAD_OUTER, y, TEXT_DIM, false);
         y += LINE_H;
         drawPreview(g, PAD_OUTER, y, width - PAD_OUTER, height - FOOTER_H - GAP);
     }
 
-    /**
-     * Render a neutral character count plus a single paste-fit summary.
-     *
-     * User-visible strings are deliberately plain-language -- no byte
-     * counts, no "cap", no "wire" -- because almost nobody pasting a route
-     * to a friend wants to reason about UTF-8 size limits.
-     */
-    private void drawSizeSummary(GuiGraphics g, int x, int y) {
+    private void updateCopyFeedback() {
+        long now = System.currentTimeMillis();
+        if (copyFeedbackUntil != 0 && now > copyFeedbackUntil) {
+            copyFeedbackUntil = 0;
+            copyButton.setMessage(Component.literal("Copy to Clipboard"));
+        }
+        if (copyCodeBlockFeedbackUntil != 0 && now > copyCodeBlockFeedbackUntil) {
+            copyCodeBlockFeedbackUntil = 0;
+            copyCodeBlockButton.setMessage(Component.literal("Copy as code block"));
+        }
+    }
+
+    private void renderRoutePicker(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+        clampRouteScrollOffset();
+
+        int top = routePickerTop();
+        g.text(font, "Routes", PAD_OUTER, top, TEXT_DIM, false);
+        String routeSummary = selectedGroupCount() + " of " + groups.size()
+                + " selected, " + selectedWaypointCount() + " waypoints";
+        g.text(font, routeSummary, PAD_OUTER, top + LINE_H, TEXT_MUTED, false);
+
+        if (!routePickerExpanded) return;
+
+        int x1 = PAD_OUTER;
+        int y1 = routeListTop();
+        int x2 = width - PAD_OUTER;
+        int y2 = y1 + routeListHeight();
+        g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
+        g.enableScissor(x1, y1, x2, y2);
+
+        int rowY = y1 + ROUTE_PICKER_INSET - routeScrollOffset;
+        for (int i = 0; i < groups.size(); i++, rowY += ROUTE_ROW_PITCH) {
+            if (rowY + ROUTE_ROW_H < y1 || rowY > y2) continue;
+            boolean hovered = mouseX >= x1 && mouseX <= x2
+                    && mouseY >= rowY && mouseY <= rowY + ROUTE_ROW_H;
+            renderRouteRow(g, groups.get(i), i, x1 + 2, rowY, x2 - 2, hovered);
+        }
+        g.disableScissor();
+        drawRouteScrollbar(g, x1, y1, x2, y2);
+    }
+
+    private void renderRouteRow(GuiGraphicsExtractor g, WaypointGroup group, int index,
+                                int x1, int y1, int x2, boolean hovered) {
+        boolean selected = selectedGroups[index];
+        int rowBottom = y1 + ROUTE_ROW_H;
+        int bg = selected ? 0x1C4FB3C4 : hovered ? 0x18FFFFFF : 0;
+        if (bg != 0) g.fill(x1, y1, x2, rowBottom, bg);
+        if (selected) g.fill(x1, y1, x1 + 2, rowBottom, 0xFF4FB3C4);
+
+        String marker = selected ? "[x]" : "[ ]";
+        int markerColor = selected ? 0xFF4FB3C4 : TEXT_MUTED;
+        int textColor = selected ? TEXT : TEXT_MUTED;
+        int metaColor = selected ? TEXT_DIM : TEXT_MUTED;
+        int textX = x1 + GAP;
+        int centerY = y1 + 7;
+        g.text(font, marker, textX, centerY, markerColor, false);
+
+        String rawMeta = displayZoneLabel(group.zoneId()) + "  " + group.size() + " pts  "
+                + group.loadMode().name().toLowerCase(Locale.ROOT);
+        int metaRight = x2 - GAP - (maxRouteScrollOffset() > 0 ? ROUTE_SCROLLBAR_W + GAP : 0);
+        int nameX = textX + font.width(marker) + GAP;
+        int metaMaxW = Math.max(40, metaRight - nameX - 60 - GAP);
+        String meta = font.plainSubstrByWidth(rawMeta, metaMaxW);
+        int metaW = font.width(meta);
+        int nameMaxW = Math.max(20, metaRight - metaW - GAP - nameX);
+        String name = font.plainSubstrByWidth(routeDisplayName(group), nameMaxW);
+        g.text(font, name, nameX, centerY, textColor, false);
+        g.text(font, meta, metaRight - metaW, centerY, metaColor, false);
+    }
+
+    private void drawRouteScrollbar(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
+        int maxScroll = maxRouteScrollOffset();
+        if (maxScroll <= 0) return;
+
+        int trackX = x2 - ROUTE_SCROLLBAR_W - 2;
+        int trackY = y1 + 3;
+        int trackH = Math.max(1, y2 - y1 - 6);
+        int viewport = routeViewportHeight();
+        int content = Math.max(viewport, routeContentHeight());
+        int thumbH = Math.max(10, trackH * viewport / content);
+        int travel = Math.max(0, trackH - thumbH);
+        int thumbY = trackY + (maxScroll == 0 ? 0 : travel * routeScrollOffset / maxScroll);
+        g.fill(trackX, trackY, trackX + ROUTE_SCROLLBAR_W, trackY + trackH, 0x40000000);
+        g.fill(trackX, thumbY, trackX + ROUTE_SCROLLBAR_W, thumbY + thumbH, TEXT_MUTED);
+    }
+
+    private void drawSizeSummary(GuiGraphicsExtractor g, int x, int y) {
+        if (!encodingError.isEmpty()) {
+            g.text(font, encodingError, x, y, 0xFFDD7070, false);
+            return;
+        }
         int chars = encoded.length();
-        int wireBytes = encoded.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
-        int commandBytes = REFERENCE_COMMAND_PREFIX_BYTES + wireBytes;
+        ExportFitSummary fit = exportFitSummary(encoded);
 
-        boolean chatOk = chars <= CHAT_INPUT_LIMIT;
-        boolean commandOk = commandBytes <= COMMAND_WIRE_LIMIT_BYTES;
-
-        g.drawString(font, "Characters: " + chars, x, y, TEXT_DIM, false);
+        g.text(font, "Characters: " + chars, x, y, TEXT_DIM, false);
 
         int fitY = y + LINE_H;
 
-        int fitColor = chatOk ? 0xFF88DD88 : 0xFFDD7070;
-        String fitLine;
-        if (commandOk) {
-            fitLine = "Can fit in chat and commands";
-        } else if (chatOk) {
-            fitLine = "Can fit in chat";
-        } else {
-            fitLine = "Too long for chat or commands (like /pc)";
-        }
-        g.drawString(font, fitLine, x, fitY, fitColor, false);
+        int fitColor = fit.chatOk() ? 0xFF88DD88 : 0xFFDD7070;
+        String fitLine = fit.message();
+        g.text(font, fitLine, x, fitY, fitColor, false);
 
         String sanitized = WaypointCodec.Options.sanitizeLabel(currentLabel);
         if (exportTarget.supportsLabel() && !sanitized.isEmpty()) {
             int gap = font.width("  ");
-            g.drawString(font,
+            g.text(font,
                     "label: \"" + sanitized + "\"",
                     x + font.width(fitLine) + gap, fitY, 0xFF88AACC, false);
         }
@@ -577,18 +709,51 @@ public final class ExportScreen extends Screen {
     }
 
     private boolean showSubwaypointCompatibilityWarning() {
-        return exportTarget != WaypointExportCodec.Target.WAYPOINTER
-                && selectedExportHasSubwaypoints();
+        return showSubwaypointCompatibilityWarning(exportTarget, selectedGroupsForExport());
+    }
+
+    static ExportFitSummary exportFitSummary(String payload) {
+        String safePayload = payload == null ? "" : payload;
+        int chars = safePayload.length();
+        int wireBytes = safePayload.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        int commandBytes = REFERENCE_COMMAND_PREFIX_BYTES + wireBytes;
+
+        boolean chatOk = chars <= CHAT_INPUT_LIMIT;
+        boolean commandOk = commandBytes <= COMMAND_WIRE_LIMIT_BYTES;
+        if (commandOk) {
+            return new ExportFitSummary(chars, wireBytes, commandBytes, chatOk, commandOk,
+                    "Can fit in chat and commands");
+        }
+        if (chatOk) {
+            return new ExportFitSummary(chars, wireBytes, commandBytes, chatOk, false,
+                    "Can fit in chat");
+        }
+        return new ExportFitSummary(chars, wireBytes, commandBytes, false, false,
+                "Too long for chat or commands (like /pc)");
+    }
+
+    static boolean showSubwaypointCompatibilityWarning(WaypointExportCodec.Target target,
+                                                       List<WaypointGroup> selectedGroups) {
+        return target != WaypointExportCodec.Target.WAYPOINTER
+                && selectedExportHasSubwaypoints(selectedGroups);
     }
 
     private boolean selectedExportHasSubwaypoints() {
-        for (WaypointGroup group : selectedGroupsForExport()) {
+        return selectedExportHasSubwaypoints(selectedGroupsForExport());
+    }
+
+    static boolean selectedExportHasSubwaypoints(List<WaypointGroup> selectedGroups) {
+        if (selectedGroups == null) return false;
+        for (WaypointGroup group : selectedGroups) {
             if (group.hasSubwaypoints()) return true;
         }
         return false;
     }
 
-    private void drawPreview(GuiGraphics g, int x1, int y1, int x2, int y2) {
+    record ExportFitSummary(int characters, int wireBytes, int commandBytes,
+                            boolean chatOk, boolean commandOk, String message) {}
+
+    private void drawPreview(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
 
         int innerX = x1 + PREVIEW_INSET;
@@ -602,17 +767,111 @@ public final class ExportScreen extends Screen {
 
         int y = innerY;
         for (int i = 0; i < shown; i++, y += lineH) {
-            g.drawString(font, lines.get(i), innerX, y, TEXT, false);
+            g.text(font, lines.get(i), innerX, y, TEXT, false);
         }
         if (shown < lines.size()) {
-            String ellipsis = "...(" + (lines.size() - shown) + " more line"
-                    + (lines.size() - shown == 1 ? "" : "s") + ", full payload goes to clipboard)";
-            g.drawString(font, ellipsis, innerX, y, TEXT_MUTED, false);
+            String ellipsis = previewOverflowText(lines.size() - shown);
+            g.text(font, ellipsis, innerX, y, TEXT_MUTED, false);
         }
     }
 
+    static String previewOverflowText(int hiddenLines) {
+        int safeHidden = Math.max(0, hiddenLines);
+        return "..." + safeHidden + " more line" + (safeHidden == 1 ? "" : "s");
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (super.mouseClicked(event, doubleClick)) return true;
+        if (event.button() != 0) return false;
+        if (!isZoneExport() || !routePickerExpanded) return false;
+
+        int idx = routeIndexAt(event.x(), event.y());
+        if (idx < 0) return false;
+        toggleRouteSelection(idx);
+        return true;
+    }
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
+        if (!isZoneExport() || !routePickerExpanded || !isInsideRouteList(mouseX, mouseY)) {
+            return super.mouseScrolled(mouseX, mouseY, horiz, vert);
+        }
+        int maxScroll = maxRouteScrollOffset();
+        if (maxScroll <= 0) return super.mouseScrolled(mouseX, mouseY, horiz, vert);
+        routeScrollOffset = MathUtil.clamp(
+                routeScrollOffset - (int) (vert * ROUTE_ROW_PITCH), 0, maxScroll);
+        return true;
+    }
+
+    private int routeIndexAt(double mouseX, double mouseY) {
+        if (!isInsideRouteList(mouseX, mouseY)) return -1;
+        int localY = (int) (mouseY - routeListTop() - ROUTE_PICKER_INSET + routeScrollOffset);
+        if (localY < 0) return -1;
+        int withinRow = localY % ROUTE_ROW_PITCH;
+        if (withinRow > ROUTE_ROW_H) return -1;
+        int idx = localY / ROUTE_ROW_PITCH;
+        return idx >= 0 && idx < groups.size() ? idx : -1;
+    }
+
+    private boolean isInsideRouteList(double mouseX, double mouseY) {
+        if (!isZoneExport() || !routePickerExpanded) return false;
+        int x1 = PAD_OUTER;
+        int y1 = routeListTop();
+        int x2 = width - PAD_OUTER;
+        int y2 = y1 + routeListHeight();
+        return mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2;
+    }
+
+    private int routePickerTop() {
+        return controlsBottom() + GAP_SECTION;
+    }
+
+    private static int routePickerHeaderHeight() {
+        return Math.max(BTN_H, LINE_H * 2);
+    }
+
+    private int routeListTop() {
+        return routePickerTop() + routePickerHeaderHeight() + GAP;
+    }
+
+    private int routePickerBottom() {
+        if (!isZoneExport()) return controlsBottom();
+        if (!routePickerExpanded) return routePickerTop() + routePickerHeaderHeight();
+        return routeListTop() + routeListHeight();
+    }
+
+    private int routeListHeight() {
+        return routeVisibleRowCount() * ROUTE_ROW_PITCH + ROUTE_PICKER_INSET * 2;
+    }
+
+    private int routeVisibleRowCount() {
+        int byCount = Math.min(MAX_EXPANDED_ROUTE_ROWS, Math.max(1, groups.size()));
+        int reservedAfterList = GAP_SECTION + LINE_H * 2 + GAP_SECTION + LINE_H + MIN_PREVIEW_H;
+        int available = height - FOOTER_H - GAP - routeListTop()
+                - ROUTE_PICKER_INSET * 2 - reservedAfterList;
+        int bySpace = Math.max(1, available / ROUTE_ROW_PITCH);
+        return Math.max(1, Math.min(byCount, bySpace));
+    }
+
+    private int routeViewportHeight() {
+        return routeVisibleRowCount() * ROUTE_ROW_PITCH;
+    }
+
+    private int routeContentHeight() {
+        return groups.size() * ROUTE_ROW_PITCH;
+    }
+
+    private int maxRouteScrollOffset() {
+        return Math.max(0, routeContentHeight() - routeViewportHeight());
+    }
+
+    private void clampRouteScrollOffset() {
+        routeScrollOffset = MathUtil.clamp(routeScrollOffset, 0, maxRouteScrollOffset());
+    }
+
     private int controlsBottom() {
-        return Math.max(controlsBottom(toggleButtons), controlsBottom(routeButtons));
+        return controlsBottom(toggleButtons);
     }
 
     private static int controlsBottom(List<Button> buttons) {
@@ -623,12 +882,39 @@ public final class ExportScreen extends Screen {
 
     // --- helpers ------------------------------------------------------------------------------
 
-    private static WaypointCodec.Options.Builder builderFromConfig(WaypointerConfig config) {
+    private boolean toggleSupported(ToggleSpec spec) {
+        return switch (spec.kind) {
+            case NAMES -> exportTarget.supportsNames();
+            case COLORS -> exportTarget.supportsColors();
+            case RADII -> exportTarget.supportsRadii();
+            case WAYPOINT_FLAGS -> exportTarget.supportsWaypointFlags();
+            case GROUP_META -> exportTarget.supportsGroupMeta();
+        };
+    }
+
+    private String toggleTooltip(ToggleSpec spec) {
+        return toggleSupported(spec) ? spec.tooltip : spec.unsupportedTooltip;
+    }
+
+    private void applyToggleValue(ToggleSpec spec) {
+        switch (spec.kind) {
+            case NAMES -> optsBuilder.includeNames(spec.value);
+            case COLORS -> optsBuilder.includeColors(spec.value);
+            case RADII -> optsBuilder.includeRadii(spec.value);
+            case WAYPOINT_FLAGS -> optsBuilder.includeWaypointFlags(spec.value);
+            case GROUP_META -> optsBuilder.includeGroupMeta(spec.value);
+        }
+    }
+
+    static WaypointCodec.Options.Builder builderFromConfig(WaypointerConfig config,
+                                                           List<WaypointGroup> selectedGroups) {
+        boolean includeWaypointFlags = config.exportIncludeWaypointFlags()
+                || selectedExportHasSubwaypoints(selectedGroups);
         return WaypointCodec.Options.builder()
                 .includeNames(config.exportIncludeNames())
                 .includeColors(config.exportIncludeColors())
                 .includeRadii(config.exportIncludeRadii())
-                .includeWaypointFlags(config.exportIncludeWaypointFlags())
+                .includeWaypointFlags(includeWaypointFlags)
                 .includeGroupMeta(config.exportIncludeGroupMeta());
     }
 
@@ -636,7 +922,7 @@ public final class ExportScreen extends Screen {
     public boolean isPauseScreen() { return false; }
 
     @Override
-    public void onClose() { minecraft.setScreen(parent); }
+    public void onClose() { MinecraftCompat.setScreen(minecraft, parent); }
 
     /**
      * Standalone target picker for the export screen. A dedicated screen keeps
@@ -659,10 +945,7 @@ public final class ExportScreen extends Screen {
             int y = PAD_OUTER + 32;
 
             for (WaypointExportCodec.Target target : WaypointExportCodec.Target.values()) {
-                Button button = Button.builder(targetLabel(target), b -> {
-                            owner.selectExportTarget(target);
-                            minecraft.setScreen(owner);
-                        })
+                Button button = Button.builder(targetLabel(target), new TargetPressHandler(target))
                         .bounds(x, y, MENU_W, BTN_H)
                         .tooltip(Tooltip.create(Component.literal(targetTooltip(target))))
                         .build();
@@ -671,17 +954,17 @@ public final class ExportScreen extends Screen {
             }
 
             addRenderableWidget(Button.builder(Component.literal("Back"),
-                            b -> minecraft.setScreen(owner))
+                            this::returnToOwner)
                     .bounds(x, height - FOOTER_H, MENU_W, BTN_H)
                     .build());
         }
 
         @Override
-        public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
-            super.render(g, mouseX, mouseY, partial);
+        public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+            super.extractRenderState(g, mouseX, mouseY, partial);
             int x = (width - MENU_W) / 2;
-            g.drawString(font, getTitle(), x, PAD_OUTER, TEXT, false);
-            g.drawString(font, "Current: " + owner.exportTarget.displayName(),
+            g.text(font, getTitle(), x, PAD_OUTER, TEXT, false);
+            g.text(font, "Current: " + owner.exportTarget.displayName(),
                     x, PAD_OUTER + LINE_H, TEXT_DIM, false);
         }
 
@@ -689,7 +972,11 @@ public final class ExportScreen extends Screen {
         public boolean isPauseScreen() { return false; }
 
         @Override
-        public void onClose() { minecraft.setScreen(owner); }
+        public void onClose() { MinecraftCompat.setScreen(minecraft, owner); }
+
+        private void returnToOwner(Button button) {
+            MinecraftCompat.setScreen(minecraft, owner);
+        }
 
         private Component targetLabel(WaypointExportCodec.Target target) {
             boolean selected = target == owner.exportTarget;
@@ -701,48 +988,76 @@ public final class ExportScreen extends Screen {
         private static String targetTooltip(WaypointExportCodec.Target target) {
             return switch (target) {
                 case WAYPOINTER -> "Native format. Preserves every enabled Waypointer option.";
-                case SKYBLOCKER -> "For Skyblocker. Preserves coordinates, names, and colors.\n"
+                case SKYBLOCKER -> "For Skyblocker. Preserves coordinates and colors.\n"
                         + "Subwaypoints export as regular waypoints.";
-                case SKYTILS -> "For Skytils. Preserves coordinates, names, and colors.\n"
+                case SKYTILS -> "For Skytils. Preserves coordinates and colors.\n"
                         + "Subwaypoints export as regular waypoints.";
-                case SKYHANNI -> "For SkyHanni. Preserves coordinates, names, and colors.\n"
+                case SKYHANNI -> "For SkyHanni. Preserves coordinates and route order.\n"
                         + "Subwaypoints export as regular waypoints.";
             };
         }
+
+        private final class TargetPressHandler implements Button.OnPress {
+            private final WaypointExportCodec.Target target;
+
+            TargetPressHandler(WaypointExportCodec.Target target) {
+                this.target = target;
+            }
+
+            @Override
+            public void onPress(Button button) {
+                owner.selectExportTarget(target);
+                MinecraftCompat.setScreen(minecraft, owner);
+            }
+        }
     }
 
-    /**
-     * Holds the live state for a single export-option toggle. Exists so the
-     * button render lambda can mutate one shared place (rather than chasing
-     * the option through three callbacks) and so a Reset can rewrite all
-     * toggle values without touching the buttons themselves.
-     */
+    private enum ToggleKind {
+        NAMES,
+        COLORS,
+        RADII,
+        WAYPOINT_FLAGS,
+        GROUP_META
+    }
+
     private static final class ToggleSpec {
+        final ToggleKind kind;
         final String label;
         final String tooltip;
         final String unsupportedTooltip;
-        final java.util.function.BooleanSupplier supported;
-        final java.util.function.Consumer<Boolean> sink;
         boolean value;
 
-        ToggleSpec(String label, boolean value,
-                   java.util.function.BooleanSupplier supported,
-                   String tooltip, String unsupportedTooltip,
-                   java.util.function.Consumer<Boolean> sink) {
+        ToggleSpec(ToggleKind kind, String label, boolean value,
+                   String tooltip, String unsupportedTooltip) {
+            this.kind = kind;
             this.label = label;
             this.value = value;
-            this.supported = supported;
             this.tooltip = tooltip;
             this.unsupportedTooltip = unsupportedTooltip;
-            this.sink = sink;
+        }
+    }
+
+    private final class TogglePressHandler implements Button.OnPress {
+        private final ToggleSpec spec;
+
+        TogglePressHandler(ToggleSpec spec) {
+            this.spec = spec;
         }
 
-        boolean supported() {
-            return supported.getAsBoolean();
-        }
-
-        String tooltip() {
-            return supported() ? tooltip : unsupportedTooltip;
+        @Override
+        public void onPress(Button button) {
+            if (!toggleSupported(spec)) {
+                button.active = false;
+                button.setTooltip(Tooltip.create(Component.literal(toggleTooltip(spec))));
+                button.setMessage(toggleLabel(spec));
+                return;
+            }
+            spec.value = !spec.value;
+            applyToggleValue(spec);
+            button.active = toggleSupported(spec);
+            button.setTooltip(Tooltip.create(Component.literal(toggleTooltip(spec))));
+            button.setMessage(toggleLabel(spec));
+            reencode();
         }
     }
 }

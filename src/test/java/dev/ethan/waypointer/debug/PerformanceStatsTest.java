@@ -77,7 +77,11 @@ class PerformanceStatsTest {
         assertEquals(0, stats.activeLabelCandidates());
         assertEquals(2 * 24, stats.estimatedLineBoxVertices());
         assertEquals(2 * 24, stats.estimatedFillBoxVertices());
-        assertEquals(2 * 16, stats.estimatedBeamVertices());
+        assertEquals(2 * 32, stats.estimatedBeamVertices());
+
+        config.setUseBeaconBeamTextures(false);
+        PerformanceStats flatBeamStats = PerformanceStats.capture(manager, config);
+        assertEquals(2 * 16, flatBeamStats.estimatedBeamVertices());
     }
 
     @Test

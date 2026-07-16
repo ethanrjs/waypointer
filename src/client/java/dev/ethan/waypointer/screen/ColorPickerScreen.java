@@ -2,9 +2,10 @@ package dev.ethan.waypointer.screen;
 
 import com.mojang.blaze3d.platform.NativeImage;
 import dev.ethan.waypointer.Waypointer;
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.util.MathUtil;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -95,7 +96,8 @@ public final class ColorPickerScreen extends Screen {
 
     /** Convenience opener so call sites read like "pick a colour → here's what to do". */
     public static void open(Screen parent, String title, int initialRgb, IntConsumer onPicked) {
-        Minecraft.getInstance().setScreen(new ColorPickerScreen(parent, title, initialRgb, onPicked));
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new ColorPickerScreen(parent, title, initialRgb, onPicked));
     }
 
     @Override
@@ -145,7 +147,7 @@ public final class ColorPickerScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
         // Dim the world behind so the picker reads as a modal; matches the other
         // Waypointer screens which use SURFACE as their backdrop.
         g.fill(0, 0, width, height, 0x80000000);
@@ -154,13 +156,13 @@ public final class ColorPickerScreen extends Screen {
         int panelY = (height - PANEL_H) / 2;
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + PANEL_H, SURFACE);
 
-        g.drawString(font, Component.literal(title), panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
+        g.text(font, Component.literal(title), panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
 
         drawSvSquare(g);
         drawHueSlider(g);
         drawSwatch(g);
 
-        super.render(g, mouseX, mouseY, partial);
+        super.extractRenderState(g, mouseX, mouseY, partial);
     }
 
     /**
@@ -168,7 +170,7 @@ public final class ColorPickerScreen extends Screen {
      * regenerated only when the hue changes. The crosshair marks the current
      * (sat, value) sample.
      */
-    private void drawSvSquare(GuiGraphics g) {
+    private void drawSvSquare(GuiGraphicsExtractor g) {
         if (svTex == null) return;
         if (Math.abs(hue - svTexBakedHue) > 0.01f) {
             bakeSvTexture(hue);
@@ -186,7 +188,7 @@ public final class ColorPickerScreen extends Screen {
         g.fill(mx, my - 3, mx + 1, my + 4, 0xFFFFFFFF);
     }
 
-    private void drawHueSlider(GuiGraphics g) {
+    private void drawHueSlider(GuiGraphicsExtractor g) {
         if (hueTex == null) return;
         g.blit(RenderPipelines.GUI_TEXTURED, hueTexId, hueX, hueY, 0f, 0f, HUE_W, SV_SIZE, HUE_W, SV_SIZE);
 
@@ -195,14 +197,14 @@ public final class ColorPickerScreen extends Screen {
         g.fill(hueX - 2, hy + 1, hueX + HUE_W + 2, hy + 2, 0xFFFFFFFF);
     }
 
-    private void drawSwatch(GuiGraphics g) {
+    private void drawSwatch(GuiGraphicsExtractor g) {
         int rgb = currentRgb();
         int sw = 48, sh = 48;
         // Border ring so a fully-white or fully-black pick is still visible.
         g.fill(swatchX - 1, swatchY - 1, swatchX + sw + 1, swatchY + sh + 1, 0xFF000000);
         g.fill(swatchX, swatchY, swatchX + sw, swatchY + sh, 0xFF000000 | rgb);
         String hex = String.format("#%06X", rgb);
-        g.drawString(font, hex, swatchX, swatchY + sh + 4, TEXT_DIM, false);
+        g.text(font, hex, swatchX, swatchY + sh + 4, TEXT_DIM, false);
     }
 
     // --- texture management -------------------------------------------------------------------
@@ -332,7 +334,7 @@ public final class ColorPickerScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        MinecraftCompat.setScreen(minecraft, parent);
     }
 
     private int currentRgb() {

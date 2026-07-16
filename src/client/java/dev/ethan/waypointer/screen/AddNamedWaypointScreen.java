@@ -1,13 +1,15 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import dev.ethan.waypointer.input.WaypointAddFlow;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
@@ -27,9 +29,10 @@ import static dev.ethan.waypointer.screen.GuiTokens.*;
 public final class AddNamedWaypointScreen extends Screen {
 
     private static final int PANEL_W = 280;
-    private static final int PANEL_H = 118;
+    private static final int PANEL_H = 136;
     private static final int GLFW_KEY_ENTER = 257;
     private static final int GLFW_KEY_KP_ENTER = 335;
+    private static final int MAX_NAME_LENGTH = 64;
 
     private final Screen parent;
     private final ActiveGroupManager manager;
@@ -40,17 +43,22 @@ public final class AddNamedWaypointScreen extends Screen {
     private final int fixedX;
     private final int fixedY;
     private final int fixedZ;
+    private final int fixedFlags;
 
     private EditBox nameBox;
+    private Button confirmButton;
+    private boolean nameErrorVisible;
+    private String enteredName = "";
 
     public AddNamedWaypointScreen(Screen parent, ActiveGroupManager manager,
                                   WaypointerConfig config, WaypointGroup targetGroup) {
-        this(parent, manager, config, targetGroup, false, 0, 0, 0);
+        this(parent, manager, config, targetGroup, false, 0, 0, 0, 0);
     }
 
     private AddNamedWaypointScreen(Screen parent, ActiveGroupManager manager,
                                    WaypointerConfig config, WaypointGroup targetGroup,
-                                   boolean useFixedPosition, int fixedX, int fixedY, int fixedZ) {
+                                   boolean useFixedPosition, int fixedX, int fixedY, int fixedZ,
+                                   int fixedFlags) {
         super(Component.literal("Create Named Waypoint"));
         this.parent = parent;
         this.manager = manager;
@@ -60,19 +68,26 @@ public final class AddNamedWaypointScreen extends Screen {
         this.fixedX = fixedX;
         this.fixedY = fixedY;
         this.fixedZ = fixedZ;
+        this.fixedFlags = fixedFlags;
     }
 
     public static void open(Screen parent, ActiveGroupManager manager,
                             WaypointerConfig config, WaypointGroup targetGroup) {
-        Minecraft.getInstance().setScreen(
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new AddNamedWaypointScreen(parent, manager, config, targetGroup));
     }
 
     public static void openAt(Screen parent, ActiveGroupManager manager,
                               WaypointerConfig config, WaypointGroup targetGroup,
                               int x, int y, int z) {
-        Minecraft.getInstance().setScreen(
-                new AddNamedWaypointScreen(parent, manager, config, targetGroup, true, x, y, z));
+        openAt(parent, manager, config, targetGroup, x, y, z, 0);
+    }
+
+    public static void openAt(Screen parent, ActiveGroupManager manager,
+                              WaypointerConfig config, WaypointGroup targetGroup,
+                              int x, int y, int z, int flags) {
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new AddNamedWaypointScreen(parent, manager, config, targetGroup, true, x, y, z, flags));
     }
 
     @Override
@@ -84,30 +99,38 @@ public final class AddNamedWaypointScreen extends Screen {
 
         nameBox = new EditBox(font, inner, panelY + 34, fieldW, BTN_H,
                 Component.literal("Waypoint name"));
-        nameBox.setMaxLength(64);
+        nameBox.setMaxLength(MAX_NAME_LENGTH);
+        nameBox.setValue(enteredName);
+        nameBox.setResponder(this::onNameEdited);
         addRenderableWidget(nameBox);
         setFocused(nameBox);
         nameBox.setFocused(true);
 
         int footerY = panelY + PANEL_H - BTN_H - PAD_OUTER / 2;
-        addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> onClose())
+        addRenderableWidget(Button.builder(Component.literal("Cancel"), this::onCancelButtonClicked)
                 .bounds(panelX + PANEL_W - PAD_OUTER - 140 - GAP, footerY, 70, BTN_H)
                 .build());
-        addRenderableWidget(Button.builder(Component.literal("Confirm"), b -> createAndClose())
+        confirmButton = Button.builder(Component.literal("Confirm"), this::onConfirmButtonClicked)
                 .bounds(panelX + PANEL_W - PAD_OUTER - 70, footerY, 70, BTN_H)
-                .build());
+                .build();
+        addRenderableWidget(confirmButton);
+        updateConfirmState();
     }
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
         g.fill(0, 0, width, height, 0x80000000);
 
         int panelX = (width - PANEL_W) / 2;
         int panelY = (height - PANEL_H) / 2;
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + PANEL_H, SURFACE);
-        g.drawString(font, getTitle(), panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
+        g.text(font, getTitle(), panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
 
-        super.render(g, mouseX, mouseY, partial);
+        super.extractRenderState(g, mouseX, mouseY, partial);
+        if (nameErrorVisible) {
+            g.text(font, "Name required", panelX + PAD_OUTER, panelY + 60,
+                    0xFFFF8A8A, false);
+        }
     }
 
     @Override
@@ -120,14 +143,32 @@ public final class AddNamedWaypointScreen extends Screen {
         return super.keyPressed(event);
     }
 
+    private void onCancelButtonClicked(Button button) {
+        onClose();
+    }
+
+    private void onConfirmButtonClicked(Button button) {
+        createAndClose();
+    }
+
     private void createAndClose() {
+        String draft = nameBox == null ? enteredName : nameBox.getValue();
+        String name = sanitizeWaypointName(draft);
+        if (name == null) {
+            nameErrorVisible = true;
+            updateConfirmState();
+            return;
+        }
+
         int x;
         int y;
         int z;
+        int flags = 0;
         if (useFixedPosition) {
             x = fixedX;
             y = fixedY;
             z = fixedZ;
+            flags = fixedFlags;
         } else {
             LocalPlayer player = Minecraft.getInstance().player;
             if (player == null) {
@@ -144,17 +185,39 @@ public final class AddNamedWaypointScreen extends Screen {
                 ? manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled())
                 : targetGroup;
 
-        target.add(new Waypoint(x, y, z, nameBox.getValue().trim(),
-                Waypoint.DEFAULT_COLOR, 0, 0.0));
+        // Stored dungeon-room routes keep room-local coordinates.
+        target.add(DungeonRoomWaypointPlacement.toStoredWaypoint(target,
+                new Waypoint(x, y, z, name, config.defaultWaypointColor(), flags, 0.0)));
         new WaypointAddFlow().afterWaypointAdded(target, target.size() - 1);
         manager.fireDataChanged();
 
         onClose();
     }
 
+    private void onNameEdited(String value) {
+        enteredName = value == null ? "" : value;
+        updateConfirmState();
+    }
+
+    static String sanitizeWaypointName(String rawName) {
+        if (rawName == null) return null;
+        String trimmed = rawName.trim();
+        if (trimmed.isEmpty()) return null;
+        return trimmed.length() > MAX_NAME_LENGTH
+                ? trimmed.substring(0, MAX_NAME_LENGTH)
+                : trimmed;
+    }
+
+    private void updateConfirmState() {
+        String draft = nameBox == null ? enteredName : nameBox.getValue();
+        boolean hasName = sanitizeWaypointName(draft) != null;
+        if (hasName) nameErrorVisible = false;
+        if (confirmButton != null) confirmButton.active = hasName;
+    }
+
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        MinecraftCompat.setScreen(minecraft, parent);
     }
 
     @Override

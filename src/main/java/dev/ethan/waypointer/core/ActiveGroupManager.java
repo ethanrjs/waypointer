@@ -1,5 +1,7 @@
 package dev.ethan.waypointer.core;
 
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -39,13 +41,15 @@ public final class ActiveGroupManager {
     private Zone currentZone;
     private final List<Consumer<Zone>> zoneListeners = new ArrayList<>();
     private String focusedTempGroupId;
+    private String focusedAuthoringGroupId;
 
     private final List<Runnable> dataListeners = new ArrayList<>();
+    private final List<Runnable> persistentDataListeners = new ArrayList<>();
     private static final Pattern USERNAME_TOKEN = Pattern.compile("\\b[A-Za-z0-9_]{3,16}\\b");
     private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]");
 
     // Cached result of activeGroups(). The renderer calls this every frame from two
-    // separate END_MAIN handlers, so rebuilding on every call burns avoidable
+    // separate COLLECT_SUBMITS handlers, so rebuilding on every call burns avoidable
     // young-gen garbage. Invalidated on zone change and on fireDataChanged(),
     // which every mutation path funnels through.
     private List<WaypointGroup> cachedActive;
@@ -65,12 +69,9 @@ public final class ActiveGroupManager {
      * Groups that should render right now: matching current zone AND enabled.
      *
      * If no zone has been detected (non-Skyblock world, menu, or before the zone
-     * source has reported in) we return empty. Previously this fell back to the
-     * {@link Zone#UNKNOWN} id so waypoints created on non-Skyblock servers could
-     * still render, but that meant the mod painted boxes in singleplayer and
-     * non-Skyblock Hypixel gamemodes too. Since Waypointer is explicitly a
-     * Skyblock tool, gating on a resolved zone is the honest behaviour -- users
-     * who want generic multiplayer waypoints can run a different mod.
+     * source has reported in), only the one route explicitly selected for
+     * authoring may render. This keeps offline editing usable without falling
+     * back to every route in an arbitrary zone.
      *
      * Returned list is cached and reused across frames -- callers must treat it as
      * read-only. The cache is rebuilt lazily on the next call after any
@@ -80,7 +81,10 @@ public final class ActiveGroupManager {
         if (cachedActive != null) return cachedActive;
 
         if (currentZone == null) {
-            cachedActive = Collections.emptyList();
+            WaypointGroup focused = focusedAuthoringGroup();
+            cachedActive = focused != null && focused.enabled() && shouldSurfaceActiveGroup(focused)
+                    ? List.of(focused)
+                    : Collections.emptyList();
             return cachedActive;
         }
         String zoneId = currentZone.id();
@@ -92,10 +96,49 @@ public final class ActiveGroupManager {
 
         List<WaypointGroup> active = new ArrayList<>();
         for (WaypointGroup g : byId.values()) {
-            if (g.enabled() && zoneId.equals(g.zoneId())) active.add(g);
+            if (g.enabled() && zoneId.equals(g.zoneId()) && shouldSurfaceActiveGroup(g)) {
+                active.add(g);
+            }
         }
         cachedActive = List.copyOf(active);
         return cachedActive;
+    }
+
+    private static boolean shouldSurfaceActiveGroup(WaypointGroup group) {
+        return !isCompletedDungeonRoomGroup(group) && !isStoredDungeonRoomGroup(group);
+    }
+
+    /**
+     * Stored (persisted) dungeon-room routes hold room-local coordinates, so
+     * rendering them directly would paint boxes at raw local positions. They
+     * act in-world only through the runtime mirror {@code DungeonRoomRouteSync}
+     * projects for the current room placement.
+     */
+    private static boolean isStoredDungeonRoomGroup(WaypointGroup group) {
+        return !group.temp()
+                && !group.runtimeOnly()
+                && DungeonRoomData.definition(group.zoneId()) != null;
+    }
+
+    private static boolean isCompletedDungeonRoomGroup(WaypointGroup group) {
+        return !group.temp()
+                && group.isComplete()
+                && DungeonRoomData.definition(group.zoneId()) != null;
+    }
+
+    public List<WaypointGroup> completedDungeonRoomGroupsInCurrentZone() {
+        if (currentZone == null) return Collections.emptyList();
+
+        String zoneId = currentZone.id();
+        List<WaypointGroup> completed = new ArrayList<>();
+        for (WaypointGroup group : byId.values()) {
+            if (group.enabled()
+                    && zoneId.equals(group.zoneId())
+                    && isCompletedDungeonRoomGroup(group)) {
+                completed.add(group);
+            }
+        }
+        return List.copyOf(completed);
     }
 
     /**
@@ -132,6 +175,34 @@ public final class ActiveGroupManager {
     }
 
     /**
+     * Selects the one persisted route that may be previewed and edited while no
+     * Hypixel zone is available. Temp/runtime groups and room-local dungeon
+     * routes are deliberately excluded from this direct world-space preview.
+     */
+    public void focusRouteForAuthoring(WaypointGroup group) {
+        String nextId = group != null
+                && byId.get(group.id()) == group
+                && !group.temp()
+                && !group.runtimeOnly()
+                && shouldSurfaceActiveGroup(group)
+                ? group.id()
+                : null;
+        if (Objects.equals(nextId, focusedAuthoringGroupId)) return;
+        focusedAuthoringGroupId = nextId;
+        cachedActive = null;
+    }
+
+    private WaypointGroup focusedAuthoringGroup() {
+        if (focusedAuthoringGroupId == null) return null;
+        WaypointGroup group = byId.get(focusedAuthoringGroupId);
+        if (group == null || group.temp() || group.runtimeOnly() || !shouldSurfaceActiveGroup(group)) {
+            focusedAuthoringGroupId = null;
+            return null;
+        }
+        return group;
+    }
+
+    /**
      * Returns the first active non-temp route group, or creates a fresh group in
      * the current zone and returns that. The newly-created group's name is built via
      * {@code "Route -- " + zone.displayName()} so first-time users get a labelled
@@ -157,11 +228,18 @@ public final class ActiveGroupManager {
     }
 
     private WaypointGroup firstActiveRouteGroup() {
-        if (currentZone == null) return null;
+        if (currentZone == null) {
+            WaypointGroup focused = focusedAuthoringGroup();
+            return focused != null && focused.enabled() ? focused : null;
+        }
 
         String zoneId = currentZone.id();
         for (WaypointGroup g : byId.values()) {
-            if (!g.temp() && g.enabled() && zoneId.equals(g.zoneId())) return g;
+            // Never hand out runtime mirrors as an add target: waypoints added
+            // to a projected dungeon-room mirror vanish on its next rebuild.
+            if (!g.temp() && !g.runtimeOnly() && g.enabled() && zoneId.equals(g.zoneId())) {
+                return g;
+            }
         }
         return null;
     }
@@ -185,10 +263,6 @@ public final class ActiveGroupManager {
      * the implementation detail in each group's name.
      */
     public WaypointGroup getOrCreateTempGroup() {
-        return getOrCreateTempGroup("");
-    }
-
-    public WaypointGroup getOrCreateTempGroup(String sourceName) {
         Zone zone = currentZone == null ? Zone.UNKNOWN : currentZone;
         String tempId = "temp::" + zone.id();
         WaypointGroup existing = byId.get(tempId);
@@ -225,15 +299,23 @@ public final class ActiveGroupManager {
      */
     public WaypointGroup addTempWaypoint(int x, int y, int z, String sourceName,
                                          int tempMode, long expiresAtMillis) {
+        return addTempWaypoint(x, y, z, sourceName, tempMode, expiresAtMillis,
+                Waypoint.DEFAULT_COLOR);
+    }
+
+    public WaypointGroup addTempWaypoint(int x, int y, int z, String sourceName,
+                                         int tempMode, long expiresAtMillis,
+                                         int color) {
         String source = sanitizeTempSourceName(sourceName);
-        WaypointGroup target = getOrCreateTempGroup(source);
+        WaypointGroup target = getOrCreateTempGroup();
         int mode = Waypoint.normalizeTempMode(tempMode);
         long expiresAt = mode == Waypoint.TEMP_TIME ? Math.max(0L, expiresAtMillis) : 0L;
         Waypoint waypoint = Waypoint.at(x, y, z)
+                .withColor(color & 0xFFFFFF)
                 .withName(source)
                 .withTemp(mode, expiresAt);
         target.add(waypoint);
-        fireDataChanged();
+        fireTransientDataChanged();
         return target;
     }
 
@@ -282,7 +364,7 @@ public final class ActiveGroupManager {
         for (WaypointGroup group : byId.values()) {
             if (group.temp()) removed += group.removeAllTemp();
         }
-        if (removed > 0) fireDataChanged();
+        if (removed > 0) fireTransientDataChanged();
         return removed;
     }
 
@@ -325,7 +407,7 @@ public final class ActiveGroupManager {
                 }
             }
         }
-        if (removed > 0) fireDataChanged();
+        if (removed > 0) fireTransientDataChanged();
         return removed;
     }
 
@@ -373,9 +455,10 @@ public final class ActiveGroupManager {
     }
 
     public List<WaypointGroup> groupsForZone(String zoneId) {
+        String canonicalZoneId = Zone.canonicalId(Objects.requireNonNull(zoneId, "zoneId"));
         List<WaypointGroup> out = new ArrayList<>();
         for (WaypointGroup g : byId.values()) {
-            if (zoneId.equals(g.zoneId())) out.add(g);
+            if (canonicalZoneId.equals(g.zoneId())) out.add(g);
         }
         return out;
     }
@@ -394,8 +477,8 @@ public final class ActiveGroupManager {
     }
 
     public void add(WaypointGroup group) {
-        byId.put(group.id(), group);
-        fireDataChanged();
+        WaypointGroup previous = byId.put(group.id(), group);
+        fireDataChanged(isPersistent(previous) || isPersistent(group));
     }
 
     /**
@@ -405,8 +488,12 @@ public final class ActiveGroupManager {
      */
     public void addAll(Collection<WaypointGroup> groups) {
         if (groups.isEmpty()) return;
-        for (WaypointGroup group : groups) byId.put(group.id(), group);
-        fireDataChanged();
+        boolean persistent = false;
+        for (WaypointGroup group : groups) {
+            WaypointGroup previous = byId.put(group.id(), group);
+            persistent |= isPersistent(previous) || isPersistent(group);
+        }
+        fireDataChanged(persistent);
     }
 
     /**
@@ -415,23 +502,62 @@ public final class ActiveGroupManager {
      * the live manager until malformed files have already been rejected.
      */
     public void replaceAll(Collection<WaypointGroup> groups) {
+        boolean persistent = false;
+        for (WaypointGroup group : byId.values()) persistent |= isPersistent(group);
         byId.clear();
-        for (WaypointGroup group : groups) byId.put(group.id(), group);
-        fireDataChanged();
+        for (WaypointGroup group : groups) {
+            byId.put(group.id(), group);
+            persistent |= isPersistent(group);
+        }
+        fireDataChanged(persistent);
     }
 
     public void remove(String id) {
-        if (byId.remove(id) != null) fireDataChanged();
+        WaypointGroup removed = byId.remove(id);
+        if (removed != null) fireDataChanged(isPersistent(removed));
+    }
+
+    public void removeAll(Collection<String> ids) {
+        boolean changed = false;
+        boolean persistent = false;
+        for (String id : ids) {
+            WaypointGroup removed = byId.remove(id);
+            if (removed == null) continue;
+            changed = true;
+            persistent |= isPersistent(removed);
+        }
+        if (changed) fireDataChanged(persistent);
     }
 
     public void clear() {
+        boolean persistent = false;
+        for (WaypointGroup group : byId.values()) persistent |= isPersistent(group);
         byId.clear();
-        fireDataChanged();
+        fireDataChanged(persistent);
     }
 
     public void fireDataChanged() {
+        fireDataChanged(true);
+    }
+
+    public void fireDataChangedFor(WaypointGroup group) {
+        fireDataChanged(isPersistent(group));
+    }
+
+    public void fireTransientDataChanged() {
+        fireDataChanged(false);
+    }
+
+    private void fireDataChanged(boolean persistent) {
         cachedActive = null;
         for (Runnable l : List.copyOf(dataListeners)) l.run();
+        if (persistent) {
+            for (Runnable l : List.copyOf(persistentDataListeners)) l.run();
+        }
+    }
+
+    private static boolean isPersistent(WaypointGroup group) {
+        return group != null && !group.temp() && !group.runtimeOnly();
     }
 
     private WaypointGroup focusedTempGroupForZone(String zoneId) {
@@ -459,6 +585,8 @@ public final class ActiveGroupManager {
 
     public void addDataListener(Runnable listener)        { dataListeners.add(listener); }
     public void removeDataListener(Runnable listener)     { dataListeners.remove(listener); }
+    public void addPersistentDataListener(Runnable listener) { persistentDataListeners.add(listener); }
+    public void removePersistentDataListener(Runnable listener) { persistentDataListeners.remove(listener); }
 
     public record TempWaypointSelection(WaypointGroup group, int index) {}
 }

@@ -17,34 +17,26 @@ import net.minecraft.network.chat.Component;
  * funnels through {@link #afterWaypointAdded(WaypointGroup, int)} after mutating the
  * group, keeping the user-visible contract consistent.
  *
- * <p>The flow focuses the route on the newly-created waypoint, forces the route
- * to static mode so the new marker remains visible, then suppresses proximity
- * for that one index until the player steps away. Without the suppression, a
- * waypoint created at the player's feet would be advanced or hidden on the very
- * next tick.
+ * <p>The flow focuses the route on the newly-created waypoint, keeps the route
+ * sequenced, disables route-level skip-ahead, then suppresses proximity for that
+ * one index until the player steps away. Without the suppression, a waypoint
+ * created at the player's feet would be advanced or hidden on the very next tick.
  */
 public final class WaypointAddFlow {
 
-    /**
-     * Call immediately after a new waypoint has been appended or inserted into
-     * {@code group}. Temp groups are intentionally excluded because their static
-     * bucket does not participate in normal route progression.
-     */
     public void afterWaypointAdded(WaypointGroup group, int waypointIndex) {
         if (group == null) return;
         if (group.temp()) return;
 
-        WaypointGroup.LoadMode loadModeBefore = group.loadMode();
+        boolean skipAheadWasEnabled = group.skipAheadEnabled();
         group.focusNewWaypoint(waypointIndex, false);
-        boolean switchedToStatic = loadModeBefore == WaypointGroup.LoadMode.SEQUENCE;
-        if (switchedToStatic) {
-            group.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        if (skipAheadWasEnabled) {
+            group.setSkipAheadEnabled(false);
         }
         showWaypointAddedMessage(group, waypointIndex);
-        if (switchedToStatic) {
-            showRouteStaticMessage(group.name(), waypointIndex);
-        } else if (loadModeBefore == WaypointGroup.LoadMode.STATIC) {
-            showCurrentWaypointFocusedMessage(group.name(), waypointIndex);
+        showCurrentWaypointFocusedMessage(group.name(), waypointIndex);
+        if (skipAheadWasEnabled) {
+            showSkipAheadDisabledMessage(group.name());
         }
 
     }
@@ -57,14 +49,15 @@ public final class WaypointAddFlow {
                 .withStyle(ChatFormatting.GREEN));
     }
 
-    private static void showRouteStaticMessage(String groupName, int waypointIndex) {
-        showChatFeedback(Component.literal("\"" + groupName + "\" is now static; current waypoint set to "
-                + waypointIndex + ".").withStyle(ChatFormatting.YELLOW));
-    }
-
     private static void showCurrentWaypointFocusedMessage(String groupName, int waypointIndex) {
         showChatFeedback(Component.literal("\"" + groupName + "\" current waypoint set to "
                 + waypointIndex + ".").withStyle(ChatFormatting.YELLOW));
+    }
+
+    private static void showSkipAheadDisabledMessage(String groupName) {
+        showChatFeedback(Component.literal("\"" + groupName
+                + "\" skip-ahead disabled to keep new waypoints in sequence.")
+                .withStyle(ChatFormatting.YELLOW));
     }
 
     private static void showChatFeedback(Component message) {
@@ -73,7 +66,7 @@ public final class WaypointAddFlow {
 
         LocalPlayer player = mc.player;
         if (player == null) return;
-        player.displayClientMessage(WaypointerChatFeedback.suppress(message), false);
+        player.sendSystemMessage(WaypointerChatFeedback.suppress(message));
     }
 
 }

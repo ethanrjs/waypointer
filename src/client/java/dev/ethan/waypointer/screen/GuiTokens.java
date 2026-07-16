@@ -11,13 +11,13 @@ import java.util.function.Consumer;
 /**
  * Shared GUI tokens for Waypointer screens.
  *
- * Centralized so all three screens (WaypointerScreen, GroupEditScreen, ConfigScreen)
+ * Centralized so all three screens (WaypointerScreen, GroupEditScreen, SettingsScreen)
  * share the same spacing rhythm, surface colors, and footer behavior. Before this,
  * each screen invented its own PADDING and ad-hoc pixel gaps, which is how the
  * footer-overlap bug crept in: buttons laid out left-to-right with fixed widths
  * eventually walked under the right-anchored "Done" button at small GUI scales.
  *
- * Design principles (see .impeccable.md):
+ * Design principles:
  *   1. Space does the work -- hierarchy via gaps first, weight second, color last.
  *   2. One accent color -- ACCENT is for the currently selected thing only.
  *   3. Translucent surfaces -- single depth; no nested borders or drop shadows.
@@ -44,7 +44,7 @@ public final class GuiTokens {
     public static final int SIDEBAR_W = 156;
     public static final int FOOTER_H = 28;
 
-    // --- colors (ARGB, fed to GuiGraphics.fill) ---------------------------------------------
+    // --- colors (ARGB, fed to GuiGraphicsExtractor.fill) ---------------------------------------------
     // The world renders behind us, so every surface is intentionally translucent;
     // stacking opaque cards would fight the Minecraft aesthetic.
 
@@ -82,6 +82,9 @@ public final class GuiTokens {
         }
     }
 
+    record FooterPlacement(ButtonSpec spec, int x, int y, int width) {
+    }
+
     /**
      * Lays out a footer with a left cluster (primary actions) and a single right-anchored
      * button (typically "Done"). Returns the constructed Button widgets, ready for
@@ -117,6 +120,16 @@ public final class GuiTokens {
                                     Consumer<Button> sink,
                                     net.minecraft.client.gui.Font font,
                                     int startX, int rightInset) {
+        for (FooterPlacement placement : footerPlacements(
+                screenW, footerY, left, right, font, startX, rightInset)) {
+            sink.accept(buildButton(placement.spec(), placement.x(), placement.y(), placement.width()));
+        }
+    }
+
+    static List<FooterPlacement> footerPlacements(int screenW, int footerY,
+                                                  List<ButtonSpec> left, ButtonSpec right,
+                                                  net.minecraft.client.gui.Font font,
+                                                  int startX, int rightInset) {
         int rightW = right == null ? 0 : measureWidth(right, font);
         int rightX = right == null ? screenW - rightInset : screenW - rightInset - rightW;
         int leftLimit = right == null ? screenW - rightInset : rightX - GAP_SECTION;
@@ -151,13 +164,16 @@ public final class GuiTokens {
         }
 
         // Primary row.
+        List<FooterPlacement> placements = new ArrayList<>(primary.size()
+                + wrapped.size()
+                + (right == null ? 0 : 1));
         int x = startX;
         for (int i = 0; i < primary.size(); i++) {
-            sink.accept(buildButton(primary.get(i), x, footerY, primaryW[i]));
+            placements.add(new FooterPlacement(primary.get(i), x, footerY, primaryW[i]));
             x += primaryW[i] + GAP;
         }
         if (right != null) {
-            sink.accept(buildButton(right, rightX, footerY, rightW));
+            placements.add(new FooterPlacement(right, rightX, footerY, rightW));
         }
 
         // Wrap row (above the primary row).
@@ -166,10 +182,11 @@ public final class GuiTokens {
             int wx = startX;
             for (ButtonSpec spec : wrapped) {
                 int w = measureWidth(spec, font);
-                sink.accept(buildButton(spec, wx, wrapY, w));
+                placements.add(new FooterPlacement(spec, wx, wrapY, w));
                 wx += w + GAP;
             }
         }
+        return placements;
     }
 
     private static boolean needsFooterWrap(int screenW, List<ButtonSpec> left, ButtonSpec right,

@@ -3,9 +3,6 @@ package dev.ethan.waypointer.render;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.phys.Vec3;
-import org.joml.Matrix4f;
-import org.joml.Quaternionf;
-import org.joml.Vector3f;
 
 /**
  * Projects world-space label anchors with interpolated sprint FOV.
@@ -17,11 +14,7 @@ import org.joml.Vector3f;
  */
 public final class WorldScreenProjector {
 
-    private final Matrix4f viewProjection = new Matrix4f();
-    private final Matrix4f rotationMatrix = new Matrix4f();
-    private final Quaternionf inverseCameraRotation = new Quaternionf();
-    private final Vector3f ndcScratch = new Vector3f();
-
+    private GameRenderer renderer;
     private double cameraX;
     private double cameraY;
     private double cameraZ;
@@ -31,6 +24,7 @@ public final class WorldScreenProjector {
     private float fovDegrees = 70.0f;
 
     public void prepare(GameRenderer renderer, Camera camera) {
+        this.renderer = renderer;
         Vec3 pos = camera.position();
 
         cameraX = pos.x;
@@ -39,26 +33,22 @@ public final class WorldScreenProjector {
         forwardX = camera.forwardVector().x();
         forwardY = camera.forwardVector().y();
         forwardZ = camera.forwardVector().z();
-
-        float fov = renderer.getFov(camera, camera.getPartialTickTime(), true);
-        fovDegrees = fov;
-        camera.rotation().conjugate(inverseCameraRotation);
-        rotationMatrix.rotation(inverseCameraRotation);
-        viewProjection.set(renderer.getProjectionMatrix(fov)).mul(rotationMatrix);
+        fovDegrees = camera.getFov();
     }
 
     public boolean project(double x, double y, double z,
                            int screenW, int screenH, double[] out) {
+        if (renderer == null) return false;
         double rx = x - cameraX;
         double ry = y - cameraY;
         double rz = z - cameraZ;
         if (rx * forwardX + ry * forwardY + rz * forwardZ <= 0.0) return false;
 
-        viewProjection.transformProject((float) rx, (float) ry, (float) rz, ndcScratch);
-        if (!Float.isFinite(ndcScratch.x) || !Float.isFinite(ndcScratch.y)) return false;
+        Vec3 ndc = renderer.projectPointToScreen(new Vec3(x, y, z));
+        if (!Double.isFinite(ndc.x) || !Double.isFinite(ndc.y)) return false;
 
-        out[0] = (ndcScratch.x * 0.5 + 0.5) * screenW;
-        out[1] = (0.5 - ndcScratch.y * 0.5) * screenH;
+        out[0] = (ndc.x * 0.5 + 0.5) * screenW;
+        out[1] = (0.5 - ndc.y * 0.5) * screenH;
         return true;
     }
 

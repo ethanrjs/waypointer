@@ -7,6 +7,20 @@ import static org.junit.jupiter.api.Assertions.*;
 class ZoneTest {
 
     @Test
+    void knownZonesExposeOfflineRouteTargetsWithoutLegacyMineshaftBucket() {
+        assertTrue(Zone.knownZones().contains(Zone.fromId("hub")));
+        assertTrue(Zone.knownZones().contains(Zone.fromId("dungeon_f7")));
+        assertTrue(Zone.knownZones().contains(Zone.fromId("torrhus_canyon")));
+        assertTrue(Zone.knownZones().contains(Zone.fromId("safari")));
+        assertTrue(Zone.knownZones().contains(Zone.fromId("mineshaft_topaz_1")));
+        assertTrue(Zone.knownZones().contains(Zone.fromId("mineshaft_littlefoots_den")));
+        assertEquals(1, Zone.knownZones().stream()
+                .filter(zone -> "mineshaft_crystal".equals(zone.id()))
+                .count());
+        assertFalse(Zone.knownZones().stream().anyMatch(zone -> "mineshaft".equals(zone.id())));
+    }
+
+    @Test
     void resolve_returnsNullForNonSkyblock() {
         assertNull(Zone.resolve("BEDWARS", "anything", null));
         assertNull(Zone.resolve(null, "anything", null));
@@ -128,6 +142,12 @@ class ZoneTest {
         assertEquals("winter",          Zone.resolve("SKYBLOCK", null, "winter").id());
         assertEquals("winter",          Zone.resolve("SKYBLOCK", "Jerry's Workshop", null).id());
         assertEquals("mineshaft",       Zone.resolve("SKYBLOCK", null, "mineshaft").id());
+        assertEquals("lotus_atoll",     Zone.resolve("SKYBLOCK", null, "lotus_atoll").id());
+        assertEquals("lotus_atoll",     Zone.resolve("SKYBLOCK", "Lotus Atoll", null).id());
+        assertEquals("torrhus_canyon",  Zone.resolve("SKYBLOCK", null, "foraging_3").id());
+        assertEquals("torrhus_canyon",  Zone.resolve("SKYBLOCK", "Torrhus Canyon", null).id());
+        assertEquals("safari",          Zone.resolve("SKYBLOCK", null, "safari").id());
+        assertEquals("safari",          Zone.resolve("SKYBLOCK", "Safari Zone", null).id());
     }
 
     @Test
@@ -198,7 +218,7 @@ class ZoneTest {
         assertEquals("glacite_tunnels", refined.id());
     }
 
-    @Test
+        @Test
     void mineshaftType_resolveFromSidebarBlob() {
         // Hypixel writes a compact code on the server-identifier line while
         // inside a mineshaft (e.g. "04/18/26 m197CD AQUA_C" in an Aquamarine
@@ -206,9 +226,9 @@ class ZoneTest {
         // the display name never appears in the live scoreboard.
         assertEquals("mineshaft_topaz_1",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("⏣ Glacite Mineshafts\n04/18/26 m1 TOPA_1").id());
-        assertEquals("mineshaft_aquamarine_crystal",
+        assertEquals("mineshaft_crystal",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("04/18/26 m197CD AQUA_C").id());
-        assertEquals("mineshaft_jasper_crystal",
+        assertEquals("mineshaft_crystal",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m14 JASP_C").id());
         assertEquals("mineshaft_jasper",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m14 JASP_1").id());
@@ -222,14 +242,25 @@ class ZoneTest {
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob(null));
     }
 
-    @Test
-    void mineshaftType_crystalCodeDistinctFromPlainCode() {
+        @Test
+    void mineshaftType_crystalCodeSharesZoneButPlainCodeStaysDistinct() {
         // Codes like JASP_1 and JASP_C are distinct tokens so no ordering
-        // gymnastics are needed -- each resolves cleanly to its own variant.
+        // gymnastics are needed; the crystal token now resolves to the shared
+        // crystal route bucket instead of a per-gem route bucket.
         assertEquals("mineshaft_jasper",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 JASP_1").id());
-        assertEquals("mineshaft_jasper_crystal",
+        assertEquals("mineshaft_crystal",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 JASP_C").id());
+    }
+
+        @Test
+    void mineshaftType_allCrystalCodesShareZone() {
+        String[] crystalCodes = {"RUBY_C", "ONYX_C", "AQUA_C", "CITR_C", "PERI_C", "JASP_C", "OPAL_C"};
+        for (String code : crystalCodes) {
+            assertEquals("mineshaft_crystal",
+                    Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 " + code).id(),
+                    code + " should share the crystal mineshaft zone");
+        }
     }
 
     @Test
@@ -286,7 +317,7 @@ class ZoneTest {
         assertEquals("mineshaft_topaz_2", refined.id());
     }
 
-    @Test
+        @Test
     void mineshaftType_refineVariantBeatsGenericSubArea() {
         // If the blob mentions "Glacite Mineshafts" (generic sub-area) and a
         // specific variant code on another line, the code wins -- it's the
@@ -295,23 +326,24 @@ class ZoneTest {
         Zone raw = Zone.resolve("SKYBLOCK", null, "mineshaft");
         Zone refined = Zone.refineIfDwarvenMinesContext(raw,
                 "⏣ Glacite Mineshafts\n04/18/26 m197CD AQUA_C");
-        assertEquals("mineshaft_aquamarine_crystal", refined.id());
+        assertEquals("mineshaft_crystal", refined.id());
     }
 
-    @Test
+        @Test
     void mineshaftType_fromIdRendersFriendlyDisplayName() {
         assertEquals("Mineshaft: Topaz 1", Zone.fromId("mineshaft_topaz_1").displayName());
-        assertEquals("Mineshaft: Jasper Crystal", Zone.fromId("mineshaft_jasper_crystal").displayName());
+        assertEquals("Mineshaft: Crystal", Zone.fromId("mineshaft_jasper_crystal").displayName());
+        assertEquals("Mineshaft: Crystal", Zone.fromId("mineshaft_crystal").displayName());
         assertEquals("Mineshaft: Littlefoot's Den", Zone.fromId("mineshaft_littlefoots_den").displayName());
     }
 
-    @Test
+        @Test
     void mineshaftType_resolveFromDisplayNameAcceptsBareVariant() {
         // If someone types the variant as a display name (e.g. from chat or an
         // imported route), it resolves to the same canonical id the refiner
         // produces, so the two paths agree on storage keys.
         assertEquals("mineshaft_topaz_1", Zone.resolveFromDisplayName("Topaz 1").id());
-        assertEquals("mineshaft_jasper_crystal", Zone.resolveFromDisplayName("Jasper Crystal").id());
+        assertEquals("mineshaft_crystal", Zone.resolveFromDisplayName("Jasper Crystal").id());
     }
 
     @Test

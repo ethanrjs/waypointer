@@ -8,7 +8,6 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.config.AsyncSaver;
-import dev.ethan.waypointer.dungeon.Direction;
 import dev.ethan.waypointer.dungeon.DungeonHighlight;
 import dev.ethan.waypointer.dungeon.DungeonHighlightStyle;
 import dev.ethan.waypointer.dungeon.DungeonMapMath;
@@ -41,15 +40,20 @@ import java.util.concurrent.atomic.AtomicReference;
 /**
  * Catalog of dungeon room definitions and user-authored secret routes.
  *
- * <p>The bundled catalog is intentionally Waypointer-authored seed/demo data
- * only. We do not ship Skyblocker/DungeonRoomsMod Catacombs data because their
- * attribution traces many room skeletons and secret waypoints to GPL-3.0 data,
- * while this project is PolyForm Noncommercial.
+ * <p>The bundled catalog uses Odin's BSD-3-Clause room-core hashes for room
+ * identity, with attribution preserved in the repository's third-party
+ * notices. We still do not ship Skyblocker/DungeonRoomsMod Catacombs secret
+ * waypoint data because their attribution traces many room skeletons and secret
+ * waypoints to GPL-3.0 data, while this project is PolyForm Noncommercial.
  */
 public final class DungeonRoomData {
 
     public interface BlockLookup {
         String blockIdAt(int x, int y, int z);
+    }
+
+    public interface CoreHashLookup {
+        List<Integer> coreHashesFor(DungeonRoom room);
     }
 
     public static final int SCHEMA_VERSION = 1;
@@ -68,6 +72,7 @@ public final class DungeonRoomData {
 
     private static Path customFile;
     private static AsyncSaver saver;
+    private static final List<Runnable> CHANGE_LISTENERS = new ArrayList<>();
 
     private DungeonRoomData() {}
 
@@ -77,6 +82,17 @@ public final class DungeonRoomData {
     }
 
     public static void loadCustomStore(Path file) {
+        if (saver != null) {
+            // Reloading the same file: disk wins, so drop any queued in-memory
+            // write (e.g. a clearAllCustom awaiting debounce) instead of flushing
+            // it over the data we are about to read. A different file still
+            // flushes so the previous store's edits reach the previous path.
+            if (file != null && file.equals(customFile)) {
+                saver.discard();
+            } else {
+                saver.flush();
+            }
+        }
         customFile = file;
         saver = new AsyncSaver("dungeon-rooms", DungeonRoomData::writeCustomStore, SAVE_DEBOUNCE_MS);
         CUSTOM.set(readDefinitions(file));
@@ -86,13 +102,48 @@ public final class DungeonRoomData {
         if (saver != null) saver.flush();
     }
 
+    public static void addChangeListener(Runnable listener) {
+        if (listener != null) CHANGE_LISTENERS.add(listener);
+    }
+
+    public static void removeChangeListener(Runnable listener) {
+        CHANGE_LISTENERS.remove(listener);
+    }
+
     public static Collection<DungeonRoomDefinition> customDefinitions() {
         return CUSTOM.get().values();
     }
 
+    public static int importCustomDefinitions(Collection<DungeonRoomDefinition> definitions) {
+        if (definitions == null || definitions.isEmpty()) return 0;
+        List<DungeonRoomDefinition> valid = new ArrayList<>();
+        for (DungeonRoomDefinition definition : definitions) {
+            if (definition != null && !definition.id().isBlank()) valid.add(definition);
+        }
+        if (valid.isEmpty()) return 0;
+
+        int[] imported = {0};
+        CUSTOM.updateAndGet(
+                prev -> {
+                    Map<String, DungeonRoomDefinition> next = new LinkedHashMap<>(prev);
+                    for (DungeonRoomDefinition definition : valid) {
+                        DungeonRoomDefinition existing = next.get(definition.id());
+                        if (existing != null && !existing.waypoints().isEmpty()) continue;
+                        next.put(definition.id(),
+                                withInheritedCoreHashes(definition, BUNDLED.get(definition.id())));
+                        imported[0]++;
+                    }
+                    return Map.copyOf(next);
+                });
+        if (imported[0] > 0) markDirty();
+        return imported[0];
+    }
+
     public static Collection<DungeonRoomDefinition> allDefinitions() {
         Map<String, DungeonRoomDefinition> all = new LinkedHashMap<>(BUNDLED);
-        all.putAll(CUSTOM.get());
+        for (DungeonRoomDefinition custom : CUSTOM.get().values()) {
+            all.put(custom.id(), withInheritedCoreHashes(custom, BUNDLED.get(custom.id())));
+        }
         return List.copyOf(all.values());
     }
 
@@ -102,21 +153,68 @@ public final class DungeonRoomData {
         return custom != null ? custom : BUNDLED.get(norm);
     }
 
+    public static DungeonRoomDefinition customDefinition(String id) {
+        return CUSTOM.get().get(DungeonRoomDefinition.normalizeId(id));
+    }
+
+    public static DungeonRoomDefinition definitionForCoreHash(int coreHash) {
+        DungeonRoomDefinition matched = null;
+        for (DungeonRoomDefinition definition : allDefinitions()) {
+            if (!definition.coreHashes().contains(coreHash)) continue;
+            if (matched != null) return null;
+            matched = definition;
+        }
+        return matched;
+    }
+
     public static boolean isCustomDefinition(String id) {
         return CUSTOM.get().containsKey(DungeonRoomDefinition.normalizeId(id));
     }
 
     public static DungeonRoom withMatchedDefinition(DungeonRoom room, BlockLookup lookup) {
-        DungeonRoomDefinition definition = match(room, lookup);
+        return withMatchedDefinition(room, lookup, null);
+    }
+
+    public static DungeonRoom withMatchedDefinition(DungeonRoom room, BlockLookup lookup,
+                                                    CoreHashLookup coreHashLookup) {
+        if (room == null) return null;
+        DungeonRoomDefinition definition = match(room, lookup, coreHashLookup);
         return definition == null ? room : room.withDefinition(definition.id(), definition.displayName());
     }
 
     public static DungeonRoomDefinition match(DungeonRoom room, BlockLookup lookup) {
+        return match(room, lookup, null);
+    }
+
+    public static DungeonRoomDefinition match(DungeonRoom room, BlockLookup lookup,
+                                              CoreHashLookup coreHashLookup) {
         if (room == null) return null;
         if (room.hasRoomId()) return definition(room.roomId());
 
+        Collection<DungeonRoomDefinition> allDefinitions = allDefinitions();
+        if (coreHashLookup != null) {
+            List<Integer> observed = coreHashLookup.coreHashesFor(room);
+            if (observed != null && !observed.isEmpty()) {
+                List<DungeonRoomDefinition> primaryCoreMatches =
+                        matchingCoreDefinitions(room, allDefinitions, List.of(observed.get(0)));
+                List<DungeonRoomDefinition> coreMatches =
+                        matchingCoreDefinitions(room, allDefinitions, observed);
+                if (primaryCoreMatches.size() == 1) {
+                    DungeonRoomDefinition primary = primaryCoreMatches.get(0);
+                    DungeonRoomDefinition shapeMatch = uniqueShapeMatch(room, coreMatches);
+                    if (shapeMatch != null && primary.shape() != room.shape()) return shapeMatch;
+                    return primary;
+                }
+                if (primaryCoreMatches.size() > 1) return null;
+
+                if (coreMatches.size() == 1) return coreMatches.get(0);
+                if (coreMatches.size() > 1) return uniqueShapeMatch(room, coreMatches);
+                if (hasCoreDefinitionsForType(room, allDefinitions)) return null;
+            }
+        }
+
         List<DungeonRoomDefinition> customCandidates = matchingDefinitions(room, CUSTOM.get().values());
-        List<DungeonRoomDefinition> candidates = matchingDefinitions(room, allDefinitions());
+        List<DungeonRoomDefinition> candidates = matchingDefinitions(room, allDefinitions);
         if (candidates.isEmpty()) return null;
 
         List<DungeonRoomDefinition> fingerprintedCandidates = withFingerprints(candidates);
@@ -141,6 +239,60 @@ public final class DungeonRoomData {
         return fallback.size() == 1 ? fallback.get(0) : null;
     }
 
+    private static DungeonRoomDefinition withInheritedCoreHashes(
+            DungeonRoomDefinition custom,
+            DungeonRoomDefinition bundled) {
+        if (custom == null || bundled == null) return custom;
+        DungeonRoomDefinition merged = custom;
+        if (!merged.hasCoreHashes() && bundled.hasCoreHashes()) {
+            merged = merged.withCoreHashes(bundled.coreHashes());
+        }
+        if (!merged.hasSecretCount() && !merged.hasCryptCount() && !merged.hasTrappedChestCount()
+                && (bundled.hasSecretCount() || bundled.hasCryptCount()
+                || bundled.hasTrappedChestCount())) {
+            merged = merged.withCounts(
+                    bundled.secretCount(), bundled.cryptCount(), bundled.trappedChestCount());
+        }
+        return merged;
+    }
+
+    private static List<DungeonRoomDefinition> matchingCoreDefinitions(
+            DungeonRoom room,
+            Collection<DungeonRoomDefinition> definitions,
+            List<Integer> observedCoreHashes) {
+        List<DungeonRoomDefinition> matches = new ArrayList<>();
+        for (DungeonRoomDefinition definition : definitions) {
+            if (definition.type() != room.type()) continue;
+            if (coreHashesMatch(definition, observedCoreHashes)) {
+                matches.add(definition);
+            }
+        }
+        return matches;
+    }
+
+    private static DungeonRoomDefinition uniqueShapeMatch(
+            DungeonRoom room,
+            List<DungeonRoomDefinition> definitions) {
+        DungeonRoomDefinition matched = null;
+        for (DungeonRoomDefinition definition : definitions) {
+            if (definition.type() != room.type() || definition.shape() != room.shape()) continue;
+            if (matched != null) return null;
+            matched = definition;
+        }
+        return matched;
+    }
+
+    private static boolean hasCoreDefinitionsForType(
+            DungeonRoom room,
+            Collection<DungeonRoomDefinition> definitions) {
+        for (DungeonRoomDefinition definition : definitions) {
+            if (definition.type() == room.type() && definition.hasCoreHashes()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static List<DungeonRoomDefinition> matchingDefinitions(
             DungeonRoom room, Collection<DungeonRoomDefinition> definitions) {
         List<DungeonRoomDefinition> out = new ArrayList<>();
@@ -161,6 +313,15 @@ public final class DungeonRoomData {
         return fallback;
     }
 
+    private static List<DungeonRoomDefinition> withCoreHashes(
+            List<DungeonRoomDefinition> candidates) {
+        List<DungeonRoomDefinition> hashed = new ArrayList<>(candidates.size());
+        for (DungeonRoomDefinition definition : candidates) {
+            if (definition.hasCoreHashes()) hashed.add(definition);
+        }
+        return hashed;
+    }
+
     private static List<DungeonRoomDefinition> withFingerprints(
             List<DungeonRoomDefinition> candidates) {
         List<DungeonRoomDefinition> fingerprinted = new ArrayList<>(candidates.size());
@@ -171,8 +332,20 @@ public final class DungeonRoomData {
     }
 
     public static List<DungeonWaypoint> waypointsFor(DungeonRoom room) {
-        DungeonRoomDefinition definition = room == null ? null : definitionForRoom(room);
+        DungeonRoomDefinition definition = customDefinitionForRoom(room);
         return definition == null ? List.of() : definition.waypoints();
+    }
+
+    private static DungeonRoomDefinition customDefinitionForRoom(DungeonRoom room) {
+        if (room == null) return null;
+        if (room.hasRoomId()) return customDefinition(room.roomId());
+
+        List<DungeonRoomDefinition> candidates = matchingDefinitions(room, CUSTOM.get().values());
+        List<DungeonRoomDefinition> fingerprintedCandidates = withFingerprints(candidates);
+        if (!fingerprintedCandidates.isEmpty()) return null;
+
+        List<DungeonRoomDefinition> fallback = withoutFingerprints(candidates);
+        return fallback.size() == 1 ? fallback.get(0) : null;
     }
 
     public static DungeonRoomDefinition defineRoom(String id, String displayName, DungeonRoom room) {
@@ -182,6 +355,32 @@ public final class DungeonRoomData {
                 displayName,
                 room.type(),
                 room.shape(),
+                List.of(),
+                List.of(),
+                List.of());
+        putCustom(definition);
+        return definition;
+    }
+
+    public static DungeonRoomDefinition defineIdentifiedRoom(
+            String id,
+            String displayName,
+            DungeonRoom room,
+            CoreHashLookup coreHashLookup) {
+        if (room == null) throw new IllegalArgumentException("room is required");
+        List<Integer> coreHashes = coreHashLookup == null ? null : coreHashLookup.coreHashesFor(room);
+        if (coreHashes == null || coreHashes.size() != room.segments().size()) {
+            throw new IllegalStateException("room core identity is unavailable");
+        }
+        for (Integer coreHash : coreHashes) {
+            if (coreHash == null) throw new IllegalStateException("room core identity is unavailable");
+        }
+        DungeonRoomDefinition definition = new DungeonRoomDefinition(
+                id,
+                displayName,
+                room.type(),
+                room.shape(),
+                coreHashes,
                 List.of(),
                 List.of());
         putCustom(definition);
@@ -204,6 +403,15 @@ public final class DungeonRoomData {
         return updated;
     }
 
+    public static DungeonRoomDefinition addCoreHash(String roomId, int coreHash) {
+        DungeonRoomDefinition definition = requireCustom(roomId);
+        List<Integer> next = new ArrayList<>(definition.coreHashes());
+        next.add(coreHash);
+        DungeonRoomDefinition updated = definition.withCoreHashes(next);
+        putCustom(updated);
+        return updated;
+    }
+
     public static DungeonRoomDefinition addWaypoint(String roomId, DungeonWaypoint waypoint) {
         DungeonRoomDefinition definition = requireCustom(roomId);
         List<DungeonWaypoint> next = new ArrayList<>(definition.waypoints());
@@ -222,8 +430,18 @@ public final class DungeonRoomData {
         return updated;
     }
 
+    public static DungeonRoomDefinition clearWaypoints(String roomId) {
+        DungeonRoomDefinition definition = definition(roomId);
+        if (definition == null) throw new IllegalArgumentException("Unknown room: " + roomId);
+        DungeonRoomDefinition updated = withInheritedCoreHashes(
+                definition.withWaypoints(List.of()),
+                BUNDLED.get(definition.id()));
+        putCustom(updated);
+        return updated;
+    }
+
     public static DungeonRoomDefinition setWaypointTrigger(String roomId, int waypointIndex,
-                                                          DungeonWaypointTrigger trigger) {
+                                                           DungeonWaypointTrigger trigger) {
         DungeonRoomDefinition definition = requireCustom(roomId);
         List<DungeonWaypoint> waypoints = new ArrayList<>(definition.waypoints());
         waypoints.set(waypointIndex, waypoints.get(waypointIndex).withTrigger(trigger));
@@ -270,12 +488,13 @@ public final class DungeonRoomData {
 
     public static void clearCustom(String roomId) {
         String norm = DungeonRoomDefinition.normalizeId(roomId);
-        CUSTOM.updateAndGet(prev -> {
-            if (!prev.containsKey(norm)) return prev;
-            Map<String, DungeonRoomDefinition> next = new LinkedHashMap<>(prev);
-            next.remove(norm);
-            return Map.copyOf(next);
-        });
+        CUSTOM.updateAndGet(
+                prev -> {
+                    if (!prev.containsKey(norm)) return prev;
+                    Map<String, DungeonRoomDefinition> next = new LinkedHashMap<>(prev);
+                    next.remove(norm);
+                    return Map.copyOf(next);
+                });
         markDirty();
     }
 
@@ -351,6 +570,13 @@ public final class DungeonRoomData {
         return true;
     }
 
+    private static boolean coreHashesMatch(DungeonRoomDefinition definition, List<Integer> observed) {
+        for (Integer coreHash : observed) {
+            if (definition.coreHashes().contains(coreHash)) return true;
+        }
+        return false;
+    }
+
     private static DungeonRoomDefinition requireCustom(String id) {
         String norm = DungeonRoomDefinition.normalizeId(id);
         DungeonRoomDefinition definition = CUSTOM.get().get(norm);
@@ -359,16 +585,20 @@ public final class DungeonRoomData {
     }
 
     private static void putCustom(DungeonRoomDefinition definition) {
-        CUSTOM.updateAndGet(prev -> {
-            Map<String, DungeonRoomDefinition> next = new LinkedHashMap<>(prev);
-            next.put(definition.id(), definition);
-            return Map.copyOf(next);
-        });
+        CUSTOM.updateAndGet(
+                prev -> {
+                    Map<String, DungeonRoomDefinition> next = new LinkedHashMap<>(prev);
+                    next.put(definition.id(), definition);
+                    return Map.copyOf(next);
+                });
         markDirty();
     }
 
     private static void markDirty() {
         if (saver != null) saver.markDirty();
+        for (Runnable listener : List.copyOf(CHANGE_LISTENERS)) {
+            listener.run();
+        }
     }
 
     private static void writeCustomStore() {
@@ -413,6 +643,17 @@ public final class DungeonRoomData {
         json.addProperty("name", definition.displayName());
         json.addProperty("type", definition.type().name());
         json.addProperty("shape", definition.shape().name());
+        if (definition.hasSecretCount()) json.addProperty("secrets", definition.secretCount());
+        if (definition.hasCryptCount()) json.addProperty("crypts", definition.cryptCount());
+        if (definition.hasTrappedChestCount()) {
+            json.addProperty("trappedChests", definition.trappedChestCount());
+        }
+
+        JsonArray coreHashes = new JsonArray();
+        for (Integer coreHash : definition.coreHashes()) {
+            coreHashes.add(coreHash);
+        }
+        json.add("coreHashes", coreHashes);
 
         JsonArray fingerprints = new JsonArray();
         for (DungeonRoomFingerprint fingerprint : definition.fingerprints()) {
@@ -439,6 +680,13 @@ public final class DungeonRoomData {
         DungeonRoomType type = parseType(string(json, "type", "ROOM"));
         DungeonRoomShape shape = parseShape(string(json, "shape", "UNKNOWN"));
 
+        List<Integer> coreHashes = new ArrayList<>();
+        if (json.has("coreHashes")) {
+            for (JsonElement element : json.getAsJsonArray("coreHashes")) {
+                coreHashes.add(element.getAsInt());
+            }
+        }
+
         List<DungeonRoomFingerprint> fingerprints = new ArrayList<>();
         if (json.has("fingerprints")) {
             for (JsonElement element : json.getAsJsonArray("fingerprints")) {
@@ -458,7 +706,10 @@ public final class DungeonRoomData {
             }
         }
 
-        return new DungeonRoomDefinition(id, name, type, shape, fingerprints, waypoints);
+        return new DungeonRoomDefinition(id, name, type, shape, coreHashes, fingerprints, waypoints,
+                integer(json, "secrets", DungeonRoomDefinition.UNKNOWN_COUNT),
+                integer(json, "crypts", DungeonRoomDefinition.UNKNOWN_COUNT),
+                integer(json, "trappedChests", DungeonRoomDefinition.UNKNOWN_COUNT));
     }
 
     private static JsonObject waypointToJson(DungeonWaypoint waypoint) {
@@ -471,6 +722,7 @@ public final class DungeonRoomData {
         json.addProperty("y", waypoint.y());
         json.addProperty("z", waypoint.z());
         if (waypoint.hasName()) json.addProperty("name", waypoint.name());
+        if (waypoint.hasOwnColor()) json.addProperty("color", waypoint.customColor());
 
         JsonArray highlights = new JsonArray();
         for (DungeonHighlight highlight : waypoint.highlights()) {
@@ -508,7 +760,8 @@ public final class DungeonRoomData {
                 integer(json, "y", 70),
                 integer(json, "z", 0),
                 string(json, "name", ""),
-                highlights);
+                highlights,
+                integer(json, "color", DungeonWaypoint.INHERIT_COLOR));
     }
 
     private static Map<DungeonRoomShape, List<DungeonWaypoint>> buildDemo() {

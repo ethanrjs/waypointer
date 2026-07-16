@@ -1,18 +1,26 @@
 package dev.ethan.waypointer.screen;
 
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import dev.ethan.waypointer.color.GradientColorizer;
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.RouteProgress;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.debug.DebugEventLog;
+import dev.ethan.waypointer.dungeon.DungeonRoomRouteSync;
+import dev.ethan.waypointer.dungeon.DungeonRoomWaypointPlacement;
+import dev.ethan.waypointer.dungeon.DungeonWaypointSkipRules;
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import dev.ethan.waypointer.input.WaypointRepositionMode;
 import dev.ethan.waypointer.text.AmpersandFormatting;
 import dev.ethan.waypointer.input.WaypointAddFlow;
 import dev.ethan.waypointer.placement.PlayerWaypointPlacement;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
@@ -61,9 +69,10 @@ public final class GroupEditScreen extends Screen {
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
     private final WaypointGroup group;
+    private String lastPublishedName;
 
     private EditBox nameBox;
-    private Button gradientBtn;
+    private Button colorModeBtn;
     private Button modeBtn;
     private Button radiusMinusBtn;
     private Button radiusPlusBtn;
@@ -75,14 +84,66 @@ public final class GroupEditScreen extends Screen {
     // Two small colour swatch buttons for the gradient endpoints. Stored so
     // the colour-picker callback can push the new colour back onto the
     // correct widget without chasing it through the widget tree.
+    private ColorSwatchButton staticColorBtn;
     private ColorSwatchButton gradientStartBtn;
     private ColorSwatchButton gradientEndBtn;
+    private int waypointColorPickerIndex = -1;
 
     private int scrollOffset;
+    private int sidebarScrollOffset;
+    private int sidebarContentHeight;
+    private final List<SidebarWidget> sidebarWidgets = new ArrayList<>();
+    private List<GuiTokens.ButtonSpec> footerActionSpecs = List.of();
+    private GuiTokens.ButtonSpec footerDoneSpec;
     private int selectedIndex = -1;
     private int coordinateEditorIndex = -1;
     private boolean syncingCoordinateEditors;
+    private String coordinateEditError;
     private static final int SUBWAY_ACCENT = 0xFF58C878;
+    static final int SUBWAY_STYLE_ACTION_NONE = 0;
+    static final int SUBWAY_STYLE_ACTION_SMALL = 1;
+    static final int SUBWAY_STYLE_ACTION_FILLED = 2;
+    static final int SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT = 3;
+    static final int WAYPOINT_CONTROL_ACTION_NONE = 0;
+    static final int WAYPOINT_CONTROL_ACTION_STAND_SKIP = 1;
+    static final int WAYPOINT_CONTROL_ACTION_INTERACT_SKIP = 2;
+    static final int WAYPOINT_CONTROL_ACTION_DEPTH_CHECK = 3;
+    private static final int SUBWAY_STYLE_BUTTON_W = 26;
+    private static final int SUBWAY_STYLE_BUTTON_H = 18;
+    private static final int SUBWAY_STYLE_BUTTON_TOP_PAD = 2;
+    private static final int SUBWAY_STYLE_BUTTON_ACTIVE = 0xFF2D6B3E;
+    private static final int SUBWAY_STYLE_BUTTON_IDLE = 0xFF20242A;
+    private static final int SUBWAY_STYLE_BUTTON_HOVER = 0xFF303844;
+    private static final int DEPTH_CHECK_BUTTON_ACTIVE = 0xFF315F8F;
+    private static final int HEADER_INFO_BUTTON_SIZE = 12;
+    private static final String ROUTE_INFO_TITLE = "Route editor controls";
+    private static final String[] ROUTE_INFO_LABELS = {
+            "Click",
+            "Double-click selected",
+            "Right-click",
+            "Shift-left-click",
+            "Shift-right-click",
+            "Color swatch",
+            "Row buttons"
+    };
+    private static final String[] ROUTE_INFO_DESCRIPTIONS = {
+            "select a waypoint row",
+            "rename that waypoint",
+            "set the current waypoint",
+            "move in world",
+            "toggle subwaypoint",
+            "edit color; Shift-click unlocks",
+            "small, filled, hidden-after-parent, depth"
+    };
+    private static final int[] ROUTE_INFO_LABEL_COLORS = {
+            ACCENT,
+            0xFFFFF080,
+            0xFFFFC878,
+            0xFF8ACBFF,
+            SUBWAY_ACCENT,
+            0xFFFF8A8A,
+            TEXT_DIM
+    };
 
     // Inline per-row label editor: shown only while the user is renaming a waypoint,
     // positioned in render() so it tracks the row through scroll. We hold one EditBox
@@ -91,9 +152,10 @@ public final class GroupEditScreen extends Screen {
     private EditBox labelEditor;
     private int editingIndex = -1;
 
-    // GLFW key constants -- inlined to avoid dragging in LWJGL for three numbers.
+    // GLFW key constants -- inlined to avoid dragging in LWJGL for four numbers.
     private static final int GLFW_KEY_ESCAPE   = 256;
     private static final int GLFW_KEY_ENTER    = 257;
+    private static final int GLFW_KEY_TAB      = 258;
     private static final int GLFW_KEY_KP_ENTER = 335;
 
     public GroupEditScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config, WaypointGroup group) {
@@ -102,6 +164,7 @@ public final class GroupEditScreen extends Screen {
         this.manager = manager;
         this.config = config;
         this.group = group;
+        this.lastPublishedName = group.name();
     }
 
     public GroupEditScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config,
@@ -117,14 +180,23 @@ public final class GroupEditScreen extends Screen {
 
     public static void openFocused(Screen parent, ActiveGroupManager manager, WaypointerConfig config,
                                    WaypointGroup group, int waypointIndex) {
-        Minecraft.getInstance().setScreen(
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new GroupEditScreen(parent, manager, config, group, waypointIndex));
     }
 
     @Override
     protected void init() {
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int sidebarLeft = PAD_OUTER;
+        int resumeEditingIndex = editingIndex;
+        String resumeEditingValue = labelEditor != null && editingIndex >= 0
+                ? labelEditor.getValue()
+                : "";
+
+        sidebarWidgets.clear();
+        footerActionSpecs = buildFooterActions();
+        footerDoneSpec = new GuiTokens.ButtonSpec("Done", this::onClose);
+        Layout layout = layout();
+        int top = layout.top();
+        int sidebarLeft = layout.sidebarLeft();
         int sidebarInner = sidebarLeft + GAP;
         int fieldW = SIDEBAR_W - GAP * 2;
 
@@ -136,47 +208,27 @@ public final class GroupEditScreen extends Screen {
         nameBox.setValue(group.name());
         nameBox.setResponder(group::setName);
         nameBox.setTooltip(Tooltip.create(Component.literal(
-                "Group display name.\n"
+                "Route display name.\n"
               + "Used in lists and exports.")));
-        addRenderableWidget(nameBox);
+        addSidebarWidget(nameBox);
         y += BTN_H + GAP;
 
-        // Gradient toggle
-        gradientBtn = Button.builder(gradientLabel(), this::toggleGradientMode)
+        // Route color mode
+        colorModeBtn = Button.builder(colorModeLabel(), this::toggleColorMode)
                 .bounds(sidebarInner, y, fieldW, BTN_H)
-                .tooltip(gradientTooltip())
+                .tooltip(colorModeTooltip())
                 .build();
-        addRenderableWidget(gradientBtn);
+        addSidebarWidget(colorModeBtn);
         y += BTN_H + GAP_TIGHT;
 
-        // Gradient endpoint swatches. The button IS the colour rather than text
-        // that describes it -- seeing both swatches side by side lets the player
-        // eyeball the range of the gradient before opening either picker. The
-        // full hex code is rendered just below the row for reference without
-        // stealing the button face.
-        int swatchW = (fieldW - GAP_TIGHT) / 2;
-        gradientStartBtn = new ColorSwatchButton(sidebarInner, y, swatchW, BTN_H,
-                "Start", group.gradientStartColor(), () -> openGradientPicker(true));
-        gradientStartBtn.setTooltip(Tooltip.create(Component.literal(
-                "Gradient start colour.\n"
-              + "Applies in AUTO mode.")));
-        gradientEndBtn = new ColorSwatchButton(sidebarInner + swatchW + GAP_TIGHT, y,
-                fieldW - swatchW - GAP_TIGHT, BTN_H,
-                "End", group.gradientEndColor(), () -> openGradientPicker(false));
-        gradientEndBtn.setTooltip(Tooltip.create(Component.literal(
-                "Gradient end colour.\n"
-              + "Applies in AUTO mode.")));
-        addRenderableWidget(gradientStartBtn);
-        addRenderableWidget(gradientEndBtn);
-        updateGradientButtons();
-        y += BTN_H + GAP_TIGHT;
+        y = addColorModeControls(sidebarInner, y, fieldW);
 
         // Mode toggle
         modeBtn = Button.builder(modeLabel(), this::toggleLoadMode)
                 .bounds(sidebarInner, y, fieldW, BTN_H)
                 .tooltip(modeTooltip())
                 .build();
-        addRenderableWidget(modeBtn);
+        addSidebarWidget(modeBtn);
         y += BTN_H + GAP;
 
         // Radius row: [-]  Radius 6.0  [+]
@@ -198,111 +250,304 @@ public final class GroupEditScreen extends Screen {
                         "Grow reach radius.\n"
                       + "+0.5 blocks.")))
                 .build();
-        addRenderableWidget(radiusMinusBtn);
-        addRenderableWidget(radiusPlusBtn);
+        addSidebarWidget(radiusMinusBtn);
+        addSidebarWidget(radiusPlusBtn);
         y += BTN_H + GAP;
 
         skipAheadBtn = Button.builder(skipAheadLabel(), this::toggleSkipAhead)
                 .bounds(sidebarInner, y, fieldW, BTN_H)
                 .tooltip(Tooltip.create(Component.literal(
-                        "Toggle skipping waypoints for this group.")))
+                        "Toggle skipping waypoints for this route.")))
                 .build();
-        addRenderableWidget(skipAheadBtn);
+        addSidebarWidget(skipAheadBtn);
         y += BTN_H + GAP;
 
         addCoordinateEditors(sidebarInner, y, fieldW);
         y += BTN_H + GAP;
 
-        moveSelectedHereBtn = Button.builder(Component.literal("Move Selected Here"), b -> moveSelectedHere())
+        moveSelectedHereBtn = Button.builder(Component.literal("Move Waypoint Here"), b -> moveSelectedHere())
                 .bounds(sidebarInner, y, fieldW, BTN_H)
                 .tooltip(Tooltip.create(Component.literal(
                         "Replace the selected waypoint's coordinates with your\n"
                       + "current block position.")))
                 .build();
-        addRenderableWidget(moveSelectedHereBtn);
+        addSidebarWidget(moveSelectedHereBtn);
 
-        int sidebarBottom = height - FOOTER_H - GAP_SECTION;
-        int resetY = sidebarBottom - BTN_H - GAP;
-        addRenderableWidget(Button.builder(Component.literal("Reset Progress"), b -> {
+        int naturalResetY = y + BTN_H + GAP;
+        int viewportBottom = sidebarViewportBottom(layout);
+        sidebarContentHeight = naturalResetY + BTN_H - sidebarViewportTop(layout);
+        int maxSidebarScroll = maxSidebarScroll(
+                sidebarContentHeight, viewportBottom - sidebarViewportTop(layout));
+        int resetY = maxSidebarScroll == 0
+                ? viewportBottom - BTN_H
+                : naturalResetY;
+        addSidebarWidget(Button.builder(Component.literal("Reset Progress"), b -> {
             group.resetProgress();
             manager.fireDataChanged();
         }).bounds(sidebarInner, resetY, fieldW, BTN_H)
           .tooltip(Tooltip.create(Component.literal(
                   "Set current waypoint to #1.")))
           .build());
+        sidebarScrollOffset = Math.max(0, Math.min(maxSidebarScroll, sidebarScrollOffset));
+        refreshSidebarWidgets(layout);
 
         // Inline label editor -- kept invisible until the user double-clicks a row.
-        // Added last so it paints on top of the row it's editing. A fresh widget per
-        // init() is fine: init() runs on resize and we drop any in-progress edit there.
-        editingIndex = -1;
+        // Added last so it paints on top of the row it's editing.
         labelEditor = new EditBox(font, 0, 0, 100, BTN_H, Component.literal("Label"));
         labelEditor.setMaxLength(64);
         labelEditor.setVisible(false);
         addRenderableWidget(labelEditor);
+        if (resumeEditingIndex >= 0 && resumeEditingIndex < group.size()) {
+            editingIndex = resumeEditingIndex;
+            labelEditor.setValue(resumeEditingValue);
+            labelEditor.setVisible(true);
+            setFocused(labelEditor);
+            labelEditor.setFocused(true);
+            positionLabelEditor(editingIndex);
+        } else {
+            editingIndex = -1;
+        }
         syncCoordinateEditors();
 
-        // Footer
-        int footerY = height - FOOTER_H;
+        GuiTokens.layoutFooter(width, height - FOOTER_H, footerActionSpecs, footerDoneSpec,
+                this::addRenderableWidget, font);
+    }
 
+    private List<GuiTokens.ButtonSpec> buildFooterActions() {
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
         left.add(new GuiTokens.ButtonSpec("+ Add Here", -1, this::addHere,
                 Tooltip.create(Component.literal("Add a waypoint at your current position."))));
         left.add(new GuiTokens.ButtonSpec("+ Add Named", -1, this::addNamedHere,
                 Tooltip.create(Component.literal("Name a new waypoint at your current position."))));
-        left.add(new GuiTokens.ButtonSpec("+ Add Temp", -1, this::addTempHere,
-                Tooltip.create(Component.literal("Add a temporary waypoint at your current position."))));
+        left.add(new GuiTokens.ButtonSpec(tempWaypointActionLabel(), -1, this::addTempHere,
+                Tooltip.create(Component.literal(tempWaypointActionTooltip()))));
         left.add(new GuiTokens.ButtonSpec("Export", this::export));
+        left.add(new GuiTokens.ButtonSpec(
+                WaypointRepositionMode.isEditModeEnabled() ? "Exit Edit" : "Edit Mode",
+                92,
+                this::toggleEditModeFromEditor,
+                Tooltip.create(Component.literal(
+                        "Enter or exit world edit mode.\n"
+                      + "Left click an existing waypoint in-world to move it."))));
         left.add(new GuiTokens.ButtonSpec("Remove", this::removeSelected));
         left.add(new GuiTokens.ButtonSpec("^", 24, () -> moveSelected(-1)));
         left.add(new GuiTokens.ButtonSpec("v", 24, () -> moveSelected(+1)));
-        GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec("Done", this::onClose);
+        return left;
+    }
 
-        GuiTokens.layoutFooter(width, footerY, left, done, this::addRenderableWidget, font);
+    private <T extends AbstractWidget> T addSidebarWidget(T widget) {
+        sidebarWidgets.add(new SidebarWidget(widget, widget.getY()));
+        addRenderableWidget(widget);
+        return widget;
+    }
+
+    private Layout layout() {
+        int footerSpace = GuiTokens.footerHeight(width, footerActionSpecs, footerDoneSpec, font);
+        int top = PAD_OUTER + 10 + GAP_SECTION;
+        int bottom = contentBottom(height, footerSpace);
+        int sidebarLeft = PAD_OUTER;
+        int sidebarRight = sidebarLeft + SIDEBAR_W;
+        int mainLeft = sidebarRight + GAP_SECTION;
+        int mainRight = width - PAD_OUTER;
+        return new Layout(top, bottom, sidebarLeft, sidebarRight, mainLeft, mainRight);
+    }
+
+    static int contentBottom(int screenHeight, int footerSpace) {
+        return screenHeight - footerSpace - GAP_SECTION;
+    }
+
+    private static int sidebarViewportTop(Layout layout) {
+        return layout.top() + 20;
+    }
+
+    private static int sidebarViewportBottom(Layout layout) {
+        return Math.max(sidebarViewportTop(layout), layout.bottom() - GAP);
+    }
+
+    static int maxSidebarScroll(int contentHeight, int viewportHeight) {
+        return Math.max(0, contentHeight - Math.max(0, viewportHeight));
+    }
+
+    static int sidebarScrollOffsetToReveal(int currentOffset, int widgetHomeY, int widgetHeight,
+                                           int viewportTop, int viewportBottom, int maxScroll) {
+        int revealedOffset = currentOffset;
+        if (widgetHomeY - currentOffset < viewportTop) {
+            revealedOffset = widgetHomeY - viewportTop;
+        } else if (widgetHomeY + widgetHeight - currentOffset > viewportBottom) {
+            revealedOffset = widgetHomeY + widgetHeight - viewportBottom;
+        }
+        return Math.max(0, Math.min(maxScroll, revealedOffset));
+    }
+
+    private void refreshSidebarWidgets(Layout layout) {
+        int viewportTop = sidebarViewportTop(layout);
+        int viewportBottom = sidebarViewportBottom(layout);
+        for (SidebarWidget slot : sidebarWidgets) {
+            int y = slot.homeY() - sidebarScrollOffset;
+            slot.widget().setY(y);
+            slot.widget().visible = y >= viewportTop
+                    && y + slot.widget().getHeight() <= viewportBottom;
+        }
+    }
+
+    private boolean focusAdjacentSidebarWidget(boolean backwards) {
+        int focusedIndex = -1;
+        for (int i = 0; i < sidebarWidgets.size(); i++) {
+            if (sidebarWidgets.get(i).widget() == getFocused()) {
+                focusedIndex = i;
+                break;
+            }
+        }
+        if (focusedIndex < 0) return false;
+
+        int step = backwards ? -1 : 1;
+        for (int i = focusedIndex + step; i >= 0 && i < sidebarWidgets.size(); i += step) {
+            SidebarWidget target = sidebarWidgets.get(i);
+            if (!target.widget().active) continue;
+
+            Layout layout = layout();
+            int viewportTop = sidebarViewportTop(layout);
+            int viewportBottom = sidebarViewportBottom(layout);
+            int maxScroll = maxSidebarScroll(sidebarContentHeight, viewportBottom - viewportTop);
+            sidebarScrollOffset = sidebarScrollOffsetToReveal(
+                    sidebarScrollOffset, target.homeY(), target.widget().getHeight(),
+                    viewportTop, viewportBottom, maxScroll);
+            refreshSidebarWidgets(layout);
+
+            if (getFocused() instanceof AbstractWidget focused) focused.setFocused(false);
+            setFocused(target.widget());
+            target.widget().setFocused(true);
+            return true;
+        }
+        return false;
+    }
+
+    private int addColorModeControls(int sidebarInner, int y, int fieldW) {
+        staticColorBtn = null;
+        gradientStartBtn = null;
+        gradientEndBtn = null;
+
+        WaypointGroup.GradientMode mode = group.gradientMode();
+        if (mode == WaypointGroup.GradientMode.STATIC) {
+            staticColorBtn = new ColorSwatchButton(sidebarInner, y, fieldW, BTN_H,
+                    "One color", group.staticColor(), this::openStaticColorPicker);
+            staticColorBtn.setTooltip(Tooltip.create(Component.literal(
+                    "One route color.\n"
+                  + "Applies in One color mode.")));
+            addSidebarWidget(staticColorBtn);
+            return y + BTN_H + GAP_TIGHT;
+        }
+
+        if (mode == WaypointGroup.GradientMode.AUTO) {
+            int swatchW = (fieldW - GAP_TIGHT) / 2;
+            gradientStartBtn = new ColorSwatchButton(sidebarInner, y, swatchW, BTN_H,
+                    "Start", group.gradientStartColor(), this::openGradientStartPicker);
+            gradientStartBtn.setTooltip(Tooltip.create(Component.literal(
+                    "Gradient start colour.\n"
+                  + "Applies in Gradient mode.")));
+            gradientEndBtn = new ColorSwatchButton(sidebarInner + swatchW + GAP_TIGHT, y,
+                    fieldW - swatchW - GAP_TIGHT, BTN_H,
+                    "End", group.gradientEndColor(), this::openGradientEndPicker);
+            gradientEndBtn.setTooltip(Tooltip.create(Component.literal(
+                    "Gradient end colour.\n"
+                  + "Applies in Gradient mode.")));
+            addSidebarWidget(gradientStartBtn);
+            addSidebarWidget(gradientEndBtn);
+            return y + BTN_H + GAP_TIGHT;
+        }
+
+        return y;
     }
 
     // --- sidebar toggles ---------------------------------------------------------------------
 
-    private Component gradientLabel() {
-        return Component.literal("Gradient: "
-                + (group.gradientMode() == WaypointGroup.GradientMode.AUTO ? "AUTO" : "MANUAL"));
+        private Component colorModeLabel() {
+        return Component.literal("Color: " + colorModeName(group.gradientMode()));
     }
 
-    // Tooltip content is duplicated on both branches (not just the "current" mode) so the
-    // hover surface always explains both options -- a user who doesn't know what AUTO does
-    // wouldn't know what to compare it to if we only described the state they're not in.
-    private static Tooltip gradientTooltip() {
+    static String colorModeName(WaypointGroup.GradientMode mode) {
+        if (mode == WaypointGroup.GradientMode.AUTO) return "Gradient";
+        if (mode == WaypointGroup.GradientMode.MANUAL) return "Manual";
+        return "One";
+    }
+
+        private static Tooltip colorModeTooltip() {
         return Tooltip.create(Component.literal(
                 "Waypoint colour mode.\n"
-              + "AUTO: gradient across route.\n"
-              + "MANUAL: keep custom colours."));
+              + "One color: repaint whole route.\n"
+              + "Gradient: sweep between endpoints.\n"
+              + "Manual: edit waypoint swatches."));
     }
 
-    private void toggleGradientMode(Button b) {
-        group.setGradientMode(group.gradientMode() == WaypointGroup.GradientMode.AUTO
-                ? WaypointGroup.GradientMode.MANUAL : WaypointGroup.GradientMode.AUTO);
-        b.setMessage(gradientLabel());
-        updateGradientButtons();
+    private void toggleColorMode(Button b) {
+        group.setGradientMode(nextColorMode(group.gradientMode()));
+        manager.fireDataChanged();
+        rebuildWidgets();
+    }
+
+    static WaypointGroup.GradientMode nextColorMode(WaypointGroup.GradientMode mode) {
+        if (mode == WaypointGroup.GradientMode.STATIC) return WaypointGroup.GradientMode.AUTO;
+        if (mode == WaypointGroup.GradientMode.AUTO) return WaypointGroup.GradientMode.MANUAL;
+        return WaypointGroup.GradientMode.STATIC;
+    }
+
+        private void updateColorModeButtons() {
+        WaypointGroup.GradientMode mode = group.gradientMode();
+        if (colorModeBtn != null) colorModeBtn.setMessage(colorModeLabel());
+        if (staticColorBtn != null) {
+            staticColorBtn.setColor(group.staticColor());
+            staticColorBtn.active = mode == WaypointGroup.GradientMode.STATIC;
+        }
+        boolean gradientActive = mode == WaypointGroup.GradientMode.AUTO;
+        if (gradientStartBtn != null) {
+            gradientStartBtn.setColor(group.gradientStartColor());
+            gradientStartBtn.active = gradientActive;
+        }
+        if (gradientEndBtn != null) {
+            gradientEndBtn.setColor(group.gradientEndColor());
+            gradientEndBtn.active = gradientActive;
+        }
+    }
+
+        private void openStaticColorPicker() {
+        ColorPickerScreen.open(this, "Route Colour", group.staticColor(), this::onStaticColorPicked);
+    }
+
+        private void onStaticColorPicked(int picked) {
+        group.setStaticColor(picked);
+        group.setGradientMode(WaypointGroup.GradientMode.STATIC);
+        updateColorModeButtons();
         manager.fireDataChanged();
     }
 
-    private void updateGradientButtons() {
-        boolean active = group.gradientMode() == WaypointGroup.GradientMode.AUTO;
-        if (gradientStartBtn != null) gradientStartBtn.active = active;
-        if (gradientEndBtn != null) gradientEndBtn.active = active;
+        private void openGradientStartPicker() {
+        openGradientPicker(true);
     }
 
-    private void openGradientPicker(boolean start) {
-        int current = start ? group.gradientStartColor() : group.gradientEndColor();
-        String title = (start ? "Gradient Start" : "Gradient End") + " Colour";
-        ColorPickerScreen.open(this, title, current, picked -> {
-            if (start) group.setGradientStartColor(picked);
-            else       group.setGradientEndColor(picked);
-            // Push the new colour onto the swatch so the sidebar reflects the
-            // change immediately without re-running init().
-            if (gradientStartBtn != null) gradientStartBtn.setColor(group.gradientStartColor());
-            if (gradientEndBtn   != null) gradientEndBtn.setColor(group.gradientEndColor());
-            manager.fireDataChanged();
-        });
+        private void openGradientEndPicker() {
+        openGradientPicker(false);
+    }
+
+        private void openGradientPicker(boolean start) {
+        if (start) {
+            ColorPickerScreen.open(this, "Gradient Start Colour",
+                    group.gradientStartColor(), this::onGradientStartPicked);
+        } else {
+            ColorPickerScreen.open(this, "Gradient End Colour",
+                    group.gradientEndColor(), this::onGradientEndPicked);
+        }
+    }
+
+        private void onGradientStartPicked(int picked) {
+        group.setGradientStartColor(picked);
+        updateColorModeButtons();
+        manager.fireDataChanged();
+    }
+
+        private void onGradientEndPicked(int picked) {
+        group.setGradientEndColor(picked);
+        updateColorModeButtons();
+        manager.fireDataChanged();
     }
 
     private Component modeLabel() {
@@ -354,9 +599,9 @@ public final class GroupEditScreen extends Screen {
         coordYBox.setWidth(boxW);
         coordZBox.setWidth(width - boxW * 2 - GAP_TIGHT * 2);
 
-        addRenderableWidget(coordXBox);
-        addRenderableWidget(coordYBox);
-        addRenderableWidget(coordZBox);
+        addSidebarWidget(coordXBox);
+        addSidebarWidget(coordYBox);
+        addSidebarWidget(coordZBox);
     }
 
     private EditBox createCoordinateEditor(String label, int axis) {
@@ -371,19 +616,41 @@ public final class GroupEditScreen extends Screen {
 
     private void updateSelectedCoordinate(int axis, String raw) {
         if (syncingCoordinateEditors) return;
-        if (!hasSelectedWaypoint() || raw.isBlank()) return;
-
-        try {
-            int value = Integer.parseInt(raw.trim());
-            Waypoint w = group.get(selectedIndex);
-            int x = axis == 0 ? value : w.x();
-            int y = axis == 1 ? value : w.y();
-            int z = axis == 2 ? value : w.z();
-            group.set(selectedIndex, w.withPos(x, y, z));
-            manager.fireDataChanged();
-        } catch (NumberFormatException ignored) {
-            // Partial integer edits such as "-" are expected while typing.
+        if (!hasSelectedWaypoint()) {
+            coordinateEditError = null;
+            return;
         }
+
+        Integer value = parseCoordinateInput(raw);
+        if (value == null) {
+            coordinateEditError = coordinateErrorMessage(axis, raw);
+            return;
+        }
+
+        Waypoint w = group.get(selectedIndex);
+        int x = axis == 0 ? value : w.x();
+        int y = axis == 1 ? value : w.y();
+        int z = axis == 2 ? value : w.z();
+        group.set(selectedIndex, w.withPos(x, y, z));
+        coordinateEditError = null;
+        manager.fireDataChanged();
+    }
+
+    static Integer parseCoordinateInput(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return null;
+        try {
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    static String coordinateErrorMessage(int axis, String raw) {
+        String axisLabel = axis == 0 ? "X" : axis == 1 ? "Y" : "Z";
+        if (raw == null || raw.trim().isEmpty()) {
+            return axisLabel + " coordinate is required.";
+        }
+        return axisLabel + " coordinate must be a whole number.";
     }
 
     // --- actions ----------------------------------------------------------------------------
@@ -394,6 +661,7 @@ public final class GroupEditScreen extends Screen {
 
     private void selectWaypoint(int index) {
         selectedIndex = index >= 0 && index < group.size() ? index : -1;
+        coordinateEditError = null;
         syncCoordinateEditors();
     }
 
@@ -429,12 +697,16 @@ public final class GroupEditScreen extends Screen {
     private void moveSelectedHere() {
         if (!hasSelectedWaypoint()) return;
 
+        WaypointGroup editTarget = durableEditTarget();
+        if (editTarget == null || selectedIndex >= editTarget.size()) return;
+
         LocalPlayer p = Minecraft.getInstance().player;
         if (p == null) return;
 
         PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
                 p.getX(), p.getY(), p.getZ(), config);
-        group.moveWaypointTo(selectedIndex, pos.x(), pos.y(), pos.z());
+        DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(
+                editTarget, selectedIndex, pos.x(), pos.y(), pos.z());
         coordinateEditorIndex = -1;
         syncCoordinateEditors();
         manager.fireDataChanged();
@@ -447,33 +719,65 @@ public final class GroupEditScreen extends Screen {
         AddTempScreen.open(this, manager, config);
     }
 
+    static String tempWaypointActionLabel() {
+        return "+ Temp Marker";
+    }
+
+    static String tempWaypointActionTooltip() {
+        return "Creates a temporary marker in the Temporary list, not this route.";
+    }
+
     private void addNamedHere() {
         AddNamedWaypointScreen.open(this, manager, config, group);
     }
 
+    private int defaultNewWaypointFlags(int x, int y, int z) {
+        return isDungeonRoomGroup()
+                ? DungeonWaypointSkipRules.defaultFlagsAt(x, y, z)
+                : 0;
+    }
+
     private void addHere() {
+        WaypointGroup editTarget = durableEditTarget();
+        if (editTarget == null) return;
+
         LocalPlayer p = Minecraft.getInstance().player;
         if (p == null) return;
         PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
                 p.getX(), p.getY(), p.getZ(), config);
-        group.add(new Waypoint(
+        int flags = defaultNewWaypointFlags(pos.x(), pos.y(), pos.z());
+        editTarget.add(DungeonRoomWaypointPlacement.toStoredWaypoint(editTarget, new Waypoint(
                 pos.x(), pos.y(), pos.z(),
-                "", Waypoint.DEFAULT_COLOR, 0, 0.0));
-        int newIndex = group.size() - 1;
+                "", config.defaultWaypointColor(), flags, 0.0)));
+        int newIndex = editTarget.size() - 1;
         // Run the shared post-add flow (focus + mode/toast updates) so the
         // GUI add button behaves identically to /wp add and the keybind path.
-        new WaypointAddFlow().afterWaypointAdded(group, newIndex);
+        new WaypointAddFlow().afterWaypointAdded(editTarget, newIndex);
         if (skipAheadBtn != null) skipAheadBtn.setMessage(skipAheadLabel());
-        selectWaypoint(newIndex);
+        if (editTarget == group) selectWaypoint(newIndex);
         manager.fireDataChanged();
+    }
+
+    private WaypointGroup durableEditTarget() {
+        WaypointGroup editTarget = DungeonRoomRouteSync.durableEditTarget(manager, group);
+        if (editTarget == null) {
+            coordinateEditError = "Convert downloaded dungeon secrets to an editable route first.";
+        }
+        return editTarget;
     }
 
     private void removeSelected() {
         if (selectedIndex < 0 || selectedIndex >= group.size()) return;
+        int removedIndex = selectedIndex;
         group.remove(selectedIndex);
         coordinateEditorIndex = -1;
-        selectWaypoint(Math.min(selectedIndex, group.size() - 1));
+        selectWaypoint(selectedIndexAfterRemoval(removedIndex, group.size()));
         manager.fireDataChanged();
+    }
+
+    static int selectedIndexAfterRemoval(int removedIndex, int sizeAfterRemoval) {
+        if (removedIndex < 0 || sizeAfterRemoval <= 0) return -1;
+        return Math.min(removedIndex, sizeAfterRemoval - 1);
     }
 
     private void moveSelected(int delta) {
@@ -488,70 +792,221 @@ public final class GroupEditScreen extends Screen {
         ExportScreen.openForGroup(this, config, group);
     }
 
+    private void toggleEditModeFromEditor() {
+        boolean enabled = WaypointRepositionMode.toggleEditMode(manager, config);
+        if (minecraft == null) return;
+        if (enabled) {
+            MinecraftCompat.setScreen(minecraft, null);
+            return;
+        }
+        rebuildWidgets();
+    }
+
     // --- render -----------------------------------------------------------------------------
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
-        super.render(g, mouseX, mouseY, partial);
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        super.extractRenderState(g, mouseX, mouseY, partial);
 
-        // Header
-        g.drawString(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
-        String status = group.mainWaypointCount() + " main / " + group.size() + " pts  .  "
+        renderHeader(g, mouseX, mouseY);
+        Layout layout = layout();
+        renderSidebarPanel(g, layout.sidebarLeft(), layout.top(),
+                layout.sidebarRight(), layout.bottom());
+        renderMain(g, layout.mainLeft(), layout.top(),
+                layout.mainRight(), layout.bottom(), mouseX, mouseY);
+        if (isHeaderInfoButtonHovered(mouseX, mouseY)) {
+            renderRouteInfoTooltip(g, mouseX, mouseY);
+        } else {
+            String tooltip = waypointControlTooltipAt(mouseX, mouseY);
+            if (tooltip == null) {
+                tooltip = rowSupplementalTooltipAt(mouseX, mouseY);
+            }
+            if (tooltip != null) {
+                renderInlineTooltip(g, tooltip, mouseX, mouseY);
+            }
+        }
+    }
+
+    private void renderHeader(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+        String title = headerTitleText();
+        String status = headerStatusText();
+        String clippedTitle = clippedHeaderTitle(title, status);
+        g.text(font, clippedTitle, PAD_OUTER, PAD_OUTER, TEXT, false);
+
+        int infoX = headerInfoButtonX(clippedTitle);
+        boolean infoHovered = isHeaderInfoButtonHovered(mouseX, mouseY);
+        if (infoHovered) g.requestCursor(CursorTypes.POINTING_HAND);
+        renderHeaderInfoButton(g, infoX, headerInfoButtonY(), infoHovered);
+
+        g.text(font, status, width - PAD_OUTER - font.width(status), PAD_OUTER, TEXT_DIM, false);
+        if (coordinateEditError != null) {
+            g.text(font, coordinateEditError, PAD_OUTER, PAD_OUTER + 14,
+                    0xFFFF8A8A, false);
+        }
+    }
+
+    private String headerTitleText() {
+        return "Edit: " + group.name();
+    }
+
+    private String headerStatusText() {
+        return group.mainWaypointCount() + " main / " + group.size() + " pts  .  "
                 + RouteProgress.summary(group) + "  .  @"
                 + group.currentMainOrdinal()
                 + "  .  radius " + String.format("%.1f", group.defaultRadius());
-        g.drawString(font, status, width - PAD_OUTER - font.width(status), PAD_OUTER, TEXT_DIM, false);
-
-        // Discoverability hint for the two non-obvious list gestures. Placed under
-        // the title in TEXT_MUTED so it reads as ambient help rather than UI chrome.
-        // A tooltip would hide these behind a hover the user has to guess at; an
-        // always-visible line is cheaper than documentation they won't read.
-        String hint = "double-click: rename  .  shift-left: reposition  .  right-click: set current  .  shift-right-click: subwaypoint";
-        g.drawString(font, hint, PAD_OUTER, PAD_OUTER + 11, TEXT_MUTED, false);
-
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int bottom = height - FOOTER_H - GAP_SECTION;
-
-        int sidebarLeft = PAD_OUTER;
-        int sidebarRight = sidebarLeft + SIDEBAR_W;
-        int mainLeft = sidebarRight + GAP_SECTION;
-        int mainRight = width - PAD_OUTER;
-
-        renderSidebarPanel(g, sidebarLeft, top, sidebarRight, bottom);
-        renderMain(g, mainLeft, top, mainRight, bottom, mouseX, mouseY);
     }
 
-    private void renderSidebarPanel(GuiGraphics g, int x1, int y1, int x2, int y2) {
+    private String clippedHeaderTitle(String title, String status) {
+        String safeTitle = title == null ? "" : title;
+        String safeStatus = status == null ? "" : status;
+        int statusLeft = width - PAD_OUTER - font.width(safeStatus);
+        int available = statusLeft - PAD_OUTER - HEADER_INFO_BUTTON_SIZE
+                - GAP_TIGHT - GAP_SECTION;
+        if (available <= 0) return "";
+        return font.plainSubstrByWidth(safeTitle, available);
+    }
+
+    private int headerInfoButtonX(String clippedTitle) {
+        return PAD_OUTER + font.width(clippedTitle == null ? "" : clippedTitle) + GAP_TIGHT;
+    }
+
+    private int headerInfoButtonY() {
+        return PAD_OUTER + (font.lineHeight - HEADER_INFO_BUTTON_SIZE) / 2;
+    }
+
+    private boolean isHeaderInfoButtonHovered(int mouseX, int mouseY) {
+        String clippedTitle = clippedHeaderTitle(headerTitleText(), headerStatusText());
+        int x = headerInfoButtonX(clippedTitle);
+        return isInside(mouseX, mouseY, x, headerInfoButtonY(),
+                HEADER_INFO_BUTTON_SIZE, HEADER_INFO_BUTTON_SIZE);
+    }
+
+    private void renderHeaderInfoButton(GuiGraphicsExtractor g, int x, int y, boolean hovered) {
+        int border = hovered ? 0xFFFFFFFF : BORDER;
+        int fill = hovered ? 0xFF26343A : 0xFF1A1F24;
+        g.fill(x, y, x + HEADER_INFO_BUTTON_SIZE, y + HEADER_INFO_BUTTON_SIZE, border);
+        g.fill(x + 1, y + 1, x + HEADER_INFO_BUTTON_SIZE - 1,
+                y + HEADER_INFO_BUTTON_SIZE - 1, fill);
+        String glyph = "i";
+        int glyphX = x + (HEADER_INFO_BUTTON_SIZE - font.width(glyph)) / 2;
+        g.text(font, glyph, glyphX, y + 2, hovered ? ACCENT : TEXT_DIM, false);
+    }
+
+    private void renderRouteInfoTooltip(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+        int lineCount = Math.min(ROUTE_INFO_LABELS.length, ROUTE_INFO_DESCRIPTIONS.length);
+        int pad = 7;
+        int lineGap = 3;
+        int maxLabelWidth = 0;
+        int maxLineWidth = font.width(ROUTE_INFO_TITLE);
+        for (int i = 0; i < lineCount; i++) {
+            maxLabelWidth = Math.max(maxLabelWidth, font.width(ROUTE_INFO_LABELS[i]));
+        }
+        for (int i = 0; i < lineCount; i++) {
+            int lineWidth = maxLabelWidth + GAP
+                    + font.width(ROUTE_INFO_DESCRIPTIONS[i]);
+            maxLineWidth = Math.max(maxLineWidth, lineWidth);
+        }
+
+        int tooltipW = maxLineWidth + pad * 2;
+        int tooltipH = pad * 2 + font.lineHeight + 5
+                + lineCount * font.lineHeight + Math.max(0, lineCount - 1) * lineGap;
+        int x = Math.min(mouseX + 12, Math.max(PAD_OUTER, width - PAD_OUTER - tooltipW));
+        int y = Math.min(mouseY + 12,
+                Math.max(PAD_OUTER, layout().bottom() - tooltipH));
+        x = Math.max(PAD_OUTER, x);
+        y = Math.max(PAD_OUTER, y);
+
+        g.fill(x, y, x + tooltipW, y + tooltipH, 0xF0101216);
+        g.fill(x, y, x + tooltipW, y + 1, BORDER);
+        g.fill(x, y + tooltipH - 1, x + tooltipW, y + tooltipH, BORDER);
+        g.fill(x, y, x + 1, y + tooltipH, BORDER);
+        g.fill(x + tooltipW - 1, y, x + tooltipW, y + tooltipH, BORDER);
+
+        int textX = x + pad;
+        int textY = y + pad;
+        g.text(font, ROUTE_INFO_TITLE, textX, textY, ACCENT, false);
+        int separatorY = textY + font.lineHeight + 2;
+        g.fill(textX, separatorY, x + tooltipW - pad, separatorY + 1, 0x55FFFFFF);
+
+        int rowY = separatorY + 4;
+        for (int i = 0; i < lineCount; i++) {
+            int labelColor = i < ROUTE_INFO_LABEL_COLORS.length
+                    ? ROUTE_INFO_LABEL_COLORS[i]
+                    : TEXT;
+            g.text(font, ROUTE_INFO_LABELS[i], textX, rowY, labelColor, false);
+            g.text(font, ROUTE_INFO_DESCRIPTIONS[i],
+                    textX + maxLabelWidth + GAP, rowY, TEXT_DIM, false);
+            rowY += font.lineHeight + lineGap;
+        }
+    }
+
+    private void renderInlineTooltip(GuiGraphicsExtractor g, String text, int mouseX, int mouseY) {
+        int pad = 4;
+        int tooltipW = font.width(text) + pad * 2;
+        int tooltipH = font.lineHeight + pad * 2;
+        int x = Math.min(mouseX + 12, Math.max(PAD_OUTER, width - PAD_OUTER - tooltipW));
+        int y = Math.min(mouseY + 12,
+                Math.max(PAD_OUTER, layout().bottom() - tooltipH));
+        x = Math.max(PAD_OUTER, x);
+        y = Math.max(PAD_OUTER, y);
+
+        g.fill(x, y, x + tooltipW, y + tooltipH, 0xF0101216);
+        g.fill(x, y, x + tooltipW, y + 1, BORDER);
+        g.fill(x, y + tooltipH - 1, x + tooltipW, y + tooltipH, BORDER);
+        g.fill(x, y, x + 1, y + tooltipH, BORDER);
+        g.fill(x + tooltipW - 1, y, x + tooltipW, y + tooltipH, BORDER);
+        g.text(font, text, x + pad, y + pad, TEXT, false);
+    }
+
+    private void renderSidebarPanel(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         // A faint white-wash instead of another dark fill. Stacking SURFACE / SURFACE_SUBTLE
         // (both dark) behind already-dark EditBox/Button widgets made the whole sidebar
         // read as a black slab against the world. A gentle light overlay separates the
         // region from the scene without compounding darkness on the controls.
         g.fill(x1, y1, x2, y2, SIDEBAR_BG);
         g.fill(x2, y1, x2 + 1, y2, BORDER);
-        g.drawString(font, "Group", x1 + GAP, y1 + 10, TEXT, false);
+        g.text(font, "Route", x1 + GAP, y1 + 10, TEXT, false);
 
         // Inline "Radius 3.0" readout spanning the space between the two bump buttons.
         // The label is co-located with the value so there's no detached header for the
         // user to miss, and the whole row visually reads as one control.
-        if (radiusMinusBtn != null && radiusPlusBtn != null) {
+        if (radiusMinusBtn != null && radiusPlusBtn != null
+                && radiusMinusBtn.visible && radiusPlusBtn.visible) {
             int rowMidY = radiusMinusBtn.getY() + BTN_H / 2 - 4;
             int inlineLeft = radiusMinusBtn.getX() + radiusMinusBtn.getWidth();
             int inlineRight = radiusPlusBtn.getX();
             String text = "Radius " + String.format("%.1f", group.defaultRadius());
             int textW = font.width(text);
             int textX = inlineLeft + ((inlineRight - inlineLeft) - textW) / 2;
-            g.drawString(font, text, textX, rowMidY, TEXT, false);
+            g.text(font, text, textX, rowMidY, TEXT, false);
         }
+
+        renderSidebarScrollbar(g, x2 - 3, y1 + 20, Math.max(y1 + 20, y2 - GAP));
+    }
+
+    private void renderSidebarScrollbar(GuiGraphicsExtractor g, int x, int y1, int y2) {
+        int viewportHeight = y2 - y1;
+        int maxScroll = maxSidebarScroll(sidebarContentHeight, viewportHeight);
+        if (viewportHeight <= 0 || maxScroll <= 0) return;
+
+        int thumbHeight = Math.max(12, viewportHeight * viewportHeight / sidebarContentHeight);
+        int travel = viewportHeight - thumbHeight;
+        if (travel <= 0) return;
+
+        int thumbY = y1 + Math.max(0, Math.min(maxScroll, sidebarScrollOffset))
+                * travel / maxScroll;
+        g.fill(x, y1 + 2, x + 2, y2 - 2, BORDER);
+        g.fill(x, thumbY, x + 2, thumbY + thumbHeight, TEXT_MUTED);
     }
 
     /** Lighter sidebar wash -- mild white overlay, roughly 12% alpha. */
     private static final int SIDEBAR_BG = 0x20FFFFFF;
 
-    private void renderMain(GuiGraphics g, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
+    private void renderMain(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
         List<Waypoint> pts = group.waypoints();
         if (pts.isEmpty()) {
-            g.drawString(font, "No waypoints yet.", x1, y1 + 8, TEXT, false);
-            g.drawString(font, "Walk somewhere and click \"+ Add Here\".",
+            g.text(font, "No waypoints yet.", x1, y1 + 8, TEXT, false);
+            g.text(font, "Walk somewhere and click \"+ Add Here\".",
                     x1, y1 + 8 + 14, TEXT_DIM, false);
             return;
         }
@@ -571,13 +1026,13 @@ public final class GroupEditScreen extends Screen {
 
         // Re-place the editor each frame so it follows the row through layout changes
         // (window resize changes column widths; scroll shifts the row Y). The actual
-        // EditBox widget draw is handled by super.render -> addRenderableWidget.
+        // EditBox widget draw is handled by super.extractRenderState -> addRenderableWidget.
         if (editingIndex >= 0 && editingIndex < pts.size()) {
             positionLabelEditor(editingIndex);
         }
     }
 
-    private void renderWaypointConnectors(GuiGraphics g, List<Waypoint> pts,
+    private void renderWaypointConnectors(GuiGraphicsExtractor g, List<Waypoint> pts,
                                           int rowX, int clipTop, int clipBottom,
                                           int firstRowY, int pitch) {
         if (pts.size() < 2) return;
@@ -601,7 +1056,7 @@ public final class GroupEditScreen extends Screen {
         }
     }
 
-    private static void drawVerticalGradientLine(GuiGraphics g, int centerX, int y1, int y2,
+    private static void drawVerticalGradientLine(GuiGraphicsExtractor g, int centerX, int y1, int y2,
                                                  int color1, int color2,
                                                  int clipTop, int clipBottom) {
         if (y1 == y2) return;
@@ -619,7 +1074,7 @@ public final class GroupEditScreen extends Screen {
         }
     }
 
-    private static void drawHorizontalGradientLine(GuiGraphics g, int x1, int x2, int centerY,
+    private static void drawHorizontalGradientLine(GuiGraphicsExtractor g, int x1, int x2, int centerY,
                                                    int color1, int color2,
                                                    int clipTop, int clipBottom) {
         if (centerY < clipTop || centerY > clipBottom) return;
@@ -646,14 +1101,17 @@ public final class GroupEditScreen extends Screen {
         return 0xCC000000 | (r << 16) | (green << 8) | b;
     }
 
-    private void renderWaypointRow(GuiGraphics g, Waypoint w, int index,
+    private void renderWaypointRow(GuiGraphicsExtractor g, Waypoint w, int index,
                                    int x1, int y1, int x2, int mouseX, int mouseY,
                                    boolean hasSubwaypoints) {
         boolean selected = index == selectedIndex;
         boolean subwaypoint = group.isSubwaypoint(index);
-        boolean isCurrent = !subwaypoint && index == group.currentIndex();
-        boolean subwaypointActive = subwaypoint && group.parentMainIndex(index) == group.currentIndex();
+        boolean isCurrent = index == group.currentIndex();
+        boolean visuallyActive = isWaypointRowVisuallyActive(group, index);
         boolean hovered = mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y1 + ROW_H;
+        if (hovered && !(index == editingIndex && isOverLabelEditor(mouseX, mouseY))) {
+            g.requestCursor(CursorTypes.POINTING_HAND);
+        }
 
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
         if (bg != 0) g.fill(x1, y1, x2, y1 + ROW_H, bg);
@@ -681,34 +1139,301 @@ public final class GroupEditScreen extends Screen {
         // Custom names only replace the number in world-rendered labels.
         String ordinal = hasSubwaypoints ? group.displayIndexLabel(index) : "#" + (index + 1);
         String label = ordinal + "  (" + w.x() + ", " + w.y() + ", " + w.z() + ")";
-        int textColor = isCurrent || subwaypointActive ? 0xFFFFF080
+        int textColor = visuallyActive ? 0xFFFFF080
                 : index < group.currentIndex() ? TEXT_MUTED
                 : subwaypoint ? TEXT_DIM
                 : TEXT;
-        g.drawString(font, label, sx + 20, y1 + 7, textColor, false);
+        boolean showDungeonWaypointControls = isDungeonRoomGroup();
+        int textX = sx + 20;
+        int textRightX = waypointRowTextRightEdge(x2, subwaypoint,
+                showDungeonWaypointControls,
+                waypointRightMetadataWidth(w, subwaypoint, isCurrent));
+        renderWaypointRowLabelAndName(g, label, w, index, textX, textRightX, y1, textColor);
 
-        // Skip the static name while the row is being renamed -- the EditBox widget sits
-        // on top of this slot and drawing the old name behind it leaks through at the
-        // edges of the edit box when the caret is mid-text.
-        if (w.hasName() && index != editingIndex) {
-            g.drawString(font, AmpersandFormatting.translate(w.name()),
-                    sx + 20 + font.width(label) + GAP, y1 + 7, TEXT_DIM, false);
-        }
-
-        int rightTextX = x2 - GAP;
+        renderWaypointControlButtons(g, w, x2, y1, mouseX, mouseY, showDungeonWaypointControls);
+        int rightTextX = waypointControlButtonsLeft(x2, showDungeonWaypointControls) - GAP;
         if (subwaypoint) {
+            renderSubwaypointStyleButtons(g, w, x2, y1, mouseX, mouseY,
+                    showDungeonWaypointControls);
+            rightTextX = subwaypointStyleButtonsLeft(x2, showDungeonWaypointControls) - GAP;
             String tag = "subwaypoint";
             int tagW = font.width(tag);
-            g.drawString(font, tag, rightTextX - tagW, y1 + 7, SUBWAY_ACCENT, false);
+            g.text(font, tag, rightTextX - tagW, y1 + 7, SUBWAY_ACCENT, false);
             rightTextX -= tagW + GAP;
         }
         if (w.customRadius() > 0) {
             String r = "r=" + String.format("%.1f", w.customRadius());
-            g.drawString(font, r, rightTextX - font.width(r), y1 + 7, TEXT_DIM, false);
+            g.text(font, r, rightTextX - font.width(r), y1 + 7, TEXT_DIM, false);
         } else if (isCurrent) {
             String tag = "current";
-            g.drawString(font, tag, rightTextX - font.width(tag), y1 + 7, 0xFFFFF080, false);
+            g.text(font, tag, rightTextX - font.width(tag), y1 + 7, 0xFFFFF080, false);
         }
+    }
+
+    static boolean isWaypointRowVisuallyActive(WaypointGroup group, int index) {
+        if (group == null || index < 0 || index >= group.size()) return false;
+        if (group.loadMode() == WaypointGroup.LoadMode.STATIC) return true;
+
+        int currentIndex = group.currentIndex();
+        int activeSubwaypointParent = group.activeSubwaypointParentIndex();
+        if (group.isSubwaypoint(index)) {
+            if (index == currentIndex) return true;
+            int parent = group.parentMainIndex(index);
+            return parent == activeSubwaypointParent || parent == currentIndex;
+        }
+        return index == currentIndex || index == activeSubwaypointParent;
+    }
+
+    private void renderWaypointRowLabelAndName(GuiGraphicsExtractor g, String label,
+                                               Waypoint waypoint, int index,
+                                               int textX, int textRightX,
+                                               int rowY, int labelColor) {
+        int labelWidth = Math.max(0, textRightX - textX);
+        if (labelWidth <= 0) return;
+
+        String clippedLabel = font.plainSubstrByWidth(label, labelWidth);
+        if (!clippedLabel.isEmpty()) {
+            g.text(font, clippedLabel, textX, rowY + 7, labelColor, false);
+        }
+
+        // Skip the static name while the row is being renamed -- the EditBox widget sits
+        // on top of this slot and drawing the old name behind it leaks through at the
+        // edges of the edit box when the caret is mid-text.
+        if (!waypoint.hasName() || index == editingIndex) return;
+
+        int nameX = textX + font.width(clippedLabel) + GAP;
+        int nameWidth = Math.max(0, textRightX - nameX);
+        if (nameWidth <= 0) return;
+
+        String clippedName = font.plainSubstrByWidth(
+                AmpersandFormatting.translate(waypoint.name()), nameWidth);
+        if (!clippedName.isEmpty()) {
+            g.text(font, clippedName, nameX, rowY + 7, TEXT_DIM, false);
+        }
+    }
+
+    private int waypointRightMetadataWidth(Waypoint waypoint, boolean subwaypoint,
+                                           boolean isCurrent) {
+        int width = 0;
+        if (subwaypoint) {
+            width += font.width("subwaypoint");
+        }
+
+        String trailing = waypointTrailingMetadata(waypoint, isCurrent);
+        if (!trailing.isEmpty()) {
+            if (width > 0) width += GAP;
+            width += font.width(trailing);
+        }
+        return width;
+    }
+
+    private static String waypointTrailingMetadata(Waypoint waypoint, boolean isCurrent) {
+        if (waypoint.customRadius() > 0) {
+            return "r=" + String.format("%.1f", waypoint.customRadius());
+        }
+        return isCurrent ? "current" : "";
+    }
+
+    static int waypointRowTextRightEdge(int rowRight, boolean subwaypoint,
+                                        boolean showDungeonControls,
+                                        int rightMetadataWidth) {
+        int right = subwaypoint
+                ? subwaypointStyleButtonsLeft(rowRight, showDungeonControls) - GAP
+                : waypointControlButtonsLeft(rowRight, showDungeonControls) - GAP;
+        if (rightMetadataWidth > 0) {
+            right -= rightMetadataWidth + GAP;
+        }
+        return right;
+    }
+
+    static int waypointRowTextWidth(int textLeft, int rowRight, boolean subwaypoint,
+                                    boolean showDungeonControls, int rightMetadataWidth) {
+        return Math.max(0, waypointRowTextRightEdge(rowRight, subwaypoint,
+                showDungeonControls, rightMetadataWidth) - textLeft);
+    }
+
+    private void renderWaypointControlButtons(GuiGraphicsExtractor g, Waypoint waypoint,
+                                              int rowRight, int rowY,
+                                              int mouseX, int mouseY,
+                                              boolean showDungeonControls) {
+        int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
+        if (showDungeonControls) {
+            int standX = standSkipButtonX(rowRight);
+            renderWaypointControlButton(g, standX, y,
+                    waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_STAND),
+                    isInside(mouseX, mouseY, standX, y,
+                            SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
+                    WAYPOINT_CONTROL_ACTION_STAND_SKIP);
+
+            int interactX = interactSkipButtonX(rowRight);
+            renderWaypointControlButton(g, interactX, y,
+                    waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT),
+                    isInside(mouseX, mouseY, interactX, y,
+                            SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
+                    WAYPOINT_CONTROL_ACTION_INTERACT_SKIP);
+        }
+        renderDepthCheckButton(g, waypoint, rowRight, rowY, mouseX, mouseY);
+    }
+
+    private void renderWaypointControlButton(GuiGraphicsExtractor g, int x, int y,
+                                             boolean active, boolean hovered,
+                                             int action) {
+        int bg = active ? DEPTH_CHECK_BUTTON_ACTIVE
+                : hovered ? SUBWAY_STYLE_BUTTON_HOVER : SUBWAY_STYLE_BUTTON_IDLE;
+        int border = hovered ? 0xFFFFFFFF : BORDER;
+        g.fill(x, y, x + SUBWAY_STYLE_BUTTON_W, y + SUBWAY_STYLE_BUTTON_H, border);
+        g.fill(x + 1, y + 1, x + SUBWAY_STYLE_BUTTON_W - 1, y + SUBWAY_STYLE_BUTTON_H - 1, bg);
+
+        int cx = x + SUBWAY_STYLE_BUTTON_W / 2;
+        int cy = y + SUBWAY_STYLE_BUTTON_H / 2;
+        int primary = active ? 0xFFFFFFFF : TEXT;
+        int secondary = active ? 0xFFFFFFFF : TEXT_MUTED;
+        if (action == WAYPOINT_CONTROL_ACTION_STAND_SKIP) {
+            g.fill(cx - 6, cy - 5, cx - 2, cy + 1, primary);
+            g.fill(cx - 4, cy + 2, cx, cy + 5, secondary);
+            g.fill(cx + 2, cy - 3, cx + 6, cy + 3, primary);
+            g.fill(cx, cy + 4, cx + 4, cy + 7, secondary);
+            return;
+        }
+
+        g.fill(cx - 6, cy - 4, cx + 4, cy - 2, primary);
+        g.fill(cx - 2, cy - 2, cx, cy + 5, primary);
+        g.fill(cx, cy + 3, cx + 6, cy + 5, secondary);
+        g.fill(cx + 5, cy - 6, cx + 7, cy - 4, active ? 0xFFFFFFFF : ACCENT);
+        g.fill(cx + 7, cy - 4, cx + 9, cy - 2, active ? 0xFFFFFFFF : ACCENT);
+    }
+
+    private void renderDepthCheckButton(GuiGraphicsExtractor g, Waypoint waypoint,
+                                        int rowRight, int rowY,
+                                        int mouseX, int mouseY) {
+        int x = depthCheckButtonX(rowRight);
+        int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
+        boolean active = waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED);
+        boolean hovered = isInside(mouseX, mouseY, x, y,
+                SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H);
+        int bg = active ? DEPTH_CHECK_BUTTON_ACTIVE
+                : hovered ? SUBWAY_STYLE_BUTTON_HOVER : SUBWAY_STYLE_BUTTON_IDLE;
+        int border = hovered ? 0xFFFFFFFF : BORDER;
+        g.fill(x, y, x + SUBWAY_STYLE_BUTTON_W, y + SUBWAY_STYLE_BUTTON_H, border);
+        g.fill(x + 1, y + 1, x + SUBWAY_STYLE_BUTTON_W - 1, y + SUBWAY_STYLE_BUTTON_H - 1, bg);
+
+        int cx = x + SUBWAY_STYLE_BUTTON_W / 2;
+        int cy = y + SUBWAY_STYLE_BUTTON_H / 2;
+        g.fill(cx - 7, cy - 5, cx + 2, cy - 4, TEXT_MUTED);
+        g.fill(cx - 5, cy - 1, cx + 5, cy, TEXT);
+        g.fill(cx - 3, cy + 3, cx + 8, cy + 4, TEXT_MUTED);
+        int markerColor = active ? 0xFFFFFFFF : ACCENT;
+        g.fill(cx + 5, cy - 6, cx + 7, cy + 6, markerColor);
+    }
+
+    private void renderSubwaypointStyleButtons(GuiGraphicsExtractor g, Waypoint waypoint,
+                                               int rowRight, int rowY,
+                                               int mouseX, int mouseY,
+                                               boolean showDungeonControls) {
+        int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
+        int smallX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_SMALL,
+                showDungeonControls);
+        int filledX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_FILLED,
+                showDungeonControls);
+        int hideX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT,
+                showDungeonControls);
+        renderSubwaypointStyleButton(g, smallX, y,
+                waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT),
+                isInside(mouseX, mouseY, smallX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
+                SUBWAY_STYLE_ACTION_SMALL);
+        renderSubwaypointStyleButton(g, filledX, y,
+                waypoint.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT),
+                isInside(mouseX, mouseY, filledX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
+                SUBWAY_STYLE_ACTION_FILLED);
+        renderSubwaypointStyleButton(g, hideX, y,
+                waypoint.hasFlag(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED),
+                isInside(mouseX, mouseY, hideX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
+                SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT);
+    }
+
+    private void renderSubwaypointStyleButton(GuiGraphicsExtractor g, int x, int y,
+                                              boolean active, boolean hovered,
+                                              int action) {
+        int bg = active ? SUBWAY_STYLE_BUTTON_ACTIVE
+                : hovered ? SUBWAY_STYLE_BUTTON_HOVER : SUBWAY_STYLE_BUTTON_IDLE;
+        int border = hovered ? 0xFFFFFFFF : BORDER;
+        g.fill(x, y, x + SUBWAY_STYLE_BUTTON_W, y + SUBWAY_STYLE_BUTTON_H, border);
+        g.fill(x + 1, y + 1, x + SUBWAY_STYLE_BUTTON_W - 1, y + SUBWAY_STYLE_BUTTON_H - 1, bg);
+
+        if (action == SUBWAY_STYLE_ACTION_SMALL) {
+            int cx = x + SUBWAY_STYLE_BUTTON_W / 2;
+            int cy = y + SUBWAY_STYLE_BUTTON_H / 2;
+            g.fill(cx - 2, cy - 2, cx + 3, cy - 1, TEXT);
+            g.fill(cx - 2, cy + 2, cx + 3, cy + 3, TEXT);
+            g.fill(cx - 2, cy - 2, cx - 1, cy + 3, TEXT);
+            g.fill(cx + 2, cy - 2, cx + 3, cy + 3, TEXT);
+            g.fill(cx, cy, cx + 1, cy + 1, active ? 0xFFFFFFFF : SUBWAY_ACCENT);
+            return;
+        }
+
+        if (action == SUBWAY_STYLE_ACTION_FILLED) {
+            int left = x + SUBWAY_STYLE_BUTTON_W / 2 - 4;
+            int top = y + SUBWAY_STYLE_BUTTON_H / 2 - 4;
+            int right = left + 8;
+            int bottom = top + 8;
+            g.fill(left - 1, top - 1, right + 1, bottom + 1, TEXT);
+            g.fill(left, top, right, bottom, active ? SUBWAY_ACCENT : TEXT_MUTED);
+            return;
+        }
+
+        int cx = x + SUBWAY_STYLE_BUTTON_W / 2;
+        int cy = y + SUBWAY_STYLE_BUTTON_H / 2;
+        g.fill(cx - 6, cy - 1, cx + 7, cy + 1, TEXT_MUTED);
+        g.fill(cx - 3, cy - 4, cx + 4, cy - 2, TEXT_MUTED);
+        g.fill(cx - 3, cy + 2, cx + 4, cy + 4, TEXT_MUTED);
+        int slashColor = active ? 0xFFFFFFFF : SUBWAY_ACCENT;
+        for (int d = -5; d <= 5; d++) {
+            g.fill(cx + d, cy + d - 1, cx + d + 1, cy + d, slashColor);
+        }
+    }
+
+    private static int subwaypointStyleButtonsLeft(int rowRight, boolean showDungeonControls) {
+        return waypointControlButtonsLeft(rowRight, showDungeonControls) - GAP_TIGHT
+                - SUBWAY_STYLE_BUTTON_W * 3 - GAP_TIGHT * 2;
+    }
+
+    private static int waypointControlButtonsLeft(int rowRight, boolean showDungeonControls) {
+        return showDungeonControls ? standSkipButtonX(rowRight) : depthCheckButtonX(rowRight);
+    }
+
+    private static int standSkipButtonX(int rowRight) {
+        return depthCheckButtonX(rowRight) - (SUBWAY_STYLE_BUTTON_W + GAP_TIGHT) * 2;
+    }
+
+    private static int interactSkipButtonX(int rowRight) {
+        return depthCheckButtonX(rowRight) - SUBWAY_STYLE_BUTTON_W - GAP_TIGHT;
+    }
+
+    private static int depthCheckButtonX(int rowRight) {
+        return rowRight - GAP - SUBWAY_STYLE_BUTTON_W;
+    }
+
+    private static int subwaypointStyleButtonX(int rowRight, int action,
+                                               boolean showDungeonControls) {
+        int left = subwaypointStyleButtonsLeft(rowRight, showDungeonControls);
+        int pitch = SUBWAY_STYLE_BUTTON_W + GAP_TIGHT;
+        if (action == SUBWAY_STYLE_ACTION_FILLED) return left + pitch;
+        if (action == SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT) return left + pitch * 2;
+        return left;
+    }
+
+    /*
+     * The old two-button layout helpers used to live here. The three-button
+     * versions above intentionally replace them so render, hover, and click
+     * geometry cannot drift apart.
+     */
+
+    private static boolean isInside(double mx, double my, int x, int y, int w, int h) {
+        return mx >= x && mx < x + w && my >= y && my < y + h;
+    }
+
+    private boolean isDungeonRoomGroup() {
+        return DungeonRoomData.definition(group.zoneId()) != null;
     }
 
     // --- input -------------------------------------------------------------------------------
@@ -719,6 +1444,7 @@ public final class GroupEditScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        int selectedBeforeClick = selectedIndex;
         // A click that lands outside the live editor means the user is done with it.
         // Commit first so the click itself still performs whatever it would have done
         // (select another row, open a double-click edit on a new row, press a button).
@@ -735,16 +1461,51 @@ public final class GroupEditScreen extends Screen {
             int idx = rowIndexAt(event.x(), event.y());
             if (idx >= 0) {
                 selectWaypoint(idx);
+                String action;
                 if (hasShiftDown()) {
                     if (group.toggleSubwaypoint(idx)) {
+                        if (group.isSubwaypoint(idx)) {
+                            disableSkipAheadForSequencingEdit();
+                        }
                         coordinateEditorIndex = -1;
                         syncCoordinateEditors();
                         manager.fireDataChanged();
                     }
+                    action = "toggle-subwaypoint";
                 } else {
                     group.setCurrentIndex(idx);
                     manager.fireDataChanged();
+                    action = "goto";
                 }
+                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
+                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                        doubleClick, hasShiftDown(), false, "right-click-row", action);
+                return true;
+            }
+        }
+
+        if (event.button() == MOUSE_BUTTON_LEFT) {
+            int waypointControlAction = waypointControlActionAt(event.x(), event.y());
+            if (waypointControlAction != WAYPOINT_CONTROL_ACTION_NONE) {
+                int idx = rowIndexAt(event.x(), event.y());
+                toggleWaypointControl(idx, waypointControlAction);
+                selectWaypoint(idx);
+                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
+                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                        doubleClick, hasShiftDown(), false, "waypoint-control",
+                        "toggle-control-" + waypointControlAction);
+                return true;
+            }
+
+            int subwaypointStyleAction = subwaypointStyleActionAt(event.x(), event.y());
+            if (subwaypointStyleAction != SUBWAY_STYLE_ACTION_NONE) {
+                int idx = rowIndexAt(event.x(), event.y());
+                toggleSubwaypointStyle(idx, subwaypointStyleAction);
+                selectWaypoint(idx);
+                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
+                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                        doubleClick, hasShiftDown(), false, "subwaypoint-style",
+                        "toggle-style-" + subwaypointStyleAction);
                 return true;
             }
         }
@@ -754,8 +1515,11 @@ public final class GroupEditScreen extends Screen {
             if (idx >= 0 && swatchIndexAt(event.x(), event.y()) < 0) {
                 selectWaypoint(idx);
                 WaypointRepositionMode.start(manager, config, group, idx);
-                return true;
-            }
+            DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
+                    selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                    doubleClick, true, false, "shift-row", "start-edit-move");
+            return true;
+        }
         }
 
         // Swatch-click: open per-waypoint colour picker. Checked before super
@@ -776,6 +1540,10 @@ public final class GroupEditScreen extends Screen {
                     openWaypointColorPicker(swatchIdx);
                 }
                 selectWaypoint(swatchIdx);
+                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(swatchIdx), swatchIdx,
+                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                        doubleClick, hasShiftDown(), false, "color-swatch",
+                        hasShiftDown() ? "unlock-or-edit-color" : "edit-color");
                 return true;
             }
         }
@@ -785,10 +1553,42 @@ public final class GroupEditScreen extends Screen {
 
         int idx = rowIndexAt(event.x(), event.y());
         if (idx < 0) return false;
+        boolean wasAlreadySelected = idx == selectedIndex;
         selectWaypoint(idx);
 
-        if (doubleClick) beginLabelEdit(idx);
+        boolean startRename = shouldStartRenameFromRowClick(doubleClick, wasAlreadySelected);
+        if (startRename) beginLabelEdit(idx);
+        DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
+                selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                doubleClick, false, false, "waypoint-row",
+                startRename ? "rename" : doubleClick
+                        ? "double-click ignored: waypoint was not already selected"
+                        : "select");
         return true;
+    }
+
+    static boolean shouldStartRenameFromRowClick(boolean doubleClick, boolean wasAlreadySelected) {
+        return doubleClick && wasAlreadySelected;
+    }
+
+    private String selectionDebugLabel(int index) {
+        if (index < 0 || index >= group.size()) return "(none)";
+        return "#" + index;
+    }
+
+    private String waypointDebugId(int index) {
+        if (index < 0 || index >= group.size()) return "(none)";
+        Waypoint waypoint = group.get(index);
+        return "#" + index + "@" + waypoint.x() + "," + waypoint.y() + "," + waypoint.z();
+    }
+
+    private void disableSkipAheadForSequencingEdit() {
+        if (group.skipAheadEnabled()) {
+            group.setSkipAheadEnabled(false);
+        }
+        if (skipAheadBtn != null) {
+            skipAheadBtn.setMessage(skipAheadLabel());
+        }
     }
 
     private static boolean hasShiftDown() {
@@ -803,34 +1603,198 @@ public final class GroupEditScreen extends Screen {
      * used by {@link #renderWaypointRow}: row pitch, list clip, swatch X/Y offsets.
      */
     private int swatchIndexAt(double mx, double my) {
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int bottom = height - FOOTER_H - GAP_SECTION;
-        int mainLeft = PAD_OUTER + SIDEBAR_W + GAP_SECTION;
-        int mainRight = width - PAD_OUTER;
-        if (mx < mainLeft || mx > mainRight || my < top || my > bottom) return -1;
+        Layout layout = layout();
+        if (mx < layout.mainLeft() || mx > layout.mainRight()
+                || my < layout.top() || my > layout.bottom()) return -1;
 
         int pitch = ROW_H + 2;
-        int idx = (int) ((my - (top + 4) + scrollOffset) / pitch);
+        int idx = (int) ((my - (layout.top() + 4) + scrollOffset) / pitch);
         if (idx < 0 || idx >= group.size()) return -1;
 
-        int rowY = top + 4 - scrollOffset + idx * pitch;
-        int sx = (mainLeft + 2) + GAP + 2 + (group.isSubwaypoint(idx) ? 16 : 0);
+        int rowY = layout.top() + 4 - scrollOffset + idx * pitch;
+        int sx = (layout.mainLeft() + 2) + GAP + 2
+                + (group.isSubwaypoint(idx) ? 16 : 0);
         int sy = rowY + 4;
         if (mx >= sx && mx < sx + 14 && my >= sy && my < sy + 14) return idx;
         return -1;
     }
 
-    private void openWaypointColorPicker(int idx) {
+    private int waypointControlActionAt(double mx, double my) {
+        int idx = rowIndexAt(mx, my);
+        if (idx < 0) return WAYPOINT_CONTROL_ACTION_NONE;
+
+        Layout layout = layout();
+        int rowY = layout.top() + 4 - scrollOffset + idx * (ROW_H + 2);
+        int rowRight = layout.mainRight() - 2;
+        int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
+        if (isDungeonRoomGroup()) {
+            int standX = standSkipButtonX(rowRight);
+            if (isInside(mx, my, standX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
+                return WAYPOINT_CONTROL_ACTION_STAND_SKIP;
+            }
+            int interactX = interactSkipButtonX(rowRight);
+            if (isInside(mx, my, interactX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
+                return WAYPOINT_CONTROL_ACTION_INTERACT_SKIP;
+            }
+        }
+
+        int depthX = depthCheckButtonX(rowRight);
+        if (isInside(mx, my, depthX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
+            return WAYPOINT_CONTROL_ACTION_DEPTH_CHECK;
+        }
+        return WAYPOINT_CONTROL_ACTION_NONE;
+    }
+
+    private int subwaypointStyleActionAt(double mx, double my) {
+        int idx = rowIndexAt(mx, my);
+        if (idx < 0 || !group.isSubwaypoint(idx)) return SUBWAY_STYLE_ACTION_NONE;
+
+        Layout layout = layout();
+        int rowY = layout.top() + 4 - scrollOffset + idx * (ROW_H + 2);
+        int rowRight = layout.mainRight() - 2;
+        int y = rowY + SUBWAY_STYLE_BUTTON_TOP_PAD;
+        boolean showDungeonControls = isDungeonRoomGroup();
+        int smallX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_SMALL,
+                showDungeonControls);
+        if (isInside(mx, my, smallX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
+            return SUBWAY_STYLE_ACTION_SMALL;
+        }
+        int filledX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_FILLED,
+                showDungeonControls);
+        if (isInside(mx, my, filledX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
+            return SUBWAY_STYLE_ACTION_FILLED;
+        }
+        int hideX = subwaypointStyleButtonX(rowRight, SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT,
+                showDungeonControls);
+        if (isInside(mx, my, hideX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
+            return SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT;
+        }
+        return SUBWAY_STYLE_ACTION_NONE;
+    }
+
+    private String waypointControlTooltipAt(double mouseX, double mouseY) {
+        int action = waypointControlActionAt(mouseX, mouseY);
+        if (action == WAYPOINT_CONTROL_ACTION_STAND_SKIP) {
+            return dungeonStandSkipTooltipText();
+        }
+        if (action == WAYPOINT_CONTROL_ACTION_INTERACT_SKIP) {
+            return dungeonInteractSkipTooltipText();
+        }
+        if (action == WAYPOINT_CONTROL_ACTION_DEPTH_CHECK) {
+            return "Render in LOS only";
+        }
+        return subwaypointStyleTooltipAt(mouseX, mouseY);
+    }
+
+    private String rowSupplementalTooltipAt(double mouseX, double mouseY) {
+        if (editingIndex >= 0) return null;
+        int rowIndex = rowIndexAt(mouseX, mouseY);
+        if (rowIndex < 0) return null;
+        if (waypointControlActionAt(mouseX, mouseY) != WAYPOINT_CONTROL_ACTION_NONE) return null;
+        if (subwaypointStyleActionAt(mouseX, mouseY) != SUBWAY_STYLE_ACTION_NONE) return null;
+        if (swatchIndexAt(mouseX, mouseY) >= 0) {
+            return swatchGestureTooltipText(hasShiftDown());
+        }
+        return null;
+    }
+
+    static String swatchGestureTooltipText(boolean shiftDown) {
+        return shiftDown
+                ? "Shift-click unlocks locked color"
+                : "Click to edit waypoint color";
+    }
+
+    static String dungeonStandSkipTooltipText() {
+        return "Dungeons: Stand to skip";
+    }
+
+    static String dungeonInteractSkipTooltipText() {
+        return "Dungeons: Interact to skip";
+    }
+
+    private String subwaypointStyleTooltipAt(double mouseX, double mouseY) {
+        int action = subwaypointStyleActionAt(mouseX, mouseY);
+        if (action == SUBWAY_STYLE_ACTION_SMALL) {
+            return "Tiny";
+        }
+        if (action == SUBWAY_STYLE_ACTION_FILLED) {
+            return "Filled";
+        }
+        if (action == SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT) {
+            return "Hide after parent is reached";
+        }
+        return null;
+    }
+
+    private void toggleWaypointControl(int index, int action) {
+        if (index < 0 || index >= group.size()) return;
+        int flag = waypointControlFlagForAction(action, isDungeonRoomGroup());
+        if (flag == 0) return;
+        Waypoint waypoint = group.get(index);
+        group.set(index, waypoint.withFlags(waypoint.flags() ^ flag));
+        manager.fireDataChanged();
+    }
+
+    static int waypointControlFlagForAction(int action, boolean dungeonRoomGroup) {
+        if (action == WAYPOINT_CONTROL_ACTION_STAND_SKIP && dungeonRoomGroup) {
+            return Waypoint.FLAG_SKIP_ON_STAND;
+        }
+        if (action == WAYPOINT_CONTROL_ACTION_INTERACT_SKIP && dungeonRoomGroup) {
+            return Waypoint.FLAG_SKIP_ON_INTERACT;
+        }
+        if (action == WAYPOINT_CONTROL_ACTION_DEPTH_CHECK) {
+            return Waypoint.FLAG_DEPTH_CHECKED;
+        }
+        return 0;
+    }
+
+    private void toggleSubwaypointStyle(int index, int action) {
+        if (index < 0 || index >= group.size() || !group.isSubwaypoint(index)) return;
+        int flag = subwaypointStyleFlagForAction(action);
+        if (flag == 0) return;
+
+        Waypoint waypoint = group.get(index);
+        group.set(index, waypoint.withFlags(waypoint.flags() ^ flag));
+        manager.fireDataChanged();
+    }
+
+    static int subwaypointStyleFlagForAction(int action) {
+        if (action == SUBWAY_STYLE_ACTION_SMALL) {
+            return Waypoint.FLAG_SMALL_SUBWAYPOINT;
+        }
+        if (action == SUBWAY_STYLE_ACTION_FILLED) {
+            return Waypoint.FLAG_FILLED_SUBWAYPOINT;
+        }
+        if (action == SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT) {
+            return Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED;
+        }
+        return 0;
+    }
+
+        private void openWaypointColorPicker(int idx) {
+        if (idx < 0 || idx >= group.size()) return;
+        waypointColorPickerIndex = idx;
         Waypoint w = group.get(idx);
-        ColorPickerScreen.open(this, "Waypoint #" + (idx + 1) + " Colour", w.color(), picked -> {
-            // Picking a colour implicitly locks the waypoint -- otherwise the
-            // next gradient recolour would wipe the user's choice. Users who
-            // want to re-gradient an individual waypoint can shift-click the
-            // swatch to clear the lock.
+        ColorPickerScreen.open(this, "Waypoint #" + (idx + 1) + " Colour",
+                w.color(), this::onWaypointColorPicked);
+    }
+
+    private void onWaypointColorPicked(int picked) {
+        int idx = waypointColorPickerIndex;
+        waypointColorPickerIndex = -1;
+        if (idx < 0 || idx >= group.size()) return;
+        if (group.gradientMode() != WaypointGroup.GradientMode.MANUAL) {
+            group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
             Waypoint cur = group.get(idx);
             group.set(idx, cur.withColor(picked).withFlags(cur.flags() | Waypoint.FLAG_LOCKED_COLOR));
             manager.fireDataChanged();
-        });
+            rebuildWidgets();
+            return;
+        }
+        Waypoint cur = group.get(idx);
+        group.set(idx, cur.withColor(picked).withFlags(cur.flags() | Waypoint.FLAG_LOCKED_COLOR));
+        updateColorModeButtons();
+        manager.fireDataChanged();
     }
 
     private void unlockWaypointColor(int idx) {
@@ -855,27 +1819,41 @@ public final class GroupEditScreen extends Screen {
      * updated once.
      */
     private int rowIndexAt(double mx, double my) {
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int bottom = height - FOOTER_H - GAP_SECTION;
-        int mainLeft = PAD_OUTER + SIDEBAR_W + GAP_SECTION;
-        int mainRight = width - PAD_OUTER;
-        if (mx < mainLeft || mx > mainRight || my < top || my > bottom) return -1;
+        Layout layout = layout();
+        if (mx < layout.mainLeft() || mx > layout.mainRight()
+                || my < layout.top() || my > layout.bottom()) return -1;
 
         int pitch = ROW_H + 2;
-        int idx = (int) ((my - (top + 4) + scrollOffset) / pitch);
+        int idx = (int) ((my - (layout.top() + 4) + scrollOffset) / pitch);
         return (idx >= 0 && idx < group.size()) ? idx : -1;
     }
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
+        Layout layout = layout();
+        if (mouseX >= layout.sidebarLeft() && mouseX <= layout.sidebarRight()
+                && mouseY >= layout.top() && mouseY <= layout.bottom()) {
+            int viewportHeight = sidebarViewportBottom(layout) - sidebarViewportTop(layout);
+            int maxScroll = maxSidebarScroll(sidebarContentHeight, viewportHeight);
+            sidebarScrollOffset = Math.max(0, Math.min(maxScroll,
+                    sidebarScrollOffset - (int) (vert * (BTN_H + GAP_TIGHT))));
+            refreshSidebarWidgets(layout);
+            if (getFocused() instanceof AbstractWidget focused && !focused.visible) {
+                focused.setFocused(false);
+                setFocused(null);
+            }
+            return true;
+        }
+
+        if (mouseX < layout.mainLeft() || mouseX > layout.mainRight()
+                || mouseY < layout.top() || mouseY > layout.bottom()) return false;
+
         // Scrolling while editing would drift the EditBox away from its row (the widget
         // x/y is cached by focus/caret logic mid-frame). Committing keeps the edit tied
         // to the row the user aimed at -- less surprising than silently cancelling it.
         if (editingIndex >= 0) commitLabelEdit();
 
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int bottom = height - FOOTER_H - GAP_SECTION;
-        int listHeight = bottom - top;
+        int listHeight = layout.bottom() - layout.top();
         int pitch = ROW_H + 2;
         int content = group.size() * pitch;
         int maxScroll = Math.max(0, content - listHeight + 8);
@@ -885,8 +1863,8 @@ public final class GroupEditScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        int k = event.key();
         if (editingIndex >= 0) {
-            int k = event.key();
             if (k == GLFW_KEY_ESCAPE) {
                 // Intercept ESC so it cancels the edit instead of closing the screen.
                 cancelLabelEdit();
@@ -897,6 +1875,19 @@ public final class GroupEditScreen extends Screen {
                 return true;
             }
         }
+        if (k == GLFW_KEY_ESCAPE
+                && (getFocused() == nameBox
+                || getFocused() == coordXBox
+                || getFocused() == coordYBox
+                || getFocused() == coordZBox)) {
+            setFocused(null);
+            if (nameBox != null) nameBox.setFocused(false);
+            if (coordXBox != null) coordXBox.setFocused(false);
+            if (coordYBox != null) coordYBox.setFocused(false);
+            if (coordZBox != null) coordZBox.setFocused(false);
+            return true;
+        }
+        if (k == GLFW_KEY_TAB && focusAdjacentSidebarWidget(hasShiftDown())) return true;
         return super.keyPressed(event);
     }
 
@@ -949,29 +1940,36 @@ public final class GroupEditScreen extends Screen {
 
     /**
      * Places the EditBox over the name slot of the row at {@code index}, sized to fill
-     * the remaining row width. Called every frame while editing so the widget tracks
+     * the remaining row text lane before metadata and controls. Called every frame while
+     * editing so the widget tracks
      * any layout change (resize) and stays aligned with the row number/coord prefix.
      */
     private void positionLabelEditor(int index) {
-        int top = PAD_OUTER + 10 + GAP_SECTION;
-        int mainLeft = PAD_OUTER + SIDEBAR_W + GAP_SECTION;
-        int mainRight = width - PAD_OUTER;
+        Layout layout = layout();
 
         int pitch = ROW_H + 2;
-        int rowY = top + 4 - scrollOffset + index * pitch;
+        int rowY = layout.top() + 4 - scrollOffset + index * pitch;
 
-        int rowX1 = mainLeft + 2;
-        int rowX2 = mainRight - 2;
+        int rowX1 = layout.mainLeft() + 2;
+        int rowX2 = layout.mainRight() - 2;
         int sx = rowX1 + GAP + 2 + (group.isSubwaypoint(index) ? 16 : 0);
         int labelStart = sx + 20;
         Waypoint w = group.get(index);
         String prefix = group.displayIndexLabel(index) + "  (" + w.x() + ", " + w.y() + ", " + w.z() + ")";
-        int editorX = labelStart + font.width(prefix) + GAP;
-        int editorW = Math.max(80, rowX2 - GAP - editorX);
+        boolean subwaypoint = group.isSubwaypoint(index);
+        boolean isCurrent = !subwaypoint && index == group.currentIndex();
+        int textRightX = waypointRowTextRightEdge(rowX2, subwaypoint,
+                isDungeonRoomGroup(), waypointRightMetadataWidth(w, subwaypoint, isCurrent));
+        int editorX = Math.min(labelStart + font.width(prefix) + GAP, textRightX);
+        int editorW = labelEditorWidth(editorX, textRightX);
 
         labelEditor.setX(editorX);
         labelEditor.setY(rowY + 1);
         labelEditor.setWidth(editorW);
+    }
+
+    static int labelEditorWidth(int editorX, int textRightX) {
+        return Math.max(0, textRightX - editorX);
     }
 
     private boolean isOverLabelEditor(double mx, double my) {
@@ -987,7 +1985,28 @@ public final class GroupEditScreen extends Screen {
     public boolean isPauseScreen() { return false; }
 
     @Override
+    public void removed() {
+        lastPublishedName = publishNameChangeIfNeeded(manager, group, lastPublishedName);
+        super.removed();
+    }
+
+    static String publishNameChangeIfNeeded(ActiveGroupManager manager, WaypointGroup group,
+                                             String lastPublishedName) {
+        String currentName = group.name();
+        if (!currentName.equals(lastPublishedName)) manager.fireDataChanged();
+        return currentName;
+    }
+
+    private record SidebarWidget(AbstractWidget widget, int homeY) {
+    }
+
+    private record Layout(int top, int bottom,
+                          int sidebarLeft, int sidebarRight,
+                          int mainLeft, int mainRight) {
+    }
+
+    @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        MinecraftCompat.setScreen(minecraft, parent);
     }
 }

@@ -1,17 +1,23 @@
 package dev.ethan.waypointer;
 
-import dev.ethan.waypointer.chat.ChatCoordDetector;
-import dev.ethan.waypointer.chat.ChatImportCache;
-import dev.ethan.waypointer.chat.ChatImportDetector;
 import dev.ethan.waypointer.api.DefaultWaypointerApi;
 import dev.ethan.waypointer.api.WaypointerApi;
 import dev.ethan.waypointer.api.WaypointerApiEntrypoints;
+import dev.ethan.waypointer.chat.ChatCoordDetector;
+import dev.ethan.waypointer.chat.ChatImportCache;
+import dev.ethan.waypointer.chat.ChatImportDetector;
 import dev.ethan.waypointer.commands.WaypointerCommands;
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.config.Storage;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
+import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.debug.DeveloperModeMonitor;
 import dev.ethan.waypointer.dungeon.DungeonCommands;
-import dev.ethan.waypointer.dungeon.DungeonHighlightRenderer;
+import dev.ethan.waypointer.dungeon.DungeonMapCheckmarks;
+import dev.ethan.waypointer.dungeon.DungeonRoomRouteSync;
+import dev.ethan.waypointer.dungeon.DungeonRoomZoneBridge;
+import dev.ethan.waypointer.dungeon.DungeonRouteDownloader;
 import dev.ethan.waypointer.dungeon.DungeonRouteSession;
 import dev.ethan.waypointer.dungeon.DungeonStateTracker;
 import dev.ethan.waypointer.dungeon.DungeonTriggerDetector;
@@ -25,11 +31,15 @@ import dev.ethan.waypointer.progression.TempWaypointCleaner;
 import dev.ethan.waypointer.progression.WorldJoinProgressReset;
 import dev.ethan.waypointer.render.TracerRenderer;
 import dev.ethan.waypointer.render.WaypointRenderer;
+import dev.ethan.waypointer.screen.WaypointerGuiScreens;
 import dev.ethan.waypointer.screen.WaypointerScreen;
 import dev.ethan.waypointer.update.UpdateChecker;
-import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.ModContainer;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 
 /**
  * Client-side bootstrap.
@@ -47,14 +57,46 @@ public final class WaypointerClient implements ClientModInitializer {
     private static DungeonConfig dungeonConfig;
     private static DungeonStateTracker dungeonTracker;
     private static DungeonRouteSession dungeonRouteSession;
+    private static DungeonRouteDownloader dungeonRouteDownloader;
+    private static DeveloperModeMonitor developerModeMonitor;
+    private static boolean dungeonRouteSessionInDungeonContext;
+    private static Screen suspendedWaypointerGuiScreen;
 
-    public static ActiveGroupManager manager()        { return manager; }
-    public static Storage storage()                   { return storage; }
-    public static WaypointerConfig config()           { return config; }
-    public static WaypointerApi api()                 { return api; }
-    public static DungeonConfig dungeonConfig()       { return dungeonConfig; }
-    public static DungeonStateTracker dungeonTracker(){ return dungeonTracker; }
-    public static DungeonRouteSession dungeonRouteSession(){ return dungeonRouteSession; }
+    public static ActiveGroupManager manager() {
+        return manager;
+    }
+
+    public static Storage storage() {
+        return storage;
+    }
+
+    public static WaypointerConfig config() {
+        return config;
+    }
+
+    public static WaypointerApi api() {
+        return api;
+    }
+
+    public static DungeonConfig dungeonConfig() {
+        return dungeonConfig;
+    }
+
+    public static DungeonStateTracker dungeonTracker() {
+        return dungeonTracker;
+    }
+
+    public static DungeonRouteSession dungeonRouteSession() {
+        return dungeonRouteSession;
+    }
+
+    public static DungeonRouteDownloader dungeonRouteDownloader() {
+        return dungeonRouteDownloader;
+    }
+
+    public static DeveloperModeMonitor developerModeMonitor() {
+        return developerModeMonitor;
+    }
 
     @Override
     public void onInitializeClient() {
@@ -64,7 +106,8 @@ public final class WaypointerClient implements ClientModInitializer {
         storage.load(manager);
         // attach AFTER load so rehydration doesn't trigger a no-op write.
         storage.attach(manager);
-        api = new DefaultWaypointerApi(manager);
+        Minecraft minecraft = Minecraft.getInstance();
+        api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft);
 
         new LocationTracker(manager, config).install();
         new ProximityTracker(manager, config).install();
@@ -74,10 +117,9 @@ public final class WaypointerClient implements ClientModInitializer {
         new TracerRenderer(manager, config).install();
         WaypointRepositionMode.install();
 
-        if (config.dungeonWaypointsFeatureEnabled()) {
-            installDungeonSubsystem();
-        } else {
-            Waypointer.LOGGER.info("Dungeon waypoint subsystem disabled by feature flag");
+        installDungeonSubsystem();
+        if (!config.dungeonWaypointsFeatureEnabled()) {
+            Waypointer.LOGGER.info("Legacy dungeon feature flag is off; dungeon room detection still installs.");
         }
 
         ChatImportCache chatImportCache = new ChatImportCache();
@@ -90,30 +132,59 @@ public final class WaypointerClient implements ClientModInitializer {
             Waypointer.LOGGER.info("Invoked {} Waypointer API integration(s)", apiEntrypoints);
         }
 
-        ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
-            // Flush any debounced writes before the JVM tears down -- the
-            // async saver is a daemon thread, which would otherwise let a
-            // scheduled-but-not-yet-executed save be discarded on exit.
-            storage.flush();
-            config.flush();
-            if (dungeonConfig != null) dungeonConfig.flush();
-            DungeonRoomData.flush();
-        });
+        ClientLifecycleEvents.CLIENT_STOPPING.register(WaypointerClient::onClientStopping);
 
         // Fire-and-forget update check. Runs on a daemon thread with a 5s
         // startup delay so it doesn't race with world-load chat spam. Looking
-        // the version up through FabricLoader (vs a hardcoded constant) means
-        // we don't have to remember to bump a second place on release.
+        // the version up through FabricLoader means we don't have to remember
+        // to bump a second place on release.
         String modVersion = FabricLoader.getInstance().getModContainer(Waypointer.MOD_ID)
-                .map(c -> c.getMetadata().getVersion().getFriendlyString())
+                .map(WaypointerClient::modVersionFromContainer)
                 .orElse("0.0.0");
         new UpdateChecker(modVersion, config.checkForUpdates()).start();
 
-        Waypointer.LOGGER.info("Waypointer client ready -- {} group(s) loaded", manager.allGroups().size());
+        Waypointer.LOGGER.info("Waypointer client ready -- {} route(s) loaded", manager.allGroups().size());
     }
 
-    private static void openGui() {
+    private static void onClientStopping(Minecraft client) {
+        storage.flush();
+        config.flush();
+        if (dungeonConfig != null) dungeonConfig.flush();
+        DungeonRoomData.flush();
+        if (developerModeMonitor != null) developerModeMonitor.flushAndShutdown();
+    }
+
+    private static String modVersionFromContainer(ModContainer container) {
+        return container.getMetadata().getVersion().getFriendlyString();
+    }
+
+    public static void openGui() {
+        Minecraft mc = Minecraft.getInstance();
+        Screen currentScreen = MinecraftCompat.screen(mc);
+        if (WaypointerGuiScreens.owns(currentScreen)) {
+            suspendedWaypointerGuiScreen = currentScreen;
+            MinecraftCompat.setScreen(mc, null);
+            return;
+        }
+
+        Screen resume = resumableWaypointerGuiScreen();
+        if (resume != null) {
+            suspendedWaypointerGuiScreen = null;
+            MinecraftCompat.setScreen(mc, resume);
+            return;
+        }
+
         WaypointerScreen.open(manager, config);
+    }
+
+    private static Screen resumableWaypointerGuiScreen() {
+        Screen screen = suspendedWaypointerGuiScreen;
+        if (screen == null) return null;
+        if (!WaypointerGuiScreens.owns(screen)) {
+            suspendedWaypointerGuiScreen = null;
+            return null;
+        }
+        return screen;
     }
 
     private static void installDungeonSubsystem() {
@@ -121,12 +192,65 @@ public final class WaypointerClient implements ClientModInitializer {
         DungeonRoomData.loadDefaultCustomStore();
         dungeonTracker = new DungeonStateTracker(manager, dungeonConfig);
         dungeonRouteSession = new DungeonRouteSession();
-        dungeonTracker.addRoomListener(room -> {
-            if (room == null && !dungeonTracker.inDungeon()) dungeonRouteSession.resetAll();
-        });
+        dungeonRouteSessionInDungeonContext = false;
+        manager.addZoneListener(WaypointerClient::onDungeonRouteSessionZoneChanged);
+        Zone currentZone = manager.currentZone();
+        if (currentZone != null) onDungeonRouteSessionZoneChanged(currentZone);
         dungeonTracker.install();
-        new DungeonHighlightRenderer(dungeonTracker, dungeonConfig, dungeonRouteSession).install();
+        new DungeonRoomZoneBridge(manager, dungeonTracker).install();
+        new DungeonRoomRouteSync(manager, dungeonTracker, dungeonRouteSession, dungeonConfig).install();
         new DungeonTriggerDetector(dungeonTracker, dungeonRouteSession).install();
-        new DungeonCommands(dungeonTracker, dungeonConfig, dungeonRouteSession).install();
+        new DungeonMapCheckmarks(dungeonTracker, dungeonRouteSession, dungeonConfig).install();
+        developerModeMonitor = new DeveloperModeMonitor(dungeonTracker, dungeonConfig, manager);
+        developerModeMonitor.install();
+        dungeonRouteDownloader = new DungeonRouteDownloader(manager, dungeonConfig);
+        dungeonRouteDownloader.install();
+        new DungeonCommands(dungeonTracker, dungeonConfig, dungeonRouteSession,
+                dungeonRouteDownloader).install();
+    }
+
+    private static void onDungeonRouteSessionZoneChanged(Zone zone) {
+        boolean nowBroadDungeon = isBroadDungeonZoneForRouteSession(zone);
+        boolean nowDungeonContext = isDungeonRouteSessionContextZone(zone);
+        if (nowBroadDungeon && !dungeonRouteSessionInDungeonContext && dungeonRouteSession != null) {
+            dungeonRouteSession.resetAll();
+            resetDungeonRoomRouteGroupProgress();
+        }
+        dungeonRouteSessionInDungeonContext = nowDungeonContext;
+    }
+
+    private static void resetDungeonRoomRouteGroupProgress() {
+        if (manager == null) return;
+
+        boolean changed = false;
+        for (var group : manager.allGroups()) {
+            if (!isDungeonRoomRouteGroup(group)) continue;
+            int beforeIndex = group.currentIndex();
+            boolean beforeComplete = group.isComplete();
+            group.resetProgress();
+            if (beforeIndex != group.currentIndex() || beforeComplete != group.isComplete()) {
+                changed = true;
+            }
+        }
+        if (changed) {
+            manager.fireDataChanged();
+        }
+    }
+
+    private static boolean isDungeonRoomRouteGroup(dev.ethan.waypointer.core.WaypointGroup group) {
+        return group != null
+                && !group.temp()
+                && DungeonRoomData.definition(group.zoneId()) != null;
+    }
+
+    private static boolean isDungeonRouteSessionContextZone(Zone zone) {
+        if (isBroadDungeonZoneForRouteSession(zone)) return true;
+        return zone != null && DungeonRoomData.definition(zone.id()) != null;
+    }
+
+    private static boolean isBroadDungeonZoneForRouteSession(Zone zone) {
+        if (zone == null || zone.id() == null) return false;
+        String id = zone.id();
+        return id.equals("dungeon") || id.startsWith("dungeon_f") || id.startsWith("dungeon_m");
     }
 }

@@ -7,9 +7,9 @@ import java.nio.charset.StandardCharsets;
  *
  * A preset dictionary is virtual history that the compressor can back-reference
  * but never transmits. The encoder and decoder MUST agree on the exact bytes --
- * Java's {@link java.util.zip.Inflater} embeds the dictionary's Adler-32 in the
- * deflate stream and throws on mismatch, so any accidental edit to this array
- * breaks decoding loudly, never silently.
+ * Raw DEFLATE does not advertise a dictionary id, so the decoder binds this
+ * dictionary manually before inflating. Changing it can break old payloads at
+ * inflate time or later while parsing the binary body.
  *
  * Content:
  *
@@ -24,7 +24,7 @@ import java.nio.charset.StandardCharsets;
  *
  * Keep this string short -- deflate history only benefits matches that land
  * inside the 32 KiB LZ77 window, and a long dictionary costs CPU on every
- * encode/decode. The current payload is about 600 bytes, well under any
+ * encode/decode. The current payload is about 360 bytes, well under any
  * meaningful cost threshold.
  *
  * Versioning:

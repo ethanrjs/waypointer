@@ -1,6 +1,7 @@
 package dev.ethan.waypointer.api;
 
 import dev.ethan.waypointer.core.Zone;
+import dev.ethan.waypointer.core.Waypoint;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -25,7 +26,7 @@ public record RouteSpec(
         name = name == null ? "" : name;
         zoneId = zoneId == null || zoneId.isBlank() ? Zone.UNKNOWN.id() : zoneId;
         loadMode = loadMode == null ? RouteLoadMode.STATIC : loadMode;
-        defaultRadius = Math.max(0.5, defaultRadius);
+        defaultRadius = Waypoint.normalizeDefaultRadius(defaultRadius);
         waypoints = List.copyOf(Objects.requireNonNull(waypoints, "waypoints"));
     }
 
