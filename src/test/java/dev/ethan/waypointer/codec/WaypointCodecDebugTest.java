@@ -42,26 +42,23 @@ class WaypointCodecDebugTest {
         assertEquals(encoded.length(), d.inputChars());
         assertEquals(WaypointCodec.MAGIC, d.magic());
         assertEquals(encoded.length() - WaypointCodec.MAGIC.length(), d.payloadChars());
-        assertEquals("ASCII base-91 stream + CRC-32", d.textEncoding());
+        assertEquals("ASCII base-91 stream + v9 dictionary + CRC-32", d.textEncoding());
         assertTrue(d.rawBodyBytes() > 0, "raw body must be non-empty");
         assertTrue(d.compressedBytes() > 0, "compressed must be non-empty");
     }
 
     @Test
-    void header_byte_sets_version_and_names_flag_when_names_included() {
+    void header_identifies_general_route_and_debug_reports_names() {
         String encoded = WaypointCodec.encode(List.of(sampleGroup()), WaypointCodec.Options.WITH_NAMES);
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
-        // Low nibble must carry the current wire version; bit 4 carries the
-        // names flag; with no label we expect bit 5 also clear; bits 6-7 are
-        // reserved and must remain zero so a future schema bump can claim them
-        // without ambiguity.
+        // Low nibble carries v9 and bits 4..6 identify the general-route kind.
         assertEquals(WaypointCodec.WIRE_VERSION, d.version(),
                 "encoder must stamp the current wire version");
         assertEquals(0, d.headerByte() & 0b1100_0000,
                 "reserved high bits must stay 0");
         assertTrue(d.includesNames());
-        assertFalse(d.hasLabel(),     "no label set on this export -- bit 5 must be 0");
+        assertFalse(d.hasLabel(),     "no label set on this export -- bit 7 must be 0");
         assertFalse(d.reservedBit6(), "reserved bit 6 must never be set by the current encoder");
         assertFalse(d.reservedBit7(), "reserved bit 7 must never be set by the current encoder");
     }
@@ -71,11 +68,11 @@ class WaypointCodecDebugTest {
         String encoded = WaypointCodec.encode(List.of(sampleGroup()), WaypointCodec.Options.NO_NAMES);
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
-        // NO_NAMES with no label on one bodyless group uses the v6+ bit 6 for
-        // the anonymous coordinate-only wrapper; names and label bits stay off.
+        // This source has stripped optional metadata, so it takes the distinct
+        // anonymous-with-metadata fallback kind rather than compact kind 2.
         assertEquals(WaypointCodec.WIRE_VERSION, d.version());
-        assertEquals(0b0100_0000, d.headerByte() & 0b1111_0000,
-                "coordinate-only single-group export must set the anonymous body bit");
+        assertEquals(WaypointCodec.V9_CONTENT_KIND_COORDINATE_ROUTE_WITH_META,
+                WaypointCodec.v9ContentKind(d.headerByte()));
         assertFalse(d.includesNames());
         assertFalse(d.hasLabel());
         assertTrue(d.reservedBit6(), "v6+ bit 6 marks the anonymous coordinate-only body");
@@ -88,7 +85,7 @@ class WaypointCodecDebugTest {
                 WaypointCodec.Options.builder().label("Boss path -- F7").build());
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
-        assertTrue(d.hasLabel(), "label-bearing export must set header bit 5");
+        assertTrue(d.hasLabel(), "label-bearing export must set v9 header bit 7");
         assertEquals("Boss path -- F7", d.label(), "decoded label must match input verbatim");
         assertEquals("Boss path -- F7", WaypointCodec.peekLabel(encoded).orElse(null),
                 "peekLabel must return the same string without a full decode");
@@ -99,7 +96,7 @@ class WaypointCodecDebugTest {
         String encoded = WaypointCodec.encode(List.of(sampleGroup()),
                 WaypointCodec.Options.builder().label("").build());
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
-        assertFalse(d.hasLabel(), "empty label must not flip bit 5");
+        assertFalse(d.hasLabel(), "empty label must not flip v9 label bit");
         assertEquals("", d.label());
         assertTrue(WaypointCodec.peekLabel(encoded).isEmpty());
     }

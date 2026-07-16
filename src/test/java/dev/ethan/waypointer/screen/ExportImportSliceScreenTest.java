@@ -57,7 +57,7 @@ class ExportImportSliceScreenTest {
     }
 
     @Test
-    void subwaypoint_routes_enable_waypoint_flags_in_export_defaults() {
+    void export_defaults_include_waypoint_flags_for_all_route_shapes() {
         WaypointerConfig config = new WaypointerConfig();
         WaypointGroup normal = WaypointGroup.create("Normal", "hub");
         normal.add(Waypoint.at(0, 64, 0));
@@ -72,7 +72,7 @@ class ExportImportSliceScreenTest {
         WaypointCodec.Options subwayOptions =
                 ExportScreen.builderFromConfig(config, List.of(subway)).build();
 
-        assertFalse(normalOptions.includeWaypointFlags);
+        assertTrue(normalOptions.includeWaypointFlags);
         assertTrue(subwayOptions.includeWaypointFlags);
     }
 }

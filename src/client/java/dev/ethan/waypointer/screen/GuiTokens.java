@@ -110,7 +110,13 @@ public final class GuiTokens {
 
     public static int footerHeight(int screenW, List<ButtonSpec> left, ButtonSpec right,
                                    net.minecraft.client.gui.Font font) {
-        return needsFooterWrap(screenW, left, right, font, PAD_OUTER, GAP_SECTION)
+        return footerHeight(screenW, left, right, font, PAD_OUTER, GAP_SECTION);
+    }
+
+    public static int footerHeight(int screenW, List<ButtonSpec> left, ButtonSpec right,
+                                   net.minecraft.client.gui.Font font,
+                                   int startX, int rightInset) {
+        return needsFooterWrap(screenW, left, right, font, startX, rightInset)
                 ? FOOTER_H + BTN_H + GAP
                 : FOOTER_H;
     }

@@ -53,33 +53,33 @@ class WaypointerScreenTest {
     }
 
     @Test
-    void sidebarScrollClampsToVisibleZoneContent() {
+    void dropdownScrollClampsToVisibleZoneContent() {
         int rowHeight = GuiTokens.ROW_H;
         int viewportHeight = rowHeight * 3;
 
-        assertEquals(0, WaypointerScreen.maxSidebarScroll(3, viewportHeight));
-        assertEquals(rowHeight * 2, WaypointerScreen.maxSidebarScroll(5, viewportHeight));
+        assertEquals(0, WaypointerScreen.maxDropdownScroll(3, viewportHeight));
+        assertEquals(rowHeight * 2, WaypointerScreen.maxDropdownScroll(5, viewportHeight));
         assertEquals(rowHeight * 2,
-                WaypointerScreen.sidebarScrollAfterWheel(rowHeight * 2, -1, 5, viewportHeight));
+                WaypointerScreen.dropdownScrollAfterWheel(rowHeight * 2, -1, 5, viewportHeight));
         assertEquals(rowHeight,
-                WaypointerScreen.sidebarScrollAfterWheel(rowHeight * 2, 1, 5, viewportHeight));
+                WaypointerScreen.dropdownScrollAfterWheel(rowHeight * 2, 1, 5, viewportHeight));
         assertEquals(0,
-                WaypointerScreen.sidebarScrollAfterWheel(0, 1, 5, viewportHeight));
+                WaypointerScreen.dropdownScrollAfterWheel(0, 1, 5, viewportHeight));
     }
 
     @Test
-    void sidebarHitTestingAccountsForScrollOffset() {
+    void dropdownHitTestingAccountsForScrollOffset() {
         int rowsTop = 40;
         int rowsBottom = rowsTop + GuiTokens.ROW_H * 3;
         int scrollOffset = GuiTokens.ROW_H * 2;
 
-        assertEquals(2, WaypointerScreen.sidebarIndexAt(rowsTop, rowsTop, rowsBottom,
+        assertEquals(2, WaypointerScreen.dropdownRowIndexAt(rowsTop, rowsTop, rowsBottom,
                 scrollOffset, 8));
-        assertEquals(4, WaypointerScreen.sidebarIndexAt(rowsTop + GuiTokens.ROW_H * 2 + 1,
+        assertEquals(4, WaypointerScreen.dropdownRowIndexAt(rowsTop + GuiTokens.ROW_H * 2 + 1,
                 rowsTop, rowsBottom, scrollOffset, 8));
-        assertEquals(-1, WaypointerScreen.sidebarIndexAt(rowsBottom, rowsTop, rowsBottom,
+        assertEquals(-1, WaypointerScreen.dropdownRowIndexAt(rowsBottom, rowsTop, rowsBottom,
                 scrollOffset, 8));
-        assertEquals(-1, WaypointerScreen.sidebarIndexAt(rowsTop - 1, rowsTop, rowsBottom,
+        assertEquals(-1, WaypointerScreen.dropdownRowIndexAt(rowsTop - 1, rowsTop, rowsBottom,
                 scrollOffset, 8));
     }
 
@@ -225,57 +225,44 @@ class WaypointerScreenTest {
     }
 
     @Test
-    void collapsedZoneListKeepsCurrentAndPopulatedZonesOnly() {
+    void islandDropdownLeadsWithTemporaryThenCurrentThenPopulatedThenEmpty() {
+        DungeonRoomData.clearAllCustom();
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(Zone.fromId("hub"));
         manager.add(WaypointGroup.create("Garden route", "garden"));
 
-        List<String> collapsed = WaypointerScreen.sidebarZoneIdsForManager(manager, false);
+        List<String> ids = WaypointerScreen.islandDropdownIdsForManager(manager);
 
-        assertTrue(collapsed.contains("hub"));
-        assertTrue(collapsed.contains("garden"));
-        assertFalse(collapsed.contains(Zone.UNKNOWN.id()));
-        assertFalse(collapsed.contains("dungeon_f7"));
-        assertTrue(WaypointerScreen.sidebarZoneIdsForManager(manager, true)
-                .contains("dungeon_f7"));
-    }
-
-    @Test
-    void expandedZoneListOrdersCurrentAndPopulatedBeforeEmptyInactiveZones() {
-        ActiveGroupManager manager = new ActiveGroupManager();
-        manager.onZoneChanged(Zone.fromId("hub"));
-        manager.add(WaypointGroup.create("Garden route", "garden"));
-
-        List<String> expanded = WaypointerScreen.sidebarZoneIdsForManager(manager, true);
-        List<String> collapsed = WaypointerScreen.sidebarZoneIdsForManager(manager, false);
-        List<String> hiddenLabels = expanded.subList(collapsed.size(), expanded.size()).stream()
+        assertEquals(WaypointerScreen.TEMPORARY_ZONE_ID, ids.get(0));
+        assertEquals("hub", ids.get(1));
+        assertEquals("garden", ids.get(2));
+        assertTrue(ids.contains("safari"));
+        assertTrue(ids.contains("torrhus_canyon"));
+        List<String> emptyLabels = ids.subList(3, ids.size()).stream()
                 .map(id -> Zone.fromId(id).displayName())
                 .toList();
-        List<String> sortedHiddenLabels = hiddenLabels.stream()
+        List<String> sortedEmptyLabels = emptyLabels.stream()
                 .sorted(String.CASE_INSENSITIVE_ORDER)
                 .toList();
-
-        assertEquals("hub", expanded.get(0));
-        assertTrue(expanded.indexOf("garden") < expanded.indexOf("dungeon_f7"));
-        assertTrue(expanded.contains("safari"));
-        assertTrue(expanded.contains("torrhus_canyon"));
-        assertEquals(sortedHiddenLabels, hiddenLabels);
+        assertEquals(sortedEmptyLabels, emptyLabels);
     }
 
     @Test
-    void zoneDisclosureRowsBookendTheHiddenCatalog() {
-        ActiveGroupManager manager = new ActiveGroupManager();
-        manager.onZoneChanged(Zone.fromId("hub"));
+    void islandDropdownPlacesDungeonRoomsRightAfterTemporary() {
+        DungeonRoomData.clearAllCustom();
+        try {
+            defineRoom("dropdown-room", "Dropdown Room");
+            ActiveGroupManager manager = new ActiveGroupManager();
+            manager.onZoneChanged(Zone.fromId("hub"));
 
-        List<String> collapsed = WaypointerScreen.sidebarRowsForManager(manager, false);
-        List<String> expanded = WaypointerScreen.sidebarRowsForManager(manager, true);
+            List<String> ids = WaypointerScreen.islandDropdownIdsForManager(manager);
 
-        assertEquals("Show More...",
-                WaypointerScreen.zoneDisclosureLabel(collapsed.get(collapsed.size() - 1)));
-        assertEquals("Show Less",
-                WaypointerScreen.zoneDisclosureLabel(expanded.get(expanded.size() - 1)));
-        assertTrue(WaypointerScreen.isZoneDisclosureRow(collapsed.get(collapsed.size() - 1)));
-        assertTrue(WaypointerScreen.isZoneDisclosureRow(expanded.get(expanded.size() - 1)));
+            assertEquals(WaypointerScreen.TEMPORARY_ZONE_ID, ids.get(0));
+            assertEquals(WaypointerScreen.DUNGEON_ROOMS_ZONE_ID, ids.get(1));
+            assertEquals("hub", ids.get(2));
+        } finally {
+            DungeonRoomData.clearAllCustom();
+        }
     }
 
     @Test
@@ -461,15 +448,15 @@ class WaypointerScreenTest {
     }
 
     @Test
-    void importedGroupSidebarSelectionCollapsesDungeonRoomsToVisibleParent() {
-        assertEquals("hub", WaypointerScreen.sidebarSelectionForZoneId("hub"));
+    void importedGroupSelectorEntryCollapsesDungeonRoomsToVisibleParent() {
+        assertEquals("hub", WaypointerScreen.selectorEntryForZoneId("hub"));
         assertEquals(WaypointerScreen.TEMPORARY_ZONE_ID,
-                WaypointerScreen.sidebarSelectionForZoneId(WaypointerScreen.TEMPORARY_ZONE_ID));
-        assertEquals(Zone.UNKNOWN.id(), WaypointerScreen.sidebarSelectionForZoneId(Zone.UNKNOWN.id()));
+                WaypointerScreen.selectorEntryForZoneId(WaypointerScreen.TEMPORARY_ZONE_ID));
+        assertEquals(Zone.UNKNOWN.id(), WaypointerScreen.selectorEntryForZoneId(Zone.UNKNOWN.id()));
         assertEquals(WaypointerScreen.DUNGEON_ROOMS_ZONE_ID,
-                WaypointerScreen.sidebarSelectionForZoneId("admin"));
-        assertEquals("dungeon_hub", WaypointerScreen.sidebarSelectionForZoneId("dungeon_hub"));
-        assertNull(WaypointerScreen.sidebarSelectionForZoneId(null));
+                WaypointerScreen.selectorEntryForZoneId("admin"));
+        assertEquals("dungeon_hub", WaypointerScreen.selectorEntryForZoneId("dungeon_hub"));
+        assertNull(WaypointerScreen.selectorEntryForZoneId(null));
     }
 
     private static DungeonRoomDefinition defineRoom(String id, String name) {

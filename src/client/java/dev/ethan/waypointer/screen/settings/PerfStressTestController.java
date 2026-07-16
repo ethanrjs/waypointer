@@ -6,7 +6,6 @@ import dev.ethan.waypointer.WaypointerClient;
 import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.config.WaypointerConfigCodec;
-import dev.ethan.waypointer.update.UpdateChecker;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 
@@ -310,9 +309,13 @@ public final class PerfStressTestController {
         String minecraftVersion = FabricLoader.getInstance().getModContainer("minecraft")
                 .map(mod -> mod.getMetadata().getVersion().getFriendlyString())
                 .orElse("unknown");
+        var waypointerContainer = FabricLoader.getInstance().getModContainer(Waypointer.MOD_ID);
+        String waypointerVersion = waypointerContainer.isPresent()
+                ? waypointerContainer.get().getMetadata().getVersion().getFriendlyString()
+                : "unknown";
 
         return new PerfReport.Environment(
-                UpdateChecker.currentModVersion(),
+                waypointerVersion,
                 minecraftVersion,
                 System.getProperty("os.name") + " " + System.getProperty("os.version"),
                 System.getProperty("java.version"),

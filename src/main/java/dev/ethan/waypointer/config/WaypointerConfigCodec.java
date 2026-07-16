@@ -79,7 +79,7 @@ public final class WaypointerConfigCodec {
     private static final int EXPORT_INCLUDE_GROUP_META = 48;
     private static final int DUNGEON_FEATURE = 49;
     private static final int SKIP_AHEAD_MECHANIC = 50;
-    private static final int CHECK_FOR_UPDATES = 51;
+    private static final int LEGACY_CHECK_FOR_UPDATES = 51;
     private static final int IRIS_SHADER_HUD_FALLBACK = 52;
     private static final int TEMP_DEFAULT_MODE = 53;
     private static final int TEMP_DEFAULT_DURATION_MIN = 54;
@@ -136,7 +136,7 @@ public final class WaypointerConfigCodec {
         }
     }
     private static void writeFields(DataOutputStream out, WaypointerConfig config,
-                                     WaypointerConfig defaults) throws IOException {
+                                    WaypointerConfig defaults) throws IOException {
         writeDouble(out, DEFAULT_REACH_RADIUS, config.defaultReachRadius(), defaults.defaultReachRadius());
         writeBoolean(out, RESET_PROGRESS_ON_WORLD_JOIN, config.resetProgressOnWorldJoin(), defaults.resetProgressOnWorldJoin());
         writeBoolean(out, RESTART_ROUTE_WHEN_COMPLETE, config.restartRouteWhenComplete(), defaults.restartRouteWhenComplete());
@@ -200,7 +200,6 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, EXPORT_INCLUDE_GROUP_META, config.exportIncludeGroupMeta(), defaults.exportIncludeGroupMeta());
         writeBoolean(out, DUNGEON_FEATURE, config.dungeonWaypointsFeatureEnabled(), defaults.dungeonWaypointsFeatureEnabled());
         writeBoolean(out, SKIP_AHEAD_MECHANIC, config.skipAheadMechanicEnabled(), defaults.skipAheadMechanicEnabled());
-        writeBoolean(out, CHECK_FOR_UPDATES, config.checkForUpdates(), defaults.checkForUpdates());
         writeBoolean(out, IRIS_SHADER_HUD_FALLBACK, config.irisShaderHudFallback(), defaults.irisShaderHudFallback());
         writeInt(out, TEMP_DEFAULT_MODE, config.tempDefaultMode(), defaults.tempDefaultMode());
         writeInt(out, TEMP_DEFAULT_DURATION_SEC, config.tempDefaultDurationSec(), defaults.tempDefaultDurationSec());
@@ -270,7 +269,7 @@ public final class WaypointerConfigCodec {
                 case EXPORT_INCLUDE_GROUP_META -> config.setExportIncludeGroupMeta(in.readBoolean());
                 case DUNGEON_FEATURE -> config.setDungeonWaypointsFeatureEnabled(in.readBoolean());
                 case SKIP_AHEAD_MECHANIC -> config.setSkipAheadMechanicEnabled(in.readBoolean());
-                case CHECK_FOR_UPDATES -> config.setCheckForUpdates(in.readBoolean());
+                case LEGACY_CHECK_FOR_UPDATES -> in.readBoolean();
                 case IRIS_SHADER_HUD_FALLBACK -> config.setIrisShaderHudFallback(in.readBoolean());
                 case TEMP_DEFAULT_MODE -> config.setTempDefaultMode(in.readInt());
                 case TEMP_DEFAULT_DURATION_MIN -> config.setTempDefaultDurationMin(in.readInt());

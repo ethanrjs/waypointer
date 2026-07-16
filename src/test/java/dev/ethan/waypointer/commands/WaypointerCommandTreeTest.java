@@ -194,10 +194,10 @@ class WaypointerCommandTreeTest {
     void cliExportDefaultOptionsMirrorConfigDefaultsWithoutImplicitLabel() throws Exception {
         WaypointCodec.Options options = invokeExportOptionsFromConfig(new WaypointerConfig());
 
-        assertFalse(options.includeNames);
-        assertFalse(options.includeColors);
-        assertFalse(options.includeRadii);
-        assertFalse(options.includeWaypointFlags);
+        assertTrue(options.includeNames);
+        assertTrue(options.includeColors);
+        assertTrue(options.includeRadii);
+        assertTrue(options.includeWaypointFlags);
         assertTrue(options.includeGroupMeta);
         assertEquals("", options.label);
     }

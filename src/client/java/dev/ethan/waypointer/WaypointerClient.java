@@ -33,11 +33,8 @@ import dev.ethan.waypointer.render.TracerRenderer;
 import dev.ethan.waypointer.render.WaypointRenderer;
 import dev.ethan.waypointer.screen.WaypointerGuiScreens;
 import dev.ethan.waypointer.screen.WaypointerScreen;
-import dev.ethan.waypointer.update.UpdateChecker;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
-import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.api.ModContainer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 
@@ -134,15 +131,6 @@ public final class WaypointerClient implements ClientModInitializer {
 
         ClientLifecycleEvents.CLIENT_STOPPING.register(WaypointerClient::onClientStopping);
 
-        // Fire-and-forget update check. Runs on a daemon thread with a 5s
-        // startup delay so it doesn't race with world-load chat spam. Looking
-        // the version up through FabricLoader means we don't have to remember
-        // to bump a second place on release.
-        String modVersion = FabricLoader.getInstance().getModContainer(Waypointer.MOD_ID)
-                .map(WaypointerClient::modVersionFromContainer)
-                .orElse("0.0.0");
-        new UpdateChecker(modVersion, config.checkForUpdates()).start();
-
         Waypointer.LOGGER.info("Waypointer client ready -- {} route(s) loaded", manager.allGroups().size());
     }
 
@@ -152,10 +140,6 @@ public final class WaypointerClient implements ClientModInitializer {
         if (dungeonConfig != null) dungeonConfig.flush();
         DungeonRoomData.flush();
         if (developerModeMonitor != null) developerModeMonitor.flushAndShutdown();
-    }
-
-    private static String modVersionFromContainer(ModContainer container) {
-        return container.getMetadata().getVersion().getFriendlyString();
     }
 
     public static void openGui() {

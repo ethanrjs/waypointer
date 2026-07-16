@@ -287,21 +287,20 @@ public final class WaypointerConfig {
     private WaypointGroup.GradientMode importedRouteColorMode = WaypointGroup.GradientMode.STATIC;
     /** Default one-color import palette: pure green, requested as RGB (0, 255, 0). */
     private int importedRouteDefaultColor = 0x00FF00;
-    /** Default exports drop names; set to {@code true} to include them at the cost of length. */
-    private boolean exportIncludeNames = false;
-    /** Default exports drop colors so shared routes inherit the recipient's palette. */
-    private boolean exportIncludeColors = false;
+    /** Lossless by default; users can explicitly disable names for smaller shares. */
+    private boolean exportIncludeNames = true;
+    /** Lossless by default; users can explicitly project colors to recipient defaults. */
+    private boolean exportIncludeColors = true;
     /**
-     * Per-waypoint custom radii. Off by default because most routes use the
-     * group default radius; including them only matters when the sender
-     * deliberately tuned individual waypoints.
+     * Per-waypoint custom radii. Included by default so tuned routes retain
+     * their exact reach behavior unless the sender explicitly opts out.
      */
-    private boolean exportIncludeRadii = false;
+    private boolean exportIncludeRadii = true;
     /**
-     * Per-waypoint flags (currently just "shown") -- almost always identical to
-     * defaults, so off by default to keep payloads short.
+     * Persistent per-waypoint flags. Included by default; compact/lossy export
+     * presets can explicitly omit non-structural flags for chat size.
      */
-    private boolean exportIncludeWaypointFlags = false;
+    private boolean exportIncludeWaypointFlags = true;
     /**
      * Group-level metadata: gradient mode, load mode, custom default radius.
      * On by default because a group with a non-default radius or sequenced load
@@ -335,11 +334,6 @@ public final class WaypointerConfig {
      */
     private boolean skipAheadMechanicEnabled = true;
 
-    /**
-     * Gate for the GitHub update checker. Off means no outbound HTTP at all --
-     * privacy-minded users can disable it without losing the rest of the mod.
-     */
-    private boolean checkForUpdates = true;
     /**
      * Experimental compatibility path for Iris shader packs that composite after
      * Waypointer's no-depth world render pass. When enabled, active Iris shaders
@@ -576,7 +570,6 @@ public final class WaypointerConfig {
     public boolean exportIncludeGroupMeta()    { return exportIncludeGroupMeta; }
     public boolean dungeonWaypointsFeatureEnabled() { return dungeonWaypointsFeatureEnabled; }
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
-    public boolean checkForUpdates()            { return checkForUpdates; }
     public boolean irisShaderHudFallback()      { return irisShaderHudFallback; }
     public int tempDefaultMode() {
         return tempDefaultMode < Waypoint.TEMP_TIME || tempDefaultMode > Waypoint.TEMP_UNTIL_LEAVE
@@ -759,7 +752,6 @@ public final class WaypointerConfig {
         save();
     }
     public void setSkipAheadMechanicEnabled(boolean v) { this.skipAheadMechanicEnabled = v; save(); }
-    public void setCheckForUpdates(boolean v)          { this.checkForUpdates = v; save(); }
     public void setIrisShaderHudFallback(boolean v)    { this.irisShaderHudFallback = v; save(); }
     public void setTempDefaultMode(int v) {
         int clamped = (v < Waypoint.TEMP_TIME || v > Waypoint.TEMP_UNTIL_LEAVE)
@@ -841,7 +833,6 @@ public final class WaypointerConfig {
         exportIncludeGroupMeta = replacement.exportIncludeGroupMeta;
         dungeonWaypointsFeatureEnabled = replacement.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = replacement.skipAheadMechanicEnabled;
-        checkForUpdates = replacement.checkForUpdates;
         irisShaderHudFallback = replacement.irisShaderHudFallback;
         tempDefaultMode = replacement.tempDefaultMode;
         tempDefaultDurationSec = replacement.tempDefaultDurationSec;
@@ -890,7 +881,6 @@ public final class WaypointerConfig {
         exportIncludeGroupMeta = false;
         dungeonWaypointsFeatureEnabled = false;
         skipAheadMechanicEnabled = false;
-        checkForUpdates = false;
         irisShaderHudFallback = false;
         beaconBeamMode = BeaconBeamMode.OFF;
         tempDefaultMode = Waypoint.TEMP_UNTIL_LEAVE;
@@ -962,7 +952,6 @@ public final class WaypointerConfig {
         exportIncludeGroupMeta = defaults.exportIncludeGroupMeta;
         dungeonWaypointsFeatureEnabled = defaults.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = defaults.skipAheadMechanicEnabled;
-        checkForUpdates = defaults.checkForUpdates;
         irisShaderHudFallback = defaults.irisShaderHudFallback;
         tempDefaultMode = defaults.tempDefaultMode;
         tempDefaultDurationSec = defaults.tempDefaultDurationSec;

@@ -20,6 +20,17 @@ import static org.junit.jupiter.api.Assertions.*;
 class DefaultWaypointerApiTest {
 
     @Test
+    void public_export_defaults_are_full_fidelity() {
+        ExportOptions defaults = ExportOptions.defaults();
+
+        assertTrue(defaults.includeNames());
+        assertTrue(defaults.includeColors());
+        assertTrue(defaults.includeRadii());
+        assertTrue(defaults.includeWaypointFlags());
+        assertTrue(defaults.includeGroupMeta());
+    }
+
+    @Test
     void publicSpecsBoundUnsafeReachRadii() {
         RouteSpec route = RouteSpec.builder()
                 .defaultRadius(Double.POSITIVE_INFINITY)

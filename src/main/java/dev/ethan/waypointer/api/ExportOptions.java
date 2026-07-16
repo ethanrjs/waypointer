@@ -76,10 +76,10 @@ public final class ExportOptions {
 
     public static final class Builder {
         private ExportTarget target = ExportTarget.WAYPOINTER;
-        private boolean includeNames;
-        private boolean includeColors;
-        private boolean includeRadii;
-        private boolean includeWaypointFlags;
+        private boolean includeNames = true;
+        private boolean includeColors = true;
+        private boolean includeRadii = true;
+        private boolean includeWaypointFlags = true;
         private boolean includeGroupMeta = true;
         private String label = "";
 

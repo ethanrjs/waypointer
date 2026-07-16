@@ -78,19 +78,15 @@ public final class CodecScanner {
             int greedyBodyEnd = bodyEnd;
             boolean valid = bodyEnd - bodyStart >= MIN_BODY
                     && validator.test(message.substring(i, bodyEnd));
-            for (int trims = 0;
-                 trims < MAX_SUFFIX_TRIMS
-                         && bodyEnd > bodyStart + MIN_BODY
-                         && isClauseSuffixDelim(message.charAt(bodyEnd - 1));
-                 trims++) {
-                boolean shorterValid = validator.test(message.substring(i, bodyEnd - 1));
-                if (shorterValid) {
+            if (!valid) {
+                for (int trims = 0;
+                     trims < MAX_SUFFIX_TRIMS
+                             && bodyEnd > bodyStart + MIN_BODY
+                             && isClauseSuffixDelim(message.charAt(bodyEnd - 1));
+                     trims++) {
                     bodyEnd--;
-                    valid = true;
-                } else if (valid) {
-                    break;
-                } else {
-                    bodyEnd--;
+                    valid = validator.test(message.substring(i, bodyEnd));
+                    if (valid) break;
                 }
             }
             if (!valid) {

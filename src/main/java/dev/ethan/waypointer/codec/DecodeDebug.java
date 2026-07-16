@@ -22,13 +22,16 @@ import java.util.List;
  * @param compressedBytes  Byte count after text decoding, before inflate.
  * @param rawBodyBytes     Byte count after inflate -- size of the binary body.
  * @param charsPerRawByte  {@code inputChars / rawBodyBytes}; overall density ratio.
- * @param headerByte       First byte of the raw body: version in low nibble, flags in high nibble.
+ * @param headerByte       First byte of the raw body: version in low nibble; v9 content kind and
+ *                         label presence in the high nibble (legacy versions expose old flags).
  * @param version          Wire format version extracted from the low nibble of {@code headerByte}.
- * @param includesNames    Header bit 4 -- whether the encoder wrote per-waypoint names.
- * @param hasLabel         Header bit 5 -- whether a sender-supplied label string is present.
- * @param reservedBit6     Header bit 6. In v6+ this marks the anonymous single-group
- *                         coordinate-only body; older versions treated it as reserved.
- * @param reservedBit7     Header bit 7. Reserved; same semantics as {@code reservedBit6}.
+ * @param includesNames    Whether names were present in the decoded route. In v1-v8 this comes
+ *                         from header bit 4; v9 derives it from the selected layout/body.
+ * @param hasLabel         Whether a sender-supplied label string is present (v9 bit 7;
+ *                         legacy bit 5).
+ * @param reservedBit6     Compatibility field: true for a v9 coordinate-only content kind or
+ *                         when the legacy anonymous-group bit 6 is set.
+ * @param reservedBit7     Raw header bit 7 (the v9 label bit; reserved in v1-v8).
  * @param label            Sender-supplied human-readable export title; empty if none.
  *                         Already sanitized (no formatting codes / control chars).
  * @param stringPool       UTF-8 string pool, in wire order. Index 0 is always {@code ""}.
@@ -62,8 +65,12 @@ public record DecodeDebug(
 
     /**
      * One group's worth of debug info. Byte counts in {@code coordBlockBytes}
-     * and {@code bodyBlockBytes} reference the raw (post-inflate)
-     * body, not the compressed or CJK-encoded forms.
+     * and {@code bodyBlockBytes} reference the raw (post-inflate) body, not the
+     * compressed or text-encoded forms. Compact v9 kinds do not expose separate
+     * coordinate/body sections: for those records {@code groupFlagsByte},
+     * {@code coordModeOrdinal}, and {@code coordBlockBytes} are {@code -1},
+     * {@code coordMode} is {@code COMPACT_V9_RANGE}, and
+     * {@code bodyBlockBytes} is the complete compact payload.
      */
     public record GroupDebug(
             int index,

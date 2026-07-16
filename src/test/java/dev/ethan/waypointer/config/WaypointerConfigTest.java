@@ -434,7 +434,10 @@ class WaypointerConfigTest {
         assertTrue(config.placeNewWaypointsBelowPlayer());
         assertTrue(config.chatCodecDetection());
         assertTrue(config.dimSequenceContextWaypoints());
-        assertFalse(config.exportIncludeColors());
+        assertTrue(config.exportIncludeNames());
+        assertTrue(config.exportIncludeColors());
+        assertTrue(config.exportIncludeRadii());
+        assertTrue(config.exportIncludeWaypointFlags());
         assertTrue(config.exportIncludeGroupMeta());
     }
 
@@ -608,6 +611,15 @@ class WaypointerConfigTest {
 
         assertEquals(75, decoded.tempDefaultDurationSec());
         assertEquals(76_000L, decoded.defaultTempExpiresAtMillis(1_000L));
+    }
+
+    @Test
+    void configCodecConsumesRetiredUpdaterTagWithoutRestoringUpdaterState() throws IOException {
+        String legacyCode = configCodeForRawPayload((byte) 1, (byte) 51, (byte) 0, (byte) 0);
+
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(legacyCode);
+
+        assertTrue(decoded.showWaypointNames());
     }
 
     @Test
