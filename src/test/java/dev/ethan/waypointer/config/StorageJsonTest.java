@@ -8,9 +8,11 @@ import dev.ethan.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -22,6 +24,24 @@ class StorageJsonTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void loadBoundsUnsafePersistedReachRadii() {
+        JsonObject groupJson = new JsonObject();
+        groupJson.addProperty("zone", "hub");
+        groupJson.addProperty("defaultRadius", Double.POSITIVE_INFINITY);
+        WaypointGroup group = Storage.groupFromJson(groupJson);
+
+        JsonObject waypointJson = new JsonObject();
+        waypointJson.addProperty("x", 0);
+        waypointJson.addProperty("y", 64);
+        waypointJson.addProperty("z", 0);
+        waypointJson.addProperty("radius", 1_000_000.0);
+        Waypoint waypoint = Storage.waypointFromJson(waypointJson);
+
+        assertEquals(Waypoint.DEFAULT_REACH_RADIUS, group.defaultRadius());
+        assertEquals(Waypoint.MAX_REACH_RADIUS, waypoint.customRadius());
+    }
 
     @Test
     void waypoint_roundTripPreservesAllFields() {
@@ -39,6 +59,26 @@ class StorageJsonTest {
         assertFalse(json.has("name"),   "empty name should not serialize");
         assertFalse(json.has("flags"),  "zero flags should not serialize");
         assertFalse(json.has("radius"), "default radius should not serialize");
+        assertFalse(json.has("preciseX"), "default block-center precision should not serialize");
+    }
+
+    @Test
+    void waypoint_precisePositionRoundTripsWhenCustom() {
+        Waypoint original = Waypoint.at(1, 2, -2)
+                .withPreciseSixteenths(20, 39, -25);
+
+        JsonObject json = Storage.waypointToJson(original);
+        Waypoint copy = Storage.waypointFromJson(json);
+
+        assertEquals(20, json.get("preciseX").getAsInt());
+        assertEquals(39, json.get("preciseY").getAsInt());
+        assertEquals(-25, json.get("preciseZ").getAsInt());
+        assertEquals(original.preciseX(), copy.preciseX());
+        assertEquals(original.preciseY(), copy.preciseY());
+        assertEquals(original.preciseZ(), copy.preciseZ());
+        assertEquals(1, copy.x());
+        assertEquals(2, copy.y());
+        assertEquals(-2, copy.z());
     }
 
     @Test
@@ -84,6 +124,116 @@ class StorageJsonTest {
     }
 
     @Test
+    void save_skipsRuntimeOnlyGroups() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup real = WaypointGroup.create("real", "hub");
+        real.add(Waypoint.at(1, 2, 3).withName("keeper"));
+        WaypointGroup runtime = new WaypointGroup("runtime::hub", "Runtime", "hub");
+        runtime.setRuntimeOnly(true);
+        runtime.add(Waypoint.at(4, 5, 6).withName("generated"));
+        manager.add(real);
+        manager.add(runtime);
+
+        Path file = tempDir.resolve("waypoints.json");
+        new Storage(file).save(manager);
+        JsonObject root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+
+        assertEquals(1, root.getAsJsonArray("groups").size());
+        assertEquals("real", root.getAsJsonArray("groups").get(0).getAsJsonObject().get("name").getAsString());
+    }
+
+    @Test
+    void attached_save_writes_captured_snapshot_not_later_live_mutation() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Path file = tempDir.resolve("waypoints.json");
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+
+        WaypointGroup group = WaypointGroup.create("snap", "hub");
+        group.add(Waypoint.at(1, 2, 3).withName("before"));
+        manager.add(group);
+        group.add(Waypoint.at(4, 5, 6).withName("after"));
+
+        storage.flush();
+
+        JsonObject root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        JsonObject savedGroup = root.getAsJsonArray("groups").get(0).getAsJsonObject();
+
+        assertEquals(1, savedGroup.getAsJsonArray("waypoints").size());
+        assertEquals("before", savedGroup.getAsJsonArray("waypoints")
+                .get(0).getAsJsonObject().get("name").getAsString());
+    }
+
+    @Test
+    void failedFlushRemainsDirtyAndRetriesTheSameSnapshot() throws Exception {
+        Path blockedParent = tempDir.resolve("not-a-directory");
+        Files.writeString(blockedParent, "occupied");
+        Path file = blockedParent.resolve("waypoints.json");
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+        manager.add(WaypointGroup.create("Retry me", "hub"));
+
+        assertThrows(UncheckedIOException.class, storage::flush);
+        assertEquals(0, storage.writeCount());
+
+        Files.delete(blockedParent);
+        Files.createDirectory(blockedParent);
+        storage.flush();
+
+        assertEquals(1, storage.writeCount());
+        JsonObject root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertEquals("Retry me", root.getAsJsonArray("groups").get(0)
+                .getAsJsonObject().get("name").getAsString());
+    }
+
+    @Test
+    void attachedStorageIgnoresTransientGroupsAndSnapshotsPersistentChangesOnce() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Storage storage = new Storage(tempDir.resolve("waypoints.json"));
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+
+        WaypointGroup temp = new WaypointGroup("temp::hub", "Temporary", "hub");
+        temp.setTemp(true);
+        temp.add(Waypoint.at(1, 2, 3).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L));
+        manager.add(temp);
+        manager.clearTemporaryWaypoints();
+
+        WaypointGroup overlay = new WaypointGroup("api-overlay::test", "Overlay", "hub");
+        overlay.setTemp(true);
+        overlay.add(Waypoint.at(4, 5, 6).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L));
+        manager.add(overlay);
+        manager.remove(overlay.id());
+
+        WaypointGroup runtime = new WaypointGroup("dungeon:auto:test", "Runtime", "hub");
+        runtime.setRuntimeOnly(true);
+        manager.add(runtime);
+        WaypointGroup rebuiltRuntime = new WaypointGroup(runtime.id(), "Rebuilt", "hub");
+        rebuiltRuntime.setRuntimeOnly(true);
+        manager.add(rebuiltRuntime);
+        manager.removeAll(List.of(rebuiltRuntime.id()));
+        storage.flush();
+
+        assertEquals(snapshotsAfterAttach, storage.snapshotCount());
+        assertEquals(0, storage.writeCount());
+
+        boolean[] nestedRuntimeAdded = {false};
+        manager.addDataListener(() -> {
+            if (nestedRuntimeAdded[0]) return;
+            nestedRuntimeAdded[0] = true;
+            WaypointGroup nestedRuntime = new WaypointGroup(
+                    "dungeon:auto:nested", "Nested runtime", "hub");
+            nestedRuntime.setRuntimeOnly(true);
+            manager.add(nestedRuntime);
+        });
+        manager.add(WaypointGroup.create("Persistent", "hub"));
+        assertEquals(snapshotsAfterAttach + 1, storage.snapshotCount());
+        storage.flush();
+        assertEquals(1, storage.writeCount());
+    }
+
+    @Test
     void load_replacesGroupsOnlyAfterWholeFileParses() throws Exception {
         ActiveGroupManager manager = managerWithExistingGroup();
         Path file = tempDir.resolve("waypoints.json");
@@ -112,11 +262,14 @@ class StorageJsonTest {
     @Test
     void load_keepsExistingGroupsWhenRootOrGroupsAreMalformed() throws Exception {
         List<String> malformedFiles = List.of(
+                " ",
                 "null",
                 "[]",
-                "{\"groups\": null}",
-                "{\"groups\": {\"id\": \"not-array\"}}",
-                "{\"groups\": [null]}"
+                "{\"groups\": []}",
+                "{\"schema\": 1.5, \"groups\": []}",
+                "{\"schema\": 1, \"groups\": null}",
+                "{\"schema\": 1, \"groups\": {\"id\": \"not-array\"}}",
+                "{\"schema\": 1, \"groups\": [null]}"
         );
 
         for (int i = 0; i < malformedFiles.size(); i++) {
@@ -127,14 +280,74 @@ class StorageJsonTest {
             new Storage(file).load(manager);
 
             assertExistingGroupSurvived(manager, "case " + i);
+            assertQuarantined(file, malformedFiles.get(i));
         }
+    }
+
+    @Test
+    void load_quarantinesUnsupportedSchemaBeforeItCanBeOverwritten() throws Exception {
+        ActiveGroupManager manager = managerWithExistingGroup();
+        Path file = tempDir.resolve("future-schema.json");
+        String raw = """
+                {
+                  "schema": 2,
+                  "groups": [{"id": "future", "name": "Future", "zone": "hub"}]
+                }
+                """;
+        Files.writeString(file, raw);
+
+        new Storage(file).load(manager);
+
+        assertExistingGroupSurvived(manager, "future schema must not replace live data");
+        assertQuarantined(file, raw);
+    }
+
+    @Test
+    void load_quarantinesDuplicateGroupIdsInsteadOfSilentlyDroppingOne() throws Exception {
+        ActiveGroupManager manager = managerWithExistingGroup();
+        Path file = tempDir.resolve("duplicate-ids.json");
+        String raw = """
+                {
+                  "schema": 1,
+                  "groups": [
+                    {"id": "same", "name": "First", "zone": "hub"},
+                    {"id": "same", "name": "Second", "zone": "hub"}
+                  ]
+                }
+                """;
+        Files.writeString(file, raw);
+
+        new Storage(file).load(manager);
+
+        assertExistingGroupSurvived(manager, "duplicate ids must reject the whole file");
+        assertQuarantined(file, raw);
+    }
+
+    @Test
+    void laterSavesCannotDestroyQuarantinedStartupData() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Path file = tempDir.resolve("startup-corruption.json");
+        String invalidData = "{not-json";
+        Files.writeString(file, invalidData);
+        Storage storage = new Storage(file);
+
+        storage.load(manager);
+        storage.attach(manager);
+        manager.add(WaypointGroup.create("Replacement", "hub"));
+        storage.flush();
+
+        assertTrue(Files.exists(file), "new valid state may use the canonical path");
+        assertEquals(invalidData, Files.readString(findQuarantine(file)),
+                "the rejected startup data must survive later saves unchanged");
+        assertEquals(1, JsonParser.parseString(Files.readString(file)).getAsJsonObject()
+                .getAsJsonArray("groups").size());
     }
 
     @Test
     void load_keepsExistingGroupsWhenLaterGroupFailsToParse() throws Exception {
         ActiveGroupManager manager = managerWithExistingGroup();
         Path file = tempDir.resolve("mid-array-failure.json");
-        Files.writeString(file, """
+        String raw = """
                 {
                   "schema": 1,
                   "groups": [
@@ -152,11 +365,13 @@ class StorageJsonTest {
                     }
                   ]
                 }
-                """);
+                """;
+        Files.writeString(file, raw);
 
         new Storage(file).load(manager);
 
         assertExistingGroupSurvived(manager, "partially parsed file must not replace live state");
+        assertQuarantined(file, raw);
     }
 
     @Test
@@ -176,6 +391,43 @@ class StorageJsonTest {
 
         assertEquals(0x112233, copy.gradientStartColor());
         assertEquals(0xFEDCBA, copy.gradientEndColor());
+    }
+
+        @Test
+    void group_staticColorAndModeRoundTrip() {
+        WaypointGroup g = WaypointGroup.create("one-color", "hub");
+        g.add(Waypoint.at(1, 2, 3).withColor(0x111111));
+        g.add(Waypoint.at(4, 5, 6).withColor(0x222222));
+        g.setStaticColor(0x135724);
+        g.setGradientMode(WaypointGroup.GradientMode.STATIC);
+
+        JsonObject json = Storage.groupToJson(g);
+        WaypointGroup copy = Storage.groupFromJson(json);
+
+        assertEquals(0x135724, json.get("staticColor").getAsInt());
+        assertEquals(WaypointGroup.GradientMode.STATIC, copy.gradientMode());
+        assertEquals(0x135724, copy.staticColor());
+        assertEquals(0x135724, copy.get(0).color());
+        assertEquals(0x135724, copy.get(1).color());
+    }
+
+        @Test
+    void group_legacyGradientModeJsonStillLoads() {
+        JsonObject json = JsonParser.parseString("""
+                {
+                  "id": "legacy-gradient",
+                  "name": "Legacy Gradient",
+                  "zone": "hub",
+                  "gradientMode": "AUTO",
+                  "waypoints": [
+                    {"x": 1, "y": 2, "z": 3}
+                  ]
+                }
+                """).getAsJsonObject();
+
+        WaypointGroup copy = Storage.groupFromJson(json);
+
+        assertEquals(WaypointGroup.GradientMode.AUTO, copy.gradientMode());
     }
 
     @Test
@@ -243,5 +495,21 @@ class StorageJsonTest {
         assertNotNull(manager.get("existing"), message);
         assertEquals(1, manager.allGroups().size(), message);
         assertEquals("keeper", manager.get("existing").get(0).name(), message);
+    }
+
+    private static void assertQuarantined(Path original, String expectedContents) throws Exception {
+        assertFalse(Files.exists(original), "invalid source should be moved out of the live storage path");
+        assertEquals(expectedContents, Files.readString(findQuarantine(original)));
+    }
+
+    private static Path findQuarantine(Path original) throws Exception {
+        String prefix = original.getFileName() + ".invalid";
+        try (Stream<Path> files = Files.list(original.getParent())) {
+            List<Path> matches = files
+                    .filter(path -> path.getFileName().toString().startsWith(prefix))
+                    .toList();
+            assertEquals(1, matches.size(), "exactly one quarantine copy should be kept");
+            return matches.get(0);
+        }
     }
 }

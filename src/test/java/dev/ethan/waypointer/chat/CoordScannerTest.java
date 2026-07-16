@@ -316,22 +316,58 @@ class CoordScannerTest {
                 Component.literal("[CHAT] [334] [MVP++] Babbur: x: 1, y: 2, z: 3"),
                 config);
 
-        assertEquals("[CHAT] [334] [MVP++] Babbur: x: 1, y: 2, z: 3 [B]", out.getString());
+        assertEquals("[CHAT] [334] [MVP++] Babbur: x: 1, y: 2, z: 3 [Block]", out.getString());
 
         StyledRun blockRun = runs(out).stream()
-                .filter(run -> run.text().equals(" [B]"))
+                .filter(run -> run.text().equals(" [Block]"))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("missing block action run"));
         assertEquals(TextColor.fromLegacyFormat(ChatFormatting.RED), blockRun.style().getColor());
-        assertTrue(blockRun.style().isBold());
+        assertFalse(blockRun.style().isBold());
         ClickEvent clickEvent = blockRun.style().getClickEvent();
         ClickEvent.RunCommand runCommand = assertInstanceOf(ClickEvent.RunCommand.class, clickEvent);
         assertEquals("/waypointer blacklist add Babbur", runCommand.command());
         assertNotNull(blockRun.style().getHoverEvent());
     }
 
+    @Test
+    void autoAddChatTempWaypointsSuppressesDuplicateMessageDelivery() throws Exception {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setAutoAddChatTempWaypoints(true);
+        ActiveGroupManager manager = new ActiveGroupManager();
+        ChatCoordDetector detector = new ChatCoordDetector(config, manager);
+        Component message = Component.literal("[CHAT] [334] [MVP++] Babbur: x: 1, y: 2, z: 3");
+
+        invokeCoordDetector(detector, message);
+        invokeCoordDetector(detector, message);
+
+        assertEquals(1, manager.getOrCreateTempGroup().size(),
+                "replayed identical chat delivery should not create duplicate temp waypoints");
+    }
+
+    @Test
+    void autoAddChatTempWaypointsKeepsDifferentChatLinesWithSameCoords() throws Exception {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setAutoAddChatTempWaypoints(true);
+        ActiveGroupManager manager = new ActiveGroupManager();
+        ChatCoordDetector detector = new ChatCoordDetector(config, manager);
+
+        invokeCoordDetector(detector,
+                Component.literal("[CHAT] [334] [MVP++] Babbur: x: 1, y: 2, z: 3"));
+        invokeCoordDetector(detector,
+                Component.literal("[CHAT] [334] [MVP++] Babbur: still x: 1, y: 2, z: 3"));
+
+        assertEquals(2, manager.getOrCreateTempGroup().size(),
+                "a later distinct chat line with the same coordinates should remain actionable");
+    }
+
     private static Component invokeCoordDetector(Component message, WaypointerConfig config) throws Exception {
         ChatCoordDetector detector = new ChatCoordDetector(config, new ActiveGroupManager());
+        return invokeCoordDetector(detector, message);
+    }
+
+    private static Component invokeCoordDetector(ChatCoordDetector detector, Component message)
+            throws Exception {
         Method onMessage = ChatCoordDetector.class.getDeclaredMethod("onMessage", Component.class, boolean.class);
         onMessage.setAccessible(true);
         return (Component) onMessage.invoke(detector, message, false);

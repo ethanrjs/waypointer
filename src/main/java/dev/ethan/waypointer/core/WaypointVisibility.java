@@ -18,9 +18,9 @@ public final class WaypointVisibility {
                                              double radiusSquared) {
         if (waypoint == null || radiusSquared <= 0.0) return false;
 
-        double dx = waypoint.x() + 0.5 - playerX;
-        double dy = waypoint.y() + 0.5 - playerY;
-        double dz = waypoint.z() + 0.5 - playerZ;
+        double dx = waypoint.centerX() - playerX;
+        double dy = waypoint.centerY() - playerY;
+        double dz = waypoint.centerZ() - playerZ;
         return dx * dx + dy * dy + dz * dz <= radiusSquared;
     }
 }

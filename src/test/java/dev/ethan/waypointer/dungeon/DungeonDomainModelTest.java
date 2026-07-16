@@ -154,10 +154,11 @@ class DungeonDomainModelTest {
         DungeonWaypoint first = entityWaypoint("first", DungeonWaypointTrigger.PICKUP_ITEM, 1);
         DungeonWaypoint second = entityWaypoint("second", DungeonWaypointTrigger.PICKUP_ITEM, 10);
         DungeonWaypoint wrongTrigger = entityWaypoint("bat", DungeonWaypointTrigger.KILL_BAT, 10);
+        DungeonWaypoint support = entityWaypoint("support", DungeonWaypointTrigger.PICKUP_ITEM, 0, 10);
 
         DungeonWaypoint selected = DungeonTriggerSelection.nearestEntityTrigger(
                 room,
-                List.of(first, second, wrongTrigger),
+                List.of(first, support, second, wrongTrigger),
                 DungeonWaypointTrigger.PICKUP_ITEM,
                 2.6,
                 70.5,
@@ -173,6 +174,57 @@ class DungeonDomainModelTest {
                 70.5,
                 100.0,
                 4.0));
+    }
+
+    @Test
+    void superboomTriggerRequiresExactItemName() {
+        assertTrue(DungeonTriggerSelection.itemNameMatchesSuperboom("Superboom TNT"));
+        assertTrue(DungeonTriggerSelection.itemNameMatchesSuperboom("\u00A7aSuperboom TNT"));
+        assertFalse(DungeonTriggerSelection.itemNameMatchesSuperboom("Not Superboom TNT"));
+        assertFalse(DungeonTriggerSelection.itemNameMatchesSuperboom("Superboom Fragment"));
+    }
+
+    @Test
+    void chatTriggerMatchesWholeAuthoredPhraseOnly() {
+        DungeonWaypoint named = new DungeonWaypoint(
+                "chat-secret",
+                1,
+                DungeonSecretCategory.DEFAULT,
+                DungeonWaypointTrigger.CHAT_MESSAGE,
+                1,
+                70,
+                1,
+                "Secret Found",
+                List.of());
+        DungeonWaypoint unnamedDefault = new DungeonWaypoint(
+                "chat-default",
+                2,
+                DungeonSecretCategory.DEFAULT,
+                DungeonWaypointTrigger.CHAT_MESSAGE,
+                1,
+                70,
+                1,
+                "",
+                List.of());
+        DungeonWaypoint unnamedCategory = new DungeonWaypoint(
+                "chat-wither",
+                3,
+                DungeonSecretCategory.WITHER,
+                DungeonWaypointTrigger.CHAT_MESSAGE,
+                1,
+                70,
+                1,
+                "",
+                List.of());
+
+        assertTrue(DungeonTriggerSelection.chatMessageMatchesWaypoint(
+                "Party > Secret Found!", named));
+        assertFalse(DungeonTriggerSelection.chatMessageMatchesWaypoint(
+                "Party > secret founded by someone else", named));
+        assertFalse(DungeonTriggerSelection.chatMessageMatchesWaypoint(
+                "The default setting changed.", unnamedDefault));
+        assertTrue(DungeonTriggerSelection.chatMessageMatchesWaypoint(
+                "You found wither essence!", unnamedCategory));
     }
 
     @Test
@@ -225,9 +277,17 @@ class DungeonDomainModelTest {
             String id,
             DungeonWaypointTrigger trigger,
             int x) {
+        return entityWaypoint(id, trigger, x, x);
+    }
+
+    private static DungeonWaypoint entityWaypoint(
+            String id,
+            DungeonWaypointTrigger trigger,
+            int secretIndex,
+            int x) {
         return new DungeonWaypoint(
                 id,
-                x,
+                secretIndex,
                 DungeonSecretCategory.ITEM,
                 trigger,
                 x,

@@ -11,11 +11,8 @@ import java.util.Objects;
  *
  * <p>This is intentionally a "thin" room descriptor -- it carries only the
  * geometry needed to project room-local secret coordinates back into the
- * world. The named room (e.g. "Waterfall", "Three Chests") is NOT identified
- * here; that's the job of a future block-fingerprint matcher (see
- * {@code Room.checkBlock} in Skyblocker for the algorithm we'd port). Until
- * that lands, dungeon waypoint data is keyed by shape + segment topology
- * rather than by named room.
+ * world plus the optional catalog identity that {@code DungeonRoomData}
+ * attaches after matching room-core hashes or authored fingerprints.
  *
  * <p>Segments are encoded as {@code packed = (x << 32) | (z & 0xFFFFFFFF)}
  * to avoid allocating a list of pairs; the helpers
@@ -29,7 +26,8 @@ public record DungeonRoom(
         int physicalCornerZ,
         List<Long> segments,
         String roomId,
-        String roomName) {
+        String roomName,
+        DungeonDetectionConfidence confidence) {
 
     public DungeonRoom {
         Objects.requireNonNull(type, "type");
@@ -38,25 +36,38 @@ public record DungeonRoom(
         segments = segments == null ? List.of() : List.copyOf(segments);
         roomId = roomId == null ? "" : roomId;
         roomName = roomName == null ? "" : roomName;
+        confidence = confidence == null ? DungeonDetectionConfidence.UNKNOWN : confidence;
     }
 
     public DungeonRoom(DungeonRoomType type, DungeonRoomShape shape, Direction direction,
                        int physicalCornerX, int physicalCornerZ, List<Long> segments) {
-        this(type, shape, direction, physicalCornerX, physicalCornerZ, segments, "", "");
+        this(type, shape, direction, physicalCornerX, physicalCornerZ, segments, "", "",
+                DungeonDetectionConfidence.MAP_FALLBACK);
+    }
+
+    public DungeonRoom(DungeonRoomType type, DungeonRoomShape shape, Direction direction,
+                       int physicalCornerX, int physicalCornerZ, List<Long> segments,
+                       String roomId, String roomName) {
+        this(type, shape, direction, physicalCornerX, physicalCornerZ, segments, roomId, roomName,
+                DungeonDetectionConfidence.CORE_MATCHED);
+    }
+
+    public DungeonDetectionConfidence confidence() {
+        return confidence;
     }
 
     public static long packSegment(int x, int z) {
         return (((long) x) << 32) | (z & 0xFFFFFFFFL);
     }
 
-    public static int segmentX(long packed) { return (int) (packed >> 32); }
-    public static int segmentZ(long packed) { return (int) packed; }
+    public static int segmentX(long packed) {
+        return (int) (packed >> 32);
+    }
 
-    /**
-     * Stable identity key, used by the state tracker to detect "we just walked
-     * into a different room" without needing per-field equality. Not meant to
-     * be human-readable.
-     */
+    public static int segmentZ(long packed) {
+        return (int) packed;
+    }
+
     public String identityKey() {
         return type.name() + ":" + shape.name() + ":" + direction.name()
                 + ":" + physicalCornerX + "," + physicalCornerZ
@@ -69,15 +80,9 @@ public record DungeonRoom(
 
     public DungeonRoom withDefinition(String id, String name) {
         return new DungeonRoom(type, shape, direction, physicalCornerX, physicalCornerZ,
-                segments, id, name);
+                segments, id, name, confidence);
     }
 
-    /**
-     * Human-readable fallback while named-room fingerprinting is still absent.
-     * This deliberately says "1x2 Room" rather than inventing a named room like
-     * "Lava Ravine"; real names require block-skeleton matching against a
-     * curated room dataset.
-     */
     public String displayName() {
         if (!roomName.isBlank()) return roomName;
         if (type != DungeonRoomType.ROOM) return friendlyType(type);

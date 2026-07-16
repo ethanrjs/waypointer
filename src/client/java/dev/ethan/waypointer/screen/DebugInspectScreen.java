@@ -1,14 +1,22 @@
 package dev.ethan.waypointer.screen;
 
+import dev.ethan.waypointer.compat.MinecraftCompat;
+import dev.ethan.waypointer.WaypointerClient;
 import dev.ethan.waypointer.codec.DecodeDebug;
 import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.config.WaypointerConfig;
 import dev.ethan.waypointer.core.ActiveGroupManager;
-import dev.ethan.waypointer.core.Zone;
-import dev.ethan.waypointer.debug.PerformanceStressProbe;
+import dev.ethan.waypointer.debug.DebugEventLog;
+import dev.ethan.waypointer.debug.DebugSignals;
 import dev.ethan.waypointer.debug.PerformanceStats;
+import dev.ethan.waypointer.screen.settings.SettingsCatalog;
+import dev.ethan.waypointer.dungeon.DungeonCoreSignature;
+import dev.ethan.waypointer.dungeon.DungeonRoom;
+import dev.ethan.waypointer.dungeon.DungeonRoomZoneBridge;
+import dev.ethan.waypointer.dungeon.DungeonRouteSession;
+import dev.ethan.waypointer.dungeon.DungeonStateTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -70,23 +78,6 @@ public final class DebugInspectScreen extends Screen {
 
     private record SectionAnchor(String label, String subtitle, int rowIndex) {}
 
-    private static final class LiveOverlaySnapshot {
-        final PerformanceStressProbe.LiveOverlayResult result;
-        final PerformanceStats stats;
-        final String warning;
-        final boolean fallbackZone;
-
-        LiveOverlaySnapshot(PerformanceStressProbe.LiveOverlayResult result,
-                            PerformanceStats stats,
-                            String warning,
-                            boolean fallbackZone) {
-            this.result = result;
-            this.stats = stats;
-            this.warning = warning;
-            this.fallbackZone = fallbackZone;
-        }
-    }
-
     /** How many rows a single wheel notch advances the scroll. */
     private static final int SCROLL_ROWS_PER_NOTCH = 3;
 
@@ -141,7 +132,7 @@ public final class DebugInspectScreen extends Screen {
     }
 
     public static void open(Screen parent) {
-        Minecraft.getInstance().setScreen(new DebugInspectScreen(parent));
+        MinecraftCompat.setScreen(Minecraft.getInstance(), new DebugInspectScreen(parent));
     }
 
     public DebugInspectScreen(Screen parent) {
@@ -150,7 +141,8 @@ public final class DebugInspectScreen extends Screen {
 
     public static void open(Screen parent, ActiveGroupManager manager,
                             WaypointerConfig config) {
-        Minecraft.getInstance().setScreen(new DebugInspectScreen(parent, manager, config));
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new DebugInspectScreen(parent, manager, config));
     }
 
     // --- lifecycle -------------------------------------------------------------------------
@@ -159,8 +151,9 @@ public final class DebugInspectScreen extends Screen {
     protected void init() {
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
         left.add(new GuiTokens.ButtonSpec("Refresh", this::loadCombinedReport));
-        left.add(new GuiTokens.ButtonSpec("Run stress", 88, this::runStressProbe));
-        left.add(new GuiTokens.ButtonSpec("Clear stress", 92, this::clearStressOverlay));
+        if (config != null) {
+            left.add(new GuiTokens.ButtonSpec("Perf test", 88, this::openPerfStressTest));
+        }
         left.add(new GuiTokens.ButtonSpec("Copy report", this::copyReportToClipboard));
         GuiTokens.ButtonSpec back = new GuiTokens.ButtonSpec("Back", this::onClose);
 
@@ -183,81 +176,14 @@ public final class DebugInspectScreen extends Screen {
 
     // --- actions ---------------------------------------------------------------------------
 
-    private void runStressProbe() {
-        resetReportState();
-
-        try {
-            PerformanceStressProbe.Result result = PerformanceStressProbe.runDefault();
-            LiveOverlaySnapshot liveOverlay = installVisibleStressOverlay();
-            this.performanceStats = liveOverlay.stats;
-            buildStressReport(result, liveOverlay, rows, sections);
-        } catch (RuntimeException e) {
-            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            this.lastError = "Stress probe failed.\n" + detail;
-        }
-    }
-
-    private void clearStressOverlay() {
-        resetReportState();
-
-        if (manager == null) {
-            addSection(rows, sections, "Stress Overlay", "unavailable");
-            rows.add(new Row.KVWarn("Unavailable",
-                    "Open this screen through /wp debug to clear live stress overlays."));
-            return;
-        }
-
-        try {
-            PerformanceStressProbe.ClearOverlayResult result =
-                    PerformanceStressProbe.clearLiveOverlays(manager);
-            addSection(rows, sections, "Stress Overlay", "cleared");
-            rows.add(new Row.KV("Groups removed", String.valueOf(result.groupsRemoved)));
-            rows.add(new Row.KV("Waypoints removed", String.valueOf(result.waypointsRemoved)));
-            rows.add(new Row.KVDim("Scope", "debug stress overlays only"));
-        } catch (RuntimeException e) {
-            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            this.lastError = "Stress overlay cleanup failed.\n" + detail;
-        }
-    }
-
-    private LiveOverlaySnapshot installVisibleStressOverlay() {
-        if (manager == null) {
-            return new LiveOverlaySnapshot(null, null,
-                    "Open this screen through /wp debug to install a live overlay.", false);
-        }
-        if (config == null) {
-            return new LiveOverlaySnapshot(null, null,
-                    "Config is unavailable, so live overlay stats were skipped.", false);
-        }
-
-        var player = Minecraft.getInstance().player;
-        if (player == null) {
-            return new LiveOverlaySnapshot(null, null,
-                    "Player is unavailable, so no visible overlay was installed.", false);
-        }
-
-        try {
-            Zone zone = manager.currentZone();
-            boolean fallbackZone = false;
-            if (zone == null) {
-                zone = Zone.UNKNOWN;
-                manager.onZoneChanged(zone);
-                fallbackZone = true;
-            }
-
-            int centerX = (int) Math.floor(player.getX());
-            int centerY = (int) Math.floor(player.getY()) + 1;
-            int centerZ = (int) Math.floor(player.getZ());
-            PerformanceStressProbe.LiveOverlayResult result =
-                    PerformanceStressProbe.installLiveOverlay(manager, zone, centerX, centerY, centerZ);
-            PerformanceStats stats = PerformanceStats.capture(manager, config,
-                    player.getX(), player.getY(), player.getZ());
-            return new LiveOverlaySnapshot(result, stats, null, fallbackZone);
-        } catch (RuntimeException e) {
-            String detail = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
-            return new LiveOverlaySnapshot(null, null,
-                    "Live overlay install failed: " + detail, false);
-        }
+    /**
+     * The FPS stress test lives on the settings screen (System > Diagnostics);
+     * this deep-links there rather than duplicating the sweep UI here. Back
+     * from settings returns to this inspector.
+     */
+    private void openPerfStressTest() {
+        MinecraftCompat.setScreen(minecraft, SettingsScreen.atSetting(this, config,
+                WaypointerClient.dungeonConfig(), SettingsCatalog.ACTION_PERF_TEST));
     }
 
     private void resetReportState() {
@@ -286,6 +212,8 @@ public final class DebugInspectScreen extends Screen {
                     player.getX(), player.getY(), player.getZ());
             buildPerformanceReport(this.performanceStats, config, rows, sections);
         }
+
+        buildDungeonDiagnosticsReport(DebugSignals.dungeonDebugSnapshot(), rows, sections);
 
         String text = minecraft.keyboardHandler.getClipboard();
         if (text == null || text.isBlank()) {
@@ -372,8 +300,8 @@ public final class DebugInspectScreen extends Screen {
     // --- rendering -------------------------------------------------------------------------
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float partial) {
-        super.render(g, mouseX, mouseY, partial);
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        super.extractRenderState(g, mouseX, mouseY, partial);
 
         if (copyFeedbackUntil != 0 && System.currentTimeMillis() > copyFeedbackUntil) {
             copyFeedbackUntil = 0;
@@ -381,11 +309,11 @@ public final class DebugInspectScreen extends Screen {
         }
 
         // --- header (title + right-aligned compact summary) ------------------------------
-        g.drawString(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
+        g.text(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
         String summary = buildHeaderSummary();
         if (summary != null) {
             int sw = font.width(summary);
-            g.drawString(font, summary, width - PAD_OUTER - sw, PAD_OUTER, TEXT_DIM, false);
+            g.text(font, summary, width - PAD_OUTER - sw, PAD_OUTER, TEXT_DIM, false);
         }
 
         int top = PAD_OUTER + 10 + GAP_SECTION;
@@ -432,17 +360,17 @@ public final class DebugInspectScreen extends Screen {
 
     // --- sidebar ---------------------------------------------------------------------------
 
-    private void renderSidebar(GuiGraphics g, int x1, int y1, int x2, int y2,
+    private void renderSidebar(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2,
                                 int mouseX, int mouseY) {
         g.fill(x1, y1, x2, y2, SURFACE);
         g.fill(x2, y1, x2 + 1, y2, BORDER);
 
         int labelY = y1 + 10;
-        g.drawString(font, "Debug Report", x1 + GAP, labelY, TEXT_DIM, false);
+        g.text(font, "Debug Report", x1 + GAP, labelY, TEXT_DIM, false);
         this.sidebarContentTop = labelY + 14;
 
         if (sections.isEmpty()) {
-            g.drawString(font, debug == null ? "(no data loaded)" : "(empty report)",
+            g.text(font, debug == null ? "(no data loaded)" : "(empty report)",
                     x1 + GAP, sidebarContentTop + 4, TEXT_MUTED, false);
             return;
         }
@@ -461,24 +389,24 @@ public final class DebugInspectScreen extends Screen {
         }
     }
 
-    private void drawSidebarRow(GuiGraphics g, int x1, int y, int x2,
+    private void drawSidebarRow(GuiGraphicsExtractor g, int x1, int y, int x2,
                                  SectionAnchor s, boolean selected, boolean hovered) {
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
         if (bg != 0) g.fill(x1, y, x2, y + ROW_H, bg);
         if (selected) g.fill(x1, y, x1 + 2, y + ROW_H, ACCENT);
 
         int textColor = selected ? TEXT : TEXT_DIM;
-        g.drawString(font, s.label(), x1 + GAP + 2, y + 6, textColor, false);
+        g.text(font, s.label(), x1 + GAP + 2, y + 6, textColor, false);
 
         if (s.subtitle() != null && !s.subtitle().isEmpty()) {
             int sw = font.width(s.subtitle());
-            g.drawString(font, s.subtitle(), x2 - GAP - sw, y + 6, TEXT_MUTED, false);
+            g.text(font, s.subtitle(), x2 - GAP - sw, y + 6, TEXT_MUTED, false);
         }
     }
 
     // --- main report -----------------------------------------------------------------------
 
-    private void renderMain(GuiGraphics g, int x1, int y1, int x2, int y2) {
+    private void renderMain(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
 
         if (lastError != null) {
@@ -515,37 +443,37 @@ public final class DebugInspectScreen extends Screen {
         }
     }
 
-    private void drawRow(GuiGraphics g, Row row, int x, int y, int xEnd) {
+    private void drawRow(GuiGraphicsExtractor g, Row row, int x, int y, int xEnd) {
         switch (row) {
             case Row.Section s -> {
-                g.drawString(font, s.title(), x, y, ACCENT, false);
+                g.text(font, s.title(), x, y, ACCENT, false);
                 int lineX = x + font.width(s.title()) + GAP;
                 if (lineX < xEnd) g.fill(lineX, y + 5, xEnd, y + 6, BORDER);
             }
             case Row.KV kv -> {
                 drawKey(g, kv.key(), x, y);
-                g.drawString(font, kv.value(), x + KEY_COL_W, y,
+                g.text(font, kv.value(), x + KEY_COL_W, y,
                         valueColor(kv.key(), kv.value()), false);
             }
             case Row.KVDim kv -> {
                 drawKey(g, kv.key(), x, y);
-                g.drawString(font, kv.value(), x + KEY_COL_W, y, TEXT_DIM, false);
+                g.text(font, kv.value(), x + KEY_COL_W, y, TEXT_DIM, false);
             }
             case Row.KVWarn kv -> {
                 drawKey(g, kv.key(), x, y);
-                g.drawString(font, kv.value(), x + KEY_COL_W, y, WARN_TONE, false);
+                g.text(font, kv.value(), x + KEY_COL_W, y, WARN_TONE, false);
             }
             case Row.Bit b -> {
-                g.drawString(font, "bit " + b.bit(), x, y, TEXT_DIM, false);
-                g.drawString(font, b.label(), x + BIT_LABEL_OFFSET, y, KEYWORD_TONE, false);
-                g.drawString(font, b.set() ? "true" : "false", x + KEY_COL_W, y,
+                g.text(font, "bit " + b.bit(), x, y, TEXT_DIM, false);
+                g.text(font, b.label(), x + BIT_LABEL_OFFSET, y, KEYWORD_TONE, false);
+                g.text(font, b.set() ? "true" : "false", x + KEY_COL_W, y,
                         b.set() ? SUCCESS_TONE : TEXT_MUTED, false);
             }
-            case Row.BitNote n -> g.drawString(font, n.text(), x, y, TEXT_MUTED, false);
+            case Row.BitNote n -> g.text(font, n.text(), x, y, TEXT_MUTED, false);
             case Row.PoolEntry p -> {
-                g.drawString(font, "[" + p.index() + "]", x, y, NUMBER_TONE, false);
+                g.text(font, "[" + p.index() + "]", x, y, NUMBER_TONE, false);
                 String content = p.text().isEmpty() ? "(empty)" : p.text();
-                g.drawString(font, content, x + POOL_CONTENT_OFFSET, y,
+                g.text(font, content, x + POOL_CONTENT_OFFSET, y,
                         p.text().isEmpty() ? TEXT_MUTED : STRING_TONE, false);
             }
             case Row.WP wp -> drawWaypointRow(g, wp.wp(), x, y, xEnd);
@@ -553,12 +481,12 @@ public final class DebugInspectScreen extends Screen {
         }
     }
 
-    private void drawKey(GuiGraphics g, String key, int x, int y) {
+    private void drawKey(GuiGraphicsExtractor g, String key, int x, int y) {
         String shown = key;
         while (font.width(shown) > KEY_COL_W - GAP && shown.length() > 3) {
             shown = shown.substring(0, shown.length() - 4) + "...";
         }
-        g.drawString(font, shown, x, y, TEXT_DIM, false);
+        g.text(font, shown, x, y, TEXT_DIM, false);
     }
 
     private static int valueColor(String key, String value) {
@@ -589,7 +517,7 @@ public final class DebugInspectScreen extends Screen {
         return TEXT;
     }
 
-    private void drawWaypointRow(GuiGraphics g, DecodeDebug.WaypointDebug wp,
+    private void drawWaypointRow(GuiGraphicsExtractor g, DecodeDebug.WaypointDebug wp,
                                   int x, int y, int xEnd) {
         // Column layout (measured in pixels, not spaces):
         //   [ #idx (3) ] [ coords (120) ] [ flags (50) ] [ swatch+hex (70) ] [ name+radius fill ]
@@ -600,12 +528,12 @@ public final class DebugInspectScreen extends Screen {
         int xHex    = xSwatch + 10;
         int xExtras = xHex + 58;
 
-        g.drawString(font, "#" + wp.index(), xIdx, y, NUMBER_TONE, false);
+        g.text(font, "#" + wp.index(), xIdx, y, NUMBER_TONE, false);
 
         String coords = String.format(Locale.ROOT, "%d, %d, %d", wp.x(), wp.y(), wp.z());
-        g.drawString(font, coords, xCoords, y, NUMBER_TONE, false);
+        g.text(font, coords, xCoords, y, NUMBER_TONE, false);
 
-        g.drawString(font, shortByte(wp.wpFlagsByte()), xFlags, y, HEX_TONE, false);
+        g.text(font, shortByte(wp.wpFlagsByte()), xFlags, y, HEX_TONE, false);
 
         // 7x7 color swatch so the wire-level color is visible at a glance alongside the hex.
         // This is data, not chrome -- the ACCENT-only rule is about UI surface color,
@@ -613,7 +541,7 @@ public final class DebugInspectScreen extends Screen {
         if (wp.hasColor()) {
             int swatchColor = 0xFF000000 | (wp.color() & 0xFFFFFF);
             g.fill(xSwatch, y + 1, xSwatch + 7, y + 8, swatchColor);
-            g.drawString(font, String.format(Locale.ROOT, "#%06X", wp.color() & 0xFFFFFF),
+            g.text(font, String.format(Locale.ROOT, "#%06X", wp.color() & 0xFFFFFF),
                     xHex, y, HEX_TONE, false);
         }
 
@@ -622,30 +550,30 @@ public final class DebugInspectScreen extends Screen {
         int cx = xExtras;
         if (wp.hasName()) {
             String name = "\"" + wp.name() + "\"";
-            g.drawString(font, name, cx, y, STRING_TONE, false);
+            g.text(font, name, cx, y, STRING_TONE, false);
             cx += font.width(name) + GAP;
         }
         if (wp.hasRadius() && cx < xEnd) {
             String r = String.format(Locale.ROOT, "r=%.1f", wp.customRadius());
-            g.drawString(font, r, cx, y, NUMBER_TONE, false);
+            g.text(font, r, cx, y, NUMBER_TONE, false);
             cx += font.width(r) + GAP;
         }
         if (wp.extended() && cx < xEnd) {
-            g.drawString(font, "ext=" + shortByte(wp.extendedFlags()), cx, y, HEX_TONE, false);
+            g.text(font, "ext=" + shortByte(wp.extendedFlags()), cx, y, HEX_TONE, false);
         }
     }
 
-    private void renderEmpty(GuiGraphics g, int x1, int y1, int x2, int y2) {
+    private void renderEmpty(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         String a = "No payload loaded.";
         String b = "Copy a " + WaypointCodec.MAGIC + " export string, then click \"Load from clipboard\".";
         int cy = y1 + (y2 - y1) / 2 - 8;
         int ax = x1 + ((x2 - x1) - font.width(a)) / 2;
         int bx = x1 + ((x2 - x1) - font.width(b)) / 2;
-        g.drawString(font, a, ax, cy, TEXT, false);
-        g.drawString(font, b, bx, cy + 14, TEXT_DIM, false);
+        g.text(font, a, ax, cy, TEXT, false);
+        g.text(font, b, bx, cy + 14, TEXT_DIM, false);
     }
 
-    private void renderError(GuiGraphics g, int x1, int y1, int x2, int y2) {
+    private void renderError(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         String[] lines = lastError.split("\n");
         int lineH = font.lineHeight + 2;
         int totalH = lines.length * lineH;
@@ -655,11 +583,11 @@ public final class DebugInspectScreen extends Screen {
             int tx = x1 + ((x2 - x1) - tw) / 2;
             // First line gets the warm error tone; the rest (hint / detail) stay neutral
             // so the color doesn't shout over every remediation instruction.
-            g.drawString(font, lines[i], tx, cy + i * lineH, i == 0 ? ERROR_TONE : TEXT_DIM, false);
+            g.text(font, lines[i], tx, cy + i * lineH, i == 0 ? ERROR_TONE : TEXT_DIM, false);
         }
     }
 
-    private static void drawScrollbar(GuiGraphics g, int x, int y1, int y2,
+    private static void drawScrollbar(GuiGraphicsExtractor g, int x, int y1, int y2,
                                        int start, int visible, int total) {
         int trackH = y2 - y1;
         int thumbH = Math.max(8, (int) ((double) visible / total * trackH));
@@ -738,10 +666,98 @@ public final class DebugInspectScreen extends Screen {
         rows.add(new Row.KVDim("Hint", "Copy a Waypointer export and hit Refresh."));
     }
 
+    private static void buildDungeonDiagnosticsReport(DebugSignals.DungeonDebugSnapshot snapshot,
+                                                     List<Row> rows,
+                                                     List<SectionAnchor> sections) {
+        DungeonStateTracker.DebugSnapshot tracker = snapshot == null ? null : snapshot.tracker;
+        addSection(rows, sections, "Dungeon Overview",
+                tracker == null ? "not installed" : tracker.roomName);
+        rows.add(new Row.KVDim("Config", DebugSignals.dungeonConfigLine()));
+        rows.add(new Row.KVDim("Zone source", "Scoreboard sidebar"));
+        if (tracker == null) {
+            rows.add(new Row.KVWarn("Tracker", "Dungeon tracker is not installed."));
+        } else {
+            rows.add(new Row.KV("In dungeon", String.valueOf(tracker.inDungeon)));
+            rows.add(new Row.KV("Room", tracker.roomPresent ? tracker.roomName : "(none)"));
+            rows.add(new Row.KV("Room id", tracker.roomId));
+            rows.add(new Row.KV("Confidence", DebugSignals.detectionConfidenceLabel(tracker.confidence)));
+            rows.add(new Row.KV("Type/shape", tracker.roomType + " / " + tracker.roomShape));
+            rows.add(new Row.KV("Direction", tracker.roomDirection
+                    + " effective=" + tracker.effectiveDirection
+                    + " override=" + tracker.directionOverride));
+            rows.add(new Row.KV("Corner", tracker.physicalCornerX + ", " + tracker.physicalCornerZ));
+            rows.add(new Row.KV("Segments", formatSegments(tracker.roomSegments)));
+        }
+
+        addSection(rows, sections, "Room Detection", tracker == null ? "unavailable" : tracker.lastScanStage);
+        if (tracker == null) {
+            rows.add(new Row.KVWarn("Unavailable", "No tracker snapshot is available."));
+        } else {
+            rows.add(new Row.KV("Last scan", tracker.lastScanStage + " -> " + tracker.lastScanResult));
+            rows.add(new Row.KVDim("Scan age", formatAge(tracker.lastScanAtMillis)));
+            rows.add(new Row.KV("Scan time", formatNanos(tracker.lastScanDurationNanos)));
+            rows.add(new Row.KV("Player segment", formatSegment(tracker.lastPlayerSegment)));
+            rows.add(new Row.KV("Core signature", formatCoreSignature(tracker.lastPlayerSegmentSignature)));
+            rows.add(new Row.KV("Matched room", tracker.lastMatchedRoomName + " (" + tracker.lastMatchedRoomId + ")"));
+            rows.add(new Row.KV("Matched pieces", String.valueOf(tracker.lastMatchedComponentCount)));
+            rows.add(new Row.KV("Room cache", tracker.knownRoomCacheSize + " segment entries"));
+            rows.add(new Row.KV("Core cache", tracker.coreSignatureCacheSize + " segment signatures"));
+            rows.add(new Row.KVDim("Scoreboard text", DebugSignals.scoreboardLine()));
+            rows.add(new Row.KVDim("Tab text", DebugSignals.tabListLine()));
+        }
+
+        DungeonRoomZoneBridge.DebugSnapshot bridge = snapshot == null ? null : snapshot.bridge;
+        addSection(rows, sections, "Zone Bridge", bridge == null ? "unavailable" : bridge.lastAction);
+        if (bridge == null) {
+            rows.add(new Row.KVWarn("Unavailable", "No bridge snapshot is available."));
+        } else {
+            rows.add(new Row.KV("Installed", String.valueOf(bridge.installed)));
+            rows.add(new Row.KV("Current zone", bridge.currentZone));
+            rows.add(new Row.KV("Last broad", bridge.lastBroadZone));
+            rows.add(new Row.KV("Applying room", String.valueOf(bridge.applyingRoomZone)));
+            rows.add(new Row.KV("Action", bridge.lastAction));
+            rows.add(new Row.KVDim("Reason", bridge.lastReason));
+            rows.add(new Row.KVDim("Line", bridge.line));
+        }
+
+        DungeonRouteSession.DebugSnapshot route = snapshot == null ? null : snapshot.routeSession;
+        addSection(rows, sections, "Route Progress", route == null ? "unavailable" : route.roomKey);
+        if (route == null) {
+            rows.add(new Row.KVWarn("Unavailable", "Dungeon route session is not installed."));
+        } else {
+            rows.add(new Row.KV("Room present", String.valueOf(route.roomPresent)));
+            rows.add(new Row.KV("Room key", route.roomKey));
+            rows.add(new Row.KVDim("Physical key", route.physicalKey));
+            rows.add(new Row.KV("Initialized", String.valueOf(route.progressInitialized)));
+            rows.add(new Row.KV("Current secret", String.valueOf(route.currentSecretIndex)));
+            rows.add(new Row.KV("Counts", "total=" + route.totalProgressWaypoints
+                    + ", found=" + route.foundCount
+                    + ", current=" + route.currentCount
+                    + ", upcoming=" + route.upcomingCount
+                    + ", nonProgress=" + route.nonProgressCount));
+            rows.add(new Row.KV("Found indexes", route.foundSecretIndices.isEmpty()
+                    ? "(none)"
+                    : route.foundSecretIndices.toString()));
+            rows.add(new Row.KV("Complete", String.valueOf(route.complete)));
+            rows.add(new Row.KV("Aliases", route.aliasCount + " for room, " + route.progressEntryCount + " stored"));
+            rows.add(new Row.KVDim("Last reset", route.lastResetReason + " " + formatAge(route.lastResetAtMillis)));
+        }
+
+        List<DebugEventLog.Entry> events = snapshot == null ? List.of() : snapshot.inputEvents;
+        addSection(rows, sections, "Trigger/Input", events.size() + " events");
+        if (events.isEmpty()) {
+            rows.add(new Row.KVDim("Input events", "No recent route-list or editor clicks recorded."));
+        } else {
+            for (DebugEventLog.Entry event : events) {
+                rows.add(new Row.KVDim("Event", event.plainText()));
+            }
+        }
+    }
+
     private static void buildPerformanceReport(PerformanceStats stats,
-                                               WaypointerConfig config,
-                                               List<Row> rows,
-                                               List<SectionAnchor> sections) {
+                                                WaypointerConfig config,
+                                                List<Row> rows,
+                                                List<SectionAnchor> sections) {
         addSection(rows, sections, "Performance Snapshot", null);
         rows.add(new Row.KV("Captured", stats.capturedAt().toString()));
         rows.add(new Row.KV("Zone", stats.currentZoneName() + " (" + stats.currentZoneId() + ")"));
@@ -809,109 +825,6 @@ public final class DebugInspectScreen extends Screen {
         }
     }
 
-    private static void buildStressReport(PerformanceStressProbe.Result result,
-                                          LiveOverlaySnapshot liveOverlay,
-                                          List<Row> rows,
-                                          List<SectionAnchor> sections) {
-        PerformanceStats worst = result.worstCaseStats;
-        PerformanceStats localized = result.localizedStats;
-        int worstVisits = worst.estimatedProximityIndexVisitsPerTick();
-        int localizedVisits = localized.estimatedProximityIndexVisitsPerTick();
-        String localizedShare = worstVisits <= 0
-                ? "n/a"
-                : String.format(Locale.ROOT, "%.3f%% of worst-case",
-                localizedVisits * 100.0 / worstVisits);
-
-        addSection(rows, sections, "Stress Probe", result.waypointCount + " pts");
-        rows.add(new Row.KV("Scenario", "static route, " + result.waypointSpacingBlocks
-                + " block spacing"));
-        rows.add(new Row.KVDim("Zone", worst.currentZoneName() + " (" + worst.currentZoneId() + ")"));
-        rows.add(new Row.KV("Setup time", formatNanos(result.setupNanos)));
-        rows.add(new Row.KV("Worst capture", formatNanos(result.worstCaseCaptureNanos)));
-        rows.add(new Row.KV("Localized capture", formatNanos(result.localizedCaptureNanos)));
-        rows.add(new Row.KV("Scenarios", String.valueOf(result.scenarios.size())));
-        rows.add(new Row.KVDim("Probe point", "#" + result.localizedProbeIndex));
-        rows.add(new Row.KVDim("Probe position", String.format(Locale.ROOT,
-                "%.1f, %.1f, %.1f",
-                result.localizedPlayerX, result.localizedPlayerY, result.localizedPlayerZ)));
-
-        addSection(rows, sections, "Stress Scenario Matrix",
-                String.valueOf(result.scenarios.size()));
-        for (PerformanceStressProbe.ScenarioResult scenario : result.scenarios) {
-            rows.add(new Row.KV(scenario.name, scenarioSummary(scenario)));
-            rows.add(new Row.KVDim("Shape", scenario.routeShape));
-        }
-
-        addSection(rows, sections, "Stress Render Result",
-                worst.activeVisibleWaypoints() + " renderable");
-        rows.add(new Row.KV("Active points", String.valueOf(worst.activeWaypoints())));
-        rows.add(new Row.KV("Renderable", worst.activeVisibleWaypoints() + " waypoint slots"));
-        rows.add(new Row.KV("Label candidates", worst.activeLabelCandidates() + " before budget"));
-        rows.add(new Row.KV("Line vertices", String.valueOf(worst.estimatedLineBoxVertices())));
-        rows.add(new Row.KV("Fill vertices", String.valueOf(worst.estimatedFillBoxVertices())));
-        rows.add(new Row.KV("Beam vertices", String.valueOf(worst.estimatedBeamVertices())));
-
-        addSection(rows, sections, "Stress Tick Result", localizedVisits + " localized");
-        rows.add(new Row.KV("Worst visits", worstVisits + " candidates/tick"));
-        rows.add(new Row.KV("Localized visits", localizedVisits + " candidates/tick"));
-        rows.add(new Row.KV("Localized share", localizedShare));
-        rows.add(new Row.KVDim("Meaning",
-                "localized should stay far below worst-case when the spatial index is healthy"));
-
-        addSection(rows, sections, "Stress Live Overlay",
-                liveOverlay.result == null ? "not installed" : liveOverlay.result.waypointCount + " pts");
-        if (liveOverlay.warning != null) {
-            rows.add(new Row.KVWarn("Warning", liveOverlay.warning));
-        }
-        if (liveOverlay.result != null) {
-            PerformanceStressProbe.LiveOverlayResult overlay = liveOverlay.result;
-            rows.add(new Row.KV("Installed", overlay.waypointCount + " temporary waypoints"));
-            rows.add(new Row.KV("Zone", overlay.zoneName + " (" + overlay.zoneId + ")"));
-            rows.add(new Row.KV("Grid", overlay.columns + " x " + overlay.rows
-                    + ", " + overlay.spacingBlocks + " block spacing"));
-            rows.add(new Row.KV("Center", overlay.centerX + ", " + overlay.centerY + ", " + overlay.centerZ));
-            rows.add(new Row.KVDim("Previous overlay", overlay.replacedWaypointCount == 0
-                    ? "none" : overlay.replacedWaypointCount + " waypoints replaced"));
-            rows.add(new Row.KVDim("View", "press Back/Esc, then look around your position"));
-            rows.add(new Row.KVDim("Clear", "return to /wp debug and click Clear stress"));
-            if (liveOverlay.fallbackZone) {
-                rows.add(new Row.KVWarn("Zone fallback",
-                        "No zone was detected, so Unknown was selected for this debug overlay."));
-            }
-        }
-        if (liveOverlay.stats != null) {
-            rows.add(new Row.KV("Live active", liveOverlay.stats.activeWaypoints() + " pts, "
-                    + liveOverlay.stats.activeVisibleWaypoints() + " renderable"));
-            rows.add(new Row.KV("Live labels", liveOverlay.stats.activeLabelCandidates() + " candidates"));
-        }
-
-        addSection(rows, sections, "Stress Active Group",
-                String.valueOf(worst.activeGroupStats().size()));
-        if (worst.activeGroupStats().isEmpty()) {
-            rows.add(new Row.KVWarn("Missing", "Generated stress route was not active."));
-            return;
-        }
-        PerformanceStats.GroupStats group = worst.activeGroupStats().get(0);
-        rows.add(new Row.KV("Group", shortGroupName(group)));
-        rows.add(new Row.KV("Load mode", group.loadMode().toLowerCase(Locale.ROOT)));
-        rows.add(new Row.KV("Waypoints", String.valueOf(group.waypoints())));
-        rows.add(new Row.KV("Renderable", String.valueOf(group.renderableWaypoints())));
-        rows.add(new Row.KV("Labels", String.valueOf(group.labelCandidates())));
-    }
-
-    private static String scenarioSummary(PerformanceStressProbe.ScenarioResult scenario) {
-        PerformanceStats worst = scenario.worstCaseStats;
-        PerformanceStats localized = scenario.localizedStats;
-        return scenario.waypointCount + " pts, "
-                + worst.activeVisibleWaypoints() + " renderable, "
-                + worst.activeLabelCandidates() + " labels, "
-                + "visits " + worst.estimatedProximityIndexVisitsPerTick()
-                + " -> " + localized.estimatedProximityIndexVisitsPerTick()
-                + ", setup " + formatNanos(scenario.setupNanos)
-                + ", captures " + formatNanos(scenario.worstCaseCaptureNanos)
-                + "/" + formatNanos(scenario.localizedCaptureNanos);
-    }
-
     private static void addSection(List<Row> rows, List<SectionAnchor> sections,
                                     String label, String subtitle) {
         if (!rows.isEmpty()) rows.add(new Row.Blank());
@@ -920,6 +833,35 @@ public final class DebugInspectScreen extends Screen {
     }
 
     // --- text formatting --------------------------------------------------------------------
+
+    private static String formatSegments(List<Long> segments) {
+        if (segments == null || segments.isEmpty()) return "(none)";
+        StringBuilder builder = new StringBuilder();
+        for (Long segment : segments) {
+            if (!builder.isEmpty()) builder.append(", ");
+            builder.append(formatSegment(segment == null ? Long.MIN_VALUE : segment));
+        }
+        return builder.toString();
+    }
+
+    private static String formatSegment(long segment) {
+        if (segment == Long.MIN_VALUE) return "(none)";
+        return DungeonRoom.segmentX(segment) + "," + DungeonRoom.segmentZ(segment);
+    }
+
+    private static String formatCoreSignature(DungeonCoreSignature signature) {
+        if (signature == null) return "(none)";
+        return "hash=" + signature.hash()
+                + ", topY=" + signature.topY()
+                + ", samples=" + signature.sampleCount();
+    }
+
+    private static String formatAge(long timestampMillis) {
+        if (timestampMillis <= 0L) return "(never)";
+        long ageMillis = Math.max(0L, System.currentTimeMillis() - timestampMillis);
+        if (ageMillis < 1_000L) return ageMillis + " ms ago";
+        return String.format(Locale.ROOT, "%.1f s ago", ageMillis / 1_000.0);
+    }
 
     private static String rowAsPlainText(Row row) {
         return switch (row) {
@@ -1004,5 +946,5 @@ public final class DebugInspectScreen extends Screen {
     public boolean isPauseScreen() { return false; }
 
     @Override
-    public void onClose() { minecraft.setScreen(parent); }
+    public void onClose() { MinecraftCompat.setScreen(minecraft, parent); }
 }

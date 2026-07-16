@@ -1,7 +1,7 @@
-accessWidener	v2	named
+accessWidener	v2	official
 
-# Needed so Waypointer can construct custom RenderTypes and smooth HUD labels.
-# Three things are widened:
+# Needed so Waypointer can construct custom RenderTypes.
+# Two things are widened:
 #
 #   RenderType.create(String, RenderSetup) -- package-private in vanilla; this
 #     is the only constructor for a RenderType that wraps an arbitrary
@@ -12,12 +12,5 @@ accessWidener	v2	named
 #     as the shared base for LINES and LINES_TRANSLUCENT. Building from the
 #     snippet is the only way to inherit the line shader + vertex format
 #     without hard-coding shader identifiers that Mojang may rename.
-#
-#   GameRenderer.getFov(Camera, float, boolean) -- vanilla's public
-#     projectPointToScreen hardcodes tickProgress=0, which makes HUD-projected
-#     waypoint labels step during sprint FOV transitions. Calling getFov with
-#     the camera partial tick lets labels match the world's smooth projection.
 accessible	method	net/minecraft/client/renderer/rendertype/RenderType	create	(Ljava/lang/String;Lnet/minecraft/client/renderer/rendertype/RenderSetup;)Lnet/minecraft/client/renderer/rendertype/RenderType;
 accessible	field	net/minecraft/client/renderer/RenderPipelines	LINES_SNIPPET	Lcom/mojang/blaze3d/pipeline/RenderPipeline$Snippet;
-accessible	method	net/minecraft/client/renderer/GameRenderer	getFov	(Lnet/minecraft/client/Camera;FZ)F
-

@@ -2,8 +2,6 @@ package dev.ethan.waypointer.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
-import net.minecraft.client.renderer.MultiBufferSource;
-import net.minecraft.client.renderer.rendertype.RenderType;
 
 /**
  * Tiny render utilities shared by {@link WaypointRenderer} and {@link TracerRenderer}.
@@ -152,13 +150,6 @@ public final class RenderHelpers {
         else { nx = 0; ny = 1; nz = 0; }
         PoseStack.Pose pose = ps.last();
         seg(consumer, pose, x1, y1, z1, x2, y2, z2, r, g, b, a, nx, ny, nz, width);
-    }
-
-    /** Force-flush a render type from a batched MultiBufferSource. No-op if not a BufferSource. */
-    public static void endBatch(MultiBufferSource buffers, RenderType type) {
-        if (buffers instanceof MultiBufferSource.BufferSource bs) {
-            bs.endBatch(type);
-        }
     }
 
     private static void quad(VertexConsumer c, PoseStack.Pose pose,

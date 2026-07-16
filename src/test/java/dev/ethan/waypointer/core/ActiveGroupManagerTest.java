@@ -1,15 +1,56 @@
 package dev.ethan.waypointer.core;
 
+import dev.ethan.waypointer.dungeon.data.DungeonRoomData;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class ActiveGroupManagerTest {
+
+    @Test
+    void addAllPublishesMultiGroupImportAsOneDataChange() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        AtomicInteger dataChanges = new AtomicInteger();
+        manager.addDataListener(dataChanges::incrementAndGet);
+
+        WaypointGroup first = WaypointGroup.create("First", "hub");
+        WaypointGroup second = WaypointGroup.create("Second", "hub");
+        manager.addAll(List.of(first, second));
+
+        assertEquals(1, dataChanges.get());
+        assertEquals(List.of(first, second), List.copyOf(manager.allGroups()));
+    }
+
+    @Test
+    void persistentListenersIgnoreTransientChangesWhileDataListenersSeeAllChanges() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        WaypointGroup temp = new WaypointGroup("temp", "Temp", "hub");
+        temp.setTemp(true);
+        WaypointGroup runtime = new WaypointGroup("runtime", "Runtime", "hub");
+        runtime.setRuntimeOnly(true);
+        manager.add(temp);
+        manager.add(runtime);
+        manager.removeAll(List.of(temp.id(), runtime.id()));
+
+        assertEquals(3, allChanges.get());
+        assertEquals(0, persistentChanges.get());
+
+        manager.add(WaypointGroup.create("Persistent", "hub"));
+
+        assertEquals(4, allChanges.get());
+        assertEquals(1, persistentChanges.get());
+    }
 
     @Test
     void dataListenersCanAddAndRemoveListenersDuringCallback() {
@@ -74,6 +115,73 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void offlineAuthoringFocusSurfacesAndEditsOnlyTheSelectedRoute() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup first = WaypointGroup.create("First", "hub");
+        WaypointGroup selected = WaypointGroup.create("Selected", "the_park");
+        manager.addAll(List.of(first, selected));
+
+        manager.focusRouteForAuthoring(selected);
+
+        assertEquals(List.of(selected), manager.activeGroups());
+        assertSame(selected, manager.getOrCreateActiveGroup());
+
+        manager.focusRouteForAuthoring(null);
+
+        assertTrue(manager.activeGroups().isEmpty());
+    }
+
+    @Test
+    void detectedZoneTakesPriorityOverOfflineAuthoringFocus() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup hub = WaypointGroup.create("Hub", "hub");
+        WaypointGroup selected = WaypointGroup.create("Selected", "the_park");
+        manager.addAll(List.of(hub, selected));
+        manager.focusRouteForAuthoring(selected);
+
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+
+        assertEquals(List.of(hub), manager.activeGroups());
+    }
+
+    @Test
+    void completedDungeonRoomRouteIsHiddenFromActiveGroups() {
+        assertNotNull(DungeonRoomData.definition("spider"));
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("spider", "Spider"));
+        // Runtime mirror: the projected form DungeonRoomRouteSync surfaces for
+        // the current room placement. Stored room groups never surface (they
+        // hold room-local coordinates); see the test below.
+        WaypointGroup group = new WaypointGroup("dungeon:auto:spider", "Room Route", "spider");
+        group.setRuntimeOnly(true);
+        group.add(Waypoint.at(0, 0, 0));
+        manager.add(group);
+
+        assertEquals(1, manager.activeGroups().size());
+
+        group.advancePast(0);
+        manager.fireDataChanged();
+
+        assertEquals(0, manager.activeGroups().size());
+        assertTrue(manager.allGroups().contains(group));
+        assertEquals(List.of(group), manager.completedDungeonRoomGroupsInCurrentZone());
+    }
+
+    @Test
+    void storedDungeonRoomRoutesActOnlyThroughTheirRuntimeMirror() {
+        assertNotNull(DungeonRoomData.definition("spider"));
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("spider", "Spider"));
+        WaypointGroup stored = WaypointGroup.create("Room Route", "spider");
+        stored.add(Waypoint.at(0, 0, 0));
+        manager.add(stored);
+
+        assertEquals(0, manager.activeGroups().size(),
+                "room-local stored groups must not render at raw local coordinates");
+        assertTrue(manager.allGroups().contains(stored));
+    }
+
+    @Test
     void clearTemporaryWaypointsWipesOnlyTempBucketsAndFocus() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("hub", "Hub"));
@@ -91,6 +199,40 @@ class ActiveGroupManagerTest {
         assertEquals(1, route.size(), "permanent route data should be left alone");
         assertEquals(0, temp.size(), "temporary menu bucket should be emptied");
         assertFalse(manager.tempWaypointFocusActive(), "focused temp render mode should be cleared too");
+    }
+
+    @Test
+    void tempFocusInvalidatesActiveGroupCache() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup route = WaypointGroup.create("Route", "hub");
+        route.add(Waypoint.at(1, 2, 3));
+        manager.add(route);
+        WaypointGroup temp = manager.addTempWaypoint(4, 5, 6, "From Someone");
+
+        List<WaypointGroup> cachedRoute = manager.activeGroups();
+        assertEquals(List.of(route, temp), cachedRoute);
+
+        manager.focusTempWaypoint(temp, 0);
+
+        assertEquals(List.of(temp), manager.activeGroups());
+
+        manager.clearTempWaypointFocus();
+
+        assertEquals(List.of(route, temp), manager.activeGroups());
+    }
+
+    @Test
+    void addTempWaypointUsesCallerSuppliedColor() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+
+        WaypointGroup temp = manager.addTempWaypoint(4, 5, 6, "From Someone",
+                Waypoint.TEMP_TIME, 123_456L, 0xAA112233);
+
+        assertEquals(1, temp.size());
+        assertEquals(0x112233, temp.get(0).color());
+        assertEquals(Waypoint.TEMP_TIME, temp.get(0).tempMode());
     }
 
     @Test

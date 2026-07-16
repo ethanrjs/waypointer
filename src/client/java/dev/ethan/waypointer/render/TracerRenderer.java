@@ -4,6 +4,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.config.WaypointerConfig;
+import dev.ethan.waypointer.compat.MinecraftCompat;
 import dev.ethan.waypointer.core.ActiveGroupManager;
 import dev.ethan.waypointer.core.Waypoint;
 import dev.ethan.waypointer.core.WaypointGroup;
@@ -11,16 +12,15 @@ import dev.ethan.waypointer.core.WaypointVisibility;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.world.WorldRenderEvents;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.ClientAvatarState;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
@@ -72,11 +72,11 @@ public final class TracerRenderer implements HudElement {
     }
 
     public void install() {
-        WorldRenderEvents.END_MAIN.register(this::onRender);
+        LevelRenderEvents.COLLECT_SUBMITS.register(this::onRender);
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, HUD_FALLBACK_ID, this);
     }
 
-    private void onRender(WorldRenderContext ctx) {
+    private void onRender(LevelRenderContext ctx) {
         if (IrisShaderFallback.shouldUse(config)) return;
 
         var groups = manager.activeGroups();
@@ -89,13 +89,11 @@ public final class TracerRenderer implements HudElement {
         }
         if (alpha <= 0.0f) return;
 
-        PoseStack ps = ctx.matrices();
+        PoseStack ps = ctx.poseStack();
         if (ps == null) return;
         Minecraft mc = Minecraft.getInstance();
-        Camera cam = mc.gameRenderer.getMainCamera();
+        Camera cam = MinecraftCompat.mainCamera(mc.gameRenderer);
         Vec3 camPos = cam.position();
-        MultiBufferSource buffers = ctx.consumers();
-        if (buffers == null) return;
 
         ps.pushPose();
         ps.translate(-camPos.x, -camPos.y, -camPos.z);
@@ -117,37 +115,36 @@ public final class TracerRenderer implements HudElement {
         boolean matchWaypoint = config.matchTracerToWaypointColor();
         int overrideColor = config.tracerColor();
         float thickness = (float) config.tracerThickness();
-        RenderType lineType = null;
-        VertexConsumer lines = null;
-
-        for (WaypointGroup g : groups) {
-            if (!tempFocus
-                    && config.hideTracerOnStaticRoutes()
-                    && g.loadMode() == WaypointGroup.LoadMode.STATIC) {
-                continue;
+        float renderAlpha = alpha;
+        RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
+        RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
+            for (WaypointGroup g : groups) {
+                if (config.showDungeonEntryPathToFirstWaypoint()
+                        && WaypointRenderer.shouldRenderDungeonEntryPath(g,
+                        config.showDungeonEntryPathToFollowingWaypoints())) {
+                    continue;
+                }
+                if (!tempFocus
+                        && config.hideTracerOnStaticRoutes()
+                        && g.loadMode() == WaypointGroup.LoadMode.STATIC) {
+                    continue;
+                }
+                Waypoint target = g.current();
+                if (target == null) continue;
+                if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) continue;
+                int color = matchWaypoint ? target.color() : overrideColor;
+                RenderHelpers.emitLine(lines, submittedPose,
+                        fromX, fromY, fromZ,
+                        (float) target.centerX(), (float) target.centerY(), (float) target.centerZ(),
+                        color, renderAlpha, thickness);
             }
-            Waypoint target = g.current();
-            if (target == null) continue;
-            if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) continue;
-            if (lines == null) {
-                lineType = WaypointerRenderPipelines.linesThroughWalls();
-                lines = buffers.getBuffer(lineType);
-            }
-            int color = matchWaypoint ? target.color() : overrideColor;
-            RenderHelpers.emitLine(lines, ps,
-                    fromX, fromY, fromZ,
-                    target.x() + 0.5f, target.y() + 0.5f, target.z() + 0.5f,
-                    color, alpha, thickness);
-        }
+        });
 
         ps.popPose();
-        if (lineType != null) {
-            RenderHelpers.endBatch(buffers, lineType);
-        }
     }
 
     @Override
-    public void render(GuiGraphics g, DeltaTracker tick) {
+    public void extractRenderState(GuiGraphicsExtractor g, DeltaTracker tick) {
         if (!IrisShaderFallback.shouldUse(config)) return;
 
         var groups = manager.activeGroups();
@@ -158,7 +155,7 @@ public final class TracerRenderer implements HudElement {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         GameRenderer renderer = mc.gameRenderer;
-        Camera camera = renderer.getMainCamera();
+        Camera camera = MinecraftCompat.mainCamera(renderer);
         if (!camera.isInitialized()) return;
 
         projector.prepare(renderer, camera);
@@ -177,6 +174,11 @@ public final class TracerRenderer implements HudElement {
         double thickness = config.tracerThickness();
 
         for (WaypointGroup group : groups) {
+            if (config.showDungeonEntryPathToFirstWaypoint()
+                    && WaypointRenderer.shouldRenderDungeonEntryPath(group,
+                    config.showDungeonEntryPathToFollowingWaypoints())) {
+                continue;
+            }
             if (!tempFocus
                     && config.hideTracerOnStaticRoutes()
                     && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
@@ -186,7 +188,7 @@ public final class TracerRenderer implements HudElement {
             Waypoint target = group.current();
             if (target == null) continue;
             if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) continue;
-            if (!projector.project(target.x() + 0.5, target.y() + 0.5, target.z() + 0.5,
+            if (!projector.project(target.centerX(), target.centerY(), target.centerZ(),
                     screenW, screenH, screenScratch)) {
                 projectOffscreenTarget(camera, target, screenW, screenH, screenScratch);
             }
@@ -205,9 +207,9 @@ public final class TracerRenderer implements HudElement {
         Vector3fc left = camera.leftVector();
         Vector3fc up = camera.upVector();
 
-        double dx = target.x() + 0.5 - cameraPos.x;
-        double dy = target.y() + 0.5 - cameraPos.y;
-        double dz = target.z() + 0.5 - cameraPos.z;
+        double dx = target.centerX() - cameraPos.x;
+        double dy = target.centerY() - cameraPos.y;
+        double dz = target.centerZ() - cameraPos.z;
 
         double screenDirX = -(dx * left.x() + dy * left.y() + dz * left.z());
         double screenDirY = -(dx * up.x() + dy * up.y() + dz * up.z());

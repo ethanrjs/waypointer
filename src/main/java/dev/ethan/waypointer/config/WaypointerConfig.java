@@ -7,6 +7,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.ethan.waypointer.Waypointer;
 import dev.ethan.waypointer.core.Waypoint;
+import dev.ethan.waypointer.core.WaypointGroup;
+import dev.ethan.waypointer.dungeon.config.DungeonConfig;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -55,11 +57,14 @@ public final class WaypointerConfig {
 
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int CONFIG_SCHEMA_VERSION = 2;
+    private static final int CONFIG_SCHEMA_VERSION = 4;
+    private static final int TEMP_DURATION_MIN_SECONDS = 1;
+    private static final int TEMP_DURATION_MAX_SECONDS = 24 * 60 * 60;
+    private static final int SECONDS_PER_MINUTE = 60;
 
     // Progression
     private int configSchemaVersion = CONFIG_SCHEMA_VERSION;
-    private double defaultReachRadius = 3.0;
+    private double defaultReachRadius = Waypoint.DEFAULT_REACH_RADIUS;
     /**
      * When {@code true}, every waypoint group's progress index resets to 0 each time
      * the client connects to a world (single-player load or multiplayer join).
@@ -77,6 +82,7 @@ public final class WaypointerConfig {
     // Rendering -- tracer defaults to the same green as Waypoint.DEFAULT_COLOR so
     // a fresh install with matchTracerToWaypointColor=false still shows one
     // consistent color scheme across boxes and lines.
+    private int defaultWaypointColor = Waypoint.DEFAULT_COLOR;
     private int tracerColor = 0x4FE05A;
     /**
      * When {@code true} (default), the tracer line to the current waypoint
@@ -101,6 +107,12 @@ public final class WaypointerConfig {
      * users often want a subtle box but a stronger navigation line.
      */
     private double waypointOutlineThickness = 3.0;
+    /**
+     * Optional crisp edge mode for waypoint outlines. Default-off keeps the
+     * current softer/thicker outline presentation unless the player opts into
+     * harder screen-space corners.
+     */
+    private boolean sharpWaypointEdges = false;
     private double beaconOpacity = 0.8;
     private boolean showWaypointNames = true;
     private boolean showWaypointDistances = true;
@@ -110,6 +122,8 @@ public final class WaypointerConfig {
      * at every visible waypoint.
      */
     private boolean showRouteProgress = false;
+    /** User multiplier for waypoint HUD label size. */
+    private double labelScale = 1.0;
     /**
      * Optional readability mode: labels shrink as their world anchor gets farther
      * from the camera. Default-off preserves the stable fixed-size HUD labels
@@ -146,11 +160,40 @@ public final class WaypointerConfig {
     /** Radius in blocks for {@link #hideWaypointsNearPlayer}. */
     private double hideWaypointsNearRadius = 5.0;
     /**
+     * Optional label-only proximity declutter: labels hide near the player while
+     * boxes, beams, and tracers remain visible.
+     */
+    private boolean hideWaypointLabelsNearPlayer = false;
+    /** Radius in blocks for {@link #hideWaypointLabelsNearPlayer}. */
+    private double hideWaypointLabelsNearRadius = 5.0;
+    /**
      * Optional checklist behavior for STATIC groups: when the player enters a
      * waypoint's reach radius, that marker hides until every waypoint in the
      * group has been reached, then the whole group becomes visible again.
      */
     private boolean hideReachedStaticWaypointsUntilCycleComplete = false;
+    /**
+     * When skip-ahead is on, limit automatic proximity jumps to currently
+     * visible route-context waypoints. Default-on keeps contextual routes from
+     * silently jumping to a far-future waypoint the player could not see.
+     */
+    private boolean skipAheadOnlyVisibleWaypoints = true;
+    /** Draw route connector segments between currently visible waypoints. */
+    private boolean showRouteLines = false;
+    /**
+     * Draw a short ground path from the player to the first waypoint of the
+     * current dungeon room while that first waypoint is still the active target.
+     */
+    private boolean showDungeonEntryPathToFirstWaypoint = false;
+    /**
+     * Extend the dungeon entry path to later active waypoints in sequenced room
+     * routes. Default-off keeps the historical entry-only behavior.
+     */
+    private boolean showDungeonEntryPathToFollowingWaypoints = false;
+    /** RGB color for the dungeon entry path and its arrows. */
+    private int dungeonEntryPathColor = 0x00FF00;
+    /** RGB color for route connector segments. Defaults to import green. */
+    private int routeLineColor = 0x00FF00;
     /**
      * When {@code true}, each waypoint label draws a translucent black rectangle
      * behind its text for readability. Some players find it obtrusive in busy
@@ -159,12 +202,14 @@ public final class WaypointerConfig {
      */
     private boolean showLabelBackdrop = true;
     /**
-     * Maximum number of waypoint labels drawn per frame, nearest first.
-     * {@code 0} means unlimited so existing configs keep their historical
-     * "draw everything" behaviour until the user opts into the performance
-     * tradeoff.
+     * Maximum number of waypoint labels drawn per frame, nearest first;
+     * {@code 0} means unlimited. Defaults to the 32 nearest: labels are the
+     * most expensive render feature by far (the perf stress test measured
+     * unlimited labels on a dense route at -86% FPS), and more than ~30 are
+     * not legible at once anyway. Existing installs keep whatever their saved
+     * config says — Gson persists every field explicitly.
      */
-    private int maxWaypointLabels = 0;
+    private int maxWaypointLabels = 32;
     /**
      * Optional distance gate for STATIC route markers. Sequenced routes remain
      * uncapped because their current target is navigationally important even
@@ -190,6 +235,23 @@ public final class WaypointerConfig {
     private BoxStyle boxStyle = BoxStyle.OUTLINED;
     private BeaconBeamMode beaconBeamMode = BeaconBeamMode.OFF;
     private boolean beaconBeamExtendsBelowWaypoint = false;
+    /**
+     * When enabled, beacon beams use Minecraft's real beacon beam texture with
+     * core/glow layers. Turning it off keeps the older flat colored quad beam,
+     * which is cheaper for dense overlays.
+     */
+    private boolean useBeaconBeamTextures = true;
+    /**
+     * When enabled, edit-mode transitions and commits play small local UI cues.
+     * Default-on makes mode changes feel acknowledged without sending anything
+     * to the server.
+     */
+    private boolean editSounds = true;
+    /**
+     * When enabled, persistent edit mode draws a small aqua EDIT MODE subtitle on
+     * the HUD so players know their clicks are modal.
+     */
+    private boolean showEditModeSubtitle = true;
 
     // Quality-of-life
     private boolean chatCoordDetection = true;
@@ -220,6 +282,11 @@ public final class WaypointerConfig {
      */
     private boolean focusTempWaypoints = false;
     private boolean chatCodecDetection = true;
+    private boolean showContributorBadges = true;
+    /** Default color mode applied after any route import. */
+    private WaypointGroup.GradientMode importedRouteColorMode = WaypointGroup.GradientMode.STATIC;
+    /** Default one-color import palette: pure green, requested as RGB (0, 255, 0). */
+    private int importedRouteDefaultColor = 0x00FF00;
     /** Default exports drop names; set to {@code true} to include them at the cost of length. */
     private boolean exportIncludeNames = false;
     /** Default exports drop colors so shared routes inherit the recipient's palette. */
@@ -243,9 +310,9 @@ public final class WaypointerConfig {
      */
     private boolean exportIncludeGroupMeta = true;
     /**
-     * Hidden feature flag for the in-progress dungeon waypoint subsystem.
-     * Default-off keeps beta builds from registering commands, renderers, tick
-     * hooks, or dungeon data stores until the feature is ready to ship.
+     * Legacy hidden flag retained so older config files and config-code imports
+     * keep round-tripping. The dungeon subsystem now installs unconditionally;
+     * {@code DungeonConfig.enabled()} is the runtime feature switch.
      */
     private boolean dungeonWaypointsFeatureEnabled = false;
     /**
@@ -287,8 +354,8 @@ public final class WaypointerConfig {
      * 1 = time-based, 2 = until reached, 3 = until server leave.
      */
     private int tempDefaultMode = Waypoint.TEMP_TIME;
-    /** Default duration (minutes) for time-based temp waypoints. */
-    private int tempDefaultDurationMin = 1;
+    /** Default duration (seconds) for time-based temp waypoints. */
+    private int tempDefaultDurationSec = SECONDS_PER_MINUTE;
 
     /**
      * Debounce window for config writes. Configs mutate in bursts (EditBox
@@ -303,6 +370,7 @@ public final class WaypointerConfig {
     private transient Path file;
     private transient AsyncSaver saver;
     private transient boolean migratedDuringLoad;
+    private transient volatile String pendingSnapshotJson;
 
     public static WaypointerConfig load() {
         Path dir = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
@@ -324,11 +392,12 @@ public final class WaypointerConfig {
         if (config.migratedDuringLoad) config.save();
         return config;
     }
-
     static WaypointerConfig fromJson(String raw) {
         WaypointerConfig config = GSON.fromJson(raw, WaypointerConfig.class);
         if (config == null) config = new WaypointerConfig();
-        config.applyMigrations(schemaVersion(raw));
+        int loadedSchemaVersion = schemaVersion(raw);
+        config.migrateLegacyTempDurationMinutes(raw, loadedSchemaVersion);
+        config.applyMigrations(loadedSchemaVersion);
         return config;
     }
 
@@ -344,14 +413,40 @@ public final class WaypointerConfig {
             return CONFIG_SCHEMA_VERSION;
         }
     }
-
     private void applyMigrations(int schemaVersion) {
         if (schemaVersion < 2) {
             migrateIssue31TempDefaults();
         }
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
     }
+    private void migrateLegacyTempDurationMinutes(String raw, int schemaVersion) {
+        int originalDurationSec = tempDefaultDurationSec;
+        Integer legacyDurationMin = null;
+        try {
+            JsonElement parsed = JsonParser.parseString(raw);
+            if (parsed != null && parsed.isJsonObject()) {
+                JsonObject root = parsed.getAsJsonObject();
+                if (!root.has("tempDefaultDurationSec") && root.has("tempDefaultDurationMin")) {
+                    legacyDurationMin = root.get("tempDefaultDurationMin").getAsInt();
+                }
+            }
+        } catch (Exception ignored) {
+            legacyDurationMin = null;
+        }
 
+        if (legacyDurationMin != null) {
+            int migratedMinutes = schemaVersion < 2 && legacyDurationMin == 10
+                    ? 1
+                    : legacyDurationMin;
+            tempDefaultDurationSec = clampTempDefaultDurationSec((long) migratedMinutes * SECONDS_PER_MINUTE);
+        } else {
+            tempDefaultDurationSec = clampTempDefaultDurationSec(tempDefaultDurationSec);
+        }
+
+        if (tempDefaultDurationSec != originalDurationSec) {
+            migratedDuringLoad = true;
+        }
+    }
     private void migrateIssue31TempDefaults() {
         boolean changed = false;
         if (autoAddChatTempWaypoints) {
@@ -362,11 +457,9 @@ public final class WaypointerConfig {
             tempDefaultMode = Waypoint.TEMP_TIME;
             changed = true;
         }
-        if (tempDefaultDurationMin == 10) {
-            tempDefaultDurationMin = 1;
-            changed = true;
+        if (changed) {
+            migratedDuringLoad = true;
         }
-        migratedDuringLoad = changed;
     }
 
     /**
@@ -377,6 +470,7 @@ public final class WaypointerConfig {
      */
     public void save() {
         if (saver == null) return;
+        pendingSnapshotJson = GSON.toJson(this);
         saver.markDirty();
     }
 
@@ -390,10 +484,12 @@ public final class WaypointerConfig {
 
     private void writeToDisk() {
         if (file == null) return;
+        String json = pendingSnapshotJson;
+        if (json == null) return;
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, GSON.toJson(this));
+            Files.writeString(tmp, json);
             Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             Waypointer.LOGGER.error("Failed to write config", e);
@@ -402,18 +498,21 @@ public final class WaypointerConfig {
 
     // --- getters/setters ---------------------------------------------------------------------
 
-    public double defaultReachRadius()        { return defaultReachRadius; }
+    public double defaultReachRadius()        { return Waypoint.normalizeDefaultRadius(defaultReachRadius); }
     public boolean resetProgressOnWorldJoin() { return resetProgressOnWorldJoin; }
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
+    public int defaultWaypointColor()         { return defaultWaypointColor & 0xFFFFFF; }
     public int tracerColor()                  { return tracerColor; }
     public boolean matchTracerToWaypointColor() { return matchTracerToWaypointColor; }
     public double tracerOpacity()             { return tracerOpacity; }
     public double tracerThickness()           { return clamp(tracerThickness, 1.0, 12.0); }
     public double waypointOutlineThickness()  { return clamp(waypointOutlineThickness, 1.0, 12.0); }
+    public boolean sharpWaypointEdges()        { return sharpWaypointEdges; }
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showWaypointDistances()    { return showWaypointDistances; }
     public boolean showRouteProgress()        { return showRouteProgress; }
+        public double labelScale()                { return clamp(labelScale, 0.25, 4.0); }
     public boolean scaleWaypointTextWithDistance() { return scaleWaypointTextWithDistance; }
     public boolean matchWaypointTextToWaypointColor() { return matchWaypointTextToWaypointColor; }
     public boolean showCompleted()            { return showCompleted; }
@@ -422,7 +521,15 @@ public final class WaypointerConfig {
     public boolean hideTracerOnStaticRoutes() { return hideTracerOnStaticRoutes; }
     public boolean hideWaypointsNearPlayer()  { return hideWaypointsNearPlayer; }
     public double hideWaypointsNearRadius()   { return Math.max(0.5, hideWaypointsNearRadius); }
+        public boolean hideWaypointLabelsNearPlayer() { return hideWaypointLabelsNearPlayer; }
+        public double hideWaypointLabelsNearRadius() { return Math.max(0.5, hideWaypointLabelsNearRadius); }
     public boolean hideReachedStaticWaypointsUntilCycleComplete() { return hideReachedStaticWaypointsUntilCycleComplete; }
+    public boolean skipAheadOnlyVisibleWaypoints() { return skipAheadOnlyVisibleWaypoints; }
+    public boolean showRouteLines()           { return showRouteLines; }
+    public boolean showDungeonEntryPathToFirstWaypoint() { return showDungeonEntryPathToFirstWaypoint; }
+    public boolean showDungeonEntryPathToFollowingWaypoints() { return showDungeonEntryPathToFollowingWaypoints; }
+    public int dungeonEntryPathColor()        { return dungeonEntryPathColor & 0xFFFFFF; }
+    public int routeLineColor()               { return routeLineColor & 0xFFFFFF; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
     public int maxWaypointLabels()            { return Math.max(0, maxWaypointLabels); }
     public double maxStaticWaypointRenderDistance() {
@@ -434,6 +541,9 @@ public final class WaypointerConfig {
         return beaconBeamMode == null ? BeaconBeamMode.OFF : beaconBeamMode;
     }
     public boolean beaconBeamExtendsBelowWaypoint() { return beaconBeamExtendsBelowWaypoint; }
+    public boolean useBeaconBeamTextures() { return useBeaconBeamTextures; }
+    public boolean editSounds() { return editSounds; }
+    public boolean showEditModeSubtitle() { return showEditModeSubtitle; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
     public List<String> chatCoordSenderBlacklist() {
         ensureChatCoordSenderBlacklist();
@@ -452,6 +562,13 @@ public final class WaypointerConfig {
     public boolean placeNewWaypointsBelowPlayer() { return placeNewWaypointsBelowPlayer; }
     public boolean focusTempWaypoints()       { return focusTempWaypoints; }
     public boolean chatCodecDetection()       { return chatCodecDetection; }
+    public boolean showContributorBadges()    { return showContributorBadges; }
+        public WaypointGroup.GradientMode importedRouteColorMode() {
+        return importedRouteColorMode == null
+                ? WaypointGroup.GradientMode.STATIC
+                : importedRouteColorMode;
+    }
+        public int importedRouteDefaultColor()     { return importedRouteDefaultColor & 0xFFFFFF; }
     public boolean exportIncludeNames()        { return exportIncludeNames; }
     public boolean exportIncludeColors()       { return exportIncludeColors; }
     public boolean exportIncludeRadii()        { return exportIncludeRadii; }
@@ -466,17 +583,24 @@ public final class WaypointerConfig {
                 ? Waypoint.TEMP_TIME
                 : tempDefaultMode;
     }
-    public int tempDefaultDurationMin()         { return Math.max(1, Math.min(24 * 60, tempDefaultDurationMin)); }
+    public int tempDefaultDurationSec() {
+        return clampTempDefaultDurationSec(tempDefaultDurationSec);
+    }
+    public int tempDefaultDurationMin() {
+        int roundedUpMinutes = (tempDefaultDurationSec() + SECONDS_PER_MINUTE - 1) / SECONDS_PER_MINUTE;
+        return Math.max(1, Math.min(24 * 60, roundedUpMinutes));
+    }
     public boolean tempWaypointsExpireByDefault() { return tempDefaultMode() == Waypoint.TEMP_TIME; }
     public long defaultTempExpiresAtMillis(long nowMillis) {
         return tempDefaultMode() == Waypoint.TEMP_TIME
-                ? nowMillis + (long) tempDefaultDurationMin() * 60_000L
+                ? nowMillis + (long) tempDefaultDurationSec() * 1_000L
                 : 0L;
     }
 
-    public void setDefaultReachRadius(double v)        { this.defaultReachRadius = clamp(v, 0.5, 100); save(); }
+    public void setDefaultReachRadius(double v)        { this.defaultReachRadius = Waypoint.normalizeDefaultRadius(v); save(); }
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
+    public void setDefaultWaypointColor(int v)         { this.defaultWaypointColor = v & 0xFFFFFF; save(); }
     public void setTracerColor(int v)                  { this.tracerColor = v & 0xFFFFFF; save(); }
     public void setMatchTracerToWaypointColor(boolean v) { this.matchTracerToWaypointColor = v; save(); }
     public void setTracerOpacity(double v)             { this.tracerOpacity = clamp(v, 0, 1); save(); }
@@ -490,10 +614,19 @@ public final class WaypointerConfig {
         this.waypointOutlineThickness = clamp(v, 1.0, 12.0);
         save();
     }
+    public void setSharpWaypointEdges(boolean v) {
+        this.sharpWaypointEdges = v;
+        save();
+    }
     public void setBeaconOpacity(double v)             { this.beaconOpacity = clamp(v, 0, 1); save(); }
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
     public void setShowWaypointDistances(boolean v)    { this.showWaypointDistances = v; save(); }
     public void setShowRouteProgress(boolean v)        { this.showRouteProgress = v; save(); }
+        public void setLabelScale(double v) {
+        if (!Double.isFinite(v)) return;
+        this.labelScale = clamp(v, 0.25, 4.0);
+        save();
+    }
     public void setScaleWaypointTextWithDistance(boolean v) { this.scaleWaypointTextWithDistance = v; save(); }
     public void setMatchWaypointTextToWaypointColor(boolean v) { this.matchWaypointTextToWaypointColor = v; save(); }
     public void setShowCompleted(boolean v)            { this.showCompleted = v; save(); }
@@ -506,8 +639,41 @@ public final class WaypointerConfig {
         this.hideWaypointsNearRadius = clamp(v, 0.5, 100.0);
         save();
     }
+        public void setHideWaypointLabelsNearPlayer(boolean v) {
+        this.hideWaypointLabelsNearPlayer = v;
+        save();
+    }
+        public void setHideWaypointLabelsNearRadius(double v) {
+        if (!Double.isFinite(v)) return;
+        this.hideWaypointLabelsNearRadius = clamp(v, 0.5, 100.0);
+        save();
+    }
     public void setHideReachedStaticWaypointsUntilCycleComplete(boolean v) {
         this.hideReachedStaticWaypointsUntilCycleComplete = v;
+        save();
+    }
+    public void setSkipAheadOnlyVisibleWaypoints(boolean v) {
+        this.skipAheadOnlyVisibleWaypoints = v;
+        save();
+    }
+    public void setShowRouteLines(boolean v) {
+        this.showRouteLines = v;
+        save();
+    }
+    public void setShowDungeonEntryPathToFirstWaypoint(boolean v) {
+        this.showDungeonEntryPathToFirstWaypoint = v;
+        save();
+    }
+    public void setShowDungeonEntryPathToFollowingWaypoints(boolean v) {
+        this.showDungeonEntryPathToFollowingWaypoints = v;
+        save();
+    }
+    public void setDungeonEntryPathColor(int v) {
+        this.dungeonEntryPathColor = v & 0xFFFFFF;
+        save();
+    }
+    public void setRouteLineColor(int v) {
+        this.routeLineColor = v & 0xFFFFFF;
         save();
     }
     public void setChatCoordDetection(boolean v)       { this.chatCoordDetection = v; save(); }
@@ -541,6 +707,15 @@ public final class WaypointerConfig {
     public void setPlaceNewWaypointsBelowPlayer(boolean v) { this.placeNewWaypointsBelowPlayer = v; save(); }
     public void setFocusTempWaypoints(boolean v)       { this.focusTempWaypoints = v; save(); }
     public void setChatCodecDetection(boolean v)       { this.chatCodecDetection = v; save(); }
+    public void setShowContributorBadges(boolean v)    { this.showContributorBadges = v; save(); }
+        public void setImportedRouteColorMode(WaypointGroup.GradientMode v) {
+        this.importedRouteColorMode = v == null ? WaypointGroup.GradientMode.STATIC : v;
+        save();
+    }
+        public void setImportedRouteDefaultColor(int v) {
+        this.importedRouteDefaultColor = v & 0xFFFFFF;
+        save();
+    }
     public void setExportIncludeNames(boolean v)        { this.exportIncludeNames = v; save(); }
     public void setExportIncludeColors(boolean v)       { this.exportIncludeColors = v; save(); }
     public void setExportIncludeRadii(boolean v)        { this.exportIncludeRadii = v; save(); }
@@ -571,6 +746,18 @@ public final class WaypointerConfig {
         this.beaconBeamExtendsBelowWaypoint = v;
         save();
     }
+    public void setUseBeaconBeamTextures(boolean v) {
+        this.useBeaconBeamTextures = v;
+        save();
+    }
+    public void setEditSounds(boolean v) {
+        this.editSounds = v;
+        save();
+    }
+    public void setShowEditModeSubtitle(boolean v) {
+        this.showEditModeSubtitle = v;
+        save();
+    }
     public void setSkipAheadMechanicEnabled(boolean v) { this.skipAheadMechanicEnabled = v; save(); }
     public void setCheckForUpdates(boolean v)          { this.checkForUpdates = v; save(); }
     public void setIrisShaderHudFallback(boolean v)    { this.irisShaderHudFallback = v; save(); }
@@ -581,12 +768,85 @@ public final class WaypointerConfig {
         this.tempDefaultMode = clamped;
         save();
     }
+    public void setTempDefaultDurationSec(int v) {
+        this.tempDefaultDurationSec = clampTempDefaultDurationSec(v);
+        save();
+    }
     public void setTempDefaultDurationMin(int v) {
-        this.tempDefaultDurationMin = Math.max(1, Math.min(24 * 60, v));
+        int clampedMinutes = Math.max(1, Math.min(24 * 60, v));
+        this.tempDefaultDurationSec = clampedMinutes * SECONDS_PER_MINUTE;
         save();
     }
     public void setTempWaypointsExpireByDefault(boolean v) {
         setTempDefaultMode(v ? Waypoint.TEMP_TIME : Waypoint.TEMP_UNTIL_LEAVE);
+    }
+    public void replaceWith(WaypointerConfig replacement) {
+        if (replacement == null) return;
+        configSchemaVersion = CONFIG_SCHEMA_VERSION;
+        defaultReachRadius = replacement.defaultReachRadius;
+        resetProgressOnWorldJoin = replacement.resetProgressOnWorldJoin;
+        restartRouteWhenComplete = replacement.restartRouteWhenComplete;
+        defaultWaypointColor = replacement.defaultWaypointColor;
+        tracerColor = replacement.tracerColor;
+        matchTracerToWaypointColor = replacement.matchTracerToWaypointColor;
+        tracerOpacity = replacement.tracerOpacity;
+        tracerThickness = replacement.tracerThickness;
+        waypointOutlineThickness = replacement.waypointOutlineThickness;
+        sharpWaypointEdges = replacement.sharpWaypointEdges;
+        beaconOpacity = replacement.beaconOpacity;
+        showWaypointNames = replacement.showWaypointNames;
+        showWaypointDistances = replacement.showWaypointDistances;
+        showRouteProgress = replacement.showRouteProgress;
+        labelScale = replacement.labelScale;
+        scaleWaypointTextWithDistance = replacement.scaleWaypointTextWithDistance;
+        matchWaypointTextToWaypointColor = replacement.matchWaypointTextToWaypointColor;
+        showCompleted = replacement.showCompleted;
+        showTracer = replacement.showTracer;
+        dimSequenceContextWaypoints = replacement.dimSequenceContextWaypoints;
+        hideTracerOnStaticRoutes = replacement.hideTracerOnStaticRoutes;
+        hideWaypointsNearPlayer = replacement.hideWaypointsNearPlayer;
+        hideWaypointsNearRadius = replacement.hideWaypointsNearRadius;
+        hideWaypointLabelsNearPlayer = replacement.hideWaypointLabelsNearPlayer;
+        hideWaypointLabelsNearRadius = replacement.hideWaypointLabelsNearRadius;
+        hideReachedStaticWaypointsUntilCycleComplete = replacement.hideReachedStaticWaypointsUntilCycleComplete;
+        skipAheadOnlyVisibleWaypoints = replacement.skipAheadOnlyVisibleWaypoints;
+        showRouteLines = replacement.showRouteLines;
+        showDungeonEntryPathToFirstWaypoint = replacement.showDungeonEntryPathToFirstWaypoint;
+        showDungeonEntryPathToFollowingWaypoints = replacement.showDungeonEntryPathToFollowingWaypoints;
+        dungeonEntryPathColor = replacement.dungeonEntryPathColor;
+        routeLineColor = replacement.routeLineColor;
+        showLabelBackdrop = replacement.showLabelBackdrop;
+        maxWaypointLabels = replacement.maxWaypointLabels;
+        maxStaticWaypointRenderDistance = replacement.maxStaticWaypointRenderDistance;
+        labelHeightOffset = replacement.labelHeightOffset;
+        boxStyle = replacement.boxStyle;
+        beaconBeamMode = replacement.beaconBeamMode;
+        beaconBeamExtendsBelowWaypoint = replacement.beaconBeamExtendsBelowWaypoint;
+        useBeaconBeamTextures = replacement.useBeaconBeamTextures;
+        editSounds = replacement.editSounds;
+        showEditModeSubtitle = replacement.showEditModeSubtitle;
+        chatCoordDetection = replacement.chatCoordDetection;
+        chatCoordSenderBlacklist = new ArrayList<>(replacement.chatCoordSenderBlacklist);
+        autoAddChatTempWaypoints = replacement.autoAddChatTempWaypoints;
+        placeNewWaypointsBelowPlayer = replacement.placeNewWaypointsBelowPlayer;
+        focusTempWaypoints = replacement.focusTempWaypoints;
+        chatCodecDetection = replacement.chatCodecDetection;
+        showContributorBadges = replacement.showContributorBadges;
+        importedRouteColorMode = replacement.importedRouteColorMode;
+        importedRouteDefaultColor = replacement.importedRouteDefaultColor;
+        exportIncludeNames = replacement.exportIncludeNames;
+        exportIncludeColors = replacement.exportIncludeColors;
+        exportIncludeRadii = replacement.exportIncludeRadii;
+        exportIncludeWaypointFlags = replacement.exportIncludeWaypointFlags;
+        exportIncludeGroupMeta = replacement.exportIncludeGroupMeta;
+        dungeonWaypointsFeatureEnabled = replacement.dungeonWaypointsFeatureEnabled;
+        skipAheadMechanicEnabled = replacement.skipAheadMechanicEnabled;
+        checkForUpdates = replacement.checkForUpdates;
+        irisShaderHudFallback = replacement.irisShaderHudFallback;
+        tempDefaultMode = replacement.tempDefaultMode;
+        tempDefaultDurationSec = replacement.tempDefaultDurationSec;
+        migratedDuringLoad = false;
+        save();
     }
 
     public void disableAllSettings() {
@@ -596,6 +856,8 @@ public final class WaypointerConfig {
         showWaypointNames = false;
         showWaypointDistances = false;
         showRouteProgress = false;
+        sharpWaypointEdges = false;
+        beaconOpacity = 0.0;
         scaleWaypointTextWithDistance = false;
         matchWaypointTextToWaypointColor = false;
         showCompleted = false;
@@ -603,14 +865,24 @@ public final class WaypointerConfig {
         dimSequenceContextWaypoints = false;
         hideTracerOnStaticRoutes = false;
         hideWaypointsNearPlayer = false;
+        hideWaypointLabelsNearPlayer = false;
         hideReachedStaticWaypointsUntilCycleComplete = false;
+        skipAheadOnlyVisibleWaypoints = false;
+        showRouteLines = false;
+        showDungeonEntryPathToFirstWaypoint = false;
+        showDungeonEntryPathToFollowingWaypoints = false;
         showLabelBackdrop = false;
         beaconBeamExtendsBelowWaypoint = false;
+        useBeaconBeamTextures = false;
+        editSounds = false;
+        showEditModeSubtitle = false;
         chatCoordDetection = false;
         autoAddChatTempWaypoints = false;
         placeNewWaypointsBelowPlayer = false;
         focusTempWaypoints = false;
         chatCodecDetection = false;
+        showContributorBadges = false;
+        importedRouteColorMode = WaypointGroup.GradientMode.MANUAL;
         exportIncludeNames = false;
         exportIncludeColors = false;
         exportIncludeRadii = false;
@@ -625,21 +897,28 @@ public final class WaypointerConfig {
         save();
     }
 
+    public void disableAllSettings(DungeonConfig dungeonConfig) {
+        disableAllSettings();
+        if (dungeonConfig != null) dungeonConfig.disableAllSettings();
+    }
     public void resetToDefaults() {
         WaypointerConfig defaults = new WaypointerConfig();
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
         defaultReachRadius = defaults.defaultReachRadius;
         resetProgressOnWorldJoin = defaults.resetProgressOnWorldJoin;
         restartRouteWhenComplete = defaults.restartRouteWhenComplete;
+        defaultWaypointColor = defaults.defaultWaypointColor;
         tracerColor = defaults.tracerColor;
         matchTracerToWaypointColor = defaults.matchTracerToWaypointColor;
         tracerOpacity = defaults.tracerOpacity;
         tracerThickness = defaults.tracerThickness;
         waypointOutlineThickness = defaults.waypointOutlineThickness;
+        sharpWaypointEdges = defaults.sharpWaypointEdges;
         beaconOpacity = defaults.beaconOpacity;
         showWaypointNames = defaults.showWaypointNames;
         showWaypointDistances = defaults.showWaypointDistances;
         showRouteProgress = defaults.showRouteProgress;
+        labelScale = defaults.labelScale;
         scaleWaypointTextWithDistance = defaults.scaleWaypointTextWithDistance;
         matchWaypointTextToWaypointColor = defaults.matchWaypointTextToWaypointColor;
         showCompleted = defaults.showCompleted;
@@ -648,7 +927,15 @@ public final class WaypointerConfig {
         hideTracerOnStaticRoutes = defaults.hideTracerOnStaticRoutes;
         hideWaypointsNearPlayer = defaults.hideWaypointsNearPlayer;
         hideWaypointsNearRadius = defaults.hideWaypointsNearRadius;
+        hideWaypointLabelsNearPlayer = defaults.hideWaypointLabelsNearPlayer;
+        hideWaypointLabelsNearRadius = defaults.hideWaypointLabelsNearRadius;
         hideReachedStaticWaypointsUntilCycleComplete = defaults.hideReachedStaticWaypointsUntilCycleComplete;
+        skipAheadOnlyVisibleWaypoints = defaults.skipAheadOnlyVisibleWaypoints;
+        showRouteLines = defaults.showRouteLines;
+        showDungeonEntryPathToFirstWaypoint = defaults.showDungeonEntryPathToFirstWaypoint;
+        showDungeonEntryPathToFollowingWaypoints = defaults.showDungeonEntryPathToFollowingWaypoints;
+        dungeonEntryPathColor = defaults.dungeonEntryPathColor;
+        routeLineColor = defaults.routeLineColor;
         showLabelBackdrop = defaults.showLabelBackdrop;
         maxWaypointLabels = defaults.maxWaypointLabels;
         maxStaticWaypointRenderDistance = defaults.maxStaticWaypointRenderDistance;
@@ -656,12 +943,18 @@ public final class WaypointerConfig {
         boxStyle = defaults.boxStyle;
         beaconBeamMode = defaults.beaconBeamMode;
         beaconBeamExtendsBelowWaypoint = defaults.beaconBeamExtendsBelowWaypoint;
+        useBeaconBeamTextures = defaults.useBeaconBeamTextures;
+        editSounds = defaults.editSounds;
+        showEditModeSubtitle = defaults.showEditModeSubtitle;
         chatCoordDetection = defaults.chatCoordDetection;
         chatCoordSenderBlacklist = new ArrayList<>(defaults.chatCoordSenderBlacklist);
         autoAddChatTempWaypoints = defaults.autoAddChatTempWaypoints;
         placeNewWaypointsBelowPlayer = defaults.placeNewWaypointsBelowPlayer;
         focusTempWaypoints = defaults.focusTempWaypoints;
         chatCodecDetection = defaults.chatCodecDetection;
+        showContributorBadges = defaults.showContributorBadges;
+        importedRouteColorMode = defaults.importedRouteColorMode;
+        importedRouteDefaultColor = defaults.importedRouteDefaultColor;
         exportIncludeNames = defaults.exportIncludeNames;
         exportIncludeColors = defaults.exportIncludeColors;
         exportIncludeRadii = defaults.exportIncludeRadii;
@@ -672,9 +965,14 @@ public final class WaypointerConfig {
         checkForUpdates = defaults.checkForUpdates;
         irisShaderHudFallback = defaults.irisShaderHudFallback;
         tempDefaultMode = defaults.tempDefaultMode;
-        tempDefaultDurationMin = defaults.tempDefaultDurationMin;
+        tempDefaultDurationSec = defaults.tempDefaultDurationSec;
         migratedDuringLoad = false;
         save();
+    }
+    private static int clampTempDefaultDurationSec(long seconds) {
+        if (seconds < TEMP_DURATION_MIN_SECONDS) return TEMP_DURATION_MIN_SECONDS;
+        if (seconds > TEMP_DURATION_MAX_SECONDS) return TEMP_DURATION_MAX_SECONDS;
+        return (int) seconds;
     }
 
     private void ensureChatCoordSenderBlacklist() {

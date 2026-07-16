@@ -1,7 +1,9 @@
 package dev.ethan.waypointer.core;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 
@@ -16,8 +18,8 @@ import java.util.function.Predicate;
  * <ul>
  *   <li>{@link #resolve(String, String, String)} -- authoritative: Hypixel Mod API
  *       location packet fields {@code serverType}, {@code map}, {@code mode}.</li>
- *   <li>{@link #resolveFromDisplayName(String)} -- fallback when the mod-API isn't
- *       available, pulling the island name out of the sidebar.</li>
+ *   <li>{@link #resolveFromDisplayName(String)} -- fallback/refinement from the
+ *       visible sidebar location.</li>
  *   <li>{@link #fromId(String)} -- replay on-disk group ids back to a {@code Zone}
  *       with the current canonical display name.</li>
  * </ul>
@@ -35,7 +37,23 @@ import java.util.function.Predicate;
  */
 public record Zone(String id, String displayName) {
 
+    public static final String MINESHAFT_CRYSTAL_ZONE_ID = "mineshaft_crystal";
+    private static final String MINESHAFT_CRYSTAL_DISPLAY_NAME = "Mineshaft: Crystal";
+
     public static final Zone UNKNOWN = new Zone("unknown", "Unknown");
+
+        public Zone {
+        String rawId = id == null || id.isBlank() ? "unknown" : id;
+        String canonicalId = canonicalId(rawId);
+        boolean collapsedLegacyCrystal = !canonicalId.equals(rawId)
+                && MINESHAFT_CRYSTAL_ZONE_ID.equals(canonicalId);
+        id = canonicalId;
+        if (collapsedLegacyCrystal) {
+            displayName = MINESHAFT_CRYSTAL_DISPLAY_NAME;
+        } else if (displayName == null || displayName.isBlank()) {
+            displayName = prettify(canonicalId);
+        }
+    }
 
     /**
      * A canonical Waypointer zone plus the matchers that recognise it.
@@ -127,6 +145,10 @@ public record Zone(String id, String displayName) {
         };
     }
 
+        private static boolean neverMatchesPacket(String map, String mode) {
+        return false;
+    }
+
     private static boolean equalsIC(String value, String token) {
         return value != null && value.equalsIgnoreCase(token);
     }
@@ -215,8 +237,12 @@ public record Zone(String id, String displayName) {
             new Def("mineshaft",         "Glacite Mineshafts",
                     tokens("mineshaft", "Glacite Mineshafts", "Mineshaft"),
                     name -> false),
+            new Def(MINESHAFT_CRYSTAL_ZONE_ID, MINESHAFT_CRYSTAL_DISPLAY_NAME,
+                    Zone::neverMatchesPacket,
+                    anyDisplay(MINESHAFT_CRYSTAL_DISPLAY_NAME, "Crystal Mineshaft")),
 
             new Def("backwater_bayou",   "Backwater Bayou",      tokens("fishing_1", "Backwater Bayou")),
+            new Def("lotus_atoll",       "Lotus Atoll",          tokens("lotus_atoll", "Lotus Atoll")),
 
             new Def("garden",            "Garden",               tokens("garden", "Garden", "The Garden"),
                     anyDisplay("Garden", "The Garden")),
@@ -233,6 +259,12 @@ public record Zone(String id, String displayName) {
             new Def("galatea",           "Galatea",
                     prefixTokens("foraging_2", "Galatea"),
                     displayStartsWithAny("Galatea")),
+            new Def("torrhus_canyon",    "Torrhus Canyon",
+                    tokens("foraging_3", "Torrhus Canyon"),
+                    anyDisplay("Torrhus Canyon")),
+            new Def("safari",            "Safari",
+                    tokens("safari", "Safari", "Safari Zone"),
+                    anyDisplay("Safari", "Safari Zone")),
 
             new Def("dungeon", "Catacombs", Zone::genericDungeon,
                     anyDisplay("Catacombs", "Dungeon")),
@@ -321,20 +353,50 @@ public record Zone(String id, String displayName) {
      * {@link #fromId(String)} renders imported mineshaft zones with a nice
      * display name without polluting the main {@link #KNOWN} table.
      */
-    private static MineshaftType mineshaftTypeById(String id) {
+        private static MineshaftType mineshaftTypeById(String id) {
         if (id == null || !id.startsWith("mineshaft_")) return null;
+        if (MINESHAFT_CRYSTAL_ZONE_ID.equals(canonicalId(id))) return null;
         for (MineshaftType t : MINESHAFT_TYPES) {
-            if (canonicalMineshaftId(t).equals(id)) return t;
+            if (rawMineshaftId(t).equals(id)) return t;
         }
         return null;
     }
 
-    private static String canonicalMineshaftId(MineshaftType t) {
+        private static String rawMineshaftId(MineshaftType t) {
         return "mineshaft_" + t.idSuffix();
     }
 
-    private static String canonicalMineshaftDisplayName(MineshaftType t) {
-        return "Mineshaft: " + t.rawName();
+        private static String canonicalMineshaftId(MineshaftType t) {
+        return isCrystalMineshaftType(t) ? MINESHAFT_CRYSTAL_ZONE_ID : rawMineshaftId(t);
+    }
+
+        private static String canonicalMineshaftDisplayName(MineshaftType t) {
+        return isCrystalMineshaftType(t) ? MINESHAFT_CRYSTAL_DISPLAY_NAME : "Mineshaft: " + t.rawName();
+    }
+
+    private static boolean isCrystalMineshaftType(MineshaftType t) {
+        return t.idSuffix().endsWith("_crystal");
+    }
+
+    /**
+     * Canonical zones users can target without first visiting Hypixel.
+     * The legacy broad mineshaft bucket is intentionally omitted because the
+     * runtime always refines it to a concrete or unknown mineshaft layout.
+     */
+    private static final List<Zone> KNOWN_ZONES = buildKnownZones();
+
+    private static List<Zone> buildKnownZones() {
+        Map<String, Zone> zones = new LinkedHashMap<>();
+        for (Def def : KNOWN) {
+            if (!"mineshaft".equals(def.id)) {
+                zones.put(def.id, new Zone(def.id, def.displayName));
+            }
+        }
+        for (MineshaftType type : MINESHAFT_TYPES) {
+            Zone zone = new Zone(canonicalMineshaftId(type), canonicalMineshaftDisplayName(type));
+            zones.putIfAbsent(zone.id(), zone);
+        }
+        return List.copyOf(zones.values());
     }
 
     // ---- resolve ---------------------------------------------------------
@@ -360,26 +422,25 @@ public record Zone(String id, String displayName) {
         return new Zone(sanitizeId(rawId), display);
     }
 
-    /**
-     * Look up a known zone by id. Unknown ids get prettified so the UI still
-     * reads cleanly even when a third-party mod imported a never-seen zone.
-     */
-    public static Zone fromId(String id) {
-        if (id == null || id.isBlank()) return UNKNOWN;
-        for (Def def : KNOWN) {
-            if (def.id.equals(id)) return new Zone(def.id, def.displayName);
-        }
-        MineshaftType mt = mineshaftTypeById(id);
-        if (mt != null) return new Zone(canonicalMineshaftId(mt), canonicalMineshaftDisplayName(mt));
-        return new Zone(id, prettify(id));
+    public static List<Zone> knownZones() {
+        return KNOWN_ZONES;
     }
 
-    /**
-     * Fallback used by {@code ScoreboardZoneResolver} when the Hypixel Mod API
-     * isn't available. Matches on the human-readable map name only (mode can't
-     * be recovered from the sidebar cleanly).
-     */
-    public static Zone resolveFromDisplayName(String displayName) {
+        public static Zone fromId(String id) {
+        if (id == null || id.isBlank()) return UNKNOWN;
+        String canonical = canonicalId(id);
+        if (MINESHAFT_CRYSTAL_ZONE_ID.equals(canonical)) {
+            return new Zone(MINESHAFT_CRYSTAL_ZONE_ID, MINESHAFT_CRYSTAL_DISPLAY_NAME);
+        }
+        for (Def def : KNOWN) {
+            if (def.id.equals(canonical)) return new Zone(def.id, def.displayName);
+        }
+        MineshaftType mt = mineshaftTypeById(canonical);
+        if (mt != null) return new Zone(canonicalMineshaftId(mt), canonicalMineshaftDisplayName(mt));
+        return new Zone(canonical, prettify(canonical));
+    }
+
+        public static Zone resolveFromDisplayName(String displayName) {
         if (displayName == null || displayName.isBlank()) return null;
         String cleaned = displayName.trim();
         for (Def def : KNOWN) {
@@ -497,6 +558,15 @@ public record Zone(String id, String displayName) {
     }
 
     // ---- helpers ---------------------------------------------------------
+
+    public static String canonicalId(String id) {
+        if (id == null || id.isBlank()) return "unknown";
+        String normalized = id.trim().toLowerCase(Locale.ROOT);
+        if (normalized.startsWith("mineshaft_") && normalized.endsWith("_crystal")) {
+            return MINESHAFT_CRYSTAL_ZONE_ID;
+        }
+        return normalized;
+    }
 
     private static String prettify(String id) {
         if (id == null || id.isBlank()) return "";

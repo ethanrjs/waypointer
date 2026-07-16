@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.dungeon;
 
+import dev.ethan.waypointer.core.Waypoint;
 import net.minecraft.world.level.saveddata.maps.MapDecoration;
 import net.minecraft.world.level.saveddata.maps.MapDecorationTypes;
 import net.minecraft.world.level.saveddata.maps.MapItemSavedData;
@@ -118,6 +119,7 @@ public final class DungeonMapMath {
     }
 
     private static void offer(Deque<int[]> q, Set<Long> seen, int x, int z) {
+        if (x < 0 || z < 0 || x >= 128 || z >= 128) return;
         long packed = packPx(x, z);
         if (seen.add(packed)) q.add(new int[] { x, z });
     }
@@ -305,6 +307,44 @@ public final class DungeonMapMath {
             case NE -> new int[] {  wz - physicalCornerZ, wy, -wx + physicalCornerX };
             case SW -> new int[] { -wz + physicalCornerZ, wy,  wx - physicalCornerX };
             case SE -> new int[] { -wx + physicalCornerX, wy, -wz + physicalCornerZ };
+        };
+    }
+
+    /**
+     * Precise-coordinate ({@link Waypoint#PRECISE_SCALE} 16ths of a block)
+     * variant of {@link #relativeToActual}. Negated axes mirror through
+     * {@code corner*16 + 15 - p} rather than plain negation: a block cell
+     * {@code [16b, 16b+16)} rotates onto the cell the block math selects, and
+     * the sub-block offset flips within it ({@code f -> 15 - f}), so
+     * {@code Math.floorDiv(precise, 16)} of the result always equals the
+     * block-coordinate projection of the waypoint's block position.
+     */
+    public static int[] relativePreciseToActual(Direction dir,
+                                                int physicalCornerX, int physicalCornerZ,
+                                                int rx, int ry, int rz) {
+        int cx = physicalCornerX * Waypoint.PRECISE_SCALE;
+        int cz = physicalCornerZ * Waypoint.PRECISE_SCALE;
+        int mirror = Waypoint.PRECISE_SCALE - 1;
+        return switch (dir) {
+            case NW -> new int[] {  rx + cx,            ry,  rz + cz            };
+            case NE -> new int[] {  cx + mirror - rz,   ry,  rx + cz            };
+            case SW -> new int[] {  rz + cx,            ry,  cz + mirror - rx   };
+            case SE -> new int[] {  cx + mirror - rx,   ry,  cz + mirror - rz   };
+        };
+    }
+
+    /** Exact inverse of {@link #relativePreciseToActual}. */
+    public static int[] actualPreciseToRelative(Direction dir,
+                                                int physicalCornerX, int physicalCornerZ,
+                                                int px, int py, int pz) {
+        int cx = physicalCornerX * Waypoint.PRECISE_SCALE;
+        int cz = physicalCornerZ * Waypoint.PRECISE_SCALE;
+        int mirror = Waypoint.PRECISE_SCALE - 1;
+        return switch (dir) {
+            case NW -> new int[] {  px - cx,            py,  pz - cz            };
+            case NE -> new int[] {  pz - cz,            py,  cx + mirror - px   };
+            case SW -> new int[] {  cz + mirror - pz,   py,  px - cx            };
+            case SE -> new int[] {  cx + mirror - px,   py,  cz + mirror - pz   };
         };
     }
 

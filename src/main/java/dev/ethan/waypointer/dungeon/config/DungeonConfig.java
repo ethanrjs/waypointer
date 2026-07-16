@@ -10,6 +10,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * User-tunable runtime settings for the dungeon-waypoints feature.
@@ -38,17 +40,6 @@ public final class DungeonConfig {
     /** Master switch. Off skips every dungeon tick + render path entirely. */
     private boolean enabled = true;
 
-    /** When {@code true}, render the parent {@link dev.ethan.waypointer.dungeon.DungeonWaypoint} cube + label. */
-    private boolean showSecretWaypoints = true;
-
-    /**
-     * When {@code true}, render the children {@link dev.ethan.waypointer.dungeon.DungeonHighlight}
-     * cubes attached to each waypoint. Letting players turn just the
-     * highlights off is useful for room-knowledge speedrunners who want the
-     * "where to go" hint but find the per-block decorations visually noisy.
-     */
-    private boolean showHighlights = true;
-
     /**
      * When {@code true}, log a one-line message to the in-game chat each time
      * the detected current room changes. Off by default so it doesn't spam
@@ -56,21 +47,6 @@ public final class DungeonConfig {
      * lighting up the way the user expects.
      */
     private boolean debugLogRoomChanges = false;
-
-    /**
-     * When {@code true}, render an outline around the entire current room's
-     * footprint. Cheap visual confirmation that room detection is working.
-     */
-    private boolean drawRoomBounds = false;
-
-    /** When {@code false}, found secrets are hidden instead of rendered dimly. */
-    private boolean showFoundSecrets = true;
-
-    /**
-     * Route rendering mode: ALL shows every secret in the matched room, ACTIVE
-     * shows only the current target plus its highlights.
-     */
-    private String routeRenderMode = "ALL";
 
     /**
      * Default direction to assume for newly-detected rooms. Room definitions
@@ -81,8 +57,30 @@ public final class DungeonConfig {
      */
     private String defaultDirection = "NW";
 
+    /**
+     * Remove a room's route group once every authored secret in it is found
+     * (by the player, by trigger detection, or by the map's green checkmark).
+     * Mirrors Devonian's "remove on done" -- a finished room shouldn't keep
+     * shouting waypoints at the player.
+     */
+    private boolean hideCompletedRooms = true;
+
+    /**
+     * Treat the dungeon map's green checkmark as "all secrets found" for that
+     * room. Authoritative even when a teammate collected the secrets, which
+     * client-side trigger detection can never see.
+     */
+    private boolean autoCompleteRoomsOnGreenCheckmark = true;
+
+    /**
+     * User clicked "don't ask again" on the first-join community-routes
+     * download prompt. {@code /wpd routes download} keeps working regardless.
+     */
+    private boolean routesPromptDismissed = false;
+
     private transient Path file;
     private transient AsyncSaver saver;
+    private transient final List<Runnable> enabledListeners = new ArrayList<>();
 
     public static DungeonConfig load() {
         Path dir = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
@@ -109,6 +107,14 @@ public final class DungeonConfig {
 
     public void flush() { if (saver != null) saver.flush(); }
 
+    public void addEnabledListener(Runnable listener) {
+        if (listener != null) enabledListeners.add(listener);
+    }
+
+    public void removeEnabledListener(Runnable listener) {
+        enabledListeners.remove(listener);
+    }
+
     private void writeToDisk() {
         if (file == null) return;
         try {
@@ -124,28 +130,53 @@ public final class DungeonConfig {
     // ---- accessors -----------------------------------------------------
 
     public boolean enabled()              { return enabled; }
-    public boolean showSecretWaypoints()  { return showSecretWaypoints; }
-    public boolean showHighlights()       { return showHighlights; }
     public boolean debugLogRoomChanges()  { return debugLogRoomChanges; }
-    public boolean drawRoomBounds()       { return drawRoomBounds; }
-    public boolean showFoundSecrets()     { return showFoundSecrets; }
-    public String  routeRenderMode()      { return routeRenderMode == null ? "ALL" : routeRenderMode; }
     public String  defaultDirection()     { return defaultDirection == null ? "NW" : defaultDirection; }
+    public boolean hideCompletedRooms()   { return hideCompletedRooms; }
+    public boolean autoCompleteRoomsOnGreenCheckmark() { return autoCompleteRoomsOnGreenCheckmark; }
+    public boolean routesPromptDismissed()  { return routesPromptDismissed; }
 
-    public void setEnabled(boolean v)             { this.enabled = v; save(); }
-    public void setShowSecretWaypoints(boolean v) { this.showSecretWaypoints = v; save(); }
-    public void setShowHighlights(boolean v)      { this.showHighlights = v; save(); }
-    public void setDebugLogRoomChanges(boolean v) { this.debugLogRoomChanges = v; save(); }
-    public void setDrawRoomBounds(boolean v)      { this.drawRoomBounds = v; save(); }
-    public void setShowFoundSecrets(boolean v)    { this.showFoundSecrets = v; save(); }
-    public void setRouteRenderMode(String v) {
-        if (v == null) return;
-        String upper = v.trim().toUpperCase(java.util.Locale.ROOT);
-        if (upper.equals("ALL") || upper.equals("ACTIVE")) {
-            this.routeRenderMode = upper;
-            save();
+    public void setEnabled(boolean v) {
+        if (enabled == v) return;
+        enabled = v;
+        save();
+        for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
+    }
+
+    public void disableAllSettings() {
+        boolean notifyEnabledListeners = enabled;
+        enabled = false;
+        debugLogRoomChanges = false;
+        hideCompletedRooms = false;
+        autoCompleteRoomsOnGreenCheckmark = false;
+        save();
+        if (notifyEnabledListeners) {
+            for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
         }
     }
+
+    public void resetToDefaults() {
+        DungeonConfig defaults = new DungeonConfig();
+        boolean notifyEnabledListeners = enabled != defaults.enabled;
+        enabled = defaults.enabled;
+        debugLogRoomChanges = defaults.debugLogRoomChanges;
+        defaultDirection = defaults.defaultDirection;
+        hideCompletedRooms = defaults.hideCompletedRooms;
+        autoCompleteRoomsOnGreenCheckmark = defaults.autoCompleteRoomsOnGreenCheckmark;
+        routesPromptDismissed = defaults.routesPromptDismissed;
+        save();
+        if (notifyEnabledListeners) {
+            for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
+        }
+    }
+
+    public void setDebugLogRoomChanges(boolean v) { this.debugLogRoomChanges = v; save(); }
+    public void setHideCompletedRooms(boolean v)  { this.hideCompletedRooms = v; save(); }
+    public void setAutoCompleteRoomsOnGreenCheckmark(boolean v) {
+        this.autoCompleteRoomsOnGreenCheckmark = v;
+        save();
+    }
+    public void setRoutesPromptDismissed(boolean v) { this.routesPromptDismissed = v; save(); }
     public void setDefaultDirection(String v) {
         if (v == null) return;
         String upper = v.trim().toUpperCase(java.util.Locale.ROOT);

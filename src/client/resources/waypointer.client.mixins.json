@@ -2,7 +2,11 @@
     "required": true,
     "package": "dev.ethan.waypointer.mixin.client",
     "compatibilityLevel": "JAVA_21",
-    "client": [],
+    "client": [
+        "ChatComponentMixin",
+        "ClientPacketListenerMixin",
+        "PlayerTabOverlayMixin"
+    ],
     "injectors": {
         "defaultRequire": 1
     }

@@ -2,6 +2,7 @@ package dev.ethan.waypointer.core;
 
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -77,6 +78,74 @@ class WaypointGroupTest {
     }
 
     @Test
+    void retreatToPreviousTarget_movesBackOneMainWaypoint() {
+        WaypointGroup g = route();
+        g.advancePast(1);
+
+        assertTrue(g.retreatToPreviousTarget());
+
+        assertEquals(1, g.currentIndex());
+        assertEquals(-1, g.activeSubwaypointParentIndex());
+    }
+
+    @Test
+    void retreatToPreviousTarget_returnsFalseAtFirstWaypoint() {
+        WaypointGroup g = route();
+
+        assertFalse(g.retreatToPreviousTarget());
+
+        assertEquals(0, g.currentIndex());
+    }
+
+    @Test
+    void retreatToPreviousTarget_fromCompleteRouteTargetsLastMainWaypoint() {
+        WaypointGroup g = route();
+        g.advancePast(3);
+        assertTrue(g.isComplete());
+
+        assertTrue(g.retreatToPreviousTarget());
+
+        assertFalse(g.isComplete());
+        assertEquals(3, g.currentIndex());
+    }
+
+    @Test
+    void retreatToPreviousTarget_walksExplicitSubwaypointTargetsBackward() {
+        WaypointGroup g = route();
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(2);
+        g.setCurrentTargetIndex(2);
+
+        assertTrue(g.retreatToPreviousTarget());
+
+        assertEquals(1, g.currentIndex());
+        assertEquals(g.get(1), g.current());
+        assertEquals(0, g.parentMainIndex(g.currentIndex()));
+        assertEquals(-1, g.activeSubwaypointParentIndex());
+
+        assertTrue(g.retreatToPreviousTarget());
+
+        assertEquals(0, g.currentIndex());
+        assertEquals(-1, g.activeSubwaypointParentIndex());
+    }
+
+    @Test
+    void retreatToPreviousTarget_fromHeldSubwaypointParentReturnsToThatParent() {
+        WaypointGroup g = route();
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(2);
+        g.advancePast(0);
+        assertEquals(3, g.currentIndex());
+        assertEquals(0, g.activeSubwaypointParentIndex());
+
+        assertTrue(g.retreatToPreviousTarget());
+
+        assertEquals(0, g.currentIndex());
+        assertEquals(-1, g.activeSubwaypointParentIndex());
+    }
+
+    @Test
     void focusNewWaypoint_setsCurrentAndSuppressesProximity() {
         WaypointGroup g = route();
         g.markStaticWaypointReached(0);
@@ -99,6 +168,28 @@ class WaypointGroupTest {
         assertEquals(25, moved.x());
         assertEquals(71, moved.y());
         assertEquals(-4, moved.z());
+        assertEquals(2, g.currentIndex());
+        assertTrue(g.isProximitySuppressed(2));
+        assertFalse(g.isStaticWaypointReached(0));
+    }
+
+    @Test
+    void moveWaypointToPrecise_focusesMovedWaypointAndStoresSixteenths() {
+        WaypointGroup g = route();
+        g.markStaticWaypointReached(0);
+
+        g.moveWaypointToPrecise(2, 403, 1144, -21);
+
+        Waypoint moved = g.get(2);
+        assertEquals(403, moved.preciseX());
+        assertEquals(1144, moved.preciseY());
+        assertEquals(-21, moved.preciseZ());
+        assertEquals(25.1875, moved.centerX());
+        assertEquals(71.5, moved.centerY());
+        assertEquals(-1.3125, moved.centerZ());
+        assertEquals(25, moved.x());
+        assertEquals(71, moved.y());
+        assertEquals(-2, moved.z());
         assertEquals(2, g.currentIndex());
         assertTrue(g.isProximitySuppressed(2));
         assertFalse(g.isStaticWaypointReached(0));
@@ -134,11 +225,68 @@ class WaypointGroupTest {
     }
 
     @Test
+    void defaultRadiusIsAlwaysFiniteAndBounded() {
+        WaypointGroup group = route();
+
+        group.setDefaultRadius(Double.POSITIVE_INFINITY);
+        assertEquals(Waypoint.DEFAULT_REACH_RADIUS, group.defaultRadius());
+
+        group.setDefaultRadius(1_000_000.0);
+        assertEquals(Waypoint.MAX_REACH_RADIUS, group.defaultRadius());
+    }
+
+    @Test
+    void oversizedProximityScanFallsBackWithoutWalkingBillionsOfCells() {
+        WaypointGroup group = route();
+        List<Integer> visited = new ArrayList<>();
+
+        assertTimeoutPreemptively(Duration.ofSeconds(1),
+                () -> group.forEachNearbyIndex(0, 70, 0, Double.POSITIVE_INFINITY, index -> {
+                    visited.add(index);
+                    return true;
+                }));
+
+        assertEquals(List.of(0, 1, 2, 3).stream().sorted().toList(),
+                visited.stream().sorted().toList());
+    }
+
+    @Test
     void gradientAuto_assignsDistinctColors() {
         WaypointGroup g = route();
         int c0 = g.get(0).color();
         int cN = g.get(g.size() - 1).color();
         assertNotEquals(c0, cN, "first and last waypoints should differ in AUTO gradient");
+    }
+
+        @Test
+    void staticColorModeRecolorsExistingWaypointsAndFutureAdditions() {
+        WaypointGroup g = route();
+
+        g.setStaticColor(0x123456);
+        g.setGradientMode(WaypointGroup.GradientMode.STATIC);
+
+        for (Waypoint waypoint : g.waypoints()) {
+            assertEquals(0x123456, waypoint.color());
+        }
+
+        g.add(Waypoint.at(40, 70, 0).withColor(0xABCDEF));
+
+        assertEquals(0x123456, g.get(g.size() - 1).color());
+    }
+
+        @Test
+    void manualColorModePreservesIndividualWaypointColors() {
+        WaypointGroup g = WaypointGroup.create("manual", "hub");
+        g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        g.add(Waypoint.at(0, 70, 0).withColor(0x111111));
+        g.add(Waypoint.at(1, 70, 0).withColor(0x222222));
+
+        g.setStaticColor(0x00FF00);
+        g.setGradientStartColor(0xAAAAAA);
+        g.setGradientEndColor(0xBBBBBB);
+
+        assertEquals(0x111111, g.get(0).color());
+        assertEquals(0x222222, g.get(1).color());
     }
 
     @Test
@@ -259,6 +407,67 @@ class WaypointGroupTest {
 
         assertFalse(g.isSubwaypoint(1));
         assertEquals(4, g.mainWaypointCount());
+    }
+
+    @Test
+    void subwaypoint_toggle_clearsSubwaypointOnlyStyleFlagsWhenPromoted() {
+        WaypointGroup g = route();
+        assertTrue(g.toggleSubwaypoint(1));
+
+        Waypoint styled = g.get(1).withFlags(g.get(1).flags()
+                | Waypoint.FLAG_SMALL_SUBWAYPOINT
+                | Waypoint.FLAG_FILLED_SUBWAYPOINT
+                | Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED);
+        g.set(1, styled);
+        assertTrue(g.get(1).hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT));
+        assertTrue(g.get(1).hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT));
+        assertTrue(g.get(1).hasFlag(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED));
+
+        assertTrue(g.toggleSubwaypoint(1));
+
+        assertFalse(g.isSubwaypoint(1));
+        assertFalse(g.get(1).hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT));
+        assertFalse(g.get(1).hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT));
+        assertFalse(g.get(1).hasFlag(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED));
+    }
+
+    @Test
+    void forEachVisibleIndex_hidesFlaggedSubwaypointAfterParentIsReached() {
+        WaypointGroup g = route();
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(2);
+        g.set(1, g.get(1).withFlags(g.get(1).flags()
+                | Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED));
+
+        assertArrayEquals(new int[] { 0, 1, 2, 3 }, visibleIndices(g));
+
+        g.advancePast(0);
+
+        assertArrayEquals(new int[] { 0, 2, 3 }, visibleIndices(g));
+    }
+
+    @Test
+    void forEachVisibleIndex_oneWaypointHideAfterParentSubwaypointReappearsAfterReset() {
+        WaypointGroup g = WaypointGroup.create("single", "test_zone");
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        g.add(Waypoint.at(0, 0, 0));
+        g.add(Waypoint.at(1, 0, 0)
+                .withFlags(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED));
+        g.toggleSubwaypoint(1);
+
+        assertArrayEquals(new int[] { 0, 1 }, visibleIndices(g));
+
+        g.advancePast(0);
+        g.restartIfRouteCompleted(true);
+
+        assertEquals(0, g.activeSubwaypointParentIndex());
+        assertArrayEquals(new int[] { 0 }, visibleIndices(g));
+
+        g.resetProgress();
+
+        assertEquals(-1, g.activeSubwaypointParentIndex());
+        assertArrayEquals(new int[] { 0, 1 }, visibleIndices(g));
     }
 
     @Test

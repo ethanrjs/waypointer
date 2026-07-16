@@ -59,9 +59,9 @@ public final class TempWaypointCleaner {
         }
         // Only poke the data-changed channel when something actually changed —
         // otherwise the per-tick sweep would trigger an autosave storm even on
-        // empty worlds. fireDataChanged() also refreshes the active-groups
+        // empty worlds. The transient channel also refreshes the active-groups
         // cache, which the renderer picks up on its next frame.
-        if (anyRemoved) manager.fireDataChanged();
+        if (anyRemoved) manager.fireTransientDataChanged();
     }
 
     /** Lobby/server transitions are the hard deadline for every temp mode. */

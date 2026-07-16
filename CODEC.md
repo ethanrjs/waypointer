@@ -8,17 +8,26 @@ WP:4BdPN0BU%k[nFq#[FH-++?AX6bO}NHVtY(cx5KE...
 
 A recipient pastes the string in chat and imports the route as waypoint groups.
 
-Current wire version: **5**.
+Current wire version: **8**.
 
-Reference implementation: `src/main/java/dev/ethan/waypointer/codec/`
+Reference implementation: `src/main/java/dev/ethan/waypointer/codec/` — see the file map in section 13.
 
-| File | Responsibility |
-| --- | --- |
-| `WaypointCodec.java` | Binary body format, coordinate modes, chat escaping, encode/decode. |
-| `AsciiStreamCodec.java` | ASCII text alphabet and streaming base-91 pack/unpack. |
-| `AsciiPackCodec.java` | Retired v2 base-85 packer, kept for tests/history. |
-| `CodecDictionary.java` | Preset DEFLATE dictionary. |
-| `CodecZoneDictionary.java` | Compact known-zone references seeded from Skyblocker. |
+v8 keeps v7's body and text layouts, then adds an integrity frame around the binary body:
+
+- a four-byte CRC-32 of the uncompressed binary body detects mutations that raw DEFLATE cannot;
+- decoders reject compressed bytes or binary-body bytes left after a complete payload;
+- inflation stops at 16 MiB, preventing small DEFLATE inputs from expanding without bound.
+
+v7 added default-preserved subwaypoint detail:
+
+- minimal exports now keep subwaypoint small/filled style bits along with the structural subwaypoint bit;
+- subwaypoints with custom one-sixteenth placement write a packed 12-bit in-block offset so shared tiny markers import at the same precise center.
+
+v6 kept v5's chat-safe base-91 text layer. Its improvements came from three binary-side changes:
+
+- coordinate-only single-group exports can skip the normal string pool, group count, group name index, and waypoint body bytes;
+- long ordered coordinate routes can use `RANGE_DELTA`, a new bit-level adaptive delta mode that gets closer to the entropy limit than varints or fixed packed deltas;
+- final compression picks the shorter escaped text output from two DEFLATE strategies instead of assuming the default strategy is always best.
 
 ---
 
@@ -47,19 +56,19 @@ Sender and receiver run the same stages in opposite order.
   "WP:4BdPN0BU..."   ────────►   /pc <paste>  ─────►  "WP:4BdPN0BU..."
 ```
 
-| Stage | Job |
-| --- | --- |
-| Binary body | Stores route data with varints and bit-packed fields. Route-level compression decisions happen here. |
-| DEFLATE + dictionary | Compresses the binary body with a preset dictionary. |
-| base-91 | Converts compressed bytes to chat-safe ASCII at one UTF-8 byte per character. |
-| Chat escape | Escapes Hypixel `<3` and `o/` MVP++ emote triggers without changing decoded bytes. |
-| `WP:` prefix | Gives the chat scanner a fixed anchor. |
+| Stage          | Job                                                                    |
+| -------------- | ---------------------------------------------------------------------- |
+| Binary body    | Squeeze varints and bit-packed fields. Route-level smarts live here.   |
+| DEFLATE + dict | Byte-level compression with a preset dictionary.                       |
+| base-91        | Turn bytes into chat-safe ASCII at 1 byte per character.               |
+| chat escape    | Split Hypixel's `<3`/`o/` MVP++ emote triggers without changing bytes. |
+| `WP:` prefix   | Lets the chat scanner find the string without parsing it.              |
 
 ---
 
 ## 2. Design Constraints
 
-Minecraft refuses to send chat commands whose packet exceeds **256 UTF-8 bytes**. The 256-character textbox limit is separate and less important; the server-side byte cap is the real limit.
+Minecraft refuses to send chat commands whose packet exceeds **256 UTF-8 bytes**. The 256-character textbox limit is separate and less important; the server-side byte cap is the problematic limit.
 
 ```text
   Total budget: 256 wire bytes per /command
@@ -73,11 +82,10 @@ The codec optimizes for the ~250 bytes left after `/pc` and `WP:`.
 
 Additional constraints:
 
-- Chat validation strips control characters, collapses whitespace, and rejects `§` (`U+00A7`).
-- Hypixel's advertising filter can disconnect senders when a message looks like a URL, especially when it contains `.`. The alphabet excludes `.`.
+- Chat validation strips control characters and collapses whitespace.
+- Hypixel's advertising filter can disconnect senders when a message looks like a URL, especially when it contains `.` or `,`. The alphabet excludes periods and commas.
 - Hypixel rewrites `<3` and `o/` to MVP++ emotes before recipients see chat. The encoder escapes those pairs after text packing.
-- v5+ excludes commas from fresh exports because commas commonly appear next to chat text.
-- v4+ excludes backticks so route strings do not open Markdown code spans in Discord or other Markdown-heavy surfaces.
+- Codes exclude backticks so route strings do not break Markdown messages in Discord specifically.
 - Copy-paste must round-trip byte-identically.
 - Hover tooltips need a cheap partial decode of the optional label.
 - Exports describe shareable routes, not player sessions. They do not include progress state or personal toggles.
@@ -99,7 +107,7 @@ The body decodes to compressed bytes. Raw DEFLATE inflates those bytes into the 
 
 ### 4.1 Characters
 
-v5 uses 91 printable ASCII characters. It includes every printable ASCII character except space, comma, `.`, and backtick.
+v5 and newer use 91 printable ASCII characters. The alphabet includes every printable ASCII character except space, comma, `.`, and backtick.
 
 ```text
   ! " # $ % & ' ( ) * + - /
@@ -113,15 +121,13 @@ v5 uses 91 printable ASCII characters. It includes every printable ASCII charact
 
 Each body character must be:
 
-- one UTF-8 byte, so character count equals byte count;
-- not `.`, so payloads do not resemble `host.tld` strings;
-- not `,`, so adjacent punctuation does not become part of a fresh export;
-- not whitespace, so paste operations do not collapse runs;
-- not `§`, so chat validation never treats a payload byte as a color code;
-- not backtick, so Markdown surfaces do not treat the payload as a code span;
+- one UTF-8 byte
+- not whitespace
+- not `§`
+- not backtick
 - printable ASCII.
 
-v4+ applies a reversible chat escape after base-91/base-92 packing:
+The encoder escapes `~` (the escape character itself) and Hypixel's MVP++ emote triggers after text packing:
 
 ```text
 ~   -> ~~
@@ -133,7 +139,7 @@ o/  -> o~/
 
 ### 4.2 Packing
 
-v5+ uses the basE91 streaming scheme with a 91-symbol alphabet. The packer accumulates source bits and emits two output characters carrying either 13 or 14 bits, depending on whether the current 14-bit value fits inside `91²`.
+v5 and newer use the basE91 streaming scheme with a 91-symbol alphabet. The packer accumulates source bits and emits two output characters carrying either 13 or 14 bits, depending on whether the current 14-bit value fits inside `91²`.
 
 ```text
 91² = 8281
@@ -163,12 +169,12 @@ The budget is UTF-8 bytes, not visible glyphs.
 | --- | ---: | ---: | ---: | --- |
 | base64 | 6.00 | 1 | 6.00 | Safe, lower density. |
 | v2 base-85 | 6.41 | 1 | 6.41 | Fixed 4-byte/5-char groups plus one trailer. |
-| v5+ base-91 stream | ~6.51 | 1 | ~6.51 | No trailer; variable 13/14-bit pairs. |
+| v5-v8 base-91 stream | ~6.51 | 1 | ~6.51 | No text-packing trailer; variable 13/14-bit pairs. |
 | v4 base-92 stream | ~6.52 | 1 | ~6.52 | Legacy; includes comma. |
 | v3 base-93 stream | ~6.53 | 1 | ~6.53 | Legacy; includes backtick. |
 | CJK base-16384 | 14.00 | 3 | 4.67 | Short visually, expensive on the wire. |
 
-CJK carries more bits per glyph, but each glyph costs three UTF-8 bytes. That makes it worse under the server byte cap. v1 optimized for textbox length. v2 switched to base-85 for byte efficiency. v3 removed the base-85 pad trailer. v4 spent one symbol to remove backticks. v5 spent one more symbol to remove commas and added extended coordinate modes.
+CJK carries more bits per glyph, but each glyph costs three UTF-8 bytes. That makes it worse under the server byte cap. v1 optimized for textbox length. v2 switched to base-85 for byte efficiency. v3 removed the base-85 pad trailer. v4 spent one symbol to remove backticks. v5 spent one more symbol to remove commas and added extended coordinate modes. v6 kept the same base-91 text layer, then improved the binary body with a coordinate-only shortcut and a new range-delta coordinate mode. v7 added exact tiny-subwaypoint sharing. v8 adds CRC-32 integrity without changing the text alphabet.
 
 ### 4.4 Decode Safety
 
@@ -191,16 +197,22 @@ The codec uses raw DEFLATE:
 Deflater(..., nowrap=true)
 ```
 
-It omits the zlib header and Adler-32 trailer. That saves six wrapper bytes per share, but it also removes the wrapper checksum and the zlib `DICTID` field. The decoder binds the preset dictionary manually by calling `Inflater.setDictionary(...)` before inflating.
+It omits the zlib header and Adler-32 trailer. That saves six wrapper bytes per share and removes the zlib `DICTID` field. The decoder binds the preset dictionary manually by calling `Inflater.setDictionary(...)` before inflating.
 
-Corruption can still fail in several places: invalid DEFLATE tokens, truncated inflate input, unsupported header versions, out-of-bounds string-pool references, invalid zone dictionary references, oversized strings, and malformed varints. The format does not carry a checksum.
+v8 passes this frame to raw DEFLATE:
+
+```text
+binary body || crc32(binary body, 4 bytes, big-endian)
+```
+
+The receiver inflates at most 16 MiB, requires the DEFLATE stream to consume every compressed byte, verifies the CRC-32, removes it, parses the binary body, and requires that parser to consume every remaining byte. v1-v7 payloads remain decode-compatible but have no checksum and are therefore legacy unchecked payloads; they still receive the inflate bound and exact-consumption checks.
 
 ### 5.2 Preset Dictionary
 
 Encoder and decoder both set `CodecDictionary.BYTES` as DEFLATE's preset dictionary. The dictionary acts as virtual LZ77 history, so early stream bytes can back-reference common route vocabulary.
 
 ```text
-  virtual history (~600 bytes, never transmitted)
+  virtual history (~360 bytes, never transmitted)
   ┌──────────────────────────────────────────────────────────┐
   │ dungeon_f7 hub crystal_hollows ... Terminal Lever ...    │
   └──────────────────────────────────────────────────────────┘
@@ -221,11 +233,17 @@ Dictionary contents:
 - canonical Hypixel SkyBlock zone IDs, ordered longest-and-most-common first;
 - common waypoint name fragments: `Terminal`, `Lever`, `Puzzle`, `Device`, `Boss`, `Spawn`, `Start`, `End`, `Checkpoint`, `T1..T8`.
 
-The dictionary is about 600 bytes. It must stay short because DEFLATE scans it on every encode and decode. Named routes commonly save 10–40% of compressed output.
+The dictionary is about 360 bytes. It must stay short because DEFLATE scans it on every encode and decode. Named routes commonly save 10–40% of compressed output.
 
-### 5.3 Dictionary Versioning
+### 5.3 DEFLATE Strategy Selection
 
-The dictionary bytes are part of the wire contract. Raw DEFLATE does not advertise a dictionary ID, so old payloads are not protected by a zlib-level dictionary checksum. If `CodecDictionary.RAW` changes, old strings may inflate to the wrong bytes, fail inflation, or fail later while parsing the binary body.
+Since v6, the encoder scores the final escaped text length after compression. When writing the actual payload, the encoder tries the normal DEFLATE strategy and the filtered strategy, then keeps whichever produces the shorter escaped base-91 string.
+
+This matters because the best raw compressed byte count is not always the best chat string. The base-91 layer and the Hypixel emote escape can make two equal-byte compressed streams differ by a character, and a one-character win is real under the `/pc` byte cap.
+
+### 5.4 Dictionary Versioning
+
+The dictionary bytes are part of the wire contract. Raw DEFLATE does not advertise a dictionary ID, so v1-v7 payloads are not protected against a dictionary mismatch. v8's CRC-32 detects wrong uncompressed output. If `CodecDictionary.RAW` changes, old strings may still inflate incorrectly or fail, so any dictionary edit requires another wire-version bump.
 
 Do not edit the dictionary without bumping `WaypointCodec.WIRE_VERSION`.
 
@@ -236,11 +254,14 @@ Do not edit the dictionary without bumping `WaypointCodec.WIRE_VERSION`.
 Most scalar counts, indexes, coordinates, and radii use varints or zigzag varints. The exceptions are deliberate:
 
 - fixed-width coordinate bitstreams in compact coordinate modes;
-- two-byte packed width preambles in `FIT_COMPACT` and `DELTA_FIT_AXIS_SEPARATED`;
+- two-byte packed width preambles in `FIT_COMPACT`, `DELTA_FIT_AXIS_SEPARATED`, and `RANGE_DELTA`;
+- the varint-prefixed range-coded payload in `RANGE_DELTA`;
 - three raw RGB bytes in waypoint color records;
 - raw UTF-8 byte strings after a varint length.
 
 ### 6.1 Top-Level Layout
+
+Regular bodies keep the v5 wrapper:
 
 ```text
   ┌──────┬──────────┬─────────────┬───────────────┬─────────────┐
@@ -249,18 +270,26 @@ Most scalar counts, indexes, coordinates, and radii use varints or zigzag varint
   └──────┴──────────┴─────────────┴───────────────┴─────────────┘
 ```
 
+v6 and newer can also use an anonymous single-group coordinate-only body. That body still begins with the same header and optional label, but it skips the string pool and group count because there is exactly one unnamed group:
+
+```text
+  hdr [label] anonymous-group
+```
+
+The anonymous shape is only for exports that contain exactly one group of coordinates in order, with no waypoint body data to preserve. If names, colors, radii, waypoint flags, subwaypoint style, or precise offsets would be lost, the encoder falls back to the regular body.
+
 ### 6.2 Header Byte
 
 ```text
   bit   7   6   5   4   3   2   1   0
       ┌───┬───┬───┬───┬───────────────┐
-      │ r │ r │ L │ N │    version    │
+      │ r │ A │ L │ N │    version    │
       └───┴───┴───┴───┴───────────────┘
         │   │   │   │        │
-        │   │   │   │        └── 4 bits; must be non-zero; current: 5
+        │   │   │   │        └── 4 bits; must be non-zero; current: 7
         │   │   │   └─────────── HEADER_FLAG_NAMES, informational
         │   │   └─────────────── HEADER_FLAG_LABEL, label byte-string follows
-        │   └─────────────────── reserved; encoder writes 0, decoder ignores
+        │   └─────────────────── HEADER_FLAG_ANONYMOUS_SINGLE_GROUP, v6+ coordinate-only body
         └─────────────────────── reserved; encoder writes 0, decoder ignores
 ```
 
@@ -268,7 +297,9 @@ Version 0 is invalid, so a corrupted leading byte cannot masquerade as an old sc
 
 `HEADER_FLAG_NAMES` is informational. Each waypoint still carries its own `WP_FLAG_HAS_NAME`. The duplicate flag lets debug tools show sender intent without scanning every waypoint.
 
-Bits 6–7 are reserved. The version nibble can grow into them later without changing the top-level structure.
+Bit 6 is `HEADER_FLAG_ANONYMOUS_SINGLE_GROUP` in v6 and newer. When set, the body uses the anonymous single-group coordinate-only layout in section 6.7 instead of the normal string-pool/group-count wrapper.
+
+Bit 7 is still reserved. The encoder writes it as `0`; current decoders ignore it after the version-specific body path is chosen.
 
 ### 6.3 Optional Label
 
@@ -284,11 +315,11 @@ Constraints:
 - maximum wire length: 256 bytes (`MAX_LABEL_BYTES`);
 - maximum visible length: 64 chars (`Options.MAX_LABEL_CHARS`);
 - sanitization strips `§`, C0 controls (`< 0x20`), `0x7F`, then trims whitespace;
-- encode and decode both sanitize, so hand-crafted payloads cannot inject color codes or line breaks into tooltips.
+- encode and full decode both sanitize, so payloads cannot inject color codes or line breaks into imported labels.
 
 ### 6.4 String Pool
 
-The string pool is a flat UTF-8 table. Groups and waypoints reference it by index.
+The string pool is a flat UTF-8 table. Groups and waypoints reference it by index. It exists only in regular bodies; anonymous coordinate-only bodies (v6+) omit it.
 
 ```text
 string-pool := varint count
@@ -310,7 +341,7 @@ group := varint nameIdx         ; pool index, 0 = unnamed
          u8     groupFlags      ; see below
          [ varint radius_x10 ]  ; iff GROUP_FLAG_CUSTOM_RADIUS
          varint waypointCount
-         coord-block            ; section 6.7
+         coord-block            ; section 6.8
          waypoint-body{waypointCount} ; omitted iff GROUP_FLAG_BODYLESS_WAYPOINTS
 ```
 
@@ -342,11 +373,13 @@ custom zone: poolIndex << 1
 
 The built-in zone dictionary starts from Skyblocker's `Location` enum, which provides Hypixel location IDs and friendly names. Waypointer adds canonical aliases plus dungeon and mineshaft refinements. Unknown and user-created zone IDs round-trip through the string pool.
 
+Anonymous bodies (v6+) do not have a string pool, so their zone reference keeps odd dictionary refs for known zones and uses `0` followed by an inline UTF-8 zone ID for custom zones. Other nonzero even zone refs are invalid in the anonymous layout.
+
 When `GROUP_FLAG_CUSTOM_RADIUS` is set, `radius_x10` stores the radius in tenths. For example, `3.5m` stores as `35`. A float would spend three extra bytes per group without adding useful precision.
 
 ### 6.6 Group Metadata and Omitted Session State
 
-Group name and zone are always part of the group record. `includeNames` only controls waypoint names; it does not remove group names.
+In regular bodies, group name and zone are always part of the group record. `includeNames` only controls waypoint names; it does not remove group names. In anonymous coordinate-only bodies (v6+), the single group name is intentionally blank and the zone is still written.
 
 `Options.includeGroupMeta` controls the group metadata bits:
 
@@ -370,11 +403,42 @@ Exports describe shared route data, not sender session state. The wire format do
 
 The old `enabled` bit slot now means `GROUP_FLAG_BODYLESS_WAYPOINTS`. When set, the coordinate block has no per-waypoint body bytes after it. Every waypoint uses the default body, `wpFlags = 0`. This saves one raw zero byte per waypoint before DEFLATE on geometry-only exports.
 
-### 6.7 Coordinate Block
+### 6.7 Anonymous Single-Group Body
+
+When header bit 6 is set on a v6+ payload, the body is:
+
+```text
+anonymous-body := header
+                  [ label ]
+                  anonymous-group
+
+anonymous-group := anonymous-zone-ref
+                   u8 groupFlags
+                   [ varint radius_x10 ]  ; iff GROUP_FLAG_CUSTOM_RADIUS
+                   varint waypointCount
+                   coord-block
+```
+
+There is no string pool, no group count, no group name index, and no waypoint body section. The group decodes with an empty name. The decoder requires `GROUP_FLAG_BODYLESS_WAYPOINTS` because every waypoint is reconstructed from coordinates alone.
+
+Eligibility is intentionally strict:
+
+- exactly one group;
+- waypoint names disabled;
+- waypoint colors disabled;
+- waypoint radii disabled;
+- waypoint flags disabled;
+- no surviving structural waypoint flags, such as subwaypoint state.
+
+Labels and group metadata can still be kept. The optional label lives next to the header, and the anonymous group record can still carry zone, load mode, and custom default radius.
+
+The purpose is to avoid paying wrapper bytes for the most common compressed export target: one ordered list of coordinates. If the route needs any richer waypoint body data, the encoder writes the regular body instead.
+
+### 6.8 Coordinate Block
 
 Each group chooses one coordinate mode during encode.
 
-In v5+, the chosen mode uses `groupFlags[4..5]` for the low two bits and `groupFlags[6]` for bit 2. Legacy v4 and older only used `groupFlags[4..5]`, so they only support modes `0..3`.
+In v5+, the chosen mode uses `groupFlags[4..5]` for the low two bits and `groupFlags[6]` for bit 2. Legacy v2-v4 only used `groupFlags[4..5]`, so they only support modes `0..3`; the restored v1 compatibility path only accepts modes `0..2`. v6 adds mode `6`; older v5 payloads never contain it, but current decoders understand v5-v8.
 
 #### Mode 0: `VECTOR` delta
 
@@ -463,9 +527,24 @@ bitpacked all dx, then all dy, then all dz
 
 An axis width of `0` means all deltas on that axis are zero. AUTO only considers this mode when every packed zigzag delta fits in 31 bits.
 
+#### Mode 6: `RANGE_DELTA`
+
+Introduced in v6 and still valid in v8. Stores the first waypoint as absolute zigzag varints, then range-codes fixed-width zigzag deltas by axis.
+
+```text
+first absolute x, y, z
+u16: [pad:1 | dxBits:5 | dyBits:5 | dzBits:5]
+varint rangePayloadLen
+byte[rangePayloadLen] adaptive range-coded delta bits
+```
+
+The range payload is axis-major: all `dx` bits, then all `dy` bits, then all `dz` bits. Within each fixed-width delta, bits are written most-significant to least-significant. The adaptive model has a separate context for each axis and bit position, starting from a neutral probability table for each group.
+
+This is best for long ordered coordinate routes where the next movement is predictable enough that a bit-level model beats both plain varints and DEFLATE over packed deltas. It has more setup overhead than the older modes, so AUTO only picks it when the final escaped text score is actually smaller.
+
 #### AUTO Mode Selection
 
-The encoder tries every eligible coordinate mode. For each candidate, it scores the body prefix plus the candidate group through the same DEFLATE, base-91, and Hypixel-escape path used by real exports, then picks the shortest scored text.
+The encoder tries every eligible coordinate mode. For each candidate, it scores the body prefix plus the candidate group through the same DEFLATE, base-91, and Hypixel-escape path used by real exports, then picks the shortest scored text. Anonymous bodies (v6+) use a separate scorer because their wrapper bytes differ from regular groups.
 
 The score is a per-group heuristic, not a full recompression of the final export with all later groups included. It still beats raw-byte comparison because DEFLATE and the text layer can rank candidates differently from their uncompressed size. A repetitive `VECTOR` delta stream can compress to almost nothing, while a dense `FIT_COMPACT` bitstream may compress poorly.
 
@@ -479,7 +558,7 @@ Every coordinate mode has this layout:
 
 The decoder reads `waypointCount` coordinates in the selected mode, then reads `waypointCount` waypoint bodies unless the group is bodyless.
 
-### 6.8 Waypoint Body
+### 6.9 Waypoint Body
 
 ```text
 waypoint-body := u8 wpFlags
@@ -487,6 +566,7 @@ waypoint-body := u8 wpFlags
                  [ byte[3] rgb ]        ; iff WP_FLAG_HAS_COLOR, MSB-first R,G,B
                  [ varint radius_x10 ]  ; iff WP_FLAG_HAS_RADIUS
                  [ varint flags ]       ; iff WP_FLAG_EXTENDED, user flag byte & 0xFF
+                 [ varint precise ]     ; iff WP_FLAG_HAS_PRECISE, v7+ packed x/y/z offsets
 
 name-ref      := varint nameIdx         ; pooled name, iff WP_FLAG_NAME_INLINE unset
               | varint byteLen; bytes   ; inline UTF-8, iff WP_FLAG_NAME_INLINE set
@@ -497,14 +577,15 @@ name-ref      := varint nameIdx         ; pooled name, iff WP_FLAG_NAME_INLINE u
 ```text
   bit   7   6   5   4   3   2   1   0
       ┌───┬───┬───┬───┬───┬───┬───┬───┐
-      │ r │ r │ r │ I │ X │ R │ C │ N │
+      │ r │ r │ P │ I │ X │ R │ C │ N │
       └───┴───┴───┴───┴───┴───┴───┴───┘
-                            │   │   │   │
-                            │   │   │   └── WP_FLAG_HAS_NAME
-                            │   │   └────── WP_FLAG_HAS_COLOR, else DEFAULT_COLOR
-                            │   └────────── WP_FLAG_HAS_RADIUS, else inherit group
-                            └────────────── WP_FLAG_EXTENDED, else no user flags
-                        └────────────── WP_FLAG_NAME_INLINE; name-ref is inline UTF-8
+                │   │   │   │   │   │
+                │   │   │   │   │   └── WP_FLAG_HAS_NAME
+                │   │   │   │   └────── WP_FLAG_HAS_COLOR, else DEFAULT_COLOR
+                │   │   │   └────────── WP_FLAG_HAS_RADIUS, else inherit group
+                │   │   └────────────── WP_FLAG_EXTENDED, else no user flags
+                │   └────────────────── WP_FLAG_NAME_INLINE; name-ref is inline UTF-8
+                └────────────────────── WP_FLAG_HAS_PRECISE; v7+ packed sixteenth offsets
 ```
 
 Unique waypoint names are inlined instead of added to the string pool. Pooling a one-use name costs the string bytes plus a separate index. Repeated names still pool, so labels such as `Terminal` or `Lever` store once and reference by index.
@@ -515,6 +596,8 @@ Subwaypoint status is stored in the extended waypoint flags field. It is not a s
 
 ```text
 Waypoint.FLAG_SUBWAYPOINT = 1 << 4   ; 0x10
+Waypoint.FLAG_SMALL_SUBWAYPOINT = 1 << 5
+Waypoint.FLAG_FILLED_SUBWAYPOINT = 1 << 6
 ```
 
 A waypoint with only subwaypoint metadata writes this body:
@@ -526,7 +609,16 @@ A waypoint with only subwaypoint metadata writes this body:
 └──── wpFlags = WP_FLAG_EXTENDED
 ```
 
-Subwaypoint structure survives minimal exports. When `includeWaypointFlags` is false, the encoder strips visual flags but keeps `Waypoint.STRUCTURAL_FLAGS`, currently only `FLAG_SUBWAYPOINT`.
+Subwaypoint structure and subwaypoint-specific style survive minimal exports. When `includeWaypointFlags` is false, the encoder strips unrelated visual/user flags but keeps `FLAG_SUBWAYPOINT` and, when that structural bit is present, `FLAG_SMALL_SUBWAYPOINT` and `FLAG_FILLED_SUBWAYPOINT`.
+
+v7 also stores precise small-waypoint placement by default for subwaypoints. The coordinate stream still stores whole-block `x/y/z`; the waypoint body can add one packed varint:
+
+```text
+precise = (xOffset << 8) | (yOffset << 4) | zOffset
+offsets are 0..15, in sixteenths of a block inside the decoded block coordinate
+```
+
+A block-centered waypoint has offset `8, 8, 8` and usually omits this field. A custom tiny subwaypoint at `x + 3/16`, `y + 12/16`, `z + 15/16` writes `0x3CF`.
 
 The parent relationship is positional. A subwaypoint is a one-level child of the nearest previous non-subwaypoint in the same group. The first waypoint cannot remain a subwaypoint after group normalization.
 
@@ -537,10 +629,10 @@ Sender `Options` can disable field families:
 - `includeNames`: waypoint names only; group names are still written;
 - `includeColors`: waypoint colors and AUTO gradient preservation;
 - `includeRadii`: per-waypoint radius overrides;
-- `includeWaypointFlags`: visual/user waypoint flags, while structural flags still survive;
+- `includeWaypointFlags`: visual/user waypoint flags, while subwaypoint structure/style still survive;
 - `includeGroupMeta`: load mode, default radius, and group gradient mode.
 
-When a family is disabled, the encoder writes neither the corresponding flag bit nor the value, except for structural waypoint flags. The decoder sees unset fields and substitutes defaults.
+When a family is disabled, the encoder writes neither the corresponding flag bit nor the value, except for subwaypoint structure/style flags and v7 subwaypoint precise offsets. The decoder sees unset fields and substitutes defaults.
 
 Colors are omitted when they equal `DEFAULT_COLOR`; the recipient substitutes the same constant. Extended flags are stored as the low byte of `Waypoint.flags` (`flags & 0xFF`).
 
@@ -621,22 +713,22 @@ prepend "WP:"
 verify "WP:" prefix
      │
      ▼
-remove v4+ chat escape
+remove emote escape for versions that use it
      │
      ▼
-base-91 decode
+text decode for probed version
      │
      ▼
 inflate + preset dict
      │
      ▼
-read header byte -> reject if version != WIRE_VERSION
+read header byte -> require the version currently being probed
      │
      ▼
 if HEADER_FLAG_LABEL: read + sanitize label
      │
      ▼
-read string pool
+read anonymous group if header bit 6 is set (v6+), else read string pool
      │
      ▼
 for each group:
@@ -656,12 +748,16 @@ unsupported wire version N
 
 Current decoders accept:
 
+- v8: current writer, v7 body/text behavior plus a CRC-32 integrity trailer;
+- v7: v6 text/anonymous/range-delta behavior plus default-preserved subwaypoint style flags and packed sixteenth-block precise offsets;
+- v6: base-91 text layer, anonymous single-group coordinate-only bodies, `RANGE_DELTA`, and best-of-DEFLATE strategy selection;
 - v5: `AsciiStreamCodec` base-91 text layer, Hypixel emote escape, extended coordinate modes;
 - v4: `AsciiStreamCodec` base-92 text layer, Hypixel emote escape, v4 header;
 - v3: `AsciiStreamCodec` base-93 text layer, v3 body with `zoneRef`, inline names, and bodyless groups;
-- v2: `AsciiPackCodec` base-85 text layer, v2 body with zone IDs as string-pool indexes, waypoint names always as pool refs, and ignored bit 0 in group flags.
+- v2: `AsciiPackCodec` base-85 text layer, v2 body with zone IDs as string-pool indexes, waypoint names always as pool refs, and ignored bit 0 in group flags;
+- v1: `CjkBase16384` text layer with the old pooled-zone body shape.
 
-The encoder only writes v5.
+The encoder only writes v8. v7 and older are decode-only, checksum-free compatibility paths; the separate v5 exporter/comparison UI was removed after v6 won the export-size tests.
 
 ### 8.3 `peekLabel`
 
@@ -669,15 +765,16 @@ The encoder only writes v5.
 
 ```text
 peekLabel(text):
-  run the same prefix / v4+ unescape / base-91 / inflate path as decode,
-  then try legacy fallbacks
+  copy at most the first 1024 payload characters after WP:
+  try the v8 text decode, then v7 through v1 fallbacks
+  inflate at most header + maximum label bytes; completion is not required
   read header byte
   if version mismatch or HEADER_FLAG_LABEL unset -> Optional.empty()
   read label and return it
-  swallow all exceptions -> Optional.empty()
+  malformed input -> Optional.empty()
 ```
 
-The label appears before the string pool so this path never walks the full payload.
+The label appears before the string pool, so this path never walks or allocates from the full payload. This is intentionally an unchecked preview: only `decodeFull()` verifies the v8 CRC and exact stream consumption before import.
 
 Current implementation note: `decodeFull()` sanitizes labels during the normal read path. `peekLabel()` currently returns the label read from the payload without applying `Options.sanitizeLabel()`. Either sanitize inside `peekLabel()` or sanitize at every hover-render call before relying on the stronger tooltip-safety claim.
 
@@ -704,7 +801,7 @@ This supports `/wp debug`; it is not a hot path.
 | --- | --- | --- |
 | `MAGIC` (`"WP:"`) | `WaypointCodec` constant | Breaks the chat scanner for all payloads. |
 | `WIRE_VERSION` | Low nibble of the header byte | Breaks decode for older builds. Scanner still fires. |
-| Dictionary bytes | `CodecDictionary.RAW` | Breaks decode at the stream layer; `Inflater` throws on Adler-32 mismatch. Always bump `WIRE_VERSION`. |
+| Dictionary bytes | `CodecDictionary.RAW` | Can break decode at inflate time or later binary-body parsing. Always bump `WIRE_VERSION`. |
 | Zone dictionary | `CodecZoneDictionary.IDS` | Breaks known-zone references. Always bump `WIRE_VERSION`. |
 
 Version bump rules:
@@ -714,7 +811,7 @@ Version bump rules:
 3. Editing `CodecDictionary.RAW` requires a version bump.
 4. Editing `CodecZoneDictionary.IDS` requires a version bump.
 5. Adding a reserved bit does not require a bump if older decoders can ignore it safely. If older decoders would read a different byte stream, bump the wire version.
-6. Legacy coordinate-mode storage used two bits. v5 claimed group flag bit 6 as the third coordinate-mode bit. Adding more coordinate modes now requires another version bump or another explicit extension bit.
+6. Legacy coordinate-mode storage used two bits. v5 claimed group flag bit 6 as the third coordinate-mode bit, and v6 uses that space for mode `6`. Adding more coordinate modes now requires another version bump or another explicit extension bit.
 
 ---
 
@@ -731,10 +828,10 @@ Example route:
 - label: none
 - export options: names and colors included
 
-Binary body before DEFLATE, with whitespace added:
+Binary body before the v8 CRC-32 is appended and the frame is DEFLATE-compressed, with whitespace added:
 
 ```text
-15               header: version=5, names flag, no label
+18               header: version=8, names flag, no label
 02               string pool: 2 entries
   00                       ""          reserved at index 0
   07  44 75 6E 67 65 6F 6E              "Dungeon"
@@ -750,16 +847,17 @@ Binary body before DEFLATE, with whitespace added:
   -- waypoint bodies omitted: group is BODYLESS --
 ```
 
-`dungeon_f7` exists in the known-zone dictionary, so the group stores it as one varint instead of writing the string. The body compresses to roughly half its raw size. The final payload is about 35–45 characters, well under one chat command.
+`dungeon_f7` exists in the known-zone dictionary, so the group stores it as one varint instead of writing the string. The body compresses to roughly half its raw size. The final payload is about 35–45 characters, well under one chat message.
 
 ---
 
 ## 11. Implementation Notes
 
-- Bit I/O is byte-aligned at section boundaries. After a `FIXED_COMPACT`, `FIT_COMPACT`, or `DELTA_FIT_AXIS_SEPARATED` coordinate stream, `BitReader.alignToByteBoundary()` drops buffered partial-byte bits so waypoint-body reads resume cleanly. `BitWriter.flush()` mirrors this on encode.
+- Bit I/O is byte-aligned at section boundaries. After a `FIXED_COMPACT`, `FIT_COMPACT`, `DELTA_FIT_AXIS_SEPARATED`, or `RANGE_DELTA` coordinate stream, `BitReader.alignToByteBoundary()` drops buffered partial-byte bits so waypoint-body reads resume cleanly. `BitWriter.flush()` mirrors this on encode.
 - All pool lookups go through `poolGet`, which bounds-checks against pool size and throws `IOException` on out-of-range indices. Malformed payloads report `string pool OOB: N` instead of `IndexOutOfBoundsException`.
-- `decodeFull()` sanitizes labels even though encode already sanitizes them. `peekLabel()` should do the same before hover text renders a label from an untrusted payload.
+- `decodeFull()` sanitizes labels even though encode already sanitizes them. `peekLabel()` is an unchecked bounded preview and should not be treated as authenticated route metadata.
 - AUTO gradient imports may recolor unlocked waypoints using the recipient/default gradient endpoints. The wire format does not store gradient endpoint colors.
+- Skytils clipboard compatibility follows the current 1.x `Waypoints.kt` schema: V1 is `<Skytils-Waypoint-Data>(V1):` plus base64(gzip(`CategoryList` JSON)); V2 replaces gzip with Brotli. Waypointer imports both versions and exports V1, which current Skytils still accepts without its optional native Brotli encoder. Categories import as static groups because Skytils stores their waypoints in sets, and signed ARGB colors plus per-waypoint enabled state are preserved. The implementation is fixture-tested against [Skytils 1.x source at commit `276c07e`](https://github.com/Skytils/SkytilsMod/blob/276c07edf0f1e64956424016f438a5059c63a863/src/main/kotlin/gg/skytils/skytilsmod/features/impl/handlers/Waypoints.kt).
 
 ---
 
@@ -767,7 +865,7 @@ Binary body before DEFLATE, with whitespace added:
 
 - Random access. The format is sequential: no index, no length-prefixed group, no "seek to group 3."
 - Human readability. Base-91 text is intentionally dense. Use `debugDecode` or hex-dump the raw body.
-- Interchange with other mods. `WP:` is Waypointer-native. `WaypointImporter` handles Skyblocker, Skytils/Soopy, SkyHanni, Coleweight, and loose JSON-style payloads separately; those formats do not share bytes with this codec.
+- Interchange with other mods. `WP:` is Waypointer-native. `WaypointImporter` handles Skyblocker, Skytils/Soopy, SkyHanni, Coleweight, Odin, and loose JSON-style payloads separately; those formats do not share bytes with this codec.
 - Cross-version forward compatibility. Older builds refuse newer `WIRE_VERSION` values. Guessing at a newer layout risks silent misreads.
 
 ---
@@ -776,12 +874,23 @@ Binary body before DEFLATE, with whitespace added:
 
 | Path | Responsibility |
 | --- | --- |
-| `codec/WaypointCodec.java` | Body format, coordinate modes, options, encode/decode. |
-| `codec/AsciiStreamCodec.java` | base-91 text alphabet, streaming pack/unpack, validation. |
+| `codec/WaypointCodec.java` | Body format, coordinate modes, anonymous layout (v6+), options, encode/decode. |
+| `codec/AsciiStreamCodec.java` | v5+ base-91 text alphabet, legacy v4/v3 stream alphabets, streaming pack/unpack, validation. |
 | `codec/AsciiPackCodec.java` | Retired v2 base-85 packer, kept for regression tests/history. |
+| `codec/CjkBase16384.java` | Retired v1 CJK base-16384 packer, restored for decode compatibility. |
 | `codec/CodecDictionary.java` | Preset DEFLATE dictionary. |
 | `codec/CodecZoneDictionary.java` | Skyblocker-seeded known-zone dictionary. |
 | `codec/DecodeDebug.java` | Immutable debug snapshot returned by `debugDecode`. |
 | `codec/WaypointExportCodec.java` | Waypointer and third-party export target wrapper. |
-| `codec/WaypointImporter.java` | Multi-format import: Waypointer, Skyblocker, Skytils/Soopy, SkyHanni, Coleweight, JSON. |
+| `api/DefaultWaypointerApi.java`, `api/ExportOptions.java`, `api/ExportTarget.java` | Public API layer for export calls and target/options mapping. |
+| `codec/WaypointImporter.java` | Multi-format import: Waypointer, Skyblocker, Skytils/Soopy, SkyHanni, Coleweight, Odin, JSON. |
 | `chat/CodecScanner.java`, `chat/ChatImportDetector.java` | Detect `WP:` substrings in chat lines. |
+
+## 14. Why so complex?
+
+Lots of research and time was spent trying to optimize codecs. This project initially came around because I, Babbur, hated sharing waypoints over Discord when I wanted to do it in-game.
+It is mostly a passion project, and absolutely does not need this level of complexity. I do not recommend implementing this codec into your own project, at least by hand. Far more work than it's worth for most people.
+Part of the philosophy of why I made this mod is because I wanted to overengineer the simple things in a simple mod, and make this mod damn good at the one thing it does best: waypoints.
+There are so many moving parts and complex processes that all mesh together to create a beautifully efficient and stunningly compact encoder/decoder.
+I understand that this is no easy task to implement into your own projects for support. I recommend you simply reference the API of this project.
+In the future, I will create an online web API that will allow you to convert any set of waypoints between mods, i.e. SkyHanni -> Waypointer, Skytils -> Soopy, etc., but that's not yet available.

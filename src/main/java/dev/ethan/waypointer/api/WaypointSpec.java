@@ -1,5 +1,6 @@
 package dev.ethan.waypointer.api;
 
+import dev.ethan.waypointer.codec.WaypointCodec;
 import dev.ethan.waypointer.core.Waypoint;
 
 /**
@@ -21,7 +22,7 @@ public record WaypointSpec(
     public WaypointSpec {
         name = name == null ? "" : name;
         color &= 0xFFFFFF;
-        radius = Math.max(0.0, radius);
+        radius = Waypoint.normalizeCustomRadius(radius);
         source = source == null ? "" : source.trim();
     }
 
@@ -69,7 +70,9 @@ public record WaypointSpec(
     }
 
     Waypoint toTempWaypoint() {
-        return toWaypoint().withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L);
+        String label = name.isBlank() ? WaypointCodec.Options.sanitizeLabel(source) : name;
+        return new Waypoint(x, y, z, label, color, flags, radius)
+                .withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0L);
     }
 
     public static final class Builder {
@@ -121,7 +124,7 @@ public record WaypointSpec(
         }
 
         /**
-         * Short source name for temp waypoints, used to group markers such as
+         * Short source name for temp waypoints, used to label markers such as
          * {@code "Example Mod"} or {@code "Party Chat"}.
          */
         public Builder source(String source) {
