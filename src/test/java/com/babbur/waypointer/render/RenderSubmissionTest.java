@@ -1,0 +1,13 @@
+package com.babbur.waypointer.render;
+
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class RenderSubmissionTest {
+
+    @Test
+    void currentMinecraftExposesASupportedWorldRenderBackend() {
+        assertTrue(RenderSubmission.requiredBindingsAvailable());
+    }
+}

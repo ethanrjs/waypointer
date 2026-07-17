@@ -10,7 +10,7 @@ A recipient pastes the string in chat and imports the route as waypoint groups.
 
 Current wire version: **9**.
 
-Reference implementation: `src/main/java/dev/ethan/waypointer/codec/` — see the file map in section 13.
+Reference implementation: `src/main/java/com/babbur/waypointer/codec/` — see the file map in section 13.
 
 v9 keeps the `WP:`/base-91 transport and CRC integrity frame, then adds:
 

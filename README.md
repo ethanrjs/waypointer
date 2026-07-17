@@ -79,7 +79,7 @@ it does not produce one universal jar:
 - `build/libs/waypointer-<mod-version>-mc26.2.jar`
 
 Matching `-sources.jar` files are also generated. The current mod version is
-`1.8.1`.
+`1.8.2`.
 
 ## Testing
 

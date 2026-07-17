@@ -1,0 +1,233 @@
+package com.babbur.waypointer.chat;
+
+import com.babbur.waypointer.codec.WaypointCodec;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * Tests for the chat-side detection of Waypointer codec strings. The whole point of
+ * this feature is that a friend can paste an export into chat and the recipient's
+ * client turns it into a clickable import affordance -- misdetections (false
+ * positives OR negatives) make the feature useless, so we test edge cases hard.
+ */
+class CodecScannerTest {
+
+    @Test
+    void detects_export_embedded_in_chat_line() {
+        String export = sampleExport();
+        String message = "Hey, try this route: " + export + " -- boss skip";
+        List<CodecScanner.Match> matches = CodecScanner.scan(message);
+
+        assertEquals(1, matches.size(), "should detect exactly one codec in a plain chat line");
+        CodecScanner.Match m = matches.get(0);
+        assertEquals(export, m.text(),
+                "extracted text must match the codec exactly; surrounding chat must not leak in");
+    }
+
+    @Test
+    void ignores_legacy_prefixes() {
+        // Early prototypes tried WPTR1:, WP2:, and WP3: as the magic. None of
+        // them shipped. A chat line mentioning any of them must NOT produce a
+        // clickable import pill -- the current magic is just WP:, with the
+        // version living in the header byte.
+        assertTrue(CodecScanner.scan("route: WPTR1:AAAABBBBCCCCDDDD").isEmpty());
+        assertTrue(CodecScanner.scan("route: WP2:AAAABBBBCCCCDDDD").isEmpty());
+        assertTrue(CodecScanner.scan("route: WP3:AAAABBBBCCCCDDDD").isEmpty());
+    }
+
+    @Test
+    void extracted_match_decodes_cleanly() {
+        String export = sampleExport();
+        String chat = "check this -> " + export + " GG";
+        CodecScanner.Match m = CodecScanner.scan(chat).get(0);
+
+        // Round-trip through the actual codec to prove the extraction boundary is tight.
+        List<WaypointGroup> decoded = WaypointCodec.decode(m.text());
+        assertFalse(decoded.isEmpty());
+    }
+
+    @Test
+    void ignores_bare_magic_without_body() {
+        // Don't surface an import button for "just go to WP:" or similar messages --
+        // the magic-as-substring case has to be a false positive when no codec
+        // body follows. Exercises the MIN_BODY guard specifically, so the strings
+        // here use the real current magic (WP:).
+        assertTrue(CodecScanner.scan("just go to WP:").isEmpty());
+        assertTrue(CodecScanner.scan("WP: ").isEmpty());
+        assertTrue(CodecScanner.scan("WP:ab").isEmpty(), "body under MIN_BODY chars must be rejected");
+    }
+
+    @Test
+    void handles_multiple_codecs_in_one_message() {
+        String a = sampleExport();
+        String b = sampleExport();
+        String chat = "two routes: " + a + " | " + b;
+
+        List<CodecScanner.Match> matches = CodecScanner.scan(chat);
+        assertEquals(2, matches.size(), "both codecs should be detected when separated by non-codec text");
+    }
+
+    @Test
+    void caps_matches_per_message_at_three() {
+        String export = sampleExport();
+        String chat = String.join(" | ", export, export, export, export);
+
+        List<CodecScanner.Match> matches = CodecScanner.scan(chat);
+
+        assertEquals(3, matches.size(), "chat scanner should cap per-message work at three route payloads");
+        assertTrue(matches.stream().allMatch(CodecScanner.Match::valid),
+                "the cap should not mark accepted valid payloads as invalid");
+    }
+
+    @Test
+    void extracts_at_start_and_end_of_message() {
+        String export = sampleExport();
+
+        assertEquals(1, CodecScanner.scan(export).size(),
+                "codec alone as the whole message must still match");
+        assertEquals(1, CodecScanner.scan(export + " trailing").size(),
+                "codec at start followed by text must still match");
+        assertEquals(1, CodecScanner.scan("leading " + export).size(),
+                "codec at end of message must still match");
+    }
+
+    @Test
+    void empty_and_short_inputs_return_empty() {
+        assertTrue(CodecScanner.scan(null).isEmpty());
+        assertTrue(CodecScanner.scan("").isEmpty());
+        assertTrue(CodecScanner.scan("hello world").isEmpty());
+    }
+
+    @Test
+    void does_not_match_unrelated_text_containing_magic_substring() {
+        // "WP" might appear in any number of unrelated contexts (WordPress, a
+        // product name, a URL slug). Without the colon AND a valid body it
+        // must not trigger -- the body character class + word-boundary rule
+        // keep false positives from being a problem despite the short magic.
+        assertTrue(CodecScanner.scan("WP isn't a codec without a colon").isEmpty());
+        // NOTE: the 'example' example used to be "example.com/WP" but '.' is
+        // no longer an alphabet character (it trips Hypixel's ad filter), so
+        // the scanner-level URL-adjacency case is moot. We still exercise the
+        // scenario via a non-'.' URL shape below.
+        assertTrue(CodecScanner.scan("visit exampleWP").isEmpty());
+        assertTrue(CodecScanner.scan("check /wp help for more").isEmpty(),
+                "unrelated slash commands that happen to contain 'wp' must not match");
+    }
+
+    @Test
+    void extracts_export_before_clause_punctuation_after_greedy_body() {
+        String export = sampleExport();
+        // Comma/close-paren are in the v3 alphabet; they must not be consumed as body
+        // when they belong to the surrounding sentence.
+        String afterComma = "Try " + export + ", then head north";
+        List<CodecScanner.Match> a = CodecScanner.scan(afterComma);
+        assertEquals(1, a.size());
+        assertEquals(export, a.get(0).text(), "trailing clause punctuation must not be part of the payload");
+
+        String paren = "(" + export + ") for you";
+        List<CodecScanner.Match> b = CodecScanner.scan(paren);
+        assertEquals(1, b.size());
+        assertEquals(export, b.get(0).text(), "closing paren after export must not be absorbed");
+    }
+
+    @Test
+    void truncated_chat_export_is_reported_as_invalid_but_complete_export_imports() {
+        String invalid = truncatedRealChatExport();
+        String valid = invalid + "!";
+
+        assertFalse(WaypointCodec.isValidCodec(invalid),
+                "fixture without the final character should stay invalid");
+        assertTrue(WaypointCodec.isValidCodec(valid),
+                "fixture with the final character should be a valid route export");
+
+        List<CodecScanner.Match> invalidMatches = CodecScanner.scan("Babbur: " + invalid);
+        assertEquals(1, invalidMatches.size());
+        assertEquals(invalid, invalidMatches.get(0).text());
+        assertFalse(invalidMatches.get(0).valid(),
+                "truncated WP: bodies should render an invalid marker, not disappear");
+
+        List<CodecScanner.Match> validMatches = CodecScanner.scan("Babbur: " + valid);
+        assertEquals(1, validMatches.size());
+        assertEquals(valid, validMatches.get(0).text());
+        assertTrue(validMatches.get(0).valid(),
+                "the same payload with its final character should stay importable");
+    }
+
+    @Test
+    void detects_codec_immediately_after_clause_punctuation() {
+        String export = sampleExport();
+        String message = "As I said," + export + " works great";
+        List<CodecScanner.Match> matches = CodecScanner.scan(message);
+        assertEquals(1, matches.size());
+        assertEquals(export, matches.get(0).text());
+    }
+
+    @Test
+    void rejects_magic_mid_word_when_preceding_char_is_ascii_alphanumeric() {
+        // v2 uses an ASCII alphabet, so without the word-boundary guard a chat
+        // line like "fileWP:stuff" would fire the import pill. The scanner
+        // must require the character immediately before the magic to be
+        // outside the codec alphabet (or be at the start of the string).
+        String export = sampleExport();
+        assertTrue(CodecScanner.scan("file" + export).isEmpty(),
+                "magic preceded by ASCII alphanumeric must not match");
+        assertTrue(CodecScanner.scan("helloWP:" + export.substring(3)).isEmpty(),
+                "magic glued to a preceding word must not match");
+        // Sanity: with a space before (outside the alphabet) the same
+        // codec DOES match, so the rule above is doing real work.
+        assertEquals(1, CodecScanner.scan("hello " + export).size(),
+                "magic with a whitespace boundary must still match");
+    }
+
+    @Test
+    void bounds_decoder_work_for_large_invalid_candidates() {
+        AtomicInteger validations = new AtomicInteger();
+        String message = "WP:" + "A".repeat(1_000_000);
+
+        List<CodecScanner.Match> matches = CodecScanner.scan(message, candidate -> {
+            validations.incrementAndGet();
+            return false;
+        });
+
+        assertEquals(1, matches.size());
+        assertEquals(256, matches.get(0).text().length(),
+                "scanner should expose only a realistic chat-sized invalid payload");
+        assertFalse(matches.get(0).valid());
+        assertEquals(1, validations.get(),
+                "an invalid alphabet run must not trigger a decoder call for every suffix");
+    }
+
+    @Test
+    void limits_validation_to_greedy_candidate_and_known_suffixes() {
+        AtomicInteger validations = new AtomicInteger();
+        String message = "WP:abcdef)))";
+
+        List<CodecScanner.Match> matches = CodecScanner.scan(message, candidate -> {
+            validations.incrementAndGet();
+            return candidate.equals("WP:abcdef");
+        });
+
+        assertEquals(1, matches.size());
+        assertEquals("WP:abcdef", matches.get(0).text());
+        assertTrue(matches.get(0).valid());
+        assertEquals(4, validations.get(),
+                "validation should be capped at the greedy candidate plus three suffix trims");
+    }
+
+    private static String sampleExport() {
+        WaypointGroup g = WaypointGroup.create("Sample", "hub");
+        g.add(new Waypoint(10, 70, 20, "a", Waypoint.DEFAULT_COLOR, 0, 0));
+        g.add(new Waypoint(12, 71, 25, "b", Waypoint.DEFAULT_COLOR, 0, 0));
+        return WaypointCodec.encode(List.of(g));
+    }
+
+    private static String truncatedRealChatExport() {
+        return "WP:12^)a&p|zWy@Ie3A~~MMKlKe'Zj]MZxf4}+H4U'P]yT%bJR:o{g_?i&4_&U>zNl6q%6$Ar=4=Juwb_=kgD!%'";
+    }
+}
