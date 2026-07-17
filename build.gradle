@@ -36,6 +36,11 @@ base {
 	archivesName = "${project.archives_base_name}-${targetMinecraft}"
 }
 
+def releaseArchiveBase = "${project.archives_base_name}-${project.mod_version}-mc${targetMinecraft}"
+tasks.named('jar', Jar) {
+	archiveFileName = "${releaseArchiveBase}.jar"
+}
+
 repositories {
 	maven {
 		name = 'Hypixel'
@@ -102,6 +107,10 @@ java {
 
 	sourceCompatibility = JavaVersion.VERSION_25
 	targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.named('sourcesJar', Jar) {
+	archiveFileName = "${releaseArchiveBase}-sources.jar"
 }
 
 jar {

@@ -1,0 +1,192 @@
+package com.babbur.waypointer.render;
+
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+
+/**
+ * Tiny render utilities shared by {@link WaypointRenderer} and {@link TracerRenderer}.
+ *
+ * Built around 1.21+'s VertexConsumer + RenderType pipeline. Boxes and lines reuse
+ * the vanilla {@code lines} render type so they batch with debug overlays and the
+ * vertex format matches what the line shader expects (POSITION_COLOR_NORMAL).
+ */
+public final class RenderHelpers {
+
+    // 1.21.11 added LineWidth to the lines vertex format, so every vertex must carry
+    // a line width or the buffer check throws "Missing elements in vertex: LineWidth".
+    // We use a chunky 3px so outlined boxes stay legible at distance and against
+    // busy biomes -- 1px (vanilla default) was disappearing against grass and reeds.
+    private static final float DEFAULT_LINE_WIDTH = 3.0f;
+
+    private RenderHelpers() {}
+
+    private static int red(int rgb)   { return (rgb >> 16) & 0xFF; }
+    private static int green(int rgb) { return (rgb >>  8) & 0xFF; }
+    private static int blue(int rgb)  { return  rgb        & 0xFF; }
+
+    public static int withAlpha(int argb, float alphaScale) {
+        float clamped = Math.max(0.0f, Math.min(1.0f, alphaScale));
+        int alpha = Math.round(((argb >>> 24) & 0xFF) * clamped);
+        return (alpha << 24) | (argb & 0x00FFFFFF);
+    }
+
+    /**
+     * Append the 12 segments of an axis-aligned cube outline to {@code consumer}.
+     * Caller is responsible for calling {@code endBatch} afterwards (or letting
+     * the world flush handle it).
+     */
+    public static void emitLineBox(VertexConsumer consumer, PoseStack ps,
+                                   float x1, float y1, float z1,
+                                   float x2, float y2, float z2,
+                                   int rgb, float alpha) {
+        emitLineBox(consumer, ps, x1, y1, z1, x2, y2, z2, rgb, alpha, DEFAULT_LINE_WIDTH);
+    }
+
+    public static void emitLineBox(VertexConsumer consumer, PoseStack ps,
+                                   float x1, float y1, float z1,
+                                   float x2, float y2, float z2,
+                                   int rgb, float alpha, float width) {
+        int r = red(rgb), g = green(rgb), b = blue(rgb);
+        int a = (int) (alpha * 255f) & 0xFF;
+        PoseStack.Pose pose = ps.last();
+
+        // bottom rectangle
+        seg(consumer, pose, x1, y1, z1, x2, y1, z1, r, g, b, a, 1, 0, 0, width);
+        seg(consumer, pose, x2, y1, z1, x2, y1, z2, r, g, b, a, 0, 0, 1, width);
+        seg(consumer, pose, x2, y1, z2, x1, y1, z2, r, g, b, a, -1, 0, 0, width);
+        seg(consumer, pose, x1, y1, z2, x1, y1, z1, r, g, b, a, 0, 0, -1, width);
+        // top rectangle
+        seg(consumer, pose, x1, y2, z1, x2, y2, z1, r, g, b, a, 1, 0, 0, width);
+        seg(consumer, pose, x2, y2, z1, x2, y2, z2, r, g, b, a, 0, 0, 1, width);
+        seg(consumer, pose, x2, y2, z2, x1, y2, z2, r, g, b, a, -1, 0, 0, width);
+        seg(consumer, pose, x1, y2, z2, x1, y2, z1, r, g, b, a, 0, 0, -1, width);
+        // verticals
+        seg(consumer, pose, x1, y1, z1, x1, y2, z1, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x2, y1, z1, x2, y2, z1, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x2, y1, z2, x2, y2, z2, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x1, y1, z2, x1, y2, z2, r, g, b, a, 0, 1, 0, width);
+    }
+
+    /**
+     * Append the 6 faces of an axis-aligned cube as QUADS to {@code consumer}.
+     *
+     * <p>Used by the filled / filled+outlined box styles. Expects a vertex
+     * consumer pulled from {@link WaypointerRenderPipelines#quadsThroughWalls()}
+     * (POSITION_COLOR vertex format, QUADS draw mode, translucent blending,
+     * no depth test, culling disabled). Each face is wound counter-clockwise;
+     * because culling is disabled on that pipeline the winding doesn't matter
+     * for visibility but the order below matches DEBUG_FILLED_BOX for future
+     * consistency.
+     *
+     * <p>Alpha is deliberately clamped to the config's waypoint box opacity by the
+     * caller -- passing 1.0 here would produce a solid cube that obscures the
+     * world behind it. Typical values are 0.15-0.35.
+     */
+    public static void emitFilledBox(VertexConsumer consumer, PoseStack ps,
+                                     float x1, float y1, float z1,
+                                     float x2, float y2, float z2,
+                                     int rgb, float alpha) {
+        int r = red(rgb), g = green(rgb), b = blue(rgb);
+        int a = (int) (alpha * 255f) & 0xFF;
+        PoseStack.Pose pose = ps.last();
+
+        // -Y face
+        quad(consumer, pose, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, a);
+        // +Y face
+        quad(consumer, pose, x1, y2, z2, x2, y2, z2, x2, y2, z1, x1, y2, z1, r, g, b, a);
+        // -Z face
+        quad(consumer, pose, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, a);
+        // +Z face
+        quad(consumer, pose, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, r, g, b, a);
+        // -X face
+        quad(consumer, pose, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, r, g, b, a);
+        // +X face
+        quad(consumer, pose, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
+    }
+
+    /**
+     * Append the four side faces of a narrow vertical column.
+     *
+     * <p>The beam intentionally has no top or bottom cap: capped columns read as
+     * solid pillars at long range, while open sides feel closer to a beacon guide.
+     */
+    public static void emitVerticalColumn(VertexConsumer consumer, PoseStack ps,
+                                          float centerX, float y1, float centerZ,
+                                          float y2, float halfWidth,
+                                          int rgb, float alpha) {
+        int r = red(rgb), g = green(rgb), b = blue(rgb);
+        int a = (int) (alpha * 255f) & 0xFF;
+        PoseStack.Pose pose = ps.last();
+
+        float x1 = centerX - halfWidth;
+        float x2 = centerX + halfWidth;
+        float z1 = centerZ - halfWidth;
+        float z2 = centerZ + halfWidth;
+
+        quad(consumer, pose, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, a);
+        quad(consumer, pose, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
+        quad(consumer, pose, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, r, g, b, a);
+        quad(consumer, pose, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, r, g, b, a);
+    }
+
+    /** Append a single line segment. */
+    public static void emitLine(VertexConsumer consumer, PoseStack ps,
+                                float x1, float y1, float z1,
+                                float x2, float y2, float z2,
+                                int rgb, float alpha) {
+        emitLine(consumer, ps, x1, y1, z1, x2, y2, z2, rgb, alpha, DEFAULT_LINE_WIDTH);
+    }
+
+    /** Append a single line segment using a caller-controlled pixel width. */
+    public static void emitLine(VertexConsumer consumer, PoseStack ps,
+                                float x1, float y1, float z1,
+                                float x2, float y2, float z2,
+                                int rgb, float alpha, float width) {
+        int r = red(rgb), g = green(rgb), b = blue(rgb);
+        int a = (int) (alpha * 255f) & 0xFF;
+        float nx = x2 - x1, ny = y2 - y1, nz = z2 - z1;
+        float len = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+        if (len > 1e-5f) { nx /= len; ny /= len; nz /= len; }
+        else { nx = 0; ny = 1; nz = 0; }
+        PoseStack.Pose pose = ps.last();
+        seg(consumer, pose, x1, y1, z1, x2, y2, z2, r, g, b, a, nx, ny, nz, width);
+    }
+
+    private static void quad(VertexConsumer c, PoseStack.Pose pose,
+                             float x1, float y1, float z1,
+                             float x2, float y2, float z2,
+                             float x3, float y3, float z3,
+                             float x4, float y4, float z4,
+                             int r, int g, int b, int a) {
+        // POSITION_COLOR vertex format -- no normal, no line width. Writing either
+        // would throw "unexpected element" against the DEBUG_QUADS-style pipeline.
+        c.addVertex(pose, x1, y1, z1).setColor(r, g, b, a);
+        c.addVertex(pose, x2, y2, z2).setColor(r, g, b, a);
+        c.addVertex(pose, x3, y3, z3).setColor(r, g, b, a);
+        c.addVertex(pose, x4, y4, z4).setColor(r, g, b, a);
+    }
+
+    private static void seg(VertexConsumer c, PoseStack.Pose pose,
+                            float x1, float y1, float z1,
+                            float x2, float y2, float z2,
+                            int r, int g, int b, int a,
+                            float nx, float ny, float nz) {
+        seg(c, pose, x1, y1, z1, x2, y2, z2, r, g, b, a,
+                nx, ny, nz, DEFAULT_LINE_WIDTH);
+    }
+
+    private static void seg(VertexConsumer c, PoseStack.Pose pose,
+                            float x1, float y1, float z1,
+                            float x2, float y2, float z2,
+                            int r, int g, int b, int a,
+                            float nx, float ny, float nz, float width) {
+        // Call order must match the vertex format declaration: POSITION, COLOR, NORMAL,
+        // LINE_WIDTH. setLineWidth is new in 1.21.11; writing it in the wrong slot causes
+        // BufferBuilder's endLastVertex to throw "Not building!" on the next addVertex
+        // because the previous vertex was detected as incomplete and it closed the buffer.
+        c.addVertex(pose, x1, y1, z1).setColor(r, g, b, a)
+                .setNormal(pose, nx, ny, nz).setLineWidth(width);
+        c.addVertex(pose, x2, y2, z2).setColor(r, g, b, a)
+                .setNormal(pose, nx, ny, nz).setLineWidth(width);
+    }
+}
