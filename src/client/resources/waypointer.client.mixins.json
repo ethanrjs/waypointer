@@ -1,6 +1,6 @@
 {
     "required": true,
-    "package": "dev.ethan.waypointer.mixin.client",
+    "package": "com.babbur.waypointer.mixin.client",
     "compatibilityLevel": "JAVA_21",
     "client": [
         "ChatComponentMixin",

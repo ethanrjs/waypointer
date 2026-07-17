@@ -14,8 +14,8 @@
     "icon": "assets/waypointer/icon.png",
     "environment": "client",
     "entrypoints": {
-        "main": ["dev.ethan.waypointer.Waypointer"],
-        "client": ["dev.ethan.waypointer.WaypointerClient"]
+        "main": ["com.babbur.waypointer.Waypointer"],
+        "client": ["com.babbur.waypointer.WaypointerClient"]
     },
     "mixins": [
         {
