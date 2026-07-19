@@ -2,6 +2,7 @@ package com.babbur.waypointer.render;
 
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.babbur.waypointer.core.WaypointPaint;
 
 /**
  * Tiny render utilities shared by {@link WaypointRenderer} and {@link TracerRenderer}.
@@ -17,6 +18,7 @@ public final class RenderHelpers {
     // We use a chunky 3px so outlined boxes stay legible at distance and against
     // busy biomes -- 1px (vanilla default) was disappearing against grass and reeds.
     private static final float DEFAULT_LINE_WIDTH = 3.0f;
+    private static final int FULL_BRIGHT_LIGHT = 0x00F000F0;
 
     private RenderHelpers() {}
 
@@ -104,6 +106,45 @@ public final class RenderHelpers {
         quad(consumer, pose, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
     }
 
+    /** Append a six-face textured box using WaypointPaint's 64x48 T-atlas. */
+    public static void emitTexturedBox(VertexConsumer consumer, PoseStack ps,
+                                       float x1, float y1, float z1,
+                                       float x2, float y2, float z2,
+                                       float alpha,
+                                       double cameraX, double cameraY, double cameraZ) {
+        int a = Math.round(Math.max(0.0f, Math.min(1.0f, alpha)) * 255.0f);
+        PoseStack.Pose pose = ps.last();
+        int visible = visibleTexturedFaces(x1, y1, z1, x2, y2, z2,
+                cameraX, cameraY, cameraZ);
+
+        if ((visible & 1 << WaypointPaint.Face.DOWN.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.DOWN,
+                x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, a);
+        if ((visible & 1 << WaypointPaint.Face.UP.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.UP,
+                x1, y2, z2, x2, y2, z2, x2, y2, z1, x1, y2, z1, a);
+        if ((visible & 1 << WaypointPaint.Face.NORTH.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.NORTH,
+                x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, a);
+        if ((visible & 1 << WaypointPaint.Face.SOUTH.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.SOUTH,
+                x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, a);
+        if ((visible & 1 << WaypointPaint.Face.WEST.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.WEST,
+                x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, a);
+        if ((visible & 1 << WaypointPaint.Face.EAST.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.EAST,
+                x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, a);
+    }
+
+    /** Select only the camera-facing exterior planes so rear paint cannot bleed through. */
+    static int visibleTexturedFaces(float x1, float y1, float z1,
+                                    float x2, float y2, float z2,
+                                    double cameraX, double cameraY, double cameraZ) {
+        int faces = 0;
+        if (cameraY <= y1) faces |= 1 << WaypointPaint.Face.DOWN.ordinal();
+        else if (cameraY >= y2) faces |= 1 << WaypointPaint.Face.UP.ordinal();
+        if (cameraZ <= z1) faces |= 1 << WaypointPaint.Face.NORTH.ordinal();
+        else if (cameraZ >= z2) faces |= 1 << WaypointPaint.Face.SOUTH.ordinal();
+        if (cameraX <= x1) faces |= 1 << WaypointPaint.Face.WEST.ordinal();
+        else if (cameraX >= x2) faces |= 1 << WaypointPaint.Face.EAST.ordinal();
+        return faces;
+    }
+
     /**
      * Append the four side faces of a narrow vertical column.
      *
@@ -164,6 +205,37 @@ public final class RenderHelpers {
         c.addVertex(pose, x2, y2, z2).setColor(r, g, b, a);
         c.addVertex(pose, x3, y3, z3).setColor(r, g, b, a);
         c.addVertex(pose, x4, y4, z4).setColor(r, g, b, a);
+    }
+
+    private static void texturedQuad(VertexConsumer c, PoseStack.Pose pose,
+                                     WaypointPaint.Face face,
+                                     float x1, float y1, float z1,
+                                     float x2, float y2, float z2,
+                                     float x3, float y3, float z3,
+                                     float x4, float y4, float z4,
+                                     int alpha) {
+        float halfTexelU = 0.5f / WaypointPaintTextureCache.ATLAS_WIDTH;
+        float halfTexelV = 0.5f / WaypointPaintTextureCache.ATLAS_HEIGHT;
+        float u0 = face.atlasX() / (float) WaypointPaintTextureCache.ATLAS_WIDTH + halfTexelU;
+        float v0 = face.atlasY() / (float) WaypointPaintTextureCache.ATLAS_HEIGHT + halfTexelV;
+        float u1 = (face.atlasX() + WaypointPaint.SIZE)
+                / (float) WaypointPaintTextureCache.ATLAS_WIDTH - halfTexelU;
+        float v1 = (face.atlasY() + WaypointPaint.SIZE)
+                / (float) WaypointPaintTextureCache.ATLAS_HEIGHT - halfTexelV;
+
+        texturedVertex(c, pose, x1, y1, z1, u0, v1, alpha);
+        texturedVertex(c, pose, x2, y2, z2, u0, v0, alpha);
+        texturedVertex(c, pose, x3, y3, z3, u1, v0, alpha);
+        texturedVertex(c, pose, x4, y4, z4, u1, v1, alpha);
+    }
+
+    private static void texturedVertex(VertexConsumer consumer, PoseStack.Pose pose,
+                                       float x, float y, float z, float u, float v,
+                                       int alpha) {
+        consumer.addVertex(pose, x, y, z)
+                .setColor(255, 255, 255, alpha)
+                .setUv(u, v)
+                .setLight(FULL_BRIGHT_LIGHT);
     }
 
     private static void seg(VertexConsumer c, PoseStack.Pose pose,

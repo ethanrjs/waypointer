@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.compat.MinecraftCompat;
+import com.babbur.waypointer.WaypointerClient;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -594,6 +595,8 @@ public final class SettingsScreen extends Screen {
                     controlRight, rowTop, CONFIRM_RESET_DEFAULTS, "Reset to Defaults", "Confirm Reset",
                     this::confirmedResetDefaults);
             case SettingsCatalog.ACTION_PERF_TEST -> buildPerfTestControls(row, setting, controlRight, rowTop);
+            case SettingsCatalog.ACTION_WAYPOINT_PAINT -> buildDialogActionControl(row, setting,
+                    controlRight, rowTop, "Open painter", this::openWaypointPainter);
             default -> { }
         }
     }
@@ -606,8 +609,8 @@ public final class SettingsScreen extends Screen {
                         minecraft.keyboardHandler.setClipboard(PerfStressTestController.report());
                         PerfStressTestController.noteReportCopied();
                     }
-                }, Tooltip.create(Component.literal(
-                        "Copy the full performance rundown to your clipboard.")));
+                }, tooltipFor(setting,
+                        "Copy the full performance rundown to your clipboard."));
 
         boolean running = PerfStressTestController.running();
         Button run = styledButton(controlRight - buttonW * 2 - GAP, 0, buttonW, BTN_H,
@@ -624,12 +627,18 @@ public final class SettingsScreen extends Screen {
         registerRowWidget(row, copy, rowTop + 2, PerfStressTestController::hasReport);
     }
 
+    private void openWaypointPainter() {
+        if (WaypointerClient.manager() == null) return;
+        MinecraftCompat.setScreen(minecraft,
+                new WaypointPainterScreen(this, config, WaypointerClient.manager()));
+    }
+
     private void buildConfigCodeControls(Row row, Setting setting, int controlRight, int rowTop) {
         int buttonW = 112;
         Button importButton = styledButton(controlRight - buttonW, 0, buttonW, BTN_H,
                 Component.literal("Import config code"), this::importConfigCode,
-                Tooltip.create(Component.literal(
-                        "Import settings. This will overwrite existing settings.")));
+                tooltipFor(setting,
+                        "Import settings. This will overwrite existing settings."));
         Button copyButton = styledButton(controlRight - buttonW * 2 - GAP, 0, buttonW, BTN_H,
                 Component.literal("Copy config code"), this::copyConfigCode, tooltipOrNull(setting));
         registerRowWidget(row, copyButton, rowTop + 2);
@@ -649,7 +658,7 @@ public final class SettingsScreen extends Screen {
             int w = Math.max(60, font.width(label) + 16);
             x -= w;
             Button button = styledButton(x, 0, w, BTN_H, Component.literal(label),
-                    b -> applyPreset(id), null);
+                    b -> applyPreset(id), tooltipOrNull(setting));
             registerRowWidget(row, button, rowTop + 2);
             x -= GAP_TIGHT;
         }
@@ -752,7 +761,7 @@ public final class SettingsScreen extends Screen {
                             });
                 });
         swatchRef[0] = swatch;
-        swatch.setTooltip(Tooltip.create(Component.literal(setting.colorSwatchTooltip())));
+        swatch.setTooltip(tooltipFor(setting, setting.colorSwatchTooltip()));
 
         box.setResponder(v -> {
             Integer parsed = parseRgbHexColor(v);
@@ -793,9 +802,9 @@ public final class SettingsScreen extends Screen {
                     applySetting(setting, defaultValue);
                     rebuildPending = true; // controls re-read config on rebuild
                 });
-        dot.setTooltip(Tooltip.create(Component.literal(
+        dot.setTooltip(tooltipFor(setting,
                 "Modified (default: " + setting.formatValue(defaultValue) + ")\n"
-                        + "Click to reset this setting.")));
+                        + "Click to reset this setting."));
         dot.visible = false;
         row.dot = new WidgetSlot(dot, layout.rowsTop() + row.y + 2);
         addWidget(dot);
@@ -1269,12 +1278,22 @@ public final class SettingsScreen extends Screen {
 
     // --- tooltips ------------------------------------------------------------------------------
 
-    private static Component tooltipFor(Setting setting) {
-        String text = normalizeTooltipText(setting.tooltip());
-        MutableComponent out = Component.literal(text).withStyle(ChatFormatting.WHITE);
+    static Component tooltipFor(Setting setting) {
+        return tooltipComponent(setting, setting.tooltip());
+    }
+
+    private static Tooltip tooltipFor(Setting setting, String text) {
+        return Tooltip.create(tooltipComponent(setting, text));
+    }
+
+    private static Component tooltipComponent(Setting setting, String rawText) {
+        String text = normalizeTooltipText(rawText);
+        MutableComponent out = Component.literal(setting.label()).withStyle(ChatFormatting.GRAY);
+        if (!text.isEmpty()) {
+            out.append(Component.literal("\n" + text).withStyle(ChatFormatting.WHITE));
+        }
         if (setting.impact() != null) {
-            String prefix = text.isEmpty() ? "Impact: " : "\n\nImpact: ";
-            out.append(Component.literal(prefix).withStyle(ChatFormatting.WHITE));
+            out.append(Component.literal("\n\nImpact: ").withStyle(ChatFormatting.WHITE));
             out.append(Component.literal(setting.impact().word()).withStyle(chatColor(setting.impact())));
         }
         return out;

@@ -188,7 +188,8 @@ public final class AddNamedWaypointScreen extends Screen {
         // Stored dungeon-room routes keep room-local coordinates.
         target.add(DungeonRoomWaypointPlacement.toStoredWaypoint(target,
                 new Waypoint(x, y, z, name, config.defaultWaypointColor(), flags, 0.0)));
-        new WaypointAddFlow().afterWaypointAdded(target, target.size() - 1);
+        new WaypointAddFlow().afterWaypointAdded(target, target.size() - 1,
+                config.showWaypointChatShareButtons());
         manager.fireDataChanged();
 
         onClose();

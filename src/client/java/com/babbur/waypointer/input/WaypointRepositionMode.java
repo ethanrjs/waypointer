@@ -338,7 +338,8 @@ public final class WaypointRepositionMode {
         addStored(group, new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
                 "", editConfig.defaultWaypointColor(), flags, 0.0));
         int index = group.size() - 1;
-        new WaypointAddFlow().afterWaypointAdded(group, index);
+        new WaypointAddFlow().afterWaypointAdded(group, index,
+                editConfig.showWaypointChatShareButtons());
         editManager.fireDataChanged();
         playEditSound(mc, editConfig);
         showStatus(mc, HELP_EDIT_ADDED);
@@ -759,7 +760,8 @@ public final class WaypointRepositionMode {
     }
 
     private static void finishAddedWaypoint(Minecraft mc, Session session, int index) {
-        new WaypointAddFlow().afterWaypointAdded(session.group, index);
+        new WaypointAddFlow().afterWaypointAdded(session.group, index,
+                session.config.showWaypointChatShareButtons());
         session.manager.fireDataChanged();
         playEditSound(mc, session.config);
         active = null;

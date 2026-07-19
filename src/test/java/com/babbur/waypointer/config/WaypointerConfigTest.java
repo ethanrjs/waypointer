@@ -4,21 +4,64 @@ import com.babbur.waypointer.codec.AsciiStreamCodec;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.List;
+import java.util.Arrays;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerConfigTest {
+
+    @Test
+    void waypointPainterPalettePersistsAndDefensivelyCopies() {
+        WaypointerConfig config = new WaypointerConfig();
+        int[] palette = WaypointPaint.defaultPalette(0xAA123456);
+        palette[5] = 0xCCABCDEF;
+
+        config.setWaypointPainterPalette(palette);
+        palette[5] = 0;
+        int[] stored = config.waypointPainterPalette();
+        assertEquals(0xABCDEF, stored[5]);
+        stored[5] = 0;
+        assertEquals(0xABCDEF, config.waypointPainterPalette()[5]);
+
+        WaypointerConfig restarted = WaypointerConfig.fromJson(
+                "{\"waypointPainterPalette\":"
+                        + Arrays.toString(config.waypointPainterPalette()) + "}");
+        assertArrayEquals(config.waypointPainterPalette(), restarted.waypointPainterPalette());
+
+        restarted.resetToDefaults();
+        assertArrayEquals(WaypointPaint.defaultPalette(Waypoint.DEFAULT_COLOR),
+                restarted.waypointPainterPalette());
+    }
+
+    @Test
+    void applyAllDefaultPaintSurvivesConfigReloadForFutureRoutes() {
+        int[] palette = WaypointPaint.defaultPalette(0x123456);
+        byte[] pixels = new byte[WaypointPaint.PIXEL_COUNT];
+        pixels[WaypointPaint.pixelOffset(WaypointPaint.Face.UP, 2, 3)] = 5;
+        WaypointPaint paint = new WaypointPaint(palette, pixels);
+
+        WaypointerConfig restarted = WaypointerConfig.fromJson(
+                "{\"waypointPainterDefaultPalette\":" + Arrays.toString(palette)
+                        + ",\"waypointPainterDefaultPixels\":\"" + paint.pixelsBase64() + "\"}");
+
+        assertEquals(paint, restarted.waypointPainterDefaultPaint());
+        restarted.resetToDefaults();
+        assertNull(restarted.waypointPainterDefaultPaint());
+    }
 
     @Test
     void defaultReachRadiusIsAlwaysFiniteAndBounded() {
@@ -167,6 +210,19 @@ class WaypointerConfigTest {
 
         config.resetToDefaults();
         assertTrue(config.showContributorBadges());
+    }
+
+    @Test
+    void waypointChatShareButtonsDefaultOnAndResetWithOtherToggles() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertTrue(config.showWaypointChatShareButtons());
+
+        config.disableAllSettings();
+        assertFalse(config.showWaypointChatShareButtons());
+
+        config.resetToDefaults();
+        assertTrue(config.showWaypointChatShareButtons());
     }
 
     @Test

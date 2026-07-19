@@ -8,6 +8,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
@@ -63,6 +64,8 @@ import static com.babbur.waypointer.screen.GuiTokens.*;
  * Sort is now one cycling button: Manual -> Nearest -> Y asc -> Y desc -> Manual.
  */
 public final class GroupEditScreen extends Screen {
+
+    enum RouteColorMode { COLOR, GRADIENT, ONE, PAINT }
 
     private final Screen parent;
     private final ActiveGroupManager manager;
@@ -411,8 +414,16 @@ public final class GroupEditScreen extends Screen {
         gradientStartBtn = null;
         gradientEndBtn = null;
 
-        WaypointGroup.GradientMode mode = group.gradientMode();
-        if (mode == WaypointGroup.GradientMode.STATIC) {
+        RouteColorMode routeMode = routeColorMode();
+        if (routeMode == RouteColorMode.PAINT) {
+            addSidebarWidget(styledButton(sidebarInner, y, fieldW, BTN_H,
+                    Component.literal("Paint"), b -> openWaypointPainter(),
+                    Tooltip.create(Component.literal(
+                            "Open Waypoint Painter for this route."))));
+            return y + BTN_H + GAP_TIGHT;
+        }
+
+        if (routeMode == RouteColorMode.ONE) {
             staticColorBtn = new ColorSwatchButton(sidebarInner, y, fieldW, BTN_H,
                     "One color", group.staticColor(), this::openStaticColorPicker);
             staticColorBtn.setTooltip(Tooltip.create(Component.literal(
@@ -422,7 +433,7 @@ public final class GroupEditScreen extends Screen {
             return y + BTN_H + GAP_TIGHT;
         }
 
-        if (mode == WaypointGroup.GradientMode.AUTO) {
+        if (routeMode == RouteColorMode.GRADIENT) {
             int swatchW = (fieldW - GAP_TIGHT) / 2;
             gradientStartBtn = new ColorSwatchButton(sidebarInner, y, swatchW, BTN_H,
                     "Start", group.gradientStartColor(), this::openGradientStartPicker);
@@ -446,33 +457,73 @@ public final class GroupEditScreen extends Screen {
     // --- sidebar toggles ---------------------------------------------------------------------
 
         private Component colorModeLabel() {
-        return Component.literal("Color: " + colorModeName(group.gradientMode()));
+        return Component.literal("Color: " + colorModeName(routeColorMode()));
     }
 
-    static String colorModeName(WaypointGroup.GradientMode mode) {
-        if (mode == WaypointGroup.GradientMode.AUTO) return "Gradient";
-        if (mode == WaypointGroup.GradientMode.MANUAL) return "Manual";
-        return "One";
+    private RouteColorMode routeColorMode() {
+        boolean paintActive = group.paintEnabled()
+                && (group.paint() != null || config.waypointPainterDefaultPaint() != null);
+        return routeColorMode(group.gradientMode(), paintActive);
+    }
+
+    static RouteColorMode routeColorMode(WaypointGroup.GradientMode mode, boolean paintActive) {
+        if (paintActive) return RouteColorMode.PAINT;
+        if (mode == WaypointGroup.GradientMode.AUTO) return RouteColorMode.GRADIENT;
+        if (mode == WaypointGroup.GradientMode.STATIC) return RouteColorMode.ONE;
+        return RouteColorMode.COLOR;
+    }
+
+    static String colorModeName(RouteColorMode mode) {
+        return switch (mode == null ? RouteColorMode.COLOR : mode) {
+            case COLOR -> "Color";
+            case GRADIENT -> "Gradient";
+            case ONE -> "One";
+            case PAINT -> "Paint";
+        };
     }
 
         private static Tooltip colorModeTooltip() {
         return Tooltip.create(Component.literal(
-                "Waypoint colour mode.\n"
-              + "One color: repaint whole route.\n"
+                "Waypoint color mode.\n"
+              + "Color: edit waypoint swatches.\n"
               + "Gradient: sweep between endpoints.\n"
-              + "Manual: edit waypoint swatches."));
+              + "One: repaint the whole route.\n"
+              + "Paint: use painted waypoint faces."));
     }
 
     private void toggleColorMode(Button b) {
-        group.setGradientMode(nextColorMode(group.gradientMode()));
+        RouteColorMode next = nextColorMode(routeColorMode());
+        group.setPaintEnabled(next == RouteColorMode.PAINT);
+        switch (next) {
+            case COLOR -> group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+            case GRADIENT -> group.setGradientMode(WaypointGroup.GradientMode.AUTO);
+            case ONE -> group.setGradientMode(WaypointGroup.GradientMode.STATIC);
+            case PAINT -> {
+                if (group.paint() == null && config.waypointPainterDefaultPaint() == null) {
+                    group.setPaint(new WaypointPaint(
+                            config.waypointPainterPalette(),
+                            new byte[WaypointPaint.PIXEL_COUNT]));
+                }
+            }
+        }
         manager.fireDataChanged();
         rebuildWidgets();
     }
 
-    static WaypointGroup.GradientMode nextColorMode(WaypointGroup.GradientMode mode) {
-        if (mode == WaypointGroup.GradientMode.STATIC) return WaypointGroup.GradientMode.AUTO;
-        if (mode == WaypointGroup.GradientMode.AUTO) return WaypointGroup.GradientMode.MANUAL;
-        return WaypointGroup.GradientMode.STATIC;
+    static RouteColorMode nextColorMode(RouteColorMode mode) {
+        return switch (mode == null ? RouteColorMode.COLOR : mode) {
+            case COLOR -> RouteColorMode.GRADIENT;
+            case GRADIENT -> RouteColorMode.ONE;
+            case ONE -> RouteColorMode.PAINT;
+            case PAINT -> RouteColorMode.COLOR;
+        };
+    }
+
+    private void openWaypointPainter() {
+        WaypointGroup editTarget = durableEditTarget();
+        if (editTarget == null) return;
+        MinecraftCompat.setScreen(minecraft,
+                new WaypointPainterScreen(this, config, manager, editTarget));
     }
 
         private void updateColorModeButtons() {
@@ -499,6 +550,7 @@ public final class GroupEditScreen extends Screen {
 
         private void onStaticColorPicked(int picked) {
         group.setStaticColor(picked);
+        group.setPaintEnabled(false);
         group.setGradientMode(WaypointGroup.GradientMode.STATIC);
         updateColorModeButtons();
         manager.fireDataChanged();
@@ -524,12 +576,14 @@ public final class GroupEditScreen extends Screen {
 
         private void onGradientStartPicked(int picked) {
         group.setGradientStartColor(picked);
+        group.setPaintEnabled(false);
         updateColorModeButtons();
         manager.fireDataChanged();
     }
 
         private void onGradientEndPicked(int picked) {
         group.setGradientEndColor(picked);
+        group.setPaintEnabled(false);
         updateColorModeButtons();
         manager.fireDataChanged();
     }
@@ -593,9 +647,35 @@ public final class GroupEditScreen extends Screen {
         box.setMaxLength(12);
         box.setHint(Component.literal(label));
         box.setTooltip(Tooltip.create(Component.literal(
-                "Edit the selected waypoint's " + label + " coordinate.")));
+                "Edit the selected waypoint's " + label + " coordinate.\n"
+                        + "Scroll while hovering to adjust by 1.")));
         box.setResponder(v -> updateSelectedCoordinate(axis, v));
         return box;
+    }
+
+    static int coordinateAfterScroll(int value, double verticalScroll) {
+        if (verticalScroll > 0.0) return value == Integer.MAX_VALUE ? value : value + 1;
+        if (verticalScroll < 0.0) return value == Integer.MIN_VALUE ? value : value - 1;
+        return value;
+    }
+
+    private int coordinateAxisAt(double mouseX, double mouseY) {
+        if (coordXBox != null && coordXBox.visible && coordXBox.active
+                && coordXBox.isMouseOver(mouseX, mouseY)) return 0;
+        if (coordYBox != null && coordYBox.visible && coordYBox.active
+                && coordYBox.isMouseOver(mouseX, mouseY)) return 1;
+        if (coordZBox != null && coordZBox.visible && coordZBox.active
+                && coordZBox.isMouseOver(mouseX, mouseY)) return 2;
+        return -1;
+    }
+
+    private void scrollCoordinate(int axis, double verticalScroll) {
+        Waypoint waypoint = group.get(selectedIndex);
+        int current = axis == 0 ? waypoint.x() : axis == 1 ? waypoint.y() : waypoint.z();
+        int next = coordinateAfterScroll(current, verticalScroll);
+        if (next == current) return;
+        EditBox box = axis == 0 ? coordXBox : axis == 1 ? coordYBox : coordZBox;
+        box.setValue(Integer.toString(next));
     }
 
     private void updateSelectedCoordinate(int axis, String raw) {
@@ -721,7 +801,8 @@ public final class GroupEditScreen extends Screen {
         int newIndex = editTarget.size() - 1;
         // Run the shared post-add flow (focus + mode/toast updates) so the
         // GUI add button behaves identically to /wp add and the keybind path.
-        new WaypointAddFlow().afterWaypointAdded(editTarget, newIndex);
+        new WaypointAddFlow().afterWaypointAdded(editTarget, newIndex,
+                config.showWaypointChatShareButtons());
         if (skipAheadBtn != null) skipAheadBtn.setMessage(skipAheadLabel());
         if (editTarget == group) selectWaypoint(newIndex);
         manager.fireDataChanged();
@@ -1746,6 +1827,7 @@ public final class GroupEditScreen extends Screen {
         int idx = waypointColorPickerIndex;
         waypointColorPickerIndex = -1;
         if (idx < 0 || idx >= group.size()) return;
+        group.setPaintEnabled(false);
         if (group.gradientMode() != WaypointGroup.GradientMode.MANUAL) {
             group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
             Waypoint cur = group.get(idx);
@@ -1756,8 +1838,8 @@ public final class GroupEditScreen extends Screen {
         }
         Waypoint cur = group.get(idx);
         group.set(idx, cur.withColor(picked).withFlags(cur.flags() | Waypoint.FLAG_LOCKED_COLOR));
-        updateColorModeButtons();
         manager.fireDataChanged();
+        rebuildWidgets();
     }
 
     private void unlockWaypointColor(int idx) {
@@ -1794,6 +1876,11 @@ public final class GroupEditScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
         Layout layout = layout();
+        int coordinateAxis = coordinateAxisAt(mouseX, mouseY);
+        if (coordinateAxis >= 0) {
+            scrollCoordinate(coordinateAxis, vert);
+            return true;
+        }
         if (mouseX >= layout.sidebarLeft() && mouseX <= layout.sidebarRight()
                 && mouseY >= layout.top() && mouseY <= layout.bottom()) {
             int viewportHeight = sidebarViewportBottom(layout) - sidebarViewportTop(layout);

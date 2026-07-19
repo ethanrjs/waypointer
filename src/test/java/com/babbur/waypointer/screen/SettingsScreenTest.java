@@ -3,6 +3,9 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.TextColor;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -101,5 +104,15 @@ class SettingsScreenTest {
         assertEquals("one two", SettingsScreen.normalizeTooltipText("one\ntwo"));
         assertEquals("one\n\ntwo", SettingsScreen.normalizeTooltipText("one\n\ntwo"));
         assertEquals("a b\n\nc", SettingsScreen.normalizeTooltipText("  a \r\n b \r\n\r\n c "));
+    }
+
+    @Test
+    void settingTooltipsStartWithTheGrayControlLabel() {
+        Setting setting = SettingsCatalog.byId("hideReachedStaticWaypointsUntilCycleComplete");
+
+        Component tooltip = SettingsScreen.tooltipFor(setting);
+
+        assertTrue(tooltip.getString().startsWith(setting.label() + "\n"));
+        assertEquals(TextColor.fromLegacyFormat(ChatFormatting.GRAY), tooltip.getStyle().getColor());
     }
 }
