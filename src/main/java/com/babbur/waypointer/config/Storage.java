@@ -9,6 +9,7 @@ import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -271,6 +272,8 @@ public final class Storage {
         // less parser branch in load().
         o.addProperty("gradientStartColor", g.gradientStartColor());
         o.addProperty("gradientEndColor",   g.gradientEndColor());
+        o.addProperty("paintEnabled", g.paintEnabled());
+        if (g.paint() != null) o.add("paint", paintToJson(g.paint()));
         JsonArray wps = new JsonArray();
         for (Waypoint w : g.waypoints()) {
             // Temporary waypoints are client-session ephemeral by contract.
@@ -300,6 +303,17 @@ public final class Storage {
         // missing values leave the group on its built-in cyan/red defaults.
         if (o.has("gradientStartColor")) g.setGradientStartColor(o.get("gradientStartColor").getAsInt());
         if (o.has("gradientEndColor"))   g.setGradientEndColor(o.get("gradientEndColor").getAsInt());
+        if (o.has("paintEnabled")) g.setPaintEnabled(o.get("paintEnabled").getAsBoolean());
+        if (o.has("paint") && !o.get("paint").isJsonNull()) {
+            try {
+                g.setPaint(paintFromJson(o.getAsJsonObject("paint")));
+            } catch (RuntimeException invalidPaint) {
+                // Paint is optional presentation metadata. A damaged texture must
+                // not quarantine an otherwise valid route library and risk hiding
+                // every waypoint from the user.
+                Waypointer.LOGGER.warn("Ignoring invalid waypoint paint for group {}", id, invalidPaint);
+            }
+        }
         if (o.has("waypoints")) {
             List<Waypoint> waypoints = new ArrayList<>(o.getAsJsonArray("waypoints").size());
             for (JsonElement el : o.getAsJsonArray("waypoints")) {
@@ -341,6 +355,34 @@ public final class Storage {
         int preciseY = o.has("preciseY") ? o.get("preciseY").getAsInt() : base.preciseY();
         int preciseZ = o.has("preciseZ") ? o.get("preciseZ").getAsInt() : base.preciseZ();
         return base.withPreciseSixteenths(preciseX, preciseY, preciseZ);
+    }
+
+    static JsonObject paintToJson(WaypointPaint paint) {
+        JsonObject out = new JsonObject();
+        JsonArray palette = new JsonArray();
+        for (int color : paint.paletteCopy()) palette.add(color);
+        out.add("palette", palette);
+        out.addProperty("pixels", paint.pixelsBase64());
+        return out;
+    }
+
+    static WaypointPaint paintFromJson(JsonObject o) {
+        if (o == null || !o.has("palette") || !o.get("palette").isJsonArray()) {
+            throw new IllegalArgumentException("waypoint paint palette is missing");
+        }
+        JsonArray paletteJson = o.getAsJsonArray("palette");
+        if (paletteJson.size() != WaypointPaint.PALETTE_SIZE) {
+            throw new IllegalArgumentException("waypoint paint palette must contain 16 colors");
+        }
+        int[] palette = new int[WaypointPaint.PALETTE_SIZE];
+        for (int i = 0; i < palette.length; i++) {
+            palette[i] = paletteJson.get(i).getAsInt();
+        }
+        if (!o.has("pixels") || !o.get("pixels").isJsonPrimitive()) {
+            throw new IllegalArgumentException("waypoint paint pixels are missing");
+        }
+        return new WaypointPaint(palette,
+                WaypointPaint.decodePixels(o.get("pixels").getAsString()));
     }
 
     private static <E extends Enum<E>> Optional<E> parseEnum(Class<E> type, String raw) {

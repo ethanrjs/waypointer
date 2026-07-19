@@ -419,7 +419,8 @@ public final class WaypointerKeybinds {
         // Stored dungeon-room routes keep room-local coordinates.
         target.add(DungeonRoomWaypointPlacement.toStoredWaypoint(target, new Waypoint(
                 pos.x(), pos.y(), pos.z(), "", config.defaultWaypointColor(), flags, 0.0)));
-        addFlow.afterWaypointAdded(target, target.size() - 1);
+        addFlow.afterWaypointAdded(target, target.size() - 1,
+                config.showWaypointChatShareButtons());
         manager.fireDataChanged();
     }
 

@@ -305,6 +305,8 @@ public final class DungeonRoomRouteSync {
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         group.setDefaultRadius(source.defaultRadius());
         group.setSkipAheadEnabled(source.skipAheadEnabled());
+        group.setPaint(source.paint());
+        group.setPaintEnabled(source.paintEnabled());
 
         List<Waypoint> waypoints = new ArrayList<>(source.size());
         for (Waypoint stored : source.waypoints()) {

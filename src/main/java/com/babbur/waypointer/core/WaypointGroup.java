@@ -91,6 +91,15 @@ public final class WaypointGroup {
     // so "next" is visually the calmest point on a route.
     private int gradientStartColor = 0x00BFFF;
     private int gradientEndColor   = 0xFF3040;
+    /** Optional six-face pixel paint. Null keeps the normal per-waypoint color fill. */
+    private WaypointPaint paint;
+    /**
+     * Whether this route uses painted faces when either a route paint or the
+     * painter's global default exists. Defaults on so an "All Waypoints" paint
+     * also reaches routes created later; choosing Color, Gradient, or One turns
+     * it off for that route without deleting its artwork.
+     */
+    private boolean paintEnabled = true;
     /**
      * Session-only reach state for static-route cycling. Unlike currentIndex,
      * this is unordered: a static map overlay lets the player visit points in
@@ -160,6 +169,8 @@ public final class WaypointGroup {
         public int staticColor()      { return staticColor; }
     public int gradientStartColor() { return gradientStartColor; }
     public int gradientEndColor()   { return gradientEndColor; }
+    public WaypointPaint paint()    { return paint; }
+    public boolean paintEnabled()   { return paintEnabled; }
     public boolean skipAheadEnabled() { return skipAheadEnabled; }
     public boolean temp()           { return temp; }
     public boolean runtimeOnly()    { return runtimeOnly; }
@@ -290,6 +301,8 @@ public final class WaypointGroup {
     public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
     public void setTemp(boolean on)                     { this.temp = on; }
     public void setRuntimeOnly(boolean on)              { this.runtimeOnly = on; }
+    public void setPaint(WaypointPaint paint)            { this.paint = paint; }
+    public void setPaintEnabled(boolean on)               { this.paintEnabled = on; }
 
     /**
      * Set the group's gradient endpoints. Setters immediately reapply the gradient

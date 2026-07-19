@@ -3,6 +3,7 @@ package com.babbur.waypointer.render;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import org.junit.jupiter.api.Test;
@@ -31,6 +32,24 @@ class WaypointRendererTest {
 
         assertTrue(WaypointRenderer.hasDepthCheckedWaypoint(List.of(mixed)));
         assertTrue(WaypointRenderer.hasThroughWallWaypoint(List.of(mixed)));
+    }
+
+    @Test
+    void paintedGroupDetectionRequiresPaintAndAtLeastOneWaypoint() {
+        WaypointGroup emptyPainted = WaypointGroup.create("Empty", "hub");
+        emptyPainted.setPaint(WaypointPaint.solid(0x123456));
+        WaypointGroup painted = groupWith(waypoint(0));
+        painted.setPaint(WaypointPaint.solid(0x654321));
+
+        assertFalse(WaypointRenderer.hasPaintedGroup(List.of(emptyPainted)));
+        assertTrue(WaypointRenderer.hasPaintedGroup(List.of(emptyPainted, painted)));
+
+        painted.setPaintEnabled(false);
+        assertFalse(WaypointRenderer.hasPaintedGroup(List.of(painted)));
+
+        WaypointGroup inherited = groupWith(waypoint(0));
+        assertTrue(WaypointRenderer.hasPaintedGroup(
+                List.of(inherited), WaypointPaint.solid(0xABCDEF)));
     }
 
     @Test

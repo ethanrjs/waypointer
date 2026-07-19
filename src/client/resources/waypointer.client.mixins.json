@@ -5,6 +5,7 @@
     "client": [
         "ChatComponentMixin",
         "ClientPacketListenerMixin",
+        "PlayerInfoMixin",
         "PlayerTabOverlayMixin"
     ],
     "injectors": {

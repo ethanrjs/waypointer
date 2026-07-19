@@ -123,7 +123,7 @@ public final class WaypointerScreen extends Screen {
             "Hide every shown route in this zone.\n"
           + "Double click to confirm.";
     private static final String CONFIRM_LABEL = "Confirm?";
-    private static final String NO_SEL_LABEL  = "Pick route";
+    private static final String NO_SEL_LABEL  = "Select";
     private static final String DELETE_TOOLTIP_DEFAULT =
             "Remove the selected route permanently.\n"
           + "Double click to confirm.";
@@ -2404,8 +2404,8 @@ public final class WaypointerScreen extends Screen {
                 selectedZoneId = selectorEntryForZoneId(first.zoneId());
                 selectGroupById(first.id());
             }
-        } catch (IllegalArgumentException e) {
-            ImportFeedback.failure(e.getMessage());
+        } catch (IllegalArgumentException ignored) {
+            ImportFeedback.failure("Invalid import text.");
         }
     }
 
