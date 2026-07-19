@@ -35,8 +35,11 @@ public final class WaypointerRenderPipelines {
     private static RenderType quadsDepthTested;
     private static RenderType beaconBeamThroughWalls;
     private static RenderType beaconBeamDepthTested;
+    private static RenderPipeline paintedQuadsThroughWallsPipeline;
+    private static RenderPipeline paintedQuadsDepthTestedPipeline;
     private static final DepthStencilState NO_DEPTH_TEST = new DepthStencilState(CompareOp.ALWAYS_PASS, false);
-    private static final DepthStencilState LEQUAL_DEPTH_TEST = new DepthStencilState(CompareOp.LESS_THAN_OR_EQUAL, false);
+    private static final DepthStencilState DEPTH_TESTED =
+            new DepthStencilState(DepthStencilState.DEFAULT.depthTest(), false);
 
     private WaypointerRenderPipelines() {}
 
@@ -81,9 +84,23 @@ public final class WaypointerRenderPipelines {
             beaconBeamDepthTested = buildBeaconBeamType(
                     "waypointer_beacon_beam_depth_tested",
                     "beacon_beam_depth_tested",
-                    LEQUAL_DEPTH_TEST);
+                    DEPTH_TESTED);
         }
         return beaconBeamDepthTested;
+    }
+
+    /** Textured translucent quads for a waypoint paint atlas. */
+    public static RenderType paintedQuads(Identifier texture, boolean depthTested) {
+        RenderPipeline pipeline = depthTested
+                ? paintedQuadsDepthTestedPipeline()
+                : paintedQuadsThroughWallsPipeline();
+        RenderSetup setup = RenderSetup.builder(pipeline)
+                .withTexture("Sampler0", texture)
+                .sortOnUpload()
+                .createRenderSetup();
+        return RenderType.create("waypointer_painted_quads_"
+                + (depthTested ? "depth_" : "through_")
+                + Integer.toUnsignedString(texture.hashCode()), setup);
     }
 
     private static RenderType buildLinesType() {
@@ -93,6 +110,32 @@ public final class WaypointerRenderPipelines {
                 .build();
         return RenderType.create("waypointer_lines_through_walls",
                 RenderSetup.builder(pipeline).createRenderSetup());
+    }
+
+    private static RenderPipeline paintedQuadsThroughWallsPipeline() {
+        if (paintedQuadsThroughWallsPipeline == null) {
+            paintedQuadsThroughWallsPipeline = buildPaintedQuadsPipeline(
+                    "painted_quads_through_walls", NO_DEPTH_TEST);
+        }
+        return paintedQuadsThroughWallsPipeline;
+    }
+
+    private static RenderPipeline paintedQuadsDepthTestedPipeline() {
+        if (paintedQuadsDepthTestedPipeline == null) {
+            paintedQuadsDepthTestedPipeline = buildPaintedQuadsPipeline(
+                    "painted_quads_depth_tested", DEPTH_TESTED);
+        }
+        return paintedQuadsDepthTestedPipeline;
+    }
+
+    private static RenderPipeline buildPaintedQuadsPipeline(String path,
+                                                             DepthStencilState depthState) {
+        return RenderPipeline.builder(RenderPipelines.BEACON_BEAM_SNIPPET)
+                .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, path))
+                .withDepthStencilState(depthState)
+                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+                .withCull(false)
+                .build();
     }
 
     private static RenderType buildQuadsType() {
@@ -116,7 +159,7 @@ public final class WaypointerRenderPipelines {
     private static RenderType buildDepthTestedLinesType() {
         RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
                 .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "lines_depth_tested"))
-                .withDepthStencilState(LEQUAL_DEPTH_TEST)
+                .withDepthStencilState(DEPTH_TESTED)
                 .build();
         return RenderType.create("waypointer_lines_depth_tested",
                 RenderSetup.builder(pipeline).createRenderSetup());
@@ -141,7 +184,7 @@ public final class WaypointerRenderPipelines {
     private static RenderType buildDepthTestedQuadsType() {
         RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
                 .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "quads_depth_tested"))
-                .withDepthStencilState(LEQUAL_DEPTH_TEST)
+                .withDepthStencilState(DEPTH_TESTED)
                 .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                 .withCull(false)
                 .build();

@@ -6,7 +6,11 @@ import com.babbur.waypointer.core.WaypointGroup;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
 
 /**
  * Shared side-effects run on every "player just created a waypoint" event,
@@ -14,7 +18,7 @@ import net.minecraft.network.chat.Component;
  *
  * <p>Centralising the post-add behaviour prevents the bug where the rule was
  * added at one entry point but forgotten at another -- every add site now
- * funnels through {@link #afterWaypointAdded(WaypointGroup, int)} after mutating the
+ * funnels through {@link #afterWaypointAdded(WaypointGroup, int, boolean)} after mutating the
  * group, keeping the user-visible contract consistent.
  *
  * <p>The flow focuses the route on the newly-created waypoint, keeps the route
@@ -24,7 +28,8 @@ import net.minecraft.network.chat.Component;
  */
 public final class WaypointAddFlow {
 
-    public void afterWaypointAdded(WaypointGroup group, int waypointIndex) {
+    public void afterWaypointAdded(WaypointGroup group, int waypointIndex,
+                                   boolean showChatShareButtons) {
         if (group == null) return;
         if (group.temp()) return;
 
@@ -33,7 +38,7 @@ public final class WaypointAddFlow {
         if (skipAheadWasEnabled) {
             group.setSkipAheadEnabled(false);
         }
-        showWaypointAddedMessage(group, waypointIndex);
+        showWaypointAddedMessage(group, waypointIndex, showChatShareButtons);
         showCurrentWaypointFocusedMessage(group.name(), waypointIndex);
         if (skipAheadWasEnabled) {
             showSkipAheadDisabledMessage(group.name());
@@ -41,12 +46,31 @@ public final class WaypointAddFlow {
 
     }
 
-    private static void showWaypointAddedMessage(WaypointGroup group, int waypointIndex) {
+    private static void showWaypointAddedMessage(WaypointGroup group, int waypointIndex,
+                                                 boolean showChatShareButtons) {
         if (waypointIndex < 0 || waypointIndex >= group.size()) return;
         Waypoint waypoint = group.get(waypointIndex);
-        showChatFeedback(Component.literal("Added waypoint " + waypointIndex + " at "
-                + waypoint.x() + ", " + waypoint.y() + ", " + waypoint.z())
-                .withStyle(ChatFormatting.GREEN));
+        showChatFeedback(waypointAddedMessage(waypointIndex, waypoint, showChatShareButtons));
+    }
+
+    static Component waypointAddedMessage(int waypointIndex, Waypoint waypoint,
+                                          boolean showChatShareButtons) {
+        String coordinates = waypoint.x() + ", " + waypoint.y() + ", " + waypoint.z();
+        MutableComponent message = Component.literal("Added waypoint " + waypointIndex
+                + " at " + coordinates).withStyle(ChatFormatting.GREEN);
+        if (!showChatShareButtons) return message;
+        return message
+                .append(chatShareButton("All", "/ac " + coordinates))
+                .append(chatShareButton("Party", "/pc " + coordinates));
+    }
+
+    private static Component chatShareButton(String label, String command) {
+        return Component.literal(" [" + label + "]").withStyle(Style.EMPTY
+                .withColor(ChatFormatting.AQUA)
+                .withUnderlined(true)
+                .withClickEvent(new ClickEvent.RunCommand(command))
+                .withHoverEvent(new HoverEvent.ShowText(Component.literal("Send in "
+                        + label + " chat"))));
     }
 
     private static void showCurrentWaypointFocusedMessage(String groupName, int waypointIndex) {

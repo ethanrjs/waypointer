@@ -3,6 +3,7 @@ package com.babbur.waypointer.dungeon;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
@@ -125,6 +126,21 @@ class DungeonRoomRouteSyncTest {
 
         assertTrue(group.get(0).hasFlag(Waypoint.FLAG_SKIP_ON_STAND));
         assertFalse(group.get(0).hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT));
+    }
+
+    @Test
+    void transformedUserRouteCarriesWaypointPaintIntoRuntimeMirror() {
+        DungeonRoom room = room("paint-room", "Paint Room");
+        WaypointGroup source = WaypointGroup.create("Painted Route", "paint-room");
+        source.add(Waypoint.at(1, 70, 2));
+        source.setPaint(WaypointPaint.solid(0xBADA55));
+        source.setPaintEnabled(false);
+
+        WaypointGroup mirror = DungeonRoomRouteSync.transformedRouteGroupForRoom(
+                room, source, null);
+
+        assertEquals(source.paint(), mirror.paint());
+        assertFalse(mirror.paintEnabled());
     }
 
     @Test

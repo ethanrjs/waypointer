@@ -93,6 +93,7 @@ public final class WaypointerConfigCodec {
     private static final int DUNGEON_ENTRY_PATH_TO_FOLLOWING_WAYPOINTS = 62;
     private static final int SHOW_CONTRIBUTOR_BADGES = 63;
     private static final int SHOW_LABEL_TEXT_SHADOW = 64;
+    private static final int SHOW_WAYPOINT_CHAT_SHARE_BUTTONS = 65;
 
     private WaypointerConfigCodec() {
     }
@@ -192,6 +193,8 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, AUTO_ADD_CHAT_TEMP_WAYPOINTS, config.autoAddChatTempWaypoints(), defaults.autoAddChatTempWaypoints());
         writeBoolean(out, PLACE_NEW_WAYPOINTS_BELOW_PLAYER, config.placeNewWaypointsBelowPlayer(), defaults.placeNewWaypointsBelowPlayer());
         writeBoolean(out, FOCUS_TEMP_WAYPOINTS, config.focusTempWaypoints(), defaults.focusTempWaypoints());
+        writeBoolean(out, SHOW_WAYPOINT_CHAT_SHARE_BUTTONS,
+                config.showWaypointChatShareButtons(), defaults.showWaypointChatShareButtons());
         writeBoolean(out, CHAT_CODEC_DETECTION, config.chatCodecDetection(), defaults.chatCodecDetection());
         writeBoolean(out, SHOW_CONTRIBUTOR_BADGES, config.showContributorBadges(), defaults.showContributorBadges());
         writeEnum(out, IMPORTED_ROUTE_COLOR_MODE, config.importedRouteColorMode(), defaults.importedRouteColorMode());
@@ -262,6 +265,8 @@ public final class WaypointerConfigCodec {
                 case AUTO_ADD_CHAT_TEMP_WAYPOINTS -> config.setAutoAddChatTempWaypoints(in.readBoolean());
                 case PLACE_NEW_WAYPOINTS_BELOW_PLAYER -> config.setPlaceNewWaypointsBelowPlayer(in.readBoolean());
                 case FOCUS_TEMP_WAYPOINTS -> config.setFocusTempWaypoints(in.readBoolean());
+                case SHOW_WAYPOINT_CHAT_SHARE_BUTTONS ->
+                        config.setShowWaypointChatShareButtons(in.readBoolean());
                 case CHAT_CODEC_DETECTION -> config.setChatCodecDetection(in.readBoolean());
                 case SHOW_CONTRIBUTOR_BADGES -> config.setShowContributorBadges(in.readBoolean());
                 case IMPORTED_ROUTE_COLOR_MODE -> config.setImportedRouteColorMode(readEnum(in, WaypointGroup.GradientMode.values(), WaypointGroup.GradientMode.STATIC));

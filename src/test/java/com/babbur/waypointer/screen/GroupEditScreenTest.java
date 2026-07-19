@@ -42,6 +42,19 @@ class GroupEditScreenTest {
     }
 
     @Test
+    void coordinateScrollStepsOnceInTheWheelDirectionAndClampsAtIntegerBounds() {
+        assertEquals(13, GroupEditScreen.coordinateAfterScroll(12, 0.25));
+        assertEquals(11, GroupEditScreen.coordinateAfterScroll(12, -4.0));
+        assertEquals(-11, GroupEditScreen.coordinateAfterScroll(-12, 1.0));
+        assertEquals(-13, GroupEditScreen.coordinateAfterScroll(-12, -1.0));
+        assertEquals(12, GroupEditScreen.coordinateAfterScroll(12, 0.0));
+        assertEquals(Integer.MAX_VALUE,
+                GroupEditScreen.coordinateAfterScroll(Integer.MAX_VALUE, 1.0));
+        assertEquals(Integer.MIN_VALUE,
+                GroupEditScreen.coordinateAfterScroll(Integer.MIN_VALUE, -1.0));
+    }
+
+    @Test
     void waypointRowTextWidthReservesControlAndMetadataSpace() {
         int textLeft = 220;
         int rowRight = 560;
@@ -192,19 +205,24 @@ class GroupEditScreenTest {
 
     @Test
     void colorModeCycleAndLabelsMatchEditorControls() {
-        assertEquals("One", GroupEditScreen.colorModeName(WaypointGroup.GradientMode.STATIC));
-        assertEquals("Gradient", GroupEditScreen.colorModeName(WaypointGroup.GradientMode.AUTO));
-        assertEquals("Manual", GroupEditScreen.colorModeName(WaypointGroup.GradientMode.MANUAL));
-        assertEquals("One", GroupEditScreen.colorModeName(null));
+        assertEquals("Color", GroupEditScreen.colorModeName(GroupEditScreen.RouteColorMode.COLOR));
+        assertEquals("Gradient", GroupEditScreen.colorModeName(GroupEditScreen.RouteColorMode.GRADIENT));
+        assertEquals("One", GroupEditScreen.colorModeName(GroupEditScreen.RouteColorMode.ONE));
+        assertEquals("Paint", GroupEditScreen.colorModeName(GroupEditScreen.RouteColorMode.PAINT));
 
-        assertEquals(WaypointGroup.GradientMode.AUTO,
-                GroupEditScreen.nextColorMode(WaypointGroup.GradientMode.STATIC));
-        assertEquals(WaypointGroup.GradientMode.MANUAL,
-                GroupEditScreen.nextColorMode(WaypointGroup.GradientMode.AUTO));
-        assertEquals(WaypointGroup.GradientMode.STATIC,
-                GroupEditScreen.nextColorMode(WaypointGroup.GradientMode.MANUAL));
-        assertEquals(WaypointGroup.GradientMode.STATIC,
-                GroupEditScreen.nextColorMode(null));
+        assertEquals(GroupEditScreen.RouteColorMode.GRADIENT,
+                GroupEditScreen.nextColorMode(GroupEditScreen.RouteColorMode.COLOR));
+        assertEquals(GroupEditScreen.RouteColorMode.ONE,
+                GroupEditScreen.nextColorMode(GroupEditScreen.RouteColorMode.GRADIENT));
+        assertEquals(GroupEditScreen.RouteColorMode.PAINT,
+                GroupEditScreen.nextColorMode(GroupEditScreen.RouteColorMode.ONE));
+        assertEquals(GroupEditScreen.RouteColorMode.COLOR,
+                GroupEditScreen.nextColorMode(GroupEditScreen.RouteColorMode.PAINT));
+
+        assertEquals(GroupEditScreen.RouteColorMode.COLOR,
+                GroupEditScreen.routeColorMode(WaypointGroup.GradientMode.MANUAL, false));
+        assertEquals(GroupEditScreen.RouteColorMode.PAINT,
+                GroupEditScreen.routeColorMode(WaypointGroup.GradientMode.AUTO, true));
     }
 
     @Test

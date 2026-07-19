@@ -8,6 +8,7 @@ import com.google.gson.JsonParser;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -83,6 +84,12 @@ public final class WaypointerConfig {
     // a fresh install with matchTracerToWaypointColor=false still shows one
     // consistent color scheme across boxes and lines.
     private int defaultWaypointColor = Waypoint.DEFAULT_COLOR;
+    /** Local painter swatches. Null keeps old configs on the generated defaults. */
+    private int[] waypointPainterPalette;
+    /** Paint inherited by routes without their own paint after Apply to All. */
+    private int[] waypointPainterDefaultPalette;
+    private String waypointPainterDefaultPixels;
+    private transient WaypointPaint waypointPainterDefaultPaintCache;
     private int tracerColor = 0x4FE05A;
     /**
      * When {@code true} (default), the tracer line to the current waypoint
@@ -283,6 +290,8 @@ public final class WaypointerConfig {
      * This is transient render focus, not a persistent route enable/disable.
      */
     private boolean focusTempWaypoints = false;
+    /** Show one-click All/Party chat actions after a player creates a waypoint. */
+    private boolean showWaypointChatShareButtons = true;
     private boolean chatCodecDetection = true;
     private boolean showContributorBadges = true;
     /** Default color mode applied after any route import. */
@@ -498,6 +507,32 @@ public final class WaypointerConfig {
     public boolean resetProgressOnWorldJoin() { return resetProgressOnWorldJoin; }
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
     public int defaultWaypointColor()         { return defaultWaypointColor & 0xFFFFFF; }
+    public int[] waypointPainterPalette() {
+        int[] source = waypointPainterPalette;
+        if (source == null || source.length != WaypointPaint.PALETTE_SIZE) {
+            return WaypointPaint.defaultPalette(defaultWaypointColor());
+        }
+        int[] copy = source.clone();
+        for (int i = 0; i < copy.length; i++) copy[i] &= 0xFFFFFF;
+        return copy;
+    }
+    public boolean hasWaypointPainterPalette() {
+        return waypointPainterPalette != null
+                && waypointPainterPalette.length == WaypointPaint.PALETTE_SIZE;
+    }
+    public WaypointPaint waypointPainterDefaultPaint() {
+        if (waypointPainterDefaultPaintCache != null) return waypointPainterDefaultPaintCache;
+        if (waypointPainterDefaultPalette == null || waypointPainterDefaultPixels == null) return null;
+        try {
+            waypointPainterDefaultPaintCache = new WaypointPaint(waypointPainterDefaultPalette,
+                    WaypointPaint.decodePixels(waypointPainterDefaultPixels));
+            return waypointPainterDefaultPaintCache;
+        } catch (RuntimeException invalidPaint) {
+            waypointPainterDefaultPalette = null;
+            waypointPainterDefaultPixels = null;
+            return null;
+        }
+    }
     public int tracerColor()                  { return tracerColor; }
     public boolean matchTracerToWaypointColor() { return matchTracerToWaypointColor; }
     public double tracerOpacity()             { return tracerOpacity; }
@@ -542,6 +577,7 @@ public final class WaypointerConfig {
     public boolean editSounds() { return editSounds; }
     public boolean showEditModeSubtitle() { return showEditModeSubtitle; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
+    public boolean showWaypointChatShareButtons() { return showWaypointChatShareButtons; }
     public List<String> chatCoordSenderBlacklist() {
         ensureChatCoordSenderBlacklist();
         return List.copyOf(chatCoordSenderBlacklist);
@@ -597,6 +633,22 @@ public final class WaypointerConfig {
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
     public void setDefaultWaypointColor(int v)         { this.defaultWaypointColor = v & 0xFFFFFF; save(); }
+    public void setWaypointPainterPalette(int[] palette) {
+        if (palette == null || palette.length != WaypointPaint.PALETTE_SIZE) {
+            throw new IllegalArgumentException("waypoint painter palette must contain 16 colors");
+        }
+        waypointPainterPalette = palette.clone();
+        for (int i = 0; i < waypointPainterPalette.length; i++) {
+            waypointPainterPalette[i] &= 0xFFFFFF;
+        }
+        save();
+    }
+    public void setWaypointPainterDefaultPaint(WaypointPaint paint) {
+        waypointPainterDefaultPalette = paint == null ? null : paint.paletteCopy();
+        waypointPainterDefaultPixels = paint == null ? null : paint.pixelsBase64();
+        waypointPainterDefaultPaintCache = paint;
+        save();
+    }
     public void setTracerColor(int v)                  { this.tracerColor = v & 0xFFFFFF; save(); }
     public void setMatchTracerToWaypointColor(boolean v) { this.matchTracerToWaypointColor = v; save(); }
     public void setTracerOpacity(double v)             { this.tracerOpacity = clamp(v, 0, 1); save(); }
@@ -702,6 +754,7 @@ public final class WaypointerConfig {
     public void setAutoAddChatTempWaypoints(boolean v) { this.autoAddChatTempWaypoints = v; save(); }
     public void setPlaceNewWaypointsBelowPlayer(boolean v) { this.placeNewWaypointsBelowPlayer = v; save(); }
     public void setFocusTempWaypoints(boolean v)       { this.focusTempWaypoints = v; save(); }
+    public void setShowWaypointChatShareButtons(boolean v) { this.showWaypointChatShareButtons = v; save(); }
     public void setChatCodecDetection(boolean v)       { this.chatCodecDetection = v; save(); }
     public void setShowContributorBadges(boolean v)    { this.showContributorBadges = v; save(); }
         public void setImportedRouteColorMode(WaypointGroup.GradientMode v) {
@@ -827,6 +880,7 @@ public final class WaypointerConfig {
         autoAddChatTempWaypoints = replacement.autoAddChatTempWaypoints;
         placeNewWaypointsBelowPlayer = replacement.placeNewWaypointsBelowPlayer;
         focusTempWaypoints = replacement.focusTempWaypoints;
+        showWaypointChatShareButtons = replacement.showWaypointChatShareButtons;
         chatCodecDetection = replacement.chatCodecDetection;
         showContributorBadges = replacement.showContributorBadges;
         importedRouteColorMode = replacement.importedRouteColorMode;
@@ -877,6 +931,7 @@ public final class WaypointerConfig {
         autoAddChatTempWaypoints = false;
         placeNewWaypointsBelowPlayer = false;
         focusTempWaypoints = false;
+        showWaypointChatShareButtons = false;
         chatCodecDetection = false;
         showContributorBadges = false;
         importedRouteColorMode = WaypointGroup.GradientMode.MANUAL;
@@ -904,6 +959,10 @@ public final class WaypointerConfig {
         resetProgressOnWorldJoin = defaults.resetProgressOnWorldJoin;
         restartRouteWhenComplete = defaults.restartRouteWhenComplete;
         defaultWaypointColor = defaults.defaultWaypointColor;
+        waypointPainterPalette = null;
+        waypointPainterDefaultPalette = null;
+        waypointPainterDefaultPixels = null;
+        waypointPainterDefaultPaintCache = null;
         tracerColor = defaults.tracerColor;
         matchTracerToWaypointColor = defaults.matchTracerToWaypointColor;
         tracerOpacity = defaults.tracerOpacity;
@@ -948,6 +1007,7 @@ public final class WaypointerConfig {
         autoAddChatTempWaypoints = defaults.autoAddChatTempWaypoints;
         placeNewWaypointsBelowPlayer = defaults.placeNewWaypointsBelowPlayer;
         focusTempWaypoints = defaults.focusTempWaypoints;
+        showWaypointChatShareButtons = defaults.showWaypointChatShareButtons;
         chatCodecDetection = defaults.chatCodecDetection;
         showContributorBadges = defaults.showContributorBadges;
         importedRouteColorMode = defaults.importedRouteColorMode;

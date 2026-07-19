@@ -5,6 +5,7 @@ import com.google.gson.JsonParser;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -391,6 +392,29 @@ class StorageJsonTest {
 
         assertEquals(0x112233, copy.gradientStartColor());
         assertEquals(0xFEDCBA, copy.gradientEndColor());
+    }
+
+    @Test
+    void group_waypointPaintRoundTripsAndInvalidOptionalPaintIsIgnored() {
+        WaypointGroup group = WaypointGroup.create("painted", "hub");
+        byte[] pixels = new byte[WaypointPaint.PIXEL_COUNT];
+        pixels[WaypointPaint.pixelOffset(WaypointPaint.Face.UP, 4, 5)] = 7;
+        WaypointPaint paint = new WaypointPaint(
+                WaypointPaint.defaultPalette(0x123456), pixels);
+        group.setPaint(paint);
+        group.setPaintEnabled(false);
+
+        JsonObject json = Storage.groupToJson(group);
+        assertEquals(paint, Storage.groupFromJson(json).paint());
+        assertFalse(Storage.groupFromJson(json).paintEnabled());
+
+        json.remove("paintEnabled");
+        assertTrue(Storage.groupFromJson(json).paintEnabled(),
+                "old routes inherit future Apply to All paint by default");
+
+        json.getAsJsonObject("paint").addProperty("pixels", "AA==");
+        assertNull(Storage.groupFromJson(json).paint(),
+                "bad optional paint must not discard the otherwise valid group");
     }
 
         @Test

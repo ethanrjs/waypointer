@@ -20,6 +20,7 @@ class SettingsPresetsTest {
         assertFalse(minimal.showTracer());
         assertFalse(minimal.editSounds());
         assertFalse(minimal.showEditModeSubtitle());
+        assertFalse(minimal.showWaypointChatShareButtons());
         assertFalse(minimal.showContributorBadges());
         assertEquals(12, minimal.maxWaypointLabels());
         assertEquals(128.0, minimal.maxStaticWaypointRenderDistance());

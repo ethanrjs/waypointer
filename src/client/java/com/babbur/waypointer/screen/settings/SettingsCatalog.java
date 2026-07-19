@@ -62,6 +62,7 @@ public final class SettingsCatalog {
     public static final String ACTION_DISABLE_ALL = "action.disableAll";
     public static final String ACTION_RESET_DEFAULTS = "action.resetDefaults";
     public static final String ACTION_PERF_TEST = "action.perfTest";
+    public static final String ACTION_WAYPOINT_PAINT = "action.waypointPaint";
 
     private static final Setting.EnabledWhen ANY_LABEL_TEXT = (c, d) ->
             c.showWaypointNames() || c.showWaypointDistances() || c.showRouteProgress();
@@ -188,6 +189,9 @@ public final class SettingsCatalog {
                                 "Default Waypoint Colour", "Pick default waypoint color.",
                                 (c, d) -> c.defaultWaypointColor(),
                                 (c, d, v) -> c.setDefaultWaypointColor(rgb(v))),
+                        Setting.action(ACTION_WAYPOINT_PAINT, "Paint",
+                                "Design a 16x16 texture for waypoint boxes, then apply it to every route or a selected route.")
+                                .aliases("painter", "texture", "pixel"),
                         Setting.bool("placeNewWaypointsBelowPlayer", MAIN, "Add new waypoints below player",
                                 "Waypoints created at your position go one block below you, under your feet.",
                                 (c, d) -> c.placeNewWaypointsBelowPlayer(),
@@ -474,6 +478,10 @@ public final class SettingsCatalog {
                                 (c, d) -> c.autoAddChatTempWaypoints(),
                                 (c, d, v) -> c.setAutoAddChatTempWaypoints((Boolean) v))),
                 Group.plain(null,
+                        Setting.bool("showWaypointChatShareButtons", MAIN, "New waypoint chat share buttons",
+                                "Show [All] and [Party] buttons after creating a waypoint.",
+                                (c, d) -> c.showWaypointChatShareButtons(),
+                                (c, d, v) -> c.setShowWaypointChatShareButtons((Boolean) v)),
                         Setting.bool("chatCodecDetection", MAIN, "Chat codec detection (imports)",
                                 "Detect Waypointer share codes in chat.",
                                 (c, d) -> c.chatCodecDetection(),
