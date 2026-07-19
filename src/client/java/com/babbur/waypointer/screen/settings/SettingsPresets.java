@@ -32,6 +32,7 @@ public final class SettingsPresets {
         out.setDimSequenceContextWaypoints(false);
         out.setEditSounds(false);
         out.setShowEditModeSubtitle(false);
+        out.setShowWaypointChatShareButtons(false);
         out.setShowContributorBadges(false);
         out.setMaxWaypointLabels(12);
         out.setMaxStaticWaypointRenderDistance(128);

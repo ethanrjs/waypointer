@@ -9,6 +9,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.core.WaypointVisibility;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.input.WaypointRepositionMode;
@@ -237,14 +238,9 @@ public final class WaypointRenderer implements HudElement {
 
     // ---- world-space path: cube outlines -------------------------------------------------
 
-    /**
-     * Max alpha for the filled faces of a waypoint cube. The line outline is
-     * drawn at the state's full alpha, but if we fill at the same alpha the
-     * cube becomes an opaque block that obscures the world behind it. 35% was
-     * picked by eye: dense enough to read as a coloured volume against bright
-     * biomes, translucent enough that you can still see through it.
-     */
-    private static final float FILLED_ALPHA_SCALE = 0.35f;
+    /** The opacity setting is authoritative: 100% must produce opaque faces. */
+    private static final float FILLED_ALPHA_SCALE = 1.0f;
+    private static final float PAINTED_ALPHA_SCALE = 1.0f;
     private static final float BEAM_ALPHA_SCALE = 0.18f;
     private static final float BEAM_HALF_WIDTH = 0.12f;
     private static final float BEACON_TEXTURE_SCALE_THRESHOLD = 96.0f;
@@ -263,12 +259,14 @@ public final class WaypointRenderer implements HudElement {
         boolean drawLines = style != WaypointerConfig.BoxStyle.FILLED;
         boolean drawGlobalFill = style != WaypointerConfig.BoxStyle.OUTLINED;
         boolean drawFill  = drawGlobalFill || hasFilledSubwaypoint(groups);
+        WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
+        boolean drawPaint = hasPaintedGroup(groups, defaultPaint);
         boolean drawBeams = config.beaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF;
         boolean drawTexturedBeams = drawBeams && config.useBeaconBeamTextures();
         boolean drawFlatBeams = drawBeams && !drawTexturedBeams;
         boolean drawRouteLines = config.showRouteLines();
         boolean drawDungeonEntryPaths = config.showDungeonEntryPathToFirstWaypoint();
-        if (!drawLines && !drawFill && !drawBeams && !drawRouteLines && !drawDungeonEntryPaths) return;
+        if (!drawLines && !drawFill && !drawPaint && !drawBeams && !drawRouteLines && !drawDungeonEntryPaths) return;
         if (config.beaconOpacity() <= 0.0 && !drawRouteLines && !drawDungeonEntryPaths) return;
         boolean hasDepthCheckedWaypoints = hasDepthCheckedWaypoint(groups);
         boolean hasThroughWallWaypoints = hasThroughWallWaypoint(groups) || drawDungeonEntryPaths;
@@ -328,6 +326,32 @@ public final class WaypointRenderer implements HudElement {
                 }
             });
         }
+        if (drawPaint && hasThroughWallWaypoints) {
+            for (WaypointGroup g : groups) {
+                WaypointPaint paint = effectivePaint(g, defaultPaint);
+                if (paint == null) continue;
+                WaypointPaintTextureCache.Entry paintTexture =
+                        WaypointPaintTextureCache.get(paint);
+                RenderSubmission.submit(ctx, ps, paintTexture.throughWalls(),
+                        (quads, submittedPose) -> emitPaintedBoxes(
+                                submittedPose, quads, level, g, camPos, playerPos,
+                                maxStaticDistanceSq, nearHideDistanceSq,
+                                false, mc, screenW, screenH));
+            }
+        }
+        if (drawPaint && hasDepthCheckedWaypoints) {
+            for (WaypointGroup g : groups) {
+                WaypointPaint paint = effectivePaint(g, defaultPaint);
+                if (paint == null) continue;
+                WaypointPaintTextureCache.Entry paintTexture =
+                        WaypointPaintTextureCache.get(paint);
+                RenderSubmission.submit(ctx, ps, paintTexture.depthTested(),
+                        (quads, submittedPose) -> emitPaintedBoxes(
+                                submittedPose, quads, level, g, camPos, playerPos,
+                                maxStaticDistanceSq, nearHideDistanceSq,
+                                true, mc, screenW, screenH));
+            }
+        }
         if ((drawFlatBeams || drawFill) && hasThroughWallWaypoints) {
             RenderType quadType = WaypointerRenderPipelines.quadsThroughWalls();
             int minY = beamMinY(mc);
@@ -342,6 +366,7 @@ public final class WaypointRenderer implements HudElement {
                 }
                 if (drawFill) {
                     for (WaypointGroup g : groups) {
+                        if (effectivePaint(g, defaultPaint) != null) continue;
                         emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq, drawGlobalFill,
                                 false, mc, screenW, screenH);
@@ -363,6 +388,7 @@ public final class WaypointRenderer implements HudElement {
                 }
                 if (drawFill) {
                     for (WaypointGroup g : groups) {
+                        if (effectivePaint(g, defaultPaint) != null) continue;
                         emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq, drawGlobalFill,
                                 true, mc, screenW, screenH);
@@ -705,6 +731,24 @@ public final class WaypointRenderer implements HudElement {
         return false;
     }
 
+    static boolean hasPaintedGroup(Iterable<WaypointGroup> groups) {
+        return hasPaintedGroup(groups, null);
+    }
+
+    static boolean hasPaintedGroup(Iterable<WaypointGroup> groups, WaypointPaint defaultPaint) {
+        for (WaypointGroup group : groups) {
+            if (effectivePaint(group, defaultPaint) != null && !group.isEmpty()) return true;
+        }
+        return false;
+    }
+
+    static WaypointPaint effectivePaint(WaypointGroup group, WaypointPaint defaultPaint) {
+        WaypointPaint happySnowmanPaint = HappySnowmanSession.facePaint();
+        if (happySnowmanPaint != null) return happySnowmanPaint;
+        if (group == null || !group.paintEnabled()) return null;
+        return group.paint() != null ? group.paint() : defaultPaint;
+    }
+
     private static boolean isSmallSubwaypoint(Waypoint waypoint) {
         return waypoint != null
                 && waypoint.isSubwaypoint()
@@ -881,6 +925,38 @@ public final class WaypointRenderer implements HudElement {
             float z2 = (float) waypointBoxBoundsScratch[BOX_MAX_Z];
             RenderHelpers.emitFilledBox(quads, ps, x1, y1, z1, x2, y2, z2,
                     w.color(), alpha * FILLED_ALPHA_SCALE);
+        });
+    }
+
+    private void emitPaintedBoxes(PoseStack ps, VertexConsumer quads,
+                                  ClientLevel level, WaypointGroup group,
+                                  Vec3 camPos, Vec3 playerPos,
+                                  double maxStaticDistanceSq, double nearHideDistanceSq,
+                                  boolean depthCheckedPass, Minecraft mc,
+                                  int screenW, int screenH) {
+        int currentIndex = group.currentIndex();
+        boolean showCompleted = config.showCompleted();
+        float beaconOpacity = (float) config.beaconOpacity();
+
+        group.forEachVisibleIndex(i -> {
+            if (!shouldRenderWaypointWorld(group, i, currentIndex, showCompleted,
+                    camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
+                    depthCheckedPass, mc, level, screenW, screenH)) {
+                return;
+            }
+
+            Waypoint waypoint = group.get(i);
+            State state = stateFor(group, i, currentIndex);
+            float alpha = alphaFor(group, state) * beaconOpacity * PAINTED_ALPHA_SCALE;
+            populateWaypointBoxBounds(level, waypoint, waypointBoxBoundsScratch);
+            RenderHelpers.emitTexturedBox(quads, ps,
+                    (float) waypointBoxBoundsScratch[BOX_MIN_X],
+                    (float) waypointBoxBoundsScratch[BOX_MIN_Y],
+                    (float) waypointBoxBoundsScratch[BOX_MIN_Z],
+                    (float) waypointBoxBoundsScratch[BOX_MAX_X],
+                    (float) waypointBoxBoundsScratch[BOX_MAX_Y],
+                    (float) waypointBoxBoundsScratch[BOX_MAX_Z],
+                    alpha, camPos.x, camPos.y, camPos.z);
         });
     }
 

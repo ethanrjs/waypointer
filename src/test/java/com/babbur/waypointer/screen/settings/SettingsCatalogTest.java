@@ -33,7 +33,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SettingsCatalogTest {
 
     /** Internal-only WaypointerConfig fields with no settings-surface meaning. */
-    private static final Set<String> MAIN_EXEMPT = Set.of("configSchemaVersion");
+    private static final Set<String> MAIN_EXEMPT = Set.of(
+            "configSchemaVersion",
+            "waypointPainterPalette",
+            "waypointPainterDefaultPalette",
+            "waypointPainterDefaultPixels");
 
     /** DungeonConfig fields deliberately kept out of the GUI (debug/UX-state). */
     private static final Set<String> DUNGEON_EXEMPT = Set.of(
@@ -206,6 +210,20 @@ class SettingsCatalogTest {
             assertEquals(Setting.Store.NONE, setting.store());
             assertFalse(setting.isModified(a, null, b, null));
         }
+    }
+
+    @Test
+    void waypointPainterIsAnActionInTheWaypointsCategory() {
+        Setting paint = SettingsCatalog.byId(SettingsCatalog.ACTION_WAYPOINT_PAINT);
+
+        assertNotNull(paint);
+        assertEquals("Paint", paint.label());
+        assertEquals(Setting.Kind.ACTION, paint.kind());
+        assertEquals("waypoints", SettingsCatalog.categories().stream()
+                .filter(category -> category.groups().stream()
+                        .flatMap(group -> group.settings().stream())
+                        .anyMatch(setting -> setting.id().equals(SettingsCatalog.ACTION_WAYPOINT_PAINT)))
+                .findFirst().orElseThrow().id());
     }
 
     @Test

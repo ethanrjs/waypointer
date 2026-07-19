@@ -9,8 +9,10 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 
-/** Bridges Fabric's immediate 26.1 renderer and deferred 26.2 submit nodes. */
+/** Bridges Fabric world-render submission APIs across supported versions. */
 public final class RenderSubmission {
+
+    private static final int WORLD_OVERLAY_ORDER = Integer.MAX_VALUE;
 
     @FunctionalInterface
     public interface Geometry {
@@ -20,20 +22,23 @@ public final class RenderSubmission {
     private RenderSubmission() {}
 
     static boolean requiredBindingsAvailable() {
-        if (optionalPublicMethod(LevelRenderContext.class, "bufferSource") != null) {
-            return true;
-        }
         try {
             Class<?> collectorType = Class.forName(
                     "net.minecraft.client.renderer.SubmitNodeCollector");
+            Class<?> orderedCollectorType = Class.forName(
+                    "net.minecraft.client.renderer.OrderedSubmitNodeCollector");
             Class<?> rendererType = Class.forName(
                     "net.minecraft.client.renderer.SubmitNodeCollector$CustomGeometryRenderer");
-            return optionalPublicMethod(LevelRenderContext.class, "submitNodeCollector") != null
-                    && optionalPublicMethod(collectorType, "submitCustomGeometry",
-                            PoseStack.class, RenderType.class, rendererType) != null;
+            if (optionalPublicMethod(LevelRenderContext.class, "submitNodeCollector") != null
+                    && optionalPublicMethod(collectorType, "order", int.class) != null
+                    && optionalPublicMethod(orderedCollectorType, "submitCustomGeometry",
+                            PoseStack.class, RenderType.class, rendererType) != null) {
+                return true;
+            }
         } catch (ClassNotFoundException error) {
-            return false;
+            // Fall through to Fabric's older immediate-buffer API.
         }
+        return optionalPublicMethod(LevelRenderContext.class, "bufferSource") != null;
     }
 
     public static boolean submit(LevelRenderContext context, PoseStack poseStack,
@@ -42,14 +47,14 @@ public final class RenderSubmission {
             return false;
         }
 
-        Object buffers = invokeNoArgs(context, "bufferSource");
-        if (buffers != null) {
-            return submitImmediate(buffers, poseStack, renderType, geometry);
-        }
-
         Object collector = invokeNoArgs(context, "submitNodeCollector");
         if (collector != null) {
             return submitDeferred(collector, poseStack, renderType, geometry);
+        }
+
+        Object buffers = invokeNoArgs(context, "bufferSource");
+        if (buffers != null) {
+            return submitImmediate(buffers, poseStack, renderType, geometry);
         }
         throw new IllegalStateException("No supported Fabric world-render submission API is available");
     }
@@ -77,14 +82,21 @@ public final class RenderSubmission {
             ClassLoader loader = collector.getClass().getClassLoader();
             Class<?> collectorType = Class.forName(
                     "net.minecraft.client.renderer.SubmitNodeCollector", false, loader);
+            Class<?> orderedCollectorType = Class.forName(
+                    "net.minecraft.client.renderer.OrderedSubmitNodeCollector", false, loader);
             Class<?> rendererType = Class.forName(
                     "net.minecraft.client.renderer.SubmitNodeCollector$CustomGeometryRenderer",
                     false, loader);
             Object renderer = Proxy.newProxyInstance(loader, new Class<?>[]{rendererType},
                     geometryHandler(geometry));
-            Method submit = collectorType.getMethod(
+            // Vanilla world features use order 0. A separate final collection keeps
+            // their hash-ordered render types (notably item-frame maps) from flushing
+            // after Waypointer's through-wall overlays.
+            Method order = collectorType.getMethod("order", int.class);
+            Object orderedCollector = order.invoke(collector, WORLD_OVERLAY_ORDER);
+            Method submit = orderedCollectorType.getMethod(
                     "submitCustomGeometry", PoseStack.class, RenderType.class, rendererType);
-            submit.invoke(collector, poseStack, renderType, renderer);
+            submit.invoke(orderedCollector, poseStack, renderType, renderer);
             return true;
         } catch (ReflectiveOperationException error) {
             throw new IllegalStateException("Could not submit deferred render geometry", error);

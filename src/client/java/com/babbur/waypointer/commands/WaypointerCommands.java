@@ -29,6 +29,7 @@ import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.input.WaypointAddFlow;
 import com.babbur.waypointer.input.WaypointRepositionMode;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
+import com.babbur.waypointer.render.HappySnowmanSession;
 import com.babbur.waypointer.screen.DebugInspectScreen;
 import com.babbur.waypointer.screen.ImportFeedback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -95,6 +96,11 @@ public final class WaypointerCommands {
             register(dispatcher, "waypointer");
             register(dispatcher, "wptr");
             register(dispatcher, "wp");
+            dispatcher.register(literal("happysnowman").executes(ctx -> {
+                HappySnowmanSession.activate();
+                info(ctx.getSource(), "Happy snowman mode enabled for this server.");
+                return 1;
+            }));
             suggestionOverride.setClientRoot(dispatcher.getRoot().getChild("wp"));
         });
         suggestionOverride.install();
@@ -1725,7 +1731,7 @@ public final class WaypointerCommands {
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         target.add(storedCommandWaypoint(target, config, x, y, z, name));
         int index = target.size() - 1;
-        addFlow.afterWaypointAdded(target, index);
+        addFlow.afterWaypointAdded(target, index, config.showWaypointChatShareButtons());
         manager.fireDataChanged();
         return index;
     }
@@ -1735,7 +1741,7 @@ public final class WaypointerCommands {
                                           int x, int y, int z, String name) {
         if (target == null || index < 0 || index > target.size()) return -1;
         target.insert(index, storedCommandWaypoint(target, config, x, y, z, name));
-        addFlow.afterWaypointAdded(target, index);
+        addFlow.afterWaypointAdded(target, index, config.showWaypointChatShareButtons());
         return index;
     }
 
@@ -2140,7 +2146,7 @@ public final class WaypointerCommands {
             return result.groups().size();
         } catch (IllegalArgumentException e) {
             error(src, "Import failed: " + e.getMessage());
-            ImportFeedback.failure(e.getMessage());
+            ImportFeedback.failure("Invalid import text.");
             return 0;
         }
     }
