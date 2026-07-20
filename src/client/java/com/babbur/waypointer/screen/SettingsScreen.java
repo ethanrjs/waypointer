@@ -6,6 +6,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.config.WaypointerConfigCodec;
+import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.screen.settings.PerfStressTestController;
 import com.babbur.waypointer.screen.settings.RecentSettings;
@@ -829,7 +830,10 @@ public final class SettingsScreen extends Screen {
      * tick-deferred: callbacks fire while the widget list is being iterated.
      */
     private void applySetting(Setting setting, Object value) {
+        String before = setting.formatValue(setting.get(config, dungeonConfig));
         setting.set(config, dungeonConfig, value);
+        String after = setting.formatValue(setting.get(config, dungeonConfig));
+        ConfigChangeHistory.recordSetting(setting.id(), before, after);
         RecentSettings.record(setting.id());
         if (STRUCTURAL_IDS.contains(setting.id())) {
             rebuildPending = true;
@@ -896,12 +900,14 @@ public final class SettingsScreen extends Screen {
 
     private void confirmedDisableAll() {
         config.disableAllSettings(dungeonConfig);
+        ConfigChangeHistory.recordBulk("Disabled all settings");
         afterBulkConfigChange();
     }
 
     private void confirmedResetDefaults() {
         config.resetToDefaults();
         dungeonConfig.resetToDefaults();
+        ConfigChangeHistory.recordBulk("Reset settings to defaults");
         afterBulkConfigChange();
     }
 
@@ -966,6 +972,7 @@ public final class SettingsScreen extends Screen {
 
     private void applyConfirmedConfigImport(WaypointerConfig decoded, int changedSettings) {
         config.replaceWith(decoded);
+        ConfigChangeHistory.recordBulk("Imported config code (" + changedSettings + " changed)");
         afterBulkConfigChange();
         String settingWord = changedSettings == 1 ? "setting" : "settings";
         setConfigCodeStatus(Component.literal("Config imported. " + changedSettings + " "
@@ -1003,6 +1010,7 @@ public final class SettingsScreen extends Screen {
         confirmPreset(name, SettingsCatalog.countChangedSettings(config, preset), confirmed -> {
             if (confirmed) {
                 config.replaceWith(preset);
+                ConfigChangeHistory.recordBulk("Applied " + name + " preset");
                 afterBulkConfigChange();
             }
         });
