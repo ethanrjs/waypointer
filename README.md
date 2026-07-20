@@ -122,4 +122,4 @@ The Cursor Agent contributor on the right is simply there for bug reviews.
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) — use, modify, and share the mod freely for **non-commercial** purposes. Selling the mod or using it primarily for commercial gain is not allowed under this license. See `LICENSE` for the full text.
+[GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html) (`GPL-3.0-only`) — use, modify, and distribute the mod, including commercially, under GPLv3's terms. See `LICENSE` for the full text.
