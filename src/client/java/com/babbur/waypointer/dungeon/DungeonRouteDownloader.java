@@ -36,9 +36,7 @@ import java.util.HexFormat;
  * Fetches the community secret-route set and installs it through the normal
  * import pipeline.
  *
- * <p>Waypointer cannot bundle route data: every complete Catacombs route set
- * (SecretRoutes, DungeonRoomsMod lineage) is GPL-3.0, which cannot be
- * redistributed inside this PolyForm Noncommercial jar. What it can do is make
+ * <p>Waypointer keeps the GPL-3.0 community route data out of the jar and makes
  * the user's own download a single click: the routes land in the local custom
  * store only, with attribution, exactly as if the user had run
  * {@code /wpd import} on a file they fetched themselves.

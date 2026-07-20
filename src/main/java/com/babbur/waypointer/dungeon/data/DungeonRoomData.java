@@ -42,9 +42,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *
  * <p>The bundled catalog uses Odin's BSD-3-Clause room-core hashes for room
  * identity, with attribution preserved in the repository's third-party
- * notices. We still do not ship Skyblocker/DungeonRoomsMod Catacombs secret
- * waypoint data because their attribution traces many room skeletons and secret
- * waypoints to GPL-3.0 data, while this project is PolyForm Noncommercial.
+ * notices. Catacombs secret waypoint data remains an attributed, opt-in
+ * download stored in the user's local custom catalog rather than bundled here.
  */
 public final class DungeonRoomData {
 

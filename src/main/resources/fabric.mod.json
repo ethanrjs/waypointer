@@ -10,7 +10,7 @@
         "sources": "https://github.com/ethanrjs/waypointer",
         "issues": "https://github.com/ethanrjs/waypointer/issues"
     },
-    "license": "PolyForm-Noncommercial-1.0.0",
+    "license": "GPL-3.0-only",
     "icon": "assets/waypointer/icon.png",
     "environment": "client",
     "entrypoints": {
