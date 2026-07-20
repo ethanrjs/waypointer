@@ -414,6 +414,12 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void waypointOpacityDefaultsToHalfWithoutOverridingSavedValues() {
+        assertEquals(0.5, WaypointerConfig.fromJson("{}").beaconOpacity());
+        assertEquals(0.8, WaypointerConfig.fromJson("{\"beaconOpacity\":0.8}").beaconOpacity());
+    }
+
+    @Test
     void disableAllStopsRenderingAndTheDungeonSubsystem() {
         WaypointerConfig config = new WaypointerConfig();
         DungeonConfig dungeonConfig = new DungeonConfig();
@@ -681,6 +687,15 @@ class WaypointerConfigTest {
         WaypointerConfig decoded = WaypointerConfigCodec.decode(legacyCode);
 
         assertTrue(decoded.showWaypointNames());
+    }
+
+    @Test
+    void legacyConfigCodeWithoutOpacityKeepsHistoricalDefault() throws IOException {
+        String legacyCode = configCodeForRawPayload((byte) 1, (byte) 0);
+
+        assertEquals(0.8, WaypointerConfigCodec.decode(legacyCode).beaconOpacity());
+        assertEquals(0.5, WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(new WaypointerConfig())).beaconOpacity());
     }
 
     @Test
