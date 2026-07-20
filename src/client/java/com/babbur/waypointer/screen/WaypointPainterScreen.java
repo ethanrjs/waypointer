@@ -16,8 +16,20 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.PointerBuffer;
+import org.lwjgl.system.MemoryStack;
+import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
+import java.awt.AWTError;
+import java.awt.Toolkit;
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.io.IOException;
 import java.util.Arrays;
+import java.util.Iterator;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 import static org.lwjgl.glfw.GLFW.*;
@@ -31,6 +43,8 @@ public final class WaypointPainterScreen extends Screen {
     private static final int PREVIEW_MAX = 176;
     private static final int SWATCH_H = 16;
     private static final int SWATCH_GAP = 2;
+    static final String IMPORT_FILES_LABEL = "Import from files";
+    static final String IMPORT_CLIPBOARD_LABEL = "Import from clipboard";
 
     private final Screen parent;
     private final WaypointerConfig config;
@@ -49,6 +63,8 @@ public final class WaypointPainterScreen extends Screen {
     private WaypointPaintPreviewTexture preview;
     private String status = "";
     private Button faceViewButton;
+    private Button importButton;
+    private final PaletteButton[] paletteButtons = new PaletteButton[WaypointPaint.PALETTE_SIZE];
     private CanvasButton canvasButton;
 
     public WaypointPainterScreen(Screen parent, WaypointerConfig config,
@@ -85,8 +101,8 @@ public final class WaypointPainterScreen extends Screen {
             int x = layout.paletteX() + column * (swatchW + SWATCH_GAP);
             int y = layout.swatchesY() + row * (SWATCH_H + SWATCH_GAP);
             PaletteButton button = new PaletteButton(x, y, swatchW, SWATCH_H, slot);
-            button.setTooltip(Tooltip.create(Component.literal(
-                    "Select color " + (slot + 1) + " (#" + String.format("%06X", palette[slot]) + ").")));
+            paletteButtons[slot] = button;
+            refreshPaletteTooltip(slot);
             addRenderableWidget(button);
         }
 
@@ -109,6 +125,9 @@ public final class WaypointPainterScreen extends Screen {
 
         addRenderableWidget(styledButton(PAD_OUTER, height - FOOTER_H,
                 64, BTN_H, Component.literal("Back"), b -> onClose(), null));
+        importButton = styledButton((width - 72) / 2, height - FOOTER_H,
+                72, BTN_H, Component.literal("Import"), b -> openImportSources(), importTooltip());
+        addRenderableWidget(importButton);
         addRenderableWidget(styledButton(width - PAD_OUTER - 72, height - FOOTER_H,
                 72, BTN_H, Component.literal("Apply"), b -> openApplyTargets(),
                 Tooltip.create(Component.literal(targetGroup == null
@@ -135,7 +154,7 @@ public final class WaypointPainterScreen extends Screen {
         if (!status.isEmpty()) {
             String clipped = font.plainSubstrByWidth(status, Math.max(0, width - 190));
             g.text(font, clipped, (width - font.width(clipped)) / 2,
-                    height - FOOTER_H + 6, TEXT_DIM, false);
+                    height - FOOTER_H - font.lineHeight - GAP_TIGHT, TEXT_DIM, false);
         }
     }
 
@@ -219,6 +238,7 @@ public final class WaypointPainterScreen extends Screen {
         ColorPickerScreen.open(this, "Paint Swatch", palette[selectedPalette], picked -> {
             palette[selectedPalette] = picked & 0xFFFFFF;
             config.setWaypointPainterPalette(palette);
+            refreshPaletteTooltip(selectedPalette);
             snapshot = null;
             status = "";
         });
@@ -234,6 +254,114 @@ public final class WaypointPainterScreen extends Screen {
         snapshot = null;
         status = "";
         if (faceViewButton != null) faceViewButton.setMessage(Component.literal(faceViewLabel()));
+        if (importButton != null) importButton.setTooltip(importTooltip());
+    }
+
+    private Tooltip importTooltip() {
+        return Tooltip.create(Component.literal(faceView == FaceView.ONE
+                ? "Import a file or clipboard image as a repeated 16x16 face."
+                : "Import a file or clipboard image as the full 64x48 UV map."));
+    }
+
+    private void openImportSources() {
+        MinecraftCompat.setScreen(minecraft, new ImportImageScreen(this));
+    }
+
+    private void importFromFiles() {
+        String path;
+        try {
+            try (MemoryStack stack = MemoryStack.stackPush()) {
+                PointerBuffer filters = stack.mallocPointer(5);
+                filters.put(stack.UTF8("*.png"));
+                filters.put(stack.UTF8("*.jpg"));
+                filters.put(stack.UTF8("*.jpeg"));
+                filters.put(stack.UTF8("*.gif"));
+                filters.put(stack.UTF8("*.bmp"));
+                filters.flip();
+                path = TinyFileDialogs.tinyfd_openFileDialog(
+                        "Import waypoint paint", null, filters, "Image files", false);
+            }
+        } catch (RuntimeException | LinkageError e) {
+            status = "Could not open the image picker.";
+            return;
+        }
+        if (path == null) return;
+
+        importImage(() -> readImage(new File(path)), "Could not import that image.");
+    }
+
+    private void importFromClipboard() {
+        importImage(WaypointPainterScreen::readSystemClipboardImage,
+                "Clipboard does not contain a usable image.");
+    }
+
+    private void importImage(WaypointPaintImageImporter.ImageSource source,
+                             String failureStatus) {
+        try {
+            WaypointPaint current = new WaypointPaint(palette, pixels);
+            WaypointPaint imported = WaypointPaintImageImporter.importFrom(
+                    source, current, faceView == FaceView.ALL);
+            System.arraycopy(imported.paletteCopy(), 0, palette, 0, palette.length);
+            System.arraycopy(imported.pixelsCopy(), 0, pixels, 0, pixels.length);
+            config.setWaypointPainterPalette(palette);
+            refreshPaletteTooltips();
+            snapshot = null;
+            status = faceView == FaceView.ONE
+                    ? "Imported as a repeated 16x16 face."
+                    : "Imported as a 64x48 UV map.";
+        } catch (IOException | RuntimeException e) {
+            status = failureStatus;
+        }
+    }
+
+    private static BufferedImage readSystemClipboardImage() throws IOException {
+        try {
+            return WaypointPaintImageImporter.readClipboardImage(
+                    Toolkit.getDefaultToolkit().getSystemClipboard());
+        } catch (RuntimeException | AWTError | LinkageError e) {
+            throw new IOException("clipboard is unavailable", e);
+        }
+    }
+
+    private static BufferedImage readImage(File file) throws IOException {
+        try (ImageInputStream input = ImageIO.createImageInputStream(file)) {
+            if (input == null) throw new IOException("image could not be opened");
+            Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) throw new IOException("unsupported image format");
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(input, true, true);
+                int width = reader.getWidth(0);
+                int height = reader.getHeight(0);
+                if (!WaypointPaintImageImporter.acceptsImageDimensions(width, height)) {
+                    throw new IOException("image dimensions are outside the supported range");
+                }
+                BufferedImage image = reader.read(0);
+                if (image == null) throw new IOException("image could not be decoded");
+                return image;
+            } finally {
+                reader.dispose();
+            }
+        }
+    }
+
+    static boolean acceptsImageDimensions(int width, int height) {
+        return WaypointPaintImageImporter.acceptsImageDimensions(width, height);
+    }
+
+    private void refreshPaletteTooltips() {
+        for (int slot = 0; slot < paletteButtons.length; slot++) {
+            refreshPaletteTooltip(slot);
+        }
+    }
+
+    private void refreshPaletteTooltip(int slot) {
+        PaletteButton button = paletteButtons[slot];
+        if (button != null) {
+            button.setTooltip(Tooltip.create(Component.literal(
+                    "Select color " + (slot + 1) + " (#"
+                            + String.format("%06X", palette[slot]) + ").")));
+        }
     }
 
     static void repeatFace(byte[] pixels, WaypointPaint.Face source) {
@@ -455,7 +583,7 @@ public final class WaypointPainterScreen extends Screen {
 
     private Layout layout() {
         int contentTop = PAD_OUTER + font.lineHeight + GAP;
-        int contentBottom = height - FOOTER_H - GAP;
+        int contentBottom = height - FOOTER_H - font.lineHeight - GAP;
         int paletteX = PAD_OUTER + 4;
         int paletteColumns = height < 300 ? 4 : 2;
         int paletteRows = (WaypointPaint.PALETTE_SIZE + paletteColumns - 1) / paletteColumns;
@@ -522,6 +650,52 @@ public final class WaypointPainterScreen extends Screen {
                           int canvasLeft, int canvasRight,
                           int gridLeft, int gridTop, int cell,
                           int previewX, int previewY, int previewSize) {}
+
+    private static final class ImportImageScreen extends Screen {
+        private static final int BUTTON_WIDTH = 180;
+        private final WaypointPainterScreen painter;
+
+        private ImportImageScreen(WaypointPainterScreen painter) {
+            super(Component.literal("Import image"));
+            this.painter = painter;
+        }
+
+        @Override
+        protected void init() {
+            int x = (width - BUTTON_WIDTH) / 2;
+            int y = height / 2 - BTN_H - GAP_TIGHT;
+            addRenderableWidget(styledButton(x, y, BUTTON_WIDTH, BTN_H,
+                    Component.literal(IMPORT_FILES_LABEL),
+                    b -> choose(painter::importFromFiles),
+                    Tooltip.create(Component.literal("Choose a PNG, JPG, GIF, or BMP image."))));
+            addRenderableWidget(styledButton(x, y + BTN_H + GAP_TIGHT,
+                    BUTTON_WIDTH, BTN_H, Component.literal(IMPORT_CLIPBOARD_LABEL),
+                    b -> choose(painter::importFromClipboard),
+                    Tooltip.create(Component.literal("Use image data copied to the clipboard."))));
+            addRenderableWidget(styledButton(x, height - FOOTER_H,
+                    BUTTON_WIDTH, BTN_H, Component.literal("Back"), b -> onClose(), null));
+        }
+
+        @Override
+        public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY,
+                                       float partial) {
+            g.fill(0, 0, width, height, SURFACE);
+            String title = getTitle().getString();
+            g.text(font, title, (width - font.width(title)) / 2,
+                    height / 2 - BTN_H - GAP_TIGHT - font.lineHeight - GAP, TEXT, false);
+            super.extractRenderState(g, mouseX, mouseY, partial);
+        }
+
+        private void choose(Runnable action) {
+            MinecraftCompat.setScreen(minecraft, painter);
+            action.run();
+        }
+
+        @Override
+        public void onClose() {
+            MinecraftCompat.setScreen(minecraft, painter);
+        }
+    }
 
     private final class PaletteButton extends AbstractButton {
         private final int slot;

@@ -223,10 +223,15 @@ public final class RenderHelpers {
         float v1 = (face.atlasY() + WaypointPaint.SIZE)
                 / (float) WaypointPaintTextureCache.ATLAS_HEIGHT - halfTexelV;
 
-        texturedVertex(c, pose, x1, y1, z1, u0, v1, alpha);
-        texturedVertex(c, pose, x2, y2, z2, u0, v0, alpha);
-        texturedVertex(c, pose, x3, y3, z3, u1, v0, alpha);
-        texturedVertex(c, pose, x4, y4, z4, u1, v1, alpha);
+        // Side quads are wound from exterior-right to exterior-left. Flip only
+        // their U axis so editor pixels remain readable when viewed from outside.
+        float firstEdgeU = face.isSide() ? u1 : u0;
+        float oppositeEdgeU = face.isSide() ? u0 : u1;
+
+        texturedVertex(c, pose, x1, y1, z1, firstEdgeU, v1, alpha);
+        texturedVertex(c, pose, x2, y2, z2, firstEdgeU, v0, alpha);
+        texturedVertex(c, pose, x3, y3, z3, oppositeEdgeU, v0, alpha);
+        texturedVertex(c, pose, x4, y4, z4, oppositeEdgeU, v1, alpha);
     }
 
     private static void texturedVertex(VertexConsumer consumer, PoseStack.Pose pose,

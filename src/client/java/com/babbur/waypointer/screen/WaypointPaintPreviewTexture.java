@@ -138,7 +138,7 @@ final class WaypointPaintPreviewTexture {
                         wa, wb, wc, ua, ub, uc, a[2], b[2], c[2]);
                 double v = perspectiveInterpolate(
                         wa, wb, wc, va, vb, vc, a[2], b[2], c[2]);
-                int tx = clamp((int) Math.floor(u * WaypointPaint.SIZE), 0, WaypointPaint.SIZE - 1);
+                int tx = sampleX(face, u);
                 int ty = clamp((int) Math.floor(v * WaypointPaint.SIZE), 0, WaypointPaint.SIZE - 1);
                 image.setPixelABGR(x, y, rgbToAbgr(paint.color(face, tx, ty)));
             }
@@ -166,6 +166,12 @@ final class WaypointPaintPreviewTexture {
                                          double za, double zb, double zc) {
         double inverseZ = wa / za + wb / zb + wc / zc;
         return (wa * va / za + wb * vb / zb + wc * vc / zc) / inverseZ;
+    }
+
+    static int sampleX(WaypointPaint.Face face, double quadU) {
+        int x = clamp((int) Math.floor(quadU * WaypointPaint.SIZE),
+                0, WaypointPaint.SIZE - 1);
+        return face.isSide() ? WaypointPaint.SIZE - 1 - x : x;
     }
 
     private static double edge(double ax, double ay, double bx, double by,

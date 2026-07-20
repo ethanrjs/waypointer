@@ -8,10 +8,17 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointPainterScreenTest {
+
+    @Test
+    void importChooserUsesTheRequestedSourceLabels() {
+        assertEquals("Import from files", WaypointPainterScreen.IMPORT_FILES_LABEL);
+        assertEquals("Import from clipboard", WaypointPainterScreen.IMPORT_CLIPBOARD_LABEL);
+    }
 
     @Test
     void applyAllPersistsAnInheritedPaintForFutureRoutesAndWaypoints() {
@@ -58,5 +65,13 @@ class WaypointPainterScreenTest {
         assertEquals(WaypointPaint.Face.NORTH,
                 WaypointPainterScreen.faceAtAtlasPixel(16, 16));
         assertNull(WaypointPainterScreen.faceAtAtlasPixel(0, 0));
+    }
+
+    @Test
+    void imageImportRejectsOversizedMetadataBeforeDecode() {
+        assertTrue(WaypointPainterScreen.acceptsImageDimensions(4096, 2048));
+        assertFalse(WaypointPainterScreen.acceptsImageDimensions(8193, 1));
+        assertFalse(WaypointPainterScreen.acceptsImageDimensions(4096, 2049));
+        assertFalse(WaypointPainterScreen.acceptsImageDimensions(0, 16));
     }
 }
