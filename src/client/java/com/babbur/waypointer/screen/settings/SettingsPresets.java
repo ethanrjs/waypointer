@@ -45,6 +45,7 @@ public final class SettingsPresets {
         out.setShowWaypointNames(true);
         out.setShowWaypointDistances(true);
         out.setShowRouteProgress(true);
+        out.setRouteTimesEnabled(true);
         out.setShowLabelBackdrop(true);
         out.setShowLabelTextShadow(true);
         out.setScaleWaypointTextWithDistance(true);

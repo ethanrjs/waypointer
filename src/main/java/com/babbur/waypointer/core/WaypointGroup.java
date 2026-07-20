@@ -57,6 +57,9 @@ public final class WaypointGroup {
         SEQUENCE
     }
 
+    public record RouteCompletion(long elapsedMillis, boolean newBest,
+                                  int skippedWaypoints, boolean skippingEnabled) {}
+
     private final String id;
     private String name;
     private String zoneId;
@@ -83,6 +86,8 @@ public final class WaypointGroup {
      */
     private boolean temp = false;
     private boolean runtimeOnly = false;
+    /** Fastest complete timed run; negative means this route has no saved record. */
+    private long bestTimeMillis = -1L;
     /** Single-color route palette used when {@link #gradientMode} is {@link GradientMode#STATIC}. */
     private int staticColor = Waypoint.DEFAULT_COLOR;
     // Per-group gradient endpoints (RGB). Each group can pick its own palette so a
@@ -135,6 +140,10 @@ public final class WaypointGroup {
      */
     private transient boolean staticCycleJustCompleted;
     private transient ProximityIndex proximityIndex;
+    private transient long routeStartedAtMillis = -1L;
+    private transient int routeSkippedWaypoints;
+    private transient boolean routeSkippingEnabled;
+    private transient RouteCompletion pendingRouteCompletion;
 
         public WaypointGroup(String id, String name, String zoneId) {
         this.id = Objects.requireNonNull(id);
@@ -174,6 +183,7 @@ public final class WaypointGroup {
     public boolean skipAheadEnabled() { return skipAheadEnabled; }
     public boolean temp()           { return temp; }
     public boolean runtimeOnly()    { return runtimeOnly; }
+    public long bestTimeMillis()    { return bestTimeMillis; }
     public List<Waypoint> waypoints() { return Collections.unmodifiableList(waypoints); }
     public int size()             { return waypoints.size(); }
     public boolean isEmpty()      { return waypoints.isEmpty(); }
@@ -296,11 +306,15 @@ public final class WaypointGroup {
 
     public void setName(String newName)                 { this.name = newName == null ? "" : newName; }
         public void setZoneId(String newZoneId)             { this.zoneId = Zone.canonicalId(Objects.requireNonNull(newZoneId)); }
-    public void setEnabled(boolean on)                  { this.enabled = on; }
+    public void setEnabled(boolean on)                  {
+        if (this.enabled != on) resetRouteTiming();
+        this.enabled = on;
+    }
     public void setDefaultRadius(double r)              { this.defaultRadius = Waypoint.normalizeDefaultRadius(r); invalidateProximityIndex(); }
     public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
     public void setTemp(boolean on)                     { this.temp = on; }
     public void setRuntimeOnly(boolean on)              { this.runtimeOnly = on; }
+    public void setBestTimeMillis(long millis)           { this.bestTimeMillis = Math.max(-1L, millis); }
     public void setPaint(WaypointPaint paint)            { this.paint = paint; }
     public void setPaintEnabled(boolean on)               { this.paintEnabled = on; }
 
@@ -331,7 +345,9 @@ public final class WaypointGroup {
     }
 
     public void setLoadMode(LoadMode mode) {
-        this.loadMode = Objects.requireNonNull(mode);
+        LoadMode next = Objects.requireNonNull(mode);
+        if (loadMode != next) resetRouteTiming();
+        this.loadMode = next;
     }
 
     public void forEachVisibleIndex(IntConsumer action) {
@@ -451,6 +467,7 @@ public final class WaypointGroup {
         public void add(Waypoint w) {
         int oldSize = waypoints.size();
         waypoints.add(w);
+        resetRouteTiming();
         normalizeSubwaypointStructure();
         resizeStaticReachAfterAppend(oldSize);
         normalizeCurrentIndexToMain();
@@ -462,6 +479,7 @@ public final class WaypointGroup {
         if (additions.isEmpty()) return;
         int oldSize = waypoints.size();
         waypoints.addAll(additions);
+        resetRouteTiming();
         normalizeSubwaypointStructure();
         resizeStaticReachAfterAppend(oldSize);
         normalizeCurrentIndexToMain();
@@ -485,6 +503,7 @@ public final class WaypointGroup {
         public void insert(int index, Waypoint w) {
         int oldSize = waypoints.size();
         waypoints.add(index, w);
+        resetRouteTiming();
         waypoints.set(index, normalizeWaypointForIndex(index, w));
         if (index <= currentIndex) currentIndex++;
         if (proximitySuppressedIndex >= index) proximitySuppressedIndex++;
@@ -597,6 +616,64 @@ public final class WaypointGroup {
         }
     }
 
+    /**
+     * Advance route progress while tracking a complete run. Timing begins when
+     * the first main waypoint is reached, so merely loading or enabling a route
+     * never counts as time spent on it.
+     */
+    public void advancePastTimed(int reachedIndex, boolean skippingEnabled, long nowMillis) {
+        advancePastTimed(reachedIndex, skippingEnabled, nowMillis, 0);
+    }
+
+    /** Advance the current target as an explicit user skip. */
+    public void skipCurrentTimed(long nowMillis) {
+        advancePastTimed(currentIndex, true, nowMillis, 1);
+    }
+
+    private void advancePastTimed(int reachedIndex, boolean skippingEnabled,
+                                  long nowMillis, int explicitSkips) {
+        if (temp || runtimeOnly || loadMode != LoadMode.SEQUENCE) {
+            advancePast(reachedIndex);
+            return;
+        }
+
+        int from = currentIndex;
+        boolean timing = routeStartedAtMillis >= 0L;
+        if (!timing && from == firstMainIndex()) {
+            routeStartedAtMillis = nowMillis;
+            timing = true;
+        }
+
+        if (timing) {
+            routeSkippingEnabled |= skippingEnabled;
+            if (skippingEnabled) {
+                routeSkippedWaypoints += explicitSkips + skippedMainWaypoints(from, reachedIndex);
+            }
+        }
+
+        advancePast(reachedIndex);
+        if (!timing || !isComplete()) return;
+
+        long elapsedMillis = Math.max(0L, nowMillis - routeStartedAtMillis);
+        boolean newBest = bestTimeMillis < 0L || elapsedMillis < bestTimeMillis;
+        if (newBest) bestTimeMillis = elapsedMillis;
+        pendingRouteCompletion = new RouteCompletion(
+                elapsedMillis, newBest, routeSkippedWaypoints, routeSkippingEnabled);
+        resetRouteTiming();
+    }
+
+    public RouteCompletion consumeRouteCompletion() {
+        RouteCompletion completion = pendingRouteCompletion;
+        pendingRouteCompletion = null;
+        return completion;
+    }
+
+    public boolean removeBestTimeMillis(long expectedMillis) {
+        if (bestTimeMillis != expectedMillis) return false;
+        bestTimeMillis = -1L;
+        return true;
+    }
+
     public boolean retreatToPreviousTarget() {
         if (waypoints.isEmpty()) return false;
 
@@ -646,6 +723,7 @@ public final class WaypointGroup {
         activeSubwaypointParentIndex = -1;
         resetStaticReachState();
         clearProximitySuppression();
+        resetRouteTiming();
     }
 
     public boolean isStaticWaypointReached(int index) {
@@ -699,6 +777,7 @@ public final class WaypointGroup {
      *     (used after add/insert, which already resized reach bits to match the new list).
      */
     public void focusNewWaypoint(int index, boolean resetStaticReachState) {
+        resetRouteTiming();
         if (waypoints.isEmpty()) {
             proximitySuppressedIndex = -1;
             return;
@@ -773,6 +852,7 @@ public final class WaypointGroup {
     }
 
     public void setCurrentIndex(int index) {
+        resetRouteTiming();
         currentIndex = normalizedMainIndexFor(index);
         activeSubwaypointParentIndex = -1;
         clearProximitySuppression();
@@ -780,6 +860,7 @@ public final class WaypointGroup {
     }
 
     public void setCurrentTargetIndex(int index) {
+        resetRouteTiming();
         if (waypoints.isEmpty()) {
             currentIndex = 0;
             activeSubwaypointParentIndex = -1;
@@ -861,6 +942,7 @@ public final class WaypointGroup {
     }
 
     private void afterWaypointStructureChanged() {
+        resetRouteTiming();
         normalizeSubwaypointStructure();
         normalizeCurrentIndexToMain();
         if (!isActiveSubwaypointParent(activeSubwaypointParentIndex)) {
@@ -869,6 +951,21 @@ public final class WaypointGroup {
         clearStandSkipHold();
         staticReached = null;
         invalidateProximityIndex();
+    }
+
+    private int skippedMainWaypoints(int from, int reachedIndex) {
+        int skipped = 0;
+        int end = Math.min(reachedIndex, waypoints.size());
+        for (int i = Math.max(0, from); i < end; i++) {
+            if (!isSubwaypoint(i)) skipped++;
+        }
+        return skipped;
+    }
+
+    public void resetRouteTiming() {
+        routeStartedAtMillis = -1L;
+        routeSkippedWaypoints = 0;
+        routeSkippingEnabled = false;
     }
 
     private Waypoint normalizeWaypointForIndex(int index, Waypoint waypoint) {

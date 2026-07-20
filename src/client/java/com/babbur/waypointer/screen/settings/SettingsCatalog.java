@@ -382,6 +382,11 @@ public final class SettingsCatalog {
                                 (c, d) -> c.restartRouteWhenComplete(),
                                 (c, d, v) -> c.setRestartRouteWhenComplete((Boolean) v))
                                 .aliases("loop"),
+                        Setting.bool("routeTimesEnabled", MAIN, "Route times",
+                                "Track route completion times, save best records, and show results in chat.",
+                                (c, d) -> c.routeTimesEnabled(),
+                                (c, d, v) -> c.setRouteTimesEnabled((Boolean) v))
+                                .aliases("timer", "speedrun", "record"),
                         Setting.bool("showRouteProgress", MAIN, "Show route progress",
                                 "Show route progress percentage on waypoint labels.",
                                 (c, d) -> c.showRouteProgress(),

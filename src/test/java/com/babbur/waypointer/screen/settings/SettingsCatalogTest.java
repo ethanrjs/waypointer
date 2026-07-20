@@ -227,6 +227,20 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void routeTimesIsOffByDefaultUnderRoutesAndProgression() {
+        Setting routeTimes = SettingsCatalog.byId("routeTimesEnabled");
+
+        assertNotNull(routeTimes);
+        assertEquals("Route times", routeTimes.label());
+        assertEquals(false, routeTimes.get(new WaypointerConfig(), null));
+        assertEquals("routes", SettingsCatalog.categories().stream()
+                .filter(category -> category.groups().stream()
+                        .flatMap(group -> group.settings().stream())
+                        .anyMatch(setting -> setting.id().equals("routeTimesEnabled")))
+                .findFirst().orElseThrow().id());
+    }
+
+    @Test
     void formatValueRendersEveryKindReadably() {
         assertEquals("On", Setting.formatValue(Setting.Kind.BOOL, Boolean.TRUE, List.of()));
         assertEquals("Off", Setting.formatValue(Setting.Kind.BOOL, Boolean.FALSE, List.of()));

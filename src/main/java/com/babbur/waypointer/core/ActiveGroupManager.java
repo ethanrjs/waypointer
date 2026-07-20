@@ -60,6 +60,7 @@ public final class ActiveGroupManager {
 
     public void onZoneChanged(Zone newZone) {
         if (Objects.equals(newZone, currentZone)) return;
+        for (WaypointGroup group : byId.values()) group.resetRouteTiming();
         currentZone = newZone;
         cachedActive = null;
         for (Consumer<Zone> l : List.copyOf(zoneListeners)) l.accept(newZone);

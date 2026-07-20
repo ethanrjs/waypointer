@@ -8,6 +8,10 @@ import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.TextColor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -537,6 +541,74 @@ class ProximityAdvanceTest {
         for (int i = 0; i < g.size(); i++) {
             assertFalse(g.isStaticWaypointReached(i), "index " + i);
         }
+    }
+
+    @Test
+    void completionFeedbackMatchesRequestedFormatAndRemovalCommand() {
+        WaypointGroup group = new WaypointGroup("route-id", "route name", "hub");
+        WaypointGroup.RouteCompletion completion = new WaypointGroup.RouteCompletion(
+                573_000L, true, 2, true);
+
+        Component message = ProximityTracker.routeCompletionMessage(group.name(), completion);
+        Component remove = ProximityTracker.removeRecordMessage(group, completion);
+
+        assertEquals("Route \"route name\" cleared in 9m 33s (New Best!) [2 skips]",
+                message.getString());
+        assertEquals(TextColor.fromLegacyFormat(ChatFormatting.YELLOW),
+                message.getStyle().getColor());
+        assertEquals(TextColor.fromLegacyFormat(ChatFormatting.LIGHT_PURPLE),
+                message.getSiblings().get(0).getStyle().getColor());
+        assertEquals(TextColor.fromLegacyFormat(ChatFormatting.GRAY),
+                message.getSiblings().get(1).getStyle().getColor());
+        assertEquals("[REMOVE RECORD]", remove.getString());
+        ClickEvent.RunCommand click = assertInstanceOf(
+                ClickEvent.RunCommand.class, remove.getStyle().getClickEvent());
+        assertEquals("/wp removerecord cm91dGUtaWQ 573000", click.command());
+    }
+
+    @Test
+    void completionFeedbackOmitsSkipCountWhenSkippingIsDisabled() {
+        WaypointGroup.RouteCompletion completion = new WaypointGroup.RouteCompletion(
+                9_000L, false, 0, false);
+
+        assertEquals("Route \"strict\" cleared in 0m 9s",
+                ProximityTracker.routeCompletionMessage("strict", completion).getString());
+    }
+
+    @Test
+    void worldJoinInvalidatesTimerEvenWhenProgressResetIsDisabled() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup group = line();
+        manager.add(group);
+        group.advancePastTimed(0, true, 1_000L);
+
+        WorldJoinProgressReset.resetForWorldJoin(manager, false);
+        group.advancePastTimed(3, true, 574_000L);
+
+        assertNull(group.consumeRouteCompletion());
+        assertEquals(-1L, group.bestTimeMillis());
+        assertTrue(group.isComplete(), "the opt-out still preserves route progress");
+    }
+
+    @Test
+    void routeTimesOffStillAdvancesButNeverRecordsAndCancelsAnActiveRun() {
+        WaypointGroup disabled = line();
+
+        assertTrue(ProximityTracker.advanceIfReached(disabled, 0.5, 0.5, 0.5,
+                false, false, false, 1_000L, false));
+        assertTrue(ProximityTracker.advanceIfReached(disabled, 30.5, 0.5, 0.5,
+                false, true, false, 574_000L, false));
+        assertTrue(disabled.isComplete());
+        assertNull(disabled.consumeRouteCompletion());
+        assertEquals(-1L, disabled.bestTimeMillis());
+
+        WaypointGroup cancelled = line();
+        assertTrue(ProximityTracker.advanceIfReached(cancelled, 0.5, 0.5, 0.5,
+                false, false, false, 1_000L, true));
+        assertTrue(ProximityTracker.advanceIfReached(cancelled, 30.5, 0.5, 0.5,
+                false, true, false, 574_000L, false));
+        assertNull(cancelled.consumeRouteCompletion());
+        assertEquals(-1L, cancelled.bestTimeMillis());
     }
 
     private static int[] visibleIndices(WaypointGroup group) {
