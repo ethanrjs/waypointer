@@ -32,6 +32,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import org.lwjgl.glfw.GLFW;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -246,6 +247,44 @@ public final class WaypointerKeybinds {
                 return false;
             });
         });
+    }
+
+    /** Live bindings and conflicts for the troubleshooting report. */
+    public List<DebugBinding> debugSnapshot() {
+        List<KeyMapping> mappings = List.of(
+                openEditor,
+                addWaypointHere,
+                addNamedWaypointHere,
+                addTempWaypointHere,
+                addSubwaypointWhereLooking,
+                addSmallSubwaypointWhereLooking,
+                skipWaypoint,
+                previousWaypoint,
+                enterEditMode,
+                exitEditMode,
+                toggleEditMode,
+                repositionAddWaypoint,
+                repositionAddNamedWaypoint);
+        List<DebugBinding> snapshot = new ArrayList<>(mappings.size());
+        KeyMapping[] allMappings = Minecraft.getInstance().options.keyMappings;
+        for (KeyMapping mapping : mappings) {
+            List<String> conflicts = new ArrayList<>();
+            for (KeyMapping candidate : allMappings) {
+                if (candidate != mapping && mapping.same(candidate)) {
+                    conflicts.add(candidate.getName());
+                }
+            }
+            snapshot.add(new DebugBinding(
+                    mapping.getName(),
+                    mapping.isUnbound() ? "Unbound" : mapping.getTranslatedKeyMessage().getString(),
+                    mapping.isUnbound(),
+                    List.copyOf(conflicts)));
+        }
+        return List.copyOf(snapshot);
+    }
+
+    public record DebugBinding(String translationKey, String boundKey,
+                               boolean unbound, List<String> conflicts) {
     }
 
     static boolean isOpenEditorKey(KeyEvent event) {
