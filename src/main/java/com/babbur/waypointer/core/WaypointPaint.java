@@ -41,6 +41,10 @@ public final class WaypointPaint {
         public int atlasY() {
             return atlasRow * SIZE;
         }
+
+        public boolean isSide() {
+            return this != UP && this != DOWN;
+        }
     }
 
     private final int[] palette;

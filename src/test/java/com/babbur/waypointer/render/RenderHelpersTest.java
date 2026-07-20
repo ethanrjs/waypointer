@@ -4,6 +4,9 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -34,11 +37,31 @@ class RenderHelpersTest {
                 0, 0, 0, 1, 1, 1, 2, 2, 2));
     }
 
+    @Test
+    void paintedSideFaceMapsTextureRightToExteriorRight() {
+        RecordingConsumer consumer = new RecordingConsumer();
+
+        RenderHelpers.emitTexturedBox(consumer, new PoseStack(),
+                0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+                0.5, 0.5, 2.0);
+
+        float halfTexel = 0.5f / WaypointPaintTextureCache.ATLAS_WIDTH;
+        float textureLeft = com.babbur.waypointer.core.WaypointPaint.Face.SOUTH.atlasX()
+                / (float) WaypointPaintTextureCache.ATLAS_WIDTH + halfTexel;
+        float textureRight = (com.babbur.waypointer.core.WaypointPaint.Face.SOUTH.atlasX()
+                + com.babbur.waypointer.core.WaypointPaint.SIZE)
+                / (float) WaypointPaintTextureCache.ATLAS_WIDTH - halfTexel;
+
+        assertEquals(List.of(textureRight, textureRight, textureLeft, textureLeft),
+                consumer.textureUs);
+    }
+
     private static final class RecordingConsumer implements VertexConsumer {
         private int vertices;
         private int colors;
         private int uvs;
         private int lights;
+        private final List<Float> textureUs = new ArrayList<>();
 
         @Override
         public VertexConsumer addVertex(float x, float y, float z) {
@@ -61,6 +84,7 @@ class RenderHelpersTest {
         @Override
         public VertexConsumer setUv(float u, float v) {
             uvs++;
+            textureUs.add(u);
             return this;
         }
 
