@@ -120,7 +120,7 @@ public final class WaypointerConfig {
      * harder screen-space corners.
      */
     private boolean sharpWaypointEdges = false;
-    private double beaconOpacity = 0.8;
+    private double beaconOpacity = 0.5;
     private boolean showWaypointNames = true;
     private boolean showWaypointDistances = true;
     /**

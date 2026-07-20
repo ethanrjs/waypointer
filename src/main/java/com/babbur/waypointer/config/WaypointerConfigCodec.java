@@ -25,7 +25,8 @@ import java.util.zip.InflaterInputStream;
 public final class WaypointerConfigCodec {
 
     public static final String MAGIC = "WPC:";
-    private static final int VERSION = 1;
+    private static final int VERSION = 2;
+    private static final int LEGACY_VERSION = 1;
     private static final int END = 0;
     private static final int MAX_INFLATED_BYTES = 32 * 1024;
 
@@ -127,10 +128,13 @@ public final class WaypointerConfigCodec {
             byte[] inflated = inflate(AsciiStreamCodec.decode(body));
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(inflated));
             int version = in.readUnsignedByte();
-            if (version != VERSION) {
+            if (version != LEGACY_VERSION && version != VERSION) {
                 throw new IllegalArgumentException("Unsupported config code version: " + version);
             }
             WaypointerConfig config = new WaypointerConfig();
+            if (version == LEGACY_VERSION) {
+                config.setBeaconOpacity(0.8);
+            }
             readFields(in, config);
             return config;
         } catch (IOException e) {
