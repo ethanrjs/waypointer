@@ -266,6 +266,7 @@ public final class Storage {
         o.addProperty("loadMode", g.loadMode().name());
         o.addProperty("defaultRadius", g.defaultRadius());
         o.addProperty("skipAheadEnabled", g.skipAheadEnabled());
+        if (g.bestTimeMillis() >= 0L) o.addProperty("bestTimeMillis", g.bestTimeMillis());
         o.addProperty("staticColor", g.staticColor());
         // Per-group gradient endpoints. Stored as ints rather than hex strings
         // because the rest of the waypoint colour fields are already ints -- one
@@ -299,6 +300,7 @@ public final class Storage {
         if (o.has("loadMode")) parseEnum(WaypointGroup.LoadMode.class,
                 o.get("loadMode").getAsString()).ifPresent(g::setLoadMode);
         if (o.has("skipAheadEnabled")) g.setSkipAheadEnabled(o.get("skipAheadEnabled").getAsBoolean());
+        if (o.has("bestTimeMillis")) g.setBestTimeMillis(o.get("bestTimeMillis").getAsLong());
         // Gradient endpoints were added after schema v1 so both fields are optional;
         // missing values leave the group on its built-in cyan/red defaults.
         if (o.has("gradientStartColor")) g.setGradientStartColor(o.get("gradientStartColor").getAsInt());

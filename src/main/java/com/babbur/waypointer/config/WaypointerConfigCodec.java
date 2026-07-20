@@ -95,6 +95,7 @@ public final class WaypointerConfigCodec {
     private static final int SHOW_CONTRIBUTOR_BADGES = 63;
     private static final int SHOW_LABEL_TEXT_SHADOW = 64;
     private static final int SHOW_WAYPOINT_CHAT_SHARE_BUTTONS = 65;
+    private static final int ROUTE_TIMES_ENABLED = 66;
 
     private WaypointerConfigCodec() {
     }
@@ -146,6 +147,7 @@ public final class WaypointerConfigCodec {
         writeDouble(out, DEFAULT_REACH_RADIUS, config.defaultReachRadius(), defaults.defaultReachRadius());
         writeBoolean(out, RESET_PROGRESS_ON_WORLD_JOIN, config.resetProgressOnWorldJoin(), defaults.resetProgressOnWorldJoin());
         writeBoolean(out, RESTART_ROUTE_WHEN_COMPLETE, config.restartRouteWhenComplete(), defaults.restartRouteWhenComplete());
+        writeBoolean(out, ROUTE_TIMES_ENABLED, config.routeTimesEnabled(), defaults.routeTimesEnabled());
         writeInt(out, DEFAULT_WAYPOINT_COLOR, config.defaultWaypointColor(), defaults.defaultWaypointColor());
         writeInt(out, TRACER_COLOR, config.tracerColor(), defaults.tracerColor());
         writeBoolean(out, MATCH_TRACER_TO_WAYPOINT_COLOR, config.matchTracerToWaypointColor(), defaults.matchTracerToWaypointColor());
@@ -222,6 +224,7 @@ public final class WaypointerConfigCodec {
                 case DEFAULT_REACH_RADIUS -> config.setDefaultReachRadius(in.readDouble());
                 case RESET_PROGRESS_ON_WORLD_JOIN -> config.setResetProgressOnWorldJoin(in.readBoolean());
                 case RESTART_ROUTE_WHEN_COMPLETE -> config.setRestartRouteWhenComplete(in.readBoolean());
+                case ROUTE_TIMES_ENABLED -> config.setRouteTimesEnabled(in.readBoolean());
                 case DEFAULT_WAYPOINT_COLOR -> config.setDefaultWaypointColor(in.readInt());
                 case TRACER_COLOR -> config.setTracerColor(in.readInt());
                 case MATCH_TRACER_TO_WAYPOINT_COLOR -> config.setMatchTracerToWaypointColor(in.readBoolean());

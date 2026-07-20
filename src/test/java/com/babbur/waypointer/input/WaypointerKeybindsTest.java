@@ -25,6 +25,7 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerKeybindsTest {
@@ -121,6 +122,20 @@ class WaypointerKeybindsTest {
         // a runtime mirror while the player is in the room (covered by
         // DungeonRoomRouteSyncTest).
         assertEquals(0, manager.activeGroups().size());
+    }
+
+    @Test
+    void manualSkipDoesNotTrackOrFinishAStaleTimerWhenRouteTimesAreOff() {
+        WaypointGroup group = WaypointGroup.create("route", "hub");
+        group.add(Waypoint.at(0, 0, 0));
+        group.add(Waypoint.at(1, 0, 0));
+
+        WaypointerKeybinds.advanceManualSkip(group, true, 1_000L);
+        WaypointerKeybinds.advanceManualSkip(group, false, 2_000L);
+
+        assertTrue(group.isComplete());
+        assertNull(group.consumeRouteCompletion());
+        assertEquals(-1L, group.bestTimeMillis());
     }
 
     private static TextColor legacyColor(ChatFormatting color) {

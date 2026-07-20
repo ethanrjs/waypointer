@@ -22,6 +22,7 @@ class SettingsPresetsTest {
         assertFalse(minimal.showEditModeSubtitle());
         assertFalse(minimal.showWaypointChatShareButtons());
         assertFalse(minimal.showContributorBadges());
+        assertFalse(minimal.routeTimesEnabled());
         assertEquals(12, minimal.maxWaypointLabels());
         assertEquals(128.0, minimal.maxStaticWaypointRenderDistance());
     }
@@ -37,6 +38,7 @@ class SettingsPresetsTest {
         assertTrue(everything.showTracer());
         assertTrue(everything.showRouteLines());
         assertTrue(everything.showDungeonEntryPathToFirstWaypoint());
+        assertTrue(everything.routeTimesEnabled());
         assertEquals(WaypointerConfig.BeaconBeamMode.ALL_VISIBLE, everything.beaconBeamMode());
         assertEquals(0, everything.maxWaypointLabels());
         assertEquals(0.0, everything.maxStaticWaypointRenderDistance());

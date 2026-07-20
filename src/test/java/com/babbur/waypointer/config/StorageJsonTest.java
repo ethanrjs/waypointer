@@ -467,6 +467,19 @@ class StorageJsonTest {
     }
 
     @Test
+    void group_bestRouteTimeRoundTripsAndIsAbsentUntilRecorded() {
+        WaypointGroup group = WaypointGroup.create("timed-route", "hub");
+        assertFalse(Storage.groupToJson(group).has("bestTimeMillis"));
+
+        group.setBestTimeMillis(573_000L);
+        JsonObject json = Storage.groupToJson(group);
+        WaypointGroup copy = Storage.groupFromJson(json);
+
+        assertEquals(573_000L, json.get("bestTimeMillis").getAsLong());
+        assertEquals(573_000L, copy.bestTimeMillis());
+    }
+
+    @Test
     void group_subwaypointStructureRoundTrips() {
         WaypointGroup g = WaypointGroup.create("subway-route", "dungeon_f7");
         g.add(Waypoint.at(1, 10, 1).withName("main"));

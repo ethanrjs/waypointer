@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.LongArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
@@ -139,6 +140,13 @@ public final class WaypointerCommands {
                 .then(currentFlagCommand("its", Waypoint.FLAG_SKIP_ON_INTERACT, "Interact to skip", false))
                 .then(currentFlagCommand("los", Waypoint.FLAG_DEPTH_CHECKED, "Line-of-sight only", false))
                 .then(literal("reset").executes(ctx -> runResetActiveGroup(ctx.getSource())))
+                .then(literal("removerecord")
+                        .then(argument("route", StringArgumentType.word())
+                                .then(argument("time", LongArgumentType.longArg(0L))
+                                        .executes(ctx -> runRemoveRouteRecord(
+                                                ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "route"),
+                                                LongArgumentType.getLong(ctx, "time"))))))
                 .then(literal("mode")
                         .then(argument("mode", StringArgumentType.word())
                                 .suggests(suggestLoadModes())
@@ -1343,6 +1351,28 @@ public final class WaypointerCommands {
         group.resetProgress();
         manager.fireDataChanged();
         success(src, "Reset \"" + group.name() + "\" to the first waypoint");
+        return 1;
+    }
+
+    private int runRemoveRouteRecord(FabricClientCommandSource src,
+                                     String encodedGroupId,
+                                     long expectedTimeMillis) {
+        String groupId;
+        try {
+            groupId = new String(Base64.getUrlDecoder().decode(encodedGroupId), StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException invalidId) {
+            error(src, "That route record link is invalid.");
+            return 0;
+        }
+
+        WaypointGroup group = manager.get(groupId);
+        if (group == null || !group.removeBestTimeMillis(expectedTimeMillis)) {
+            error(src, "That route record has already changed or been removed.");
+            return 0;
+        }
+
+        manager.fireDataChangedFor(group);
+        success(src, "Removed the best time for \"" + group.name() + "\".");
         return 1;
     }
 

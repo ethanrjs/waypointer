@@ -26,11 +26,16 @@ public final class WorldJoinProgressReset {
 
     public void install() {
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
-            if (!config.resetProgressOnWorldJoin()) return;
-            for (WaypointGroup g : manager.allGroups()) {
-                g.resetProgress();
-            }
-            manager.fireDataChanged();
+            boolean resetProgress = config.resetProgressOnWorldJoin();
+            resetForWorldJoin(manager, resetProgress);
+            if (resetProgress) manager.fireDataChanged();
         });
+    }
+
+    static void resetForWorldJoin(ActiveGroupManager manager, boolean resetProgress) {
+        for (WaypointGroup group : manager.allGroups()) {
+            if (resetProgress) group.resetProgress();
+            else group.resetRouteTiming();
+        }
     }
 }

@@ -798,6 +798,29 @@ class WaypointerConfigTest {
         assertTrue(config.irisShaderHudFallback());
     }
 
+    @Test
+    void routeTimesStayOffForFreshAndExistingConfigsUntilEnabled() {
+        assertFalse(new WaypointerConfig().routeTimesEnabled());
+        assertFalse(WaypointerConfig.fromJson(
+                "{\"configSchemaVersion\":4,\"restartRouteWhenComplete\":true}")
+                .routeTimesEnabled());
+
+        WaypointerConfig enabled = new WaypointerConfig();
+        enabled.setRouteTimesEnabled(true);
+
+        assertTrue(WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(enabled)).routeTimesEnabled());
+
+        WaypointerConfig copied = new WaypointerConfig();
+        copied.replaceWith(enabled);
+        assertTrue(copied.routeTimesEnabled());
+        copied.disableAllSettings();
+        assertFalse(copied.routeTimesEnabled());
+        copied.setRouteTimesEnabled(true);
+        copied.resetToDefaults();
+        assertFalse(copied.routeTimesEnabled());
+    }
+
     private static String configCodeForRawPayload(byte... raw) throws IOException {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION, true);

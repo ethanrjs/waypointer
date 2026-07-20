@@ -13,6 +13,7 @@ import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
+import com.babbur.waypointer.progression.ProximityTracker;
 import com.babbur.waypointer.screen.AddNamedWaypointScreen;
 import com.babbur.waypointer.screen.WaypointerGuiScreens;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -356,16 +357,29 @@ public final class WaypointerKeybinds {
     private void skipCurrentWaypoint(Minecraft mc) {
         int skipped = 0;
         boolean loop = config.restartRouteWhenComplete();
+        boolean trackRouteTimes = config.routeTimesEnabled();
+        long nowMillis = System.currentTimeMillis();
         for (WaypointGroup g : manager.activeGroups()) {
             if (g.isComplete() || g.isEmpty()) continue;
-            g.advancePast(g.currentIndex());
+            advanceManualSkip(g, trackRouteTimes, nowMillis);
             g.restartIfRouteCompleted(shouldRestartCompletedRoute(g, loop));
+            ProximityTracker.reportRouteCompletion(manager, g, trackRouteTimes);
             skipped++;
         }
         if (skipped == 0) return;
         // fireDataChanged re-caches activeGroups() and triggers autosave so the new
         // progress index survives a crash or /reload.
         manager.fireDataChanged();
+    }
+
+    static void advanceManualSkip(WaypointGroup group, boolean trackRouteTimes, long nowMillis) {
+        if (trackRouteTimes) {
+            group.skipCurrentTimed(nowMillis);
+            return;
+        }
+        group.resetRouteTiming();
+        group.consumeRouteCompletion();
+        group.advancePast(group.currentIndex());
     }
 
     private static boolean shouldRestartCompletedRoute(WaypointGroup group, boolean globalRestart) {
