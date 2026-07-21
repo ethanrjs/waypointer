@@ -274,7 +274,7 @@ public final class GroupEditScreen extends Screen {
                 : naturalResetY;
         addSidebarWidget(styledButton(sidebarInner, resetY, fieldW, BTN_H,
                 Component.literal("Reset Progress"), b -> {
-            group.resetProgress();
+            DungeonRoomRouteSync.resetManualProgress(manager, group);
             manager.fireDataChanged();
         }, Tooltip.create(Component.literal("Set current waypoint to #1."))));
         sidebarScrollOffset = Math.max(0, Math.min(maxSidebarScroll, sidebarScrollOffset));
@@ -1536,7 +1536,7 @@ public final class GroupEditScreen extends Screen {
                     }
                     action = "toggle-subwaypoint";
                 } else {
-                    group.setCurrentIndex(idx);
+                    DungeonRoomRouteSync.setManualCurrentIndex(manager, group, idx);
                     manager.fireDataChanged();
                     action = "goto";
                 }

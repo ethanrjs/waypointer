@@ -257,6 +257,41 @@ public final class DungeonRoomRouteSync {
     }
 
     /**
+     * Apply an explicit editor progress change to both halves of a projected
+     * dungeon route. The stored group owns the UI state, while its runtime
+     * mirror owns rendering; mutating only one lets the next mirror rebuild
+     * restore stale progress from the other.
+     */
+    public static void setManualCurrentIndex(ActiveGroupManager manager,
+                                             WaypointGroup visibleGroup,
+                                             int index) {
+        applyManualProgress(manager, visibleGroup, group -> group.setCurrentIndex(index));
+    }
+
+    public static void resetManualProgress(ActiveGroupManager manager,
+                                           WaypointGroup visibleGroup) {
+        applyManualProgress(manager, visibleGroup, WaypointGroup::resetProgress);
+    }
+
+    private static void applyManualProgress(ActiveGroupManager manager,
+                                            WaypointGroup visibleGroup,
+                                            Consumer<WaypointGroup> mutation) {
+        if (visibleGroup == null || mutation == null) return;
+        mutation.accept(visibleGroup);
+        if (manager == null) return;
+
+        WaypointGroup stored = storedSourceForMirror(manager, visibleGroup);
+        if (stored != null) mutation.accept(stored);
+        WaypointGroup source = stored == null && !isGeneratedGroup(visibleGroup)
+                ? visibleGroup
+                : stored;
+        if (source == null) return;
+
+        WaypointGroup mirror = manager.get(generatedGroupId(source.zoneId()));
+        if (mirror != null && mirror != visibleGroup) mutation.accept(mirror);
+    }
+
+    /**
      * True when in-world edits in this room should be refused because the room
      * shows downloaded secrets that the user has not converted into their own
      * route yet — editing the throwaway mirror would silently discard changes.
