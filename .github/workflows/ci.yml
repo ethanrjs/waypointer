@@ -35,14 +35,47 @@ jobs:
       - name: Test and build all targets
         run: ./gradlew --no-daemon --max-workers=1 clean buildAllTargets --stacktrace --console=plain
 
-      - name: Upload development JARs
+      - name: Prepare development JARs
+        id: artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mod_version="$(sed -n 's/^mod_version=//p' gradle.properties)"
+          if [[ -z "${mod_version}" ]]; then
+            echo "Could not read mod_version from gradle.properties"
+            exit 1
+          fi
+
+          mkdir -p artifacts
+          for target in 26.1.2 26.2; do
+            source="build/libs/waypointer-${mod_version}-mc${target}.jar"
+            artifact="waypointer-${mod_version}-build${GITHUB_RUN_NUMBER}-mc${target}.jar"
+
+            if [[ ! -f "${source}" ]]; then
+              echo "Missing distributable JAR: ${source}"
+              exit 1
+            fi
+
+            cp "${source}" "artifacts/${artifact}"
+            output_name="jar_${target//./_}"
+            echo "${output_name}=${artifact}" >> "${GITHUB_OUTPUT}"
+          done
+
+      - name: Upload Minecraft 26.1.2 JAR
         uses: actions/upload-artifact@v7
         with:
-          name: waypointer-${{ github.sha }}
-          path: |
-            build/libs/waypointer-*-mc*.jar
-            !build/libs/*-sources.jar
-            !build/libs/*-dev.jar
-            !build/libs/*-shadow.jar
+          path: artifacts/${{ steps.artifacts.outputs.jar_26_1_2 }}
+          archive: false
           if-no-files-found: error
+          overwrite: true
+          retention-days: 14
+
+      - name: Upload Minecraft 26.2 JAR
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/${{ steps.artifacts.outputs.jar_26_2 }}
+          archive: false
+          if-no-files-found: error
+          overwrite: true
           retention-days: 14
