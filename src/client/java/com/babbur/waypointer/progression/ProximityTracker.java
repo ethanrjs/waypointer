@@ -487,7 +487,11 @@ public final class ProximityTracker {
                 group.remove(j);
             }
         }
-        group.restartIfRouteCompleted(restartWhenComplete && !isDungeonRoomRouteGroup(group));
+        boolean restart = restartWhenComplete && !isDungeonRoomRouteGroup(group);
+        group.restartIfRouteCompleted(restart);
+        if (restart && group.mainWaypointCount() == 1) {
+            group.suppressProximityUntilExit(group.currentIndex());
+        }
         return true;
     }
 

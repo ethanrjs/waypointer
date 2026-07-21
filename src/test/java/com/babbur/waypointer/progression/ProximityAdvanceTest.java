@@ -240,6 +240,59 @@ class ProximityAdvanceTest {
     }
 
     @Test
+    void oneWaypointLoopRearmsOnlyAfterLeavingItsReachRadius() {
+        WaypointGroup group = WaypointGroup.create("single", "test_zone");
+        group.setDefaultRadius(2.0);
+        group.add(Waypoint.at(0, 0, 0));
+
+        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5, true));
+        assertEquals(0, group.currentIndex());
+        assertTrue(group.isProximitySuppressed(0));
+
+        assertFalse(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5, true));
+        assertFalse(ProximityTracker.advanceIfReached(group, 5.0, 0.5, 0.5, true));
+        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5, true));
+    }
+
+    @Test
+    void oneMainWaypointWithSubwaypointsNeverCreatesRouteTimingRecords() {
+        WaypointGroup group = WaypointGroup.create("single", "test_zone");
+        group.setDefaultRadius(2.0);
+        group.add(Waypoint.at(0, 0, 0));
+        group.add(Waypoint.at(1, 0, 0));
+        group.toggleSubwaypoint(1);
+
+        assertEquals(1, group.mainWaypointCount());
+        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5,
+                true, true, false, 1_000L, true));
+        assertEquals(0, group.currentIndex(), "looping progress should still restart");
+        assertNull(group.consumeRouteCompletion());
+        assertEquals(-1L, group.bestTimeMillis());
+
+        assertFalse(ProximityTracker.advanceIfReached(group, 5.0, 0.5, 0.5,
+                true, true, false, 1_500L, true));
+        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5,
+                true, true, false, 2_000L, true));
+        assertNull(group.consumeRouteCompletion());
+        assertEquals(-1L, group.bestTimeMillis());
+    }
+
+    @Test
+    void multipleMainWaypointsStillCreateRouteTimingRecords() {
+        WaypointGroup group = line();
+
+        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5,
+                false, false, false, 1_000L, true));
+        assertTrue(ProximityTracker.advanceIfReached(group, 30.5, 0.5, 0.5,
+                false, true, false, 2_000L, true));
+
+        WaypointGroup.RouteCompletion completion = group.consumeRouteCompletion();
+        assertNotNull(completion);
+        assertEquals(1_000L, completion.elapsedMillis());
+        assertEquals(1_000L, group.bestTimeMillis());
+    }
+
+    @Test
     void dungeonRoomRouteDoesNotLoopWhenRestartEnabled() {
         WaypointGroup group = dungeonTriggerGroup();
         group.add(Waypoint.at(0, 0, 0));

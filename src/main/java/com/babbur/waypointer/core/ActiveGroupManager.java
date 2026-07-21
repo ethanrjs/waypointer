@@ -42,6 +42,7 @@ public final class ActiveGroupManager {
     private final List<Consumer<Zone>> zoneListeners = new ArrayList<>();
     private String focusedTempGroupId;
     private String focusedAuthoringGroupId;
+    private WaypointGroup waypointPreview;
 
     private final List<Runnable> dataListeners = new ArrayList<>();
     private final List<Runnable> persistentDataListeners = new ArrayList<>();
@@ -83,15 +84,17 @@ public final class ActiveGroupManager {
 
         if (currentZone == null) {
             WaypointGroup focused = focusedAuthoringGroup();
-            cachedActive = focused != null && focused.enabled() && shouldSurfaceActiveGroup(focused)
+            List<WaypointGroup> active = focused != null
+                    && focused.enabled() && shouldSurfaceActiveGroup(focused)
                     ? List.of(focused)
                     : Collections.emptyList();
+            cachedActive = withWaypointPreview(active);
             return cachedActive;
         }
         String zoneId = currentZone.id();
         WaypointGroup focused = focusedTempGroupForZone(zoneId);
         if (focused != null) {
-            cachedActive = List.of(focused);
+            cachedActive = withWaypointPreview(List.of(focused));
             return cachedActive;
         }
 
@@ -101,8 +104,28 @@ public final class ActiveGroupManager {
                 active.add(g);
             }
         }
-        cachedActive = List.copyOf(active);
+        cachedActive = withWaypointPreview(active);
         return cachedActive;
+    }
+
+    private List<WaypointGroup> withWaypointPreview(List<WaypointGroup> active) {
+        if (waypointPreview == null) return List.copyOf(active);
+        List<WaypointGroup> combined = new ArrayList<>(active.size() + 1);
+        combined.addAll(active);
+        combined.add(waypointPreview);
+        return List.copyOf(combined);
+    }
+
+    /** Surface one session-only group through the normal renderer without persisting it. */
+    public void setWaypointPreview(WaypointGroup preview) {
+        waypointPreview = preview;
+        cachedActive = null;
+    }
+
+    public void clearWaypointPreview(WaypointGroup preview) {
+        if (waypointPreview != preview) return;
+        waypointPreview = null;
+        cachedActive = null;
     }
 
     private static boolean shouldSurfaceActiveGroup(WaypointGroup group) {

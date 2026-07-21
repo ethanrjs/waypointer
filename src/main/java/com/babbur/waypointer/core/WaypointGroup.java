@@ -651,6 +651,15 @@ public final class WaypointGroup {
             advancePast(reachedIndex);
             return;
         }
+        // A single destination has no meaningful start-to-finish interval. Keep
+        // its normal progression/loop behavior, but never manufacture a 0 ms
+        // record or completion message from entering the same point.
+        if (mainWaypointCount() == 1) {
+            resetRouteTiming();
+            pendingRouteCompletion = null;
+            advancePast(reachedIndex);
+            return;
+        }
 
         int from = currentIndex;
         boolean timing = routeStartedAtMillis >= 0L;
@@ -823,6 +832,11 @@ public final class WaypointGroup {
 
     public boolean isProximitySuppressed(int index) {
         return index == proximitySuppressedIndex;
+    }
+
+    /** Keep a just-wrapped waypoint inert until the player leaves its reach radius. */
+    public void suppressProximityUntilExit(int index) {
+        proximitySuppressedIndex = index >= 0 && index < waypoints.size() ? index : -1;
     }
 
     public void clearProximitySuppression() {
