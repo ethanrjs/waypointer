@@ -825,6 +825,11 @@ public final class WaypointGroup {
         return index == proximitySuppressedIndex;
     }
 
+    /** Keep a just-wrapped waypoint inert until the player leaves its reach radius. */
+    public void suppressProximityUntilExit(int index) {
+        proximitySuppressedIndex = index >= 0 && index < waypoints.size() ? index : -1;
+    }
+
     public void clearProximitySuppression() {
         proximitySuppressedIndex = -1;
     }

@@ -145,6 +145,24 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void waypointPreviewRendersWithoutJoiningPersistedGroups() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup preview = WaypointGroup.create("Preview", "unknown");
+        preview.setRuntimeOnly(true);
+        preview.setTemp(true);
+        preview.add(Waypoint.at(1, 2, 3));
+
+        manager.setWaypointPreview(preview);
+
+        assertEquals(List.of(preview), manager.activeGroups());
+        assertFalse(manager.allGroups().contains(preview));
+
+        manager.clearWaypointPreview(preview);
+
+        assertTrue(manager.activeGroups().isEmpty());
+    }
+
+    @Test
     void completedDungeonRoomRouteIsHiddenFromActiveGroups() {
         assertNotNull(DungeonRoomData.definition("spider"));
         ActiveGroupManager manager = new ActiveGroupManager();

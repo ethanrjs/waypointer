@@ -17,6 +17,9 @@ import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
 /**
@@ -30,7 +33,7 @@ public final class AddNamedWaypointScreen extends Screen {
 
     private static final int PANEL_W = 280;
     private static final int PANEL_H = 136;
-    private static final int OPTIONS_PANEL_H = 164;
+    private static final int OPTIONS_PANEL_H = 126;
     private static final int GLFW_KEY_ENTER = 257;
     private static final int GLFW_KEY_KP_ENTER = 335;
     private static final int MAX_NAME_LENGTH = 64;
@@ -49,6 +52,7 @@ public final class AddNamedWaypointScreen extends Screen {
     private final int fixedPreciseX;
     private final int fixedPreciseY;
     private final int fixedPreciseZ;
+    private final boolean subwaypointAvailable;
 
     private EditBox nameBox;
     private Button confirmButton;
@@ -58,6 +62,7 @@ public final class AddNamedWaypointScreen extends Screen {
     private String enteredName = "";
     private boolean subwaypointSelected;
     private boolean smallSelected;
+    private WaypointGroup previewGroup;
 
     public AddNamedWaypointScreen(Screen parent, ActiveGroupManager manager,
                                   WaypointerConfig config, WaypointGroup targetGroup) {
@@ -94,6 +99,7 @@ public final class AddNamedWaypointScreen extends Screen {
         this.fixedPreciseX = fixedPreciseX;
         this.fixedPreciseY = fixedPreciseY;
         this.fixedPreciseZ = fixedPreciseZ;
+        this.subwaypointAvailable = canCreateSubwaypoint(targetGroup);
     }
 
     public static void open(Screen parent, ActiveGroupManager manager,
@@ -154,20 +160,21 @@ public final class AddNamedWaypointScreen extends Screen {
             int smallBoxX = smallLabelX + font.width("Small") + GAP_TIGHT;
             smallCheckbox = styledCheckbox(smallBoxX, optionsY, BTN_H,
                     Component.literal("Small"), smallSelected,
-                    value -> smallSelected = value, null);
+                    this::onSmallChanged, null);
             addRenderableWidget(smallCheckbox);
             updateSubtypeControls();
         }
 
         int footerY = panelY + panelH - BTN_H - PAD_OUTER / 2;
-        addRenderableWidget(Button.builder(Component.literal("Cancel"), this::onCancelButtonClicked)
-                .bounds(panelX + PANEL_W - PAD_OUTER - 140 - GAP, footerY, 70, BTN_H)
-                .build());
-        confirmButton = Button.builder(Component.literal("Confirm"), this::onConfirmButtonClicked)
-                .bounds(panelX + PANEL_W - PAD_OUTER - 70, footerY, 70, BTN_H)
-                .build();
+        addRenderableWidget(styledButton(
+                panelX + PANEL_W - PAD_OUTER - 140 - GAP, footerY, 70, BTN_H,
+                Component.literal("Cancel"), this::onCancelButtonClicked, null));
+        confirmButton = styledButton(
+                panelX + PANEL_W - PAD_OUTER - 70, footerY, 70, BTN_H,
+                Component.literal("Confirm"), this::onConfirmButtonClicked, null);
         addRenderableWidget(confirmButton);
         updateConfirmState();
+        updatePreview();
     }
 
     @Override
@@ -186,14 +193,15 @@ public final class AddNamedWaypointScreen extends Screen {
             int inner = panelX + PAD_OUTER;
             int subwaypointBoxX = inner + font.width("Subwaypoint") + GAP_TIGHT;
             int smallLabelX = subwaypointBoxX + BTN_H + GAP_SECTION;
-            g.text(font, "Subwaypoint", inner, labelY, TEXT, false);
+            g.text(font, "Subwaypoint", inner, labelY,
+                    subwaypointAvailable ? TEXT : TEXT_MUTED, false);
             g.text(font, "Small", smallLabelX, labelY,
                     subwaypointSelected ? TEXT : TEXT_MUTED, false);
         }
 
         super.extractRenderState(g, mouseX, mouseY, partial);
         if (nameErrorVisible) {
-            int errorY = showSubtypeOptions ? panelY + 92 : panelY + 60;
+            int errorY = showSubtypeOptions ? panelY + 56 : panelY + 60;
             g.text(font, "Name required", panelX + PAD_OUTER, errorY,
                     0xFFFF8A8A, false);
         }
@@ -230,7 +238,8 @@ public final class AddNamedWaypointScreen extends Screen {
         int y;
         int z;
         int flags = 0;
-        CreationOptions options = creationOptions(subwaypointSelected, smallSelected);
+        CreationOptions options = creationOptions(
+                subwaypointAvailable, subwaypointSelected, smallSelected);
         if (useFixedPosition) {
             x = fixedX;
             y = fixedY;
@@ -277,15 +286,23 @@ public final class AddNamedWaypointScreen extends Screen {
     private void onNameEdited(String value) {
         enteredName = value == null ? "" : value;
         updateConfirmState();
+        updatePreview();
     }
 
     private void onSubwaypointChanged(boolean selected) {
-        subwaypointSelected = selected;
+        subwaypointSelected = subwaypointAvailable && selected;
         updateSubtypeControls();
+        updatePreview();
+    }
+
+    private void onSmallChanged(boolean selected) {
+        smallSelected = subwaypointAvailable && subwaypointSelected && selected;
+        updatePreview();
     }
 
     private void updateSubtypeControls() {
-        if (smallCheckbox != null) smallCheckbox.active = subwaypointSelected;
+        if (subwaypointCheckbox != null) subwaypointCheckbox.active = subwaypointAvailable;
+        if (smallCheckbox != null) smallCheckbox.active = subwaypointAvailable && subwaypointSelected;
     }
 
     private int panelHeight() {
@@ -294,6 +311,15 @@ public final class AddNamedWaypointScreen extends Screen {
 
     static CreationOptions creationOptions(boolean subwaypoint, boolean small) {
         return new CreationOptions(subwaypoint, subwaypoint && small);
+    }
+
+    static CreationOptions creationOptions(boolean parentAvailable,
+                                           boolean subwaypoint, boolean small) {
+        return creationOptions(parentAvailable && subwaypoint, small);
+    }
+
+    static boolean canCreateSubwaypoint(WaypointGroup group) {
+        return group != null && group.mainWaypointCount() > 0;
     }
 
     static int creationFlags(int baseFlags, CreationOptions options) {
@@ -318,9 +344,60 @@ public final class AddNamedWaypointScreen extends Screen {
         if (confirmButton != null) confirmButton.active = hasName;
     }
 
+    private void updatePreview() {
+        if (!showSubtypeOptions || manager == null || targetGroup == null) return;
+
+        if (previewGroup == null) {
+            previewGroup = WaypointGroup.create("Waypoint preview", targetGroup.zoneId());
+            previewGroup.setTemp(true);
+            previewGroup.setRuntimeOnly(true);
+            previewGroup.setLoadMode(WaypointGroup.LoadMode.STATIC);
+            previewGroup.setGradientStartColor(targetGroup.gradientStartColor());
+            previewGroup.setGradientEndColor(targetGroup.gradientEndColor());
+            previewGroup.setStaticColor(targetGroup.staticColor());
+            previewGroup.setGradientMode(targetGroup.gradientMode());
+            previewGroup.setPaint(targetGroup.paint());
+            previewGroup.setPaintEnabled(targetGroup.paintEnabled());
+            manager.setWaypointPreview(previewGroup);
+        }
+
+        CreationOptions options = creationOptions(
+                subwaypointAvailable, subwaypointSelected, smallSelected);
+        int flags = creationFlags(fixedFlags, options);
+        String previewName = enteredName == null ? "" : enteredName.trim();
+        Waypoint preview = options.small()
+                ? new Waypoint(
+                        Math.floorDiv(fixedPreciseX, Waypoint.PRECISE_SCALE),
+                        Math.floorDiv(fixedPreciseY, Waypoint.PRECISE_SCALE),
+                        Math.floorDiv(fixedPreciseZ, Waypoint.PRECISE_SCALE),
+                        previewName, config.defaultWaypointColor(), flags, 0.0,
+                        Waypoint.TEMP_NONE, 0L,
+                        fixedPreciseX, fixedPreciseY, fixedPreciseZ)
+                : new Waypoint(fixedX, fixedY, fixedZ, previewName,
+                        config.defaultWaypointColor(), flags, 0.0);
+
+        List<Waypoint> previewWaypoints = new ArrayList<>(targetGroup.waypoints());
+        previewWaypoints.add(preview);
+        previewGroup.replaceWaypoints(previewWaypoints);
+        previewGroup.focusOnlyVisibleIndex(previewWaypoints.size() - 1);
+    }
+
+    private void clearPreview() {
+        if (previewGroup == null || manager == null) return;
+        manager.clearWaypointPreview(previewGroup);
+        previewGroup = null;
+    }
+
     @Override
     public void onClose() {
+        clearPreview();
         MinecraftCompat.setScreen(minecraft, parent);
+    }
+
+    @Override
+    public void removed() {
+        clearPreview();
+        super.removed();
     }
 
     @Override

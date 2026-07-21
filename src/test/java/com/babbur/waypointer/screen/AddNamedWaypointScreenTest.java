@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,6 +42,19 @@ class AddNamedWaypointScreenTest {
         assertFalse(regular.small());
         assertTrue(smallSubwaypoint.subwaypoint());
         assertTrue(smallSubwaypoint.small());
+    }
+
+    @Test
+    void subwaypointOptionRequiresAnExistingParentWaypoint() {
+        WaypointGroup empty = WaypointGroup.create("route", "hub");
+
+        assertFalse(AddNamedWaypointScreen.canCreateSubwaypoint(empty));
+        assertFalse(AddNamedWaypointScreen.creationOptions(false, true, true).subwaypoint());
+
+        empty.add(Waypoint.at(0, 0, 0));
+
+        assertTrue(AddNamedWaypointScreen.canCreateSubwaypoint(empty));
+        assertTrue(AddNamedWaypointScreen.creationOptions(true, true, true).small());
     }
 
     @Test

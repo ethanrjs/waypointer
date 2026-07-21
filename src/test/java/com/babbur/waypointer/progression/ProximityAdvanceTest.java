@@ -240,6 +240,21 @@ class ProximityAdvanceTest {
     }
 
     @Test
+    void oneWaypointLoopRearmsOnlyAfterLeavingItsReachRadius() {
+        WaypointGroup group = WaypointGroup.create("single", "test_zone");
+        group.setDefaultRadius(2.0);
+        group.add(Waypoint.at(0, 0, 0));
+
+        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5, true));
+        assertEquals(0, group.currentIndex());
+        assertTrue(group.isProximitySuppressed(0));
+
+        assertFalse(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5, true));
+        assertFalse(ProximityTracker.advanceIfReached(group, 5.0, 0.5, 0.5, true));
+        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5, true));
+    }
+
+    @Test
     void dungeonRoomRouteDoesNotLoopWhenRestartEnabled() {
         WaypointGroup group = dungeonTriggerGroup();
         group.add(Waypoint.at(0, 0, 0));

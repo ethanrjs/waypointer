@@ -280,7 +280,7 @@ public final class WaypointerKeybinds {
             return;
         }
         while (addWaypointWhereLooking.consumeClick()) {
-            WaypointRepositionMode.startAddWhereLooking(manager, config);
+            WaypointRepositionMode.openAddWhereLooking(manager, config);
             drainWaypointKeybindClicks();
             return;
         }

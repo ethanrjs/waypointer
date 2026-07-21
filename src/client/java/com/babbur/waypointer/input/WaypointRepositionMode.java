@@ -235,6 +235,28 @@ public final class WaypointRepositionMode {
         startAddSession(manager, config, Mode.ADD_WHERE_LOOKING, false);
     }
 
+    /** Capture the current crosshair target and open the naming screen immediately. */
+    public static void openAddWhereLooking(ActiveGroupManager manager, WaypointerConfig config) {
+        if (manager == null || config == null) return;
+
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) return;
+        if (addBlockedByInstalledSecrets(mc, manager)) return;
+
+        BlockPos pos = targetedBlock(mc);
+        PreciseTarget precise = targetedPrecise(mc);
+        if (pos == null || precise == null) {
+            showStatus(mc, HELP_EDIT_NO_BLOCK_TARGET);
+            return;
+        }
+
+        WaypointGroup group = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
+        int flags = defaultDungeonEditFlags(group, mc.level, pos);
+        AddNamedWaypointScreen.openWhereLooking(null, manager, config, group,
+                pos.getX(), pos.getY(), pos.getZ(),
+                precise.preciseX(), precise.preciseY(), precise.preciseZ(), flags);
+    }
+
     private static void startAddSession(ActiveGroupManager manager, WaypointerConfig config,
                                         Mode mode, boolean preciseSmallPlacement) {
         if (manager == null || config == null) return;
