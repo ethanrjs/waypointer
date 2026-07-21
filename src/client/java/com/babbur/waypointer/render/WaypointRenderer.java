@@ -505,14 +505,29 @@ public final class WaypointRenderer implements HudElement {
                     cached.result(), true, Math.max(0L, now - cached.computedAtNanos()));
         }
 
-        GroundPathfinder.PathResult result = GroundPathfinder.findPathResult(
-                level,
-                playerPos,
-                target,
-                GroundPathfinder.NO_DISTANCE_LIMIT,
-                DUNGEON_ENTRY_MAX_EXPANSIONS,
-                DUNGEON_ENTRY_SEARCH_PADDING,
-                DUNGEON_ENTRY_SEARCH_PADDING);
+        long startedAtNanos = System.nanoTime();
+        GroundPathfinder.PathResult result;
+        try {
+            result = GroundPathfinder.findPathResult(
+                    level,
+                    playerPos,
+                    target,
+                    GroundPathfinder.NO_DISTANCE_LIMIT,
+                    DUNGEON_ENTRY_MAX_EXPANSIONS,
+                    DUNGEON_ENTRY_SEARCH_PADDING,
+                    DUNGEON_ENTRY_SEARCH_PADDING);
+        } catch (RuntimeException error) {
+            Waypointer.LOGGER.warn("Dungeon entry path calculation failed; using tracer fallback", error);
+            result = new GroundPathfinder.PathResult(List.of(), new GroundPathfinder.Diagnostics(
+                    start,
+                    GroundPathfinder.targetBlock(target),
+                    null,
+                    null,
+                    GroundPathfinder.FailureReason.CALCULATION_FAILED,
+                    0,
+                    DUNGEON_ENTRY_MAX_EXPANSIONS,
+                    Math.max(0L, System.nanoTime() - startedAtNanos)));
+        }
         dungeonEntryPathCache.put(targetKey, new DungeonEntryPath(start, result, now));
         return new DungeonEntryPathLookup(result, false, 0L);
     }

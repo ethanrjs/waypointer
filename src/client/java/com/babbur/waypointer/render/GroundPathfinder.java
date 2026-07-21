@@ -40,7 +40,8 @@ final class GroundPathfinder {
         NO_PASSABLE_GOAL("no passable goal"),
         OUTSIDE_DISTANCE_LIMIT("outside pathfinding distance limit"),
         EXPANSION_LIMIT_EXHAUSTED("expansion limit exhausted"),
-        NO_ROUTE_WITHIN_BOUNDS("no route within search bounds");
+        NO_ROUTE_WITHIN_BOUNDS("no route within search bounds"),
+        CALCULATION_FAILED("path calculation failed");
 
         private final String description;
 
