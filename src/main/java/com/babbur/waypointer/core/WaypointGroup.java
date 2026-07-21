@@ -383,6 +383,17 @@ public final class WaypointGroup {
         if (cur < 0) return;
 
         int activeParent = activeSubwaypointParentIndex();
+        if (isDungeonRoomRoute()) {
+            if (activeParent >= 0) {
+                action.accept(activeParent);
+                for (int child = activeParent + 1; child < n && isSubwaypoint(child); child++) {
+                    action.accept(child);
+                }
+            }
+            for (int i = cur; i < n; i++) action.accept(i);
+            return;
+        }
+
         int prev = previousMainIndexBefore(cur);
         if (activeParent >= 0) {
             action.accept(activeParent);
@@ -422,6 +433,10 @@ public final class WaypointGroup {
         return zoneId.equals("dungeon")
                 || zoneId.startsWith("dungeon_")
                 || DungeonRoomData.definition(zoneId) != null;
+    }
+
+    private boolean isDungeonRoomRoute() {
+        return DungeonRoomData.definition(zoneId) != null;
     }
 
     public Waypoint get(int index) {

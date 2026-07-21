@@ -78,6 +78,9 @@ public final class DungeonConfig {
      */
     private boolean routesPromptDismissed = false;
 
+    /** Definition-backed room routes explicitly hidden from the route list pill. */
+    private List<String> hiddenRouteRoomIds = new ArrayList<>();
+
     private transient Path file;
     private transient AsyncSaver saver;
     private transient final List<Runnable> enabledListeners = new ArrayList<>();
@@ -136,6 +139,11 @@ public final class DungeonConfig {
     public boolean autoCompleteRoomsOnGreenCheckmark() { return autoCompleteRoomsOnGreenCheckmark; }
     public boolean routesPromptDismissed()  { return routesPromptDismissed; }
 
+    public boolean roomRouteEnabled(String roomId) {
+        if (roomId == null || roomId.isBlank()) return true;
+        return hiddenRouteRoomIds == null || !hiddenRouteRoomIds.contains(roomId);
+    }
+
     public void setEnabled(boolean v) {
         if (enabled == v) return;
         enabled = v;
@@ -164,6 +172,7 @@ public final class DungeonConfig {
         hideCompletedRooms = defaults.hideCompletedRooms;
         autoCompleteRoomsOnGreenCheckmark = defaults.autoCompleteRoomsOnGreenCheckmark;
         routesPromptDismissed = defaults.routesPromptDismissed;
+        hiddenRouteRoomIds = new ArrayList<>();
         save();
         if (notifyEnabledListeners) {
             for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
@@ -177,6 +186,14 @@ public final class DungeonConfig {
         save();
     }
     public void setRoutesPromptDismissed(boolean v) { this.routesPromptDismissed = v; save(); }
+    public void setRoomRouteEnabled(String roomId, boolean enabled) {
+        if (roomId == null || roomId.isBlank()) return;
+        if (hiddenRouteRoomIds == null) hiddenRouteRoomIds = new ArrayList<>();
+        boolean changed = enabled
+                ? hiddenRouteRoomIds.remove(roomId)
+                : !hiddenRouteRoomIds.contains(roomId) && hiddenRouteRoomIds.add(roomId);
+        if (changed) save();
+    }
     public void setDefaultDirection(String v) {
         if (v == null) return;
         String upper = v.trim().toUpperCase(java.util.Locale.ROOT);

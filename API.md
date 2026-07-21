@@ -314,6 +314,7 @@ WaypointSpec secret = WaypointSpec.at(12, 70, -8)
 | `DEPTH_CHECKED` | Render only through the normal depth buffer |
 | `SKIP_ON_STAND` | Advance when standing on the point's block |
 | `SKIP_ON_INTERACT` | Advance when interacting with the point's block |
+| `SKIP_ON_MINE` | Advance after the point's block is observed and then mined |
 
 Subwaypoint style flags only have meaning when `SUBWAYPOINT` is also set.
 `WaypointFlags.contains(flags, required)` checks a bit set.

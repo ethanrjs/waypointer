@@ -163,6 +163,8 @@ class GroupEditScreenTest {
                 GroupEditScreen.dungeonStandSkipTooltipText());
         assertEquals("Dungeons: Interact to skip",
                 GroupEditScreen.dungeonInteractSkipTooltipText());
+        assertEquals("Dungeons: Mine to skip",
+                GroupEditScreen.dungeonMineSkipTooltipText());
     }
 
     @Test
@@ -173,12 +175,18 @@ class GroupEditScreenTest {
         assertEquals(Waypoint.FLAG_SKIP_ON_INTERACT,
                 GroupEditScreen.waypointControlFlagForAction(
                         GroupEditScreen.WAYPOINT_CONTROL_ACTION_INTERACT_SKIP, true));
+        assertEquals(Waypoint.FLAG_SKIP_ON_MINE,
+                GroupEditScreen.waypointControlFlagForAction(
+                        GroupEditScreen.WAYPOINT_CONTROL_ACTION_MINE_SKIP, true));
         assertEquals(0,
                 GroupEditScreen.waypointControlFlagForAction(
                         GroupEditScreen.WAYPOINT_CONTROL_ACTION_STAND_SKIP, false));
         assertEquals(0,
                 GroupEditScreen.waypointControlFlagForAction(
                         GroupEditScreen.WAYPOINT_CONTROL_ACTION_INTERACT_SKIP, false));
+        assertEquals(0,
+                GroupEditScreen.waypointControlFlagForAction(
+                        GroupEditScreen.WAYPOINT_CONTROL_ACTION_MINE_SKIP, false));
         assertEquals(Waypoint.FLAG_DEPTH_CHECKED,
                 GroupEditScreen.waypointControlFlagForAction(
                         GroupEditScreen.WAYPOINT_CONTROL_ACTION_DEPTH_CHECK, false));

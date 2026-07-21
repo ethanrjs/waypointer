@@ -118,6 +118,16 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void definitionRoutePillReflectsPersistedDungeonVisibility() {
+        com.babbur.waypointer.dungeon.config.DungeonConfig config =
+                new com.babbur.waypointer.dungeon.config.DungeonConfig();
+
+        assertTrue(WaypointerScreen.definitionRouteEnabled(config, "room-a"));
+        config.setRoomRouteEnabled("room-a", false);
+        assertFalse(WaypointerScreen.definitionRouteEnabled(config, "room-a"));
+    }
+
+    @Test
     void hideAllConfirmationRequiresSameShownRoutesInsideWindow() {
         WaypointGroup first = WaypointGroup.create("First", "hub");
         WaypointGroup second = WaypointGroup.create("Second", "hub");
@@ -283,6 +293,55 @@ class WaypointerScreenTest {
         } finally {
             DungeonRoomData.clearAllCustom();
         }
+    }
+
+    @Test
+    void currentDungeonRoomSortsFirstEvenWhenItHasNoSavedRoute() {
+        DungeonRoomData.clearAllCustom();
+        try {
+            defineRoom("zed-populated", "Zed Populated");
+            defineRoom("alpha-current", "Alpha Current");
+            defineRoom("beta-populated", "Beta Populated");
+
+            assertEquals(List.of("alpha-current", "beta-populated", "zed-populated"),
+                    WaypointerScreen.orderedDungeonRoomIds(
+                            List.of("zed-populated", "alpha-current", "beta-populated"),
+                            Set.of("zed-populated", "beta-populated"),
+                            "alpha-current"));
+        } finally {
+            DungeonRoomData.clearAllCustom();
+        }
+    }
+
+    @Test
+    void roomFocusScrollOnlyMovesWhenTheTargetIsOutsideTheViewport() {
+        int pitch = GuiTokens.ROW_H + 4;
+        int viewport = pitch * 3;
+
+        assertEquals(pitch * 2, WaypointerScreen.scrollOffsetToRevealRow(
+                pitch * 2, 3, 10, viewport),
+                "an already-visible target preserves user scroll");
+
+        int revealed = WaypointerScreen.scrollOffsetToRevealRow(0, 7, 10, viewport);
+        int rowTop = 7 * pitch;
+        int rowBottom = rowTop + GuiTokens.ROW_H + 2;
+        assertTrue(rowTop >= revealed);
+        assertTrue(rowBottom <= revealed + viewport);
+
+        assertEquals(0, WaypointerScreen.scrollOffsetToRevealRow(
+                revealed, 0, 10, viewport),
+                "a newly-current first room scrolls back to the top");
+    }
+
+    @Test
+    void currentDungeonRoomHeaderUsesPersistentGreenHighlight() {
+        assertEquals(WaypointerScreen.CURRENT_DUNGEON_ROOM_ACCENT,
+                WaypointerScreen.roomHeaderAccent(true));
+        assertTrue(WaypointerScreen.roomHeaderAccent(true)
+                != WaypointerScreen.roomHeaderAccent(false));
+        assertTrue(WaypointerScreen.roomHeaderBackground(false, false, true) != 0,
+                "current room stays highlighted when a child route owns selection");
+        assertEquals(0, WaypointerScreen.roomHeaderBackground(false, false, false));
     }
 
     @Test

@@ -501,6 +501,106 @@ class DungeonRoomRouteSyncTest {
     }
 
     @Test
+    void manualStoredProgressChangesUpdateTheRenderedMirrorAcrossRebuilds() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
+        sync = new DungeonRoomRouteSync(manager, tracker);
+        sync.install();
+        DungeonRoom room = room("manual-progress-room", "Manual Progress Room");
+        DungeonRoomData.defineRoom("manual-progress-room", "Manual Progress Room", room);
+
+        WaypointGroup stored = WaypointGroup.create("User Route", "manual-progress-room");
+        stored.add(Waypoint.at(1, 70, 1));
+        stored.add(Waypoint.at(2, 70, 2));
+        stored.add(Waypoint.at(3, 70, 3));
+        manager.add(stored);
+        tracker.setCurrentRoom(room);
+
+        String mirrorId = DungeonRoomRouteSync.generatedGroupId("manual-progress-room");
+        WaypointGroup mirror = manager.get(mirrorId);
+        mirror.setCurrentIndex(1);
+
+        DungeonRoomRouteSync.setManualCurrentIndex(manager, stored, 2);
+        manager.fireDataChanged();
+
+        assertEquals(2, stored.currentIndex());
+        assertEquals(2, manager.get(mirrorId).currentIndex(),
+                "a manual selection must replace stale runtime progress");
+        assertArrayEquals(new int[] { 2 }, visibleIndices(manager.get(mirrorId)));
+
+        DungeonRoomRouteSync.resetManualProgress(manager, stored);
+        manager.fireDataChanged();
+
+        assertEquals(0, stored.currentIndex());
+        assertEquals(0, manager.get(mirrorId).currentIndex(),
+                "reset must restore the rendered route to its first waypoint");
+        assertArrayEquals(new int[] { 0, 1, 2 }, visibleIndices(manager.get(mirrorId)));
+    }
+
+    @Test
+    void definitionRouteVisibilitySurvivesRuntimeMirrorRebuilds() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonConfig config = new DungeonConfig();
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, config);
+        sync = new DungeonRoomRouteSync(manager, tracker, new DungeonRouteSession(), config);
+        sync.install();
+        DungeonRoom room = room("toggle-definition-room", "Toggle Definition Room");
+        DungeonRoomDefinition definition = DungeonRoomData.defineRoom(
+                "toggle-definition-room", "Toggle Definition Room", room);
+        DungeonRoomData.addWaypoint(definition.id(),
+                DungeonWaypoint.plain("secret", DungeonSecretCategory.CHEST, 1, 70, 1, ""));
+        tracker.setCurrentRoom(room);
+
+        String mirrorId = DungeonRoomRouteSync.generatedGroupId(definition.id());
+        WaypointGroup mirror = manager.get(mirrorId);
+        assertTrue(mirror.enabled());
+
+        DungeonRoomRouteSync.setRouteEnabled(manager, config, mirror, false);
+        manager.fireDataChanged();
+
+        assertFalse(config.roomRouteEnabled(definition.id()));
+        assertNotNull(manager.get(mirrorId));
+        assertFalse(manager.get(mirrorId).enabled(),
+                "a hidden definition mirror must not resurrect enabled during sync");
+
+        DungeonRoomRouteSync.setRouteEnabled(manager, config, manager.get(mirrorId), true);
+        manager.fireDataChanged();
+
+        assertTrue(config.roomRouteEnabled(definition.id()));
+        assertTrue(manager.get(mirrorId).enabled());
+    }
+
+    @Test
+    void storedRouteVisibilityControlsItsRuntimeMirror() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonConfig config = new DungeonConfig();
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, config);
+        sync = new DungeonRoomRouteSync(manager, tracker, new DungeonRouteSession(), config);
+        sync.install();
+        DungeonRoom room = room("toggle-stored-room", "Toggle Stored Room");
+        DungeonRoomData.defineRoom("toggle-stored-room", "Toggle Stored Room", room);
+        WaypointGroup stored = WaypointGroup.create("User Route", "toggle-stored-room");
+        stored.add(Waypoint.at(1, 70, 1));
+        manager.add(stored);
+        tracker.setCurrentRoom(room);
+
+        String mirrorId = DungeonRoomRouteSync.generatedGroupId("toggle-stored-room");
+        assertNotNull(manager.get(mirrorId));
+
+        DungeonRoomRouteSync.setRouteEnabled(manager, config, stored, false);
+        manager.fireDataChanged();
+
+        assertFalse(stored.enabled());
+        assertNull(manager.get(mirrorId), "a hidden stored route removes its runtime projection");
+
+        DungeonRoomRouteSync.setRouteEnabled(manager, config, stored, true);
+        manager.fireDataChanged();
+
+        assertTrue(stored.enabled());
+        assertTrue(manager.get(mirrorId).enabled());
+    }
+
+    @Test
     void editableRouteFromDefinitionKeepsRoomLocalCoordinatesAndUniformColors() {
         DungeonRoom room = room("convert-room", "Convert Room");
         DungeonRoomDefinition definition =

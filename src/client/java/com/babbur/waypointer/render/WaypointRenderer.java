@@ -790,7 +790,8 @@ public final class WaypointRenderer implements HudElement {
     static boolean usesBlockShapeBounds(Waypoint waypoint) {
         if (waypoint == null) return false;
         if (isSmallSubwaypoint(waypoint)) return false;
-        if (waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT)) return true;
+        if (waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT)
+                || waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_MINE)) return true;
         return waypoint.isSubwaypoint();
     }
 

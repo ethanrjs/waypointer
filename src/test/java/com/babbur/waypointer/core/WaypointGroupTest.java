@@ -438,6 +438,22 @@ class WaypointGroupTest {
     }
 
     @Test
+    void forEachVisibleIndex_dungeonRoomSequence_showsAllRemainingWaypoints() {
+        WaypointGroup group = WaypointGroup.create("Dungeon Room", "altar");
+        group.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        group.add(Waypoint.at(0, 70, 0));
+        group.add(Waypoint.at(1, 70, 0));
+        group.add(Waypoint.at(2, 70, 0));
+        group.add(Waypoint.at(3, 70, 0));
+
+        assertArrayEquals(new int[] { 0, 1, 2, 3 }, visibleIndices(group));
+
+        group.setCurrentIndex(2);
+        assertArrayEquals(new int[] { 2, 3 }, visibleIndices(group),
+                "completed room waypoints stay hidden while every remaining one is surfaced");
+    }
+
+    @Test
     void forEachVisibleIndex_sequenceMode_atEnd_showsPrevAndCurrent() {
         WaypointGroup g = route();
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);

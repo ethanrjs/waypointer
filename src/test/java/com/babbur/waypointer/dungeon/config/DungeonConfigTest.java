@@ -100,4 +100,19 @@ class DungeonConfigTest {
         assertEquals("SE", config.defaultDirection());
     }
 
+    @Test
+    void definitionRouteVisibilityDefaultsShownAndPersistsPerRoom() {
+        DungeonConfig config = new DungeonConfig();
+
+        assertTrue(config.roomRouteEnabled("room-a"));
+        assertTrue(config.roomRouteEnabled("room-b"));
+
+        config.setRoomRouteEnabled("room-a", false);
+        assertFalse(config.roomRouteEnabled("room-a"));
+        assertTrue(config.roomRouteEnabled("room-b"));
+
+        config.setRoomRouteEnabled("room-a", true);
+        assertTrue(config.roomRouteEnabled("room-a"));
+    }
+
 }

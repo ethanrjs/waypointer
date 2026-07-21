@@ -17,7 +17,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -159,6 +161,28 @@ class ProximityAdvanceTest {
         assertFalse(ProximityTracker.advanceIfInteractedWithBlock(group, 5, 2, 6, false));
 
         assertEquals(0, group.currentIndex());
+    }
+
+    @Test
+    void mineSkipAdvancesOnlyAfterObservedDungeonBlockBecomesAir() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.setDefaultRadius(10.0);
+        group.add(Waypoint.at(4, 2, 6).withFlags(Waypoint.FLAG_SKIP_ON_MINE));
+        Set<ProximityTracker.MineTarget> observed = new HashSet<>();
+
+        assertFalse(ProximityTracker.updateMinedWaypointProgress(
+                group, (x, y, z) -> ProximityTracker.MINE_BLOCK_AIR,
+                observed, new HashSet<>(), false, false, 1_000L, false));
+        assertFalse(ProximityTracker.advanceIfReached(group, 4.5, 2.5, 6.5,
+                false, true, false, 1_000L));
+        assertFalse(ProximityTracker.updateMinedWaypointProgress(
+                group, (x, y, z) -> ProximityTracker.MINE_BLOCK_PRESENT,
+                observed, new HashSet<>(), false, false, 1_100L, false));
+        assertTrue(ProximityTracker.updateMinedWaypointProgress(
+                group, (x, y, z) -> ProximityTracker.MINE_BLOCK_AIR,
+                observed, new HashSet<>(), false, false, 1_200L, false));
+
+        assertTrue(group.isComplete());
     }
 
     @Test
