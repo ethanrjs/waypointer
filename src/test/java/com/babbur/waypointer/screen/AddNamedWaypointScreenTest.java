@@ -1,9 +1,12 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.core.Waypoint;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AddNamedWaypointScreenTest {
 
@@ -25,5 +28,32 @@ class AddNamedWaypointScreenTest {
 
         assertEquals(64, capped.length());
         assertEquals("A".repeat(64), capped);
+    }
+
+    @Test
+    void smallOptionRequiresSubwaypoint() {
+        AddNamedWaypointScreen.CreationOptions regular =
+                AddNamedWaypointScreen.creationOptions(false, true);
+        AddNamedWaypointScreen.CreationOptions smallSubwaypoint =
+                AddNamedWaypointScreen.creationOptions(true, true);
+
+        assertFalse(regular.subwaypoint());
+        assertFalse(regular.small());
+        assertTrue(smallSubwaypoint.subwaypoint());
+        assertTrue(smallSubwaypoint.small());
+    }
+
+    @Test
+    void creationFlagsPreserveBaseFlagsAndAddOnlyValidSubwaypointFlags() {
+        int baseFlags = Waypoint.FLAG_SKIP_ON_STAND;
+
+        assertEquals(baseFlags, AddNamedWaypointScreen.creationFlags(baseFlags,
+                AddNamedWaypointScreen.creationOptions(false, true)));
+        assertEquals(baseFlags | Waypoint.FLAG_SUBWAYPOINT,
+                AddNamedWaypointScreen.creationFlags(baseFlags,
+                        AddNamedWaypointScreen.creationOptions(true, false)));
+        assertEquals(baseFlags | Waypoint.FLAG_SUBWAYPOINT | Waypoint.FLAG_SMALL_SUBWAYPOINT,
+                AddNamedWaypointScreen.creationFlags(baseFlags,
+                        AddNamedWaypointScreen.creationOptions(true, true)));
     }
 }

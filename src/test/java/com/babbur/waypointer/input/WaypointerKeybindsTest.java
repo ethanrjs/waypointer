@@ -49,20 +49,19 @@ class WaypointerKeybindsTest {
                 WaypointerKeybinds.ADD_WAYPOINT_HERE_TRANSLATION_KEY,
                 WaypointerKeybinds.ADD_NAMED_WAYPOINT_HERE_TRANSLATION_KEY,
                 WaypointerKeybinds.ADD_TEMP_WAYPOINT_HERE_TRANSLATION_KEY,
-                WaypointerKeybinds.ADD_SUBWAYPOINT_WHERE_LOOKING_TRANSLATION_KEY,
-                WaypointerKeybinds.ADD_SMALL_SUBWAYPOINT_WHERE_LOOKING_TRANSLATION_KEY,
                 WaypointerKeybinds.SKIP_WAYPOINT_TRANSLATION_KEY,
                 WaypointerKeybinds.PREVIOUS_WAYPOINT_TRANSLATION_KEY,
                 WaypointerKeybinds.ENTER_EDIT_MODE_TRANSLATION_KEY,
                 WaypointerKeybinds.EXIT_EDIT_MODE_TRANSLATION_KEY,
                 WaypointerKeybinds.TOGGLE_EDIT_MODE_TRANSLATION_KEY,
-                WaypointerKeybinds.REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY,
-                WaypointerKeybinds.REPOSITION_ADD_NAMED_WAYPOINT_TRANSLATION_KEY),
+                WaypointerKeybinds.REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY),
                 WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS);
-        assertEquals(13, WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size());
+        assertEquals(10, WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size());
         for (String translationKey : WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS) {
             assertLanguageEntry(english, translationKey);
         }
+        assertEquals("Add Waypoint Where Looking",
+                english.get(WaypointerKeybinds.REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY).getAsString());
     }
 
     @Test
