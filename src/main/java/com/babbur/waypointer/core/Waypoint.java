@@ -53,6 +53,8 @@ public record Waypoint(
     public static final int FLAG_SKIP_ON_STAND = 1 << 9;
     /** Dungeon-room behavior flag: interacting with this waypoint's block explicitly advances/skips it. */
     public static final int FLAG_SKIP_ON_INTERACT = 1 << 10;
+    /** Dungeon-room behavior flag: mining this waypoint's block explicitly advances/skips it. */
+    public static final int FLAG_SKIP_ON_MINE = 1 << 11;
     /** Visual flags that only make sense while {@link #FLAG_SUBWAYPOINT} is present. */
     public static final int SUBWAYPOINT_STYLE_FLAGS = FLAG_SMALL_SUBWAYPOINT
             | FLAG_FILLED_SUBWAYPOINT

@@ -152,13 +152,18 @@ class WaypointRendererTest {
     }
 
     @Test
-    void blockShapeWaypointBoundsAcceptsInteractWaypointShapes() {
+    void blockShapeWaypointBoundsAcceptsBlockTriggerWaypointShapes() {
         Waypoint interactWaypoint = waypointAt(10, 64, -5, Waypoint.FLAG_SKIP_ON_INTERACT);
+        Waypoint mineWaypoint = waypointAt(10, 64, -5, Waypoint.FLAG_SKIP_ON_MINE);
+        AABB localBounds = new AABB(0.375, 0.125, 0.25, 0.625, 0.875, 0.75);
 
-        AABB actual = WaypointRenderer.blockShapeWaypointBounds(interactWaypoint,
-                new AABB(0.375, 0.125, 0.25, 0.625, 0.875, 0.75));
+        AABB interactBounds = WaypointRenderer.blockShapeWaypointBounds(
+                interactWaypoint, localBounds);
+        AABB mineBounds = WaypointRenderer.blockShapeWaypointBounds(mineWaypoint, localBounds);
 
-        assertAabbEquals(new AABB(10.375, 64.125, -4.75, 10.625, 64.875, -4.25), actual);
+        AABB expected = new AABB(10.375, 64.125, -4.75, 10.625, 64.875, -4.25);
+        assertAabbEquals(expected, interactBounds);
+        assertAabbEquals(expected, mineBounds);
     }
 
     @Test
