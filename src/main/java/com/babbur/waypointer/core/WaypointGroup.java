@@ -651,6 +651,15 @@ public final class WaypointGroup {
             advancePast(reachedIndex);
             return;
         }
+        // A single destination has no meaningful start-to-finish interval. Keep
+        // its normal progression/loop behavior, but never manufacture a 0 ms
+        // record or completion message from entering the same point.
+        if (mainWaypointCount() == 1) {
+            resetRouteTiming();
+            pendingRouteCompletion = null;
+            advancePast(reachedIndex);
+            return;
+        }
 
         int from = currentIndex;
         boolean timing = routeStartedAtMillis >= 0L;

@@ -23,11 +23,11 @@ import java.util.List;
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
 /**
- * One-field modal for creating a waypoint with a name.
+ * One-field modal for creating a waypoint with an optional name.
  *
  * <p>The normal create action stays instant and unnamed. This prompt is the
- * explicit "I want to name it now" path, so it does only that: focus a single
- * text box, commit on Enter, and close on Cancel or Confirm.
+ * explicit naming path: focus a single text box, commit on Enter, and close on
+ * Cancel or Confirm. Leaving the field blank creates an unnamed waypoint.
  */
 public final class AddNamedWaypointScreen extends Screen {
 
@@ -55,10 +55,8 @@ public final class AddNamedWaypointScreen extends Screen {
     private final boolean subwaypointAvailable;
 
     private EditBox nameBox;
-    private Button confirmButton;
     private GuiTokens.StyledCheckbox subwaypointCheckbox;
     private GuiTokens.StyledCheckbox smallCheckbox;
-    private boolean nameErrorVisible;
     private String enteredName = "";
     private boolean subwaypointSelected;
     private boolean smallSelected;
@@ -169,11 +167,10 @@ public final class AddNamedWaypointScreen extends Screen {
         addRenderableWidget(styledButton(
                 panelX + PANEL_W - PAD_OUTER - 140 - GAP, footerY, 70, BTN_H,
                 Component.literal("Cancel"), this::onCancelButtonClicked, null));
-        confirmButton = styledButton(
+        Button confirmButton = styledButton(
                 panelX + PANEL_W - PAD_OUTER - 70, footerY, 70, BTN_H,
                 Component.literal("Confirm"), this::onConfirmButtonClicked, null);
         addRenderableWidget(confirmButton);
-        updateConfirmState();
         updatePreview();
     }
 
@@ -200,11 +197,6 @@ public final class AddNamedWaypointScreen extends Screen {
         }
 
         super.extractRenderState(g, mouseX, mouseY, partial);
-        if (nameErrorVisible) {
-            int errorY = showSubtypeOptions ? panelY + 56 : panelY + 60;
-            g.text(font, "Name required", panelX + PAD_OUTER, errorY,
-                    0xFFFF8A8A, false);
-        }
     }
 
     @Override
@@ -228,11 +220,6 @@ public final class AddNamedWaypointScreen extends Screen {
     private void createAndClose() {
         String draft = nameBox == null ? enteredName : nameBox.getValue();
         String name = sanitizeWaypointName(draft);
-        if (name == null) {
-            nameErrorVisible = true;
-            updateConfirmState();
-            return;
-        }
 
         int x;
         int y;
@@ -285,7 +272,6 @@ public final class AddNamedWaypointScreen extends Screen {
 
     private void onNameEdited(String value) {
         enteredName = value == null ? "" : value;
-        updateConfirmState();
         updatePreview();
     }
 
@@ -329,19 +315,10 @@ public final class AddNamedWaypointScreen extends Screen {
     }
 
     static String sanitizeWaypointName(String rawName) {
-        if (rawName == null) return null;
-        String trimmed = rawName.trim();
-        if (trimmed.isEmpty()) return null;
+        String trimmed = rawName == null ? "" : rawName.trim();
         return trimmed.length() > MAX_NAME_LENGTH
                 ? trimmed.substring(0, MAX_NAME_LENGTH)
                 : trimmed;
-    }
-
-    private void updateConfirmState() {
-        String draft = nameBox == null ? enteredName : nameBox.getValue();
-        boolean hasName = sanitizeWaypointName(draft) != null;
-        if (hasName) nameErrorVisible = false;
-        if (confirmButton != null) confirmButton.active = hasName;
     }
 
     private void updatePreview() {
