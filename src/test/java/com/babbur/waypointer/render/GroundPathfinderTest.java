@@ -65,6 +65,84 @@ class GroundPathfinderTest {
     }
 
     @Test
+    void diagnosesNoPassableStartAndPreservesRequestedEndpoints() {
+        BlockPos start = new BlockPos(0, 0, 0);
+        BlockPos goal = new BlockPos(2, 0, 0);
+        GroundPathfinder.GridPathResult result = GroundPathfinder.findPathResult(
+                (x, y, z) -> x == 2 && y == 0 && z == 0,
+                start,
+                goal,
+                16,
+                64,
+                12,
+                32);
+
+        assertTrue(result.cells().isEmpty());
+        assertEquals(GroundPathfinder.FailureReason.NO_PASSABLE_START,
+                result.diagnostics().reason());
+        assertEquals(start, result.diagnostics().rawStart());
+        assertEquals(goal, result.diagnostics().rawGoal());
+        assertEquals(start, result.diagnostics().resolvedStart());
+        assertEquals(goal, result.diagnostics().resolvedGoal());
+        assertEquals(0, result.diagnostics().expansions());
+        assertEquals(64, result.diagnostics().expansionLimit());
+        assertTrue(result.diagnostics().computeTimeNanos() >= 0L);
+    }
+
+    @Test
+    void diagnosesTargetsOutsideDistanceLimitWithoutExpanding() {
+        GroundPathfinder.GridPathResult result = GroundPathfinder.findPathResult(
+                (x, y, z) -> true,
+                new BlockPos(0, 0, 0),
+                new BlockPos(20, 0, 0),
+                4,
+                64,
+                12,
+                32);
+
+        assertTrue(result.cells().isEmpty());
+        assertEquals(GroundPathfinder.FailureReason.OUTSIDE_DISTANCE_LIMIT,
+                result.diagnostics().reason());
+        assertEquals(0, result.diagnostics().expansions());
+    }
+
+    @Test
+    void distinguishesExpansionLimitFromNoRouteWithinBounds() {
+        GroundPathfinder.Grid detourGrid = (x, y, z) ->
+                y == 0
+                        && x >= 0 && x <= 4
+                        && z >= 0 && z <= 1
+                        && !(x == 1 && z == 0);
+        GroundPathfinder.GridPathResult limited = GroundPathfinder.findPathResult(
+                detourGrid,
+                new BlockPos(0, 0, 0),
+                new BlockPos(4, 0, 0),
+                16,
+                1,
+                12,
+                32);
+
+        GroundPathfinder.Grid isolatedEndpoints = (x, y, z) ->
+                y == 0 && z == 0 && (x == 0 || x == 2);
+        GroundPathfinder.GridPathResult exhausted = GroundPathfinder.findPathResult(
+                isolatedEndpoints,
+                new BlockPos(0, 0, 0),
+                new BlockPos(2, 0, 0),
+                16,
+                64,
+                12,
+                32);
+
+        assertEquals(GroundPathfinder.FailureReason.EXPANSION_LIMIT_EXHAUSTED,
+                limited.diagnostics().reason());
+        assertEquals(1, limited.diagnostics().expansions());
+        assertEquals(1, limited.diagnostics().expansionLimit());
+        assertEquals(GroundPathfinder.FailureReason.NO_ROUTE_WITHIN_BOUNDS,
+                exhausted.diagnostics().reason());
+        assertTrue(exhausted.diagnostics().expansions() < exhausted.diagnostics().expansionLimit());
+    }
+
+    @Test
     void doesNotCutDiagonallyThroughBlockedCorners() {
         Set<BlockPos> walkable = Set.of(
                 new BlockPos(0, 0, 0),

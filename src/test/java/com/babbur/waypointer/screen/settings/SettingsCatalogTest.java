@@ -241,6 +241,14 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void dungeonEntryPathIsOffByDefaultInTheCatalog() {
+        Setting entryPath = SettingsCatalog.byId("showDungeonEntryPathToFirstWaypoint");
+
+        assertNotNull(entryPath);
+        assertEquals(false, entryPath.get(new WaypointerConfig(), new DungeonConfig()));
+    }
+
+    @Test
     void formatValueRendersEveryKindReadably() {
         assertEquals("On", Setting.formatValue(Setting.Kind.BOOL, Boolean.TRUE, List.of()));
         assertEquals("Off", Setting.formatValue(Setting.Kind.BOOL, Boolean.FALSE, List.of()));
