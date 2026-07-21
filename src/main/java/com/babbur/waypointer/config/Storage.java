@@ -70,6 +70,29 @@ public final class Storage {
         return file;
     }
 
+    /** Read-only storage health used by the troubleshooting report. */
+    public DebugSnapshot debugSnapshot() {
+        boolean exists = Files.isRegularFile(file);
+        long size = -1L;
+        long modifiedAtMillis = -1L;
+        if (exists) {
+            try {
+                size = Files.size(file);
+                modifiedAtMillis = Files.getLastModifiedTime(file).toMillis();
+            } catch (IOException ignored) {
+                // The status flags remain useful even if metadata races a file replacement.
+            }
+        }
+        return new DebugSnapshot(file.getFileName().toString(), exists, size, modifiedAtMillis,
+                saver != null, writesBlocked, pendingSnapshotJson != null, snapshotCount, writeCount);
+    }
+
+    public record DebugSnapshot(String fileName, boolean exists, long sizeBytes,
+                                long modifiedAtMillis, boolean attached,
+                                boolean writesBlocked, boolean snapshotReady,
+                                int snapshotsCaptured, int writesCompleted) {
+    }
+
     public void load(ActiveGroupManager manager) {
         if (!Files.exists(file)) return;
 

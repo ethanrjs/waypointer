@@ -82,15 +82,24 @@ public final class TracerRenderer implements HudElement {
         var groups = manager.activeGroups();
         if (groups.isEmpty()) return;
         boolean tempFocus = manager.tempWaypointFocusActive();
-        if (!tempFocus && !config.showTracer()) return;
+        if (!tempFocus && !config.showTracer()) {
+            RenderDiagnostics.recordNoStraightTracer(groups, "tracer disabled");
+            return;
+        }
         float alpha = (float) config.tracerOpacity();
         if (tempFocus) {
             alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
         }
-        if (alpha <= 0.0f) return;
+        if (alpha <= 0.0f) {
+            RenderDiagnostics.recordNoStraightTracer(groups, "tracer opacity is zero");
+            return;
+        }
 
         PoseStack ps = ctx.poseStack();
-        if (ps == null) return;
+        if (ps == null) {
+            RenderDiagnostics.recordNoStraightTracer(groups, "world pose unavailable");
+            return;
+        }
         Minecraft mc = Minecraft.getInstance();
         Camera cam = MinecraftCompat.mainCamera(mc.gameRenderer);
         Vec3 camPos = cam.position();
@@ -116,31 +125,70 @@ public final class TracerRenderer implements HudElement {
         int overrideColor = config.tracerColor();
         float thickness = (float) config.tracerThickness();
         float renderAlpha = alpha;
-        RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
-        RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
-            for (WaypointGroup g : groups) {
-                if (config.showDungeonEntryPathToFirstWaypoint()
-                        && WaypointRenderer.shouldRenderDungeonEntryPath(g,
-                        config.showDungeonEntryPathToFollowingWaypoints())) {
-                    continue;
-                }
-                if (!tempFocus
-                        && config.hideTracerOnStaticRoutes()
-                        && g.loadMode() == WaypointGroup.LoadMode.STATIC) {
-                    continue;
-                }
-                Waypoint target = g.current();
-                if (target == null) continue;
-                if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) continue;
-                int color = matchWaypoint ? target.color() : overrideColor;
-                RenderHelpers.emitLine(lines, submittedPose,
-                        fromX, fromY, fromZ,
-                        (float) target.centerX(), (float) target.centerY(), (float) target.centerZ(),
-                        color, renderAlpha, thickness);
+        boolean hasTracerLines = false;
+        for (WaypointGroup group : groups) {
+            if (straightTracerTarget(group, tempFocus, player, nearHideDistanceSq, true) != null) {
+                hasTracerLines = true;
             }
-        });
+        }
+
+        if (hasTracerLines) {
+            RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
+            boolean submitted = RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
+                for (WaypointGroup group : groups) {
+                    Waypoint target = straightTracerTarget(
+                            group, tempFocus, player, nearHideDistanceSq, false);
+                    if (target == null) continue;
+                    int color = matchWaypoint ? target.color() : overrideColor;
+                    RenderHelpers.emitLine(lines, submittedPose,
+                            fromX, fromY, fromZ,
+                            (float) target.centerX(), (float) target.centerY(), (float) target.centerZ(),
+                            color, renderAlpha, thickness);
+                }
+            });
+            for (WaypointGroup group : groups) {
+                if (straightTracerTarget(group, tempFocus, player, nearHideDistanceSq, false) == null) {
+                    continue;
+                }
+                if (submitted) {
+                    RenderDiagnostics.recordStraightTracerSubmitted(group);
+                } else {
+                    RenderDiagnostics.recordNoStraightTracer(
+                            group, "world render submission failed");
+                }
+            }
+        }
 
         ps.popPose();
+    }
+
+    private Waypoint straightTracerTarget(WaypointGroup group, boolean tempFocus,
+                                          LocalPlayer player, double nearHideDistanceSq,
+                                          boolean recordDecision) {
+        if (RenderDiagnostics.shouldSuppressStraightTracer(group)) {
+            if (recordDecision) RenderDiagnostics.recordStraightTracerSuppressed(group);
+            return null;
+        }
+        if (!tempFocus
+                && config.hideTracerOnStaticRoutes()
+                && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
+            if (recordDecision) {
+                RenderDiagnostics.recordNoStraightTracer(group, "static-route tracers hidden");
+            }
+            return null;
+        }
+        Waypoint target = group.current();
+        if (target == null) {
+            if (recordDecision) RenderDiagnostics.recordNoStraightTracer(group, "no current target");
+            return null;
+        }
+        if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) {
+            if (recordDecision) {
+                RenderDiagnostics.recordNoStraightTracer(group, "straight tracer hidden near player");
+            }
+            return null;
+        }
+        return target;
     }
 
     @Override
@@ -148,9 +196,13 @@ public final class TracerRenderer implements HudElement {
         if (!IrisShaderFallback.shouldUse(config)) return;
 
         var groups = manager.activeGroups();
+        RenderDiagnostics.beginFrame(groups, config, true);
         if (groups.isEmpty()) return;
         boolean tempFocus = manager.tempWaypointFocusActive();
-        if (!tempFocus && !config.showTracer()) return;
+        if (!tempFocus && !config.showTracer()) {
+            RenderDiagnostics.recordNoStraightTracer(groups, "tracer disabled");
+            return;
+        }
 
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
@@ -167,27 +219,32 @@ public final class TracerRenderer implements HudElement {
         if (tempFocus) {
             alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
         }
-        if (alpha <= 0.0f) return;
+        if (alpha <= 0.0f) {
+            RenderDiagnostics.recordNoStraightTracer(groups, "tracer opacity is zero");
+            return;
+        }
         double nearHideDistanceSq = nearHideDistanceSq();
         boolean matchWaypoint = config.matchTracerToWaypointColor();
         int overrideColor = config.tracerColor();
         double thickness = config.tracerThickness();
 
         for (WaypointGroup group : groups) {
-            if (config.showDungeonEntryPathToFirstWaypoint()
-                    && WaypointRenderer.shouldRenderDungeonEntryPath(group,
-                    config.showDungeonEntryPathToFollowingWaypoints())) {
-                continue;
-            }
             if (!tempFocus
                     && config.hideTracerOnStaticRoutes()
                     && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
+                RenderDiagnostics.recordNoStraightTracer(group, "static-route tracers hidden");
                 continue;
             }
 
             Waypoint target = group.current();
-            if (target == null) continue;
-            if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) continue;
+            if (target == null) {
+                RenderDiagnostics.recordNoStraightTracer(group, "no current target");
+                continue;
+            }
+            if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) {
+                RenderDiagnostics.recordNoStraightTracer(group, "straight tracer hidden near player");
+                continue;
+            }
             if (!projector.project(target.centerX(), target.centerY(), target.centerZ(),
                     screenW, screenH, screenScratch)) {
                 projectOffscreenTarget(camera, target, screenW, screenH, screenScratch);
@@ -197,6 +254,7 @@ public final class TracerRenderer implements HudElement {
             int argb = RenderHelpers.withAlpha(0xFF000000 | (color & 0xFFFFFF), alpha);
             WaypointRenderer.drawScreenLine(g, fromX, fromY,
                     screenScratch[0], screenScratch[1], argb, thickness);
+            RenderDiagnostics.recordStraightTracerSubmitted(group);
         }
     }
 

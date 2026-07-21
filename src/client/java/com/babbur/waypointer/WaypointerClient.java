@@ -58,6 +58,7 @@ public final class WaypointerClient implements ClientModInitializer {
     private static DungeonRouteSession dungeonRouteSession;
     private static DungeonRouteDownloader dungeonRouteDownloader;
     private static DeveloperModeMonitor developerModeMonitor;
+    private static WaypointerKeybinds keybinds;
     private static boolean dungeonRouteSessionInDungeonContext;
     private static Screen suspendedWaypointerGuiScreen;
 
@@ -97,6 +98,10 @@ public final class WaypointerClient implements ClientModInitializer {
         return developerModeMonitor;
     }
 
+    public static WaypointerKeybinds keybinds() {
+        return keybinds;
+    }
+
     @Override
     public void onInitializeClient() {
         config = WaypointerConfig.load();
@@ -126,7 +131,8 @@ public final class WaypointerClient implements ClientModInitializer {
 
         ChatImportCache chatImportCache = new ChatImportCache();
         new WaypointerCommands(manager, storage, config, chatImportCache, WaypointerClient::openGui).install();
-        new WaypointerKeybinds(WaypointerClient::openGui, manager, config).install();
+        keybinds = new WaypointerKeybinds(WaypointerClient::openGui, manager, config);
+        keybinds.install();
         new ChatCoordDetector(config, manager).install();
         new ChatImportDetector(config, chatImportCache).install();
         int apiEntrypoints = WaypointerApiEntrypoints.invokeFabricEntrypoints(api);

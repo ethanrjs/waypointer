@@ -572,11 +572,7 @@ public final class SettingsCatalog {
                                 "Restore every setting to its default value. Click twice within 3 seconds to confirm.")
                                 .aliases("reset")),
                 Group.plain("Diagnostics",
-                        Setting.action(ACTION_PERF_TEST, "Performance stress test",
-                                "Runs a 60 second benchmark across 3D waypoints, dungeon secrets, and an adaptive "
-                                        + "subwaypoint ramp. The settings overlay hides while it runs; press Esc to cancel. "
-                                        + "Your settings are restored when it finishes; "
-                                        + "Copy report puts the results on your clipboard.")
+                        Setting.action(ACTION_PERF_TEST, "Performance stress test", "")
                                 .aliases("benchmark", "profiler", "fps", "stress", "lag")),
                 // Legacy/codec-only fields: no row anywhere, but they stay in the
                 // import diff and the parity tests so the codec surface is covered.

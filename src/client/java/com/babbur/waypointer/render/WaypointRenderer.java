@@ -250,9 +250,11 @@ public final class WaypointRenderer implements HudElement {
     private static final int DEFAULT_MAX_BUILD_Y = 320;
 
     private void onWorldRender(LevelRenderContext ctx) {
-        if (IrisShaderFallback.shouldUse(config)) return;
-
         var groups = manager.activeGroups();
+        boolean irisHudFallbackActive = IrisShaderFallback.shouldUse(config);
+        RenderDiagnostics.beginFrame(groups, config, irisHudFallbackActive);
+        if (irisHudFallbackActive) return;
+
         if (groups.isEmpty()) return;
 
         WaypointerConfig.BoxStyle style = config.boxStyle();
@@ -398,9 +400,12 @@ public final class WaypointRenderer implements HudElement {
         }
         if ((drawLines || drawRouteLines || drawDungeonEntryPaths) && hasThroughWallWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
-            RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
+            List<DungeonEntryPathSubmission> dungeonEntryPaths = drawDungeonEntryPaths
+                    ? prepareDungeonEntryPaths(groups, playerPos, level)
+                    : List.of();
+            boolean submitted = RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
                 if (drawDungeonEntryPaths) {
-                    emitDungeonEntryPaths(submittedPose, lines, groups, playerPos, level);
+                    emitDungeonEntryPaths(submittedPose, lines, dungeonEntryPaths);
                 }
                 if (drawRouteLines) {
                     for (WaypointGroup g : groups) {
@@ -417,6 +422,10 @@ public final class WaypointRenderer implements HudElement {
                     }
                 }
             });
+            for (DungeonEntryPathSubmission path : dungeonEntryPaths) {
+                RenderDiagnostics.recordDungeonPathSubmission(
+                        path.group(), submitted && isDrawableDungeonEntryPath(path.points()));
+            }
         }
         if ((drawLines || drawRouteLines) && hasDepthCheckedWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesDepthTested();
@@ -441,20 +450,13 @@ public final class WaypointRenderer implements HudElement {
         ps.popPose();
     }
 
-    private void emitDungeonEntryPaths(PoseStack ps, VertexConsumer lines, Iterable<WaypointGroup> groups,
-                                       Vec3 playerPos, ClientLevel level) {
-        if (playerPos == null || level == null) return;
-
+    private void emitDungeonEntryPaths(PoseStack ps, VertexConsumer lines,
+                                       Iterable<DungeonEntryPathSubmission> paths) {
         float alpha = DUNGEON_ENTRY_PATH_ALPHA;
         float width = effectiveOutlineThickness();
         int color = config.dungeonEntryPathColor();
-        for (WaypointGroup group : groups) {
-            if (!shouldRenderDungeonEntryPath(group,
-                    config.showDungeonEntryPathToFollowingWaypoints())) continue;
-
-            Waypoint target = group.current();
-            if (target == null) continue;
-            List<Vec3> points = dungeonEntryPathPoints(level, playerPos, target);
+        for (DungeonEntryPathSubmission path : paths) {
+            List<Vec3> points = path.points();
             for (int i = 1; i < points.size(); i++) {
                 Vec3 a = points.get(i - 1);
                 Vec3 b = points.get(i);
@@ -466,7 +468,27 @@ public final class WaypointRenderer implements HudElement {
         }
     }
 
-    private List<Vec3> dungeonEntryPathPoints(ClientLevel level, Vec3 playerPos, Waypoint target) {
+    private List<DungeonEntryPathSubmission> prepareDungeonEntryPaths(
+            Iterable<WaypointGroup> groups, Vec3 playerPos, ClientLevel level) {
+        if (playerPos == null || level == null) return List.of();
+
+        List<DungeonEntryPathSubmission> paths = new ArrayList<>();
+        for (WaypointGroup group : groups) {
+            if (!shouldRenderDungeonEntryPath(group,
+                    config.showDungeonEntryPathToFollowingWaypoints())) continue;
+
+            Waypoint target = group.current();
+            if (target == null) continue;
+            DungeonEntryPathLookup lookup = dungeonEntryPathPoints(level, playerPos, target);
+            RenderDiagnostics.recordPathLookup(
+                    group, lookup.result(), lookup.cacheHit(), lookup.cacheAgeNanos());
+            paths.add(new DungeonEntryPathSubmission(group, lookup.result().points()));
+        }
+        return paths;
+    }
+
+    private DungeonEntryPathLookup dungeonEntryPathPoints(ClientLevel level, Vec3 playerPos,
+                                                          Waypoint target) {
         BlockPos start = GroundPathfinder.floorPos(playerPos);
         DungeonEntryPathTarget targetKey = DungeonEntryPathTarget.from(target);
         long now = System.nanoTime();
@@ -478,20 +500,36 @@ public final class WaypointRenderer implements HudElement {
         DungeonEntryPath cached = dungeonEntryPathCache.get(targetKey);
         if (cached != null
                 && shouldReuseDungeonEntryPath(cached.start(), cached.computedAtNanos(), start, now)) {
-            GroundPathfinder.moveLineStart(cached.points(), playerPos);
-            return cached.points();
+            GroundPathfinder.moveLineStart(cached.result().points(), playerPos);
+            return new DungeonEntryPathLookup(
+                    cached.result(), true, Math.max(0L, now - cached.computedAtNanos()));
         }
 
-        List<Vec3> points = GroundPathfinder.findPath(
-                level,
-                playerPos,
-                target,
-                GroundPathfinder.NO_DISTANCE_LIMIT,
-                DUNGEON_ENTRY_MAX_EXPANSIONS,
-                DUNGEON_ENTRY_SEARCH_PADDING,
-                DUNGEON_ENTRY_SEARCH_PADDING);
-        dungeonEntryPathCache.put(targetKey, new DungeonEntryPath(start, points, now));
-        return points;
+        long startedAtNanos = System.nanoTime();
+        GroundPathfinder.PathResult result;
+        try {
+            result = GroundPathfinder.findPathResult(
+                    level,
+                    playerPos,
+                    target,
+                    GroundPathfinder.NO_DISTANCE_LIMIT,
+                    DUNGEON_ENTRY_MAX_EXPANSIONS,
+                    DUNGEON_ENTRY_SEARCH_PADDING,
+                    DUNGEON_ENTRY_SEARCH_PADDING);
+        } catch (RuntimeException error) {
+            Waypointer.LOGGER.warn("Dungeon entry path calculation failed; using tracer fallback", error);
+            result = new GroundPathfinder.PathResult(List.of(), new GroundPathfinder.Diagnostics(
+                    start,
+                    GroundPathfinder.targetBlock(target),
+                    null,
+                    null,
+                    GroundPathfinder.FailureReason.CALCULATION_FAILED,
+                    0,
+                    DUNGEON_ENTRY_MAX_EXPANSIONS,
+                    Math.max(0L, System.nanoTime() - startedAtNanos)));
+        }
+        dungeonEntryPathCache.put(targetKey, new DungeonEntryPath(start, result, now));
+        return new DungeonEntryPathLookup(result, false, 0L);
     }
 
     static boolean shouldReuseDungeonEntryPath(BlockPos cachedStart, long computedAtNanos,
@@ -510,7 +548,19 @@ public final class WaypointRenderer implements HudElement {
         }
     }
 
-    private record DungeonEntryPath(BlockPos start, List<Vec3> points, long computedAtNanos) {
+    static boolean isDrawableDungeonEntryPath(List<Vec3> points) {
+        return points != null && points.size() >= 2;
+    }
+
+    private record DungeonEntryPath(BlockPos start, GroundPathfinder.PathResult result,
+                                    long computedAtNanos) {
+    }
+
+    private record DungeonEntryPathLookup(GroundPathfinder.PathResult result,
+                                          boolean cacheHit, long cacheAgeNanos) {
+    }
+
+    private record DungeonEntryPathSubmission(WaypointGroup group, List<Vec3> points) {
     }
 
     static boolean shouldRenderDungeonEntryPath(WaypointGroup group, boolean includeFollowingWaypoints) {

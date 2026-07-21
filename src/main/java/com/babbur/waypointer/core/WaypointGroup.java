@@ -556,8 +556,9 @@ public final class WaypointGroup {
     }
 
         public void remove(int index) {
+        boolean removedSubwaypoint = isSubwaypoint(index);
         waypoints.remove(index);
-        promoteOrphanedSubwaypoints(index);
+        if (!removedSubwaypoint) promoteOrphanedSubwaypoints(index);
         if (currentIndex > index) currentIndex--;
         currentIndex = Math.min(currentIndex, waypoints.size());
         if (proximitySuppressedIndex == index) proximitySuppressedIndex = -1;

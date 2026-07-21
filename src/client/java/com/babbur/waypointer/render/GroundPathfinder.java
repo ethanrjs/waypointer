@@ -32,6 +32,43 @@ final class GroundPathfinder {
         boolean walkable(int x, int y, int z);
     }
 
+    enum FailureReason {
+        NONE("path found"),
+        INVALID_START_OR_GOAL("invalid start or goal"),
+        INVALID_SEARCH_LIMITS("invalid pathfinding limits"),
+        NO_PASSABLE_START("no passable start"),
+        NO_PASSABLE_GOAL("no passable goal"),
+        OUTSIDE_DISTANCE_LIMIT("outside pathfinding distance limit"),
+        EXPANSION_LIMIT_EXHAUSTED("expansion limit exhausted"),
+        NO_ROUTE_WITHIN_BOUNDS("no route within search bounds"),
+        CALCULATION_FAILED("path calculation failed");
+
+        private final String description;
+
+        FailureReason(String description) {
+            this.description = description;
+        }
+
+        String description() {
+            return description;
+        }
+    }
+
+    record Diagnostics(BlockPos rawStart, BlockPos rawGoal,
+                       BlockPos resolvedStart, BlockPos resolvedGoal,
+                       FailureReason reason, int expansions, int expansionLimit,
+                       long computeTimeNanos) {
+        boolean success() {
+            return reason == FailureReason.NONE;
+        }
+    }
+
+    record PathResult(List<Vec3> points, Diagnostics diagnostics) {
+    }
+
+    record GridPathResult(List<BlockPos> cells, Diagnostics diagnostics) {
+    }
+
     static BlockPos floorPos(Vec3 pos) {
         if (pos == null) return null;
         return floorPos(pos.x, pos.y, pos.z);
@@ -63,19 +100,51 @@ final class GroundPathfinder {
     static List<Vec3> findPath(ClientLevel level, Vec3 playerPos, Waypoint target,
                                int maxDistance, int maxExpansions,
                                int searchPadding, int searchVerticalPadding) {
-        if (level == null || playerPos == null || target == null) return List.of();
+        return findPathResult(level, playerPos, target, maxDistance, maxExpansions,
+                searchPadding, searchVerticalPadding).points();
+    }
 
+    static PathResult findPathResult(ClientLevel level, Vec3 playerPos, Waypoint target,
+                                     int maxDistance, int maxExpansions,
+                                     int searchPadding, int searchVerticalPadding) {
+        long startedAtNanos = System.nanoTime();
         BlockPos rawStart = floorPos(playerPos);
         BlockPos rawGoal = targetBlock(target);
+        if (level == null || rawStart == null || rawGoal == null) {
+            return emptyPathResult(rawStart, rawGoal, null, null,
+                    FailureReason.INVALID_START_OR_GOAL, 0, maxExpansions, startedAtNanos);
+        }
+        if (maxDistance < 0 || maxExpansions <= 0) {
+            return emptyPathResult(rawStart, rawGoal, null, null,
+                    FailureReason.INVALID_SEARCH_LIMITS, 0, maxExpansions, startedAtNanos);
+        }
+
         BlockPos start = nearestPassable(level, rawStart, 1, 2);
         BlockPos goal = nearestPassable(level, rawGoal, TARGET_SEARCH_RADIUS, TARGET_SEARCH_RADIUS);
-        if (start == null || goal == null) return List.of();
+        if (start == null) {
+            return emptyPathResult(rawStart, rawGoal, null, goal,
+                    FailureReason.NO_PASSABLE_START, 0, maxExpansions, startedAtNanos);
+        }
+        if (goal == null) {
+            return emptyPathResult(rawStart, rawGoal, start, null,
+                    FailureReason.NO_PASSABLE_GOAL, 0, maxExpansions, startedAtNanos);
+        }
 
         Grid grid = (x, y, z) -> isWalkableForPlayer(level, x, y, z);
-        List<BlockPos> cells = findPath(grid, start, goal, maxDistance, maxExpansions,
+        GridPathResult search = findPathResult(grid, start, goal, maxDistance, maxExpansions,
                 searchPadding, searchVerticalPadding);
-        if (cells.isEmpty()) return List.of();
-        return toLinePoints(playerPos, target, cells);
+        Diagnostics searchDiagnostics = search.diagnostics();
+        Diagnostics diagnostics = diagnostics(
+                rawStart,
+                rawGoal,
+                start,
+                goal,
+                searchDiagnostics.reason(),
+                searchDiagnostics.expansions(),
+                maxExpansions,
+                startedAtNanos);
+        if (search.cells().isEmpty()) return new PathResult(List.of(), diagnostics);
+        return new PathResult(toLinePoints(playerPos, target, search.cells()), diagnostics);
     }
 
     static List<BlockPos> findPath(Grid grid, BlockPos start, BlockPos goal,
@@ -87,18 +156,45 @@ final class GroundPathfinder {
     static List<BlockPos> findPath(Grid grid, BlockPos start, BlockPos goal,
                                    int maxDistance, int maxExpansions,
                                    int searchPadding, int searchVerticalPadding) {
-        if (grid == null || start == null || goal == null) return List.of();
-        if (maxDistance < 0 || maxExpansions <= 0) return List.of();
-        if (!grid.walkable(start.getX(), start.getY(), start.getZ())) return List.of();
-        if (!grid.walkable(goal.getX(), goal.getY(), goal.getZ())) return List.of();
+        return findPathResult(grid, start, goal, maxDistance, maxExpansions,
+                searchPadding, searchVerticalPadding).cells();
+    }
+
+    static GridPathResult findPathResult(Grid grid, BlockPos start, BlockPos goal,
+                                         int maxDistance, int maxExpansions,
+                                         int searchPadding, int searchVerticalPadding) {
+        long startedAtNanos = System.nanoTime();
+        if (grid == null || start == null || goal == null) {
+            return emptyGridResult(start, goal, FailureReason.INVALID_START_OR_GOAL,
+                    0, maxExpansions, startedAtNanos);
+        }
+        if (maxDistance < 0 || maxExpansions <= 0) {
+            return emptyGridResult(start, goal, FailureReason.INVALID_SEARCH_LIMITS,
+                    0, maxExpansions, startedAtNanos);
+        }
+        if (!grid.walkable(start.getX(), start.getY(), start.getZ())) {
+            return emptyGridResult(start, goal, FailureReason.NO_PASSABLE_START,
+                    0, maxExpansions, startedAtNanos);
+        }
+        if (!grid.walkable(goal.getX(), goal.getY(), goal.getZ())) {
+            return emptyGridResult(start, goal, FailureReason.NO_PASSABLE_GOAL,
+                    0, maxExpansions, startedAtNanos);
+        }
 
         Cell startCell = new Cell(start.getX(), start.getY(), start.getZ());
         Cell goalCell = new Cell(goal.getX(), goal.getY(), goal.getZ());
-        if (startCell.equals(goalCell)) return List.of(start);
+        if (startCell.equals(goalCell)) {
+            return successfulGridResult(List.of(start), start, goal, 0,
+                    maxExpansions, startedAtNanos);
+        }
         double maxDistanceSq = (double) maxDistance * maxDistance;
-        if (distanceSquared(startCell, goalCell) > maxDistanceSq) return List.of();
+        if (distanceSquared(startCell, goalCell) > maxDistanceSq) {
+            return emptyGridResult(start, goal, FailureReason.OUTSIDE_DISTANCE_LIMIT,
+                    0, maxExpansions, startedAtNanos);
+        }
         if (lineClear(grid, startCell, goalCell)) {
-            return List.of(start, goal);
+            return successfulGridResult(List.of(start, goal), start, goal, 0,
+                    maxExpansions, startedAtNanos);
         }
 
         int horizontalPadding = Math.max(0, searchPadding);
@@ -117,12 +213,14 @@ final class GroundPathfinder {
         best.put(startCell, 0.0D);
 
         int expansions = 0;
-        while (!open.isEmpty() && expansions++ < maxExpansions) {
+        while (!open.isEmpty() && expansions < maxExpansions) {
+            expansions++;
             Node current = open.poll();
             Double knownBest = best.get(current.cell);
             if (knownBest == null || current.cost > knownBest + 1.0E-6D) continue;
             if (current.cell.equals(goalCell)) {
-                return simplifyBySight(grid, reconstruct(current));
+                return successfulGridResult(simplifyBySight(grid, reconstruct(current)),
+                        start, goal, expansions, maxExpansions, startedAtNanos);
             }
 
             for (int[] neighbor : NEIGHBORS) {
@@ -144,7 +242,50 @@ final class GroundPathfinder {
                 open.add(new Node(next, current, nextCost, nextCost + heuristic(next, goalCell)));
             }
         }
-        return List.of();
+        FailureReason reason = open.isEmpty()
+                ? FailureReason.NO_ROUTE_WITHIN_BOUNDS
+                : FailureReason.EXPANSION_LIMIT_EXHAUSTED;
+        return emptyGridResult(start, goal, reason, expansions, maxExpansions, startedAtNanos);
+    }
+
+    private static PathResult emptyPathResult(BlockPos rawStart, BlockPos rawGoal,
+                                              BlockPos resolvedStart, BlockPos resolvedGoal,
+                                              FailureReason reason, int expansions,
+                                              int expansionLimit, long startedAtNanos) {
+        return new PathResult(List.of(), diagnostics(
+                rawStart, rawGoal, resolvedStart, resolvedGoal,
+                reason, expansions, expansionLimit, startedAtNanos));
+    }
+
+    private static GridPathResult emptyGridResult(BlockPos start, BlockPos goal,
+                                                  FailureReason reason, int expansions,
+                                                  int expansionLimit, long startedAtNanos) {
+        return new GridPathResult(List.of(), diagnostics(
+                start, goal, start, goal, reason, expansions, expansionLimit, startedAtNanos));
+    }
+
+    private static GridPathResult successfulGridResult(List<BlockPos> cells,
+                                                       BlockPos start, BlockPos goal,
+                                                       int expansions, int expansionLimit,
+                                                       long startedAtNanos) {
+        return new GridPathResult(cells, diagnostics(
+                start, goal, start, goal, FailureReason.NONE,
+                expansions, expansionLimit, startedAtNanos));
+    }
+
+    private static Diagnostics diagnostics(BlockPos rawStart, BlockPos rawGoal,
+                                           BlockPos resolvedStart, BlockPos resolvedGoal,
+                                           FailureReason reason, int expansions,
+                                           int expansionLimit, long startedAtNanos) {
+        return new Diagnostics(
+                rawStart,
+                rawGoal,
+                resolvedStart,
+                resolvedGoal,
+                reason,
+                Math.max(0, expansions),
+                Math.max(0, expansionLimit),
+                Math.max(0L, System.nanoTime() - startedAtNanos));
     }
 
     private static BlockPos nearestPassable(ClientLevel level, BlockPos center,

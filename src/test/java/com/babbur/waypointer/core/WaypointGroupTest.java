@@ -51,6 +51,24 @@ class WaypointGroupTest {
     }
 
     @Test
+    void remove_middleSubwaypointKeepsRemainingSiblingsAttachedToTheirParent() {
+        WaypointGroup g = WaypointGroup.create("Subwaypoints", "dungeon_f7");
+        g.add(wp(0, 70, 0));
+        for (int i = 1; i <= 5; i++) {
+            g.add(wp(i, 70, 0));
+            assertTrue(g.toggleSubwaypoint(i));
+        }
+
+        g.remove(3);
+
+        assertEquals(List.of(0, 1, 2, 4, 5), g.waypoints().stream().map(Waypoint::x).toList());
+        for (int i = 1; i < g.size(); i++) {
+            assertTrue(g.isSubwaypoint(i), "remaining child " + i + " was promoted");
+            assertEquals(0, g.parentMainIndex(i));
+        }
+    }
+
+    @Test
     void move_currentIndexFollowsMovedWaypoint() {
         WaypointGroup g = route();
         g.advancePast(0);                 // currentIndex = 1 -> points at (10,70,0)

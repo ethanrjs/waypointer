@@ -1,16 +1,27 @@
 package com.babbur.waypointer.screen;
 
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.codec.DecodeDebug;
 import com.babbur.waypointer.codec.WaypointCodec;
+import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.debug.DebugEventLog;
+import com.babbur.waypointer.debug.DebugLogTail;
+import com.babbur.waypointer.debug.DebugReportExport;
 import com.babbur.waypointer.debug.DebugSignals;
 import com.babbur.waypointer.debug.PerformanceStats;
+import com.babbur.waypointer.dungeon.config.DungeonConfig;
+import com.babbur.waypointer.input.WaypointerKeybinds;
+import com.babbur.waypointer.render.RenderDiagnostics;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
+import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.dungeon.DungeonCoreSignature;
 import com.babbur.waypointer.dungeon.DungeonRoom;
 import com.babbur.waypointer.dungeon.DungeonRoomZoneBridge;
@@ -23,10 +34,15 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
+import net.fabricmc.loader.api.FabricLoader;
+import net.fabricmc.loader.api.ModContainer;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static com.babbur.waypointer.screen.GuiTokens.ACCENT;
 import static com.babbur.waypointer.screen.GuiTokens.BORDER;
@@ -46,7 +62,7 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 
 /**
- * Wire-level inspector for Waypointer codec strings. Mirrors the clinical sidebar/main
+ * All-in-one troubleshooting report for Waypointer. Mirrors the clinical sidebar/main
  * shape used by the other screens: a jump-list of sections on the left, a
  * structured, column-aligned report on the right. Never mutates the user's
  * groups or config -- read-only diagnostic surface for {@code /wp debug}.
@@ -66,7 +82,7 @@ public final class DebugInspectScreen extends Screen {
     // an integer row index; breathing room above sections is a Blank row, not a tall row.
 
     private sealed interface Row {
-        record Section(String title) implements Row {}
+        record Section(String title, DebugReportExport.Category category) implements Row {}
         record KV(String key, String value) implements Row {}
         record KVDim(String key, String value) implements Row {}
         record KVWarn(String key, String value) implements Row {}
@@ -115,9 +131,13 @@ public final class DebugInspectScreen extends Screen {
     private final List<SectionAnchor> sections = new ArrayList<>();
     private int scrollRows;
     private int selectedSection;
+    private int sidebarScrollRows;
+    private int sidebarVisibleRows;
 
     private Button copyButton;
     private long copyFeedbackUntil;
+    private long rendererCaptureRequestedAt;
+    private boolean awaitingFreshRendererCapture;
 
     // Geometry recomputed each render(). Stashed so mouse handlers can hit-test.
     private int sidebarX1, sidebarX2, sidebarContentTop;
@@ -150,12 +170,18 @@ public final class DebugInspectScreen extends Screen {
 
     @Override
     protected void init() {
+        if (manager != null && config != null) {
+            RenderDiagnostics.setDetailedCaptureEnabled(true);
+            rendererCaptureRequestedAt = System.currentTimeMillis();
+            awaitingFreshRendererCapture = true;
+        }
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
         left.add(new GuiTokens.ButtonSpec("Refresh", this::loadCombinedReport));
         if (config != null) {
             left.add(new GuiTokens.ButtonSpec("Perf test", 88, this::openPerfStressTest));
         }
-        left.add(new GuiTokens.ButtonSpec("Copy report", this::copyReportToClipboard));
+        String copyLabel = copyFeedbackUntil > System.currentTimeMillis() ? "Copied" : "Copy Report";
+        left.add(new GuiTokens.ButtonSpec(copyLabel, this::openCopyConfirmation));
         GuiTokens.ButtonSpec back = new GuiTokens.ButtonSpec("Back", this::onClose);
 
         int footerY = height - FOOTER_H;
@@ -164,7 +190,8 @@ public final class DebugInspectScreen extends Screen {
             // Stash the Copy button so we can swap its label on the copy-confirmation flash.
             // Matching on the label string is ugly but the footer helper doesn't expose
             // a better hook and this screen builds exactly one button with that label.
-            if ("Copy report".contentEquals(b.getMessage().getString())) {
+            if ("Copy Report".contentEquals(b.getMessage().getString())
+                    || "Copied".contentEquals(b.getMessage().getString())) {
                 copyButton = b;
             }
             addRenderableWidget(b);
@@ -196,27 +223,56 @@ public final class DebugInspectScreen extends Screen {
         this.sections.clear();
         this.scrollRows = 0;
         this.selectedSection = 0;
+        this.sidebarScrollRows = 0;
     }
 
     private void loadCombinedReport() {
         resetReportState();
+
+        buildSafely("Report Summary", this::buildReportSummary);
+        buildSafely("PC Specs", DebugReportExport.Category.PC_SPECS, this::buildPcSpecsReport);
+        buildSafely("Active Mods and Versions", DebugReportExport.Category.ACTIVE_MODS,
+                this::buildActiveModsReport);
 
         if (manager == null || config == null) {
             addSection(rows, sections, "Performance Snapshot", "unavailable");
             rows.add(new Row.KVWarn("Unavailable",
                     "Open this screen through /wp debug to capture live Waypointer state."));
         } else {
-            var player = Minecraft.getInstance().player;
-            this.performanceStats = player == null
-                    ? PerformanceStats.capture(manager, config)
-                    : PerformanceStats.capture(manager, config,
-                    player.getX(), player.getY(), player.getZ());
-            buildPerformanceReport(this.performanceStats, config, rows, sections);
+            buildSafely("Server, Player, and Location", DebugReportExport.Category.SERVER_CONTEXT,
+                    this::buildServerContextReport);
+            buildSafely("Storage Health", this::buildStorageHealthReport);
+            buildSafely("Performance Snapshot", this::buildLivePerformanceReport);
+            buildSafely("Settings and Recent Changes", DebugReportExport.Category.SETTINGS_AND_CHANGES,
+                    this::buildSettingsReport);
+            buildSafely("Tracer and Dungeon Path Settings", DebugReportExport.Category.SETTINGS_AND_CHANGES,
+                    this::buildTracerAndPathSettingsReport);
+            buildSafely("Dungeon Entry Path Outcomes", DebugReportExport.Category.ROUTES_AND_WAYPOINTS,
+                    this::buildRenderDiagnosticsReport);
+            buildSafely("Keybinds", DebugReportExport.Category.SETTINGS_AND_CHANGES,
+                    this::buildKeybindReport);
+            buildSafely("Active Routes and Waypoints", DebugReportExport.Category.ROUTES_AND_WAYPOINTS,
+                    this::buildActiveRoutesReport);
         }
 
-        buildDungeonDiagnosticsReport(DebugSignals.dungeonDebugSnapshot(), rows, sections);
+        buildSafely("Dungeon Diagnostics", DebugReportExport.Category.SERVER_CONTEXT,
+                () -> buildDungeonDiagnosticsReport(DebugSignals.dungeonDebugSnapshot(), rows, sections));
+        buildSafely("Recent Settings Changes", DebugReportExport.Category.SETTINGS_AND_CHANGES,
+                this::buildRecentSettingsChangesReport);
+        buildSafely("Recent Logs and Activity", DebugReportExport.Category.RECENT_LOGS_AND_ACTIVITY,
+                this::buildRecentLogsAndActivityReport);
+        loadClipboardReport();
+    }
 
-        String text = minecraft.keyboardHandler.getClipboard();
+    private void loadClipboardReport() {
+        String text;
+        try {
+            text = minecraft.keyboardHandler.getClipboard();
+        } catch (Throwable error) {
+            this.codecError = "Clipboard could not be read: " + error.getClass().getSimpleName();
+            buildCodecClipboardReport(rows, sections, codecError);
+            return;
+        }
         if (text == null || text.isBlank()) {
             this.codecError = "Clipboard is empty. Copy a " + WaypointCodec.MAGIC
                     + " export to inspect its codec payload here.";
@@ -240,21 +296,542 @@ public final class DebugInspectScreen extends Screen {
         }
     }
 
-    private void copyReportToClipboard() {
-        if (rows.isEmpty() || copyButton == null) return;
-        StringBuilder sb = new StringBuilder();
-        for (Row r : rows) sb.append(rowAsPlainText(r)).append('\n');
-        minecraft.keyboardHandler.setClipboard(sb.toString());
+    @Override
+    public void tick() {
+        super.tick();
+        if (awaitingFreshRendererCapture
+                && RenderDiagnostics.lastUpdatedAtEpochMillis() >= rendererCaptureRequestedAt) {
+            awaitingFreshRendererCapture = false;
+            loadCombinedReport();
+        }
+    }
+
+    private void buildSafely(String label, Runnable builder) {
+        buildSafely(label, DebugReportExport.Category.CORE, builder);
+    }
+
+    private void buildSafely(String label, DebugReportExport.Category category, Runnable builder) {
+        try {
+            builder.run();
+        } catch (Throwable error) {
+            addSection(rows, sections, label + " (Unavailable)", "capture failed", category);
+            rows.add(new Row.KVWarn("Reason", error.getClass().getSimpleName()
+                    + (error.getMessage() == null ? "" : ": " + oneLine(error.getMessage()))));
+        }
+    }
+
+    private void buildReportSummary() {
+        addSection(rows, sections, "Troubleshooting Report", "schema 1");
+        rows.add(new Row.KV("Captured", java.time.Instant.now().toString()));
+        rows.add(new Row.KV("Report schema", "1"));
+        rows.add(new Row.KV("Waypointer", loadedModVersion(Waypointer.MOD_ID)));
+        rows.add(new Row.KV("Minecraft", loadedModVersion("minecraft")));
+        rows.add(new Row.KV("Fabric Loader", loadedModVersion("fabricloader")));
+        rows.add(new Row.KVDim("Command", "/wp debug"));
+        rows.add(new Row.KVDim("Privacy", "Sensitive sections require confirmation before copying."));
+    }
+
+    private void buildPcSpecsReport() {
+        addSection(rows, sections, "PC Specs", "review before sharing",
+                DebugReportExport.Category.PC_SPECS);
+        Runtime runtime = Runtime.getRuntime();
+        rows.add(new Row.KV("Operating system", oneLine(System.getProperty("os.name", "unknown")
+                + " " + System.getProperty("os.version", ""))));
+        rows.add(new Row.KV("Architecture", System.getProperty("os.arch", "unknown")));
+        rows.add(new Row.KV("Java", System.getProperty("java.version", "unknown")
+                + " (" + System.getProperty("java.vendor", "unknown") + ")"));
+        String cpuModel = System.getenv("PROCESSOR_IDENTIFIER");
+        rows.add(new Row.KV("CPU", cpuModel == null || cpuModel.isBlank()
+                ? "model unavailable; " + runtime.availableProcessors() + " logical processors"
+                : oneLine(cpuModel)));
+        rows.add(new Row.KV("Logical CPUs", String.valueOf(runtime.availableProcessors())));
+        try {
+            var operatingSystem = java.lang.management.ManagementFactory.getOperatingSystemMXBean();
+            if (operatingSystem instanceof com.sun.management.OperatingSystemMXBean extended) {
+                rows.add(new Row.KV("System memory", formatBytes(extended.getTotalMemorySize())));
+            }
+        } catch (Throwable ignored) {
+            rows.add(new Row.KVWarn("System memory", "Unavailable"));
+        }
+        rows.add(new Row.KV("JVM memory", formatBytes(runtime.totalMemory() - runtime.freeMemory())
+                + " used / " + formatBytes(runtime.maxMemory()) + " max"));
+
+        String gpuVendor = "unavailable";
+        String gpuBackend = "unavailable";
+        String gpuImplementation = "unavailable";
+        try {
+            var device = RenderSystem.tryGetDevice();
+            if (device != null) {
+                MinecraftCompat.GpuInfo gpu = MinecraftCompat.gpuInfo(device);
+                gpuVendor = oneLine(gpu.vendor());
+                gpuBackend = oneLine(gpu.backend());
+                gpuImplementation = oneLine(gpu.implementation());
+            }
+        } catch (Throwable ignored) {
+            // Optional render backend diagnostics must never break /wp debug.
+        }
+        rows.add(new Row.KV("GPU vendor", gpuVendor));
+        rows.add(new Row.KV("GPU backend", gpuBackend));
+        rows.add(new Row.KVDim("GPU", gpuImplementation));
+
+        try {
+            rows.add(new Row.KV("Window", minecraft.getWindow().getWidth() + "x"
+                    + minecraft.getWindow().getHeight() + " physical, "
+                    + minecraft.getWindow().getGuiScaledWidth() + "x"
+                    + minecraft.getWindow().getGuiScaledHeight() + " GUI"));
+            rows.add(new Row.KV("VSync", minecraft.options.enableVsync().get() ? "on" : "off"));
+            rows.add(new Row.KV("FPS limit", String.valueOf(minecraft.options.framerateLimit().get())));
+        } catch (Throwable ignored) {
+            rows.add(new Row.KVWarn("Video settings", "Unavailable"));
+        }
+    }
+
+    private void buildActiveModsReport() {
+        List<ModContainer> mods = new ArrayList<>(FabricLoader.getInstance().getAllMods());
+        mods.sort(Comparator
+                .comparing((ModContainer mod) -> mod.getMetadata().getId(), String.CASE_INSENSITIVE_ORDER)
+                .thenComparing(mod -> mod.getMetadata().getName(), String.CASE_INSENSITIVE_ORDER));
+        addSection(rows, sections, "Active Mods and Versions", mods.size() + " loaded",
+                DebugReportExport.Category.ACTIVE_MODS);
+        for (ModContainer mod : mods) {
+            String id = oneLine(mod.getMetadata().getId());
+            String name = oneLine(mod.getMetadata().getName());
+            String version = oneLine(mod.getMetadata().getVersion().getFriendlyString());
+            rows.add(new Row.KVDim(id, name + " — " + version));
+        }
+    }
+
+    private void buildServerContextReport() {
+        addSection(rows, sections, "Server, Player, and Location", "live context",
+                DebugReportExport.Category.SERVER_CONTEXT);
+        var server = minecraft.getCurrentServer();
+        rows.add(new Row.KV("Connection", server == null
+                ? (minecraft.level == null ? "Not connected" : "Local or address unavailable")
+                : oneLine(server.ip)));
+        rows.add(new Row.KV("World loaded", String.valueOf(minecraft.level != null)));
+
+        var zone = manager.currentZone();
+        rows.add(new Row.KV("Waypointer zone", zone == null
+                ? "(none)" : oneLine(zone.displayName()) + " (" + oneLine(zone.id()) + ")"));
+        var player = minecraft.player;
+        if (player == null) {
+            rows.add(new Row.KVWarn("Player", "Unavailable"));
+        } else {
+            rows.add(new Row.KV("Player position", String.format(Locale.ROOT,
+                    "%.3f, %.3f, %.3f", player.getX(), player.getY(), player.getZ())));
+            rows.add(new Row.KV("Player block", player.blockPosition().getX() + ", "
+                    + player.blockPosition().getY() + ", " + player.blockPosition().getZ()));
+            rows.add(new Row.KV("View", String.format(Locale.ROOT, "yaw %.1f, pitch %.1f",
+                    player.getYRot(), player.getXRot())));
+        }
+        rows.add(new Row.KVDim("Hypixel Mod API", DebugSignals.hypixelApiLine()));
+    }
+
+    private void buildLivePerformanceReport() {
+        var player = minecraft.player;
+        this.performanceStats = player == null
+                ? PerformanceStats.capture(manager, config)
+                : PerformanceStats.capture(manager, config,
+                player.getX(), player.getY(), player.getZ());
+        buildPerformanceReport(this.performanceStats, config, rows, sections);
+    }
+
+    private void buildStorageHealthReport() {
+        addSection(rows, sections, "Storage Health", null);
+        Path configDirectory = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
+        addFileHealth("Main config", configDirectory.resolve("config.json"));
+        addFileHealth("Dungeon config", configDirectory.resolve("dungeon.json"));
+        Storage storage = WaypointerClient.storage();
+        if (storage == null) {
+            rows.add(new Row.KVWarn("Storage", "Unavailable"));
+            return;
+        }
+        Storage.DebugSnapshot snapshot = storage.debugSnapshot();
+        rows.add(new Row.KV("Route file", snapshot.fileName()));
+        rows.add(new Row.KV("Exists", String.valueOf(snapshot.exists())));
+        rows.add(new Row.KV("Size", snapshot.sizeBytes() < 0L
+                ? "unavailable" : formatBytes(snapshot.sizeBytes())));
+        rows.add(new Row.KVDim("Modified", snapshot.modifiedAtMillis() < 0L
+                ? "unavailable" : java.time.Instant.ofEpochMilli(snapshot.modifiedAtMillis()).toString()));
+        rows.add(new Row.KV("Saver attached", String.valueOf(snapshot.attached())));
+        rows.add(new Row.KV("Writes blocked", String.valueOf(snapshot.writesBlocked())));
+        rows.add(new Row.KV("Snapshot ready", String.valueOf(snapshot.snapshotReady())));
+        rows.add(new Row.KVDim("Session I/O", snapshot.snapshotsCaptured()
+                + " snapshots, " + snapshot.writesCompleted() + " writes"));
+        try (var files = Files.list(configDirectory)) {
+            long quarantined = files
+                    .filter(path -> path.getFileName().toString().startsWith("waypoints.json.invalid"))
+                    .count();
+            rows.add(new Row.KV("Invalid quarantines", String.valueOf(quarantined)));
+        } catch (Exception ignored) {
+            rows.add(new Row.KVWarn("Invalid quarantines", "Unavailable"));
+        }
+    }
+
+    private void addFileHealth(String label, Path file) {
+        try {
+            if (!Files.isRegularFile(file)) {
+                rows.add(new Row.KV(label, "missing (defaults may be in use)"));
+                return;
+            }
+            rows.add(new Row.KV(label, file.getFileName() + ", " + formatBytes(Files.size(file))
+                    + ", modified " + formatAge(Files.getLastModifiedTime(file).toMillis())));
+        } catch (Exception ignored) {
+            rows.add(new Row.KVWarn(label, "Metadata unavailable"));
+        }
+    }
+
+    private void buildSettingsReport() {
+        DungeonConfig dungeonConfig = WaypointerClient.dungeonConfig();
+        addSection(rows, sections, "All Settings", SettingsCatalog.allSettings().size() + " catalog entries",
+                DebugReportExport.Category.SETTINGS_AND_CHANGES);
+        for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
+            rows.add(new Row.BitNote("[" + category.label() + "]"));
+            for (SettingsCatalog.Group group : category.groups()) {
+                for (Setting setting : group.settings()) {
+                    if (setting.store() == Setting.Store.NONE) continue;
+                    if (setting.store() == Setting.Store.DUNGEON && dungeonConfig == null) {
+                        rows.add(new Row.KVWarn(setting.id(), "Unavailable"));
+                        continue;
+                    }
+                    Object value = setting.get(config, dungeonConfig);
+                    rows.add(new Row.KV(setting.id(), oneLine(setting.formatValue(value))));
+                }
+            }
+        }
+        rows.add(new Row.BitNote("[Internal troubleshooting state]"));
+        rows.add(new Row.KV("configSchemaVersion", String.valueOf(config.configSchemaVersion())));
+        rows.add(new Row.KV("painterPalette", formatPalette(config.waypointPainterPalette())));
+        rows.add(new Row.KV("painterDefault", config.waypointPainterDefaultPaint() == null
+                ? "(none)" : "configured (hash " + config.waypointPainterDefaultPaint().hashCode() + ")"));
+        if (dungeonConfig != null) {
+            rows.add(new Row.KV("debugLogRoomChanges", String.valueOf(dungeonConfig.debugLogRoomChanges())));
+            rows.add(new Row.KV("routesPromptDismissed", String.valueOf(dungeonConfig.routesPromptDismissed())));
+            rows.add(new Row.KV("defaultDirection", dungeonConfig.defaultDirection()));
+        }
+    }
+
+    private void buildActiveRoutesReport() {
+        List<WaypointGroup> activeGroups = manager.activeGroups();
+        addSection(rows, sections, "Active Routes and Waypoints", activeGroups.size() + " active",
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
+        if (activeGroups.isEmpty()) {
+            rows.add(new Row.KVDim("Routes", "No routes are active in the current zone."));
+            return;
+        }
+
+        var player = minecraft.player;
+        for (int groupIndex = 0; groupIndex < activeGroups.size(); groupIndex++) {
+            WaypointGroup group = activeGroups.get(groupIndex);
+            rows.add(new Row.BitNote("Route " + (groupIndex + 1) + " of " + activeGroups.size()));
+            rows.add(new Row.KV("Name", oneLine(group.name().isBlank() ? "(unnamed)" : group.name())));
+            rows.add(new Row.KVDim("ID", oneLine(group.id())));
+            rows.add(new Row.KV("Zone", oneLine(group.zoneId())));
+            rows.add(new Row.KV("Source", routeSource(group)));
+            rows.add(new Row.KVDim("Coordinates", routeCoordinateSpace(group)));
+            rows.add(new Row.KV("State", "enabled=" + group.enabled()
+                    + ", mode=" + group.loadMode()
+                    + ", temp=" + group.temp()
+                    + ", runtimeOnly=" + group.runtimeOnly()));
+            rows.add(new Row.KV("Progress", "currentIndex=" + group.currentIndex()
+                    + ", currentMain=" + group.currentMainIndex()
+                    + ", mainOrdinal=" + group.currentMainOrdinal() + "/" + group.mainWaypointCount()
+                    + ", complete=" + group.isComplete()));
+            rows.add(new Row.KV("Route behavior", "skipAhead=" + group.skipAheadEnabled()
+                    + ", defaultRadius=" + formatRadius(group.defaultRadius())
+                    + ", activeSubParent=" + group.activeSubwaypointParentIndex()));
+            rows.add(new Row.KVDim("Best time", group.bestTimeMillis() < 0L
+                    ? "(none)" : group.bestTimeMillis() + " ms"));
+
+            List<Waypoint> waypoints = group.waypoints();
+            for (int i = 0; i < waypoints.size(); i++) {
+                Waypoint waypoint = waypoints.get(i);
+                StringBuilder value = new StringBuilder();
+                if (i == group.currentIndex()) value.append("CURRENT  ");
+                value.append("block=(").append(waypoint.x()).append(',').append(waypoint.y())
+                        .append(',').append(waypoint.z()).append(')');
+                value.append(String.format(Locale.ROOT, " world=(%.3f,%.3f,%.3f)",
+                        waypoint.centerX(), waypoint.centerY(), waypoint.centerZ()));
+                if (waypoint.hasName()) value.append(" name=\"").append(oneLine(waypoint.name())).append('"');
+                value.append(String.format(Locale.ROOT, " color=#%06X flags=0x%X",
+                        waypoint.color() & 0xFFFFFF, waypoint.flags()));
+                double radius = waypoint.customRadius() > 0.0
+                        ? waypoint.customRadius() : group.defaultRadius();
+                value.append(" radius=").append(formatRadius(radius));
+                if (waypoint.isTemp()) {
+                    value.append(" temp=").append(Waypoint.tempModeName(waypoint.tempMode()))
+                            .append(" expiresAt=").append(waypoint.expiresAtMillis());
+                }
+                if (player != null) {
+                    double dx = waypoint.centerX() - player.getX();
+                    double dy = waypoint.centerY() - player.getY();
+                    double dz = waypoint.centerZ() - player.getZ();
+                    value.append(String.format(Locale.ROOT, " distance=%.2f", Math.sqrt(dx * dx + dy * dy + dz * dz)));
+                }
+                rows.add(new Row.KVDim(group.displayIndexLabel(i), value.toString()));
+            }
+        }
+    }
+
+    private void buildTracerAndPathSettingsReport() {
+        addSection(rows, sections, "Tracer and Dungeon Path Settings", null,
+                DebugReportExport.Category.SETTINGS_AND_CHANGES);
+        rows.add(new Row.KV("Tracer", config.showTracer() ? "on" : "off"));
+        rows.add(new Row.KV("Tracer opacity", formatRadius(config.tracerOpacity())));
+        rows.add(new Row.KV("Tracer thickness", formatRadius(config.tracerThickness()) + " px"));
+        rows.add(new Row.KV("Inherits color", String.valueOf(config.matchTracerToWaypointColor())));
+        rows.add(new Row.KV("Hide static tracer", String.valueOf(config.hideTracerOnStaticRoutes())));
+        rows.add(new Row.KV("Hide near player", String.valueOf(config.hideWaypointsNearPlayer())));
+        rows.add(new Row.KV("Near-player radius", formatRadius(config.hideWaypointsNearRadius()) + " blocks"));
+        rows.add(new Row.KV("Iris HUD fallback", String.valueOf(config.irisShaderHudFallback())));
+        rows.add(new Row.KV("Dungeon entry path to first waypoint", String.valueOf(
+                config.showDungeonEntryPathToFirstWaypoint())));
+        rows.add(new Row.KV("Continue dungeon path after first", String.valueOf(
+                config.showDungeonEntryPathToFollowingWaypoints())));
+    }
+
+    private void buildKeybindReport() {
+        WaypointerKeybinds keybinds = WaypointerClient.keybinds();
+        addSection(rows, sections, "Keybinds", keybinds == null ? "unavailable" : "live bindings",
+                DebugReportExport.Category.SETTINGS_AND_CHANGES);
+        if (keybinds == null) {
+            rows.add(new Row.KVWarn("Bindings", "Unavailable"));
+            return;
+        }
+        for (WaypointerKeybinds.DebugBinding binding : keybinds.debugSnapshot()) {
+            String value = binding.boundKey();
+            if (!binding.conflicts().isEmpty()) {
+                value += " — conflicts with " + String.join(", ", binding.conflicts());
+            }
+            rows.add(binding.conflicts().isEmpty()
+                    ? new Row.KVDim(binding.translationKey(), oneLine(value))
+                    : new Row.KVWarn(binding.translationKey(), oneLine(value)));
+        }
+    }
+
+    private void buildRenderDiagnosticsReport() {
+        RenderDiagnostics.Snapshot snapshot = RenderDiagnostics.snapshot();
+        RenderDiagnostics.TracerSettings tracer = snapshot.tracer();
+        RenderDiagnostics.DungeonPathSettings pathSettings = snapshot.dungeonPath();
+
+        addSection(rows, sections, "Live Tracer Renderer State",
+                snapshot.updatedAtEpochMillis() <= 0L
+                        ? "not captured" : formatAge(snapshot.updatedAtEpochMillis()),
+                DebugReportExport.Category.SETTINGS_AND_CHANGES);
+        rows.add(new Row.KV("Tracer enabled", String.valueOf(tracer.enabled())));
+        rows.add(new Row.KV("Opacity / thickness", formatRadius(tracer.opacity())
+                + " / " + formatRadius(tracer.thickness()) + " px"));
+        rows.add(new Row.KV("Inherits color", String.valueOf(tracer.inheritsWaypointColor())));
+        rows.add(new Row.KV("Hide near player", tracer.hideNearPlayer()
+                + " (radius " + formatRadius(tracer.hideNearPlayerRadius()) + ")"));
+        rows.add(new Row.KV("Hide static tracer", String.valueOf(tracer.hideOnStaticRoutes())));
+        rows.add(new Row.KV("Iris HUD configured", String.valueOf(tracer.irisHudFallbackConfigured())));
+        rows.add(new Row.KV("Iris HUD active", String.valueOf(tracer.irisHudFallbackActive())));
+        rows.add(new Row.KV("Entry path to first", String.valueOf(pathSettings.entryPathToFirstWaypoint())));
+        rows.add(new Row.KV("Continue after first", String.valueOf(pathSettings.continueAfterFirstWaypoint())));
+
+        addSection(rows, sections, "Dungeon Entry Path Outcomes", snapshot.groups().size() + " groups",
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
+        if (snapshot.groups().isEmpty()) {
+            rows.add(new Row.KVDim("Groups", "No active DungeonRoomData route groups were rendered."));
+            return;
+        }
+        for (int i = 0; i < snapshot.groups().size(); i++) {
+            RenderDiagnostics.GroupSnapshot group = snapshot.groups().get(i);
+            rows.add(new Row.BitNote("Dungeon group " + (i + 1) + " of " + snapshot.groups().size()));
+            rows.add(new Row.KV("Group", oneLine(group.groupName().isBlank()
+                    ? "(unnamed)" : group.groupName())));
+            rows.add(new Row.KVDim("Group ID / zone", oneLine(group.groupId())
+                    + " / " + oneLine(group.zoneId())));
+            rows.add(new Row.KV("Load / index", group.loadMode() + " / " + group.currentIndex()));
+            RenderDiagnostics.TargetSnapshot target = group.currentTarget();
+            if (target == null) {
+                rows.add(new Row.KVWarn("Current target", "(none)"));
+            } else {
+                rows.add(new Row.KV("Target block", target.blockX() + ", "
+                        + target.blockY() + ", " + target.blockZ()));
+                rows.add(new Row.KV("Target world", String.format(Locale.ROOT, "%.3f, %.3f, %.3f",
+                        target.worldX(), target.worldY(), target.worldZ())));
+                rows.add(new Row.KVDim("Target name", oneLine(target.name().isBlank()
+                        ? "(unnamed)" : target.name())));
+            }
+            rows.add(new Row.KV("Entry-path eligible", String.valueOf(group.entryPathEligible())));
+            rows.add(new Row.KV("Straight suppressed", String.valueOf(group.straightTracerSuppressed())));
+            rows.add(new Row.KV("Straight submitted", String.valueOf(group.straightTracerSubmitted())));
+            rows.add(new Row.KV("Path submitted", String.valueOf(group.dungeonPathSubmitted())));
+
+            RenderDiagnostics.PathSnapshot path = group.path();
+            rows.add(new Row.KV("Path cache", path.cacheStatus() + ", age "
+                    + String.format(Locale.ROOT, "%.2f ms", path.cacheAgeMillis())));
+            rows.add(new Row.KV("Path result", path.result() + ", " + path.pointCount() + " points"));
+            rows.add(new Row.KV("Compute time", String.format(Locale.ROOT, "%.3f ms",
+                    path.computeTimeMillis())));
+            rows.add(new Row.KVDim("Raw start / goal", formatBlockPosition(path.rawStart())
+                    + " -> " + formatBlockPosition(path.rawGoal())));
+            rows.add(new Row.KVDim("Resolved start / goal", formatBlockPosition(path.resolvedStart())
+                    + " -> " + formatBlockPosition(path.resolvedGoal())));
+            rows.add(new Row.KV("Expansions", path.expansions() + " / " + path.expansionLimit()));
+            rows.add(new Row.KVDim("Path reason", oneLine(path.reason())));
+            rows.add(new Row.KVWarn("Final outcome", oneLine(group.finalOutcome())));
+        }
+    }
+
+    private static String formatBlockPosition(RenderDiagnostics.BlockPosition position) {
+        return position == null ? "(none)" : position.x() + "," + position.y() + "," + position.z();
+    }
+
+    private void buildRecentSettingsChangesReport() {
+        List<ConfigChangeHistory.Entry> changes = ConfigChangeHistory.snapshot();
+        addSection(rows, sections, "Recent Settings Changes", changes.size() + " this session",
+                DebugReportExport.Category.SETTINGS_AND_CHANGES);
+        rows.add(new Row.KVDim("Scope", "Settings UI changes in this game session only."));
+        if (changes.isEmpty()) {
+            rows.add(new Row.KVDim("History", "No settings changes recorded this session."));
+            return;
+        }
+        for (ConfigChangeHistory.Entry change : changes) {
+            String value = change.kind().equals("bulk")
+                    ? change.subject()
+                    : change.subject() + ": " + change.before() + " -> " + change.after();
+            rows.add(new Row.KVDim(formatAge(change.capturedAtMillis()), oneLine(value)));
+        }
+    }
+
+    private void buildRecentLogsAndActivityReport() {
+        List<DebugEventLog.Entry> events = DebugEventLog.snapshot();
+        addSection(rows, sections, "Recent UI and Input Activity", events.size() + " events",
+                DebugReportExport.Category.RECENT_LOGS_AND_ACTIVITY);
+        if (events.isEmpty()) {
+            rows.add(new Row.KVDim("Activity", "No recent Waypointer UI/input events recorded."));
+        } else {
+            for (DebugEventLog.Entry event : events) {
+                rows.add(new Row.KVDim("Event", oneLine(event.plainText())));
+            }
+        }
+
+        var monitor = WaypointerClient.developerModeMonitor();
+        if (monitor != null) {
+            rows.add(new Row.KVDim("Dev monitor", "enabled=" + monitor.enabled()
+                    + ", visits=" + monitor.roomVisits()
+                    + ", uniqueRooms=" + monitor.uniqueRoomCount()
+                    + ", anomalies=" + monitor.anomalyCount()
+                    + (monitor.writeFailure().isBlank() ? "" : ", writeError=" + oneLine(monitor.writeFailure()))));
+        }
+
+        List<String> logs = DebugLogTail.capture(60);
+        addSection(rows, sections, "Recent Relevant Log Lines", logs.size() + " lines",
+                DebugReportExport.Category.RECENT_LOGS_AND_ACTIVITY);
+        if (logs.isEmpty()) {
+            rows.add(new Row.KVDim("latest.log", "No recent relevant lines found or log unavailable."));
+        } else {
+            for (String line : logs) rows.add(new Row.KVDim("Log", oneLine(line)));
+        }
+    }
+
+    private static String loadedModVersion(String id) {
+        return FabricLoader.getInstance().getModContainer(id)
+                .map(container -> container.getMetadata().getVersion().getFriendlyString())
+                .orElse("unknown");
+    }
+
+    private static String routeSource(WaypointGroup group) {
+        if (group.temp()) return "temporary session route";
+        if (group.runtimeOnly() && group.id().startsWith("dungeon:auto:")) {
+            return "generated dungeon runtime mirror";
+        }
+        if (group.runtimeOnly()) return "runtime/API overlay";
+        return "persisted user route";
+    }
+
+    private static String routeCoordinateSpace(WaypointGroup group) {
+        if (group.runtimeOnly() && group.id().startsWith("dungeon:auto:")) {
+            return "transformed world coordinates";
+        }
+        if (com.babbur.waypointer.dungeon.data.DungeonRoomData.definition(group.zoneId()) != null) {
+            return "stored dungeon room-local coordinates";
+        }
+        return "world coordinates";
+    }
+
+    private static String formatPalette(int[] colors) {
+        if (colors == null || colors.length == 0) return "(empty)";
+        StringBuilder value = new StringBuilder();
+        for (int color : colors) {
+            if (!value.isEmpty()) value.append(' ');
+            value.append(String.format(Locale.ROOT, "#%06X", color & 0xFFFFFF));
+        }
+        return value.toString();
+    }
+
+    private static String oneLine(String value) {
+        if (value == null) return "(none)";
+        StringBuilder sanitized = new StringBuilder(Math.min(value.length(), 1_000));
+        for (int i = 0; i < value.length() && sanitized.length() < 1_000; i++) {
+            char c = value.charAt(i);
+            sanitized.append(Character.isISOControl(c) ? ' ' : c);
+        }
+        if (value.length() > 1_000) sanitized.append("...");
+        return sanitized.toString().trim();
+    }
+
+    private void openCopyConfirmation() {
+        if (rows.isEmpty()) return;
+        MinecraftCompat.setScreen(minecraft,
+                new DebugReportConsentScreen(this, this::copyReportToClipboard));
+    }
+
+    private void copyReportToClipboard(DebugReportExport.Options options) {
+        if (rows.isEmpty()) return;
+        String report = DebugReportExport.format(exportSections(), options);
+        minecraft.keyboardHandler.setClipboard(report);
         copyFeedbackUntil = System.currentTimeMillis() + FEEDBACK_MS;
         // Plain label swap -- no color. The design system reserves the one accent for
         // "the currently selected thing", not for ephemeral UI feedback.
-        copyButton.setMessage(Component.literal("Copied"));
+        if (copyButton != null) copyButton.setMessage(Component.literal("Copied"));
+    }
+
+    private List<DebugReportExport.Section> exportSections() {
+        List<DebugReportExport.Section> exported = new ArrayList<>();
+        String heading = null;
+        DebugReportExport.Category category = DebugReportExport.Category.CORE;
+        List<String> lines = new ArrayList<>();
+        for (Row row : rows) {
+            if (row instanceof Row.Section section) {
+                if (heading != null) {
+                    trimTrailingBlankLines(lines);
+                    exported.add(new DebugReportExport.Section(heading, category, lines));
+                }
+                heading = section.title();
+                category = section.category();
+                lines = new ArrayList<>();
+            } else if (heading != null) {
+                lines.add(rowAsPlainText(row));
+            }
+        }
+        if (heading != null) {
+            trimTrailingBlankLines(lines);
+            exported.add(new DebugReportExport.Section(heading, category, lines));
+        }
+        return List.copyOf(exported);
+    }
+
+    private static void trimTrailingBlankLines(List<String> lines) {
+        while (!lines.isEmpty() && lines.getLast().isBlank()) lines.removeLast();
     }
 
     // --- input -----------------------------------------------------------------------------
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
+        if (mouseX >= sidebarX1 && mouseX <= sidebarX2
+                && mouseY >= sidebarContentTop && mouseY <= mainBottom
+                && !sections.isEmpty()) {
+            int maxSidebarScroll = Math.max(0, sections.size() - sidebarVisibleRows);
+            sidebarScrollRows = Mth.clamp(
+                    sidebarScrollRows - (int) (vert * SCROLL_ROWS_PER_NOTCH),
+                    0, maxSidebarScroll);
+            return true;
+        }
         if (mouseX >= mainX1 && mouseX <= mainX2 && mouseY >= mainTop && mouseY <= mainBottom
                 && !rows.isEmpty()) {
             int maxScroll = Math.max(0, rows.size() - visibleRowCount);
@@ -274,7 +851,7 @@ public final class DebugInspectScreen extends Screen {
         double my = event.y();
         if (mx < sidebarX1 || mx > sidebarX2 || my < sidebarContentTop) return false;
 
-        int rowIdx = (int) ((my - sidebarContentTop) / ROW_H);
+        int rowIdx = sidebarScrollRows + (int) ((my - sidebarContentTop) / ROW_H);
         if (rowIdx < 0 || rowIdx >= sections.size()) return false;
         jumpToSection(rowIdx);
         return true;
@@ -284,6 +861,7 @@ public final class DebugInspectScreen extends Screen {
         selectedSection = idx;
         int maxScroll = Math.max(0, rows.size() - visibleRowCount);
         scrollRows = Mth.clamp(sections.get(idx).rowIndex(), 0, maxScroll);
+        ensureSelectedSidebarVisible();
     }
 
     private void syncSelectedSectionWithScroll() {
@@ -296,6 +874,18 @@ public final class DebugInspectScreen extends Screen {
             else break;
         }
         selectedSection = best;
+        ensureSelectedSidebarVisible();
+    }
+
+    private void ensureSelectedSidebarVisible() {
+        if (sidebarVisibleRows <= 0) return;
+        if (selectedSection < sidebarScrollRows) {
+            sidebarScrollRows = selectedSection;
+        } else if (selectedSection >= sidebarScrollRows + sidebarVisibleRows) {
+            sidebarScrollRows = selectedSection - sidebarVisibleRows + 1;
+        }
+        sidebarScrollRows = Mth.clamp(sidebarScrollRows, 0,
+                Math.max(0, sections.size() - sidebarVisibleRows));
     }
 
     // --- rendering -------------------------------------------------------------------------
@@ -306,7 +896,7 @@ public final class DebugInspectScreen extends Screen {
 
         if (copyFeedbackUntil != 0 && System.currentTimeMillis() > copyFeedbackUntil) {
             copyFeedbackUntil = 0;
-            if (copyButton != null) copyButton.setMessage(Component.literal("Copy report"));
+            if (copyButton != null) copyButton.setMessage(Component.literal("Copy Report"));
         }
 
         // --- header (title + right-aligned compact summary) ------------------------------
@@ -376,17 +966,22 @@ public final class DebugInspectScreen extends Screen {
             return;
         }
 
+        sidebarVisibleRows = Math.max(1, (y2 - sidebarContentTop) / ROW_H);
+        sidebarScrollRows = Mth.clamp(sidebarScrollRows, 0,
+                Math.max(0, sections.size() - sidebarVisibleRows));
         int rowY = sidebarContentTop;
-        for (int i = 0; i < sections.size(); i++, rowY += ROW_H) {
-            // Quietly stop drawing if the list exceeds the sidebar; sidebar overflow is
-            // rare (few groups per payload) and the main panel stays scrollable regardless.
-            if (rowY + ROW_H > y2) break;
+        int end = Math.min(sections.size(), sidebarScrollRows + sidebarVisibleRows);
+        for (int i = sidebarScrollRows; i < end; i++, rowY += ROW_H) {
 
             SectionAnchor s = sections.get(i);
             boolean selected = i == selectedSection;
             boolean hovered = mouseX >= x1 && mouseX <= x2
                     && mouseY >= rowY && mouseY <= rowY + ROW_H;
             drawSidebarRow(g, x1, rowY, x2, s, selected, hovered);
+        }
+        if (sections.size() > sidebarVisibleRows) {
+            drawScrollbar(g, x2 - 4, sidebarContentTop + 2, y2 - 2,
+                    sidebarScrollRows, sidebarVisibleRows, sections.size());
         }
     }
 
@@ -566,7 +1161,7 @@ public final class DebugInspectScreen extends Screen {
 
     private void renderEmpty(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         String a = "No payload loaded.";
-        String b = "Copy a " + WaypointCodec.MAGIC + " export string, then click \"Load from clipboard\".";
+        String b = "Copy a " + WaypointCodec.MAGIC + " export string, then click \"Refresh\".";
         int cy = y1 + (y2 - y1) / 2 - 8;
         int ax = x1 + ((x2 - x1) - font.width(a)) / 2;
         int bx = x1 + ((x2 - x1) - font.width(b)) / 2;
@@ -600,7 +1195,8 @@ public final class DebugInspectScreen extends Screen {
     // --- report building --------------------------------------------------------------------
 
     private static void buildReport(DecodeDebug d, List<Row> rows, List<SectionAnchor> sections) {
-        addSection(rows, sections, "Codec Pipeline", null);
+        addSection(rows, sections, "Codec Pipeline", null,
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
         rows.add(new Row.KV("Input",       d.inputChars() + " chars"));
         rows.add(new Row.KVDim("Prefix",   d.magic()));
         rows.add(new Row.KV("Payload",     d.payloadChars() + " chars"));
@@ -610,7 +1206,8 @@ public final class DebugInspectScreen extends Screen {
         rows.add(new Row.KV("Density",     String.format(Locale.ROOT, "%.2f chars / raw byte", d.charsPerRawByte())));
         rows.add(new Row.KV("Decode time", formatNanos(d.decodeNanos())));
 
-        addSection(rows, sections, "Codec Header", shortByte(d.headerByte()));
+        addSection(rows, sections, "Codec Header", shortByte(d.headerByte()),
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
         rows.add(new Row.KV("Byte",    formatByteFull(d.headerByte())));
         rows.add(new Row.KV("Version", "v" + d.version() + " (bits 0..3)"));
         if (d.version() == 9) {
@@ -645,14 +1242,16 @@ public final class DebugInspectScreen extends Screen {
         }
 
         String poolSub = d.stringPool().size() + (d.stringPool().size() == 1 ? " entry" : " entries");
-        addSection(rows, sections, "Codec String Pool", poolSub);
+        addSection(rows, sections, "Codec String Pool", poolSub,
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
         for (int i = 0; i < d.stringPool().size(); i++) {
             rows.add(new Row.PoolEntry(i, d.stringPool().get(i)));
         }
 
         for (DecodeDebug.GroupDebug gd : d.groups()) {
             String subtitle = gd.name().isEmpty() ? "(unnamed)" : gd.name();
-            addSection(rows, sections, "Codec Group " + gd.index(), subtitle);
+            addSection(rows, sections, "Codec Group " + gd.index(), subtitle,
+                    DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
             WaypointGroup decodedGroup = d.decodedGroups().get(gd.index());
 
             rows.add(new Row.KV("Zone",          gd.zoneId().isEmpty() ? "(none)" : gd.zoneId()));
@@ -704,7 +1303,8 @@ public final class DebugInspectScreen extends Screen {
     private static void buildCodecClipboardReport(List<Row> rows,
                                                   List<SectionAnchor> sections,
                                                   String message) {
-        addSection(rows, sections, "Codec Clipboard", "not loaded");
+        addSection(rows, sections, "Codec Clipboard", "not loaded",
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
         rows.add(new Row.KVWarn("Status", message));
         rows.add(new Row.KVDim("Hint", "Copy a Waypointer export and hit Refresh."));
     }
@@ -714,7 +1314,8 @@ public final class DebugInspectScreen extends Screen {
                                                      List<SectionAnchor> sections) {
         DungeonStateTracker.DebugSnapshot tracker = snapshot == null ? null : snapshot.tracker;
         addSection(rows, sections, "Dungeon Overview",
-                tracker == null ? "not installed" : tracker.roomName);
+                tracker == null ? "not installed" : tracker.roomName,
+                DebugReportExport.Category.SERVER_CONTEXT);
         rows.add(new Row.KVDim("Config", DebugSignals.dungeonConfigLine()));
         rows.add(new Row.KVDim("Zone source", "Scoreboard sidebar"));
         if (tracker == null) {
@@ -732,7 +1333,8 @@ public final class DebugInspectScreen extends Screen {
             rows.add(new Row.KV("Segments", formatSegments(tracker.roomSegments)));
         }
 
-        addSection(rows, sections, "Room Detection", tracker == null ? "unavailable" : tracker.lastScanStage);
+        addSection(rows, sections, "Room Detection", tracker == null ? "unavailable" : tracker.lastScanStage,
+                DebugReportExport.Category.SERVER_CONTEXT);
         if (tracker == null) {
             rows.add(new Row.KVWarn("Unavailable", "No tracker snapshot is available."));
         } else {
@@ -750,7 +1352,8 @@ public final class DebugInspectScreen extends Screen {
         }
 
         DungeonRoomZoneBridge.DebugSnapshot bridge = snapshot == null ? null : snapshot.bridge;
-        addSection(rows, sections, "Zone Bridge", bridge == null ? "unavailable" : bridge.lastAction);
+        addSection(rows, sections, "Zone Bridge", bridge == null ? "unavailable" : bridge.lastAction,
+                DebugReportExport.Category.SERVER_CONTEXT);
         if (bridge == null) {
             rows.add(new Row.KVWarn("Unavailable", "No bridge snapshot is available."));
         } else {
@@ -764,7 +1367,11 @@ public final class DebugInspectScreen extends Screen {
         }
 
         DungeonRouteSession.DebugSnapshot route = snapshot == null ? null : snapshot.routeSession;
-        addSection(rows, sections, "Route Progress", route == null ? "unavailable" : route.roomKey);
+        addSection(rows, sections, "Built-in Dungeon Secret Progress",
+                route == null ? "unavailable" : route.roomKey,
+                DebugReportExport.Category.SERVER_CONTEXT);
+        rows.add(new Row.KVDim("Source", "DungeonRoomData built-in secret definitions"));
+        rows.add(new Row.KVDim("Lifetime", "Current dungeon run; not persisted user-route progress"));
         if (route == null) {
             rows.add(new Row.KVWarn("Unavailable", "Dungeon route session is not installed."));
         } else {
@@ -786,15 +1393,6 @@ public final class DebugInspectScreen extends Screen {
             rows.add(new Row.KVDim("Last reset", route.lastResetReason + " " + formatAge(route.lastResetAtMillis)));
         }
 
-        List<DebugEventLog.Entry> events = snapshot == null ? List.of() : snapshot.inputEvents;
-        addSection(rows, sections, "Trigger/Input", events.size() + " events");
-        if (events.isEmpty()) {
-            rows.add(new Row.KVDim("Input events", "No recent route-list or editor clicks recorded."));
-        } else {
-            for (DebugEventLog.Entry event : events) {
-                rows.add(new Row.KVDim("Event", event.plainText()));
-            }
-        }
     }
 
     private static void buildPerformanceReport(PerformanceStats stats,
@@ -803,13 +1401,10 @@ public final class DebugInspectScreen extends Screen {
                                                 List<SectionAnchor> sections) {
         addSection(rows, sections, "Performance Snapshot", null);
         rows.add(new Row.KV("Captured", stats.capturedAt().toString()));
-        rows.add(new Row.KV("Zone", stats.currentZoneName() + " (" + stats.currentZoneId() + ")"));
         rows.add(new Row.KVDim("Meaning", "counts before camera/distance culling unless noted"));
-        rows.add(new Row.KVDim("Java", System.getProperty("java.version", "(unknown)")));
-        rows.add(new Row.KVDim("Memory used", formatBytes(stats.usedMemoryBytes())
-                + " / " + formatBytes(stats.maxMemoryBytes())));
 
-        addSection(rows, sections, "Route Library", stats.totalWaypoints() + " pts");
+        addSection(rows, sections, "Route Library", stats.totalWaypoints() + " pts",
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
         rows.add(new Row.KV("Groups", stats.totalGroups() + " total, "
                 + stats.enabledGroups() + " enabled, " + stats.tempGroups() + " temp"));
         rows.add(new Row.KV("Zones", stats.knownZoneCount() + " known"));
@@ -819,7 +1414,8 @@ public final class DebugInspectScreen extends Screen {
                 + stats.sequenceGroups() + " sequence groups"));
         rows.add(new Row.KV("Largest group", groupSummary(stats.largestGroup())));
 
-        addSection(rows, sections, "Active Zone", stats.activeGroups() + " groups");
+        addSection(rows, sections, "Active Zone", stats.activeGroups() + " groups",
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
         rows.add(new Row.KV("Active points", stats.activeWaypoints() + " total"));
         rows.add(new Row.KV("Static points", String.valueOf(stats.activeStaticWaypoints())));
         rows.add(new Row.KV("Sequence points", String.valueOf(stats.activeSequenceWaypoints())));
@@ -827,7 +1423,8 @@ public final class DebugInspectScreen extends Screen {
         rows.add(new Row.KV("Label candidates", stats.activeLabelCandidates() + " before budget"));
         rows.add(new Row.KV("Largest active", groupSummary(stats.largestActiveGroup())));
 
-        addSection(rows, sections, "Render Estimate", null);
+        addSection(rows, sections, "Render Estimate", null,
+                DebugReportExport.Category.SETTINGS_AND_CHANGES);
         rows.add(new Row.KV("Box style", config.boxStyle().name()));
         rows.add(new Row.KV("Beacon mode", config.beaconBeamMode().name()));
         rows.add(new Row.KV("Line vertices", String.valueOf(stats.estimatedLineBoxVertices())));
@@ -839,21 +1436,24 @@ public final class DebugInspectScreen extends Screen {
                 ? "unlimited" : String.format(Locale.ROOT, "%.1f blocks",
                 config.maxStaticWaypointRenderDistance())));
 
-        addSection(rows, sections, "Tick Estimate", null);
+        addSection(rows, sections, "Tick Estimate", null,
+                DebugReportExport.Category.SETTINGS_AND_CHANGES);
         rows.add(new Row.KV("Proximity visits", stats.estimatedProximityIndexVisitsPerTick()
                 + " nearby candidates/tick"));
         rows.add(new Row.KVDim("Skip-ahead", config.skipAheadMechanicEnabled() ? "enabled" : "disabled"));
         rows.add(new Row.KVDim("Static reached hide",
                 config.hideReachedStaticWaypointsUntilCycleComplete() ? "enabled" : "disabled"));
 
-        addSection(rows, sections, "Config Toggles", null);
+        addSection(rows, sections, "Config Toggles", null,
+                DebugReportExport.Category.SETTINGS_AND_CHANGES);
         rows.add(new Row.KV("Names", config.showWaypointNames() ? "on" : "off"));
         rows.add(new Row.KV("Distances", config.showWaypointDistances() ? "on" : "off"));
         rows.add(new Row.KV("Backdrop", config.showLabelBackdrop() ? "on" : "off"));
         rows.add(new Row.KV("Tracer", config.showTracer() ? "on" : "off"));
         rows.add(new Row.KV("Hide static tracer", config.hideTracerOnStaticRoutes() ? "on" : "off"));
 
-        addSection(rows, sections, "Active Groups", String.valueOf(stats.activeGroupStats().size()));
+        addSection(rows, sections, "Active Groups", String.valueOf(stats.activeGroupStats().size()),
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
         if (stats.activeGroupStats().isEmpty()) {
             rows.add(new Row.KVDim("None", "No active groups in the current zone."));
             return;
@@ -870,9 +1470,15 @@ public final class DebugInspectScreen extends Screen {
 
     private static void addSection(List<Row> rows, List<SectionAnchor> sections,
                                     String label, String subtitle) {
+        addSection(rows, sections, label, subtitle, DebugReportExport.Category.CORE);
+    }
+
+    private static void addSection(List<Row> rows, List<SectionAnchor> sections,
+                                   String label, String subtitle,
+                                   DebugReportExport.Category category) {
         if (!rows.isEmpty()) rows.add(new Row.Blank());
         sections.add(new SectionAnchor(label, subtitle, rows.size()));
-        rows.add(new Row.Section(label));
+        rows.add(new Row.Section(label, category));
     }
 
     // --- text formatting --------------------------------------------------------------------
@@ -909,14 +1515,17 @@ public final class DebugInspectScreen extends Screen {
     private static String rowAsPlainText(Row row) {
         return switch (row) {
             case Row.Section s -> "== " + s.title() + " ==";
-            case Row.KV kv -> String.format(Locale.ROOT, "  %-16s %s", kv.key() + ":", kv.value());
-            case Row.KVDim kv -> String.format(Locale.ROOT, "  %-16s %s", kv.key() + ":", kv.value());
-            case Row.KVWarn kv -> String.format(Locale.ROOT, "  %-16s %s", kv.key() + ":", kv.value());
+            case Row.KV kv -> String.format(Locale.ROOT, "  %-16s %s",
+                    oneLine(kv.key()) + ":", oneLine(kv.value()));
+            case Row.KVDim kv -> String.format(Locale.ROOT, "  %-16s %s",
+                    oneLine(kv.key()) + ":", oneLine(kv.value()));
+            case Row.KVWarn kv -> String.format(Locale.ROOT, "  %-16s %s",
+                    oneLine(kv.key()) + ":", oneLine(kv.value()));
             case Row.Bit b -> String.format(Locale.ROOT, "    bit %d  %-17s = %s",
-                    b.bit(), b.label(), b.set() ? "true" : "false");
-            case Row.BitNote n -> "    " + n.text();
+                    b.bit(), oneLine(b.label()), b.set() ? "true" : "false");
+            case Row.BitNote n -> "    " + oneLine(n.text());
             case Row.PoolEntry p -> String.format(Locale.ROOT, "  [%d] %s",
-                    p.index(), p.text().isEmpty() ? "\"\"" : "\"" + p.text() + "\"");
+                    p.index(), p.text().isEmpty() ? "\"\"" : "\"" + oneLine(p.text()) + "\"");
             case Row.WP wp -> formatWaypointPlain(wp.wp());
             case Row.Blank ignored -> "";
         };
@@ -924,7 +1533,7 @@ public final class DebugInspectScreen extends Screen {
 
     private static String groupSummary(PerformanceStats.GroupStats group) {
         if (group == null) return "(none)";
-        return shortGroupName(group) + " -- " + group.waypoints()
+        return oneLine(shortGroupName(group)) + " -- " + group.waypoints()
                 + " pts, " + group.loadMode().toLowerCase(Locale.ROOT);
     }
 
@@ -940,7 +1549,7 @@ public final class DebugInspectScreen extends Screen {
         StringBuilder sb = new StringBuilder();
         sb.append(String.format(Locale.ROOT, "  #%-2d (%6d,%4d,%6d)  flags=%s",
                 wp.index(), wp.x(), wp.y(), wp.z(), formatByteFull(wp.wpFlagsByte())));
-        if (wp.hasName())   sb.append("  name=\"").append(wp.name()).append('"');
+        if (wp.hasName())   sb.append("  name=\"").append(oneLine(wp.name())).append('"');
         if (wp.hasColor())  sb.append(String.format(Locale.ROOT, "  color=#%06X", wp.color() & 0xFFFFFF));
         if (wp.hasRadius()) sb.append("  r=").append(formatRadius(wp.customRadius()));
         if (wp.extended())  sb.append("  ext=").append(formatIntHex(wp.extendedFlags()));
@@ -998,4 +1607,10 @@ public final class DebugInspectScreen extends Screen {
 
     @Override
     public void onClose() { MinecraftCompat.setScreen(minecraft, parent); }
+
+    @Override
+    public void removed() {
+        RenderDiagnostics.setDetailedCaptureEnabled(false);
+        super.removed();
+    }
 }

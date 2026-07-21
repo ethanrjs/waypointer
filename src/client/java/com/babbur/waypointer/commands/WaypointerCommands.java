@@ -939,7 +939,7 @@ public final class WaypointerCommands {
                                     "blacklist remove Babbur"))),
             new HelpSection("debug", "Debug",
                     List.of(
-                            new HelpRow(" debug", "Open the Waypointer debug inspector.",
+                            new HelpRow(" debug", "Open the all-in-one troubleshooting report.",
                                     "debug"),
                             new HelpRow(" devmode [on|off|status|report]",
                                     "Monitor dungeon room detection and write diagnostic reports.",
