@@ -109,7 +109,8 @@ public final class GroupEditScreen extends Screen {
     static final int WAYPOINT_CONTROL_ACTION_NONE = 0;
     static final int WAYPOINT_CONTROL_ACTION_STAND_SKIP = 1;
     static final int WAYPOINT_CONTROL_ACTION_INTERACT_SKIP = 2;
-    static final int WAYPOINT_CONTROL_ACTION_DEPTH_CHECK = 3;
+    static final int WAYPOINT_CONTROL_ACTION_MINE_SKIP = 3;
+    static final int WAYPOINT_CONTROL_ACTION_DEPTH_CHECK = 4;
     private static final int SUBWAY_STYLE_BUTTON_W = 26;
     private static final int SUBWAY_STYLE_BUTTON_H = 18;
     private static final int SUBWAY_STYLE_BUTTON_TOP_PAD = 2;
@@ -1315,6 +1316,13 @@ public final class GroupEditScreen extends Screen {
                     isInside(mouseX, mouseY, interactX, y,
                             SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
                     WAYPOINT_CONTROL_ACTION_INTERACT_SKIP);
+
+            int mineX = mineSkipButtonX(rowRight);
+            renderWaypointControlButton(g, mineX, y,
+                    waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_MINE),
+                    isInside(mouseX, mouseY, mineX, y,
+                            SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H),
+                    WAYPOINT_CONTROL_ACTION_MINE_SKIP);
         }
         renderDepthCheckButton(g, waypoint, rowRight, rowY, mouseX, mouseY);
     }
@@ -1337,6 +1345,13 @@ public final class GroupEditScreen extends Screen {
             g.fill(cx - 4, cy + 2, cx, cy + 5, secondary);
             g.fill(cx + 2, cy - 3, cx + 6, cy + 3, primary);
             g.fill(cx, cy + 4, cx + 4, cy + 7, secondary);
+            return;
+        }
+
+        if (action == WAYPOINT_CONTROL_ACTION_MINE_SKIP) {
+            g.fill(cx - 6, cy - 5, cx + 2, cy - 3, primary);
+            g.fill(cx, cy - 3, cx + 3, cy, primary);
+            g.fill(cx - 1, cy - 1, cx + 1, cy + 6, secondary);
             return;
         }
 
@@ -1446,10 +1461,14 @@ public final class GroupEditScreen extends Screen {
     }
 
     private static int standSkipButtonX(int rowRight) {
-        return depthCheckButtonX(rowRight) - (SUBWAY_STYLE_BUTTON_W + GAP_TIGHT) * 2;
+        return depthCheckButtonX(rowRight) - (SUBWAY_STYLE_BUTTON_W + GAP_TIGHT) * 3;
     }
 
     private static int interactSkipButtonX(int rowRight) {
+        return mineSkipButtonX(rowRight) - SUBWAY_STYLE_BUTTON_W - GAP_TIGHT;
+    }
+
+    private static int mineSkipButtonX(int rowRight) {
         return depthCheckButtonX(rowRight) - SUBWAY_STYLE_BUTTON_W - GAP_TIGHT;
     }
 
@@ -1680,6 +1699,10 @@ public final class GroupEditScreen extends Screen {
             if (isInside(mx, my, interactX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
                 return WAYPOINT_CONTROL_ACTION_INTERACT_SKIP;
             }
+            int mineX = mineSkipButtonX(rowRight);
+            if (isInside(mx, my, mineX, y, SUBWAY_STYLE_BUTTON_W, SUBWAY_STYLE_BUTTON_H)) {
+                return WAYPOINT_CONTROL_ACTION_MINE_SKIP;
+            }
         }
 
         int depthX = depthCheckButtonX(rowRight);
@@ -1724,6 +1747,9 @@ public final class GroupEditScreen extends Screen {
         if (action == WAYPOINT_CONTROL_ACTION_INTERACT_SKIP) {
             return dungeonInteractSkipTooltipText();
         }
+        if (action == WAYPOINT_CONTROL_ACTION_MINE_SKIP) {
+            return dungeonMineSkipTooltipText();
+        }
         if (action == WAYPOINT_CONTROL_ACTION_DEPTH_CHECK) {
             return "Render in LOS only";
         }
@@ -1756,6 +1782,10 @@ public final class GroupEditScreen extends Screen {
         return "Dungeons: Interact to skip";
     }
 
+    static String dungeonMineSkipTooltipText() {
+        return "Dungeons: Mine to skip";
+    }
+
     private String subwaypointStyleTooltipAt(double mouseX, double mouseY) {
         int action = subwaypointStyleActionAt(mouseX, mouseY);
         if (action == SUBWAY_STYLE_ACTION_SMALL) {
@@ -1785,6 +1815,9 @@ public final class GroupEditScreen extends Screen {
         }
         if (action == WAYPOINT_CONTROL_ACTION_INTERACT_SKIP && dungeonRoomGroup) {
             return Waypoint.FLAG_SKIP_ON_INTERACT;
+        }
+        if (action == WAYPOINT_CONTROL_ACTION_MINE_SKIP && dungeonRoomGroup) {
+            return Waypoint.FLAG_SKIP_ON_MINE;
         }
         if (action == WAYPOINT_CONTROL_ACTION_DEPTH_CHECK) {
             return Waypoint.FLAG_DEPTH_CHECKED;

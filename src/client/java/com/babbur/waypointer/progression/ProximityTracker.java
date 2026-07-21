@@ -30,6 +30,8 @@ import net.minecraft.world.phys.BlockHitResult;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
  * Watches the local player each client tick and advances any active group whose
@@ -48,10 +50,14 @@ public final class ProximityTracker {
 
     private static final double STAND_SKIP_SCAN_RADIUS = 1.75D;
     static final long STAND_SKIP_HOLD_MS = 500L;
+    static final int MINE_BLOCK_UNKNOWN = 0;
+    static final int MINE_BLOCK_PRESENT = 1;
+    static final int MINE_BLOCK_AIR = 2;
 
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
     private final DungeonChestInteractionGuard chestInteractionGuard;
+    private final Set<MineTarget> observedMineTargets = new HashSet<>();
 
     public ProximityTracker(ActiveGroupManager manager, WaypointerConfig config) {
         this(manager, config, null);
@@ -113,7 +119,11 @@ public final class ProximityTracker {
 
     private void onTick(Minecraft mc) {
         LocalPlayer p = mc.player;
-        if (p == null) return;
+        ClientLevel level = mc.level;
+        if (p == null || level == null) {
+            observedMineTargets.clear();
+            return;
+        }
 
         double px = p.getX();
         double py = p.getY();
@@ -127,14 +137,24 @@ public final class ProximityTracker {
         boolean skipOnlyVisible = config.skipAheadOnlyVisibleWaypoints();
         boolean hideReachedStatic = config.hideReachedStaticWaypointsUntilCycleComplete();
         boolean trackRouteTimes = config.routeTimesEnabled();
+        long nowMillis = System.currentTimeMillis();
+        Set<MineTarget> liveMineTargets = new HashSet<>();
         for (WaypointGroup group : manager.activeGroups()) {
+            boolean skippingEnabled = globalSkipAhead && group.skipAheadEnabled();
+            boolean mined = updateMinedWaypointProgress(group, (x, y, z) -> {
+                BlockPos pos = new BlockPos(x, y, z);
+                if (!level.hasChunkAt(pos)) return MINE_BLOCK_UNKNOWN;
+                return level.getBlockState(pos).isAir() ? MINE_BLOCK_AIR : MINE_BLOCK_PRESENT;
+            }, observedMineTargets, liveMineTargets, loop, skippingEnabled, nowMillis,
+                    trackRouteTimes);
             boolean changed = updateGroupProgress(group, px, py, pz, loop, globalSkipAhead,
                     skipOnlyVisible, hideReachedStatic, trackRouteTimes);
-            if (changed) reportRouteCompletion(manager, group, trackRouteTimes);
-            if (changed && shouldHideCompletedDungeonRoomRoute(group)) {
+            if (mined || changed) reportRouteCompletion(manager, group, trackRouteTimes);
+            if ((mined || changed) && shouldHideCompletedDungeonRoomRoute(group)) {
                 manager.fireTransientDataChanged();
             }
         }
+        observedMineTargets.retainAll(liveMineTargets);
     }
 
     public static boolean updateGroupProgress(WaypointGroup group,
@@ -314,6 +334,52 @@ public final class ProximityTracker {
 
         return advancePastReachedIndex(group, from, reachedIndex, restartWhenComplete,
                 allowSkipAhead, nowMillis, trackRouteTimes);
+    }
+
+    static boolean updateMinedWaypointProgress(WaypointGroup group,
+                                               MineBlockLookup blocks,
+                                               Set<MineTarget> observed,
+                                               Set<MineTarget> live,
+                                               boolean restartWhenComplete,
+                                               boolean skippingEnabled,
+                                               long nowMillis,
+                                               boolean trackRouteTimes) {
+        if (!isEligibleDungeonTriggerGroup(group) || blocks == null
+                || observed == null || live == null) {
+            return false;
+        }
+
+        int from = group.currentIndex();
+        int to = group.loadMode() == WaypointGroup.LoadMode.STATIC || skippingEnabled
+                ? group.size() - 1
+                : from;
+        int highestMined = -1;
+        boolean staticChanged = false;
+        for (int i = Math.max(0, from); i <= to; i++) {
+            if (group.isSubwaypoint(i)) continue;
+            Waypoint waypoint = group.get(i);
+            if (!waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_MINE)) continue;
+
+            MineTarget target = new MineTarget(
+                    group.id(), i, waypoint.x(), waypoint.y(), waypoint.z());
+            live.add(target);
+            int state = blocks.stateAt(waypoint.x(), waypoint.y(), waypoint.z());
+            if (state == MINE_BLOCK_PRESENT) {
+                observed.add(target);
+            } else if (state == MINE_BLOCK_AIR && observed.remove(target)) {
+                if (group.loadMode() == WaypointGroup.LoadMode.STATIC) {
+                    staticChanged |= group.markStaticWaypointReached(i);
+                } else {
+                    highestMined = i;
+                }
+            }
+        }
+
+        if (group.loadMode() == WaypointGroup.LoadMode.STATIC) return staticChanged;
+        return highestMined >= 0 && advancePastReachedIndex(
+                group, from, highestMined,
+                restartWhenComplete && !isDungeonRoomRouteGroup(group),
+                skippingEnabled, nowMillis, trackRouteTimes);
     }
 
     public static boolean advanceIfInteractedWithBlock(WaypointGroup group,
@@ -514,7 +580,8 @@ public final class ProximityTracker {
         if (group.isSubwaypoint(index)) return false;
         Waypoint waypoint = group.get(index);
         return !waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_STAND)
-                && !waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT);
+                && !waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT)
+                && !waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_MINE);
     }
 
     private static boolean[] visibleIndexMask(WaypointGroup group) {
@@ -546,7 +613,9 @@ public final class ProximityTracker {
         if (isDungeonStandSkipWaypoint(group, w)) {
             return isStandSkipReached(group, index, w, px, py, pz, nowMillis);
         }
-        if (isDungeonInteractSkipWaypoint(group, w)) return false;
+        if (isDungeonInteractSkipWaypoint(group, w) || isDungeonMineSkipWaypoint(group, w)) {
+            return false;
+        }
         return isWithinReach(group, w, px, py, pz);
     }
 
@@ -560,6 +629,12 @@ public final class ProximityTracker {
         return isEligibleDungeonTriggerGroup(group)
                 && w != null
                 && w.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT);
+    }
+
+    private static boolean isDungeonMineSkipWaypoint(WaypointGroup group, Waypoint w) {
+        return isEligibleDungeonTriggerGroup(group)
+                && w != null
+                && w.hasFlag(Waypoint.FLAG_SKIP_ON_MINE);
     }
 
     private static boolean isStandSkipReached(WaypointGroup group, int index, Waypoint w,
@@ -646,5 +721,13 @@ public final class ProximityTracker {
         double dy = w.centerY() - py;
         double dz = w.centerZ() - pz;
         return dx * dx + dy * dy + dz * dz <= r * r;
+    }
+
+    @FunctionalInterface
+    interface MineBlockLookup {
+        int stateAt(int x, int y, int z);
+    }
+
+    record MineTarget(String groupId, int index, int x, int y, int z) {
     }
 }

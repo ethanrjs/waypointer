@@ -14,6 +14,7 @@ public final class WaypointFlags {
     public static final int DEPTH_CHECKED = 1 << 8;
     public static final int SKIP_ON_STAND = 1 << 9;
     public static final int SKIP_ON_INTERACT = 1 << 10;
+    public static final int SKIP_ON_MINE = 1 << 11;
 
     public static final int SUBWAYPOINT_STYLE = SMALL_SUBWAYPOINT
             | FILLED_SUBWAYPOINT
