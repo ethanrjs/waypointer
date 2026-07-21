@@ -37,7 +37,7 @@ import java.util.List;
 /**
  * Registers and polls the mod's keybinds.
  *
- * Thirteen bindings today:
+ * Ten bindings today:
  *
  *   - Open Waypointer GUI -- the primary way into the GUI.
  *   - Add Waypoint -- drops a waypoint at the player's position into the
@@ -48,10 +48,8 @@ import java.util.List;
  *     waypoint at the player's current position with that name.
  *   - Add Temp Waypoint at Player -- drops a temporary waypoint using the
  *     user's default expiry mode and duration.
- *   - Add Subwaypoint Where Looking -- pick a block in-world, then add a
- *     subwaypoint there.
- *   - Add Small Subwaypoint Where Looking -- pick a precise in-world hit point,
- *     then add a tiny subwaypoint there.
+ *   - Add Waypoint Where Looking -- pick a block in-world, then name it and
+ *     optionally make it a SubWP or small SubWP.
  *   - Skip Waypoint -- advances the current active group(s) past their current
  *     waypoint. Useful for dungeon speedruns or when a waypoint is physically
  *     unreachable. Unbound by default; players who don't want it just don't
@@ -64,11 +62,6 @@ import java.util.List;
  *   - Exit Edit Mode -- explicitly disables persistent edit mode.
  *   - Toggle Edit Mode -- flips persistent edit mode for players who prefer one
  *     bind instead of separate enter/exit binds.
- *   - Edit Mode: Add Waypoint -- pick a block in-world, then add an unnamed
- *     waypoint there.
- *   - Edit Mode: Add Named Waypoint -- pick a block in-world, then name the
- *     waypoint before adding it.
- *
  * All bindings are registered under a single Waypointer category via the
  * identifier-based API so the vanilla controls screen groups them together.
  * None are bound by default (apart from Open Waypointer GUI): the mod treats every
@@ -81,18 +74,12 @@ public final class WaypointerKeybinds {
     static final String ADD_WAYPOINT_HERE_TRANSLATION_KEY = "key.waypointer.add_waypoint_here";
     static final String ADD_NAMED_WAYPOINT_HERE_TRANSLATION_KEY = "key.waypointer.add_named_waypoint_here";
     static final String ADD_TEMP_WAYPOINT_HERE_TRANSLATION_KEY = "key.waypointer.add_temp_waypoint_here";
-    static final String ADD_SUBWAYPOINT_WHERE_LOOKING_TRANSLATION_KEY =
-            "key.waypointer.add_subwaypoint_where_looking";
-    static final String ADD_SMALL_SUBWAYPOINT_WHERE_LOOKING_TRANSLATION_KEY =
-            "key.waypointer.add_small_subwaypoint_where_looking";
     static final String SKIP_WAYPOINT_TRANSLATION_KEY = "key.waypointer.skip_waypoint";
     static final String PREVIOUS_WAYPOINT_TRANSLATION_KEY = "key.waypointer.previous_waypoint";
     static final String ENTER_EDIT_MODE_TRANSLATION_KEY = "key.waypointer.enter_edit_mode";
     static final String EXIT_EDIT_MODE_TRANSLATION_KEY = "key.waypointer.exit_edit_mode";
     static final String TOGGLE_EDIT_MODE_TRANSLATION_KEY = "key.waypointer.toggle_edit_mode";
     static final String REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY = "key.waypointer.reposition_add_waypoint";
-    static final String REPOSITION_ADD_NAMED_WAYPOINT_TRANSLATION_KEY =
-            "key.waypointer.reposition_add_named_waypoint";
     static final int OPEN_EDITOR_DEFAULT_KEY = GLFW.GLFW_KEY_U;
     static final int UNBOUND_DEFAULT_KEY = InputConstants.UNKNOWN.getValue();
     static final List<String> KEYBIND_TRANSLATION_KEYS = List.of(
@@ -100,20 +87,14 @@ public final class WaypointerKeybinds {
             ADD_WAYPOINT_HERE_TRANSLATION_KEY,
             ADD_NAMED_WAYPOINT_HERE_TRANSLATION_KEY,
             ADD_TEMP_WAYPOINT_HERE_TRANSLATION_KEY,
-            ADD_SUBWAYPOINT_WHERE_LOOKING_TRANSLATION_KEY,
-            ADD_SMALL_SUBWAYPOINT_WHERE_LOOKING_TRANSLATION_KEY,
             SKIP_WAYPOINT_TRANSLATION_KEY,
             PREVIOUS_WAYPOINT_TRANSLATION_KEY,
             ENTER_EDIT_MODE_TRANSLATION_KEY,
             EXIT_EDIT_MODE_TRANSLATION_KEY,
             TOGGLE_EDIT_MODE_TRANSLATION_KEY,
-            REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY,
-            REPOSITION_ADD_NAMED_WAYPOINT_TRANSLATION_KEY);
+            REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY);
     static final List<Integer> KEYBIND_DEFAULT_KEYS = List.of(
             OPEN_EDITOR_DEFAULT_KEY,
-            UNBOUND_DEFAULT_KEY,
-            UNBOUND_DEFAULT_KEY,
-            UNBOUND_DEFAULT_KEY,
             UNBOUND_DEFAULT_KEY,
             UNBOUND_DEFAULT_KEY,
             UNBOUND_DEFAULT_KEY,
@@ -137,15 +118,12 @@ public final class WaypointerKeybinds {
     private final KeyMapping addWaypointHere;
     private final KeyMapping addNamedWaypointHere;
     private final KeyMapping addTempWaypointHere;
-    private final KeyMapping addSubwaypointWhereLooking;
-    private final KeyMapping addSmallSubwaypointWhereLooking;
     private final KeyMapping skipWaypoint;
     private final KeyMapping previousWaypoint;
     private final KeyMapping enterEditMode;
     private final KeyMapping exitEditMode;
     private final KeyMapping toggleEditMode;
-    private final KeyMapping repositionAddWaypoint;
-    private final KeyMapping repositionAddNamedWaypoint;
+    private final KeyMapping addWaypointWhereLooking;
     private final Runnable openGui;
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
@@ -184,16 +162,6 @@ public final class WaypointerKeybinds {
                 InputConstants.Type.KEYSYM,
                 UNBOUND_DEFAULT_KEY,
                 CATEGORY));
-        this.addSubwaypointWhereLooking = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                ADD_SUBWAYPOINT_WHERE_LOOKING_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
-        this.addSmallSubwaypointWhereLooking = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                ADD_SMALL_SUBWAYPOINT_WHERE_LOOKING_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
         // Unbound by default: skip is a destructive-ish shortcut (it mutates route
         // progress) and players should opt in by choosing a key, not discover it by
         // accident on first launch.
@@ -223,13 +191,8 @@ public final class WaypointerKeybinds {
                 InputConstants.Type.KEYSYM,
                 UNBOUND_DEFAULT_KEY,
                 CATEGORY));
-        this.repositionAddWaypoint = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+        this.addWaypointWhereLooking = KeyMappingHelper.registerKeyMapping(new KeyMapping(
                 REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
-        this.repositionAddNamedWaypoint = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                REPOSITION_ADD_NAMED_WAYPOINT_TRANSLATION_KEY,
                 InputConstants.Type.KEYSYM,
                 UNBOUND_DEFAULT_KEY,
                 CATEGORY));
@@ -299,16 +262,6 @@ public final class WaypointerKeybinds {
             return;
         }
         while (addTempWaypointHere.consumeClick()) addTempWaypointAtPlayer(mc);
-        while (addSubwaypointWhereLooking.consumeClick()) {
-            WaypointRepositionMode.startAddSubwaypoint(manager, config, false);
-            drainWaypointKeybindClicks();
-            return;
-        }
-        while (addSmallSubwaypointWhereLooking.consumeClick()) {
-            WaypointRepositionMode.startAddSubwaypoint(manager, config, true);
-            drainWaypointKeybindClicks();
-            return;
-        }
         while (skipWaypoint.consumeClick()) skipCurrentWaypoint(mc);
         while (previousWaypoint.consumeClick()) goBackToPreviousWaypoint(mc);
         while (enterEditMode.consumeClick()) {
@@ -326,13 +279,8 @@ public final class WaypointerKeybinds {
             drainWaypointKeybindClicks();
             return;
         }
-        while (repositionAddWaypoint.consumeClick()) {
-            WaypointRepositionMode.startAdd(manager, config, false);
-            drainWaypointKeybindClicks();
-            return;
-        }
-        while (repositionAddNamedWaypoint.consumeClick()) {
-            WaypointRepositionMode.startAdd(manager, config, true);
+        while (addWaypointWhereLooking.consumeClick()) {
+            WaypointRepositionMode.openAddWhereLooking(manager, config);
             drainWaypointKeybindClicks();
             return;
         }
@@ -343,15 +291,12 @@ public final class WaypointerKeybinds {
         while (addWaypointHere.consumeClick()) {}
         while (addNamedWaypointHere.consumeClick()) {}
         while (addTempWaypointHere.consumeClick()) {}
-        while (addSubwaypointWhereLooking.consumeClick()) {}
-        while (addSmallSubwaypointWhereLooking.consumeClick()) {}
         while (skipWaypoint.consumeClick()) {}
         while (previousWaypoint.consumeClick()) {}
         while (enterEditMode.consumeClick()) {}
         while (exitEditMode.consumeClick()) {}
         while (toggleEditMode.consumeClick()) {}
-        while (repositionAddWaypoint.consumeClick()) {}
-        while (repositionAddNamedWaypoint.consumeClick()) {}
+        while (addWaypointWhereLooking.consumeClick()) {}
     }
 
     private void skipCurrentWaypoint(Minecraft mc) {

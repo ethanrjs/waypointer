@@ -75,17 +75,8 @@ public final class WaypointRepositionMode {
     private static final Component HELP_MOVE_PRECISE = Component.literal(
             "Left click to place the small waypoint at the cursor, snapped to 1/16 blocks.")
             .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_ADD = Component.literal(
-            "Left click to place the waypoint.")
-            .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_ADD_NAMED = Component.literal(
-            "Left click to place the named waypoint.")
-            .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_ADD_SUBWAYPOINT = Component.literal(
-            "Left click to place the subwaypoint.")
-            .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_ADD_SMALL_SUBWAYPOINT = Component.literal(
-            "Left click to place the small subwaypoint at the cursor, snapped to 1/16 blocks.")
+    private static final Component HELP_ADD_WHERE_LOOKING = Component.literal(
+            "Left click to place and name the waypoint.")
             .withStyle(ChatFormatting.AQUA);
     private static final Component HELP_EDIT_ON = Component.literal(
             "Edit mode enabled. Left click a waypoint to move it. Right click adds a waypoint.")
@@ -240,17 +231,30 @@ public final class WaypointRepositionMode {
         showHelp(mc);
     }
 
-    public static void startAdd(ActiveGroupManager manager, WaypointerConfig config,
-                                boolean named) {
-        startAddSession(manager, config, named ? Mode.ADD_NAMED : Mode.ADD_UNNAMED,
-                false);
+    public static void startAddWhereLooking(ActiveGroupManager manager, WaypointerConfig config) {
+        startAddSession(manager, config, Mode.ADD_WHERE_LOOKING, false);
     }
 
-    public static void startAddSubwaypoint(ActiveGroupManager manager, WaypointerConfig config,
-                                           boolean small) {
-        startAddSession(manager, config,
-                small ? Mode.ADD_SMALL_SUBWAYPOINT : Mode.ADD_SUBWAYPOINT,
-                small);
+    /** Capture the current crosshair target and open the naming screen immediately. */
+    public static void openAddWhereLooking(ActiveGroupManager manager, WaypointerConfig config) {
+        if (manager == null || config == null) return;
+
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.level == null) return;
+        if (addBlockedByInstalledSecrets(mc, manager)) return;
+
+        BlockPos pos = targetedBlock(mc);
+        PreciseTarget precise = targetedPrecise(mc);
+        if (pos == null || precise == null) {
+            showStatus(mc, HELP_EDIT_NO_BLOCK_TARGET);
+            return;
+        }
+
+        WaypointGroup group = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
+        int flags = defaultDungeonEditFlags(group, mc.level, pos);
+        AddNamedWaypointScreen.openWhereLooking(null, manager, config, group,
+                pos.getX(), pos.getY(), pos.getZ(),
+                precise.preciseX(), precise.preciseY(), precise.preciseZ(), flags);
     }
 
     private static void startAddSession(ActiveGroupManager manager, WaypointerConfig config,
@@ -599,16 +603,6 @@ public final class WaypointRepositionMode {
             moveExistingPrecise(mc, session, target);
             return;
         }
-        if (session.mode == Mode.ADD_SMALL_SUBWAYPOINT) {
-            PreciseTarget target = targetedPrecise(mc);
-            if (target == null) {
-                showHelp(mc);
-                return;
-            }
-            addSmallSubwaypoint(mc, session, target);
-            return;
-        }
-
         BlockPos pos = targetedBlock(mc);
         if (pos == null) {
             showHelp(mc);
@@ -617,9 +611,8 @@ public final class WaypointRepositionMode {
 
         switch (session.mode) {
             case MOVE_EXISTING -> moveExisting(mc, session, pos);
-            case ADD_UNNAMED -> addUnnamed(mc, session, pos);
-            case ADD_NAMED -> openNamedPrompt(mc, session, pos);
-            case ADD_SUBWAYPOINT -> addSubwaypoint(mc, session, pos);
+            case ADD_WHERE_LOOKING -> openWhereLookingPrompt(mc, session, pos,
+                    targetedPrecise(mc));
         }
     }
 
@@ -694,24 +687,6 @@ public final class WaypointRepositionMode {
         showStatus(mc, HELP_EDIT_MOVED);
     }
 
-    private static void addUnnamed(Minecraft mc, Session session, BlockPos pos) {
-        ClientLevel level = mc == null ? null : mc.level;
-        int flags = defaultDungeonEditFlags(session.group, level, pos);
-        addStored(session.group, new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
-                "", session.config.defaultWaypointColor(), flags, 0.0));
-        int index = session.group.size() - 1;
-        finishAddedWaypoint(mc, session, index);
-    }
-
-    private static void addSubwaypoint(Minecraft mc, Session session, BlockPos pos) {
-        ClientLevel level = mc == null ? null : mc.level;
-        int flags = subwaypointCreationFlags(session.group, level, pos, false);
-        addStored(session.group, new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
-                "", session.config.defaultWaypointColor(), flags, 0.0));
-        int index = session.group.size() - 1;
-        finishAddedWaypoint(mc, session, index);
-    }
-
     /**
      * Append with room-local conversion: stored dungeon-room routes keep
      * room-local coordinates, so a waypoint picked in world space converts
@@ -735,47 +710,17 @@ public final class WaypointRepositionMode {
         return true;
     }
 
-    private static void addSmallSubwaypoint(Minecraft mc, Session session, PreciseTarget target) {
-        ClientLevel level = mc == null ? null : mc.level;
-        int blockX = Math.floorDiv(target.preciseX(), Waypoint.PRECISE_SCALE);
-        int blockY = Math.floorDiv(target.preciseY(), Waypoint.PRECISE_SCALE);
-        int blockZ = Math.floorDiv(target.preciseZ(), Waypoint.PRECISE_SCALE);
-        BlockPos pos = new BlockPos(blockX, blockY, blockZ);
-        int flags = subwaypointCreationFlags(session.group, level, pos, true);
-        addStored(session.group, new Waypoint(blockX, blockY, blockZ,
-                "", session.config.defaultWaypointColor(), flags, 0.0,
-                Waypoint.TEMP_NONE, 0L,
-                target.preciseX(), target.preciseY(), target.preciseZ()));
-        int index = session.group.size() - 1;
-        finishAddedWaypoint(mc, session, index);
-    }
-
-    private static int subwaypointCreationFlags(WaypointGroup group, ClientLevel level,
-                                                BlockPos pos, boolean small) {
-        int flags = defaultDungeonEditFlags(group, level, pos) | Waypoint.FLAG_SUBWAYPOINT;
-        if (small) {
-            flags |= Waypoint.FLAG_SMALL_SUBWAYPOINT;
-        }
-        return flags;
-    }
-
-    private static void finishAddedWaypoint(Minecraft mc, Session session, int index) {
-        new WaypointAddFlow().afterWaypointAdded(session.group, index,
-                session.config.showWaypointChatShareButtons());
-        session.manager.fireDataChanged();
-        playEditSound(mc, session.config);
-        active = null;
-        reopenEditor(mc, session.withWaypointIndex(index));
-    }
-
-    private static void openNamedPrompt(Minecraft mc, Session session, BlockPos pos) {
+    private static void openWhereLookingPrompt(Minecraft mc, Session session, BlockPos pos,
+                                               PreciseTarget preciseTarget) {
         ClientLevel level = mc == null ? null : mc.level;
         int flags = defaultDungeonEditFlags(session.group, level, pos);
         active = null;
-        if (mc == null) return;
+        if (mc == null || preciseTarget == null) return;
         mc.execute(
-                () -> AddNamedWaypointScreen.openAt(null, session.manager, session.config,
-                session.group, pos.getX(), pos.getY(), pos.getZ(), flags));
+                () -> AddNamedWaypointScreen.openWhereLooking(null, session.manager, session.config,
+                session.group, pos.getX(), pos.getY(), pos.getZ(),
+                preciseTarget.preciseX(), preciseTarget.preciseY(), preciseTarget.preciseZ(),
+                flags));
     }
 
     private static void cancel(Minecraft mc) {
@@ -880,10 +825,7 @@ public final class WaypointRepositionMode {
 
     private enum Mode {
         MOVE_EXISTING,
-        ADD_UNNAMED,
-        ADD_NAMED,
-        ADD_SUBWAYPOINT,
-        ADD_SMALL_SUBWAYPOINT
+        ADD_WHERE_LOOKING
     }
 
     private record SelectedWaypoint(WaypointGroup group, int waypointIndex) {}
@@ -905,18 +847,10 @@ public final class WaypointRepositionMode {
     private record Session(ActiveGroupManager manager, WaypointerConfig config,
                            WaypointGroup group, int waypointIndex, Mode mode,
                            boolean preciseSmallPlacement, boolean reopenEditorAfterCommit) {
-        Session withWaypointIndex(int index) {
-            return new Session(manager, config, group, index, mode, preciseSmallPlacement,
-                    reopenEditorAfterCommit);
-        }
-
         Component help() {
             return switch (mode) {
                 case MOVE_EXISTING -> preciseSmallPlacement ? HELP_MOVE_PRECISE : HELP_MOVE;
-                case ADD_UNNAMED -> HELP_ADD;
-                case ADD_NAMED -> HELP_ADD_NAMED;
-                case ADD_SUBWAYPOINT -> HELP_ADD_SUBWAYPOINT;
-                case ADD_SMALL_SUBWAYPOINT -> HELP_ADD_SMALL_SUBWAYPOINT;
+                case ADD_WHERE_LOOKING -> HELP_ADD_WHERE_LOOKING;
             };
         }
     }
