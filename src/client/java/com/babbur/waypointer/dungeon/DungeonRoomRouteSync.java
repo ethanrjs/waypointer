@@ -136,6 +136,7 @@ public final class DungeonRoomRouteSync {
             removeGeneratedGroup(generatedId);
             return;
         }
+        group.setEnabled(config == null || config.roomRouteEnabled(roomId));
         replaceGeneratedGroup(generatedId, group);
     }
 
@@ -289,6 +290,40 @@ public final class DungeonRoomRouteSync {
 
         WaypointGroup mirror = manager.get(generatedGroupId(source.zoneId()));
         if (mirror != null && mirror != visibleGroup) mutation.accept(mirror);
+    }
+
+    /** Persist a route-list visibility change at the owner of a dungeon mirror. */
+    public static void setRouteEnabled(ActiveGroupManager manager,
+                                       DungeonConfig config,
+                                       WaypointGroup visibleGroup,
+                                       boolean enabled) {
+        if (visibleGroup == null) return;
+        WaypointGroup stored = storedSourceForMirror(manager, visibleGroup);
+        if (stored != null) {
+            stored.setEnabled(enabled);
+        } else if (isGeneratedGroup(visibleGroup) && config != null) {
+            config.setRoomRouteEnabled(visibleGroup.zoneId(), enabled);
+        }
+        visibleGroup.setEnabled(enabled);
+
+        WaypointGroup source = stored == null && !isGeneratedGroup(visibleGroup)
+                ? visibleGroup
+                : stored;
+        if (manager != null && source != null) {
+            WaypointGroup mirror = manager.get(generatedGroupId(source.zoneId()));
+            if (mirror != null) mirror.setEnabled(enabled);
+        }
+    }
+
+    public static void setDefinitionRouteEnabled(ActiveGroupManager manager,
+                                                 DungeonConfig config,
+                                                 String roomZoneId,
+                                                 boolean enabled) {
+        if (config == null || roomZoneId == null || roomZoneId.isBlank()) return;
+        config.setRoomRouteEnabled(roomZoneId, enabled);
+        if (manager == null) return;
+        WaypointGroup mirror = manager.get(generatedGroupId(roomZoneId));
+        if (mirror != null) mirror.setEnabled(enabled);
     }
 
     /**

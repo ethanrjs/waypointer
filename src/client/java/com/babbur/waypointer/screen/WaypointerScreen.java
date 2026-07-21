@@ -14,6 +14,7 @@ import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.DungeonRouteDownloader;
+import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
@@ -1574,7 +1575,8 @@ public final class WaypointerScreen extends Screen {
 
         int labelX = x1 + GAP + 8;
         String pts = row.roomSecretCount + " pt" + (row.roomSecretCount == 1 ? "" : "s");
-        int ptsX = x2 - GAP - font.width(pts);
+        int chipX = routeToggleChipX(x2);
+        int ptsX = chipX - GAP - font.width(pts);
         g.text(font, pts, ptsX, y1 + 4, TEXT_MUTED, false);
 
         int labelMaxW = Math.max(24, ptsX - GAP_TIGHT - labelX);
@@ -1582,6 +1584,7 @@ public final class WaypointerScreen extends Screen {
                 labelX, y1 + 4, TEXT_DIM, false);
         g.text(font, font.plainSubstrByWidth(secretRouteSubtitle(row.secretSuppressed), labelMaxW),
                 labelX, y1 + 14, TEXT_MUTED, false);
+        renderRouteToggleChip(g, definitionRouteEnabled(row.roomZoneId), x2, y1);
     }
 
     static String secretRouteSubtitle(boolean suppressedByUserRoute) {
@@ -1661,19 +1664,7 @@ public final class WaypointerScreen extends Screen {
         // Right-aligned toggle pill -- kept as the one exception to "no button chrome",
         // because it's genuinely a tap target with two states and the pill shape
         // communicates that more clearly than a checkbox in a dense row.
-        String toggle = routeToggleLabel(group.enabled());
-        int chipY = y1 + 5;
-        int chipRight = chipX + ROUTE_TOGGLE_CHIP_W;
-        int chipBottom = chipY + ROUTE_TOGGLE_CHIP_H;
-        g.fill(chipX, chipY, chipRight, chipBottom,
-                group.enabled() ? ACCENT : BORDER);
-        g.fill(chipX + 1, chipY + 1, chipRight - 1, chipBottom - 1, 0xE0181D22);
-        if (group.enabled()) {
-            g.fill(chipX + 1, chipBottom - 2, chipRight - 1, chipBottom - 1, ACCENT);
-        }
-        int tw = font.width(toggle);
-        g.text(font, toggle, chipX + (ROUTE_TOGGLE_CHIP_W - tw) / 2,
-                chipY + 3, group.enabled() ? TEXT : TEXT_DIM, false);
+        renderRouteToggleChip(g, group.enabled(), x2, y1);
 
         // Cross-zone hint (rare, but possible if a group's zone id drifts)
         String zid = group.zoneId();
@@ -1699,6 +1690,31 @@ public final class WaypointerScreen extends Screen {
 
     static String routeToggleLabel(boolean enabled) {
         return enabled ? "Shown" : "Hidden";
+    }
+
+    private void renderRouteToggleChip(GuiGraphicsExtractor g, boolean enabled,
+                                       int rowRight, int rowY) {
+        int chipX = routeToggleChipX(rowRight);
+        int chipY = rowY + 5;
+        int chipRight = chipX + ROUTE_TOGGLE_CHIP_W;
+        int chipBottom = chipY + ROUTE_TOGGLE_CHIP_H;
+        g.fill(chipX, chipY, chipRight, chipBottom, enabled ? ACCENT : BORDER);
+        g.fill(chipX + 1, chipY + 1, chipRight - 1, chipBottom - 1, 0xE0181D22);
+        if (enabled) {
+            g.fill(chipX + 1, chipBottom - 2, chipRight - 1, chipBottom - 1, ACCENT);
+        }
+        String toggle = routeToggleLabel(enabled);
+        int tw = font.width(toggle);
+        g.text(font, toggle, chipX + (ROUTE_TOGGLE_CHIP_W - tw) / 2,
+                chipY + 3, enabled ? TEXT : TEXT_DIM, false);
+    }
+
+    private static boolean definitionRouteEnabled(String roomZoneId) {
+        return definitionRouteEnabled(WaypointerClient.dungeonConfig(), roomZoneId);
+    }
+
+    static boolean definitionRouteEnabled(DungeonConfig config, String roomZoneId) {
+        return config == null || config.roomRouteEnabled(roomZoneId);
     }
 
     /**
@@ -1757,8 +1773,19 @@ public final class WaypointerScreen extends Screen {
         if (my > rowBottom) return false;
 
         RouteListRow row = rows.get(idx);
+        int rowRight = mainContentRight(layout.mainLeft(), layout.mainRight()) - 2;
         if (row.secretRoute) {
             selectedDungeonRoomZoneId = row.roomZoneId;
+            if (mx >= routeToggleHitLeft(rowRight) && mx <= rowRight) {
+                boolean enabled = !definitionRouteEnabled(row.roomZoneId);
+                DungeonRoomRouteSync.setDefinitionRouteEnabled(
+                        manager, WaypointerClient.dungeonConfig(), row.roomZoneId, enabled);
+                manager.fireDataChanged();
+                DebugEventLog.record("WaypointerScreen", "secret-route", row.roomZoneId, idx,
+                        "(none)", "(none)", doubleClick, false, false,
+                        "toggle-chip", enabled ? "show-route" : "hide-route");
+                return true;
+            }
             if (doubleClick && !row.secretSuppressed) {
                 convertSecretRouteToEditable(row.roomZoneId);
                 return true;
@@ -1798,9 +1825,9 @@ public final class WaypointerScreen extends Screen {
         String selectedAfter = selectedGroupId == null ? "(none)" : selectedGroupId;
 
         // Toggle-chip hit test -- rightmost region of the row.
-        int rowRight = mainContentRight(layout.mainLeft(), layout.mainRight()) - 2;
         if (mx >= routeToggleHitLeft(rowRight) && mx <= rowRight) {
-            group.setEnabled(!group.enabled());
+            DungeonRoomRouteSync.setRouteEnabled(
+                    manager, WaypointerClient.dungeonConfig(), group, !group.enabled());
             manager.fireDataChanged();
             DebugEventLog.record("WaypointerScreen", "route", group.id(), idx,
                     selectedBefore, selectedAfter, doubleClick, shiftDown, controlDown,
@@ -2130,7 +2157,17 @@ public final class WaypointerScreen extends Screen {
     }
 
     private void hideShownRoutes(List<WaypointGroup> shownRoutes) {
-        int hidden = hideRoutes(shownRoutes);
+        int hidden = 0;
+        if (isDungeonRoomsZone(selectedZoneId)) {
+            for (WaypointGroup group : shownRoutes) {
+                if (group == null || !group.enabled()) continue;
+                DungeonRoomRouteSync.setRouteEnabled(
+                        manager, WaypointerClient.dungeonConfig(), group, false);
+                hidden++;
+            }
+        } else {
+            hidden = hideRoutes(shownRoutes);
+        }
         if (hidden == 0) {
             clearHideAllConfirmation();
             refreshActionButtons();

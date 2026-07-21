@@ -41,7 +41,7 @@ class SettingsCatalogTest {
 
     /** DungeonConfig fields deliberately kept out of the GUI (debug/UX-state). */
     private static final Set<String> DUNGEON_EXEMPT = Set.of(
-            "debugLogRoomChanges", "routesPromptDismissed",
+            "debugLogRoomChanges", "routesPromptDismissed", "hiddenRouteRoomIds",
             // Assumed room rotation is applied automatically / via /wpd; deliberately not surfaced in the GUI.
             "defaultDirection");
 

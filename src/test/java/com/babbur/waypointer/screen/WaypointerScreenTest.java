@@ -118,6 +118,16 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void definitionRoutePillReflectsPersistedDungeonVisibility() {
+        com.babbur.waypointer.dungeon.config.DungeonConfig config =
+                new com.babbur.waypointer.dungeon.config.DungeonConfig();
+
+        assertTrue(WaypointerScreen.definitionRouteEnabled(config, "room-a"));
+        config.setRoomRouteEnabled("room-a", false);
+        assertFalse(WaypointerScreen.definitionRouteEnabled(config, "room-a"));
+    }
+
+    @Test
     void hideAllConfirmationRequiresSameShownRoutesInsideWindow() {
         WaypointGroup first = WaypointGroup.create("First", "hub");
         WaypointGroup second = WaypointGroup.create("Second", "hub");
