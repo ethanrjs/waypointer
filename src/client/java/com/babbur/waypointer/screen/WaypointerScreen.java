@@ -32,10 +32,12 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
@@ -1459,6 +1461,8 @@ public final class WaypointerScreen extends Screen {
         int rowRight = mainContentRight(x1, x2);
         int y = rowsTop - scrollOffset;
         int listW = rowRight - x1;
+        Map<String, Integer> routeIndices = routeCommandIndices(
+                config.showRouteIndicesInGui() ? manager.allGroupsList() : List.of());
         for (int i = 0; i < rows.size(); i++, y += ROUTE_ROW_PITCH) {
             int rowTop = y;
             int rowBot = y + ROW_H + 2;
@@ -1474,7 +1478,8 @@ public final class WaypointerScreen extends Screen {
                 renderSecretRouteRow(g, row, x1 + 2, rowTop, rowRight - 2, hovered);
             } else if (row.group != null) {
                 boolean selected = selectedGroupIds.contains(row.group.id());
-                renderGroupRow(g, row.group, i, x1 + 2, rowTop, rowRight - 2, listW,
+                int routeIndex = routeIndices.getOrDefault(row.group.id(), -1);
+                renderGroupRow(g, row.group, routeIndex, x1 + 2, rowTop, rowRight - 2, listW,
                         hovered, selected, row.roomZoneId != null);
             }
         }
@@ -1702,7 +1707,7 @@ public final class WaypointerScreen extends Screen {
         int textX = routeRowTextX(x1, dungeonRoomChild);
         int textMaxW = Math.max(12, chipX - GAP - textX);
         int textColor = group.enabled() ? TEXT : TEXT_MUTED;
-        String name = displayGroupName(group);
+        String name = routeRowName(group, index, config.showRouteIndicesInGui());
         g.text(font, font.plainSubstrByWidth(name, textMaxW), textX, y1 + 4,
                 textColor, false);
 
@@ -1735,6 +1740,21 @@ public final class WaypointerScreen extends Screen {
 
     static int routeRowTextX(int rowLeft, boolean dungeonRoomChild) {
         return rowLeft + GAP + 2 + (dungeonRoomChild ? DUNGEON_ROUTE_CHILD_INDENT : 0);
+    }
+
+    static Map<String, Integer> routeCommandIndices(List<WaypointGroup> groups) {
+        Map<String, Integer> indices = new HashMap<>();
+        if (groups == null) return indices;
+        for (int i = 0; i < groups.size(); i++) {
+            WaypointGroup group = groups.get(i);
+            if (group != null) indices.put(group.id(), i);
+        }
+        return indices;
+    }
+
+    static String routeRowName(WaypointGroup group, int routeIndex, boolean showRouteIndex) {
+        String name = displayGroupName(group);
+        return showRouteIndex && routeIndex >= 0 ? "[" + routeIndex + "] " + name : name;
     }
 
     static String routeToggleLabel(boolean enabled) {
