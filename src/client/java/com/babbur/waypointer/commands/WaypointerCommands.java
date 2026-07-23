@@ -128,6 +128,7 @@ public final class WaypointerCommands {
                                         StringArgumentType.getString(ctx, "target")))))
                 .then(literal("list").executes(ctx -> runList(ctx.getSource())))
                 .then(literal("skip").executes(ctx -> runSkipCurrentWaypoint(ctx.getSource())))
+                .then(literal("unskip").executes(ctx -> runUnskipCurrentWaypoint(ctx.getSource())))
                 .then(literal("skipto")
                         .then(argument("target", StringArgumentType.word())
                                 .suggests(suggestSkipTargets())
@@ -843,6 +844,8 @@ public final class WaypointerCommands {
                                     "skipto 3", "skipto 3.2"),
                             new HelpRow(" skip", "Advance active routes by one waypoint.",
                                     "skip"),
+                            new HelpRow(" unskip", "Move routes back one waypoint.",
+                                    "unskip"),
                             new HelpRow(" reset", "Reset the active route to its first waypoint.",
                                     "reset"),
                             new HelpRow(" mode <static|sequence>", "Set active route visibility mode.",
@@ -1213,6 +1216,17 @@ public final class WaypointerCommands {
         }
         success(src, "Skipped the current waypoint in " + moved + " active route"
                 + (moved == 1 ? "." : "s."));
+        return moved;
+    }
+
+    private int runUnskipCurrentWaypoint(FabricClientCommandSource src) {
+        int moved = WaypointerKeybinds.unskipCurrentWaypointTargets(manager);
+        if (moved == 0) {
+            error(src, "No route can move back one waypoint.");
+            return 0;
+        }
+        success(src, "Moved " + moved + " route" + (moved == 1 ? "" : "s")
+                + " back one waypoint.");
         return moved;
     }
 

@@ -55,7 +55,7 @@ import java.util.List;
  *     waypoint. Useful for dungeon speedruns or when a waypoint is physically
  *     unreachable. Unbound by default; players who don't want it just don't
  *     bind the key.
- *   - Go Back Waypoint -- moves active route progress back one waypoint, the
+ *   - Unskip Waypoint -- moves route progress back one waypoint, the
  *     inverse of Skip Waypoint. Also unbound by default because it mutates
  *     route progress.
  *   - Enter Edit Mode -- explicitly enables the persistent world waypoint
@@ -76,7 +76,7 @@ public final class WaypointerKeybinds {
     static final String ADD_NAMED_WAYPOINT_HERE_TRANSLATION_KEY = "key.waypointer.add_named_waypoint_here";
     static final String ADD_TEMP_WAYPOINT_HERE_TRANSLATION_KEY = "key.waypointer.add_temp_waypoint_here";
     static final String SKIP_WAYPOINT_TRANSLATION_KEY = "key.waypointer.skip_waypoint";
-    static final String PREVIOUS_WAYPOINT_TRANSLATION_KEY = "key.waypointer.previous_waypoint";
+    static final String UNSKIP_WAYPOINT_TRANSLATION_KEY = "key.waypointer.previous_waypoint";
     static final String ENTER_EDIT_MODE_TRANSLATION_KEY = "key.waypointer.enter_edit_mode";
     static final String EXIT_EDIT_MODE_TRANSLATION_KEY = "key.waypointer.exit_edit_mode";
     static final String TOGGLE_EDIT_MODE_TRANSLATION_KEY = "key.waypointer.toggle_edit_mode";
@@ -89,7 +89,7 @@ public final class WaypointerKeybinds {
             ADD_NAMED_WAYPOINT_HERE_TRANSLATION_KEY,
             ADD_TEMP_WAYPOINT_HERE_TRANSLATION_KEY,
             SKIP_WAYPOINT_TRANSLATION_KEY,
-            PREVIOUS_WAYPOINT_TRANSLATION_KEY,
+            UNSKIP_WAYPOINT_TRANSLATION_KEY,
             ENTER_EDIT_MODE_TRANSLATION_KEY,
             EXIT_EDIT_MODE_TRANSLATION_KEY,
             TOGGLE_EDIT_MODE_TRANSLATION_KEY,
@@ -120,7 +120,7 @@ public final class WaypointerKeybinds {
     private final KeyMapping addNamedWaypointHere;
     private final KeyMapping addTempWaypointHere;
     private final KeyMapping skipWaypoint;
-    private final KeyMapping previousWaypoint;
+    private final KeyMapping unskipWaypoint;
     private final KeyMapping enterEditMode;
     private final KeyMapping exitEditMode;
     private final KeyMapping toggleEditMode;
@@ -171,8 +171,8 @@ public final class WaypointerKeybinds {
                 InputConstants.Type.KEYSYM,
                 UNBOUND_DEFAULT_KEY,
                 CATEGORY));
-        this.previousWaypoint = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                PREVIOUS_WAYPOINT_TRANSLATION_KEY,
+        this.unskipWaypoint = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                UNSKIP_WAYPOINT_TRANSLATION_KEY,
                 InputConstants.Type.KEYSYM,
                 UNBOUND_DEFAULT_KEY,
                 CATEGORY));
@@ -220,7 +220,7 @@ public final class WaypointerKeybinds {
                 addNamedWaypointHere,
                 addTempWaypointHere,
                 skipWaypoint,
-                previousWaypoint,
+                unskipWaypoint,
                 enterEditMode,
                 exitEditMode,
                 toggleEditMode,
@@ -299,7 +299,7 @@ public final class WaypointerKeybinds {
         }
         while (addTempWaypointHere.consumeClick()) addTempWaypointAtPlayer(mc);
         while (skipWaypoint.consumeClick()) skipCurrentWaypoint();
-        while (previousWaypoint.consumeClick()) goBackToPreviousWaypoint(mc);
+        while (unskipWaypoint.consumeClick()) unskipCurrentWaypoint();
         while (enterEditMode.consumeClick()) {
             WaypointRepositionMode.setEditModeEnabled(manager, config, true);
             drainWaypointKeybindClicks();
@@ -328,7 +328,7 @@ public final class WaypointerKeybinds {
         while (addNamedWaypointHere.consumeClick()) {}
         while (addTempWaypointHere.consumeClick()) {}
         while (skipWaypoint.consumeClick()) {}
-        while (previousWaypoint.consumeClick()) {}
+        while (unskipWaypoint.consumeClick()) {}
         while (enterEditMode.consumeClick()) {}
         while (exitEditMode.consumeClick()) {}
         while (toggleEditMode.consumeClick()) {}
@@ -384,10 +384,14 @@ public final class WaypointerKeybinds {
                 && DungeonRoomData.definition(group.zoneId()) != null;
     }
 
-    private void goBackToPreviousWaypoint(Minecraft mc) {
+    private void unskipCurrentWaypoint() {
+        unskipCurrentWaypointTargets(manager);
+    }
+
+    public static int unskipCurrentWaypointTargets(ActiveGroupManager manager) {
         int moved = retreatPreviousWaypointTargets(manager);
-        if (moved == 0) return;
-        manager.fireDataChanged();
+        if (moved > 0) manager.fireDataChanged();
+        return moved;
     }
 
     static int retreatPreviousWaypointTargets(ActiveGroupManager manager) {
