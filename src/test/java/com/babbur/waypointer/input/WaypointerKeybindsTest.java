@@ -3,6 +3,7 @@ package com.babbur.waypointer.input;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.blaze3d.platform.InputConstants;
+import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -50,7 +51,7 @@ class WaypointerKeybindsTest {
                 WaypointerKeybinds.ADD_NAMED_WAYPOINT_HERE_TRANSLATION_KEY,
                 WaypointerKeybinds.ADD_TEMP_WAYPOINT_HERE_TRANSLATION_KEY,
                 WaypointerKeybinds.SKIP_WAYPOINT_TRANSLATION_KEY,
-                WaypointerKeybinds.PREVIOUS_WAYPOINT_TRANSLATION_KEY,
+                WaypointerKeybinds.UNSKIP_WAYPOINT_TRANSLATION_KEY,
                 WaypointerKeybinds.ENTER_EDIT_MODE_TRANSLATION_KEY,
                 WaypointerKeybinds.EXIT_EDIT_MODE_TRANSLATION_KEY,
                 WaypointerKeybinds.TOGGLE_EDIT_MODE_TRANSLATION_KEY,
@@ -62,6 +63,8 @@ class WaypointerKeybindsTest {
         }
         assertEquals("Add Waypoint Where Looking",
                 english.get(WaypointerKeybinds.REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY).getAsString());
+        assertEquals("Unskip Waypoint",
+                english.get(WaypointerKeybinds.UNSKIP_WAYPOINT_TRANSLATION_KEY).getAsString());
     }
 
     @Test
@@ -135,6 +138,27 @@ class WaypointerKeybindsTest {
         assertTrue(group.isComplete());
         assertNull(group.consumeRouteCompletion());
         assertEquals(-1L, group.bestTimeMillis());
+    }
+
+    @Test
+    void skipAndUnskipHelpersMoveEveryActiveRouteAndReverseEachOther() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("hub", "Hub"));
+        WaypointGroup first = WaypointGroup.create("First", "hub");
+        WaypointGroup second = WaypointGroup.create("Second", "hub");
+        for (WaypointGroup group : List.of(first, second)) {
+            group.add(Waypoint.at(0, 0, 0));
+            group.add(Waypoint.at(1, 0, 0));
+            manager.add(group);
+        }
+
+        assertEquals(2, WaypointerKeybinds.skipCurrentWaypointTargets(
+                manager, new WaypointerConfig(), 1_000L));
+        assertEquals(1, first.currentIndex());
+        assertEquals(1, second.currentIndex());
+        assertEquals(2, WaypointerKeybinds.unskipCurrentWaypointTargets(manager));
+        assertEquals(0, first.currentIndex());
+        assertEquals(0, second.currentIndex());
     }
 
     private static TextColor legacyColor(ChatFormatting color) {

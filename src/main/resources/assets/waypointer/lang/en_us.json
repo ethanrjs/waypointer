@@ -4,7 +4,7 @@
   "key.waypointer.add_named_waypoint_here": "Add Named Waypoint",
   "key.waypointer.add_temp_waypoint_here": "Add Temp Waypoint at Player",
   "key.waypointer.skip_waypoint": "Skip Waypoint",
-  "key.waypointer.previous_waypoint": "Go Back Waypoint",
+  "key.waypointer.previous_waypoint": "Unskip Waypoint",
   "key.waypointer.enter_edit_mode": "Enter Edit Mode",
   "key.waypointer.exit_edit_mode": "Exit Edit Mode",
   "key.waypointer.toggle_edit_mode": "Toggle Edit Mode",
