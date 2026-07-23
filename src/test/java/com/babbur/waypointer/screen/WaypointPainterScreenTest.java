@@ -15,9 +15,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointPainterScreenTest {
 
     @Test
-    void importChooserUsesTheRequestedSourceLabels() {
-        assertEquals("Import from files", WaypointPainterScreen.IMPORT_FILES_LABEL);
-        assertEquals("Import from clipboard", WaypointPainterScreen.IMPORT_CLIPBOARD_LABEL);
+    void painterOffersDirectFileImport() {
+        assertEquals("Import from file", WaypointPainterScreen.IMPORT_FILE_LABEL);
     }
 
     @Test
