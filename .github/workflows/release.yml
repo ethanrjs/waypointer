@@ -32,6 +32,16 @@ jobs:
       - name: Validate Gradle wrapper
         uses: gradle/actions/wrapper-validation@v6
 
+      - name: Require tag to match mod version
+        shell: bash
+        run: |
+          set -euo pipefail
+          mod_version="$(sed -n 's/^mod_version=//p' gradle.properties)"
+          if [[ "${GITHUB_REF_NAME}" != "v${mod_version}" ]]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match mod version ${mod_version}"
+            exit 1
+          fi
+
       - name: Require handwritten release notes
         shell: bash
         run: |
