@@ -241,6 +241,26 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void routeIndicesAreOptInUnderRoutesAndSurviveCodecRoundTrip() {
+        Setting routeIndices = SettingsCatalog.byId("showRouteIndicesInGui");
+
+        assertNotNull(routeIndices);
+        assertEquals("Show route indices", routeIndices.label());
+        assertEquals(false, routeIndices.get(new WaypointerConfig(), null));
+        assertEquals("routes", SettingsCatalog.categories().stream()
+                .filter(category -> category.groups().stream()
+                        .flatMap(group -> group.settings().stream())
+                        .anyMatch(setting -> setting.id().equals("showRouteIndicesInGui")))
+                .findFirst().orElseThrow().id());
+
+        WaypointerConfig enabled = new WaypointerConfig();
+        routeIndices.set(enabled, null, true);
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(enabled));
+        assertEquals(true, routeIndices.get(decoded, null));
+    }
+
+    @Test
     void dungeonEntryPathIsOffByDefaultInTheCatalog() {
         Setting entryPath = SettingsCatalog.byId("showDungeonEntryPathToFirstWaypoint");
 

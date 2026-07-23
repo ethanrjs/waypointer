@@ -81,6 +81,8 @@ public final class WaypointerConfig {
     private boolean restartRouteWhenComplete = true;
     /** Track route completion times and persist best records. Disabled by default; users opt in. */
     private boolean routeTimesEnabled = false;
+    /** Show zero-based command route indices in the route-list GUI. */
+    private boolean showRouteIndicesInGui = false;
 
     // Rendering -- tracer defaults to the same green as Waypoint.DEFAULT_COLOR so
     // a fresh install with matchTracerToWaypointColor=false still shows one
@@ -510,6 +512,7 @@ public final class WaypointerConfig {
     public boolean resetProgressOnWorldJoin() { return resetProgressOnWorldJoin; }
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
     public boolean routeTimesEnabled()        { return routeTimesEnabled; }
+    public boolean showRouteIndicesInGui()    { return showRouteIndicesInGui; }
     public int defaultWaypointColor()         { return defaultWaypointColor & 0xFFFFFF; }
     public int[] waypointPainterPalette() {
         int[] source = waypointPainterPalette;
@@ -637,6 +640,7 @@ public final class WaypointerConfig {
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
     public void setRouteTimesEnabled(boolean v)        { this.routeTimesEnabled = v; save(); }
+    public void setShowRouteIndicesInGui(boolean v)    { this.showRouteIndicesInGui = v; save(); }
     public void setDefaultWaypointColor(int v)         { this.defaultWaypointColor = v & 0xFFFFFF; save(); }
     public void setWaypointPainterPalette(int[] palette) {
         if (palette == null || palette.length != WaypointPaint.PALETTE_SIZE) {
@@ -841,6 +845,7 @@ public final class WaypointerConfig {
         resetProgressOnWorldJoin = replacement.resetProgressOnWorldJoin;
         restartRouteWhenComplete = replacement.restartRouteWhenComplete;
         routeTimesEnabled = replacement.routeTimesEnabled;
+        showRouteIndicesInGui = replacement.showRouteIndicesInGui;
         defaultWaypointColor = replacement.defaultWaypointColor;
         tracerColor = replacement.tracerColor;
         matchTracerToWaypointColor = replacement.matchTracerToWaypointColor;
@@ -909,6 +914,7 @@ public final class WaypointerConfig {
         resetProgressOnWorldJoin = false;
         restartRouteWhenComplete = false;
         routeTimesEnabled = false;
+        showRouteIndicesInGui = false;
         matchTracerToWaypointColor = false;
         showWaypointNames = false;
         showWaypointDistances = false;
@@ -966,6 +972,7 @@ public final class WaypointerConfig {
         resetProgressOnWorldJoin = defaults.resetProgressOnWorldJoin;
         restartRouteWhenComplete = defaults.restartRouteWhenComplete;
         routeTimesEnabled = defaults.routeTimesEnabled;
+        showRouteIndicesInGui = defaults.showRouteIndicesInGui;
         defaultWaypointColor = defaults.defaultWaypointColor;
         waypointPainterPalette = null;
         waypointPainterDefaultPalette = null;

@@ -95,6 +95,24 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void routeRowsUseZeroBasedCommandIndicesFromManagerOrder() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup filteredOut = WaypointGroup.create("Filtered", "garden");
+        WaypointGroup visible = WaypointGroup.create("Visible", "hub");
+        manager.add(filteredOut);
+        manager.add(visible);
+
+        var indices = WaypointerScreen.routeCommandIndices(manager.allGroupsList());
+
+        assertEquals(0, indices.get(filteredOut.id()));
+        assertEquals(1, indices.get(visible.id()));
+        assertEquals("[1] Visible", WaypointerScreen.routeRowName(visible,
+                indices.get(visible.id()), true));
+        assertEquals("Visible", WaypointerScreen.routeRowName(visible, 1, false));
+        assertEquals("Visible", WaypointerScreen.routeRowName(visible, -1, true));
+    }
+
+    @Test
     void dungeonRoomRouteRowsIndentUnderRoomHeader() {
         int rowLeft = 24;
 

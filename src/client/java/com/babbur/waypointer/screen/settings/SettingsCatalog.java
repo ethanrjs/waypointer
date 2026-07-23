@@ -387,6 +387,11 @@ public final class SettingsCatalog {
                                 (c, d) -> c.routeTimesEnabled(),
                                 (c, d, v) -> c.setRouteTimesEnabled((Boolean) v))
                                 .aliases("timer", "speedrun", "record"),
+                        Setting.bool("showRouteIndicesInGui", MAIN, "Show route indices",
+                                "Show each route's zero-based /wp route command index in the route list.",
+                                (c, d) -> c.showRouteIndicesInGui(),
+                                (c, d, v) -> c.setShowRouteIndicesInGui((Boolean) v))
+                                .aliases("command", "index", "number"),
                         Setting.bool("showRouteProgress", MAIN, "Show route progress",
                                 "Show route progress percentage on waypoint labels.",
                                 (c, d) -> c.showRouteProgress(),
