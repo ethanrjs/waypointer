@@ -105,6 +105,9 @@ jobs:
       contents: write
 
     steps:
+      - name: Check out tagged commit
+        uses: actions/checkout@v6
+
       - name: Download release files
         uses: actions/download-artifact@v7
         with:
