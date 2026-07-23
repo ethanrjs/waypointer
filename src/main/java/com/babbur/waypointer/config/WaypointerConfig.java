@@ -83,6 +83,8 @@ public final class WaypointerConfig {
     private boolean routeTimesEnabled = false;
     /** Show zero-based command route indices in the route-list GUI. */
     private boolean showRouteIndicesInGui = false;
+    /** Keep a reached parent waypoint's subwaypoints visible until the next main waypoint is reached. */
+    private boolean keepSubwaypointsVisibleUntilNextWaypoint = true;
 
     // Rendering -- tracer defaults to the same green as Waypoint.DEFAULT_COLOR so
     // a fresh install with matchTracerToWaypointColor=false still shows one
@@ -513,6 +515,9 @@ public final class WaypointerConfig {
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
     public boolean routeTimesEnabled()        { return routeTimesEnabled; }
     public boolean showRouteIndicesInGui()    { return showRouteIndicesInGui; }
+    public boolean keepSubwaypointsVisibleUntilNextWaypoint() {
+        return keepSubwaypointsVisibleUntilNextWaypoint;
+    }
     public int defaultWaypointColor()         { return defaultWaypointColor & 0xFFFFFF; }
     public int[] waypointPainterPalette() {
         int[] source = waypointPainterPalette;
@@ -641,6 +646,10 @@ public final class WaypointerConfig {
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
     public void setRouteTimesEnabled(boolean v)        { this.routeTimesEnabled = v; save(); }
     public void setShowRouteIndicesInGui(boolean v)    { this.showRouteIndicesInGui = v; save(); }
+    public void setKeepSubwaypointsVisibleUntilNextWaypoint(boolean v) {
+        this.keepSubwaypointsVisibleUntilNextWaypoint = v;
+        save();
+    }
     public void setDefaultWaypointColor(int v)         { this.defaultWaypointColor = v & 0xFFFFFF; save(); }
     public void setWaypointPainterPalette(int[] palette) {
         if (palette == null || palette.length != WaypointPaint.PALETTE_SIZE) {
@@ -846,6 +855,8 @@ public final class WaypointerConfig {
         restartRouteWhenComplete = replacement.restartRouteWhenComplete;
         routeTimesEnabled = replacement.routeTimesEnabled;
         showRouteIndicesInGui = replacement.showRouteIndicesInGui;
+        keepSubwaypointsVisibleUntilNextWaypoint =
+                replacement.keepSubwaypointsVisibleUntilNextWaypoint;
         defaultWaypointColor = replacement.defaultWaypointColor;
         tracerColor = replacement.tracerColor;
         matchTracerToWaypointColor = replacement.matchTracerToWaypointColor;
@@ -915,6 +926,7 @@ public final class WaypointerConfig {
         restartRouteWhenComplete = false;
         routeTimesEnabled = false;
         showRouteIndicesInGui = false;
+        keepSubwaypointsVisibleUntilNextWaypoint = false;
         matchTracerToWaypointColor = false;
         showWaypointNames = false;
         showWaypointDistances = false;
@@ -973,6 +985,8 @@ public final class WaypointerConfig {
         restartRouteWhenComplete = defaults.restartRouteWhenComplete;
         routeTimesEnabled = defaults.routeTimesEnabled;
         showRouteIndicesInGui = defaults.showRouteIndicesInGui;
+        keepSubwaypointsVisibleUntilNextWaypoint =
+                defaults.keepSubwaypointsVisibleUntilNextWaypoint;
         defaultWaypointColor = defaults.defaultWaypointColor;
         waypointPainterPalette = null;
         waypointPainterDefaultPalette = null;

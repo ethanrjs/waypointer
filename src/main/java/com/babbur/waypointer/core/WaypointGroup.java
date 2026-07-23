@@ -351,6 +351,11 @@ public final class WaypointGroup {
     }
 
     public void forEachVisibleIndex(IntConsumer action) {
+        forEachVisibleIndex(false, action);
+    }
+
+    public void forEachVisibleIndex(boolean keepSubwaypointsVisibleUntilNextWaypoint,
+                                    IntConsumer action) {
         int n = waypoints.size();
         if (n == 0) return;
 
@@ -371,7 +376,8 @@ public final class WaypointGroup {
             if (lastMain >= 0) {
                 action.accept(lastMain);
                 for (int child = lastMain + 1; child < n && isSubwaypoint(child); child++) {
-                    if (shouldSurfaceSubwaypointForParent(child, lastMain, activeParent)) {
+                    if (shouldSurfaceSubwaypointForParent(child, lastMain, activeParent,
+                            keepSubwaypointsVisibleUntilNextWaypoint)) {
                         action.accept(child);
                     }
                 }
@@ -398,7 +404,8 @@ public final class WaypointGroup {
         if (activeParent >= 0) {
             action.accept(activeParent);
             for (int child = activeParent + 1; child < n && isSubwaypoint(child); child++) {
-                if (shouldSurfaceSubwaypointForParent(child, activeParent, activeParent)) {
+                if (shouldSurfaceSubwaypointForParent(child, activeParent, activeParent,
+                        keepSubwaypointsVisibleUntilNextWaypoint)) {
                     action.accept(child);
                 }
             }
@@ -408,7 +415,8 @@ public final class WaypointGroup {
         if (cur != activeParent) action.accept(cur);
         if (activeParent < 0) {
             for (int child = cur + 1; child < n && isSubwaypoint(child); child++) {
-                if (shouldSurfaceSubwaypointForParent(child, cur, activeParent)) {
+                if (shouldSurfaceSubwaypointForParent(child, cur, activeParent,
+                        keepSubwaypointsVisibleUntilNextWaypoint)) {
                     action.accept(child);
                 }
             }
@@ -418,12 +426,14 @@ public final class WaypointGroup {
     }
 
     private boolean shouldSurfaceSubwaypointForParent(int childIndex,
-                                                      int parentIndex,
-                                                      int activeParentIndex) {
+                                                       int parentIndex,
+                                                       int activeParentIndex,
+                                                       boolean keepVisibleUntilNextWaypoint) {
         if (childIndex < 0 || childIndex >= waypoints.size() || !isSubwaypoint(childIndex)) {
             return false;
         }
         if (parentIndex != activeParentIndex) return true;
+        if (keepVisibleUntilNextWaypoint) return true;
         if (isDungeonRoute()) return true;
         return !waypoints.get(childIndex)
                 .hasFlag(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED);

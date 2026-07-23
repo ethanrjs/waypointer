@@ -97,6 +97,7 @@ public final class WaypointerConfigCodec {
     private static final int SHOW_WAYPOINT_CHAT_SHARE_BUTTONS = 65;
     private static final int ROUTE_TIMES_ENABLED = 66;
     private static final int SHOW_ROUTE_INDICES_IN_GUI = 67;
+    private static final int KEEP_SUBWAYPOINTS_VISIBLE_UNTIL_NEXT = 68;
 
     private WaypointerConfigCodec() {
     }
@@ -151,6 +152,9 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, ROUTE_TIMES_ENABLED, config.routeTimesEnabled(), defaults.routeTimesEnabled());
         writeBoolean(out, SHOW_ROUTE_INDICES_IN_GUI,
                 config.showRouteIndicesInGui(), defaults.showRouteIndicesInGui());
+        writeBoolean(out, KEEP_SUBWAYPOINTS_VISIBLE_UNTIL_NEXT,
+                config.keepSubwaypointsVisibleUntilNextWaypoint(),
+                defaults.keepSubwaypointsVisibleUntilNextWaypoint());
         writeInt(out, DEFAULT_WAYPOINT_COLOR, config.defaultWaypointColor(), defaults.defaultWaypointColor());
         writeInt(out, TRACER_COLOR, config.tracerColor(), defaults.tracerColor());
         writeBoolean(out, MATCH_TRACER_TO_WAYPOINT_COLOR, config.matchTracerToWaypointColor(), defaults.matchTracerToWaypointColor());
@@ -229,6 +233,8 @@ public final class WaypointerConfigCodec {
                 case RESTART_ROUTE_WHEN_COMPLETE -> config.setRestartRouteWhenComplete(in.readBoolean());
                 case ROUTE_TIMES_ENABLED -> config.setRouteTimesEnabled(in.readBoolean());
                 case SHOW_ROUTE_INDICES_IN_GUI -> config.setShowRouteIndicesInGui(in.readBoolean());
+                case KEEP_SUBWAYPOINTS_VISIBLE_UNTIL_NEXT ->
+                        config.setKeepSubwaypointsVisibleUntilNextWaypoint(in.readBoolean());
                 case DEFAULT_WAYPOINT_COLOR -> config.setDefaultWaypointColor(in.readInt());
                 case TRACER_COLOR -> config.setTracerColor(in.readInt());
                 case MATCH_TRACER_TO_WAYPOINT_COLOR -> config.setMatchTracerToWaypointColor(in.readBoolean());

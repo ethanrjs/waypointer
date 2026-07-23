@@ -401,6 +401,12 @@ public final class SettingsCatalog {
                                 "Dim waypoints surrounding your current one in a sequenced route.",
                                 (c, d) -> c.dimSequenceContextWaypoints(),
                                 (c, d, v) -> c.setDimSequenceContextWaypoints((Boolean) v)),
+                        Setting.bool("keepSubwaypointsVisibleUntilNextWaypoint", MAIN,
+                                "Keep subwaypoints until next waypoint",
+                                "Subwaypoints marked Hide after parent stay visible, with their labels, until you reach the next main waypoint.",
+                                (c, d) -> c.keepSubwaypointsVisibleUntilNextWaypoint(),
+                                (c, d, v) -> c.setKeepSubwaypointsVisibleUntilNextWaypoint((Boolean) v))
+                                .aliases("subwaypoint", "label", "hide"),
                         Setting.bool("hideReachedStaticWaypointsUntilCycleComplete", MAIN, "Hide reached static waypoints",
                                 "Waypoints on static routes disappear as you reach them, like a checklist, "
                                         + "and all come back once you've reached every one.",
