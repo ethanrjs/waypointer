@@ -268,23 +268,15 @@ public final class WaypointExportCodec {
     }
 
     private static String coarseThirdPartyIslandId(String zoneId) {
-        String mapped = SKYBLOCKER_ISLAND_IDS.get(zoneId);
+        String canonicalZoneId = Zone.canonicalId(zoneId);
+        String mapped = SKYBLOCKER_ISLAND_IDS.get(canonicalZoneId);
         if (mapped != null) return mapped;
-        if (zoneId == null || zoneId.isBlank()) return "unknown";
-
-        // Skyblocker and Skytils only model the coarse Hypixel locations. Waypointer's
-        // scoreboard refinements must collapse back to those ids or the recipient
-        // resolves them as UNKNOWN and never renders the exported group.
-        if (zoneId.equals("great_glacite_lake")
-                || zoneId.equals("glacite_tunnels")
-                || zoneId.equals("dwarven_base_camp")) {
-            return "mining_3";
-        }
-        if (zoneId.startsWith("mineshaft_")) return "mineshaft";
-        if (isCatacombsFloor(zoneId) || DungeonRoomData.definition(zoneId) != null) {
+        if (canonicalZoneId.startsWith("mineshaft_")) return "mineshaft";
+        if (isCatacombsFloor(canonicalZoneId)
+                || DungeonRoomData.definition(canonicalZoneId) != null) {
             return "dungeon";
         }
-        return zoneId;
+        return canonicalZoneId;
     }
 
     private static boolean isCatacombsFloor(String zoneId) {

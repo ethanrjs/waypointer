@@ -1,4 +1,4 @@
-# Waypointer API 1.8.4
+# Waypointer API 1.8.5
 
 Waypointer exposes a client-side Fabric API for reading routes, creating saved
 user routes, rendering session-only markers and overlays, importing and
@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    modImplementation "maven.modrinth:waypointer:1.8.4"
+modImplementation "maven.modrinth:waypointer:1.8.5"
 }
 ```
 
@@ -34,7 +34,7 @@ directory instead:
 
 ```groovy
 dependencies {
-    modImplementation files("libs/waypointer-1.8.4-mc26.1.2.jar")
+modImplementation files("libs/waypointer-1.8.5-mc26.1.2.jar")
 }
 ```
 
@@ -244,6 +244,8 @@ String routeId = waypointer.createRoute(
                         .name("Titanium"))
                 .build());
 ```
+
+Use `dwarven_mines` for routes in Dwarven Mines, Glacite Tunnels, Dwarven Base Camp, and Great Glacite Lake. The retired zone IDs `glacite_tunnels`, `dwarven_base_camp`, and `great_glacite_lake` are accepted as input aliases and canonicalize to `dwarven_mines`.
 
 The returned id identifies persisted user data. The user may edit or delete the
 route at any time. `removeRoute(routeId)` is destructive: call it only for a

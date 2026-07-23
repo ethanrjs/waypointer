@@ -28,6 +28,19 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void retiredDwarvenSurfaceZoneGroupsActivateInThePacketBackedZone() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = new WaypointGroup(
+                "legacy-tunnels", "Legacy Tunnels", "glacite_tunnels");
+        manager.add(route);
+        manager.onZoneChanged(Zone.fromId("dwarven_mines"));
+
+        assertEquals("dwarven_mines", route.zoneId());
+        assertEquals(List.of(route), manager.activeGroups());
+        assertEquals(List.of(route), manager.groupsForZone("glacite_tunnels"));
+    }
+
+    @Test
     void persistentListenersIgnoreTransientChangesWhileDataListenersSeeAllChanges() {
         ActiveGroupManager manager = new ActiveGroupManager();
         AtomicInteger allChanges = new AtomicInteger();

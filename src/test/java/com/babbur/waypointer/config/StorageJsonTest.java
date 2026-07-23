@@ -520,6 +520,106 @@ class StorageJsonTest {
         }
     }
 
+    @Test
+    void loadAndAttachRewritesRetiredDwarvenZonesWithoutMergingOrLosingRouteData() throws Exception {
+        Path file = tempDir.resolve("waypoints.json");
+        Files.writeString(file, """
+                {
+                  "schema": 1,
+                  "groups": [
+                    {
+                      "id": "tunnels-route",
+                      "name": "Tunnels Route",
+                      "zone": "glacite_tunnels",
+                      "enabled": false,
+                      "currentIndex": 1,
+                      "gradientMode": "MANUAL",
+                      "loadMode": "STATIC",
+                      "defaultRadius": 3.5,
+                      "skipAheadEnabled": false,
+                      "bestTimeMillis": 12345,
+                      "staticColor": 1193046,
+                      "gradientStartColor": 1122867,
+                      "gradientEndColor": 16702650,
+                      "paintEnabled": false,
+                      "waypoints": [
+                        {"x": 1, "y": 151, "z": 387, "name": "First", "color": 4478310},
+                        {"x": 2, "y": 152, "z": 388, "name": "Second", "color": 7833753}
+                      ]
+                    },
+                    {
+                      "id": "camp-route",
+                      "name": "Camp Route",
+                      "zone": "dwarven_base_camp",
+                      "waypoints": [{"x": 3, "y": 153, "z": 389, "name": "Camp"}]
+                    },
+                    {
+                      "id": "lake-route",
+                      "name": "Lake Route",
+                      "zone": "great_glacite_lake",
+                      "waypoints": [{"x": 4, "y": 154, "z": 390, "name": "Lake"}]
+                    }
+                  ]
+                }
+                """);
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Storage storage = new Storage(file);
+
+        storage.load(manager);
+
+        assertEquals(List.of("tunnels-route", "camp-route", "lake-route"),
+                manager.allGroups().stream().map(WaypointGroup::id).toList());
+        assertTrue(manager.allGroups().stream()
+                .allMatch(group -> "dwarven_mines".equals(group.zoneId())));
+        WaypointGroup tunnels = manager.get("tunnels-route");
+        assertEquals("Tunnels Route", tunnels.name());
+        assertFalse(tunnels.enabled());
+        assertEquals(1, tunnels.currentIndex());
+        assertEquals(WaypointGroup.GradientMode.MANUAL, tunnels.gradientMode());
+        assertEquals(WaypointGroup.LoadMode.STATIC, tunnels.loadMode());
+        assertEquals(3.5, tunnels.defaultRadius());
+        assertFalse(tunnels.skipAheadEnabled());
+        assertEquals(12345L, tunnels.bestTimeMillis());
+        assertEquals(0x123456, tunnels.staticColor());
+        assertEquals(0x112233, tunnels.gradientStartColor());
+        assertEquals(0xFEDCBA, tunnels.gradientEndColor());
+        assertFalse(tunnels.paintEnabled());
+        assertEquals(List.of("First", "Second"),
+                tunnels.waypoints().stream().map(Waypoint::name).toList());
+
+        storage.attach(manager);
+        storage.flush();
+
+        assertEquals(1, storage.writeCount());
+        JsonObject saved = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertEquals(3, saved.getAsJsonArray("groups").size());
+        for (int index = 0; index < 3; index++) {
+            assertEquals("dwarven_mines", saved.getAsJsonArray("groups").get(index)
+                    .getAsJsonObject().get("zone").getAsString());
+        }
+        JsonObject savedTunnels = saved.getAsJsonArray("groups").get(0).getAsJsonObject();
+        assertEquals("tunnels-route", savedTunnels.get("id").getAsString());
+        assertEquals(1, savedTunnels.get("currentIndex").getAsInt());
+        assertEquals("First", savedTunnels.getAsJsonArray("waypoints").get(0)
+                .getAsJsonObject().get("name").getAsString());
+        assertEquals("Second", savedTunnels.getAsJsonArray("waypoints").get(1)
+                .getAsJsonObject().get("name").getAsString());
+
+        ActiveGroupManager reloadedManager = new ActiveGroupManager();
+        Storage reloadedStorage = new Storage(file);
+        reloadedStorage.load(reloadedManager);
+        reloadedStorage.attach(reloadedManager);
+        reloadedStorage.flush();
+
+        assertEquals(0, reloadedStorage.writeCount(),
+                "the canonical file must not be rewritten on every startup");
+        assertEquals(List.of("tunnels-route", "camp-route", "lake-route"),
+                reloadedManager.allGroups().stream().map(WaypointGroup::id).toList());
+        assertEquals(List.of("First", "Second"),
+                reloadedManager.get("tunnels-route").waypoints().stream()
+                        .map(Waypoint::name).toList());
+    }
+
     private static ActiveGroupManager managerWithExistingGroup() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup existing = new WaypointGroup("existing", "Existing", "hub");

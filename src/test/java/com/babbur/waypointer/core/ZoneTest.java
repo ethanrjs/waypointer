@@ -18,6 +18,10 @@ class ZoneTest {
                 .filter(zone -> "mineshaft_crystal".equals(zone.id()))
                 .count());
         assertFalse(Zone.knownZones().stream().anyMatch(zone -> "mineshaft".equals(zone.id())));
+        assertFalse(Zone.knownZones().stream().anyMatch(zone ->
+                "great_glacite_lake".equals(zone.id())
+                        || "glacite_tunnels".equals(zone.id())
+                        || "dwarven_base_camp".equals(zone.id())));
     }
 
     @Test
@@ -183,29 +187,37 @@ class ZoneTest {
     }
 
     @Test
-    void dwarven_glaciteSubAreas_resolveFromSidebarBlob() {
-        // Mirrors Skyblocker Area.DwarvenMines -- Hypixel's packet often stays
-        // mining_3 for all of these; the sidebar carries the real sub-area.
-        assertEquals("great_glacite_lake",
-                Zone.tryResolveDwarvenSubAreaFromSidebarBlob(
-                        "Bits: 0\n⏣ Dwarven Mines\nNear Great Glacite Lake").id());
-        assertEquals("glacite_tunnels",
-                Zone.tryResolveDwarvenSubAreaFromSidebarBlob("⏣ Glacite Tunnels").id());
-        // Generic "Glacite Mineshafts" (no variant identified) upgrades to the
-        // unknown-variant zone. See refineIfDwarvenMinesContext / the
-        // mineshaft_unknown Def comment for rationale.
-        assertEquals("mineshaft_unknown",
-                Zone.tryResolveDwarvenSubAreaFromSidebarBlob("⏣ Glacite Mineshafts").id());
-        assertEquals("dwarven_base_camp",
-                Zone.tryResolveDwarvenSubAreaFromSidebarBlob("Dwarven Base Camp").id());
-        assertNull(Zone.tryResolveDwarvenSubAreaFromSidebarBlob("⏣ Crystal Hollows"));
+    void retiredDwarvenSurfaceZonesCanonicalizeToPacketZone() {
+        for (String legacyId : new String[]{
+                "great_glacite_lake", "glacite_tunnels", "dwarven_base_camp"
+        }) {
+            assertEquals("dwarven_mines", Zone.canonicalId(legacyId));
+            assertEquals(new Zone("dwarven_mines", "Dwarven Mines"), Zone.fromId(legacyId));
+        }
+
+        for (String legacyName : new String[]{
+                "Great Glacite Lake", "Glacite Tunnels", "Dwarven Base Camp"
+        }) {
+            assertEquals(new Zone("dwarven_mines", "Dwarven Mines"),
+                    Zone.resolveFromDisplayName(legacyName));
+            assertEquals("dwarven_mines", Zone.resolve("SKYBLOCK", legacyName, null).id());
+        }
     }
 
     @Test
-    void dwarven_greatLake_beats_sharedGlacitePrefix() {
-        assertEquals("great_glacite_lake",
+    void dwarvenSidebarRefinementOnlySplitsMineshaftLayouts() {
+        assertEquals("dwarven_mines", Zone.tryResolveDwarvenSubAreaFromSidebarBlob(
+                "Bits: 0\n⏣ Dwarven Mines\nNear Great Glacite Lake").id());
+        assertEquals("dwarven_mines",
+                Zone.tryResolveDwarvenSubAreaFromSidebarBlob("⏣ Glacite Tunnels").id());
+        assertEquals("dwarven_mines",
+                Zone.tryResolveDwarvenSubAreaFromSidebarBlob("Dwarven Base Camp").id());
+        assertEquals("mineshaft_unknown",
+                Zone.tryResolveDwarvenSubAreaFromSidebarBlob("⏣ Glacite Mineshafts").id());
+        assertEquals("mineshaft_unknown",
                 Zone.tryResolveDwarvenSubAreaFromSidebarBlob(
-                        "x\nGreat Glacite Lake y\nGlacite Tunnels").id());
+                        "Dwarven Base Camp\n⏣ Glacite Mineshafts").id());
+        assertNull(Zone.tryResolveDwarvenSubAreaFromSidebarBlob("⏣ Crystal Hollows"));
     }
 
     @Test
@@ -215,7 +227,7 @@ class ZoneTest {
 
         Zone dm = Zone.resolve("SKYBLOCK", "mining_3", null);
         Zone refined = Zone.refineIfDwarvenMinesContext(dm, "⏣ Glacite Tunnels");
-        assertEquals("glacite_tunnels", refined.id());
+        assertSame(dm, refined);
     }
 
         @Test
@@ -236,6 +248,8 @@ class ZoneTest {
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 LITT_L").id());
         assertEquals("mineshaft_vanguard",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 FAIR_1").id());
+        assertEquals("mineshaft_tungsten",
+                Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 TUNG_1").id());
         // "Glacite Mineshafts" alone (no variant code on any line) does not
         // resolve -- the caller falls back to mineshaft_unknown.
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob("⏣ Glacite Mineshafts"));

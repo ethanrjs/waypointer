@@ -122,6 +122,24 @@ class WaypointImporterTest {
     }
 
     @Test
+    void retiredDwarvenSurfaceZonesImportIntoThePacketBackedZone() {
+        String json = """
+                [
+                  {"name":"Lake","island":"great_glacite_lake","waypoints":[{"x":1,"y":2,"z":3}]},
+                  {"name":"Tunnels","island":"Glacite Tunnels","waypoints":[{"x":4,"y":5,"z":6}]},
+                  {"name":"Camp","island":"dwarven-base-camp","waypoints":[{"x":7,"y":8,"z":9}]}
+                ]
+                """;
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
+
+        assertEquals(List.of("Lake", "Tunnels", "Camp"),
+                result.groups().stream().map(WaypointGroup::name).toList());
+        assertTrue(result.groups().stream()
+                .allMatch(group -> "dwarven_mines".equals(group.zoneId())));
+    }
+
+    @Test
     void malformed_skytils_colon_color_falls_back_to_default_color() {
         String json = "{\"name\":\"Fetchur\",\"island\":\"mining-hub\",\"waypoints\":["
                 + "{\"name\":\"bad\",\"x\":1,\"y\":70,\"z\":2,\"color\":\"0.5:ff:zz:20:30\"},"

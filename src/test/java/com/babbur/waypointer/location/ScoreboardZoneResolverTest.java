@@ -19,6 +19,9 @@ class ScoreboardZoneResolverTest {
                 Event: Example
                 ⏣ Lotus Atoll, (12, 70, -5)
                 """);
+        assertZone("dwarven_mines", "⏣ Glacite Tunnels");
+        assertZone("dwarven_mines", "⏣ Dwarven Base Camp");
+        assertZone("dwarven_mines", "⏣ Great Glacite Lake");
         assertZone("mineshaft_crystal", """
                 ⏣ Glacite Mineshafts
                 07/15/26 m197CD AQUA_C

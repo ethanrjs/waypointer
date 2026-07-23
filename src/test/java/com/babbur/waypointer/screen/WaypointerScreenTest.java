@@ -251,6 +251,10 @@ class WaypointerScreenTest {
         assertTrue(zones.contains("dungeon_f7"));
         assertTrue(zones.contains("torrhus_canyon"));
         assertTrue(zones.contains("safari"));
+        assertEquals(1, zones.stream().filter("dwarven_mines"::equals).count());
+        assertFalse(zones.contains("great_glacite_lake"));
+        assertFalse(zones.contains("glacite_tunnels"));
+        assertFalse(zones.contains("dwarven_base_camp"));
     }
 
     @Test
