@@ -14,9 +14,9 @@ import java.util.Collection;
 import java.util.List;
 
 /**
- * Renders the full Skyblock sidebar as plain text so zone logic can scan for
- * sub-areas (e.g. Glacite Tunnels vs Dwarven Mines) that never appear as
- * distinct {@code mode} values in the Hypixel location packet.
+ * Renders the full Skyblock sidebar as plain text so zone logic can identify
+ * Glacite Mineshaft layouts and Catacombs floors that are not distinct
+ * {@code mode} values in the Hypixel location packet.
  *
  * <p>Hot path (called every 2 game ticks): avoids regex stripping and caches
  * the last-seen rendered-line hash so repeated unchanged sidebars reuse the
@@ -103,7 +103,7 @@ public final class SidebarTexts {
         cachedText = null;
     }
 
-    private static String buildStrippedText(List<String> renderedLines) {
+    static String buildStrippedText(List<String> renderedLines) {
         StringBuilder out = new StringBuilder();
         for (String line : renderedLines) {
             if (!out.isEmpty()) out.append('\n');
@@ -126,31 +126,20 @@ public final class SidebarTexts {
     }
 
     /**
-     * Manual single-pass formatting-code stripper. Replaces the old regex-backed
-     * version, which allocated a {@code Matcher} plus a new {@code String} on
-     * every call. Minecraft formatting codes are always {@code §} followed by
-     * exactly one of {@code 0-9 a-f k-o r} (case-insensitive) -- anything else
-     * after {@code §} is left alone, matching the legacy regex's behaviour of
-     * only stripping recognised codes.
+     * Manual single-pass formatting-token stripper. Hypixel uses nonstandard
+     * {@code §} pairs in hidden scoreboard owner names so each entry stays
+     * unique. Those pairs can split visible text such as {@code TUNG_1}; remove
+     * every pair instead of accepting only vanilla color and style codes.
      */
     private static void appendStripped(StringBuilder out, String line) {
         int n = line.length();
         for (int i = 0; i < n; i++) {
             char c = line.charAt(i);
-            if (c == FORMATTING_PREFIX && i + 1 < n && isFormattingCode(line.charAt(i + 1))) {
-                i++;
+            if (c == FORMATTING_PREFIX) {
+                if (i + 1 < n) i++;
                 continue;
             }
             out.append(c);
         }
-    }
-
-    private static boolean isFormattingCode(char c) {
-        if (c >= '0' && c <= '9') return true;
-        if (c >= 'a' && c <= 'f') return true;
-        if (c >= 'A' && c <= 'F') return true;
-        if (c >= 'k' && c <= 'o') return true;
-        if (c >= 'K' && c <= 'O') return true;
-        return c == 'r' || c == 'R';
     }
 }

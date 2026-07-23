@@ -69,7 +69,9 @@ public final class CodecZoneDictionary {
             "fishing_1",
             "mineshaft",
 
-            // Waypointer refinements beyond Skyblocker's coarse Location enum.
+            // The first three entries are retired surface-zone IDs. Keep their
+            // positions forever so older Waypointer payloads remain decodable;
+            // Zone.canonicalId migrates them to dwarven_mines after decode.
             "great_glacite_lake",
             "glacite_tunnels",
             "dwarven_base_camp",

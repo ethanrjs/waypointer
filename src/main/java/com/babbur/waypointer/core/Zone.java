@@ -37,19 +37,25 @@ import java.util.function.Predicate;
  */
 public record Zone(String id, String displayName) {
 
+    private static final String DWARVEN_MINES_ZONE_ID = "dwarven_mines";
+    private static final String DWARVEN_MINES_DISPLAY_NAME = "Dwarven Mines";
     public static final String MINESHAFT_CRYSTAL_ZONE_ID = "mineshaft_crystal";
     private static final String MINESHAFT_CRYSTAL_DISPLAY_NAME = "Mineshaft: Crystal";
 
     public static final Zone UNKNOWN = new Zone("unknown", "Unknown");
 
-        public Zone {
+    public Zone {
         String rawId = id == null || id.isBlank() ? "unknown" : id;
         String canonicalId = canonicalId(rawId);
         boolean collapsedLegacyCrystal = !canonicalId.equals(rawId)
                 && MINESHAFT_CRYSTAL_ZONE_ID.equals(canonicalId);
+        boolean collapsedLegacyDwarvenSurface = isLegacyDwarvenSurfaceZoneId(
+                rawId.trim().toLowerCase(Locale.ROOT));
         id = canonicalId;
         if (collapsedLegacyCrystal) {
             displayName = MINESHAFT_CRYSTAL_DISPLAY_NAME;
+        } else if (collapsedLegacyDwarvenSurface) {
+            displayName = DWARVEN_MINES_DISPLAY_NAME;
         } else if (displayName == null || displayName.isBlank()) {
             displayName = prettify(canonicalId);
         }
@@ -198,18 +204,14 @@ public record Zone(String id, String displayName) {
             new Def("gold_mine",         "Gold Mine",            tokens("mining_1", "Gold Mine")),
             new Def("deep_caverns",      "Deep Caverns",         tokens("mining_2", "Deep Caverns")),
 
-            // Dwarven sub-areas (Skyblocker {@code Area.DwarvenMines}). The Hypixel
-            // location packet often stays {@code mining_3} for all of these; the
-            // sidebar shows the specific glacite sub-area. See
-            // {@link #tryResolveDwarvenSubAreaFromSidebarBlob} and client-side
-            // refinement in {@code HypixelApiZoneSource}.
-            new Def("great_glacite_lake", "Great Glacite Lake",  tokens("Great Glacite Lake"),
-                    anyDisplay("Great Glacite Lake")),
-            new Def("glacite_tunnels",    "Glacite Tunnels",     tokens("Glacite Tunnels"),
-                    anyDisplay("Glacite Tunnels")),
-            new Def("dwarven_base_camp",  "Dwarven Base Camp",   tokens("Dwarven Base Camp"),
-                    anyDisplay("Dwarven Base Camp")),
-            new Def("dwarven_mines",     "Dwarven Mines",        tokens("mining_3", "Dwarven Mines")),
+            // The Hypixel location packet uses mining_3 across these connected
+            // surface areas. Keep their former names as input aliases, but expose
+            // one stable route target based on that location id.
+            new Def(DWARVEN_MINES_ZONE_ID, DWARVEN_MINES_DISPLAY_NAME,
+                    tokens("mining_3", DWARVEN_MINES_DISPLAY_NAME,
+                            "Great Glacite Lake", "Glacite Tunnels", "Dwarven Base Camp"),
+                    anyDisplay(DWARVEN_MINES_DISPLAY_NAME,
+                            "Great Glacite Lake", "Glacite Tunnels", "Dwarven Base Camp")),
             new Def("crystal_hollows",   "Crystal Hollows",      tokens("crystal_hollows", "Crystal Hollows")),
             // "Unknown Mineshaft" -- runtime zone emitted when we know the player
             // is in Glacite Mineshafts but the sidebar didn't identify a variant
@@ -458,25 +460,24 @@ public record Zone(String id, String displayName) {
     }
 
     /**
-     * Detects glacite sub-areas of Dwarven Mines from the full sidebar text.
-     * Hypixel's location packet frequently reports {@code mining_3} for every
-     * sub-area; Skyblocker instead reads {@code Area.DwarvenMines}-style names
-     * from the sidebar. We substring-match the blob (all lines, case-folded)
-     * with most-specific phrases first so "Great Glacite Lake" wins over any
-     * shorter shared prefix.
+     * Detects Dwarven area names from the full sidebar text. The former surface
+     * sub-zones now resolve to the broad {@code dwarven_mines} zone. Mineshafts
+     * remain separate because each layout needs its own waypoint coordinates.
      *
-     * @return a known glacite sub-zone, or null if the blob doesn't name one
+     * @return the broad Dwarven or unknown mineshaft zone, or null if absent
      */
     public static Zone tryResolveDwarvenSubAreaFromSidebarBlob(String colorStrippedSidebarText) {
         if (colorStrippedSidebarText == null || colorStrippedSidebarText.isBlank()) return null;
         String b = colorStrippedSidebarText.toLowerCase(Locale.ROOT);
-        if (b.contains("great glacite lake")) return fromId("great_glacite_lake");
-        if (b.contains("glacite tunnels")) return fromId("glacite_tunnels");
-        // "Glacite Mineshafts" alone (no variant identified) means we know the
-        // island but not the type. Emit the Unknown zone -- see comment on the
-        // mineshaft_unknown Def for why generic mineshaft waypoints are bad UX.
+        // A stale sidebar can briefly contain the previous surface area and the
+        // new Mineshaft line together. Mineshaft coordinates are a different
+        // layout, so this signal must win.
         if (b.contains("glacite mineshafts")) return fromId("mineshaft_unknown");
-        if (b.contains("dwarven base camp")) return fromId("dwarven_base_camp");
+        if (b.contains("great glacite lake")
+                || b.contains("glacite tunnels")
+                || b.contains("dwarven base camp")) {
+            return fromId(DWARVEN_MINES_ZONE_ID);
+        }
         return null;
     }
 
@@ -530,13 +531,11 @@ public record Zone(String id, String displayName) {
     }
 
     /**
-     * When the mod API reports the broad Dwarven bucket ({@code mining_3} →
-     * {@code dwarven_mines} or {@code mineshaft}), refine using the live sidebar
-     * so routes keyed to tunnels / lake / base camp / specific mineshaft
-     * variants activate in the right place. If the sidebar doesn't mention a
-     * glacite sub-area, {@code packetZone} is returned unchanged.
+     * When the mod API reports the Dwarven or mineshaft bucket, refine only the
+     * Glacite Mineshaft layout. The connected surface areas stay keyed to the
+     * broad {@code mining_3} / {@code dwarven_mines} location.
      *
-     * <p>Mineshaft-variant refinement runs before the generic glacite sub-area
+     * <p>Mineshaft-variant refinement runs before the generic mineshaft-area
      * check because "Topaz 1" is strictly more specific than "Glacite
      * Mineshafts" -- both may appear in the same sidebar when entering a
      * variant, and the variant is the one users keyed their waypoints to.
@@ -548,7 +547,7 @@ public record Zone(String id, String displayName) {
         Zone mineshaftType = tryResolveMineshaftTypeFromSidebarBlob(colorStrippedSidebarText);
         if (mineshaftType != null) return mineshaftType;
         Zone sub = tryResolveDwarvenSubAreaFromSidebarBlob(colorStrippedSidebarText);
-        if (sub != null) return sub;
+        if (sub != null) return sub.equals(packetZone) ? packetZone : sub;
         // Packet said mineshaft but the sidebar didn't confirm the variant --
         // upgrade to the Unknown Mineshaft zone so variant-scoped waypoint
         // groups cleanly don't activate. A dwarven_mines packet with no
@@ -562,10 +561,19 @@ public record Zone(String id, String displayName) {
     public static String canonicalId(String id) {
         if (id == null || id.isBlank()) return "unknown";
         String normalized = id.trim().toLowerCase(Locale.ROOT);
+        if (isLegacyDwarvenSurfaceZoneId(normalized)) {
+            return DWARVEN_MINES_ZONE_ID;
+        }
         if (normalized.startsWith("mineshaft_") && normalized.endsWith("_crystal")) {
             return MINESHAFT_CRYSTAL_ZONE_ID;
         }
         return normalized;
+    }
+
+    private static boolean isLegacyDwarvenSurfaceZoneId(String normalizedId) {
+        return "great_glacite_lake".equals(normalizedId)
+                || "glacite_tunnels".equals(normalizedId)
+                || "dwarven_base_camp".equals(normalizedId);
     }
 
     private static String prettify(String id) {

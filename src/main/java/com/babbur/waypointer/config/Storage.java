@@ -56,6 +56,7 @@ public final class Storage {
     private int snapshotCount;
     private volatile int writeCount;
     private volatile boolean writesBlocked;
+    private int pendingCanonicalRewriteGroups;
 
     public Storage(Path file) {
         this.file = file;
@@ -94,6 +95,7 @@ public final class Storage {
     }
 
     public void load(ActiveGroupManager manager) {
+        pendingCanonicalRewriteGroups = 0;
         if (!Files.exists(file)) return;
 
         String raw;
@@ -105,17 +107,18 @@ public final class Storage {
             return;
         }
 
-        List<WaypointGroup> groups;
+        ParsedGroups parsedGroups;
         try {
-            groups = parseGroups(raw);
+            parsedGroups = parseGroups(raw);
         } catch (RuntimeException e) {
             quarantineInvalidFile(e);
             return;
         }
 
         writesBlocked = false;
-        manager.replaceAll(groups);
-        Waypointer.LOGGER.info("Loaded {} waypoint group(s) from {}", groups.size(), file);
+        pendingCanonicalRewriteGroups = parsedGroups.canonicalizedZoneCount();
+        manager.replaceAll(parsedGroups.groups());
+        Waypointer.LOGGER.info("Loaded {} waypoint group(s) from {}", parsedGroups.groups().size(), file);
     }
 
     /**
@@ -124,14 +127,21 @@ public final class Storage {
      * listeners, but never serialize the user's route library. The persistent
      * listener path is the only live-save channel -- callers don't invoke
      * {@link #save(ActiveGroupManager)} directly any more. Kept separate from
-     * {@link #load} so callers can rehydrate without immediately writing the
-     * canonical form back.
+     * {@link #load} so callers can rehydrate before the listener is active.
+     * If loading canonicalized legacy zone IDs, attaching schedules one atomic
+     * rewrite of the migrated library.
      */
     public void attach(ActiveGroupManager manager) {
         this.managerRef = manager;
         this.pendingSnapshotJson = captureSnapshot(manager);
         this.saver = new AsyncSaver("waypoints", this::writeToDisk, SAVE_DEBOUNCE_MS);
         manager.addPersistentDataListener(this::markDirtyFromManager);
+        if (pendingCanonicalRewriteGroups > 0) {
+            Waypointer.LOGGER.info("Migrating zone IDs for {} waypoint group(s) in {}",
+                    pendingCanonicalRewriteGroups, file);
+            pendingCanonicalRewriteGroups = 0;
+            saver.markDirty();
+        }
     }
 
     /**
@@ -231,7 +241,10 @@ public final class Storage {
 
     // --- JSON codec -----------------------------------------------------------------
 
-    private static List<WaypointGroup> parseGroups(String raw) {
+    private record ParsedGroups(List<WaypointGroup> groups, int canonicalizedZoneCount) {
+    }
+
+    private static ParsedGroups parseGroups(String raw) {
         if (raw.isBlank()) {
             throw new IllegalArgumentException("waypoints file must not be blank");
         }
@@ -265,17 +278,23 @@ public final class Storage {
         JsonArray groupsJson = groupsElement.getAsJsonArray();
         List<WaypointGroup> groups = new ArrayList<>(groupsJson.size());
         Set<String> groupIds = new HashSet<>(groupsJson.size());
+        int canonicalizedZoneCount = 0;
         for (JsonElement el : groupsJson) {
             if (el == null || !el.isJsonObject()) {
                 throw new IllegalArgumentException("waypoint group entry must be a JSON object");
             }
-            WaypointGroup group = groupFromJson(el.getAsJsonObject());
+            JsonObject groupJson = el.getAsJsonObject();
+            String storedZone = groupJson.has("zone")
+                    ? groupJson.get("zone").getAsString()
+                    : "unknown";
+            WaypointGroup group = groupFromJson(groupJson);
+            if (!group.zoneId().equals(storedZone)) canonicalizedZoneCount++;
             if (!groupIds.add(group.id())) {
                 throw new IllegalArgumentException("duplicate waypoint group id " + group.id());
             }
             groups.add(group);
         }
-        return groups;
+        return new ParsedGroups(List.copyOf(groups), canonicalizedZoneCount);
     }
 
         static JsonObject groupToJson(WaypointGroup g) {

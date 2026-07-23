@@ -32,6 +32,7 @@ class ZoneCanonicalizationIntegrationTest {
         assertEquals("dungeon_f7", Zone.canonicalId("  DUNGEON_F7  "));
         assertEquals("mineshaft_crystal", Zone.canonicalId("MINESHAFT_JASPER_CRYSTAL"));
         assertEquals("mineshaft_crystal", Zone.canonicalId("mineshaft_crystal"));
+        assertEquals("dwarven_mines", Zone.canonicalId("GLACITE_TUNNELS"));
     }
 
     @Test
@@ -66,6 +67,77 @@ class ZoneCanonicalizationIntegrationTest {
     }
 
     @Test
+    void legacyNativeDecodeMigratesRetiredDwarvenSurfaceZone() throws Exception {
+        for (String legacyId : List.of(
+                "great_glacite_lake", "glacite_tunnels", "dwarven_base_camp")) {
+            WaypointGroup decoded = WaypointCodec.decode(legacyV7Payload(legacyId)).get(0);
+            assertEquals("dwarven_mines", decoded.zoneId());
+        }
+    }
+
+    @Test
+    void v9DictionaryKeepsRetiredEntriesDecodableAtTheirOriginalIndexes() {
+        assertEquals("great_glacite_lake", CodecZoneDictionary.idAt(46));
+        assertEquals("glacite_tunnels", CodecZoneDictionary.idAt(47));
+        assertEquals("dwarven_base_camp", CodecZoneDictionary.idAt(48));
+        assertEquals("dwarven_mines", Zone.canonicalId(CodecZoneDictionary.idAt(46)));
+        assertEquals("dwarven_mines", Zone.canonicalId(CodecZoneDictionary.idAt(47)));
+        assertEquals("dwarven_mines", Zone.canonicalId(CodecZoneDictionary.idAt(48)));
+    }
+
+    @Test
+    void fixedLegacyV9DictionaryAndInlinePayloadsMigrateAfterWireDecode() {
+        List<LegacyV9Fixture> fixtures = List.of(
+                new LegacyV9Fixture("great_glacite_lake", 1,
+                        "WP:s/LQ:DjnlWq8{UYdyZ/ir]wqzX>1#H#@@!WB~~O91C52Vr*At)XG}(v{YjhOYXdSn_dX'N|\"D&4!"),
+                new LegacyV9Fixture("great_glacite_lake", 0,
+                        "WP:h0^){w}k1WRcR^>F+IV)}}O?)p\"~~EJM#^4YP2I4F0!f9E|$aw)!!"),
+                new LegacyV9Fixture("glacite_tunnels", 1,
+                        "WP:s/9{/&N=sxN15D2@G@\\LjF6\\'](==\"jIs}z:m[9TvrO/cd&yT=]s'+qoYf0[8geW2N_a\\L!!"),
+                new LegacyV9Fixture("glacite_tunnels", 0,
+                        "WP:h0^){w}k1WRcR^>FgNV)}}O?)p\"~~EJM#^4YP2I4F0!f9Nqa0V'!!"),
+                new LegacyV9Fixture("dwarven_base_camp", 1,
+                        "WP:s/K\"w![~~LBVy>&6i1tWZ)gt4Z?%n%]]!A_}}O?dG?/f6]j23k|0nv6SR{51J%^?J304s*^U#!!"),
+                new LegacyV9Fixture("dwarven_base_camp", 0,
+                        "WP:h0^){w}k1WRcR^>FYEV)}}O?)p\"~~EJM#^4YP2I4F0!f9BDny$\"!!")
+        );
+
+        for (LegacyV9Fixture fixture : fixtures) {
+            DecodeDebug debug = WaypointCodec.debugDecode(fixture.payload());
+
+            assertEquals(9, debug.version());
+            assertEquals(fixture.contentKind(), WaypointCodec.v9ContentKind(debug.headerByte()));
+            String expectedDebugZone = fixture.contentKind() == 0
+                    ? fixture.legacyZoneId()
+                    : "dwarven_mines";
+            assertEquals(expectedDebugZone, debug.groups().get(0).zoneId());
+            assertEquals("dwarven_mines", debug.decodedGroups().get(0).zoneId());
+            assertEquals("dwarven_mines", WaypointCodec.decode(fixture.payload()).get(0).zoneId());
+        }
+    }
+
+    @Test
+    void fixedLegacyV8DictionaryPayloadsMigrateAfterWireDecode() {
+        List<LegacyPayloadFixture> fixtures = List.of(
+                new LegacyPayloadFixture("great_glacite_lake",
+                        "WP:[\"^){w}k1WRcR^>FZ2V)on[;H$p5:-jqQGCU'!"),
+                new LegacyPayloadFixture("glacite_tunnels",
+                        "WP:[\"^){w}k1WRcR^>F88V)on[;H$p5iDGwPu7\"!"),
+                new LegacyPayloadFixture("dwarven_base_camp",
+                        "WP:[\"^){w}k1WRcR^>F)/V)on[;H$p5:-c5jmN7%!")
+        );
+
+        for (LegacyPayloadFixture fixture : fixtures) {
+            DecodeDebug debug = WaypointCodec.debugDecode(fixture.payload());
+
+            assertEquals(8, debug.version());
+            assertEquals(fixture.legacyZoneId(), debug.groups().get(0).zoneId());
+            assertEquals("dwarven_mines", debug.decodedGroups().get(0).zoneId());
+            assertEquals("dwarven_mines", WaypointCodec.decode(fixture.payload()).get(0).zoneId());
+        }
+    }
+
+    @Test
     void storageLoadMigratesMixedCaseZoneIdAndActivatesRoute() throws Exception {
         Path file = tempDir.resolve("waypoints.json");
         Files.writeString(file, """
@@ -87,6 +159,12 @@ class ZoneCanonicalizationIntegrationTest {
         assertEquals("dungeon_f7", manager.get("mixed-case").zoneId());
         assertEquals(List.of("mixed-case"),
                 manager.activeGroups().stream().map(WaypointGroup::id).toList());
+    }
+
+    private record LegacyV9Fixture(String legacyZoneId, int contentKind, String payload) {
+    }
+
+    private record LegacyPayloadFixture(String legacyZoneId, String payload) {
     }
 
     private static String legacyV7Payload(String zoneId) throws Exception {

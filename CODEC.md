@@ -514,6 +514,8 @@ custom zone: poolIndex << 1
 
 The built-in zone dictionary starts from Skyblocker's `Location` enum, which provides Hypixel location IDs and friendly names. Waypointer adds canonical aliases plus dungeon and mineshaft refinements. Unknown and user-created zone IDs round-trip through the string pool.
 
+Dictionary indexes are immutable across the supported decode versions. Retired IDs remain in their old slots so later entries cannot shift. A retired ID can decode to a newer canonical route zone; for example, `great_glacite_lake`, `glacite_tunnels`, and `dwarven_base_camp` now canonicalize to `dwarven_mines`.
+
 Anonymous bodies in v6-v8 do not have a string pool, so their zone reference keeps odd dictionary refs for known zones and uses `0` followed by an inline UTF-8 zone ID for custom zones. V9 content kind 5 uses the same rule. Other nonzero even zone refs are invalid in the anonymous layout.
 
 For v9 kind 0, `GROUP_FLAG_CUSTOM_RADIUS` is followed by the exact Java

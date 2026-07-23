@@ -16,12 +16,10 @@ import java.util.function.Consumer;
  * Hypixel sends this packet every time the player switches instances, so we never
  * have to poll anything -- each packet is a guaranteed correct state update.
  *
- * <p>Dwarven glacite sub-areas are a special case: the packet often keeps reporting
- * {@code mining_3} (Dwarven Mines) while the sidebar shows {@code Glacite Tunnels},
- * {@code Great Glacite Lake}, etc. We therefore refine {@link Zone#resolve(String, String, String)} output
- * using the live sidebar (same signals as Skyblocker's {@code Area.DwarvenMines})
- * and re-check every few ticks so walking between tunnels and the hub without a new
- * packet still updates the zone id.
+ * <p>Glacite Mineshaft layouts are a special case: the packet can stay on the
+ * broad Dwarven or mineshaft location while the sidebar carries the layout code.
+ * We re-check that code every few ticks. Connected Dwarven surface areas stay in
+ * the packet-backed {@code dwarven_mines} zone.
  *
  * <p>Debounced on the Zone id so two identical transitions (e.g. re-login) don't
  * trigger duplicate load/unload cycles in {@code ActiveGroupManager}.
