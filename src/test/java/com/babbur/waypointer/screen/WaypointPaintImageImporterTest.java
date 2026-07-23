@@ -4,12 +4,6 @@ import com.babbur.waypointer.core.WaypointPaint;
 
 import org.junit.jupiter.api.Test;
 
-import java.awt.Image;
-import java.awt.datatransfer.Clipboard;
-import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.StringSelection;
-import java.awt.datatransfer.Transferable;
-import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.HashSet;
@@ -177,63 +171,12 @@ class WaypointPaintImageImporterTest {
     }
 
     @Test
-    void clipboardImageUsesTheSameRepeatedFacePipelineWithoutSystemClipboardAccess()
-            throws IOException {
-        BufferedImage image = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
-        image.setRGB(0, 0, 0xFF336699);
-        Clipboard clipboard = new Clipboard("waypointer-test");
-        clipboard.setContents(imageTransfer(image), null);
-
-        WaypointPaint imported = WaypointPaintImageImporter.importFrom(
-                () -> WaypointPaintImageImporter.readClipboardImage(clipboard),
-                WaypointPaint.solid(0), false);
-
-        for (WaypointPaint.Face face : WaypointPaint.Face.values()) {
-            assertEquals(0x336699, imported.color(face, 8, 8));
-        }
-    }
-
-    @Test
-    void unavailableOrOversizedClipboardImagesFailBeforePaintApplication() {
+    void failedImageSourceDoesNotModifyExistingPaint() {
         WaypointPaint existing = WaypointPaint.solid(0x123456);
         IOException unavailable = assertThrows(IOException.class,
                 () -> WaypointPaintImageImporter.importFrom(
-                        () -> { throw new IOException("clipboard busy"); }, existing, false));
-        assertEquals("clipboard busy", unavailable.getMessage());
+                        () -> { throw new IOException("image unavailable"); }, existing, false));
+        assertEquals("image unavailable", unavailable.getMessage());
         assertEquals(0x123456, existing.color(WaypointPaint.Face.NORTH, 0, 0));
-
-        Clipboard text = new Clipboard("waypointer-text-test");
-        text.setContents(new StringSelection("not an image"), null);
-        assertThrows(IOException.class,
-                () -> WaypointPaintImageImporter.readClipboardImage(text));
-
-        BufferedImage tooWide = new BufferedImage(
-                WaypointPaintImageImporter.MAX_IMAGE_DIMENSION + 1, 1,
-                BufferedImage.TYPE_INT_ARGB);
-        Clipboard oversized = new Clipboard("waypointer-oversized-test");
-        oversized.setContents(imageTransfer(tooWide), null);
-        assertThrows(IOException.class,
-                () -> WaypointPaintImageImporter.readClipboardImage(oversized));
-    }
-
-    private static Transferable imageTransfer(Image image) {
-        return new Transferable() {
-            @Override
-            public DataFlavor[] getTransferDataFlavors() {
-                return new DataFlavor[]{DataFlavor.imageFlavor};
-            }
-
-            @Override
-            public boolean isDataFlavorSupported(DataFlavor flavor) {
-                return DataFlavor.imageFlavor.equals(flavor);
-            }
-
-            @Override
-            public Object getTransferData(DataFlavor flavor)
-                    throws UnsupportedFlavorException {
-                if (!isDataFlavorSupported(flavor)) throw new UnsupportedFlavorException(flavor);
-                return image;
-            }
-        };
     }
 }

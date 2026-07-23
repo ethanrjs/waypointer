@@ -2,11 +2,6 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.core.WaypointPaint;
 
-import java.awt.Graphics2D;
-import java.awt.Image;
-import java.awt.datatransfer.Clipboard;
-import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -38,43 +33,6 @@ final class WaypointPaintImageImporter {
         BufferedImage image = source.read();
         requireSupportedDimensions(image);
         return atlas ? importAtlas(image, existing) : importFace(image, existing);
-    }
-
-    /** Reads image data from the supplied clipboard; callers can pass a local clipboard in tests. */
-    static BufferedImage readClipboardImage(Clipboard clipboard) throws IOException {
-        if (clipboard == null) throw new IOException("clipboard is unavailable");
-        try {
-            if (!clipboard.isDataFlavorAvailable(DataFlavor.imageFlavor)) {
-                throw new IOException("clipboard does not contain an image");
-            }
-            Object contents = clipboard.getData(DataFlavor.imageFlavor);
-            if (!(contents instanceof Image image)) {
-                throw new IOException("clipboard image is unavailable");
-            }
-            return copyImage(image);
-        } catch (UnsupportedFlavorException e) {
-            throw new IOException("clipboard does not contain an image", e);
-        }
-    }
-
-    private static BufferedImage copyImage(Image image) throws IOException {
-        int width = image.getWidth(null);
-        int height = image.getHeight(null);
-        if (!acceptsImageDimensions(width, height)) {
-            throw new IOException("image dimensions are outside the supported range");
-        }
-        if (image instanceof BufferedImage buffered) return buffered;
-
-        BufferedImage copy = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D graphics = copy.createGraphics();
-        try {
-            if (!graphics.drawImage(image, 0, 0, null)) {
-                throw new IOException("clipboard image could not be decoded");
-            }
-        } finally {
-            graphics.dispose();
-        }
-        return copy;
     }
 
     static boolean acceptsImageDimensions(int width, int height) {

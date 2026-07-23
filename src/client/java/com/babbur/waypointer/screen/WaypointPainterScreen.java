@@ -23,8 +23,6 @@ import org.lwjgl.util.tinyfd.TinyFileDialogs;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageReader;
 import javax.imageio.stream.ImageInputStream;
-import java.awt.AWTError;
-import java.awt.Toolkit;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -43,8 +41,7 @@ public final class WaypointPainterScreen extends Screen {
     private static final int PREVIEW_MAX = 176;
     private static final int SWATCH_H = 16;
     private static final int SWATCH_GAP = 2;
-    static final String IMPORT_FILES_LABEL = "Import from files";
-    static final String IMPORT_CLIPBOARD_LABEL = "Import from clipboard";
+    static final String IMPORT_FILE_LABEL = "Import from file";
 
     private final Screen parent;
     private final WaypointerConfig config;
@@ -63,7 +60,6 @@ public final class WaypointPainterScreen extends Screen {
     private WaypointPaintPreviewTexture preview;
     private String status = "";
     private Button faceViewButton;
-    private Button importButton;
     private final PaletteButton[] paletteButtons = new PaletteButton[WaypointPaint.PALETTE_SIZE];
     private CanvasButton canvasButton;
 
@@ -125,9 +121,8 @@ public final class WaypointPainterScreen extends Screen {
 
         addRenderableWidget(styledButton(PAD_OUTER, height - FOOTER_H,
                 64, BTN_H, Component.literal("Back"), b -> onClose(), null));
-        importButton = styledButton((width - 72) / 2, height - FOOTER_H,
-                72, BTN_H, Component.literal("Import"), b -> openImportSources(), importTooltip());
-        addRenderableWidget(importButton);
+        addRenderableWidget(styledButton((width - 112) / 2, height - FOOTER_H,
+                112, BTN_H, Component.literal(IMPORT_FILE_LABEL), b -> importFromFiles(), null));
         addRenderableWidget(styledButton(width - PAD_OUTER - 72, height - FOOTER_H,
                 72, BTN_H, Component.literal("Apply"), b -> openApplyTargets(),
                 Tooltip.create(Component.literal(targetGroup == null
@@ -254,17 +249,6 @@ public final class WaypointPainterScreen extends Screen {
         snapshot = null;
         status = "";
         if (faceViewButton != null) faceViewButton.setMessage(Component.literal(faceViewLabel()));
-        if (importButton != null) importButton.setTooltip(importTooltip());
-    }
-
-    private Tooltip importTooltip() {
-        return Tooltip.create(Component.literal(faceView == FaceView.ONE
-                ? "Import a file or clipboard image as a repeated 16x16 face."
-                : "Import a file or clipboard image as the full 64x48 UV map."));
-    }
-
-    private void openImportSources() {
-        MinecraftCompat.setScreen(minecraft, new ImportImageScreen(this));
     }
 
     private void importFromFiles() {
@@ -290,11 +274,6 @@ public final class WaypointPainterScreen extends Screen {
         importImage(() -> readImage(new File(path)), "Could not import that image.");
     }
 
-    private void importFromClipboard() {
-        importImage(WaypointPainterScreen::readSystemClipboardImage,
-                "Clipboard does not contain a usable image.");
-    }
-
     private void importImage(WaypointPaintImageImporter.ImageSource source,
                              String failureStatus) {
         try {
@@ -311,15 +290,6 @@ public final class WaypointPainterScreen extends Screen {
                     : "Imported as a 64x48 UV map.";
         } catch (IOException | RuntimeException e) {
             status = failureStatus;
-        }
-    }
-
-    private static BufferedImage readSystemClipboardImage() throws IOException {
-        try {
-            return WaypointPaintImageImporter.readClipboardImage(
-                    Toolkit.getDefaultToolkit().getSystemClipboard());
-        } catch (RuntimeException | AWTError | LinkageError e) {
-            throw new IOException("clipboard is unavailable", e);
         }
     }
 
@@ -650,52 +620,6 @@ public final class WaypointPainterScreen extends Screen {
                           int canvasLeft, int canvasRight,
                           int gridLeft, int gridTop, int cell,
                           int previewX, int previewY, int previewSize) {}
-
-    private static final class ImportImageScreen extends Screen {
-        private static final int BUTTON_WIDTH = 180;
-        private final WaypointPainterScreen painter;
-
-        private ImportImageScreen(WaypointPainterScreen painter) {
-            super(Component.literal("Import image"));
-            this.painter = painter;
-        }
-
-        @Override
-        protected void init() {
-            int x = (width - BUTTON_WIDTH) / 2;
-            int y = height / 2 - BTN_H - GAP_TIGHT;
-            addRenderableWidget(styledButton(x, y, BUTTON_WIDTH, BTN_H,
-                    Component.literal(IMPORT_FILES_LABEL),
-                    b -> choose(painter::importFromFiles),
-                    Tooltip.create(Component.literal("Choose a PNG, JPG, GIF, or BMP image."))));
-            addRenderableWidget(styledButton(x, y + BTN_H + GAP_TIGHT,
-                    BUTTON_WIDTH, BTN_H, Component.literal(IMPORT_CLIPBOARD_LABEL),
-                    b -> choose(painter::importFromClipboard),
-                    Tooltip.create(Component.literal("Use image data copied to the clipboard."))));
-            addRenderableWidget(styledButton(x, height - FOOTER_H,
-                    BUTTON_WIDTH, BTN_H, Component.literal("Back"), b -> onClose(), null));
-        }
-
-        @Override
-        public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY,
-                                       float partial) {
-            g.fill(0, 0, width, height, SURFACE);
-            String title = getTitle().getString();
-            g.text(font, title, (width - font.width(title)) / 2,
-                    height / 2 - BTN_H - GAP_TIGHT - font.lineHeight - GAP, TEXT, false);
-            super.extractRenderState(g, mouseX, mouseY, partial);
-        }
-
-        private void choose(Runnable action) {
-            MinecraftCompat.setScreen(minecraft, painter);
-            action.run();
-        }
-
-        @Override
-        public void onClose() {
-            MinecraftCompat.setScreen(minecraft, painter);
-        }
-    }
 
     private final class PaletteButton extends AbstractButton {
         private final int slot;
