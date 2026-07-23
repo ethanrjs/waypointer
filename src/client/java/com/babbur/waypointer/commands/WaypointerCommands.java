@@ -29,6 +29,7 @@ import com.babbur.waypointer.dungeon.DungeonWaypointSkipRules;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.input.WaypointAddFlow;
 import com.babbur.waypointer.input.WaypointRepositionMode;
+import com.babbur.waypointer.input.WaypointerKeybinds;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.babbur.waypointer.render.HappySnowmanSession;
 import com.babbur.waypointer.screen.DebugInspectScreen;
@@ -126,6 +127,7 @@ public final class WaypointerCommands {
                                 .executes(ctx -> runHelp(ctx.getSource(), root,
                                         StringArgumentType.getString(ctx, "target")))))
                 .then(literal("list").executes(ctx -> runList(ctx.getSource())))
+                .then(literal("skip").executes(ctx -> runSkipCurrentWaypoint(ctx.getSource())))
                 .then(literal("skipto")
                         .then(argument("target", StringArgumentType.word())
                                 .suggests(suggestSkipTargets())
@@ -839,6 +841,8 @@ public final class WaypointerCommands {
                                     "move 4 2"),
                             new HelpRow(" skipto <n[.sub]>", "Jump active routes to a displayed waypoint label.",
                                     "skipto 3", "skipto 3.2"),
+                            new HelpRow(" skip", "Advance active routes by one waypoint.",
+                                    "skip"),
                             new HelpRow(" reset", "Reset the active route to its first waypoint.",
                                     "reset"),
                             new HelpRow(" mode <static|sequence>", "Set active route visibility mode.",
@@ -1198,6 +1202,18 @@ public final class WaypointerCommands {
             if (g.size() > shown) info(src, "  ... " + (g.size() - shown) + " more");
         }
         return active.size();
+    }
+
+    private int runSkipCurrentWaypoint(FabricClientCommandSource src) {
+        int moved = WaypointerKeybinds.skipCurrentWaypointTargets(
+                manager, config, System.currentTimeMillis());
+        if (moved == 0) {
+            error(src, "No active route to skip in.");
+            return 0;
+        }
+        success(src, "Skipped the current waypoint in " + moved + " active route"
+                + (moved == 1 ? "." : "s."));
+        return moved;
     }
 
     private int runSkipTo(FabricClientCommandSource src, String target) {

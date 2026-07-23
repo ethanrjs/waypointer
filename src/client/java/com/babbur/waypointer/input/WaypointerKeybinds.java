@@ -298,7 +298,7 @@ public final class WaypointerKeybinds {
             return;
         }
         while (addTempWaypointHere.consumeClick()) addTempWaypointAtPlayer(mc);
-        while (skipWaypoint.consumeClick()) skipCurrentWaypoint(mc);
+        while (skipWaypoint.consumeClick()) skipCurrentWaypoint();
         while (previousWaypoint.consumeClick()) goBackToPreviousWaypoint(mc);
         while (enterEditMode.consumeClick()) {
             WaypointRepositionMode.setEditModeEnabled(manager, config, true);
@@ -335,11 +335,15 @@ public final class WaypointerKeybinds {
         while (addWaypointWhereLooking.consumeClick()) {}
     }
 
-    private void skipCurrentWaypoint(Minecraft mc) {
+    private void skipCurrentWaypoint() {
+        skipCurrentWaypointTargets(manager, config, System.currentTimeMillis());
+    }
+
+    public static int skipCurrentWaypointTargets(ActiveGroupManager manager, WaypointerConfig config,
+                                                  long nowMillis) {
         int skipped = 0;
         boolean loop = config.restartRouteWhenComplete();
         boolean trackRouteTimes = config.routeTimesEnabled();
-        long nowMillis = System.currentTimeMillis();
         for (WaypointGroup g : manager.activeGroups()) {
             if (g.isComplete() || g.isEmpty()) continue;
             advanceManualSkip(g, trackRouteTimes, nowMillis);
@@ -347,10 +351,11 @@ public final class WaypointerKeybinds {
             ProximityTracker.reportRouteCompletion(manager, g, trackRouteTimes);
             skipped++;
         }
-        if (skipped == 0) return;
+        if (skipped == 0) return 0;
         // fireDataChanged re-caches activeGroups() and triggers autosave so the new
         // progress index survives a crash or /reload.
         manager.fireDataChanged();
+        return skipped;
     }
 
     static void advanceManualSkip(WaypointGroup group, boolean trackRouteTimes, long nowMillis) {
