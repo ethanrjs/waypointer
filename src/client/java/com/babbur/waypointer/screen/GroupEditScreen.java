@@ -49,7 +49,7 @@ import static com.babbur.waypointer.screen.GuiTokens.*;
  *   | [Sort: Nearest   ]|                      |
  *   | [Reset Progress  ]|                      |
  *   |                                          |
- *   | [+ Add][+ Add Named][Export][Remove][Done]|
+ *   | [+ Add][+ Add Named][Export][Remove][^][v][Done]|
  *   +------------------------------------------+
  *
  * All of the toggles that used to live in a horizontal button wall at the top
@@ -320,6 +320,10 @@ public final class GroupEditScreen extends Screen {
                 Tooltip.create(Component.literal("Name a new waypoint at your current position."))));
         left.add(new GuiTokens.ButtonSpec("Export", this::export));
         left.add(new GuiTokens.ButtonSpec("Remove", this::removeSelected));
+        left.add(new GuiTokens.ButtonSpec("^", 24, () -> moveSelected(-1),
+                Tooltip.create(Component.literal("Move the selected waypoint up."))));
+        left.add(new GuiTokens.ButtonSpec("v", 24, () -> moveSelected(1),
+                Tooltip.create(Component.literal("Move the selected waypoint down."))));
         return left;
     }
 
@@ -829,6 +833,23 @@ public final class GroupEditScreen extends Screen {
     static int selectedIndexAfterRemoval(int removedIndex, int sizeAfterRemoval) {
         if (removedIndex < 0 || sizeAfterRemoval <= 0) return -1;
         return Math.min(removedIndex, sizeAfterRemoval - 1);
+    }
+
+    private void moveSelected(int delta) {
+        // Keyboard activation can reach the footer while the inline editor is
+        // still open. Save that edit before row indices change underneath it.
+        if (editingIndex >= 0) commitLabelEdit();
+        int movedTo = moveWaypointSelection(group, selectedIndex, delta);
+        if (movedTo == selectedIndex) return;
+        selectWaypoint(movedTo);
+        manager.fireDataChanged();
+    }
+
+    static int moveWaypointSelection(WaypointGroup group, int selectedIndex, int delta) {
+        if (group == null || selectedIndex < 0 || selectedIndex >= group.size()) {
+            return selectedIndex;
+        }
+        return group.moveBy(selectedIndex, delta);
     }
 
     private void export() {

@@ -11,6 +11,7 @@ import static com.babbur.waypointer.screen.GuiTokens.GAP;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GroupEditScreenTest {
@@ -243,6 +244,30 @@ class GroupEditScreenTest {
                 "removing the only row should leave no selection");
         assertEquals(-1, GroupEditScreen.selectedIndexAfterRemoval(-1, 3),
                 "invalid removal indexes should not invent a selection");
+    }
+
+    @Test
+    void moveWaypointSelectionUsesTheGroupHierarchyRules() {
+        WaypointGroup group = WaypointGroup.create("Route", "hub");
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        Waypoint first = Waypoint.at(0, 70, 0);
+        Waypoint child = Waypoint.at(1, 70, 0);
+        Waypoint second = Waypoint.at(2, 70, 0);
+        group.add(first);
+        group.add(child);
+        group.add(second);
+        assertTrue(group.toggleSubwaypoint(1));
+        child = group.get(1);
+
+        int movedTo = GroupEditScreen.moveWaypointSelection(group, 0, 1);
+
+        assertEquals(1, movedTo);
+        assertSame(first, group.get(1));
+        assertSame(child, group.get(2),
+                "moving a main waypoint must keep its subwaypoint attached");
+        assertEquals(1, GroupEditScreen.moveWaypointSelection(group, movedTo, 1),
+                "a blocked move must keep the selected row unchanged");
+        assertEquals(-1, GroupEditScreen.moveWaypointSelection(group, -1, 1));
     }
 
     @Test
