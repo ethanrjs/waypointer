@@ -588,6 +588,7 @@ public final class WaypointRenderer implements HudElement {
         forEachRouteLineSegment(
                 g,
                 depthCheckedPass,
+                config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> shouldRenderRouteLineEndpoint(g, i, currentIdx, showCompleted,
                         camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq),
                 (fromIndex, toIndex) -> {
@@ -605,8 +606,16 @@ public final class WaypointRenderer implements HudElement {
                                         boolean depthCheckedPass,
                                         IntPredicate endpointVisible,
                                         RouteLineSegmentConsumer consumer) {
+        forEachRouteLineSegment(group, depthCheckedPass, false, endpointVisible, consumer);
+    }
+
+    private static void forEachRouteLineSegment(WaypointGroup group,
+                                                boolean depthCheckedPass,
+                                                boolean keepSubwaypointsVisibleUntilNextWaypoint,
+                                                IntPredicate endpointVisible,
+                                                RouteLineSegmentConsumer consumer) {
         int[] previous = { -1 };
-        group.forEachVisibleIndex(i -> {
+        group.forEachVisibleIndex(keepSubwaypointsVisibleUntilNextWaypoint, i -> {
             if (group.isSubwaypoint(i)) return;
             if (endpointVisible != null && !endpointVisible.test(i)) return;
             if (previous[0] >= 0) {
@@ -922,7 +931,7 @@ public final class WaypointRenderer implements HudElement {
         float beaconOpacity = (float) config.beaconOpacity();
         float outlineThickness = effectiveOutlineThickness();
 
-        g.forEachVisibleIndex(
+        g.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> {
             if (!shouldRenderWaypointWorld(g, i, currentIdx, showCompleted,
                     camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
@@ -954,7 +963,7 @@ public final class WaypointRenderer implements HudElement {
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
 
-        g.forEachVisibleIndex(
+        g.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> {
             if (!shouldRenderWaypointWorld(g, i, currentIdx, showCompleted,
                     camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
@@ -989,7 +998,7 @@ public final class WaypointRenderer implements HudElement {
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
 
-        group.forEachVisibleIndex(i -> {
+        group.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(), i -> {
             if (!shouldRenderWaypointWorld(group, i, currentIndex, showCompleted,
                     camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
                     depthCheckedPass, mc, level, screenW, screenH)) {
@@ -1032,7 +1041,7 @@ public final class WaypointRenderer implements HudElement {
             return;
         }
 
-        g.forEachVisibleIndex(
+        g.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> emitBeaconBeamIfVisible(ps, quads, g, i,
                         currentIdx, showCompleted, camPos, playerPos, maxStaticDistanceSq,
                         nearHideDistanceSq, minY, maxY, depthCheckedPass, mc, level,
@@ -1310,7 +1319,7 @@ public final class WaypointRenderer implements HudElement {
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
 
-        group.forEachVisibleIndex(
+        group.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> {
             Waypoint waypoint = group.get(i);
             boolean depthChecked = waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED);
@@ -1400,7 +1409,7 @@ public final class WaypointRenderer implements HudElement {
         boolean showRouteProgressForGroup = showRouteProgress && !group.temp();
         String routeProgressText = showRouteProgressForGroup ? routeProgressText(group) : null;
 
-        group.forEachVisibleIndex(
+        group.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> {
             if (shouldHideStaticReached(group, i)) return;
 

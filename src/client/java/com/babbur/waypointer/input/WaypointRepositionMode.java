@@ -428,7 +428,7 @@ public final class WaypointRepositionMode {
         List<Double> distances = new ArrayList<>();
 
         for (WaypointGroup group : editManager.activeGroups()) {
-            group.forEachVisibleIndex(
+            group.forEachVisibleIndex(editConfig.keepSubwaypointsVisibleUntilNextWaypoint(),
                     index -> {
                 if (index < 0 || index >= group.size()) return;
 

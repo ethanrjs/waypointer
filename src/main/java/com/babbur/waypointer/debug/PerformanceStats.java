@@ -197,7 +197,7 @@ public record PerformanceStats(
     private static int countRenderableWaypoints(WaypointGroup group,
                                                 WaypointerConfig config) {
         Counter counter = new Counter();
-        group.forEachVisibleIndex(index -> {
+        group.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(), index -> {
             if (isRenderable(group, config, index)) counter.value++;
         });
         return counter.value;
@@ -208,7 +208,7 @@ public record PerformanceStats(
         if (!config.showWaypointNames() && !config.showWaypointDistances()) return 0;
 
         Counter counter = new Counter();
-        group.forEachVisibleIndex(index -> {
+        group.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(), index -> {
             if (!isRenderable(group, config, index)) return;
             if (group.get(index).hasFlag(Waypoint.FLAG_HIDE_NAME)) return;
             counter.value++;

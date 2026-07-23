@@ -261,6 +261,27 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void reachedSubwaypointHoldIsOnByDefaultUnderRoutesAndSurvivesCodecRoundTrip() {
+        String id = "keepSubwaypointsVisibleUntilNextWaypoint";
+        Setting setting = SettingsCatalog.byId(id);
+
+        assertNotNull(setting);
+        assertEquals("Keep subwaypoints until next waypoint", setting.label());
+        assertEquals(true, setting.get(new WaypointerConfig(), null));
+        assertEquals("routes", SettingsCatalog.categories().stream()
+                .filter(category -> category.groups().stream()
+                        .flatMap(group -> group.settings().stream())
+                        .anyMatch(candidate -> candidate.id().equals(id)))
+                .findFirst().orElseThrow().id());
+
+        WaypointerConfig disabled = new WaypointerConfig();
+        setting.set(disabled, null, false);
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(disabled));
+        assertEquals(false, setting.get(decoded, null));
+    }
+
+    @Test
     void dungeonEntryPathIsOffByDefaultInTheCatalog() {
         Setting entryPath = SettingsCatalog.byId("showDungeonEntryPathToFirstWaypoint");
 

@@ -632,6 +632,36 @@ class WaypointGroupTest {
     }
 
     @Test
+    void forEachVisibleIndex_canKeepHideAfterParentSubwaypointsUntilNextMain() {
+        WaypointGroup g = WaypointGroup.create("route", "hub");
+        g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        g.add(wp(0, 70, 0));
+        g.add(wp(10, 70, 0));
+        g.add(wp(20, 70, 0));
+        g.add(wp(30, 70, 0));
+        g.toggleSubwaypoint(1);
+        g.toggleSubwaypoint(2);
+        g.set(1, g.get(1).withFlags(g.get(1).flags()
+                | Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED));
+        g.set(2, g.get(2).withFlags(g.get(2).flags()
+                | Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED));
+        g.advancePast(0);
+
+        List<Integer> indices = new ArrayList<>();
+        g.forEachVisibleIndex(true, indices::add);
+
+        assertArrayEquals(new int[] { 0, 1, 2, 3 },
+                indices.stream().mapToInt(Integer::intValue).toArray());
+        assertArrayEquals(new int[] { 0, 3 }, visibleIndices(g));
+
+        g.advancePast(3);
+        indices.clear();
+        g.forEachVisibleIndex(true, indices::add);
+        assertArrayEquals(new int[] { 3 },
+                indices.stream().mapToInt(Integer::intValue).toArray());
+    }
+
+    @Test
     void advancePast_skipsSubwaypointsAndKeepsCurrentOnMainWaypoints() {
         WaypointGroup g = route();
         g.toggleSubwaypoint(1);
