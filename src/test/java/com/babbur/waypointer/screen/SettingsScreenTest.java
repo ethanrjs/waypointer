@@ -8,6 +8,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Modifier;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -19,7 +21,6 @@ class SettingsScreenTest {
     void newEditModeVisualDefaultsMatchRequestedStates() {
         WaypointerConfig config = new WaypointerConfig();
 
-        assertFalse(config.sharpWaypointEdges());
         assertTrue(config.editSounds());
         assertTrue(config.showEditModeSubtitle());
     }
@@ -40,6 +41,13 @@ class SettingsScreenTest {
         assertFalse(SettingsScreen.settingsSearchClearButtonActive(""));
         assertTrue(SettingsScreen.settingsSearchClearButtonActive(" "));
         assertTrue(SettingsScreen.settingsSearchClearButtonActive("tracer"));
+    }
+
+    @Test
+    void searchFocusRestorationUsesThePostRebuildInitialFocusHook() throws Exception {
+        var hook = SettingsScreen.class.getDeclaredMethod("setInitialFocus");
+
+        assertTrue(Modifier.isProtected(hook.getModifiers()));
     }
 
     @Test

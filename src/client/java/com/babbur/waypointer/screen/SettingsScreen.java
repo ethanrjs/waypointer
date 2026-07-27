@@ -127,7 +127,7 @@ public final class SettingsScreen extends Screen {
     private Component configCodeStatus;
 
     public SettingsScreen(Screen parent, WaypointerConfig config, DungeonConfig dungeonConfig) {
-        super(Component.literal("Waypointer Settings"));
+        super(Component.translatable("waypointer.screen.settings.title"));
         this.parent = parent;
         this.config = config;
         this.dungeonConfig = dungeonConfig;
@@ -176,12 +176,25 @@ public final class SettingsScreen extends Screen {
                 this::addRenderableWidget, font);
         perfCancelButton = styledButton((width - 88) / 2,
                 PAD_OUTER + font.lineHeight * 2 + GAP, 88, BTN_H,
-                Component.literal("Cancel test"), button -> {
+                Component.translatable("waypointer.screen.settings.perf.cancel"), button -> {
                     PerfStressTestController.cancelIfRunning();
                     rebuildPending = true;
-                }, Tooltip.create(Component.literal("Stop the test and restore your settings.")));
+                }, Tooltip.create(Component.translatable(
+                        "waypointer.screen.settings.perf.cancel.tooltip")));
         perfCancelButton.visible = false;
         addRenderableWidget(perfCancelButton);
+    }
+
+    @Override
+    protected void setInitialFocus() {
+        // Screen.rebuildWidgets() applies initial focus after init(), so restore
+        // the search field here rather than while its widgets are being built.
+        if (refocusSearchAfterRebuild && searchBox != null) {
+            refocusSearchAfterRebuild = false;
+            setInitialFocus(searchBox);
+            return;
+        }
+        super.setInitialFocus();
     }
 
     // --- search box (chrome) -------------------------------------------------------------------
@@ -195,24 +208,19 @@ public final class SettingsScreen extends Screen {
             return;
         }
         searchBox = new EditBox(font, x, layout.top() + 4, searchW, BTN_H,
-                Component.literal("Search settings"));
+                Component.translatable("waypointer.screen.settings.search"));
         searchBox.setMaxLength(80);
         searchBox.setValue(searchQuery);
-        searchBox.setHint(Component.literal("Search settings"));
+        searchBox.setHint(Component.translatable("waypointer.screen.settings.search"));
         searchBox.setResponder(this::onSearchChanged);
         addRenderableWidget(searchBox);
 
         searchClearButton = styledButton(x + searchW + GAP_TIGHT, layout.top() + 4,
-                SEARCH_CLEAR_W, BTN_H, Component.literal("Clear"), b -> clearSearch(),
-                Tooltip.create(Component.literal("Clear settings search.")));
+                SEARCH_CLEAR_W, BTN_H, Component.translatable("waypointer.common.clear"),
+                b -> clearSearch(), Tooltip.create(Component.translatable(
+                        "waypointer.screen.settings.search.clear.tooltip")));
         updateClearButton();
         addRenderableWidget(searchClearButton);
-
-        if (refocusSearchAfterRebuild) {
-            setFocused(searchBox);
-            searchBox.setFocused(true);
-            refocusSearchAfterRebuild = false;
-        }
     }
 
     private void onSearchChanged(String raw) {
@@ -246,10 +254,9 @@ public final class SettingsScreen extends Screen {
     }
 
     private GuiTokens.ButtonSpec doneSpec() {
-        return new GuiTokens.ButtonSpec("Done", -1, this::onClose,
-                Tooltip.create(Component.literal(
-                        "Return to the previous screen.\n"
-                      + "Every change on this page is saved as you type or click.")));
+        return new GuiTokens.ButtonSpec(
+                Component.translatable("gui.done").getString(), -1, this::onClose,
+                Tooltip.create(Component.translatable("waypointer.screen.settings.done.tooltip")));
     }
 
     @Override
@@ -389,7 +396,11 @@ public final class SettingsScreen extends Screen {
             first = false;
 
             if (group.label() != null && bodyVisible) {
-                rows.add(new Row(null, group.label(), false, false, false, y, GROUP_CAPTION_H));
+                rows.add(new Row(null,
+                        Component.translatableWithFallback(
+                                SettingsCatalog.groupTranslationKey(category, group),
+                                group.label()).getString(),
+                        false, false, false, y, GROUP_CAPTION_H));
                 y += GROUP_CAPTION_H;
             }
 
@@ -414,8 +425,7 @@ public final class SettingsScreen extends Screen {
     private int addStatusRowFor(Setting setting, int y) {
         Supplier<Component> status = switch (setting.id()) {
             case SettingsCatalog.ACTION_CONFIG_CODE -> this::configCodeStatusComponent;
-            case SettingsCatalog.ACTION_PERF_TEST ->
-                    () -> Component.literal(PerfStressTestController.statusLine());
+            case SettingsCatalog.ACTION_PERF_TEST -> PerfStressTestController::statusComponent;
             default -> null;
         };
         if (status == null) return y;
@@ -436,7 +446,9 @@ public final class SettingsScreen extends Screen {
         int y = 0;
         for (SettingsSearch.Match match : matches) {
             counts.merge(match.categoryId(), 1, Integer::sum);
-            y = addChippedRow(match.setting(), match.categoryLabel(), y, layout);
+            SettingsCatalog.Category category = categoryById(match.categoryId());
+            y = addChippedRow(match.setting(),
+                    category == null ? "" : categoryLabel(category), y, layout);
         }
         contentHeight = y;
         searchCategoryCounts = counts;
@@ -451,7 +463,7 @@ public final class SettingsScreen extends Screen {
             if (setting.kind() == Setting.Kind.ACTION || setting.kind() == Setting.Kind.HIDDEN) continue;
             if (setting.store() == Setting.Store.DUNGEON && dungeonConfig == null) continue;
             SettingsCatalog.Category home = categoryOf(id);
-            y = addChippedRow(setting, home == null ? "" : home.label(), y, layout);
+            y = addChippedRow(setting, home == null ? "" : categoryLabel(home), y, layout);
         }
         contentHeight = y;
     }
@@ -591,13 +603,17 @@ public final class SettingsScreen extends Screen {
             case SettingsCatalog.ACTION_CONFIG_CODE -> buildConfigCodeControls(row, setting, controlRight, rowTop);
             case SettingsCatalog.ACTION_PRESETS -> buildPresetControls(row, setting, controlRight, rowTop);
             case SettingsCatalog.ACTION_DISABLE_ALL -> buildDialogActionControl(row, setting,
-                    controlRight, rowTop, "Disable All", this::confirmDisableAll);
+                    controlRight, rowTop, "waypointer.screen.settings.action.disable_all",
+                    this::confirmDisableAll);
             case SettingsCatalog.ACTION_RESET_DEFAULTS -> buildConfirmActionControl(row, setting,
-                    controlRight, rowTop, CONFIRM_RESET_DEFAULTS, "Reset to Defaults", "Confirm Reset",
+                    controlRight, rowTop, CONFIRM_RESET_DEFAULTS,
+                    "waypointer.screen.settings.action.reset_defaults",
+                    "waypointer.screen.settings.action.confirm_reset",
                     this::confirmedResetDefaults);
             case SettingsCatalog.ACTION_PERF_TEST -> buildPerfTestControls(row, setting, controlRight, rowTop);
             case SettingsCatalog.ACTION_WAYPOINT_PAINT -> buildDialogActionControl(row, setting,
-                    controlRight, rowTop, "Open painter", this::openWaypointPainter);
+                    controlRight, rowTop, "waypointer.screen.settings.action.open_painter",
+                    this::openWaypointPainter);
             default -> { }
         }
     }
@@ -605,17 +621,19 @@ public final class SettingsScreen extends Screen {
     private void buildPerfTestControls(Row row, Setting setting, int controlRight, int rowTop) {
         int buttonW = 100;
         Button copy = styledButton(controlRight - buttonW, 0, buttonW, BTN_H,
-                Component.literal("Copy report"), b -> {
+                Component.translatable("waypointer.screen.settings.perf.copy_report"), b -> {
                     if (PerfStressTestController.hasReport()) {
                         minecraft.keyboardHandler.setClipboard(PerfStressTestController.report());
                         PerfStressTestController.noteReportCopied();
                     }
-                }, tooltipFor(setting,
-                        "Copy the full performance rundown to your clipboard."));
+                }, tooltipFor(setting, Component.translatable(
+                        "waypointer.screen.settings.perf.copy_report.tooltip")));
 
         boolean running = PerfStressTestController.running();
         Button run = styledButton(controlRight - buttonW * 2 - GAP, 0, buttonW, BTN_H,
-                Component.literal(running ? "Cancel test" : "Run test"), b -> {
+                Component.translatable(running
+                        ? "waypointer.screen.settings.perf.cancel"
+                        : "waypointer.screen.settings.perf.run"), b -> {
                     if (PerfStressTestController.running()) {
                         PerfStressTestController.cancelIfRunning();
                     } else {
@@ -637,11 +655,12 @@ public final class SettingsScreen extends Screen {
     private void buildConfigCodeControls(Row row, Setting setting, int controlRight, int rowTop) {
         int buttonW = 112;
         Button importButton = styledButton(controlRight - buttonW, 0, buttonW, BTN_H,
-                Component.literal("Import config code"), this::importConfigCode,
-                tooltipFor(setting,
-                        "Import settings. This will overwrite existing settings."));
+                Component.translatable("waypointer.screen.settings.config.import"),
+                this::importConfigCode, tooltipFor(setting, Component.translatable(
+                        "waypointer.screen.settings.config.import.tooltip")));
         Button copyButton = styledButton(controlRight - buttonW * 2 - GAP, 0, buttonW, BTN_H,
-                Component.literal("Copy config code"), this::copyConfigCode, tooltipOrNull(setting));
+                Component.translatable("waypointer.screen.settings.config.copy"),
+                this::copyConfigCode, tooltipOrNull(setting));
         registerRowWidget(row, copyButton, rowTop + 2);
         registerRowWidget(row, importButton, rowTop + 2);
     }
@@ -649,16 +668,16 @@ public final class SettingsScreen extends Screen {
     private void buildPresetControls(Row row, Setting setting, int controlRight, int rowTop) {
         int x = controlRight;
         String[][] presets = {
-                {"Everything", "everything"},
-                {"Default", "default"},
-                {"Minimal", "minimal"},
+                {"waypointer.screen.settings.preset.everything", "everything"},
+                {"waypointer.screen.settings.preset.default", "default"},
+                {"waypointer.screen.settings.preset.minimal", "minimal"},
         };
         for (String[] preset : presets) {
-            String label = preset[0];
+            Component label = Component.translatable(preset[0]);
             String id = preset[1];
             int w = Math.max(60, font.width(label) + 16);
             x -= w;
-            Button button = styledButton(x, 0, w, BTN_H, Component.literal(label),
+            Button button = styledButton(x, 0, w, BTN_H, label,
                     b -> applyPreset(id), tooltipOrNull(setting));
             registerRowWidget(row, button, rowTop + 2);
             x -= GAP_TIGHT;
@@ -667,18 +686,18 @@ public final class SettingsScreen extends Screen {
 
     /** Action button that opens a modal confirmation dialog (the apply-defaults pattern). */
     private void buildDialogActionControl(Row row, Setting setting, int controlRight, int rowTop,
-                                          String label, Runnable onConfirmFlow) {
+                                          String labelKey, Runnable onConfirmFlow) {
         Button button = styledButton(controlRight - ENUM_BUTTON_W, 0, ENUM_BUTTON_W, BTN_H,
-                Component.literal(label), b -> onConfirmFlow.run(), tooltipOrNull(setting));
+                Component.translatable(labelKey), b -> onConfirmFlow.run(), tooltipOrNull(setting));
         registerRowWidget(row, button, rowTop + 2);
     }
 
     private void buildConfirmActionControl(Row row, Setting setting, int controlRight, int rowTop,
-                                           int action, String label, String armedLabel,
+                                           int action, String labelKey, String armedLabelKey,
                                            Runnable confirmed) {
-        String current = confirmationActive(action) ? armedLabel : label;
+        String current = confirmationActive(action) ? armedLabelKey : labelKey;
         Button button = styledButton(controlRight - ENUM_BUTTON_W, 0, ENUM_BUTTON_W, BTN_H,
-                Component.literal(current), b -> {
+                Component.translatable(current), b -> {
                     if (!consumeOrArmConfirmation(action)) return;
                     confirmed.run();
                 }, tooltipOrNull(setting));
@@ -687,7 +706,7 @@ public final class SettingsScreen extends Screen {
 
     private void buildBoolControl(Row row, Setting setting, int controlRight, int rowTop) {
         GuiTokens.StyledCheckbox checkbox = styledCheckbox(0, 0, BTN_H,
-                Component.literal(setting.label()),
+                settingLabel(setting),
                 Boolean.TRUE.equals(setting.get(config, dungeonConfig)),
                 v -> applySetting(setting, v), tooltipOrNull(setting));
         checkbox.setX(controlRight - checkbox.getWidth());
@@ -697,7 +716,7 @@ public final class SettingsScreen extends Screen {
 
     private void buildNumberControl(Row row, Setting setting, int controlRight, int rowTop) {
         EditBox box = new EditBox(font, controlRight - NUMBER_BOX_W, 0, NUMBER_BOX_W, BTN_H,
-                Component.literal(setting.label()));
+                settingLabel(setting));
         box.setMaxLength(24);
         box.setValue(setting.formatValue(setting.get(config, dungeonConfig)));
         box.setResponder(v -> {
@@ -714,18 +733,23 @@ public final class SettingsScreen extends Screen {
 
     private void buildEnumControl(Row row, Setting setting, int controlRight, int rowTop) {
         Button button = styledButton(controlRight - ENUM_BUTTON_W, 0, ENUM_BUTTON_W, BTN_H,
-                Component.literal(enumLabelFor(setting)),
+                enumLabelFor(setting),
                 b -> {
                     Object next = nextEnumValue(setting, setting.get(config, dungeonConfig));
                     applySetting(setting, next);
-                    b.setMessage(Component.literal(enumLabelFor(setting)));
+                    b.setMessage(enumLabelFor(setting));
                 }, tooltipOrNull(setting));
         registerRowWidget(row, button, rowTop + 2);
     }
 
-    private String enumLabelFor(Setting setting) {
+    private Component enumLabelFor(Setting setting) {
         Object current = setting.get(config, dungeonConfig);
-        return Setting.formatValue(Setting.Kind.ENUM, current, setting.enumOptions());
+        for (int i = 0; i < setting.enumOptions().size(); i++) {
+            if (Objects.equals(setting.enumOptions().get(i).value(), current)) {
+                return Component.translatable(setting.enumOptionTranslationKey(i));
+            }
+        }
+        return Component.literal(String.valueOf(current));
     }
 
     static Object nextEnumValue(Setting setting, Object current) {
@@ -744,17 +768,21 @@ public final class SettingsScreen extends Screen {
         int currentColor = ((Number) setting.get(config, dungeonConfig)).intValue();
 
         EditBox box = new EditBox(font, boxX, 0, COLOR_BOX_W, BTN_H,
-                Component.literal(setting.label()));
+                settingLabel(setting));
         box.setMaxLength(6);
         box.setValue(String.format("%06X", currentColor & 0xFFFFFF));
         box.setTooltip(tooltipOrNull(setting));
 
         ColorSwatchButton[] swatchRef = new ColorSwatchButton[1];
         ColorSwatchButton swatch = new ColorSwatchButton(
-                swatchX, 0, COLOR_SWATCH_W, BTN_H, "Pick color", currentColor,
+                swatchX, 0, COLOR_SWATCH_W, BTN_H,
+                Component.translatable("waypointer.screen.settings.color.pick").getString(),
+                currentColor,
                 () -> {
                     int pickerColor = swatchRef[0] == null ? currentColor : swatchRef[0].getColor();
-                    ColorPickerScreen.open(this, setting.colorPickerTitle(), pickerColor,
+                    ColorPickerScreen.open(this,
+                            Component.translatable(setting.colorPickerTitleTranslationKey()),
+                            pickerColor,
                             picked -> {
                                 applySetting(setting, picked);
                                 box.setValue(String.format("%06X", picked & 0xFFFFFF));
@@ -762,7 +790,8 @@ public final class SettingsScreen extends Screen {
                             });
                 });
         swatchRef[0] = swatch;
-        swatch.setTooltip(tooltipFor(setting, setting.colorSwatchTooltip()));
+        swatch.setTooltip(tooltipFor(setting, Component.translatable(
+                setting.colorSwatchTooltipTranslationKey())));
 
         box.setResponder(v -> {
             Integer parsed = parseRgbHexColor(v);
@@ -803,9 +832,9 @@ public final class SettingsScreen extends Screen {
                     applySetting(setting, defaultValue);
                     rebuildPending = true; // controls re-read config on rebuild
                 });
-        dot.setTooltip(tooltipFor(setting,
-                "Modified (default: " + setting.formatValue(defaultValue) + ")\n"
-                        + "Click to reset this setting."));
+        dot.setTooltip(tooltipFor(setting, Component.translatable(
+                "waypointer.screen.settings.reset.tooltip",
+                localizedSettingValue(setting, defaultValue))));
         dot.visible = false;
         row.dot = new WidgetSlot(dot, layout.rowsTop() + row.y + 2);
         addWidget(dot);
@@ -886,15 +915,17 @@ public final class SettingsScreen extends Screen {
         if (dungeonConfig.enabled()) changed++;
         if (dungeonConfig.hideCompletedRooms()) changed++;
         if (dungeonConfig.autoCompleteRoomsOnGreenCheckmark()) changed++;
-        String settingWord = changed == 1 ? " setting" : " settings";
         ConfirmScreen confirmScreen = new ConfirmScreen(
                 confirmed -> {
                     if (confirmed) confirmedDisableAll();
                     MinecraftCompat.setScreen(minecraft, this);
                 },
-                Component.literal("Disable all settings?"),
-                Component.literal(changed + settingWord + " will change from their current states."),
-                Component.literal("Disable all"), Component.literal("Cancel"));
+                Component.translatable("waypointer.screen.settings.disable.confirm.title"),
+                Component.translatable(changed == 1
+                        ? "waypointer.screen.settings.changed.one"
+                        : "waypointer.screen.settings.changed.many", changed),
+                Component.translatable("waypointer.screen.settings.action.disable_all"),
+                Component.translatable("gui.cancel"));
         MinecraftCompat.setScreen(minecraft, confirmScreen);
     }
 
@@ -917,9 +948,11 @@ public final class SettingsScreen extends Screen {
         try {
             String code = WaypointerConfigCodec.encode(config);
             minecraft.keyboardHandler.setClipboard(code);
-            setConfigCodeStatus(Component.literal("Config code copied.").withStyle(ChatFormatting.GREEN));
+            setConfigCodeStatus(Component.translatable(
+                    "waypointer.screen.settings.config.copied").withStyle(ChatFormatting.GREEN));
         } catch (Throwable t) {
-            setConfigCodeStatus(Component.literal("Could not copy config code.").withStyle(ChatFormatting.RED));
+            setConfigCodeStatus(Component.translatable(
+                    "waypointer.screen.settings.config.copy_failed").withStyle(ChatFormatting.RED));
         }
     }
 
@@ -928,11 +961,13 @@ public final class SettingsScreen extends Screen {
         try {
             text = minecraft.keyboardHandler.getClipboard();
         } catch (Throwable t) {
-            setConfigCodeStatus(Component.literal("Could not read clipboard.").withStyle(ChatFormatting.RED));
+            setConfigCodeStatus(Component.translatable(
+                    "waypointer.screen.settings.config.clipboard_failed").withStyle(ChatFormatting.RED));
             return;
         }
         if (text == null || text.isBlank()) {
-            setConfigCodeStatus(Component.literal("Clipboard is empty.").withStyle(ChatFormatting.RED));
+            setConfigCodeStatus(Component.translatable(
+                    "waypointer.screen.settings.config.clipboard_empty").withStyle(ChatFormatting.RED));
             return;
         }
 
@@ -941,32 +976,36 @@ public final class SettingsScreen extends Screen {
             int changedSettings = SettingsCatalog.countChangedSettings(config, decoded);
             showImportConfigConfirmation(decoded, changedSettings);
         } catch (RuntimeException e) {
-            setConfigCodeStatus(Component.literal("Invalid config code.").withStyle(ChatFormatting.RED));
+            setConfigCodeStatus(Component.translatable(
+                    "waypointer.screen.settings.config.invalid").withStyle(ChatFormatting.RED));
         }
     }
 
     private void showImportConfigConfirmation(WaypointerConfig decoded, int changedSettings) {
         if (decoded == null) {
-            setConfigCodeStatus(Component.literal("Invalid config code.").withStyle(ChatFormatting.RED));
+            setConfigCodeStatus(Component.translatable(
+                    "waypointer.screen.settings.config.invalid").withStyle(ChatFormatting.RED));
             return;
         }
 
-        String settingWord = changedSettings == 1 ? "setting" : "settings";
-        Component title = Component.literal("Import config code?");
-        Component message = Component.literal(
-                "Import settings. This will overwrite existing settings.\n"
-              + changedSettings + " " + settingWord
-              + " will be changed from their current states.");
+        Component title = Component.translatable(
+                "waypointer.screen.settings.config.confirm.title");
+        Component message = Component.translatable(changedSettings == 1
+                ? "waypointer.screen.settings.config.confirm.one"
+                : "waypointer.screen.settings.config.confirm.many", changedSettings);
         ConfirmScreen confirmScreen = new ConfirmScreen(
                 confirmed -> {
                     if (confirmed) {
                         applyConfirmedConfigImport(decoded, changedSettings);
                     } else {
-                        setConfigCodeStatus(Component.literal("Config import cancelled.")
+                        setConfigCodeStatus(Component.translatable(
+                                "waypointer.screen.settings.config.cancelled")
                                 .withStyle(ChatFormatting.GRAY));
                     }
                     MinecraftCompat.setScreen(minecraft, this);
-                }, title, message, Component.literal("Import settings"), Component.literal("Cancel"));
+                }, title, message,
+                Component.translatable("waypointer.screen.settings.config.import_settings"),
+                Component.translatable("gui.cancel"));
         MinecraftCompat.setScreen(minecraft, confirmScreen);
     }
 
@@ -974,9 +1013,10 @@ public final class SettingsScreen extends Screen {
         config.replaceWith(decoded);
         ConfigChangeHistory.recordBulk("Imported config code (" + changedSettings + " changed)");
         afterBulkConfigChange();
-        String settingWord = changedSettings == 1 ? "setting" : "settings";
-        setConfigCodeStatus(Component.literal("Config imported. " + changedSettings + " "
-                + settingWord + " changed.").withStyle(ChatFormatting.GREEN));
+        setConfigCodeStatus(Component.translatable(changedSettings == 1
+                ? "waypointer.screen.settings.config.imported.one"
+                : "waypointer.screen.settings.config.imported.many", changedSettings)
+                .withStyle(ChatFormatting.GREEN));
     }
 
     private void setConfigCodeStatus(Component status) {
@@ -986,7 +1026,8 @@ public final class SettingsScreen extends Screen {
 
     private Component configCodeStatusComponent() {
         return configCodeStatus == null
-                ? Component.literal("WPC: config codes use your clipboard.").withStyle(ChatFormatting.GRAY)
+                ? Component.translatable("waypointer.screen.settings.config.status")
+                        .withStyle(ChatFormatting.GRAY)
                 : configCodeStatus;
     }
 
@@ -998,7 +1039,7 @@ public final class SettingsScreen extends Screen {
             DungeonConfig defaultDungeon = new DungeonConfig();
             int changed = SettingsCatalog.countChangedSettings(
                     config, dungeonConfig, defaultMain, defaultDungeon);
-            confirmPreset("Default", changed, confirmed -> {
+            confirmPreset("waypointer.screen.settings.preset.default", changed, confirmed -> {
                 if (confirmed) confirmedResetDefaults();
             });
             return;
@@ -1006,27 +1047,32 @@ public final class SettingsScreen extends Screen {
         WaypointerConfig preset = "minimal".equals(presetId)
                 ? SettingsPresets.minimal(config)
                 : SettingsPresets.everything(config);
-        String name = "minimal".equals(presetId) ? "Minimal" : "Everything";
-        confirmPreset(name, SettingsCatalog.countChangedSettings(config, preset), confirmed -> {
+        String nameKey = "minimal".equals(presetId)
+                ? "waypointer.screen.settings.preset.minimal"
+                : "waypointer.screen.settings.preset.everything";
+        confirmPreset(nameKey, SettingsCatalog.countChangedSettings(config, preset), confirmed -> {
             if (confirmed) {
                 config.replaceWith(preset);
-                ConfigChangeHistory.recordBulk("Applied " + name + " preset");
+                ConfigChangeHistory.recordBulk("Applied " + presetId + " preset");
                 afterBulkConfigChange();
             }
         });
     }
 
-    private void confirmPreset(String name, int changed,
+    private void confirmPreset(String nameKey, int changed,
                                java.util.function.Consumer<Boolean> onResult) {
-        String settingWord = changed == 1 ? " setting" : " settings";
         ConfirmScreen confirmScreen = new ConfirmScreen(
                 confirmed -> {
                     onResult.accept(confirmed);
                     MinecraftCompat.setScreen(minecraft, this);
                 },
-                Component.literal("Apply " + name + " preset?"),
-                Component.literal(changed + settingWord + " will change from their current states."),
-                Component.literal("Apply preset"), Component.literal("Cancel"));
+                Component.translatable("waypointer.screen.settings.preset.confirm.title",
+                        Component.translatable(nameKey)),
+                Component.translatable(changed == 1
+                        ? "waypointer.screen.settings.changed.one"
+                        : "waypointer.screen.settings.changed.many", changed),
+                Component.translatable("waypointer.screen.settings.preset.apply"),
+                Component.translatable("gui.cancel"));
         MinecraftCompat.setScreen(minecraft, confirmScreen);
     }
 
@@ -1044,8 +1090,9 @@ public final class SettingsScreen extends Screen {
             hideWidgetsDuringPerformanceTest();
             String status = font.plainSubstrByWidth(
                     PerfStressTestController.statusLine(), Math.max(0, width - PAD_OUTER * 2));
-            String hint = font.plainSubstrByWidth(
-                    "Esc or Cancel test restores your settings.", Math.max(0, width - PAD_OUTER * 2));
+            String hint = font.plainSubstrByWidth(Component.translatable(
+                    "waypointer.screen.settings.perf.restore_hint").getString(),
+                    Math.max(0, width - PAD_OUTER * 2));
             g.text(font, status, Math.max(PAD_OUTER, (width - font.width(status)) / 2),
                     PAD_OUTER, TEXT, true);
             g.text(font, hint, Math.max(PAD_OUTER, (width - font.width(hint)) / 2),
@@ -1058,8 +1105,9 @@ public final class SettingsScreen extends Screen {
 
         g.fill(0, 0, width, height, SURFACE);
         g.text(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
-        g.text(font, "Changes save automatically.",
-                width - PAD_OUTER - font.width("Changes save automatically."),
+        Component saveHint = Component.translatable("waypointer.screen.settings.auto_save");
+        g.text(font, saveHint,
+                width - PAD_OUTER - font.width(saveHint),
                 PAD_OUTER, TEXT_DIM, false);
 
         renderSidebar(g, layout, mouseX, mouseY);
@@ -1108,23 +1156,28 @@ public final class SettingsScreen extends Screen {
     }
 
     private void renderHeaderStrip(GuiGraphicsExtractor g, Layout layout) {
-        String info;
+        Component info;
         if (searchActive()) {
             int matches = rows.size();
-            info = matches == 0 ? "No matches" : matches + (matches == 1 ? " match" : " matches");
+            info = Component.translatable(matches == 0
+                    ? "waypointer.screen.settings.matches.none"
+                    : matches == 1
+                    ? "waypointer.screen.settings.matches.one"
+                    : "waypointer.screen.settings.matches.many", matches);
         } else if (RECENT_ID.equals(activeCategoryId)) {
-            info = "Recent";
+            info = Component.translatable("waypointer.screen.settings.recent");
         } else {
             SettingsCatalog.Category category = categoryById(activeCategoryId);
-            info = category == null ? "" : category.label();
+            info = category == null ? Component.empty() : categoryComponent(category);
         }
         g.text(font, info, layout.mainRight() - GAP - font.width(info),
                 layout.top() + 10, TEXT_DIM, false);
 
         if (rows.isEmpty() && searchActive()) {
             int textX = layout.mainLeft() + GAP;
-            g.text(font, "No matching settings.", textX, layout.rowsTop() + 8, TEXT, false);
-            g.text(font, "Try fewer words, or clear the search field.",
+            g.text(font, Component.translatable("waypointer.screen.settings.empty"),
+                    textX, layout.rowsTop() + 8, TEXT, false);
+            g.text(font, Component.translatable("waypointer.screen.settings.empty.hint"),
                     textX, layout.rowsTop() + 8 + 14, TEXT_DIM, false);
         }
     }
@@ -1132,9 +1185,12 @@ public final class SettingsScreen extends Screen {
     /** Sidebar entries: the Recent pseudo-category (when non-empty) + catalog categories. */
     private List<SidebarEntry> sidebarEntries() {
         List<SidebarEntry> out = new ArrayList<>();
-        if (!RecentSettings.isEmpty()) out.add(new SidebarEntry(RECENT_ID, "Recent"));
+        if (!RecentSettings.isEmpty()) {
+            out.add(new SidebarEntry(RECENT_ID,
+                    Component.translatable("waypointer.screen.settings.recent").getString()));
+        }
         for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
-            out.add(new SidebarEntry(category.id(), category.label()));
+            out.add(new SidebarEntry(category.id(), categoryLabel(category)));
         }
         return out;
     }
@@ -1146,7 +1202,8 @@ public final class SettingsScreen extends Screen {
         int x2 = layout.sidebarRight();
         g.fill(x1, layout.top(), x2, layout.bottom(), SURFACE);
         g.fill(x2, layout.top(), x2 + 1, layout.bottom(), BORDER);
-        g.text(font, "Categories", x1 + GAP, layout.top() + 10, TEXT_DIM, false);
+        g.text(font, Component.translatable("waypointer.screen.settings.categories"),
+                x1 + GAP, layout.top() + 10, TEXT_DIM, false);
 
         int rowsTop = sidebarRowsTop(layout.top());
         int rowsBottom = layout.bottom() - GAP_TIGHT;
@@ -1245,7 +1302,8 @@ public final class SettingsScreen extends Screen {
         }
 
         int labelMaxW = labelLimit(row, layout) - labelX;
-        String clipped = font.plainSubstrByWidth(setting.label(), Math.max(12, labelMaxW));
+        String clipped = font.plainSubstrByWidth(
+                settingLabel(setting).getString(), Math.max(12, labelMaxW));
         int labelColor = row.header ? TEXT : enabled ? TEXT : TEXT_DIM;
         g.text(font, clipped, labelX, rowTop + 8, labelColor, false);
 
@@ -1287,24 +1345,65 @@ public final class SettingsScreen extends Screen {
     // --- tooltips ------------------------------------------------------------------------------
 
     static Component tooltipFor(Setting setting) {
-        return tooltipComponent(setting, setting.tooltip());
+        Component description = setting.tooltip().isBlank()
+                ? Component.empty()
+                : Component.translatableWithFallback(
+                        setting.tooltipTranslationKey(),
+                        normalizeTooltipText(setting.tooltip()));
+        return tooltipComponent(setting, description);
     }
 
-    private static Tooltip tooltipFor(Setting setting, String text) {
+    private static Tooltip tooltipFor(Setting setting, Component text) {
         return Tooltip.create(tooltipComponent(setting, text));
     }
 
-    private static Component tooltipComponent(Setting setting, String rawText) {
-        String text = normalizeTooltipText(rawText);
-        MutableComponent out = Component.literal(setting.label()).withStyle(ChatFormatting.GRAY);
-        if (!text.isEmpty()) {
-            out.append(Component.literal("\n" + text).withStyle(ChatFormatting.WHITE));
+    private static Component tooltipComponent(Setting setting, Component text) {
+        MutableComponent out = settingLabel(setting).copy().withStyle(ChatFormatting.GRAY);
+        if (text != null && !text.getString().isEmpty()) {
+            out.append(Component.literal("\n"));
+            out.append(text.copy().withStyle(ChatFormatting.WHITE));
         }
         if (setting.impact() != null) {
-            out.append(Component.literal("\n\nImpact: ").withStyle(ChatFormatting.WHITE));
-            out.append(Component.literal(setting.impact().word()).withStyle(chatColor(setting.impact())));
+            out.append(Component.literal("\n\n"));
+            out.append(Component.translatable("waypointer.settings.impact.line",
+                    Component.translatableWithFallback(
+                            setting.impact().wordTranslationKey(),
+                            setting.impact().word()))
+                    .withStyle(chatColor(setting.impact())));
         }
         return out;
+    }
+
+    private static Component settingLabel(Setting setting) {
+        return Component.translatableWithFallback(
+                setting.labelTranslationKey(), setting.label());
+    }
+
+    private static Component categoryComponent(SettingsCatalog.Category category) {
+        return Component.translatableWithFallback(
+                SettingsCatalog.categoryTranslationKey(category), category.label());
+    }
+
+    private static String categoryLabel(SettingsCatalog.Category category) {
+        return categoryComponent(category).getString();
+    }
+
+    private static Component localizedSettingValue(Setting setting, Object value) {
+        if (value == null) return Component.empty();
+        if (setting.kind() == Setting.Kind.BOOL) {
+            return Component.translatable(Boolean.TRUE.equals(value)
+                    ? "options.on" : "options.off");
+        }
+        if (setting.kind() == Setting.Kind.ENUM) {
+            for (int i = 0; i < setting.enumOptions().size(); i++) {
+                if (Objects.equals(setting.enumOptions().get(i).value(), value)) {
+                    return Component.translatableWithFallback(
+                            setting.enumOptionTranslationKey(i),
+                            setting.enumOptions().get(i).label());
+                }
+            }
+        }
+        return Component.literal(setting.formatValue(value));
     }
 
     /** Tooltip for a setting's control, or null when there is nothing to show. */
@@ -1516,7 +1615,8 @@ public final class SettingsScreen extends Screen {
     /** Modified-from-default indicator that doubles as a one-click reset. */
     private static final class ResetDotButton extends Button {
         private ResetDotButton(int x, int y, int width, int height, OnPress onPress) {
-            super(x, y, width, height, Component.literal("Reset setting to default"),
+            super(x, y, width, height,
+                    Component.translatable("waypointer.screen.settings.reset"),
                     onPress, DEFAULT_NARRATION);
         }
 
