@@ -36,6 +36,26 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void secretRouteSubtitleDoesNotShowTheObsoletePriorityMessage() {
+        assertEquals("shows in-room - double-click to edit",
+                WaypointerScreen.secretRouteSubtitle());
+    }
+
+    @Test
+    void installedSecretRowDisappearsAfterConversionToARegularRoute() {
+        WaypointGroup editable = WaypointGroup.create("Secret Route", "room");
+        editable.add(Waypoint.at(1, 70, 1));
+        WaypointGroup temporary = WaypointGroup.create("Temporary", "room");
+        temporary.setTemp(true);
+        temporary.add(Waypoint.at(2, 70, 2));
+
+        assertEquals(0, WaypointerScreen.displayedInstalledSecretCount(
+                4, List.of(temporary, editable)));
+        assertEquals(4, WaypointerScreen.displayedInstalledSecretCount(
+                4, List.of(temporary)));
+    }
+
+    @Test
     void nextRouteNamePicksTheSmallestFreeNumber() {
         assertEquals("Route 1", WaypointerScreen.nextRouteName(List.of()));
 
@@ -217,6 +237,50 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void privateWorldRoutesCanMoveToKnownWorldZones() {
+        WaypointGroup route = WaypointGroup.create("Offline route", Zone.PRIVATE_WORLD.id());
+
+        assertTrue(WaypointerScreen.canMoveRouteZone(route));
+        assertTrue(WaypointerScreen.retargetRoute(route, "hub"));
+        assertEquals("hub", route.zoneId());
+        assertFalse(WaypointerScreen.retargetRoute(route, "hub"));
+
+        WaypointGroup temporary = WaypointGroup.create("Temporary", Zone.PRIVATE_WORLD.id());
+        temporary.setTemp(true);
+        assertFalse(WaypointerScreen.canMoveRouteZone(temporary));
+
+        WaypointGroup generated = WaypointGroup.create("Generated", Zone.PRIVATE_WORLD.id());
+        generated.setRuntimeOnly(true);
+        assertFalse(WaypointerScreen.canMoveRouteZone(generated));
+
+        assertFalse(WaypointerScreen.canMoveRouteZone(
+                WaypointGroup.create("Room route", "admin")));
+        assertFalse(WaypointerScreen.retargetRoute(route, "admin"));
+        assertFalse(WaypointerScreen.retargetRoute(route, WaypointerScreen.TEMPORARY_ZONE_ID));
+        assertFalse(WaypointerScreen.retargetRoute(route, Zone.UNKNOWN.id()));
+        assertFalse(WaypointerScreen.retargetRoute(route, Zone.PRIVATE_WORLD.id()));
+    }
+
+    @Test
+    void routeMoveTargetsExcludeCatacombsAndMasterModeZones() {
+        WaypointGroup route = WaypointGroup.create("Route", Zone.PRIVATE_WORLD.id());
+        List<String> dungeonZones = List.of(
+                "dungeon",
+                "dungeon_f1", "dungeon_f2", "dungeon_f3", "dungeon_f4",
+                "dungeon_f5", "dungeon_f6", "dungeon_f7",
+                "dungeon_m1", "dungeon_m2", "dungeon_m3", "dungeon_m4",
+                "dungeon_m5", "dungeon_m6", "dungeon_m7");
+
+        for (String zoneId : dungeonZones) {
+            assertTrue(WaypointerScreen.isCatacombsOrMasterModeZone(zoneId));
+            assertFalse(WaypointerScreen.canRetargetRoute(route, zoneId));
+        }
+        assertTrue(WaypointerScreen.isCatacombsOrMasterModeZone(" DUNGEON_M7 "));
+        assertFalse(WaypointerScreen.isCatacombsOrMasterModeZone("dungeon_hub"));
+        assertTrue(WaypointerScreen.canRetargetRoute(route, "dungeon_hub"));
+    }
+
+    @Test
     void newRouteTargetRequiresDetectedRoomFromDungeonRoomsBucket() {
         assertEquals("admin", WaypointerScreen.newRouteTargetZoneId(
                 WaypointerScreen.DUNGEON_ROOMS_ZONE_ID, "admin"));
@@ -280,6 +344,18 @@ class WaypointerScreenTest {
                 .sorted(String.CASE_INSENSITIVE_ORDER)
                 .toList();
         assertEquals(sortedEmptyLabels, emptyLabels);
+    }
+
+    @Test
+    void privateWorldIsTheCurrentRouteBucketDuringOfflineAuthoring() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.PRIVATE_WORLD);
+        manager.add(WaypointGroup.create("Offline route", Zone.PRIVATE_WORLD.id()));
+
+        assertEquals(List.of(Zone.PRIVATE_WORLD.id()),
+                WaypointerScreen.islandDropdownIdsForManager(manager));
+        assertEquals(Zone.PRIVATE_WORLD.id(),
+                WaypointerScreen.zoneIdsForManager(manager).get(1));
     }
 
     @Test
