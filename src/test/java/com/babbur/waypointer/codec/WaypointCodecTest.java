@@ -131,6 +131,27 @@ class WaypointCodecTest {
     }
 
     @Test
+    void dungeonActionMetadataSurvivesRouteSharing() {
+        WaypointGroup before = WaypointGroup.create("Dungeon actions", "dungeon_f7");
+        int flags = Waypoint.DUNGEON_METADATA_FLAGS
+                | Waypoint.FLAG_SKIP_ON_STAND
+                | Waypoint.FLAG_SKIP_ON_INTERACT
+                | Waypoint.FLAG_SKIP_ON_MINE;
+        before.add(Waypoint.at(0, 70, 0).withFlags(flags));
+
+        WaypointGroup full = WaypointCodec.decode(
+                WaypointCodec.encode(List.of(before), FULL_FIDELITY)).get(0);
+        assertEquals(flags, full.get(0).flags());
+
+        WaypointGroup minimal = WaypointCodec.decode(
+                WaypointCodec.encode(List.of(before), WaypointCodec.Options.NO_NAMES)).get(0);
+        assertEquals(Waypoint.DUNGEON_METADATA_FLAGS,
+                minimal.get(0).flags() & Waypoint.DUNGEON_METADATA_FLAGS);
+        assertEquals(0, minimal.get(0).flags() & Waypoint.DUNGEON_COMPLETION_FLAGS,
+                "minimal exports intentionally omit optional completion triggers");
+    }
+
+    @Test
     void subwaypointStyleAndPrecisePlacementRoundTripByDefault() {
         WaypointGroup before = WaypointGroup.create("Tiny Subway", "dungeon_f7");
         before.setGradientMode(WaypointGroup.GradientMode.MANUAL);

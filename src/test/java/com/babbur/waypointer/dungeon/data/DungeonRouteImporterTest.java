@@ -66,32 +66,42 @@ class DungeonRouteImporterTest {
             """;
 
     @Test
-    void importsSecretRoutesStepsAsOrderedWaypointsWithActionHighlights() {
+    void importsSecretRoutesStagesAsOrderedActionsAndPreservesVariants() {
         DungeonRouteImporter.Result result = DungeonRouteImporter.parse(SECRET_ROUTES_JSON);
 
         assertEquals(DungeonRouteImporter.Format.SECRET_ROUTES, result.format());
-        assertEquals(1, result.definitions().size());
-        assertEquals(2, result.waypointCount());
-        assertEquals(1, result.skippedVariants());
+        assertEquals(2, result.definitions().size());
+        assertEquals(5, result.waypointCount());
+        assertEquals(0, result.skippedVariants());
         assertEquals(List.of("Definitely-Not-A-Room-9"), result.unmatchedRooms());
 
         DungeonRoomDefinition room = result.definitions().get(0);
         assertEquals("arrow-trap", room.id(), "DRM name suffix should map onto the catalog id");
 
-        DungeonWaypoint bat = room.waypoints().get(0);
+        assertEquals("Arrow Trap — Route 1", room.displayName());
+        DungeonWaypoint etherwarp = room.waypoints().get(0);
+        assertEquals(1, etherwarp.secretIndex());
+        assertEquals(DungeonWaypointTrigger.ETHERWARP, etherwarp.trigger());
+        assertEquals("TP", etherwarp.name());
+
+        DungeonWaypoint tnt = room.waypoints().get(1);
+        assertEquals(1, tnt.secretIndex());
+        assertEquals(DungeonWaypointTrigger.USE_SUPERBOOM, tnt.trigger());
+
+        DungeonWaypoint bat = room.waypoints().get(2);
         assertEquals(1, bat.secretIndex());
         assertEquals(DungeonSecretCategory.BAT, bat.category());
         assertEquals(DungeonWaypointTrigger.KILL_BAT, bat.trigger());
         assertEquals(26, bat.x());
         assertEquals(77, bat.y());
         assertEquals(10, bat.z());
-        assertEquals(2, bat.highlights().size(), "etherwarp + tnt action points become highlights");
-        assertEquals(DungeonSecretCategory.AOTV.defaultColor, bat.highlights().get(0).color());
-        assertEquals(DungeonSecretCategory.SUPERBOOM.defaultColor, bat.highlights().get(1).color());
+        assertTrue(bat.highlights().isEmpty());
 
-        DungeonWaypoint item = room.waypoints().get(1);
+        DungeonWaypoint item = room.waypoints().get(3);
         assertEquals(2, item.secretIndex());
         assertEquals(DungeonWaypointTrigger.PICKUP_ITEM, item.trigger());
+
+        assertEquals("Arrow Trap — Route 2", result.definitions().get(1).displayName());
     }
 
     @Test
@@ -101,7 +111,7 @@ class DungeonRouteImporterTest {
 
         DungeonRoomDefinition merged = DungeonRoomData.definition("arrow-trap");
         assertNotNull(merged);
-        assertEquals(2, merged.waypoints().size());
+        assertEquals(4, merged.waypoints().size());
         assertTrue(merged.hasCoreHashes(),
                 "custom room must keep matching by the bundled core hash after import");
     }

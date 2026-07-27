@@ -55,12 +55,42 @@ public record Waypoint(
     public static final int FLAG_SKIP_ON_INTERACT = 1 << 10;
     /** Dungeon-room behavior flag: mining this waypoint's block explicitly advances/skips it. */
     public static final int FLAG_SKIP_ON_MINE = 1 << 11;
+    /** Dungeon metadata: completing this action completes one secret stage. */
+    public static final int FLAG_DUNGEON_SECRET = 1 << 12;
+    /** Dungeon metadata: this action is an Etherwarp landing. */
+    public static final int FLAG_DUNGEON_ETHERWARP = 1 << 13;
+    /** Dungeon metadata: this action is a Dungeonbreaker block. */
+    public static final int FLAG_DUNGEON_DUNGEONBREAKER = 1 << 14;
+    /** Dungeon metadata: this action uses Superboom TNT. */
+    public static final int FLAG_DUNGEON_SUPERBOOM = 1 << 15;
+    /** Dungeon metadata: this action launches an Ender Pearl. */
+    public static final int FLAG_DUNGEON_PEARL = 1 << 16;
+    /** Render-only helper paired with the previous pearl action as its landing target. */
+    public static final int FLAG_DUNGEON_PEARL_TARGET = 1 << 17;
+    /** Dungeon metadata: this secret completes when its item is picked up. */
+    public static final int FLAG_DUNGEON_ITEM = 1 << 18;
+    /** Dungeon metadata: this secret completes when its bat dies. */
+    public static final int FLAG_DUNGEON_BAT = 1 << 19;
+    /** Any event-driven completion flag used by sequential dungeon actions. */
+    public static final int DUNGEON_COMPLETION_FLAGS = FLAG_SKIP_ON_STAND
+            | FLAG_SKIP_ON_INTERACT
+            | FLAG_SKIP_ON_MINE;
+    /** Dungeon flags that must survive route sharing and persistence. */
+    public static final int DUNGEON_METADATA_FLAGS = FLAG_DUNGEON_SECRET
+            | FLAG_DUNGEON_ETHERWARP
+            | FLAG_DUNGEON_DUNGEONBREAKER
+            | FLAG_DUNGEON_SUPERBOOM
+            | FLAG_DUNGEON_PEARL
+            | FLAG_DUNGEON_PEARL_TARGET
+            | FLAG_DUNGEON_ITEM
+            | FLAG_DUNGEON_BAT;
     /** Visual flags that only make sense while {@link #FLAG_SUBWAYPOINT} is present. */
     public static final int SUBWAYPOINT_STYLE_FLAGS = FLAG_SMALL_SUBWAYPOINT
             | FLAG_FILLED_SUBWAYPOINT
             | FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED;
     /** Flags that define route structure and must survive even when visual flags are stripped from exports. */
     public static final int STRUCTURAL_FLAGS  = FLAG_SUBWAYPOINT;
+    public static final int PERSISTENT_BEHAVIOR_FLAGS = STRUCTURAL_FLAGS | DUNGEON_METADATA_FLAGS;
 
     public static final int TEMP_NONE = 0;
     public static final int TEMP_TIME = 1;

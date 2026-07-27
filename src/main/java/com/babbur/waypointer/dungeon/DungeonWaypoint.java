@@ -89,6 +89,17 @@ public record DungeonWaypoint(
                 nextColor);
     }
 
+    /**
+     * True for the action that ends a SecretRoutes-style stage. Movement,
+     * Etherwarp, mining, levers, Superboom, and pearls are intermediary actions.
+     */
+    public boolean completesSecret() {
+        return switch (trigger) {
+            case PICKUP_ITEM, KILL_BAT, OPEN_CHEST, ANY_SECRET, CHAT_MESSAGE -> true;
+            default -> false;
+        };
+    }
+
     public static DungeonWaypointTrigger defaultTrigger(DungeonSecretCategory category) {
         if (category == null) return DungeonWaypointTrigger.MANUAL;
         return switch (category) {
@@ -98,7 +109,8 @@ public record DungeonWaypoint(
             case BAT -> DungeonWaypointTrigger.KILL_BAT;
             case SUPERBOOM -> DungeonWaypointTrigger.USE_SUPERBOOM;
             case STONK, DUNGEONBREAKER -> DungeonWaypointTrigger.BREAK_BLOCKS;
-            case AOTV -> DungeonWaypointTrigger.ETHERWARP;
+            case ETHERWARP -> DungeonWaypointTrigger.ETHERWARP;
+            case PEARL -> DungeonWaypointTrigger.THROW_PEARL;
             default -> DungeonWaypointTrigger.MANUAL;
         };
     }

@@ -388,35 +388,55 @@ class ProximityAdvanceTest {
     }
 
     @Test
-    void skipAheadDoesNotJumpToFutureInteractTriggerWaypoint() {
+    void skipAheadUsesRadiusForFutureInteractTriggerWaypoint() {
         WaypointGroup group = dungeonTriggerGroup();
         group.setDefaultRadius(2.0);
         group.add(Waypoint.at(0, 0, 0));
         group.add(Waypoint.at(10, 0, 0).withFlags(Waypoint.FLAG_SKIP_ON_INTERACT));
 
-        assertFalse(ProximityTracker.advanceIfReached(group, 10.5, 0.5, 0.5,
+        assertTrue(ProximityTracker.advanceIfReached(group, 10.5, 0.5, 0.5,
                 false, true, false));
-        assertEquals(0, group.currentIndex());
-
-        assertTrue(ProximityTracker.advanceIfInteractedWithBlock(group, 10, 0, 0, false));
         assertTrue(group.isComplete());
     }
 
     @Test
-    void skipAheadDoesNotJumpToFutureStandTriggerWaypoint() {
+    void mineSkipWalksEachDungeonbreakerSubwaypointInOrder() {
         WaypointGroup group = dungeonTriggerGroup();
+        int mineFlags = Waypoint.FLAG_SKIP_ON_MINE | Waypoint.FLAG_HIDE_BEACON;
+        group.add(Waypoint.at(1, 2, 3).withFlags(mineFlags));
+        group.add(Waypoint.at(2, 2, 3)
+                .withFlags(mineFlags | Waypoint.FLAG_SUBWAYPOINT));
+        group.add(Waypoint.at(3, 2, 3)
+                .withFlags(mineFlags | Waypoint.FLAG_SUBWAYPOINT));
+        group.add(Waypoint.at(4, 2, 3));
+        Set<ProximityTracker.MineTarget> observed = new HashSet<>();
+
+        observeThenMine(group, observed, 1, 2, 3, 1_000L);
+        assertEquals(1, group.currentIndex());
+        assertEquals(2, group.current().x(), "the tracer target follows the first mined block");
+        assertEquals(0, group.activeSubwaypointParentIndex());
+
+        observeThenMine(group, observed, 2, 2, 3, 2_000L);
+        assertEquals(2, group.currentIndex());
+        assertEquals(3, group.current().x(), "the tracer target follows the next mined child");
+        assertEquals(0, group.activeSubwaypointParentIndex());
+
+        observeThenMine(group, observed, 3, 2, 3, 3_000L);
+        assertEquals(3, group.currentIndex());
+        assertEquals(4, group.current().x(), "the tracer targets the next main waypoint");
+        assertEquals(-1, group.activeSubwaypointParentIndex());
+        assertFalse(group.isComplete());
+    }
+
+    @Test
+    void skipAheadUsesRadiusForFutureStandTriggerWaypoint() {
+        WaypointGroup group = dungeonTriggerGroup();
+        group.setDefaultRadius(2.0);
         group.add(Waypoint.at(0, 0, 0));
         group.add(Waypoint.at(10, 0, 0).withFlags(Waypoint.FLAG_SKIP_ON_STAND));
 
-        assertFalse(ProximityTracker.advanceIfReached(group, 10.1, 1.0, 0.1,
+        assertTrue(ProximityTracker.advanceIfReached(group, 10.5, 0.5, 0.5,
                 false, true, false));
-        assertEquals(0, group.currentIndex());
-
-        group.setCurrentIndex(1);
-        assertFalse(ProximityTracker.advanceIfReached(group, 10.1, 1.0, 0.1,
-                false, true, false, 1_000L));
-        assertTrue(ProximityTracker.advanceIfReached(group, 10.1, 1.0, 0.1,
-                false, true, false, 1_500L));
         assertTrue(group.isComplete());
     }
 
@@ -696,5 +716,19 @@ class ProximityAdvanceTest {
 
     private static boolean advanceIfReached(WaypointGroup g, double px, double py, double pz) {
         return ProximityTracker.advanceIfReached(g, px, py, pz);
+    }
+
+    private static void observeThenMine(WaypointGroup group,
+                                        Set<ProximityTracker.MineTarget> observed,
+                                        int x, int y, int z, long nowMillis) {
+        assertFalse(ProximityTracker.updateMinedWaypointProgress(
+                group,
+                (blockX, blockY, blockZ) -> blockX == x && blockY == y && blockZ == z
+                        ? ProximityTracker.MINE_BLOCK_PRESENT
+                        : ProximityTracker.MINE_BLOCK_AIR,
+                observed, new HashSet<>(), false, false, nowMillis, false));
+        assertTrue(ProximityTracker.updateMinedWaypointProgress(
+                group, (blockX, blockY, blockZ) -> ProximityTracker.MINE_BLOCK_AIR,
+                observed, new HashSet<>(), false, false, nowMillis + 1L, false));
     }
 }

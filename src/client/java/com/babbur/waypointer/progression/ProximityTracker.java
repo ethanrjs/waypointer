@@ -7,9 +7,13 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.DungeonChestInteractionGuard;
+import com.babbur.waypointer.dungeon.DungeonItemIdentity;
+import com.babbur.waypointer.dungeon.DungeonSecretCompletionSound;
+import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
@@ -26,6 +30,7 @@ import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.BlockHitResult;
 
 import java.nio.charset.StandardCharsets;
@@ -57,6 +62,7 @@ public final class ProximityTracker {
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
     private final DungeonChestInteractionGuard chestInteractionGuard;
+    private final DungeonConfig dungeonConfig;
     private final Set<MineTarget> observedMineTargets = new HashSet<>();
 
     public ProximityTracker(ActiveGroupManager manager, WaypointerConfig config) {
@@ -65,20 +71,29 @@ public final class ProximityTracker {
 
     public ProximityTracker(ActiveGroupManager manager, WaypointerConfig config,
                             DungeonChestInteractionGuard chestInteractionGuard) {
+        this(manager, config, chestInteractionGuard, null);
+    }
+
+    public ProximityTracker(ActiveGroupManager manager, WaypointerConfig config,
+                            DungeonChestInteractionGuard chestInteractionGuard,
+                            DungeonConfig dungeonConfig) {
         this.manager = manager;
         this.config = config;
         this.chestInteractionGuard = chestInteractionGuard;
+        this.dungeonConfig = dungeonConfig;
     }
 
     public void install() {
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
         UseBlockCallback.EVENT.register(this::onUseBlock);
+        UseItemCallback.EVENT.register(this::onUseItem);
     }
 
     private InteractionResult onUseBlock(Player player, Level world, InteractionHand hand,
                                          BlockHitResult hit) {
         if (!world.isClientSide()) return InteractionResult.PASS;
         BlockPos pos = hit.getBlockPos();
+        boolean superboomHeld = DungeonItemIdentity.isSuperboom(player.getItemInHand(hand));
         boolean restart = config.restartRouteWhenComplete();
         boolean trackRouteTimes = config.routeTimesEnabled();
         ClientLevel clientLevel = world instanceof ClientLevel level ? level : null;
@@ -90,15 +105,21 @@ public final class ProximityTracker {
             if (deferChest) {
                 int from = group.currentIndex();
                 int reachedIndex = interactedWaypointIndex(
-                        group, pos.getX(), pos.getY(), pos.getZ(), from);
+                        group, pos.getX(), pos.getY(), pos.getZ(), from, superboomHeld);
                 if (reachedIndex < 0) continue;
+                boolean completesSecret =
+                        group.get(reachedIndex).hasFlag(Waypoint.FLAG_DUNGEON_SECRET);
                 String groupId = group.id();
                 chestInteractionGuard.defer(clientLevel, () -> {
                     boolean deferredRouteTimes = config.routeTimesEnabled();
                     boolean advanced = advanceDeferredInteraction(
                             manager, groupId, from, pos.getX(), pos.getY(), pos.getZ(), restart,
-                            skippingEnabled, System.currentTimeMillis(), deferredRouteTimes);
+                            skippingEnabled, System.currentTimeMillis(), deferredRouteTimes,
+                            superboomHeld);
                     WaypointGroup current = manager.get(groupId);
+                    if (advanced && completesSecret) {
+                        DungeonSecretCompletionSound.play(dungeonConfig);
+                    }
                     if (advanced) reportRouteCompletion(manager, current, deferredRouteTimes);
                     if (advanced && shouldHideCompletedDungeonRoomRoute(current)) {
                         manager.fireTransientDataChanged();
@@ -106,13 +127,45 @@ public final class ProximityTracker {
                 });
                 continue;
             }
-            boolean advanced = advanceIfInteractedWithBlock(
-                    group, pos.getX(), pos.getY(), pos.getZ(), restart, skippingEnabled,
-                    trackRouteTimes);
+            int from = group.currentIndex();
+            int reachedIndex = interactedWaypointIndex(
+                    group, pos.getX(), pos.getY(), pos.getZ(), from, superboomHeld);
+            boolean advanced = reachedIndex >= 0 && advancePastReachedIndex(
+                    group, from, reachedIndex,
+                    restart && !isDungeonRoomRouteGroup(group), skippingEnabled,
+                    System.currentTimeMillis(), trackRouteTimes);
+            if (advanced
+                    && group.get(reachedIndex).hasFlag(Waypoint.FLAG_DUNGEON_SECRET)) {
+                DungeonSecretCompletionSound.play(dungeonConfig);
+            }
             if (advanced) reportRouteCompletion(manager, group, trackRouteTimes);
             if (advanced && shouldHideCompletedDungeonRoomRoute(group)) {
                 manager.fireTransientDataChanged();
             }
+        }
+        return InteractionResult.PASS;
+    }
+
+    private InteractionResult onUseItem(Player player, Level world, InteractionHand hand) {
+        if (!world.isClientSide() || !player.getItemInHand(hand).is(Items.ENDER_PEARL)) {
+            return InteractionResult.PASS;
+        }
+        boolean trackRouteTimes = config.routeTimesEnabled();
+        for (WaypointGroup group : manager.activeGroups()) {
+            int current = group.currentIndex();
+            if (current < 0 || current >= group.size()) continue;
+            Waypoint waypoint = group.get(current);
+            if (!waypoint.hasFlag(Waypoint.FLAG_DUNGEON_PEARL)
+                    || !isWithinReach(group, waypoint,
+                    player.getX(), player.getY(), player.getZ())) {
+                continue;
+            }
+            boolean skippingEnabled =
+                    config.skipAheadMechanicEnabled() && group.skipAheadEnabled();
+            boolean advanced = advancePastReachedIndex(
+                    group, current, current, false, skippingEnabled,
+                    System.currentTimeMillis(), trackRouteTimes);
+            if (advanced) reportRouteCompletion(manager, group, trackRouteTimes);
         }
         return InteractionResult.PASS;
     }
@@ -140,6 +193,9 @@ public final class ProximityTracker {
         long nowMillis = System.currentTimeMillis();
         Set<MineTarget> liveMineTargets = new HashSet<>();
         for (WaypointGroup group : manager.activeGroups()) {
+            int beforeIndex = group.currentIndex();
+            boolean completingSecret = beforeIndex >= 0 && beforeIndex < group.size()
+                    && group.get(beforeIndex).hasFlag(Waypoint.FLAG_DUNGEON_SECRET);
             boolean skippingEnabled = globalSkipAhead && group.skipAheadEnabled();
             boolean mined = updateMinedWaypointProgress(group, (x, y, z) -> {
                 BlockPos pos = new BlockPos(x, y, z);
@@ -149,6 +205,9 @@ public final class ProximityTracker {
                     trackRouteTimes);
             boolean changed = updateGroupProgress(group, px, py, pz, loop, globalSkipAhead,
                     skipOnlyVisible, hideReachedStatic, trackRouteTimes);
+            if ((mined || changed) && completingSecret && group.currentIndex() != beforeIndex) {
+                DungeonSecretCompletionSound.play(dungeonConfig);
+            }
             if (mined || changed) reportRouteCompletion(manager, group, trackRouteTimes);
             if ((mined || changed) && shouldHideCompletedDungeonRoomRoute(group)) {
                 manager.fireTransientDataChanged();
@@ -356,7 +415,7 @@ public final class ProximityTracker {
         int highestMined = -1;
         boolean staticChanged = false;
         for (int i = Math.max(0, from); i <= to; i++) {
-            if (group.isSubwaypoint(i)) continue;
+            if (group.isSubwaypoint(i) && i != from) continue;
             Waypoint waypoint = group.get(i);
             if (!waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_MINE)) continue;
 
@@ -413,9 +472,21 @@ public final class ProximityTracker {
     private static int interactedWaypointIndex(WaypointGroup group,
                                                int blockX, int blockY, int blockZ,
                                                int from) {
+        return interactedWaypointIndex(group, blockX, blockY, blockZ, from, false);
+    }
+
+    private static int interactedWaypointIndex(WaypointGroup group,
+                                               int blockX, int blockY, int blockZ,
+                                               int from, boolean superboomHeld) {
         if (!isEligibleDungeonTriggerGroup(group)) return -1;
-        for (int i = group.size() - 1; i >= from; i--) {
+        int end = group.visibleMainSteps() > 0
+                ? Math.min(group.size() - 1, from)
+                : group.size() - 1;
+        for (int i = end; i >= from; i--) {
             Waypoint waypoint = group.get(i);
+            if (waypoint.hasFlag(Waypoint.FLAG_DUNGEON_SUPERBOOM) && !superboomHeld) {
+                continue;
+            }
             if (waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT)
                     && waypointMatchesBlock(waypoint, blockX, blockY, blockZ)) {
                 return i;
@@ -453,10 +524,24 @@ public final class ProximityTracker {
                                               boolean skippingEnabled,
                                               long nowMillis,
                                               boolean trackRouteTimes) {
+        return advanceDeferredInteraction(manager, groupId, expectedCurrentIndex,
+                blockX, blockY, blockZ, restartWhenComplete, skippingEnabled,
+                nowMillis, trackRouteTimes, false);
+    }
+
+    static boolean advanceDeferredInteraction(ActiveGroupManager manager,
+                                              String groupId,
+                                              int expectedCurrentIndex,
+                                              int blockX, int blockY, int blockZ,
+                                              boolean restartWhenComplete,
+                                              boolean skippingEnabled,
+                                              long nowMillis,
+                                              boolean trackRouteTimes,
+                                              boolean superboomHeld) {
         WaypointGroup current = manager == null ? null : manager.get(groupId);
         if (current == null || current.currentIndex() != expectedCurrentIndex) return false;
         int reachedIndex = interactedWaypointIndex(
-                current, blockX, blockY, blockZ, expectedCurrentIndex);
+                current, blockX, blockY, blockZ, expectedCurrentIndex, superboomHeld);
         return reachedIndex >= 0 && advancePastReachedIndex(
                 current, expectedCurrentIndex, reachedIndex,
                 restartWhenComplete && !isDungeonRoomRouteGroup(current), skippingEnabled,
@@ -515,17 +600,24 @@ public final class ProximityTracker {
 
     static Component routeCompletionMessage(String routeName,
                                             WaypointGroup.RouteCompletion completion) {
-        MutableComponent message = Component.literal("Route \"" + routeName
-                + "\" cleared in " + formatElapsedTime(completion.elapsedMillis()))
+        MutableComponent message = Component.translatableWithFallback(
+                        "waypointer.progression.route_cleared",
+                        "Route \"%s\" cleared in %s",
+                        routeName, formatElapsedTime(completion.elapsedMillis()))
                 .withStyle(ChatFormatting.YELLOW);
         if (completion.newBest()) {
-            message.append(Component.literal(" (New Best!)")
+            message.append(Component.translatableWithFallback(
+                            "waypointer.progression.new_best", " (New Best!)")
                     .withStyle(ChatFormatting.LIGHT_PURPLE));
         }
         if (completion.skippingEnabled()) {
             int skips = completion.skippedWaypoints();
-            message.append(Component.literal(" [" + skips + " "
-                    + (skips == 1 ? "skip" : "skips") + "]")
+            message.append(Component.translatableWithFallback(
+                            skips == 1
+                                    ? "waypointer.progression.skips.one"
+                                    : "waypointer.progression.skips.many",
+                            skips == 1 ? " [%s skip]" : " [%s skips]",
+                            skips)
                     .withStyle(ChatFormatting.GRAY));
         }
         return message;
@@ -536,12 +628,16 @@ public final class ProximityTracker {
         String encodedGroupId = Base64.getUrlEncoder().withoutPadding().encodeToString(
                 group.id().getBytes(StandardCharsets.UTF_8));
         String command = "/wp removerecord " + encodedGroupId + " " + completion.elapsedMillis();
-        return Component.literal("[REMOVE RECORD]").withStyle(Style.EMPTY
+        return Component.translatableWithFallback(
+                        "waypointer.progression.remove_record", "[REMOVE RECORD]")
+                .withStyle(Style.EMPTY
                 .withColor(ChatFormatting.RED)
                 .withUnderlined(true)
                 .withClickEvent(new ClickEvent.RunCommand(command))
                 .withHoverEvent(new HoverEvent.ShowText(
-                        Component.literal("Remove this route's new best time"))));
+                        Component.translatableWithFallback(
+                                "waypointer.progression.remove_record.hover",
+                                "Remove this route's new best time"))));
     }
 
     static String formatElapsedTime(long elapsedMillis) {
@@ -569,23 +665,21 @@ public final class ProximityTracker {
         group.forEachNearbyIndex(px, py, pz, scanRadius, i -> {
             if (i < from || group.isProximitySuppressed(i)) return true;
             if (visible != null && (i >= visible.length || !visible[i])) return true;
-            if (i > from && !isAutomaticSkipAheadCandidate(group, i)) return true;
+            if (i > from && group.isSubwaypoint(i)) return true;
             if (i <= reachedIndex[0]) return true;
-            if (isReachedByRadiusOrStand(group, i, group.get(i), px, py, pz, nowMillis)) {
+            Waypoint waypoint = group.get(i);
+            // Trigger flags describe how the current dungeon step completes. Once the
+            // player deliberately reaches a later main waypoint, ordinary skip-ahead
+            // wins so the tracer does not stay stuck on an already-bypassed secret.
+            boolean reached = i > from
+                    ? isWithinReach(group, waypoint, px, py, pz)
+                    : isReachedByRadiusOrStand(group, i, waypoint, px, py, pz, nowMillis);
+            if (reached) {
                 reachedIndex[0] = i;
             }
             return true;
         });
         return reachedIndex[0];
-    }
-
-    private static boolean isAutomaticSkipAheadCandidate(WaypointGroup group, int index) {
-        if (index < 0 || index >= group.size()) return false;
-        if (group.isSubwaypoint(index)) return false;
-        Waypoint waypoint = group.get(index);
-        return !waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_STAND)
-                && !waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT)
-                && !waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_MINE);
     }
 
     private static boolean[] visibleIndexMask(WaypointGroup group) {

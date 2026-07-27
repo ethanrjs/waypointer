@@ -10,6 +10,7 @@ import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -97,8 +98,8 @@ class DungeonRoomRouteSyncTest {
         assertEquals(205, highlight.z());
         assertTrue(highlight.isSubwaypoint());
         assertTrue(highlight.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT));
-        assertEquals(DungeonRoomRouteSync.SUPPORT_WAYPOINT_COLOR, highlight.color(),
-                "support markers share the uniform subwaypoint color");
+        assertEquals(0x123456, highlight.color(),
+                "explicit highlight colors remain authoritative");
 
         Waypoint marker = group.get(2);
         assertTrue(marker.isSubwaypoint(),
@@ -166,11 +167,11 @@ class DungeonRoomRouteSyncTest {
 
         session.markFound(room, 1);
         WaypointGroup held = manager.get(groupId);
-        assertEquals(3, held.size(),
-                "the found secret and its child should remain beside the next secret");
-        assertEquals(0, held.activeSubwaypointParentIndex());
-        assertEquals(2, held.currentIndex());
-        assertArrayEquals(new int[] { 0, 1, 2 }, visibleIndices(held));
+        assertEquals(1, held.size(),
+                "a completed stage disappears immediately so only the next secret remains");
+        assertEquals(-1, held.activeSubwaypointParentIndex());
+        assertEquals(0, held.currentIndex());
+        assertArrayEquals(new int[] { 0 }, visibleIndices(held));
 
         session.markFound(room, 2);
         assertNull(manager.get(groupId),
@@ -203,16 +204,16 @@ class DungeonRoomRouteSyncTest {
 
         session.markFound(room, 1);
         WaypointGroup firstHold = manager.get(groupId);
-        assertEquals(0, firstHold.activeSubwaypointParentIndex());
-        assertEquals(204, firstHold.get(0).z());
+        assertEquals(-1, firstHold.activeSubwaypointParentIndex());
+        assertEquals(208, firstHold.get(0).z());
 
         session.markFound(room, 2);
         WaypointGroup secondHold = manager.get(groupId);
-        assertEquals(0, secondHold.activeSubwaypointParentIndex());
-        assertEquals(2, secondHold.currentIndex());
-        assertEquals(2, secondHold.mainWaypointCount());
-        assertEquals(208, secondHold.get(0).z(),
-                "the second secret should replace the first held parent after projection");
+        assertEquals(-1, secondHold.activeSubwaypointParentIndex());
+        assertEquals(0, secondHold.currentIndex());
+        assertEquals(1, secondHold.mainWaypointCount());
+        assertEquals(212, secondHold.get(0).z(),
+                "the third secret should become the sole current stage");
     }
 
     @Test
@@ -240,11 +241,10 @@ class DungeonRoomRouteSyncTest {
         session.markFound(room, 3);
 
         WaypointGroup held = manager.get(groupId);
-        assertEquals(0, held.activeSubwaypointParentIndex());
-        assertEquals(2, held.currentIndex());
-        assertEquals(2, held.mainWaypointCount());
-        assertEquals(204, held.get(0).z());
-        assertEquals(208, held.get(2).z());
+        assertEquals(-1, held.activeSubwaypointParentIndex());
+        assertEquals(0, held.currentIndex());
+        assertEquals(1, held.mainWaypointCount());
+        assertEquals(208, held.get(0).z());
     }
 
     @Test
@@ -270,7 +270,7 @@ class DungeonRoomRouteSyncTest {
         String groupId = DungeonRoomRouteSync.generatedGroupId("drop-hold-room");
 
         session.markFound(room, 1);
-        assertEquals(0, manager.get(groupId).activeSubwaypointParentIndex());
+        assertEquals(-1, manager.get(groupId).activeSubwaypointParentIndex());
 
         session.markFound(room, 2);
         WaypointGroup remaining = manager.get(groupId);
@@ -534,7 +534,7 @@ class DungeonRoomRouteSyncTest {
         assertEquals(0, stored.currentIndex());
         assertEquals(0, manager.get(mirrorId).currentIndex(),
                 "reset must restore the rendered route to its first waypoint");
-        assertArrayEquals(new int[] { 0, 1, 2 }, visibleIndices(manager.get(mirrorId)));
+        assertArrayEquals(new int[] { 0 }, visibleIndices(manager.get(mirrorId)));
     }
 
     @Test
@@ -629,11 +629,158 @@ class DungeonRoomRouteSyncTest {
 
         Waypoint highlight = route.get(1);
         assertTrue(highlight.isSubwaypoint());
-        assertEquals(DungeonRoomRouteSync.SUPPORT_WAYPOINT_COLOR, highlight.color());
+        assertEquals(0x123456, highlight.color());
 
         Waypoint marker = route.get(2);
         assertTrue(marker.isSubwaypoint());
         assertEquals(DungeonRoomRouteSync.SUPPORT_WAYPOINT_COLOR, marker.color());
+    }
+
+    @Test
+    void editableRoutePreservesExplicitWaypointColors() {
+        DungeonRoom room = room("colored-convert-room", "Colored Convert Room");
+        DungeonRoomDefinition definition =
+                DungeonRoomData.defineRoom("colored-convert-room", "Colored Convert Room", room);
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "secret", 1, DungeonSecretCategory.CHEST, DungeonWaypointTrigger.OPEN_CHEST,
+                4, 70, 7, "Chest", List.of(), 0x123456));
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "marker", 0, DungeonSecretCategory.DEFAULT, DungeonWaypointTrigger.MANUAL,
+                9, 70, 9, "", List.of(), 0x654321));
+
+        WaypointGroup route = DungeonRoomRouteSync.editableRouteFromDefinition(definition);
+
+        assertEquals(0x123456, route.get(0).color());
+        assertEquals(0x654321, route.get(1).color());
+    }
+
+    @Test
+    void oneSecretStageAdvancesThroughEachRecordedActionIndividually() {
+        DungeonRoom room = room("stage-room", "Stage Room");
+        DungeonRoomDefinition definition =
+                DungeonRoomData.defineRoom("stage-room", "Stage Room", room);
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "TP", 1, DungeonSecretCategory.ETHERWARP, DungeonWaypointTrigger.ETHERWARP,
+                1, 70, 1, "TP", List.of()));
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "", 1, DungeonSecretCategory.DUNGEONBREAKER,
+                DungeonWaypointTrigger.DUNGEONBREAKER,
+                2, 70, 2, "", List.of()));
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "Item", 1, DungeonSecretCategory.ITEM, DungeonWaypointTrigger.PICKUP_ITEM,
+                3, 70, 3, "Item", List.of()));
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "Chest", 2, DungeonSecretCategory.CHEST, DungeonWaypointTrigger.OPEN_CHEST,
+                4, 70, 4, "Chest", List.of()));
+
+        WaypointGroup route = DungeonRoomRouteSync.editableRouteFromDefinition(definition);
+        route.setVisibleMainSteps(2);
+
+        assertFalse(route.get(0).isSubwaypoint());
+        assertTrue(route.get(1).isSubwaypoint());
+        assertTrue(route.get(2).isSubwaypoint());
+        assertFalse(route.get(3).isSubwaypoint());
+        assertArrayEquals(new int[] { 0, 3 }, visibleIndices(route));
+
+        route.advancePast(0);
+        assertEquals(1, route.currentIndex());
+        assertArrayEquals(new int[] { 1, 3 }, visibleIndices(route));
+        route.advancePast(1);
+        assertEquals(2, route.currentIndex());
+        route.advancePast(2);
+        assertEquals(3, route.currentIndex());
+    }
+
+    @Test
+    void routeStartDistanceUsesProjectedRoomCoordinates() {
+        DungeonRoom room = room("variant-room", "Variant Room");
+        WaypointGroup near = WaypointGroup.create("Near", room.roomId());
+        near.add(Waypoint.at(2, 70, 3));
+        WaypointGroup far = WaypointGroup.create("Far", room.roomId());
+        far.add(Waypoint.at(20, 70, 30));
+        Waypoint projectedNear = DungeonRoomWaypointPlacement.toActualWaypoint(room, near.get(0));
+        Vec3 player = new Vec3(projectedNear.centerX(), projectedNear.centerY(), projectedNear.centerZ());
+
+        assertEquals(0.0, DungeonRoomRouteSync.startDistanceSq(room, near, player));
+        assertTrue(DungeonRoomRouteSync.startDistanceSq(room, far, player) > 0.0);
+    }
+
+    @Test
+    void runtimeMirrorResolvesItsExactSelectedRouteVariant() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup first = WaypointGroup.create("Route 1", "variant-source-room");
+        first.add(Waypoint.at(1, 70, 1));
+        WaypointGroup second = WaypointGroup.create("Route 2", "variant-source-room");
+        second.add(Waypoint.at(2, 70, 2));
+        manager.add(first);
+        manager.add(second);
+        WaypointGroup mirror = new WaypointGroup(
+                DungeonRoomRouteSync.generatedGroupId("variant-source-room"),
+                "Route 2", "variant-source-room");
+        mirror.setRuntimeOnly(true);
+        mirror.setRuntimeSourceGroupId(second.id());
+
+        assertEquals(second, DungeonRoomRouteSync.storedSourceForMirror(manager, mirror));
+    }
+
+    @Test
+    void installingDefinitionsCreatesEnabledRoutesAndDisablesExistingDungeonRoutes() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonConfig config = new DungeonConfig();
+        DungeonRoom room = room("import-room", "Import Room");
+        DungeonRoomDefinition definition =
+                DungeonRoomData.defineRoom("import-room", "Import Room", room);
+        definition = DungeonRoomData.addWaypoint(definition.id(), DungeonWaypoint.plain(
+                "secret", DungeonSecretCategory.CHEST, 4, 70, 7, "Secret"));
+
+        WaypointGroup temporary = WaypointGroup.create("Temporary", definition.id());
+        temporary.setTemp(true);
+        temporary.add(Waypoint.at(20, 90, 20));
+        manager.add(temporary);
+        WaypointGroup existing = WaypointGroup.create("Existing", definition.id());
+        existing.add(Waypoint.at(1, 70, 1));
+        manager.add(existing);
+        WaypointGroup unrelated = WaypointGroup.create("Hub", "hub");
+        unrelated.add(Waypoint.at(2, 70, 2));
+        manager.add(unrelated);
+
+        List<WaypointGroup> installed = DungeonRoomRouteSync.installEditableRoutes(
+                manager, config, List.of(definition));
+
+        assertEquals(1, installed.size());
+        WaypointGroup imported = installed.get(0);
+        assertTrue(temporary.enabled());
+        assertFalse(existing.enabled());
+        assertTrue(imported.enabled());
+        assertTrue(unrelated.enabled());
+        assertEquals(imported,
+                DungeonRoomRouteSync.storedRouteForRoom(manager, definition.id()));
+        assertFalse(config.roomRouteEnabled(definition.id()));
+    }
+
+    @Test
+    void installingMultipleVariantsKeepsEveryRouteForTheRoom() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonConfig config = new DungeonConfig();
+        DungeonRoom room = room("variant-install-room", "Variant Install Room");
+        DungeonRoomDefinition base =
+                DungeonRoomData.defineRoom("variant-install-room", "Variant Install Room", room);
+        DungeonRoomDefinition first = base.withDisplayName("Variant Install Room — Route 1")
+                .withWaypoints(List.of(DungeonWaypoint.plain(
+                        "first", DungeonSecretCategory.CHEST, 1, 70, 1, "Chest")));
+        DungeonRoomDefinition second = base.withDisplayName("Variant Install Room — Route 2")
+                .withWaypoints(List.of(DungeonWaypoint.plain(
+                        "second", DungeonSecretCategory.CHEST, 10, 70, 10, "Chest")));
+
+        List<WaypointGroup> installed = DungeonRoomRouteSync.installEditableRoutes(
+                manager, config, List.of(first, second));
+
+        assertEquals(2, installed.size());
+        assertTrue(installed.get(0).enabled());
+        assertTrue(installed.get(1).enabled());
+        assertEquals(2, manager.groupsForZone(base.id()).stream()
+                .filter(group -> !group.runtimeOnly() && !group.temp())
+                .count());
     }
 
     @Test

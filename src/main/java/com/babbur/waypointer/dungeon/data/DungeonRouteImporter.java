@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,9 +59,8 @@ public final class DungeonRouteImporter {
      *                        {@link DungeonRoomData#importCustomDefinitions}
      * @param waypointCount   total imported waypoints across all rooms
      * @param unmatchedRooms  source room names that matched no catalog room
-     * @param skippedVariants alternate SecretRoutes routes ({@code "Room:2"})
-     *                        not imported because Waypointer keeps one route
-     *                        per room
+     * @param skippedVariants retained for payload/report compatibility; current
+     *                        imports preserve all SecretRoutes variants
      */
     public record Result(List<DungeonRoomDefinition> definitions,
                          int waypointCount,
@@ -233,10 +233,9 @@ public final class DungeonRouteImporter {
 
     private static Result parseSecretRoutes(JsonObject root) {
         Map<String, DungeonRoomDefinition> index = catalogIndex();
-        Map<String, DungeonRoomDefinition> imported = new LinkedHashMap<>();
+        List<DungeonRoomDefinition> imported = new ArrayList<>();
         List<String> unmatched = new ArrayList<>();
         int waypointCount = 0;
-        int skippedVariants = 0;
 
         for (Map.Entry<String, JsonElement> entry : root.entrySet()) {
             String key = entry.getKey();
@@ -244,12 +243,12 @@ public final class DungeonRouteImporter {
             if (!entry.getValue().isJsonArray()) continue;
 
             int variantSeparator = key.lastIndexOf(':');
-            if (variantSeparator > 0 && isDigits(key.substring(variantSeparator + 1))) {
-                skippedVariants++;
-                continue;
-            }
+            boolean variant = variantSeparator > 0
+                    && isDigits(key.substring(variantSeparator + 1));
+            String roomKey = variant ? key.substring(0, variantSeparator) : key;
+            int routeNumber = variant ? routeNumber(key.substring(variantSeparator + 1)) : 1;
 
-            DungeonRoomDefinition target = matchRoom(index, key);
+            DungeonRoomDefinition target = matchRoom(index, roomKey);
             if (target == null) {
                 unmatched.add(key);
                 continue;
@@ -258,11 +257,13 @@ public final class DungeonRouteImporter {
                     secretRoutesWaypoints(entry.getValue().getAsJsonArray());
             if (waypoints.isEmpty()) continue;
 
-            imported.put(target.id(), target.withWaypoints(waypoints));
+            imported.add(target.withDisplayName(
+                    target.displayName() + " — Route " + routeNumber)
+                    .withWaypoints(waypoints));
             waypointCount += waypoints.size();
         }
-        return new Result(List.copyOf(imported.values()), waypointCount,
-                List.copyOf(unmatched), skippedVariants, Format.SECRET_ROUTES);
+        return new Result(List.copyOf(imported), waypointCount,
+                List.copyOf(unmatched), 0, Format.SECRET_ROUTES);
     }
 
     private static List<DungeonWaypoint> secretRoutesWaypoints(JsonArray steps) {
@@ -272,22 +273,45 @@ public final class DungeonRouteImporter {
             if (!stepElement.isJsonObject()) continue;
             JsonObject step = stepElement.getAsJsonObject();
 
+            secretIndex++;
+            List<int[]> path = positions(step, "locations");
+            List<SecretRoutesAction> actions = new ArrayList<>();
+            addActions(actions, step, "etherwarps", DungeonSecretCategory.ETHERWARP,
+                    DungeonWaypointTrigger.ETHERWARP, "TP", path);
+            addActions(actions, step, "mines", DungeonSecretCategory.STONK,
+                    DungeonWaypointTrigger.BREAK_BLOCKS, "", path);
+            addActions(actions, step, "tnts", DungeonSecretCategory.SUPERBOOM,
+                    DungeonWaypointTrigger.USE_SUPERBOOM, "TNT", path);
+            addActions(actions, step, "interacts", DungeonSecretCategory.LEVER,
+                    DungeonWaypointTrigger.FLIP_LEVER, "Lever", path);
+            addActions(actions, step, "enderpearls", DungeonSecretCategory.PEARL,
+                    DungeonWaypointTrigger.THROW_PEARL, "Pearl", path);
+            actions.sort(Comparator.comparingInt(SecretRoutesAction::pathIndex)
+                    .thenComparingInt(SecretRoutesAction::sourceIndex));
+
+            int actionIndex = 0;
+            for (SecretRoutesAction action : actions) {
+                List<DungeonHighlight> highlights = action.trigger()
+                        == DungeonWaypointTrigger.THROW_PEARL
+                        ? pearlTarget(action, path, step)
+                        : List.of();
+                waypoints.add(new DungeonWaypoint(
+                        "sr-" + secretIndex + "-action-" + (++actionIndex),
+                        secretIndex,
+                        action.category(),
+                        action.trigger(),
+                        action.position()[0], action.position()[1], action.position()[2],
+                        action.label(),
+                        highlights));
+            }
+
             int[] position = secretRoutesStepPosition(step);
             if (position == null) continue;
-            secretIndex++;
-
             String secretType = step.has("secret") && step.get("secret").isJsonObject()
                     ? string(step.getAsJsonObject("secret"), "type", "interact")
                     : "interact";
             DungeonSecretCategory category = secretRoutesCategory(secretType);
             DungeonWaypointTrigger trigger = secretRoutesTrigger(secretType);
-
-            List<DungeonHighlight> highlights = new ArrayList<>();
-            addActionHighlights(highlights, step, "etherwarps", DungeonSecretCategory.AOTV);
-            addActionHighlights(highlights, step, "mines", DungeonSecretCategory.STONK);
-            addActionHighlights(highlights, step, "tnts", DungeonSecretCategory.SUPERBOOM);
-            addActionHighlights(highlights, step, "interacts", DungeonSecretCategory.LEVER);
-            addActionHighlights(highlights, step, "enderpearls", DungeonSecretCategory.PEARL);
 
             waypoints.add(new DungeonWaypoint(
                     "sr-" + secretIndex,
@@ -295,8 +319,8 @@ public final class DungeonRouteImporter {
                     category,
                     trigger,
                     position[0], position[1], position[2],
-                    "Secret " + secretIndex + " (" + secretType + ")",
-                    highlights));
+                    secretLabel(secretType),
+                    List.of()));
         }
         return waypoints;
     }
@@ -321,19 +345,76 @@ public final class DungeonRouteImporter {
         return null;
     }
 
-    private static void addActionHighlights(List<DungeonHighlight> highlights, JsonObject step,
-                                            String key, DungeonSecretCategory category) {
-        if (!step.has(key) || !step.get(key).isJsonArray()) return;
+    private static List<int[]> positions(JsonObject step, String key) {
+        List<int[]> positions = new ArrayList<>();
+        if (!step.has(key) || !step.get(key).isJsonArray()) return positions;
         for (JsonElement element : step.getAsJsonArray(key)) {
             if (!element.isJsonArray()) continue;
             int[] position = positionFromArray(element.getAsJsonArray());
-            if (position == null) continue;
-            highlights.add(new DungeonHighlight(
-                    position[0], position[1], position[2],
-                    DungeonHighlightStyle.OUTLINE,
-                    category.defaultColor));
+            if (position != null) positions.add(position);
+        }
+        return positions;
+    }
+
+    private static void addActions(List<SecretRoutesAction> actions, JsonObject step,
+                                   String key, DungeonSecretCategory category,
+                                   DungeonWaypointTrigger trigger, String label,
+                                   List<int[]> path) {
+        List<int[]> positions = positions(step, key);
+        for (int i = 0; i < positions.size(); i++) {
+            int[] position = positions.get(i);
+            actions.add(new SecretRoutesAction(position, category, trigger, label,
+                    nearestPathIndex(position, path), i));
         }
     }
+
+    private static int nearestPathIndex(int[] position, List<int[]> path) {
+        if (path.isEmpty()) return Integer.MAX_VALUE;
+        int bestIndex = 0;
+        long bestDistance = Long.MAX_VALUE;
+        for (int i = 0; i < path.size(); i++) {
+            int[] point = path.get(i);
+            long dx = (long) point[0] - position[0];
+            long dy = (long) point[1] - position[1];
+            long dz = (long) point[2] - position[2];
+            long distance = dx * dx + dy * dy + dz * dz;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestIndex = i;
+            }
+        }
+        return bestIndex;
+    }
+
+    private static List<DungeonHighlight> pearlTarget(SecretRoutesAction action,
+                                                       List<int[]> path,
+                                                       JsonObject step) {
+        int[] target = null;
+        if (!path.isEmpty() && action.pathIndex() < path.size() - 1) {
+            target = path.get(action.pathIndex() + 1);
+        }
+        if (target == null) target = secretRoutesStepPosition(step);
+        return target == null
+                ? List.of()
+                : List.of(DungeonHighlight.outline(target[0], target[1], target[2]));
+    }
+
+    private static String secretLabel(String type) {
+        return switch (type.toLowerCase(Locale.ROOT)) {
+            case "bat" -> "Bat";
+            case "item" -> "Item";
+            case "exitroute" -> "Exit";
+            default -> "Chest";
+        };
+    }
+
+    private record SecretRoutesAction(
+            int[] position,
+            DungeonSecretCategory category,
+            DungeonWaypointTrigger trigger,
+            String label,
+            int pathIndex,
+            int sourceIndex) {}
 
     private static DungeonSecretCategory secretRoutesCategory(String type) {
         return switch (type.toLowerCase(Locale.ROOT)) {
@@ -551,6 +632,14 @@ public final class DungeonRouteImporter {
             if (!Character.isDigit(text.charAt(i))) return false;
         }
         return true;
+    }
+
+    private static int routeNumber(String suffix) {
+        try {
+            return Math.max(1, Math.addExact(Integer.parseInt(suffix), 1));
+        } catch (ArithmeticException | NumberFormatException ignored) {
+            return 1;
+        }
     }
 
     private static String string(JsonObject json, String name, String fallback) {

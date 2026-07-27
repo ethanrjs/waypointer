@@ -105,6 +105,7 @@ public final class WaypointerClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         config = WaypointerConfig.load();
+        dungeonConfig = DungeonConfig.load();
         manager = new ActiveGroupManager();
         storage = Storage.defaultLocation();
         storage.load(manager);
@@ -116,12 +117,12 @@ public final class WaypointerClient implements ClientModInitializer {
         new LocationTracker(manager, config).install();
         DungeonChestInteractionGuard chestInteractionGuard = new DungeonChestInteractionGuard();
         chestInteractionGuard.install();
-        new ProximityTracker(manager, config, chestInteractionGuard).install();
+        new ProximityTracker(manager, config, chestInteractionGuard, dungeonConfig).install();
         new TempWaypointCleaner(manager).install();
         new WorldJoinProgressReset(manager, config).install();
         HappySnowmanSession.install();
-        new WaypointRenderer(manager, config).install();
-        new TracerRenderer(manager, config).install();
+        new WaypointRenderer(manager, config, dungeonConfig).install();
+        new TracerRenderer(manager, config, dungeonConfig).install();
         WaypointRepositionMode.install();
 
         installDungeonSubsystem(chestInteractionGuard);
@@ -183,7 +184,6 @@ public final class WaypointerClient implements ClientModInitializer {
     }
 
     private static void installDungeonSubsystem(DungeonChestInteractionGuard chestInteractionGuard) {
-        dungeonConfig = DungeonConfig.load();
         DungeonRoomData.loadDefaultCustomStore();
         dungeonTracker = new DungeonStateTracker(manager, dungeonConfig);
         dungeonRouteSession = new DungeonRouteSession();
@@ -194,14 +194,16 @@ public final class WaypointerClient implements ClientModInitializer {
         dungeonTracker.install();
         new DungeonRoomZoneBridge(manager, dungeonTracker).install();
         new DungeonRoomRouteSync(manager, dungeonTracker, dungeonRouteSession, dungeonConfig).install();
-        new DungeonTriggerDetector(dungeonTracker, dungeonRouteSession, chestInteractionGuard).install();
+        new DungeonTriggerDetector(
+                dungeonTracker, dungeonRouteSession, chestInteractionGuard, dungeonConfig, manager)
+                .install();
         new DungeonMapCheckmarks(dungeonTracker, dungeonRouteSession, dungeonConfig).install();
         developerModeMonitor = new DeveloperModeMonitor(dungeonTracker, dungeonConfig, manager);
         developerModeMonitor.install();
         dungeonRouteDownloader = new DungeonRouteDownloader(manager, dungeonConfig);
         dungeonRouteDownloader.install();
         new DungeonCommands(dungeonTracker, dungeonConfig, dungeonRouteSession,
-                dungeonRouteDownloader).install();
+                dungeonRouteDownloader, manager).install();
     }
 
     private static void onDungeonRouteSessionZoneChanged(Zone zone) {

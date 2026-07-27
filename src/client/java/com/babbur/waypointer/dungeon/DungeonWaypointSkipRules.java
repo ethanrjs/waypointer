@@ -18,7 +18,10 @@ public final class DungeonWaypointSkipRules {
 
     public static int flagsForTriggerAt(DungeonWaypointTrigger trigger, int x, int y, int z) {
         BlockState state = blockStateAt(x, y, z);
-        if (state != null) return flagsForBlock(state);
+        if (state != null) {
+            int semantic = flagsForTrigger(trigger);
+            return flagsForBlock(state) | (semantic & Waypoint.DUNGEON_METADATA_FLAGS);
+        }
         return flagsForTrigger(trigger);
     }
 
@@ -28,9 +31,25 @@ public final class DungeonWaypointSkipRules {
      * block lookup would read whatever happens to be at the raw local position.
      */
     public static int flagsForTrigger(DungeonWaypointTrigger trigger) {
-        return isInteractTrigger(trigger)
-                ? Waypoint.FLAG_SKIP_ON_INTERACT
-                : Waypoint.FLAG_SKIP_ON_STAND;
+        if (trigger == null) return Waypoint.FLAG_SKIP_ON_STAND;
+        return switch (trigger) {
+            case DUNGEONBREAKER -> Waypoint.FLAG_SKIP_ON_MINE
+                    | Waypoint.FLAG_DUNGEON_DUNGEONBREAKER;
+            case BREAK_BLOCKS -> Waypoint.FLAG_SKIP_ON_MINE;
+            case USE_SUPERBOOM -> Waypoint.FLAG_SKIP_ON_INTERACT
+                    | Waypoint.FLAG_DUNGEON_SUPERBOOM;
+            case ETHERWARP -> Waypoint.FLAG_SKIP_ON_STAND
+                    | Waypoint.FLAG_DUNGEON_ETHERWARP;
+            case THROW_PEARL -> Waypoint.FLAG_SKIP_ON_STAND
+                    | Waypoint.FLAG_DUNGEON_PEARL;
+            case PICKUP_ITEM -> Waypoint.FLAG_SKIP_ON_STAND
+                    | Waypoint.FLAG_DUNGEON_ITEM;
+            case KILL_BAT -> Waypoint.FLAG_SKIP_ON_STAND
+                    | Waypoint.FLAG_DUNGEON_BAT;
+            default -> isInteractTrigger(trigger)
+                    ? Waypoint.FLAG_SKIP_ON_INTERACT
+                    : Waypoint.FLAG_SKIP_ON_STAND;
+        };
     }
 
     static int flagsForBlock(BlockState state) {

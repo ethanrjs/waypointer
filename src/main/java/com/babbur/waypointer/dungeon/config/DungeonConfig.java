@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 
 /**
@@ -72,6 +73,14 @@ public final class DungeonConfig {
      */
     private boolean autoCompleteRoomsOnGreenCheckmark = true;
 
+    /** Dungeon routes use their own low-noise presentation defaults. */
+    private boolean showDungeonRouteLines = true;
+    private boolean showDungeonTracers = false;
+    /** Number of current/future secret stages surfaced at once, SecretRoutes-style. */
+    private int visibleSecretStages = 1;
+    private boolean secretCompletionSound = true;
+    private boolean showPearlTrajectories = true;
+
     /**
      * User clicked "don't ask again" on the first-join community-routes
      * download prompt. {@code /wpd routes download} keeps working regardless.
@@ -84,6 +93,7 @@ public final class DungeonConfig {
     private transient Path file;
     private transient AsyncSaver saver;
     private transient final List<Runnable> enabledListeners = new ArrayList<>();
+    private transient final List<Runnable> changeListeners = new ArrayList<>();
 
     public static DungeonConfig load() {
         Path dir = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
@@ -118,6 +128,18 @@ public final class DungeonConfig {
         enabledListeners.remove(listener);
     }
 
+    public void addChangeListener(Runnable listener) {
+        if (listener != null) changeListeners.add(listener);
+    }
+
+    public void removeChangeListener(Runnable listener) {
+        changeListeners.remove(listener);
+    }
+
+    private void fireChanged() {
+        for (Runnable listener : List.copyOf(changeListeners)) listener.run();
+    }
+
     private void writeToDisk() {
         if (file == null) return;
         try {
@@ -137,6 +159,11 @@ public final class DungeonConfig {
     public String  defaultDirection()     { return defaultDirection == null ? "NW" : defaultDirection; }
     public boolean hideCompletedRooms()   { return hideCompletedRooms; }
     public boolean autoCompleteRoomsOnGreenCheckmark() { return autoCompleteRoomsOnGreenCheckmark; }
+    public boolean showDungeonRouteLines() { return showDungeonRouteLines; }
+    public boolean showDungeonTracers() { return showDungeonTracers; }
+    public int visibleSecretStages() { return Math.max(1, Math.min(5, visibleSecretStages)); }
+    public boolean secretCompletionSound() { return secretCompletionSound; }
+    public boolean showPearlTrajectories() { return showPearlTrajectories; }
     public boolean routesPromptDismissed()  { return routesPromptDismissed; }
 
     public boolean roomRouteEnabled(String roomId) {
@@ -149,6 +176,7 @@ public final class DungeonConfig {
         enabled = v;
         save();
         for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
+        fireChanged();
     }
 
     public void disableAllSettings() {
@@ -157,10 +185,15 @@ public final class DungeonConfig {
         debugLogRoomChanges = false;
         hideCompletedRooms = false;
         autoCompleteRoomsOnGreenCheckmark = false;
+        showDungeonRouteLines = false;
+        showDungeonTracers = false;
+        secretCompletionSound = false;
+        showPearlTrajectories = false;
         save();
         if (notifyEnabledListeners) {
             for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
         }
+        fireChanged();
     }
 
     public void resetToDefaults() {
@@ -171,12 +204,18 @@ public final class DungeonConfig {
         defaultDirection = defaults.defaultDirection;
         hideCompletedRooms = defaults.hideCompletedRooms;
         autoCompleteRoomsOnGreenCheckmark = defaults.autoCompleteRoomsOnGreenCheckmark;
+        showDungeonRouteLines = defaults.showDungeonRouteLines;
+        showDungeonTracers = defaults.showDungeonTracers;
+        visibleSecretStages = defaults.visibleSecretStages;
+        secretCompletionSound = defaults.secretCompletionSound;
+        showPearlTrajectories = defaults.showPearlTrajectories;
         routesPromptDismissed = defaults.routesPromptDismissed;
         hiddenRouteRoomIds = new ArrayList<>();
         save();
         if (notifyEnabledListeners) {
             for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
         }
+        fireChanged();
     }
 
     public void setDebugLogRoomChanges(boolean v) { this.debugLogRoomChanges = v; save(); }
@@ -185,6 +224,17 @@ public final class DungeonConfig {
         this.autoCompleteRoomsOnGreenCheckmark = v;
         save();
     }
+    public void setShowDungeonRouteLines(boolean v) { showDungeonRouteLines = v; save(); }
+    public void setShowDungeonTracers(boolean v) { showDungeonTracers = v; save(); }
+    public void setVisibleSecretStages(int v) {
+        int clamped = Math.max(1, Math.min(5, v));
+        if (visibleSecretStages == clamped) return;
+        visibleSecretStages = clamped;
+        save();
+        fireChanged();
+    }
+    public void setSecretCompletionSound(boolean v) { secretCompletionSound = v; save(); }
+    public void setShowPearlTrajectories(boolean v) { showPearlTrajectories = v; save(); }
     public void setRoutesPromptDismissed(boolean v) { this.routesPromptDismissed = v; save(); }
     public void setRoomRouteEnabled(String roomId, boolean enabled) {
         if (roomId == null || roomId.isBlank()) return;
@@ -192,6 +242,19 @@ public final class DungeonConfig {
         boolean changed = enabled
                 ? hiddenRouteRoomIds.remove(roomId)
                 : !hiddenRouteRoomIds.contains(roomId) && hiddenRouteRoomIds.add(roomId);
+        if (changed) save();
+    }
+
+    public void disableRoomRoutes(Collection<String> roomIds) {
+        if (roomIds == null || roomIds.isEmpty()) return;
+        if (hiddenRouteRoomIds == null) hiddenRouteRoomIds = new ArrayList<>();
+        boolean changed = false;
+        for (String roomId : roomIds) {
+            if (roomId != null && !roomId.isBlank() && !hiddenRouteRoomIds.contains(roomId)) {
+                hiddenRouteRoomIds.add(roomId);
+                changed = true;
+            }
+        }
         if (changed) save();
     }
     public void setDefaultDirection(String v) {
