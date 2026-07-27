@@ -159,13 +159,28 @@ class GroupEditScreenTest {
     }
 
     @Test
-    void dungeonSkipTooltipTextNamesRouteProgressionScope() {
-        assertEquals("Dungeons: Stand to skip",
+    void dungeonSkipTooltipTextExplainsTriggerBehavior() {
+        assertEquals("Stand: hold on solid block 0.5s; passable uses radius",
                 GroupEditScreen.dungeonStandSkipTooltipText());
-        assertEquals("Dungeons: Interact to skip",
+        assertEquals("Interact: right-click its block",
                 GroupEditScreen.dungeonInteractSkipTooltipText());
-        assertEquals("Dungeons: Mine to skip",
+        assertEquals("Mine: break its block",
                 GroupEditScreen.dungeonMineSkipTooltipText());
+    }
+
+    @Test
+    void dungeonRouteInfoExplainsTriggerAndRadiusSkipBehaviors() {
+        assertEquals(7, GroupEditScreen.routeInfoLabels(false).size());
+        assertEquals(12, GroupEditScreen.routeInfoLabels(true).size());
+        assertTrue(GroupEditScreen.routeInfoLabels(true).containsAll(
+                java.util.List.of("No trigger", "Stand", "Interact", "Mine", "Skip Ahead")));
+        assertTrue(GroupEditScreen.routeInfoDescriptions(true).contains(
+                "advance instantly inside the radius"));
+        assertTrue(GroupEditScreen.routeInfoDescriptions(true).contains(
+                "later radius skips there, trigger or not"));
+        assertEquals("Entering a later waypoint's radius skips to it,\n"
+                        + "even if it uses Stand, Interact, or Mine.",
+                GroupEditScreen.skipAheadTooltipText(true));
     }
 
     @Test

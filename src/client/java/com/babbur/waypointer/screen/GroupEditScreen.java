@@ -121,7 +121,7 @@ public final class GroupEditScreen extends Screen {
     private static final int HEADER_INFO_BUTTON_SIZE = 12;
     private static final int EDIT_MODE_BUTTON_W = 92;
     private static final String ROUTE_INFO_TITLE = "Route editor controls";
-    private static final String[] ROUTE_INFO_LABELS = {
+    private static final List<String> ROUTE_INFO_LABELS = List.of(
             "Click",
             "Double-click selected",
             "Right-click",
@@ -129,8 +129,8 @@ public final class GroupEditScreen extends Screen {
             "Shift-right-click",
             "Color swatch",
             "Row buttons"
-    };
-    private static final String[] ROUTE_INFO_DESCRIPTIONS = {
+    );
+    private static final List<String> ROUTE_INFO_DESCRIPTIONS = List.of(
             "select a waypoint row",
             "rename that waypoint",
             "set the current waypoint",
@@ -138,7 +138,21 @@ public final class GroupEditScreen extends Screen {
             "toggle subwaypoint",
             "edit color; Shift-click unlocks",
             "small, filled, hidden-after-parent, depth"
-    };
+    );
+    private static final List<String> DUNGEON_ROUTE_INFO_LABELS = List.of(
+            "No trigger",
+            "Stand",
+            "Interact",
+            "Mine",
+            "Skip Ahead"
+    );
+    private static final List<String> DUNGEON_ROUTE_INFO_DESCRIPTIONS = List.of(
+            "advance instantly inside the radius",
+            "solid: hold 0.5s; passable: use radius",
+            "right-click its block",
+            "break its block",
+            "later radius skips there, trigger or not"
+    );
     private static final int[] ROUTE_INFO_LABEL_COLORS = {
             ACCENT,
             0xFFFFF080,
@@ -163,7 +177,7 @@ public final class GroupEditScreen extends Screen {
     private static final int GLFW_KEY_KP_ENTER = 335;
 
     public GroupEditScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config, WaypointGroup group) {
-        super(Component.literal("Edit: " + group.name()));
+        super(Component.translatable("waypointer.screen.group_edit.title", group.name()));
         this.parent = parent;
         this.manager = manager;
         this.config = config;
@@ -197,7 +211,8 @@ public final class GroupEditScreen extends Screen {
 
         sidebarWidgets.clear();
         footerActionSpecs = buildFooterActions();
-        footerDoneSpec = new GuiTokens.ButtonSpec("Done", this::onClose);
+        footerDoneSpec = new GuiTokens.ButtonSpec(
+                Component.translatable("gui.done").getString(), this::onClose);
         Layout layout = layout();
         int top = layout.top();
         int sidebarLeft = layout.sidebarLeft();
@@ -207,13 +222,13 @@ public final class GroupEditScreen extends Screen {
         int y = top + 20;
 
         // Name field
-        nameBox = new EditBox(font, sidebarInner, y, fieldW, BTN_H, Component.literal("Name"));
+        nameBox = new EditBox(font, sidebarInner, y, fieldW, BTN_H,
+                Component.translatable("waypointer.screen.group_edit.name"));
         nameBox.setMaxLength(64);
         nameBox.setValue(group.name());
         nameBox.setResponder(group::setName);
-        nameBox.setTooltip(Tooltip.create(Component.literal(
-                "Route display name.\n"
-              + "Used in lists and exports.")));
+        nameBox.setTooltip(Tooltip.create(Component.translatable(
+                "waypointer.screen.group_edit.name.tooltip")));
         addSidebarWidget(nameBox);
         y += BTN_H + GAP;
 
@@ -240,17 +255,21 @@ public final class GroupEditScreen extends Screen {
         int bumpW = 24;
         radiusMinusBtn = styledButton(sidebarInner, y, bumpW, BTN_H,
                 Component.literal("-"), b -> bumpRadius(-0.5),
-                Tooltip.create(Component.literal("Shrink reach radius.\n-0.5 blocks.")));
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.group_edit.radius.shrink.tooltip")));
         radiusPlusBtn = styledButton(sidebarInner + fieldW - bumpW, y, bumpW, BTN_H,
                 Component.literal("+"), b -> bumpRadius(0.5),
-                Tooltip.create(Component.literal("Grow reach radius.\n+0.5 blocks.")));
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.group_edit.radius.grow.tooltip")));
         addSidebarWidget(radiusMinusBtn);
         addSidebarWidget(radiusPlusBtn);
         y += BTN_H + GAP;
 
         skipAheadBtn = styledButton(sidebarInner, y, fieldW, BTN_H,
                 skipAheadLabel(), this::toggleSkipAhead,
-                Tooltip.create(Component.literal("Toggle skipping waypoints for this route.")));
+                Tooltip.create(Component.translatable(isDungeonRoomGroup()
+                        ? "waypointer.screen.group_edit.skip_ahead.tooltip.dungeon"
+                        : "waypointer.screen.group_edit.skip_ahead.tooltip")));
         addSidebarWidget(skipAheadBtn);
         y += BTN_H + GAP;
 
@@ -258,10 +277,9 @@ public final class GroupEditScreen extends Screen {
         y += BTN_H + GAP;
 
         moveSelectedHereBtn = styledButton(sidebarInner, y, fieldW, BTN_H,
-                Component.literal("Move Waypoint Here"), b -> moveSelectedHere(),
-                Tooltip.create(Component.literal(
-                        "Replace the selected waypoint's coordinates with your\n"
-                      + "current block position.")));
+                Component.translatable("waypointer.screen.group_edit.move_here"),
+                b -> moveSelectedHere(), Tooltip.create(Component.translatable(
+                        "waypointer.screen.group_edit.move_here.tooltip")));
         addSidebarWidget(moveSelectedHereBtn);
 
         int naturalResetY = y + BTN_H + GAP;
@@ -273,16 +291,18 @@ public final class GroupEditScreen extends Screen {
                 ? viewportBottom - BTN_H
                 : naturalResetY;
         addSidebarWidget(styledButton(sidebarInner, resetY, fieldW, BTN_H,
-                Component.literal("Reset Progress"), b -> {
+                Component.translatable("waypointer.screen.group_edit.reset_progress"), b -> {
             DungeonRoomRouteSync.resetManualProgress(manager, group);
             manager.fireDataChanged();
-        }, Tooltip.create(Component.literal("Set current waypoint to #1."))));
+        }, Tooltip.create(Component.translatable(
+                "waypointer.screen.group_edit.reset_progress.tooltip"))));
         sidebarScrollOffset = Math.max(0, Math.min(maxSidebarScroll, sidebarScrollOffset));
         refreshSidebarWidgets(layout);
 
         // Inline label editor -- kept invisible until the user double-clicks a row.
         // Added last so it paints on top of the row it's editing.
-        labelEditor = new EditBox(font, 0, 0, 100, BTN_H, Component.literal("Label"));
+        labelEditor = new EditBox(font, 0, 0, 100, BTN_H,
+                Component.translatable("waypointer.screen.group_edit.label"));
         labelEditor.setMaxLength(64);
         labelEditor.setVisible(false);
         addRenderableWidget(labelEditor);
@@ -300,12 +320,12 @@ public final class GroupEditScreen extends Screen {
 
         Button editModeButton = styledButton(width - PAD_OUTER - EDIT_MODE_BUTTON_W, PAD_OUTER - 5,
                 EDIT_MODE_BUTTON_W, BTN_H,
-                Component.literal(WaypointRepositionMode.isEditModeEnabled()
-                        ? "Exit Edit" : "Edit Mode"),
+                Component.translatable(WaypointRepositionMode.isEditModeEnabled()
+                        ? "waypointer.screen.group_edit.edit_mode.exit"
+                        : "waypointer.screen.group_edit.edit_mode.enter"),
                 b -> toggleEditModeFromEditor(),
-                Tooltip.create(Component.literal(
-                        "Enter or exit world edit mode.\n"
-                      + "Left click an existing waypoint in-world to move it.")));
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.group_edit.edit_mode.tooltip")));
         addRenderableWidget(editModeButton);
 
         GuiTokens.layoutFooter(width, height - FOOTER_H, footerActionSpecs, footerDoneSpec,
@@ -314,16 +334,26 @@ public final class GroupEditScreen extends Screen {
 
     private List<GuiTokens.ButtonSpec> buildFooterActions() {
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("+ Add", -1, this::addHere,
-                Tooltip.create(Component.literal("Add a waypoint at your current position."))));
-        left.add(new GuiTokens.ButtonSpec("+ Add Named", -1, this::addNamedHere,
-                Tooltip.create(Component.literal("Name a new waypoint at your current position."))));
-        left.add(new GuiTokens.ButtonSpec("Export", this::export));
-        left.add(new GuiTokens.ButtonSpec("Remove", this::removeSelected));
+        left.add(new GuiTokens.ButtonSpec(
+                Component.translatable("waypointer.screen.group_edit.add").getString(),
+                -1, this::addHere, Tooltip.create(Component.translatable(
+                        "waypointer.screen.group_edit.add.tooltip"))));
+        left.add(new GuiTokens.ButtonSpec(
+                Component.translatable("waypointer.screen.group_edit.add_named").getString(),
+                -1, this::addNamedHere, Tooltip.create(Component.translatable(
+                        "waypointer.screen.group_edit.add_named.tooltip"))));
+        left.add(new GuiTokens.ButtonSpec(
+                Component.translatable("waypointer.screen.group_edit.export").getString(),
+                this::export));
+        left.add(new GuiTokens.ButtonSpec(
+                Component.translatable("waypointer.screen.group_edit.remove").getString(),
+                this::removeSelected));
         left.add(new GuiTokens.ButtonSpec("^", 24, () -> moveSelected(-1),
-                Tooltip.create(Component.literal("Move the selected waypoint up."))));
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.group_edit.move_up.tooltip"))));
         left.add(new GuiTokens.ButtonSpec("v", 24, () -> moveSelected(1),
-                Tooltip.create(Component.literal("Move the selected waypoint down."))));
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.group_edit.move_down.tooltip"))));
         return left;
     }
 
@@ -422,18 +452,18 @@ public final class GroupEditScreen extends Screen {
         RouteColorMode routeMode = routeColorMode();
         if (routeMode == RouteColorMode.PAINT) {
             addSidebarWidget(styledButton(sidebarInner, y, fieldW, BTN_H,
-                    Component.literal("Paint"), b -> openWaypointPainter(),
-                    Tooltip.create(Component.literal(
-                            "Open Waypoint Painter for this route."))));
+                    Component.translatable("waypointer.screen.group_edit.paint"),
+                    b -> openWaypointPainter(), Tooltip.create(Component.translatable(
+                            "waypointer.screen.group_edit.paint.tooltip"))));
             return y + BTN_H + GAP_TIGHT;
         }
 
         if (routeMode == RouteColorMode.ONE) {
             staticColorBtn = new ColorSwatchButton(sidebarInner, y, fieldW, BTN_H,
-                    "One color", group.staticColor(), this::openStaticColorPicker);
-            staticColorBtn.setTooltip(Tooltip.create(Component.literal(
-                    "One route color.\n"
-                  + "Applies in One color mode.")));
+                    Component.translatable("waypointer.screen.group_edit.color.one").getString(),
+                    group.staticColor(), this::openStaticColorPicker);
+            staticColorBtn.setTooltip(Tooltip.create(Component.translatable(
+                    "waypointer.screen.group_edit.color.one.tooltip")));
             addSidebarWidget(staticColorBtn);
             return y + BTN_H + GAP_TIGHT;
         }
@@ -441,16 +471,16 @@ public final class GroupEditScreen extends Screen {
         if (routeMode == RouteColorMode.GRADIENT) {
             int swatchW = (fieldW - GAP_TIGHT) / 2;
             gradientStartBtn = new ColorSwatchButton(sidebarInner, y, swatchW, BTN_H,
-                    "Start", group.gradientStartColor(), this::openGradientStartPicker);
-            gradientStartBtn.setTooltip(Tooltip.create(Component.literal(
-                    "Gradient start colour.\n"
-                  + "Applies in Gradient mode.")));
+                    Component.translatable("waypointer.screen.group_edit.color.start").getString(),
+                    group.gradientStartColor(), this::openGradientStartPicker);
+            gradientStartBtn.setTooltip(Tooltip.create(Component.translatable(
+                    "waypointer.screen.group_edit.color.start.tooltip")));
             gradientEndBtn = new ColorSwatchButton(sidebarInner + swatchW + GAP_TIGHT, y,
                     fieldW - swatchW - GAP_TIGHT, BTN_H,
-                    "End", group.gradientEndColor(), this::openGradientEndPicker);
-            gradientEndBtn.setTooltip(Tooltip.create(Component.literal(
-                    "Gradient end colour.\n"
-                  + "Applies in Gradient mode.")));
+                    Component.translatable("waypointer.screen.group_edit.color.end").getString(),
+                    group.gradientEndColor(), this::openGradientEndPicker);
+            gradientEndBtn.setTooltip(Tooltip.create(Component.translatable(
+                    "waypointer.screen.group_edit.color.end.tooltip")));
             addSidebarWidget(gradientStartBtn);
             addSidebarWidget(gradientEndBtn);
             return y + BTN_H + GAP_TIGHT;
@@ -462,7 +492,9 @@ public final class GroupEditScreen extends Screen {
     // --- sidebar toggles ---------------------------------------------------------------------
 
         private Component colorModeLabel() {
-        return Component.literal("Color: " + colorModeName(routeColorMode()));
+        return Component.translatable("waypointer.screen.group_edit.color_mode",
+                Component.translatable("waypointer.screen.group_edit.color_mode."
+                        + colorModeName(routeColorMode()).toLowerCase(java.util.Locale.ROOT)));
     }
 
     private RouteColorMode routeColorMode() {
@@ -488,12 +520,8 @@ public final class GroupEditScreen extends Screen {
     }
 
         private static Tooltip colorModeTooltip() {
-        return Tooltip.create(Component.literal(
-                "Waypoint color mode.\n"
-              + "Color: edit waypoint swatches.\n"
-              + "Gradient: sweep between endpoints.\n"
-              + "One: repaint the whole route.\n"
-              + "Paint: use painted waypoint faces."));
+        return Tooltip.create(Component.translatable(
+                "waypointer.screen.group_edit.color_mode.tooltip"));
     }
 
     private void toggleColorMode(Button b) {
@@ -550,7 +578,9 @@ public final class GroupEditScreen extends Screen {
     }
 
         private void openStaticColorPicker() {
-        ColorPickerScreen.open(this, "Route Colour", group.staticColor(), this::onStaticColorPicked);
+        ColorPickerScreen.open(this,
+                Component.translatable("waypointer.screen.group_edit.picker.route"),
+                group.staticColor(), this::onStaticColorPicked);
     }
 
         private void onStaticColorPicked(int picked) {
@@ -571,10 +601,12 @@ public final class GroupEditScreen extends Screen {
 
         private void openGradientPicker(boolean start) {
         if (start) {
-            ColorPickerScreen.open(this, "Gradient Start Colour",
+            ColorPickerScreen.open(this,
+                    Component.translatable("waypointer.screen.group_edit.picker.gradient_start"),
                     group.gradientStartColor(), this::onGradientStartPicked);
         } else {
-            ColorPickerScreen.open(this, "Gradient End Colour",
+            ColorPickerScreen.open(this,
+                    Component.translatable("waypointer.screen.group_edit.picker.gradient_end"),
                     group.gradientEndColor(), this::onGradientEndPicked);
         }
     }
@@ -594,14 +626,15 @@ public final class GroupEditScreen extends Screen {
     }
 
     private Component modeLabel() {
-        return Component.literal("Mode: "
-                + (group.loadMode() == WaypointGroup.LoadMode.STATIC ? "STATIC" : "SEQUENCE"));
+        return Component.translatable("waypointer.screen.group_edit.mode",
+                Component.translatable(group.loadMode() == WaypointGroup.LoadMode.STATIC
+                        ? "waypointer.screen.group_edit.mode.static"
+                        : "waypointer.screen.group_edit.mode.sequence"));
     }
 
     private static Tooltip modeTooltip() {
-        return Tooltip.create(Component.literal(
-                "Static: Show all waypoints\n"
-              + "Sequenced: Go one-by-one"));
+        return Tooltip.create(Component.translatable(
+                "waypointer.screen.group_edit.mode.tooltip"));
     }
 
     private void toggleLoadMode(Button b) {
@@ -617,7 +650,15 @@ public final class GroupEditScreen extends Screen {
     }
 
     private Component skipAheadLabel() {
-        return Component.literal("Skip Ahead: " + (group.skipAheadEnabled() ? "ON" : "OFF"));
+        return Component.translatable("waypointer.screen.group_edit.skip_ahead",
+                Component.translatable(group.skipAheadEnabled() ? "options.on" : "options.off"));
+    }
+
+    static String skipAheadTooltipText(boolean dungeonRoomGroup) {
+        return dungeonRoomGroup
+                ? "Entering a later waypoint's radius skips to it,\n"
+                + "even if it uses Stand, Interact, or Mine."
+                : "Toggle skipping waypoints for this route.";
     }
 
     private void toggleSkipAhead(Button b) {
@@ -651,9 +692,8 @@ public final class GroupEditScreen extends Screen {
         EditBox box = new EditBox(font, 0, 0, 40, BTN_H, Component.literal(label));
         box.setMaxLength(12);
         box.setHint(Component.literal(label));
-        box.setTooltip(Tooltip.create(Component.literal(
-                "Edit the selected waypoint's " + label + " coordinate.\n"
-                        + "Scroll while hovering to adjust by 1.")));
+        box.setTooltip(Tooltip.create(Component.translatable(
+                "waypointer.screen.group_edit.coordinate.tooltip", label)));
         box.setResponder(v -> updateSelectedCoordinate(axis, v));
         return box;
     }
@@ -923,7 +963,8 @@ public final class GroupEditScreen extends Screen {
     }
 
     private String headerTitleText() {
-        return "Edit: " + group.name();
+        return Component.translatable("waypointer.screen.group_edit.title",
+                group.name()).getString();
     }
 
     private String clippedHeaderTitle(String title) {
@@ -963,17 +1004,19 @@ public final class GroupEditScreen extends Screen {
     }
 
     private void renderRouteInfoTooltip(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-        int lineCount = Math.min(ROUTE_INFO_LABELS.length, ROUTE_INFO_DESCRIPTIONS.length);
+        List<String> labels = routeInfoLabels(isDungeonRoomGroup());
+        List<String> descriptions = routeInfoDescriptions(isDungeonRoomGroup());
+        int lineCount = Math.min(labels.size(), descriptions.size());
         int pad = 7;
         int lineGap = 3;
         int maxLabelWidth = 0;
         int maxLineWidth = font.width(ROUTE_INFO_TITLE);
         for (int i = 0; i < lineCount; i++) {
-            maxLabelWidth = Math.max(maxLabelWidth, font.width(ROUTE_INFO_LABELS[i]));
+            maxLabelWidth = Math.max(maxLabelWidth, font.width(labels.get(i)));
         }
         for (int i = 0; i < lineCount; i++) {
             int lineWidth = maxLabelWidth + GAP
-                    + font.width(ROUTE_INFO_DESCRIPTIONS[i]);
+                    + font.width(descriptions.get(i));
             maxLineWidth = Math.max(maxLineWidth, lineWidth);
         }
 
@@ -1003,11 +1046,25 @@ public final class GroupEditScreen extends Screen {
             int labelColor = i < ROUTE_INFO_LABEL_COLORS.length
                     ? ROUTE_INFO_LABEL_COLORS[i]
                     : TEXT;
-            g.text(font, ROUTE_INFO_LABELS[i], textX, rowY, labelColor, false);
-            g.text(font, ROUTE_INFO_DESCRIPTIONS[i],
+            g.text(font, labels.get(i), textX, rowY, labelColor, false);
+            g.text(font, descriptions.get(i),
                     textX + maxLabelWidth + GAP, rowY, TEXT_DIM, false);
             rowY += font.lineHeight + lineGap;
         }
+    }
+
+    static List<String> routeInfoLabels(boolean dungeonRoomGroup) {
+        if (!dungeonRoomGroup) return ROUTE_INFO_LABELS;
+        List<String> labels = new ArrayList<>(ROUTE_INFO_LABELS);
+        labels.addAll(DUNGEON_ROUTE_INFO_LABELS);
+        return List.copyOf(labels);
+    }
+
+    static List<String> routeInfoDescriptions(boolean dungeonRoomGroup) {
+        if (!dungeonRoomGroup) return ROUTE_INFO_DESCRIPTIONS;
+        List<String> descriptions = new ArrayList<>(ROUTE_INFO_DESCRIPTIONS);
+        descriptions.addAll(DUNGEON_ROUTE_INFO_DESCRIPTIONS);
+        return List.copyOf(descriptions);
     }
 
     private void renderInlineTooltip(GuiGraphicsExtractor g, String text, int mouseX, int mouseY) {
@@ -1031,7 +1088,8 @@ public final class GroupEditScreen extends Screen {
     private void renderSidebarPanel(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         g.fill(x1, y1, x2, y2, SIDEBAR_BG);
         g.fill(x2, y1, x2 + 1, y2, BORDER);
-        g.text(font, "Route", x1 + GAP, y1 + 10, TEXT, false);
+        g.text(font, Component.translatable("waypointer.screen.group_edit.route"),
+                x1 + GAP, y1 + 10, TEXT, false);
 
         // Inline "Radius 3.0" readout spanning the space between the two bump buttons.
         // The label is co-located with the value so there's no detached header for the
@@ -1041,7 +1099,8 @@ public final class GroupEditScreen extends Screen {
             int rowMidY = radiusMinusBtn.getY() + BTN_H / 2 - 4;
             int inlineLeft = radiusMinusBtn.getX() + radiusMinusBtn.getWidth();
             int inlineRight = radiusPlusBtn.getX();
-            String text = "Radius " + String.format("%.1f", group.defaultRadius());
+            String text = Component.translatable("waypointer.screen.group_edit.radius",
+                    String.format("%.1f", group.defaultRadius())).getString();
             int textW = font.width(text);
             int textX = inlineLeft + ((inlineRight - inlineLeft) - textW) / 2;
             g.text(font, text, textX, rowMidY, TEXT, false);
@@ -1072,8 +1131,9 @@ public final class GroupEditScreen extends Screen {
         List<Waypoint> pts = group.waypoints();
         g.fill(x1, y1, x2, y2, ROUTE_LIST_BG);
         if (pts.isEmpty()) {
-            g.text(font, "No waypoints yet.", x1 + GAP, y1 + 8, TEXT, false);
-            g.text(font, "Walk somewhere and click \"+ Add\".",
+            g.text(font, Component.translatable("waypointer.screen.group_edit.empty"),
+                    x1 + GAP, y1 + 8, TEXT, false);
+            g.text(font, Component.translatable("waypointer.screen.group_edit.empty.hint"),
                     x1 + GAP, y1 + 8 + 14, TEXT_DIM, false);
             return;
         }
@@ -1796,15 +1856,15 @@ public final class GroupEditScreen extends Screen {
     }
 
     static String dungeonStandSkipTooltipText() {
-        return "Dungeons: Stand to skip";
+        return "Stand: hold on solid block 0.5s; passable uses radius";
     }
 
     static String dungeonInteractSkipTooltipText() {
-        return "Dungeons: Interact to skip";
+        return "Interact: right-click its block";
     }
 
     static String dungeonMineSkipTooltipText() {
-        return "Dungeons: Mine to skip";
+        return "Mine: break its block";
     }
 
     private String subwaypointStyleTooltipAt(double mouseX, double mouseY) {

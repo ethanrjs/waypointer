@@ -59,6 +59,36 @@ class WaypointRepositionModeTest {
     }
 
     @Test
+    void dungeonbreakerRightClickRemovesFromTheDurableRoute() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup stored = WaypointGroup.create("Dungeon", "remove-room");
+        stored.add(Waypoint.at(1, 70, 1));
+        stored.add(Waypoint.at(2, 70, 2));
+        manager.add(stored);
+
+        WaypointGroup mirror = new WaypointGroup(
+                "dungeon:auto:remove-room", "Dungeon", "remove-room");
+        mirror.setRuntimeOnly(true);
+        mirror.addAll(stored.waypoints());
+        manager.add(mirror);
+
+        assertTrue(WaypointRepositionMode.removeWaypoint(manager, mirror, 0));
+        assertEquals(1, stored.size());
+        assertEquals(2, stored.get(0).x());
+        assertEquals(70, stored.get(0).y());
+        assertEquals(2, stored.get(0).z());
+        assertEquals(2, mirror.size());
+
+        WaypointGroup downloadedOnly = new WaypointGroup(
+                "dungeon:auto:downloaded-room", "Downloaded", "downloaded-room");
+        downloadedOnly.setRuntimeOnly(true);
+        downloadedOnly.add(Waypoint.at(3, 70, 3));
+        manager.add(downloadedOnly);
+        assertFalse(WaypointRepositionMode.removeWaypoint(manager, downloadedOnly, 0));
+        assertEquals(1, downloadedOnly.size());
+    }
+
+    @Test
     void explicitEditModeSetterKeepsTheRequestedState() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerConfig config = new WaypointerConfig();
@@ -120,4 +150,5 @@ class WaypointRepositionModeTest {
         assertFalse(WaypointRepositionMode.isDungeonInteractDefaultBlock(Blocks.STONE.defaultBlockState()));
         assertFalse(WaypointRepositionMode.isDungeonInteractDefaultBlock(null));
     }
+
 }

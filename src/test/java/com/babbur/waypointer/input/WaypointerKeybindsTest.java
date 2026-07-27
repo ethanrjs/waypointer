@@ -14,6 +14,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import org.lwjgl.glfw.GLFW;
 import org.junit.jupiter.api.Test;
 
@@ -35,8 +36,9 @@ class WaypointerKeybindsTest {
     void completedRoomRouteFeedbackExplainsHiddenRecovery() {
         Component feedback = DungeonRoomRouteFeedback.completionHiddenUntilNextRun();
 
-        assertEquals("Room route complete -- hidden until next run. Press Previous to reopen.",
-                feedback.getString());
+        TranslatableContents contents = org.junit.jupiter.api.Assertions.assertInstanceOf(
+                TranslatableContents.class, feedback.getContents());
+        assertEquals("waypointer.dungeon.route.complete_hidden", contents.getKey());
         assertEquals(legacyColor(ChatFormatting.AQUA), feedback.getStyle().getColor());
     }
 

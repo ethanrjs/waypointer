@@ -3,6 +3,7 @@ package com.babbur.waypointer.input;
 import com.babbur.waypointer.core.Waypoint;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -16,7 +17,7 @@ class WaypointAddFlowTest {
         Component message = WaypointAddFlow.waypointAddedMessage(
                 2, Waypoint.at(12, 70, -4), true);
 
-        assertEquals("Added waypoint 2 at 12, 70, -4 [All] [Party]", message.getString());
+        assertTranslation(message, "waypointer.input.added", 2, "12, 70, -4");
         assertEquals(2, message.getSiblings().size());
         assertCommand(message.getSiblings().get(0), "/ac 12, 70, -4");
         assertCommand(message.getSiblings().get(1), "/pc 12, 70, -4");
@@ -27,7 +28,7 @@ class WaypointAddFlowTest {
         Component message = WaypointAddFlow.waypointAddedMessage(
                 2, Waypoint.at(12, 70, -4), false);
 
-        assertEquals("Added waypoint 2 at 12, 70, -4", message.getString());
+        assertTranslation(message, "waypointer.input.added", 2, "12, 70, -4");
         assertTrue(message.getSiblings().isEmpty());
     }
 
@@ -36,5 +37,12 @@ class WaypointAddFlowTest {
                 action.getStyle().getClickEvent());
         assertEquals(expected, command.command());
         assertTrue(action.getStyle().isUnderlined());
+    }
+
+    private static void assertTranslation(Component component, String key, Object... arguments) {
+        TranslatableContents contents = assertInstanceOf(
+                TranslatableContents.class, component.getContents());
+        assertEquals(key, contents.getKey());
+        assertEquals(java.util.List.of(arguments), java.util.List.of(contents.getArgs()));
     }
 }
