@@ -15,6 +15,9 @@ public abstract class PlayerTabOverlayMixin {
     @Inject(method = "getNameForDisplay", at = @At("RETURN"), cancellable = true)
     private void waypointer$badgeContributor(PlayerInfo playerInfo,
                                              CallbackInfoReturnable<Component> cir) {
-        cir.setReturnValue(WaypointerContributorBadge.apply(cir.getReturnValue(), WaypointerClient.config()));
+        cir.setReturnValue(WaypointerContributorBadge.applyPlayerName(
+                cir.getReturnValue(),
+                playerInfo.getProfile().name(),
+                WaypointerClient.config()));
     }
 }

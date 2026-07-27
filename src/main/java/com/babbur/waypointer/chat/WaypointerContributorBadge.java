@@ -20,7 +20,21 @@ public final class WaypointerContributorBadge {
 
     public static Component apply(Component component, WaypointerConfig config) {
         if (component == null || config == null || !config.showContributorBadges()) return component;
-        return replace(component);
+        if (hasBadge(component)) return component;
+        if (contributorLevelStart(component.getString()) >= 0) return replace(component);
+        return isContributorChatSender(component.getString()) ? prependBadge(component) : component;
+    }
+
+    public static Component applyPlayerName(Component component, String profileName,
+                                            WaypointerConfig config) {
+        if (component == null || config == null || !config.showContributorBadges()
+                || !isContributor(profileName)) {
+            return component;
+        }
+        if (hasBadge(component)) return component;
+        return contributorLevelStart(component.getString()) >= 0
+                ? replace(component)
+                : prependBadge(component);
     }
 
     static Component replace(Component component) {
@@ -33,6 +47,58 @@ public final class WaypointerContributorBadge {
             out.append(replace(sibling));
         }
         return out;
+    }
+
+    private static boolean isContributor(String username) {
+        return username != null && CONTRIBUTOR.equalsIgnoreCase(username);
+    }
+
+    private static boolean hasBadge(Component component) {
+        return component.getString().contains("[WP]");
+    }
+
+    private static boolean isContributorChatSender(String raw) {
+        int nameStart = raw.indexOf(CONTRIBUTOR);
+        while (nameStart >= 0) {
+            if (isUsernameToken(raw, nameStart)
+                    && isChatSenderPrefix(raw, nameStart)
+                    && isChatSenderSuffix(raw, nameStart + CONTRIBUTOR.length())) {
+                return true;
+            }
+            nameStart = raw.indexOf(CONTRIBUTOR, nameStart + CONTRIBUTOR.length());
+        }
+        return false;
+    }
+
+    private static boolean isChatSenderPrefix(String raw, int nameStart) {
+        int cursor = 0;
+        while (cursor < nameStart && Character.isWhitespace(raw.charAt(cursor))) cursor++;
+        if (cursor == nameStart) return true;
+        if (cursor + 1 == nameStart && raw.charAt(cursor) == '<') return true;
+
+        while (cursor < nameStart) {
+            if (raw.charAt(cursor) != '[') return false;
+            int bracketEnd = raw.indexOf(']', cursor + 1);
+            if (bracketEnd < 0 || bracketEnd >= nameStart) return false;
+            cursor = bracketEnd + 1;
+            while (cursor < nameStart && Character.isWhitespace(raw.charAt(cursor))) cursor++;
+        }
+        return cursor == nameStart;
+    }
+
+    private static boolean isChatSenderSuffix(String raw, int nameEnd) {
+        if (nameEnd >= raw.length()) return false;
+        if (raw.charAt(nameEnd) == '>') return true;
+        int cursor = nameEnd;
+        while (cursor < raw.length() && Character.isWhitespace(raw.charAt(cursor))) cursor++;
+        return cursor < raw.length() && raw.charAt(cursor) == ':';
+    }
+
+    private static MutableComponent prependBadge(Component component) {
+        return Component.empty()
+                .append(badge())
+                .append(Component.literal(" "))
+                .append(component.copy());
     }
 
     private static MutableComponent replaceOwnText(Component component) {
