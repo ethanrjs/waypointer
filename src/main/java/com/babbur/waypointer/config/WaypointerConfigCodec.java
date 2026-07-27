@@ -84,7 +84,7 @@ public final class WaypointerConfigCodec {
     private static final int IRIS_SHADER_HUD_FALLBACK = 52;
     private static final int TEMP_DEFAULT_MODE = 53;
     private static final int TEMP_DEFAULT_DURATION_MIN = 54;
-    private static final int SHARP_WAYPOINT_EDGES = 55;
+    private static final int LEGACY_SHARP_WAYPOINT_EDGES = 55;
     private static final int EDIT_SOUNDS = 56;
     private static final int SHOW_EDIT_MODE_SUBTITLE = 57;
     private static final int USE_BEACON_BEAM_TEXTURES = 58;
@@ -161,7 +161,6 @@ public final class WaypointerConfigCodec {
         writeDouble(out, TRACER_OPACITY, config.tracerOpacity(), defaults.tracerOpacity());
         writeDouble(out, TRACER_THICKNESS, config.tracerThickness(), defaults.tracerThickness());
         writeDouble(out, WAYPOINT_OUTLINE_THICKNESS, config.waypointOutlineThickness(), defaults.waypointOutlineThickness());
-        writeBoolean(out, SHARP_WAYPOINT_EDGES, config.sharpWaypointEdges(), defaults.sharpWaypointEdges());
         writeDouble(out, BEACON_OPACITY, config.beaconOpacity(), defaults.beaconOpacity());
         writeBoolean(out, SHOW_WAYPOINT_NAMES, config.showWaypointNames(), defaults.showWaypointNames());
         writeBoolean(out, SHOW_WAYPOINT_DISTANCES, config.showWaypointDistances(), defaults.showWaypointDistances());
@@ -241,7 +240,7 @@ public final class WaypointerConfigCodec {
                 case TRACER_OPACITY -> config.setTracerOpacity(in.readDouble());
                 case TRACER_THICKNESS -> config.setTracerThickness(in.readDouble());
                 case WAYPOINT_OUTLINE_THICKNESS -> config.setWaypointOutlineThickness(in.readDouble());
-                case SHARP_WAYPOINT_EDGES -> config.setSharpWaypointEdges(in.readBoolean());
+                case LEGACY_SHARP_WAYPOINT_EDGES -> in.readBoolean();
                 case BEACON_OPACITY -> config.setBeaconOpacity(in.readDouble());
                 case SHOW_WAYPOINT_NAMES -> config.setShowWaypointNames(in.readBoolean());
                 case SHOW_WAYPOINT_DISTANCES -> config.setShowWaypointDistances(in.readBoolean());

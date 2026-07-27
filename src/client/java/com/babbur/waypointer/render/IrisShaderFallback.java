@@ -6,8 +6,8 @@ import net.fabricmc.loader.api.FabricLoader;
 import java.lang.reflect.Method;
 
 /**
- * Detects whether the experimental Iris-safe HUD renderer should replace the
- * normal world-space waypoint geometry for this frame.
+ * Detects whether tracer and waypoint outlines should use the Iris-safe HUD
+ * renderer instead of their normal world-space lines for this frame.
  *
  * <p>Iris is optional, so this class talks to its public API reflectively. A
  * direct dependency would make Waypointer require Iris at runtime; reflection

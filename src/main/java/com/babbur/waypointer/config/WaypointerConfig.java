@@ -58,7 +58,7 @@ public final class WaypointerConfig {
 
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int CONFIG_SCHEMA_VERSION = 4;
+    private static final int CONFIG_SCHEMA_VERSION = 5;
     private static final int TEMP_DURATION_MIN_SECONDS = 1;
     private static final int TEMP_DURATION_MAX_SECONDS = 24 * 60 * 60;
     private static final int SECONDS_PER_MINUTE = 60;
@@ -114,18 +114,8 @@ public final class WaypointerConfig {
      * tracers or giant lines that flood the screen.
      */
     private double tracerThickness = 3.0;
-    /**
-     * Pixel width for waypoint box outlines in both the normal world renderer
-     * and the Iris HUD fallback. Kept separate from tracer thickness because
-     * users often want a subtle box but a stronger navigation line.
-     */
+    /** Pixel width for world-space and Iris HUD waypoint box outlines. */
     private double waypointOutlineThickness = 3.0;
-    /**
-     * Optional crisp edge mode for waypoint outlines. Default-off keeps the
-     * current softer/thicker outline presentation unless the player opts into
-     * harder screen-space corners.
-     */
-    private boolean sharpWaypointEdges = false;
     private double beaconOpacity = 0.5;
     private boolean showWaypointNames = true;
     private boolean showWaypointDistances = true;
@@ -352,12 +342,13 @@ public final class WaypointerConfig {
     private boolean skipAheadMechanicEnabled = true;
 
     /**
-     * Experimental compatibility path for Iris shader packs that composite after
+     * Compatibility path for Iris shader packs that composite after
      * Waypointer's no-depth world render pass. When enabled, active Iris shaders
-     * draw waypoint boxes/tracers as projected HUD overlays instead of world
-     * geometry so shader depth buffers cannot hide them.
+     * draw tracer and waypoint outline lines as projected HUD overlays so shader
+     * depth buffers cannot hide them; fills, paints, beams, and route paths stay
+     * on the normal world renderer.
      */
-    private boolean irisShaderHudFallback = false;
+    private boolean irisShaderHudFallback = true;
     /**
      * Default mode for the "Add Temp Waypoint Here" keybind, and the pre-selected
      * mode in the Add Temp modal. Values match
@@ -427,6 +418,13 @@ public final class WaypointerConfig {
     private void applyMigrations(int schemaVersion) {
         if (schemaVersion < 2) {
             migrateIssue31TempDefaults();
+        }
+        if (schemaVersion < 5) {
+            // Shader packs can composite over our world line pipeline. Existing
+            // installs predate the safe HUD path being the compatibility default,
+            // so enable it once on upgrade; users can still disable it afterward.
+            irisShaderHudFallback = true;
+            migratedDuringLoad = true;
         }
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
     }
@@ -550,7 +548,6 @@ public final class WaypointerConfig {
     public double tracerOpacity()             { return tracerOpacity; }
     public double tracerThickness()           { return clamp(tracerThickness, 1.0, 12.0); }
     public double waypointOutlineThickness()  { return clamp(waypointOutlineThickness, 1.0, 12.0); }
-    public boolean sharpWaypointEdges()        { return sharpWaypointEdges; }
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showWaypointDistances()    { return showWaypointDistances; }
@@ -678,10 +675,6 @@ public final class WaypointerConfig {
     public void setWaypointOutlineThickness(double v) {
         if (!Double.isFinite(v)) return;
         this.waypointOutlineThickness = clamp(v, 1.0, 12.0);
-        save();
-    }
-    public void setSharpWaypointEdges(boolean v) {
-        this.sharpWaypointEdges = v;
         save();
     }
     public void setBeaconOpacity(double v)             { this.beaconOpacity = clamp(v, 0, 1); save(); }
@@ -863,7 +856,6 @@ public final class WaypointerConfig {
         tracerOpacity = replacement.tracerOpacity;
         tracerThickness = replacement.tracerThickness;
         waypointOutlineThickness = replacement.waypointOutlineThickness;
-        sharpWaypointEdges = replacement.sharpWaypointEdges;
         beaconOpacity = replacement.beaconOpacity;
         showWaypointNames = replacement.showWaypointNames;
         showWaypointDistances = replacement.showWaypointDistances;
@@ -931,7 +923,6 @@ public final class WaypointerConfig {
         showWaypointNames = false;
         showWaypointDistances = false;
         showRouteProgress = false;
-        sharpWaypointEdges = false;
         beaconOpacity = 0.0;
         scaleWaypointTextWithDistance = false;
         matchWaypointTextToWaypointColor = false;
@@ -997,7 +988,6 @@ public final class WaypointerConfig {
         tracerOpacity = defaults.tracerOpacity;
         tracerThickness = defaults.tracerThickness;
         waypointOutlineThickness = defaults.waypointOutlineThickness;
-        sharpWaypointEdges = defaults.sharpWaypointEdges;
         beaconOpacity = defaults.beaconOpacity;
         showWaypointNames = defaults.showWaypointNames;
         showWaypointDistances = defaults.showWaypointDistances;

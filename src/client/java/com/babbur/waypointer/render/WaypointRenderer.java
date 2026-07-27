@@ -11,6 +11,8 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.core.WaypointVisibility;
+import com.babbur.waypointer.dungeon.DungeonPearlTrajectory;
+import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.input.WaypointRepositionMode;
 import com.babbur.waypointer.input.WaypointerKeybinds;
@@ -175,6 +177,7 @@ public final class WaypointRenderer implements HudElement {
 
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
+    private final DungeonConfig dungeonConfig;
 
     /**
      * Reusable scratch buffer for the fallback distance formatter. Safe because
@@ -215,8 +218,14 @@ public final class WaypointRenderer implements HudElement {
             };
 
     public WaypointRenderer(ActiveGroupManager manager, WaypointerConfig config) {
+        this(manager, config, null);
+    }
+
+    public WaypointRenderer(ActiveGroupManager manager, WaypointerConfig config,
+                            DungeonConfig dungeonConfig) {
         this.manager = manager;
         this.config = config;
+        this.dungeonConfig = dungeonConfig;
     }
 
     public void install() {
@@ -253,12 +262,11 @@ public final class WaypointRenderer implements HudElement {
         var groups = manager.activeGroups();
         boolean irisHudFallbackActive = IrisShaderFallback.shouldUse(config);
         RenderDiagnostics.beginFrame(groups, config, irisHudFallbackActive);
-        if (irisHudFallbackActive) return;
 
         if (groups.isEmpty()) return;
 
         WaypointerConfig.BoxStyle style = config.boxStyle();
-        boolean drawLines = style != WaypointerConfig.BoxStyle.FILLED;
+        boolean drawLines = worldBoxOutlinesEnabled(style, irisHudFallbackActive);
         boolean drawGlobalFill = style != WaypointerConfig.BoxStyle.OUTLINED;
         boolean drawFill  = drawGlobalFill || hasFilledSubwaypoint(groups);
         WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
@@ -266,10 +274,15 @@ public final class WaypointRenderer implements HudElement {
         boolean drawBeams = config.beaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF;
         boolean drawTexturedBeams = drawBeams && config.useBeaconBeamTextures();
         boolean drawFlatBeams = drawBeams && !drawTexturedBeams;
-        boolean drawRouteLines = config.showRouteLines();
+        boolean drawRouteLines = config.showRouteLines()
+                || dungeonConfig != null && dungeonConfig.showDungeonRouteLines();
+        boolean drawPearlTrajectories = dungeonConfig != null
+                && dungeonConfig.showPearlTrajectories();
         boolean drawDungeonEntryPaths = config.showDungeonEntryPathToFirstWaypoint();
-        if (!drawLines && !drawFill && !drawPaint && !drawBeams && !drawRouteLines && !drawDungeonEntryPaths) return;
-        if (config.beaconOpacity() <= 0.0 && !drawRouteLines && !drawDungeonEntryPaths) return;
+        if (!drawLines && !drawFill && !drawPaint && !drawBeams && !drawRouteLines
+                && !drawPearlTrajectories && !drawDungeonEntryPaths) return;
+        if (config.beaconOpacity() <= 0.0 && !drawRouteLines
+                && !drawPearlTrajectories && !drawDungeonEntryPaths) return;
         boolean hasDepthCheckedWaypoints = hasDepthCheckedWaypoint(groups);
         boolean hasThroughWallWaypoints = hasThroughWallWaypoint(groups) || drawDungeonEntryPaths;
         if (!hasDepthCheckedWaypoints && !hasThroughWallWaypoints) return;
@@ -398,7 +411,8 @@ public final class WaypointRenderer implements HudElement {
                 }
             });
         }
-        if ((drawLines || drawRouteLines || drawDungeonEntryPaths) && hasThroughWallWaypoints) {
+        if ((drawLines || drawRouteLines || drawPearlTrajectories || drawDungeonEntryPaths)
+                && hasThroughWallWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
             List<DungeonEntryPathSubmission> dungeonEntryPaths = drawDungeonEntryPaths
                     ? prepareDungeonEntryPaths(groups, playerPos, level)
@@ -407,8 +421,14 @@ public final class WaypointRenderer implements HudElement {
                 if (drawDungeonEntryPaths) {
                     emitDungeonEntryPaths(submittedPose, lines, dungeonEntryPaths);
                 }
+                if (drawPearlTrajectories) {
+                    for (WaypointGroup group : groups) {
+                        emitPearlTrajectory(submittedPose, lines, group);
+                    }
+                }
                 if (drawRouteLines) {
                     for (WaypointGroup g : groups) {
+                        if (!routeLinesEnabled(g, config, dungeonConfig)) continue;
                         emitRouteLines(submittedPose, lines, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
                                 false, mc, level, screenW, screenH);
@@ -432,6 +452,7 @@ public final class WaypointRenderer implements HudElement {
             RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
                 if (drawRouteLines) {
                     for (WaypointGroup g : groups) {
+                        if (!routeLinesEnabled(g, config, dungeonConfig)) continue;
                         emitRouteLines(submittedPose, lines, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
                                 true, mc, level, screenW, screenH);
@@ -574,6 +595,46 @@ public final class WaypointRenderer implements HudElement {
                 && DungeonRoomData.definition(group.zoneId()) != null;
     }
 
+    private void emitPearlTrajectory(PoseStack ps, VertexConsumer lines, WaypointGroup group) {
+        if (!isDungeonRoomRoute(group) || group.isComplete()) return;
+        int launchIndex = group.currentIndex();
+        int targetIndex = launchIndex + 1;
+        if (launchIndex < 0 || targetIndex >= group.size()) return;
+        Waypoint launch = group.get(launchIndex);
+        Waypoint target = group.get(targetIndex);
+        if (!launch.hasFlag(Waypoint.FLAG_DUNGEON_PEARL)
+                || !target.hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)) {
+            return;
+        }
+
+        Vec3 start = new Vec3(launch.centerX(), launch.y() + 1.62, launch.centerZ());
+        Vec3 end = new Vec3(target.centerX(), target.y() + 0.2, target.centerZ());
+        List<Vec3> points = DungeonPearlTrajectory.points(start, end);
+        float width = effectiveOutlineThickness();
+        for (int i = 1; i < points.size(); i++) {
+            Vec3 a = points.get(i - 1);
+            Vec3 b = points.get(i);
+            RenderHelpers.emitLine(lines, ps,
+                    (float) a.x, (float) a.y, (float) a.z,
+                    (float) b.x, (float) b.y, (float) b.z,
+                    launch.color(), 0.9f, width);
+        }
+    }
+
+    static boolean routeLinesEnabled(WaypointGroup group, WaypointerConfig config,
+                                     DungeonConfig dungeonConfig) {
+        if (isDungeonRoomRoute(group) && dungeonConfig != null) {
+            return dungeonConfig.showDungeonRouteLines();
+        }
+        return config != null && config.showRouteLines();
+    }
+
+    private static boolean isDungeonRoomRoute(WaypointGroup group) {
+        return group != null
+                && !group.temp()
+                && DungeonRoomData.definition(group.zoneId()) != null;
+    }
+
     private void emitRouteLines(PoseStack ps, VertexConsumer lines, WaypointGroup g,
                                 Vec3 camPos, Vec3 playerPos,
                                 double maxStaticDistanceSq, double nearHideDistanceSq,
@@ -585,13 +646,7 @@ public final class WaypointRenderer implements HudElement {
         float width = effectiveOutlineThickness();
         int color = config.routeLineColor();
 
-        forEachRouteLineSegment(
-                g,
-                depthCheckedPass,
-                config.keepSubwaypointsVisibleUntilNextWaypoint(),
-                i -> shouldRenderRouteLineEndpoint(g, i, currentIdx, showCompleted,
-                        camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq),
-                (fromIndex, toIndex) -> {
+        RouteLineSegmentConsumer emitSegment = (fromIndex, toIndex) -> {
             Waypoint a = g.get(fromIndex);
             Waypoint b = g.get(toIndex);
             if (!routeSegmentHasDepthVisibility(a, b, depthCheckedPass, mc, level)) return;
@@ -599,7 +654,19 @@ public final class WaypointRenderer implements HudElement {
                     (float) a.centerX(), (float) a.centerY(), (float) a.centerZ(),
                     (float) b.centerX(), (float) b.centerY(), (float) b.centerZ(),
                     color, alpha, width);
-        });
+        };
+        if (isDungeonRoomRoute(g)) {
+            forEachFocusedDungeonRouteLineSegment(
+                    g, depthCheckedPass, i -> true, emitSegment);
+            return;
+        }
+        forEachRouteLineSegment(
+                g,
+                depthCheckedPass,
+                config.keepSubwaypointsVisibleUntilNextWaypoint(),
+                i -> shouldRenderRouteLineEndpoint(g, i, currentIdx, showCompleted,
+                        camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq),
+                emitSegment);
     }
 
     static void forEachRouteLineSegment(WaypointGroup group,
@@ -629,6 +696,54 @@ public final class WaypointRenderer implements HudElement {
         });
     }
 
+    static void forEachFocusedDungeonRouteLineSegment(WaypointGroup group,
+                                                      boolean depthCheckedPass,
+                                                      IntPredicate endpointVisible,
+                                                      RouteLineSegmentConsumer consumer) {
+        if (group == null || consumer == null) return;
+        int to = group.currentIndex();
+        int from = focusedDungeonRoutePreviousIndex(group);
+        if (from < 0 || to < 0 || to >= group.size()) return;
+        if (endpointVisible != null
+                && (!endpointVisible.test(from) || !endpointVisible.test(to))) {
+            return;
+        }
+        Waypoint a = group.get(from);
+        Waypoint b = group.get(to);
+        if (routeSegmentMatchesDepthPass(a, b, depthCheckedPass)) {
+            consumer.accept(from, to);
+        }
+    }
+
+    static int focusedDungeonRoutePreviousIndex(WaypointGroup group) {
+        if (group == null) return -1;
+        int current = group.currentIndex();
+        if (current <= 0 || current >= group.size()) return -1;
+        if (group.isSubwaypoint(current)) {
+            int previous = current - 1;
+            while (previous >= 0
+                    && group.get(previous).hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)) {
+                previous--;
+            }
+            return previous;
+        }
+
+        int previous = current - 1;
+        while (previous >= 0
+                && group.get(previous).hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)) {
+            previous--;
+        }
+        if (previous >= 0 && group.isSubwaypoint(previous)) return previous;
+        int activeParent = group.activeSubwaypointParentIndex();
+        return activeParent >= 0 ? activeParent : group.previousMainIndexBefore(current);
+    }
+
+    static boolean isFocusedDungeonRouteLabel(WaypointGroup group, int index) {
+        return group != null
+                && (index == group.currentIndex()
+                || index == focusedDungeonRoutePreviousIndex(group));
+    }
+
     private boolean shouldRenderRouteLineEndpoint(WaypointGroup group, int index, int currentIdx,
                                                   boolean showCompleted, Vec3 camPos,
                                                   Vec3 playerPos, double maxStaticDistanceSq,
@@ -637,6 +752,7 @@ public final class WaypointRenderer implements HudElement {
         if (shouldHideStaticReached(group, index)) return false;
 
         Waypoint waypoint = group.get(index);
+        if (waypoint.hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)) return false;
         if (shouldHideNearPlayer(waypoint, playerPos, nearHideDistanceSq)) return false;
         if (isStaticBeyondDistanceLimit(group, waypoint, camPos, maxStaticDistanceSq)) return false;
 
@@ -751,9 +867,13 @@ public final class WaypointRenderer implements HudElement {
             return true;
         }
 
-        double hitDistanceSq = hit.getLocation().distanceToSqr(from);
-        double targetDistanceSq = target.distanceToSqr(from);
-        return hitDistanceSq + 1.0E-4 >= targetDistanceSq;
+        return lineOfSightHitReachesSample(hit.getLocation(), target);
+    }
+
+    static boolean lineOfSightHitReachesSample(Vec3 hitLocation, Vec3 target) {
+        return hitLocation != null
+                && target != null
+                && hitLocation.distanceToSqr(target) <= 1.0E-4;
     }
 
     static Vec3 lineOfSightSamplePoint(AABB bounds, int sampleIndex) {
@@ -1224,10 +1344,10 @@ public final class WaypointRenderer implements HudElement {
         boolean showNames = config.showWaypointNames();
         boolean showRouteProgress = config.showRouteProgress();
         boolean showDistances = config.showWaypointDistances();
-        boolean drawHudFallback = IrisShaderFallback.shouldUse(config);
+        boolean drawIrisHudBoxes = IrisShaderFallback.shouldUse(config);
         boolean drawEditModeSubtitle = config.showEditModeSubtitle()
                 && WaypointRepositionMode.isEditModeEnabled();
-        if (!showNames && !showRouteProgress && !showDistances && !drawHudFallback
+        if (!showNames && !showRouteProgress && !showDistances && !drawIrisHudBoxes
                 && !drawEditModeSubtitle) return;
 
         var groups = manager.activeGroups();
@@ -1255,8 +1375,8 @@ public final class WaypointRenderer implements HudElement {
         clearLabelCandidates();
         labelCandidateCount = 0;
 
-        if (drawHudFallback && config.beaconOpacity() > 0.0) {
-            drawHudFallbackBoxes(g, mc, level, camPos, playerPos, screenW, screenH, groups,
+        if (drawIrisHudBoxes && config.beaconOpacity() > 0.0) {
+            drawIrisHudBoxes(g, mc, level, camPos, playerPos, screenW, screenH, groups,
                     maxStaticDistanceSq, nearHideDistanceSq);
         }
 
@@ -1287,34 +1407,35 @@ public final class WaypointRenderer implements HudElement {
         return EDIT_MODE_SUBTITLE_BASE_TEXT + " (" + exitKeyName.trim() + " to exit)";
     }
 
-    private void drawHudFallbackBoxes(GuiGraphicsExtractor g, Minecraft mc, ClientLevel level,
-                                      Vec3 camPos, Vec3 playerPos, int screenW, int screenH,
-                                      Iterable<WaypointGroup> groups,
-                                      double maxStaticDistanceSq, double nearHideDistanceSq) {
+    private void drawIrisHudBoxes(GuiGraphicsExtractor g, Minecraft mc, ClientLevel level,
+                                  Vec3 camPos, Vec3 playerPos, int screenW, int screenH,
+                                  Iterable<WaypointGroup> groups,
+                                  double maxStaticDistanceSq, double nearHideDistanceSq) {
         WaypointerConfig.BoxStyle style = hudFallbackBoxStyle(config.boxStyle());
         if (style == WaypointerConfig.BoxStyle.OUTLINED
                 || style == WaypointerConfig.BoxStyle.FILLED_OUTLINED) {
             for (WaypointGroup group : groups) {
-                drawHudFallbackGroupBoxes(g, mc, level, camPos, playerPos, screenW, screenH,
+                drawIrisHudGroupBoxes(g, mc, level, camPos, playerPos, screenW, screenH,
                         group, maxStaticDistanceSq, nearHideDistanceSq);
             }
         }
     }
 
     static WaypointerConfig.BoxStyle hudFallbackBoxStyle(WaypointerConfig.BoxStyle style) {
-        if (style == WaypointerConfig.BoxStyle.FILLED) {
-            // The HUD fallback cannot faithfully preserve translucent 3D faces
-            // after projection. Draw an outline anyway so FILLED users still get
-            // a visible shader-safe marker instead of losing boxes entirely.
-            return WaypointerConfig.BoxStyle.OUTLINED;
-        }
-        return style;
+        return style == WaypointerConfig.BoxStyle.FILLED
+                ? WaypointerConfig.BoxStyle.OUTLINED
+                : style;
     }
 
-    private void drawHudFallbackGroupBoxes(GuiGraphicsExtractor g, Minecraft mc, ClientLevel level,
-                                           Vec3 camPos, Vec3 playerPos, int screenW, int screenH,
-                                           WaypointGroup group, double maxStaticDistanceSq,
-                                           double nearHideDistanceSq) {
+    static boolean worldBoxOutlinesEnabled(WaypointerConfig.BoxStyle style,
+                                           boolean irisHudFallbackActive) {
+        return style != WaypointerConfig.BoxStyle.FILLED && !irisHudFallbackActive;
+    }
+
+    private void drawIrisHudGroupBoxes(GuiGraphicsExtractor g, Minecraft mc, ClientLevel level,
+                                       Vec3 camPos, Vec3 playerPos, int screenW, int screenH,
+                                       WaypointGroup group, double maxStaticDistanceSq,
+                                       double nearHideDistanceSq) {
         int currentIdx = group.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
@@ -1333,7 +1454,7 @@ public final class WaypointRenderer implements HudElement {
             int argb = RenderHelpers.withAlpha(0xFF000000 | (waypoint.color() & 0xFFFFFF), alpha);
             if (!projectBoxCorners(level, waypoint, screenW, screenH)) return;
 
-            double outlineThickness = effectiveOutlineThickness();
+            double outlineThickness = config.waypointOutlineThickness();
             for (int edge = 0; edge < BOX_EDGE_A.length; edge++) {
                 int a = BOX_EDGE_A[edge];
                 int b = BOX_EDGE_B[edge];
@@ -1408,9 +1529,11 @@ public final class WaypointRenderer implements HudElement {
         boolean hasSubwaypoints = group.hasSubwaypoints();
         boolean showRouteProgressForGroup = showRouteProgress && !group.temp();
         String routeProgressText = showRouteProgressForGroup ? routeProgressText(group) : null;
+        boolean dungeonRoomRoute = isDungeonRoomRoute(group);
 
         group.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> {
+            if (dungeonRoomRoute && !isFocusedDungeonRouteLabel(group, i)) return;
             if (shouldHideStaticReached(group, i)) return;
 
             Waypoint w = group.get(i);
@@ -1450,6 +1573,9 @@ public final class WaypointRenderer implements HudElement {
             int nameColor = colorizeNames && showNames
                     ? 0xFF000000 | (w.color() & 0xFFFFFF)
                     : NAME_ARGB;
+            boolean showWaypointName = showNames
+                    && (!dungeonRoomRoute || shouldShowDungeonWaypointName(w));
+            if (!showWaypointName && !showRouteProgressForGroup && !showDistances) return;
 
             if (labelBudget > 0) {
                 LabelCandidate candidate = nextLabelCandidate();
@@ -1459,7 +1585,7 @@ public final class WaypointRenderer implements HudElement {
             }
 
             double rowY = sy;
-            if (showNames) {
+            if (showWaypointName) {
                 String name = labelFor(group, i, w, hasSubwaypoints);
                 drawCenteredLabel(g, font, name, sx, rowY,
                         RenderHelpers.withAlpha(nameColor, alpha), alpha, labelScale);
@@ -1499,7 +1625,9 @@ public final class WaypointRenderer implements HudElement {
                                     boolean showNames, boolean showRouteProgress,
                                     boolean showDistances) {
         double rowY = candidate.screenY;
-        if (showNames) {
+        if (showNames
+                && (!isDungeonRoomRoute(candidate.group)
+                || shouldShowDungeonWaypointName(candidate.waypoint))) {
             String name = labelFor(candidate.group, candidate.index, candidate.waypoint,
                     candidate.hasSubwaypoints);
             drawCenteredLabel(g, font, name, candidate.screenX, rowY,
@@ -1672,6 +1800,10 @@ public final class WaypointRenderer implements HudElement {
         return indexLabel(mainOrdinal);
     }
 
+    static boolean shouldShowDungeonWaypointName(Waypoint waypoint) {
+        return waypoint != null && waypoint.hasName();
+    }
+
     private String translatedName(String raw) {
         // Plain names return the same instance from translate(); skip the map.
         if (raw.indexOf('&') < 0) return raw;
@@ -1717,9 +1849,15 @@ public final class WaypointRenderer implements HudElement {
                                                         State state,
                                                         boolean showCompleted,
                                                         Waypoint waypoint) {
+        if (shouldForceHideReachedWaypoint(index, currentIdx, waypoint)) return true;
         if (state != State.COMPLETED) return false;
-        if (waypoint.hasFlag(Waypoint.FLAG_HIDE_BEACON)) return true;
         return !showCompleted;
+    }
+
+    static boolean shouldForceHideReachedWaypoint(int index, int currentIdx, Waypoint waypoint) {
+        return waypoint != null
+                && waypoint.hasFlag(Waypoint.FLAG_HIDE_BEACON)
+                && index < currentIdx;
     }
 
     private boolean shouldHideStaticReached(WaypointGroup group, int index) {
@@ -1790,23 +1928,23 @@ public final class WaypointRenderer implements HudElement {
 
     static void drawScreenLine(GuiGraphicsExtractor g, double x1, double y1,
                                double x2, double y2, int argb, double thickness) {
-        drawFastScreenLine(g, x1, y1, x2, y2, argb, thickness);
+        drawFastScreenLine(g, x1, y1, x2, y2, argb,
+                crispHudLineThickness(thickness));
     }
 
     private void drawConfiguredScreenLine(GuiGraphicsExtractor g, double x1, double y1,
                                           double x2, double y2, int argb,
                                           double thickness) {
-        double effectiveThickness = config.sharpWaypointEdges()
-                ? Math.max(1.0, Math.floor(thickness))
-                : thickness;
-        drawFastScreenLine(g, x1, y1, x2, y2, argb, effectiveThickness);
+        drawFastScreenLine(g, x1, y1, x2, y2, argb,
+                crispHudLineThickness(thickness));
     }
 
     private float effectiveOutlineThickness() {
-        double thickness = config.waypointOutlineThickness();
-        return (float) (config.sharpWaypointEdges()
-                ? Math.max(1.0, Math.floor(thickness))
-                : thickness);
+        return (float) config.waypointOutlineThickness();
+    }
+
+    static double crispHudLineThickness(double thickness) {
+        return Math.max(1.0, Math.floor(thickness));
     }
 
     private static void drawFastScreenLine(GuiGraphicsExtractor g, double x1, double y1,
@@ -1857,15 +1995,23 @@ public final class WaypointRenderer implements HudElement {
         double length = Math.sqrt(dx * dx + dy * dy);
         if (length < 0.5) return;
 
-        double step = Math.max(1.0, scaledThickness * 0.75);
-        int samples = Math.max(1, (int) Math.ceil(length / step));
+        int samples = screenLineSampleCount(dx, dy);
         int radius = Math.max(0, (int) Math.floor(scaledThickness * 0.5));
+        int lastX = Integer.MIN_VALUE;
+        int lastY = Integer.MIN_VALUE;
         for (int i = 0; i <= samples; i++) {
             double t = i / (double) samples;
             int x = (int) Math.round(x1 + dx * t);
             int y = (int) Math.round(y1 + dy * t);
+            if (x == lastX && y == lastY) continue;
             g.fill(x - radius, y - radius, x + radius + 1, y + radius + 1, argb);
+            lastX = x;
+            lastY = y;
         }
+    }
+
+    static int screenLineSampleCount(double dx, double dy) {
+        return Math.max(1, (int) Math.ceil(Math.max(Math.abs(dx), Math.abs(dy))));
     }
 
     private static int outCode(double x, double y, double minX, double minY,

@@ -623,7 +623,6 @@ class WaypointerConfigTest {
         config.setShowDungeonEntryPathToFollowingWaypoints(true);
         config.setDungeonEntryPathColor(0x0A0B0C);
         config.setRouteLineColor(0x010203);
-        config.setSharpWaypointEdges(true);
         config.setUseBeaconBeamTextures(false);
         config.setEditSounds(false);
         config.setShowEditModeSubtitle(false);
@@ -655,7 +654,6 @@ class WaypointerConfigTest {
         assertTrue(decoded.showDungeonEntryPathToFollowingWaypoints());
         assertEquals(0x0A0B0C, decoded.dungeonEntryPathColor());
         assertEquals(0x010203, decoded.routeLineColor());
-        assertTrue(decoded.sharpWaypointEdges());
         assertFalse(decoded.useBeaconBeamTextures());
         assertFalse(decoded.editSounds());
         assertFalse(decoded.showEditModeSubtitle());
@@ -788,14 +786,24 @@ class WaypointerConfigTest {
     }
 
     @Test
-    void irisHudFallbackDefaultsOffButCanBeEnabled() {
+    void irisHudFallbackDefaultsOnButCanBeDisabled() {
         WaypointerConfig config = new WaypointerConfig();
 
-        assertFalse(config.irisShaderHudFallback());
-
-        config.setIrisShaderHudFallback(true);
-
         assertTrue(config.irisShaderHudFallback());
+
+        config.setIrisShaderHudFallback(false);
+
+        assertFalse(config.irisShaderHudFallback());
+    }
+
+    @Test
+    void schemaFiveEnablesIrisFallbackOnceWithoutOverridingNewOptOuts() {
+        assertTrue(WaypointerConfig.fromJson(
+                "{\"configSchemaVersion\":4,\"irisShaderHudFallback\":false}")
+                .irisShaderHudFallback());
+        assertFalse(WaypointerConfig.fromJson(
+                "{\"configSchemaVersion\":5,\"irisShaderHudFallback\":false}")
+                .irisShaderHudFallback());
     }
 
     @Test
