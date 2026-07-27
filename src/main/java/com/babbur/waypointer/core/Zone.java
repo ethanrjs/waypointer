@@ -43,6 +43,7 @@ public record Zone(String id, String displayName) {
     private static final String MINESHAFT_CRYSTAL_DISPLAY_NAME = "Mineshaft: Crystal";
 
     public static final Zone UNKNOWN = new Zone("unknown", "Unknown");
+    public static final Zone PRIVATE_WORLD = new Zone("private_world", "Private World");
 
     public Zone {
         String rawId = id == null || id.isBlank() ? "unknown" : id;
@@ -431,6 +432,7 @@ public record Zone(String id, String displayName) {
         public static Zone fromId(String id) {
         if (id == null || id.isBlank()) return UNKNOWN;
         String canonical = canonicalId(id);
+        if (PRIVATE_WORLD.id().equals(canonical)) return PRIVATE_WORLD;
         if (MINESHAFT_CRYSTAL_ZONE_ID.equals(canonical)) {
             return new Zone(MINESHAFT_CRYSTAL_ZONE_ID, MINESHAFT_CRYSTAL_DISPLAY_NAME);
         }

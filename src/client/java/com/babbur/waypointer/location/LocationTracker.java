@@ -4,7 +4,9 @@ import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Zone;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
+import net.minecraft.client.Minecraft;
 
 import java.util.function.BooleanSupplier;
 
@@ -47,10 +49,22 @@ public final class LocationTracker {
             Waypointer.LOGGER.info("Location: using scoreboard fallback (hypixel-mod-api missing)");
         }
         source.register(manager::onZoneChanged);
+        ClientTickEvents.END_CLIENT_TICK.register(this::detectPrivateWorld);
     }
 
     static ZoneSource createSource(boolean hypixelApiLoaded) {
         return hypixelApiLoaded ? new HypixelApiZoneSource() : new ScoreboardZoneResolver();
+    }
+
+    private void detectPrivateWorld(Minecraft minecraft) {
+        Zone current = manager.currentZone();
+        manager.onZoneChanged(zoneAfterPrivateWorldCheck(
+                current, minecraft.level != null, minecraft.getCurrentServer() != null));
+    }
+
+    static Zone zoneAfterPrivateWorldCheck(Zone current, boolean worldLoaded, boolean remoteServer) {
+        if (worldLoaded && !remoteServer) return Zone.PRIVATE_WORLD;
+        return Zone.PRIVATE_WORLD.equals(current) ? null : current;
     }
 
     public ZoneSource source() {

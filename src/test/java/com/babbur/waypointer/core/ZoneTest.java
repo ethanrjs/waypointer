@@ -25,6 +25,13 @@ class ZoneTest {
     }
 
     @Test
+    void privateWorldHasStableUserFacingZoneIdentity() {
+        assertEquals(Zone.PRIVATE_WORLD, Zone.fromId("private_world"));
+        assertEquals("Private World", Zone.PRIVATE_WORLD.displayName());
+        assertFalse(Zone.knownZones().contains(Zone.PRIVATE_WORLD));
+    }
+
+    @Test
     void resolve_returnsNullForNonSkyblock() {
         assertNull(Zone.resolve("BEDWARS", "anything", null));
         assertNull(Zone.resolve(null, "anything", null));
