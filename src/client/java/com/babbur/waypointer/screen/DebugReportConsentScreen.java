@@ -59,7 +59,7 @@ public final class DebugReportConsentScreen extends net.minecraft.client.gui.scr
 
     public DebugReportConsentScreen(net.minecraft.client.gui.screens.Screen parent,
                                     Consumer<DebugReportExport.Options> onConfirm) {
-        super(Component.literal("Review Troubleshooting Report"));
+        super(Component.translatable("waypointer.screen.debug_consent.title"));
         this.parent = parent;
         this.onConfirm = onConfirm;
         for (DebugReportExport.Category category : categories) enabled.put(category, true);
@@ -85,23 +85,26 @@ public final class DebugReportConsentScreen extends net.minecraft.client.gui.scr
                     panelX + GAP_SECTION,
                     checkboxY,
                     CHECKBOX_SIZE,
-                    Component.literal(category.label()),
+                    categoryComponent(category),
                     Boolean.TRUE.equals(enabled.get(category)),
                     selected -> enabled.put(category, selected),
-                    Tooltip.create(Component.literal(category.description())));
+                    Tooltip.create(categoryDescriptionComponent(category)));
             checkboxes.add(checkbox);
             addRenderableWidget(checkbox);
         }
 
         int buttonY = panelY + panelH - BTN_H - GAP;
-        int confirmW = Math.max(112, font.width("Confirm & Copy") + 18);
-        int cancelW = Math.max(70, font.width("Cancel") + 18);
+        Component confirmLabel = Component.translatable(
+                "waypointer.screen.debug_consent.confirm");
+        Component cancelLabel = Component.translatable("gui.cancel");
+        int confirmW = Math.max(112, font.width(confirmLabel) + 18);
+        int cancelW = Math.max(70, font.width(cancelLabel) + 18);
         int buttonsW = confirmW + GAP + cancelW;
         int buttonX = panelX + panelW - GAP_SECTION - buttonsW;
         Button confirm = styledButton(buttonX, buttonY, confirmW, BTN_H,
-                Component.literal("Confirm & Copy"), ignored -> confirmAndCopy(), null);
+                confirmLabel, ignored -> confirmAndCopy(), null);
         Button cancel = styledButton(buttonX + confirmW + GAP, buttonY, cancelW, BTN_H,
-                Component.literal("Cancel"), ignored -> onClose(), null);
+                cancelLabel, ignored -> onClose(), null);
         addRenderableWidget(confirm);
         addRenderableWidget(cancel);
     }
@@ -127,8 +130,8 @@ public final class DebugReportConsentScreen extends net.minecraft.client.gui.scr
         g.text(font, getTitle(), titleX, titleY, TEXT, false);
         g.fill(titleX, titleY + font.lineHeight + GAP_TIGHT,
                 panelX + panelW - GAP_SECTION, titleY + font.lineHeight + GAP_TIGHT + 1, ACCENT);
-        String intro = font.plainSubstrByWidth(
-                "Choose what leaves your PC. Everything is included by default.",
+        String intro = font.plainSubstrByWidth(Component.translatable(
+                        "waypointer.screen.debug_consent.intro").getString(),
                 panelW - GAP_SECTION * 2);
         g.text(font, intro, titleX, titleY + font.lineHeight + GAP, TEXT_DIM, false);
 
@@ -139,14 +142,32 @@ public final class DebugReportConsentScreen extends net.minecraft.client.gui.scr
                 g.fill(panelX + GAP, rowY, panelX + panelW - GAP, rowY + entryH, SURFACE_SUBTLE);
             }
             int textX = panelX + GAP_SECTION + CHECKBOX_SIZE + GAP;
-            g.text(font, "• " + category.label(), textX, rowY + 2, TEXT, false);
+            g.text(font, Component.translatable("waypointer.screen.debug_consent.category",
+                    categoryComponent(category)), textX, rowY + 2, TEXT, false);
             if (entryH >= 23) {
-                String description = font.plainSubstrByWidth(category.description(),
+                String description = font.plainSubstrByWidth(
+                        categoryDescriptionComponent(category).getString(),
                         panelX + panelW - GAP_SECTION - textX);
                 g.text(font, description, textX, rowY + 13, TEXT_MUTED, false);
             }
         }
         super.extractRenderState(g, mouseX, mouseY, partial);
+    }
+
+    private static Component categoryComponent(DebugReportExport.Category category) {
+        return Component.translatableWithFallback(
+                categoryKey(category, "label"), category.label());
+    }
+
+    private static Component categoryDescriptionComponent(
+            DebugReportExport.Category category) {
+        return Component.translatableWithFallback(
+                categoryKey(category, "description"), category.description());
+    }
+
+    private static String categoryKey(DebugReportExport.Category category, String suffix) {
+        return "waypointer.screen.debug_consent.category."
+                + category.name().toLowerCase(java.util.Locale.ROOT) + "." + suffix;
     }
 
     @Override

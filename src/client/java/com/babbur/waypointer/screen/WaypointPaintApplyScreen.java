@@ -44,7 +44,7 @@ public final class WaypointPaintApplyScreen extends Screen {
     private int selectedRow;
 
     WaypointPaintApplyScreen(WaypointPainterScreen painter, ActiveGroupManager manager) {
-        super(Component.literal("Apply to..."));
+        super(Component.translatable("waypointer.screen.paint_apply.title"));
         this.painter = painter;
         this.manager = manager;
     }
@@ -59,7 +59,7 @@ public final class WaypointPaintApplyScreen extends Screen {
             buildGroupSearch();
         }
         addRenderableWidget(styledButton(PAD_OUTER, height - FOOTER_H, 64, BTN_H,
-                Component.literal("Back"), b -> goBack(), null));
+                Component.translatable("gui.back"), b -> goBack(), null));
     }
 
     private void buildChoiceButtons() {
@@ -67,13 +67,13 @@ public final class WaypointPaintApplyScreen extends Screen {
         int x = (width - totalW) / 2;
         int y = Math.max(PAD_OUTER + 48, height / 2 - BTN_H / 2);
         Button all = styledButton(x, y, CHOICE_W, BTN_H,
-                Component.literal("All Waypoints"), b -> applyAll(),
-                Tooltip.create(Component.literal("Apply this paint to every saved route.")));
+                Component.translatable("waypointer.screen.paint_apply.all"), b -> applyAll(),
+                Tooltip.create(Component.translatable("waypointer.screen.paint_apply.all.tooltip")));
         all.active = !eligibleGroups(manager).isEmpty();
         addRenderableWidget(all);
         Button pick = styledButton(x + CHOICE_W + GAP_SECTION, y, CHOICE_W, BTN_H,
-                Component.literal("Pick Group..."), b -> showGroups(),
-                Tooltip.create(Component.literal("Search saved routes and apply to one group.")));
+                Component.translatable("waypointer.screen.paint_apply.pick"), b -> showGroups(),
+                Tooltip.create(Component.translatable("waypointer.screen.paint_apply.pick.tooltip")));
         pick.active = all.active;
         addRenderableWidget(pick);
     }
@@ -83,10 +83,10 @@ public final class WaypointPaintApplyScreen extends Screen {
         int searchWidth = Math.min(SEARCH_W,
                 Math.max(80, listWidth() - CLEAR_W - GAP_TIGHT));
         searchBox = new EditBox(font, listLeft, listTop() - BTN_H - GAP,
-                searchWidth, BTN_H, Component.literal("Search groups"));
+                searchWidth, BTN_H, Component.translatable("waypointer.screen.paint_apply.search"));
         searchBox.setMaxLength(80);
         searchBox.setValue(searchQuery);
-        searchBox.setHint(Component.literal("Search groups"));
+        searchBox.setHint(Component.translatable("waypointer.screen.paint_apply.search"));
         searchBox.setResponder(value -> {
             searchQuery = value == null ? "" : value;
             scrollOffset = 0;
@@ -96,8 +96,8 @@ public final class WaypointPaintApplyScreen extends Screen {
         addRenderableWidget(searchBox);
         searchClearButton = styledButton(listLeft + searchWidth + GAP_TIGHT,
                 listTop() - BTN_H - GAP, CLEAR_W, BTN_H,
-                Component.literal("Clear"), b -> searchBox.setValue(""),
-                Tooltip.create(Component.literal("Clear group search.")));
+                Component.translatable("waypointer.common.clear"), b -> searchBox.setValue(""),
+                Tooltip.create(Component.translatable("waypointer.screen.paint_apply.clear.tooltip")));
         searchClearButton.active = !searchQuery.isEmpty();
         addRenderableWidget(searchClearButton);
     }
@@ -123,7 +123,9 @@ public final class WaypointPaintApplyScreen extends Screen {
         int maxScroll = maxScroll(groups.size(), bottom - top);
         scrollOffset = MathUtil.clamp(scrollOffset, 0, maxScroll);
         if (groups.isEmpty()) {
-            String empty = searchQuery.isBlank() ? "No saved groups." : "No matching groups.";
+            Component empty = Component.translatable(searchQuery.isBlank()
+                    ? "waypointer.screen.paint_apply.empty"
+                    : "waypointer.screen.paint_apply.empty_search");
             g.text(font, empty, left + GAP, top + GAP, TEXT_DIM, false);
             return;
         }
@@ -149,16 +151,23 @@ public final class WaypointPaintApplyScreen extends Screen {
 
             int textX = left + GAP;
             int rightText = right - GAP;
-            String state = active ? "Active" : group.enabled() ? "Shown" : "Hidden";
+            Component state = Component.translatable(active
+                    ? "waypointer.route_state.active"
+                    : group.enabled() ? "waypointer.route_state.shown" : "waypointer.route_state.hidden");
             int stateColor = active ? ACCENT : group.enabled() ? TEXT_DIM : TEXT_MUTED;
             int stateX = rightText - font.width(state);
             g.text(font, state, stateX, rowY + 5, stateColor, false);
 
-            String name = group.name().isBlank() ? "Unnamed group" : group.name();
+            String name = group.name().isBlank()
+                    ? Component.translatable("waypointer.group.unnamed").getString()
+                    : group.name();
             name = font.plainSubstrByWidth(name, Math.max(20, stateX - GAP - textX));
             g.text(font, name, textX, rowY + 4, TEXT, false);
-            String detail = Zone.fromId(group.zoneId()).displayName()
-                    + "  |  " + group.size() + (group.size() == 1 ? " waypoint" : " waypoints");
+            String detail = Component.translatable("waypointer.screen.paint_apply.detail",
+                    Zone.fromId(group.zoneId()).displayName(),
+                    Component.translatable(group.size() == 1
+                            ? "waypointer.waypoint_count.one"
+                            : "waypointer.waypoint_count.many", group.size())).getString();
             detail = font.plainSubstrByWidth(detail, Math.max(20, rightText - textX));
             g.text(font, detail, textX, rowY + 15, TEXT_MUTED, false);
         }

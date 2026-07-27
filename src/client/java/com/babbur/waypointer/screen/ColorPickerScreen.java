@@ -59,7 +59,7 @@ public final class ColorPickerScreen extends Screen {
     private static final AtomicLong INSTANCE_SEQ = new AtomicLong();
 
     private final Screen parent;
-    private final String title;
+    private final Component pickerTitle;
     private final IntConsumer onPicked;
 
     // Working HSV state. Kept in floats so mid-drag updates are smooth even when
@@ -84,9 +84,13 @@ public final class ColorPickerScreen extends Screen {
     private Drag drag = Drag.NONE;
 
     public ColorPickerScreen(Screen parent, String title, int initialRgb, IntConsumer onPicked) {
-        super(Component.literal(title));
+        this(parent, Component.literal(title), initialRgb, onPicked);
+    }
+
+    public ColorPickerScreen(Screen parent, Component title, int initialRgb, IntConsumer onPicked) {
+        super(title);
         this.parent = parent;
-        this.title = title;
+        this.pickerTitle = title;
         this.onPicked = onPicked;
         float[] hsv = rgbToHsv(initialRgb & 0xFFFFFF);
         this.hue = hsv[0];
@@ -96,6 +100,10 @@ public final class ColorPickerScreen extends Screen {
 
     /** Convenience opener so call sites read like "pick a colour → here's what to do". */
     public static void open(Screen parent, String title, int initialRgb, IntConsumer onPicked) {
+        open(parent, Component.literal(title), initialRgb, onPicked);
+    }
+
+    public static void open(Screen parent, Component title, int initialRgb, IntConsumer onPicked) {
         MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new ColorPickerScreen(parent, title, initialRgb, onPicked));
     }
@@ -113,7 +121,8 @@ public final class ColorPickerScreen extends Screen {
         swatchY = svY;
 
         int hexY = svY + SV_SIZE + GAP;
-        hexBox = new EditBox(font, svX, hexY, SV_SIZE, BTN_H, Component.literal("Hex"));
+        hexBox = new EditBox(font, svX, hexY, SV_SIZE, BTN_H,
+                Component.translatable("waypointer.screen.color_picker.hex"));
         hexBox.setMaxLength(7);
         hexBox.setValue(String.format("#%06X", currentRgb()));
         hexBox.setResponder(v -> {
@@ -136,9 +145,9 @@ public final class ColorPickerScreen extends Screen {
         // the footer is anchored to the bottom of the panel.
         int footerY = panelY + PANEL_H - BTN_H - PAD_OUTER;
         int btnW = 70;
-        addRenderableWidget(Button.builder(Component.literal("Cancel"), b -> onClose())
+        addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), b -> onClose())
                 .bounds(panelX + PANEL_W - PAD_OUTER - btnW * 2 - GAP, footerY, btnW, BTN_H).build());
-        addRenderableWidget(Button.builder(Component.literal("Save"), b -> {
+        addRenderableWidget(Button.builder(Component.translatable("gui.save"), b -> {
             onPicked.accept(currentRgb());
             onClose();
         }).bounds(panelX + PANEL_W - PAD_OUTER - btnW, footerY, btnW, BTN_H).build());
@@ -156,7 +165,7 @@ public final class ColorPickerScreen extends Screen {
         int panelY = (height - PANEL_H) / 2;
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + PANEL_H, SURFACE);
 
-        g.text(font, Component.literal(title), panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
+        g.text(font, pickerTitle, panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
 
         drawSvSquare(g);
         drawHueSlider(g);

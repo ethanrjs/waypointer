@@ -183,6 +183,23 @@ public final class DeveloperModeMonitor {
         return status;
     }
 
+    public synchronized Component statusComponent() {
+        if (!enabled) {
+            return logFile == null
+                    ? Component.translatable("waypointer.debug.status.off")
+                    : Component.translatable(
+                            "waypointer.debug.status.off_last_log", logFile);
+        }
+        var status = Component.translatable(
+                "waypointer.debug.status.on",
+                roomVisits, uniqueRooms.size(), anomalies, logFile);
+        if (!writeFailure.isBlank()) {
+            status.append(Component.translatable(
+                    "waypointer.debug.status.write_error", writeFailure));
+        }
+        return status;
+    }
+
     public synchronized void flushAndShutdown() {
         if (enabled) disable();
         writer.shutdown();
@@ -393,9 +410,9 @@ public final class DeveloperModeMonitor {
         if (!alertedProblems.add(key)) return;
         anomalies++;
         queueEvent(richEvent("detection_anomaly", reason, snapshot, minecraft));
-        sendChat(Component.literal("[Waypointer dev] ").withStyle(ChatFormatting.GOLD)
-                .append(Component.literal(reason + ". Details: " + logFile)
-                        .withStyle(ChatFormatting.YELLOW)));
+        sendChat(Component.translatable(
+                        "waypointer.debug.anomaly", reason, logFile)
+                .withStyle(ChatFormatting.YELLOW));
     }
 
     private JsonObject richEvent(String type,
@@ -491,7 +508,7 @@ public final class DeveloperModeMonitor {
             queuedWrites.decrementAndGet();
             if (!queueWarningSent) {
                 queueWarningSent = true;
-                sendChat(Component.literal("[Waypointer dev] Debug writer queue is full; some events were dropped.")
+                sendChat(Component.translatable("waypointer.debug.writer_queue_full")
                         .withStyle(ChatFormatting.RED));
             }
             return;
@@ -512,7 +529,7 @@ public final class DeveloperModeMonitor {
             long currentSize = Files.exists(file) ? Files.size(file) : 0L;
             if (currentSize + line.getBytes(StandardCharsets.UTF_8).length > MAX_LOG_BYTES) {
                 fullLogFile = file;
-                sendChat(Component.literal("[Waypointer dev] Debug log reached its 2 MiB safety limit.")
+                sendChat(Component.translatable("waypointer.debug.log_size_limit")
                         .withStyle(ChatFormatting.YELLOW));
                 return;
             }
@@ -523,7 +540,7 @@ public final class DeveloperModeMonitor {
             Waypointer.LOGGER.error("Developer mode log write failed", e);
             if (!writeWarningSent) {
                 writeWarningSent = true;
-                sendChat(Component.literal("[Waypointer dev] Debug file write failed; see latest.log.")
+                sendChat(Component.translatable("waypointer.debug.write_failed")
                         .withStyle(ChatFormatting.RED));
             }
         }

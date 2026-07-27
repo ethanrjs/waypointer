@@ -50,7 +50,7 @@ public final class AddTempScreen extends Screen {
     private Button modeBtn;
     private EditBox durationBox;
     public AddTempScreen(Screen parent, ActiveGroupManager manager, WaypointerConfig config) {
-        super(Component.literal("Add Temporary Waypoint"));
+        super(Component.translatable("waypointer.screen.add_temp.title"));
         this.parent = parent;
         this.manager = manager;
         this.config = config;
@@ -72,30 +72,27 @@ public final class AddTempScreen extends Screen {
 
         modeBtn = Button.builder(modeLabel(), this::onModeButtonPressed)
                 .bounds(inner, y, fieldW, BTN_H)
-                .tooltip(Tooltip.create(Component.literal(
-                        "Cycle through expiry modes:\n"
-                      + "TIME: auto-delete after N seconds.\n"
-                      + "REACH: delete when you step inside its radius.\n"
-                      + "LEAVE: delete when you disconnect from the server.\n"
-                      + "All temp waypoints vanish on disconnect regardless.")))
+                .tooltip(Tooltip.create(Component.translatable(
+                        "waypointer.screen.add_temp.mode.tooltip")))
                 .build();
         addRenderableWidget(modeBtn);
         y += BTN_H + GAP;
 
-        durationBox = new EditBox(font, inner, y, fieldW, BTN_H, Component.literal("Duration (sec)"));
+        durationBox = new EditBox(font, inner, y, fieldW, BTN_H,
+                Component.translatable("waypointer.screen.add_temp.duration"));
         durationBox.setMaxLength(5);
         durationBox.setValue(String.valueOf(durationSec));
         durationBox.setResponder(this::onDurationTextChanged);
-        durationBox.setTooltip(Tooltip.create(Component.literal(
-                "Seconds until a TIME-mode temp expires. Ignored for REACH and LEAVE.")));
+        durationBox.setTooltip(Tooltip.create(Component.translatable(
+                "waypointer.screen.add_temp.duration.tooltip")));
         addRenderableWidget(durationBox);
         updateDurationVisibility();
         y += BTN_H + GAP;
 
         int footerY = panelY + PANEL_H - BTN_H - PAD_OUTER / 2;
-        addRenderableWidget(Button.builder(Component.literal("Cancel"), this::onCancelButtonPressed)
+        addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), this::onCancelButtonPressed)
                 .bounds(panelX + PANEL_W - PAD_OUTER - 140 - GAP, footerY, 70, BTN_H).build());
-        addRenderableWidget(Button.builder(Component.literal("Add"), this::onAddButtonPressed)
+        addRenderableWidget(Button.builder(Component.translatable("gui.add"), this::onAddButtonPressed)
                 .bounds(panelX + PANEL_W - PAD_OUTER - 70, footerY, 70, BTN_H).build());
     }
     private void onModeButtonPressed(Button button) {
@@ -122,7 +119,8 @@ public final class AddTempScreen extends Screen {
 
         super.extractRenderState(g, mouseX, mouseY, partial);
         if (!usesDurationField(mode)) {
-            g.text(font, "Duration not used for " + Waypoint.tempModeName(mode),
+            g.text(font, Component.translatable("waypointer.screen.add_temp.duration.unused",
+                            tempModeComponent(mode)),
                     panelX + PAD_OUTER, panelY + 38 + BTN_H + GAP,
                     TEXT_DIM, false);
         }
@@ -139,7 +137,16 @@ public final class AddTempScreen extends Screen {
     }
 
     private Component modeLabel() {
-        return Component.literal("Mode: " + Waypoint.tempModeName(mode));
+        return Component.translatable("waypointer.screen.add_temp.mode", tempModeComponent(mode));
+    }
+
+    private static Component tempModeComponent(int mode) {
+        return Component.translatable(switch (Waypoint.normalizeTempMode(mode)) {
+            case Waypoint.TEMP_TIME -> "waypointer.temp_mode.time";
+            case Waypoint.TEMP_UNTIL_REACHED -> "waypointer.temp_mode.reach";
+            case Waypoint.TEMP_UNTIL_LEAVE -> "waypointer.temp_mode.leave";
+            default -> "waypointer.temp_mode.none";
+        });
     }
 
     static boolean usesDurationField(int tempMode) {

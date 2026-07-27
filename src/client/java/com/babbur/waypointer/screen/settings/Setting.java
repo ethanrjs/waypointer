@@ -52,6 +52,14 @@ public final class Setting {
 
         /** Short label rendered inline on the row. */
         public String chip() { return chip; }
+
+        public String wordTranslationKey() {
+            return "waypointer.settings.impact." + name().toLowerCase(Locale.ROOT) + ".word";
+        }
+
+        public String chipTranslationKey() {
+            return "waypointer.settings.impact." + name().toLowerCase(Locale.ROOT) + ".chip";
+        }
     }
 
     /** One choice of an ENUM entry, in cycle order. */
@@ -158,6 +166,26 @@ public final class Setting {
     public List<EnumOption> enumOptions() { return enumOptions; }
     public String colorPickerTitle() { return colorPickerTitle; }
     public String colorSwatchTooltip() { return colorSwatchTooltip; }
+
+    public String labelTranslationKey() {
+        return "waypointer.settings.setting." + id + ".label";
+    }
+
+    public String tooltipTranslationKey() {
+        return "waypointer.settings.setting." + id + ".tooltip";
+    }
+
+    public String colorPickerTitleTranslationKey() {
+        return "waypointer.settings.setting." + id + ".color_picker_title";
+    }
+
+    public String colorSwatchTooltipTranslationKey() {
+        return "waypointer.settings.setting." + id + ".color_swatch_tooltip";
+    }
+
+    public String enumOptionTranslationKey(int index) {
+        return "waypointer.settings.setting." + id + ".option." + index;
+    }
 
     public Object get(WaypointerConfig config, DungeonConfig dungeon) {
         return getter == null ? null : getter.get(config, dungeon);

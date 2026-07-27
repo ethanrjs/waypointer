@@ -43,27 +43,33 @@ public final class ImportFeedback {
         if (mc == null) return;
 
         WaypointGroup first = imported.get(0);
-        String body = imported.size() == 1
-                ? "\"" + first.name() + "\" -> " + first.waypoints().size() + " waypoint(s)"
-                : imported.size() + " routes added";
+        Component body = Component.translatable(imported.size() == 1
+                ? "waypointer.import.success.one"
+                : "waypointer.import.success.many",
+                imported.size() == 1 ? first.name() : imported.size(),
+                first.waypoints().size());
 
         SystemToast.addOrUpdate(
                 MinecraftCompat.toastManager(mc),
                 SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
-                Component.literal("Import OK" + (source == null ? "" : " (" + source + ")")),
-                Component.literal(body));
+                source == null
+                        ? Component.translatable("waypointer.import.success.title")
+                        : Component.translatable("waypointer.import.success.title.source", source),
+                body);
     }
 
     public static void successDungeonRoutes(int roomCount, int waypointCount, String source) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;
 
-        String body = roomCount + " room(s), " + waypointCount + " secret waypoint(s)";
         SystemToast.addOrUpdate(
                 MinecraftCompat.toastManager(mc),
                 SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
-                Component.literal("Dungeon import OK" + (source == null ? "" : " (" + source + ")")),
-                Component.literal(body));
+                source == null
+                        ? Component.translatable("waypointer.import.dungeon.title")
+                        : Component.translatable("waypointer.import.dungeon.title.source", source),
+                Component.translatable("waypointer.import.dungeon.body",
+                        roomCount, waypointCount));
     }
 
     /**
@@ -78,7 +84,9 @@ public final class ImportFeedback {
         SystemToast.addOrUpdate(
                 MinecraftCompat.toastManager(mc),
                 SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
-                Component.literal("Import failed"),
-                Component.literal(reason == null ? "No waypoints found." : reason));
+                Component.translatable("waypointer.import.failed.title"),
+                reason == null
+                        ? Component.translatable("waypointer.import.failed.empty")
+                        : Component.literal(reason));
     }
 }

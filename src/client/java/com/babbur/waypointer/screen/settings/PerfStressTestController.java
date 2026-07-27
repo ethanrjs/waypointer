@@ -8,6 +8,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.config.WaypointerConfigCodec;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
@@ -73,6 +74,7 @@ public final class PerfStressTestController {
 
     private static String lastReport;
     private static String statusOverride;
+    private static Component statusOverrideComponent;
 
     private PerfStressTestController() {}
 
@@ -89,7 +91,11 @@ public final class PerfStressTestController {
     }
 
     public static synchronized void noteReportCopied() {
-        if (!running) statusOverride = "Report copied to clipboard.";
+        if (!running) {
+            statusOverride = "Report copied to clipboard.";
+            statusOverrideComponent = Component.translatable(
+                    "waypointer.screen.settings.perf.status.copied");
+        }
     }
 
     public static synchronized String statusLine() {
@@ -106,6 +112,23 @@ public final class PerfStressTestController {
                         + "and an adaptive subwaypoint ramp. The settings overlay hides while it runs.");
     }
 
+    public static synchronized Component statusComponent() {
+        if (running) {
+            PerfScenarios.Scenario scenario = scenarios.get(scenarioIndex);
+            long secondsLeft = Math.max(0,
+                    (long) Math.ceil(activeBudget.remainingNanos() / 1e9));
+            return Component.translatable("waypointer.screen.settings.perf.status.testing",
+                    scenarioIndex + 1,
+                    scenarios.size(),
+                    Component.translatable(PerfScenarios.labelTranslationKey(scenario)),
+                    sampling ? Component.empty() : Component.translatable(
+                            "waypointer.screen.settings.perf.status.settling"),
+                    secondsLeft);
+        }
+        if (statusOverrideComponent != null) return statusOverrideComponent;
+        return Component.translatable("waypointer.screen.settings.perf.status.description");
+    }
+
     /** Begin a sweep over the live config. No-op when one is already running. */
     public static synchronized boolean start(WaypointerConfig config) {
         if (running || config == null) return false;
@@ -114,6 +137,8 @@ public final class PerfStressTestController {
         if (player == null || WaypointerClient.manager() == null
                 || WaypointerClient.manager().currentZone() == null) {
             statusOverride = "Enter a world with an active zone before running the test.";
+            statusOverrideComponent = Component.translatable(
+                    "waypointer.screen.settings.perf.status.enter_world");
             return false;
         }
         target = config;
@@ -123,6 +148,7 @@ public final class PerfStressTestController {
         results = new ArrayList<>();
         lastReport = null;
         statusOverride = null;
+        statusOverrideComponent = null;
         running = true;
         activeBudget = ActiveBudget.production();
         stressX = player.getX();
@@ -142,6 +168,8 @@ public final class PerfStressTestController {
             running = false;
             restoreSnapshot();
             statusOverride = "Performance test could not start; settings restored.";
+            statusOverrideComponent = Component.translatable(
+                    "waypointer.screen.settings.perf.status.start_failed");
             return false;
         }
     }
@@ -152,6 +180,8 @@ public final class PerfStressTestController {
         running = false;
         restoreSnapshot();
         statusOverride = "Test cancelled - settings restored.";
+        statusOverrideComponent = Component.translatable(
+                "waypointer.screen.settings.perf.status.cancelled");
         return true;
     }
 
@@ -170,6 +200,8 @@ public final class PerfStressTestController {
             running = false;
             restoreSnapshot();
             statusOverride = "Performance test failed; settings restored.";
+            statusOverrideComponent = Component.translatable(
+                    "waypointer.screen.settings.perf.status.failed");
             return true;
         }
     }
@@ -364,6 +396,9 @@ public final class PerfStressTestController {
         statusOverride = String.format(Locale.ROOT,
                 "Test complete - %d samples in %.1fs. Settings restored; copy the report to share.",
                 results.size(), totalSeconds);
+        statusOverrideComponent = Component.translatable(
+                "waypointer.screen.settings.perf.status.complete",
+                results.size(), String.format(Locale.ROOT, "%.1f", totalSeconds));
     }
 
     private static void finishEarlyForLag(String reason) {
@@ -376,6 +411,9 @@ public final class PerfStressTestController {
         statusOverride = String.format(Locale.ROOT,
                 "Test stopped early after %.1fs: %s. Settings restored; report available.",
                 totalSeconds, reason);
+        statusOverrideComponent = Component.translatable(
+                "waypointer.screen.settings.perf.status.stopped",
+                String.format(Locale.ROOT, "%.1f", totalSeconds), reason);
     }
 
     private static void restoreSnapshot() {
@@ -416,6 +454,8 @@ public final class PerfStressTestController {
             WaypointerConfig recovered = WaypointerConfigCodec.decode(Files.readString(backup).trim());
             config.replaceWith(recovered);
             statusOverride = "Recovered settings from an interrupted performance test.";
+            statusOverrideComponent = Component.translatable(
+                    "waypointer.screen.settings.perf.status.recovered");
             return true;
         } catch (Exception e) {
             Waypointer.LOGGER.warn("Could not recover perf-test settings backup", e);

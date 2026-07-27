@@ -146,7 +146,7 @@ public final class ExportScreen extends Screen {
     private String encodingError = "";
 
     public ExportScreen(Screen parent, WaypointerConfig config, List<WaypointGroup> groups, String subtitle) {
-        super(Component.literal("Export Waypoints"));
+        super(Component.translatable("waypointer.screen.export.title"));
         this.parent = parent;
         this.config = config;
         this.groups = groups;
@@ -157,8 +157,10 @@ public final class ExportScreen extends Screen {
     }
 
     public static void openForGroup(Screen parent, WaypointerConfig config, WaypointGroup group) {
-        String title = "Route: " + routeDisplayName(group)
-                + "  --  " + group.size() + " waypoint" + (group.size() == 1 ? "" : "s");
+        String title = Component.translatable(group.size() == 1
+                ? "waypointer.screen.export.subtitle.route.one"
+                : "waypointer.screen.export.subtitle.route.many",
+                routeDisplayName(group), group.size()).getString();
         MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new ExportScreen(parent, config, List.of(group), title));
     }
@@ -166,8 +168,10 @@ public final class ExportScreen extends Screen {
     public static void openForGroups(Screen parent, WaypointerConfig config,
                                      List<WaypointGroup> groups, String zoneLabel) {
         int totalPts = groups.stream().mapToInt(WaypointGroup::size).sum();
-        String title = "Zone: " + zoneLabel + "  --  " + groups.size() + " route"
-                + (groups.size() == 1 ? "" : "s") + ", " + totalPts + " waypoints";
+        String title = Component.translatable(groups.size() == 1
+                ? "waypointer.screen.export.subtitle.zone.one"
+                : "waypointer.screen.export.subtitle.zone.many",
+                zoneLabel, groups.size(), totalPts).getString();
         MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new ExportScreen(parent, config, groups, title));
     }
@@ -188,13 +192,14 @@ public final class ExportScreen extends Screen {
         int labelY = PAD_OUTER + HEADER_H;
         int labelW = Math.max(80, width - PAD_OUTER * 2 - EXPORT_FOR_W - GAP);
         labelInput = new EditBox(font, PAD_OUTER, labelY, labelW, BTN_H,
-                Component.literal("Label (optional)"));
+                Component.translatable("waypointer.screen.export.label"));
         // MAX_LABEL_CHARS bounds the visible character count; on-the-wire we
         // cap bytes too. The widget cap matches the visible-character cap so
         // users see exactly when they hit the limit instead of being truncated
         // silently at encode time.
         labelInput.setMaxLength(WaypointCodec.Options.MAX_LABEL_CHARS);
-        labelInput.setHint(Component.literal("Label (optional, e.g. 'Ruby Picko Topaz route')").withStyle(ChatFormatting.DARK_GRAY));
+        labelInput.setHint(Component.translatable("waypointer.screen.export.label.hint")
+                .withStyle(ChatFormatting.DARK_GRAY));
         labelInput.setValue(currentLabel);
         labelInput.setResponder(this::onLabelChanged);
         addRenderableWidget(labelInput);
@@ -202,7 +207,8 @@ public final class ExportScreen extends Screen {
         this.exportForButton = GuiTokens.styledButton(
                 PAD_OUTER + labelW + GAP, labelY, EXPORT_FOR_W, BTN_H,
                 exportForButtonLabel(), this::openExportTargetMenu,
-                Tooltip.create(Component.literal("Choose who this export is for")));
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.export.target.tooltip")));
         addRenderableWidget(exportForButton);
         updateLabelInputState();
 
@@ -237,21 +243,26 @@ public final class ExportScreen extends Screen {
         // grouping it with Back makes its scope (the whole screen) clearer.
         int footerY = height - FOOTER_H;
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("Back", this::goBackToParent));
-        left.add(new GuiTokens.ButtonSpec("Reset", this::resetToConfigDefaults));
+        left.add(new GuiTokens.ButtonSpec(
+                Component.translatable("gui.back").getString(), this::goBackToParent));
+        left.add(new GuiTokens.ButtonSpec(
+                Component.translatable("controls.reset").getString(),
+                this::resetToConfigDefaults));
 
         int copyW = 140;
         int codeBlockCopyW = 136;
         int rightClusterW = codeBlockCopyW + GAP + copyW;
         int codeBlockCopyX = width - PAD_OUTER - rightClusterW;
         int copyX = width - PAD_OUTER - copyW;
-        Tooltip codeBlockTooltip = Tooltip.create(Component.literal(
-                "Wraps export code in 3 backticks. Useful for sending waypoints over Discord"));
+        Tooltip codeBlockTooltip = Tooltip.create(Component.translatable(
+                "waypointer.screen.export.copy_code_block.tooltip"));
         this.copyCodeBlockButton = GuiTokens.styledButton(
                 codeBlockCopyX, footerY, codeBlockCopyW, BTN_H,
-                Component.literal("Copy as code block"), this::copyAsCodeBlock, codeBlockTooltip);
+                Component.translatable("waypointer.export.copy_code_block"),
+                this::copyAsCodeBlock, codeBlockTooltip);
         this.copyButton = GuiTokens.styledButton(copyX, footerY, copyW, BTN_H,
-                Component.literal("Copy to Clipboard"), this::copyToClipboard, null);
+                Component.translatable("waypointer.export.copy_clipboard"),
+                this::copyToClipboard, null);
 
         GuiTokens.layoutFooter(width, footerY, left, null, this::addRenderableWidget,
                 font, PAD_OUTER, PAD_OUTER + rightClusterW + GAP_SECTION);
@@ -280,7 +291,9 @@ public final class ExportScreen extends Screen {
             }
             Button b = GuiTokens.styledButton(x, rowY, TOGGLE_W, BTN_H,
                     toggleLabel(spec), new TogglePressHandler(spec),
-                    Tooltip.create(Component.literal(toggleTooltip(spec))));
+                    Tooltip.create(Component.translatable(
+                            toggleTooltipTranslationKey(spec),
+                            Component.translatable(toggleLabelTranslationKey(spec)))));
             b.active = toggleSupported(spec);
             addRenderableWidget(b);
             toggleButtons.add(b);
@@ -299,11 +312,13 @@ public final class ExportScreen extends Screen {
         routePickerToggleButton = GuiTokens.styledButton(
                 toggleX, y, ROUTE_PICKER_TOGGLE_W, BTN_H,
                 routePickerToggleLabel(), this::toggleRoutePicker,
-                Tooltip.create(Component.literal("Show or hide the route selection list")));
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.export.routes.toggle.tooltip")));
         routeSelectAllButton = GuiTokens.styledButton(
                 selectAllX, y, ROUTE_PICKER_SELECT_ALL_W, BTN_H,
-                Component.literal("Select all"), this::selectAllRoutes,
-                Tooltip.create(Component.literal("Include every route in this export")));
+                Component.translatable("waypointer.screen.export.routes.select_all"),
+                this::selectAllRoutes, Tooltip.create(Component.translatable(
+                        "waypointer.screen.export.routes.select_all.tooltip")));
         addRenderableWidget(routePickerToggleButton);
         addRenderableWidget(routeSelectAllButton);
         refreshRoutePickerButtons();
@@ -311,11 +326,26 @@ public final class ExportScreen extends Screen {
 
     private Component toggleLabel(ToggleSpec spec) {
         if (!toggleSupported(spec)) {
-            return Component.literal("[-] " + spec.label).withStyle(ChatFormatting.DARK_GRAY);
+            return Component.translatable("waypointer.screen.export.toggle.unsupported",
+                    Component.translatable(toggleLabelTranslationKey(spec)))
+                    .withStyle(ChatFormatting.DARK_GRAY);
         }
         ChatFormatting fmt = spec.value ? ChatFormatting.AQUA : ChatFormatting.DARK_GRAY;
-        String marker = spec.value ? "[+] " : "[ ] ";
-        return Component.literal(marker + spec.label).withStyle(fmt);
+        return Component.translatable(spec.value
+                ? "waypointer.screen.export.toggle.on"
+                : "waypointer.screen.export.toggle.off",
+                Component.translatable(toggleLabelTranslationKey(spec))).withStyle(fmt);
+    }
+
+    private static String toggleLabelTranslationKey(ToggleSpec spec) {
+        return "waypointer.screen.export.toggle."
+                + spec.kind.name().toLowerCase(Locale.ROOT) + ".label";
+    }
+
+    private String toggleTooltipTranslationKey(ToggleSpec spec) {
+        return "waypointer.screen.export.toggle."
+                + spec.kind.name().toLowerCase(Locale.ROOT)
+                + (toggleSupported(spec) ? ".tooltip" : ".unsupported");
     }
 
     // --- state transitions --------------------------------------------------------------------
@@ -390,7 +420,9 @@ public final class ExportScreen extends Screen {
             ToggleSpec spec = toggleSpecs.get(i);
             Button button = toggleButtons.get(i);
             button.active = toggleSupported(spec);
-            button.setTooltip(Tooltip.create(Component.literal(toggleTooltip(spec))));
+            button.setTooltip(Tooltip.create(Component.translatable(
+                    toggleTooltipTranslationKey(spec),
+                    Component.translatable(toggleLabelTranslationKey(spec)))));
             button.setMessage(toggleLabel(spec));
         }
     }
@@ -405,7 +437,9 @@ public final class ExportScreen extends Screen {
     }
 
     private Component routePickerToggleLabel() {
-        return Component.literal(routePickerExpanded ? "Hide routes" : "Show routes")
+        return Component.translatable(routePickerExpanded
+                ? "waypointer.screen.export.routes.hide"
+                : "waypointer.screen.export.routes.show")
                 .withStyle(ChatFormatting.AQUA);
     }
 
@@ -520,7 +554,10 @@ public final class ExportScreen extends Screen {
 
     private void updateLabelInputState() {
         labelInput.active = exportTarget.supportsLabel();
-        labelInput.setTooltip(Tooltip.create(Component.literal(labelInputTooltipText(exportTarget))));
+        labelInput.setTooltip(Tooltip.create(exportTarget.supportsLabel()
+                ? Component.translatable("waypointer.screen.export.label.tooltip")
+                : Component.translatable("waypointer.screen.export.label.unsupported",
+                        exportTarget.displayName())));
     }
 
     static String labelInputTooltipText(WaypointExportCodec.Target target) {
@@ -530,19 +567,22 @@ public final class ExportScreen extends Screen {
     }
 
     private Component exportForButtonLabel() {
-        return Component.literal("Export for...").withStyle(ChatFormatting.AQUA);
+        return Component.translatable("waypointer.screen.export.target")
+                .withStyle(ChatFormatting.AQUA);
     }
 
     private void copyToClipboard(Button button) {
         minecraft.keyboardHandler.setClipboard(encoded);
         copyFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
-        copyButton.setMessage(Component.literal("Copied!").withStyle(ChatFormatting.GREEN));
+        copyButton.setMessage(Component.translatable("waypointer.common.copied")
+                .withStyle(ChatFormatting.GREEN));
     }
 
     private void copyAsCodeBlock(Button button) {
         minecraft.keyboardHandler.setClipboard(codeBlockPayload(encoded));
         copyCodeBlockFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
-        copyCodeBlockButton.setMessage(Component.literal("Copied!").withStyle(ChatFormatting.GREEN));
+        copyCodeBlockButton.setMessage(Component.translatable("waypointer.common.copied")
+                .withStyle(ChatFormatting.GREEN));
     }
 
     static String codeBlockPayload(String payload) {
@@ -561,7 +601,8 @@ public final class ExportScreen extends Screen {
         g.text(font, subtitle, PAD_OUTER, PAD_OUTER + LINE_H, TEXT_DIM, false);
 
         int settingsY = PAD_OUTER + HEADER_H + BTN_H + GAP;
-        g.text(font, "Export Settings", PAD_OUTER, settingsY, TEXT_DIM, false);
+        g.text(font, Component.translatable("waypointer.screen.export.settings"),
+                PAD_OUTER, settingsY, TEXT_DIM, false);
         int settingsHelpColor = showSubwaypointCompatibilityWarning() ? 0xFFFFB060 : TEXT_MUTED;
         g.text(font, settingsHelpText(), PAD_OUTER, settingsY + LINE_H,
                 settingsHelpColor, false);
@@ -588,11 +629,12 @@ public final class ExportScreen extends Screen {
         long now = System.currentTimeMillis();
         if (copyFeedbackUntil != 0 && now > copyFeedbackUntil) {
             copyFeedbackUntil = 0;
-            copyButton.setMessage(Component.literal("Copy to Clipboard"));
+            copyButton.setMessage(Component.translatable("waypointer.export.copy_clipboard"));
         }
         if (copyCodeBlockFeedbackUntil != 0 && now > copyCodeBlockFeedbackUntil) {
             copyCodeBlockFeedbackUntil = 0;
-            copyCodeBlockButton.setMessage(Component.literal("Copy as code block"));
+            copyCodeBlockButton.setMessage(Component.translatable(
+                    "waypointer.export.copy_code_block"));
         }
     }
 
@@ -600,9 +642,11 @@ public final class ExportScreen extends Screen {
         clampRouteScrollOffset();
 
         int top = routePickerTop();
-        g.text(font, "Routes", PAD_OUTER, top, TEXT_DIM, false);
-        String routeSummary = selectedGroupCount() + " of " + groups.size()
-                + " selected, " + selectedWaypointCount() + " waypoints";
+        g.text(font, Component.translatable("waypointer.screen.export.routes"),
+                PAD_OUTER, top, TEXT_DIM, false);
+        String routeSummary = Component.translatable(
+                "waypointer.screen.export.routes.summary",
+                selectedGroupCount(), groups.size(), selectedWaypointCount()).getString();
         g.text(font, routeSummary, PAD_OUTER, top + LINE_H, TEXT_MUTED, false);
 
         if (!routePickerExpanded) return;
@@ -678,7 +722,8 @@ public final class ExportScreen extends Screen {
         int chars = encoded.length();
         ExportFitSummary fit = exportFitSummary(encoded);
 
-        g.text(font, "Characters: " + chars, x, y, TEXT_DIM, false);
+        g.text(font, Component.translatable("waypointer.export.characters", chars),
+                x, y, TEXT_DIM, false);
 
         int fitY = y + LINE_H;
 
@@ -697,12 +742,16 @@ public final class ExportScreen extends Screen {
 
     private String settingsHelpText() {
         if (showSubwaypointCompatibilityWarning()) {
-            return "Warning: other mods do not support subwaypoints; they export as regular waypoints";
+            return Component.translatable(
+                    "waypointer.screen.export.settings_help.subwaypoints").getString();
         }
         if (exportTarget == WaypointExportCodec.Target.WAYPOINTER) {
-            return "Disabling more can make your export text shorter";
+            return Component.translatable(
+                    "waypointer.screen.export.settings_help.shorter").getString();
         }
-        return "Unavailable options are disabled for " + exportTarget.displayName();
+        return Component.translatable(
+                "waypointer.screen.export.settings_help.unavailable",
+                exportTarget.displayName()).getString();
     }
 
     private boolean showSubwaypointCompatibilityWarning() {
@@ -932,7 +981,7 @@ public final class ExportScreen extends Screen {
         private final ExportScreen owner;
 
         ExportTargetScreen(ExportScreen owner) {
-            super(Component.literal("Export For"));
+            super(Component.translatable("waypointer.screen.export.target.title"));
             this.owner = owner;
         }
 
@@ -944,14 +993,14 @@ public final class ExportScreen extends Screen {
             for (WaypointExportCodec.Target target : WaypointExportCodec.Target.values()) {
                 Button button = GuiTokens.styledButton(x, y, MENU_W, BTN_H,
                         targetLabel(target), new TargetPressHandler(target),
-                        Tooltip.create(Component.literal(targetTooltip(target))));
+                        Tooltip.create(Component.translatable(targetTooltipKey(target))));
                 addRenderableWidget(button);
                 y += BTN_H + GAP;
             }
 
             addRenderableWidget(GuiTokens.styledButton(
                     x, height - FOOTER_H, MENU_W, BTN_H,
-                    Component.literal("Back"), this::returnToOwner, null));
+                    Component.translatable("gui.back"), this::returnToOwner, null));
         }
 
         @Override
@@ -959,7 +1008,9 @@ public final class ExportScreen extends Screen {
             super.extractRenderState(g, mouseX, mouseY, partial);
             int x = (width - MENU_W) / 2;
             g.text(font, getTitle(), x, PAD_OUTER, TEXT, false);
-            g.text(font, "Current: " + owner.exportTarget.displayName(),
+            g.text(font, Component.translatable(
+                            "waypointer.screen.export.target.current",
+                            owner.exportTarget.displayName()),
                     x, PAD_OUTER + LINE_H, TEXT_DIM, false);
         }
 
@@ -977,18 +1028,18 @@ public final class ExportScreen extends Screen {
             boolean selected = target == owner.exportTarget;
             ChatFormatting color = selected ? ChatFormatting.AQUA : ChatFormatting.WHITE;
             String marker = selected ? "[x] " : "[ ] ";
-            return Component.literal(marker + target.displayName()).withStyle(color);
+            return Component.translatable(selected
+                    ? "waypointer.screen.export.target.selected"
+                    : "waypointer.screen.export.target.unselected",
+                    target.displayName()).withStyle(color);
         }
 
-        private static String targetTooltip(WaypointExportCodec.Target target) {
+        private static String targetTooltipKey(WaypointExportCodec.Target target) {
             return switch (target) {
-                case WAYPOINTER -> "Native format. Preserves every enabled Waypointer option.";
-                case SKYBLOCKER -> "For Skyblocker. Preserves coordinates and colors.\n"
-                        + "Subwaypoints export as regular waypoints.";
-                case SKYTILS -> "For Skytils. Preserves coordinates and colors.\n"
-                        + "Subwaypoints export as regular waypoints.";
-                case SKYHANNI -> "For SkyHanni. Preserves coordinates and route order.\n"
-                        + "Subwaypoints export as regular waypoints.";
+                case WAYPOINTER -> "waypointer.screen.export.target.waypointer.tooltip";
+                case SKYBLOCKER -> "waypointer.screen.export.target.skyblocker.tooltip";
+                case SKYTILS -> "waypointer.screen.export.target.skytils.tooltip";
+                case SKYHANNI -> "waypointer.screen.export.target.skyhanni.tooltip";
             };
         }
 
@@ -1043,14 +1094,18 @@ public final class ExportScreen extends Screen {
         public void onPress(Button button) {
             if (!toggleSupported(spec)) {
                 button.active = false;
-                button.setTooltip(Tooltip.create(Component.literal(toggleTooltip(spec))));
+                button.setTooltip(Tooltip.create(Component.translatable(
+                        toggleTooltipTranslationKey(spec),
+                        Component.translatable(toggleLabelTranslationKey(spec)))));
                 button.setMessage(toggleLabel(spec));
                 return;
             }
             spec.value = !spec.value;
             applyToggleValue(spec);
             button.active = toggleSupported(spec);
-            button.setTooltip(Tooltip.create(Component.literal(toggleTooltip(spec))));
+            button.setTooltip(Tooltip.create(Component.translatable(
+                    toggleTooltipTranslationKey(spec),
+                    Component.translatable(toggleLabelTranslationKey(spec)))));
             button.setMessage(toggleLabel(spec));
             reencode();
         }

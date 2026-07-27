@@ -37,10 +37,11 @@ final class DungeonRoomExportScreen extends Screen {
     private long copyCodeBlockFeedbackUntil;
 
     private DungeonRoomExportScreen(Screen parent, String payload, int roomCount, int waypointCount) {
-        super(Component.literal("Export Dungeon Routes"));
+        super(Component.translatable("waypointer.screen.dungeon_export.title"));
         this.parent = parent;
         this.payload = payload == null ? "" : payload;
-        this.subtitle = roomCount + " room(s), " + waypointCount + " secret waypoint(s)";
+        this.subtitle = Component.translatable("waypointer.screen.dungeon_export.subtitle",
+                roomCount, waypointCount).getString();
     }
 
     static void open(Screen parent, String payload, int roomCount, int waypointCount) {
@@ -67,9 +68,9 @@ final class DungeonRoomExportScreen extends Screen {
 
         copyCodeBlockButton = GuiTokens.styledButton(
                 codeBlockCopyX, footerY, codeBlockCopyW, BTN_H,
-                Component.literal("Copy as code block"), this::copyAsCodeBlock, null);
+                Component.translatable("waypointer.export.copy_code_block"), this::copyAsCodeBlock, null);
         copyButton = GuiTokens.styledButton(copyX, footerY, copyW, BTN_H,
-                Component.literal("Copy to Clipboard"), this::copyToClipboard, null);
+                Component.translatable("waypointer.export.copy_clipboard"), this::copyToClipboard, null);
         addRenderableWidget(copyCodeBlockButton);
         addRenderableWidget(copyButton);
     }
@@ -81,13 +82,15 @@ final class DungeonRoomExportScreen extends Screen {
     private void copyToClipboard(Button button) {
         minecraft.keyboardHandler.setClipboard(payload);
         copyFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
-        copyButton.setMessage(Component.literal("Copied!").withStyle(ChatFormatting.GREEN));
+        copyButton.setMessage(Component.translatable("waypointer.common.copied")
+                .withStyle(ChatFormatting.GREEN));
     }
 
     private void copyAsCodeBlock(Button button) {
         minecraft.keyboardHandler.setClipboard(ExportScreen.codeBlockPayload(payload));
         copyCodeBlockFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
-        copyCodeBlockButton.setMessage(Component.literal("Copied!").withStyle(ChatFormatting.GREEN));
+        copyCodeBlockButton.setMessage(Component.translatable("waypointer.common.copied")
+                .withStyle(ChatFormatting.GREEN));
     }
 
     @Override
@@ -100,12 +103,14 @@ final class DungeonRoomExportScreen extends Screen {
 
         int y = PAD_OUTER + LINE_H * 3;
         var fit = ExportScreen.exportFitSummary(payload);
-        g.text(font, "Characters: " + payload.length(), PAD_OUTER, y, TEXT_DIM, false);
+        g.text(font, Component.translatable("waypointer.export.characters", payload.length()),
+                PAD_OUTER, y, TEXT_DIM, false);
         int fitColor = fit.chatOk() ? 0xFF88DD88 : 0xFFDD7070;
         g.text(font, fit.message(), PAD_OUTER, y + LINE_H, fitColor, false);
 
         y += LINE_H * 2 + GAP_SECTION;
-        g.text(font, "Export Preview (Waypointer dungeon routes)", PAD_OUTER, y, TEXT_DIM, false);
+        g.text(font, Component.translatable("waypointer.screen.dungeon_export.preview"),
+                PAD_OUTER, y, TEXT_DIM, false);
         y += LINE_H;
         drawPreview(g, PAD_OUTER, y, width - PAD_OUTER, height - FOOTER_H - GAP);
     }
@@ -114,11 +119,11 @@ final class DungeonRoomExportScreen extends Screen {
         long now = System.currentTimeMillis();
         if (copyFeedbackUntil != 0 && now > copyFeedbackUntil) {
             copyFeedbackUntil = 0;
-            copyButton.setMessage(Component.literal("Copy to Clipboard"));
+            copyButton.setMessage(Component.translatable("waypointer.export.copy_clipboard"));
         }
         if (copyCodeBlockFeedbackUntil != 0 && now > copyCodeBlockFeedbackUntil) {
             copyCodeBlockFeedbackUntil = 0;
-            copyCodeBlockButton.setMessage(Component.literal("Copy as code block"));
+            copyCodeBlockButton.setMessage(Component.translatable("waypointer.export.copy_code_block"));
         }
     }
 
