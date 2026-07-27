@@ -38,6 +38,14 @@ public final class PerfScenarios {
 
     private PerfScenarios() {}
 
+    public static String labelTranslationKey(Scenario scenario) {
+        return "waypointer.settings.perf.scenario." + scenario.id() + ".label";
+    }
+
+    public static String descriptionTranslationKey(Scenario scenario) {
+        return "waypointer.settings.perf.scenario." + scenario.id() + ".description";
+    }
+
     public static List<Scenario> all() {
         return List.of(
                 new Scenario("hidden", "Waypoints hidden (baseline)",
@@ -50,12 +58,11 @@ public final class PerfScenarios {
                 new Scenario("boxes-outlined", "Boxes: outlined",
                         "outlined boxes only; labels/tracers/beams/lines off",
                         PerfScenarios::base),
-                new Scenario("boxes-filled", "Boxes: filled + outline, sharp edges",
-                        "filled+outlined boxes with sharp edges; everything else off",
+                new Scenario("boxes-filled", "Boxes: filled + outline",
+                        "filled+outlined boxes; everything else off",
                         c -> {
                             base(c);
                             c.setBoxStyle(WaypointerConfig.BoxStyle.FILLED_OUTLINED);
-                            c.setSharpWaypointEdges(true);
                         }),
                 new Scenario("labels-names", "Labels: names",
                         "name labels only",
@@ -216,7 +223,6 @@ public final class PerfScenarios {
         c.setShowDungeonEntryPathToFirstWaypoint(false);
         c.setShowDungeonEntryPathToFollowingWaypoints(false);
         c.setBoxStyle(WaypointerConfig.BoxStyle.OUTLINED);
-        c.setSharpWaypointEdges(false);
         c.setHideWaypointsNearPlayer(false);
         c.setShowCompleted(true);
         c.setMaxWaypointLabels(0);

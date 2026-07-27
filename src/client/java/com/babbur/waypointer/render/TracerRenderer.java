@@ -9,6 +9,8 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointVisibility;
+import com.babbur.waypointer.dungeon.config.DungeonConfig;
+import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
@@ -62,13 +64,20 @@ public final class TracerRenderer implements HudElement {
 
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
+    private final DungeonConfig dungeonConfig;
     private final float[] tracerOriginDelta = new float[3];
     private final WorldScreenProjector projector = new WorldScreenProjector();
     private final double[] screenScratch = new double[2];
 
     public TracerRenderer(ActiveGroupManager manager, WaypointerConfig config) {
+        this(manager, config, null);
+    }
+
+    public TracerRenderer(ActiveGroupManager manager, WaypointerConfig config,
+                          DungeonConfig dungeonConfig) {
         this.manager = manager;
         this.config = config;
+        this.dungeonConfig = dungeonConfig;
     }
 
     public void install() {
@@ -82,7 +91,8 @@ public final class TracerRenderer implements HudElement {
         var groups = manager.activeGroups();
         if (groups.isEmpty()) return;
         boolean tempFocus = manager.tempWaypointFocusActive();
-        if (!tempFocus && !config.showTracer()) {
+        if (!tempFocus && groups.stream().noneMatch(
+                group -> tracersEnabled(group, config, dungeonConfig))) {
             RenderDiagnostics.recordNoStraightTracer(groups, "tracer disabled");
             return;
         }
@@ -165,6 +175,10 @@ public final class TracerRenderer implements HudElement {
     private Waypoint straightTracerTarget(WaypointGroup group, boolean tempFocus,
                                           LocalPlayer player, double nearHideDistanceSq,
                                           boolean recordDecision) {
+        if (!tempFocus && !tracersEnabled(group, config, dungeonConfig)) {
+            if (recordDecision) RenderDiagnostics.recordNoStraightTracer(group, "tracer disabled");
+            return null;
+        }
         if (RenderDiagnostics.shouldSuppressStraightTracer(group)) {
             if (recordDecision) RenderDiagnostics.recordStraightTracerSuppressed(group);
             return null;
@@ -196,10 +210,10 @@ public final class TracerRenderer implements HudElement {
         if (!IrisShaderFallback.shouldUse(config)) return;
 
         var groups = manager.activeGroups();
-        RenderDiagnostics.beginFrame(groups, config, true);
         if (groups.isEmpty()) return;
         boolean tempFocus = manager.tempWaypointFocusActive();
-        if (!tempFocus && !config.showTracer()) {
+        if (!tempFocus && groups.stream().noneMatch(
+                group -> tracersEnabled(group, config, dungeonConfig))) {
             RenderDiagnostics.recordNoStraightTracer(groups, "tracer disabled");
             return;
         }
@@ -229,22 +243,9 @@ public final class TracerRenderer implements HudElement {
         double thickness = config.tracerThickness();
 
         for (WaypointGroup group : groups) {
-            if (!tempFocus
-                    && config.hideTracerOnStaticRoutes()
-                    && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
-                RenderDiagnostics.recordNoStraightTracer(group, "static-route tracers hidden");
-                continue;
-            }
-
-            Waypoint target = group.current();
-            if (target == null) {
-                RenderDiagnostics.recordNoStraightTracer(group, "no current target");
-                continue;
-            }
-            if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) {
-                RenderDiagnostics.recordNoStraightTracer(group, "straight tracer hidden near player");
-                continue;
-            }
+            Waypoint target = straightTracerTarget(
+                    group, tempFocus, player, nearHideDistanceSq, true);
+            if (target == null) continue;
             if (!projector.project(target.centerX(), target.centerY(), target.centerZ(),
                     screenW, screenH, screenScratch)) {
                 projectOffscreenTarget(camera, target, screenW, screenH, screenScratch);
@@ -256,6 +257,17 @@ public final class TracerRenderer implements HudElement {
                     screenScratch[0], screenScratch[1], argb, thickness);
             RenderDiagnostics.recordStraightTracerSubmitted(group);
         }
+    }
+
+    static boolean tracersEnabled(WaypointGroup group, WaypointerConfig config,
+                                  DungeonConfig dungeonConfig) {
+        if (group != null
+                && !group.temp()
+                && DungeonRoomData.definition(group.zoneId()) != null
+                && dungeonConfig != null) {
+            return dungeonConfig.showDungeonTracers();
+        }
+        return config != null && config.showTracer();
     }
 
     private static void projectOffscreenTarget(Camera camera, Waypoint target,

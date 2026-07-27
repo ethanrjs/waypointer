@@ -4,6 +4,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
+import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 import org.junit.jupiter.api.Test;
@@ -85,6 +86,40 @@ class WaypointRendererTest {
 
         assertEquals(List.of("0-2"), routeLineSegments(group, true));
         assertEquals(List.of(), routeLineSegments(group, false));
+    }
+
+    @Test
+    void focusedDungeonConnectorFollowsMineChildrenOneSegmentAtATime() {
+        int mineFlags = Waypoint.FLAG_SKIP_ON_MINE;
+        WaypointGroup group = groupWith(
+                waypointAt(0, 64, 0, mineFlags),
+                waypointAt(1, 64, 0, mineFlags | Waypoint.FLAG_SUBWAYPOINT),
+                waypointAt(2, 64, 0, mineFlags | Waypoint.FLAG_SUBWAYPOINT),
+                waypointAt(3, 64, 0, 0));
+
+        assertEquals(List.of(), focusedDungeonRouteLineSegments(group, false));
+        group.advancePast(0);
+        assertEquals(List.of("0-1"), focusedDungeonRouteLineSegments(group, false));
+        group.advancePast(1);
+        assertEquals(List.of("1-2"), focusedDungeonRouteLineSegments(group, false));
+        group.advancePast(2);
+        assertEquals(List.of("2-3"), focusedDungeonRouteLineSegments(group, false));
+    }
+
+    @Test
+    void dungeonLabelsOnlySurfaceTheFocusedPairAndNeverInventNumericNames() {
+        WaypointGroup group = groupWith(waypoint(0), waypoint(0), waypoint(0));
+
+        assertTrue(WaypointRenderer.isFocusedDungeonRouteLabel(group, 0));
+        assertFalse(WaypointRenderer.isFocusedDungeonRouteLabel(group, 1));
+        group.advancePast(0);
+        assertTrue(WaypointRenderer.isFocusedDungeonRouteLabel(group, 0));
+        assertTrue(WaypointRenderer.isFocusedDungeonRouteLabel(group, 1));
+        assertFalse(WaypointRenderer.isFocusedDungeonRouteLabel(group, 2));
+
+        assertFalse(WaypointRenderer.shouldShowDungeonWaypointName(waypoint(0)));
+        assertTrue(WaypointRenderer.shouldShowDungeonWaypointName(
+                new Waypoint(1, 64, 1, "TP", Waypoint.DEFAULT_COLOR, 0, 0.0)));
     }
 
     @Test
@@ -189,6 +224,16 @@ class WaypointRendererTest {
     }
 
     @Test
+    void lineOfSightAcceptsAHitAtTheSampleIndependentOfCameraDistance() {
+        var sample = new net.minecraft.world.phys.Vec3(10.5, 64.0, -4.5);
+
+        assertTrue(WaypointRenderer.lineOfSightHitReachesSample(
+                new net.minecraft.world.phys.Vec3(10.5, 63.995, -4.5), sample));
+        assertFalse(WaypointRenderer.lineOfSightHitReachesSample(
+                new net.minecraft.world.phys.Vec3(10.5, 63.98, -4.5), sample));
+    }
+
+    @Test
     void waypointBoxBoundsAlignsTinyFallbackToSixteenthTextureCell() {
         int flags = Waypoint.FLAG_SUBWAYPOINT | Waypoint.FLAG_SMALL_SUBWAYPOINT;
         Waypoint smallSubwaypoint = new Waypoint(10, 64, -5,
@@ -260,13 +305,25 @@ class WaypointRendererTest {
     }
 
     @Test
-    void hudFallbackDowngradesFilledStyleToOutlinedMarkers() {
+    void irisFallbackMovesWaypointOutlinesToTheHudWithoutSuppressingFills() {
+        assertTrue(WaypointRenderer.worldBoxOutlinesEnabled(
+                WaypointerConfig.BoxStyle.OUTLINED, false));
+        assertFalse(WaypointRenderer.worldBoxOutlinesEnabled(
+                WaypointerConfig.BoxStyle.OUTLINED, true));
+        assertFalse(WaypointRenderer.worldBoxOutlinesEnabled(
+                WaypointerConfig.BoxStyle.FILLED, false));
         assertEquals(WaypointerConfig.BoxStyle.OUTLINED,
                 WaypointRenderer.hudFallbackBoxStyle(WaypointerConfig.BoxStyle.FILLED));
-        assertEquals(WaypointerConfig.BoxStyle.OUTLINED,
-                WaypointRenderer.hudFallbackBoxStyle(WaypointerConfig.BoxStyle.OUTLINED));
         assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED,
-                WaypointRenderer.hudFallbackBoxStyle(WaypointerConfig.BoxStyle.FILLED_OUTLINED));
+                WaypointRenderer.hudFallbackBoxStyle(
+                        WaypointerConfig.BoxStyle.FILLED_OUTLINED));
+    }
+
+    @Test
+    void irisHudLinesUseIntegerWidthAndDenseSampling() {
+        assertEquals(3.0, WaypointRenderer.crispHudLineThickness(3.75));
+        assertEquals(100, WaypointRenderer.screenLineSampleCount(100.0, 0.0));
+        assertEquals(70, WaypointRenderer.screenLineSampleCount(70.0, 70.0));
     }
 
     @Test
@@ -308,6 +365,40 @@ class WaypointRendererTest {
         assertFalse(WaypointRenderer.shouldRenderDungeonEntryPath(group, true));
     }
 
+    @Test
+    void hideBeaconWaypointsDisappearAsSoonAsProgressMovesPastThem() {
+        Waypoint hidden = waypoint(Waypoint.FLAG_HIDE_BEACON);
+
+        assertFalse(WaypointRenderer.shouldForceHideReachedWaypoint(1, 1, hidden));
+        assertTrue(WaypointRenderer.shouldForceHideReachedWaypoint(1, 2, hidden));
+        assertFalse(WaypointRenderer.shouldForceHideReachedWaypoint(1, 2, waypoint(0)));
+    }
+
+    @Test
+    void dungeonLinesAndTracersUseDungeonDefaultsIndependently() {
+        WaypointerConfig config = new WaypointerConfig();
+        DungeonConfig dungeonConfig = new DungeonConfig();
+        WaypointGroup normal = groupWith(waypoint(0));
+        WaypointGroup dungeon = groupWith(waypoint(0));
+        dungeon.setZoneId("altar");
+
+        config.setShowRouteLines(false);
+        config.setShowTracer(true);
+        assertFalse(WaypointRenderer.routeLinesEnabled(normal, config, dungeonConfig));
+        assertTrue(WaypointRenderer.routeLinesEnabled(dungeon, config, dungeonConfig));
+        assertTrue(TracerRenderer.tracersEnabled(normal, config, dungeonConfig));
+        assertFalse(TracerRenderer.tracersEnabled(dungeon, config, dungeonConfig));
+
+        config.setShowRouteLines(true);
+        config.setShowTracer(false);
+        dungeonConfig.setShowDungeonRouteLines(false);
+        dungeonConfig.setShowDungeonTracers(true);
+        assertTrue(WaypointRenderer.routeLinesEnabled(normal, config, dungeonConfig));
+        assertFalse(WaypointRenderer.routeLinesEnabled(dungeon, config, dungeonConfig));
+        assertFalse(TracerRenderer.tracersEnabled(normal, config, dungeonConfig));
+        assertTrue(TracerRenderer.tracersEnabled(dungeon, config, dungeonConfig));
+    }
+
     private static WaypointGroup groupWith(Waypoint... waypoints) {
         WaypointGroup group = WaypointGroup.create("Render Test", "hub");
         for (Waypoint waypoint : waypoints) {
@@ -327,6 +418,15 @@ class WaypointRendererTest {
     private static List<String> routeLineSegments(WaypointGroup group, boolean depthCheckedPass) {
         List<String> segments = new ArrayList<>();
         WaypointRenderer.forEachRouteLineSegment(group, depthCheckedPass, i -> true,
+                (from, to) -> segments.add(from + "-" + to));
+        return segments;
+    }
+
+    private static List<String> focusedDungeonRouteLineSegments(
+            WaypointGroup group, boolean depthCheckedPass) {
+        List<String> segments = new ArrayList<>();
+        WaypointRenderer.forEachFocusedDungeonRouteLineSegment(
+                group, depthCheckedPass, i -> true,
                 (from, to) -> segments.add(from + "-" + to));
         return segments;
     }
