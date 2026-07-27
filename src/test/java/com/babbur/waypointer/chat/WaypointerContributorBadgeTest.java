@@ -54,6 +54,41 @@ class WaypointerContributorBadgeTest {
     }
 
     @Test
+    void addsBadgeToContributorChatWithoutANumericLevel() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        Component plain = WaypointerContributorBadge.apply(
+                Component.literal("Babbur: hi"), config);
+        Component ranked = WaypointerContributorBadge.apply(
+                Component.literal("[MVP++] Babbur: hi"), config);
+        Component vanilla = WaypointerContributorBadge.apply(
+                Component.literal("<Babbur> hi"), config);
+
+        assertEquals("[WP] Babbur: hi", plain.getString());
+        assertEquals("[WP] [MVP++] Babbur: hi", ranked.getString());
+        assertEquals("[WP] <Babbur> hi", vanilla.getString());
+    }
+
+    @Test
+    void playerNameUsesProfileIdentityAndDoesNotDuplicateTheBadge() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        Component rankOnly = WaypointerContributorBadge.applyPlayerName(
+                Component.literal("[MVP++] Babbur"), "Babbur", config);
+        Component withLevel = WaypointerContributorBadge.applyPlayerName(
+                Component.literal("[338] Babbur"), "Babbur", config);
+        Component alreadyBadged = WaypointerContributorBadge.applyPlayerName(
+                Component.literal("[WP] Babbur"), "Babbur", config);
+        Component wrongProfile = WaypointerContributorBadge.applyPlayerName(
+                Component.literal("Babbur"), "SomeoneElse", config);
+
+        assertEquals("[WP] [MVP++] Babbur", rankOnly.getString());
+        assertEquals("[WP] Babbur", withLevel.getString());
+        assertEquals("[WP] Babbur", alreadyBadged.getString());
+        assertEquals("Babbur", wrongProfile.getString());
+    }
+
+    @Test
     void preservesExistingColorsOutsideLevelBadge() {
         WaypointerConfig config = new WaypointerConfig();
         Component message = Component.literal("[338] ").withStyle(ChatFormatting.GOLD)
