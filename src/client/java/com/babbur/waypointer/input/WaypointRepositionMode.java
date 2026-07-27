@@ -9,6 +9,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.dungeon.DungeonItemIdentity;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
@@ -33,6 +34,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
@@ -69,46 +71,48 @@ public final class WaypointRepositionMode {
     private static final double EDIT_PICK_RANGE = 512.0;
     private static final double EDIT_PICK_PADDING = 0.18;
     private static final double RAY_AXIS_EPSILON = 1.0E-7;
-    private static final Component HELP_MOVE = Component.literal(
-            "Left click to set the new position.")
+    private static final Component HELP_MOVE = Component.translatable(
+            "waypointer.input.reposition.move")
             .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_MOVE_PRECISE = Component.literal(
-            "Left click to place the small waypoint at the cursor, snapped to 1/16 blocks.")
+    private static final Component HELP_MOVE_PRECISE = Component.translatable(
+            "waypointer.input.reposition.move_precise")
             .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_ADD_WHERE_LOOKING = Component.literal(
-            "Left click to place and name the waypoint.")
+    private static final Component HELP_ADD_WHERE_LOOKING = Component.translatable(
+            "waypointer.input.reposition.add_named")
             .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_EDIT_ON = Component.literal(
-            "Edit mode enabled. Left click a waypoint to move it. Right click adds a waypoint.")
+    private static final Component HELP_EDIT_ON = Component.translatable(
+            "waypointer.input.edit_mode.enabled")
             .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_EDIT_OFF = Component.literal(
-            "Edit mode disabled.")
+    private static final Component HELP_EDIT_OFF = Component.translatable(
+            "waypointer.input.edit_mode.disabled")
             .withStyle(ChatFormatting.YELLOW);
-    private static final Component HELP_EDIT_UNAVAILABLE = Component.literal(
-            "Edit mode is unavailable until Waypointer has loaded routes.")
+    private static final Component HELP_EDIT_UNAVAILABLE = Component.translatable(
+            "waypointer.input.edit_mode.unavailable")
             .withStyle(ChatFormatting.YELLOW);
-    private static final Component HELP_EDIT_NO_TARGET = Component.literal(
-            "No waypoint under crosshair.")
+    private static final Component HELP_EDIT_NO_TARGET = Component.translatable(
+            "waypointer.input.edit_mode.no_waypoint")
             .withStyle(ChatFormatting.YELLOW);
-    private static final Component HELP_EDIT_NO_BLOCK_TARGET = Component.literal(
-            "No block under crosshair.")
+    private static final Component HELP_EDIT_NO_BLOCK_TARGET = Component.translatable(
+            "waypointer.input.edit_mode.no_block")
             .withStyle(ChatFormatting.YELLOW);
-    private static final Component HELP_EDIT_MOVED = Component.literal(
-            "Waypoint moved. Edit mode is still enabled.")
+    private static final Component HELP_EDIT_MOVED = Component.translatable(
+            "waypointer.input.edit_mode.moved")
             .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_EDIT_ADDED = Component.literal(
-            "Waypoint added. Edit mode is still enabled.")
+    private static final Component HELP_EDIT_ADDED = Component.translatable(
+            "waypointer.input.edit_mode.added")
             .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_CONVERT_SECRETS_FIRST = Component.literal(
-            "This room shows downloaded secrets. Double-click its secret route in the "
-                    + "Waypointer GUI to convert it into an editable route first.")
+    private static final Component HELP_EDIT_REMOVED = Component.translatable(
+            "waypointer.input.edit_mode.removed")
+            .withStyle(ChatFormatting.AQUA);
+    private static final Component HELP_CONVERT_SECRETS_FIRST = Component.translatable(
+            "waypointer.input.edit_mode.convert_first")
             .withStyle(ChatFormatting.YELLOW);
 
     private static Session active;
     private static ActiveGroupManager editManager;
     private static WaypointerConfig editConfig;
-    private static ClientLevel lastEditModeAddLevel;
-    private static long lastEditModeAddGameTime = Long.MIN_VALUE;
+    private static ClientLevel lastEditModeActionLevel;
+    private static long lastEditModeActionGameTime = Long.MIN_VALUE;
     private static boolean editModeEnabled;
     private static WaypointGroup lastEditSelectionGroup;
     private static int lastEditSelectionIndex = -1;
@@ -132,10 +136,10 @@ public final class WaypointRepositionMode {
 
             Minecraft mc = Minecraft.getInstance();
             if (active != null) {
-                return handleEditModeRightClick(mc);
+                return handleEditModeRightClick(mc, player.getItemInHand(hand));
             }
             if (!editModeEnabled) return InteractionResult.PASS;
-            return handleEditModeRightClick(mc);
+            return handleEditModeRightClick(mc, player.getItemInHand(hand));
         });
         UseBlockCallback.EVENT.register(
                 (player, world, hand, hitResult) -> {
@@ -143,10 +147,10 @@ public final class WaypointRepositionMode {
 
             Minecraft mc = Minecraft.getInstance();
             if (active != null) {
-                return handleEditModeRightClick(mc);
+                return handleEditModeRightClick(mc, player.getItemInHand(hand));
             }
             if (!editModeEnabled) return InteractionResult.PASS;
-            return handleEditModeRightClick(mc);
+            return handleEditModeRightClick(mc, player.getItemInHand(hand));
         });
         ClientTickEvents.END_CLIENT_TICK.register(WaypointRepositionMode::onTick);
         LevelRenderEvents.COLLECT_SUBMITS.register(WaypointRepositionMode::renderOutline);
@@ -162,11 +166,11 @@ public final class WaypointRepositionMode {
     }
 
     public static void setEditModeEnabled(ActiveGroupManager manager, WaypointerConfig config,
-                                          boolean enabled) {
+                                           boolean enabled) {
         Minecraft mc = Minecraft.getInstance();
         boolean wasEnabled = editModeEnabled;
-        lastEditModeAddLevel = null;
-        lastEditModeAddGameTime = Long.MIN_VALUE;
+        lastEditModeActionLevel = null;
+        lastEditModeActionGameTime = Long.MIN_VALUE;
         clearEditSelectionCycle();
         if (enabled) {
             if (manager == null || config == null) {
@@ -275,8 +279,8 @@ public final class WaypointRepositionMode {
     private static void onTick(Minecraft mc) {
         boolean missingWorld = mc.player == null || mc.level == null;
         if (missingWorld) {
-            lastEditModeAddLevel = null;
-            lastEditModeAddGameTime = Long.MIN_VALUE;
+            lastEditModeActionLevel = null;
+            lastEditModeActionGameTime = Long.MIN_VALUE;
             clearEditSelectionCycle();
         }
         if (active != null) {
@@ -306,7 +310,7 @@ public final class WaypointRepositionMode {
         return true;
     }
 
-    private static InteractionResult handleEditModeRightClick(Minecraft mc) {
+    private static InteractionResult handleEditModeRightClick(Minecraft mc, ItemStack held) {
         if (editModeEnabled && isShiftDown()) {
             return InteractionResult.FAIL;
         }
@@ -317,7 +321,45 @@ public final class WaypointRepositionMode {
         }
 
         if (!editModeEnabled) return InteractionResult.PASS;
+        if (DungeonItemIdentity.isDungeonbreaker(held)) {
+            return removeWaypointFromEditModeRightClick(mc);
+        }
         return addWaypointFromEditModeRightClick(mc);
+    }
+
+    private static InteractionResult removeWaypointFromEditModeRightClick(Minecraft mc) {
+        if (mc == null || mc.player == null || mc.level == null) return InteractionResult.PASS;
+        if (editManager == null || editConfig == null) {
+            showStatus(mc, HELP_EDIT_UNAVAILABLE);
+            return InteractionResult.FAIL;
+        }
+        if (isDuplicateEditModeAction(mc.level)) return InteractionResult.FAIL;
+        rememberEditModeAction(mc.level);
+
+        SelectedWaypoint selected = findWaypointUnderCrosshair(mc);
+        if (selected == null) {
+            showStatus(mc, HELP_EDIT_NO_TARGET);
+            return InteractionResult.FAIL;
+        }
+        if (!removeWaypoint(editManager, selected.group(), selected.waypointIndex())) {
+            showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
+            return InteractionResult.FAIL;
+        }
+
+        clearEditSelectionCycle();
+        editManager.fireDataChanged();
+        playEditSound(mc, editConfig);
+        showStatus(mc, HELP_EDIT_REMOVED);
+        return InteractionResult.FAIL;
+    }
+
+    static boolean removeWaypoint(ActiveGroupManager manager, WaypointGroup visibleGroup,
+                                  int waypointIndex) {
+        if (manager == null || visibleGroup == null || waypointIndex < 0) return false;
+        WaypointGroup target = DungeonRoomRouteSync.durableEditTarget(manager, visibleGroup);
+        if (target == null || waypointIndex >= target.size()) return false;
+        target.remove(waypointIndex);
+        return true;
     }
 
     private static InteractionResult addWaypointFromEditModeRightClick(Minecraft mc) {
@@ -333,9 +375,9 @@ public final class WaypointRepositionMode {
             return InteractionResult.FAIL;
         }
 
-        if (isDuplicateEditModeAdd(mc.level)) return InteractionResult.FAIL;
+        if (isDuplicateEditModeAction(mc.level)) return InteractionResult.FAIL;
         if (addBlockedByInstalledSecrets(mc, editManager)) return InteractionResult.FAIL;
-        rememberEditModeAdd(mc.level);
+        rememberEditModeAction(mc.level);
 
         WaypointGroup group = editManager.getOrCreateActiveGroup();
         int flags = defaultDungeonEditFlags(group, mc.level, pos);
@@ -350,20 +392,20 @@ public final class WaypointRepositionMode {
         return InteractionResult.FAIL;
     }
 
-    private static boolean isDuplicateEditModeAdd(ClientLevel level) {
+    private static boolean isDuplicateEditModeAction(ClientLevel level) {
         return level != null
-                && lastEditModeAddLevel == level
-                && lastEditModeAddGameTime == level.getGameTime();
+                && lastEditModeActionLevel == level
+                && lastEditModeActionGameTime == level.getGameTime();
     }
 
-    private static void rememberEditModeAdd(ClientLevel level) {
+    private static void rememberEditModeAction(ClientLevel level) {
         if (level == null) {
-            lastEditModeAddLevel = null;
-            lastEditModeAddGameTime = Long.MIN_VALUE;
+            lastEditModeActionLevel = null;
+            lastEditModeActionGameTime = Long.MIN_VALUE;
             return;
         }
-        lastEditModeAddLevel = level;
-        lastEditModeAddGameTime = level.getGameTime();
+        lastEditModeActionLevel = level;
+        lastEditModeActionGameTime = level.getGameTime();
     }
 
     static int defaultDungeonEditFlags(WaypointGroup group) {

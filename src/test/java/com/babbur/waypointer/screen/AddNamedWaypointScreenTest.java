@@ -4,11 +4,20 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Modifier;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AddNamedWaypointScreenTest {
+
+    @Test
+    void nameInputAutofocusUsesThePostInitInitialFocusHook() throws Exception {
+        var hook = AddNamedWaypointScreen.class.getDeclaredMethod("setInitialFocus");
+
+        assertTrue(Modifier.isProtected(hook.getModifiers()));
+    }
 
     @Test
     void sanitizeWaypointNameTrimsUsableNames() {

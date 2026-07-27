@@ -108,9 +108,8 @@ public final class WaypointerKeybinds {
 
     private static final KeyMapping.Category CATEGORY =
             KeyMapping.Category.register(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "main"));
-    private static final Component HELP_CONVERT_SECRETS_FIRST = Component.literal(
-            "This room shows downloaded secrets. Double-click its secret route in the "
-                    + "Waypointer GUI to convert it into an editable route first.")
+    private static final Component HELP_CONVERT_SECRETS_FIRST = Component.translatable(
+            "waypointer.input.edit_mode.convert_first")
             .withStyle(ChatFormatting.YELLOW);
     private static KeyMapping registeredOpenEditor;
     private static KeyMapping registeredExitEditMode;

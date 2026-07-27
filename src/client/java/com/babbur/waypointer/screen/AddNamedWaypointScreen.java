@@ -83,7 +83,9 @@ public final class AddNamedWaypointScreen extends Screen {
                                    boolean useFixedPosition, int fixedX, int fixedY, int fixedZ,
                                    int fixedFlags, boolean showSubtypeOptions,
                                    int fixedPreciseX, int fixedPreciseY, int fixedPreciseZ) {
-        super(Component.literal(showSubtypeOptions ? "Create Waypoint" : "Create Named Waypoint"));
+        super(Component.translatable(showSubtypeOptions
+                ? "waypointer.screen.add_named.title.waypoint"
+                : "waypointer.screen.add_named.title.named"));
         this.parent = parent;
         this.manager = manager;
         this.config = config;
@@ -138,26 +140,27 @@ public final class AddNamedWaypointScreen extends Screen {
         int fieldW = PANEL_W - PAD_OUTER * 2;
 
         nameBox = new EditBox(font, inner, panelY + 34, fieldW, BTN_H,
-                Component.literal("Waypoint name"));
+                Component.translatable("waypointer.screen.add_named.name"));
         nameBox.setMaxLength(MAX_NAME_LENGTH);
         nameBox.setValue(enteredName);
         nameBox.setResponder(this::onNameEdited);
         addRenderableWidget(nameBox);
-        setFocused(nameBox);
-        nameBox.setFocused(true);
 
         if (showSubtypeOptions) {
             int optionsY = panelY + 66;
-            int subwaypointBoxX = inner + font.width("Subwaypoint") + GAP_TIGHT;
+            Component subwaypointLabel = Component.translatable(
+                    "waypointer.screen.add_named.subwaypoint");
+            int subwaypointBoxX = inner + font.width(subwaypointLabel) + GAP_TIGHT;
             subwaypointCheckbox = styledCheckbox(subwaypointBoxX, optionsY, BTN_H,
-                    Component.literal("Subwaypoint"), subwaypointSelected,
+                    subwaypointLabel, subwaypointSelected,
                     this::onSubwaypointChanged, null);
             addRenderableWidget(subwaypointCheckbox);
 
             int smallLabelX = subwaypointBoxX + BTN_H + GAP_SECTION;
-            int smallBoxX = smallLabelX + font.width("Small") + GAP_TIGHT;
+            Component smallLabel = Component.translatable("waypointer.screen.add_named.small");
+            int smallBoxX = smallLabelX + font.width(smallLabel) + GAP_TIGHT;
             smallCheckbox = styledCheckbox(smallBoxX, optionsY, BTN_H,
-                    Component.literal("Small"), smallSelected,
+                    smallLabel, smallSelected,
                     this::onSmallChanged, null);
             addRenderableWidget(smallCheckbox);
             updateSubtypeControls();
@@ -166,12 +169,21 @@ public final class AddNamedWaypointScreen extends Screen {
         int footerY = panelY + panelH - BTN_H - PAD_OUTER / 2;
         addRenderableWidget(styledButton(
                 panelX + PANEL_W - PAD_OUTER - 140 - GAP, footerY, 70, BTN_H,
-                Component.literal("Cancel"), this::onCancelButtonClicked, null));
+                Component.translatable("gui.cancel"), this::onCancelButtonClicked, null));
         Button confirmButton = styledButton(
                 panelX + PANEL_W - PAD_OUTER - 70, footerY, 70, BTN_H,
-                Component.literal("Confirm"), this::onConfirmButtonClicked, null);
+                Component.translatable("gui.confirm"), this::onConfirmButtonClicked, null);
         addRenderableWidget(confirmButton);
         updatePreview();
+    }
+
+    @Override
+    protected void setInitialFocus() {
+        if (nameBox != null) {
+            setInitialFocus(nameBox);
+            return;
+        }
+        super.setInitialFocus();
     }
 
     @Override
@@ -188,11 +200,14 @@ public final class AddNamedWaypointScreen extends Screen {
             int optionsY = panelY + 66;
             int labelY = opticalTextY(optionsY, BTN_H);
             int inner = panelX + PAD_OUTER;
-            int subwaypointBoxX = inner + font.width("Subwaypoint") + GAP_TIGHT;
+            Component subwaypointLabel = Component.translatable(
+                    "waypointer.screen.add_named.subwaypoint");
+            int subwaypointBoxX = inner + font.width(subwaypointLabel) + GAP_TIGHT;
             int smallLabelX = subwaypointBoxX + BTN_H + GAP_SECTION;
-            g.text(font, "Subwaypoint", inner, labelY,
+            g.text(font, subwaypointLabel, inner, labelY,
                     subwaypointAvailable ? TEXT : TEXT_MUTED, false);
-            g.text(font, "Small", smallLabelX, labelY,
+            g.text(font, Component.translatable("waypointer.screen.add_named.small"),
+                    smallLabelX, labelY,
                     subwaypointSelected ? TEXT : TEXT_MUTED, false);
         }
 
