@@ -146,7 +146,7 @@ public final class DebugInspectScreen extends Screen {
 
     public DebugInspectScreen(Screen parent, ActiveGroupManager manager,
                               WaypointerConfig config) {
-        super(Component.literal("Waypointer Debug"));
+        super(Component.translatable("waypointer.screen.debug.title"));
         this.parent = parent;
         this.manager = manager;
         this.config = config;
@@ -176,13 +176,21 @@ public final class DebugInspectScreen extends Screen {
             awaitingFreshRendererCapture = true;
         }
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
-        left.add(new GuiTokens.ButtonSpec("Refresh", this::loadCombinedReport));
+        left.add(new GuiTokens.ButtonSpec(
+                Component.translatable("waypointer.screen.debug.refresh").getString(),
+                this::loadCombinedReport));
         if (config != null) {
-            left.add(new GuiTokens.ButtonSpec("Perf test", 88, this::openPerfStressTest));
+            left.add(new GuiTokens.ButtonSpec(
+                    Component.translatable("waypointer.screen.debug.perf_test").getString(),
+                    88, this::openPerfStressTest));
         }
-        String copyLabel = copyFeedbackUntil > System.currentTimeMillis() ? "Copied" : "Copy Report";
+        String copyLabel = Component.translatable(
+                copyFeedbackUntil > System.currentTimeMillis()
+                        ? "waypointer.screen.debug.copied"
+                        : "waypointer.screen.debug.copy_report").getString();
         left.add(new GuiTokens.ButtonSpec(copyLabel, this::openCopyConfirmation));
-        GuiTokens.ButtonSpec back = new GuiTokens.ButtonSpec("Back", this::onClose);
+        GuiTokens.ButtonSpec back = new GuiTokens.ButtonSpec(
+                Component.translatable("gui.back").getString(), this::onClose);
 
         int footerY = height - FOOTER_H;
         GuiTokens.layoutFooter(width, footerY, left, back,
@@ -190,8 +198,10 @@ public final class DebugInspectScreen extends Screen {
             // Stash the Copy button so we can swap its label on the copy-confirmation flash.
             // Matching on the label string is ugly but the footer helper doesn't expose
             // a better hook and this screen builds exactly one button with that label.
-            if ("Copy Report".contentEquals(b.getMessage().getString())
-                    || "Copied".contentEquals(b.getMessage().getString())) {
+            if (Component.translatable("waypointer.screen.debug.copy_report").getString()
+                            .contentEquals(b.getMessage().getString())
+                    || Component.translatable("waypointer.screen.debug.copied").getString()
+                            .contentEquals(b.getMessage().getString())) {
                 copyButton = b;
             }
             addRenderableWidget(b);
@@ -787,7 +797,9 @@ public final class DebugInspectScreen extends Screen {
         copyFeedbackUntil = System.currentTimeMillis() + FEEDBACK_MS;
         // Plain label swap -- no color. The design system reserves the one accent for
         // "the currently selected thing", not for ephemeral UI feedback.
-        if (copyButton != null) copyButton.setMessage(Component.literal("Copied"));
+        if (copyButton != null) {
+            copyButton.setMessage(Component.translatable("waypointer.screen.debug.copied"));
+        }
     }
 
     private List<DebugReportExport.Section> exportSections() {
@@ -896,7 +908,10 @@ public final class DebugInspectScreen extends Screen {
 
         if (copyFeedbackUntil != 0 && System.currentTimeMillis() > copyFeedbackUntil) {
             copyFeedbackUntil = 0;
-            if (copyButton != null) copyButton.setMessage(Component.literal("Copy Report"));
+            if (copyButton != null) {
+                copyButton.setMessage(Component.translatable(
+                        "waypointer.screen.debug.copy_report"));
+            }
         }
 
         // --- header (title + right-aligned compact summary) ------------------------------
@@ -957,11 +972,14 @@ public final class DebugInspectScreen extends Screen {
         g.fill(x2, y1, x2 + 1, y2, BORDER);
 
         int labelY = y1 + 10;
-        g.text(font, "Debug Report", x1 + GAP, labelY, TEXT_DIM, false);
+        g.text(font, Component.translatable("waypointer.screen.debug.report"),
+                x1 + GAP, labelY, TEXT_DIM, false);
         this.sidebarContentTop = labelY + 14;
 
         if (sections.isEmpty()) {
-            g.text(font, debug == null ? "(no data loaded)" : "(empty report)",
+            g.text(font, Component.translatable(debug == null
+                            ? "waypointer.screen.debug.no_data"
+                            : "waypointer.screen.debug.empty"),
                     x1 + GAP, sidebarContentTop + 4, TEXT_MUTED, false);
             return;
         }
@@ -1160,8 +1178,11 @@ public final class DebugInspectScreen extends Screen {
     }
 
     private void renderEmpty(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
-        String a = "No payload loaded.";
-        String b = "Copy a " + WaypointCodec.MAGIC + " export string, then click \"Refresh\".";
+        String a = Component.translatable(
+                "waypointer.screen.debug.payload.empty").getString();
+        String b = Component.translatable(
+                "waypointer.screen.debug.payload.empty_hint",
+                WaypointCodec.MAGIC).getString();
         int cy = y1 + (y2 - y1) / 2 - 8;
         int ax = x1 + ((x2 - x1) - font.width(a)) / 2;
         int bx = x1 + ((x2 - x1) - font.width(b)) / 2;

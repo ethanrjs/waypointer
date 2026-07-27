@@ -7,6 +7,7 @@ import com.babbur.waypointer.dungeon.config.DungeonConfig;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Objects;
 
 import static com.babbur.waypointer.screen.settings.Setting.Store.DUNGEON;
@@ -87,6 +88,18 @@ public final class SettingsCatalog {
             if (setting.id().equals(id)) return setting;
         }
         return null;
+    }
+
+    public static String categoryTranslationKey(Category category) {
+        return "waypointer.settings.category." + category.id();
+    }
+
+    public static String groupTranslationKey(Category category, Group group) {
+        if (category == null || group == null || group.label() == null) return null;
+        String slug = group.label().toLowerCase(Locale.ROOT)
+                .replaceAll("[^a-z0-9]+", "_")
+                .replaceAll("^_+|_+$", "");
+        return "waypointer.settings.group." + category.id() + "." + slug;
     }
 
     /**
@@ -175,10 +188,6 @@ public final class SettingsCatalog {
                                 (c, d) -> c.waypointOutlineThickness(),
                                 (c, d, v) -> c.setWaypointOutlineThickness(dbl(v)))
                                 .aliases("width"),
-                        Setting.bool("sharpWaypointEdges", MAIN, "Sharp waypoint edges",
-                                null,
-                                (c, d) -> c.sharpWaypointEdges(),
-                                (c, d, v) -> c.setSharpWaypointEdges((Boolean) v)),
                         Setting.bool("showCompleted", MAIN, "Show completed waypoints",
                                 "Keep showing waypoints you've already reached.",
                                 (c, d) -> c.showCompleted(),
@@ -463,7 +472,37 @@ public final class SettingsCatalog {
                                         "Treat the dungeon map's green checkmark as all secrets found for that room, "
                                                 + "even when a teammate collected them.",
                                         (c, d) -> d.autoCompleteRoomsOnGreenCheckmark(),
-                                        (c, d, v) -> d.setAutoCompleteRoomsOnGreenCheckmark((Boolean) v))),
+                                        (c, d, v) -> d.setAutoCompleteRoomsOnGreenCheckmark((Boolean) v)),
+                                Setting.number("visibleSecretStages", DUNGEON,
+                                        "Visible secret stages (1-5)",
+                                        "Show the current secret stage plus upcoming stage starts.",
+                                        (c, d) -> (double) d.visibleSecretStages(),
+                                        (c, d, v) -> d.setVisibleSecretStages(
+                                                ((Number) v).intValue())),
+                                Setting.bool("secretCompletionSound", DUNGEON,
+                                        "Secret completion sound",
+                                        "Play one quiet cue when a secret stage completes.",
+                                        (c, d) -> d.secretCompletionSound(),
+                                        (c, d, v) -> d.setSecretCompletionSound((Boolean) v))),
+                         Group.plain("Dungeon route rendering",
+                                Setting.bool("showDungeonRouteLines", DUNGEON,
+                                        "Route connector lines",
+                                        "Draw connector lines for dungeon room routes.",
+                                        (c, d) -> d.showDungeonRouteLines(),
+                                        (c, d, v) -> d.setShowDungeonRouteLines((Boolean) v))
+                                        .impact(Setting.Impact.LOW),
+                                Setting.bool("showDungeonTracers", DUNGEON,
+                                        "Tracers",
+                                        "Draw a tracer from the crosshair to the active dungeon waypoint.",
+                                        (c, d) -> d.showDungeonTracers(),
+                                        (c, d, v) -> d.setShowDungeonTracers((Boolean) v))
+                                        .impact(Setting.Impact.LOW),
+                                Setting.bool("showPearlTrajectories", DUNGEON,
+                                        "Ender Pearl trajectories",
+                                        "Draw the launch arc for the active Ender Pearl action.",
+                                        (c, d) -> d.showPearlTrajectories(),
+                                        (c, d, v) -> d.setShowPearlTrajectories((Boolean) v))
+                                        .impact(Setting.Impact.LOW)),
                         Group.parented((c, d) -> c.showDungeonEntryPathToFirstWaypoint(),
                                 Setting.bool("showDungeonEntryPathToFirstWaypoint", MAIN, "Dungeon entry path to first waypoint",
                                         "Draw a teleport-friendly path to waypoint #1 while entering a dungeon room.",
@@ -504,7 +543,8 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setChatCodecDetection((Boolean) v))
                                 .aliases("share"),
                         Setting.bool("showContributorBadges", MAIN, "Contributor badges",
-                                "Show Waypointer contributor badges in chat and the player list.",
+                                "Show Waypointer contributor badges in chat, player nametags, "
+                                        + "and the player list.",
                                 (c, d) -> c.showContributorBadges(),
                                 (c, d, v) -> c.setShowContributorBadges((Boolean) v))));
     }
@@ -553,9 +593,9 @@ public final class SettingsCatalog {
     private static Category system() {
         return Category.of("system", "System",
                 Group.plain(null,
-                        Setting.bool("irisShaderHudFallback", MAIN, "Experimental Iris HUD fallback",
-                                "Draw waypoints with a shader-safe fallback renderer while an Iris shader pack "
-                                        + "is active. Try this if waypoints disappear when shaders are on.",
+                        Setting.bool("irisShaderHudFallback", MAIN, "Iris shader compatibility",
+                                "Draw tracers and waypoint outlines with a crisp, shader-safe HUD renderer "
+                                        + "while an Iris shader pack is active.",
                                 (c, d) -> c.irisShaderHudFallback(),
                                 (c, d, v) -> c.setIrisShaderHudFallback((Boolean) v))
                                 .aliases("shaders"),

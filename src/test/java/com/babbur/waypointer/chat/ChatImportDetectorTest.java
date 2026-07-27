@@ -11,6 +11,7 @@ import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -36,7 +37,7 @@ class ChatImportDetectorTest {
         ChatImportCache cache = new ChatImportCache();
         Component out = invokeDetector(message, cache);
 
-        assertEquals("[MVP++] Babbur: [◆ Click to import Waypoints]", out.getString());
+        assertEquals(1, countTranslationKeys(out, "waypointer.chat.import.click"));
         assertEquals(1, cache.size(), "valid codec should be cached behind a short click handle");
 
         List<StyledRun> runs = runs(out);
@@ -44,7 +45,7 @@ class ChatImportDetectorTest {
         assertRun(runs, "Babbur", ChatFormatting.LIGHT_PURPLE);
         assertRun(runs, ": ", ChatFormatting.GRAY);
         assertTrue(runs.stream().anyMatch(run ->
-                        run.text().contains("Click to import Waypoints")
+                        run.text().contains("waypointer.chat.import.click")
                                 && legacyColor(ChatFormatting.AQUA).equals(run.style().getColor())),
                 "clickable pill text should keep Waypointer's aqua accent");
     }
@@ -74,7 +75,7 @@ class ChatImportDetectorTest {
         ChatImportCache cache = new ChatImportCache();
         Component out = invokeDetector(message, cache);
 
-        assertEquals("[MVP++] Babbur: [Invalid Waypoints]", out.getString());
+        assertEquals(1, countTranslationKeys(out, "waypointer.chat.import.invalid"));
         assertEquals(0, cache.size(), "invalid payloads should not get clickable import handles");
     }
 
@@ -93,7 +94,7 @@ class ChatImportDetectorTest {
         ChatImportCache cache = new ChatImportCache();
         Component out = invokeDetector(message, cache);
 
-        assertEquals(2, countOccurrences(out.getString(), "Click to import Waypoints"));
+        assertEquals(2, countTranslationKeys(out, "waypointer.chat.import.click"));
         assertEquals(2, cache.size(), "each valid payload should get its own cache handle");
         Set<String> importCommands = new LinkedHashSet<>();
         for (StyledRun run : runs(out)) {
@@ -155,15 +156,13 @@ class ChatImportDetectorTest {
         return WaypointCodec.encode(List.of(group), WaypointCodec.Options.WITH_NAMES);
     }
 
-    private static int countOccurrences(String text, String needle) {
-        int count = 0;
-        int cursor = 0;
-        while (true) {
-            int next = text.indexOf(needle, cursor);
-            if (next < 0) return count;
-            count++;
-            cursor = next + needle.length();
+    private static int countTranslationKeys(Component component, String key) {
+        int count = component.getContents() instanceof TranslatableContents contents
+                && contents.getKey().equals(key) ? 1 : 0;
+        for (Component sibling : component.getSiblings()) {
+            count += countTranslationKeys(sibling, key);
         }
+        return count;
     }
 
     private static String truncatedRealChatExport() {

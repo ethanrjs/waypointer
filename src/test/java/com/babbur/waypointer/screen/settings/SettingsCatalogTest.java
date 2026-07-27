@@ -290,6 +290,22 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void dungeonRoutePresentationDefaultsLiveInTheDungeonsCategory() {
+        WaypointerConfig main = new WaypointerConfig();
+        DungeonConfig dungeon = new DungeonConfig();
+        for (String id : List.of(
+                "showDungeonRouteLines",
+                "showDungeonTracers")) {
+            Setting setting = SettingsCatalog.byId(id);
+            assertNotNull(setting, id);
+            assertEquals(Setting.Store.DUNGEON, setting.store(), id);
+            assertEquals("dungeons", categoryContaining(id), id);
+        }
+        assertEquals(true, SettingsCatalog.byId("showDungeonRouteLines").get(main, dungeon));
+        assertEquals(false, SettingsCatalog.byId("showDungeonTracers").get(main, dungeon));
+    }
+
+    @Test
     void formatValueRendersEveryKindReadably() {
         assertEquals("On", Setting.formatValue(Setting.Kind.BOOL, Boolean.TRUE, List.of()));
         assertEquals("Off", Setting.formatValue(Setting.Kind.BOOL, Boolean.FALSE, List.of()));
@@ -340,5 +356,15 @@ class SettingsCatalogTest {
             if (setting.store() == store) out.add(setting.id());
         }
         return out;
+    }
+
+    private static String categoryContaining(String id) {
+        return SettingsCatalog.categories().stream()
+                .filter(category -> category.groups().stream()
+                        .flatMap(group -> group.settings().stream())
+                        .anyMatch(setting -> setting.id().equals(id)))
+                .findFirst()
+                .orElseThrow()
+                .id();
     }
 }

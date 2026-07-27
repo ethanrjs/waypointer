@@ -148,7 +148,7 @@ public final class ChatImportDetector {
                         .withStyle(notUnderlined.withColor(ChatFormatting.DARK_AQUA)))
                 .append(Component.literal("\u25C6 ")
                         .withStyle(notUnderlined.withColor(ACCENT)))
-                .append(Component.literal("Click to import Waypoints")
+                .append(Component.translatable("waypointer.chat.import.click")
                         .withStyle(Style.EMPTY.withColor(PILL_COLOR).withUnderlined(true)))
                 .append(Component.literal("]")
                         .withStyle(notUnderlined.withColor(ChatFormatting.DARK_AQUA)));
@@ -164,26 +164,28 @@ public final class ChatImportDetector {
         MutableComponent pill = Component.empty()
                 .append(Component.literal("[")
                         .withStyle(notUnderlined.withColor(ChatFormatting.DARK_RED)))
-                .append(Component.literal("Invalid Waypoints")
+                .append(Component.translatable("waypointer.chat.import.invalid")
                         .withStyle(Style.EMPTY.withColor(ChatFormatting.RED)))
                 .append(Component.literal("]")
                         .withStyle(notUnderlined.withColor(ChatFormatting.DARK_RED)));
 
         Style interactive = Style.EMPTY.withHoverEvent(new HoverEvent.ShowText(
                 Component.empty()
-                        .append(Component.literal("Invalid Waypointer route")
-                                .withStyle(ChatFormatting.RED, ChatFormatting.BOLD))
-                        .append(Component.literal("\nThis route paste is incomplete or corrupted.")
-                                .withStyle(ChatFormatting.GRAY))
-                        .append(Component.literal("\nSize: ").withStyle(ChatFormatting.GRAY))
-                        .append(Component.literal(match.length() + " chars")
-                                .withStyle(ChatFormatting.WHITE))));
+                .append(Component.translatable("waypointer.chat.import.invalid.title")
+                        .withStyle(ChatFormatting.RED, ChatFormatting.BOLD))
+                .append(Component.translatable("waypointer.chat.import.invalid.detail")
+                        .withStyle(ChatFormatting.GRAY))
+                        .append(Component.literal("\n"))
+                        .append(Component.translatable(
+                                "waypointer.chat.import.size", match.length())
+                                .withStyle(ChatFormatting.GRAY))));
         return pill.withStyle(interactive);
     }
 
     private static Component hoverText(CodecScanner.Match match) {
         MutableComponent c = Component.empty();
-        c.append(Component.literal("Waypointer route").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
+        c.append(Component.translatable("waypointer.chat.import.route")
+                .withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
 
         // peekLabel does the cheapest possible decode -- header byte + optional
         // varint+UTF-8 -- so it's safe to call once per detected codec per chat
@@ -202,10 +204,11 @@ public final class ChatImportDetector {
         }
 
         c.append(Component.literal("\n"));
-        c.append(Component.literal("Size: ").withStyle(ChatFormatting.GRAY));
-        c.append(Component.literal(match.length() + " chars").withStyle(ChatFormatting.WHITE));
+        c.append(Component.translatable("waypointer.chat.import.size", match.length())
+                .withStyle(ChatFormatting.GRAY));
         c.append(Component.literal("\n\n"));
-        c.append(Component.literal("Click to import into your current zone.").withStyle(ChatFormatting.YELLOW));
+        c.append(Component.translatable("waypointer.chat.import.hover")
+                .withStyle(ChatFormatting.YELLOW));
         return c;
     }
 
