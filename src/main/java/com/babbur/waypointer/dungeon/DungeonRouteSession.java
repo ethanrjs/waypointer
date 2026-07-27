@@ -68,14 +68,15 @@ public final class DungeonRouteSession {
         fireChanged();
     }
 
-    public void markFound(DungeonRoom room, int secretIndex) {
-        if (room == null || secretIndex <= 0) return;
+    public boolean markFound(DungeonRoom room, int secretIndex) {
+        if (room == null || secretIndex <= 0) return false;
         RoomProgress progress = progressFor(room);
-        if (!progress.foundSecretIndices.add(secretIndex)) return;
+        if (!progress.foundSecretIndices.add(secretIndex)) return false;
         if (secretIndex == progress.currentSecretIndex) {
             progress.currentSecretIndex = nextUnfoundSecret(room, progress);
         }
         fireChanged();
+        return true;
     }
 
     public void advance(DungeonRoom room) {

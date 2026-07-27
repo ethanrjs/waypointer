@@ -2,6 +2,7 @@ package com.babbur.waypointer.dungeon.config;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,6 +18,11 @@ class DungeonConfigTest {
         assertTrue(config.enabled());
         assertFalse(config.debugLogRoomChanges());
         assertEquals("NW", config.defaultDirection());
+        assertTrue(config.showDungeonRouteLines());
+        assertFalse(config.showDungeonTracers());
+        assertEquals(1, config.visibleSecretStages());
+        assertTrue(config.secretCompletionSound());
+        assertTrue(config.showPearlTrajectories());
     }
 
     @Test
@@ -60,6 +66,10 @@ class DungeonConfigTest {
         assertFalse(config.debugLogRoomChanges());
         assertFalse(config.hideCompletedRooms());
         assertFalse(config.autoCompleteRoomsOnGreenCheckmark());
+        assertFalse(config.showDungeonRouteLines());
+        assertFalse(config.showDungeonTracers());
+        assertFalse(config.secretCompletionSound());
+        assertFalse(config.showPearlTrajectories());
     }
 
     @Test
@@ -72,6 +82,11 @@ class DungeonConfigTest {
         config.setDefaultDirection("SE");
         config.setHideCompletedRooms(false);
         config.setAutoCompleteRoomsOnGreenCheckmark(false);
+        config.setShowDungeonRouteLines(false);
+        config.setShowDungeonTracers(true);
+        config.setVisibleSecretStages(5);
+        config.setSecretCompletionSound(false);
+        config.setShowPearlTrajectories(false);
         config.setRoutesPromptDismissed(true);
         enabledChanges.set(0);
 
@@ -82,6 +97,11 @@ class DungeonConfigTest {
         assertEquals("NW", config.defaultDirection());
         assertTrue(config.hideCompletedRooms());
         assertTrue(config.autoCompleteRoomsOnGreenCheckmark());
+        assertTrue(config.showDungeonRouteLines());
+        assertFalse(config.showDungeonTracers());
+        assertEquals(1, config.visibleSecretStages());
+        assertTrue(config.secretCompletionSound());
+        assertTrue(config.showPearlTrajectories());
         assertFalse(config.routesPromptDismissed());
         assertEquals(1, enabledChanges.get());
     }
@@ -113,6 +133,39 @@ class DungeonConfigTest {
 
         config.setRoomRouteEnabled("room-a", true);
         assertTrue(config.roomRouteEnabled("room-a"));
+    }
+
+    @Test
+    void bulkDisableHidesExistingDefinitionRoutes() {
+        DungeonConfig config = new DungeonConfig();
+
+        config.disableRoomRoutes(List.of("room-a", "room-b", "room-a"));
+
+        assertFalse(config.roomRouteEnabled("room-a"));
+        assertFalse(config.roomRouteEnabled("room-b"));
+        assertTrue(config.roomRouteEnabled("room-c"));
+    }
+
+    @Test
+    void visibleSecretStageCountClampsAndUsesGeneralChangeListeners() {
+        DungeonConfig config = new DungeonConfig();
+        AtomicInteger enabledChanges = new AtomicInteger();
+        AtomicInteger changes = new AtomicInteger();
+        config.addEnabledListener(enabledChanges::incrementAndGet);
+        Runnable listener = changes::incrementAndGet;
+        config.addChangeListener(listener);
+
+        config.setVisibleSecretStages(99);
+        config.setVisibleSecretStages(5);
+        config.setVisibleSecretStages(0);
+
+        assertEquals(1, config.visibleSecretStages());
+        assertEquals(2, changes.get());
+        assertEquals(0, enabledChanges.get());
+
+        config.removeChangeListener(listener);
+        config.setVisibleSecretStages(2);
+        assertEquals(2, changes.get());
     }
 
 }

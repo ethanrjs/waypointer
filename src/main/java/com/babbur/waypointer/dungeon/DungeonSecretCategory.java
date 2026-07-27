@@ -25,6 +25,7 @@ public enum DungeonSecretCategory {
     FAIRYSOUL    ("fairysoul", 0xFF61F2),
     STONK        ("stonk",     0x4FE05A),
     DUNGEONBREAKER("dungeonbreaker", 0x6EE7B7),
+    ETHERWARP     ("etherwarp", 0x9C2EFF),
     AOTV         ("aotv",      0x9C2EFF),
     PEARL        ("pearl",     0xC0C0FF),
     PRINCE       ("prince",    0xFFC0CB),

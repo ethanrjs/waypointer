@@ -7,8 +7,11 @@ import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
 import java.util.function.Consumer;
 
@@ -30,11 +33,7 @@ public final class DungeonRoomRouteSync {
 
     static final String GENERATED_GROUP_ID_PREFIX = "dungeon:auto:";
 
-    /**
-     * Uniform route colors: every progress secret shares one color and every
-     * support marker (highlights, non-progress markers) another, so an
-     * imported route reads as one route instead of a per-category confetti.
-     */
+    /** Fallback colors for legacy/default secrets and non-progress markers. */
     public static final int SECRET_WAYPOINT_COLOR = 0x2EE0FF;
     public static final int SUPPORT_WAYPOINT_COLOR = 0xFFB300;
 
@@ -42,10 +41,12 @@ public final class DungeonRoomRouteSync {
     private final DungeonStateTracker tracker;
     private final DungeonRouteSession session;
     private final DungeonConfig config;
-    private final Consumer<DungeonRoom> roomListener = room -> syncCurrentRoom();
+    private final Consumer<DungeonRoom> roomListener = this::onRoomChanged;
     private final Consumer<Zone> zoneListener = this::onZoneChanged;
     private final Runnable syncListener = this::syncCurrentRoom;
     private boolean syncing;
+    private String selectedPhysicalRoomKey;
+    private String selectedSourceGroupId;
 
     public DungeonRoomRouteSync(ActiveGroupManager manager, DungeonStateTracker tracker) {
         this(manager, tracker, null, null);
@@ -65,7 +66,7 @@ public final class DungeonRoomRouteSync {
         manager.addDataListener(syncListener);
         DungeonRoomData.addChangeListener(syncListener);
         if (session != null) session.addChangeListener(syncListener);
-        if (config != null) config.addEnabledListener(syncListener);
+        if (config != null) config.addChangeListener(syncListener);
         syncCurrentRoom();
     }
 
@@ -75,7 +76,7 @@ public final class DungeonRoomRouteSync {
         manager.removeDataListener(syncListener);
         DungeonRoomData.removeChangeListener(syncListener);
         if (session != null) session.removeChangeListener(syncListener);
-        if (config != null) config.removeEnabledListener(syncListener);
+        if (config != null) config.removeChangeListener(syncListener);
     }
 
     private void onZoneChanged(Zone zone) {
@@ -83,6 +84,15 @@ public final class DungeonRoomRouteSync {
                 && !DungeonRoomZoneBridge.isRoomZone(zone)) {
             removeGeneratedGroups();
             return;
+        }
+        syncCurrentRoom();
+    }
+
+    private void onRoomChanged(DungeonRoom room) {
+        String physicalKey = room == null ? null : room.identityKey();
+        if (!java.util.Objects.equals(selectedPhysicalRoomKey, physicalKey)) {
+            selectedPhysicalRoomKey = physicalKey;
+            selectedSourceGroupId = null;
         }
         syncCurrentRoom();
     }
@@ -111,14 +121,15 @@ public final class DungeonRoomRouteSync {
         // routes are room-local, so the mirror is what projects them into this
         // run's room placement; the stored group itself never renders (see
         // ActiveGroupManager#activeGroups).
-        WaypointGroup userRoute = firstUserRouteGroup(roomId);
+        WaypointGroup userRoute = firstUserRouteGroup(room);
         if (userRoute != null) {
             if (!userRoute.enabled()) {
                 removeGeneratedGroup(generatedId);
                 return;
             }
             replaceGeneratedGroup(generatedId,
-                    transformedRouteGroupForRoom(room, userRoute, session));
+                    transformedRouteGroupForRoom(
+                            room, userRoute, session, visibleSecretStages()));
             return;
         }
 
@@ -131,7 +142,8 @@ public final class DungeonRoomRouteSync {
         }
 
         WaypointGroup group = routeGroupForRoom(
-                room, definition, session, manager.get(generatedId));
+                room, definition, session);
+        group.setVisibleMainSteps(visibleSecretStages());
         if (group.isEmpty()) {
             removeGeneratedGroup(generatedId);
             return;
@@ -146,7 +158,12 @@ public final class DungeonRoomRouteSync {
      * waypoint #1 each time would fight the player's advancement.
      */
     private void replaceGeneratedGroup(String generatedId, WaypointGroup next) {
-        carryOverProgress(manager.get(generatedId), next);
+        WaypointGroup previous = manager.get(generatedId);
+        if (previous == null
+                || java.util.Objects.equals(
+                previous.runtimeSourceGroupId(), next.runtimeSourceGroupId())) {
+            carryOverProgress(previous, next);
+        }
         manager.add(next);
     }
 
@@ -172,7 +189,7 @@ public final class DungeonRoomRouteSync {
         if (previousCurrent <= 0 || previousCurrent >= previous.size()) return;
         Waypoint current = previous.get(previousCurrent);
         int mappedCurrent = matchingWaypointIndex(next, current, previousCurrent);
-        if (mappedCurrent >= 0) next.setCurrentIndex(mappedCurrent);
+        if (mappedCurrent >= 0) next.setCurrentTargetIndex(mappedCurrent);
     }
 
     private static int matchingWaypointIndex(WaypointGroup group,
@@ -219,17 +236,73 @@ public final class DungeonRoomRouteSync {
      * that), which is why this returns the group instead of a boolean — the
      * caller also needs its enabled state.
      */
-    private WaypointGroup firstUserRouteGroup(String roomId) {
-        return storedRouteForRoom(manager, roomId);
+    private WaypointGroup firstUserRouteGroup(DungeonRoom room) {
+        if (room == null) return null;
+        List<WaypointGroup> enabled = new ArrayList<>();
+        WaypointGroup disabled = null;
+        for (WaypointGroup group : manager.groupsForZone(room.roomId())) {
+            if (group.temp() || group.runtimeOnly() || group.isEmpty()) continue;
+            if (!group.enabled()) {
+                if (disabled == null) disabled = group;
+                continue;
+            }
+            enabled.add(group);
+        }
+        if (enabled.isEmpty()) {
+            selectedSourceGroupId = disabled == null ? null : disabled.id();
+            return disabled;
+        }
+        if (selectedSourceGroupId != null) {
+            for (WaypointGroup group : enabled) {
+                if (selectedSourceGroupId.equals(group.id())) return group;
+            }
+        }
+
+        Minecraft minecraft = Minecraft.getInstance();
+        Vec3 playerPos = minecraft == null || minecraft.player == null
+                ? null
+                : minecraft.player.position();
+        WaypointGroup selected = enabled.getFirst();
+        if (playerPos != null) {
+            double best = startDistanceSq(room, selected, playerPos);
+            for (int i = 1; i < enabled.size(); i++) {
+                WaypointGroup candidate = enabled.get(i);
+                double distance = startDistanceSq(room, candidate, playerPos);
+                if (distance < best) {
+                    selected = candidate;
+                    best = distance;
+                }
+            }
+        }
+        selectedSourceGroupId = selected.id();
+        return selected;
+    }
+
+    static double startDistanceSq(DungeonRoom room, WaypointGroup group, Vec3 playerPos) {
+        if (room == null || group == null || group.isEmpty() || playerPos == null) {
+            return Double.POSITIVE_INFINITY;
+        }
+        Waypoint actual = DungeonRoomWaypointPlacement.toActualWaypoint(room, group.get(0));
+        double dx = actual.centerX() - playerPos.x;
+        double dy = actual.centerY() - playerPos.y;
+        double dz = actual.centerZ() - playerPos.z;
+        return dx * dx + dy * dy + dz * dz;
+    }
+
+    private int visibleSecretStages() {
+        return config == null ? 1 : config.visibleSecretStages();
     }
 
     /** The stored (persisted, room-local) route for a room, or null. */
     public static WaypointGroup storedRouteForRoom(ActiveGroupManager manager, String roomId) {
         if (manager == null || roomId == null) return null;
+        WaypointGroup disabled = null;
         for (WaypointGroup group : manager.groupsForZone(roomId)) {
-            if (!group.runtimeOnly() && !group.isEmpty()) return group;
+            if (group.temp() || group.runtimeOnly() || group.isEmpty()) continue;
+            if (group.enabled()) return group;
+            if (disabled == null) disabled = group;
         }
-        return null;
+        return disabled;
     }
 
     /**
@@ -241,6 +314,10 @@ public final class DungeonRoomRouteSync {
     public static WaypointGroup storedSourceForMirror(ActiveGroupManager manager,
                                                       WaypointGroup mirror) {
         if (!isGeneratedGroup(mirror)) return null;
+        if (mirror.runtimeSourceGroupId() != null) {
+            WaypointGroup exact = manager.get(mirror.runtimeSourceGroupId());
+            if (exact != null && !exact.runtimeOnly()) return exact;
+        }
         return storedRouteForRoom(manager, mirror.zoneId());
     }
 
@@ -368,9 +445,17 @@ public final class DungeonRoomRouteSync {
      */
     static WaypointGroup transformedRouteGroupForRoom(DungeonRoom room, WaypointGroup source,
                                                       DungeonRouteSession session) {
+        return transformedRouteGroupForRoom(room, source, session, 0);
+    }
+
+    static WaypointGroup transformedRouteGroupForRoom(DungeonRoom room, WaypointGroup source,
+                                                      DungeonRouteSession session,
+                                                      int visibleSecretStages) {
         WaypointGroup group = new WaypointGroup(
                 generatedGroupId(source.zoneId()), source.name(), source.zoneId());
         group.setRuntimeOnly(true);
+        group.setRuntimeSourceGroupId(source.id());
+        group.setVisibleMainSteps(visibleSecretStages);
         group.setLoadMode(source.loadMode());
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         group.setDefaultRadius(source.defaultRadius());
@@ -402,15 +487,21 @@ public final class DungeonRoomRouteSync {
         WaypointGroup group = WaypointGroup.create("Secret Route", definition.id());
         group.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.setSkipAheadEnabled(false);
 
         List<Waypoint> waypoints = new ArrayList<>();
         List<Waypoint> leadingSupportWaypoints = new ArrayList<>();
         boolean hasProgressWaypoint = false;
+        int currentStage = Integer.MIN_VALUE;
+        boolean stageHasMain = false;
         for (DungeonWaypoint dungeonWaypoint : definition.waypoints()) {
             if (dungeonWaypoint.secretIndex() <= 0) {
                 Waypoint supportWaypoint = new Waypoint(
                         dungeonWaypoint.x(), dungeonWaypoint.y(), dungeonWaypoint.z(),
-                        dungeonWaypoint.name(), SUPPORT_WAYPOINT_COLOR,
+                        dungeonWaypoint.name(),
+                        dungeonWaypoint.hasOwnColor()
+                                ? dungeonWaypoint.color()
+                                : SUPPORT_WAYPOINT_COLOR,
                         Waypoint.FLAG_SUBWAYPOINT, 0.0);
                 if (hasProgressWaypoint) {
                     waypoints.add(supportWaypoint);
@@ -419,20 +510,50 @@ public final class DungeonRoomRouteSync {
                 }
                 continue;
             }
+
+            if (dungeonWaypoint.secretIndex() != currentStage) {
+                currentStage = dungeonWaypoint.secretIndex();
+                stageHasMain = false;
+            }
+            int flags = DungeonWaypointSkipRules.flagsForTrigger(dungeonWaypoint.trigger());
+            if (stageHasMain) flags |= Waypoint.FLAG_SUBWAYPOINT;
+            if (dungeonWaypoint.completesSecret()) flags |= Waypoint.FLAG_DUNGEON_SECRET;
+            if (actionUsesLineOfSight(dungeonWaypoint.trigger())) {
+                flags |= Waypoint.FLAG_DEPTH_CHECKED;
+            }
             waypoints.add(new Waypoint(
                     dungeonWaypoint.x(), dungeonWaypoint.y(), dungeonWaypoint.z(),
-                    dungeonWaypoint.name(), SECRET_WAYPOINT_COLOR,
-                    DungeonWaypointSkipRules.flagsForTrigger(dungeonWaypoint.trigger()), 0.0));
+                    dungeonWaypoint.name(),
+                    dungeonWaypoint.hasOwnColor()
+                            ? dungeonWaypoint.color()
+                            : defaultActionColor(dungeonWaypoint),
+                    flags, 0.0));
             if (!hasProgressWaypoint) {
                 hasProgressWaypoint = true;
                 waypoints.addAll(leadingSupportWaypoints);
                 leadingSupportWaypoints.clear();
             }
+            stageHasMain = true;
             for (DungeonHighlight highlight : dungeonWaypoint.highlights()) {
+                int highlightFlags = Waypoint.FLAG_SUBWAYPOINT | highlightFlags(highlight.style());
+                if (dungeonWaypoint.trigger() == DungeonWaypointTrigger.THROW_PEARL) {
+                    highlightFlags |= Waypoint.FLAG_DUNGEON_PEARL_TARGET
+                            | Waypoint.FLAG_HIDE_BEACON
+                            | Waypoint.FLAG_HIDE_NAME;
+                } else if (dungeonWaypoint.trigger() == DungeonWaypointTrigger.BREAK_BLOCKS
+                        || dungeonWaypoint.trigger() == DungeonWaypointTrigger.DUNGEONBREAKER) {
+                    highlightFlags |= DungeonWaypointSkipRules.flagsForTrigger(
+                            dungeonWaypoint.trigger());
+                    if (actionUsesLineOfSight(dungeonWaypoint.trigger())) {
+                        highlightFlags |= Waypoint.FLAG_DEPTH_CHECKED;
+                    }
+                }
                 waypoints.add(new Waypoint(
                         highlight.x(), highlight.y(), highlight.z(),
-                        "", SUPPORT_WAYPOINT_COLOR,
-                Waypoint.FLAG_SUBWAYPOINT | highlightFlags(highlight.style()), 0.0));
+                        "", highlight.hasOwnColor()
+                        ? highlight.color()
+                        : dungeonWaypoint.color(),
+                        highlightFlags, 0.0));
             }
         }
         if (!hasProgressWaypoint) {
@@ -445,169 +566,85 @@ public final class DungeonRoomRouteSync {
         return group;
     }
 
+    private static int defaultActionColor(DungeonWaypoint waypoint) {
+        if (waypoint == null) return SUPPORT_WAYPOINT_COLOR;
+        return waypoint.completesSecret()
+                && waypoint.category() == DungeonSecretCategory.DEFAULT
+                ? SECRET_WAYPOINT_COLOR
+                : waypoint.category().defaultColor;
+    }
+
+    private static boolean actionUsesLineOfSight(DungeonWaypointTrigger trigger) {
+        return trigger == DungeonWaypointTrigger.ETHERWARP
+                || trigger == DungeonWaypointTrigger.DUNGEONBREAKER;
+    }
+
+    /**
+     * Install imported room definitions as ordinary persisted routes. Existing
+     * dungeon routes are kept but disabled, making the newly imported set the
+     * active choice without deleting the player's prior work.
+     */
+    public static List<WaypointGroup> installEditableRoutes(
+            ActiveGroupManager manager, DungeonConfig config,
+            Collection<DungeonRoomDefinition> definitions) {
+        if (manager == null || definitions == null || definitions.isEmpty()) {
+            return List.of();
+        }
+
+        List<WaypointGroup> routes = new ArrayList<>();
+        for (DungeonRoomDefinition definition : definitions) {
+            if (definition != null && !definition.waypoints().isEmpty()) {
+                WaypointGroup route = editableRouteFromDefinition(definition);
+                route.setName("Secret Route — " + definition.displayName());
+                routes.add(route);
+            }
+        }
+        if (routes.isEmpty()) return List.of();
+
+        for (WaypointGroup existing : manager.allGroups()) {
+            if (!existing.temp() && !existing.runtimeOnly()
+                    && DungeonRoomData.definition(existing.zoneId()) != null) {
+                existing.setEnabled(false);
+            }
+        }
+        if (config != null) {
+            List<String> installedRoomIds = new ArrayList<>();
+            for (DungeonRoomDefinition definition : DungeonRoomData.customDefinitions()) {
+                if (!definition.waypoints().isEmpty()) installedRoomIds.add(definition.id());
+            }
+            config.disableRoomRoutes(installedRoomIds);
+        }
+
+        manager.addAll(routes);
+        return List.copyOf(routes);
+    }
+
     static WaypointGroup routeGroupForRoom(DungeonRoom room, DungeonRoomDefinition definition,
                                            DungeonRouteSession session) {
-        return routeGroupForRoom(room, definition, session, null);
-    }
-
-    private static WaypointGroup routeGroupForRoom(DungeonRoom room,
-                                                    DungeonRoomDefinition definition,
-                                                    DungeonRouteSession session,
-                                                    WaypointGroup previous) {
-        WaypointGroup group = new WaypointGroup(
-                generatedGroupId(definition.id()),
-                "Dungeon Secrets -- " + definition.displayName(),
-                definition.id());
-        group.setRuntimeOnly(true);
-        // SEQUENCE so the route navigates one secret at a time: the current
-        // secret gets the tracer/entry path and prev/next render as context,
-        // instead of every secret in the room shouting at once.
-        group.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
-        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-
-        List<DungeonWaypoint> definitions = definition.waypoints();
-        DungeonWaypoint retainedFound = retainedFoundWaypoint(
-                room, definitions, session, previous);
-        List<Waypoint> waypoints = new ArrayList<>();
-        int retainedParentIndex = -1;
-        for (DungeonWaypoint dungeonWaypoint : definitions) {
-            if (isAlreadyFound(session, room, dungeonWaypoint)
-                    && dungeonWaypoint != retainedFound) {
-                continue;
+        List<DungeonWaypoint> visible = new ArrayList<>();
+        boolean complete = session != null && session.isRoomComplete(room);
+        int lastStage = definition.waypoints().stream()
+                .mapToInt(DungeonWaypoint::secretIndex)
+                .max()
+                .orElse(0);
+        for (DungeonWaypoint waypoint : definition.waypoints()) {
+            if (!isAlreadyFound(session, room, waypoint)
+                    || complete && waypoint.secretIndex() == lastStage) {
+                visible.add(waypoint);
             }
-            if (dungeonWaypoint == retainedFound) retainedParentIndex = waypoints.size();
-            addWaypoint(room, dungeonWaypoint, waypoints);
         }
-        group.addAll(waypoints);
-        if (retainedParentIndex >= 0
-                && group.childEndExclusive(retainedParentIndex) > retainedParentIndex + 1) {
-            group.advancePast(retainedParentIndex);
-        }
+        WaypointGroup local = editableRouteFromDefinition(definition.withWaypoints(visible));
+        local.setName("Dungeon Secrets -- " + definition.displayName());
+        WaypointGroup group = transformedRouteGroupForRoom(room, local, session, 0);
+        group.setRuntimeSourceGroupId(null);
+        if (complete) group.setCurrentTargetIndex(group.size());
         return group;
-    }
-
-    private static DungeonWaypoint retainedFoundWaypoint(DungeonRoom room,
-                                                          List<DungeonWaypoint> definitions,
-                                                          DungeonRouteSession session,
-                                                          WaypointGroup previous) {
-        if (session == null || previous == null || previous.isEmpty()) return null;
-
-        int current = previous.currentMainIndex();
-        DungeonWaypoint candidate = foundDefinitionAt(
-                room, definitions, session, previous, current);
-        if (candidate != null) {
-            return hasSubwaypoints(definitions, candidate) ? candidate : null;
-        }
-
-        int activeParent = previous.activeSubwaypointParentIndex();
-        candidate = foundDefinitionAt(room, definitions, session, previous, activeParent);
-        if (candidate != null) {
-            return hasSubwaypoints(definitions, candidate) ? candidate : null;
-        }
-
-        if (previous.isComplete()) {
-            candidate = foundDefinitionAt(
-                    room, definitions, session, previous, previous.lastMainIndex());
-        }
-        return hasSubwaypoints(definitions, candidate) ? candidate : null;
-    }
-
-    private static DungeonWaypoint foundDefinitionAt(DungeonRoom room,
-                                                      List<DungeonWaypoint> definitions,
-                                                      DungeonRouteSession session,
-                                                      WaypointGroup previous,
-                                                      int groupIndex) {
-        if (groupIndex < 0 || groupIndex >= previous.size()) return null;
-        Waypoint reference = previous.get(groupIndex);
-        for (DungeonWaypoint definition : definitions) {
-            if (definition.secretIndex() <= 0
-                    || session.peekStatus(room, definition) != DungeonRouteSession.Status.FOUND
-                    || !matchesWorldPosition(room, definition, reference)) {
-                continue;
-            }
-            return definition;
-        }
-        return null;
-    }
-
-    private static boolean matchesWorldPosition(DungeonRoom room,
-                                                DungeonWaypoint definition,
-                                                Waypoint waypoint) {
-        int[] actual = DungeonMapMath.relativeToActual(
-                room.direction(), room.physicalCornerX(), room.physicalCornerZ(),
-                definition.x(), definition.y(), definition.z());
-        return waypoint.x() == actual[0]
-                && waypoint.y() == actual[1]
-                && waypoint.z() == actual[2];
-    }
-
-    private static boolean hasSubwaypoints(List<DungeonWaypoint> definitions,
-                                           DungeonWaypoint parent) {
-        if (parent == null) return false;
-        int parentIndex = definitions.indexOf(parent);
-        if (parentIndex < 0) return false;
-        return !parent.highlights().isEmpty()
-                || parentIndex + 1 < definitions.size()
-                && definitions.get(parentIndex + 1).secretIndex() <= 0;
     }
 
     private static boolean isAlreadyFound(DungeonRouteSession session, DungeonRoom room,
                                           DungeonWaypoint waypoint) {
         return session != null
                 && session.peekStatus(room, waypoint) == DungeonRouteSession.Status.FOUND;
-    }
-
-    private static void addWaypoint(DungeonRoom room, DungeonWaypoint dungeonWaypoint,
-                                    List<Waypoint> out) {
-        int[] actual = DungeonMapMath.relativeToActual(
-                room.direction(),
-                room.physicalCornerX(),
-                room.physicalCornerZ(),
-                dungeonWaypoint.x(),
-                dungeonWaypoint.y(),
-                dungeonWaypoint.z());
-
-        if (dungeonWaypoint.secretIndex() <= 0) {
-            // Persistent marker (e.g. imported Odin NORMAL waypoints): renders
-            // like a highlight and never participates in route progression.
-            out.add(new Waypoint(
-                    actual[0],
-                    actual[1],
-                    actual[2],
-                    dungeonWaypoint.name(),
-                    SUPPORT_WAYPOINT_COLOR,
-                    Waypoint.FLAG_SUBWAYPOINT,
-                    0.0));
-            return;
-        }
-
-        out.add(new Waypoint(
-                actual[0],
-                actual[1],
-                actual[2],
-                dungeonWaypoint.name(),
-                SECRET_WAYPOINT_COLOR,
-                DungeonWaypointSkipRules.flagsForTriggerAt(
-                        dungeonWaypoint.trigger(), actual[0], actual[1], actual[2]),
-                0.0));
-
-        for (DungeonHighlight highlight : dungeonWaypoint.highlights()) {
-            int[] highlightActual = DungeonMapMath.relativeToActual(
-                    room.direction(),
-                    room.physicalCornerX(),
-                    room.physicalCornerZ(),
-                    highlight.x(),
-                    highlight.y(),
-                    highlight.z());
-            out.add(new Waypoint(
-                    highlightActual[0],
-                    highlightActual[1],
-                    highlightActual[2],
-                    "",
-                    SUPPORT_WAYPOINT_COLOR,
-                    Waypoint.FLAG_SUBWAYPOINT | highlightFlags(highlight.style()),
-                    0.0));
-        }
     }
 
     private static int highlightFlags(DungeonHighlightStyle style) {

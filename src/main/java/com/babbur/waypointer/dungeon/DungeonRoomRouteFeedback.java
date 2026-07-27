@@ -9,7 +9,7 @@ public final class DungeonRoomRouteFeedback {
     }
 
     public static Component completionHiddenUntilNextRun() {
-        return Component.literal("Room route complete -- hidden until next run. Press Previous to reopen.")
+        return Component.translatable("waypointer.dungeon.route.complete_hidden")
                 .withStyle(ChatFormatting.AQUA);
     }
 }

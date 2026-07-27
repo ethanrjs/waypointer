@@ -1,6 +1,10 @@
 package com.babbur.waypointer.dungeon;
 
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
+import com.babbur.waypointer.dungeon.config.DungeonConfig;
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientEntityEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
@@ -17,7 +21,6 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.AbstractSkullBlock;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
@@ -80,9 +83,6 @@ public final class DungeonTriggerDetector {
             "defuse kit", "dungeon chest key", "treasure talisman", "revive stone",
             "architect's first draft", "secret dye", "candycomb");
 
-    private static final List<String> ETHERWARP_ITEM_NAMES =
-            List.of("aspect of the void", "aspect of the end");
-
     private static final Set<DungeonWaypointTrigger> ITEM_TRIGGERS =
             EnumSet.of(DungeonWaypointTrigger.PICKUP_ITEM, DungeonWaypointTrigger.ANY_SECRET);
     private static final Set<DungeonWaypointTrigger> BAT_TRIGGERS =
@@ -93,6 +93,8 @@ public final class DungeonTriggerDetector {
     private final DungeonStateTracker tracker;
     private final DungeonRouteSession session;
     private final DungeonChestInteractionGuard chestInteractionGuard;
+    private final DungeonConfig config;
+    private final ActiveGroupManager manager;
 
     private int tickCounter;
     private long etherwarpArmedAtMillis;
@@ -104,9 +106,18 @@ public final class DungeonTriggerDetector {
 
     public DungeonTriggerDetector(DungeonStateTracker tracker, DungeonRouteSession session,
                                   DungeonChestInteractionGuard chestInteractionGuard) {
+        this(tracker, session, chestInteractionGuard, null, null);
+    }
+
+    public DungeonTriggerDetector(DungeonStateTracker tracker, DungeonRouteSession session,
+                                  DungeonChestInteractionGuard chestInteractionGuard,
+                                  DungeonConfig config,
+                                  ActiveGroupManager manager) {
         this.tracker = tracker;
         this.session = session;
         this.chestInteractionGuard = chestInteractionGuard;
+        this.config = config;
+        this.manager = manager;
     }
 
     public void install() {
@@ -143,9 +154,9 @@ public final class DungeonTriggerDetector {
                 if (chestInteractionGuard != null && isChest(state)) {
                     int secretIndex = waypoint.secretIndex();
                     chestInteractionGuard.defer(level,
-                            () -> session.markFound(room, secretIndex));
+                            () -> markSecretFound(room, waypoint, secretIndex));
                 } else {
-                    session.markFound(room, waypoint.secretIndex());
+                    markSecretFound(room, waypoint, waypoint.secretIndex());
                 }
             }
         }
@@ -156,12 +167,8 @@ public final class DungeonTriggerDetector {
     private void onUseItem(ItemStack held, boolean sneaking) {
         if (!sneaking || held == null || held.isEmpty()) return;
         if (tracker.currentRoom() == null) return;
-        String name = held.getHoverName().getString().toLowerCase(Locale.ROOT);
-        for (String etherwarpItem : ETHERWARP_ITEM_NAMES) {
-            if (name.contains(etherwarpItem)) {
-                etherwarpArmedAtMillis = System.currentTimeMillis();
-                return;
-            }
+        if (DungeonItemIdentity.isEtherwarpItem(held)) {
+            etherwarpArmedAtMillis = System.currentTimeMillis();
         }
     }
 
@@ -180,12 +187,12 @@ public final class DungeonTriggerDetector {
         etherwarpArmedAtMillis = 0L;
         DungeonRoom room = tracker.currentRoom();
         if (room == null) return;
-        // The teleport lands the player standing on the warped-to block, so
-        // the landing position itself is the authored waypoint position.
         DungeonWaypoint waypoint = DungeonTriggerSelection.nearestEntityTrigger(
                 room, DungeonRoomData.waypointsFor(room), ETHERWARP_TRIGGERS,
                 current.x, current.y, current.z, ETHERWARP_TRIGGER_RANGE_SQ);
-        if (waypoint != null) session.markFound(room, waypoint.secretIndex());
+        if (waypoint != null && waypoint.completesSecret()) {
+            markSecretFound(room, waypoint, waypoint.secretIndex());
+        }
     }
 
     // ---- item pickups ------------------------------------------------------
@@ -201,11 +208,15 @@ public final class DungeonTriggerDetector {
                 || !isSecretItemName(item.getItem().getHoverName().getString())) {
             return;
         }
+        advanceCurrentAction(
+                Waypoint.FLAG_DUNGEON_ITEM, entity.getX(), entity.getY(), entity.getZ());
 
         DungeonWaypoint waypoint = DungeonTriggerSelection.nearestEntityTrigger(
                 room, DungeonRoomData.waypointsFor(room), ITEM_TRIGGERS,
                 entity.getX(), entity.getY(), entity.getZ(), ENTITY_TRIGGER_RANGE_SQ);
-        if (waypoint != null) session.markFound(room, waypoint.secretIndex());
+        if (waypoint != null && waypoint.completesSecret()) {
+            markSecretFound(room, waypoint, waypoint.secretIndex());
+        }
     }
 
     private static boolean isSecretItemName(String rawName) {
@@ -224,11 +235,16 @@ public final class DungeonTriggerDetector {
         if (sound != SoundEvents.BAT_HURT && sound != SoundEvents.BAT_DEATH) return;
         DungeonRoom room = tracker.currentRoom();
         if (room == null) return;
+        if (sound == SoundEvents.BAT_DEATH) {
+            advanceCurrentAction(Waypoint.FLAG_DUNGEON_BAT, x, y, z);
+        }
 
         DungeonWaypoint waypoint = DungeonTriggerSelection.nearestEntityTrigger(
                 room, DungeonRoomData.waypointsFor(room), BAT_TRIGGERS,
                 x, y, z, ENTITY_TRIGGER_RANGE_SQ);
-        if (waypoint != null) session.markFound(room, waypoint.secretIndex());
+        if (waypoint != null && waypoint.completesSecret()) {
+            markSecretFound(room, waypoint, waypoint.secretIndex());
+        }
     }
 
     // ---- chat + break polling ------------------------------------------------
@@ -242,7 +258,7 @@ public final class DungeonTriggerDetector {
         for (DungeonWaypoint waypoint : waypoints) {
             if (waypoint.trigger() != DungeonWaypointTrigger.CHAT_MESSAGE) continue;
             if (DungeonTriggerSelection.chatMessageMatchesWaypoint(text, waypoint)) {
-                session.markFound(room, waypoint.secretIndex());
+                markSecretFound(room, waypoint, waypoint.secretIndex());
             }
         }
     }
@@ -283,7 +299,9 @@ public final class DungeonTriggerDetector {
                     break;
                 }
             }
-            if (allCleared) session.markFound(room, waypoint.secretIndex());
+            if (allCleared && waypoint.completesSecret()) {
+                markSecretFound(room, waypoint, waypoint.secretIndex());
+            }
         }
     }
 
@@ -297,10 +315,7 @@ public final class DungeonTriggerDetector {
                     || state.is(Blocks.TRAPPED_CHEST)
                     || state.getBlock() instanceof AbstractSkullBlock);
             case FLIP_LEVER -> state != null && state.is(Blocks.LEVER);
-            case USE_SUPERBOOM -> held != null
-                    && held.is(Items.TNT)
-                    && DungeonTriggerSelection.itemNameMatchesSuperboom(
-                    held.getHoverName().getString());
+            case USE_SUPERBOOM -> DungeonItemIdentity.isSuperboom(held);
             case ANY_SECRET -> state != null && isSecretInteractBlock(state);
             default -> false;
         };
@@ -338,5 +353,29 @@ public final class DungeonTriggerDetector {
         int[] world = DungeonMapMath.relativeToActual(
                 room.direction(), room.physicalCornerX(), room.physicalCornerZ(), x, y, z);
         return new BlockPos(world[0], world[1], world[2]);
+    }
+
+    private void markSecretFound(DungeonRoom room, DungeonWaypoint waypoint, int secretIndex) {
+        if (waypoint == null || !waypoint.completesSecret()) return;
+        if (session.markFound(room, secretIndex)) {
+            DungeonSecretCompletionSound.play(config);
+        }
+    }
+
+    private void advanceCurrentAction(int actionFlag, double x, double y, double z) {
+        if (manager == null) return;
+        for (WaypointGroup group : manager.activeGroups()) {
+            int currentIndex = group.currentIndex();
+            if (currentIndex < 0 || currentIndex >= group.size()) continue;
+            Waypoint current = group.get(currentIndex);
+            if (!current.hasFlag(actionFlag)) continue;
+            double dx = current.centerX() - x;
+            double dy = current.centerY() - y;
+            double dz = current.centerZ() - z;
+            if (dx * dx + dy * dy + dz * dz > ENTITY_TRIGGER_RANGE_SQ) continue;
+            boolean secret = current.hasFlag(Waypoint.FLAG_DUNGEON_SECRET);
+            group.advancePast(currentIndex);
+            if (secret) DungeonSecretCompletionSound.play(config);
+        }
     }
 }

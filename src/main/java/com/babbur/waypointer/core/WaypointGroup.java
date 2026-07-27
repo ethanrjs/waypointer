@@ -131,6 +131,13 @@ public final class WaypointGroup {
      * bright until the next main waypoint is reached.
      */
     private transient int activeSubwaypointParentIndex = -1;
+    /**
+     * Runtime-only cap on visible sequence stages. Zero keeps the normal route
+     * behavior; dungeon mirrors set 1..5 from Dungeon settings.
+     */
+    private transient int visibleMainSteps;
+    /** Stored group id projected into this runtime-only dungeon mirror. */
+    private transient String runtimeSourceGroupId;
     private transient int standSkipHoldIndex = -1;
     private transient long standSkipHoldStartedAtMillis;
     /**
@@ -183,6 +190,8 @@ public final class WaypointGroup {
     public boolean skipAheadEnabled() { return skipAheadEnabled; }
     public boolean temp()           { return temp; }
     public boolean runtimeOnly()    { return runtimeOnly; }
+    public int visibleMainSteps()   { return visibleMainSteps; }
+    public String runtimeSourceGroupId() { return runtimeSourceGroupId; }
     public long bestTimeMillis()    { return bestTimeMillis; }
     public List<Waypoint> waypoints() { return Collections.unmodifiableList(waypoints); }
     public int size()             { return waypoints.size(); }
@@ -288,6 +297,12 @@ public final class WaypointGroup {
 
     public boolean isActiveSubwaypointParent(int index) {
         if (!canHoldActiveSubwaypointParent(index)) return false;
+        if (currentIndex >= 0
+                && currentIndex < waypoints.size()
+                && isSubwaypoint(currentIndex)
+                && parentMainIndex(currentIndex) == index) {
+            return true;
+        }
 
         int current = currentMainIndex();
         if (current < 0) return false;
@@ -314,6 +329,8 @@ public final class WaypointGroup {
     public void setSkipAheadEnabled(boolean on)         { this.skipAheadEnabled = on; }
     public void setTemp(boolean on)                     { this.temp = on; }
     public void setRuntimeOnly(boolean on)              { this.runtimeOnly = on; }
+    public void setVisibleMainSteps(int count)           { this.visibleMainSteps = Math.max(0, count); }
+    public void setRuntimeSourceGroupId(String id)       { this.runtimeSourceGroupId = id; }
     public void setBestTimeMillis(long millis)           { this.bestTimeMillis = Math.max(-1L, millis); }
     public void setPaint(WaypointPaint paint)            { this.paint = paint; }
     public void setPaintEnabled(boolean on)               { this.paintEnabled = on; }
@@ -390,6 +407,20 @@ public final class WaypointGroup {
 
         int activeParent = activeSubwaypointParentIndex();
         if (isDungeonRoomRoute()) {
+            if (visibleMainSteps > 0) {
+                int exactCurrent = currentIndex;
+                if (exactCurrent >= 0 && exactCurrent < n
+                        && !waypoints.get(exactCurrent).hasFlag(
+                        Waypoint.FLAG_DUNGEON_PEARL_TARGET)) {
+                    action.accept(exactCurrent);
+                }
+                int stage = currentMainIndex();
+                for (int remaining = visibleMainSteps - 1; remaining > 0 && stage >= 0; remaining--) {
+                    stage = nextMainIndexAfter(stage);
+                    if (stage >= 0) action.accept(stage);
+                }
+                return;
+            }
             if (activeParent >= 0) {
                 action.accept(activeParent);
                 for (int child = activeParent + 1; child < n && isSubwaypoint(child); child++) {
@@ -617,15 +648,21 @@ public final class WaypointGroup {
 
     public void advancePast(int reachedIndex) {
         if (isSubwaypoint(reachedIndex)) {
-            int next = reachedIndex + 1;
-            if (next < waypoints.size() && isSubwaypoint(next)) {
+            int next = nextCompletableChildAfter(reachedIndex);
+            if (next >= 0) {
                 currentIndex = next;
                 activeSubwaypointParentIndex = parentMainIndex(next);
                 return;
             }
-            int nextMain = nextMainIndexAtOrAfter(next);
+            int nextMain = nextMainIndexAtOrAfter(childEndExclusive(parentMainIndex(reachedIndex)));
             currentIndex = nextMain >= 0 ? nextMain : waypoints.size();
             activeSubwaypointParentIndex = -1;
+            return;
+        }
+        int firstChild = firstCompletableChild(reachedIndex);
+        if (firstChild >= 0) {
+            currentIndex = firstChild;
+            activeSubwaypointParentIndex = reachedIndex;
             return;
         }
         activeSubwaypointParentIndex = childEndExclusive(reachedIndex) > reachedIndex + 1
@@ -640,6 +677,32 @@ public final class WaypointGroup {
                 activeSubwaypointParentIndex = -1;
             }
         }
+    }
+
+    private int firstCompletableChild(int parentIndex) {
+        if (parentIndex < 0 || parentIndex >= waypoints.size() || isSubwaypoint(parentIndex)) {
+            return -1;
+        }
+        int end = childEndExclusive(parentIndex);
+        for (int i = parentIndex + 1; i < end; i++) {
+            if (hasDungeonCompletion(waypoints.get(i))) return i;
+        }
+        return -1;
+    }
+
+    private int nextCompletableChildAfter(int childIndex) {
+        int parent = parentMainIndex(childIndex);
+        if (parent < 0) return -1;
+        int end = childEndExclusive(parent);
+        for (int i = childIndex + 1; i < end; i++) {
+            if (hasDungeonCompletion(waypoints.get(i))) return i;
+        }
+        return -1;
+    }
+
+    private static boolean hasDungeonCompletion(Waypoint waypoint) {
+        return waypoint != null
+                && (waypoint.flags() & Waypoint.DUNGEON_COMPLETION_FLAGS) != 0;
     }
 
     /**
@@ -916,9 +979,7 @@ public final class WaypointGroup {
             return;
         }
         currentIndex = Math.max(0, index);
-        activeSubwaypointParentIndex = isSubwaypoint(currentIndex)
-                ? parentMainIndex(currentIndex)
-                : -1;
+        activeSubwaypointParentIndex = -1;
         clearProximitySuppression();
         clearStandSkipHold();
     }

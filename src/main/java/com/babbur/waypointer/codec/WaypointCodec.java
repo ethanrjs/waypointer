@@ -2184,7 +2184,7 @@ public final class WaypointCodec {
     private static int exportedWaypointFlags(Waypoint w, Options opts) {
         int flags = w.flags();
         if (!opts.includeWaypointFlags) {
-            int requiredFlags = Waypoint.STRUCTURAL_FLAGS;
+            int requiredFlags = Waypoint.PERSISTENT_BEHAVIOR_FLAGS;
             if (opts.includeColors) requiredFlags |= Waypoint.FLAG_LOCKED_COLOR;
             flags &= requiredFlags;
             if ((flags & Waypoint.FLAG_SUBWAYPOINT) != 0) {

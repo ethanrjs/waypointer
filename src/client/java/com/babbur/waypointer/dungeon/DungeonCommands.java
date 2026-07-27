@@ -9,6 +9,8 @@ import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
 import com.babbur.waypointer.commands.CommandHelpers;
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
 import com.babbur.waypointer.dungeon.data.DungeonRoomFingerprint;
@@ -63,18 +65,26 @@ public final class DungeonCommands {
     private final DungeonConfig config;
     private final DungeonRouteSession session;
     private final DungeonRouteDownloader downloader;
+    private final ActiveGroupManager manager;
 
     public DungeonCommands(DungeonStateTracker tracker, DungeonConfig config,
                            DungeonRouteSession session) {
-        this(tracker, config, session, null);
+        this(tracker, config, session, null, null);
     }
 
     public DungeonCommands(DungeonStateTracker tracker, DungeonConfig config,
                            DungeonRouteSession session, DungeonRouteDownloader downloader) {
+        this(tracker, config, session, downloader, null);
+    }
+
+    public DungeonCommands(DungeonStateTracker tracker, DungeonConfig config,
+                           DungeonRouteSession session, DungeonRouteDownloader downloader,
+                           ActiveGroupManager manager) {
         this.tracker = tracker;
         this.config = config;
         this.session = session;
         this.downloader = downloader;
+        this.manager = manager;
     }
 
     public void install() {
@@ -335,7 +345,9 @@ public final class DungeonCommands {
                 String value = Integer.toString(waypoint.secretIndex());
                 if (value.startsWith(prefix)) {
                     builder.suggest(waypoint.secretIndex(),
-                            Component.literal("secret #" + waypoint.secretIndex()));
+                            Component.translatable(
+                                    "waypointer.dungeon.command.suggestion.secret",
+                                    waypoint.secretIndex()));
                 }
             }
             return builder.buildFuture();
@@ -373,20 +385,19 @@ public final class DungeonCommands {
     private int runInfo(FabricClientCommandSource src) {
         DungeonRoom room = tracker.currentRoom();
         if (!tracker.inDungeon()) {
-            info(src, "Not currently inside Catacombs.");
+            info(src, Component.translatable("waypointer.dungeon.command.info.not_in_catacombs"));
             return 1;
         }
         if (room == null) {
-            info(src, "In Catacombs, but no room detected (between rooms? map not yet anchored).");
+            info(src, Component.translatable("waypointer.dungeon.command.info.no_room"));
             return 1;
         }
-        info(src, "Dungeon room: " + room.displayName()
-                + " (" + room.type() + " " + room.shape() + ")"
-                + " dir=" + room.direction()
-                + (room.hasRoomId() ? " id=" + room.roomId() : " id=<unmatched>")
-                + " corner=(" + room.physicalCornerX() + ", " + room.physicalCornerZ() + ")"
-                + " segments=" + room.segments().size()
-                + roomCountsSuffix(room));
+        info(src, Component.translatable(
+                "waypointer.dungeon.command.info.room",
+                room.displayName(), room.type(), room.shape(), room.direction(),
+                room.hasRoomId() ? room.roomId() : "<unmatched>",
+                room.physicalCornerX(), room.physicalCornerZ(),
+                room.segments().size(), roomCountsSuffix(room)));
         return 1;
     }
 
@@ -411,12 +422,13 @@ public final class DungeonCommands {
     private int runTest(FabricClientCommandSource src) {
         DungeonRoom room = tracker.currentRoom();
         if (room == null) {
-            error(src, "No room detected. Stand in a Catacombs room and try again.");
+            error(src, Component.translatable("waypointer.dungeon.command.error.no_room"));
             return 0;
         }
         var demo = DungeonRoomData.demoFor(room.shape());
         if (demo.isEmpty()) {
-            error(src, "No demo data registered for shape " + room.shape() + ".");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.test.no_demo", room.shape()));
             return 0;
         }
         for (DungeonWaypoint wp : demo) {
@@ -430,8 +442,8 @@ public final class DungeonCommands {
             }
             DungeonRoomData.addWaypoint(id, wp);
         }
-        success(src, "Added " + demo.size() + " demo waypoint(s) for shape "
-                + room.shape() + " in current room.");
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.test.added", demo.size(), room.shape()));
         return 1;
     }
 
@@ -446,12 +458,14 @@ public final class DungeonCommands {
                     room,
                     new DungeonRoomCoreScanner(Minecraft.getInstance().level));
         } catch (IllegalStateException unavailableIdentity) {
-            error(src, "Room core identity is not available yet. Wait for the room to load and try again.");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.room.identity_unavailable"));
             return 0;
         }
         tracker.applyCurrentRoomDefinition(definition.id(), definition.displayName());
-        success(src, "Dungeon room definition \"" + definition.displayName()
-                + "\" created as " + definition.id());
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.room.created",
+                definition.displayName(), definition.id()));
         return 1;
     }
 
@@ -460,7 +474,8 @@ public final class DungeonCommands {
         if (room == null) return 0;
         DungeonRoomDefinition definition = DungeonRoomData.renameRoom(room.roomId(), name);
         tracker.applyCurrentRoomDefinition(definition.id(), definition.displayName());
-        success(src, "Renamed room to \"" + definition.displayName() + "\".");
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.room.renamed", definition.displayName()));
         return 1;
     }
 
@@ -468,7 +483,9 @@ public final class DungeonCommands {
         DungeonRoom room = requireAuthoredRoom(src);
         LocalPlayer player = Minecraft.getInstance().player;
         if (room == null || player == null) {
-            if (player == null) error(src, "Not in a world.");
+            if (player == null) {
+                error(src, Component.translatable("waypointer.command.error.not_in_world"));
+            }
             return 0;
         }
         int wx = (int) Math.floor(player.getX());
@@ -481,21 +498,25 @@ public final class DungeonCommands {
                 .toString();
         DungeonRoomData.addFingerprint(room.roomId(),
                 new DungeonRoomFingerprint(relative[0], relative[1], relative[2], blockId));
-        success(src, "Added fingerprint " + blockId + " at relative "
-                + relative[0] + ", " + relative[1] + ", " + relative[2]);
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.fingerprint.added",
+                blockId, relative[0], relative[1], relative[2]));
         return 1;
     }
 
     private int runRoomList(FabricClientCommandSource src) {
         int count = 0;
         for (DungeonRoomDefinition definition : DungeonRoomData.customDefinitions()) {
-            info(src, definition.id() + " -- " + definition.displayName()
-                    + " (" + definition.type() + " " + definition.shape()
-                    + ", " + definition.waypoints().size() + " waypoint(s), "
-                    + definition.fingerprints().size() + " fingerprint(s))");
+            info(src, Component.translatable(
+                    "waypointer.dungeon.command.room.list_entry",
+                    definition.id(), definition.displayName(),
+                    definition.type(), definition.shape(),
+                    definition.waypoints().size(), definition.fingerprints().size()));
             count++;
         }
-        if (count == 0) info(src, "No custom dungeon room definitions yet.");
+        if (count == 0) {
+            info(src, Component.translatable("waypointer.dungeon.command.room.list_empty"));
+        }
         return count;
     }
 
@@ -504,17 +525,20 @@ public final class DungeonCommands {
         if (definition == null) return 0;
         List<DungeonWaypoint> waypoints = definition.waypoints();
         if (waypoints.isEmpty()) {
-            info(src, "No secret waypoints in " + definition.displayName() + ".");
+            info(src, Component.translatable(
+                    "waypointer.dungeon.command.waypoint.list_empty",
+                    definition.displayName()));
             return 0;
         }
         for (int i = 0; i < waypoints.size(); i++) {
             DungeonWaypoint waypoint = waypoints.get(i);
-            info(src, "[" + i + "] " + secretIndexDescriptor(waypoint) + " "
-                    + waypoint.category().id + " " + waypoint.x() + ", "
-                    + waypoint.y() + ", " + waypoint.z()
-                    + " trigger=" + waypoint.trigger().name().toLowerCase(java.util.Locale.ROOT)
-                    + (waypoint.hasName() ? " -- " + waypoint.name() : "")
-                    + " (" + waypoint.highlights().size() + " highlight(s))");
+            info(src, Component.translatable(
+                    "waypointer.dungeon.command.waypoint.list_entry",
+                    i, secretIndexDescriptor(waypoint), waypoint.category().id,
+                    waypoint.x(), waypoint.y(), waypoint.z(),
+                    waypoint.trigger().name().toLowerCase(java.util.Locale.ROOT),
+                    waypoint.hasName() ? " -- " + waypoint.name() : "",
+                    waypoint.highlights().size()));
         }
         return waypoints.size();
     }
@@ -523,7 +547,9 @@ public final class DungeonCommands {
         DungeonRoom room = requireAuthoredRoom(src);
         LocalPlayer player = Minecraft.getInstance().player;
         if (room == null || player == null) {
-            if (player == null) error(src, "Not in a world.");
+            if (player == null) {
+                error(src, Component.translatable("waypointer.command.error.not_in_world"));
+            }
             return 0;
         }
         DungeonRoomDefinition definition = DungeonRoomData.definition(room.roomId());
@@ -544,8 +570,10 @@ public final class DungeonCommands {
                 List.of());
         DungeonRoomData.addWaypoint(room.roomId(), waypoint);
         session.resetRoom(room);
-        success(src, "Added secret #" + secretIndex + " to " + room.displayName()
-                + " at relative " + relative[0] + ", " + relative[1] + ", " + relative[2]);
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.waypoint.added",
+                secretIndex, room.displayName(),
+                relative[0], relative[1], relative[2]));
         return 1;
     }
 
@@ -554,12 +582,15 @@ public final class DungeonCommands {
         DungeonRoomDefinition definition = room == null ? null : DungeonRoomData.definition(room.roomId());
         if (definition == null) return 0;
         if (index >= definition.waypoints().size()) {
-            error(src, "Waypoint index out of range (0.." + (definition.waypoints().size() - 1) + ").");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.error.waypoint_index_range",
+                    definition.waypoints().size() - 1));
             return 0;
         }
         DungeonRoomData.removeWaypoint(room.roomId(), index);
         session.resetRoom(room);
-        success(src, "Removed dungeon waypoint [" + index + "].");
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.waypoint.removed", index));
         return 1;
     }
 
@@ -568,11 +599,14 @@ public final class DungeonCommands {
         LocalPlayer player = Minecraft.getInstance().player;
         DungeonRoomDefinition definition = room == null ? null : DungeonRoomData.definition(room.roomId());
         if (room == null || definition == null || player == null) {
-            if (player == null) error(src, "Not in a world.");
+            if (player == null) {
+                error(src, Component.translatable("waypointer.command.error.not_in_world"));
+            }
             return 0;
         }
         if (index >= definition.waypoints().size()) {
-            error(src, "Waypoint index out of range.");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.error.waypoint_index"));
             return 0;
         }
         int[] relative = DungeonMapMath.actualToRelative(
@@ -582,8 +616,9 @@ public final class DungeonCommands {
                 (int) Math.floor(player.getZ()));
         DungeonRoomData.moveWaypoint(room.roomId(), index, relative[0], relative[1], relative[2]);
         session.resetRoom(room);
-        success(src, "Moved waypoint [" + index + "] to relative "
-                + relative[0] + ", " + relative[1] + ", " + relative[2]);
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.waypoint.moved",
+                index, relative[0], relative[1], relative[2]));
         return 1;
     }
 
@@ -593,13 +628,15 @@ public final class DungeonCommands {
         DungeonRoomDefinition definition = room == null ? null : DungeonRoomData.definition(room.roomId());
         if (room == null || definition == null) return 0;
         if (index >= definition.waypoints().size()) {
-            error(src, "Waypoint index out of range.");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.error.waypoint_index"));
             return 0;
         }
         DungeonRoomData.setWaypointTrigger(room.roomId(), index, trigger);
         session.resetRoom(room);
-        success(src, "Waypoint [" + index + "] trigger -> "
-                + trigger.name().toLowerCase(java.util.Locale.ROOT));
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.waypoint.trigger",
+                index, trigger.name().toLowerCase(java.util.Locale.ROOT)));
         return 1;
     }
 
@@ -608,10 +645,15 @@ public final class DungeonCommands {
         if (waypoint == null) return 0;
         for (int i = 0; i < waypoint.highlights().size(); i++) {
             DungeonHighlight highlight = waypoint.highlights().get(i);
-            info(src, "[" + i + "] " + highlight.style() + " "
-                    + highlight.x() + ", " + highlight.y() + ", " + highlight.z());
+            info(src, Component.translatable(
+                    "waypointer.dungeon.command.highlight.list_entry",
+                    i, highlight.style(),
+                    highlight.x(), highlight.y(), highlight.z()));
         }
-        if (waypoint.highlights().isEmpty()) info(src, "No highlights on this waypoint.");
+        if (waypoint.highlights().isEmpty()) {
+            info(src, Component.translatable(
+                    "waypointer.dungeon.command.highlight.list_empty"));
+        }
         return waypoint.highlights().size();
     }
 
@@ -620,12 +662,15 @@ public final class DungeonCommands {
         DungeonRoom room = requireAuthoredRoom(src);
         LocalPlayer player = Minecraft.getInstance().player;
         if (room == null || player == null) {
-            if (player == null) error(src, "Not in a world.");
+            if (player == null) {
+                error(src, Component.translatable("waypointer.command.error.not_in_world"));
+            }
             return 0;
         }
         DungeonRoomDefinition definition = DungeonRoomData.definition(room.roomId());
         if (definition == null || waypointIndex >= definition.waypoints().size()) {
-            error(src, "Waypoint index out of range.");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.error.waypoint_index"));
             return 0;
         }
         int[] relative = DungeonMapMath.actualToRelative(
@@ -636,7 +681,8 @@ public final class DungeonCommands {
         DungeonRoomData.addHighlight(room.roomId(), waypointIndex,
                 new DungeonHighlight(relative[0], relative[1], relative[2],
                         style, DungeonHighlight.INHERIT_COLOR));
-        success(src, "Added " + style + " highlight to waypoint [" + waypointIndex + "].");
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.highlight.added", style, waypointIndex));
         return 1;
     }
 
@@ -647,8 +693,8 @@ public final class DungeonCommands {
             if (room != null) {
                 DungeonRoomData.setWaypointTrigger(room.roomId(), waypointIndex,
                         DungeonWaypointTrigger.DUNGEONBREAKER);
-                success(src, "Waypoint [" + waypointIndex
-                        + "] now uses dungeonbreaker trigger for its break boxes.");
+                success(src, Component.translatable(
+                        "waypointer.dungeon.command.breakbox.trigger", waypointIndex));
             }
         }
         return result;
@@ -660,17 +706,22 @@ public final class DungeonCommands {
         DungeonRoom room = tracker.currentRoom();
         if (waypoint == null || room == null) return 0;
         if (highlightIndex >= waypoint.highlights().size()) {
-            error(src, "Highlight index out of range (0.." + (waypoint.highlights().size() - 1) + ").");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.error.highlight_index_range",
+                    waypoint.highlights().size() - 1));
             return 0;
         }
         DungeonRoomData.removeHighlight(room.roomId(), waypointIndex, highlightIndex);
-        success(src, "Removed highlight [" + highlightIndex + "] from waypoint [" + waypointIndex + "].");
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.highlight.removed",
+                highlightIndex, waypointIndex));
         return 1;
     }
 
     private int runRoutesDownload(FabricClientCommandSource src) {
         if (downloader == null) {
-            error(src, "Route downloads are unavailable in this session.");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.routes.unavailable"));
             return 0;
         }
         downloader.download(component -> src.sendFeedback(component));
@@ -679,12 +730,13 @@ public final class DungeonCommands {
 
     private int runRoutesDismiss(FabricClientCommandSource src) {
         if (downloader == null) {
-            error(src, "Route downloads are unavailable in this session.");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.routes.unavailable"));
             return 0;
         }
         downloader.dismissPrompt();
-        success(src, "Okay -- Waypointer won't suggest downloading routes again."
-                + " /wpd routes download still works any time.");
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.routes.dismissed"));
         return 1;
     }
 
@@ -697,7 +749,8 @@ public final class DungeonCommands {
     private int runImport(FabricClientCommandSource src, String rawPath) {
         Path file = resolveImportPath(rawPath);
         if (file == null) {
-            error(src, "File not found: " + rawPath);
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.import.file_not_found", rawPath));
             return 0;
         }
 
@@ -705,7 +758,9 @@ public final class DungeonCommands {
         try {
             payload = Files.readString(file);
         } catch (IOException e) {
-            error(src, "Could not read " + file + ": " + e.getMessage());
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.import.read_failed",
+                    file, e.getMessage()));
             return 0;
         }
 
@@ -713,20 +768,35 @@ public final class DungeonCommands {
         try {
             result = DungeonRouteImporter.parse(payload);
         } catch (IllegalArgumentException e) {
-            error(src, "Import failed: " + e.getMessage());
+            error(src, Component.translatable(
+                    "waypointer.command.import.failed", e.getMessage()));
             return 0;
         }
 
-        int rooms = DungeonRoomData.importCustomDefinitions(result.definitions());
-        success(src, "Imported " + result.waypointCount() + " waypoint(s) across " + rooms
-                + " room(s) from " + importFormatLabel(result.format()) + ".");
+        DungeonRoomData.importCustomDefinitions(result.definitions());
+        List<WaypointGroup> routes =
+                DungeonRoomRouteSync.installEditableRoutes(manager, config, result.definitions());
+        if (routes.isEmpty()) {
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.import.no_usable_routes"));
+            return 0;
+        }
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.import.success",
+                result.waypointCount(), routes.size(),
+                importFormatLabel(result.format())));
+        info(src, Component.translatable(
+                "waypointer.dungeon.routes.existing_disabled"));
         if (result.skippedVariants() > 0) {
-            info(src, "Skipped " + result.skippedVariants()
-                    + " alternate route variant(s); Waypointer keeps one route per room.");
+            info(src, Component.translatable(
+                    "waypointer.dungeon.command.import.skipped_variants",
+                    result.skippedVariants()));
         }
         if (!result.unmatchedRooms().isEmpty()) {
-            info(src, "No catalog match for " + result.unmatchedRooms().size() + " room(s): "
-                    + summarizeNames(result.unmatchedRooms()));
+            info(src, Component.translatable(
+                    "waypointer.dungeon.command.import.unmatched_rooms",
+                    result.unmatchedRooms().size(),
+                    summarizeNames(result.unmatchedRooms())));
         }
         return 1;
     }
@@ -747,11 +817,14 @@ public final class DungeonCommands {
         return null;
     }
 
-    private static String importFormatLabel(DungeonRouteImporter.Format format) {
+    private static Component importFormatLabel(DungeonRouteImporter.Format format) {
         return switch (format) {
-            case WAYPOINTER -> "a Waypointer export";
-            case SECRET_ROUTES -> "SecretRoutes routes.json";
-            case ODIN_PACK -> "an Odin waypoint pack";
+            case WAYPOINTER -> Component.translatable(
+                    "waypointer.dungeon.command.import.format.waypointer");
+            case SECRET_ROUTES -> Component.translatable(
+                    "waypointer.dungeon.command.import.format.secret_routes");
+            case ODIN_PACK -> Component.translatable(
+                    "waypointer.dungeon.command.import.format.odin");
         };
     }
 
@@ -772,9 +845,11 @@ public final class DungeonCommands {
         session.advance(room);
         int currentSecretIndex = session.currentSecretIndex(room);
         if (currentSecretIndex == 0) {
-            success(src, "Completed dungeon route for " + room.displayName() + ".");
+            success(src, Component.translatable(
+                    "waypointer.dungeon.command.route.completed", room.displayName()));
         } else {
-            success(src, "Advanced dungeon route to secret #" + currentSecretIndex + ".");
+            success(src, Component.translatable(
+                    "waypointer.dungeon.command.route.advanced", currentSecretIndex));
         }
         return 1;
     }
@@ -783,7 +858,8 @@ public final class DungeonCommands {
         DungeonRoom room = requireRoom(src);
         if (room == null) return 0;
         session.resetRoom(room);
-        success(src, "Reset route progress for " + room.displayName() + ".");
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.route.reset", room.displayName()));
         return 1;
     }
 
@@ -792,15 +868,18 @@ public final class DungeonCommands {
         if (room == null) return 0;
         if (!isAuthoredSecretIndex(room, secretIndex)) {
             String available = availableAuthoredSecretIndexes(room);
-            String suffix = available.isEmpty()
-                    ? " No positive route secrets are authored for this room."
-                    : " Available: " + available + ".";
-            error(src, "Secret #" + secretIndex + " is not authored for "
-                    + room.displayName() + "." + suffix);
+            error(src, available.isEmpty()
+                    ? Component.translatable(
+                            "waypointer.dungeon.command.route.secret_not_authored_empty",
+                            secretIndex, room.displayName())
+                    : Component.translatable(
+                            "waypointer.dungeon.command.route.secret_not_authored",
+                            secretIndex, room.displayName(), available));
             return 0;
         }
         session.markFound(room, secretIndex);
-        success(src, "Marked secret #" + secretIndex + " found.");
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.route.secret_found", secretIndex));
         return 1;
     }
 
@@ -829,25 +908,29 @@ public final class DungeonCommands {
 
     private int runRotate(FabricClientCommandSource src, Direction dir) {
         if (!tracker.setDirectionOverride(dir)) {
-            error(src, "No detected dungeon room to rotate.");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.rotate.no_room"));
             return 0;
         }
         if (dir == null) {
-            success(src, "Restored automatic rotation for the current room.");
+            success(src, Component.translatable(
+                    "waypointer.dungeon.command.rotate.automatic"));
         } else {
-            success(src, "Rotated the current room to " + dir + " for this dungeon run.");
+            success(src, Component.translatable(
+                    "waypointer.dungeon.command.rotate.set", dir));
         }
         return 1;
     }
 
     private int runReset(FabricClientCommandSource src, boolean confirmed) {
         if (!confirmed) {
-            warn(src, "This will clear all custom dungeon room data and waypoints. "
-                    + "Run /wpd reset confirm to proceed.");
+            warn(src, Component.translatable(
+                    "waypointer.dungeon.command.reset.confirm"));
             return 0;
         }
         DungeonRoomData.clearAllCustom();
-        success(src, "Cleared all runtime dungeon waypoints.");
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.reset.cleared"));
         return 1;
     }
 
@@ -875,14 +958,17 @@ public final class DungeonCommands {
             }
             default -> false;
         };
-        success(src, "Dungeon " + which + " -> " + newValue);
+        success(src, Component.translatable(
+                "waypointer.dungeon.command.toggle", which, newValue));
         Waypointer.LOGGER.info("Dungeon toggle: {} -> {}", which, newValue);
         return 1;
     }
 
     private DungeonRoom requireRoom(FabricClientCommandSource src) {
         DungeonRoom room = tracker.currentRoom();
-        if (room == null) error(src, "No room detected. Stand in a Catacombs room and try again.");
+        if (room == null) {
+            error(src, Component.translatable("waypointer.dungeon.command.error.no_room"));
+        }
         return room;
     }
 
@@ -890,7 +976,8 @@ public final class DungeonCommands {
         DungeonRoom room = requireRoom(src);
         if (room == null) return null;
         if (!room.hasRoomId() || DungeonRoomData.definition(room.roomId()) == null) {
-            error(src, "Create a room definition first with /wpd room create <id> [name].");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.error.create_room_first"));
             return null;
         }
         return room;
@@ -905,7 +992,9 @@ public final class DungeonCommands {
         DungeonRoomDefinition definition = requireDefinition(src);
         if (definition == null) return null;
         if (waypointIndex >= definition.waypoints().size()) {
-            error(src, "Waypoint index out of range (0.." + (definition.waypoints().size() - 1) + ").");
+            error(src, Component.translatable(
+                    "waypointer.dungeon.command.error.waypoint_index_range",
+                    definition.waypoints().size() - 1));
             return null;
         }
         return definition.waypoints().get(waypointIndex);
@@ -925,23 +1014,23 @@ public final class DungeonCommands {
 
     // ---- styled feedback (matches WaypointerCommands' palette) -------------
 
-    private static void info(FabricClientCommandSource src, String msg) {
+    private static void info(FabricClientCommandSource src, Component msg) {
         src.sendFeedback(WaypointerChatFeedback.suppress(
-                Component.literal(msg).withStyle(ChatFormatting.GRAY)));
+                msg.copy().withStyle(ChatFormatting.GRAY)));
     }
 
-    private static void success(FabricClientCommandSource src, String msg) {
+    private static void success(FabricClientCommandSource src, Component msg) {
         src.sendFeedback(WaypointerChatFeedback.suppress(
-                Component.literal(msg).withStyle(ChatFormatting.GREEN)));
+                msg.copy().withStyle(ChatFormatting.GREEN)));
     }
 
-    private static void warn(FabricClientCommandSource src, String msg) {
+    private static void warn(FabricClientCommandSource src, Component msg) {
         src.sendFeedback(WaypointerChatFeedback.suppress(
-                Component.literal(msg).withStyle(ChatFormatting.YELLOW)));
+                msg.copy().withStyle(ChatFormatting.YELLOW)));
     }
 
-    private static void error(FabricClientCommandSource src, String msg) {
+    private static void error(FabricClientCommandSource src, Component msg) {
         src.sendError(WaypointerChatFeedback.suppress(
-                Component.literal(msg).withStyle(ChatFormatting.RED)));
+                msg.copy().withStyle(ChatFormatting.RED)));
     }
 }

@@ -22,6 +22,8 @@ public enum DungeonWaypointTrigger {
     CHAT_MESSAGE,
     /** Completes when the player etherwarps onto (or next to) the waypoint. */
     ETHERWARP,
+    /** Completes when the player launches an Ender Pearl from this waypoint. */
+    THROW_PEARL,
     /**
      * Completes on the first observed secret action near the waypoint --
      * interact, item pickup, or bat kill. The right default for imported data
