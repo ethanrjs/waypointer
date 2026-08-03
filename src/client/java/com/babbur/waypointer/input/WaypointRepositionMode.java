@@ -71,12 +71,6 @@ public final class WaypointRepositionMode {
     private static final double EDIT_PICK_RANGE = 512.0;
     private static final double EDIT_PICK_PADDING = 0.18;
     private static final double RAY_AXIS_EPSILON = 1.0E-7;
-    private static final Component HELP_MOVE = Component.translatable(
-            "waypointer.input.reposition.move")
-            .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_MOVE_PRECISE = Component.translatable(
-            "waypointer.input.reposition.move_precise")
-            .withStyle(ChatFormatting.AQUA);
     private static final Component HELP_ADD_WHERE_LOOKING = Component.translatable(
             "waypointer.input.reposition.add_named")
             .withStyle(ChatFormatting.AQUA);
@@ -89,18 +83,9 @@ public final class WaypointRepositionMode {
     private static final Component HELP_EDIT_UNAVAILABLE = Component.translatable(
             "waypointer.input.edit_mode.unavailable")
             .withStyle(ChatFormatting.YELLOW);
-    private static final Component HELP_EDIT_NO_TARGET = Component.translatable(
-            "waypointer.input.edit_mode.no_waypoint")
-            .withStyle(ChatFormatting.YELLOW);
     private static final Component HELP_EDIT_NO_BLOCK_TARGET = Component.translatable(
             "waypointer.input.edit_mode.no_block")
             .withStyle(ChatFormatting.YELLOW);
-    private static final Component HELP_EDIT_MOVED = Component.translatable(
-            "waypointer.input.edit_mode.moved")
-            .withStyle(ChatFormatting.AQUA);
-    private static final Component HELP_EDIT_ADDED = Component.translatable(
-            "waypointer.input.edit_mode.added")
-            .withStyle(ChatFormatting.AQUA);
     private static final Component HELP_EDIT_REMOVED = Component.translatable(
             "waypointer.input.edit_mode.removed")
             .withStyle(ChatFormatting.AQUA);
@@ -330,7 +315,6 @@ public final class WaypointRepositionMode {
         SelectedWaypoint selected = findWaypointUnderCrosshair(mc);
         if (selected == null) {
             clearEditSelectionCycle();
-            showStatus(mc, HELP_EDIT_NO_TARGET);
             return true;
         }
 
@@ -366,7 +350,6 @@ public final class WaypointRepositionMode {
 
         SelectedWaypoint selected = findWaypointUnderCrosshair(mc);
         if (selected == null) {
-            showStatus(mc, HELP_EDIT_NO_TARGET);
             return InteractionResult.FAIL;
         }
         if (!removeWaypoint(editManager, selected.group(), selected.waypointIndex())) {
@@ -420,7 +403,6 @@ public final class WaypointRepositionMode {
                 editConfig.showWaypointChatShareButtons());
         editManager.fireDataChanged();
         playEditSound(mc, editConfig);
-        showStatus(mc, HELP_EDIT_ADDED);
         return InteractionResult.FAIL;
     }
 
@@ -770,9 +752,7 @@ public final class WaypointRepositionMode {
         playEditSound(mc, session.config());
         if (session.reopenEditorAfterCommit()) {
             reopenEditor(mc, session);
-            return;
         }
-        showStatus(mc, HELP_EDIT_MOVED);
     }
 
     /**
@@ -831,9 +811,8 @@ public final class WaypointRepositionMode {
     }
 
     private static void showHelp(Minecraft mc) {
-        if (mc == null) return;
-        Component help = active == null ? HELP_MOVE : active.help();
-        showStatus(mc, help);
+        if (mc == null || active == null || active.mode() == Mode.MOVE_EXISTING) return;
+        showStatus(mc, active.help());
     }
 
     private static void showStatus(Minecraft mc, Component message) {
@@ -937,8 +916,8 @@ public final class WaypointRepositionMode {
                            boolean preciseSmallPlacement, boolean reopenEditorAfterCommit) {
         Component help() {
             return switch (mode) {
-                case MOVE_EXISTING -> preciseSmallPlacement ? HELP_MOVE_PRECISE : HELP_MOVE;
                 case ADD_WHERE_LOOKING -> HELP_ADD_WHERE_LOOKING;
+                case MOVE_EXISTING -> null;
             };
         }
     }
