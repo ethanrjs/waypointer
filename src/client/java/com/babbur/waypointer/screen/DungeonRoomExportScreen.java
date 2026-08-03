@@ -102,13 +102,9 @@ final class DungeonRoomExportScreen extends Screen {
         g.text(font, subtitle, PAD_OUTER, PAD_OUTER + LINE_H, TEXT_DIM, false);
 
         int y = PAD_OUTER + LINE_H * 3;
-        var fit = ExportScreen.exportFitSummary(payload);
-        g.text(font, Component.translatable("waypointer.export.characters", payload.length()),
-                PAD_OUTER, y, TEXT_DIM, false);
-        int fitColor = fit.chatOk() ? 0xFF88DD88 : 0xFFDD7070;
-        g.text(font, fit.message(), PAD_OUTER, y + LINE_H, fitColor, false);
+        ExportScreen.drawSizeLine(g, font, PAD_OUTER, y, width - PAD_OUTER, payload);
 
-        y += LINE_H * 2 + GAP_SECTION;
+        y += LINE_H + GAP_SECTION;
         g.text(font, Component.translatable("waypointer.screen.dungeon_export.preview"),
                 PAD_OUTER, y, TEXT_DIM, false);
         y += LINE_H;

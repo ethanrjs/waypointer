@@ -2,6 +2,7 @@ package com.babbur.waypointer.codec;
 
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -378,16 +379,25 @@ public final class WaypointCodec {
         public final boolean includeRadii;
         public final boolean includeWaypointFlags;
         public final boolean includeGroupMeta;
+        /**
+         * Whether each route keeps the island it was recorded on. Stripping it
+         * encodes {@link Zone#UNKNOWN} instead, which every import path already
+         * retargets to the island the recipient is standing on -- so a shared
+         * route becomes portable rather than pinned to the sender's island.
+         */
+        public final boolean includeZone;
         /** Sanitized label; empty string means "no label" (header bit 5 stays 0). */
         public final String  label;
 
         private Options(boolean includeNames, boolean includeColors, boolean includeRadii,
-                        boolean includeWaypointFlags, boolean includeGroupMeta, String label) {
+                        boolean includeWaypointFlags, boolean includeGroupMeta,
+                        boolean includeZone, String label) {
             this.includeNames         = includeNames;
             this.includeColors        = includeColors;
             this.includeRadii         = includeRadii;
             this.includeWaypointFlags = includeWaypointFlags;
             this.includeGroupMeta     = includeGroupMeta;
+            this.includeZone          = includeZone;
             this.label                = label == null ? "" : label;
         }
 
@@ -400,6 +410,7 @@ public final class WaypointCodec {
                     .includeRadii(includeRadii)
                     .includeWaypointFlags(includeWaypointFlags)
                     .includeGroupMeta(includeGroupMeta)
+                    .includeZone(includeZone)
                     .label(label);
         }
 
@@ -455,6 +466,7 @@ public final class WaypointCodec {
             private boolean includeRadii         = true;
             private boolean includeWaypointFlags = true;
             private boolean includeGroupMeta     = true;
+            private boolean includeZone          = true;
             private String  label                = "";
 
             public Builder includeNames(boolean v)         { this.includeNames = v; return this; }
@@ -462,6 +474,7 @@ public final class WaypointCodec {
             public Builder includeRadii(boolean v)         { this.includeRadii = v; return this; }
             public Builder includeWaypointFlags(boolean v) { this.includeWaypointFlags = v; return this; }
             public Builder includeGroupMeta(boolean v)     { this.includeGroupMeta = v; return this; }
+            public Builder includeZone(boolean v)          { this.includeZone = v; return this; }
             public Builder label(String v)                 { this.label = sanitizeLabel(v); return this; }
 
             // Read accessors so UIs can seed their toggle state from the
@@ -471,11 +484,12 @@ public final class WaypointCodec {
             public boolean includeRadii()         { return includeRadii; }
             public boolean includeWaypointFlags() { return includeWaypointFlags; }
             public boolean includeGroupMeta()     { return includeGroupMeta; }
+            public boolean includeZone()          { return includeZone; }
             public String  label()                { return label; }
 
             public Options build() {
                 return new Options(includeNames, includeColors, includeRadii,
-                        includeWaypointFlags, includeGroupMeta, label);
+                        includeWaypointFlags, includeGroupMeta, includeZone, label);
             }
         }
     }
@@ -887,7 +901,7 @@ public final class WaypointCodec {
             WaypointGroup group = groups.get(index);
             if (group == null) throw new IllegalArgumentException("group " + index + " is null");
             validateRouteDisplayNameForEncode(group.name(), "group " + index + " name");
-            validateWireStringForEncode(group.zoneId(), "group " + index + " zone");
+            validateWireStringForEncode(exportedZoneId(group, opts), "group " + index + " zone");
             if (group.size() > MAX_WIRE_WAYPOINTS_PER_GROUP) {
                 throw new IllegalArgumentException("group " + index + " exceeds waypoint limit: "
                         + group.size());
@@ -1199,16 +1213,17 @@ public final class WaypointCodec {
 
         CoordPicked picked = pickAnonymousCoordMode(group, opts, mode, baseGroupFlags,
                 customRadius, buf.toByteArray(), wireVersion, extendedCoordModes);
-        writeAnonymousGroupRecord(out, group, picked, baseGroupFlags, customRadius,
+        writeAnonymousGroupRecord(out, group, opts, picked, baseGroupFlags, customRadius,
                 wireVersion, extendedCoordModes);
         out.flush();
         return buf.toByteArray();
     }
 
-    private static void writeAnonymousGroupRecord(DataOutputStream out, WaypointGroup group, CoordPicked picked,
+    private static void writeAnonymousGroupRecord(DataOutputStream out, WaypointGroup group, Options opts,
+                                                  CoordPicked picked,
                                                   int baseGroupFlags, boolean customRadius,
                                                   int wireVersion, boolean extendedCoordModes) throws IOException {
-        writeAnonymousZoneRef(out, group.zoneId());
+        writeAnonymousZoneRef(out, exportedZoneId(group, opts));
         int groupFlags = baseGroupFlags | encodeCoordModeFlags(picked.mode, extendedCoordModes);
         out.writeByte(groupFlags);
         if (customRadius) writeRadius(out, group.defaultRadius(), wireVersion);
@@ -1260,12 +1275,46 @@ public final class WaypointCodec {
     }
 
     /**
+     * Zone id actually written for {@code group}.
+     *
+     * With {@link Options#includeZone} off the sender's island is replaced by
+     * {@link Zone#UNKNOWN}, which the import paths already treat as "no island
+     * recorded" and snap to whatever island the recipient is standing on. Every
+     * writer -- pool building, group records, the anonymous single-group body,
+     * and the coord-mode scorer -- funnels through here so the string pool and
+     * the emitted refs can never disagree about which zone was exported.
+     */
+    private static String exportedZoneId(WaypointGroup group, Options opts) {
+        return opts.includeZone ? group.zoneId() : Zone.UNKNOWN.id();
+    }
+
+    /**
      * Zone refs are tagged varints: odd values point into the built-in
      * Skyblocker-derived zone dictionary, even values point into the string pool.
      * Unknown/custom zones therefore still round-trip exactly.
      */
+    private static boolean isUnrecordedZone(String zoneId) {
+        return zoneId == null || zoneId.isBlank() || Zone.UNKNOWN.id().equals(zoneId);
+    }
+
+    /**
+     * "No island" is written as the pool's reserved empty slot rather than by
+     * interning the literal {@code "unknown"}.
+     *
+     * <p>Index 0 always holds {@code ""}, so this is a single varint byte -- the
+     * same cost as a dictionary hit, which means dropping the island can never
+     * make a share code longer than keeping it. It also needs nothing new from
+     * the reader: existing clients already run every decoded zone through
+     * {@link Zone#canonicalId}, which turns a blank id into {@code unknown},
+     * and their import paths already snap unknown-island routes to whatever
+     * island the recipient is standing on.
+     */
     private static void writeZoneRef(DataOutputStream out, String zoneId, StringPool pool)
             throws IOException {
+        if (isUnrecordedZone(zoneId)) {
+            writeVarint(out, pool.index("") << 1);
+            return;
+        }
         int dictIndex = CodecZoneDictionary.indexOf(zoneId);
         if (dictIndex >= 0) {
             writeVarint(out, (dictIndex << 1) | 1);
@@ -1274,7 +1323,13 @@ public final class WaypointCodec {
         writeVarint(out, pool.index(zoneId) << 1);
     }
 
+    /** Pool-less variant; the inline-string form carries the empty id instead. */
     private static void writeAnonymousZoneRef(DataOutputStream out, String zoneId) throws IOException {
+        if (isUnrecordedZone(zoneId)) {
+            writeVarint(out, 0);
+            writeUtf8String(out, "");
+            return;
+        }
         int dictIndex = CodecZoneDictionary.indexOf(zoneId);
         if (dictIndex >= 0) {
             writeVarint(out, (dictIndex << 1) | 1);
@@ -1284,29 +1339,48 @@ public final class WaypointCodec {
         writeUtf8String(out, zoneId);
     }
 
+    /**
+     * Resolve a zone ref, treating anything it cannot place as "no island".
+     *
+     * <p>A zone is the one field where refusing the payload helps nobody: the
+     * coordinates, names, and route are all still perfectly good, and the
+     * import paths already know how to place an unknown-island route (they snap
+     * it to whatever island the recipient is standing on). So an index outside
+     * the dictionary -- a deliberately reserved one, a zone added by a newer
+     * Waypointer, or a corrupt byte -- degrades to {@link Zone#UNKNOWN} instead
+     * of failing the whole decode. Malformed *structure* is still rejected; this
+     * leniency is scoped to the zone value alone.
+     */
     private static String readZoneRef(DataInputStream in, List<String> pool) throws IOException {
-        int ref = readVarint(in);
-        if ((ref & 1) != 0) {
-            try {
-                return CodecZoneDictionary.idAt(ref >>> 1);
-            } catch (IllegalArgumentException e) {
-                throw new IOException(e.getMessage(), e);
-            }
-        }
-        return poolGet(pool, ref >>> 1);
+        return resolveZoneRef(readVarint(in), pool);
     }
 
+    static String resolveZoneRef(int ref, List<String> pool) throws IOException {
+        if ((ref & 1) != 0) {
+            int dictIndex = ref >>> 1;
+            return CodecZoneDictionary.isKnownIndex(dictIndex)
+                    ? CodecZoneDictionary.idAt(dictIndex)
+                    : Zone.UNKNOWN.id();
+        }
+        return zoneOrUnknown(poolGet(pool, ref >>> 1));
+    }
+
+    /** Blank pooled zone strings mean the same thing as an unplaceable index. */
+    private static String zoneOrUnknown(String zoneId) {
+        return isUnrecordedZone(zoneId) ? Zone.UNKNOWN.id() : zoneId;
+    }
+
+    /** Same leniency as {@link #readZoneRef}, for the pool-less anonymous body. */
     private static String readAnonymousZoneRef(DataInputStream in) throws IOException {
         int ref = readVarint(in);
         if ((ref & 1) != 0) {
-            try {
-                return CodecZoneDictionary.idAt(ref >>> 1);
-            } catch (IllegalArgumentException e) {
-                throw new IOException(e.getMessage(), e);
-            }
+            int dictIndex = ref >>> 1;
+            return CodecZoneDictionary.isKnownIndex(dictIndex)
+                    ? CodecZoneDictionary.idAt(dictIndex)
+                    : Zone.UNKNOWN.id();
         }
         if (ref == 0) {
-            return readUtf8String(in);
+            return zoneOrUnknown(readUtf8String(in));
         }
         throw new IOException("anonymous zone ref cannot use string pool index: " + ref);
     }
@@ -1319,8 +1393,12 @@ public final class WaypointCodec {
         pool.intern("");
         for (WaypointGroup g : groups) {
             pool.intern(g.name());
-            if (CodecZoneDictionary.indexOf(g.zoneId()) < 0) {
-                pool.intern(g.zoneId());
+            // Mirrors writeZoneRef: only zones that will actually be written as
+            // pooled strings belong here. An unrecorded island reuses the
+            // reserved empty slot and must not intern "unknown" on top of it.
+            String zoneId = exportedZoneId(g, opts);
+            if (!isUnrecordedZone(zoneId) && CodecZoneDictionary.indexOf(zoneId) < 0) {
+                pool.intern(zoneId);
             }
             if (opts.includeNames) {
                 for (Waypoint w : g.waypoints()) {
@@ -1420,7 +1498,7 @@ public final class WaypointCodec {
         groupFlags |= encodeCoordModeFlags(picked.mode, extendedCoordModes);
 
         writeVarint(out, pool.index(g.name()));
-        writeZoneRef(out, g.zoneId(), pool);
+        writeZoneRef(out, exportedZoneId(g, opts), pool);
         out.writeByte(groupFlags);
         if ((groupFlags & GROUP_FLAG_V9_PERSISTENT_META) != 0) {
             writeV9PersistentGroupMetadata(out, g, opts.includeColors);
@@ -1586,29 +1664,29 @@ public final class WaypointCodec {
                 // groups can still affect cross-group compression context), but
                 // it is close to the actual share-string length users care about.
                 int vScore = encodedGroupScore(bodyPrefix, g, pool, CoordMode.VECTOR, v,
-                        baseGroupFlags, customRadius, wireVersion, opts.includeColors, extendedCoordModes);
+                        baseGroupFlags, customRadius, wireVersion, opts, extendedCoordModes);
                 int aScore = encodedGroupScore(bodyPrefix, g, pool, CoordMode.ABSOLUTE_VARINT, a,
-                        baseGroupFlags, customRadius, wireVersion, opts.includeColors, extendedCoordModes);
+                        baseGroupFlags, customRadius, wireVersion, opts, extendedCoordModes);
                 int fScore = f != null
                         ? encodedGroupScore(bodyPrefix, g, pool, CoordMode.FIXED_COMPACT, f,
-                                baseGroupFlags, customRadius, wireVersion, opts.includeColors,
+                                baseGroupFlags, customRadius, wireVersion, opts,
                                 extendedCoordModes)
                         : Integer.MAX_VALUE;
                 int tScore = encodedGroupScore(bodyPrefix, g, pool, CoordMode.FIT_COMPACT, t,
-                        baseGroupFlags, customRadius, wireVersion, opts.includeColors, extendedCoordModes);
+                        baseGroupFlags, customRadius, wireVersion, opts, extendedCoordModes);
                 int vxScore = vx != null
                         ? encodedGroupScore(bodyPrefix, g, pool, CoordMode.VECTOR_AXIS_SEPARATED, vx,
-                                baseGroupFlags, customRadius, wireVersion, opts.includeColors,
+                                baseGroupFlags, customRadius, wireVersion, opts,
                                 extendedCoordModes)
                         : Integer.MAX_VALUE;
                 int dtScore = dt != null
                         ? encodedGroupScore(bodyPrefix, g, pool, CoordMode.DELTA_FIT_AXIS_SEPARATED, dt,
-                                baseGroupFlags, customRadius, wireVersion, opts.includeColors,
+                                baseGroupFlags, customRadius, wireVersion, opts,
                                 extendedCoordModes)
                         : Integer.MAX_VALUE;
                 int rdScore = rd != null
                         ? encodedGroupScore(bodyPrefix, g, pool, CoordMode.RANGE_DELTA, rd,
-                                baseGroupFlags, customRadius, wireVersion, opts.includeColors,
+                                baseGroupFlags, customRadius, wireVersion, opts,
                                 extendedCoordModes)
                         : Integer.MAX_VALUE;
 
@@ -1719,26 +1797,26 @@ public final class WaypointCodec {
                         ? encodeRangeDelta(group.waypoints(), emptyPool, opts, true, wireVersion)
                         : null;
 
-                int vScore = anonymousEncodedScore(bodyPrefix, group, CoordMode.VECTOR, v,
+                int vScore = anonymousEncodedScore(bodyPrefix, group, opts, CoordMode.VECTOR, v,
                         baseGroupFlags, customRadius, wireVersion, extendedCoordModes);
-                int aScore = anonymousEncodedScore(bodyPrefix, group, CoordMode.ABSOLUTE_VARINT, a,
+                int aScore = anonymousEncodedScore(bodyPrefix, group, opts, CoordMode.ABSOLUTE_VARINT, a,
                         baseGroupFlags, customRadius, wireVersion, extendedCoordModes);
                 int fScore = f != null
-                        ? anonymousEncodedScore(bodyPrefix, group, CoordMode.FIXED_COMPACT, f,
+                        ? anonymousEncodedScore(bodyPrefix, group, opts, CoordMode.FIXED_COMPACT, f,
                                 baseGroupFlags, customRadius, wireVersion, extendedCoordModes)
                         : Integer.MAX_VALUE;
-                int tScore = anonymousEncodedScore(bodyPrefix, group, CoordMode.FIT_COMPACT, t,
+                int tScore = anonymousEncodedScore(bodyPrefix, group, opts, CoordMode.FIT_COMPACT, t,
                         baseGroupFlags, customRadius, wireVersion, extendedCoordModes);
                 int vxScore = vx != null
-                        ? anonymousEncodedScore(bodyPrefix, group, CoordMode.VECTOR_AXIS_SEPARATED, vx,
+                        ? anonymousEncodedScore(bodyPrefix, group, opts, CoordMode.VECTOR_AXIS_SEPARATED, vx,
                                 baseGroupFlags, customRadius, wireVersion, extendedCoordModes)
                         : Integer.MAX_VALUE;
                 int dtScore = dt != null
-                        ? anonymousEncodedScore(bodyPrefix, group, CoordMode.DELTA_FIT_AXIS_SEPARATED, dt,
+                        ? anonymousEncodedScore(bodyPrefix, group, opts, CoordMode.DELTA_FIT_AXIS_SEPARATED, dt,
                                 baseGroupFlags, customRadius, wireVersion, extendedCoordModes)
                         : Integer.MAX_VALUE;
                 int rdScore = rd != null
-                        ? anonymousEncodedScore(bodyPrefix, group, CoordMode.RANGE_DELTA, rd,
+                        ? anonymousEncodedScore(bodyPrefix, group, opts, CoordMode.RANGE_DELTA, rd,
                                 baseGroupFlags, customRadius, wireVersion, extendedCoordModes)
                         : Integer.MAX_VALUE;
 
@@ -3180,19 +3258,19 @@ public final class WaypointCodec {
      */
     private static int encodedGroupScore(byte[] bodyPrefix, WaypointGroup g, StringPool pool, CoordMode mode,
                                          byte[] coordAndBody, int baseGroupFlags, boolean customRadius,
-                                         int wireVersion, boolean includeColors,
+                                         int wireVersion, Options opts,
                                          boolean extendedCoordModes) {
         try {
             ByteArrayOutputStream scratch = new ByteArrayOutputStream();
             scratch.write(bodyPrefix);
             DataOutputStream out = new DataOutputStream(scratch);
             writeVarint(out, pool.index(g.name()));
-            writeZoneRef(out, g.zoneId(), pool);
+            writeZoneRef(out, exportedZoneId(g, opts), pool);
             int groupFlags = baseGroupFlags
                     | encodeCoordModeFlags(mode, extendedCoordModes);
             out.writeByte(groupFlags);
             if ((groupFlags & GROUP_FLAG_V9_PERSISTENT_META) != 0) {
-                writeV9PersistentGroupMetadata(out, g, includeColors);
+                writeV9PersistentGroupMetadata(out, g, opts.includeColors);
             }
             if (customRadius) writeRadius(out, g.defaultRadius(), wireVersion);
             writeVarint(out, g.size());
@@ -3204,14 +3282,15 @@ public final class WaypointCodec {
         }
     }
 
-    private static int anonymousEncodedScore(byte[] bodyPrefix, WaypointGroup group, CoordMode mode,
+    private static int anonymousEncodedScore(byte[] bodyPrefix, WaypointGroup group, Options opts,
+                                             CoordMode mode,
                                              byte[] coordAndBody, int baseGroupFlags, boolean customRadius,
                                              int wireVersion, boolean extendedCoordModes) {
         try {
             ByteArrayOutputStream scratch = new ByteArrayOutputStream();
             scratch.write(bodyPrefix);
             DataOutputStream out = new DataOutputStream(scratch);
-            writeAnonymousGroupRecord(out, group, new CoordPicked(mode, coordAndBody),
+            writeAnonymousGroupRecord(out, group, opts, new CoordPicked(mode, coordAndBody),
                     baseGroupFlags, customRadius, wireVersion, extendedCoordModes);
             out.flush();
             return encodedScore(scratch.toByteArray());

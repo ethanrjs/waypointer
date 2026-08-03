@@ -138,8 +138,13 @@ public final class GuiTokens {
     private static final int CONTROL_BORDER = 0x5AFFFFFF;
     private static final int CONTROL_HIGHLIGHT = 0x24FFFFFF;
 
-    private static void drawControlFrame(GuiGraphicsExtractor g, int x, int y, int width, int height,
-                                         boolean active, boolean highlighted, boolean focused) {
+    /**
+     * Package-visible so screens can build controls that keep the shared frame
+     * but lay their contents out differently (e.g. the export screen's
+     * left-aligned include rows).
+     */
+    static void drawControlFrame(GuiGraphicsExtractor g, int x, int y, int width, int height,
+                                 boolean active, boolean highlighted, boolean focused) {
         int x2 = x + width;
         int y2 = y + height;
         int border = active && focused ? ACCENT

@@ -2463,6 +2463,7 @@ public final class WaypointerCommands {
                 .includeRadii(config.exportIncludeRadii())
                 .includeWaypointFlags(config.exportIncludeWaypointFlags())
                 .includeGroupMeta(config.exportIncludeGroupMeta())
+                .includeZone(config.exportIncludeZone())
                 .build();
     }
 

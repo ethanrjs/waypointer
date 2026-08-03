@@ -123,6 +123,97 @@ class WaypointExportCodecTest {
     }
 
     @Test
+    void dropping_the_island_makes_the_native_export_land_as_unknown() {
+        WaypointGroup group = sampleGroup("Park Route", "the_park");
+        WaypointCodec.Options portable = FULL_EXTERNAL.toBuilder().includeZone(false).build();
+
+        String kept = WaypointExportCodec.encode(List.of(group), FULL_EXTERNAL,
+                WaypointExportCodec.Target.WAYPOINTER);
+        String stripped = WaypointExportCodec.encode(List.of(group), portable,
+                WaypointExportCodec.Target.WAYPOINTER);
+
+        assertEquals("the_park", WaypointCodec.decode(kept).get(0).zoneId());
+        // Zone.UNKNOWN is what every import path treats as "no island recorded"
+        // and retargets to the island the recipient is standing on.
+        assertEquals(Zone.UNKNOWN.id(), WaypointCodec.decode(stripped).get(0).zoneId());
+        // Everything else about the route has to survive untouched.
+        assertEquals("Park Route", WaypointCodec.decode(stripped).get(0).name());
+        assertEquals("start", WaypointCodec.decode(stripped).get(0).get(0).name());
+    }
+
+    @Test
+    void dropping_the_island_is_effectively_free() {
+        WaypointCodec.Options portable = FULL_EXTERNAL.toBuilder().includeZone(false).build();
+
+        // Against a dictionary zone, both sides are a one-byte ref, so the only
+        // difference is compression noise. Interning the literal "unknown"
+        // instead -- the obvious implementation -- cost about ten characters,
+        // which would make an option that removes data grow the payload.
+        int keptDict = encodedLength("the_park", FULL_EXTERNAL);
+        int strippedDict = encodedLength("the_park", portable);
+        assertTrue(strippedDict <= keptDict + 2,
+                "stripping a dictionary island cost " + (strippedDict - keptDict) + " characters");
+
+        // Against a zone that has to be pooled anyway, stripping is a real win.
+        int keptCustom = encodedLength("some_custom_zone", FULL_EXTERNAL);
+        int strippedCustom = encodedLength("some_custom_zone", portable);
+        assertTrue(strippedCustom < keptCustom,
+                "stripping a pooled island did not shrink the export");
+    }
+
+    private static int encodedLength(String zoneId, WaypointCodec.Options options) {
+        return WaypointExportCodec.encode(List.of(sampleGroup("Park Route", zoneId)),
+                options, WaypointExportCodec.Target.WAYPOINTER).length();
+    }
+
+    @Test
+    void an_island_this_build_cannot_place_decodes_as_unknown_instead_of_failing() throws Exception {
+        List<String> pool = List.of("", "some_pooled_zone");
+
+        // Dictionary refs are odd; index 0 is the first real entry.
+        assertEquals("hub", WaypointCodec.resolveZoneRef(1, pool));
+        // An index past the table -- a zone a newer Waypointer knows about, or a
+        // corrupt byte. The coordinates are still good, so the route must survive.
+        assertEquals(Zone.UNKNOWN.id(), WaypointCodec.resolveZoneRef((9999 << 1) | 1, pool));
+        // Pool refs are even. The reserved empty slot is how "no island" ships.
+        assertEquals(Zone.UNKNOWN.id(), WaypointCodec.resolveZoneRef(0, pool));
+        assertEquals("some_pooled_zone", WaypointCodec.resolveZoneRef(1 << 1, pool));
+    }
+
+    @Test
+    void a_route_already_stored_without_an_island_round_trips_as_unknown() {
+        // Not an export choice -- routes imported from formats with no island
+        // field are stored this way, and they take the same cheap encoding.
+        WaypointGroup group = sampleGroup("Mystery Route", Zone.UNKNOWN.id());
+        String encoded = WaypointExportCodec.encode(List.of(group), FULL_EXTERNAL,
+                WaypointExportCodec.Target.WAYPOINTER);
+
+        WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
+        assertEquals(Zone.UNKNOWN.id(), decoded.zoneId());
+        assertEquals("Mystery Route", decoded.name());
+        assertEquals("start", decoded.get(0).name());
+    }
+
+    @Test
+    void third_party_targets_always_keep_the_island_they_were_given() {
+        WaypointGroup group = sampleGroup("Park Route", "the_park");
+        WaypointCodec.Options portable = FULL_EXTERNAL.toBuilder().includeZone(false).build();
+
+        assertFalse(WaypointExportCodec.Target.SKYBLOCKER.supportsIslandChoice());
+        assertFalse(WaypointExportCodec.Target.SKYTILS.supportsIslandChoice());
+        assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsIslandChoice());
+        assertTrue(WaypointExportCodec.Target.WAYPOINTER.supportsIslandChoice());
+
+        // Skytils' island enum has no "unknown" member, so a stripped island
+        // would encode a value its client cannot read. Coercion forces it back on.
+        assertTrue(WaypointExportCodec.Target.SKYTILS.coerce(portable).includeZone);
+
+        String encoded = WaypointExportCodec.encode(List.of(group), portable,
+                WaypointExportCodec.Target.SKYBLOCKER);
+        assertEquals("the_park", WaypointImporter.importAny(encoded).groups().get(0).zoneId());
+    }
+
+    @Test
     void third_party_targets_report_name_capabilities() {
         assertTrue(WaypointExportCodec.Target.WAYPOINTER.supportsNames());
         assertTrue(WaypointExportCodec.Target.SKYBLOCKER.supportsNames());

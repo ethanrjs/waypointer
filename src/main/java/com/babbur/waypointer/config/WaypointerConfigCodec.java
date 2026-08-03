@@ -98,6 +98,7 @@ public final class WaypointerConfigCodec {
     private static final int ROUTE_TIMES_ENABLED = 66;
     private static final int SHOW_ROUTE_INDICES_IN_GUI = 67;
     private static final int KEEP_SUBWAYPOINTS_VISIBLE_UNTIL_NEXT = 68;
+    private static final int EXPORT_INCLUDE_ZONE = 69;
 
     private WaypointerConfigCodec() {
     }
@@ -216,6 +217,7 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, EXPORT_INCLUDE_RADII, config.exportIncludeRadii(), defaults.exportIncludeRadii());
         writeBoolean(out, EXPORT_INCLUDE_WAYPOINT_FLAGS, config.exportIncludeWaypointFlags(), defaults.exportIncludeWaypointFlags());
         writeBoolean(out, EXPORT_INCLUDE_GROUP_META, config.exportIncludeGroupMeta(), defaults.exportIncludeGroupMeta());
+        writeBoolean(out, EXPORT_INCLUDE_ZONE, config.exportIncludeZone(), defaults.exportIncludeZone());
         writeBoolean(out, DUNGEON_FEATURE, config.dungeonWaypointsFeatureEnabled(), defaults.dungeonWaypointsFeatureEnabled());
         writeBoolean(out, SKIP_AHEAD_MECHANIC, config.skipAheadMechanicEnabled(), defaults.skipAheadMechanicEnabled());
         writeBoolean(out, IRIS_SHADER_HUD_FALLBACK, config.irisShaderHudFallback(), defaults.irisShaderHudFallback());
@@ -292,6 +294,7 @@ public final class WaypointerConfigCodec {
                 case EXPORT_INCLUDE_RADII -> config.setExportIncludeRadii(in.readBoolean());
                 case EXPORT_INCLUDE_WAYPOINT_FLAGS -> config.setExportIncludeWaypointFlags(in.readBoolean());
                 case EXPORT_INCLUDE_GROUP_META -> config.setExportIncludeGroupMeta(in.readBoolean());
+                case EXPORT_INCLUDE_ZONE -> config.setExportIncludeZone(in.readBoolean());
                 case DUNGEON_FEATURE -> config.setDungeonWaypointsFeatureEnabled(in.readBoolean());
                 case SKIP_AHEAD_MECHANIC -> config.setSkipAheadMechanicEnabled(in.readBoolean());
                 case LEGACY_CHECK_FOR_UPDATES -> in.readBoolean();
