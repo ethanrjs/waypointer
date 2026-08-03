@@ -2,6 +2,7 @@ package com.babbur.waypointer.config;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -433,6 +434,29 @@ class StorageJsonTest {
         assertEquals(0x135724, copy.staticColor());
         assertEquals(0x135724, copy.get(0).color());
         assertEquals(0x135724, copy.get(1).color());
+    }
+
+    @Test
+    void movedSkyHanniRouteCanChangeColorModeAndReload() {
+        String skyHanniRoute = "{\"waypoints\":["
+                + "{\"x\":100,\"y\":64,\"z\":200,\"r\":0,\"g\":1,\"b\":0,"
+                + "\"options\":{\"name\":\"1\"}},"
+                + "{\"x\":110,\"y\":65,\"z\":210,\"r\":0,\"g\":1,\"b\":0,"
+                + "\"options\":{\"name\":\"2\"}}]}";
+        WaypointGroup imported = WaypointImporter.importAny(skyHanniRoute).groups().get(0);
+
+        imported.setZoneId("crystal_hollows");
+        imported.setStaticColor(0x135724);
+        imported.setGradientMode(WaypointGroup.GradientMode.STATIC);
+        imported.setGradientMode(WaypointGroup.GradientMode.AUTO);
+
+        WaypointGroup reloaded = Storage.groupFromJson(Storage.groupToJson(imported));
+
+        assertEquals("crystal_hollows", reloaded.zoneId());
+        assertEquals(WaypointGroup.GradientMode.AUTO, reloaded.gradientMode());
+        assertEquals(2, reloaded.size());
+        assertEquals("1", reloaded.get(0).name());
+        assertEquals("2", reloaded.get(1).name());
     }
 
         @Test
