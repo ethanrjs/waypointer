@@ -30,10 +30,10 @@ public final class WaypointExportCodec {
      * whether a Waypointer option can survive a round trip through that target.
      */
     public enum Target {
-        WAYPOINTER("Waypointer", true, true, true, true, true, true),
-        SKYBLOCKER("Skyblocker", true, true, false, false, false, false),
-        SKYTILS("Skytils", true, true, false, false, false, false),
-        SKYHANNI("SkyHanni", false, false, false, false, false, false);
+        WAYPOINTER("Waypointer", true, true, true, true, true, true, true),
+        SKYBLOCKER("Skyblocker", true, true, false, false, false, false, false),
+        SKYTILS("Skytils", true, true, false, false, false, false, false),
+        SKYHANNI("SkyHanni", false, false, false, false, false, false, false);
 
         private final String displayName;
         private final boolean supportsNames;
@@ -42,10 +42,12 @@ public final class WaypointExportCodec {
         private final boolean supportsWaypointFlags;
         private final boolean supportsGroupMeta;
         private final boolean supportsLabel;
+        private final boolean supportsIslandChoice;
 
         Target(String displayName, boolean supportsNames, boolean supportsColors,
                boolean supportsRadii, boolean supportsWaypointFlags,
-               boolean supportsGroupMeta, boolean supportsLabel) {
+               boolean supportsGroupMeta, boolean supportsLabel,
+               boolean supportsIslandChoice) {
             this.displayName = displayName;
             this.supportsNames = supportsNames;
             this.supportsColors = supportsColors;
@@ -53,6 +55,7 @@ public final class WaypointExportCodec {
             this.supportsWaypointFlags = supportsWaypointFlags;
             this.supportsGroupMeta = supportsGroupMeta;
             this.supportsLabel = supportsLabel;
+            this.supportsIslandChoice = supportsIslandChoice;
         }
 
         public String displayName()          { return displayName; }
@@ -69,6 +72,16 @@ public final class WaypointExportCodec {
 
         public boolean supportsLabel()       { return supportsLabel; }
 
+        /**
+         * Whether the sender may drop the island a route was recorded on.
+         *
+         * Only the native format can: Skyblocker and Skytils both require an
+         * island field their client recognizes ("unknown" is not in Skytils'
+         * island enum at all), and SkyHanni's route JSON has no island field to
+         * begin with, so there is nothing for the sender to decide.
+         */
+        public boolean supportsIslandChoice() { return supportsIslandChoice; }
+
         public Target next() {
             Target[] all = values();
             return all[(ordinal() + 1) % all.length];
@@ -81,6 +94,9 @@ public final class WaypointExportCodec {
                     .includeRadii(supportsRadii && opts.includeRadii)
                     .includeWaypointFlags(supportsWaypointFlags && opts.includeWaypointFlags)
                     .includeGroupMeta(supportsGroupMeta && opts.includeGroupMeta)
+                    // Inverted on purpose: the unsupported thing here is *dropping*
+                    // the island, so a target without the choice always keeps it.
+                    .includeZone(!supportsIslandChoice || opts.includeZone)
                     .label(supportsLabel ? opts.label : "")
                     .build();
         }
@@ -140,15 +156,6 @@ public final class WaypointExportCodec {
             case SKYTILS -> WaypointImporter.SKYTILS_V1_PREFIX
                     + Base64.getEncoder().encodeToString(gzip(skytilsJson(groups, safeOpts)));
             case SKYHANNI -> skyhanniJson(groups);
-        };
-    }
-
-    public static String previewLabel(Target target) {
-        return switch (target) {
-            case WAYPOINTER -> "Export Preview (Waypointer export code)";
-            case SKYBLOCKER -> "Export Preview (Skyblocker share string)";
-            case SKYTILS -> "Export Preview (Skytils V1 share string)";
-            case SKYHANNI -> "Export Preview (SkyHanni route JSON)";
         };
     }
 

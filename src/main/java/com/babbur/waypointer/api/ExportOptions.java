@@ -15,6 +15,7 @@ public final class ExportOptions {
     private final boolean includeRadii;
     private final boolean includeWaypointFlags;
     private final boolean includeGroupMeta;
+    private final boolean includeZone;
     private final String label;
 
     private ExportOptions(Builder builder) {
@@ -24,6 +25,7 @@ public final class ExportOptions {
         this.includeRadii = builder.includeRadii;
         this.includeWaypointFlags = builder.includeWaypointFlags;
         this.includeGroupMeta = builder.includeGroupMeta;
+        this.includeZone = builder.includeZone;
         this.label = WaypointCodec.Options.sanitizeLabel(builder.label);
     }
 
@@ -59,6 +61,15 @@ public final class ExportOptions {
         return includeGroupMeta;
     }
 
+    /**
+     * Whether exported routes keep the island they were recorded on. When
+     * false the island is stripped and importers place the route on whatever
+     * island the recipient is standing on.
+     */
+    public boolean includeZone() {
+        return includeZone;
+    }
+
     public String label() {
         return label;
     }
@@ -70,6 +81,7 @@ public final class ExportOptions {
                 .includeRadii(includeRadii)
                 .includeWaypointFlags(includeWaypointFlags)
                 .includeGroupMeta(includeGroupMeta)
+                .includeZone(includeZone)
                 .label(label)
                 .build();
     }
@@ -81,6 +93,7 @@ public final class ExportOptions {
         private boolean includeRadii = true;
         private boolean includeWaypointFlags = true;
         private boolean includeGroupMeta = true;
+        private boolean includeZone = true;
         private String label = "";
 
         private Builder() {
@@ -113,6 +126,11 @@ public final class ExportOptions {
 
         public Builder includeGroupMeta(boolean includeGroupMeta) {
             this.includeGroupMeta = includeGroupMeta;
+            return this;
+        }
+
+        public Builder includeZone(boolean includeZone) {
+            this.includeZone = includeZone;
             return this;
         }
 

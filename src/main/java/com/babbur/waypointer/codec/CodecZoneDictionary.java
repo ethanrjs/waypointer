@@ -137,9 +137,14 @@ public final class CodecZoneDictionary {
     }
 
     public static String idAt(int index) {
-        if (index < 0 || index >= IDS.length) {
+        if (!isKnownIndex(index)) {
             throw new IllegalArgumentException("zone dictionary OOB: " + index);
         }
         return IDS[index];
+    }
+
+    /** Whether {@code index} names a real entry rather than an unrecognized zone. */
+    public static boolean isKnownIndex(int index) {
+        return index >= 0 && index < IDS.length;
     }
 }

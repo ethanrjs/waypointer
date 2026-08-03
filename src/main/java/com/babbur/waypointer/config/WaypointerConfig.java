@@ -316,6 +316,13 @@ public final class WaypointerConfig {
      */
     private boolean exportIncludeGroupMeta = true;
     /**
+     * The island a route was recorded on. Included by default so a shared route
+     * lands where the sender built it; senders who want a portable route (one
+     * the recipient can drop on whatever island they are standing on) can turn
+     * it off per export.
+     */
+    private boolean exportIncludeZone = true;
+    /**
      * Legacy hidden flag retained so older config files and config-code imports
      * keep round-tripping. The dungeon subsystem now installs unconditionally;
      * {@code DungeonConfig.enabled()} is the runtime feature switch.
@@ -616,6 +623,7 @@ public final class WaypointerConfig {
     public boolean exportIncludeRadii()        { return exportIncludeRadii; }
     public boolean exportIncludeWaypointFlags(){ return exportIncludeWaypointFlags; }
     public boolean exportIncludeGroupMeta()    { return exportIncludeGroupMeta; }
+    public boolean exportIncludeZone()         { return exportIncludeZone; }
     public boolean dungeonWaypointsFeatureEnabled() { return dungeonWaypointsFeatureEnabled; }
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
     public boolean irisShaderHudFallback()      { return irisShaderHudFallback; }
@@ -781,6 +789,7 @@ public final class WaypointerConfig {
     public void setExportIncludeRadii(boolean v)        { this.exportIncludeRadii = v; save(); }
     public void setExportIncludeWaypointFlags(boolean v){ this.exportIncludeWaypointFlags = v; save(); }
     public void setExportIncludeGroupMeta(boolean v)    { this.exportIncludeGroupMeta = v; save(); }
+    public void setExportIncludeZone(boolean v)         { this.exportIncludeZone = v; save(); }
     public void setDungeonWaypointsFeatureEnabled(boolean v) { this.dungeonWaypointsFeatureEnabled = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
     public void setShowLabelTextShadow(boolean v)      { this.showLabelTextShadow = v; save(); }
@@ -904,6 +913,7 @@ public final class WaypointerConfig {
         exportIncludeRadii = replacement.exportIncludeRadii;
         exportIncludeWaypointFlags = replacement.exportIncludeWaypointFlags;
         exportIncludeGroupMeta = replacement.exportIncludeGroupMeta;
+        exportIncludeZone = replacement.exportIncludeZone;
         dungeonWaypointsFeatureEnabled = replacement.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = replacement.skipAheadMechanicEnabled;
         irisShaderHudFallback = replacement.irisShaderHudFallback;
@@ -956,6 +966,7 @@ public final class WaypointerConfig {
         exportIncludeRadii = false;
         exportIncludeWaypointFlags = false;
         exportIncludeGroupMeta = false;
+        exportIncludeZone = false;
         dungeonWaypointsFeatureEnabled = false;
         skipAheadMechanicEnabled = false;
         irisShaderHudFallback = false;
@@ -1036,6 +1047,7 @@ public final class WaypointerConfig {
         exportIncludeRadii = defaults.exportIncludeRadii;
         exportIncludeWaypointFlags = defaults.exportIncludeWaypointFlags;
         exportIncludeGroupMeta = defaults.exportIncludeGroupMeta;
+        exportIncludeZone = defaults.exportIncludeZone;
         dungeonWaypointsFeatureEnabled = defaults.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = defaults.skipAheadMechanicEnabled;
         irisShaderHudFallback = defaults.irisShaderHudFallback;

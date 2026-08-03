@@ -587,7 +587,12 @@ public final class SettingsCatalog {
                         Setting.bool("exportIncludeGroupMeta", MAIN, "Include route metadata",
                                 "Include route name, mode, and route-level metadata in exported share codes.",
                                 (c, d) -> c.exportIncludeGroupMeta(),
-                                (c, d, v) -> c.setExportIncludeGroupMeta((Boolean) v))));
+                                (c, d, v) -> c.setExportIncludeGroupMeta((Boolean) v)),
+                        Setting.bool("exportIncludeZone", MAIN, "Include island in default export",
+                                "Keep the island each route was recorded on. Turn this off and shared "
+                                        + "routes land on whatever island the recipient is standing on.",
+                                (c, d) -> c.exportIncludeZone(),
+                                (c, d, v) -> c.setExportIncludeZone((Boolean) v))));
     }
 
     private static Category system() {
