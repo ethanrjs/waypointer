@@ -111,6 +111,12 @@ public final class WaypointRepositionMode {
     private static Session active;
     private static ActiveGroupManager editManager;
     private static WaypointerConfig editConfig;
+    /**
+     * Id of the persistent route selected when Edit Mode was opened from its
+     * editor. A null id keeps the keybind and command behaviour, which targets
+     * the normal active route for the player's current zone.
+     */
+    private static String editTargetGroupId;
     private static ClientLevel lastEditModeActionLevel;
     private static long lastEditModeActionGameTime = Long.MIN_VALUE;
     private static boolean editModeEnabled;
@@ -165,8 +171,25 @@ public final class WaypointRepositionMode {
         return editModeEnabled;
     }
 
+    /** Enable or disable Edit Mode for the route currently open in its editor. */
+    public static boolean toggleEditMode(ActiveGroupManager manager, WaypointerConfig config,
+                                         WaypointGroup target) {
+        setEditModeEnabled(manager, config, target, !editModeEnabled);
+        return editModeEnabled;
+    }
+
     public static void setEditModeEnabled(ActiveGroupManager manager, WaypointerConfig config,
                                            boolean enabled) {
+        setEditModeEnabled(manager, config, null, enabled);
+    }
+
+    /**
+     * Configure Edit Mode and, when supplied, keep writes bound to the
+     * persistent route that opened it rather than choosing another active
+     * route or creating a new one.
+     */
+    public static void setEditModeEnabled(ActiveGroupManager manager, WaypointerConfig config,
+                                          WaypointGroup target, boolean enabled) {
         Minecraft mc = Minecraft.getInstance();
         boolean wasEnabled = editModeEnabled;
         lastEditModeActionLevel = null;
@@ -177,12 +200,16 @@ public final class WaypointRepositionMode {
                 editModeEnabled = false;
                 editManager = null;
                 editConfig = null;
+                editTargetGroupId = null;
                 active = null;
                 showStatus(mc, HELP_EDIT_UNAVAILABLE);
                 return;
             }
             editManager = manager;
             editConfig = config;
+            if (target != null || !wasEnabled) {
+                editTargetGroupId = target == null ? null : target.id();
+            }
             editModeEnabled = true;
             showStatus(mc, HELP_EDIT_ON);
             if (!wasEnabled) {
@@ -195,6 +222,7 @@ public final class WaypointRepositionMode {
         editModeEnabled = false;
         editManager = null;
         editConfig = null;
+        editTargetGroupId = null;
         active = null;
         showStatus(mc, HELP_EDIT_OFF);
         if (wasEnabled) {
@@ -379,7 +407,11 @@ public final class WaypointRepositionMode {
         if (addBlockedByInstalledSecrets(mc, editManager)) return InteractionResult.FAIL;
         rememberEditModeAction(mc.level);
 
-        WaypointGroup group = editManager.getOrCreateActiveGroup();
+        WaypointGroup group = editModeAddTarget(editManager);
+        if (group == null) {
+            showStatus(mc, HELP_EDIT_UNAVAILABLE);
+            return InteractionResult.FAIL;
+        }
         int flags = defaultDungeonEditFlags(group, mc.level, pos);
         addStored(group, new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
                 "", editConfig.defaultWaypointColor(), flags, 0.0));
@@ -390,6 +422,20 @@ public final class WaypointRepositionMode {
         playEditSound(mc, editConfig);
         showStatus(mc, HELP_EDIT_ADDED);
         return InteractionResult.FAIL;
+    }
+
+    /**
+     * Resolve the route that receives a right-click waypoint while Edit Mode is
+     * active. Editor-started sessions must retain their explicit route. Generic
+     * keybind sessions keep the long-standing active-route fallback.
+     */
+    static WaypointGroup editModeAddTarget(ActiveGroupManager manager) {
+        if (manager == null) return null;
+        if (editTargetGroupId == null) return manager.getOrCreateActiveGroup();
+
+        WaypointGroup selected = manager.get(editTargetGroupId);
+        if (selected == null) return null;
+        return DungeonRoomRouteSync.durableEditTarget(manager, selected);
     }
 
     private static boolean isDuplicateEditModeAction(ClientLevel level) {

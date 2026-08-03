@@ -107,6 +107,23 @@ class WaypointRepositionModeTest {
     }
 
     @Test
+    void editorEditModeKeepsTheRouteThatOpenedIt() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointGroup firstRoute = WaypointGroup.create("First", "hub");
+        WaypointGroup editedRoute = WaypointGroup.create("Citrine 2", "hub");
+        manager.add(firstRoute);
+        manager.add(editedRoute);
+        manager.onZoneChanged(com.babbur.waypointer.core.Zone.fromId("hub"));
+
+        assertEquals(firstRoute, manager.getOrCreateActiveGroup());
+
+        WaypointRepositionMode.setEditModeEnabled(manager, config, editedRoute, true);
+
+        assertEquals(editedRoute, WaypointRepositionMode.editModeAddTarget(manager));
+    }
+
+    @Test
     void defaultDungeonEditFlagsChooseOneTriggerOnlyForDungeonRooms() {
         DungeonRoomData.clearAllCustom();
         try {

@@ -897,7 +897,7 @@ public final class GroupEditScreen extends Screen {
     }
 
     private void toggleEditModeFromEditor() {
-        boolean enabled = WaypointRepositionMode.toggleEditMode(manager, config);
+        boolean enabled = WaypointRepositionMode.toggleEditMode(manager, config, group);
         if (minecraft == null) return;
         if (enabled) {
             MinecraftCompat.setScreen(minecraft, null);
