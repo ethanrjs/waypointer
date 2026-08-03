@@ -104,7 +104,7 @@ public final class WaypointGroup {
      * also reaches routes created later; choosing Color, Gradient, or One turns
      * it off for that route without deleting its artwork.
      */
-    private boolean paintEnabled = true;
+    private boolean paintEnabled = false;
     /**
      * Session-only reach state for static-route cycling. Unlike currentIndex,
      * this is unordered: a static map overlay lets the player visit points in
