@@ -327,10 +327,8 @@ class WaypointRendererTest {
     }
 
     @Test
-    void editModeSubtitleIncludesBoundExitKeyWhenAvailable() {
-        assertEquals("EDIT MODE (` to exit)", WaypointRenderer.editModeSubtitleText("`"));
-        assertEquals("EDIT MODE", WaypointRenderer.editModeSubtitleText(""));
-        assertEquals("EDIT MODE", WaypointRenderer.editModeSubtitleText(null));
+    void editModeSubtitleNamesTheExitCommand() {
+        assertEquals("EDIT MODE (exit: /wp editmode)", WaypointRenderer.editModeSubtitleText());
     }
 
     @Test
