@@ -3,33 +3,46 @@ package com.babbur.waypointer.input;
 import com.babbur.waypointer.core.Waypoint;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.contents.TranslatableContents;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointAddFlowTest {
 
     @Test
-    void waypointAddedMessageOffersExactAllAndPartyCommands() {
+    void waypointAddedMessageUsesOneCompactLineWithShareActions() {
         Component message = WaypointAddFlow.waypointAddedMessage(
-                2, Waypoint.at(12, 70, -4), true);
+                "Route 1", 2, Waypoint.at(12, 70, -4), true);
 
-        assertTranslation(message, "waypointer.input.added", 2, "12, 70, -4");
-        assertEquals(2, message.getSiblings().size());
-        assertCommand(message.getSiblings().get(0), "/ac 12, 70, -4");
-        assertCommand(message.getSiblings().get(1), "/pc 12, 70, -4");
+        assertEquals("Added Waypoint 3 to \"Route 1\" at (12, 70, -4) [All] [Party]",
+                message.getString());
+        List<Component> buttons = message.getSiblings().stream()
+                .filter(component -> component.getStyle().getClickEvent() != null)
+                .toList();
+        assertEquals(2, buttons.size());
+        assertCommand(buttons.get(0), "/ac 12, 70, -4");
+        assertCommand(buttons.get(1), "/pc 12, 70, -4");
+        List<Component> separators = message.getSiblings().stream()
+                .filter(component -> component.getString().equals(" "))
+                .toList();
+        assertEquals(2, separators.size());
+        assertTrue(separators.stream().allMatch(component -> !component.getStyle().isUnderlined()
+                && component.getStyle().getClickEvent() == null));
     }
 
     @Test
     void waypointAddedMessageOmitsShareActionsWhenDisabled() {
         Component message = WaypointAddFlow.waypointAddedMessage(
-                2, Waypoint.at(12, 70, -4), false);
+                "Route 1", 2, Waypoint.at(12, 70, -4), false);
 
-        assertTranslation(message, "waypointer.input.added", 2, "12, 70, -4");
-        assertTrue(message.getSiblings().isEmpty());
+        assertEquals("Added Waypoint 3 to \"Route 1\" at (12, 70, -4)", message.getString());
+        assertFalse(message.getSiblings().stream()
+                .anyMatch(component -> component.getStyle().getClickEvent() != null));
     }
 
     private static void assertCommand(Component action, String expected) {
@@ -37,12 +50,5 @@ class WaypointAddFlowTest {
                 action.getStyle().getClickEvent());
         assertEquals(expected, command.command());
         assertTrue(action.getStyle().isUnderlined());
-    }
-
-    private static void assertTranslation(Component component, String key, Object... arguments) {
-        TranslatableContents contents = assertInstanceOf(
-                TranslatableContents.class, component.getContents());
-        assertEquals(key, contents.getKey());
-        assertEquals(java.util.List.of(arguments), java.util.List.of(contents.getArgs()));
     }
 }

@@ -33,63 +33,61 @@ public final class WaypointAddFlow {
         if (group == null) return;
         if (group.temp()) return;
 
-        boolean skipAheadWasEnabled = group.skipAheadEnabled();
         group.focusNewWaypoint(waypointIndex, false);
-        if (skipAheadWasEnabled) {
+        if (group.skipAheadEnabled()) {
             group.setSkipAheadEnabled(false);
         }
         showWaypointAddedMessage(group, waypointIndex, showChatShareButtons);
-        showCurrentWaypointFocusedMessage(group.name(), waypointIndex);
-        if (skipAheadWasEnabled) {
-            showSkipAheadDisabledMessage(group.name());
-        }
-
     }
 
     private static void showWaypointAddedMessage(WaypointGroup group, int waypointIndex,
                                                  boolean showChatShareButtons) {
         if (waypointIndex < 0 || waypointIndex >= group.size()) return;
         Waypoint waypoint = group.get(waypointIndex);
-        showChatFeedback(waypointAddedMessage(waypointIndex, waypoint, showChatShareButtons));
+        showChatFeedback(waypointAddedMessage(
+                group.name(), waypointIndex, waypoint, showChatShareButtons));
     }
 
-    static Component waypointAddedMessage(int waypointIndex, Waypoint waypoint,
+    static Component waypointAddedMessage(String groupName, int waypointIndex, Waypoint waypoint,
                                           boolean showChatShareButtons) {
         String coordinates = waypoint.x() + ", " + waypoint.y() + ", " + waypoint.z();
-        MutableComponent message = Component.translatable(
-                "waypointer.input.added", waypointIndex, coordinates)
-                .withStyle(ChatFormatting.GREEN);
+        MutableComponent message = Component.empty()
+                .append(Component.literal("Added ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("Waypoint " + (waypointIndex + 1))
+                        .withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" to ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("\"" + groupName + "\"").withStyle(ChatFormatting.GREEN))
+                .append(Component.literal(" at (").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(Integer.toString(waypoint.x()))
+                        .withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal(", ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(Integer.toString(waypoint.y()))
+                        .withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal(", ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(Integer.toString(waypoint.z()))
+                        .withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal(")").withStyle(ChatFormatting.GRAY));
         if (!showChatShareButtons) return message;
         return message
+                .append(Component.literal(" "))
                 .append(chatShareButton(
-                        Component.translatable("waypointer.input.share.all"),
+                        Component.literal("All"),
                         "/ac " + coordinates))
+                .append(Component.literal(" "))
                 .append(chatShareButton(
-                        Component.translatable("waypointer.input.share.party"),
+                        Component.literal("Party"),
                         "/pc " + coordinates));
     }
 
     private static Component chatShareButton(Component label, String command) {
-        return Component.literal(" ").append(
-                Component.translatable("waypointer.input.share.button", label))
+        return Component.literal("[").append(label)
+                .append(Component.literal("]"))
                 .withStyle(Style.EMPTY
                 .withColor(ChatFormatting.AQUA)
                 .withUnderlined(true)
                 .withClickEvent(new ClickEvent.RunCommand(command))
                 .withHoverEvent(new HoverEvent.ShowText(
                         Component.translatable("waypointer.input.share.hover", label))));
-    }
-
-    private static void showCurrentWaypointFocusedMessage(String groupName, int waypointIndex) {
-        showChatFeedback(Component.translatable(
-                "waypointer.input.focused", groupName, waypointIndex)
-                .withStyle(ChatFormatting.YELLOW));
-    }
-
-    private static void showSkipAheadDisabledMessage(String groupName) {
-        showChatFeedback(Component.translatable(
-                "waypointer.input.skip_ahead_disabled", groupName)
-                .withStyle(ChatFormatting.YELLOW));
     }
 
     private static void showChatFeedback(Component message) {
