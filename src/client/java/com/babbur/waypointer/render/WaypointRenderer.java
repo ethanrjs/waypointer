@@ -15,7 +15,6 @@ import com.babbur.waypointer.dungeon.DungeonPearlTrajectory;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.input.WaypointRepositionMode;
-import com.babbur.waypointer.input.WaypointerKeybinds;
 import com.babbur.waypointer.text.AmpersandFormatting;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
@@ -1396,15 +1395,14 @@ public final class WaypointRenderer implements HudElement {
 
     private static void drawEditModeSubtitle(GuiGraphicsExtractor g, Font font,
                                              int screenW, int screenH) {
-        String subtitle = editModeSubtitleText(WaypointerKeybinds.exitEditModeKeyName());
+        String subtitle = editModeSubtitleText();
         int x = Math.max(0, (screenW - font.width(subtitle)) / 2);
         int y = Math.max(0, screenH / 2 + 14);
         g.text(font, subtitle, x, y, EDIT_MODE_SUBTITLE_ARGB, true);
     }
 
-    static String editModeSubtitleText(String exitKeyName) {
-        if (exitKeyName == null || exitKeyName.isBlank()) return EDIT_MODE_SUBTITLE_BASE_TEXT;
-        return EDIT_MODE_SUBTITLE_BASE_TEXT + " (" + exitKeyName.trim() + " to exit)";
+    static String editModeSubtitleText() {
+        return EDIT_MODE_SUBTITLE_BASE_TEXT + " (exit: /wp editmode)";
     }
 
     private void drawIrisHudBoxes(GuiGraphicsExtractor g, Minecraft mc, ClientLevel level,
