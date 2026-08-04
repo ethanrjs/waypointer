@@ -34,6 +34,7 @@ import net.minecraft.client.renderer.texture.OverlayTexture;
 import net.minecraft.core.BlockPos;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.AABB;
@@ -126,6 +127,8 @@ public final class WaypointRenderer implements HudElement {
     private static final float LABEL_SCALE_MAX = 4.0f;
     private static final double SMALL_SUBWAYPOINT_SIZE = 1.0 / 16.0;
     private static final double BLOCK_SHAPE_EPSILON = 1.0E-6;
+    private static final double ROUTE_LINE_CAMERA_CLEARANCE = 0.25;
+    private static final double ROUTE_LINE_CAMERA_SCREEN_OFFSET = 0.12;
     private static final int EDIT_MODE_SUBTITLE_ARGB = 0xFF55FFFF;
     private static final String EDIT_MODE_SUBTITLE_BASE_TEXT = "EDIT MODE";
     private static final int LINE_OF_SIGHT_SAMPLE_COUNT = 9;
@@ -304,7 +307,8 @@ public final class WaypointRenderer implements HudElement {
         double nearHideDistanceSq = nearHideDistanceSq();
 
         ps.pushPose();
-        ps.translate(-camPos.x, -camPos.y, -camPos.z);
+        try {
+            ps.translate(-camPos.x, -camPos.y, -camPos.z);
 
         // Fills and lines MUST run as two separate getBuffer/endBatch cycles.
         // MultiBufferSource.BufferSource routes every non-fixed RenderType
@@ -467,7 +471,9 @@ public final class WaypointRenderer implements HudElement {
             });
         }
 
-        ps.popPose();
+        } finally {
+            ps.popPose();
+        }
     }
 
     private void emitDungeonEntryPaths(PoseStack ps, VertexConsumer lines,
@@ -644,14 +650,24 @@ public final class WaypointRenderer implements HudElement {
         float alpha = 0.85f;
         float width = effectiveOutlineThickness();
         int color = config.routeLineColor();
+        boolean useEtherwarpHeight = config.useEtherwarpHeight();
+        float crouchingEyeHeight = mc.player == null
+                ? 0.0f : mc.player.getEyeHeight(Pose.CROUCHING);
+        var cameraUp = MinecraftCompat.mainCamera(mc.gameRenderer).upVector();
+        Vec3 screenDown = new Vec3(-cameraUp.x(), -cameraUp.y(), -cameraUp.z());
 
         RouteLineSegmentConsumer emitSegment = (fromIndex, toIndex) -> {
             Waypoint a = g.get(fromIndex);
             Waypoint b = g.get(toIndex);
             if (!routeSegmentHasDepthVisibility(a, b, depthCheckedPass, mc, level)) return;
+            Vec3 start = routeLineStart(a, useEtherwarpHeight, crouchingEyeHeight);
+            Vec3 end = new Vec3(b.centerX(), b.centerY(), b.centerZ());
+            start = clipLineStartOutsideCamera(
+                    start, end, camPos, screenDown,
+                    ROUTE_LINE_CAMERA_CLEARANCE, ROUTE_LINE_CAMERA_SCREEN_OFFSET);
             RenderHelpers.emitLine(lines, ps,
-                    (float) a.centerX(), (float) a.centerY(), (float) a.centerZ(),
-                    (float) b.centerX(), (float) b.centerY(), (float) b.centerZ(),
+                    (float) start.x, (float) start.y, (float) start.z,
+                    (float) end.x, (float) end.y, (float) end.z,
                     color, alpha, width);
         };
         if (isDungeonRoomRoute(g)) {
@@ -666,6 +682,51 @@ public final class WaypointRenderer implements HudElement {
                 i -> shouldRenderRouteLineEndpoint(g, i, currentIdx, showCompleted,
                         camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq),
                 emitSegment);
+    }
+
+    static Vec3 routeLineStart(Waypoint waypoint, boolean useEtherwarpHeight,
+                               float crouchingEyeHeight) {
+        double y = waypoint.centerY();
+        if (useEtherwarpHeight) y += 0.5 + Math.max(0.0f, crouchingEyeHeight);
+        return new Vec3(waypoint.centerX(), y, waypoint.centerZ());
+    }
+
+    static Vec3 clipLineStartOutsideCamera(Vec3 start, Vec3 end, Vec3 camera,
+                                           Vec3 screenDown, double clearance,
+                                           double screenOffset) {
+        if (clearance <= 0.0 || start.distanceToSqr(camera) >= clearance * clearance) {
+            return start;
+        }
+
+        Vec3 direction = end.subtract(start);
+        double lengthSquared = direction.lengthSqr();
+        if (lengthSquared <= 1.0E-12) return end;
+
+        Vec3 cameraToStart = start.subtract(camera);
+        double along = cameraToStart.dot(direction);
+        double discriminant = along * along - lengthSquared
+                * (cameraToStart.lengthSqr() - clearance * clearance);
+        if (discriminant <= 0.0) return end;
+
+        double exitFraction = (-along + Math.sqrt(discriminant)) / lengthSquared;
+        if (exitFraction >= 1.0) return end;
+        Vec3 clipped = start.add(direction.scale(Math.max(0.0, exitFraction)));
+        if (screenOffset <= 0.0) return clipped;
+        if (clipped.distanceToSqr(end) <= screenOffset * screenOffset) return end;
+
+        Vec3 unitDirection = direction.scale(1.0 / Math.sqrt(lengthSquared));
+        Vec3 perpendicularDown = screenDown.subtract(
+                unitDirection.scale(screenDown.dot(unitDirection)));
+        double perpendicularLengthSquared = perpendicularDown.lengthSqr();
+        if (perpendicularLengthSquared <= 1.0E-12) {
+            Vec3 fallbackAxis = Math.abs(unitDirection.x) < 0.9
+                    ? new Vec3(1.0, 0.0, 0.0) : new Vec3(0.0, 0.0, 1.0);
+            perpendicularDown = fallbackAxis.subtract(
+                    unitDirection.scale(fallbackAxis.dot(unitDirection)));
+            perpendicularLengthSquared = perpendicularDown.lengthSqr();
+        }
+        return clipped.add(perpendicularDown.scale(
+                screenOffset / Math.sqrt(perpendicularLengthSquared)));
     }
 
     static void forEachRouteLineSegment(WaypointGroup group,

@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -304,6 +305,22 @@ class DungeonRoomDataTest {
     }
 
     @Test
+    void jsonRejectsDuplicateRoomIdsAfterNormalization() {
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> DungeonRoomData.parseDefinitions("""
+                        {
+                          "rooms": [
+                            {"id":"Room A","name":"First"},
+                            {"id":"room-a","name":"Second"}
+                          ]
+                        }
+                        """));
+
+        assertTrue(error.getMessage().contains("Duplicate dungeon room id"));
+    }
+
+    @Test
     void jsonRoundTripsRoomCountsAndWaypointColors() {
         DungeonRoomDefinition definition = new DungeonRoomDefinition(
                 "counted",
@@ -363,6 +380,26 @@ class DungeonRoomDataTest {
         assertTrue(Files.exists(file));
         assertNotNull(DungeonRoomData.definition("persisted"));
         assertEquals(1, DungeonRoomData.definition("persisted").waypoints().size());
+    }
+
+    @Test
+    void failedCustomStoreWriteRemainsDirtyAndFlushCanRetry(@TempDir Path dir)
+            throws Exception {
+        Path blockedParent = dir.resolve("not-a-directory");
+        Files.writeString(blockedParent, "block directory creation");
+        Path file = blockedParent.resolve("dungeon_rooms.json");
+        DungeonRoomData.loadCustomStore(file);
+        DungeonRoomData.defineRoom("retry-room", "Retry Room", roomAt(-8, 24));
+
+        assertThrows(UncheckedIOException.class, DungeonRoomData::flush);
+
+        Files.delete(blockedParent);
+        Files.createDirectory(blockedParent);
+        DungeonRoomData.flush();
+
+        assertTrue(DungeonRoomData.parseDefinitions(Files.readString(file))
+                .containsKey("retry-room"));
+        DungeonRoomData.loadCustomStore(null);
     }
 
     private static DungeonRoom roomAt(int x, int z) {

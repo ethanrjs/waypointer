@@ -5,6 +5,8 @@ import com.babbur.waypointer.dungeon.DungeonDetectionConfidence;
 import com.babbur.waypointer.dungeon.DungeonRoom;
 import com.babbur.waypointer.dungeon.DungeonRoomShape;
 import com.babbur.waypointer.dungeon.DungeonRoomType;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -59,6 +61,22 @@ class DeveloperModeMonitorTest {
         assertTrue(DeveloperModeMonitor.UNRESOLVED_GRACE_TICKS > 75);
         assertEquals(0, DeveloperModeMonitor.UNRESOLVED_GRACE_TICKS
                 % DeveloperModeMonitor.SAMPLE_INTERVAL_TICKS);
+    }
+
+    @Test
+    void activeRouteHudIncludesExactCurrentWaypointDiagnostics() {
+        WaypointGroup group = new WaypointGroup("12345678-aaaa", "Secrets\nRoute", "dungeon_test");
+        group.setDefaultRadius(4.5);
+        group.setRuntimeOnly(true);
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.add(new Waypoint(10, 64, -20, "Lever", 0x12ABEF,
+                Waypoint.FLAG_SKIP_ON_INTERACT, 0.0));
+
+        List<String> lines = DeveloperModeMonitor.activeRouteHudLines(group);
+
+        assertEquals("Route: Secrets Route [12345678] | SEQUENCE runtime | index=0/1", lines.get(0));
+        assertEquals("  Target #1 \"Lever\" | xyz=10,64,-20 p16=168,1032,-312"
+                + " | r=4.50 color=#12ABEF flags=0x00000400", lines.get(1));
     }
 
     private static DungeonRoom room(String id,

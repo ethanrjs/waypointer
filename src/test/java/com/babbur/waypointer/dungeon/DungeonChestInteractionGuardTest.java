@@ -57,6 +57,22 @@ class DungeonChestInteractionGuardTest {
     }
 
     @Test
+    void oneFailedActionDoesNotPreventLaterReadyActions() {
+        DungeonChestInteractionGuard guard = new DungeonChestInteractionGuard();
+        AtomicInteger commits = new AtomicInteger();
+        Object level = new Object();
+        guard.deferForLevel(level, () -> {
+            throw new IllegalStateException("broken action");
+        });
+        guard.deferForLevel(level, commits::incrementAndGet);
+
+        for (int i = 0; i < 6; i++) guard.advanceTick();
+
+        assertEquals(1, commits.get());
+        assertEquals(0, guard.pendingCount());
+    }
+
+    @Test
     void lockMessageMatchIsExactApartFromCaseAndWhitespace() {
         assertTrue(DungeonChestInteractionGuard.isLockedChestMessage("That chest is locked!"));
         assertTrue(DungeonChestInteractionGuard.isLockedChestMessage(" that CHEST is LOCKED! "));

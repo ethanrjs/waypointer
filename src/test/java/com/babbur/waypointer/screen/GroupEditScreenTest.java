@@ -5,6 +5,7 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.babbur.waypointer.screen.GuiTokens.GAP;
@@ -62,26 +63,80 @@ class GroupEditScreenTest {
         int metadataWidth = 48;
 
         int normalWidth = GroupEditScreen.waypointRowTextWidth(
-                textLeft, rowRight, false, false, 0);
+                textLeft, rowRight, false, false, true, 0);
         int withMetadataWidth = GroupEditScreen.waypointRowTextWidth(
-                textLeft, rowRight, false, false, metadataWidth);
+                textLeft, rowRight, false, false, true, metadataWidth);
         int dungeonWidth = GroupEditScreen.waypointRowTextWidth(
-                textLeft, rowRight, false, true, 0);
+                textLeft, rowRight, false, true, true, 0);
         int subwaypointWidth = GroupEditScreen.waypointRowTextWidth(
-                textLeft, rowRight, true, false, 0);
+                textLeft, rowRight, true, false, true, 0);
         int dungeonSubwaypointWidth = GroupEditScreen.waypointRowTextWidth(
-                textLeft, rowRight, true, true, 0);
+                textLeft, rowRight, true, true, true, 0);
+        int unselectedDungeonSubwaypointWidth = GroupEditScreen.waypointRowTextWidth(
+                textLeft, rowRight, true, true, false, 0);
 
         assertEquals(normalWidth - metadataWidth - GAP, withMetadataWidth);
         assertTrue(dungeonWidth < normalWidth);
         assertTrue(subwaypointWidth < normalWidth);
         assertTrue(dungeonSubwaypointWidth < subwaypointWidth);
+        assertTrue(unselectedDungeonSubwaypointWidth > normalWidth,
+                "unselected rows should reclaim the repeated control columns");
     }
 
     @Test
     void waypointRowTextWidthClampsWhenReservedSpaceConsumesTheRow() {
         assertEquals(0, GroupEditScreen.waypointRowTextWidth(
-                400, 420, true, true, 120));
+                400, 420, true, true, true, 120));
+    }
+
+    @Test
+    void waypointControlsUseProgressiveDisclosureForTheSelectedRow() {
+        assertTrue(GroupEditScreen.shouldShowWaypointControls(3, 3));
+        assertFalse(GroupEditScreen.shouldShowWaypointControls(2, 3));
+        assertFalse(GroupEditScreen.shouldShowWaypointControls(-1, -1));
+    }
+
+    @Test
+    void idleWaypointSummaryKeepsActiveStateScannableWithoutButtonFrames() {
+        Waypoint waypoint = Waypoint.at(0, 70, 0).withFlags(
+                Waypoint.FLAG_SMALL_SUBWAYPOINT
+                        | Waypoint.FLAG_FILLED_SUBWAYPOINT
+                        | Waypoint.FLAG_SKIP_ON_INTERACT
+                        | Waypoint.FLAG_DEPTH_CHECKED);
+
+        assertEquals("Tiny · Filled · Interact · LOS",
+                GroupEditScreen.waypointControlSummary(waypoint, true, true));
+        assertEquals("LOS",
+                GroupEditScreen.waypointControlSummary(waypoint, false, false));
+        assertEquals("", GroupEditScreen.waypointControlSummary(null, true, true));
+    }
+
+    @Test
+    void connectorSegmentsKeepSubwaypointColorsOutOfTheMainSpine() {
+        int cyan = 0x31CFE8;
+        int orange = 0xFFB000;
+        int blue = 0x3150E0;
+        WaypointGroup group = WaypointGroup.create("Route", "dungeon_f7");
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.add(Waypoint.at(0, 70, 0).withColor(cyan));
+        group.add(Waypoint.at(1, 70, 0).withColor(orange));
+        group.add(Waypoint.at(2, 70, 0).withColor(orange));
+        group.add(Waypoint.at(3, 70, 0).withColor(blue));
+        group.add(Waypoint.at(4, 70, 0).withColor(orange));
+        group.add(Waypoint.at(5, 70, 0).withColor(orange));
+        assertTrue(group.toggleSubwaypoint(1));
+        assertTrue(group.toggleSubwaypoint(2));
+        assertTrue(group.toggleSubwaypoint(4));
+        assertTrue(group.toggleSubwaypoint(5));
+
+        assertEquals(List.of(
+                new GroupEditScreen.ConnectorSegment(false, 0, 3, cyan, blue),
+                new GroupEditScreen.ConnectorSegment(false, 3, 5, blue, blue),
+                new GroupEditScreen.ConnectorSegment(true, 1, 1, orange, orange),
+                new GroupEditScreen.ConnectorSegment(true, 2, 2, orange, orange),
+                new GroupEditScreen.ConnectorSegment(true, 4, 4, orange, orange),
+                new GroupEditScreen.ConnectorSegment(true, 5, 5, orange, orange)
+        ), GroupEditScreen.connectorSegments(group));
     }
 
     @Test
@@ -159,12 +214,12 @@ class GroupEditScreenTest {
     }
 
     @Test
-    void dungeonSkipTooltipTextExplainsTriggerBehavior() {
-        assertEquals("Stand: hold on solid block 0.5s; passable uses radius",
+    void dungeonSkipTooltipTextUsesConciseToggleLabels() {
+        assertEquals("Stand to skip",
                 GroupEditScreen.dungeonStandSkipTooltipText());
-        assertEquals("Interact: right-click its block",
+        assertEquals("Interact to skip",
                 GroupEditScreen.dungeonInteractSkipTooltipText());
-        assertEquals("Mine: break its block",
+        assertEquals("Mine to skip",
                 GroupEditScreen.dungeonMineSkipTooltipText());
     }
 

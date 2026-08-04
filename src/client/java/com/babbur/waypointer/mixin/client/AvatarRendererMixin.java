@@ -21,6 +21,7 @@ public abstract class AvatarRendererMixin {
         if (state.nameTag == null) return;
         String profileName = avatar.getProfile().name().orElse("");
         state.nameTag = WaypointerContributorBadge.applyPlayerName(
-                state.nameTag, profileName, WaypointerClient.config());
+                state.nameTag, profileName, avatar.getProfile().partialProfile().id(),
+                WaypointerClient.config());
     }
 }

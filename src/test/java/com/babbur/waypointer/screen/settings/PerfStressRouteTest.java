@@ -10,6 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PerfStressRouteTest {
@@ -121,6 +122,14 @@ class PerfStressRouteTest {
         WaypointGroup group = manager.get(PerfStressRoute.GROUP_ID_PREFIX + "hub");
         assertEquals(WaypointGroup.LoadMode.STATIC, group.loadMode());
         assertEquals(64, group.mainWaypointCount());
+    }
+
+    @Test
+    void totalWaypointCountChecksChildAdditionBeforeMultiplication() {
+        PerfStressRoute.Load load = new PerfStressRoute.Load(
+                PerfStressRoute.Profile.SUBWAYPOINTS_3D, 1, Integer.MAX_VALUE);
+
+        assertThrows(ArithmeticException.class, load::totalWaypoints);
     }
 
     @Test

@@ -10,12 +10,15 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
+import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 /**
  * Frame-driven state machine behind the settings screen's performance stress
@@ -142,8 +145,19 @@ public final class PerfStressTestController {
             return false;
         }
         target = config;
-        snapshot = WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config));
-        writeBackup(config);
+        String encodedSnapshot = WaypointerConfigCodec.encode(config);
+        snapshot = WaypointerConfigCodec.decode(encodedSnapshot);
+        try {
+            writeBackupAtomically(backupPath(), encodedSnapshot);
+        } catch (IOException failure) {
+            Waypointer.LOGGER.warn("Could not write perf-test settings backup", failure);
+            target = null;
+            snapshot = null;
+            statusOverride = "Performance test could not start because its settings backup failed.";
+            statusOverrideComponent = Component.translatable(
+                    "waypointer.screen.settings.perf.status.start_failed");
+            return false;
+        }
         scenarios = PerfScenarios.all();
         results = new ArrayList<>();
         lastReport = null;
@@ -449,36 +463,101 @@ public final class PerfStressTestController {
     public static synchronized boolean recoverInterruptedTest(WaypointerConfig config) {
         if (running || config == null) return false;
         Path backup = backupPath();
+        Path recovery = backup.resolveSibling(backup.getFileName() + ".recovery");
         try {
-            if (!Files.exists(backup)) return false;
-            WaypointerConfig recovered = WaypointerConfigCodec.decode(Files.readString(backup).trim());
+            recovery = claimRecoveryBackup(backup, recovery);
+            if (recovery == null) return false;
+        } catch (IOException failure) {
+            Waypointer.LOGGER.warn(
+                    "Could not claim perf-test settings backup for recovery", failure);
+            return false;
+        }
+
+        try {
+            WaypointerConfig recovered =
+                    WaypointerConfigCodec.decode(Files.readString(recovery).trim());
             config.replaceWith(recovered);
             statusOverride = "Recovered settings from an interrupted performance test.";
             statusOverrideComponent = Component.translatable(
                     "waypointer.screen.settings.perf.status.recovered");
-            return true;
         } catch (Exception e) {
-            Waypointer.LOGGER.warn("Could not recover perf-test settings backup", e);
+            Waypointer.LOGGER.warn(
+                    "Could not recover perf-test settings backup; retained it at {}",
+                    recovery,
+                    e);
             return false;
-        } finally {
-            deleteBackup();
         }
+        retireRecoveredBackup(recovery);
+        return true;
     }
 
-    private static void writeBackup(WaypointerConfig config) {
+    static void writeBackupAtomically(Path backup, String encoded) throws IOException {
+        Path parent = backup.getParent();
+        if (parent == null) throw new IOException("backup path has no parent");
+        Files.createDirectories(parent);
+        Path temporary = Files.createTempFile(
+                parent, backup.getFileName().toString() + ".", ".tmp");
         try {
-            Path backup = backupPath();
-            Files.createDirectories(backup.getParent());
-            Files.writeString(backup, WaypointerConfigCodec.encode(config));
-        } catch (Exception e) {
-            Waypointer.LOGGER.warn("Could not write perf-test settings backup", e);
+            Files.writeString(temporary, encoded);
+            Files.move(
+                    temporary,
+                    backup,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        } finally {
+            Files.deleteIfExists(temporary);
         }
     }
 
     private static void deleteBackup() {
+        Path backup = backupPath();
         try {
-            Files.deleteIfExists(backupPath());
-        } catch (Exception ignored) {
+            if (!Files.exists(backup)) return;
+            deleteQuarantinedBackup(quarantineBackup(backup));
+        } catch (IOException failure) {
+            Waypointer.LOGGER.warn(
+                    "Could not quarantine stale perf-test settings backup at {}",
+                    backup,
+                    failure);
+        }
+    }
+
+    static Path quarantineBackup(Path backup) throws IOException {
+        Path quarantined = backup.resolveSibling(
+                backup.getFileName() + ".quarantine-" + UUID.randomUUID());
+        return Files.move(backup, quarantined, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    static Path claimRecoveryBackup(Path backup, Path recovery) throws IOException {
+        if (Files.exists(backup)) {
+            return Files.move(
+                    backup,
+                    recovery,
+                    StandardCopyOption.ATOMIC_MOVE,
+                    StandardCopyOption.REPLACE_EXISTING);
+        }
+        return Files.exists(recovery) ? recovery : null;
+    }
+
+    private static void retireRecoveredBackup(Path recovery) {
+        try {
+            deleteQuarantinedBackup(quarantineBackup(recovery));
+        } catch (IOException failure) {
+            Waypointer.LOGGER.warn(
+                    "Recovered perf-test settings backup could not be retired at {}",
+                    recovery,
+                    failure);
+        }
+    }
+
+    private static void deleteQuarantinedBackup(Path quarantined) {
+        try {
+            Files.deleteIfExists(quarantined);
+        } catch (IOException failure) {
+            Waypointer.LOGGER.warn(
+                    "Retired perf-test settings backup could not be deleted; retained at {}",
+                    quarantined,
+                    failure);
         }
     }
 

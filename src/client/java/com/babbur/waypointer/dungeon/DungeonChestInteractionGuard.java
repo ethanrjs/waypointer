@@ -1,5 +1,6 @@
 package com.babbur.waypointer.dungeon;
 
+import com.babbur.waypointer.Waypointer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.client.Minecraft;
@@ -65,7 +66,13 @@ public final class DungeonChestInteractionGuard {
             ready.add(action.commit());
             return true;
         });
-        ready.forEach(Runnable::run);
+        for (Runnable action : ready) {
+            try {
+                action.run();
+            } catch (RuntimeException failure) {
+                Waypointer.LOGGER.error("Deferred dungeon chest action failed", failure);
+            }
+        }
     }
 
     boolean cancelLockedActions(String message) {

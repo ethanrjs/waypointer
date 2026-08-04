@@ -49,7 +49,9 @@ public final class PerfStressRoute {
         }
 
         public int totalWaypoints() {
-            return Math.multiplyExact(mainWaypoints, subwaypointsPerMain + 1);
+            return Math.multiplyExact(
+                    mainWaypoints,
+                    Math.addExact(subwaypointsPerMain, 1));
         }
     }
 

@@ -60,6 +60,9 @@ public final class ScoreboardZoneResolver implements ZoneSource {
 
     static Zone resolveSidebarText(String blob) {
         if (blob == null || blob.isBlank()) return null;
+        Matcher location = LOCATION_LINE.matcher(blob);
+        if (!location.find()) return null;
+
         // Specific mineshaft variants need scoreboard data because the Hypixel
         // location id does not identify their layouts. Dwarven surface areas use
         // the broad mining_3 location and resolve to dwarven_mines below.
@@ -70,8 +73,6 @@ public final class ScoreboardZoneResolver implements ZoneSource {
         Zone catacombsFloor = CatacombsFloorRefiner.tryResolveFromSidebarBlob(blob);
         if (catacombsFloor != null) return catacombsFloor;
 
-        Matcher location = LOCATION_LINE.matcher(blob);
-        if (location.find()) return Zone.resolveFromDisplayName(location.group(1).trim());
-        return null;
+        return Zone.resolveFromDisplayName(location.group(1).trim());
     }
 }

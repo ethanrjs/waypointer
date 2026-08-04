@@ -64,6 +64,7 @@ public final class SettingsCatalog {
     public static final String ACTION_RESET_DEFAULTS = "action.resetDefaults";
     public static final String ACTION_PERF_TEST = "action.perfTest";
     public static final String ACTION_WAYPOINT_PAINT = "action.waypointPaint";
+    public static final String ACTION_WAYPOINT_EDITOR_KEYBINDS = "action.waypointEditorKeybinds";
 
     private static final Setting.EnabledWhen ANY_LABEL_TEXT = (c, d) ->
             c.showWaypointNames() || c.showWaypointDistances() || c.showRouteProgress();
@@ -446,6 +447,10 @@ public final class SettingsCatalog {
                                 (c, d) -> c.showRouteLines(),
                                 (c, d, v) -> c.setShowRouteLines((Boolean) v))
                                 .impact(Setting.Impact.LOW),
+                        Setting.bool("useEtherwarpHeight", MAIN, "Use Etherwarp height",
+                                null,
+                                (c, d) -> c.useEtherwarpHeight(),
+                                (c, d, v) -> c.setUseEtherwarpHeight((Boolean) v)),
                         Setting.color("routeLineColor", MAIN, "Route line color",
                                 null,
                                 "Route Line Colour", "Pick route connector line color.",
@@ -503,6 +508,43 @@ public final class SettingsCatalog {
                                         (c, d) -> d.showPearlTrajectories(),
                                         (c, d, v) -> d.setShowPearlTrajectories((Boolean) v))
                                         .impact(Setting.Impact.LOW)),
+                        Group.plain("Automatic waypoint colors",
+                                dungeonColor("automaticSecretColor", "Secret waypoint color",
+                                        "Secret Waypoint Colour", "Pick automatic secret waypoint color.",
+                                        (c, d) -> d.automaticSecretColor(),
+                                        (c, d, v) -> d.setAutomaticSecretColor(rgb(v))),
+                                dungeonColor("automaticEtherwarpColor", "Etherwarp waypoint color",
+                                        "Etherwarp Waypoint Colour", "Pick automatic Etherwarp waypoint color.",
+                                        (c, d) -> d.automaticEtherwarpColor(),
+                                        (c, d, v) -> d.setAutomaticEtherwarpColor(rgb(v))),
+                                dungeonColor("automaticBreakBlocksColor", "Break blocks waypoint color",
+                                        "Break Blocks Waypoint Colour", "Pick automatic break-block waypoint color.",
+                                        (c, d) -> d.automaticBreakBlocksColor(),
+                                        (c, d, v) -> d.setAutomaticBreakBlocksColor(rgb(v))),
+                                dungeonColor("automaticInteractColor", "Interact waypoint color",
+                                        "Interact Waypoint Colour", "Pick automatic interact waypoint color.",
+                                        (c, d) -> d.automaticInteractColor(),
+                                        (c, d, v) -> d.setAutomaticInteractColor(rgb(v))),
+                                dungeonColor("automaticSuperboomColor", "Superboom waypoint color",
+                                        "Superboom Waypoint Colour", "Pick automatic Superboom waypoint color.",
+                                        (c, d) -> d.automaticSuperboomColor(),
+                                        (c, d, v) -> d.setAutomaticSuperboomColor(rgb(v))),
+                                dungeonColor("automaticItemColor", "Item pickup waypoint color",
+                                        "Item Pickup Waypoint Colour", "Pick automatic item-pickup waypoint color.",
+                                        (c, d) -> d.automaticItemColor(),
+                                        (c, d, v) -> d.setAutomaticItemColor(rgb(v))),
+                                dungeonColor("automaticBatColor", "Bat waypoint color",
+                                        "Bat Waypoint Colour", "Pick automatic bat waypoint color.",
+                                        (c, d) -> d.automaticBatColor(),
+                                        (c, d, v) -> d.setAutomaticBatColor(rgb(v))),
+                                dungeonColor("automaticDungeonbreakerColor", "Dungeonbreaker waypoint color",
+                                        "Dungeonbreaker Waypoint Colour", "Pick automatic Dungeonbreaker waypoint color.",
+                                        (c, d) -> d.automaticDungeonbreakerColor(),
+                                        (c, d, v) -> d.setAutomaticDungeonbreakerColor(rgb(v))),
+                                dungeonColor("automaticPearlColor", "Ender Pearl waypoint color",
+                                        "Ender Pearl Waypoint Colour", "Pick automatic Ender Pearl waypoint color.",
+                                        (c, d) -> d.automaticPearlColor(),
+                                        (c, d, v) -> d.setAutomaticPearlColor(rgb(v)))),
                         Group.parented((c, d) -> c.showDungeonEntryPathToFirstWaypoint(),
                                 Setting.bool("showDungeonEntryPathToFirstWaypoint", MAIN, "Dungeon entry path to first waypoint",
                                         "Draw a teleport-friendly path to waypoint #1 while entering a dungeon room.",
@@ -518,6 +560,14 @@ public final class SettingsCatalog {
                                         "Dungeon Entry Path Colour", "Pick dungeon entry path color.",
                                         (c, d) -> c.dungeonEntryPathColor(),
                                         (c, d, v) -> c.setDungeonEntryPathColor(rgb(v))))));
+    }
+
+    private static Setting dungeonColor(String id, String label, String pickerTitle,
+                                        String swatchTooltip, Setting.Getter getter,
+                                        Setting.Setter setter) {
+        return Setting.color(id, DUNGEON, label,
+                "Used when this dungeon action has no custom color.",
+                pickerTitle, swatchTooltip, getter, setter);
     }
 
     private static Category chat() {
@@ -597,6 +647,11 @@ public final class SettingsCatalog {
 
     private static Category system() {
         return Category.of("system", "System",
+                Group.plain("Waypoint editor",
+                        Setting.action(ACTION_WAYPOINT_EDITOR_KEYBINDS, "Waypoint editor keybinds",
+                                "Configure Tiny, Filled, Hide after parent reached, Stand to skip, "
+                                        + "Interact to skip, Mine to skip, and Render in LOS only. "
+                                        + "These shortcuts only work on the selected waypoint in the route editor.")),
                 Group.plain(null,
                         Setting.bool("irisShaderHudFallback", MAIN, "Iris shader compatibility",
                                 "Draw tracers and waypoint outlines with a crisp, shader-safe HUD renderer "

@@ -7,11 +7,15 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.List;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.List;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 
@@ -23,6 +27,45 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerConfigTest {
+
+    @Test
+    void corruptConfigIsQuarantinedBeforeDefaultsCanBeSaved(@TempDir Path dir)
+            throws IOException {
+        Path file = dir.resolve("config.json");
+        String corrupt = "{ definitely not valid JSON";
+        Files.writeString(file, corrupt);
+
+        WaypointerConfig config = WaypointerConfig.load(file);
+
+        Path quarantine = dir.resolve("config.json.invalid");
+        assertFalse(Files.exists(file));
+        assertEquals(corrupt, Files.readString(quarantine));
+
+        config.setShowTracer(false);
+        config.flush();
+
+        assertTrue(Files.exists(file));
+        assertFalse(WaypointerConfig.load(file).showTracer());
+        assertEquals(corrupt, Files.readString(quarantine));
+    }
+
+    @Test
+    void failedConfigWriteRemainsDirtyAndFlushCanRetry(@TempDir Path dir)
+            throws IOException {
+        Path blockedParent = dir.resolve("not-a-directory");
+        Files.writeString(blockedParent, "block directory creation");
+        Path file = blockedParent.resolve("config.json");
+        WaypointerConfig config = WaypointerConfig.load(file);
+        config.setShowTracer(false);
+
+        assertThrows(UncheckedIOException.class, config::flush);
+
+        Files.delete(blockedParent);
+        Files.createDirectory(blockedParent);
+        config.flush();
+
+        assertFalse(WaypointerConfig.load(file).showTracer());
+    }
 
     @Test
     void waypointPainterPalettePersistsAndDefensivelyCopies() {
@@ -428,6 +471,7 @@ class WaypointerConfigTest {
 
         assertEquals(0.0, config.beaconOpacity());
         assertFalse(config.showRouteLines());
+        assertFalse(config.useEtherwarpHeight());
         assertFalse(config.showDungeonEntryPathToFirstWaypoint());
         assertFalse(dungeonConfig.enabled());
         assertFalse(dungeonConfig.hideCompletedRooms());
@@ -587,6 +631,9 @@ class WaypointerConfigTest {
         config.setShowRouteLines(true);
         assertTrue(config.showRouteLines());
 
+        config.setUseEtherwarpHeight(true);
+        assertTrue(config.useEtherwarpHeight());
+
         config.setShowDungeonEntryPathToFirstWaypoint(true);
         assertTrue(config.showDungeonEntryPathToFirstWaypoint());
 
@@ -602,6 +649,7 @@ class WaypointerConfigTest {
         config.disableAllSettings();
         assertFalse(config.skipAheadOnlyVisibleWaypoints());
         assertFalse(config.showRouteLines());
+        assertFalse(config.useEtherwarpHeight());
         assertFalse(config.showDungeonEntryPathToFirstWaypoint());
         assertFalse(config.showDungeonEntryPathToFollowingWaypoints());
     }
@@ -619,6 +667,7 @@ class WaypointerConfigTest {
         config.setHideWaypointLabelsNearRadius(9.5);
         config.setSkipAheadOnlyVisibleWaypoints(false);
         config.setShowRouteLines(true);
+        config.setUseEtherwarpHeight(true);
         config.setShowDungeonEntryPathToFirstWaypoint(true);
         config.setShowDungeonEntryPathToFollowingWaypoints(true);
         config.setDungeonEntryPathColor(0x0A0B0C);
@@ -650,6 +699,7 @@ class WaypointerConfigTest {
         assertEquals(9.5, decoded.hideWaypointLabelsNearRadius());
         assertFalse(decoded.skipAheadOnlyVisibleWaypoints());
         assertTrue(decoded.showRouteLines());
+        assertTrue(decoded.useEtherwarpHeight());
         assertTrue(decoded.showDungeonEntryPathToFirstWaypoint());
         assertTrue(decoded.showDungeonEntryPathToFollowingWaypoints());
         assertEquals(0x0A0B0C, decoded.dungeonEntryPathColor());
@@ -715,6 +765,7 @@ class WaypointerConfigTest {
         WaypointerConfig live = new WaypointerConfig();
         live.setDefaultWaypointColor(0x101112);
         live.setShowRouteLines(true);
+        live.setUseEtherwarpHeight(true);
         live.setImportedRouteColorMode(WaypointGroup.GradientMode.AUTO);
         live.addChatCoordSenderBlacklist("Babbur");
 
@@ -724,6 +775,7 @@ class WaypointerConfigTest {
 
         assertEquals(Waypoint.DEFAULT_COLOR, live.defaultWaypointColor());
         assertFalse(live.showRouteLines());
+        assertFalse(live.useEtherwarpHeight());
         assertEquals(WaypointGroup.GradientMode.STATIC, live.importedRouteColorMode());
         assertTrue(live.chatCoordSenderBlacklist().isEmpty());
     }

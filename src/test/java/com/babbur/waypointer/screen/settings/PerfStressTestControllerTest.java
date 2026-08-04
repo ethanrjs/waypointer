@@ -1,12 +1,20 @@
 package com.babbur.waypointer.screen.settings;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PerfStressTestControllerTest {
+
+    @TempDir
+    Path tempDir;
 
     @Test
     void staleOrInvalidFramesDoNotConsumeTheActiveTimeBudget() {
@@ -66,5 +74,40 @@ class PerfStressTestControllerTest {
         assertTrue(PerfStressTestController.sustainedLag(streak));
         assertFalse(PerfStressTestController.hardStall(999_999_999L));
         assertTrue(PerfStressTestController.hardStall(1_000_000_000L));
+    }
+
+    @Test
+    void backupReplacementIsAtomicAndQuarantineRemovesTheActivePath() throws IOException {
+        Path backup = tempDir.resolve("perf-test-backup.wpc");
+        Files.writeString(backup, "old");
+
+        PerfStressTestController.writeBackupAtomically(backup, "new");
+
+        assertEquals("new", Files.readString(backup));
+        try (var files = Files.list(tempDir)) {
+            assertTrue(files.noneMatch(path -> path.getFileName().toString().endsWith(".tmp")));
+        }
+
+        Path quarantined = PerfStressTestController.quarantineBackup(backup);
+
+        assertFalse(Files.exists(backup));
+        assertEquals("new", Files.readString(quarantined));
+    }
+
+    @Test
+    void interruptedRecoveryResumesFromItsDeterministicClaimPath() throws IOException {
+        Path backup = tempDir.resolve("perf-test-backup.wpc");
+        Path recovery = tempDir.resolve("perf-test-backup.wpc.recovery");
+        Files.writeString(backup, "snapshot");
+
+        assertEquals(
+                recovery,
+                PerfStressTestController.claimRecoveryBackup(backup, recovery));
+        assertFalse(Files.exists(backup));
+        assertEquals("snapshot", Files.readString(recovery));
+
+        assertEquals(
+                recovery,
+                PerfStressTestController.claimRecoveryBackup(backup, recovery));
     }
 }

@@ -214,10 +214,10 @@ final class GroundPathfinder {
 
         int expansions = 0;
         while (!open.isEmpty() && expansions < maxExpansions) {
-            expansions++;
             Node current = open.poll();
             Double knownBest = best.get(current.cell);
             if (knownBest == null || current.cost > knownBest + 1.0E-6D) continue;
+            expansions++;
             if (current.cell.equals(goalCell)) {
                 return successfulGridResult(simplifyBySight(grid, reconstruct(current)),
                         start, goal, expansions, maxExpansions, startedAtNanos);

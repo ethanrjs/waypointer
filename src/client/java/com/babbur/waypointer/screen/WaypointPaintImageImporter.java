@@ -99,16 +99,17 @@ final class WaypointPaintImageImporter {
         if (targetWidth < 1 || targetHeight < 1) {
             throw new IllegalArgumentException("target dimensions must be positive");
         }
+        int targetPixelCount = checkedTargetPixelCount(targetWidth, targetHeight);
 
         int sourceWidth = source.getWidth();
         int sourceHeight = source.getHeight();
         if (sourceWidth > targetWidth || sourceHeight > targetHeight) {
             return resizeArea(source, sourceWidth, sourceHeight,
-                    targetWidth, targetHeight);
+                    targetWidth, targetHeight, targetPixelCount);
         }
         int[] sourcePixels = source.getRGB(0, 0, sourceWidth, sourceHeight,
                 null, 0, sourceWidth);
-        int[] result = new int[targetWidth * targetHeight];
+        int[] result = new int[targetPixelCount];
         for (int y = 0; y < targetHeight; y++) {
             double sourceY = (y + 0.5) * sourceHeight / targetHeight - 0.5;
             int y0 = clamp((int) Math.floor(sourceY), 0, sourceHeight - 1);
@@ -130,8 +131,8 @@ final class WaypointPaintImageImporter {
     }
 
     private static int[] resizeArea(BufferedImage source, int sourceWidth, int sourceHeight,
-                                    int targetWidth, int targetHeight) {
-        int[] result = new int[targetWidth * targetHeight];
+                                    int targetWidth, int targetHeight, int targetPixelCount) {
+        int[] result = new int[targetPixelCount];
         for (int y = 0; y < targetHeight; y++) {
             double top = (double) y * sourceHeight / targetHeight;
             double bottom = (double) (y + 1) * sourceHeight / targetHeight;
@@ -175,6 +176,21 @@ final class WaypointPaintImageImporter {
             }
         }
         return result;
+    }
+
+    private static int checkedTargetPixelCount(int width, int height) {
+        final int pixels;
+        try {
+            pixels = Math.multiplyExact(width, height);
+        } catch (ArithmeticException overflow) {
+            throw new IllegalArgumentException("target image is too large", overflow);
+        }
+        if (width > MAX_IMAGE_DIMENSION
+                || height > MAX_IMAGE_DIMENSION
+                || pixels > MAX_IMAGE_PIXELS) {
+            throw new IllegalArgumentException("target image is too large");
+        }
+        return pixels;
     }
 
     private static void requireInputs(BufferedImage source, WaypointPaint existing) {

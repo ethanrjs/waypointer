@@ -22,7 +22,9 @@ import net.fabricmc.loader.api.FabricLoader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -535,7 +537,10 @@ public final class DungeonRoomData {
         Map<String, DungeonRoomDefinition> out = new LinkedHashMap<>();
         for (JsonElement element : rooms) {
             DungeonRoomDefinition definition = definitionFromJson(element.getAsJsonObject());
-            out.put(definition.id(), definition);
+            if (out.putIfAbsent(definition.id(), definition) != null) {
+                throw new IllegalArgumentException(
+                        "Duplicate dungeon room id after normalization: " + definition.id());
+            }
         }
         return Map.copyOf(out);
     }
@@ -606,10 +611,15 @@ public final class DungeonRoomData {
             Files.createDirectories(customFile.getParent());
             Path tmp = customFile.resolveSibling(customFile.getFileName() + ".tmp");
             Files.writeString(tmp, toJson(CUSTOM.get().values()));
-            Files.move(tmp, customFile, StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE);
+            try {
+                Files.move(tmp, customFile, StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, customFile, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException e) {
-            Waypointer.LOGGER.error("Failed to save dungeon room data to {}", customFile, e);
+            throw new UncheckedIOException(
+                    "Failed to save dungeon room data to " + customFile, e);
         }
     }
 

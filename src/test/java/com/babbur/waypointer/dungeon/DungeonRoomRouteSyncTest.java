@@ -130,6 +130,110 @@ class DungeonRoomRouteSyncTest {
     }
 
     @Test
+    void dungeonWaypointsAutomaticallyColorizeByActionType() {
+        DungeonRoom room = room("color-room", "Color Room");
+        DungeonRoomDefinition definition = DungeonRoomData.defineRoom(
+                "color-room", "Color Room", room);
+        DungeonWaypointTrigger[] triggers = {
+                DungeonWaypointTrigger.ETHERWARP,
+                DungeonWaypointTrigger.BREAK_BLOCKS,
+                DungeonWaypointTrigger.INTERACT_BLOCK,
+                DungeonWaypointTrigger.USE_SUPERBOOM,
+                DungeonWaypointTrigger.PICKUP_ITEM,
+                DungeonWaypointTrigger.KILL_BAT,
+                DungeonWaypointTrigger.THROW_PEARL,
+                DungeonWaypointTrigger.OPEN_CHEST
+        };
+        int[] expectedColors = {
+                DungeonSecretCategory.ETHERWARP.defaultColor,
+                DungeonSecretCategory.STONK.defaultColor,
+                DungeonSecretCategory.LEVER.defaultColor,
+                DungeonSecretCategory.SUPERBOOM.defaultColor,
+                DungeonSecretCategory.ITEM.defaultColor,
+                DungeonSecretCategory.BAT.defaultColor,
+                DungeonSecretCategory.PEARL.defaultColor,
+                DungeonRoomRouteSync.SECRET_WAYPOINT_COLOR
+        };
+        for (int i = 0; i < triggers.length; i++) {
+            definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                    "action-" + i, i + 1, DungeonSecretCategory.DEFAULT, triggers[i],
+                    i, 70, i, "", List.of(DungeonHighlight.outline(i, 71, i))));
+        }
+
+        WaypointGroup group = DungeonRoomRouteSync.routeGroupForRoom(room, definition);
+
+        for (int i = 0; i < triggers.length; i++) {
+            Waypoint action = group.get(i * 2);
+            Waypoint inheritedHighlight = group.get(i * 2 + 1);
+            assertEquals(expectedColors[i], action.color(), triggers[i] + " action color");
+            assertEquals(expectedColors[i], inheritedHighlight.color(),
+                    triggers[i] + " highlight should inherit its action color");
+        }
+    }
+
+    @Test
+    void automaticDungeonColorsComeFromDungeonConfig() {
+        DungeonRoom room = room("configured-color-room", "Configured Color Room");
+        DungeonRoomDefinition definition = DungeonRoomData.defineRoom(
+                "configured-color-room", "Configured Color Room", room);
+        DungeonWaypointTrigger[] triggers = {
+                DungeonWaypointTrigger.OPEN_CHEST,
+                DungeonWaypointTrigger.ETHERWARP,
+                DungeonWaypointTrigger.BREAK_BLOCKS,
+                DungeonWaypointTrigger.INTERACT_BLOCK,
+                DungeonWaypointTrigger.USE_SUPERBOOM,
+                DungeonWaypointTrigger.PICKUP_ITEM,
+                DungeonWaypointTrigger.KILL_BAT,
+                DungeonWaypointTrigger.DUNGEONBREAKER,
+                DungeonWaypointTrigger.THROW_PEARL
+        };
+        int[] colors = {
+                0x010101, 0x020202, 0x030303, 0x040404, 0x050505,
+                0x060606, 0x070707, 0x080808, 0x090909
+        };
+        for (int i = 0; i < triggers.length; i++) {
+            definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                    "configured-" + i, i + 1, DungeonSecretCategory.DEFAULT, triggers[i],
+                    i, 70, i, "", List.of(DungeonHighlight.outline(i, 71, i))));
+        }
+        DungeonConfig config = new DungeonConfig();
+        config.setAutomaticSecretColor(colors[0]);
+        config.setAutomaticEtherwarpColor(colors[1]);
+        config.setAutomaticBreakBlocksColor(colors[2]);
+        config.setAutomaticInteractColor(colors[3]);
+        config.setAutomaticSuperboomColor(colors[4]);
+        config.setAutomaticItemColor(colors[5]);
+        config.setAutomaticBatColor(colors[6]);
+        config.setAutomaticDungeonbreakerColor(colors[7]);
+        config.setAutomaticPearlColor(colors[8]);
+
+        WaypointGroup group = DungeonRoomRouteSync.routeGroupForRoom(
+                room, definition, null, config);
+
+        for (int i = 0; i < triggers.length; i++) {
+            assertEquals(colors[i], group.get(i * 2).color(), triggers[i] + " action color");
+            assertEquals(colors[i], group.get(i * 2 + 1).color(),
+                    triggers[i] + " highlight color");
+        }
+    }
+
+    @Test
+    void explicitDungeonWaypointAndHighlightColorsOverrideAutomaticColors() {
+        DungeonRoom room = room("custom-color-room", "Custom Color Room");
+        DungeonRoomDefinition definition = DungeonRoomData.defineRoom(
+                "custom-color-room", "Custom Color Room", room);
+        definition = DungeonRoomData.addWaypoint(definition.id(), new DungeonWaypoint(
+                "custom", 1, DungeonSecretCategory.DEFAULT, DungeonWaypointTrigger.ETHERWARP,
+                1, 70, 1, "", List.of(new DungeonHighlight(
+                        2, 71, 2, DungeonHighlightStyle.OUTLINE, 0x654321)), 0x123456));
+
+        WaypointGroup group = DungeonRoomRouteSync.routeGroupForRoom(room, definition);
+
+        assertEquals(0x123456, group.get(0).color());
+        assertEquals(0x654321, group.get(1).color());
+    }
+
+    @Test
     void transformedUserRouteCarriesWaypointPaintIntoRuntimeMirror() {
         DungeonRoom room = room("paint-room", "Paint Room");
         WaypointGroup source = WaypointGroup.create("Painted Route", "paint-room");
@@ -781,6 +885,31 @@ class DungeonRoomRouteSyncTest {
         assertEquals(2, manager.groupsForZone(base.id()).stream()
                 .filter(group -> !group.runtimeOnly() && !group.temp())
                 .count());
+    }
+
+    @Test
+    void installingMissingDefinitionsMigratesOnlyDefinitionOnlyRooms() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonConfig config = new DungeonConfig();
+        DungeonRoomDefinition migrated = DungeonRoomData.defineRoom(
+                "migrated-room", "Migrated Room", room("migrated-room", "Migrated Room"));
+        migrated = DungeonRoomData.addWaypoint(migrated.id(), DungeonWaypoint.plain(
+                "migrated-secret", DungeonSecretCategory.CHEST, 1, 70, 1, "Chest"));
+        DungeonRoomDefinition retained = DungeonRoomData.defineRoom(
+                "retained-room", "Retained Room", room("retained-room", "Retained Room"));
+        retained = DungeonRoomData.addWaypoint(retained.id(), DungeonWaypoint.plain(
+                "retained-secret", DungeonSecretCategory.CHEST, 2, 70, 2, "Chest"));
+        WaypointGroup existing = WaypointGroup.create("Existing", retained.id());
+        existing.add(Waypoint.at(2, 70, 2));
+        manager.add(existing);
+
+        List<WaypointGroup> migratedRoutes = DungeonRoomRouteSync.installMissingEditableRoutes(
+                manager, config, List.of(migrated, retained));
+
+        assertEquals(1, migratedRoutes.size());
+        assertEquals(migrated.id(), migratedRoutes.get(0).zoneId());
+        assertTrue(existing.enabled(), "unrelated stored dungeon routes stay active");
+        assertEquals(existing, DungeonRoomRouteSync.storedRouteForRoom(manager, retained.id()));
     }
 
     @Test

@@ -37,16 +37,26 @@ final class WaypointPaintTextureCache {
         DynamicTexture texture = new DynamicTexture(
                 () -> "waypointer_paint_" + sequence,
                 ATLAS_WIDTH, ATLAS_HEIGHT, false);
-        Minecraft.getInstance().getTextureManager().register(id, texture);
-        bake(texture, paint);
+        var textureManager = Minecraft.getInstance().getTextureManager();
+        textureManager.register(id, texture);
+        boolean created = false;
+        try {
+            bake(texture, paint);
 
-        Entry entry = new Entry(
-                id,
-                WaypointerRenderPipelines.paintedQuads(id, false),
-                WaypointerRenderPipelines.paintedQuads(id, true));
-        CACHE.put(paint, entry);
-        evictOldTextures();
-        return entry;
+            Entry entry = new Entry(
+                    id,
+                    WaypointerRenderPipelines.paintedQuads(id, false),
+                    WaypointerRenderPipelines.paintedQuads(id, true));
+            CACHE.put(paint, entry);
+            evictOldTextures();
+            created = true;
+            return entry;
+        } finally {
+            if (!created) {
+                CACHE.remove(paint);
+                textureManager.release(id);
+            }
+        }
     }
 
     private static void bake(DynamicTexture texture, WaypointPaint paint) {

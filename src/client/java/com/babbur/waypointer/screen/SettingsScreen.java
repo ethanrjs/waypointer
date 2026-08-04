@@ -24,6 +24,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.options.controls.KeyBindsScreen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
@@ -614,8 +615,19 @@ public final class SettingsScreen extends Screen {
             case SettingsCatalog.ACTION_WAYPOINT_PAINT -> buildDialogActionControl(row, setting,
                     controlRight, rowTop, "waypointer.screen.settings.action.open_painter",
                     this::openWaypointPainter);
+            case SettingsCatalog.ACTION_WAYPOINT_EDITOR_KEYBINDS -> buildWaypointEditorKeybindControl(
+                    row, setting, controlRight, rowTop);
             default -> { }
         }
+    }
+
+    private void buildWaypointEditorKeybindControl(Row row, Setting setting,
+                                                    int controlRight, int rowTop) {
+        int buttonW = 92;
+        Button button = styledButton(controlRight - buttonW, 0, buttonW, BTN_H,
+                Component.literal("Controls..."), b -> MinecraftCompat.setScreen(minecraft,
+                        new KeyBindsScreen(this, minecraft.options)), tooltipOrNull(setting));
+        registerRowWidget(row, button, rowTop + 2);
     }
 
     private void buildPerfTestControls(Row row, Setting setting, int controlRight, int rowTop) {

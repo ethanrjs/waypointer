@@ -1,5 +1,6 @@
 package com.babbur.waypointer.render;
 
+import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.config.WaypointerConfig;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -54,9 +55,12 @@ final class IrisShaderFallback {
             Method method = shaderPackMethod();
             if (method == null) return false;
             return Boolean.TRUE.equals(method.invoke(irisApi));
-        } catch (ReflectiveOperationException | RuntimeException ignored) {
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
             apiUnavailable = true;
             cachedShaderPackInUse = false;
+            Waypointer.LOGGER.warn(
+                    "Iris shader fallback is unavailable; disabling it for this session",
+                    failure);
             return false;
         }
     }

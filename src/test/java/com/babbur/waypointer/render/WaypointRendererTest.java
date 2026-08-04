@@ -77,6 +77,57 @@ class WaypointRendererTest {
     }
 
     @Test
+    void anyEtherwarpRouteLineStartsAtCrouchingEyeHeightAboveWaypointBlock() {
+        Waypoint waypoint = waypointAt(10, 64, -5, 0);
+
+        assertEquals(new net.minecraft.world.phys.Vec3(10.5, 64.5, -4.5),
+                WaypointRenderer.routeLineStart(waypoint, false, 1.27f));
+        net.minecraft.world.phys.Vec3 etherwarpStart =
+                WaypointRenderer.routeLineStart(waypoint, true, 1.27f);
+        assertEquals(10.5, etherwarpStart.x);
+        assertEquals(66.27, etherwarpStart.y, 0.00001);
+        assertEquals(-4.5, etherwarpStart.z);
+    }
+
+    @Test
+    void routeLineStartAtCameraClipsForwardAndOffsetsScreenDown() {
+        var camera = new net.minecraft.world.phys.Vec3(10.5, 66.27, -4.5);
+        var target = new net.minecraft.world.phys.Vec3(14.5, 66.27, -4.5);
+        var screenDown = new net.minecraft.world.phys.Vec3(0.0, -1.0, 0.0);
+
+        var clipped = WaypointRenderer.clipLineStartOutsideCamera(
+                camera, target, camera, screenDown, 0.25, 0.12);
+
+        var displacement = clipped.subtract(camera);
+        var direction = target.subtract(camera).normalize();
+        var perpendicular = displacement.subtract(direction.scale(displacement.dot(direction)));
+        assertEquals(0.25, displacement.dot(direction), 0.00001);
+        assertEquals(0.12, perpendicular.length(), 0.00001);
+        assertTrue(perpendicular.dot(screenDown) > 0.0);
+        assertTrue(displacement.cross(direction).length() > 0.0);
+    }
+
+    @Test
+    void routeLineStartOutsideCameraClearanceRemainsUnchanged() {
+        var camera = new net.minecraft.world.phys.Vec3(0.0, 64.0, 0.0);
+        var start = new net.minecraft.world.phys.Vec3(0.0, 64.26, 0.0);
+
+        assertEquals(start, WaypointRenderer.clipLineStartOutsideCamera(
+                start, new net.minecraft.world.phys.Vec3(5.0, 64.0, 0.0), camera,
+                new net.minecraft.world.phys.Vec3(0.0, -1.0, 0.0), 0.25, 0.12));
+    }
+
+    @Test
+    void routeLineFullyInsideCameraClearanceCollapsesAtItsTarget() {
+        var camera = new net.minecraft.world.phys.Vec3(0.0, 64.0, 0.0);
+        var target = new net.minecraft.world.phys.Vec3(0.1, 64.0, 0.0);
+
+        assertEquals(target, WaypointRenderer.clipLineStartOutsideCamera(
+                camera, target, camera, new net.minecraft.world.phys.Vec3(0.0, -1.0, 0.0),
+                0.25, 0.12));
+    }
+
+    @Test
     void routeLineCollectorSkipsSubwaypointsWithoutBreakingMainConnector() {
         WaypointGroup group = groupWith(
                 waypoint(0),

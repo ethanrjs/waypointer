@@ -221,7 +221,6 @@ public final class WaypointExportCodec {
     }
 
     private static String skyhanniJson(List<WaypointGroup> groups) {
-        JsonObject root = new JsonObject();
         JsonArray waypoints = new JsonArray();
         int step = 1;
         for (WaypointGroup group : groups) {
@@ -243,8 +242,7 @@ public final class WaypointExportCodec {
                 step++;
             }
         }
-        root.add("waypoints", waypoints);
-        return root.toString();
+        return waypoints.toString();
     }
 
     private static String groupName(WaypointGroup group) {

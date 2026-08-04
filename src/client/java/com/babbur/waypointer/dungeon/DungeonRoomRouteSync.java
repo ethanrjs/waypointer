@@ -142,7 +142,7 @@ public final class DungeonRoomRouteSync {
         }
 
         WaypointGroup group = routeGroupForRoom(
-                room, definition, session);
+                room, definition, session, config);
         group.setVisibleMainSteps(visibleSecretStages());
         if (group.isEmpty()) {
             removeGeneratedGroup(generatedId);
@@ -484,6 +484,11 @@ public final class DungeonRoomRouteSync {
      * brings the installed secrets back.
      */
     public static WaypointGroup editableRouteFromDefinition(DungeonRoomDefinition definition) {
+        return editableRouteFromDefinition(definition, null);
+    }
+
+    static WaypointGroup editableRouteFromDefinition(DungeonRoomDefinition definition,
+                                                       DungeonConfig config) {
         WaypointGroup group = WaypointGroup.create("Secret Route", definition.id());
         group.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
@@ -526,7 +531,7 @@ public final class DungeonRoomRouteSync {
                     dungeonWaypoint.name(),
                     dungeonWaypoint.hasOwnColor()
                             ? dungeonWaypoint.color()
-                            : defaultActionColor(dungeonWaypoint),
+                            : defaultActionColor(dungeonWaypoint, config),
                     flags, 0.0));
             if (!hasProgressWaypoint) {
                 hasProgressWaypoint = true;
@@ -552,7 +557,7 @@ public final class DungeonRoomRouteSync {
                         highlight.x(), highlight.y(), highlight.z(),
                         "", highlight.hasOwnColor()
                         ? highlight.color()
-                        : dungeonWaypoint.color(),
+                        : defaultActionColor(dungeonWaypoint, config),
                         highlightFlags, 0.0));
             }
         }
@@ -566,12 +571,31 @@ public final class DungeonRoomRouteSync {
         return group;
     }
 
-    private static int defaultActionColor(DungeonWaypoint waypoint) {
+    private static int defaultActionColor(DungeonWaypoint waypoint, DungeonConfig config) {
         if (waypoint == null) return SUPPORT_WAYPOINT_COLOR;
-        return waypoint.completesSecret()
-                && waypoint.category() == DungeonSecretCategory.DEFAULT
-                ? SECRET_WAYPOINT_COLOR
-                : waypoint.category().defaultColor;
+        if (waypoint.hasOwnColor()) return waypoint.color();
+        return switch (waypoint.trigger()) {
+            case INTERACT_BLOCK, FLIP_LEVER -> config == null
+                    ? DungeonSecretCategory.LEVER.defaultColor : config.automaticInteractColor();
+            case OPEN_CHEST, CHAT_MESSAGE, ANY_SECRET -> config == null
+                    ? SECRET_WAYPOINT_COLOR : config.automaticSecretColor();
+            case USE_SUPERBOOM -> config == null
+                    ? DungeonSecretCategory.SUPERBOOM.defaultColor : config.automaticSuperboomColor();
+            case PICKUP_ITEM -> config == null
+                    ? DungeonSecretCategory.ITEM.defaultColor : config.automaticItemColor();
+            case KILL_BAT -> config == null
+                    ? DungeonSecretCategory.BAT.defaultColor : config.automaticBatColor();
+            case BREAK_BLOCKS -> config == null
+                    ? DungeonSecretCategory.STONK.defaultColor : config.automaticBreakBlocksColor();
+            case DUNGEONBREAKER -> config == null
+                    ? DungeonSecretCategory.DUNGEONBREAKER.defaultColor
+                    : config.automaticDungeonbreakerColor();
+            case ETHERWARP -> config == null
+                    ? DungeonSecretCategory.ETHERWARP.defaultColor : config.automaticEtherwarpColor();
+            case THROW_PEARL -> config == null
+                    ? DungeonSecretCategory.PEARL.defaultColor : config.automaticPearlColor();
+            case MANUAL -> waypoint.category().defaultColor;
+        };
     }
 
     private static boolean actionUsesLineOfSight(DungeonWaypointTrigger trigger) {
@@ -594,24 +618,26 @@ public final class DungeonRoomRouteSync {
         List<WaypointGroup> routes = new ArrayList<>();
         for (DungeonRoomDefinition definition : definitions) {
             if (definition != null && !definition.waypoints().isEmpty()) {
-                WaypointGroup route = editableRouteFromDefinition(definition);
+                WaypointGroup route = editableRouteFromDefinition(definition, config);
                 route.setName("Secret Route — " + definition.displayName());
                 routes.add(route);
             }
         }
         if (routes.isEmpty()) return List.of();
 
+        List<String> installedRoomIds = new ArrayList<>();
+        for (DungeonRoomDefinition definition : definitions) {
+            if (definition != null && !definition.waypoints().isEmpty()) {
+                installedRoomIds.add(definition.id());
+            }
+        }
         for (WaypointGroup existing : manager.allGroups()) {
             if (!existing.temp() && !existing.runtimeOnly()
-                    && DungeonRoomData.definition(existing.zoneId()) != null) {
+                    && installedRoomIds.contains(existing.zoneId())) {
                 existing.setEnabled(false);
             }
         }
         if (config != null) {
-            List<String> installedRoomIds = new ArrayList<>();
-            for (DungeonRoomDefinition definition : DungeonRoomData.customDefinitions()) {
-                if (!definition.waypoints().isEmpty()) installedRoomIds.add(definition.id());
-            }
             config.disableRoomRoutes(installedRoomIds);
         }
 
@@ -619,8 +645,29 @@ public final class DungeonRoomRouteSync {
         return List.copyOf(routes);
     }
 
+    /** Installs persisted secret definitions which predate ordinary-route imports. */
+    public static List<WaypointGroup> installMissingEditableRoutes(
+            ActiveGroupManager manager, DungeonConfig config,
+            Collection<DungeonRoomDefinition> definitions) {
+        if (manager == null || definitions == null || definitions.isEmpty()) return List.of();
+
+        List<DungeonRoomDefinition> missing = new ArrayList<>();
+        for (DungeonRoomDefinition definition : definitions) {
+            if (definition != null && !definition.waypoints().isEmpty()
+                    && storedRouteForRoom(manager, definition.id()) == null) {
+                missing.add(definition);
+            }
+        }
+        return installEditableRoutes(manager, config, missing);
+    }
+
     static WaypointGroup routeGroupForRoom(DungeonRoom room, DungeonRoomDefinition definition,
                                            DungeonRouteSession session) {
+        return routeGroupForRoom(room, definition, session, null);
+    }
+
+    static WaypointGroup routeGroupForRoom(DungeonRoom room, DungeonRoomDefinition definition,
+                                           DungeonRouteSession session, DungeonConfig config) {
         List<DungeonWaypoint> visible = new ArrayList<>();
         boolean complete = session != null && session.isRoomComplete(room);
         int lastStage = definition.waypoints().stream()
@@ -633,7 +680,8 @@ public final class DungeonRoomRouteSync {
                 visible.add(waypoint);
             }
         }
-        WaypointGroup local = editableRouteFromDefinition(definition.withWaypoints(visible));
+        WaypointGroup local = editableRouteFromDefinition(
+                definition.withWaypoints(visible), config);
         local.setName("Dungeon Secrets -- " + definition.displayName());
         WaypointGroup group = transformedRouteGroupForRoom(room, local, session, 0);
         group.setRuntimeSourceGroupId(null);

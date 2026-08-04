@@ -99,6 +99,7 @@ public final class WaypointerConfigCodec {
     private static final int SHOW_ROUTE_INDICES_IN_GUI = 67;
     private static final int KEEP_SUBWAYPOINTS_VISIBLE_UNTIL_NEXT = 68;
     private static final int EXPORT_INCLUDE_ZONE = 69;
+    private static final int USE_ETHERWARP_HEIGHT = 70;
 
     private WaypointerConfigCodec() {
     }
@@ -180,6 +181,8 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, HIDE_REACHED_STATIC_WAYPOINTS, config.hideReachedStaticWaypointsUntilCycleComplete(), defaults.hideReachedStaticWaypointsUntilCycleComplete());
         writeBoolean(out, SKIP_AHEAD_ONLY_VISIBLE, config.skipAheadOnlyVisibleWaypoints(), defaults.skipAheadOnlyVisibleWaypoints());
         writeBoolean(out, SHOW_ROUTE_LINES, config.showRouteLines(), defaults.showRouteLines());
+        writeBoolean(out, USE_ETHERWARP_HEIGHT,
+                config.useEtherwarpHeight(), defaults.useEtherwarpHeight());
         writeBoolean(out, DUNGEON_ENTRY_PATH_TO_FIRST_WAYPOINT,
                 config.showDungeonEntryPathToFirstWaypoint(),
                 defaults.showDungeonEntryPathToFirstWaypoint());
@@ -261,6 +264,7 @@ public final class WaypointerConfigCodec {
                 case HIDE_REACHED_STATIC_WAYPOINTS -> config.setHideReachedStaticWaypointsUntilCycleComplete(in.readBoolean());
                 case SKIP_AHEAD_ONLY_VISIBLE -> config.setSkipAheadOnlyVisibleWaypoints(in.readBoolean());
                 case SHOW_ROUTE_LINES -> config.setShowRouteLines(in.readBoolean());
+                case USE_ETHERWARP_HEIGHT -> config.setUseEtherwarpHeight(in.readBoolean());
                 case DUNGEON_ENTRY_PATH_TO_FIRST_WAYPOINT ->
                         config.setShowDungeonEntryPathToFirstWaypoint(in.readBoolean());
                 case DUNGEON_ENTRY_PATH_TO_FOLLOWING_WAYPOINTS ->
