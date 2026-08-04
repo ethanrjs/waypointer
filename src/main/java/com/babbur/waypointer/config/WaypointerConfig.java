@@ -13,6 +13,8 @@ import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -183,6 +185,8 @@ public final class WaypointerConfig {
     private boolean skipAheadOnlyVisibleWaypoints = true;
     /** Draw route connector segments between currently visible waypoints. */
     private boolean showRouteLines = false;
+    /** Aim route connectors from crouching eye height above the previous waypoint block. */
+    private boolean useEtherwarpHeight = false;
     /**
      * Draw a short ground path from the player to the first waypoint of the
      * current dungeon room while that first waypoint is still the active target.
@@ -380,11 +384,16 @@ public final class WaypointerConfig {
     private transient AsyncSaver saver;
     private transient boolean migratedDuringLoad;
     private transient volatile String pendingSnapshotJson;
+    private transient IOException writeBlockCause;
 
     public static WaypointerConfig load() {
         Path dir = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
-        Path file = dir.resolve(FILE_NAME);
+        return load(dir.resolve(FILE_NAME));
+    }
+
+    static WaypointerConfig load(Path file) {
         WaypointerConfig config;
+        IOException writeBlockCause = null;
         try {
             if (Files.exists(file)) {
                 String raw = Files.readString(file);
@@ -395,15 +404,22 @@ public final class WaypointerConfig {
         } catch (Exception e) {
             Waypointer.LOGGER.error("Failed to read config, using defaults", e);
             config = new WaypointerConfig();
+            writeBlockCause = quarantineInvalidFile(file, e);
         }
         config.file = file;
+        config.writeBlockCause = writeBlockCause;
         config.saver = new AsyncSaver("config", config::writeToDisk, SAVE_DEBOUNCE_MS);
         if (config.migratedDuringLoad) config.save();
         return config;
     }
     static WaypointerConfig fromJson(String raw) {
+        if (raw == null || raw.isBlank()) {
+            throw new IllegalArgumentException("config JSON is empty");
+        }
         WaypointerConfig config = GSON.fromJson(raw, WaypointerConfig.class);
-        if (config == null) config = new WaypointerConfig();
+        if (config == null) {
+            throw new IllegalArgumentException("config JSON is null");
+        }
         int loadedSchemaVersion = schemaVersion(raw);
         config.migrateLegacyTempDurationMinutes(raw, loadedSchemaVersion);
         config.applyMigrations(loadedSchemaVersion);
@@ -500,15 +516,51 @@ public final class WaypointerConfig {
 
     private void writeToDisk() {
         if (file == null) return;
+        if (writeBlockCause != null) {
+            IOException retryFailure = quarantineInvalidFile(file, writeBlockCause);
+            if (retryFailure != null) {
+                writeBlockCause = retryFailure;
+                throw new UncheckedIOException(
+                        "Cannot save config until the invalid file is preserved: " + file,
+                        retryFailure);
+            }
+            writeBlockCause = null;
+        }
         String json = pendingSnapshotJson;
         if (json == null) return;
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
             Files.writeString(tmp, json);
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            try {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException e) {
-            Waypointer.LOGGER.error("Failed to write config", e);
+            throw new UncheckedIOException("Failed to write config to " + file, e);
+        }
+    }
+
+    private static IOException quarantineInvalidFile(Path file, Exception cause) {
+        if (file == null || Files.notExists(file)) return null;
+        Path quarantine = file.resolveSibling(file.getFileName() + ".invalid");
+        int suffix = 1;
+        while (Files.exists(quarantine)) {
+            quarantine = file.resolveSibling(file.getFileName() + ".invalid." + suffix++);
+        }
+        try {
+            Files.move(file, quarantine);
+            Waypointer.LOGGER.error("Invalid config moved from {} to {}", file, quarantine, cause);
+            return null;
+        } catch (IOException quarantineFailure) {
+            if (Files.notExists(file)) return null;
+            quarantineFailure.addSuppressed(cause);
+            Waypointer.LOGGER.error(
+                    "Invalid config at {} could not be preserved; saves are blocked to prevent data loss",
+                    file, quarantineFailure);
+            return quarantineFailure;
         }
     }
 
@@ -573,6 +625,7 @@ public final class WaypointerConfig {
     public boolean hideReachedStaticWaypointsUntilCycleComplete() { return hideReachedStaticWaypointsUntilCycleComplete; }
     public boolean skipAheadOnlyVisibleWaypoints() { return skipAheadOnlyVisibleWaypoints; }
     public boolean showRouteLines()           { return showRouteLines; }
+    public boolean useEtherwarpHeight()       { return useEtherwarpHeight; }
     public boolean showDungeonEntryPathToFirstWaypoint() { return showDungeonEntryPathToFirstWaypoint; }
     public boolean showDungeonEntryPathToFollowingWaypoints() { return showDungeonEntryPathToFollowingWaypoints; }
     public int dungeonEntryPathColor()        { return dungeonEntryPathColor & 0xFFFFFF; }
@@ -725,6 +778,10 @@ public final class WaypointerConfig {
     }
     public void setShowRouteLines(boolean v) {
         this.showRouteLines = v;
+        save();
+    }
+    public void setUseEtherwarpHeight(boolean v) {
+        this.useEtherwarpHeight = v;
         save();
     }
     public void setShowDungeonEntryPathToFirstWaypoint(boolean v) {
@@ -883,6 +940,7 @@ public final class WaypointerConfig {
         hideReachedStaticWaypointsUntilCycleComplete = replacement.hideReachedStaticWaypointsUntilCycleComplete;
         skipAheadOnlyVisibleWaypoints = replacement.skipAheadOnlyVisibleWaypoints;
         showRouteLines = replacement.showRouteLines;
+        useEtherwarpHeight = replacement.useEtherwarpHeight;
         showDungeonEntryPathToFirstWaypoint = replacement.showDungeonEntryPathToFirstWaypoint;
         showDungeonEntryPathToFollowingWaypoints = replacement.showDungeonEntryPathToFollowingWaypoints;
         dungeonEntryPathColor = replacement.dungeonEntryPathColor;
@@ -945,6 +1003,7 @@ public final class WaypointerConfig {
         hideReachedStaticWaypointsUntilCycleComplete = false;
         skipAheadOnlyVisibleWaypoints = false;
         showRouteLines = false;
+        useEtherwarpHeight = false;
         showDungeonEntryPathToFirstWaypoint = false;
         showDungeonEntryPathToFollowingWaypoints = false;
         showLabelBackdrop = false;
@@ -1017,6 +1076,7 @@ public final class WaypointerConfig {
         hideReachedStaticWaypointsUntilCycleComplete = defaults.hideReachedStaticWaypointsUntilCycleComplete;
         skipAheadOnlyVisibleWaypoints = defaults.skipAheadOnlyVisibleWaypoints;
         showRouteLines = defaults.showRouteLines;
+        useEtherwarpHeight = defaults.useEtherwarpHeight;
         showDungeonEntryPathToFirstWaypoint = defaults.showDungeonEntryPathToFirstWaypoint;
         showDungeonEntryPathToFollowingWaypoints = defaults.showDungeonEntryPathToFollowingWaypoints;
         dungeonEntryPathColor = defaults.dungeonEntryPathColor;

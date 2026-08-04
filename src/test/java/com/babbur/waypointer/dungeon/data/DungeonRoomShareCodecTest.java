@@ -76,6 +76,26 @@ class DungeonRoomShareCodecTest {
                 () -> DungeonRoomShareCodec.encode(List.of(empty)));
     }
 
+    @Test
+    void decodeRejectsDuplicateNormalizedRoomIdsBeforeOverwrite() {
+        DungeonRoomDefinition first = definition(
+                "Room A", "First",
+                DungeonWaypoint.plain(
+                        "first", DungeonSecretCategory.CHEST, 1, 70, 1, "First"));
+        DungeonRoomDefinition second = definition(
+                "room-a", "Second",
+                DungeonWaypoint.plain(
+                        "second", DungeonSecretCategory.CHEST, 2, 70, 2, "Second"));
+        String payload = DungeonRoomShareCodec.encode(List.of(first, second));
+
+        IllegalArgumentException error = assertThrows(
+                IllegalArgumentException.class,
+                () -> DungeonRoomShareCodec.decode(payload));
+
+        assertTrue(error.getCause() instanceof IllegalArgumentException);
+        assertTrue(error.getCause().getMessage().contains("Duplicate dungeon room id"));
+    }
+
     private static DungeonRoomDefinition definition(String id, String name, DungeonWaypoint waypoint) {
         return new DungeonRoomDefinition(
                 id,

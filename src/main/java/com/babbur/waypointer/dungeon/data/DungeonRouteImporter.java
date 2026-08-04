@@ -548,8 +548,8 @@ public final class DungeonRouteImporter {
     }
 
     private static boolean validRoomLocal(int x, int y, int z) {
-        return Math.abs(x) <= MAX_ROOM_LOCAL_ABS
-                && Math.abs(z) <= MAX_ROOM_LOCAL_ABS
+        return x >= -MAX_ROOM_LOCAL_ABS && x <= MAX_ROOM_LOCAL_ABS
+                && z >= -MAX_ROOM_LOCAL_ABS && z <= MAX_ROOM_LOCAL_ABS
                 && y >= -64 && y <= 320;
     }
 

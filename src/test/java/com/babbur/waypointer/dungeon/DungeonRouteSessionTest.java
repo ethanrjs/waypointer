@@ -59,6 +59,27 @@ class DungeonRouteSessionTest {
     }
 
     @Test
+    void resetRoomClearsAliasesLearnedThroughTheSamePhysicalRoom() {
+        DungeonRoom base = room();
+        var oldDefinition = DungeonRoomData.defineRoom("old-room", "Old Room", base);
+        DungeonRoomData.addWaypoint(oldDefinition.id(), waypoint("old-first", 1));
+        var newDefinition = DungeonRoomData.defineRoom("new-room", "New Room", base);
+        DungeonRoomData.addWaypoint(newDefinition.id(), waypoint("new-first", 1));
+        DungeonRoom oldRoom = base.withDefinition(oldDefinition.id(), oldDefinition.displayName());
+        DungeonRoom newRoom = base.withDefinition(newDefinition.id(), newDefinition.displayName());
+
+        DungeonRouteSession session = new DungeonRouteSession();
+        session.markFound(oldRoom, 1);
+        assertEquals(0, session.currentSecretIndex(newRoom),
+                "the physical-room alias should carry progress to the new definition");
+
+        session.resetRoom(oldRoom);
+
+        assertEquals(DungeonRouteSession.Status.CURRENT,
+                session.status(newRoom, DungeonRoomData.waypointsFor(newRoom).get(0)));
+    }
+
+    @Test
     void completedRouteHasNoCurrentSecret() {
         DungeonRoom base = room();
         var definition = DungeonRoomData.defineRoom("complete-room", "Complete Room", base);

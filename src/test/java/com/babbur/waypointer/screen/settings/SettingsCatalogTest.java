@@ -227,6 +227,16 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void waypointEditorKeybindsAreAnActionInSystem() {
+        Setting keybinds = SettingsCatalog.byId(SettingsCatalog.ACTION_WAYPOINT_EDITOR_KEYBINDS);
+
+        assertNotNull(keybinds);
+        assertEquals("Waypoint editor keybinds", keybinds.label());
+        assertEquals(Setting.Kind.ACTION, keybinds.kind());
+        assertEquals("system", categoryContaining(keybinds.id()));
+    }
+
+    @Test
     void routeTimesIsOffByDefaultUnderRoutesAndProgression() {
         Setting routeTimes = SettingsCatalog.byId("routeTimesEnabled");
 
@@ -303,6 +313,30 @@ class SettingsCatalogTest {
         }
         assertEquals(true, SettingsCatalog.byId("showDungeonRouteLines").get(main, dungeon));
         assertEquals(false, SettingsCatalog.byId("showDungeonTracers").get(main, dungeon));
+    }
+
+    @Test
+    void automaticDungeonColorsAreEditableInTheDungeonsCategory() {
+        WaypointerConfig main = new WaypointerConfig();
+        DungeonConfig dungeon = new DungeonConfig();
+        for (String id : List.of(
+                "automaticSecretColor",
+                "automaticEtherwarpColor",
+                "automaticBreakBlocksColor",
+                "automaticInteractColor",
+                "automaticSuperboomColor",
+                "automaticItemColor",
+                "automaticBatColor",
+                "automaticDungeonbreakerColor",
+                "automaticPearlColor")) {
+            Setting setting = SettingsCatalog.byId(id);
+            assertNotNull(setting, id);
+            assertEquals(Setting.Store.DUNGEON, setting.store(), id);
+            assertEquals(Setting.Kind.COLOR, setting.kind(), id);
+            assertEquals("dungeons", categoryContaining(id), id);
+            setting.set(main, dungeon, 0xAA123456);
+            assertEquals(0x123456, setting.get(main, dungeon), id);
+        }
     }
 
     @Test

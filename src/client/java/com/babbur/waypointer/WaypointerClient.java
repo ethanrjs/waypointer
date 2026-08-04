@@ -6,6 +6,7 @@ import com.babbur.waypointer.api.WaypointerApiEntrypoints;
 import com.babbur.waypointer.chat.ChatCoordDetector;
 import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.chat.ChatImportDetector;
+import com.babbur.waypointer.chat.HypixelPlayerRankSource;
 import com.babbur.waypointer.commands.WaypointerCommands;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.Storage;
@@ -115,6 +116,7 @@ public final class WaypointerClient implements ClientModInitializer {
         api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft);
 
         new LocationTracker(manager, config).install();
+        HypixelPlayerRankSource.install();
         DungeonChestInteractionGuard chestInteractionGuard = new DungeonChestInteractionGuard();
         chestInteractionGuard.install();
         new ProximityTracker(manager, config, chestInteractionGuard, dungeonConfig).install();
@@ -185,6 +187,8 @@ public final class WaypointerClient implements ClientModInitializer {
 
     private static void installDungeonSubsystem(DungeonChestInteractionGuard chestInteractionGuard) {
         DungeonRoomData.loadDefaultCustomStore();
+        DungeonRoomRouteSync.installMissingEditableRoutes(
+                manager, dungeonConfig, DungeonRoomData.customDefinitions());
         dungeonTracker = new DungeonStateTracker(manager, dungeonConfig);
         dungeonRouteSession = new DungeonRouteSession();
         dungeonRouteSessionInDungeonContext = false;

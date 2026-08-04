@@ -115,61 +115,66 @@ public final class TracerRenderer implements HudElement {
         Vec3 camPos = cam.position();
 
         ps.pushPose();
-        ps.translate(-camPos.x, -camPos.y, -camPos.z);
+        try {
+            ps.translate(-camPos.x, -camPos.y, -camPos.z);
 
-        // Push slightly forward along the camera vector so the start point sits at
-        // the crosshair regardless of pitch, and so the near-plane doesn't clip it.
-        LocalPlayer player = mc.player;
-        writeTracerOriginDelta(mc, cam, player, tracerOriginDelta);
-        // Keep the tracer origin in primitives so the per-group loop doesn't touch
-        // the Vec3#add allocation path for each active group.
-        float fromX = (float) camPos.x + tracerOriginDelta[0];
-        float fromY = (float) camPos.y + tracerOriginDelta[1];
-        float fromZ = (float) camPos.z + tracerOriginDelta[2];
-        double nearHideDistanceSq = nearHideDistanceSq();
-        // Matching the tracer to the live waypoint colour means gradient groups
-        // draw a tracer whose hue advances with progress, and manually-coloured
-        // checkpoints light their tracer in the same tint. The flat-override path
-        // is still available for users who prefer one tracer colour across groups.
-        boolean matchWaypoint = config.matchTracerToWaypointColor();
-        int overrideColor = config.tracerColor();
-        float thickness = (float) config.tracerThickness();
-        float renderAlpha = alpha;
-        boolean hasTracerLines = false;
-        for (WaypointGroup group : groups) {
-            if (straightTracerTarget(group, tempFocus, player, nearHideDistanceSq, true) != null) {
-                hasTracerLines = true;
+            // Push slightly forward along the camera vector so the start point sits at
+            // the crosshair regardless of pitch, and so the near-plane doesn't clip it.
+            LocalPlayer player = mc.player;
+            writeTracerOriginDelta(mc, cam, player, tracerOriginDelta);
+            // Keep the tracer origin in primitives so the per-group loop doesn't touch
+            // the Vec3#add allocation path for each active group.
+            float fromX = (float) camPos.x + tracerOriginDelta[0];
+            float fromY = (float) camPos.y + tracerOriginDelta[1];
+            float fromZ = (float) camPos.z + tracerOriginDelta[2];
+            double nearHideDistanceSq = nearHideDistanceSq();
+            // Matching the tracer to the live waypoint colour means gradient groups
+            // draw a tracer whose hue advances with progress, and manually-coloured
+            // checkpoints light their tracer in the same tint. The flat-override path
+            // is still available for users who prefer one tracer colour across groups.
+            boolean matchWaypoint = config.matchTracerToWaypointColor();
+            int overrideColor = config.tracerColor();
+            float thickness = (float) config.tracerThickness();
+            float renderAlpha = alpha;
+            boolean hasTracerLines = false;
+            for (WaypointGroup group : groups) {
+                if (straightTracerTarget(
+                        group, tempFocus, player, nearHideDistanceSq, true) != null) {
+                    hasTracerLines = true;
+                }
             }
-        }
 
-        if (hasTracerLines) {
-            RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
-            boolean submitted = RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
+            if (hasTracerLines) {
+                RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
+                boolean submitted = RenderSubmission.submit(
+                        ctx, ps, lineType, (lines, submittedPose) -> {
+                    for (WaypointGroup group : groups) {
+                        Waypoint target = straightTracerTarget(
+                                group, tempFocus, player, nearHideDistanceSq, false);
+                        if (target == null) continue;
+                        int color = matchWaypoint ? target.color() : overrideColor;
+                        RenderHelpers.emitLine(lines, submittedPose,
+                                fromX, fromY, fromZ,
+                                (float) target.centerX(), (float) target.centerY(),
+                                (float) target.centerZ(),
+                                color, renderAlpha, thickness);
+                    }
+                });
                 for (WaypointGroup group : groups) {
                     Waypoint target = straightTracerTarget(
                             group, tempFocus, player, nearHideDistanceSq, false);
                     if (target == null) continue;
-                    int color = matchWaypoint ? target.color() : overrideColor;
-                    RenderHelpers.emitLine(lines, submittedPose,
-                            fromX, fromY, fromZ,
-                            (float) target.centerX(), (float) target.centerY(), (float) target.centerZ(),
-                            color, renderAlpha, thickness);
-                }
-            });
-            for (WaypointGroup group : groups) {
-                if (straightTracerTarget(group, tempFocus, player, nearHideDistanceSq, false) == null) {
-                    continue;
-                }
-                if (submitted) {
-                    RenderDiagnostics.recordStraightTracerSubmitted(group);
-                } else {
-                    RenderDiagnostics.recordNoStraightTracer(
-                            group, "world render submission failed");
+                    if (submitted) {
+                        RenderDiagnostics.recordStraightTracerSubmitted(group);
+                    } else {
+                        RenderDiagnostics.recordNoStraightTracer(
+                                group, "world render submission failed");
+                    }
                 }
             }
+        } finally {
+            ps.popPose();
         }
-
-        ps.popPose();
     }
 
     private Waypoint straightTracerTarget(WaypointGroup group, boolean tempFocus,

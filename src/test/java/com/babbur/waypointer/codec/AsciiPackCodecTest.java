@@ -53,6 +53,13 @@ class AsciiPackCodecTest {
     }
 
     @Test
+    void encoded_length_rejects_negative_and_overflowing_counts() {
+        assertThrows(IllegalArgumentException.class, () -> AsciiPackCodec.encodedLength(-1));
+        assertThrows(IllegalArgumentException.class,
+                () -> AsciiPackCodec.encodedLength(Integer.MAX_VALUE));
+    }
+
+    @Test
     void output_contains_only_alphabet_chars() {
         // Any character outside the alphabet would either fail Minecraft's
         // chat validator (e.g. if § somehow snuck in) or collapse during paste

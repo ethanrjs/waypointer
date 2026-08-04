@@ -19,7 +19,7 @@ import java.util.List;
  * {@code mode} values in the Hypixel location packet.
  *
  * <p>Hot path (called every 2 game ticks): avoids regex stripping and caches
- * the last-seen rendered-line hash so repeated unchanged sidebars reuse the
+ * the last-seen rendered lines so repeated unchanged sidebars reuse the
  * prior stripped result. The 10Hz caller was allocating a {@link StringBuilder}
  * + stripped output string per invocation; the manual strip + cache keeps the
  * unchanged case out of that work.
@@ -31,8 +31,7 @@ public final class SidebarTexts {
 
     private static Scoreboard cachedScoreboard;
     private static Objective cachedObjective;
-    private static int cachedLineHash;
-    private static int cachedLineCount;
+    private static List<String> cachedRenderedLines;
     private static String cachedText;
 
     private SidebarTexts() {}
@@ -56,50 +55,45 @@ public final class SidebarTexts {
         }
 
         Collection<PlayerScoreEntry> entries = sb.listPlayerScores(side);
-        SidebarScan scan = scanSidebar(sb, entries);
-        if (matchesCache(sb, side, scan.fingerprint())) return cachedText;
+        List<String> renderedLines = scanSidebar(sb, entries);
+        if (matchesCache(sb, side, renderedLines)) return cachedText;
 
-        String text = buildStrippedText(scan.renderedLines());
-        remember(sb, side, scan.fingerprint(), text);
+        String text = buildStrippedText(renderedLines);
+        remember(sb, side, renderedLines, text);
         return text;
     }
 
-    private static SidebarScan scanSidebar(
+    private static List<String> scanSidebar(
             Scoreboard sb, Collection<PlayerScoreEntry> entries) {
-        int hash = 1;
         List<String> renderedLines = new ArrayList<>();
         for (PlayerScoreEntry entry : entries) {
             String line = renderLine(sb, entry);
             if (line == null) continue;
 
             renderedLines.add(line);
-            hash = 31 * hash + line.hashCode();
         }
-        return new SidebarScan(new SidebarFingerprint(hash, renderedLines.size()), renderedLines);
+        return renderedLines;
     }
 
     private static boolean matchesCache(
-            Scoreboard sb, Objective side, SidebarFingerprint fingerprint) {
+            Scoreboard sb, Objective side, List<String> renderedLines) {
         return cachedScoreboard == sb
                 && cachedObjective == side
-                && cachedLineHash == fingerprint.hash()
-                && cachedLineCount == fingerprint.lineCount();
+                && renderedLines.equals(cachedRenderedLines);
     }
 
     private static void remember(
-            Scoreboard sb, Objective side, SidebarFingerprint fingerprint, String text) {
+            Scoreboard sb, Objective side, List<String> renderedLines, String text) {
         cachedScoreboard = sb;
         cachedObjective = side;
-        cachedLineHash = fingerprint.hash();
-        cachedLineCount = fingerprint.lineCount();
+        cachedRenderedLines = List.copyOf(renderedLines);
         cachedText = text;
     }
 
     private static void clearCache() {
         cachedScoreboard = null;
         cachedObjective = null;
-        cachedLineHash = 0;
-        cachedLineCount = 0;
+        cachedRenderedLines = null;
         cachedText = null;
     }
 
@@ -111,10 +105,6 @@ public final class SidebarTexts {
         }
         return out.isEmpty() ? null : out.toString();
     }
-
-    private record SidebarFingerprint(int hash, int lineCount) {}
-
-    private record SidebarScan(SidebarFingerprint fingerprint, List<String> renderedLines) {}
 
     private static String renderLine(Scoreboard sb, PlayerScoreEntry entry) {
         String owner = entry.owner();

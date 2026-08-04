@@ -20,8 +20,15 @@ public final class CjkBase16384 {
     private CjkBase16384() {}
 
     public static int encodedLength(int inputByteCount) {
-        int groups = (inputByteCount + GROUP_BYTES - 1) / GROUP_BYTES;
-        return groups * GROUP_CHARS + 1;
+        if (inputByteCount < 0) {
+            throw new IllegalArgumentException("negative input byte count");
+        }
+        long groups = ((long) inputByteCount + GROUP_BYTES - 1) / GROUP_BYTES;
+        long length = groups * GROUP_CHARS + 1;
+        if (length > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("encoded length exceeds integer range");
+        }
+        return (int) length;
     }
 
     public static String encode(byte[] input) {

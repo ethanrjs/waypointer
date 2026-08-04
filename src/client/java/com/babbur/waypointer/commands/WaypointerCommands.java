@@ -271,12 +271,6 @@ public final class WaypointerCommands {
                                 .executes(ctx -> runImportFile(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "path")))))
                 .then(literal("debug").executes(ctx -> { scheduleOpenDebugInspector(); return 1; }))
-                .then(literal("devmode")
-                        .executes(ctx -> runSetDeveloperMode(ctx.getSource(), null))
-                        .then(literal("on").executes(ctx -> runSetDeveloperMode(ctx.getSource(), true)))
-                        .then(literal("off").executes(ctx -> runSetDeveloperMode(ctx.getSource(), false)))
-                        .then(literal("status").executes(ctx -> runDeveloperModeStatus(ctx.getSource())))
-                        .then(literal("report").executes(ctx -> runDeveloperModeReport(ctx.getSource()))))
                 .then(literal("editmode").executes(this::runToggleEditModeCommand))
                 .then(literal("edit")
                         .then(literal("mode").executes(this::runToggleEditModeCommand)))
@@ -770,59 +764,6 @@ public final class WaypointerCommands {
         Minecraft.getInstance().execute(() -> DebugInspectScreen.open(null, manager, config));
     }
 
-    private int runSetDeveloperMode(FabricClientCommandSource src, Boolean requestedState) {
-        var monitor = WaypointerClient.developerModeMonitor();
-        if (monitor == null) {
-            error(src, Component.translatable(
-                    "waypointer.command.devmode.unavailable"));
-            return 0;
-        }
-        boolean enable = requestedState == null ? !monitor.enabled() : requestedState;
-        try {
-            Path file = enable ? monitor.enable() : monitor.disable();
-            if (enable) {
-                success(src, Component.translatable(
-                        "waypointer.command.devmode.enabled", file));
-            } else {
-                success(src, Component.translatable(
-                        "waypointer.command.devmode.disabled",
-                        file == null
-                                ? Component.translatable("waypointer.common.none")
-                                : file));
-            }
-            return 1;
-        } catch (RuntimeException e) {
-            Waypointer.LOGGER.error("Could not change developer mode", e);
-            error(src, Component.translatable(
-                    "waypointer.command.devmode.change_failed"));
-            return 0;
-        }
-    }
-
-    private int runDeveloperModeStatus(FabricClientCommandSource src) {
-        var monitor = WaypointerClient.developerModeMonitor();
-        if (monitor == null) {
-            error(src, Component.translatable(
-                    "waypointer.command.devmode.unavailable"));
-            return 0;
-        }
-        info(src, monitor.statusComponent());
-        return 1;
-    }
-
-    private int runDeveloperModeReport(FabricClientCommandSource src) {
-        var monitor = WaypointerClient.developerModeMonitor();
-        if (monitor == null || !monitor.enabled()) {
-            warn(src, Component.translatable(
-                    "waypointer.command.devmode.off"));
-            return 0;
-        }
-        monitor.writeReport("manual command");
-        success(src, Component.translatable(
-                "waypointer.command.devmode.report_written", monitor.logFile()));
-        return 1;
-    }
-
     private int runToggleEditModeCommand(CommandContext<FabricClientCommandSource> ctx) {
         FabricClientCommandSource src = ctx.getSource();
         if (manager == null || config == null) {
@@ -983,10 +924,7 @@ public final class WaypointerCommands {
             new HelpSection("debug", "waypointer.command.help.section.debug",
                     List.of(
                             new HelpRow(" debug", "waypointer.command.help.debug",
-                                    "debug"),
-                            new HelpRow(" devmode [on|off|status|report]",
-                                    "waypointer.command.help.devmode",
-                                    "devmode on", "devmode report")))
+                                    "debug")))
     );
 
     /**

@@ -33,6 +33,18 @@ class ScoreboardZoneResolverTest {
         assertNull(ScoreboardZoneResolver.resolveSidebarText("BED WARS\nKills: 0"));
     }
 
+    @Test
+    void specialRefinersRequireALocationMarker() {
+        assertNull(ScoreboardZoneResolver.resolveSidebarText("""
+                The Catacombs (F7)
+                Dungeon Cleared: 100%
+                """));
+        assertNull(ScoreboardZoneResolver.resolveSidebarText("""
+                07/15/26 m197CD AQUA_C
+                Glacite Mineshafts
+                """));
+    }
+
     private static void assertZone(String expectedId, String sidebar) {
         Zone zone = ScoreboardZoneResolver.resolveSidebarText(sidebar);
         assertEquals(expectedId, zone == null ? null : zone.id());

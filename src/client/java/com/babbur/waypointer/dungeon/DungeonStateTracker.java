@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
 
@@ -120,7 +121,7 @@ public final class DungeonStateTracker {
     }
 
     public void addRoomListener(Consumer<DungeonRoom> l) {
-        listeners.add(l);
+        listeners.add(Objects.requireNonNull(l, "listener"));
     }
 
     public void removeRoomListener(Consumer<DungeonRoom> l) {
@@ -1118,6 +1119,12 @@ public final class DungeonStateTracker {
         if (config.debugLogRoomChanges()) {
             Waypointer.LOGGER.info("Dungeon room changed -> {}", room == null ? "<none>" : room.identityKey());
         }
-        for (Consumer<DungeonRoom> l : listeners) l.accept(room);
+        for (Consumer<DungeonRoom> listener : List.copyOf(listeners)) {
+            try {
+                listener.accept(room);
+            } catch (RuntimeException failure) {
+                Waypointer.LOGGER.error("Dungeon room listener failed", failure);
+            }
+        }
     }
 }

@@ -55,16 +55,14 @@ public final class DungeonRouteSession {
     }
 
     public void resetRoom(DungeonRoom room) {
-        for (String key : roomKeys(room)) {
-            progressByRoom.remove(key);
+        List<String> keys = roomKeys(room);
+        RoomProgress progress = existingProgressForKeys(keys);
+        if (progress != null) {
+            progressByRoom.entrySet().removeIf(entry -> entry.getValue() == progress);
         }
         lastResetReason = "resetRoom " + debugRoomKey(room);
         lastResetAtMillis = System.currentTimeMillis();
         if (room == null) return;
-        progressByRoom.remove(room.identityKey());
-        if (room.hasRoomId()) {
-            progressByRoom.remove(room.roomId());
-        }
         fireChanged();
     }
 

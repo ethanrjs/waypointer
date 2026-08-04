@@ -69,7 +69,7 @@ public final class AsciiStreamCodec {
         if (input == null) throw new IllegalArgumentException("null input");
         if (input.length == 0) return "";
 
-        StringBuilder out = new StringBuilder((input.length * 123 + 99) / 100);
+        StringBuilder out = new StringBuilder(input.length);
         long bitBuffer = 0L;
         int bitCount = 0;
 

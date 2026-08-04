@@ -20,7 +20,6 @@ final class DungeonRoomCoreScanner implements DungeonRoomData.CoreHashLookup {
     private static final int EARLY_AIR_BREAK_Y = 69;
 
     private final ClientLevel level;
-    private final BlockPos.MutableBlockPos mutableBlockPos = new BlockPos.MutableBlockPos();
 
     DungeonRoomCoreScanner(ClientLevel level) {
         this.level = level;
@@ -72,6 +71,7 @@ final class DungeonRoomCoreScanner implements DungeonRoomData.CoreHashLookup {
 
     private DungeonCoreSignature coreSignatureAt(int centerX, int centerZ, LevelChunk chunk) {
         StringBuilder builder = new StringBuilder(150);
+        BlockPos.MutableBlockPos mutableBlockPos = new BlockPos.MutableBlockPos();
         boolean foundHighest = false;
         int roofY = 0;
         int consecutiveBedrock = 0;

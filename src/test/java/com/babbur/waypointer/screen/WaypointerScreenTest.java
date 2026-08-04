@@ -36,12 +36,6 @@ class WaypointerScreenTest {
     }
 
     @Test
-    void secretRouteSubtitleDoesNotShowTheObsoletePriorityMessage() {
-        assertEquals("shows in-room - double-click to edit",
-                WaypointerScreen.secretRouteSubtitle());
-    }
-
-    @Test
     void installedSecretRowDisappearsAfterConversionToARegularRoute() {
         WaypointGroup editable = WaypointGroup.create("Secret Route", "room");
         editable.add(Waypoint.at(1, 70, 1));

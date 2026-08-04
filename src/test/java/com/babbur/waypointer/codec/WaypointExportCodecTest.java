@@ -62,20 +62,19 @@ class WaypointExportCodecTest {
     }
 
     @Test
-    void skyhanni_export_emits_current_wrapped_route_json() {
+    void skyhanni_export_emits_bare_route_array() {
         WaypointGroup group = sampleGroup("Ignored Group Name", "hub");
         String encoded = WaypointExportCodec.encode(List.of(group), FULL_EXTERNAL,
                 WaypointExportCodec.Target.SKYHANNI);
 
-        JsonObject root = JsonParser.parseString(encoded).getAsJsonObject();
-        JsonArray waypoints = root.getAsJsonArray("waypoints");
+        assertTrue(encoded.startsWith("[{"));
+        JsonArray waypoints = JsonParser.parseString(encoded).getAsJsonArray();
         JsonObject first = waypoints.get(0).getAsJsonObject();
         assertEquals(1, first.get("x").getAsInt());
         assertEquals("1", first.getAsJsonObject("options").get("name").getAsString());
         assertEquals(0.0, first.get("r").getAsDouble(), 0.0001);
         assertEquals(1.0, first.get("g").getAsDouble(), 0.0001);
         assertEquals(0.0, first.get("b").getAsDouble(), 0.0001);
-        assertFalse(root.has("enabled"));
         assertFalse(first.has("enabled"));
 
         WaypointImporter.ImportResult result = WaypointImporter.importAny(encoded);
@@ -95,8 +94,7 @@ class WaypointExportCodecTest {
         String encoded = WaypointExportCodec.encode(List.of(group), opts,
                 WaypointExportCodec.Target.SKYHANNI);
 
-        JsonArray waypoints = JsonParser.parseString(encoded).getAsJsonObject()
-                .getAsJsonArray("waypoints");
+        JsonArray waypoints = JsonParser.parseString(encoded).getAsJsonArray();
         JsonObject first = waypoints.get(0).getAsJsonObject();
         assertEquals("1", first
                 .getAsJsonObject("options").get("name").getAsString());

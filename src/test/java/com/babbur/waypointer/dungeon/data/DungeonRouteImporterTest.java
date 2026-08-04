@@ -299,4 +299,25 @@ class DungeonRouteImporterTest {
         assertEquals(0, result.waypointCount(),
                 "world-coordinate data must not import as room-local");
     }
+
+    @Test
+    void discardsMinimumIntegerRoomLocalCoordinates() {
+        String json = """
+                {
+                  "Altar": [
+                    {
+                      "blockPos": {"x": -2147483648, "y": 70, "z": 12},
+                      "filled": false, "depth": false,
+                      "aabb": {"minX": 0, "minY": 0, "minZ": 0, "maxX": 1, "maxY": 1, "maxZ": 1},
+                      "type": "SECRET"
+                    }
+                  ]
+                }
+                """;
+
+        DungeonRouteImporter.Result result = DungeonRouteImporter.parse(json);
+
+        assertEquals(0, result.waypointCount(),
+                "Integer.MIN_VALUE must not pass the room-local absolute bound");
+    }
 }

@@ -179,4 +179,14 @@ class WaypointPaintImageImporterTest {
         assertEquals("image unavailable", unavailable.getMessage());
         assertEquals(0x123456, existing.color(WaypointPaint.Face.NORTH, 0, 0));
     }
+
+    @Test
+    void resizeRejectsOverflowingOrExcessiveTargetPixelCounts() {
+        BufferedImage image = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> WaypointPaintImageImporter.resize(image, Integer.MAX_VALUE, 2));
+        assertThrows(IllegalArgumentException.class,
+                () -> WaypointPaintImageImporter.resize(image, 8192, 8192));
+    }
 }

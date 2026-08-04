@@ -7,6 +7,8 @@ import com.babbur.waypointer.config.AsyncSaver;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -81,6 +83,17 @@ public final class DungeonConfig {
     private boolean secretCompletionSound = true;
     private boolean showPearlTrajectories = true;
 
+    /** Default colors assigned to definition waypoints that do not carry an explicit color. */
+    private int automaticSecretColor = 0x2EE0FF;
+    private int automaticEtherwarpColor = 0x9C2EFF;
+    private int automaticBreakBlocksColor = 0x4FE05A;
+    private int automaticInteractColor = 0xFF8A2E;
+    private int automaticSuperboomColor = 0xFFB300;
+    private int automaticItemColor = 0xFFD800;
+    private int automaticBatColor = 0x9C5A2E;
+    private int automaticDungeonbreakerColor = 0x6EE7B7;
+    private int automaticPearlColor = 0xC0C0FF;
+
     /**
      * User clicked "don't ask again" on the first-join community-routes
      * download prompt. {@code /wpd routes download} keeps working regardless.
@@ -97,7 +110,10 @@ public final class DungeonConfig {
 
     public static DungeonConfig load() {
         Path dir = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
-        Path file = dir.resolve(FILE_NAME);
+        return load(dir.resolve(FILE_NAME));
+    }
+
+    static DungeonConfig load(Path file) {
         DungeonConfig cfg;
         try {
             if (Files.exists(file)) {
@@ -146,9 +162,14 @@ public final class DungeonConfig {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
             Files.writeString(tmp, GSON.toJson(this));
-            Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            try {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING,
+                        StandardCopyOption.ATOMIC_MOVE);
+            } catch (AtomicMoveNotSupportedException e) {
+                Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException e) {
-            Waypointer.LOGGER.error("Failed to write dungeon config", e);
+            throw new UncheckedIOException("Failed to write dungeon config to " + file, e);
         }
     }
 
@@ -165,6 +186,15 @@ public final class DungeonConfig {
     public boolean secretCompletionSound() { return secretCompletionSound; }
     public boolean showPearlTrajectories() { return showPearlTrajectories; }
     public boolean routesPromptDismissed()  { return routesPromptDismissed; }
+    public int automaticSecretColor() { return automaticSecretColor; }
+    public int automaticEtherwarpColor() { return automaticEtherwarpColor; }
+    public int automaticBreakBlocksColor() { return automaticBreakBlocksColor; }
+    public int automaticInteractColor() { return automaticInteractColor; }
+    public int automaticSuperboomColor() { return automaticSuperboomColor; }
+    public int automaticItemColor() { return automaticItemColor; }
+    public int automaticBatColor() { return automaticBatColor; }
+    public int automaticDungeonbreakerColor() { return automaticDungeonbreakerColor; }
+    public int automaticPearlColor() { return automaticPearlColor; }
 
     public boolean roomRouteEnabled(String roomId) {
         if (roomId == null || roomId.isBlank()) return true;
@@ -181,6 +211,15 @@ public final class DungeonConfig {
 
     public void disableAllSettings() {
         boolean notifyEnabledListeners = enabled;
+        boolean changed = enabled
+                || debugLogRoomChanges
+                || hideCompletedRooms
+                || autoCompleteRoomsOnGreenCheckmark
+                || showDungeonRouteLines
+                || showDungeonTracers
+                || secretCompletionSound
+                || showPearlTrajectories;
+        if (!changed) return;
         enabled = false;
         debugLogRoomChanges = false;
         hideCompletedRooms = false;
@@ -199,6 +238,29 @@ public final class DungeonConfig {
     public void resetToDefaults() {
         DungeonConfig defaults = new DungeonConfig();
         boolean notifyEnabledListeners = enabled != defaults.enabled;
+        boolean changed = notifyEnabledListeners
+                || debugLogRoomChanges != defaults.debugLogRoomChanges
+                || !java.util.Objects.equals(defaultDirection, defaults.defaultDirection)
+                || hideCompletedRooms != defaults.hideCompletedRooms
+                || autoCompleteRoomsOnGreenCheckmark
+                        != defaults.autoCompleteRoomsOnGreenCheckmark
+                || showDungeonRouteLines != defaults.showDungeonRouteLines
+                || showDungeonTracers != defaults.showDungeonTracers
+                || visibleSecretStages != defaults.visibleSecretStages
+                || secretCompletionSound != defaults.secretCompletionSound
+                || showPearlTrajectories != defaults.showPearlTrajectories
+                || automaticSecretColor != defaults.automaticSecretColor
+                || automaticEtherwarpColor != defaults.automaticEtherwarpColor
+                || automaticBreakBlocksColor != defaults.automaticBreakBlocksColor
+                || automaticInteractColor != defaults.automaticInteractColor
+                || automaticSuperboomColor != defaults.automaticSuperboomColor
+                || automaticItemColor != defaults.automaticItemColor
+                || automaticBatColor != defaults.automaticBatColor
+                || automaticDungeonbreakerColor != defaults.automaticDungeonbreakerColor
+                || automaticPearlColor != defaults.automaticPearlColor
+                || routesPromptDismissed != defaults.routesPromptDismissed
+                || hiddenRouteRoomIds != null && !hiddenRouteRoomIds.isEmpty();
+        if (!changed) return;
         enabled = defaults.enabled;
         debugLogRoomChanges = defaults.debugLogRoomChanges;
         defaultDirection = defaults.defaultDirection;
@@ -209,6 +271,15 @@ public final class DungeonConfig {
         visibleSecretStages = defaults.visibleSecretStages;
         secretCompletionSound = defaults.secretCompletionSound;
         showPearlTrajectories = defaults.showPearlTrajectories;
+        automaticSecretColor = defaults.automaticSecretColor;
+        automaticEtherwarpColor = defaults.automaticEtherwarpColor;
+        automaticBreakBlocksColor = defaults.automaticBreakBlocksColor;
+        automaticInteractColor = defaults.automaticInteractColor;
+        automaticSuperboomColor = defaults.automaticSuperboomColor;
+        automaticItemColor = defaults.automaticItemColor;
+        automaticBatColor = defaults.automaticBatColor;
+        automaticDungeonbreakerColor = defaults.automaticDungeonbreakerColor;
+        automaticPearlColor = defaults.automaticPearlColor;
         routesPromptDismissed = defaults.routesPromptDismissed;
         hiddenRouteRoomIds = new ArrayList<>();
         save();
@@ -218,14 +289,36 @@ public final class DungeonConfig {
         fireChanged();
     }
 
-    public void setDebugLogRoomChanges(boolean v) { this.debugLogRoomChanges = v; save(); }
-    public void setHideCompletedRooms(boolean v)  { this.hideCompletedRooms = v; save(); }
-    public void setAutoCompleteRoomsOnGreenCheckmark(boolean v) {
-        this.autoCompleteRoomsOnGreenCheckmark = v;
+    public void setDebugLogRoomChanges(boolean v) {
+        if (debugLogRoomChanges == v) return;
+        debugLogRoomChanges = v;
         save();
+        fireChanged();
     }
-    public void setShowDungeonRouteLines(boolean v) { showDungeonRouteLines = v; save(); }
-    public void setShowDungeonTracers(boolean v) { showDungeonTracers = v; save(); }
+    public void setHideCompletedRooms(boolean v) {
+        if (hideCompletedRooms == v) return;
+        hideCompletedRooms = v;
+        save();
+        fireChanged();
+    }
+    public void setAutoCompleteRoomsOnGreenCheckmark(boolean v) {
+        if (autoCompleteRoomsOnGreenCheckmark == v) return;
+        autoCompleteRoomsOnGreenCheckmark = v;
+        save();
+        fireChanged();
+    }
+    public void setShowDungeonRouteLines(boolean v) {
+        if (showDungeonRouteLines == v) return;
+        showDungeonRouteLines = v;
+        save();
+        fireChanged();
+    }
+    public void setShowDungeonTracers(boolean v) {
+        if (showDungeonTracers == v) return;
+        showDungeonTracers = v;
+        save();
+        fireChanged();
+    }
     public void setVisibleSecretStages(int v) {
         int clamped = Math.max(1, Math.min(5, v));
         if (visibleSecretStages == clamped) return;
@@ -233,16 +326,88 @@ public final class DungeonConfig {
         save();
         fireChanged();
     }
-    public void setSecretCompletionSound(boolean v) { secretCompletionSound = v; save(); }
-    public void setShowPearlTrajectories(boolean v) { showPearlTrajectories = v; save(); }
-    public void setRoutesPromptDismissed(boolean v) { this.routesPromptDismissed = v; save(); }
+    public void setSecretCompletionSound(boolean v) {
+        if (secretCompletionSound == v) return;
+        secretCompletionSound = v;
+        save();
+        fireChanged();
+    }
+    public void setShowPearlTrajectories(boolean v) {
+        if (showPearlTrajectories == v) return;
+        showPearlTrajectories = v;
+        save();
+        fireChanged();
+    }
+    public void setAutomaticSecretColor(int v) {
+        if (automaticSecretColor == rgb(v)) return;
+        automaticSecretColor = rgb(v);
+        save();
+        fireChanged();
+    }
+    public void setAutomaticEtherwarpColor(int v) {
+        if (automaticEtherwarpColor == rgb(v)) return;
+        automaticEtherwarpColor = rgb(v);
+        save();
+        fireChanged();
+    }
+    public void setAutomaticBreakBlocksColor(int v) {
+        if (automaticBreakBlocksColor == rgb(v)) return;
+        automaticBreakBlocksColor = rgb(v);
+        save();
+        fireChanged();
+    }
+    public void setAutomaticInteractColor(int v) {
+        if (automaticInteractColor == rgb(v)) return;
+        automaticInteractColor = rgb(v);
+        save();
+        fireChanged();
+    }
+    public void setAutomaticSuperboomColor(int v) {
+        if (automaticSuperboomColor == rgb(v)) return;
+        automaticSuperboomColor = rgb(v);
+        save();
+        fireChanged();
+    }
+    public void setAutomaticItemColor(int v) {
+        if (automaticItemColor == rgb(v)) return;
+        automaticItemColor = rgb(v);
+        save();
+        fireChanged();
+    }
+    public void setAutomaticBatColor(int v) {
+        if (automaticBatColor == rgb(v)) return;
+        automaticBatColor = rgb(v);
+        save();
+        fireChanged();
+    }
+    public void setAutomaticDungeonbreakerColor(int v) {
+        if (automaticDungeonbreakerColor == rgb(v)) return;
+        automaticDungeonbreakerColor = rgb(v);
+        save();
+        fireChanged();
+    }
+    public void setAutomaticPearlColor(int v) {
+        if (automaticPearlColor == rgb(v)) return;
+        automaticPearlColor = rgb(v);
+        save();
+        fireChanged();
+    }
+    public void setRoutesPromptDismissed(boolean v) {
+        if (routesPromptDismissed == v) return;
+        routesPromptDismissed = v;
+        save();
+        fireChanged();
+    }
     public void setRoomRouteEnabled(String roomId, boolean enabled) {
         if (roomId == null || roomId.isBlank()) return;
         if (hiddenRouteRoomIds == null) hiddenRouteRoomIds = new ArrayList<>();
         boolean changed = enabled
                 ? hiddenRouteRoomIds.remove(roomId)
                 : !hiddenRouteRoomIds.contains(roomId) && hiddenRouteRoomIds.add(roomId);
-        if (changed) save();
+        if (changed) {
+            save();
+            fireChanged();
+        }
     }
 
     public void disableRoomRoutes(Collection<String> roomIds) {
@@ -255,14 +420,23 @@ public final class DungeonConfig {
                 changed = true;
             }
         }
-        if (changed) save();
+        if (changed) {
+            save();
+            fireChanged();
+        }
     }
     public void setDefaultDirection(String v) {
         if (v == null) return;
         String upper = v.trim().toUpperCase(java.util.Locale.ROOT);
         if (upper.equals("NW") || upper.equals("NE") || upper.equals("SW") || upper.equals("SE")) {
-            this.defaultDirection = upper;
+            if (upper.equals(defaultDirection)) return;
+            defaultDirection = upper;
             save();
+            fireChanged();
         }
+    }
+
+    private static int rgb(int color) {
+        return color & 0xFFFFFF;
     }
 }

@@ -76,7 +76,6 @@ class WaypointerCommandTreeTest {
                 "import",
                 "importfile",
                 "debug",
-                "devmode",
                 "editmode",
                 "edit",
                 "importchat",
@@ -103,14 +102,8 @@ class WaypointerCommandTreeTest {
                 Map.entry("wp help all", "all-command help lookup"),
                 Map.entry("wp help sub", "short subwaypoint help lookup"),
                 Map.entry("wp help debug", "debug help lookup"),
-                Map.entry("wp help devmode", "developer mode help lookup"),
                 Map.entry("wp skip", "advance active routes by one waypoint"),
                 Map.entry("wp unskip", "move routes back one waypoint"),
-                Map.entry("wp devmode", "developer mode toggle"),
-                Map.entry("wp devmode on", "developer mode enable"),
-                Map.entry("wp devmode off", "developer mode disable"),
-                Map.entry("wp devmode status", "developer mode status"),
-                Map.entry("wp devmode report", "developer mode report"),
                 Map.entry("wp add at 10 64 -20 Secret Lever", "coordinate route insertion"),
                 Map.entry("wp insert 1 at 10 64 -20 Secret Lever", "coordinate route insertion at slot"),
                 Map.entry("wp sub 1", "subwaypoint toggle by index"),
@@ -477,8 +470,20 @@ class WaypointerCommandTreeTest {
         assertEquals(6, invokeResolveHelpPage("chattemp"), "chattemp command should resolve to chat/temp help");
         assertEquals(6, invokeResolveHelpPage("blacklist"), "blacklist command should resolve to chat/temp help");
         assertEquals(7, invokeResolveHelpPage("debug"), "debug command should resolve to debug");
+        assertEquals(-1, invokeResolveHelpPage("devmode"),
+                "removed devmode command should not resolve to help");
         assertEquals(-1, invokeResolveHelpPage("all"), "all is handled by runHelp, not page resolution");
         assertEquals(-1, invokeResolveHelpPage("missing"), "unknown target should still be rejected");
+    }
+
+    @Test
+    void registerOmitsDeveloperModeBranchFromEveryRootAlias() throws Exception {
+        CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
+
+        for (String root : List.of("waypointer", "wptr", "wp")) {
+            assertNull(dispatcher.getRoot().getChild(root).getChild("devmode"),
+                    "removed /" + root + " devmode command should stay absent");
+        }
     }
 
     @Test

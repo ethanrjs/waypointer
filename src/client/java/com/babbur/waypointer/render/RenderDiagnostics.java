@@ -32,6 +32,8 @@ public final class RenderDiagnostics {
     private static TracerSettings tracerSettings = new TracerSettings(
             false, 0.0, 0.0, false, false, 0.0, false, false, false);
     private static DungeonPathSettings dungeonPathSettings = new DungeonPathSettings(false, false);
+    private static volatile boolean debugScreenCaptureEnabled;
+    private static volatile boolean developerModeCaptureEnabled;
     private static volatile boolean detailedCaptureEnabled;
     private static volatile boolean irisHudFallbackActive;
     private static volatile long updatedAtEpochMillis;
@@ -39,9 +41,22 @@ public final class RenderDiagnostics {
     private RenderDiagnostics() {
     }
 
-    /** Enables detailed per-frame snapshots only while the troubleshooting screen is open. */
+    /** Enables detailed per-frame snapshots while the troubleshooting screen is open. */
     public static synchronized void setDetailedCaptureEnabled(boolean enabled) {
-        detailedCaptureEnabled = enabled;
+        debugScreenCaptureEnabled = enabled;
+        updateDetailedCaptureEnabled();
+    }
+
+    /** Keeps renderer diagnostics live while internal diagnostic capture is enabled. */
+    public static synchronized void setDeveloperModeCaptureEnabled(boolean enabled) {
+        developerModeCaptureEnabled = enabled;
+        updateDetailedCaptureEnabled();
+    }
+
+    private static void updateDetailedCaptureEnabled() {
+        boolean next = debugScreenCaptureEnabled || developerModeCaptureEnabled;
+        if (detailedCaptureEnabled == next) return;
+        detailedCaptureEnabled = next;
         GROUPS.clear();
         tracerSettings = new TracerSettings(
                 false, 0.0, 0.0, false, false, 0.0, false, false, false);

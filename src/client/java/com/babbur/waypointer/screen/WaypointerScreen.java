@@ -730,7 +730,7 @@ public final class WaypointerScreen extends Screen {
         List<RouteListRow> rows = new ArrayList<>();
         if (!isDungeonRoomsZone(selectedZoneId)) {
             for (WaypointGroup group : visibleGroups()) {
-                rows.add(new RouteListRow(false, null, group, 0, 0, false,
+                rows.add(new RouteListRow(false, null, group, 0, 0,
                         false, false, false));
             }
             return rows;
@@ -756,22 +756,11 @@ public final class WaypointerScreen extends Screen {
             int secretCount = displayedInstalledSecretCount(
                     installedSecretCountForRoom(roomZoneId), roomGroups);
             rows.add(new RouteListRow(true, roomZoneId, null, roomGroups.size(),
-                    secretCount, false, revealRoutes, currentRoom, searching));
+                    secretCount, revealRoutes, currentRoom, searching));
             if (revealRoutes) {
                 for (WaypointGroup group : displayGroups) {
-                    rows.add(new RouteListRow(false, roomZoneId, group, 0, 0, false,
+                    rows.add(new RouteListRow(false, roomZoneId, group, 0, 0,
                             false, currentRoom, false));
-                }
-                // Installed secrets list immediately after an import — no room
-                // visit needed. The live generated group takes this row's place
-                // while the player is actually inside the room.
-                boolean hasLiveGenerated = false;
-                for (WaypointGroup group : roomGroups) {
-                    if (group.runtimeOnly()) hasLiveGenerated = true;
-                }
-                if (secretCount > 0 && !hasLiveGenerated && (!searching || roomMatches)) {
-                    rows.add(new RouteListRow(false, roomZoneId, null, 0, secretCount,
-                            true, false, currentRoom, false));
                 }
             }
         }
@@ -1098,21 +1087,18 @@ public final class WaypointerScreen extends Screen {
         private final WaypointGroup group;
         private final int roomRouteCount;
         private final int roomSecretCount;
-        /** Installed secret-route row backed by the room definition, not a live group. */
-        private final boolean secretRoute;
         private final boolean expanded;
         private final boolean currentRoom;
         private final boolean searchReveal;
 
         private RouteListRow(boolean roomHeader, String roomZoneId, WaypointGroup group,
-                             int roomRouteCount, int roomSecretCount, boolean secretRoute,
+                             int roomRouteCount, int roomSecretCount,
                              boolean expanded, boolean currentRoom, boolean searchReveal) {
             this.roomHeader = roomHeader;
             this.roomZoneId = roomZoneId;
             this.group = group;
             this.roomRouteCount = roomRouteCount;
             this.roomSecretCount = roomSecretCount;
-            this.secretRoute = secretRoute;
             this.expanded = expanded;
             this.currentRoom = currentRoom;
             this.searchReveal = searchReveal;
@@ -1565,8 +1551,6 @@ public final class WaypointerScreen extends Screen {
             if (hovered) g.requestCursor(CursorTypes.POINTING_HAND);
             if (row.roomHeader) {
                 renderRoomHeader(g, row, x1 + 2, rowTop, rowRight - 2, hovered);
-            } else if (row.secretRoute) {
-                renderSecretRouteRow(g, row, x1 + 2, rowTop, rowRight - 2, hovered);
             } else if (row.group != null) {
                 boolean selected = selectedGroupIds.contains(row.group.id());
                 int routeIndex = routeIndices.getOrDefault(row.group.id(), -1);
@@ -1721,56 +1705,6 @@ public final class WaypointerScreen extends Screen {
             }
         }
         return installedSecretCount;
-    }
-
-    /**
-     * Definition-backed row for a room's installed secret route. Dungeon room
-     * positions change every run, so unlike normal groups there are no world
-     * coordinates to show — the row represents the imported data itself and
-     * hands off to the live generated group once the player is in the room.
-     */
-    private void renderSecretRouteRow(GuiGraphicsExtractor g, RouteListRow row,
-                                      int x1, int y1, int x2, boolean hovered) {
-        int rowBot = y1 + ROW_H + 2;
-        if (hovered) g.fill(x1, y1, x2, rowBot, HOVER);
-        g.fill(x1 + GAP, y1 + 2, x1 + GAP + 2, rowBot - 2, DUNGEON_ROOM_ACCENT);
-
-        int labelX = x1 + GAP + 8;
-        String pts = row.roomSecretCount + " pt" + (row.roomSecretCount == 1 ? "" : "s");
-        int chipX = routeToggleChipX(x2);
-        int ptsX = chipX - GAP - font.width(pts);
-        g.text(font, pts, ptsX, y1 + 4, TEXT_MUTED, false);
-
-        int labelMaxW = Math.max(24, ptsX - GAP_TIGHT - labelX);
-        g.text(font, font.plainSubstrByWidth("Secret route", labelMaxW),
-                labelX, y1 + 4, TEXT_DIM, false);
-        g.text(font, font.plainSubstrByWidth(secretRouteSubtitle(), labelMaxW),
-                labelX, y1 + 14, TEXT_MUTED, false);
-        renderRouteToggleChip(g, definitionRouteEnabled(row.roomZoneId), x2, y1);
-    }
-
-    static String secretRouteSubtitle() {
-        return "shows in-room - double-click to edit";
-    }
-
-    /**
-     * Turn the room's installed secret-route definition into a normal,
-     * persisted route group (room-local coordinates; the dungeon sync projects
-     * it into each run's room placement) and jump straight into the editor.
-     * The definition itself is untouched — deleting the converted route later
-     * brings the installed secrets back.
-     */
-    private void convertSecretRouteToEditable(String roomZoneId) {
-        DungeonRoomDefinition definition = DungeonRoomData.customDefinition(roomZoneId);
-        if (definition == null || definition.waypoints().isEmpty()) return;
-        WaypointGroup route = DungeonRoomRouteSync.editableRouteFromDefinition(definition);
-        manager.add(route);
-        expandedDungeonRoomZoneIds.add(roomZoneId);
-        selectOnlyGroupId(route.id());
-        DebugEventLog.record("WaypointerScreen", "secret-route", roomZoneId,
-                -1, "(none)", route.id(), true, false, false,
-                "secret-route-row", "convert-to-editable");
-        MinecraftCompat.setScreen(minecraft, new GroupEditScreen(this, manager, config, route));
     }
 
     private boolean hasSelectedGroupInRoom(String roomZoneId) {
@@ -1951,27 +1885,6 @@ public final class WaypointerScreen extends Screen {
 
         RouteListRow row = rows.get(idx);
         int rowRight = mainContentRight(layout.mainLeft(), layout.mainRight()) - 2;
-        if (row.secretRoute) {
-            selectedDungeonRoomZoneId = row.roomZoneId;
-            if (mx >= routeToggleHitLeft(rowRight) && mx <= rowRight) {
-                boolean enabled = !definitionRouteEnabled(row.roomZoneId);
-                DungeonRoomRouteSync.setDefinitionRouteEnabled(
-                        manager, WaypointerClient.dungeonConfig(), row.roomZoneId, enabled);
-                manager.fireDataChanged();
-                DebugEventLog.record("WaypointerScreen", "secret-route", row.roomZoneId, idx,
-                        "(none)", "(none)", doubleClick, false, false,
-                        "toggle-chip", enabled ? "show-route" : "hide-route");
-                return true;
-            }
-            if (doubleClick) {
-                convertSecretRouteToEditable(row.roomZoneId);
-                return true;
-            }
-            flashMainNotice(Component.translatable(
-                    "waypointer.screen.main.secret_route.notice",
-                    displayZoneLabel(row.roomZoneId)));
-            return true;
-        }
         if (row.roomHeader) {
             String selectedBefore = selectedGroupId == null ? "(none)" : selectedGroupId;
             selectedDungeonRoomZoneId = row.roomZoneId;
