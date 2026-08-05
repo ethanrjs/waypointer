@@ -16,18 +16,18 @@ class WaypointerContributorBadgeTest {
     private static final UUID SOMEONE_ELSE_ID = UUID.fromString("68b3d8a2-0f62-48a5-a958-4fb0ab1899a2");
 
     @Test
-    void replacesOnlyBabbursNumericLevelBadge() {
+    void replacesOnlyBabbursNumericChatLevelBadge() {
         WaypointerConfig config = new WaypointerConfig();
 
         Component replaced = WaypointerContributorBadge.apply(
-                Component.literal("[338] Babbur"), config);
+                Component.literal("[338] Babbur: hi"), config);
         Component ignored = WaypointerContributorBadge.apply(
-                Component.literal("[338] SomeoneElse"), config);
+                Component.literal("[338] SomeoneElse: hi"), config);
         Component ranked = WaypointerContributorBadge.apply(
                 Component.literal("[338] [MVP++] Babbur: hi"), config);
 
-        assertEquals("[WP] Babbur", replaced.getString());
-        assertEquals("[338] SomeoneElse", ignored.getString());
+        assertEquals("[WP] Babbur: hi", replaced.getString());
+        assertEquals("[338] SomeoneElse: hi", ignored.getString());
         assertEquals("[WP] [MVP++] Babbur: hi", ranked.getString());
     }
 
@@ -37,9 +37,9 @@ class WaypointerContributorBadgeTest {
         config.setShowContributorBadges(false);
 
         Component result = WaypointerContributorBadge.apply(
-                Component.literal("[338] Babbur"), config);
+                Component.literal("[338] Babbur: hi"), config);
 
-        assertEquals("[338] Babbur", result.getString());
+        assertEquals("[338] Babbur: hi", result.getString());
     }
 
     @Test
@@ -57,9 +57,33 @@ class WaypointerContributorBadgeTest {
         assertEquals("[338] NotBabbur: hi", substring.getString());
         assertEquals("[338] BabburTwo: hi", suffix.getString());
     }
+    @Test
+    void replacesOnlyNumericLevelInStrictChatHeader() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        Component sender = WaypointerContributorBadge.apply(
+                Component.literal("[130] Babbur: level [999] is not a badge"), config);
+        Component laterMention = WaypointerContributorBadge.apply(
+                Component.literal("[130] SomeoneElse: Babbur: hi"), config);
+        Component noSpace = WaypointerContributorBadge.apply(
+                Component.literal("[130]Babbur: hi"), config);
+        Component channel = WaypointerContributorBadge.apply(
+                Component.literal("[Guild] [130] [MVP++] Babbur: hi"), config);
+        Component bodyBadge = WaypointerContributorBadge.apply(
+                Component.literal("[130] Babbur: the marker is [WP]"), config);
+        Component emptyLevel = WaypointerContributorBadge.apply(
+                Component.literal("[] Babbur: hi"), config);
+
+        assertEquals("[WP] Babbur: level [999] is not a badge", sender.getString());
+        assertEquals("[130] SomeoneElse: Babbur: hi", laterMention.getString());
+        assertEquals("[130]Babbur: hi", noSpace.getString());
+        assertEquals("[Guild] [WP] [MVP++] Babbur: hi", channel.getString());
+        assertEquals("[WP] Babbur: the marker is [WP]", bodyBadge.getString());
+        assertEquals("[] Babbur: hi", emptyLevel.getString());
+    }
 
     @Test
-    void addsBadgeToContributorChatWithoutANumericLevel() {
+    void leavesContributorChatWithoutNumericLevelUnchanged() {
         WaypointerConfig config = new WaypointerConfig();
 
         Component plain = WaypointerContributorBadge.apply(
@@ -69,9 +93,9 @@ class WaypointerContributorBadgeTest {
         Component vanilla = WaypointerContributorBadge.apply(
                 Component.literal("<Babbur> hi"), config);
 
-        assertEquals("[WP] Babbur: hi", plain.getString());
-        assertEquals("[WP] [MVP++] Babbur: hi", ranked.getString());
-        assertEquals("[WP] <Babbur> hi", vanilla.getString());
+        assertEquals("Babbur: hi", plain.getString());
+        assertEquals("[MVP++] Babbur: hi", ranked.getString());
+        assertEquals("<Babbur> hi", vanilla.getString());
     }
 
     @Test
@@ -121,33 +145,57 @@ class WaypointerContributorBadgeTest {
         assertEquals("[WP] [MVP+] Babbur", differentName.getString());
         assertEquals("[MVP+] Babbur", nonContributor.getString());
     }
-
     @Test
-    void tabNameUsesVisibleContributorIdentityAndRestoresTeamRank() {
+    void tabNameUsesStrictContributorLevelLabel() {
         WaypointerConfig config = new WaypointerConfig();
-        Component teamRank = Component.literal("[MVP++] ").withStyle(ChatFormatting.AQUA);
 
         Component result = WaypointerContributorBadge.applyTabName(
-                Component.literal("[338] Babbur: $"), teamRank, config);
+                Component.literal("[338] Babbur: $"), config);
 
-        assertEquals("[WP] [MVP++] Babbur: $", result.getString());
+        assertEquals("[WP] Babbur", result.getString());
+        assertEquals(Component.literal("[").withStyle(ChatFormatting.DARK_GRAY).getStyle().getColor(),
+                result.getStyle().getColor());
+        assertEquals(Component.literal("WP").withStyle(ChatFormatting.DARK_RED).getStyle().getColor(),
+                result.getSiblings().get(0).getStyle().getColor());
+        assertEquals(Component.literal("]").withStyle(ChatFormatting.DARK_GRAY).getStyle().getColor(),
+                result.getSiblings().get(1).getStyle().getColor());
+        assertEquals(Component.literal("Babbur").withStyle(ChatFormatting.AQUA).getStyle().getColor(),
+                result.getSiblings().get(3).getStyle().getColor());
     }
 
     @Test
-    void tabNameDoesNotDuplicateRankOrMatchUnrelatedRows() {
+    void tabNameRequiresDirectNumericLevelBeforeBabbur() {
         WaypointerConfig config = new WaypointerConfig();
-        Component teamRank = Component.literal("[MVP++] ");
 
         Component ranked = WaypointerContributorBadge.applyTabName(
-                Component.literal("[338] [MVP++] Babbur: $"), teamRank, config);
+                Component.literal("[338] [MVP++] Babbur: $"), config);
         Component header = WaypointerContributorBadge.applyTabName(
-                Component.literal("Coop with Babbur (2)"), teamRank, config);
+                Component.literal("Coop with Babbur (2)"), config);
         Component otherPlayer = WaypointerContributorBadge.applyTabName(
-                Component.literal("[338] NotBabbur: $"), teamRank, config);
+                Component.literal("[338] BabburTwo: $"), config);
+        Component styled = WaypointerContributorBadge.applyTabName(
+                Component.literal("[130] ").withStyle(ChatFormatting.GRAY)
+                        .append(Component.literal("Babbur").withStyle(ChatFormatting.BLUE)), config);
 
-        assertEquals("[WP] [MVP++] Babbur: $", ranked.getString());
+        assertEquals("[338] [MVP++] Babbur: $", ranked.getString());
         assertEquals("Coop with Babbur (2)", header.getString());
-        assertEquals("[338] NotBabbur: $", otherPlayer.getString());
+        assertEquals("[338] BabburTwo: $", otherPlayer.getString());
+        assertEquals("[WP] Babbur", styled.getString());
+    }
+
+    @Test
+    void stripsLegacyFormattingBeforeMatchingChatAndTab() {
+        WaypointerConfig config = new WaypointerConfig();
+        Component chat = WaypointerContributorBadge.apply(
+                Component.literal("\u00a77[\u00a7d130\u00a77] \u00a7bBabbur\u00a7f: hi"), config);
+        Component ampersandChat = WaypointerContributorBadge.apply(
+                Component.literal("&7[&d130&7] &bBabbur&f: hi"), config);
+        Component tab = WaypointerContributorBadge.applyTabName(
+                Component.literal("\u00a77[\u00a7d130\u00a77] \u00a7bBabbur"), config);
+
+        assertEquals("\u00a77[WP] \u00a7bBabbur\u00a7f: hi", chat.getString());
+        assertEquals("&7[WP] &bBabbur&f: hi", ampersandChat.getString());
+        assertEquals("[WP] Babbur", tab.getString());
     }
 
     @Test

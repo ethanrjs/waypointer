@@ -22,9 +22,14 @@ public final class WaypointerContributorBadge {
 
     public static Component apply(Component component, WaypointerConfig config) {
         if (component == null || config == null || !config.showContributorBadges()) return component;
-        if (hasBadge(component)) return component;
-        if (contributorLevelStart(component.getString()) >= 0) return replace(component);
-        return isContributorChatSender(component.getString()) ? prependBadge(component) : component;
+        PlainMessage message = plainMessage(component.getString());
+        int levelStart = contributorChatLevelStart(message.text());
+        if (levelStart < 0) return component;
+
+        int levelEnd = message.text().indexOf(']', levelStart) + 1;
+        return replaceLevelSpan(component,
+                message.sourceIndex(levelStart),
+                message.sourceIndex(levelEnd - 1) + 1);
     }
 
     public static Component applyPlayerName(Component component, String profileName, UUID profileId,
@@ -38,18 +43,12 @@ public final class WaypointerContributorBadge {
                 ? replace(component)
                 : prependBadge(component);
     }
-
-    public static Component applyTabName(Component component, Component rankPrefix,
-                                         WaypointerConfig config) {
+    public static Component applyTabName(Component component, WaypointerConfig config) {
         if (component == null || config == null || !config.showContributorBadges()) return component;
-        int nameStart = contributorDisplayNameStart(component.getString());
-        if (nameStart < 0) return component;
-
-        Component decorated = addMissingRank(component, rankPrefix, nameStart);
-        if (hasBadge(decorated)) return decorated;
-        return contributorLevelStart(decorated.getString()) >= 0
-                ? replace(decorated)
-                : prependBadge(decorated);
+        return hasContributorTabLevel(plainMessage(component.getString()).text())
+                ? badge().append(Component.literal(" "))
+                        .append(Component.literal(CONTRIBUTOR).withStyle(ChatFormatting.AQUA))
+                : component;
     }
 
     static Component hypixelRankPrefix(String playerRank, String packageRank,
@@ -81,16 +80,7 @@ public final class WaypointerContributorBadge {
     }
 
     private static String stripLegacyFormatting(String text) {
-        if (text == null || text.indexOf('\u00a7') < 0) return text;
-        StringBuilder plain = new StringBuilder(text.length());
-        for (int i = 0; i < text.length(); i++) {
-            if (text.charAt(i) == '\u00a7' && i + 1 < text.length()) {
-                i++;
-            } else {
-                plain.append(text.charAt(i));
-            }
-        }
-        return plain.toString();
+        return text == null ? null : plainMessage(text).text();
     }
 
     static Component replace(Component component) {
@@ -192,6 +182,45 @@ public final class WaypointerContributorBadge {
 
     private static boolean hasBadge(Component component) {
         return component.getString().contains("[WP]");
+    }
+
+    private static int contributorChatLevelStart(String raw) {
+        int firstColon = raw.indexOf(':');
+        String sender = " " + CONTRIBUTOR + ":";
+        if (firstColon < 0 || !raw.substring(0, firstColon + 1).endsWith(sender)) {
+            return -1;
+        }
+        return numericLevelStart(raw, 0, firstColon - CONTRIBUTOR.length());
+    }
+
+    private static boolean hasContributorTabLevel(String raw) {
+        int searchStart = 0;
+        while (searchStart < raw.length()) {
+            int levelStart = numericLevelStart(raw, searchStart, raw.length());
+            if (levelStart < 0) return false;
+            int levelEnd = raw.indexOf(']', levelStart);
+            int nameStart = levelEnd + 2;
+            int nameEnd = nameStart + CONTRIBUTOR.length();
+            if (levelEnd + 1 < raw.length()
+                    && raw.charAt(levelEnd + 1) == ' '
+                    && raw.startsWith(CONTRIBUTOR, nameStart)
+                    && (nameEnd >= raw.length() || !isUsernameCharacter(raw.charAt(nameEnd)))) {
+                return true;
+            }
+            searchStart = levelEnd + 1;
+        }
+        return false;
+    }
+
+    private static int numericLevelStart(String raw, int startInclusive, int endExclusive) {
+        int cursor = raw.indexOf('[', startInclusive);
+        while (cursor >= 0 && cursor < endExclusive) {
+            int levelEnd = raw.indexOf(']', cursor + 1);
+            if (levelEnd < 0 || levelEnd >= endExclusive) return -1;
+            if (levelEnd > cursor + 1 && isDigits(raw, cursor + 1, levelEnd)) return cursor;
+            cursor = raw.indexOf('[', cursor + 1);
+        }
+        return -1;
     }
 
     private static boolean isContributorChatSender(String raw) {
@@ -342,10 +371,42 @@ public final class WaypointerContributorBadge {
     }
 
     private static boolean isDigits(String raw, int startInclusive, int endExclusive) {
+        if (startInclusive >= endExclusive) return false;
         for (int i = startInclusive; i < endExclusive; i++) {
             if (!Character.isDigit(raw.charAt(i))) return false;
         }
         return true;
+    }
+
+    private static PlainMessage plainMessage(String raw) {
+        StringBuilder plain = new StringBuilder(raw.length());
+        int[] sourceIndexes = new int[raw.length() + 1];
+        int plainLength = 0;
+        for (int sourceIndex = 0; sourceIndex < raw.length(); sourceIndex++) {
+            if (isLegacyFormattingCode(raw, sourceIndex)) {
+                sourceIndex++;
+                continue;
+            }
+            sourceIndexes[plainLength] = sourceIndex;
+            plain.append(raw.charAt(sourceIndex));
+            plainLength++;
+        }
+        sourceIndexes[plainLength] = raw.length();
+        int[] trimmedIndexes = new int[plainLength + 1];
+        System.arraycopy(sourceIndexes, 0, trimmedIndexes, 0, plainLength + 1);
+        return new PlainMessage(plain.toString(), trimmedIndexes);
+    }
+
+    private static boolean isLegacyFormattingCode(String raw, int index) {
+        if (index + 1 >= raw.length()) return false;
+        char prefix = raw.charAt(index);
+        if (prefix != '\u00a7' && prefix != '&') return false;
+        char code = Character.toLowerCase(raw.charAt(index + 1));
+        return code >= '0' && code <= '9'
+                || code >= 'a' && code <= 'f'
+                || code >= 'k' && code <= 'o'
+                || code == 'r'
+                || code == 'x';
     }
 
     private static MutableComponent badge() {
@@ -365,5 +426,11 @@ public final class WaypointerContributorBadge {
     }
 
     private record Segment(String text, Style style) {
+    }
+
+    private record PlainMessage(String text, int[] sourceIndexes) {
+        private int sourceIndex(int plainIndex) {
+            return sourceIndexes[plainIndex];
+        }
     }
 }
