@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  MINECRAFT_1_21_11_COMMIT: 689877783292e77206c4ecf513c5f4037bf625f6
+  MINECRAFT_1_21_11_COMMIT: 94632f86bbc327c043c4f56dfd6341a9cf4fc2a2
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
 jobs:
@@ -149,18 +149,25 @@ jobs:
             local jar="$1"
             local minecraft="$2"
             local java="$3"
+            local hypixel_mod_api="$4"
             test -f "${jar}"
             unzip -p "${jar}" fabric.mod.json | jq -e \
               --arg version "${mod_version}" \
               --arg minecraft "${minecraft}" \
               --arg java "${java}" \
-              '.id == "waypointer" and .version == $version and .depends.minecraft == $minecraft and .depends.java == $java' \
+              --arg hypixel_mod_api "${hypixel_mod_api}" \
+              '.id == "waypointer"
+                and .version == $version
+                and .depends.minecraft == $minecraft
+                and .depends.java == $java
+                and .depends["hypixel-mod-api"] == $hypixel_mod_api
+                and (((.suggests // {}) | has("hypixel-mod-api")) | not)' \
               >/dev/null
           }
 
-          check_metadata "release/waypointer-${mod_version}-mc26.1.2.jar" ">=26.1.2 <26.2" ">=25"
-          check_metadata "release/waypointer-${mod_version}-mc26.2.jar" ">=26.2 <26.3" ">=25"
-          check_metadata "release/waypointer-${mod_version}-mc1.21.11.jar" "~1.21.11" ">=21"
+          check_metadata "release/waypointer-${mod_version}-mc26.1.2.jar" ">=26.1.2 <26.2" ">=25" ">=1.0.2"
+          check_metadata "release/waypointer-${mod_version}-mc26.2.jar" ">=26.2 <26.3" ">=25" ">=1.0.2"
+          check_metadata "release/waypointer-${mod_version}-mc1.21.11.jar" "~1.21.11" ">=21" "1.0.1"
 
           mapfile -t jars < <(find release -maxdepth 1 -type f -name '*.jar' -print | sort)
           if [[ "${#jars[@]}" -ne 3 ]]; then
