@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  MINECRAFT_1_21_11_COMMIT: f33cf01755298922f54a8154f2ce6ef643e13bc1
+  MINECRAFT_1_21_11_COMMIT: f6372fbb1954ffbcaf2dbb47d8919742e1c5ec6e
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
 jobs:
