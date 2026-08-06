@@ -189,8 +189,6 @@ public final class WaypointerClient implements ClientModInitializer {
 
     private static void installDungeonSubsystem(DungeonChestInteractionGuard chestInteractionGuard) {
         DungeonRoomData.loadDefaultCustomStore();
-        DungeonRoomRouteSync.installMissingEditableRoutes(
-                manager, dungeonConfig, DungeonRoomData.customDefinitions());
         dungeonTracker = new DungeonStateTracker(manager, dungeonConfig);
         dungeonRouteSession = new DungeonRouteSession();
         dungeonRouteSessionInDungeonContext = false;

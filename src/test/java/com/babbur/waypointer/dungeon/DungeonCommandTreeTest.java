@@ -13,40 +13,42 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DungeonCommandTreeTest {
 
     @Test
-    void resetConfirmCommandsParseOnDungeonAliases() throws Exception {
+    void dungeonAuthoringCommandsAreNotRegistered() throws Exception {
         CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
         for (String root : List.of("wpd", "waypointer-dungeon")) {
-            assertNotNull(dispatcher.getRoot().getChild(root), "missing dungeon command root " + root);
-            assertParses(dispatcher, root + " reset");
-            assertParses(dispatcher, root + " reset confirm");
+            var rootNode = dispatcher.getRoot().getChild(root);
+            assertNotNull(rootNode, "missing dungeon command root " + root);
+            assertNull(rootNode.getChild("test"));
+            assertNull(rootNode.getChild("reset"));
+            assertNull(rootNode.getChild("highlight"));
+            assertNull(rootNode.getChild("breakbox"));
+
+            var room = rootNode.getChild("room");
+            assertNotNull(room);
+            assertNull(room.getChild("create"));
+            assertNull(room.getChild("rename"));
+            assertNull(room.getChild("fingerprint"));
+
+            assertNull(rootNode.getChild("waypoint"));
         }
     }
 
     @Test
-    void criticalDungeonAuthoringCommandsParseWithoutSyntaxErrors() throws Exception {
+    void retainedDungeonCommandsParseWithoutSyntaxErrors() throws Exception {
         CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
         List<String> commands = List.of(
                 "wpd info",
-                "wpd test",
-                "wpd room create admin Admin Room",
-                "wpd room rename Renamed Room",
-                "wpd room fingerprint add",
                 "wpd room list",
                 "wpd waypoint list",
-                "wpd waypoint add chest Secret Chest",
-                "wpd waypoint remove 0",
-                "wpd waypoint move 0",
-                "wpd waypoint trigger 0 chest",
-                "wpd waypoint trigger 0 dungeonbreaker",
-                "wpd highlight list 0",
-                "wpd highlight add 0 filled",
-                "wpd highlight remove 0 1",
-                "wpd breakbox add 0",
+                "wpd import routes.json",
+                "wpd routes download",
+                "wpd routes dismiss",
                 "wpd route next",
                 "wpd route reset",
                 "wpd route found 1",

@@ -14,6 +14,7 @@ import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.color.RouteColorPolicy;
@@ -27,6 +28,7 @@ import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import com.babbur.waypointer.dungeon.DungeonWaypointSkipRules;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
+import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
 import com.babbur.waypointer.input.WaypointAddFlow;
 import com.babbur.waypointer.input.WaypointRepositionMode;
 import com.babbur.waypointer.input.WaypointerKeybinds;
@@ -54,6 +56,7 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -255,6 +258,12 @@ public final class WaypointerCommands {
                         .then(literal("confirm").executes(ctx -> runClearZone(ctx.getSource(), true))))
                 .then(literal("export")
                         .executes(ctx -> runExport(ctx.getSource(), exportOptionsFromConfig()))
+                        .then(literal("routes")
+                                .executes(ctx -> runExport(ctx.getSource(), exportOptionsFromConfig())))
+                        .then(literal("config")
+                                .executes(ctx -> runExportConfig(ctx.getSource())))
+                        .then(literal("dungeon")
+                                .executes(ctx -> runExportDungeon(ctx.getSource())))
                         .then(literal("names")
                                 .executes(ctx -> runExport(ctx.getSource(), WaypointCodec.Options.WITH_NAMES)))
                         .then(literal("nonames")
@@ -936,6 +945,7 @@ public final class WaypointerCommands {
     private int runHelp(FabricClientCommandSource src, String root, String target) {
         String prefix = "/" + root;
         if (target != null && "all".equalsIgnoreCase(target.trim())) {
+            helpSpacer(src);
             info(src, Component.translatable("waypointer.command.help.title")
                     .withStyle(ChatFormatting.AQUA)
                     .append(Component.translatable("waypointer.command.help.hover_hint")
@@ -944,6 +954,7 @@ public final class WaypointerCommands {
                 renderHelpSection(src, prefix, section);
             }
             renderHelpFooter(src, root, -1);
+            helpSpacer(src);
             return 1;
         }
 
@@ -956,6 +967,7 @@ public final class WaypointerCommands {
 
         HelpSection section = HELP_SECTIONS.get(pageIdx);
 
+        helpSpacer(src);
         info(src, Component.translatable(
                         "waypointer.command.help.page_title",
                         Component.translatable(section.titleKey()))
@@ -964,7 +976,13 @@ public final class WaypointerCommands {
         renderHelpSection(src, prefix, section);
 
         renderHelpFooter(src, root, pageIdx);
+        helpSpacer(src);
         return 1;
+    }
+
+    /** Sends an empty chat line to keep consecutive help results visually separate. */
+    private static void helpSpacer(FabricClientCommandSource src) {
+        src.sendFeedback(WaypointerChatFeedback.suppress(Component.empty()));
     }
 
     /**
@@ -1721,6 +1739,10 @@ public final class WaypointerCommands {
                     "waypointer.command.error.no_active_route"));
             return null;
         }
+        if (DungeonRoomRouteSync.isReadOnlyDungeonRoute(visibleGroup)) {
+            error(src, Component.literal("Dungeon routes are read-only."));
+            return null;
+        }
         WaypointGroup editTarget = DungeonRoomRouteSync.durableEditTarget(manager, visibleGroup);
         if (editTarget == null) {
             error(src, Component.translatable(
@@ -1737,7 +1759,12 @@ public final class WaypointerCommands {
                     index, all.size() - 1));
             return null;
         }
-        return all.get(index);
+        WaypointGroup group = all.get(index);
+        if (DungeonRoomRouteSync.isReadOnlyDungeonRoute(group)) {
+            error(src, Component.literal("Dungeon routes are read-only."));
+            return null;
+        }
+        return group;
     }
 
     private int resolveActiveWaypointIndex(FabricClientCommandSource src, WaypointGroup group,
@@ -2090,7 +2117,7 @@ public final class WaypointerCommands {
     static boolean definitionOnlyRouteRequiresConversion(ActiveGroupManager manager) {
         Zone currentZone = manager.currentZone();
         return currentZone != null
-                && DungeonRoomRouteSync.secretsRequireConversion(manager, currentZone.id());
+                && DungeonRoomRouteSync.isReadOnlyDungeonRouteZone(currentZone.id());
     }
 
     static Waypoint removeWaypointAt(WaypointGroup target, int index) {
@@ -2105,6 +2132,10 @@ public final class WaypointerCommands {
         if (zone == null) {
             error(src, Component.translatable(
                     "waypointer.command.error.no_active_zone"));
+            return 0;
+        }
+        if (DungeonRoomRouteSync.isReadOnlyDungeonRouteZone(zone.id())) {
+            error(src, Component.literal("Dungeon routes are read-only."));
             return 0;
         }
         List<WaypointGroup> here = manager.groupsForZone(zone.id());
@@ -2148,14 +2179,70 @@ public final class WaypointerCommands {
             return 0;
         }
 
-        String payload = WaypointCodec.encode(toExport, opts);
+        String payload = UniversalShareCodec.encodeWaypoints(toExport, opts);
         boolean copied = setClipboard(payload);
 
+        MutableComponent line = exportSuccessMessage(toExport.size(), payload, opts, copied);
+        src.sendFeedback(WaypointerChatFeedback.suppress(line));
+        return toExport.size();
+    }
+
+    private int runExportConfig(FabricClientCommandSource src) {
+        String payload = UniversalShareCodec.encodeConfig(config);
+        boolean copied = setClipboard(payload);
+        MutableComponent line = Component.literal("Exported config code (" + payload.length() + " characters).")
+                .withStyle(ChatFormatting.GREEN);
+        if (copied) line.append(Component.literal(" Copied to clipboard.").withStyle(ChatFormatting.GRAY));
+        if (!copied) {
+            line.append(Component.literal(" Copy")
+                    .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
+                            .withClickEvent(new ClickEvent.CopyToClipboard(payload))));
+        }
+        info(src, line);
+        return 1;
+    }
+
+    private int runExportDungeon(FabricClientCommandSource src) {
+        List<DungeonRoomDefinition> definitions = DungeonRoomData.customDefinitions().stream()
+                .filter(definition -> definition != null && !definition.waypoints().isEmpty())
+                .sorted(Comparator.comparing((DungeonRoomDefinition definition) ->
+                        definition.displayName().toLowerCase(Locale.ROOT))
+                        .thenComparing(DungeonRoomDefinition::id))
+                .toList();
+        if (definitions.isEmpty()) {
+            info(src, Component.literal("No custom dungeon routes are available to export."));
+            return 0;
+        }
+
+        String payload = UniversalShareCodec.encodeDungeon(definitions);
+        boolean copied = setClipboard(payload);
+        int waypoints = com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec
+                .waypointCount(definitions);
+        MutableComponent line = Component.literal("Exported " + definitions.size() + " dungeon room route"
+                        + (definitions.size() == 1 ? "" : "s") + " (" + waypoints + " waypoint"
+                        + (waypoints == 1 ? "" : "s") + ", " + payload.length() + " characters).")
+                .withStyle(ChatFormatting.GREEN);
+        if (copied) line.append(Component.literal(" Copied to clipboard.").withStyle(ChatFormatting.GRAY));
+        if (!copied) {
+            line.append(Component.literal(" Copy")
+                    .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
+                            .withClickEvent(new ClickEvent.CopyToClipboard(payload))));
+        }
+        info(src, line);
+        return definitions.size();
+    }
+
+    /**
+     * Formats export feedback and only offers the manual copy action when the
+     * automatic clipboard write did not succeed.
+     */
+    static MutableComponent exportSuccessMessage(int routeCount, String payload,
+                                                 WaypointCodec.Options options, boolean copied) {
         MutableComponent line = Component.translatable(
                         "waypointer.command.export.success",
-                        toExport.size(), payload.length())
+                        routeCount, payload.length())
                 .withStyle(ChatFormatting.GREEN);
-        if (!opts.includeNames) {
+        if (!options.includeNames) {
             line.append(Component.translatable(
                     "waypointer.command.export.without_names")
                     .withStyle(ChatFormatting.GRAY));
@@ -2164,12 +2251,12 @@ public final class WaypointerCommands {
             line.append(Component.translatable(
                     "waypointer.command.export.copied")
                     .withStyle(ChatFormatting.GRAY));
+        } else {
+            line.append(Component.translatable("waypointer.command.export.copy")
+                    .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
+                            .withClickEvent(new ClickEvent.CopyToClipboard(payload))));
         }
-        line.append(Component.translatable("waypointer.command.export.copy")
-                .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
-                        .withClickEvent(new ClickEvent.CopyToClipboard(payload))));
-        src.sendFeedback(WaypointerChatFeedback.suppress(line));
-        return toExport.size();
+        return line;
     }
 
     static List<WaypointGroup> cliExportGroups(ActiveGroupManager manager) {
@@ -2300,9 +2387,19 @@ public final class WaypointerCommands {
         return runImport(src, payload, "argument");
     }
 
-        private int runImport(FabricClientCommandSource src, String payload, String origin) {
+    private int runImport(FabricClientCommandSource src, String payload, String origin) {
         try {
-            WaypointImporter.ImportResult result = WaypointImporter.importAny(payload);
+            UniversalShareCodec.Decoded decoded = UniversalShareCodec.decode(payload);
+            if (decoded instanceof UniversalShareCodec.Configuration configuration) {
+                config.replaceWith(configuration.config());
+                success(src, Component.literal("Imported config code from " + origin + "."));
+                return 1;
+            }
+            if (decoded instanceof UniversalShareCodec.DungeonRoutes dungeonRoutes) {
+                return importDungeonRoutes(src, dungeonRoutes.result(), origin);
+            }
+
+            WaypointImporter.ImportResult result = ((UniversalShareCodec.Waypoints) decoded).result();
             // Coleweight (and any JSON source without a zone field) parse into
             // groups tagged with Zone.UNKNOWN. Dropping those into the live
             // manager leaves them in an "unknown" bucket the user has to
@@ -2354,6 +2451,22 @@ public final class WaypointerCommands {
             ImportFeedback.failure("Invalid import text.");
             return 0;
         }
+    }
+
+    private int importDungeonRoutes(FabricClientCommandSource src,
+                                    com.babbur.waypointer.dungeon.data.DungeonRouteImporter.Result result,
+                                    String origin) {
+        int imported = DungeonRoomData.importCustomDefinitions(result.definitions());
+        int waypoints = result.waypointCount();
+        if (imported == 0) {
+            info(src, Component.literal("Dungeon routes from " + origin
+                    + " were already present; existing routes were kept."));
+            return 0;
+        }
+        success(src, Component.literal("Imported " + imported + " dungeon room route"
+                + (imported == 1 ? "" : "s") + " with " + waypoints + " waypoint"
+                + (waypoints == 1 ? "" : "s") + " from " + origin + "."));
+        return imported;
     }
 
     static Component importEditorHintComponent() {
