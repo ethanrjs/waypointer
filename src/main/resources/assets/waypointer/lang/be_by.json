@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Выкарыстоўваць вышыню Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Трасіроўшчыкі",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Праводзіць трасер ад прыцэла да актыўнага арыенціра падзямелля.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Траекторыі Ender Pearl",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Паказваць запісаную дугу кідка для актыўнага дзеяння Ender Pearl.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Шлях ад уваходу ў падзямелле да першага арыенціра",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Паказваць зручны для тэлепартацыі шлях да арыенціра #1 пры ўваходзе ў пакой падзямелля.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Працягваць шлях пасля першага арыенціра",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Колер кропкі маршруту «Ender Pearl»",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Выкарыстоўваецца, калі гэта дзеянне ў падзямеллі не мае ўласнага колеру.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Колер кропкі маршруту «Ender Pearl»",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Выберыце аўтаматычны колер кропкі маршруту «Ender Pearl».",
-  "key.waypointer.toggle_tiny": "Пераключыць малы падарыенцір",
-  "key.waypointer.toggle_filled": "Пераключыць запоўнены падарыенцір",
-  "key.waypointer.toggle_hide_after_parent": "Пераключыць хаванне падарыенціра пасля бацькоўскага",
-  "key.waypointer.toggle_stand_skip": "Пераключыць стаянне для пропуску",
-  "key.waypointer.toggle_interact_skip": "Пераключыць узаемадзеянне для пропуску",
-  "key.waypointer.toggle_mine_skip": "Пераключыць здабыванне для пропуску",
-  "key.waypointer.toggle_depth_check": "Пераключыць адлюстраванне толькі ў межах бачнасці",
-  "waypointer.settings.group.system.waypoint_editor": "Рэдактар арыенціраў",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Прывязкі клавіш рэдактара арыенціраў",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Наладзьце спалучэнні клавіш, якія выкарыстоўваюцца пры рэдагаванні арыенціраў."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Выберыце аўтаматычны колер кропкі маршруту «Ender Pearl»."
 }

@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Etherwarp 높이 사용",
   "waypointer.settings.setting.showDungeonTracers.label": "추적선",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "십자선에서 활성 던전 경로점까지 추적선을 그립니다.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "엔더 진주 궤적",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "활성 엔더 진주 동작에 기록된 투척 궤적을 그립니다.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "첫 경로점까지 던전 진입 경로",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "던전 방에 들어갈 때 경로점 #1까지 순간이동하기 좋은 경로를 그립니다.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "첫 경로점 뒤에도 던전 경로 계속",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "가져오기 실패",
   "waypointer.import.failed.empty": "경로점을 찾을 수 없습니다.",
   "waypointer.screen.debug.payload.empty": "불러온 데이터가 없습니다.",
-  "waypointer.screen.debug.payload.empty_hint": "%1$s 내보내기 문자열을 복사한 뒤 \"새로 고침\"을 클릭하세요.",
-  "key.waypointer.toggle_tiny": "보조 경로점 작게 표시 전환",
-  "key.waypointer.toggle_filled": "보조 경로점 채움 표시 전환",
-  "key.waypointer.toggle_hide_after_parent": "부모 뒤 보조 경로점 숨기기 전환",
-  "key.waypointer.toggle_stand_skip": "서서 건너뛰기 전환",
-  "key.waypointer.toggle_interact_skip": "상호작용으로 건너뛰기 전환",
-  "key.waypointer.toggle_mine_skip": "채굴로 건너뛰기 전환",
-  "key.waypointer.toggle_depth_check": "시야 확보 시에만 렌더링 전환",
-  "waypointer.settings.group.system.waypoint_editor": "경로점 편집기",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "경로점 편집기 키 설정",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "경로점을 편집할 때 사용할 키보드 단축키를 설정합니다."
+  "waypointer.screen.debug.payload.empty_hint": "%1$s 내보내기 문자열을 복사한 뒤 \"새로 고침\"을 클릭하세요."
 }

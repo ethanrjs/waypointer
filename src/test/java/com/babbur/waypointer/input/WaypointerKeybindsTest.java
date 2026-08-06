@@ -57,16 +57,9 @@ class WaypointerKeybindsTest {
                 WaypointerKeybinds.ENTER_EDIT_MODE_TRANSLATION_KEY,
                 WaypointerKeybinds.EXIT_EDIT_MODE_TRANSLATION_KEY,
                 WaypointerKeybinds.TOGGLE_EDIT_MODE_TRANSLATION_KEY,
-                WaypointerKeybinds.REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY,
-                WaypointerKeybinds.TOGGLE_TINY_TRANSLATION_KEY,
-                WaypointerKeybinds.TOGGLE_FILLED_TRANSLATION_KEY,
-                WaypointerKeybinds.TOGGLE_HIDE_AFTER_PARENT_TRANSLATION_KEY,
-                WaypointerKeybinds.TOGGLE_STAND_SKIP_TRANSLATION_KEY,
-                WaypointerKeybinds.TOGGLE_INTERACT_SKIP_TRANSLATION_KEY,
-                WaypointerKeybinds.TOGGLE_MINE_SKIP_TRANSLATION_KEY,
-                WaypointerKeybinds.TOGGLE_DEPTH_CHECK_TRANSLATION_KEY),
+                WaypointerKeybinds.REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY),
                 WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS);
-        assertEquals(17, WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size());
+        assertEquals(10, WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size());
         for (String translationKey : WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS) {
             assertLanguageEntry(english, translationKey);
         }
@@ -77,7 +70,7 @@ class WaypointerKeybindsTest {
     }
 
     @Test
-    void keybindDefaultsReserveEditorShortcutKeysForTheRouteEditor() {
+    void keybindDefaultsLeaveAllOptionalKeybindsUnbound() {
         assertEquals(WaypointerKeybinds.KEYBIND_TRANSLATION_KEYS.size(),
                 WaypointerKeybinds.KEYBIND_DEFAULT_KEYS.size());
         assertEquals(GLFW.GLFW_KEY_U, WaypointerKeybinds.OPEN_EDITOR_DEFAULT_KEY);
@@ -92,34 +85,6 @@ class WaypointerKeybindsTest {
                     WaypointerKeybinds.KEYBIND_DEFAULT_KEYS.get(keyIndex),
                     message);
         }
-        assertEquals(List.of(
-                GLFW.GLFW_KEY_T,
-                GLFW.GLFW_KEY_F,
-                GLFW.GLFW_KEY_H,
-                GLFW.GLFW_KEY_S,
-                GLFW.GLFW_KEY_I,
-                GLFW.GLFW_KEY_M,
-                GLFW.GLFW_KEY_R),
-                WaypointerKeybinds.KEYBIND_DEFAULT_KEYS.subList(10, 17));
-    }
-
-    @Test
-    void editorControlLabelsExposeTheirScopedDefaultKeys() {
-        assertEquals(List.of(
-                "Tiny (T)",
-                "Filled (F)",
-                "Hide after parent reached (H)",
-                "Render in LOS only (R)"),
-                WaypointerKeybinds.defaultEditorControlLabels(false));
-        assertEquals(List.of(
-                "Tiny (T)",
-                "Filled (F)",
-                "Hide after parent reached (H)",
-                "Stand to skip (S)",
-                "Interact to skip (I)",
-                "Mine to skip (M)",
-                "Render in LOS only (R)"),
-                WaypointerKeybinds.defaultEditorControlLabels(true));
     }
 
     @Test

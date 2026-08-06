@@ -9,8 +9,12 @@ import java.util.Base64;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
+import java.util.zip.Deflater;
+import java.util.zip.DeflaterOutputStream;
 import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
+import java.util.zip.InflaterInputStream;
+
+import com.babbur.waypointer.codec.AsciiStreamCodec;
 
 /**
  * Native share format for authored dungeon-room routes.
@@ -21,6 +25,8 @@ import java.util.zip.GZIPOutputStream;
  */
 public final class DungeonRoomShareCodec {
     public static final String MAGIC = "WPD:";
+    /** A body starting with this character is raw-DEFLATE plus chat-safe ASCII. */
+    private static final char COMPACT_BODY_PREFIX = '.';
 
     private static final int MAX_TEXT_PAYLOAD_CHARS = 8 * 1024 * 1024;
     private static final int MAX_DECODED_JSON_CHARS = 8 * 1024 * 1024;
@@ -36,7 +42,7 @@ public final class DungeonRoomShareCodec {
         List<DungeonRoomDefinition> safe = definitions == null ? List.of() : new ArrayList<>(definitions);
         validateDefinitions(safe);
         String json = DungeonRoomData.toJson(safe);
-        return MAGIC + Base64.getUrlEncoder().withoutPadding().encodeToString(gzip(json));
+        return MAGIC + COMPACT_BODY_PREFIX + AsciiStreamCodec.encode(deflate(json));
     }
 
     public static boolean isPayload(String payload) {
@@ -56,7 +62,9 @@ public final class DungeonRoomShareCodec {
         }
 
         String body = removeWhitespace(trimmed.substring(MAGIC.length()));
-        String json = gunzip(body);
+        String json = body.startsWith(String.valueOf(COMPACT_BODY_PREFIX))
+                ? inflateCompact(body.substring(1))
+                : gunzip(body);
         Map<String, DungeonRoomDefinition> parsed;
         try {
             parsed = DungeonRoomData.parseDefinitions(json);
@@ -129,12 +137,20 @@ public final class DungeonRoomShareCodec {
         }
     }
 
-    private static byte[] gzip(String text) {
+    /**
+     * The compact form avoids Base64 padding and uses the same printable ASCII
+     * alphabet as route shares. The sentinel keeps existing WPD Base64+GZIP
+     * payloads readable without changing their wire representation.
+     */
+    private static byte[] deflate(String text) {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
-        try (GZIPOutputStream gz = new GZIPOutputStream(out)) {
-            gz.write(text.getBytes(StandardCharsets.UTF_8));
+        Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);
+        try (DeflaterOutputStream compressed = new DeflaterOutputStream(out, deflater)) {
+            compressed.write(text.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
             throw new IllegalStateException("dungeon route export failed", e);
+        } finally {
+            deflater.end();
         }
         return out.toByteArray();
     }
@@ -142,6 +158,32 @@ public final class DungeonRoomShareCodec {
     private static String gunzip(String body) {
         byte[] compressed = decodeBase64Bytes(body);
         try (GZIPInputStream in = new GZIPInputStream(new ByteArrayInputStream(compressed))) {
+            byte[] buffer = new byte[8192];
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            int total = 0;
+            int read;
+            while ((read = in.read(buffer)) >= 0) {
+                total += read;
+                if (total > MAX_DECODED_JSON_CHARS) {
+                    throw new IllegalArgumentException("decoded dungeon route JSON is too large (max "
+                            + MAX_DECODED_JSON_CHARS + " bytes)");
+                }
+                out.write(buffer, 0, read);
+            }
+            return out.toString(StandardCharsets.UTF_8);
+        } catch (IOException | IllegalArgumentException e) {
+            throw new IllegalArgumentException("dungeon route payload failed to decode", e);
+        }
+    }
+
+    private static String inflateCompact(String body) {
+        byte[] compressed;
+        try {
+            compressed = AsciiStreamCodec.decode(body);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("dungeon route payload failed to decode", e);
+        }
+        try (InflaterInputStream in = new InflaterInputStream(new ByteArrayInputStream(compressed))) {
             byte[] buffer = new byte[8192];
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             int total = 0;

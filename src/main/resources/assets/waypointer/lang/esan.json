@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Uçâh l'artura de Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Traçadorê",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Dibuha un traçadôh dêdde la mira âtta er punto de mâmmorra âttibo.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Trayêttoriâ de Ender Pearl",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Dibuha el arco de lançamiento grabao pa la âççión Ender Pearl âttiba.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Camino de entrá âtta er primêh punto de la mâmmorra",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Dibuha al entrâh en una çala un camino âtto pa teletrâpporte âtta er punto #1.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Continuâh er camino trâ er primêh punto",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Errôh de importaçión",
   "waypointer.import.failed.empty": "No çe an encontrao puntô de referençia.",
   "waypointer.screen.debug.payload.empty": "No çe an cargao datô.",
-  "waypointer.screen.debug.payload.empty_hint": "Copia una cadena de êpportaçión %1$s y âh clîh en \"Âttualiçâh\".",
-  "key.waypointer.toggle_tiny": "Âttibâh o deçâttibâh çûppunto diminuto",
-  "key.waypointer.toggle_filled": "Âttibâh o deçâttibâh çûppunto reyeno",
-  "key.waypointer.toggle_hide_after_parent": "Âttibâh o deçâttibâh ocurtâh er çûppunto trâ er prinçipâh",
-  "key.waypointer.toggle_stand_skip": "Âttibâh o deçâttibâh omitîh ar paráhçe",
-  "key.waypointer.toggle_interact_skip": "Âttibâh o deçâttibâh omitîh ar interâttuâh",
-  "key.waypointer.toggle_mine_skip": "Âttibâh o deçâttibâh omitîh ar minâh",
-  "key.waypointer.toggle_depth_check": "Âttibâh o deçâttibâh renderiçâh çolo con línea de biçión",
-  "waypointer.settings.group.system.waypoint_editor": "Editôh de puntô",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Atahô der editôh de puntô",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configura lô atahô de teclao que çe uçan ar editâh puntô."
+  "waypointer.screen.debug.payload.empty_hint": "Copia una cadena de êpportaçión %1$s y âh clîh en \"Âttualiçâh\"."
 }

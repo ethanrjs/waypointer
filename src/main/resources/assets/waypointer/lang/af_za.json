@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Gebruik Etherwarp-hoogte",
   "waypointer.settings.setting.showDungeonTracers.label": "Naspoorlyne",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Teken 'n naspoorlyn van die kruisdraad na die aktiewe kerker-wegpunt.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Ender Pearl-trajekte",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Teken die opgeneemde lanseringsboog vir die aktiewe Ender Pearl-aksie.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Kerker-toegangspad na die eerste wegpunt",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Teken 'n teleport-vriendelike pad na wegpunt #1 terwyl jy 'n kerkerkamer binnegaan.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Gaan voort met die kerkerpad ná die eerste wegpunt",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Ender Pearl-wegpuntkleur",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Gebruik wanneer hierdie kerkeraksie geen pasgemaakte kleur het nie.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Ender Pearl-wegpuntkleur",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Kies die outomatiese Ender Pearl-wegpuntkleur.",
-  "key.waypointer.toggle_tiny": "Skakel klein subwegpunt",
-  "key.waypointer.toggle_filled": "Skakel gevulde subwegpunt",
-  "key.waypointer.toggle_hide_after_parent": "Skakel versteek subwegpunt na ouer",
-  "key.waypointer.toggle_stand_skip": "Skakel staan om oor te slaan",
-  "key.waypointer.toggle_interact_skip": "Skakel interaksie om oor te slaan",
-  "key.waypointer.toggle_mine_skip": "Skakel myn om oor te slaan",
-  "key.waypointer.toggle_depth_check": "Skakel slegs lewering binne siglyn",
-  "waypointer.settings.group.system.waypoint_editor": "Wegpuntredigeerder",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Wegpuntredigeerder-sleutelbindings",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Stel sleutelbordkortpaaie op wat tydens die redigering van wegpunte gebruik word."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Kies die outomatiese Ender Pearl-wegpuntkleur."
 }

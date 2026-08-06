@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Usa l'altezza di Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Traccianti",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Disegna un tracciante dal mirino al punto di riferimento del dungeon attivo.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Traiettorie di perle di Ender",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Disegna l'arco di lancio registrato per l'azione attiva della Ender Pearl.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Percorso di ingresso al dungeon fino al primo punto di riferimento",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Disegna un percorso compatibile con il teletrasporto verso il punto di riferimento #1 mentre entri in una stanza del dungeon.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Continua il percorso del dungeon dopo il primo",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Importazione fallita",
   "waypointer.import.failed.empty": "Nessun punto di riferimento trovato.",
   "waypointer.screen.debug.payload.empty": "Nessun payload caricato.",
-  "waypointer.screen.debug.payload.empty_hint": "Copia una stringa di esportazione %1$s, quindi clicca su \"Aggiorna\".",
-  "key.waypointer.toggle_tiny": "Attiva/disattiva sottopunto piccolo",
-  "key.waypointer.toggle_filled": "Attiva/disattiva sottopunto pieno",
-  "key.waypointer.toggle_hide_after_parent": "Attiva/disattiva nascondere il sottopunto dopo il punto principale",
-  "key.waypointer.toggle_stand_skip": "Attiva/disattiva rimanere in piedi per saltare",
-  "key.waypointer.toggle_interact_skip": "Attiva/disattiva interagire per saltare",
-  "key.waypointer.toggle_mine_skip": "Attiva/disattiva scavare per saltare",
-  "key.waypointer.toggle_depth_check": "Attiva/disattiva la visualizzazione solo in linea di vista",
-  "waypointer.settings.group.system.waypoint_editor": "Editor dei punti di riferimento",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Tasti dell'editor dei punti di riferimento",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configura le scorciatoie da tastiera usate durante la modifica dei punti di riferimento."
+  "waypointer.screen.debug.payload.empty_hint": "Copia una stringa di esportazione %1$s, quindi clicca su \"Aggiorna\"."
 }

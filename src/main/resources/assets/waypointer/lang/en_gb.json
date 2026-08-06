@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Use Etherwarp height",
   "waypointer.settings.setting.showDungeonTracers.label": "Tracers",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Draw a tracer from the crosshair to the active dungeon waypoint.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Ender Pearl trajectories",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Draw the recorded launch arc for the active Ender Pearl action.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Dungeon entry path to first waypoint",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Draw a teleport-friendly path to waypoint #1 whilst entering a dungeon room.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Continue dungeon path after first",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Ender Pearl waypoint colour",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Used when this dungeon action has no custom colour.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Ender Pearl waypoint colour",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Pick automatic Ender Pearl waypoint colour.",
-  "key.waypointer.toggle_tiny": "Toggle Tiny Subwaypoint",
-  "key.waypointer.toggle_filled": "Toggle Filled Subwaypoint",
-  "key.waypointer.toggle_hide_after_parent": "Toggle Hide Subwaypoint After Parent",
-  "key.waypointer.toggle_stand_skip": "Toggle Stand to Skip",
-  "key.waypointer.toggle_interact_skip": "Toggle Interact to Skip",
-  "key.waypointer.toggle_mine_skip": "Toggle Mine to Skip",
-  "key.waypointer.toggle_depth_check": "Toggle Render in LOS Only",
-  "waypointer.settings.group.system.waypoint_editor": "Waypoint editor",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Waypoint editor keybinds",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configure keyboard shortcuts used while editing waypoints."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Pick automatic Ender Pearl waypoint colour."
 }

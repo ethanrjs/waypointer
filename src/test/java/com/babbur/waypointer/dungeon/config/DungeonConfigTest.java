@@ -45,7 +45,6 @@ class DungeonConfigTest {
         assertFalse(config.showDungeonTracers());
         assertEquals(1, config.visibleSecretStages());
         assertTrue(config.secretCompletionSound());
-        assertTrue(config.showPearlTrajectories());
         assertEquals(0x2EE0FF, config.automaticSecretColor());
         assertEquals(0x9C2EFF, config.automaticEtherwarpColor());
         assertEquals(0x4FE05A, config.automaticBreakBlocksColor());
@@ -101,7 +100,6 @@ class DungeonConfigTest {
         assertFalse(config.showDungeonRouteLines());
         assertFalse(config.showDungeonTracers());
         assertFalse(config.secretCompletionSound());
-        assertFalse(config.showPearlTrajectories());
     }
 
     @Test
@@ -118,7 +116,6 @@ class DungeonConfigTest {
         config.setShowDungeonTracers(true);
         config.setVisibleSecretStages(5);
         config.setSecretCompletionSound(false);
-        config.setShowPearlTrajectories(false);
         config.setAutomaticSecretColor(0x010101);
         config.setAutomaticEtherwarpColor(0x020202);
         config.setAutomaticBreakBlocksColor(0x030303);
@@ -142,7 +139,6 @@ class DungeonConfigTest {
         assertFalse(config.showDungeonTracers());
         assertEquals(1, config.visibleSecretStages());
         assertTrue(config.secretCompletionSound());
-        assertTrue(config.showPearlTrajectories());
         assertEquals(0x2EE0FF, config.automaticSecretColor());
         assertEquals(0x9C2EFF, config.automaticEtherwarpColor());
         assertEquals(0x4FE05A, config.automaticBreakBlocksColor());
@@ -243,8 +239,6 @@ class DungeonConfigTest {
         config.setVisibleSecretStages(2);
         config.setSecretCompletionSound(true);
         config.setSecretCompletionSound(false);
-        config.setShowPearlTrajectories(true);
-        config.setShowPearlTrajectories(false);
         config.setAutomaticSecretColor(0x010101);
         config.setAutomaticEtherwarpColor(0x020202);
         config.setAutomaticBreakBlocksColor(0x030303);
@@ -266,7 +260,7 @@ class DungeonConfigTest {
         config.disableRoomRoutes(List.of("room-a", "room-a"));
         config.disableRoomRoutes(List.of("room-a"));
 
-        assertEquals(23, changes.get());
+        assertEquals(22, changes.get());
     }
 
     @Test

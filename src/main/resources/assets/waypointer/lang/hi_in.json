@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Etherwarp की ऊँचाई इस्तेमाल करें",
   "waypointer.settings.setting.showDungeonTracers.label": "ट्रेसर",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "क्रॉसहेयर से सक्रिय डंजन वेपॉइंट तक ट्रेसर बनाएँ।",
-  "waypointer.settings.setting.showPearlTrajectories.label": "एन्डर मोती के प्रक्षेप-पथ",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "सक्रिय एन्डर मोती क्रिया के लिए रिकॉर्ड किया गया फेंकने का चाप बनाएँ।",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "डंजन के प्रवेश से पहले वेपॉइंट तक रास्ता",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "डंजन कमरे में प्रवेश करते समय वेपॉइंट #1 तक टेलीपोर्ट के अनुकूल रास्ता बनाएँ।",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "पहले वेपॉइंट के बाद डंजन रास्ता जारी रखें",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "इम्पोर्ट विफल",
   "waypointer.import.failed.empty": "कोई वेपॉइंट नहीं मिला।",
   "waypointer.screen.debug.payload.empty": "कोई पेलोड लोड नहीं है।",
-  "waypointer.screen.debug.payload.empty_hint": "%1$s एक्सपोर्ट स्ट्रिंग कॉपी करें, फिर \"ताज़ा करें\" पर क्लिक करें।",
-  "key.waypointer.toggle_tiny": "छोटा सब-वेपॉइंट टॉगल करें",
-  "key.waypointer.toggle_filled": "भरा हुआ सब-वेपॉइंट टॉगल करें",
-  "key.waypointer.toggle_hide_after_parent": "मूल के बाद सब-वेपॉइंट छिपाना टॉगल करें",
-  "key.waypointer.toggle_stand_skip": "खड़े होकर छोड़ना टॉगल करें",
-  "key.waypointer.toggle_interact_skip": "क्रिया करके छोड़ना टॉगल करें",
-  "key.waypointer.toggle_mine_skip": "माइन करके छोड़ना टॉगल करें",
-  "key.waypointer.toggle_depth_check": "केवल नज़र की सीध में रेंडर करना टॉगल करें",
-  "waypointer.settings.group.system.waypoint_editor": "वेपॉइंट एडिटर",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "वेपॉइंट एडिटर की कीबाइंड",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "वेपॉइंट एडिट करते समय इस्तेमाल होने वाले कीबोर्ड शॉर्टकट कॉन्फ़िगर करें।"
+  "waypointer.screen.debug.payload.empty_hint": "%1$s एक्सपोर्ट स्ट्रिंग कॉपी करें, फिर \"ताज़ा करें\" पर क्लिक करें।"
 }

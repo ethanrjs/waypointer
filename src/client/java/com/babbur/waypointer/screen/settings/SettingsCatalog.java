@@ -64,7 +64,6 @@ public final class SettingsCatalog {
     public static final String ACTION_RESET_DEFAULTS = "action.resetDefaults";
     public static final String ACTION_PERF_TEST = "action.perfTest";
     public static final String ACTION_WAYPOINT_PAINT = "action.waypointPaint";
-    public static final String ACTION_WAYPOINT_EDITOR_KEYBINDS = "action.waypointEditorKeybinds";
 
     private static final Setting.EnabledWhen ANY_LABEL_TEXT = (c, d) ->
             c.showWaypointNames() || c.showWaypointDistances() || c.showRouteProgress();
@@ -501,12 +500,6 @@ public final class SettingsCatalog {
                                         "Draw a tracer from the crosshair to the active dungeon waypoint.",
                                         (c, d) -> d.showDungeonTracers(),
                                         (c, d, v) -> d.setShowDungeonTracers((Boolean) v))
-                                        .impact(Setting.Impact.LOW),
-                                Setting.bool("showPearlTrajectories", DUNGEON,
-                                        "Ender Pearl trajectories",
-                                        "Draw the launch arc for the active Ender Pearl action.",
-                                        (c, d) -> d.showPearlTrajectories(),
-                                        (c, d, v) -> d.setShowPearlTrajectories((Boolean) v))
                                         .impact(Setting.Impact.LOW)),
                         Group.plain("Automatic waypoint colors",
                                 dungeonColor("automaticSecretColor", "Secret waypoint color",
@@ -647,11 +640,6 @@ public final class SettingsCatalog {
 
     private static Category system() {
         return Category.of("system", "System",
-                Group.plain("Waypoint editor",
-                        Setting.action(ACTION_WAYPOINT_EDITOR_KEYBINDS, "Waypoint editor keybinds",
-                                "Configure Tiny, Filled, Hide after parent reached, Stand to skip, "
-                                        + "Interact to skip, Mine to skip, and Render in LOS only. "
-                                        + "These shortcuts only work on the selected waypoint in the route editor.")),
                 Group.plain(null,
                         Setting.bool("irisShaderHudFallback", MAIN, "Iris shader compatibility",
                                 "Draw tracers and waypoint outlines with a crisp, shader-safe HUD renderer "

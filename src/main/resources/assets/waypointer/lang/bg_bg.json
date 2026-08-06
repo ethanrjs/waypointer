@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Използване на височината на Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Насочващи линии",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Изчертаване на насочваща линия от мерника до активната пътна точка в подземието.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Траектории на перлите от Края",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Изчертаване на записаната дъга на хвърляне за активното действие с перла от Края.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Път от входа на подземието до първата пътна точка",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Изчертаване на удобен за телепортиране път до пътна точка #1 при влизане в стая на подземие.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Продължаване на пътя в подземието след първата точка",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Цвят на пътната точка за Ender Pearl",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Използва се, когато това действие в подземието няма персонализиран цвят.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Цвят на пътната точка за Ender Pearl",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Изберете автоматичния цвят на пътната точка за Ender Pearl.",
-  "key.waypointer.toggle_tiny": "Превключване на малка подточка",
-  "key.waypointer.toggle_filled": "Превключване на запълнена подточка",
-  "key.waypointer.toggle_hide_after_parent": "Превключване на скриването на подточката след родителската точка",
-  "key.waypointer.toggle_stand_skip": "Превключване на стоенето за пропускане",
-  "key.waypointer.toggle_interact_skip": "Превключване на взаимодействието за пропускане",
-  "key.waypointer.toggle_mine_skip": "Превключване на копаенето за пропускане",
-  "key.waypointer.toggle_depth_check": "Превключване на изобразяването само в пряка видимост",
-  "waypointer.settings.group.system.waypoint_editor": "Редактор на пътни точки",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Клавиши на редактора на пътни точки",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Настройте клавишните комбинации, използвани при редактиране на пътни точки."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Изберете автоматичния цвят на пътната точка за Ender Pearl."
 }

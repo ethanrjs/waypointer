@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Usar altura do Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Rastreadores",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Desenhe um rastreador da mira até o marcador ativo da masmorra.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Trajetórias de Pérola de Ender",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Desenhe o arco de lançamento gravado da ação ativa de Pérola de Ender.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Caminho da entrada da masmorra ao primeiro marcador",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Desenhe um caminho adequado para teletransporte até o marcador nº 1 ao entrar em uma sala de masmorra.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Continuar caminho da masmorra após o primeiro",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Falha na importação",
   "waypointer.import.failed.empty": "Nenhum marcador encontrado.",
   "waypointer.screen.debug.payload.empty": "Nenhum dado carregado.",
-  "waypointer.screen.debug.payload.empty_hint": "Copie um texto de exportação %1$s e clique em \"Atualizar\".",
-  "key.waypointer.toggle_tiny": "Alternar submarcador pequeno",
-  "key.waypointer.toggle_filled": "Alternar submarcador preenchido",
-  "key.waypointer.toggle_hide_after_parent": "Alternar ocultação do submarcador após o marcador principal",
-  "key.waypointer.toggle_stand_skip": "Alternar ficar em pé para pular",
-  "key.waypointer.toggle_interact_skip": "Alternar interação para pular",
-  "key.waypointer.toggle_mine_skip": "Alternar mineração para pular",
-  "key.waypointer.toggle_depth_check": "Alternar exibição somente na linha de visão",
-  "waypointer.settings.group.system.waypoint_editor": "Editor de marcadores",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Atalhos do editor de marcadores",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configure os atalhos de teclado usados ao editar marcadores."
+  "waypointer.screen.debug.payload.empty_hint": "Copie um texto de exportação %1$s e clique em \"Atualizar\"."
 }

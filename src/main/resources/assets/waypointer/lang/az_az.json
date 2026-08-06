@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Etherwarp hündürlüyündən istifadə et",
   "waypointer.settings.setting.showDungeonTracers.label": "İzləmə xətləri",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Nişangahdan aktiv zindan yol nöqtəsinə izləmə xətti çək.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Ender Pearl trayektoriyaları",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Aktiv Ender Pearl hərəkəti üçün yazılmış atış qövsünü çək.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Zindan girişindən ilk yol nöqtəsinə cığır",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Zindan otağına daxil olarkən #1 yol nöqtəsinə teleportasiya üçün əlverişli cığır çək.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Zindan cığırını ilk nöqtədən sonra davam etdir",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Ender Pearl yol nöqtəsinin rəngi",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Bu zindan əməliyyatının fərdi rəngi olmadıqda istifadə olunur.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Ender Pearl yol nöqtəsinin rəngi",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Avtomatik Ender Pearl yol nöqtəsi rəngini seçin.",
-  "key.waypointer.toggle_tiny": "Kiçik alt yol nöqtəsini dəyiş",
-  "key.waypointer.toggle_filled": "Dolu alt yol nöqtəsini dəyiş",
-  "key.waypointer.toggle_hide_after_parent": "Əsas nöqtədən sonra alt yol nöqtəsini gizlətməni dəyiş",
-  "key.waypointer.toggle_stand_skip": "Ötürmək üçün dayanmanı dəyiş",
-  "key.waypointer.toggle_interact_skip": "Ötürmək üçün qarşılıqlı əlaqəni dəyiş",
-  "key.waypointer.toggle_mine_skip": "Ötürmək üçün qazmanı dəyiş",
-  "key.waypointer.toggle_depth_check": "Yalnız görmə xəttində göstərməni dəyiş",
-  "waypointer.settings.group.system.waypoint_editor": "Yol nöqtəsi redaktoru",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Yol nöqtəsi redaktoru düymələri",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Yol nöqtələrini redaktə edərkən istifadə olunan klaviatura qısayollarını tənzimlə."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Avtomatik Ender Pearl yol nöqtəsi rəngini seçin."
 }

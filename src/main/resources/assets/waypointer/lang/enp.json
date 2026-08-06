@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Brook Etherwarp height",
   "waypointer.settings.setting.showDungeonTracers.label": "Guide streaks",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Draw a guide streak from the crossheer to the astirred Dungeon wayord.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Ender Mergroat flightpaths",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Draw the written send-off bow for the astirred Ender Mergroat deed.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Dungeon way-in path to first wayord",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Draw a teleport-friendly path to wayord #1 while going into a Dungeon room.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Go on with Dungeon path after first",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Ender Pearl wayord hue",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Used when this dungeon deed has no hand-set hue.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Ender Pearl wayord hue",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Choose the self-working Ender Pearl wayord hue.",
-  "key.waypointer.toggle_tiny": "Switch Small Subwaypoint",
-  "key.waypointer.toggle_filled": "Switch Filled Subwaypoint",
-  "key.waypointer.toggle_hide_after_parent": "Switch Hiding Subwaypoint After Elder",
-  "key.waypointer.toggle_stand_skip": "Switch Standing to Skip",
-  "key.waypointer.toggle_interact_skip": "Switch Handling to Skip",
-  "key.waypointer.toggle_mine_skip": "Switch Mining to Skip",
-  "key.waypointer.toggle_depth_check": "Switch Drawing in LOS Only",
-  "waypointer.settings.group.system.waypoint_editor": "Wayord wender",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Wayord-wender keybinds",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Set the keyboard shortcuts brooked while wending wayords."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Choose the self-working Ender Pearl wayord hue."
 }

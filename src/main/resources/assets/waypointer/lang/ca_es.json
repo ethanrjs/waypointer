@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Utilitza l'alçada d'Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Traçadors",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Dibuixa un traçador des del punt de mira fins al punt de referència de masmorra actiu.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Trajectòries de Perla d'Ender",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Dibuixa l'arc de llançament enregistrat de l'acció de Perla d'Ender activa.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Camí d'entrada a la masmorra fins al primer punt",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Dibuixa un camí apte per a teletransports fins al punt de referència núm. 1 mentre entres en una sala de masmorra.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Continua el camí de la masmorra després del primer punt",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Color del punt de ruta de Ender Pearl",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "S'utilitza quan aquesta acció de masmorra no té cap color personalitzat.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Color del punt de ruta de Ender Pearl",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Tria el color automàtic del punt de ruta de Ender Pearl.",
-  "key.waypointer.toggle_tiny": "Activa o desactiva el subpunt petit",
-  "key.waypointer.toggle_filled": "Activa o desactiva el subpunt farcit",
-  "key.waypointer.toggle_hide_after_parent": "Activa o desactiva l'ocultació del subpunt després del punt pare",
-  "key.waypointer.toggle_stand_skip": "Activa o desactiva posar-s'hi a sobre per ometre",
-  "key.waypointer.toggle_interact_skip": "Activa o desactiva interactuar per ometre",
-  "key.waypointer.toggle_mine_skip": "Activa o desactiva minar per ometre",
-  "key.waypointer.toggle_depth_check": "Activa o desactiva la renderització només amb línia de visió",
-  "waypointer.settings.group.system.waypoint_editor": "Editor de punts de referència",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Dreceres de l'editor de punts de referència",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configura les dreceres de teclat utilitzades en editar punts de referència."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Tria el color automàtic del punt de ruta de Ender Pearl."
 }

@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Käytä Etherwarpin korkeutta",
   "waypointer.settings.setting.showDungeonTracers.label": "Jäljitysviivat",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Piirrä jäljitysviiva tähtäimestä aktiiviseen luolaston reittipisteeseen.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Ender-helmien lentoradat",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Piirrä aktiiviselle Ender-helmitoiminnolle tallennettu heittokaari.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Luolaston sisääntulopolku ensimmäiselle reittipisteelle",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Piirrä teleporttaamiseen sopiva polku reittipisteelle #1 saapuessasi luolastohuoneeseen.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Jatka luolastopolkua ensimmäisen jälkeen",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Tuonti epäonnistui",
   "waypointer.import.failed.empty": "Reittipisteitä ei löytynyt.",
   "waypointer.screen.debug.payload.empty": "Sisältöä ei ole ladattu.",
-  "waypointer.screen.debug.payload.empty_hint": "Kopioi %1$s-vientimerkkijono ja klikkaa sitten \"Päivitä\".",
-  "key.waypointer.toggle_tiny": "Vaihda pieni alireittipiste",
-  "key.waypointer.toggle_filled": "Vaihda täytetty alireittipiste",
-  "key.waypointer.toggle_hide_after_parent": "Vaihda alireittipisteen piilotus pääpisteen jälkeen",
-  "key.waypointer.toggle_stand_skip": "Vaihda seisomalla ohitus",
-  "key.waypointer.toggle_interact_skip": "Vaihda käyttämällä ohitus",
-  "key.waypointer.toggle_mine_skip": "Vaihda louhimalla ohitus",
-  "key.waypointer.toggle_depth_check": "Vaihda renderöinti vain näköyhteydellä",
-  "waypointer.settings.group.system.waypoint_editor": "Reittipiste-editori",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Reittipiste-editorin pikanäppäimet",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Määritä reittipisteitä muokattaessa käytettävät pikanäppäimet."
+  "waypointer.screen.debug.payload.empty_hint": "Kopioi %1$s-vientimerkkijono ja klikkaa sitten \"Päivitä\"."
 }

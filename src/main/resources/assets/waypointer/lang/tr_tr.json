@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Etherwarp yüksekliğini kullan",
   "waypointer.settings.setting.showDungeonTracers.label": "İz çizgileri",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "İmleçten etkin zindan yol noktasına bir iz çizgisi çizer.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Ender İncisi yörüngeleri",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Etkin Ender İncisi eylemi için kaydedilen fırlatma kavisini çizer.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "İlk yol noktasına zindan giriş yolu",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Zindan odasına girerken #1 yol noktasına ışınlanmaya uygun bir yol çizer.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Zindan yolu ilk noktadan sonra devam etsin",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "İçe aktarma başarısız",
   "waypointer.import.failed.empty": "Yol noktası bulunamadı.",
   "waypointer.screen.debug.payload.empty": "Veri yüklenmedi.",
-  "waypointer.screen.debug.payload.empty_hint": "Bir %1$s dışa aktarım dizgesini kopyalayın, ardından \"Yenile\"ye tıklayın.",
-  "key.waypointer.toggle_tiny": "Küçük alt yol noktasını aç/kapat",
-  "key.waypointer.toggle_filled": "Dolu alt yol noktasını aç/kapat",
-  "key.waypointer.toggle_hide_after_parent": "Üst noktadan sonra alt yol noktasını gizlemeyi aç/kapat",
-  "key.waypointer.toggle_stand_skip": "Atlamak için durmayı aç/kapat",
-  "key.waypointer.toggle_interact_skip": "Atlamak için etkileşimi aç/kapat",
-  "key.waypointer.toggle_mine_skip": "Atlamak için kazmayı aç/kapat",
-  "key.waypointer.toggle_depth_check": "Yalnızca görüş hattında işlemeyi aç/kapat",
-  "waypointer.settings.group.system.waypoint_editor": "Yol noktası düzenleyicisi",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Yol noktası düzenleyicisi tuşları",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Yol noktalarını düzenlerken kullanılan klavye kısayollarını yapılandır."
+  "waypointer.screen.debug.payload.empty_hint": "Bir %1$s dışa aktarım dizgesini kopyalayın, ardından \"Yenile\"ye tıklayın."
 }

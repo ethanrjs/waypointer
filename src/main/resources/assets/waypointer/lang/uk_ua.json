@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Використовувати висоту Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Трасери",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Малювати трасер від прицілу до активної маршрутної точки підземелля.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Траєкторії Перлин Енду",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Малювати записану дугу кидка для активної дії з Перлиною Енду.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Шлях від входу до першої маршрутної точки",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Малювати зручний для телепортації шлях до маршрутної точки #1 під час входу в кімнату підземелля.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Продовжувати шлях після першої точки",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Імпорт не вдався",
   "waypointer.import.failed.empty": "Маршрутних точок не знайдено.",
   "waypointer.screen.debug.payload.empty": "Дані не завантажено.",
-  "waypointer.screen.debug.payload.empty_hint": "Скопіюйте рядок експорту %1$s, а потім натисніть «Оновити».",
-  "key.waypointer.toggle_tiny": "Перемкнути мініатюрну підточку",
-  "key.waypointer.toggle_filled": "Перемкнути заповнення підточки",
-  "key.waypointer.toggle_hide_after_parent": "Перемкнути приховування підточки після батьківської",
-  "key.waypointer.toggle_stand_skip": "Перемкнути стояння для пропуску",
-  "key.waypointer.toggle_interact_skip": "Перемкнути взаємодію для пропуску",
-  "key.waypointer.toggle_mine_skip": "Перемкнути ламання для пропуску",
-  "key.waypointer.toggle_depth_check": "Перемкнути відображення лише за прямої видимості",
-  "waypointer.settings.group.system.waypoint_editor": "Редактор маршрутних точок",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Клавіші редактора маршрутних точок",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Налаштуйте сполучення клавіш для редагування маршрутних точок."
+  "waypointer.screen.debug.payload.empty_hint": "Скопіюйте рядок експорту %1$s, а потім натисніть «Оновити»."
 }

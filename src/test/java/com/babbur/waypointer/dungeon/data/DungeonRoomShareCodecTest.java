@@ -10,6 +10,10 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -39,6 +43,8 @@ class DungeonRoomShareCodecTest {
                 DungeonRoomShareCodec.decode("```text\n" + payload + "\n```");
 
         assertTrue(payload.startsWith(DungeonRoomShareCodec.MAGIC));
+        assertTrue(payload.startsWith(DungeonRoomShareCodec.MAGIC + "."),
+                "new dungeon exports should use the compact chat-safe body");
         assertEquals(1, decoded.definitions().size());
         assertEquals(1, decoded.waypointCount());
         assertEquals(definition, decoded.definitions().get(0));
@@ -94,6 +100,25 @@ class DungeonRoomShareCodecTest {
 
         assertTrue(error.getCause() instanceof IllegalArgumentException);
         assertTrue(error.getCause().getMessage().contains("Duplicate dungeon room id"));
+    }
+
+    @Test
+    void decodesLegacyBase64GzipPayloads() throws Exception {
+        DungeonRoomDefinition definition = definition("legacy", "Legacy",
+                DungeonWaypoint.plain("legacy:1", DungeonSecretCategory.CHEST, 2, 70, 3, "Chest"));
+        String json = DungeonRoomData.toJson(List.of(definition));
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (GZIPOutputStream gzip = new GZIPOutputStream(bytes)) {
+            gzip.write(json.getBytes(StandardCharsets.UTF_8));
+        }
+        String legacy = DungeonRoomShareCodec.MAGIC
+                + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes.toByteArray());
+
+        DungeonRoomShareCodec.Decoded decoded = DungeonRoomShareCodec.decode(legacy);
+
+        assertEquals(List.of(definition), decoded.definitions());
+        assertTrue(DungeonRoomShareCodec.encode(List.of(definition)).length() < legacy.length(),
+                "the compact form should be shorter than legacy Base64+GZIP for a normal room route");
     }
 
     private static DungeonRoomDefinition definition(String id, String name, DungeonWaypoint waypoint) {

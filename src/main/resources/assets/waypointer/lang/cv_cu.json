@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Etherwarp ҫӳллӗшӗпе усӑ кур",
   "waypointer.settings.setting.showDungeonTracers.label": "Тӗл йӗрӗсем",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Тӗлленирен ҫӗр айӗнчи ӗҫлекен вырӑн палли патне йӗр ӳкер.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Ender Pearl хускану йӗрӗсем",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Ӗҫлекен Ender Pearl ӗҫӗн ҫырса хунӑ вӗҫев йӗрне ӳкер.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Ҫӗр айӗнчи кӗрӳрен малтанхи паллӑ патне ҫул",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Ҫӗр айӗнчи пӳлӗме кӗнӗ чухне #1 паллӑ патне телепорт валли майлӑ ҫул ӳкер.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Малтанхи паллӑран ҫӗр айӗнчи ҫула малалла кӑтарт",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Ender Pearl маршрут пӑнчӗ тӗсӗ",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Ку подземелье ӗҫӗн хӑйӗн тӗсӗ ҫук чухне усӑ курӑнать.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Ender Pearl маршрут пӑнчӗ тӗсӗ",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Автоматик Ender Pearl маршрут пӑнчӗ тӗсне суйла.",
-  "key.waypointer.toggle_tiny": "Пӗчӗк кӗҫӗн паллӑна улӑштар",
-  "key.waypointer.toggle_filled": "Тултарнӑ кӗҫӗн паллӑна улӑштар",
-  "key.waypointer.toggle_hide_after_parent": "Ашшӗ хыҫҫӑн кӗҫӗн паллӑна пытарнине улӑштар",
-  "key.waypointer.toggle_stand_skip": "Ҫинче тӑрса ирттернине улӑштар",
-  "key.waypointer.toggle_interact_skip": "Тивсе ирттернине улӑштар",
-  "key.waypointer.toggle_mine_skip": "Кӑларса ирттернине улӑштар",
-  "key.waypointer.toggle_depth_check": "Курӑну йӗрӗнче анчах кӑтартнине улӑштар",
-  "waypointer.settings.group.system.waypoint_editor": "Вырӑн палли редакторӗ",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Вырӑн палли редакторӗн клавиша ҫыхӑнӑвӗсем",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Вырӑн паллисене тӳрлетнӗ чухне усӑ куракан клавиатура кӗске ҫулӗсене майлаштар."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Автоматик Ender Pearl маршрут пӑнчӗ тӗсне суйла."
 }

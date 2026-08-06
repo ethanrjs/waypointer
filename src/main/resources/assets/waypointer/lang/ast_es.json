@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Usar l'altor d'Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Trazadores",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Dibuxar un trazador dende'l visor hasta'l puntu de mazmorra activu.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Trayeutories d'Ender Pearl",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Dibuxar l'arcu de llanzamientu grabáu pa l'aición d'Ender Pearl activa.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Camín d'entrada a la mazmorra hasta'l primer puntu",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Dibuxar al entrar nuna sala un camín aptu pa teleporte hasta'l puntu de ruta #1.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Siguir el camín de mazmorra dempués del primeru",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Color del puntu de ruta de Ender Pearl",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Úsase cuando esta aición de mazmorra nun tien un color personalizáu.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Color del puntu de ruta de Ender Pearl",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Escueyi'l color automáticu del puntu de ruta de Ender Pearl.",
-  "key.waypointer.toggle_tiny": "Alternar subpuntu pequeñu",
-  "key.waypointer.toggle_filled": "Alternar subpuntu rellenu",
-  "key.waypointer.toggle_hide_after_parent": "Alternar anubrir el subpuntu dempués del padre",
-  "key.waypointer.toggle_stand_skip": "Alternar tar de pies pa saltar",
-  "key.waypointer.toggle_interact_skip": "Alternar interactuar pa saltar",
-  "key.waypointer.toggle_mine_skip": "Alternar picar pa saltar",
-  "key.waypointer.toggle_depth_check": "Alternar renderizáu namás na llinia de visión",
-  "waypointer.settings.group.system.waypoint_editor": "Editor de puntos de ruta",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Atayos del editor de puntos de ruta",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configura los atayos de tecláu usaos al editar puntos de ruta."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Escueyi'l color automáticu del puntu de ruta de Ender Pearl."
 }

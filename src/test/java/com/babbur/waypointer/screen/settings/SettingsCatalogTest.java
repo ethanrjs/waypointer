@@ -227,16 +227,6 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void waypointEditorKeybindsAreAnActionInSystem() {
-        Setting keybinds = SettingsCatalog.byId(SettingsCatalog.ACTION_WAYPOINT_EDITOR_KEYBINDS);
-
-        assertNotNull(keybinds);
-        assertEquals("Waypoint editor keybinds", keybinds.label());
-        assertEquals(Setting.Kind.ACTION, keybinds.kind());
-        assertEquals("system", categoryContaining(keybinds.id()));
-    }
-
-    @Test
     void routeTimesIsOffByDefaultUnderRoutesAndProgression() {
         Setting routeTimes = SettingsCatalog.byId("routeTimesEnabled");
 

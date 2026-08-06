@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "ใช้ความสูงของ Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "เส้นชี้นำ",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "วาดเส้นชี้นำจากเป้าเล็งไปยังเวย์พอยต์ดันเจียนที่ใช้งานอยู่",
-  "waypointer.settings.setting.showPearlTrajectories.label": "วิถีไข่มุกเอนเดอร์",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "วาดวิถีการขว้างที่บันทึกไว้สำหรับการกระทำด้วยไข่มุกเอนเดอร์ปัจจุบัน",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "เส้นทางเข้าดันเจียนไปยังเวย์พอยต์แรก",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "วาดเส้นทางที่เหมาะกับการเทเลพอร์ตไปยังเวย์พอยต์ #1 ขณะเข้าห้องดันเจียน",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "เดินเส้นทางดันเจียนต่อหลังจุดแรก",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "นำเข้าไม่สำเร็จ",
   "waypointer.import.failed.empty": "ไม่พบเวย์พอยต์",
   "waypointer.screen.debug.payload.empty": "ยังไม่ได้โหลดข้อมูล",
-  "waypointer.screen.debug.payload.empty_hint": "คัดลอกข้อความส่งออก %1$s แล้วคลิก \"รีเฟรช\"",
-  "key.waypointer.toggle_tiny": "สลับเวย์พอยต์ย่อยขนาดเล็ก",
-  "key.waypointer.toggle_filled": "สลับการเติมสีเวย์พอยต์ย่อย",
-  "key.waypointer.toggle_hide_after_parent": "สลับการซ่อนเวย์พอยต์ย่อยหลังเวย์พอยต์หลัก",
-  "key.waypointer.toggle_stand_skip": "สลับการยืนเพื่อข้าม",
-  "key.waypointer.toggle_interact_skip": "สลับการโต้ตอบเพื่อข้าม",
-  "key.waypointer.toggle_mine_skip": "สลับการขุดเพื่อข้าม",
-  "key.waypointer.toggle_depth_check": "สลับการแสดงผลเฉพาะในแนวสายตา",
-  "waypointer.settings.group.system.waypoint_editor": "ตัวแก้ไขเวย์พอยต์",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "ปุ่มลัดของตัวแก้ไขเวย์พอยต์",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "ตั้งค่าปุ่มลัดที่ใช้ขณะแก้ไขเวย์พอยต์"
+  "waypointer.screen.debug.payload.empty_hint": "คัดลอกข้อความส่งออก %1$s แล้วคลิก \"รีเฟรช\""
 }

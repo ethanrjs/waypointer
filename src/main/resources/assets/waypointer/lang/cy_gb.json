@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Defnyddio uchder Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Olrheinwyr",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Lluniadu olrheiniwr o'r croeslin at bwynt ffordd gweithredol y daeardy.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Taflwybrau Perl Ender",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Lluniadu'r arc lansio a recordiwyd ar gyfer gweithred weithredol Perl Ender.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Llwybr mynediad daeardy at y pwynt ffordd cyntaf",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Lluniadu llwybr sy'n addas ar gyfer telegludo at bwynt ffordd #1 wrth fynd i mewn i ystafell daeardy.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Parhau llwybr y daeardy ar ôl y cyntaf",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Lliw cyfeirbwynt Ender Pearl",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Defnyddir pan nad oes lliw personol gan y weithred dwnsiwn hon.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Lliw cyfeirbwynt Ender Pearl",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Dewiswch liw awtomatig cyfeirbwynt Ender Pearl.",
-  "key.waypointer.toggle_tiny": "Toglo is-bwynt ffordd bach",
-  "key.waypointer.toggle_filled": "Toglo is-bwynt ffordd wedi'i lenwi",
-  "key.waypointer.toggle_hide_after_parent": "Toglo cuddio is-bwynt ffordd ar ôl ei riant",
-  "key.waypointer.toggle_stand_skip": "Toglo sefyll i hepgor",
-  "key.waypointer.toggle_interact_skip": "Toglo rhyngweithio i hepgor",
-  "key.waypointer.toggle_mine_skip": "Toglo cloddio i hepgor",
-  "key.waypointer.toggle_depth_check": "Toglo rendro yn y llinell welediad yn unig",
-  "waypointer.settings.group.system.waypoint_editor": "Golygydd pwyntiau ffordd",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Bysellau golygydd pwyntiau ffordd",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Ffurfweddwch y llwybrau byr bysellfwrdd a ddefnyddir wrth olygu pwyntiau ffordd."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Dewiswch liw awtomatig cyfeirbwynt Ender Pearl."
 }

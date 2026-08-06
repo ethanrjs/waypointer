@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Usar la altura de Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Trazadores",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Dibujá un trazador desde la mira hasta el punto de mazmorra activo.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Trayectorias de perla de ender",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Dibujá el arco de lanzamiento grabado para la acción de perla de ender activa.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Ruta de entrada al primer punto de la mazmorra",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Dibujá una ruta apta para teletransporte hasta el punto #1 al entrar a una sala de mazmorra.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Continuar ruta de mazmorra tras el primero",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Falló la importación",
   "waypointer.import.failed.empty": "No se encontraron puntos.",
   "waypointer.screen.debug.payload.empty": "No hay datos cargados.",
-  "waypointer.screen.debug.payload.empty_hint": "Copiá una cadena de exportación %1$s y hacé click en \"Actualizar\".",
-  "key.waypointer.toggle_tiny": "Alternar subpunto diminuto",
-  "key.waypointer.toggle_filled": "Alternar subpunto relleno",
-  "key.waypointer.toggle_hide_after_parent": "Alternar ocultar subpunto después del principal",
-  "key.waypointer.toggle_stand_skip": "Alternar omitir al pararse",
-  "key.waypointer.toggle_interact_skip": "Alternar omitir al interactuar",
-  "key.waypointer.toggle_mine_skip": "Alternar omitir al minar",
-  "key.waypointer.toggle_depth_check": "Alternar renderizado solo con línea de visión",
-  "waypointer.settings.group.system.waypoint_editor": "Editor de puntos de ruta",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Atajos del editor de puntos de ruta",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configurá los atajos de teclado que se usan al editar puntos de ruta."
+  "waypointer.screen.debug.payload.empty_hint": "Copiá una cadena de exportación %1$s y hacé click en \"Actualizar\"."
 }

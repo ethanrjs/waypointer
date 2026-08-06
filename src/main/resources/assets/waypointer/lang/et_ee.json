@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Kasuta Etherwarpi kõrgust",
   "waypointer.settings.setting.showDungeonTracers.label": "Suunajooned",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Joonista sihiku juurest aktiivse koopa teepunktini suunajoon.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Enderipärli lennukaared",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Joonista aktiivse enderipärlitoimingu salvestatud heitekaar.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Koopa sissepääsutee esimese teepunktini",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Joonista kooparuumi sisenemisel teleportimiseks sobiv tee teepunktini #1.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Jätka koopateed pärast esimest teepunkti",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Importimine ebaõnnestus",
   "waypointer.import.failed.empty": "Teepunkte ei leitud.",
   "waypointer.screen.debug.payload.empty": "Andmeid pole laaditud.",
-  "waypointer.screen.debug.payload.empty_hint": "Kopeeri %1$s ekspordistring ja klõpsa seejärel \"Värskenda\".",
-  "key.waypointer.toggle_tiny": "Lülita tilluke alamteepunkt sisse/välja",
-  "key.waypointer.toggle_filled": "Lülita täidetud alamteepunkt sisse/välja",
-  "key.waypointer.toggle_hide_after_parent": "Lülita alamteepunkti peitmine pärast ülemteepunkti sisse/välja",
-  "key.waypointer.toggle_stand_skip": "Lülita seistes vahelejätmine sisse/välja",
-  "key.waypointer.toggle_interact_skip": "Lülita suheldes vahelejätmine sisse/välja",
-  "key.waypointer.toggle_mine_skip": "Lülita kaevandades vahelejätmine sisse/välja",
-  "key.waypointer.toggle_depth_check": "Lülita ainult vaba vaatejoone korral renderdamine sisse/välja",
-  "waypointer.settings.group.system.waypoint_editor": "Teepunktiredaktor",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Teepunktiredaktori kiirklahvid",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Seadista teepunktide muutmisel kasutatavaid kiirklahve."
+  "waypointer.screen.debug.payload.empty_hint": "Kopeeri %1$s ekspordistring ja klõpsa seejärel \"Värskenda\"."
 }

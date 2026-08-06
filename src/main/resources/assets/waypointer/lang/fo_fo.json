@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Brúka Etherwarp-hædd",
   "waypointer.settings.setting.showDungeonTracers.label": "Vísarastrikur",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Tekna eina vísarastriku frá tráðkrossinum at virka dýflissuleiðarpunktinum.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Ferlar hjá Enderperlum",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Tekna upptikna kastiferilin hjá virku Enderperlu-gerðini.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Dýflissuinngonguleið til fyrsta leiðarpunkt",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Tekna eina leið, ið hóskar til fjarflyting, til leiðarpunkt #1, meðan tú fert inn í eitt dýflissurúm.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Halt dýflissuleiðini fram eftir hin fyrsta",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Innflutningur miseydnaðist",
   "waypointer.import.failed.empty": "Ongir leiðarpunktar funnir.",
   "waypointer.screen.debug.payload.empty": "Eingin dátupakki lisin inn.",
-  "waypointer.screen.debug.payload.empty_hint": "Avrita ein %1$s-útflutningstekst, og trýst síðani á \"Dagfør\".",
-  "key.waypointer.toggle_tiny": "Skift lítlan undirleiðarpunkt",
-  "key.waypointer.toggle_filled": "Skift fyltan undirleiðarpunkt",
-  "key.waypointer.toggle_hide_after_parent": "Skift fjaling av undirleiðarpunkti eftir høvuðspunkt",
-  "key.waypointer.toggle_stand_skip": "Skift umleyping við at standa",
-  "key.waypointer.toggle_interact_skip": "Skift umleyping við at samvirka",
-  "key.waypointer.toggle_mine_skip": "Skift umleyping við at høgga",
-  "key.waypointer.toggle_depth_check": "Skift vísing bara við sjónlinju",
-  "waypointer.settings.group.system.waypoint_editor": "Leiðarpunktsritil",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Snarvegir í leiðarpunktsritlinum",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Stilla knappaborðssnarvegir, sum verða brúktir, tá leiðarpunktar verða broyttir."
+  "waypointer.screen.debug.payload.empty_hint": "Avrita ein %1$s-útflutningstekst, og trýst síðani á \"Dagfør\"."
 }
