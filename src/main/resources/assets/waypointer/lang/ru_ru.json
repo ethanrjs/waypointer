@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "Копировать",
   "waypointer.export.fit.chat_and_commands": "Помещается в чат и команды",
   "waypointer.export.fit.chat_only": "Помещается в чат, но слишком длинный для команд вроде /pc",
-  "waypointer.export.fit.too_long": "Слишком длинный для чата — поделитесь им в Discord",
+  "waypointer.export.fit.too_long": "Слишком длинный для чата",
   "waypointer.export.characters": "%1$s симв.",
   "waypointer.screen.add_named.title.waypoint": "Создать точку",
   "waypointer.screen.add_named.title.named": "Создать именованную точку",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Переключить отображение только при прямой видимости",
   "waypointer.settings.group.system.waypoint_editor": "Редактор точек",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Клавиши редактора точек",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Настройте сочетания клавиш, используемые при редактировании точек."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Настройте сочетания клавиш, используемые при редактировании точек.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

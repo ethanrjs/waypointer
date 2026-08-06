@@ -81,6 +81,17 @@ class TranslationCatalogTest {
     }
 
     @Test
+    void tooLongForChatMessageDoesNotSuggestDiscord() throws IOException {
+        String key = "waypointer.export.fit.too_long";
+        assertEquals("Too long for chat", readCatalog(LANG_DIR.resolve("en_us.json")).get(key));
+        for (Path localeFile : localeFiles()) {
+            String value = readCatalog(localeFile).get(key);
+            assertFalse(value.toLowerCase(java.util.Locale.ROOT).contains("discord"),
+                    localeName(localeFile) + " still suggests Discord for " + key);
+        }
+    }
+
+    @Test
     void literalComponentTranslationKeysExistInTheCanonicalCatalog() throws IOException {
         Set<String> englishKeys = readCatalog(LANG_DIR.resolve("en_us.json")).keySet();
         Map<String, Set<String>> references = literalTranslationReferences();

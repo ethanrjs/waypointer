@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "Copiar",
   "waypointer.export.fit.chat_and_commands": "Cabe no chat e nos comandos",
   "waypointer.export.fit.chat_only": "Cabe no chat, mas é demasiado longo para comandos como /pc",
-  "waypointer.export.fit.too_long": "Demasiado longo para o chat — partilha-o no Discord",
+  "waypointer.export.fit.too_long": "Demasiado longo para o chat",
   "waypointer.export.characters": "%1$s carateres",
   "waypointer.screen.add_named.title.waypoint": "Criar marcador",
   "waypointer.screen.add_named.title.named": "Criar marcador com nome",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Ativar/desativar apresentação apenas na linha de visão",
   "waypointer.settings.group.system.waypoint_editor": "Editor de marcadores",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Atalhos do editor de marcadores",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configura os atalhos de teclado utilizados ao editar marcadores."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configura os atalhos de teclado utilizados ao editar marcadores.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

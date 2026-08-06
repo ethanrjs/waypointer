@@ -29,7 +29,7 @@
   "waypointer.export.copy_clipboard": "Αντιγραφή",
   "waypointer.export.fit.chat_and_commands": "Χωράει στη συνομιλία και στις εντολές",
   "waypointer.export.fit.chat_only": "Χωράει στη συνομιλία, αλλά είναι πολύ μεγάλο για εντολές όπως /pc",
-  "waypointer.export.fit.too_long": "Πολύ μεγάλο για τη συνομιλία — μοιράσου το στο Discord",
+  "waypointer.export.fit.too_long": "Πολύ μεγάλο για τη συνομιλία",
   "waypointer.export.characters": "%1$s χαρακτήρες",
   "waypointer.screen.add_named.title.waypoint": "Δημιουργία δείκτη",
   "waypointer.screen.add_named.title.named": "Δημιουργία επώνυμου δείκτη",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Εναλλαγή απόδοσης μόνο εντός οπτικής επαφής",
   "waypointer.settings.group.system.waypoint_editor": "Επεξεργαστής δεικτών",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Συντομεύσεις επεξεργαστή δεικτών",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Ρύθμισε τις συντομεύσεις πληκτρολογίου που χρησιμοποιούνται κατά την επεξεργασία δεικτών."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Ρύθμισε τις συντομεύσεις πληκτρολογίου που χρησιμοποιούνται κατά την επεξεργασία δεικτών.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

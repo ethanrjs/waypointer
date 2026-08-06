@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "คัดลอก",
   "waypointer.export.fit.chat_and_commands": "ใช้ได้ทั้งในแชตและคำสั่ง",
   "waypointer.export.fit.chat_only": "ใช้ได้ในแชต แต่ยาวเกินไปสำหรับคำสั่งอย่าง /pc",
-  "waypointer.export.fit.too_long": "ยาวเกินไปสำหรับแชต — แชร์บน Discord",
+  "waypointer.export.fit.too_long": "ยาวเกินไปสำหรับแชต",
   "waypointer.export.characters": "%1$s ตัวอักษร",
   "waypointer.screen.add_named.title.waypoint": "สร้างเวย์พอยต์",
   "waypointer.screen.add_named.title.named": "สร้างเวย์พอยต์พร้อมชื่อ",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "สลับการแสดงผลเฉพาะในแนวสายตา",
   "waypointer.settings.group.system.waypoint_editor": "ตัวแก้ไขเวย์พอยต์",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "ปุ่มลัดของตัวแก้ไขเวย์พอยต์",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "ตั้งค่าปุ่มลัดที่ใช้ขณะแก้ไขเวย์พอยต์"
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "ตั้งค่าปุ่มลัดที่ใช้ขณะแก้ไขเวย์พอยต์",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

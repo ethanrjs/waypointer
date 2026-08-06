@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "复制",
   "waypointer.export.fit.chat_and_commands": "可用于聊天和命令",
   "waypointer.export.fit.chat_only": "可用于聊天，但对 /pc 等命令而言过长",
-  "waypointer.export.fit.too_long": "对聊天而言过长 — 请在 Discord 上分享",
+  "waypointer.export.fit.too_long": "对聊天而言过长",
   "waypointer.export.characters": "%1$s 个字符",
   "waypointer.screen.add_named.title.waypoint": "创建路径点",
   "waypointer.screen.add_named.title.named": "创建命名路径点",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "切换仅在视线内渲染",
   "waypointer.settings.group.system.waypoint_editor": "路径点编辑器",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "路径点编辑器按键绑定",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "配置编辑路径点时使用的键盘快捷键。"
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "配置编辑路径点时使用的键盘快捷键。",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

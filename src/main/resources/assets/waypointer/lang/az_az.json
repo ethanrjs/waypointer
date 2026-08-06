@@ -29,7 +29,7 @@
   "waypointer.export.copy_clipboard": "Kopyala",
   "waypointer.export.fit.chat_and_commands": "Söhbətə və əmrlərə sığır",
   "waypointer.export.fit.chat_only": "Söhbətə sığır, lakin /pc kimi əmrlər üçün çox uzundur",
-  "waypointer.export.fit.too_long": "Söhbət üçün çox uzundur — Discord-da paylaş",
+  "waypointer.export.fit.too_long": "Söhbət üçün çox uzundur",
   "waypointer.export.characters": "%1$s simvol",
   "waypointer.screen.add_named.title.waypoint": "Yol nöqtəsi yarat",
   "waypointer.screen.add_named.title.named": "Adlı yol nöqtəsi yarat",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Yalnız görmə xəttində göstərməni dəyiş",
   "waypointer.settings.group.system.waypoint_editor": "Yol nöqtəsi redaktoru",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Yol nöqtəsi redaktoru düymələri",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Yol nöqtələrini redaktə edərkən istifadə olunan klaviatura qısayollarını tənzimlə."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Yol nöqtələrini redaktə edərkən istifadə olunan klaviatura qısayollarını tənzimlə.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

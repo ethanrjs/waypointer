@@ -106,29 +106,61 @@ public final class RenderHelpers {
         quad(consumer, pose, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
     }
 
+    /** Append one POSITION_COLOR quad. Used by simplified route-preview billboards. */
+    public static void emitFilledQuad(VertexConsumer consumer, PoseStack ps,
+                                      float x1, float y1, float z1,
+                                      float x2, float y2, float z2,
+                                      float x3, float y3, float z3,
+                                      float x4, float y4, float z4,
+                                      int rgb, float alpha) {
+        int r = red(rgb), g = green(rgb), b = blue(rgb);
+        int a = (int) (Math.max(0.0f, Math.min(1.0f, alpha)) * 255f) & 0xFF;
+        quad(consumer, ps.last(), x1, y1, z1, x2, y2, z2,
+                x3, y3, z3, x4, y4, z4, r, g, b, a);
+    }
+
     /** Append a six-face textured box using WaypointPaint's 64x48 T-atlas. */
     public static void emitTexturedBox(VertexConsumer consumer, PoseStack ps,
                                        float x1, float y1, float z1,
                                        float x2, float y2, float z2,
                                        float alpha,
                                        double cameraX, double cameraY, double cameraZ) {
+        emitTexturedBox(consumer, ps, x1, y1, z1, x2, y2, z2, alpha,
+                cameraX, cameraY, cameraZ,
+                WaypointPaintTextureCache.ATLAS_WIDTH,
+                WaypointPaintTextureCache.ATLAS_HEIGHT, 0);
+    }
+
+    /** Textured box variant for an atlas whose 16px face cells have replicated padding. */
+    public static void emitTexturedBox(VertexConsumer consumer, PoseStack ps,
+                                       float x1, float y1, float z1,
+                                       float x2, float y2, float z2,
+                                       float alpha,
+                                       double cameraX, double cameraY, double cameraZ,
+                                       int atlasWidth, int atlasHeight, int padding) {
         int a = Math.round(Math.max(0.0f, Math.min(1.0f, alpha)) * 255.0f);
         PoseStack.Pose pose = ps.last();
         int visible = visibleTexturedFaces(x1, y1, z1, x2, y2, z2,
                 cameraX, cameraY, cameraZ);
 
         if ((visible & 1 << WaypointPaint.Face.DOWN.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.DOWN,
-                x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, a);
+                x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, a,
+                atlasWidth, atlasHeight, padding);
         if ((visible & 1 << WaypointPaint.Face.UP.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.UP,
-                x1, y2, z2, x2, y2, z2, x2, y2, z1, x1, y2, z1, a);
+                x1, y2, z2, x2, y2, z2, x2, y2, z1, x1, y2, z1, a,
+                atlasWidth, atlasHeight, padding);
         if ((visible & 1 << WaypointPaint.Face.NORTH.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.NORTH,
-                x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, a);
+                x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, a,
+                atlasWidth, atlasHeight, padding);
         if ((visible & 1 << WaypointPaint.Face.SOUTH.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.SOUTH,
-                x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, a);
+                x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, a,
+                atlasWidth, atlasHeight, padding);
         if ((visible & 1 << WaypointPaint.Face.WEST.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.WEST,
-                x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, a);
+                x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, a,
+                atlasWidth, atlasHeight, padding);
         if ((visible & 1 << WaypointPaint.Face.EAST.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.EAST,
-                x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, a);
+                x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, a,
+                atlasWidth, atlasHeight, padding);
     }
 
     /** Select only the camera-facing exterior planes so rear paint cannot bleed through. */
@@ -213,15 +245,16 @@ public final class RenderHelpers {
                                      float x2, float y2, float z2,
                                      float x3, float y3, float z3,
                                      float x4, float y4, float z4,
-                                     int alpha) {
-        float halfTexelU = 0.5f / WaypointPaintTextureCache.ATLAS_WIDTH;
-        float halfTexelV = 0.5f / WaypointPaintTextureCache.ATLAS_HEIGHT;
-        float u0 = face.atlasX() / (float) WaypointPaintTextureCache.ATLAS_WIDTH + halfTexelU;
-        float v0 = face.atlasY() / (float) WaypointPaintTextureCache.ATLAS_HEIGHT + halfTexelV;
-        float u1 = (face.atlasX() + WaypointPaint.SIZE)
-                / (float) WaypointPaintTextureCache.ATLAS_WIDTH - halfTexelU;
-        float v1 = (face.atlasY() + WaypointPaint.SIZE)
-                / (float) WaypointPaintTextureCache.ATLAS_HEIGHT - halfTexelV;
+                                     int alpha, int atlasWidth, int atlasHeight, int padding) {
+        int stride = WaypointPaint.SIZE + padding * 2;
+        int faceX = (face.atlasX() / WaypointPaint.SIZE) * stride + padding;
+        int faceY = (face.atlasY() / WaypointPaint.SIZE) * stride + padding;
+        float halfTexelU = 0.5f / atlasWidth;
+        float halfTexelV = 0.5f / atlasHeight;
+        float u0 = faceX / (float) atlasWidth + halfTexelU;
+        float v0 = faceY / (float) atlasHeight + halfTexelV;
+        float u1 = (faceX + WaypointPaint.SIZE) / (float) atlasWidth - halfTexelU;
+        float v1 = (faceY + WaypointPaint.SIZE) / (float) atlasHeight - halfTexelV;
 
         // Side quads are wound from exterior-right to exterior-left. Flip only
         // their U axis so editor pixels remain readable when viewed from outside.

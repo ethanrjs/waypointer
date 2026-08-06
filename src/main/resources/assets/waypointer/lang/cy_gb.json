@@ -29,7 +29,7 @@
   "waypointer.export.copy_clipboard": "Copïo",
   "waypointer.export.fit.chat_and_commands": "Yn ffitio yn y sgwrs ac mewn gorchmynion",
   "waypointer.export.fit.chat_only": "Yn ffitio yn y sgwrs, ond yn rhy hir ar gyfer gorchmynion fel /pc",
-  "waypointer.export.fit.too_long": "Rhy hir ar gyfer y sgwrs — rhannwch ef ar Discord",
+  "waypointer.export.fit.too_long": "Rhy hir ar gyfer y sgwrs",
   "waypointer.export.characters": "%1$s nod",
   "waypointer.screen.add_named.title.waypoint": "Creu Pwynt Ffordd",
   "waypointer.screen.add_named.title.named": "Creu Pwynt Ffordd wedi'i Enwi",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Toglo rendro yn y llinell welediad yn unig",
   "waypointer.settings.group.system.waypoint_editor": "Golygydd pwyntiau ffordd",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Bysellau golygydd pwyntiau ffordd",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Ffurfweddwch y llwybrau byr bysellfwrdd a ddefnyddir wrth olygu pwyntiau ffordd."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Ffurfweddwch y llwybrau byr bysellfwrdd a ddefnyddir wrth olygu pwyntiau ffordd.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

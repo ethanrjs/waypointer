@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "복사",
   "waypointer.export.fit.chat_and_commands": "채팅과 명령어에 들어갑니다",
   "waypointer.export.fit.chat_only": "채팅에는 들어가지만 /pc 같은 명령어에는 너무 깁니다",
-  "waypointer.export.fit.too_long": "채팅에 너무 깁니다 — Discord로 공유하세요",
+  "waypointer.export.fit.too_long": "채팅에 너무 깁니다",
   "waypointer.export.characters": "%1$s자",
   "waypointer.screen.add_named.title.waypoint": "경로점 만들기",
   "waypointer.screen.add_named.title.named": "이름 있는 경로점 만들기",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "시야 확보 시에만 렌더링 전환",
   "waypointer.settings.group.system.waypoint_editor": "경로점 편집기",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "경로점 편집기 키 설정",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "경로점을 편집할 때 사용할 키보드 단축키를 설정합니다."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "경로점을 편집할 때 사용할 키보드 단축키를 설정합니다.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

@@ -29,7 +29,7 @@
   "waypointer.export.copy_clipboard": "Kopieer",
   "waypointer.export.fit.chat_and_commands": "Pas in klets en opdragte",
   "waypointer.export.fit.chat_only": "Pas in klets, maar is te lank vir opdragte soos /pc",
-  "waypointer.export.fit.too_long": "Te lank vir klets — deel dit op Discord",
+  "waypointer.export.fit.too_long": "Te lank vir klets",
   "waypointer.export.characters": "%1$s karakters",
   "waypointer.screen.add_named.title.waypoint": "Skep Wegpunt",
   "waypointer.screen.add_named.title.named": "Skep Benoemde Wegpunt",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Skakel slegs lewering binne siglyn",
   "waypointer.settings.group.system.waypoint_editor": "Wegpuntredigeerder",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Wegpuntredigeerder-sleutelbindings",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Stel sleutelbordkortpaaie op wat tydens die redigering van wegpunte gebruik word."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Stel sleutelbordkortpaaie op wat tydens die redigering van wegpunte gebruik word.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }
