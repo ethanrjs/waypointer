@@ -29,7 +29,7 @@
   "waypointer.export.copy_clipboard": "Kopieer",
   "waypointer.export.fit.chat_and_commands": "Past in chat en commando's",
   "waypointer.export.fit.chat_only": "Past in chat, te lang veur commando's zôas /pc",
-  "waypointer.export.fit.too_long": "Te lang veur chat — deel 't op Discord",
+  "waypointer.export.fit.too_long": "Te lang veur chat",
   "waypointer.export.characters": "%1$s tekens",
   "waypointer.screen.add_named.title.waypoint": "Wegwijzer moake",
   "waypointer.screen.add_named.title.named": "Benoemde wegwijzer moake",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Alleen in zichtlèn taone wissele",
   "waypointer.settings.group.system.waypoint_editor": "Wegwijzerbewerker",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Toetsbindinge van de wegwijzerbewerker",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Stel de toetsenbordkoppelinge in die ge gebrúkt bè 't beweireke van wegwijzers."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Stel de toetsenbordkoppelinge in die ge gebrúkt bè 't beweireke van wegwijzers.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

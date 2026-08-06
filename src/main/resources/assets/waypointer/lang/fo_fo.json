@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "Avrita",
   "waypointer.export.fit.chat_and_commands": "Passar í kjatt og stýriboð",
   "waypointer.export.fit.chat_only": "Passar í kjatt, men er ov long til stýriboð sum /pc",
-  "waypointer.export.fit.too_long": "Ov long til kjatt — deil hana á Discord",
+  "waypointer.export.fit.too_long": "Ov long til kjatt",
   "waypointer.export.characters": "%1$s tekn",
   "waypointer.screen.add_named.title.waypoint": "Stovna leiðarpunkt",
   "waypointer.screen.add_named.title.named": "Stovna navngivnan leiðarpunkt",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Skift vísing bara við sjónlinju",
   "waypointer.settings.group.system.waypoint_editor": "Leiðarpunktsritil",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Snarvegir í leiðarpunktsritlinum",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Stilla knappaborðssnarvegir, sum verða brúktir, tá leiðarpunktar verða broyttir."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Stilla knappaborðssnarvegir, sum verða brúktir, tá leiðarpunktar verða broyttir.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

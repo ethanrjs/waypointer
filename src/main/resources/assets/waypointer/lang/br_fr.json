@@ -29,7 +29,7 @@
   "waypointer.export.copy_clipboard": "Eilañ",
   "waypointer.export.fit.chat_and_commands": "A-walc'h berr evit ar flapañ hag an urzhioù",
   "waypointer.export.fit.chat_only": "A-walc'h berr evit ar flapañ, re hir evit urzhioù evel /pc",
-  "waypointer.export.fit.too_long": "Re hir evit ar flapañ — rannit anezhañ war Discord",
+  "waypointer.export.fit.too_long": "Re hir evit ar flapañ",
   "waypointer.export.characters": "%1$s arouezenn",
   "waypointer.screen.add_named.title.waypoint": "Krouiñ ur spisverk",
   "waypointer.screen.add_named.title.named": "Krouiñ ur spisverk anvet",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Eilpennañ diskouez e-barzh al linenn welout hepken",
   "waypointer.settings.group.system.waypoint_editor": "Aozer spisverkoù",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Berradennoù an aozer spisverkoù",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Keflugit ar berradennoù klavier implijet pa gemmer ar spisverkoù."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Keflugit ar berradennoù klavier implijet pa gemmer ar spisverkoù.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

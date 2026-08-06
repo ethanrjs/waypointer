@@ -35,6 +35,7 @@ import com.babbur.waypointer.render.TracerRenderer;
 import com.babbur.waypointer.render.WaypointRenderer;
 import com.babbur.waypointer.render.HappySnowmanSession;
 import com.babbur.waypointer.screen.WaypointerGuiScreens;
+import com.babbur.waypointer.screen.preview.RoutePreviewPipAdapter;
 import com.babbur.waypointer.screen.WaypointerScreen;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -123,6 +124,7 @@ public final class WaypointerClient implements ClientModInitializer {
         new TempWaypointCleaner(manager).install();
         new WorldJoinProgressReset(manager, config).install();
         HappySnowmanSession.install();
+        RoutePreviewPipAdapter.install();
         new WaypointRenderer(manager, config, dungeonConfig).install();
         new TracerRenderer(manager, config, dungeonConfig).install();
         WaypointRepositionMode.install();

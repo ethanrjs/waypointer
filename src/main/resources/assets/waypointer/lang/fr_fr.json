@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "Copier",
   "waypointer.export.fit.chat_and_commands": "Tient dans le chat et les commandes",
   "waypointer.export.fit.chat_only": "Tient dans le chat, mais est trop long pour les commandes comme /pc",
-  "waypointer.export.fit.too_long": "Trop long pour le chat — partagez-le sur Discord",
+  "waypointer.export.fit.too_long": "Trop long pour le chat",
   "waypointer.export.characters": "%1$s caractères",
   "waypointer.screen.add_named.title.waypoint": "Créer un point de repère",
   "waypointer.screen.add_named.title.named": "Créer un point de repère nommé",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Basculer l'affichage avec ligne de vue uniquement",
   "waypointer.settings.group.system.waypoint_editor": "Éditeur de points de repère",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Raccourcis de l'éditeur de points de repère",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configurer les raccourcis clavier utilisés lors de la modification des points de repère."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configurer les raccourcis clavier utilisés lors de la modification des points de repère.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

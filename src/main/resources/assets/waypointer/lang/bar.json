@@ -29,7 +29,7 @@
   "waypointer.export.copy_clipboard": "Kopiern",
   "waypointer.export.fit.chat_and_commands": "Passt in Chat und Befehle",
   "waypointer.export.fit.chat_only": "Passt in Chat, is oba z'lang für Befehle wia /pc",
-  "waypointer.export.fit.too_long": "Z'lang fürn Chat — teil's auf Discord",
+  "waypointer.export.fit.too_long": "Z'lang fürn Chat",
   "waypointer.export.characters": "%1$s Zeicha",
   "waypointer.screen.add_named.title.waypoint": "Wegpunkt erstelln",
   "waypointer.screen.add_named.title.named": "Benanntn Wegpunkt erstelln",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Nur in Sichtlini rendern umschoin",
   "waypointer.settings.group.system.waypoint_editor": "Wegpunkt-Editor",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Tastnbelegungen vom Wegpunkt-Editor",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Stell d'Tastnkürzl ei, de beim Bearbatn von Wegpunkten benutzt wern."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Stell d'Tastnkürzl ei, de beim Bearbatn von Wegpunkten benutzt wern.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

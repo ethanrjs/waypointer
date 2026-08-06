@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointExportCodec;
@@ -8,6 +9,10 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
+import com.babbur.waypointer.screen.preview.RoutePreviewOrbit;
+import com.babbur.waypointer.screen.preview.RoutePreviewScene;
+import com.babbur.waypointer.screen.preview.RoutePreviewWidget;
+import com.babbur.waypointer.screen.preview.RoutePreviewZoom;
 import com.babbur.waypointer.util.MathUtil;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -18,6 +23,7 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.FormattedText;
@@ -135,6 +141,12 @@ public final class ExportScreen extends Screen {
     private static final int PANEL_MARGIN = 16;
     private static final int PANEL_MIN_W = 260;
     private static final int PANEL_MAX_W = 448;
+    private static final int WIDE_PREVIEW_BREAKPOINT = 736;
+    private static final int PREVIEW_PANE_MIN_W = 240;
+    private static final int PREVIEW_PANE_MAX_W = 360;
+    private static final int PREVIEW_SPLIT_GAP = GAP;
+    private static final int HEADER_SWITCH_W = 70;
+    private static final int PREVIEW_NAV_W = 20;
 
     /**
      * Include rows are laid out in two columns of {@link #INCLUDE_ROWS_PER_COL}.
@@ -186,7 +198,12 @@ public final class ExportScreen extends Screen {
     private Button routeSelectAllButton;
     private Button copyButton;
     private Button copyCodeBlockButton;
+    private Button previewPageButton;
+    private Button previewPreviousButton;
+    private Button previewNextButton;
+    private RoutePreviewWidget routePreviewWidget;
     private boolean routePickerExpanded;
+    private boolean compactPreviewPage;
     private int routeScrollOffset;
     private long copyFeedbackUntil = 0L;
     private long copyCodeBlockFeedbackUntil = 0L;
@@ -200,6 +217,7 @@ public final class ExportScreen extends Screen {
     private int panelY;
     private int panelW;
     private int panelH;
+    private int controlPanelW;
     private int contentX;
     private int contentW;
     private int labelRowY;
@@ -210,6 +228,16 @@ public final class ExportScreen extends Screen {
     private int previewY;
     private int previewH;
     private int footerY;
+    private boolean widePreviewLayout;
+    private int routePreviewX;
+    private int routePreviewY;
+    private int routePreviewW;
+    private int routePreviewH;
+
+    private final RoutePreviewOrbit previewOrbit = new RoutePreviewOrbit();
+    private final RoutePreviewZoom previewZoom = new RoutePreviewZoom();
+    private RoutePreviewScene previewScene;
+    private int previewGroupIndex;
 
     public ExportScreen(Screen parent, WaypointerConfig config, List<WaypointGroup> groups, String subtitle) {
         super(Component.translatable("waypointer.screen.export.title"));
@@ -220,6 +248,8 @@ public final class ExportScreen extends Screen {
         this.subtitle = subtitle;
         this.routePickerExpanded = shouldStartRoutePickerExpanded(groups.size());
         this.optsBuilder = builderFromConfig(config, selectedGroupsForExport(groups, selectedGroups));
+        this.previewGroupIndex = firstSelectedGroupIndex();
+        this.previewScene = buildPreviewScene();
     }
 
     public static void openForGroup(Screen parent, WaypointerConfig config, WaypointGroup group) {
@@ -250,6 +280,9 @@ public final class ExportScreen extends Screen {
         toggleButtons.clear();
         routePickerToggleButton = null;
         routeSelectAllButton = null;
+        previewPageButton = null;
+        previewPreviousButton = null;
+        previewNextButton = null;
 
         // Declaration order is column-major: the first three rows fill the left
         // column, the rest fill the right one. The left column holds the choices
@@ -264,6 +297,35 @@ public final class ExportScreen extends Screen {
         registerToggle(ToggleKind.GROUP_META, optsBuilder.includeGroupMeta());
 
         computeLayout();
+
+        routePreviewWidget = new RoutePreviewWidget(
+                routePreviewX, routePreviewY, routePreviewW, routePreviewH,
+                previewScene, previewRouteCounter(), previewOrbit, previewZoom);
+        addRenderableWidget(routePreviewWidget);
+
+        previewPreviousButton = GuiTokens.styledButton(
+                routePreviewX + 3, routePreviewY + 6, PREVIEW_NAV_W, BTN_H,
+                Component.literal("<"), button -> navigatePreviewRoute(-1),
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.export.preview.previous")));
+        previewNextButton = GuiTokens.styledButton(
+                routePreviewX + routePreviewW - PREVIEW_NAV_W - 3,
+                routePreviewY + 6, PREVIEW_NAV_W, BTN_H,
+                Component.literal(">"), button -> navigatePreviewRoute(1),
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.export.preview.next")));
+        addRenderableWidget(previewPreviousButton);
+        addRenderableWidget(previewNextButton);
+
+        if (!widePreviewLayout) {
+            previewPageButton = GuiTokens.styledButton(
+                    contentX + contentW - HEADER_SWITCH_W,
+                    panelY + PAD_OUTER, HEADER_SWITCH_W, BTN_H,
+                    previewPageButtonLabel(), this::toggleCompactPreviewPage,
+                    Tooltip.create(Component.translatable(
+                            "waypointer.screen.export.preview.switch.tooltip")));
+            addRenderableWidget(previewPageButton);
+        }
 
         // Label input leads the panel so it reads as the primary "what is this
         // export for?" field. Vanilla EditBox enforces its own visual
@@ -324,12 +386,13 @@ public final class ExportScreen extends Screen {
                 contentRight - copyW, footerY, copyW, BTN_H,
                 copyLabel, this::copyToClipboard, null);
 
-        GuiTokens.layoutFooter(panelX + panelW, footerY, left, null, this::addRenderableWidget,
+        GuiTokens.layoutFooter(panelX + controlPanelW, footerY, left, null, this::addRenderableWidget,
                 font, contentX, PAD_OUTER + rightClusterW + GAP);
         addRenderableWidget(copyCodeBlockButton);
         addRenderableWidget(copyButton);
 
-        setInitialFocus(labelInput);
+        applyPreviewPageVisibility();
+        setInitialFocus(compactPreviewPage && !widePreviewLayout ? previewPageButton : labelInput);
         clampRouteScrollOffset();
     }
 
@@ -347,9 +410,23 @@ public final class ExportScreen extends Screen {
     private void computeLayout() {
         reencode();
 
-        panelW = MathUtil.clamp(width - PANEL_MARGIN * 2, PANEL_MIN_W, PANEL_MAX_W);
-        panelW = Math.min(panelW, Math.max(PANEL_MIN_W, width));
-        contentW = panelW - PAD_OUTER * 2;
+        widePreviewLayout = isWidePreviewLayout(width);
+        if (widePreviewLayout) {
+            int available = Math.max(PANEL_MIN_W, width - PANEL_MARGIN * 2);
+            controlPanelW = PANEL_MAX_W;
+            int previewSectionW = MathUtil.clamp(
+                    available - controlPanelW - PREVIEW_SPLIT_GAP,
+                    PREVIEW_PANE_MIN_W + PAD_OUTER, PREVIEW_PANE_MAX_W + PAD_OUTER);
+            panelW = Math.min(available,
+                    controlPanelW + PREVIEW_SPLIT_GAP + previewSectionW);
+            controlPanelW = panelW - PREVIEW_SPLIT_GAP - previewSectionW;
+        } else {
+            controlPanelW = MathUtil.clamp(
+                    width - PANEL_MARGIN * 2, PANEL_MIN_W, PANEL_MAX_W);
+            controlPanelW = Math.min(controlPanelW, Math.max(PANEL_MIN_W, width));
+            panelW = controlPanelW;
+        }
+        contentW = controlPanelW - PAD_OUTER * 2;
 
         int includeH = includeRowsHeight();
         int routeH = isZoneExport() ? BLOCK_GAP + routePickerBlockHeight() : 0;
@@ -369,6 +446,27 @@ public final class ExportScreen extends Screen {
         sizeY = includeRowsY + includeH + routeH + BLOCK_GAP;
         previewY = sizeY + LINE_H + GAP_TIGHT;
         footerY = previewY + previewH + BLOCK_GAP;
+
+        if (widePreviewLayout) {
+            routePreviewX = panelX + controlPanelW + PREVIEW_SPLIT_GAP;
+            routePreviewY = panelY + PAD_OUTER;
+            routePreviewW = widePreviewWidth(panelW, controlPanelW);
+            routePreviewH = Math.max(48, panelH - PAD_OUTER * 2);
+        } else {
+            routePreviewX = contentX;
+            routePreviewY = labelRowY;
+            routePreviewW = contentW;
+            routePreviewH = Math.max(48, footerY - routePreviewY - BLOCK_GAP);
+        }
+    }
+
+    static boolean isWidePreviewLayout(int screenWidth) {
+        return screenWidth >= WIDE_PREVIEW_BREAKPOINT;
+    }
+
+    static int widePreviewWidth(int resolvedPanelWidth, int resolvedControlWidth) {
+        return Math.max(1, resolvedPanelWidth - resolvedControlWidth
+                - PREVIEW_SPLIT_GAP - PAD_OUTER);
     }
 
     /** Every block in the panel except the preview, which is the flexible one. */
@@ -502,7 +600,16 @@ public final class ExportScreen extends Screen {
     }
 
     private void openExportTargetMenu(Button button) {
+        if (routePreviewWidget != null) routePreviewWidget.pauseOrbit();
         MinecraftCompat.setScreen(minecraft, new ExportTargetScreen(this));
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        if (routePreviewWidget != null && !Minecraft.getInstance().isWindowActive()) {
+            routePreviewWidget.pauseOrbit();
+        }
     }
 
     private void selectExportTarget(WaypointExportCodec.Target target) {
@@ -514,6 +621,7 @@ public final class ExportScreen extends Screen {
     }
 
     private void goBackToParent() {
+        if (routePreviewWidget != null) routePreviewWidget.releaseResources();
         MinecraftCompat.setScreen(minecraft, parent);
     }
 
@@ -593,6 +701,7 @@ public final class ExportScreen extends Screen {
     private void selectAllRoutes(Button button) {
         selectAllRouteSelectionState(selectedGroups);
         refreshRoutePickerButtons();
+        refreshPreviewRouteCounter();
         reencode();
     }
 
@@ -614,8 +723,140 @@ public final class ExportScreen extends Screen {
 
     private void toggleRouteSelection(int idx) {
         if (!toggleRouteSelectionState(selectedGroups, idx)) return;
+        reconcilePreviewRouteAfterSelectionChange();
         refreshRoutePickerButtons();
         reencode();
+    }
+
+    private Component previewPageButtonLabel() {
+        return Component.translatable(compactPreviewPage
+                ? "waypointer.screen.export.preview.options"
+                : "waypointer.screen.export.preview.show");
+    }
+
+    private void toggleCompactPreviewPage(Button button) {
+        compactPreviewPage = !compactPreviewPage;
+        button.setMessage(previewPageButtonLabel());
+        applyPreviewPageVisibility();
+        if (compactPreviewPage) {
+            setFocused(button);
+            button.setFocused(true);
+        } else {
+            setFocused(labelInput);
+            labelInput.setFocused(true);
+        }
+    }
+
+    private void applyPreviewPageVisibility() {
+        boolean optionsVisible = widePreviewLayout || !compactPreviewPage;
+        boolean previewVisible = widePreviewLayout || compactPreviewPage;
+        labelInput.visible = optionsVisible;
+        exportForButton.visible = optionsVisible;
+        for (Button toggle : toggleButtons) toggle.visible = optionsVisible;
+        if (routePickerToggleButton != null) routePickerToggleButton.visible = optionsVisible;
+        if (routeSelectAllButton != null) routeSelectAllButton.visible = optionsVisible;
+        routePreviewWidget.setPreviewVisible(previewVisible);
+        boolean showNavigation = previewVisible && selectedGroupCount() > 1;
+        previewPreviousButton.visible = showNavigation;
+        previewNextButton.visible = showNavigation;
+        previewPreviousButton.active = showNavigation;
+        previewNextButton.active = showNavigation;
+    }
+
+    private void navigatePreviewRoute(int delta) {
+        int next = navigatePreviewRouteIndex(selectedGroups, previewGroupIndex, delta);
+        if (next == previewGroupIndex || next < 0) return;
+        previewGroupIndex = next;
+        previewScene = buildPreviewScene();
+        if (routePreviewWidget != null) {
+            routePreviewWidget.setScene(previewScene, previewRouteCounter());
+        }
+    }
+
+    private void reconcilePreviewRouteAfterSelectionChange() {
+        if (previewGroupIndex >= 0 && previewGroupIndex < selectedGroups.length
+                && selectedGroups[previewGroupIndex]) {
+            refreshPreviewRouteCounter();
+            return;
+        }
+        int replacement = replacementPreviewRouteIndex(selectedGroups, previewGroupIndex);
+        previewGroupIndex = replacement >= 0 ? replacement : firstSelectedGroupIndex();
+        previewScene = buildPreviewScene();
+        if (routePreviewWidget != null) {
+            routePreviewWidget.setScene(previewScene, previewRouteCounter());
+            applyPreviewPageVisibility();
+        }
+    }
+
+    private void refreshPreviewRouteCounter() {
+        if (routePreviewWidget != null) {
+            routePreviewWidget.setRouteCounter(previewRouteCounter());
+            applyPreviewPageVisibility();
+        }
+    }
+
+    private RoutePreviewScene buildPreviewScene() {
+        if (groups.isEmpty()) return RoutePreviewScene.empty();
+        int safeIndex = MathUtil.clamp(previewGroupIndex, 0, groups.size() - 1);
+        WaypointGroup group = groups.get(safeIndex);
+        return RoutePreviewScene.build(group, config, previewLoadedLevel(group));
+    }
+
+    private ClientLevel previewLoadedLevel(WaypointGroup group) {
+        if (DungeonRoomData.definition(group.zoneId()) != null) return null;
+        if (WaypointerClient.manager() == null || WaypointerClient.manager().currentZone() == null) {
+            return null;
+        }
+        if (!group.zoneId().equals(WaypointerClient.manager().currentZone().id())) return null;
+        return Minecraft.getInstance().level;
+    }
+
+    private int firstSelectedGroupIndex() {
+        for (int i = 0; i < selectedGroups.length; i++) {
+            if (selectedGroups[i]) return i;
+        }
+        return groups.isEmpty() ? -1 : 0;
+    }
+
+    private List<Integer> selectedGroupIndexes() {
+        List<Integer> selected = new ArrayList<>();
+        for (int i = 0; i < selectedGroups.length; i++) {
+            if (selectedGroups[i]) selected.add(i);
+        }
+        return selected;
+    }
+
+    static int navigatePreviewRouteIndex(boolean[] selected, int current, int delta) {
+        if (selected == null || selected.length == 0) return -1;
+        List<Integer> indexes = new ArrayList<>();
+        for (int i = 0; i < selected.length; i++) {
+            if (selected[i]) indexes.add(i);
+        }
+        if (indexes.isEmpty()) return -1;
+        int ordinal = indexes.indexOf(current);
+        int start = ordinal < 0 ? 0 : ordinal;
+        return indexes.get(Math.floorMod(start + delta, indexes.size()));
+    }
+
+    static int replacementPreviewRouteIndex(boolean[] selected, int current) {
+        if (selected == null || selected.length == 0) return -1;
+        if (current >= 0 && current < selected.length && selected[current]) return current;
+        int safeCurrent = Math.max(0, current);
+        for (int i = safeCurrent + 1; i < selected.length; i++) {
+            if (selected[i]) return i;
+        }
+        for (int i = Math.min(safeCurrent - 1, selected.length - 1); i >= 0; i--) {
+            if (selected[i]) return i;
+        }
+        return -1;
+    }
+
+    private String previewRouteCounter() {
+        List<Integer> selected = selectedGroupIndexes();
+        int ordinal = selected.indexOf(previewGroupIndex);
+        return selected.size() <= 1 || ordinal < 0
+                ? ""
+                : (ordinal + 1) + " of " + selected.size();
     }
 
     static boolean toggleRouteSelectionState(boolean[] selectedGroups, int idx) {
@@ -767,20 +1008,27 @@ public final class ExportScreen extends Screen {
         g.fill(panelX, panelY, panelX + panelW, panelY + panelH, SURFACE);
 
         int top = panelY + PAD_OUTER;
-        drawClipped(g, getTitle().getString(), top, TEXT);
-        drawClipped(g, subtitle, top + LINE_H, TEXT_DIM);
+        int headerWidth = !widePreviewLayout && previewPageButton != null
+                ? contentW - HEADER_SWITCH_W - GAP
+                : contentW;
+        g.text(font, font.plainSubstrByWidth(getTitle().getString(), headerWidth),
+                contentX, top, TEXT, false);
+        g.text(font, font.plainSubstrByWidth(subtitle, headerWidth),
+                contentX, top + LINE_H, TEXT_DIM, false);
 
-        drawClipped(g, Component.translatable("waypointer.screen.export.settings").getString(),
-                includeHeadY, TEXT_DIM);
-        SettingsHelp help = settingsHelp();
-        drawClipped(g, help.text(), includeHeadY + LINE_H, help.color());
+        if (widePreviewLayout || !compactPreviewPage) {
+            drawClipped(g, Component.translatable("waypointer.screen.export.settings").getString(),
+                    includeHeadY, TEXT_DIM);
+            SettingsHelp help = settingsHelp();
+            drawClipped(g, help.text(), includeHeadY + LINE_H, help.color());
 
-        if (isZoneExport()) renderRoutePicker(g, mouseX, mouseY);
+            if (isZoneExport()) renderRoutePicker(g, mouseX, mouseY);
 
-        drawSizeSummary(g, contentX, sizeY);
-        // No preview caption: the target button above already names the format,
-        // so a "Waypointer code" heading over the box only repeated it.
-        drawPreview(g, contentX, previewY, contentX + contentW, previewY + previewH);
+            drawSizeSummary(g, contentX, sizeY);
+            // The code box stays independent of the visual route scene: export
+            // options can change these bytes without changing source appearance.
+            drawPreview(g, contentX, previewY, contentX + contentW, previewY + previewH);
+        }
 
         super.extractRenderState(g, mouseX, mouseY, partial);
     }
@@ -1057,6 +1305,10 @@ public final class ExportScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
+        if (routePreviewWidget != null
+                && routePreviewWidget.scrollZoom(mouseX, mouseY, vert)) {
+            return true;
+        }
         if (!isZoneExport() || !routePickerExpanded || !isInsideRouteList(mouseX, mouseY)) {
             return super.mouseScrolled(mouseX, mouseY, horiz, vert);
         }
@@ -1179,7 +1431,10 @@ public final class ExportScreen extends Screen {
     public boolean isPauseScreen() { return false; }
 
     @Override
-    public void onClose() { MinecraftCompat.setScreen(minecraft, parent); }
+    public void onClose() {
+        if (routePreviewWidget != null) routePreviewWidget.releaseResources();
+        MinecraftCompat.setScreen(minecraft, parent);
+    }
 
     /**
      * Standalone target picker for the export screen. A dedicated screen keeps

@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "Kopyahin",
   "waypointer.export.fit.chat_and_commands": "Kasya sa chat at mga command",
   "waypointer.export.fit.chat_only": "Kasya sa chat, pero masyadong mahaba para sa mga command tulad ng /pc",
-  "waypointer.export.fit.too_long": "Masyadong mahaba para sa chat — ibahagi sa Discord",
+  "waypointer.export.fit.too_long": "Masyadong mahaba para sa chat",
   "waypointer.export.characters": "%1$s character",
   "waypointer.screen.add_named.title.waypoint": "Gumawa ng Waypoint",
   "waypointer.screen.add_named.title.named": "Gumawa ng Pinangalanang Waypoint",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "I-toggle ang pag-render kapag may line-of-sight lamang",
   "waypointer.settings.group.system.waypoint_editor": "Editor ng waypoint",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Mga keybind ng editor ng waypoint",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "I-configure ang mga keyboard shortcut na ginagamit habang nag-e-edit ng mga waypoint."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "I-configure ang mga keyboard shortcut na ginagamit habang nag-e-edit ng mga waypoint.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

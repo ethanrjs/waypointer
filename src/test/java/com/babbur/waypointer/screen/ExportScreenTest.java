@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.codec.WaypointExportCodec;
+import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -14,6 +15,51 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExportScreenTest {
+
+    @Test
+    void routePreviewLayoutSwitchesAtExactWideBoundary() {
+        assertFalse(ExportScreen.isWidePreviewLayout(735));
+        assertTrue(ExportScreen.isWidePreviewLayout(736));
+        assertEquals(240, ExportScreen.widePreviewWidth(704, 440));
+    }
+
+    @Test
+    void previewNavigationDoesNotChangeExportSelection() {
+        boolean[] selected = {true, false, true, true};
+
+        assertEquals(2, ExportScreen.navigatePreviewRouteIndex(selected, 0, 1));
+        assertEquals(3, ExportScreen.navigatePreviewRouteIndex(selected, 0, -1));
+        assertArrayEquals(new boolean[]{true, false, true, true}, selected);
+    }
+
+    @Test
+    void previewNavigationLeavesEncodedOutputByteForByteUnchanged() {
+        WaypointGroup first = WaypointGroup.create("First", "hub");
+        first.add(Waypoint.at(1, 2, 3));
+        WaypointGroup second = WaypointGroup.create("Second", "hub");
+        second.add(Waypoint.at(4, 5, 6));
+        List<WaypointGroup> groups = List.of(first, second);
+        boolean[] selected = {true, true};
+        WaypointCodec.Options options = WaypointCodec.Options.builder().build();
+        String before = WaypointExportCodec.encode(
+                ExportScreen.selectedGroupsForExport(groups, selected), options,
+                WaypointExportCodec.Target.WAYPOINTER);
+
+        assertEquals(1, ExportScreen.navigatePreviewRouteIndex(selected, 0, 1));
+        String after = WaypointExportCodec.encode(
+                ExportScreen.selectedGroupsForExport(groups, selected), options,
+                WaypointExportCodec.Target.WAYPOINTER);
+
+        assertEquals(before, after);
+    }
+
+    @Test
+    void deselectedPreviewRouteChoosesNextThenPrevious() {
+        assertEquals(3, ExportScreen.replacementPreviewRouteIndex(
+                new boolean[]{true, false, false, true}, 2));
+        assertEquals(0, ExportScreen.replacementPreviewRouteIndex(
+                new boolean[]{true, false, false, false}, 2));
+    }
 
     @Test
     void initialRouteSelectionStartsEveryRouteSelected() {

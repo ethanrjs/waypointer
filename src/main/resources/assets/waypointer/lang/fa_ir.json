@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "کپی",
   "waypointer.export.fit.chat_and_commands": "در چت و فرمان‌ها جا می‌شود",
   "waypointer.export.fit.chat_only": "در چت جا می‌شود، اما برای فرمان‌هایی مثل /pc بیش از حد طولانی است",
-  "waypointer.export.fit.too_long": "برای چت بیش از حد طولانی است — آن را در Discord به اشتراک بگذارید",
+  "waypointer.export.fit.too_long": "برای چت بیش از حد طولانی است",
   "waypointer.export.characters": "%1$s نویسه",
   "waypointer.screen.add_named.title.waypoint": "ایجاد نقطه‌مسیر",
   "waypointer.screen.add_named.title.named": "ایجاد نقطه‌مسیر نام‌دار",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "تغییر حالت رسم فقط با خط دید",
   "waypointer.settings.group.system.waypoint_editor": "ویرایشگر نقاط‌مسیر",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "میانبرهای ویرایشگر نقاط‌مسیر",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "میانبرهای صفحه‌کلید هنگام ویرایش نقاط‌مسیر را پیکربندی کنید."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "میانبرهای صفحه‌کلید هنگام ویرایش نقاط‌مسیر را پیکربندی کنید.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

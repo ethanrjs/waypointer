@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "Copiâh",
   "waypointer.export.fit.chat_and_commands": "Cabe en er xâh y en lô comandô",
   "waypointer.export.fit.chat_only": "Cabe en er xâh, pero êh demâçiao largo pa comandô como /pc",
-  "waypointer.export.fit.too_long": "Êh demâçiao largo pal xâh; compâttel-lo en Discord",
+  "waypointer.export.fit.too_long": "Êh demâçiao largo pal xâh",
   "waypointer.export.characters": "%1$s carâtterê",
   "waypointer.screen.add_named.title.waypoint": "Creâh punto de referençia",
   "waypointer.screen.add_named.title.named": "Creâh punto de referençia con nombre",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Âttibâh o deçâttibâh renderiçâh çolo con línea de biçión",
   "waypointer.settings.group.system.waypoint_editor": "Editôh de puntô",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Atahô der editôh de puntô",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configura lô atahô de teclao que çe uçan ar editâh puntô."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configura lô atahô de teclao que çe uçan ar editâh puntô.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

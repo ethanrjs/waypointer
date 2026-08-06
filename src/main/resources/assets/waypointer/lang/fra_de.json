@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "Kobbiern",
   "waypointer.export.fit.chat_and_commands": "Bassd ins G'schwätz und in Bfehle",
   "waypointer.export.fit.chat_only": "Bassd ins G'schwätz, is oba zu lang füa Bfehle wie /pc",
-  "waypointer.export.fit.too_long": "Zu lang fürs G'schwätz — auf Discord deiln",
+  "waypointer.export.fit.too_long": "Zu lang fürs G'schwätz",
   "waypointer.export.characters": "%1$s Zeicha",
   "waypointer.screen.add_named.title.waypoint": "Wechbungd erschdelln",
   "waypointer.screen.add_named.title.named": "Wechbungd mid Noam erschdelln",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Bloß bei Sichdlinie zeichn umschaldn",
   "waypointer.settings.group.system.waypoint_editor": "Wechbungd-Beabeidung",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Dasdnkürzl vo da Wechbungd-Beabeidung",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Die Dasdnkürzl zum Beabeidn vo Wechbungdn eischdelln."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Die Dasdnkürzl zum Beabeidn vo Wechbungdn eischdelln.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

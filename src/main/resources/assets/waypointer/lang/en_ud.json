@@ -29,7 +29,7 @@
   "waypointer.export.copy_clipboard": "ʎdoƆ",
   "waypointer.export.fit.chat_and_commands": "spuɐɯɯoɔ puɐ ʇɐɥɔ uᴉ sʇᴉℲ",
   "waypointer.export.fit.chat_only": "/pc ǝʞᴉꞁ spuɐɯɯoɔ ɹoɟ ᵷuoꞁ ooʇ 'ʇɐɥɔ uᴉ sʇᴉℲ",
-  "waypointer.export.fit.too_long": "pɹoɔsᴉᗡ uo ʇᴉ ǝɹɐɥs — ʇɐɥɔ ɹoɟ ᵷuoꞁ oo⟘",
+  "waypointer.export.fit.too_long": "ʇɐɥɔ ɹoɟ ᵷuoꞁ oo⟘",
   "waypointer.export.characters": "sɹǝʇɔɐɹɐɥɔ %1$s",
   "waypointer.screen.add_named.title.waypoint": "ʇuᴉodʎɐM ǝʇɐǝɹƆ",
   "waypointer.screen.add_named.title.named": "ʇuᴉodʎɐM pǝɯɐN ǝʇɐǝɹƆ",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "ʎꞁuO SOꞀ uᴉ ɹǝpuǝᴚ ǝꞁᵷᵷo⟘",
   "waypointer.settings.group.system.waypoint_editor": "ɹoʇᴉpǝ ʇuᴉodʎɐM",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "spuᴉqʎǝʞ ɹoʇᴉpǝ ʇuᴉodʎɐM",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "˙sʇuᴉodʎɐʍ ᵷuᴉʇᴉpǝ ǝꞁᴉɥʍ pǝsn sʇnɔʇɹoɥs pɹɐoqʎǝʞ ǝɹnᵷᴉɟuoƆ"
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "˙sʇuᴉodʎɐʍ ᵷuᴉʇᴉpǝ ǝꞁᴉɥʍ pǝsn sʇnɔʇɹoɥs pɹɐoqʎǝʞ ǝɹnᵷᴉɟuoƆ",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

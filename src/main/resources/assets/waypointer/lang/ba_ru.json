@@ -29,7 +29,7 @@
   "waypointer.export.copy_clipboard": "Күсереү",
   "waypointer.export.fit.chat_and_commands": "Чатҡа һәм командаларға һыя",
   "waypointer.export.fit.chat_only": "Чатҡа һыя, әммә /pc кеүек командалар өсөн оҙон",
-  "waypointer.export.fit.too_long": "Чат өсөн бик оҙон — Discord аша бүлешегеҙ",
+  "waypointer.export.fit.too_long": "Чат өсөн бик оҙон",
   "waypointer.export.characters": "%1$s билдә",
   "waypointer.screen.add_named.title.waypoint": "Юл нөктәһен булдырыу",
   "waypointer.screen.add_named.title.named": "Исемле юл нөктәһен булдырыу",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Фәҡәт күреү һыҙығында күрһәтеүҙе күсереү",
   "waypointer.settings.group.system.waypoint_editor": "Юл нөктәләре мөхәррире",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Юл нөктәләре мөхәррире төймә бәйләнештәре",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Юл нөктәләрен мөхәррирләгәндә ҡулланылған клавиатура ҡыҫҡартыуҙарын көйләгеҙ."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Юл нөктәләрен мөхәррирләгәндә ҡулланылған клавиатура ҡыҫҡартыуҙарын көйләгеҙ.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

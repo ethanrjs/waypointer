@@ -29,7 +29,7 @@
   "waypointer.export.copy_clipboard": "Kapijavać",
   "waypointer.export.fit.chat_and_commands": "Zmiascajecca ŭ čacie i kamandach",
   "waypointer.export.fit.chat_only": "Zmiascajecca ŭ čacie, ale zanadta doŭhi dla kamand nakštałt /pc",
-  "waypointer.export.fit.too_long": "Zanadta doŭhi dla čata — padzialiciesia im u Discord",
+  "waypointer.export.fit.too_long": "Zanadta doŭhi dla čata",
   "waypointer.export.characters": "%1$s simvałaŭ",
   "waypointer.screen.add_named.title.waypoint": "Stvaryć aryjencir",
   "waypointer.screen.add_named.title.named": "Stvaryć nazvany aryjencir",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Pieraklučyć adliustravannie tolki ŭ miežach bačnasci",
   "waypointer.settings.group.system.waypoint_editor": "Redaktar aryjenciraŭ",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Pryviazki klavišaŭ redaktara aryjenciraŭ",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Naładźcie spałučenni klavišaŭ, jakija vykarystoŭvajucca pry redahavanni aryjenciraŭ."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Naładźcie spałučenni klavišaŭ, jakija vykarystoŭvajucca pry redahavanni aryjenciraŭ.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

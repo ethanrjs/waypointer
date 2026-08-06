@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "Copiar",
   "waypointer.export.fit.chat_and_commands": "Cabe en el chat y en los comandos",
   "waypointer.export.fit.chat_only": "Cabe en el chat, pero es demasiado largo para comandos como /pc",
-  "waypointer.export.fit.too_long": "Demasiado largo para el chat — compártelo por Discord",
+  "waypointer.export.fit.too_long": "Demasiado largo para el chat",
   "waypointer.export.characters": "%1$s caracteres",
   "waypointer.screen.add_named.title.waypoint": "Crear punto de ruta",
   "waypointer.screen.add_named.title.named": "Crear punto de ruta con nombre",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Alternar mostrar solo con línea de visión",
   "waypointer.settings.group.system.waypoint_editor": "Editor de puntos de ruta",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Teclas del editor de puntos de ruta",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configura los atajos de teclado usados al editar puntos de ruta."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configura los atajos de teclado usados al editar puntos de ruta.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

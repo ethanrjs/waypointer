@@ -66,7 +66,7 @@
   "waypointer.export.copy_clipboard": "Sao chép",
   "waypointer.export.fit.chat_and_commands": "Vừa với trò chuyện và lệnh",
   "waypointer.export.fit.chat_only": "Vừa với trò chuyện nhưng quá dài cho các lệnh như /pc",
-  "waypointer.export.fit.too_long": "Quá dài cho trò chuyện — hãy chia sẻ trên Discord",
+  "waypointer.export.fit.too_long": "Quá dài cho trò chuyện",
   "waypointer.export.characters": "%1$s ký tự",
   "waypointer.screen.add_named.title.waypoint": "Tạo điểm chỉ đường",
   "waypointer.screen.add_named.title.named": "Tạo điểm chỉ đường có tên",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Bật/tắt chỉ hiển thị trong tầm nhìn",
   "waypointer.settings.group.system.waypoint_editor": "Trình chỉnh sửa điểm chỉ đường",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Phím tắt của trình chỉnh sửa điểm chỉ đường",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Định cấu hình phím tắt dùng khi chỉnh sửa điểm chỉ đường."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Định cấu hình phím tắt dùng khi chỉnh sửa điểm chỉ đường.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

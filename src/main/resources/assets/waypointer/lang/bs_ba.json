@@ -29,7 +29,7 @@
   "waypointer.export.copy_clipboard": "Kopiraj",
   "waypointer.export.fit.chat_and_commands": "Stane u chat i komande",
   "waypointer.export.fit.chat_only": "Stane u chat, ali je predugačko za komande poput /pc",
-  "waypointer.export.fit.too_long": "Predugačko za chat — podijeli na Discordu",
+  "waypointer.export.fit.too_long": "Predugačko za chat",
   "waypointer.export.characters": "%1$s znakova",
   "waypointer.screen.add_named.title.waypoint": "Kreiraj putnu tačku",
   "waypointer.screen.add_named.title.named": "Kreiraj imenovanu putnu tačku",
@@ -865,5 +865,16 @@
   "key.waypointer.toggle_depth_check": "Uključi/isključi prikaz samo u liniji pogleda",
   "waypointer.settings.group.system.waypoint_editor": "Uređivač putnih tačaka",
   "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Tipke uređivača putnih tačaka",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Podesi prečice na tastaturi koje se koriste pri uređivanju putnih tačaka."
+  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Podesi prečice na tastaturi koje se koriste pri uređivanju putnih tačaka.",
+  "waypointer.screen.export.preview.show": "Preview",
+  "waypointer.screen.export.preview.options": "Options",
+  "waypointer.screen.export.preview.switch.tooltip": "Switch between export options and the route preview.",
+  "waypointer.screen.export.preview.previous": "Previous selected route",
+  "waypointer.screen.export.preview.next": "Next selected route",
+  "waypointer.screen.export.preview.empty": "This route has no waypoints.",
+  "waypointer.screen.export.preview.unavailable": "3D preview unavailable",
+  "waypointer.screen.export.preview.paint_unavailable": "Paint unavailable",
+  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
+  "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

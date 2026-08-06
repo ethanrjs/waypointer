@@ -62,6 +62,11 @@ loom {
 	}
 }
 
+// The picture-in-picture renderer changed its constructor and render callback
+// between 26.1.2 and 26.2. Keep that small boundary in a target-specific client
+// source directory while the preview scene and geometry remain shared.
+sourceSets.client.java.srcDir("src/client-${targetMinecraft}/java")
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
