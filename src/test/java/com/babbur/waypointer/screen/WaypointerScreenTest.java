@@ -275,22 +275,22 @@ class WaypointerScreenTest {
     }
 
     @Test
-    void newRouteTargetRequiresDetectedRoomFromDungeonRoomsBucket() {
-        assertEquals("admin", WaypointerScreen.newRouteTargetZoneId(
-                WaypointerScreen.DUNGEON_ROOMS_ZONE_ID, "admin"));
+    void newRouteTargetRejectsDungeonRoomsBucket() {
         assertNull(WaypointerScreen.newRouteTargetZoneId(
                 WaypointerScreen.DUNGEON_ROOMS_ZONE_ID, "dungeon_hub"));
-        assertEquals("Stand in a detected dungeon room to create a room route.",
+        assertNull(WaypointerScreen.newRouteTargetZoneId(
+                WaypointerScreen.DUNGEON_ROOMS_ZONE_ID, "admin"));
+        assertEquals("Dungeon routes are read-only.",
                 WaypointerScreen.newRouteBlockedNotice(WaypointerScreen.DUNGEON_ROOMS_ZONE_ID));
     }
 
     @Test
-    void newRouteTargetUsesSelectedDungeonRoomWhilePlayerIsElsewhere() {
+    void newRouteTargetRejectsSelectedDungeonRoomWhilePlayerIsElsewhere() {
         DungeonRoomData.clearAllCustom();
         try {
             defineRoom("offline-room", "Offline Room");
 
-            assertEquals("offline-room", WaypointerScreen.newRouteTargetZoneId(
+            assertNull(WaypointerScreen.newRouteTargetZoneId(
                     WaypointerScreen.DUNGEON_ROOMS_ZONE_ID,
                     "offline-room",
                     "dungeon_hub"));
@@ -450,7 +450,7 @@ class WaypointerScreenTest {
             List<String> zones = WaypointerScreen.zoneIdsForManager(new ActiveGroupManager());
 
             assertTrue(zones.contains(WaypointerScreen.DUNGEON_ROOMS_ZONE_ID));
-            assertEquals("empty-offline-room", WaypointerScreen.newRouteTargetZoneId(
+            assertNull(WaypointerScreen.newRouteTargetZoneId(
                     WaypointerScreen.DUNGEON_ROOMS_ZONE_ID,
                     "empty-offline-room",
                     null));
@@ -545,7 +545,7 @@ class WaypointerScreenTest {
     }
 
     @Test
-    void generatedDungeonRouteDeleteClearsRoomWaypoints() {
+    void generatedDungeonRouteCannotBeDeleted() {
         DungeonRoomData.clearAllCustom();
         try {
             DungeonRoom room = new DungeonRoom(
@@ -570,9 +570,8 @@ class WaypointerScreenTest {
                     definition.id());
             generated.setRuntimeOnly(true);
 
-            assertTrue(WaypointerScreen.clearGeneratedDungeonRouteBeforeDelete(generated));
-
-            assertTrue(DungeonRoomData.definition(definition.id()).waypoints().isEmpty());
+            assertFalse(WaypointerScreen.canDeleteRoute(generated));
+            assertEquals(1, DungeonRoomData.definition(definition.id()).waypoints().size());
         } finally {
             DungeonRoomData.clearAllCustom();
         }

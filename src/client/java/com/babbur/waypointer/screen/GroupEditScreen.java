@@ -2,7 +2,6 @@ package com.babbur.waypointer.screen;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
-import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.color.GradientColorizer;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -16,7 +15,6 @@ import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import com.babbur.waypointer.dungeon.DungeonWaypointSkipRules;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.input.WaypointRepositionMode;
-import com.babbur.waypointer.input.WaypointerKeybinds;
 import com.babbur.waypointer.text.AmpersandFormatting;
 import com.babbur.waypointer.input.WaypointAddFlow;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
@@ -155,14 +153,6 @@ public final class GroupEditScreen extends Screen {
             "break its block",
             "later radius skips there, trigger or not"
     );
-    private static final List<String> EDITOR_CONTROL_INFO_DESCRIPTIONS = List.of(
-            "toggle selected subwaypoint",
-            "toggle selected subwaypoint",
-            "toggle selected subwaypoint",
-            "toggle selected waypoint",
-            "toggle selected waypoint",
-            "toggle selected waypoint",
-            "toggle selected waypoint");
     private static final int[] ROUTE_INFO_LABEL_COLORS = {
             ACCENT,
             0xFFFFF080,
@@ -208,6 +198,10 @@ public final class GroupEditScreen extends Screen {
 
     public static void openFocused(Screen parent, ActiveGroupManager manager, WaypointerConfig config,
                                    WaypointGroup group, int waypointIndex) {
+        if (DungeonRoomRouteSync.isReadOnlyDungeonRoute(group)) {
+            MinecraftCompat.setScreen(Minecraft.getInstance(), parent);
+            return;
+        }
         MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new GroupEditScreen(parent, manager, config, group, waypointIndex));
     }
@@ -1014,8 +1008,8 @@ public final class GroupEditScreen extends Screen {
     }
 
     private void renderRouteInfoTooltip(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-        List<String> labels = routeInfoLabelsWithKeybinds();
-        List<String> descriptions = routeInfoDescriptionsWithKeybinds();
+        List<String> labels = routeInfoLabels(isDungeonRoomGroup());
+        List<String> descriptions = routeInfoDescriptions(isDungeonRoomGroup());
         int lineCount = Math.min(labels.size(), descriptions.size());
         int pad = 7;
         int lineGap = 3;
@@ -1074,28 +1068,6 @@ public final class GroupEditScreen extends Screen {
         if (!dungeonRoomGroup) return ROUTE_INFO_DESCRIPTIONS;
         List<String> descriptions = new ArrayList<>(ROUTE_INFO_DESCRIPTIONS);
         descriptions.addAll(DUNGEON_ROUTE_INFO_DESCRIPTIONS);
-        return List.copyOf(descriptions);
-    }
-
-    private List<String> routeInfoLabelsWithKeybinds() {
-        List<String> labels = new ArrayList<>();
-        if (WaypointerClient.keybinds() != null) {
-            labels.addAll(WaypointerClient.keybinds().editorControlLabels(isDungeonRoomGroup()));
-        } else {
-            labels.addAll(WaypointerKeybinds.defaultEditorControlLabels(isDungeonRoomGroup()));
-        }
-        labels.addAll(routeInfoLabels(isDungeonRoomGroup()));
-        return List.copyOf(labels);
-    }
-
-    private List<String> routeInfoDescriptionsWithKeybinds() {
-        List<String> descriptions = new ArrayList<>();
-        descriptions.addAll(EDITOR_CONTROL_INFO_DESCRIPTIONS.subList(0,
-                isDungeonRoomGroup() ? EDITOR_CONTROL_INFO_DESCRIPTIONS.size() : 3));
-        if (!isDungeonRoomGroup()) {
-            descriptions.add(EDITOR_CONTROL_INFO_DESCRIPTIONS.get(6));
-        }
-        descriptions.addAll(routeInfoDescriptions(isDungeonRoomGroup()));
         return List.copyOf(descriptions);
     }
 
