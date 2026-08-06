@@ -15,7 +15,6 @@ import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.babbur.waypointer.progression.ProximityTracker;
 import com.babbur.waypointer.screen.AddNamedWaypointScreen;
-import com.babbur.waypointer.screen.GroupEditScreen;
 import com.babbur.waypointer.screen.WaypointerGuiScreens;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
@@ -39,7 +38,7 @@ import java.util.List;
 /**
  * Registers and polls the mod's keybinds.
  *
- * Seventeen bindings today:
+ * Ten bindings today:
  *
  *   - Open Waypointer GUI -- the primary way into the GUI.
  *   - Add Waypoint -- drops a waypoint at the player's position into the
@@ -66,8 +65,8 @@ import java.util.List;
  *     bind instead of separate enter/exit binds.
  * All bindings are registered under a single Waypointer category via the
  * identifier-based API so the vanilla controls screen groups them together.
- * Most bindings are unbound by default. The editor-only toggles use scoped defaults,
- * so they only act on the selected waypoint while the route editor is open.
+ * Most bindings are unbound by default so players opt in to actions that mutate
+ * route data or change edit mode.
  */
 public final class WaypointerKeybinds {
 
@@ -82,13 +81,6 @@ public final class WaypointerKeybinds {
     static final String EXIT_EDIT_MODE_TRANSLATION_KEY = "key.waypointer.exit_edit_mode";
     static final String TOGGLE_EDIT_MODE_TRANSLATION_KEY = "key.waypointer.toggle_edit_mode";
     static final String REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY = "key.waypointer.reposition_add_waypoint";
-    static final String TOGGLE_TINY_TRANSLATION_KEY = "key.waypointer.toggle_tiny";
-    static final String TOGGLE_FILLED_TRANSLATION_KEY = "key.waypointer.toggle_filled";
-    static final String TOGGLE_HIDE_AFTER_PARENT_TRANSLATION_KEY = "key.waypointer.toggle_hide_after_parent";
-    static final String TOGGLE_STAND_SKIP_TRANSLATION_KEY = "key.waypointer.toggle_stand_skip";
-    static final String TOGGLE_INTERACT_SKIP_TRANSLATION_KEY = "key.waypointer.toggle_interact_skip";
-    static final String TOGGLE_MINE_SKIP_TRANSLATION_KEY = "key.waypointer.toggle_mine_skip";
-    static final String TOGGLE_DEPTH_CHECK_TRANSLATION_KEY = "key.waypointer.toggle_depth_check";
     static final int OPEN_EDITOR_DEFAULT_KEY = GLFW.GLFW_KEY_U;
     static final int UNBOUND_DEFAULT_KEY = InputConstants.UNKNOWN.getValue();
     static final List<String> KEYBIND_TRANSLATION_KEYS = List.of(
@@ -101,14 +93,7 @@ public final class WaypointerKeybinds {
             ENTER_EDIT_MODE_TRANSLATION_KEY,
             EXIT_EDIT_MODE_TRANSLATION_KEY,
             TOGGLE_EDIT_MODE_TRANSLATION_KEY,
-            REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY,
-            TOGGLE_TINY_TRANSLATION_KEY,
-            TOGGLE_FILLED_TRANSLATION_KEY,
-            TOGGLE_HIDE_AFTER_PARENT_TRANSLATION_KEY,
-            TOGGLE_STAND_SKIP_TRANSLATION_KEY,
-            TOGGLE_INTERACT_SKIP_TRANSLATION_KEY,
-            TOGGLE_MINE_SKIP_TRANSLATION_KEY,
-            TOGGLE_DEPTH_CHECK_TRANSLATION_KEY);
+            REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY);
     static final List<Integer> KEYBIND_DEFAULT_KEYS = List.of(
             OPEN_EDITOR_DEFAULT_KEY,
             UNBOUND_DEFAULT_KEY,
@@ -119,14 +104,7 @@ public final class WaypointerKeybinds {
             UNBOUND_DEFAULT_KEY,
             UNBOUND_DEFAULT_KEY,
             UNBOUND_DEFAULT_KEY,
-            UNBOUND_DEFAULT_KEY,
-            GLFW.GLFW_KEY_T,
-            GLFW.GLFW_KEY_F,
-            GLFW.GLFW_KEY_H,
-            GLFW.GLFW_KEY_S,
-            GLFW.GLFW_KEY_I,
-            GLFW.GLFW_KEY_M,
-            GLFW.GLFW_KEY_R);
+            UNBOUND_DEFAULT_KEY);
 
     private static final KeyMapping.Category CATEGORY =
             KeyMapping.Category.register(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "main"));
@@ -146,13 +124,6 @@ public final class WaypointerKeybinds {
     private final KeyMapping exitEditMode;
     private final KeyMapping toggleEditMode;
     private final KeyMapping addWaypointWhereLooking;
-    private final KeyMapping toggleTiny;
-    private final KeyMapping toggleFilled;
-    private final KeyMapping toggleHideAfterParent;
-    private final KeyMapping toggleStandSkip;
-    private final KeyMapping toggleInteractSkip;
-    private final KeyMapping toggleMineSkip;
-    private final KeyMapping toggleDepthCheck;
     private final Runnable openGui;
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
@@ -225,20 +196,6 @@ public final class WaypointerKeybinds {
                 InputConstants.Type.KEYSYM,
                 UNBOUND_DEFAULT_KEY,
                 CATEGORY));
-        this.toggleTiny = registerEditorControl(TOGGLE_TINY_TRANSLATION_KEY, GLFW.GLFW_KEY_T);
-        this.toggleFilled = registerEditorControl(TOGGLE_FILLED_TRANSLATION_KEY, GLFW.GLFW_KEY_F);
-        this.toggleHideAfterParent = registerEditorControl(
-                TOGGLE_HIDE_AFTER_PARENT_TRANSLATION_KEY, GLFW.GLFW_KEY_H);
-        this.toggleStandSkip = registerEditorControl(TOGGLE_STAND_SKIP_TRANSLATION_KEY, GLFW.GLFW_KEY_S);
-        this.toggleInteractSkip = registerEditorControl(
-                TOGGLE_INTERACT_SKIP_TRANSLATION_KEY, GLFW.GLFW_KEY_I);
-        this.toggleMineSkip = registerEditorControl(TOGGLE_MINE_SKIP_TRANSLATION_KEY, GLFW.GLFW_KEY_M);
-        this.toggleDepthCheck = registerEditorControl(TOGGLE_DEPTH_CHECK_TRANSLATION_KEY, GLFW.GLFW_KEY_R);
-    }
-
-    private static KeyMapping registerEditorControl(String translationKey, int defaultKey) {
-        return KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                translationKey, InputConstants.Type.KEYSYM, defaultKey, CATEGORY));
     }
 
     public void install() {
@@ -266,14 +223,7 @@ public final class WaypointerKeybinds {
                 enterEditMode,
                 exitEditMode,
                 toggleEditMode,
-                addWaypointWhereLooking,
-                toggleTiny,
-                toggleFilled,
-                toggleHideAfterParent,
-                toggleStandSkip,
-                toggleInteractSkip,
-                toggleMineSkip,
-                toggleDepthCheck);
+                addWaypointWhereLooking);
         List<DebugBinding> snapshot = new ArrayList<>(mappings.size());
         KeyMapping[] allMappings = Minecraft.getInstance().options.keyMappings;
         for (KeyMapping mapping : mappings) {
@@ -321,9 +271,6 @@ public final class WaypointerKeybinds {
             if (focusedEditBox(currentScreen)) {
                 drainWaypointKeybindClicks();
                 return;
-            }
-            if (currentScreen instanceof GroupEditScreen editor) {
-                toggleEditorControls(editor);
             }
             while (openEditor.consumeClick()) {
                 if (WaypointerGuiScreens.owns(currentScreen)) {
@@ -385,71 +332,6 @@ public final class WaypointerKeybinds {
         while (exitEditMode.consumeClick()) {}
         while (toggleEditMode.consumeClick()) {}
         while (addWaypointWhereLooking.consumeClick()) {}
-        while (toggleTiny.consumeClick()) {}
-        while (toggleFilled.consumeClick()) {}
-        while (toggleHideAfterParent.consumeClick()) {}
-        while (toggleStandSkip.consumeClick()) {}
-        while (toggleInteractSkip.consumeClick()) {}
-        while (toggleMineSkip.consumeClick()) {}
-        while (toggleDepthCheck.consumeClick()) {}
-    }
-
-    private void toggleEditorControls(GroupEditScreen editor) {
-        while (toggleTiny.consumeClick()) {
-            editor.toggleSelectedSubwaypointStyle(GroupEditScreen.SUBWAY_STYLE_ACTION_SMALL);
-        }
-        while (toggleFilled.consumeClick()) {
-            editor.toggleSelectedSubwaypointStyle(GroupEditScreen.SUBWAY_STYLE_ACTION_FILLED);
-        }
-        while (toggleHideAfterParent.consumeClick()) {
-            editor.toggleSelectedSubwaypointStyle(
-                    GroupEditScreen.SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT);
-        }
-        while (toggleStandSkip.consumeClick()) {
-            editor.toggleSelectedWaypointControl(GroupEditScreen.WAYPOINT_CONTROL_ACTION_STAND_SKIP);
-        }
-        while (toggleInteractSkip.consumeClick()) {
-            editor.toggleSelectedWaypointControl(GroupEditScreen.WAYPOINT_CONTROL_ACTION_INTERACT_SKIP);
-        }
-        while (toggleMineSkip.consumeClick()) {
-            editor.toggleSelectedWaypointControl(GroupEditScreen.WAYPOINT_CONTROL_ACTION_MINE_SKIP);
-        }
-        while (toggleDepthCheck.consumeClick()) {
-            editor.toggleSelectedWaypointControl(GroupEditScreen.WAYPOINT_CONTROL_ACTION_DEPTH_CHECK);
-        }
-    }
-
-    public List<String> editorControlLabels(boolean dungeonRoomGroup) {
-        List<String> labels = new ArrayList<>();
-        labels.add(editorControlLabel("Tiny", toggleTiny));
-        labels.add(editorControlLabel("Filled", toggleFilled));
-        labels.add(editorControlLabel("Hide after parent reached", toggleHideAfterParent));
-        if (dungeonRoomGroup) {
-            labels.add(editorControlLabel("Stand to skip", toggleStandSkip));
-            labels.add(editorControlLabel("Interact to skip", toggleInteractSkip));
-            labels.add(editorControlLabel("Mine to skip", toggleMineSkip));
-        }
-        labels.add(editorControlLabel("Render in LOS only", toggleDepthCheck));
-        return List.copyOf(labels);
-    }
-
-    public static List<String> defaultEditorControlLabels(boolean dungeonRoomGroup) {
-        List<String> labels = new ArrayList<>();
-        labels.add("Tiny (T)");
-        labels.add("Filled (F)");
-        labels.add("Hide after parent reached (H)");
-        if (dungeonRoomGroup) {
-            labels.add("Stand to skip (S)");
-            labels.add("Interact to skip (I)");
-            labels.add("Mine to skip (M)");
-        }
-        labels.add("Render in LOS only (R)");
-        return List.copyOf(labels);
-    }
-
-    private static String editorControlLabel(String label, KeyMapping mapping) {
-        if (mapping == null || mapping.isUnbound()) return label + " (Unbound)";
-        return label + " (" + mapping.getTranslatedKeyMessage().getString() + ")";
     }
 
     private void skipCurrentWaypoint() {
@@ -558,6 +440,10 @@ public final class WaypointerKeybinds {
 
     private boolean addBlockedByInstalledSecrets(Minecraft mc) {
         if (manager == null || manager.currentZone() == null) return false;
+        if (DungeonRoomRouteSync.isReadOnlyDungeonRouteZone(manager.currentZone().id())) {
+            showStatus(mc, Component.literal("Dungeon routes are read-only.").withStyle(ChatFormatting.RED));
+            return true;
+        }
         if (!DungeonRoomRouteSync.secretsRequireConversion(manager, manager.currentZone().id())) {
             return false;
         }

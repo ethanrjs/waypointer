@@ -81,7 +81,6 @@ public final class DungeonConfig {
     /** Number of current/future secret stages surfaced at once, SecretRoutes-style. */
     private int visibleSecretStages = 1;
     private boolean secretCompletionSound = true;
-    private boolean showPearlTrajectories = true;
 
     /** Default colors assigned to definition waypoints that do not carry an explicit color. */
     private int automaticSecretColor = 0x2EE0FF;
@@ -184,7 +183,6 @@ public final class DungeonConfig {
     public boolean showDungeonTracers() { return showDungeonTracers; }
     public int visibleSecretStages() { return Math.max(1, Math.min(5, visibleSecretStages)); }
     public boolean secretCompletionSound() { return secretCompletionSound; }
-    public boolean showPearlTrajectories() { return showPearlTrajectories; }
     public boolean routesPromptDismissed()  { return routesPromptDismissed; }
     public int automaticSecretColor() { return automaticSecretColor; }
     public int automaticEtherwarpColor() { return automaticEtherwarpColor; }
@@ -217,8 +215,7 @@ public final class DungeonConfig {
                 || autoCompleteRoomsOnGreenCheckmark
                 || showDungeonRouteLines
                 || showDungeonTracers
-                || secretCompletionSound
-                || showPearlTrajectories;
+                || secretCompletionSound;
         if (!changed) return;
         enabled = false;
         debugLogRoomChanges = false;
@@ -227,7 +224,6 @@ public final class DungeonConfig {
         showDungeonRouteLines = false;
         showDungeonTracers = false;
         secretCompletionSound = false;
-        showPearlTrajectories = false;
         save();
         if (notifyEnabledListeners) {
             for (Runnable listener : List.copyOf(enabledListeners)) listener.run();
@@ -248,7 +244,6 @@ public final class DungeonConfig {
                 || showDungeonTracers != defaults.showDungeonTracers
                 || visibleSecretStages != defaults.visibleSecretStages
                 || secretCompletionSound != defaults.secretCompletionSound
-                || showPearlTrajectories != defaults.showPearlTrajectories
                 || automaticSecretColor != defaults.automaticSecretColor
                 || automaticEtherwarpColor != defaults.automaticEtherwarpColor
                 || automaticBreakBlocksColor != defaults.automaticBreakBlocksColor
@@ -270,7 +265,6 @@ public final class DungeonConfig {
         showDungeonTracers = defaults.showDungeonTracers;
         visibleSecretStages = defaults.visibleSecretStages;
         secretCompletionSound = defaults.secretCompletionSound;
-        showPearlTrajectories = defaults.showPearlTrajectories;
         automaticSecretColor = defaults.automaticSecretColor;
         automaticEtherwarpColor = defaults.automaticEtherwarpColor;
         automaticBreakBlocksColor = defaults.automaticBreakBlocksColor;
@@ -329,12 +323,6 @@ public final class DungeonConfig {
     public void setSecretCompletionSound(boolean v) {
         if (secretCompletionSound == v) return;
         secretCompletionSound = v;
-        save();
-        fireChanged();
-    }
-    public void setShowPearlTrajectories(boolean v) {
-        if (showPearlTrajectories == v) return;
-        showPearlTrajectories = v;
         save();
         fireChanged();
     }

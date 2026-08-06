@@ -1,7 +1,6 @@
 package com.babbur.waypointer.dungeon;
 
 import com.babbur.waypointer.core.ActiveGroupManager;
-import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
@@ -17,7 +16,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -64,7 +62,7 @@ class DungeonRouteDownloaderTest {
     }
 
     @Test
-    void downloadedDefinitionsBecomePersistentEditableRoutes() {
+    void downloadedDefinitionsRemainReadOnlyRouteDefinitions() {
         ActiveGroupManager manager = new ActiveGroupManager();
         DungeonRouteDownloader downloader =
                 new DungeonRouteDownloader(manager, new DungeonConfig());
@@ -80,11 +78,8 @@ class DungeonRouteDownloaderTest {
 
         downloader.importDownloadedRoutes(result, feedback::add);
 
-        assertEquals(1, manager.allGroups().size());
-        WaypointGroup route = manager.allGroups().iterator().next();
-        assertFalse(route.runtimeOnly());
-        assertEquals(definition.id(), route.zoneId());
+        assertTrue(manager.allGroups().isEmpty());
         assertNotNull(DungeonRoomData.customDefinition(definition.id()));
-        assertTrue(feedback.get(0).getString().contains("editable routes"));
+        assertTrue(feedback.get(0).getString().contains("read-only dungeon routes"));
     }
 }

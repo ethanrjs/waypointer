@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Implijout uhelder Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Roudennoù",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Tresañ ur roudenn eus ar buker d'ar spisverk oberiant en toull-bac'h.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Treugadoù Perlezenn an End",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Tresañ krommenn loc'hañ enrollet evit an ober Perlezenn an End oberiant.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Hent antreal an toull-bac'h betek ar spisverk kentañ",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Tresañ un hent aes evit ar pelldougen betek ar spisverk #1 en ur vont e-barzh ur sal toull-bac'h.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Kenderc'hel gant hent an toull-bac'h goude an hini kentañ",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Liv poent hent Ender Pearl",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Arveret pa n'eus liv personelaet ebet gant an obererezh toull-bac'h-mañ.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Liv poent hent Ender Pearl",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Dibabit liv emgefreek poent hent Ender Pearl.",
-  "key.waypointer.toggle_tiny": "Eilpennañ an isspisverk bihan",
-  "key.waypointer.toggle_filled": "Eilpennañ an isspisverk leuniet",
-  "key.waypointer.toggle_hide_after_parent": "Eilpennañ kuzhañ an isspisverk goude ar spisverk kar",
-  "key.waypointer.toggle_stand_skip": "Eilpennañ chom en-sav evit tremen",
-  "key.waypointer.toggle_interact_skip": "Eilpennañ etreoberiañ evit tremen",
-  "key.waypointer.toggle_mine_skip": "Eilpennañ kleuziañ evit tremen",
-  "key.waypointer.toggle_depth_check": "Eilpennañ diskouez e-barzh al linenn welout hepken",
-  "waypointer.settings.group.system.waypoint_editor": "Aozer spisverkoù",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Berradennoù an aozer spisverkoù",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Keflugit ar berradennoù klavier implijet pa gemmer ar spisverkoù."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Dibabit liv emgefreek poent hent Ender Pearl."
 }

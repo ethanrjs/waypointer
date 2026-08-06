@@ -31,6 +31,8 @@ import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.lang.reflect.Proxy;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -147,6 +149,9 @@ class WaypointerCommandTreeTest {
                 Map.entry("wp group colormode 0 gradient", "group color-mode command"),
                 Map.entry("wp group color 0 4FE05A", "group static-color command"),
                 Map.entry("wp group gradient 0 00BFFF FF3040", "group gradient command"),
+                Map.entry("wp export routes", "explicit route export command"),
+                Map.entry("wp export config", "config export command"),
+                Map.entry("wp export dungeon", "dungeon export command"),
                 Map.entry("wp group delete 0", "group deletion warning"),
                 Map.entry("wp group delete 0 confirm", "confirmed group deletion"));
 
@@ -200,6 +205,22 @@ class WaypointerCommandTreeTest {
     }
 
     @Test
+    void successfulCommandExportDoesNotShowRedundantManualCopyAction() {
+        Component copied = WaypointerCommands.exportSuccessMessage(
+                1, "WP:payload", WaypointCodec.Options.WITH_NAMES, true);
+        Component failed = WaypointerCommands.exportSuccessMessage(
+                1, "WP:payload", WaypointCodec.Options.WITH_NAMES, false);
+
+        assertTrue(copied.getSiblings().stream()
+                .noneMatch(component -> component.getStyle().getClickEvent() != null));
+        Component manualCopy = failed.getSiblings().stream()
+                .filter(component -> component.getStyle().getClickEvent() != null)
+                .findFirst()
+                .orElseThrow();
+        assertInstanceOf(ClickEvent.CopyToClipboard.class, manualCopy.getStyle().getClickEvent());
+    }
+
+    @Test
     void addPersistentWaypointAtCreatesCurrentZoneRouteWaypoint() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("hub", "Hub"));
@@ -224,7 +245,7 @@ class WaypointerCommandTreeTest {
     }
 
     @Test
-    void addPersistentWaypointAtStoresDungeonRoomLocalCoordinates() throws Exception {
+    void addPersistentWaypointAtRejectsReadOnlyDungeonRoutes() throws Exception {
         DungeonRoomData.clearAllCustom();
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerConfig config = new WaypointerConfig();
@@ -255,11 +276,8 @@ class WaypointerCommandTreeTest {
             int index = WaypointerCommands.addPersistentWaypointAt(manager, config,
                     new WaypointAddFlow(), -95, 68, -121, "beam");
 
-            Waypoint waypoint = manager.groupsForZone("command-room").get(0).get(index);
-            assertEquals(21, waypoint.x());
-            assertEquals(68, waypoint.y());
-            assertEquals(-17, waypoint.z());
-            assertEquals("beam", waypoint.name());
+            assertEquals(-1, index);
+            assertTrue(manager.groupsForZone("command-room").isEmpty());
         } finally {
             trackerField.set(null, previousTracker);
             DungeonRoomData.clearAllCustom();
@@ -474,6 +492,38 @@ class WaypointerCommandTreeTest {
                 "removed devmode command should not resolve to help");
         assertEquals(-1, invokeResolveHelpPage("all"), "all is handled by runHelp, not page resolution");
         assertEquals(-1, invokeResolveHelpPage("missing"), "unknown target should still be rejected");
+    }
+
+    @Test
+    void helpOutputHasBlankLinesBeforeAndAfterEveryPage() throws Exception {
+        List<Component> feedback = new ArrayList<>();
+        FabricClientCommandSource source = (FabricClientCommandSource) Proxy.newProxyInstance(
+                getClass().getClassLoader(),
+                new Class<?>[]{FabricClientCommandSource.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("sendFeedback")) {
+                        feedback.add((Component) args[0]);
+                        return null;
+                    }
+                    throw new AssertionError("Unexpected command source call: " + method.getName());
+                });
+        WaypointerCommands commands = new WaypointerCommands(
+                new ActiveGroupManager(),
+                null,
+                new WaypointerConfig(),
+                new ChatImportCache(),
+                WaypointerCommandTreeTest::doNothingOpenGui);
+        Method runHelp = WaypointerCommands.class.getDeclaredMethod(
+                "runHelp", FabricClientCommandSource.class, String.class, String.class);
+        runHelp.setAccessible(true);
+
+        for (String target : List.of("sharing", "all")) {
+            feedback.clear();
+
+            assertEquals(1, runHelp.invoke(commands, source, "wp", target));
+            assertEquals("", feedback.getFirst().getString());
+            assertEquals("", feedback.getLast().getString());
+        }
     }
 
     @Test

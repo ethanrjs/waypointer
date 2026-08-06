@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "使用 Etherwarp 高度",
   "waypointer.settings.setting.showDungeonTracers.label": "追蹤線",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "從十字準星向使用中的地牢路徑點繪製追蹤線。",
-  "waypointer.settings.setting.showPearlTrajectories.label": "終界珍珠軌跡",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "為使用中的終界珍珠操作繪製已記錄的投擲弧線。",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "地牢入口至第一個路徑點的路徑",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "進入地牢房間時，繪製方便傳送至路徑點 #1 的路徑。",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "第一個路徑點後繼續地牢路徑",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "匯入失敗",
   "waypointer.import.failed.empty": "找不到路徑點。",
   "waypointer.screen.debug.payload.empty": "未載入資料內容。",
-  "waypointer.screen.debug.payload.empty_hint": "複製 %1$s 匯出字串，然後按 \"重新整理\"。",
-  "key.waypointer.toggle_tiny": "切換子路徑點的微型顯示",
-  "key.waypointer.toggle_filled": "切換子路徑點填滿",
-  "key.waypointer.toggle_hide_after_parent": "切換在父路徑點後隱藏子路徑點",
-  "key.waypointer.toggle_stand_skip": "切換站立時略過",
-  "key.waypointer.toggle_interact_skip": "切換互動時略過",
-  "key.waypointer.toggle_mine_skip": "切換挖掘時略過",
-  "key.waypointer.toggle_depth_check": "切換僅在視線範圍內顯示",
-  "waypointer.settings.group.system.waypoint_editor": "路徑點編輯器",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "路徑點編輯器按鍵綁定",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "設定編輯路徑點時使用的鍵盤快捷鍵。"
+  "waypointer.screen.debug.payload.empty_hint": "複製 %1$s 匯出字串，然後按 \"重新整理\"。"
 }

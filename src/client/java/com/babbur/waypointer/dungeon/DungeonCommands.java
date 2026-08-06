@@ -98,126 +98,8 @@ public final class DungeonCommands {
         LiteralArgumentBuilder<FabricClientCommandSource> cmd = literal(root)
                 .executes(ctx -> runInfo(ctx.getSource()))
                 .then(literal("info").executes(ctx -> runInfo(ctx.getSource())))
-                .then(literal("test").executes(ctx -> runTest(ctx.getSource())))
-                .then(literal("reset")
-                        .executes(ctx -> runReset(ctx.getSource(), false))
-                        .then(literal("confirm")
-                                .executes(ctx -> runReset(ctx.getSource(), true))))
                 .then(literal("room")
-                        .then(literal("create")
-                                .then(argument("id", StringArgumentType.word())
-                                        .suggests(suggestRoomIds())
-                                        .executes(ctx -> runRoomCreate(ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "id"), ""))
-                                        .then(argument("name", StringArgumentType.greedyString())
-                                                .suggests(suggestCurrentRoomNames())
-                                                .executes(ctx -> runRoomCreate(ctx.getSource(),
-                                                        StringArgumentType.getString(ctx, "id"),
-                                                        StringArgumentType.getString(ctx, "name"))))))
-                        .then(literal("rename")
-                                .then(argument("name", StringArgumentType.greedyString())
-                                        .suggests(suggestCurrentRoomNames())
-                                        .executes(ctx -> runRoomRename(ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "name")))))
-                        .then(literal("fingerprint")
-                                .then(literal("add").executes(ctx -> runFingerprintAdd(ctx.getSource()))))
                         .then(literal("list").executes(ctx -> runRoomList(ctx.getSource()))))
-                .then(literal("waypoint")
-                        .then(literal("list").executes(ctx -> runWaypointList(ctx.getSource())))
-                        .then(literal("add")
-                                .then(argument("category", StringArgumentType.word())
-                                        .suggests(suggestCategories())
-                                        .executes(ctx -> runWaypointAdd(ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "category"), ""))
-                                        .then(argument("name", StringArgumentType.greedyString())
-                                                .suggests(suggestWaypointNames())
-                                                .executes(ctx -> runWaypointAdd(ctx.getSource(),
-                                                        StringArgumentType.getString(ctx, "category"),
-                                                        StringArgumentType.getString(ctx, "name"))))))
-                        .then(literal("remove")
-                                .then(argument("index", IntegerArgumentType.integer(0))
-                                        .suggests(suggestWaypointIndices())
-                                        .executes(ctx -> runWaypointRemove(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index")))))
-                        .then(literal("move")
-                                .then(argument("index", IntegerArgumentType.integer(0))
-                                        .suggests(suggestWaypointIndices())
-                                        .executes(ctx -> runWaypointMove(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index")))))
-                        .then(literal("trigger")
-                                .then(argument("index", IntegerArgumentType.integer(0))
-                                        .suggests(suggestWaypointIndices())
-                                        .then(literal("manual").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.MANUAL)))
-                                        .then(literal("interact").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.INTERACT_BLOCK)))
-                                        .then(literal("chest").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.OPEN_CHEST)))
-                                        .then(literal("lever").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.FLIP_LEVER)))
-                                        .then(literal("superboom").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.USE_SUPERBOOM)))
-                                        .then(literal("pickup").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.PICKUP_ITEM)))
-                                        .then(literal("bat").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.KILL_BAT)))
-                                        .then(literal("break").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.BREAK_BLOCKS)))
-                                        .then(literal("dungeonbreaker").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.DUNGEONBREAKER)))
-                                        .then(literal("chat").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.CHAT_MESSAGE)))
-                                        .then(literal("etherwarp").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.ETHERWARP)))
-                                        .then(literal("any").executes(ctx -> runWaypointTrigger(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DungeonWaypointTrigger.ANY_SECRET))))))
-                .then(literal("highlight")
-                        .then(literal("list")
-                                .then(argument("waypoint", IntegerArgumentType.integer(0))
-                                        .suggests(suggestWaypointIndices())
-                                        .executes(ctx -> runHighlightList(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "waypoint")))))
-                        .then(literal("add")
-                                .then(argument("waypoint", IntegerArgumentType.integer(0))
-                                        .suggests(suggestWaypointIndices())
-                                        .executes(ctx -> runHighlightAdd(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "waypoint"),
-                                                DungeonHighlightStyle.OUTLINE))
-                                        .then(literal("outline").executes(ctx -> runHighlightAdd(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "waypoint"),
-                                                DungeonHighlightStyle.OUTLINE)))
-                                        .then(literal("filled").executes(ctx -> runHighlightAdd(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "waypoint"),
-                                                DungeonHighlightStyle.FILLED)))
-                                        .then(literal("both").executes(ctx -> runHighlightAdd(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "waypoint"),
-                                                DungeonHighlightStyle.OUTLINE_FILLED)))))
-                        .then(literal("remove")
-                                .then(argument("waypoint", IntegerArgumentType.integer(0))
-                                        .suggests(suggestWaypointIndices())
-                                        .then(argument("highlight", IntegerArgumentType.integer(0))
-                                                .suggests(suggestHighlightIndices())
-                                                .executes(ctx -> runHighlightRemove(ctx.getSource(),
-                                                        IntegerArgumentType.getInteger(ctx, "waypoint"),
-                                                        IntegerArgumentType.getInteger(ctx, "highlight")))))))
-                .then(literal("breakbox")
-                        .then(literal("add")
-                                .then(argument("waypoint", IntegerArgumentType.integer(0))
-                                        .suggests(suggestWaypointIndices())
-                                        .executes(ctx -> runBreakBoxAdd(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "waypoint"))))))
                 .then(literal("import")
                         .then(argument("file", StringArgumentType.greedyString())
                                 .executes(ctx -> runImport(ctx.getSource(),
@@ -774,19 +656,15 @@ public final class DungeonCommands {
         }
 
         DungeonRoomData.importCustomDefinitions(result.definitions());
-        List<WaypointGroup> routes =
-                DungeonRoomRouteSync.installEditableRoutes(manager, config, result.definitions());
-        if (routes.isEmpty()) {
+        if (result.definitions().isEmpty()) {
             error(src, Component.translatable(
                     "waypointer.dungeon.command.import.no_usable_routes"));
             return 0;
         }
         success(src, Component.translatable(
                 "waypointer.dungeon.command.import.success",
-                result.waypointCount(), routes.size(),
+                result.waypointCount(), result.definitions().size(),
                 importFormatLabel(result.format())));
-        info(src, Component.translatable(
-                "waypointer.dungeon.routes.existing_disabled"));
         if (result.skippedVariants() > 0) {
             info(src, Component.translatable(
                     "waypointer.dungeon.command.import.skipped_variants",

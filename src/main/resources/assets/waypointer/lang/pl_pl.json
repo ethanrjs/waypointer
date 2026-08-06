@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Używaj wysokości Etherwarpa",
   "waypointer.settings.setting.showDungeonTracers.label": "Linie naprowadzające",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Rysuj linię naprowadzającą od celownika do aktywnego punktu w lochu.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Trajektorie enderpereł",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Rysuj zarejestrowany tor rzutu aktywnej akcji enderperły.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Ścieżka od wejścia do pierwszego punktu",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Podczas wchodzenia do pokoju lochu rysuj ścieżkę dogodną do teleportacji do punktu nr 1.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Kontynuuj ścieżkę lochu po pierwszym punkcie",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Import nie powiódł się",
   "waypointer.import.failed.empty": "Nie znaleziono punktów orientacyjnych.",
   "waypointer.screen.debug.payload.empty": "Nie wczytano danych.",
-  "waypointer.screen.debug.payload.empty_hint": "Skopiuj ciąg eksportu %1$s, a następnie kliknij „Odśwież”.",
-  "key.waypointer.toggle_tiny": "Przełącz mały podpunkt",
-  "key.waypointer.toggle_filled": "Przełącz wypełniony podpunkt",
-  "key.waypointer.toggle_hide_after_parent": "Przełącz ukrywanie podpunktu po punkcie nadrzędnym",
-  "key.waypointer.toggle_stand_skip": "Przełącz pomijanie przez stanięcie",
-  "key.waypointer.toggle_interact_skip": "Przełącz pomijanie przez interakcję",
-  "key.waypointer.toggle_mine_skip": "Przełącz pomijanie przez wydobycie",
-  "key.waypointer.toggle_depth_check": "Przełącz wyświetlanie tylko w polu widzenia",
-  "waypointer.settings.group.system.waypoint_editor": "Edytor punktów orientacyjnych",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Skróty edytora punktów orientacyjnych",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Skonfiguruj skróty klawiszowe używane podczas edytowania punktów orientacyjnych."
+  "waypointer.screen.debug.payload.empty_hint": "Skopiuj ciąg eksportu %1$s, a następnie kliknij „Odśwież”."
 }

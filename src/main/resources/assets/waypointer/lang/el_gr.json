@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Χρήση ύψους Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Γραμμές καθοδήγησης",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Σχεδίαση γραμμής καθοδήγησης από το στόχαστρο προς τον ενεργό δείκτη μπουντρουμιού.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Τροχιές Μαργαριταριών Έντερ",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Σχεδίαση του καταγεγραμμένου τόξου εκτόξευσης για την ενεργή ενέργεια Μαργαριταριού Έντερ.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Διαδρομή εισόδου μπουντρουμιού προς τον πρώτο δείκτη",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Σχεδίαση μιας διαδρομής κατάλληλης για τηλεμεταφορά προς τον δείκτη #1 κατά την είσοδο σε δωμάτιο μπουντρουμιού.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Συνέχιση διαδρομής μπουντρουμιού μετά τον πρώτο",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Χρώμα σημείου διαδρομής: Ender Pearl",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Χρησιμοποιείται όταν αυτή η ενέργεια μπουντρουμιού δεν έχει προσαρμοσμένο χρώμα.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Χρώμα σημείου διαδρομής: Ender Pearl",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Επιλέξτε το αυτόματο χρώμα σημείου διαδρομής για Ender Pearl.",
-  "key.waypointer.toggle_tiny": "Εναλλαγή μικρού υποδείκτη",
-  "key.waypointer.toggle_filled": "Εναλλαγή γεμάτου υποδείκτη",
-  "key.waypointer.toggle_hide_after_parent": "Εναλλαγή απόκρυψης υποδείκτη μετά τον γονικό δείκτη",
-  "key.waypointer.toggle_stand_skip": "Εναλλαγή στάσης για παράλειψη",
-  "key.waypointer.toggle_interact_skip": "Εναλλαγή αλληλεπίδρασης για παράλειψη",
-  "key.waypointer.toggle_mine_skip": "Εναλλαγή εξόρυξης για παράλειψη",
-  "key.waypointer.toggle_depth_check": "Εναλλαγή απόδοσης μόνο εντός οπτικής επαφής",
-  "waypointer.settings.group.system.waypoint_editor": "Επεξεργαστής δεικτών",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Συντομεύσεις επεξεργαστή δεικτών",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Ρύθμισε τις συντομεύσεις πληκτρολογίου που χρησιμοποιούνται κατά την επεξεργασία δεικτών."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Επιλέξτε το αυτόματο χρώμα σημείου διαδρομής για Ender Pearl."
 }

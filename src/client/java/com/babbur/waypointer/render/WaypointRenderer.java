@@ -11,7 +11,6 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.core.WaypointVisibility;
-import com.babbur.waypointer.dungeon.DungeonPearlTrajectory;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.input.WaypointRepositionMode;
@@ -278,13 +277,11 @@ public final class WaypointRenderer implements HudElement {
         boolean drawFlatBeams = drawBeams && !drawTexturedBeams;
         boolean drawRouteLines = config.showRouteLines()
                 || dungeonConfig != null && dungeonConfig.showDungeonRouteLines();
-        boolean drawPearlTrajectories = dungeonConfig != null
-                && dungeonConfig.showPearlTrajectories();
         boolean drawDungeonEntryPaths = config.showDungeonEntryPathToFirstWaypoint();
         if (!drawLines && !drawFill && !drawPaint && !drawBeams && !drawRouteLines
-                && !drawPearlTrajectories && !drawDungeonEntryPaths) return;
+                && !drawDungeonEntryPaths) return;
         if (config.beaconOpacity() <= 0.0 && !drawRouteLines
-                && !drawPearlTrajectories && !drawDungeonEntryPaths) return;
+                && !drawDungeonEntryPaths) return;
         boolean hasDepthCheckedWaypoints = hasDepthCheckedWaypoint(groups);
         boolean hasThroughWallWaypoints = hasThroughWallWaypoint(groups) || drawDungeonEntryPaths;
         if (!hasDepthCheckedWaypoints && !hasThroughWallWaypoints) return;
@@ -414,7 +411,7 @@ public final class WaypointRenderer implements HudElement {
                 }
             });
         }
-        if ((drawLines || drawRouteLines || drawPearlTrajectories || drawDungeonEntryPaths)
+        if ((drawLines || drawRouteLines || drawDungeonEntryPaths)
                 && hasThroughWallWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
             List<DungeonEntryPathSubmission> dungeonEntryPaths = drawDungeonEntryPaths
@@ -423,11 +420,6 @@ public final class WaypointRenderer implements HudElement {
             boolean submitted = RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
                 if (drawDungeonEntryPaths) {
                     emitDungeonEntryPaths(submittedPose, lines, dungeonEntryPaths);
-                }
-                if (drawPearlTrajectories) {
-                    for (WaypointGroup group : groups) {
-                        emitPearlTrajectory(submittedPose, lines, group);
-                    }
                 }
                 if (drawRouteLines) {
                     for (WaypointGroup g : groups) {
@@ -598,32 +590,6 @@ public final class WaypointRenderer implements HudElement {
                 && group.size() > 0
                 && !group.isSubwaypoint(currentIndex)
                 && DungeonRoomData.definition(group.zoneId()) != null;
-    }
-
-    private void emitPearlTrajectory(PoseStack ps, VertexConsumer lines, WaypointGroup group) {
-        if (!isDungeonRoomRoute(group) || group.isComplete()) return;
-        int launchIndex = group.currentIndex();
-        int targetIndex = launchIndex + 1;
-        if (launchIndex < 0 || targetIndex >= group.size()) return;
-        Waypoint launch = group.get(launchIndex);
-        Waypoint target = group.get(targetIndex);
-        if (!launch.hasFlag(Waypoint.FLAG_DUNGEON_PEARL)
-                || !target.hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)) {
-            return;
-        }
-
-        Vec3 start = new Vec3(launch.centerX(), launch.y() + 1.62, launch.centerZ());
-        Vec3 end = new Vec3(target.centerX(), target.y() + 0.2, target.centerZ());
-        List<Vec3> points = DungeonPearlTrajectory.points(start, end);
-        float width = effectiveOutlineThickness();
-        for (int i = 1; i < points.size(); i++) {
-            Vec3 a = points.get(i - 1);
-            Vec3 b = points.get(i);
-            RenderHelpers.emitLine(lines, ps,
-                    (float) a.x, (float) a.y, (float) a.z,
-                    (float) b.x, (float) b.y, (float) b.z,
-                    launch.color(), 0.9f, width);
-        }
     }
 
     static boolean routeLinesEnabled(WaypointGroup group, WaypointerConfig config,

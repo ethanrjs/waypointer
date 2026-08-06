@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Etherwarp-Höh verwendn",
   "waypointer.settings.setting.showDungeonTracers.label": "Spurlinien",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "A Spurlinie vom Fadenkreiz zum aktivn Dungeon-Wegpunkt zeichna.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Ender Pearl-Flugbahna",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "De aufgzeichnete Wurfbahn fia d'aktive Ender Pearl-Aktion zeichna.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Dungeon-Eingangsweg zum erstn Wegpunkt",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Beim Betretn von am Dungeon-Raum an teleportfreundlichn Weg zum Wegpunkt #1 zeichna.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Dungeon-Weg nachm erstn fortsetzn",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Foab vom Ender Pearl-Wegpunkt",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Wird gnutzt, wenn de Dungeon-Aktion koa eigne Foab hod.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Foab vom Ender Pearl-Wegpunkt",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Automatische Foab vom Ender Pearl-Wegpunkt aussuacha.",
-  "key.waypointer.toggle_tiny": "Kloan Unterwegpunkt umschoin",
-  "key.waypointer.toggle_filled": "Gfülltn Unterwegpunkt umschoin",
-  "key.waypointer.toggle_hide_after_parent": "Unterwegpunkt nachm Elter verstecka umschoin",
-  "key.waypointer.toggle_stand_skip": "Stehn zum Überspringa umschoin",
-  "key.waypointer.toggle_interact_skip": "Interagiern zum Überspringa umschoin",
-  "key.waypointer.toggle_mine_skip": "Obbaun zum Überspringa umschoin",
-  "key.waypointer.toggle_depth_check": "Nur in Sichtlini rendern umschoin",
-  "waypointer.settings.group.system.waypoint_editor": "Wegpunkt-Editor",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Tastnbelegungen vom Wegpunkt-Editor",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Stell d'Tastnkürzl ei, de beim Bearbatn von Wegpunkten benutzt wern."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Automatische Foab vom Ender Pearl-Wegpunkt aussuacha."
 }

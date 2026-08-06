@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Brug Etherwarp-højde",
   "waypointer.settings.setting.showDungeonTracers.label": "Pegelinjer",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Tegn en pegelinje fra sigtekornet til det aktive dungeonrutepunkt.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Ender-perlebaner",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Tegn den optagede kastebue for den aktive Ender-perlehandling.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Dungeonens indgangssti til første rutepunkt",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Tegn en teleporteringsvenlig sti til rutepunkt nr. 1, når du går ind i et dungeonrum.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Fortsæt dungeonstien efter det første",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Farve på rutepunkt for Ender Pearl",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Bruges, når denne dungeonhandling ikke har en brugerdefineret farve.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Farve på rutepunkt for Ender Pearl",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Vælg den automatiske farve på rutepunktet for Ender Pearl.",
-  "key.waypointer.toggle_tiny": "Slå lille underrutepunkt til/fra",
-  "key.waypointer.toggle_filled": "Slå udfyldt underrutepunkt til/fra",
-  "key.waypointer.toggle_hide_after_parent": "Slå skjulning af underrutepunkt efter overordnet rutepunkt til/fra",
-  "key.waypointer.toggle_stand_skip": "Slå stå for at springe over til/fra",
-  "key.waypointer.toggle_interact_skip": "Slå interaktion for at springe over til/fra",
-  "key.waypointer.toggle_mine_skip": "Slå udvinding for at springe over til/fra",
-  "key.waypointer.toggle_depth_check": "Slå visning kun i sigtelinjen til/fra",
-  "waypointer.settings.group.system.waypoint_editor": "Rutepunktseditor",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Genvejstaster til rutepunktseditoren",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Konfigurer tastaturgenveje, der bruges under redigering af rutepunkter."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Vælg den automatiske farve på rutepunktet for Ender Pearl."
 }

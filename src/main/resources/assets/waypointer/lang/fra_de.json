@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Etherwarp-Höh nehma",
   "waypointer.settings.setting.showDungeonTracers.label": "Zeichalinien",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "A Zeichalinie vom Faadnkreiz zum aggdivn Dungeon-Wechbungd zeichn.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Ender Pearl-Fluchbahna",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Den aufgzeichnedn Wurfbouchn füa die aggdivn Ender Pearl-Agdsion zeichn.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Dungeon-Eingangspfad zum easdn Wechbungd",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Beim Reinlaufa in an Dungeon-Raum an delebodd-freindlichn Pfad zum Wechbungd #1 zeichn.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Dungeon-Pfad nachm easdn weidafian",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Imbodd fehlgschlochn",
   "waypointer.import.failed.empty": "Koane Wechbungde gfundn.",
   "waypointer.screen.debug.payload.empty": "Koa Inhald glodn.",
-  "waypointer.screen.debug.payload.empty_hint": "An %1$s-Exbodd-Dexd kobian und dann „Nei lodn“ gliggn.",
-  "key.waypointer.toggle_tiny": "Gloana Undawechbungd umschaldn",
-  "key.waypointer.toggle_filled": "Ausgülldn Undawechbungd umschaldn",
-  "key.waypointer.toggle_hide_after_parent": "Verschdeggn vom Undawechbungd nachm Haubdwechbungd umschaldn",
-  "key.waypointer.toggle_stand_skip": "Überschbringn beim Schdeh umschaldn",
-  "key.waypointer.toggle_interact_skip": "Überschbringn beim Interagiern umschaldn",
-  "key.waypointer.toggle_mine_skip": "Überschbringn beim Abbau umschaldn",
-  "key.waypointer.toggle_depth_check": "Bloß bei Sichdlinie zeichn umschaldn",
-  "waypointer.settings.group.system.waypoint_editor": "Wechbungd-Beabeidung",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Dasdnkürzl vo da Wechbungd-Beabeidung",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Die Dasdnkürzl zum Beabeidn vo Wechbungdn eischdelln."
+  "waypointer.screen.debug.payload.empty_hint": "An %1$s-Exbodd-Dexd kobian und dann „Nei lodn“ gliggn."
 }

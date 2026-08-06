@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Usar altura de Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Trazadores",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Dibuja un trazador desde la mira hasta la baliza activa de la mazmorra.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Trayectorias de perlas de ender",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Dibuja el arco de lanzamiento grabado para la acción activa con una perla de ender.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Camino de entrada hasta la primera baliza",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Dibuja un camino apto para teletransporte hasta la baliza n.º 1 al entrar a una sala de mazmorra.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Continuar camino tras la primera baliza",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Falló la importación",
   "waypointer.import.failed.empty": "No se encontraron balizas.",
   "waypointer.screen.debug.payload.empty": "No hay datos cargados.",
-  "waypointer.screen.debug.payload.empty_hint": "Copia una cadena de exportación de %1$s y haz clic en \"Actualizar\".",
-  "key.waypointer.toggle_tiny": "Alternar baliza secundaria pequeña",
-  "key.waypointer.toggle_filled": "Alternar baliza secundaria rellena",
-  "key.waypointer.toggle_hide_after_parent": "Alternar ocultar la baliza secundaria tras la principal",
-  "key.waypointer.toggle_stand_skip": "Alternar pararse para saltar",
-  "key.waypointer.toggle_interact_skip": "Alternar interactuar para saltar",
-  "key.waypointer.toggle_mine_skip": "Alternar minar para saltar",
-  "key.waypointer.toggle_depth_check": "Alternar renderizado solo con línea de visión",
-  "waypointer.settings.group.system.waypoint_editor": "Editor de balizas",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Atajos del editor de balizas",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configura los atajos de teclado usados al editar balizas."
+  "waypointer.screen.debug.payload.empty_hint": "Copia una cadena de exportación de %1$s y haz clic en \"Actualizar\"."
 }

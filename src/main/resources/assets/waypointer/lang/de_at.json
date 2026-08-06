@@ -239,8 +239,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Etherwarp-Höh verwendn",
   "waypointer.settings.setting.showDungeonTracers.label": "Tracer",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "An Tracer vom Fodnkreiz zum aktiven Dungeon-Wegpunkt zeichna.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Flugbahnen von Enderperlen",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Den aufgzeichneten Wurfbogn fia de aktive Enderperlenaktion zeichna.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Dungeon-Eistiegsweg zum erstn Wegpunkt",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Beim Betretn von an Dungeon-Raum an teleportfreundlichen Weg zum Wegpunkt #1 zeichna.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Dungeon-Weg nochm erstn fortsetzn",
@@ -855,15 +853,5 @@
   "waypointer.settings.setting.automaticPearlColor.label": "Ender Pearl-Wegpunktfarbe",
   "waypointer.settings.setting.automaticPearlColor.tooltip": "Wird verwendet, wenn diese Dungeon-Aktion keine benutzerdefinierte Farbe hat.",
   "waypointer.settings.setting.automaticPearlColor.color_picker_title": "Ender Pearl-Wegpunktfarbe",
-  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Automatische Ender Pearl-Wegpunktfarbe auswählen.",
-  "key.waypointer.toggle_tiny": "Klanen Unterwegpunkt umschaltn",
-  "key.waypointer.toggle_filled": "Ausgfülltn Unterwegpunkt umschaltn",
-  "key.waypointer.toggle_hide_after_parent": "Unterwegpunkt nachm Elternpunkt versteckn umschaltn",
-  "key.waypointer.toggle_stand_skip": "Stehn zum Überspringen umschaltn",
-  "key.waypointer.toggle_interact_skip": "Interagiern zum Überspringen umschaltn",
-  "key.waypointer.toggle_mine_skip": "Obbaun zum Überspringen umschaltn",
-  "key.waypointer.toggle_depth_check": "Nur in Sichtlinie rendern umschaltn",
-  "waypointer.settings.group.system.waypoint_editor": "Wegpunkteditor",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Tastnbelegungen vom Wegpunkteditor",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Tastnkürzl fürs Bearbeitn von Wegpunkten einstelln."
+  "waypointer.settings.setting.automaticPearlColor.color_swatch_tooltip": "Automatische Ender Pearl-Wegpunktfarbe auswählen."
 }

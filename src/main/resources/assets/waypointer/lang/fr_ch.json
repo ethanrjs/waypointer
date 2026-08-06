@@ -276,8 +276,6 @@
   "waypointer.settings.setting.useEtherwarpHeight.label": "Utiliser la hauteur d'Etherwarp",
   "waypointer.settings.setting.showDungeonTracers.label": "Traceurs",
   "waypointer.settings.setting.showDungeonTracers.tooltip": "Tracer une ligne du viseur au point de donjon actif.",
-  "waypointer.settings.setting.showPearlTrajectories.label": "Trajectoires des perles de l'Ender",
-  "waypointer.settings.setting.showPearlTrajectories.tooltip": "Afficher l'arc de lancement enregistré pour l'action active avec une perle de l'Ender.",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.label": "Trajet de l'entrée au premier point du donjon",
   "waypointer.settings.setting.showDungeonEntryPathToFirstWaypoint.tooltip": "Tracer un trajet adapté à la téléportation vers le point n° 1 lors de l'entrée dans une salle de donjon.",
   "waypointer.settings.setting.showDungeonEntryPathToFollowingWaypoints.label": "Continuer le trajet après le premier point",
@@ -855,15 +853,5 @@
   "waypointer.import.failed.title": "Échec de l'importation",
   "waypointer.import.failed.empty": "Aucun point de repère trouvé.",
   "waypointer.screen.debug.payload.empty": "Aucune donnée chargée.",
-  "waypointer.screen.debug.payload.empty_hint": "Copiez une chaîne d'exportation %1$s, puis cliquez sur \"Actualiser\".",
-  "key.waypointer.toggle_tiny": "Basculer le sous-point miniature",
-  "key.waypointer.toggle_filled": "Basculer le sous-point plein",
-  "key.waypointer.toggle_hide_after_parent": "Basculer le masquage du sous-point après le parent",
-  "key.waypointer.toggle_stand_skip": "Basculer le passage en se tenant dessus",
-  "key.waypointer.toggle_interact_skip": "Basculer le passage par interaction",
-  "key.waypointer.toggle_mine_skip": "Basculer le passage par minage",
-  "key.waypointer.toggle_depth_check": "Basculer l'affichage avec ligne de vue uniquement",
-  "waypointer.settings.group.system.waypoint_editor": "Éditeur de points de repère",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.label": "Raccourcis de l'éditeur de points de repère",
-  "waypointer.settings.setting.action.waypointEditorKeybinds.tooltip": "Configurer les raccourcis clavier utilisés lors de la modification des points de repère."
+  "waypointer.screen.debug.payload.empty_hint": "Copiez une chaîne d'exportation %1$s, puis cliquez sur \"Actualiser\"."
 }

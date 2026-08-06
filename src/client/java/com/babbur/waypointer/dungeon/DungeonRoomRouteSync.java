@@ -330,8 +330,19 @@ public final class DungeonRoomRouteSync {
      */
     public static WaypointGroup durableEditTarget(ActiveGroupManager manager,
                                                    WaypointGroup visibleGroup) {
+        if (isReadOnlyDungeonRoute(visibleGroup)) return null;
         if (!isGeneratedGroup(visibleGroup)) return visibleGroup;
         return storedSourceForMirror(manager, visibleGroup);
+    }
+
+    /** Dungeon route definitions are installed content and cannot be edited in-game. */
+    public static boolean isReadOnlyDungeonRoute(WaypointGroup group) {
+        return group != null && DungeonRoomData.definition(group.zoneId()) != null;
+    }
+
+    /** Returns whether a zone contains an installed dungeon route definition. */
+    public static boolean isReadOnlyDungeonRouteZone(String zoneId) {
+        return zoneId != null && DungeonRoomData.definition(zoneId) != null;
     }
 
     /**
