@@ -413,10 +413,7 @@ public final class WaypointRepositionMode {
      */
     static WaypointGroup editModeAddTarget(ActiveGroupManager manager) {
         if (manager == null) return null;
-        if (editTargetGroupId == null) {
-            WaypointGroup activeGroup = manager.getOrCreateActiveGroup();
-            return DungeonRoomRouteSync.isReadOnlyDungeonRoute(activeGroup) ? null : activeGroup;
-        }
+        if (editTargetGroupId == null) return manager.getOrCreateActiveGroup();
 
         WaypointGroup selected = manager.get(editTargetGroupId);
         if (selected == null) return null;
@@ -774,10 +771,6 @@ public final class WaypointRepositionMode {
      */
     private static boolean addBlockedByInstalledSecrets(Minecraft mc, ActiveGroupManager manager) {
         if (manager == null || manager.currentZone() == null) return false;
-        if (DungeonRoomRouteSync.isReadOnlyDungeonRouteZone(manager.currentZone().id())) {
-            showStatus(mc, Component.literal("Dungeon routes are read-only.").withStyle(ChatFormatting.RED));
-            return true;
-        }
         if (!DungeonRoomRouteSync.secretsRequireConversion(manager, manager.currentZone().id())) {
             return false;
         }

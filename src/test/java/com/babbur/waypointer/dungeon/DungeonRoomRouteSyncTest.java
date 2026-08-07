@@ -959,7 +959,8 @@ class DungeonRoomRouteSyncTest {
         DungeonRoomData.addWaypoint(definition.id(), DungeonWaypoint.plain(
                 "secret", DungeonSecretCategory.CHEST, 4, 70, 7, ""));
 
-        // Secrets installed without an old stored route are read-only.
+        // Secrets installed, no user route: in-world edits must be refused
+        // until the user converts the secrets into their own route.
         assertNull(DungeonRoomRouteSync.storedRouteForRoom(manager, "helper-room"));
         assertTrue(DungeonRoomRouteSync.secretsRequireConversion(manager, "helper-room"));
 
@@ -974,14 +975,14 @@ class DungeonRoomRouteSyncTest {
                 DungeonRoomRouteSync.generatedGroupId("helper-room"), "User Route", "helper-room");
         mirror.setRuntimeOnly(true);
         assertEquals(stored, DungeonRoomRouteSync.storedSourceForMirror(manager, mirror));
-        assertNull(DungeonRoomRouteSync.durableEditTarget(manager, mirror));
-        assertNull(DungeonRoomRouteSync.durableEditTarget(manager, stored));
+        assertEquals(stored, DungeonRoomRouteSync.durableEditTarget(manager, mirror));
+        assertEquals(stored, DungeonRoomRouteSync.durableEditTarget(manager, stored));
         assertNull(DungeonRoomRouteSync.storedSourceForMirror(manager, stored),
                 "only generated mirrors have a stored source");
 
         manager.remove(stored.id());
         assertNull(DungeonRoomRouteSync.durableEditTarget(manager, mirror),
-                "installed dungeon routes stay read-only");
+                "downloaded definition-only mirrors must require explicit conversion");
     }
 
     @Test

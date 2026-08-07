@@ -18,7 +18,6 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointRepositionModeTest {
@@ -87,32 +86,6 @@ class WaypointRepositionModeTest {
         manager.add(downloadedOnly);
         assertFalse(WaypointRepositionMode.removeWaypoint(manager, downloadedOnly, 0));
         assertEquals(1, downloadedOnly.size());
-    }
-
-    @Test
-    void installedDungeonRoutesCannotBeEdited() {
-        DungeonRoomData.clearAllCustom();
-        try {
-            DungeonRoomData.defineRoom("read-only-room", "Read Only Room", new DungeonRoom(
-                    DungeonRoomType.ROOM, DungeonRoomShape.ONE_BY_ONE, Direction.NW,
-                    0, 0, java.util.List.of(DungeonRoom.packSegment(0, 0))));
-            ActiveGroupManager manager = new ActiveGroupManager();
-            WaypointGroup stored = WaypointGroup.create("Dungeon", "read-only-room");
-            stored.add(Waypoint.at(1, 70, 1));
-            manager.add(stored);
-            WaypointGroup mirror = new WaypointGroup(
-                    "dungeon:auto:read-only-room", "Dungeon", "read-only-room");
-            mirror.setRuntimeOnly(true);
-            mirror.addAll(stored.waypoints());
-            manager.add(mirror);
-
-            assertFalse(WaypointRepositionMode.removeWaypoint(manager, mirror, 0));
-            assertEquals(1, stored.size());
-            assertNull(com.babbur.waypointer.dungeon.DungeonRoomRouteSync
-                    .durableEditTarget(manager, mirror));
-        } finally {
-            DungeonRoomData.clearAllCustom();
-        }
     }
 
     @Test

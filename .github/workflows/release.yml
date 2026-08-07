@@ -9,14 +9,13 @@ on:
       release_tag:
         description: Release tag to validate without publishing
         required: true
-        default: v1.8.6
+        default: v1.8.7
 
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 env:
-  MINECRAFT_1_21_11_COMMIT: f6372fbb1954ffbcaf2dbb47d8919742e1c5ec6e
   RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
 
 jobs:
@@ -65,7 +64,7 @@ jobs:
       - name: Test and build Minecraft 26.x targets
         run: ./gradlew --no-daemon --max-workers=1 clean buildAllTargets --stacktrace --console=plain
 
-      - name: Collect Minecraft 26.x release files
+      - name: Collect and verify all release files
         shell: bash
         run: |
           set -euo pipefail
@@ -86,62 +85,6 @@ jobs:
           fi
 
           cp "${jars[@]}" release/
-
-      - name: Check out Minecraft 1.21.11 release commit
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          ref: ${{ env.MINECRAFT_1_21_11_COMMIT }}
-          path: minecraft-1.21.11
-          persist-credentials: false
-
-      - name: Require Minecraft 1.21.11 release data to match
-        shell: bash
-        run: |
-          set -euo pipefail
-          main_version="$(sed -n 's/^mod_version=//p' gradle.properties)"
-          legacy_version="$(sed -n 's/^mod_version=//p' minecraft-1.21.11/gradle.properties)"
-
-          if [[ "${legacy_version}" != "${main_version}" ]]; then
-            echo "Minecraft 1.21.11 version ${legacy_version} does not match ${main_version}"
-            exit 1
-          fi
-
-          diff -u \
-            "release-notes/${RELEASE_TAG}.md" \
-            "minecraft-1.21.11/release-notes/${RELEASE_TAG}.md"
-
-      - name: Set up Java 21
-        uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
-        with:
-          distribution: temurin
-          java-version: "21"
-          cache: gradle
-          cache-dependency-path: minecraft-1.21.11/gradle/wrapper/gradle-wrapper.properties
-
-      - name: Test and build Minecraft 1.21.11
-        working-directory: minecraft-1.21.11
-        run: ./gradlew --no-daemon --max-workers=1 clean build --stacktrace --console=plain
-
-      - name: Collect and verify all release files
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mapfile -d '' legacy_jars < <(
-            find minecraft-1.21.11/build/libs -maxdepth 1 -type f -name 'waypointer-*-mc*.jar' \
-              ! -name '*-sources.jar' \
-              ! -name '*-dev.jar' \
-              ! -name '*-shadow.jar' \
-              -print0 | sort -z
-          )
-
-          if [[ "${#legacy_jars[@]}" -ne 1 ]]; then
-            echo "Expected 1 Minecraft 1.21.11 JAR, found ${#legacy_jars[@]}"
-            printf '%s\n' "${legacy_jars[@]}"
-            exit 1
-          fi
-
-          cp "${legacy_jars[@]}" release/
           cp "release-notes/${RELEASE_TAG}.md" release/RELEASE_NOTES.md
 
           mod_version="${RELEASE_TAG#v}"
@@ -167,11 +110,10 @@ jobs:
 
           check_metadata "release/waypointer-${mod_version}-mc26.1.2.jar" ">=26.1.2 <26.2" ">=25" ">=1.0.2"
           check_metadata "release/waypointer-${mod_version}-mc26.2.jar" ">=26.2 <26.3" ">=25" ">=1.0.2"
-          check_metadata "release/waypointer-${mod_version}-mc1.21.11.jar" "~1.21.11" ">=21" "1.0.1"
 
           mapfile -t jars < <(find release -maxdepth 1 -type f -name '*.jar' -print | sort)
-          if [[ "${#jars[@]}" -ne 3 ]]; then
-            echo "Expected 3 distributable JARs, found ${#jars[@]}"
+          if [[ "${#jars[@]}" -ne 2 ]]; then
+            echo "Expected 2 distributable JARs, found ${#jars[@]}"
             printf '%s\n' "${jars[@]}"
             exit 1
           fi
@@ -228,8 +170,8 @@ jobs:
           set -euo pipefail
 
           mapfile -t jars < <(find release -maxdepth 1 -type f -name '*.jar' -print | sort)
-          if [[ "${#jars[@]}" -ne 3 ]]; then
-            echo "Expected 3 verified distributable JARs, found ${#jars[@]}"
+          if [[ "${#jars[@]}" -ne 2 ]]; then
+            echo "Expected 2 verified distributable JARs, found ${#jars[@]}"
             exit 1
           fi
 

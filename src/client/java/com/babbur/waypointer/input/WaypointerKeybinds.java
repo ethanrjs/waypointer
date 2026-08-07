@@ -440,10 +440,6 @@ public final class WaypointerKeybinds {
 
     private boolean addBlockedByInstalledSecrets(Minecraft mc) {
         if (manager == null || manager.currentZone() == null) return false;
-        if (DungeonRoomRouteSync.isReadOnlyDungeonRouteZone(manager.currentZone().id())) {
-            showStatus(mc, Component.literal("Dungeon routes are read-only.").withStyle(ChatFormatting.RED));
-            return true;
-        }
         if (!DungeonRoomRouteSync.secretsRequireConversion(manager, manager.currentZone().id())) {
             return false;
         }
