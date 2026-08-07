@@ -143,10 +143,19 @@ public final class ExportScreen extends Screen {
     private static final int PANEL_MAX_W = 448;
     private static final int WIDE_PREVIEW_BREAKPOINT = 736;
     private static final int PREVIEW_PANE_MIN_W = 240;
-    private static final int PREVIEW_PANE_MAX_W = 360;
+    /**
+     * The preview may grow to roughly the width of the control column beside it.
+     *
+     * It used to stop at 360, which meant a 2560px monitor showed the same
+     * postage-stamp route as a 1366px laptop while the space next to it went to
+     * the scrim. Matching the control column is the natural ceiling: the pane is
+     * the co-equal half of a two-column dialog, not a thumbnail, and letting it
+     * run wider than the options would make the options look like the sidebar.
+     */
+    private static final int PREVIEW_PANE_MAX_W = 448;
     private static final int PREVIEW_SPLIT_GAP = GAP;
     private static final int HEADER_SWITCH_W = 70;
-    private static final int PREVIEW_NAV_W = 20;
+    private static final int PREVIEW_NAV_W = RoutePreviewWidget.NAV_BUTTON_W;
 
     /**
      * Include rows are laid out in two columns of {@link #INCLUDE_ROWS_PER_COL}.
@@ -201,6 +210,7 @@ public final class ExportScreen extends Screen {
     private Button previewPageButton;
     private Button previewPreviousButton;
     private Button previewNextButton;
+    private Button previewZoomResetButton;
     private RoutePreviewWidget routePreviewWidget;
     private boolean routePickerExpanded;
     private boolean compactPreviewPage;
@@ -239,6 +249,15 @@ public final class ExportScreen extends Screen {
     private RoutePreviewScene previewScene;
     private int previewGroupIndex;
 
+    /**
+     * Whether this screen draws the 3D route preview at all (Sharing → 3D route
+     * preview). Read once at construction rather than per-frame: the setting can
+     * only change from the settings screen, which means this screen is gone and
+     * will be rebuilt before the new value could matter, and a per-frame read
+     * would let the panel resize itself mid-session.
+     */
+    private final boolean previewEnabled;
+
     public ExportScreen(Screen parent, WaypointerConfig config, List<WaypointGroup> groups, String subtitle) {
         super(Component.translatable("waypointer.screen.export.title"));
         this.parent = parent;
@@ -248,8 +267,11 @@ public final class ExportScreen extends Screen {
         this.subtitle = subtitle;
         this.routePickerExpanded = shouldStartRoutePickerExpanded(groups.size());
         this.optsBuilder = builderFromConfig(config, selectedGroupsForExport(groups, selectedGroups));
+        this.previewEnabled = config.showExportRoutePreview();
         this.previewGroupIndex = firstSelectedGroupIndex();
-        this.previewScene = buildPreviewScene();
+        // Building a scene uploads the route's paint texture, so a disabled
+        // preview must not build one at all -- not build one and hide it.
+        this.previewScene = previewEnabled ? buildPreviewScene() : RoutePreviewScene.empty();
     }
 
     public static void openForGroup(Screen parent, WaypointerConfig config, WaypointGroup group) {
@@ -283,6 +305,8 @@ public final class ExportScreen extends Screen {
         previewPageButton = null;
         previewPreviousButton = null;
         previewNextButton = null;
+        previewZoomResetButton = null;
+        routePreviewWidget = null;
 
         // Declaration order is column-major: the first three rows fill the left
         // column, the rest fill the right one. The left column holds the choices
@@ -298,26 +322,9 @@ public final class ExportScreen extends Screen {
 
         computeLayout();
 
-        routePreviewWidget = new RoutePreviewWidget(
-                routePreviewX, routePreviewY, routePreviewW, routePreviewH,
-                previewScene, previewRouteCounter(), previewOrbit, previewZoom);
-        addRenderableWidget(routePreviewWidget);
+        if (previewEnabled) buildPreviewWidgets();
 
-        previewPreviousButton = GuiTokens.styledButton(
-                routePreviewX + 3, routePreviewY + 6, PREVIEW_NAV_W, BTN_H,
-                Component.literal("<"), button -> navigatePreviewRoute(-1),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.export.preview.previous")));
-        previewNextButton = GuiTokens.styledButton(
-                routePreviewX + routePreviewW - PREVIEW_NAV_W - 3,
-                routePreviewY + 6, PREVIEW_NAV_W, BTN_H,
-                Component.literal(">"), button -> navigatePreviewRoute(1),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.export.preview.next")));
-        addRenderableWidget(previewPreviousButton);
-        addRenderableWidget(previewNextButton);
-
-        if (!widePreviewLayout) {
+        if (previewEnabled && !widePreviewLayout) {
             previewPageButton = GuiTokens.styledButton(
                     contentX + contentW - HEADER_SWITCH_W,
                     panelY + PAD_OUTER, HEADER_SWITCH_W, BTN_H,
@@ -392,8 +399,53 @@ public final class ExportScreen extends Screen {
         addRenderableWidget(copyButton);
 
         applyPreviewPageVisibility();
-        setInitialFocus(compactPreviewPage && !widePreviewLayout ? previewPageButton : labelInput);
+        setInitialFocus(previewPageButton != null && compactPreviewPage
+                ? previewPageButton : labelInput);
         clampRouteScrollOffset();
+    }
+
+    /**
+     * The preview pane and the three controls that live on top of it.
+     *
+     * All three are siblings rather than children of the widget because the
+     * preview is deliberately passive -- it takes no clicks and no focus -- so
+     * anything clickable has to be a real widget placed over it. The arrows sit
+     * in the header band, flanking the route name; the zoom control sits in the
+     * viewport's bottom-right and only appears once the wheel has actually moved
+     * the view, so the resting preview stays a picture with nothing on it.
+     */
+    private void buildPreviewWidgets() {
+        routePreviewWidget = new RoutePreviewWidget(
+                routePreviewX, routePreviewY, routePreviewW, routePreviewH,
+                previewScene, previewRouteCounter(), previewOrbit, previewZoom);
+        routePreviewWidget.setRouteName(previewRouteName());
+        addRenderableWidget(routePreviewWidget);
+
+        int navY = routePreviewY + RoutePreviewWidget.NAV_BUTTON_Y_OFFSET;
+        previewPreviousButton = GuiTokens.styledButton(
+                routePreviewX + RoutePreviewWidget.NAV_BUTTON_INSET, navY, PREVIEW_NAV_W, BTN_H,
+                Component.literal("<"), button -> navigatePreviewRoute(-1),
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.export.preview.previous")));
+        previewNextButton = GuiTokens.styledButton(
+                routePreviewX + routePreviewW - PREVIEW_NAV_W - RoutePreviewWidget.NAV_BUTTON_INSET,
+                navY, PREVIEW_NAV_W, BTN_H,
+                Component.literal(">"), button -> navigatePreviewRoute(1),
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.export.preview.next")));
+        addRenderableWidget(previewPreviousButton);
+        addRenderableWidget(previewNextButton);
+
+        previewZoomResetButton = GuiTokens.styledButton(
+                routePreviewX + routePreviewW
+                        - RoutePreviewWidget.ZOOM_BUTTON_W - RoutePreviewWidget.ZOOM_BUTTON_INSET,
+                routePreviewY + routePreviewH
+                        - RoutePreviewWidget.ZOOM_BUTTON_H - RoutePreviewWidget.ZOOM_BUTTON_INSET,
+                RoutePreviewWidget.ZOOM_BUTTON_W, RoutePreviewWidget.ZOOM_BUTTON_H,
+                previewZoomLabel(), this::resetPreviewZoom,
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.export.preview.zoom.tooltip")));
+        addRenderableWidget(previewZoomResetButton);
     }
 
     private int footerButtonWidth(Component label) {
@@ -410,7 +462,7 @@ public final class ExportScreen extends Screen {
     private void computeLayout() {
         reencode();
 
-        widePreviewLayout = isWidePreviewLayout(width);
+        widePreviewLayout = isWidePreviewLayout(previewEnabled, width);
         if (widePreviewLayout) {
             int available = Math.max(PANEL_MIN_W, width - PANEL_MARGIN * 2);
             controlPanelW = PANEL_MAX_W;
@@ -462,6 +514,17 @@ public final class ExportScreen extends Screen {
 
     static boolean isWidePreviewLayout(int screenWidth) {
         return screenWidth >= WIDE_PREVIEW_BREAKPOINT;
+    }
+
+    /**
+     * A disabled preview collapses the screen back to one centered column.
+     *
+     * Keeping the split and leaving the right half empty would be worse than
+     * the old single-column screen: the options would sit off-center under a
+     * panel sized for something that is not drawn.
+     */
+    static boolean isWidePreviewLayout(boolean previewEnabled, int screenWidth) {
+        return previewEnabled && isWidePreviewLayout(screenWidth);
     }
 
     static int widePreviewWidth(int resolvedPanelWidth, int resolvedControlWidth) {
@@ -596,6 +659,7 @@ public final class ExportScreen extends Screen {
         // wire copy is what matters and the preview shows real bytes.
         currentLabel = raw;
         optsBuilder.label(WaypointCodec.Options.sanitizeLabel(raw));
+        if (routePreviewWidget != null) routePreviewWidget.setRouteName(previewRouteName());
         reencode();
     }
 
@@ -617,6 +681,7 @@ public final class ExportScreen extends Screen {
         if (exportForButton != null) exportForButton.setMessage(exportForButtonLabel());
         if (!toggleButtons.isEmpty()) refreshToggleButtons();
         if (labelInput != null) updateLabelInputState();
+        if (routePreviewWidget != null) routePreviewWidget.setRouteName(previewRouteName());
         reencode();
     }
 
@@ -748,19 +813,51 @@ public final class ExportScreen extends Screen {
     }
 
     private void applyPreviewPageVisibility() {
-        boolean optionsVisible = widePreviewLayout || !compactPreviewPage;
-        boolean previewVisible = widePreviewLayout || compactPreviewPage;
+        boolean optionsVisible = !previewEnabled || widePreviewLayout || !compactPreviewPage;
+        boolean previewVisible = previewEnabled && (widePreviewLayout || compactPreviewPage);
         labelInput.visible = optionsVisible;
         exportForButton.visible = optionsVisible;
         for (Button toggle : toggleButtons) toggle.visible = optionsVisible;
         if (routePickerToggleButton != null) routePickerToggleButton.visible = optionsVisible;
         if (routeSelectAllButton != null) routeSelectAllButton.visible = optionsVisible;
+        if (routePreviewWidget == null) return;
+
         routePreviewWidget.setPreviewVisible(previewVisible);
         boolean showNavigation = previewVisible && selectedGroupCount() > 1;
+        routePreviewWidget.setNavigationVisible(showNavigation);
         previewPreviousButton.visible = showNavigation;
         previewNextButton.visible = showNavigation;
         previewPreviousButton.active = showNavigation;
         previewNextButton.active = showNavigation;
+        refreshPreviewZoomButton();
+    }
+
+    /**
+     * The zoom control is the only readout of a state the user can otherwise get
+     * stuck in: zoom persists across route switches within a session, and
+     * scrolling back out by hand is fiddly. It stays hidden at the default
+     * framing so the resting preview carries no chrome at all.
+     */
+    private void refreshPreviewZoomButton() {
+        if (previewZoomResetButton == null || routePreviewWidget == null) return;
+        boolean shown = routePreviewWidget.visible && routePreviewWidget.zoomed();
+        previewZoomResetButton.visible = shown;
+        previewZoomResetButton.active = shown;
+        if (shown) previewZoomResetButton.setMessage(previewZoomLabel());
+    }
+
+    private Component previewZoomLabel() {
+        return Component.translatable("waypointer.screen.export.preview.zoom",
+                routePreviewWidget == null
+                        ? RoutePreviewWidget.zoomFactorText(1.0)
+                        : routePreviewWidget.zoomLabel());
+    }
+
+    private void resetPreviewZoom(Button button) {
+        if (routePreviewWidget == null) return;
+        routePreviewWidget.resetZoom();
+        refreshPreviewZoomButton();
+        setFocused(null);
     }
 
     private void navigatePreviewRoute(int delta) {
@@ -770,6 +867,8 @@ public final class ExportScreen extends Screen {
         previewScene = buildPreviewScene();
         if (routePreviewWidget != null) {
             routePreviewWidget.setScene(previewScene, previewRouteCounter());
+            routePreviewWidget.setRouteName(previewRouteName());
+            refreshPreviewZoomButton();
         }
     }
 
@@ -784,6 +883,7 @@ public final class ExportScreen extends Screen {
         previewScene = buildPreviewScene();
         if (routePreviewWidget != null) {
             routePreviewWidget.setScene(previewScene, previewRouteCounter());
+            routePreviewWidget.setRouteName(previewRouteName());
             applyPreviewPageVisibility();
         }
     }
@@ -791,15 +891,28 @@ public final class ExportScreen extends Screen {
     private void refreshPreviewRouteCounter() {
         if (routePreviewWidget != null) {
             routePreviewWidget.setRouteCounter(previewRouteCounter());
+            routePreviewWidget.setRouteName(previewRouteName());
             applyPreviewPageVisibility();
         }
     }
 
     private RoutePreviewScene buildPreviewScene() {
-        if (groups.isEmpty()) return RoutePreviewScene.empty();
+        if (!previewEnabled || groups.isEmpty()) return RoutePreviewScene.empty();
         int safeIndex = MathUtil.clamp(previewGroupIndex, 0, groups.size() - 1);
         WaypointGroup group = groups.get(safeIndex);
         return RoutePreviewScene.build(group, config, previewLoadedLevel(group));
+    }
+
+    private String previewRouteName() {
+        return previewRouteName(previewScene.routeName(), currentLabel,
+                exportTarget, selectedGroupCount());
+    }
+
+    static String previewRouteName(String sourceName, String label,
+                                   WaypointExportCodec.Target target, int selectedRouteCount) {
+        String sanitized = WaypointCodec.Options.sanitizeLabel(label);
+        return target.supportsLabel() && selectedRouteCount == 1 && !sanitized.isBlank()
+                ? sanitized : sourceName;
     }
 
     private ClientLevel previewLoadedLevel(WaypointGroup group) {
@@ -1263,7 +1376,11 @@ public final class ExportScreen extends Screen {
                             boolean chatOk, boolean commandOk, String messageKey) {}
 
     private void drawPreview(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
-        g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
+        // Hairline frame, matching the route preview pane. Both boxes show the
+        // same export from a different angle, so they read as siblings instead
+        // of one being a framed panel and the other a bare tint.
+        g.fill(x1, y1, x2, y2, 0x30FFFFFF);
+        g.fill(x1 + 1, y1 + 1, x2 - 1, y2 - 1, SURFACE_SUBTLE);
 
         int innerX = x1 + PREVIEW_INSET;
         int innerY = y1 + PREVIEW_INSET;
@@ -1307,6 +1424,7 @@ public final class ExportScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
         if (routePreviewWidget != null
                 && routePreviewWidget.scrollZoom(mouseX, mouseY, vert)) {
+            refreshPreviewZoomButton();
             return true;
         }
         if (!isZoneExport() || !routePickerExpanded || !isInsideRouteList(mouseX, mouseY)) {

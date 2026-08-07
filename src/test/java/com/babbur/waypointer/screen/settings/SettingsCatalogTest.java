@@ -330,6 +330,22 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void theExportRoutePreviewIsOffByDefaultUnderSharing() {
+        Setting preview = SettingsCatalog.byId("showExportRoutePreview");
+
+        assertNotNull(preview);
+        assertEquals("3D route preview", preview.label());
+        assertEquals(false, preview.get(new WaypointerConfig(), null));
+        assertEquals("sharing", categoryContaining("showExportRoutePreview"));
+
+        WaypointerConfig enabled = new WaypointerConfig();
+        preview.set(enabled, null, true);
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(enabled));
+        assertEquals(true, preview.get(decoded, null));
+    }
+
+    @Test
     void formatValueRendersEveryKindReadably() {
         assertEquals("On", Setting.formatValue(Setting.Kind.BOOL, Boolean.TRUE, List.of()));
         assertEquals("Off", Setting.formatValue(Setting.Kind.BOOL, Boolean.FALSE, List.of()));

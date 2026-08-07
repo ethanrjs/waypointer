@@ -29,6 +29,39 @@ class RoutePreviewWidgetTest {
     }
 
     @Test
+    void headerGivesBackTheArrowReserveWhenThereIsOnlyOneRoute() {
+        // 26 per side while the screen's < > buttons are up -- the same reserve
+        // the old hard-coded 52 assumed, but now conditional.
+        assertEquals(240 - 52, RoutePreviewWidget.headerTextWidth(240, true));
+        assertEquals(240 - 8, RoutePreviewWidget.headerTextWidth(240, false));
+        assertEquals(0, RoutePreviewWidget.headerTextWidth(20, true));
+    }
+
+    @Test
+    void headerDetailOmitsTheRouteCounterForSingleRouteExports() {
+        assertEquals("(3 waypoints)", RoutePreviewWidget.headerDetailText(3, ""));
+        assertEquals("(3 waypoints)", RoutePreviewWidget.headerDetailText(3, null));
+        assertEquals("(1 waypoint) · 2 of 5", RoutePreviewWidget.headerDetailText(1, "2 of 5"));
+    }
+
+    @Test
+    void zoomControlReportsOneDecimalAndHidesAtTheDefaultFraming() {
+        RoutePreviewZoom zoom = new RoutePreviewZoom();
+        RoutePreviewWidget widget = new RoutePreviewWidget(
+                0, 0, 240, 160, RoutePreviewScene.empty(), "",
+                new RoutePreviewOrbit(), zoom);
+
+        assertFalse(widget.zoomed());
+        assertTrue(widget.scrollZoom(120, 80, 2.0));
+        assertTrue(widget.zoomed());
+        assertEquals("1.5", widget.zoomLabel());
+
+        widget.resetZoom();
+        assertFalse(widget.zoomed());
+        assertEquals(RoutePreviewZoom.DEFAULT_FACTOR, zoom.factor(), 0.0);
+    }
+
+    @Test
     void previewDoesNotAcceptFocusOrClicks() {
         RoutePreviewWidget widget = new RoutePreviewWidget(
                 0, 0, 240, 160, RoutePreviewScene.empty(), "",

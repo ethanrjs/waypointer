@@ -134,7 +134,7 @@ class RoutePreviewProjectionTest {
     }
 
     @Test
-    void hoverPickingKeepsSubpixelWaypointUsableWithoutResizingIt() {
+    void hoverPickingMatchesTheReadableDisplayBox() {
         WaypointGroup group = WaypointGroup.create("Tiny target", "hub");
         group.add(Waypoint.at(-1_000, 0, 0));
         group.add(new Waypoint(0, 0, 0, "tiny", 0xFFFFFF,
@@ -149,7 +149,56 @@ class RoutePreviewProjectionTest {
                 tiny.centerX(), tiny.centerY(), tiny.centerZ(), yaw, scale, 120, 80);
 
         assertEquals(1, RoutePreviewProjection.pick(scene,
-                center.x() + 2.0, center.y(), 0, 0, 240, 160, yaw, scale));
+                center.x() + 1.5, center.y(), 0, 0, 240, 160, yaw, scale, 1));
+    }
+
+    @Test
+    void displayBoxesReachAReadablePhysicalSizeWithoutMovingTheirCenters() {
+        WaypointGroup group = WaypointGroup.create("Readable", "hub");
+        group.add(Waypoint.at(0, 0, 0));
+        group.add(new Waypoint(2, 0, 0, "tiny", 0xFFFFFF,
+                Waypoint.FLAG_SUBWAYPOINT | Waypoint.FLAG_SMALL_SUBWAYPOINT,
+                0.0, Waypoint.TEMP_NONE, 0L, 33, 1, 1));
+        RoutePreviewScene scene = RoutePreviewScene.build(group, new WaypointerConfig(), null);
+        double scale = 0.5;
+        int guiScale = 2;
+
+        RoutePreviewScene.Marker normal = scene.markers().get(0);
+        RoutePreviewScene.Marker small = scene.markers().get(1);
+        double normalDisplayScale = RoutePreviewProjection.markerDisplayScale(
+                normal, scale, guiScale);
+        double smallDisplayScale = RoutePreviewProjection.markerDisplayScale(
+                small, scale, guiScale);
+
+        assertEquals(RoutePreviewProjection.MIN_NORMAL_MARKER_PHYSICAL_PIXELS,
+                normal.box().width() * normalDisplayScale * scale * guiScale, 1.0e-9);
+        assertEquals(RoutePreviewProjection.MIN_SMALL_MARKER_PHYSICAL_PIXELS,
+                small.box().width() * smallDisplayScale * scale * guiScale, 1.0e-9);
+        assertEquals(normal.box().centerX(),
+                normal.box().centerX() + (normal.box().minX() - normal.box().centerX())
+                        * normalDisplayScale / 2.0
+                        + (normal.box().maxX() - normal.box().centerX())
+                        * normalDisplayScale / 2.0,
+                1.0e-12);
+    }
+
+    @Test
+    void simplifiedMarkersUseTheSameReadableDisplayScale() {
+        WaypointGroup group = WaypointGroup.create("Large", "hub");
+        for (int i = 0; i <= RoutePreviewScene.SIMPLIFIED_THRESHOLD; i++) {
+            group.add(Waypoint.at(i, 0, 0));
+        }
+        RoutePreviewScene scene = RoutePreviewScene.build(group, new WaypointerConfig(), null);
+        RoutePreviewScene.Marker marker = scene.markers().getFirst();
+        double scale = 0.25;
+        int guiScale = 2;
+
+        assertTrue(scene.simplified());
+        assertEquals(RoutePreviewProjection.MIN_NORMAL_MARKER_PHYSICAL_PIXELS,
+                marker.box().width()
+                        * RoutePreviewProjection.markerDisplayScale(marker, scale, guiScale)
+                        * scale * guiScale,
+                1.0e-9);
     }
 
     @Test

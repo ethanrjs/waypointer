@@ -13,7 +13,6 @@ public final class RoutePreviewRenderCore {
     private static final int FOCUS_CYAN = 0x4FB3C4;
     static final float MIN_CONNECTOR_WIDTH_PHYSICAL_PIXELS = 1.5f;
     static final float MIN_OUTLINE_WIDTH_PHYSICAL_PIXELS = 1.5f;
-    static final float MIN_SIMPLIFIED_SIZE_PHYSICAL_PIXELS = 1.0f;
 
     @FunctionalInterface
     public interface Emitter {
@@ -39,7 +38,8 @@ public final class RoutePreviewRenderCore {
                 emitBillboard(vertices, ps, marker, billboardBasis, marker.color(), 0.0f,
                         state.scale(), state.guiScale());
             } else {
-                emitBox(vertices, ps, marker.box(), marker.color(), 0.0f);
+                emitBox(vertices, ps, marker.box(), marker.color(), 0.0f,
+                        displayScale(marker, state));
             }
         }
     }
@@ -65,9 +65,15 @@ public final class RoutePreviewRenderCore {
             }
             if (paintedPass) {
                 RoutePreviewScene.Box box = marker.box();
+                double displayScale = displayScale(marker, state);
+                double cx = box.centerX(), cy = box.centerY(), cz = box.centerZ();
                 RenderHelpers.emitTexturedBox(vertices, ps,
-                        (float) box.minX(), (float) box.minY(), (float) box.minZ(),
-                        (float) box.maxX(), (float) box.maxY(), (float) box.maxZ(),
+                        (float) (cx + (box.minX() - cx) * displayScale),
+                        (float) (cy + (box.minY() - cy) * displayScale),
+                        (float) (cz + (box.minZ() - cz) * displayScale),
+                        (float) (cx + (box.maxX() - cx) * displayScale),
+                        (float) (cy + (box.maxY() - cy) * displayScale),
+                        (float) (cz + (box.maxZ() - cz) * displayScale),
                         alpha, cameraX, cameraY, cameraZ,
                         RoutePreviewPaintResource.ATLAS_WIDTH,
                         RoutePreviewPaintResource.ATLAS_HEIGHT,
@@ -75,7 +81,7 @@ public final class RoutePreviewRenderCore {
                 continue;
             }
             if (drawFill(scene, marker) || hovered) {
-                emitBox(vertices, ps, marker.box(), color, alpha);
+                emitBox(vertices, ps, marker.box(), color, alpha, displayScale(marker, state));
             }
         }
     }
@@ -101,7 +107,8 @@ public final class RoutePreviewRenderCore {
         int index = state.hoveredWaypointIndex();
         if (scene.paint() == null || scene.simplified()
                 || index < 0 || index >= scene.markers().size()) return;
-        emitBox(vertices, ps, scene.markers().get(index).box(), 0xFFFFFF, 0.20f);
+        RoutePreviewScene.Marker marker = scene.markers().get(index);
+        emitBox(vertices, ps, marker.box(), 0xFFFFFF, 0.20f, displayScale(marker, state));
     }
 
     public static void emitOutlines(RoutePreviewRenderState state, PoseStack ps,
@@ -119,7 +126,7 @@ public final class RoutePreviewRenderCore {
                     hovered ? 1.0f : scene.opacity(),
                     physicalLineWidth(scene.outlineWidth(),
                             MIN_OUTLINE_WIDTH_PHYSICAL_PIXELS),
-                    state.scale(), state.guiScale());
+                    state.scale(), state.guiScale(), displayScale(marker, state));
         }
     }
 
@@ -137,25 +144,28 @@ public final class RoutePreviewRenderCore {
     }
 
     private static void emitBox(VertexConsumer vertices, PoseStack ps,
-                                RoutePreviewScene.Box box, int color, float alpha) {
+                                RoutePreviewScene.Box box, int color, float alpha,
+                                double displayScale) {
+        double cx = box.centerX(), cy = box.centerY(), cz = box.centerZ();
         RenderHelpers.emitFilledBox(vertices, ps,
-                (float) box.minX(), (float) box.minY(), (float) box.minZ(),
-                (float) box.maxX(), (float) box.maxY(), (float) box.maxZ(), color, alpha);
+                (float) (cx + (box.minX() - cx) * displayScale),
+                (float) (cy + (box.minY() - cy) * displayScale),
+                (float) (cz + (box.minZ() - cz) * displayScale),
+                (float) (cx + (box.maxX() - cx) * displayScale),
+                (float) (cy + (box.maxY() - cy) * displayScale),
+                (float) (cz + (box.maxZ() - cz) * displayScale), color, alpha);
     }
 
     private static void emitBillboard(VertexConsumer vertices, PoseStack ps,
                                       RoutePreviewScene.Marker marker, Basis basis,
                                       int color, float alpha, double scale, int guiScale) {
         RoutePreviewScene.Box box = marker.box();
-        double minimumHalfSize = MIN_SIMPLIFIED_SIZE_PHYSICAL_PIXELS
-                / (2.0 * Math.max(1.0e-9, scale) * Math.max(1, guiScale));
-        double halfW = Math.max(minimumHalfSize,
-                (Math.abs(basis.rightX) * box.width()
-                        + Math.abs(basis.rightZ) * box.depth()) * 0.5);
-        double halfH = Math.max(minimumHalfSize,
-                (Math.abs(basis.upX) * box.width()
-                        + Math.abs(basis.upY) * box.height()
-                        + Math.abs(basis.upZ) * box.depth()) * 0.5);
+        double displayScale = RoutePreviewProjection.markerDisplayScale(marker, scale, guiScale);
+        double halfW = (Math.abs(basis.rightX) * box.width()
+                + Math.abs(basis.rightZ) * box.depth()) * displayScale * 0.5;
+        double halfH = (Math.abs(basis.upX) * box.width()
+                + Math.abs(basis.upY) * box.height()
+                + Math.abs(basis.upZ) * box.depth()) * displayScale * 0.5;
         double cx = box.centerX();
         double cy = box.centerY();
         double cz = box.centerZ();
@@ -176,9 +186,15 @@ public final class RoutePreviewRenderCore {
 
     private static void emitBoxRibbons(VertexConsumer vertices, PoseStack ps, Basis basis,
                                        RoutePreviewScene.Box box, int color, float alpha,
-                                       float widthPixels, double scale, int guiScale) {
-        double x1 = box.minX(), y1 = box.minY(), z1 = box.minZ();
-        double x2 = box.maxX(), y2 = box.maxY(), z2 = box.maxZ();
+                                       float widthPixels, double scale, int guiScale,
+                                       double displayScale) {
+        double cx = box.centerX(), cy = box.centerY(), cz = box.centerZ();
+        double x1 = cx + (box.minX() - cx) * displayScale;
+        double y1 = cy + (box.minY() - cy) * displayScale;
+        double z1 = cz + (box.minZ() - cz) * displayScale;
+        double x2 = cx + (box.maxX() - cx) * displayScale;
+        double y2 = cy + (box.maxY() - cy) * displayScale;
+        double z2 = cz + (box.maxZ() - cz) * displayScale;
 
         emitRibbon(vertices, ps, basis, x1, y1, z1, x2, y1, z1,
                 color, alpha, widthPixels, scale, guiScale);
@@ -206,6 +222,12 @@ public final class RoutePreviewRenderCore {
                 color, alpha, widthPixels, scale, guiScale);
         emitRibbon(vertices, ps, basis, x1, y1, z2, x1, y2, z2,
                 color, alpha, widthPixels, scale, guiScale);
+    }
+
+    private static double displayScale(RoutePreviewScene.Marker marker,
+                                       RoutePreviewRenderState state) {
+        return RoutePreviewProjection.markerDisplayScale(
+                marker, state.scale(), state.guiScale());
     }
 
     /**
