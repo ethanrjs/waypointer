@@ -4,7 +4,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 
 /**
  * Bundled settings profiles, built programmatically rather than as baked
- * {@code WPC:} strings — the codec rejects unknown tags and future versions,
+ * {@code WPC:} strings -- the codec rejects unknown tags and future versions,
  * so a hardcoded code string would break silently on the next codec change,
  * while these builders are checked by the compiler and unit tests.
  *
@@ -13,7 +13,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
  * applying a preset never wipes it. Apply via
  * {@code config.replaceWith(preset)} after a
  * {@link SettingsCatalog#countChangedSettings} confirmation. The "Default"
- * preset is just {@code resetToDefaults()} — no third code path.
+ * preset is just {@code resetToDefaults()} -- no third code path.
  */
 public final class SettingsPresets {
 

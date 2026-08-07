@@ -12,7 +12,7 @@ import net.minecraft.client.Minecraft;
  * <ul>
  *   <li>{@code TEMP_TIME}: every {@value #CHECK_INTERVAL_TICKS} ticks we sweep all
  *       groups and drop any time-based temp whose deadline has passed. A per-tick
- *       sweep is overkill — a 2s granularity is well below the resolution of the
+ *       sweep is overkill -- a 2s granularity is well below the resolution of the
  *       shortest duration the UI offers (1 min).</li>
  *   <li>{@code TEMP_UNTIL_LEAVE}: on {@link ClientPlayConnectionEvents#JOIN}
  *       and {@link ClientPlayConnectionEvents#DISCONNECT} we wipe every
@@ -29,7 +29,7 @@ public final class TempWaypointCleaner {
 
     /**
      * How many client ticks between expiry sweeps. At 20 TPS this is a 2-second
-     * cadence — small enough that a user who set a 1-minute temp sees it vanish
+     * cadence -- small enough that a user who set a 1-minute temp sees it vanish
      * within two seconds of expiry, large enough that we're not scanning every
      * group on every tick.
      */
@@ -57,7 +57,7 @@ public final class TempWaypointCleaner {
         for (WaypointGroup g : manager.allGroups()) {
             if (g.removeExpired(now) > 0) anyRemoved = true;
         }
-        // Only poke the data-changed channel when something actually changed —
+        // Only poke the data-changed channel when something actually changed --
         // otherwise the per-tick sweep would trigger an autosave storm even on
         // empty worlds. The transient channel also refreshes the active-groups
         // cache, which the renderer picks up on its next frame.

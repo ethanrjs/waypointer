@@ -258,7 +258,7 @@ public final class DungeonRouteImporter {
             if (waypoints.isEmpty()) continue;
 
             imported.add(target.withDisplayName(
-                    target.displayName() + " — Route " + routeNumber)
+                    target.displayName() + ", route " + routeNumber)
                     .withWaypoints(waypoints));
             waypointCount += waypoints.size();
         }

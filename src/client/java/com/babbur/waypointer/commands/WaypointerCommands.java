@@ -36,6 +36,7 @@ import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.babbur.waypointer.render.HappySnowmanSession;
 import com.babbur.waypointer.screen.DebugInspectScreen;
 import com.babbur.waypointer.screen.ImportFeedback;
+import com.babbur.waypointer.screen.WaypointerScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
@@ -115,7 +116,10 @@ public final class WaypointerCommands {
     private void register(CommandDispatcher<FabricClientCommandSource> d, String root) {
         LiteralArgumentBuilder<FabricClientCommandSource> cmd = literal(root)
                 .executes(ctx -> { scheduleOpenGui(); return 1; })
-                .then(literal("gui").executes(ctx -> { scheduleOpenGui(); return 1; }))
+                .then(literal("gui")
+                        .executes(ctx -> { scheduleOpenGui(); return 1; })
+                        .then(literal("dungeon")
+                                .executes(ctx -> { scheduleOpenDungeonGui(); return 1; })))
                 // /wp help                  -> page 1
                 // /wp help <n>              -> nth page (1-based)
                 // /wp help <section>        -> jump to a section by name/alias
@@ -764,6 +768,12 @@ public final class WaypointerCommands {
     // state and silently no-ops (or crashes) if called from the wrong thread. Schedule it.
     private void scheduleOpenGui() {
         Minecraft.getInstance().execute(openGui);
+    }
+
+    /** Backs {@code /wp gui dungeon} and the [Open] link on a dungeon import. */
+    private void scheduleOpenDungeonGui() {
+        Minecraft.getInstance().execute(
+                () -> WaypointerScreen.openDungeonRooms(manager, config));
     }
 
     private void scheduleOpenDebugInspector() {
@@ -2452,8 +2462,8 @@ public final class WaypointerCommands {
         }
         // Match /wpd import and the route downloader: a room definition is only
         // half the install. Each secret path also becomes an ordinary editable
-        // route so the player can retune it, and any prior route for the same
-        // room is disabled rather than deleted.
+        // route so the player can retune it, and every prior dungeon room route
+        // is hidden rather than deleted so the new set reads on its own.
         List<WaypointGroup> routes = DungeonRoomRouteSync.installEditableRoutes(
                 manager, WaypointerClient.dungeonConfig(), result.definitions());
         success(src, Component.literal("Imported " + imported + " dungeon room route"
@@ -2462,17 +2472,30 @@ public final class WaypointerCommands {
         if (!routes.isEmpty()) {
             info(src, Component.translatable("waypointer.dungeon.routes.existing_disabled"));
         }
+        info(src, importEditorHintComponent(true));
         return imported;
     }
 
     static Component importEditorHintComponent() {
+        return importEditorHintComponent(false);
+    }
+
+    /**
+     * @param dungeonRoutes open straight to the dungeon-rooms list. Plain
+     *     {@code /waypointer gui} only lands there when the player is already
+     *     standing in a detected room, so a dungeon import performed anywhere
+     *     else dropped the player on the regular route list with no sign of
+     *     what they just installed.
+     */
+    static Component importEditorHintComponent(boolean dungeonRoutes) {
+        String command = dungeonRoutes ? "/waypointer gui dungeon" : "/waypointer gui";
         return Component.translatable("waypointer.command.import.open_editor_hint")
                 .withStyle(ChatFormatting.GRAY)
                 .append(Component.translatable("waypointer.command.import.open_editor")
                         .withStyle(Style.EMPTY
                                 .withColor(ChatFormatting.AQUA)
                                 .withUnderlined(true)
-                                .withClickEvent(new ClickEvent.RunCommand("/waypointer gui"))));
+                                .withClickEvent(new ClickEvent.RunCommand(command))));
     }
 
     /**

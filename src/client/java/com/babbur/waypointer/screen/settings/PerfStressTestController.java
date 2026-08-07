@@ -37,7 +37,7 @@ import java.util.UUID;
  * <p>State is static so a finished report survives screen rebuilds and
  * reopen. The pre-test snapshot is additionally written to disk
  * ({@code perf-test-backup.wpc}) so a crash mid-sweep cannot permanently
- * strand the user on stress-test settings — the next settings-screen open
+ * strand the user on stress-test settings -- the next settings-screen open
  * recovers it. Stress groups are runtime-only and never persist past the session.
  */
 public final class PerfStressTestController {

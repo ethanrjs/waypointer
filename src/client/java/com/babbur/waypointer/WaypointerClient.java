@@ -39,6 +39,7 @@ import com.babbur.waypointer.screen.preview.RoutePreviewPipAdapter;
 import com.babbur.waypointer.screen.WaypointerScreen;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 
@@ -145,6 +146,9 @@ public final class WaypointerClient implements ClientModInitializer {
             Waypointer.LOGGER.info("Invoked {} Waypointer API integration(s)", apiEntrypoints);
         }
 
+        // Route mutations only flag the library dirty; the actual serialization
+        // happens here, at most once per tick, on the thread that owns the data.
+        ClientTickEvents.END_CLIENT_TICK.register(client -> storage.pumpPendingSnapshot());
         ClientLifecycleEvents.CLIENT_STOPPING.register(WaypointerClient::onClientStopping);
 
         Waypointer.LOGGER.info("Waypointer client ready -- {} route(s) loaded", manager.allGroups().size());

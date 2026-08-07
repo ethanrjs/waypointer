@@ -145,7 +145,12 @@ class StorageJsonTest {
     }
 
     @Test
-    void attached_save_writes_captured_snapshot_not_later_live_mutation() throws Exception {
+    void attached_save_snapshots_live_state_at_pump_time() throws Exception {
+        // Snapshots are deferred to the pump, so a mutation made directly on a
+        // group after the manager event -- which fires no event of its own --
+        // still reaches disk instead of being silently dropped until the next
+        // unrelated change. The snapshot is taken on the pumping thread, so it
+        // is still one consistent point in time, just a later one.
         ActiveGroupManager manager = new ActiveGroupManager();
         Path file = tempDir.resolve("waypoints.json");
         Storage storage = new Storage(file);
@@ -161,9 +166,11 @@ class StorageJsonTest {
         JsonObject root = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
         JsonObject savedGroup = root.getAsJsonArray("groups").get(0).getAsJsonObject();
 
-        assertEquals(1, savedGroup.getAsJsonArray("waypoints").size());
+        assertEquals(2, savedGroup.getAsJsonArray("waypoints").size());
         assertEquals("before", savedGroup.getAsJsonArray("waypoints")
                 .get(0).getAsJsonObject().get("name").getAsString());
+        assertEquals("after", savedGroup.getAsJsonArray("waypoints")
+                .get(1).getAsJsonObject().get("name").getAsString());
     }
 
     @Test
@@ -230,9 +237,47 @@ class StorageJsonTest {
             manager.add(nestedRuntime);
         });
         manager.add(WaypointGroup.create("Persistent", "hub"));
+        storage.pumpPendingSnapshot();
         assertEquals(snapshotsAfterAttach + 1, storage.snapshotCount());
         storage.flush();
         assertEquals(1, storage.writeCount());
+    }
+
+    @Test
+    void aBurstOfPersistentChangesCostsOneSnapshot() {
+        // Bulk operations (hide-all, import, closing the route list) fire the
+        // persistent listener once per route. Serializing per event is what made
+        // those stall with a large library; one pump must cover the whole burst.
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Storage storage = new Storage(tempDir.resolve("waypoints.json"));
+        storage.attach(manager);
+        int before = storage.snapshotCount();
+
+        for (int i = 0; i < 50; i++) {
+            manager.add(WaypointGroup.create("Route " + i, "hub"));
+        }
+
+        assertEquals(before, storage.snapshotCount(), "no snapshot until the pump runs");
+
+        storage.pumpPendingSnapshot();
+        assertEquals(before + 1, storage.snapshotCount());
+
+        storage.pumpPendingSnapshot();
+        assertEquals(before + 1, storage.snapshotCount(), "a clean pump is free");
+    }
+
+    @Test
+    void flushSnapshotsPendingChangesSoShutdownCannotLoseThem() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Path file = tempDir.resolve("waypoints.json");
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+
+        manager.add(WaypointGroup.create("Persistent", "hub"));
+        storage.flush();
+
+        assertEquals(1, storage.writeCount());
+        assertTrue(Files.readString(file).contains("Persistent"));
     }
 
     @Test

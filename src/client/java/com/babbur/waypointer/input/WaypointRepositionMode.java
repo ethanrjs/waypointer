@@ -737,7 +737,7 @@ public final class WaypointRepositionMode {
     /**
      * The group a committed move must mutate. Edit-mode picks select the
      * runtime mirror (that is what renders), but the mirror is rebuilt on
-     * every data change — the durable edit goes to the stored room-local
+     * every data change -- the durable edit goes to the stored room-local
      * source at the same index (mirror and source share waypoint order).
      * Returns null when the mirror has no stored source (downloaded secrets).
      */

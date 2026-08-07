@@ -863,16 +863,51 @@ class DungeonRoomRouteSyncTest {
     }
 
     @Test
+    void importingHidesDungeonRoutesForRoomsTheImportDoesNotCover() {
+        // Installing a new route set supersedes the old one everywhere, not just
+        // in the rooms that happen to overlap -- otherwise the previous pack
+        // keeps drawing in every room the new pack is missing.
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonConfig config = new DungeonConfig();
+        DungeonRoomDefinition untouched = DungeonRoomData.defineRoom(
+                "supersede-old-room", "Supersede Old Room",
+                room("supersede-old-room", "Supersede Old Room"));
+        untouched = DungeonRoomData.addWaypoint(untouched.id(), DungeonWaypoint.plain(
+                "old-secret", DungeonSecretCategory.CHEST, 5, 70, 5, "Chest"));
+        WaypointGroup oldRoute = WaypointGroup.create("Old pack route", untouched.id());
+        oldRoute.add(Waypoint.at(5, 70, 5));
+        manager.add(oldRoute);
+
+        WaypointGroup hubRoute = WaypointGroup.create("Hub", "hub");
+        hubRoute.add(Waypoint.at(2, 70, 2));
+        manager.add(hubRoute);
+
+        DungeonRoomDefinition incoming = DungeonRoomData.defineRoom(
+                "supersede-new-room", "Supersede New Room",
+                room("supersede-new-room", "Supersede New Room"));
+        incoming = incoming.withWaypoints(List.of(DungeonWaypoint.plain(
+                "new-secret", DungeonSecretCategory.CHEST, 9, 70, 9, "Chest")));
+
+        List<WaypointGroup> installed = DungeonRoomRouteSync.installEditableRoutes(
+                manager, config, List.of(incoming));
+
+        assertEquals(1, installed.size());
+        assertTrue(installed.get(0).enabled(), "the freshly imported route stays on");
+        assertFalse(oldRoute.enabled(), "a route for an uncovered room is hidden too");
+        assertTrue(hubRoute.enabled(), "non-dungeon routes are untouched");
+    }
+
+    @Test
     void installingMultipleVariantsKeepsEveryRouteForTheRoom() {
         ActiveGroupManager manager = new ActiveGroupManager();
         DungeonConfig config = new DungeonConfig();
         DungeonRoom room = room("variant-install-room", "Variant Install Room");
         DungeonRoomDefinition base =
                 DungeonRoomData.defineRoom("variant-install-room", "Variant Install Room", room);
-        DungeonRoomDefinition first = base.withDisplayName("Variant Install Room — Route 1")
+        DungeonRoomDefinition first = base.withDisplayName("Variant Install Room, route 1")
                 .withWaypoints(List.of(DungeonWaypoint.plain(
                         "first", DungeonSecretCategory.CHEST, 1, 70, 1, "Chest")));
-        DungeonRoomDefinition second = base.withDisplayName("Variant Install Room — Route 2")
+        DungeonRoomDefinition second = base.withDisplayName("Variant Install Room, route 2")
                 .withWaypoints(List.of(DungeonWaypoint.plain(
                         "second", DungeonSecretCategory.CHEST, 10, 70, 10, "Chest")));
 

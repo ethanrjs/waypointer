@@ -45,6 +45,38 @@ public final class DungeonRoomRouteSync {
     private final Consumer<Zone> zoneListener = this::onZoneChanged;
     private final Runnable syncListener = this::syncCurrentRoom;
     private boolean syncing;
+
+    /**
+     * Bulk-mutation gate. Every installed sync listens to the manager, the
+     * dungeon config, and the room database, so a loop that flips N routes used
+     * to trigger N full room resyncs -- quadratic once a player has a hundred
+     * routes installed, and the reason hide-all and closing the route list
+     * stalled the client. Bulk callers wrap their loop in {@link #batched} and
+     * pay for exactly one resync at the end.
+     */
+    private static final List<DungeonRoomRouteSync> INSTALLED = new ArrayList<>();
+    private static int batchDepth;
+    private static boolean batchSyncPending;
+
+    /**
+     * Run {@code work} with room resyncing suppressed, then resync once if
+     * anything asked for it. Re-entrant: only the outermost call resyncs.
+     */
+    public static void batched(Runnable work) {
+        if (work == null) return;
+        batchDepth++;
+        try {
+            work.run();
+        } finally {
+            batchDepth--;
+            if (batchDepth == 0 && batchSyncPending) {
+                batchSyncPending = false;
+                for (DungeonRoomRouteSync sync : List.copyOf(INSTALLED)) {
+                    sync.syncCurrentRoom();
+                }
+            }
+        }
+    }
     private String selectedPhysicalRoomKey;
     private String selectedSourceGroupId;
 
@@ -67,10 +99,12 @@ public final class DungeonRoomRouteSync {
         DungeonRoomData.addChangeListener(syncListener);
         if (session != null) session.addChangeListener(syncListener);
         if (config != null) config.addChangeListener(syncListener);
+        if (!INSTALLED.contains(this)) INSTALLED.add(this);
         syncCurrentRoom();
     }
 
     public void uninstall() {
+        INSTALLED.remove(this);
         tracker.removeRoomListener(roomListener);
         manager.removeZoneListener(zoneListener);
         manager.removeDataListener(syncListener);
@@ -98,6 +132,10 @@ public final class DungeonRoomRouteSync {
     }
 
     private void syncCurrentRoom() {
+        if (batchDepth > 0) {
+            batchSyncPending = true;
+            return;
+        }
         if (syncing) return;
         syncing = true;
         try {
@@ -228,12 +266,12 @@ public final class DungeonRoomRouteSync {
     }
 
     /**
-     * The user-authored route that suppresses downloaded community secrets —
+     * The user-authored route that suppresses downloaded community secrets --
      * but only when it actually contains waypoints. Empty leftovers (a
      * clicked-away "New Route", an aborted import) must not silently suppress
      * an installed secret route. Disabled routes still suppress (the user hid
      * their route deliberately; resurrecting the community secrets would undo
-     * that), which is why this returns the group instead of a boolean — the
+     * that), which is why this returns the group instead of a boolean -- the
      * caller also needs its enabled state.
      */
     private WaypointGroup firstUserRouteGroup(DungeonRoom room) {
@@ -406,7 +444,7 @@ public final class DungeonRoomRouteSync {
     /**
      * True when in-world edits in this room should be refused because the room
      * shows downloaded secrets that the user has not converted into their own
-     * route yet — editing the throwaway mirror would silently discard changes.
+     * route yet -- editing the throwaway mirror would silently discard changes.
      */
     public static boolean secretsRequireConversion(ActiveGroupManager manager, String zoneId) {
         if (manager == null || zoneId == null) return false;
@@ -478,7 +516,7 @@ public final class DungeonRoomRouteSync {
     /**
      * Convert an installed secret-route definition into a normal, persisted,
      * user-editable route group. Coordinates stay room-local (the definition's
-     * own frame) — the sync mirror projects them into each run's room
+     * own frame) -- the sync mirror projects them into each run's room
      * placement, so the converted route keeps working across runs. Once added,
      * the user route suppresses the definition-generated group; deleting it
      * brings the installed secrets back.
@@ -611,6 +649,21 @@ public final class DungeonRoomRouteSync {
     public static List<WaypointGroup> installEditableRoutes(
             ActiveGroupManager manager, DungeonConfig config,
             Collection<DungeonRoomDefinition> definitions) {
+        return installEditableRoutes(manager, config, definitions, true);
+    }
+
+    /**
+     * @param supersedePreviousRoutes when {@code true} (the import and download
+     *     paths) every existing dungeon room route is hidden so the incoming set
+     *     reads on its own; nothing is deleted, so any route can be switched
+     *     back on individually. Backfill paths that merely top up missing
+     *     routes pass {@code false} -- hiding the player's library because the
+     *     mod noticed a gap at startup would be a nasty surprise.
+     */
+    public static List<WaypointGroup> installEditableRoutes(
+            ActiveGroupManager manager, DungeonConfig config,
+            Collection<DungeonRoomDefinition> definitions,
+            boolean supersedePreviousRoutes) {
         if (manager == null || definitions == null || definitions.isEmpty()) {
             return List.of();
         }
@@ -619,7 +672,7 @@ public final class DungeonRoomRouteSync {
         for (DungeonRoomDefinition definition : definitions) {
             if (definition != null && !definition.waypoints().isEmpty()) {
                 WaypointGroup route = editableRouteFromDefinition(definition, config);
-                route.setName("Secret Route — " + definition.displayName());
+                route.setName(definition.displayName() + " secrets");
                 routes.add(route);
             }
         }
@@ -631,17 +684,32 @@ public final class DungeonRoomRouteSync {
                 installedRoomIds.add(definition.id());
             }
         }
-        for (WaypointGroup existing : manager.allGroups()) {
-            if (!existing.temp() && !existing.runtimeOnly()
-                    && installedRoomIds.contains(existing.zoneId())) {
-                existing.setEnabled(false);
+
+        // A fresh import supersedes what was there: hide every existing dungeon
+        // room route, not just the rooms this import happens to overlap. Someone
+        // installing a new route set does not want their old one drawing over it
+        // in the rooms the new set does not cover.
+        List<String> supersededRoomIds = new ArrayList<>(installedRoomIds);
+        if (supersedePreviousRoutes) {
+            for (DungeonRoomDefinition known : DungeonRoomData.allDefinitions()) {
+                if (known != null && !supersededRoomIds.contains(known.id())) {
+                    supersededRoomIds.add(known.id());
+                }
             }
         }
-        if (config != null) {
-            config.disableRoomRoutes(installedRoomIds);
-        }
-
-        manager.addAll(routes);
+        batched(() -> {
+            for (WaypointGroup existing : manager.allGroups()) {
+                if (existing.temp() || existing.runtimeOnly()) continue;
+                boolean supersededRoom = supersedePreviousRoutes
+                        ? DungeonRoomData.definition(existing.zoneId()) != null
+                        : installedRoomIds.contains(existing.zoneId());
+                if (supersededRoom) existing.setEnabled(false);
+            }
+            if (config != null) {
+                config.disableRoomRoutes(supersededRoomIds);
+            }
+            manager.addAll(routes);
+        });
         return List.copyOf(routes);
     }
 
@@ -658,7 +726,7 @@ public final class DungeonRoomRouteSync {
                 missing.add(definition);
             }
         }
-        return installEditableRoutes(manager, config, missing);
+        return installEditableRoutes(manager, config, missing, false);
     }
 
     static WaypointGroup routeGroupForRoom(DungeonRoom room, DungeonRoomDefinition definition,
@@ -710,5 +778,39 @@ public final class DungeonRoomRouteSync {
 
     public static String generatedGroupId(String roomId) {
         return GENERATED_GROUP_ID_PREFIX + DungeonRoomDefinition.normalizeId(roomId);
+    }
+
+    /**
+     * Delete every dungeon room route: the installed route groups, the imported
+     * room definitions behind them, and the packs that grouped them.
+     *
+     * <p>Bundled definitions survive -- they ship with the mod and reappear as
+     * soon as the player enters a matching room, which is the intended floor
+     * rather than something this action should try to erase.
+     *
+     * @return number of route groups removed
+     */
+    public static int deleteAllDungeonRoutes(ActiveGroupManager manager, DungeonConfig config) {
+        if (manager == null) return 0;
+        List<String> removeIds = new ArrayList<>();
+        for (WaypointGroup group : manager.allGroups()) {
+            if (group.temp() || group.runtimeOnly()) continue;
+            if (DungeonRoomData.definition(group.zoneId()) != null) removeIds.add(group.id());
+        }
+        batched(() -> {
+            manager.removeAll(removeIds);
+            DungeonRoomData.clearAllCustom();
+            if (config != null) config.disableRoomRoutes(allRoomIds());
+        });
+        manager.fireDataChanged();
+        return removeIds.size();
+    }
+
+    private static List<String> allRoomIds() {
+        List<String> out = new ArrayList<>();
+        for (DungeonRoomDefinition definition : DungeonRoomData.allDefinitions()) {
+            if (definition != null) out.add(definition.id());
+        }
+        return out;
     }
 }

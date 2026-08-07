@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * The synthetic waypoint load behind the settings screen's performance stress
  * test. A sweep over the user's live scene is only as informative as the scene
- * itself — two waypoints on a private island stress nothing — so the test
+ * itself -- two waypoints on a private island stress nothing -- so the test
  * installs deterministic 2D, 3D, dungeon-secret, and subwaypoint loads around
  * the player for its duration and removes them afterwards.
  *

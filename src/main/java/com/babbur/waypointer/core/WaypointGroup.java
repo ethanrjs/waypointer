@@ -174,6 +174,30 @@ public final class WaypointGroup {
         return group;
     }
 
+    /**
+     * Independent copy carrying every field the export codecs read, detached
+     * from the live route so a background encode can never observe a concurrent
+     * edit -- {@link #waypoints()} hands out a view of the live list, not a
+     * copy, so iterating it off-thread would race any client-thread mutation.
+     *
+     * <p>Copies fields directly instead of going through the setters on
+     * purpose: the colour setters re-run {@code applyColorMode()}, which would
+     * repaint the copy and change what gets exported. {@link Waypoint} is an
+     * immutable record, so sharing the elements is safe.
+     */
+    public WaypointGroup exportSnapshot() {
+        WaypointGroup copy = new WaypointGroup(id, name, zoneId);
+        copy.loadMode = loadMode;
+        copy.gradientMode = gradientMode;
+        copy.staticColor = staticColor;
+        copy.gradientStartColor = gradientStartColor;
+        copy.gradientEndColor = gradientEndColor;
+        copy.defaultRadius = defaultRadius;
+        copy.skipAheadEnabled = skipAheadEnabled;
+        copy.waypoints.addAll(waypoints);
+        return copy;
+    }
+
     public String id()            { return id; }
     public String name()          { return name; }
     public String zoneId()        { return zoneId; }

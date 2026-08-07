@@ -221,6 +221,19 @@ public final class ExportScreen extends Screen {
     private String encoded = "";
     private String encodingError = "";
 
+    /**
+     * Encoding a large selection means varint packing plus compression over
+     * every waypoint, which is far too slow to sit on the render thread -- it
+     * stalled the client for the duration of the export and, because it ran
+     * from {@code init()}, delayed the screen appearing at all. The work now
+     * runs here and the screen paints a pending state until a result lands.
+     *
+     * <p>Runs on the shared {@link CodecWorker}; the generation guard below
+     * drops anything superseded while it was queued.
+     */
+    private int encodeGeneration;
+    private boolean encodePending;
+
     // Panel geometry, resolved once per init() so the widget pass and the render
     // pass cannot disagree about where anything is.
     private int panelX;
@@ -715,16 +728,41 @@ public final class ExportScreen extends Screen {
     }
 
     private void reencode() {
-        List<WaypointGroup> selected = selectedGroupsForExport();
-        WaypointCodec.Options options = optsBuilder.build();
-        try {
-            this.encoded = WaypointExportCodec.encode(selected, options, exportTarget);
-            this.encodingError = "";
-        } catch (IllegalArgumentException error) {
-            this.encoded = "";
-            this.encodingError = error.getMessage() == null ? "Export is not supported" : error.getMessage();
+        // Detach from the live routes before leaving the client thread.
+        List<WaypointGroup> snapshot = new ArrayList<>();
+        for (WaypointGroup group : selectedGroupsForExport()) {
+            if (group != null) snapshot.add(group.exportSnapshot());
         }
-        boolean canCopy = encodingError.isEmpty();
+        WaypointCodec.Options options = optsBuilder.build();
+        WaypointExportCodec.Target target = exportTarget;
+        int generation = ++encodeGeneration;
+
+        encodePending = true;
+        encodingError = "";
+        updateCopyButtons();
+
+        CodecWorker.run(
+                () -> new EncodeResult(WaypointExportCodec.encode(snapshot, options, target), ""),
+                encoded -> applyEncodeResult(generation, encoded));
+    }
+
+    private record EncodeResult(String code, String error) {}
+
+    /**
+     * Client-thread tail of {@link #reencode()}; ignores superseded results.
+     * A null result means the encode threw -- unsupported option combinations
+     * surface as {@link IllegalArgumentException} from the codec.
+     */
+    private void applyEncodeResult(int generation, EncodeResult result) {
+        if (generation != encodeGeneration) return;
+        this.encoded = result == null ? "" : result.code();
+        this.encodingError = result == null ? "Export is not supported" : result.error();
+        this.encodePending = false;
+        updateCopyButtons();
+    }
+
+    private void updateCopyButtons() {
+        boolean canCopy = !encodePending && encodingError.isEmpty() && !encoded.isEmpty();
         if (copyButton != null) copyButton.active = canCopy;
         if (copyCodeBlockButton != null) copyCodeBlockButton.active = canCopy;
     }
@@ -1252,6 +1290,11 @@ public final class ExportScreen extends Screen {
      * status message.
      */
     private void drawSizeSummary(GuiGraphicsExtractor g, int x, int y) {
+        if (encodePending) {
+            drawClipped(g, Component.translatable(
+                    "waypointer.screen.export.encoding").getString(), y, TEXT_MUTED);
+            return;
+        }
         if (!encodingError.isEmpty()) {
             drawClipped(g, encodingError, y, 0xFFDD7070);
             return;
@@ -1386,6 +1429,11 @@ public final class ExportScreen extends Screen {
         int innerY = y1 + PREVIEW_INSET;
         int innerW = x2 - x1 - PREVIEW_INSET * 2;
         int lineH = previewLineHeight();
+        if (encodePending) {
+            g.text(font, Component.translatable("waypointer.screen.export.encoding").getString(),
+                    innerX, innerY, TEXT_MUTED, false);
+            return;
+        }
         List<FormattedCharSequence> lines = font.split(FormattedText.of(encoded), innerW);
 
         // Reserve the last visible line for the "N more lines" marker so it can

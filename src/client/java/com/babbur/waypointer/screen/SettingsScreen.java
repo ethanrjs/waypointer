@@ -142,7 +142,7 @@ public final class SettingsScreen extends Screen {
 
     /**
      * A settings screen opened directly at (and briefly highlighting) one
-     * setting's row — the deep-link entry point other screens use, e.g.
+     * setting's row -- the deep-link entry point other screens use, e.g.
      * {@code /wp debug}'s Perf test button.
      */
     public static SettingsScreen atSetting(Screen parent, WaypointerConfig config,
@@ -436,7 +436,7 @@ public final class SettingsScreen extends Screen {
     }
 
     /**
-     * Search results render as one flat scrollable list — every match, no
+     * Search results render as one flat scrollable list -- every match, no
      * truncation. Each row carries a category chip and stays live-editable.
      */
     private void buildSearchRows(Layout layout) {
@@ -1464,7 +1464,7 @@ public final class SettingsScreen extends Screen {
 
         // The search field and its clear button sit in the header strip, which the
         // content dead strip would otherwise swallow before super.mouseClicked can
-        // focus them — leaving the field unclickable/untypeable. Give them the click first.
+        // focus them -- leaving the field unclickable/untypeable. Give them the click first.
         if (searchBox != null && searchBox.isMouseOver(mx, my)) {
             setFocused(searchBox);
             searchBox.setFocused(true);

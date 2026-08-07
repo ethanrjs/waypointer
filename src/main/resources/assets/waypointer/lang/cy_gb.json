@@ -870,6 +870,7 @@
   "waypointer.screen.export.preview.hint": "Scroll to zoom",
   "waypointer.screen.export.preview.zoom": "%1$s×",
   "waypointer.screen.export.preview.zoom.tooltip": "Reset the preview to its default zoom.",
+  "waypointer.screen.export.encoding": "Building code...",
   "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
   "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
   "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"

@@ -53,6 +53,15 @@ public final class Storage {
     private AsyncSaver saver;
     private ActiveGroupManager managerRef;
     private volatile String pendingSnapshotJson;
+    /**
+     * Set when the manager reports a persistent change, cleared by
+     * {@link #pumpPendingSnapshot()}. Serializing the whole library is O(all
+     * waypoints), so doing it inline on every data-changed event made bulk
+     * operations quadratic -- hiding a hundred routes or closing the route list
+     * re-serialized the library once per affected route. The flag defers that
+     * work to at most once per client tick.
+     */
+    private boolean snapshotStale;
     private int snapshotCount;
     private volatile int writeCount;
     private volatile boolean writesBlocked;
@@ -165,14 +174,36 @@ public final class Storage {
      * shutdown so an atomic rename in flight lands before the JVM exits.
      */
     public void flush() {
+        pumpPendingSnapshot();
         if (saver != null) saver.flush();
     }
 
-    private void markDirtyFromManager() {
+    /**
+     * Serialize the library if anything changed since the last pump, then arm
+     * the debounced write. Must be called from the thread that mutates the
+     * manager (the client thread) -- that is the whole reason the snapshot is
+     * taken here rather than on the saver thread.
+     *
+     * <p>Cheap and safe to call every tick: with no pending change it does
+     * nothing at all.
+     */
+    public void pumpPendingSnapshot() {
+        if (!snapshotStale) return;
         ActiveGroupManager manager = managerRef;
-        if (manager == null) return;
+        if (manager == null) {
+            snapshotStale = false;
+            return;
+        }
+        snapshotStale = false;
         pendingSnapshotJson = captureSnapshot(manager);
         if (saver != null) saver.markDirty();
+    }
+
+    private void markDirtyFromManager() {
+        if (managerRef == null) return;
+        // Deliberately does not serialize: a burst of changes costs one flag
+        // write, and the next pump pays for a single snapshot covering them all.
+        snapshotStale = true;
     }
 
     private void writeToDisk() {

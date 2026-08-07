@@ -917,6 +917,66 @@ class WaypointGroupTest {
         assertEquals(List.of(route, bucket), manager.activeGroups());
     }
 
+    @Test
+    void exportSnapshotCarriesEverythingTheExportersRead() {
+        WaypointGroup group = WaypointGroup.create("Shared route", "dungeon_f7");
+        group.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.setDefaultRadius(4.5);
+        group.setSkipAheadEnabled(false);
+        group.setStaticColor(0x123456);
+        group.setGradientStartColor(0xAABBCC);
+        group.setGradientEndColor(0xDDEEFF);
+        group.add(wp(1, 70, 1).withName("first"));
+        group.add(wp(2, 70, 2).withName("second"));
+
+        WaypointGroup snapshot = group.exportSnapshot();
+
+        assertEquals(group.id(), snapshot.id());
+        assertEquals(group.name(), snapshot.name());
+        assertEquals(group.zoneId(), snapshot.zoneId());
+        assertEquals(group.loadMode(), snapshot.loadMode());
+        assertEquals(group.gradientMode(), snapshot.gradientMode());
+        assertEquals(group.defaultRadius(), snapshot.defaultRadius());
+        assertEquals(group.skipAheadEnabled(), snapshot.skipAheadEnabled());
+        assertEquals(group.staticColor(), snapshot.staticColor());
+        assertEquals(group.gradientStartColor(), snapshot.gradientStartColor());
+        assertEquals(group.gradientEndColor(), snapshot.gradientEndColor());
+        assertEquals(group.waypoints(), snapshot.waypoints());
+    }
+
+    @Test
+    void exportSnapshotDoesNotRepaintWaypoints() {
+        // Building the copy through the colour setters would re-run the gradient
+        // and change what gets exported. MANUAL keeps per-waypoint colours, so a
+        // repaint would be visible here.
+        WaypointGroup group = WaypointGroup.create("Manual colours", "hub");
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.add(wp(0, 70, 0).withColor(0xFF0000));
+        group.add(wp(1, 70, 1).withColor(0x0000FF));
+
+        WaypointGroup snapshot = group.exportSnapshot();
+
+        assertEquals(0xFF0000, snapshot.get(0).color());
+        assertEquals(0x0000FF, snapshot.get(1).color());
+    }
+
+    @Test
+    void exportSnapshotIsDetachedFromLaterEdits() {
+        // The encode runs on a worker thread, so the copy must not observe
+        // anything the client thread does to the live route afterwards.
+        WaypointGroup group = WaypointGroup.create("Live route", "hub");
+        group.add(wp(0, 70, 0));
+
+        WaypointGroup snapshot = group.exportSnapshot();
+        group.add(wp(5, 70, 5));
+        group.setName("renamed");
+
+        assertEquals(1, snapshot.size());
+        assertEquals(2, group.size());
+        assertEquals("Live route", snapshot.name());
+    }
+
     private static int[] visibleIndices(WaypointGroup group) {
         List<Integer> indices = new ArrayList<>();
         group.forEachVisibleIndex(indices::add);

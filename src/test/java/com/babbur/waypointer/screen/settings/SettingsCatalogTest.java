@@ -74,8 +74,8 @@ class SettingsCatalogTest {
         for (Setting setting : SettingsCatalog.allSettings()) {
             if (setting.kind() == Setting.Kind.HIDDEN) continue;
             assertFalse(setting.label().isBlank(), setting.id() + " needs a label");
-            // Tooltips are optional — self-explanatory rows deliberately omit
-            // them — but a whitespace-only tooltip is a mistake.
+            // Tooltips are optional -- self-explanatory rows deliberately omit
+            // them -- but a whitespace-only tooltip is a mistake.
             assertEquals(setting.tooltip().isEmpty(), setting.tooltip().isBlank(),
                     setting.id() + " has a whitespace-only tooltip");
         }

@@ -13,10 +13,10 @@ package com.babbur.waypointer.core;
  *
  * <p>Temporary waypoints carry a {@code tempMode} + {@code expiresAtMillis}:
  * <ul>
- *   <li>{@link #TEMP_NONE} — a normal, persisted waypoint.
- *   <li>{@link #TEMP_TIME} — removed once {@link System#currentTimeMillis()} passes {@code expiresAtMillis}.
- *   <li>{@link #TEMP_UNTIL_REACHED} — removed by the proximity tracker when it advances past this waypoint.
- *   <li>{@link #TEMP_UNTIL_LEAVE} — removed when the player leaves the server.
+ *   <li>{@link #TEMP_NONE} -- a normal, persisted waypoint.
+ *   <li>{@link #TEMP_TIME} -- removed once {@link System#currentTimeMillis()} passes {@code expiresAtMillis}.
+ *   <li>{@link #TEMP_UNTIL_REACHED} -- removed by the proximity tracker when it advances past this waypoint.
+ *   <li>{@link #TEMP_UNTIL_LEAVE} -- removed when the player leaves the server.
  * </ul>
  * All three temp modes are wiped on disconnect (Storage deliberately skips them
  * during save) so nothing ephemeral accumulates in the user's config file.

@@ -278,7 +278,7 @@ public final class WaypointerConfigCodec {
                 case MAX_WAYPOINT_LABELS -> config.setMaxWaypointLabels(in.readInt());
                 case MAX_STATIC_RENDER_DISTANCE -> config.setMaxStaticWaypointRenderDistance(in.readDouble());
                 case LABEL_HEIGHT_OFFSET -> config.setLabelHeightOffset(in.readDouble());
-                case BOX_STYLE -> config.setBoxStyle(readEnum(in, WaypointerConfig.BoxStyle.values(), WaypointerConfig.BoxStyle.OUTLINED));
+                case BOX_STYLE -> config.setBoxStyle(readEnum(in, WaypointerConfig.BoxStyle.values(), WaypointerConfig.BoxStyle.FILLED_OUTLINED));
                 case BEACON_BEAM_MODE -> config.setBeaconBeamMode(readEnum(in, WaypointerConfig.BeaconBeamMode.values(), WaypointerConfig.BeaconBeamMode.OFF));
                 case BEACON_BEAM_EXTENDS_BELOW -> config.setBeaconBeamExtendsBelowWaypoint(in.readBoolean());
                 case USE_BEACON_BEAM_TEXTURES -> config.setUseBeaconBeamTextures(in.readBoolean());

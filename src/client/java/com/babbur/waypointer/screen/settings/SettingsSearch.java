@@ -17,12 +17,12 @@ import java.util.Locale;
  *   <li>substring of the category or group label (typing "chat" surfaces the family)</li>
  *   <li>substring of the tooltip</li>
  *   <li>subsequence of label+aliases, only for tokens of {@value #MIN_SUBSEQUENCE_TOKEN_LENGTH}+
- *       characters — the old any-length subsequence fallback matched nearly everything
+ *       characters -- the old any-length subsequence fallback matched nearly everything
  *       on short queries, which recreated the overwhelm inside search</li>
  * </ol>
  *
  * <p>Final order: tier ascending, catalog declaration order as the stable
- * tiebreak. Results are complete — the screen scrolls them, never truncates.
+ * tiebreak. Results are complete -- the screen scrolls them, never truncates.
  */
 public final class SettingsSearch {
 

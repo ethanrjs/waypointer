@@ -8,7 +8,7 @@ import java.util.Map;
 /**
  * Session-only store of recently changed settings, backing the "Recent"
  * pseudo-category pinned at the top of the settings sidebar. It serves the
- * dominant settings journey — tweak, test in world, reopen, tweak again —
+ * dominant settings journey -- tweak, test in world, reopen, tweak again --
  * without persisting anything: the list resets on game restart.
  */
 public final class RecentSettings {

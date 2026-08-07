@@ -407,7 +407,7 @@ public final class DebugInspectScreen extends Screen {
             String id = oneLine(mod.getMetadata().getId());
             String name = oneLine(mod.getMetadata().getName());
             String version = oneLine(mod.getMetadata().getVersion().getFriendlyString());
-            rows.add(new Row.KVDim(id, name + " — " + version));
+            rows.add(new Row.KVDim(id, name + ": " + version));
         }
     }
 
@@ -611,7 +611,7 @@ public final class DebugInspectScreen extends Screen {
         for (WaypointerKeybinds.DebugBinding binding : keybinds.debugSnapshot()) {
             String value = binding.boundKey();
             if (!binding.conflicts().isEmpty()) {
-                value += " — conflicts with " + String.join(", ", binding.conflicts());
+                value += ", conflicts with " + String.join(", ", binding.conflicts());
             }
             rows.add(binding.conflicts().isEmpty()
                     ? new Row.KVDim(binding.translationKey(), oneLine(value))
@@ -1554,7 +1554,7 @@ public final class DebugInspectScreen extends Screen {
 
     private static String groupSummary(PerformanceStats.GroupStats group) {
         if (group == null) return "(none)";
-        return oneLine(shortGroupName(group)) + " -- " + group.waypoints()
+        return oneLine(shortGroupName(group)) + ": " + group.waypoints()
                 + " pts, " + group.loadMode().toLowerCase(Locale.ROOT);
     }
 

@@ -71,7 +71,7 @@ public final class PerfReport {
 
     /**
      * Upper nearest-rank percentile: the boundary lands inside the slow tail,
-     * so with 100 samples the p99 IS the single worst frame — which is what a
+     * so with 100 samples the p99 IS the single worst frame -- which is what a
      * "1% low" figure should report.
      */
     static double percentile(List<Long> values, double fraction) {
