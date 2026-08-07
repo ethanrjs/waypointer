@@ -8,6 +8,8 @@ public final class RoutePreviewProjection {
     public static final int PADDING = 12;
     public static final double SINGLE_WAYPOINT_MAX_PIXELS = 48.0;
     public static final double MIN_HOVER_TARGET_PIXELS = 6.0;
+    public static final double MIN_NORMAL_MARKER_PHYSICAL_PIXELS = 10.0;
+    public static final double MIN_SMALL_MARKER_PHYSICAL_PIXELS = 4.0;
     public static final double PIP_SAFE_HALF_DEPTH_PHYSICAL_PIXELS = 900.0;
 
     public record Projected(double x, double y, double depth) {}
@@ -95,10 +97,30 @@ public final class RoutePreviewProjection {
         return new Projected(centerX + viewX * scale, centerY - viewY * scale, depth);
     }
 
+    /** Uniformly enlarges only the displayed box while preserving its exact center and proportions. */
+    public static double markerDisplayScale(RoutePreviewScene.Marker marker,
+                                            double scale, int guiScale) {
+        if (marker == null || !Double.isFinite(scale) || scale <= 0.0) return 1.0;
+        RoutePreviewScene.Box box = marker.box();
+        double largestEdge = Math.max(box.width(), Math.max(box.height(), box.depth()));
+        if (!Double.isFinite(largestEdge) || largestEdge <= 1.0e-9) return 1.0;
+        double minimum = marker.small()
+                ? MIN_SMALL_MARKER_PHYSICAL_PIXELS
+                : MIN_NORMAL_MARKER_PHYSICAL_PIXELS;
+        double physicalEdge = largestEdge * scale * Math.max(1, guiScale);
+        return Math.max(1.0, minimum / Math.max(1.0e-9, physicalEdge));
+    }
+
     /** Returns the front-most marker index under the pointer, or -1. */
     public static int pick(RoutePreviewScene scene, double mouseX, double mouseY,
                            int x, int y, int width, int height,
                            double yawRadians, double scale) {
+        return pick(scene, mouseX, mouseY, x, y, width, height, yawRadians, scale, 1);
+    }
+
+    public static int pick(RoutePreviewScene scene, double mouseX, double mouseY,
+                           int x, int y, int width, int height,
+                           double yawRadians, double scale, int guiScale) {
         if (scene == null || scene.markers().isEmpty() || scale <= 0.0) return -1;
         double screenRight = (mouseX - (x + width * 0.5)) / scale;
         double screenUp = -(mouseY - (y + height * 0.5)) / scale;
@@ -113,9 +135,10 @@ public final class RoutePreviewProjection {
         int best = -1;
         double bestT = Double.POSITIVE_INFINITY;
         for (int i = 0; i < scene.markers().size(); i++) {
+            RoutePreviewScene.Marker marker = scene.markers().get(i);
             double hit = rayBox(originX, originY, originZ,
                     -basis.forwardX, -basis.forwardY, -basis.forwardZ,
-                    scene.markers().get(i).box());
+                    marker.box(), markerDisplayScale(marker, scale, guiScale));
             if (hit >= 0.0 && hit < bestT) {
                 bestT = hit;
                 best = i;
@@ -127,18 +150,26 @@ public final class RoutePreviewProjection {
         double centerY = y + height * 0.5;
         double nearestDepth = Double.NEGATIVE_INFINITY;
         for (int i = 0; i < scene.markers().size(); i++) {
-            RoutePreviewScene.Box box = scene.markers().get(i).box();
+            RoutePreviewScene.Marker marker = scene.markers().get(i);
+            RoutePreviewScene.Box box = marker.box();
+            double displayScale = markerDisplayScale(marker, scale, guiScale);
+            double centerBoxX = box.centerX();
+            double centerBoxY = box.centerY();
+            double centerBoxZ = box.centerZ();
             double minScreenX = Double.POSITIVE_INFINITY;
             double minScreenY = Double.POSITIVE_INFINITY;
             double maxScreenX = Double.NEGATIVE_INFINITY;
             double maxScreenY = Double.NEGATIVE_INFINITY;
             double frontDepth = Double.NEGATIVE_INFINITY;
             for (int xi = 0; xi < 2; xi++) {
-                double px = xi == 0 ? box.minX() : box.maxX();
+                double px = centerBoxX + ((xi == 0 ? box.minX() : box.maxX()) - centerBoxX)
+                        * displayScale;
                 for (int yi = 0; yi < 2; yi++) {
-                    double py = yi == 0 ? box.minY() : box.maxY();
+                    double py = centerBoxY + ((yi == 0 ? box.minY() : box.maxY()) - centerBoxY)
+                            * displayScale;
                     for (int zi = 0; zi < 2; zi++) {
-                        double pz = zi == 0 ? box.minZ() : box.maxZ();
+                        double pz = centerBoxZ + ((zi == 0 ? box.minZ() : box.maxZ()) - centerBoxZ)
+                                * displayScale;
                         double viewX = px * basis.rightX + pz * basis.rightZ;
                         double viewY = px * basis.upX + py * basis.upY + pz * basis.upZ;
                         double screenX = centerX + viewX * scale;
@@ -191,34 +222,43 @@ public final class RoutePreviewProjection {
 
     private static double rayBox(double ox, double oy, double oz,
                                  double dx, double dy, double dz,
-                                 RoutePreviewScene.Box box) {
+                                 RoutePreviewScene.Box box, double displayScale) {
+        double cx = box.centerX();
+        double cy = box.centerY();
+        double cz = box.centerZ();
+        double minX = cx + (box.minX() - cx) * displayScale;
+        double minY = cy + (box.minY() - cy) * displayScale;
+        double minZ = cz + (box.minZ() - cz) * displayScale;
+        double maxX = cx + (box.maxX() - cx) * displayScale;
+        double maxY = cy + (box.maxY() - cy) * displayScale;
+        double maxZ = cz + (box.maxZ() - cz) * displayScale;
         double near = 0.0;
         double far = Double.POSITIVE_INFINITY;
         if (Math.abs(dx) < 1.0e-12) {
-            if (ox < box.minX() || ox > box.maxX()) return -1.0;
+            if (ox < minX || ox > maxX) return -1.0;
         } else {
-            double a = (box.minX() - ox) / dx;
-            double b = (box.maxX() - ox) / dx;
+            double a = (minX - ox) / dx;
+            double b = (maxX - ox) / dx;
             if (a > b) { double swap = a; a = b; b = swap; }
             near = Math.max(near, a);
             far = Math.min(far, b);
             if (near > far) return -1.0;
         }
         if (Math.abs(dy) < 1.0e-12) {
-            if (oy < box.minY() || oy > box.maxY()) return -1.0;
+            if (oy < minY || oy > maxY) return -1.0;
         } else {
-            double a = (box.minY() - oy) / dy;
-            double b = (box.maxY() - oy) / dy;
+            double a = (minY - oy) / dy;
+            double b = (maxY - oy) / dy;
             if (a > b) { double swap = a; a = b; b = swap; }
             near = Math.max(near, a);
             far = Math.min(far, b);
             if (near > far) return -1.0;
         }
         if (Math.abs(dz) < 1.0e-12) {
-            if (oz < box.minZ() || oz > box.maxZ()) return -1.0;
+            if (oz < minZ || oz > maxZ) return -1.0;
         } else {
-            double a = (box.minZ() - oz) / dz;
-            double b = (box.maxZ() - oz) / dz;
+            double a = (minZ - oz) / dz;
+            double b = (maxZ - oz) / dz;
             if (a > b) { double swap = a; a = b; b = swap; }
             near = Math.max(near, a);
             far = Math.min(far, b);

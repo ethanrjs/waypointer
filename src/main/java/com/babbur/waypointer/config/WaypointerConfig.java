@@ -327,6 +327,17 @@ public final class WaypointerConfig {
      */
     private boolean exportIncludeZone = true;
     /**
+     * Whether the export screen draws its rotating 3D route preview.
+     *
+     * Off by default. It is a picture-in-picture render on a screen whose job
+     * is to hand you a code, so it stays opt-in rather than costing every
+     * player a second render target the first time they share a route; anyone
+     * who wants to see the route before sending it turns it on under
+     * Sharing -> Export screen. Off collapses the export screen back to the
+     * single centered column; nothing about the encoded payload changes.
+     */
+    private boolean showExportRoutePreview = false;
+    /**
      * Legacy hidden flag retained so older config files and config-code imports
      * keep round-tripping. The dungeon subsystem now installs unconditionally;
      * {@code DungeonConfig.enabled()} is the runtime feature switch.
@@ -677,6 +688,7 @@ public final class WaypointerConfig {
     public boolean exportIncludeWaypointFlags(){ return exportIncludeWaypointFlags; }
     public boolean exportIncludeGroupMeta()    { return exportIncludeGroupMeta; }
     public boolean exportIncludeZone()         { return exportIncludeZone; }
+    public boolean showExportRoutePreview()    { return showExportRoutePreview; }
     public boolean dungeonWaypointsFeatureEnabled() { return dungeonWaypointsFeatureEnabled; }
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
     public boolean irisShaderHudFallback()      { return irisShaderHudFallback; }
@@ -847,6 +859,7 @@ public final class WaypointerConfig {
     public void setExportIncludeWaypointFlags(boolean v){ this.exportIncludeWaypointFlags = v; save(); }
     public void setExportIncludeGroupMeta(boolean v)    { this.exportIncludeGroupMeta = v; save(); }
     public void setExportIncludeZone(boolean v)         { this.exportIncludeZone = v; save(); }
+    public void setShowExportRoutePreview(boolean v)    { this.showExportRoutePreview = v; save(); }
     public void setDungeonWaypointsFeatureEnabled(boolean v) { this.dungeonWaypointsFeatureEnabled = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
     public void setShowLabelTextShadow(boolean v)      { this.showLabelTextShadow = v; save(); }
@@ -972,6 +985,7 @@ public final class WaypointerConfig {
         exportIncludeWaypointFlags = replacement.exportIncludeWaypointFlags;
         exportIncludeGroupMeta = replacement.exportIncludeGroupMeta;
         exportIncludeZone = replacement.exportIncludeZone;
+        showExportRoutePreview = replacement.showExportRoutePreview;
         dungeonWaypointsFeatureEnabled = replacement.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = replacement.skipAheadMechanicEnabled;
         irisShaderHudFallback = replacement.irisShaderHudFallback;
@@ -1026,6 +1040,7 @@ public final class WaypointerConfig {
         exportIncludeWaypointFlags = false;
         exportIncludeGroupMeta = false;
         exportIncludeZone = false;
+        showExportRoutePreview = false;
         dungeonWaypointsFeatureEnabled = false;
         skipAheadMechanicEnabled = false;
         irisShaderHudFallback = false;
@@ -1108,6 +1123,7 @@ public final class WaypointerConfig {
         exportIncludeWaypointFlags = defaults.exportIncludeWaypointFlags;
         exportIncludeGroupMeta = defaults.exportIncludeGroupMeta;
         exportIncludeZone = defaults.exportIncludeZone;
+        showExportRoutePreview = defaults.showExportRoutePreview;
         dungeonWaypointsFeatureEnabled = defaults.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = defaults.skipAheadMechanicEnabled;
         irisShaderHudFallback = defaults.irisShaderHudFallback;

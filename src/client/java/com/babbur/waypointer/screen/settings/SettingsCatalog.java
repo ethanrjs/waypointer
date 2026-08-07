@@ -610,6 +610,13 @@ public final class SettingsCatalog {
                                 "Imported Route Colour", "Pick imported route color.",
                                 (c, d) -> c.importedRouteDefaultColor(),
                                 (c, d, v) -> c.setImportedRouteDefaultColor(rgb(v)))),
+                Group.plain("Export screen",
+                        Setting.bool("showExportRoutePreview", MAIN, "3D route preview",
+                                "Draw the rotating 3D preview of the route on the export screen. "
+                                        + "Off leaves the export code and every option exactly as they are.",
+                                (c, d) -> c.showExportRoutePreview(),
+                                (c, d, v) -> c.setShowExportRoutePreview((Boolean) v))
+                                .aliases("preview", "3d", "isometric")),
                 Group.plain("Export defaults",
                         Setting.bool("exportIncludeNames", MAIN, "Include names in default export",
                                 null,

@@ -151,7 +151,11 @@ public final class WaypointImporter {
     private static ImportResult importAnyCore(String trimmed) {
         if (WaypointCodec.isCodecString(trimmed)) {
             WaypointCodec.Decoded d = WaypointCodec.decodeFull(trimmed);
-            return checkedImport(new ImportResult(Source.WAYPOINTER, d.groups(), d.label()));
+            List<WaypointGroup> groups = d.groups();
+            if (!d.label().isBlank() && groups.size() == 1) {
+                groups.getFirst().setName(d.label());
+            }
+            return checkedImport(new ImportResult(Source.WAYPOINTER, groups, d.label()));
         }
 
         // Skyblocker's prefixed exports must be handled before the raw-base64 path

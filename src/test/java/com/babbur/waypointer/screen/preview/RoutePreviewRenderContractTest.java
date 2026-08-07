@@ -92,6 +92,17 @@ class RoutePreviewRenderContractTest {
     }
 
     @Test
+    void simplifiedBillboardsUseTheSameReadableMarkerScaleAsPicking() throws IOException {
+        String core = Files.readString(Path.of(
+                "src", "client", "java", "com", "babbur", "waypointer",
+                "screen", "preview", "RoutePreviewRenderCore.java"));
+
+        assertTrue(core.contains(
+                "RoutePreviewProjection.markerDisplayScale(marker, scale, guiScale)"));
+        assertFalse(core.contains("MIN_SIMPLIFIED_SIZE_PHYSICAL_PIXELS"));
+    }
+
+    @Test
     void previewPaintAtlasHasReplicatedPaddingAndDeferredCleanup() throws IOException {
         assertEquals(72, RoutePreviewPaintResource.ATLAS_WIDTH);
         assertEquals(54, RoutePreviewPaintResource.ATLAS_HEIGHT);

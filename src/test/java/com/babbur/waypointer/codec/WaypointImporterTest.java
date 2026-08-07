@@ -48,6 +48,22 @@ class WaypointImporterTest {
         WaypointImporter.ImportResult result = WaypointImporter.importAny(labelled);
         assertEquals(WaypointImporter.Source.WAYPOINTER, result.source());
         assertEquals("F7 dragon path", result.label());
+        assertEquals("F7 dragon path", result.groups().getFirst().name());
+    }
+
+    @Test
+    void nativeBundleLabelDoesNotReplaceEachRouteName() {
+        WaypointGroup first = WaypointGroup.create("First", "hub");
+        first.add(Waypoint.at(1, 2, 3));
+        WaypointGroup second = WaypointGroup.create("Second", "hub");
+        second.add(Waypoint.at(4, 5, 6));
+        String labelled = WaypointCodec.encode(List.of(first, second),
+                WaypointCodec.Options.builder().label("Route bundle").build());
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(labelled);
+
+        assertEquals(List.of("First", "Second"), result.groups().stream()
+                .map(WaypointGroup::name).toList());
     }
 
     @Test

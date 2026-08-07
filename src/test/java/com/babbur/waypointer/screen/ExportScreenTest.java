@@ -24,6 +24,13 @@ class ExportScreenTest {
     }
 
     @Test
+    void disablingThePreviewCollapsesTheSplitLayoutAtEveryWidth() {
+        assertTrue(ExportScreen.isWidePreviewLayout(true, 736));
+        assertFalse(ExportScreen.isWidePreviewLayout(false, 736));
+        assertFalse(ExportScreen.isWidePreviewLayout(false, 2560));
+    }
+
+    @Test
     void previewNavigationDoesNotChangeExportSelection() {
         boolean[] selected = {true, false, true, true};
 
@@ -214,6 +221,18 @@ class ExportScreenTest {
                 ExportScreen.labelInputTooltipText(WaypointExportCodec.Target.WAYPOINTER));
         assertEquals("SkyHanni exports do not support Waypointer labels",
                 ExportScreen.labelInputTooltipText(WaypointExportCodec.Target.SKYHANNI));
+    }
+
+    @Test
+    void waypointerLabelOverridesTheLivePreviewRouteName() {
+        assertEquals("Shared Route", ExportScreen.previewRouteName(
+                "Original Route", " Shared Route ", WaypointExportCodec.Target.WAYPOINTER, 1));
+        assertEquals("Original Route", ExportScreen.previewRouteName(
+                "Original Route", "   ", WaypointExportCodec.Target.WAYPOINTER, 1));
+        assertEquals("Original Route", ExportScreen.previewRouteName(
+                "Original Route", "Shared Route", WaypointExportCodec.Target.SKYHANNI, 1));
+        assertEquals("Original Route", ExportScreen.previewRouteName(
+                "Original Route", "Bundle Name", WaypointExportCodec.Target.WAYPOINTER, 2));
     }
 
     @Test
