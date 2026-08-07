@@ -656,15 +656,19 @@ public final class DungeonCommands {
         }
 
         DungeonRoomData.importCustomDefinitions(result.definitions());
-        if (result.definitions().isEmpty()) {
+        List<WaypointGroup> routes =
+                DungeonRoomRouteSync.installEditableRoutes(manager, config, result.definitions());
+        if (routes.isEmpty()) {
             error(src, Component.translatable(
                     "waypointer.dungeon.command.import.no_usable_routes"));
             return 0;
         }
         success(src, Component.translatable(
                 "waypointer.dungeon.command.import.success",
-                result.waypointCount(), result.definitions().size(),
+                result.waypointCount(), routes.size(),
                 importFormatLabel(result.format())));
+        info(src, Component.translatable(
+                "waypointer.dungeon.routes.existing_disabled"));
         if (result.skippedVariants() > 0) {
             info(src, Component.translatable(
                     "waypointer.dungeon.command.import.skipped_variants",

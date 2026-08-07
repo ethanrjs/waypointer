@@ -1930,13 +1930,6 @@ public final class WaypointerScreen extends Screen {
         boolean openEditor = shouldOpenGroupEditorFromRouteDoubleClick(
                 doubleClick, wasAlreadyPrimarySelected, shiftDown, controlDown);
         if (openEditor) {
-            if (isDungeonRoomZone(group.zoneId())) {
-                flashMainNotice("Dungeon routes are read-only.");
-                DebugEventLog.record("WaypointerScreen", "route", group.id(), idx,
-                        selectedBefore, selectedAfter, true, false, false,
-                        "route-row", "open-editor blocked: dungeon route");
-                return true;
-            }
             DebugEventLog.record("WaypointerScreen", "route", group.id(), idx,
                     selectedBefore, selectedAfter, true, false, false,
                     "route-row", "open-editor");
@@ -2217,14 +2210,17 @@ public final class WaypointerScreen extends Screen {
             return currentZoneId == null ? Zone.UNKNOWN.id() : currentZoneId;
         }
         if (isDungeonRoomsZone(selectedZoneId)) {
-            return null;
+            if (isDungeonRoomZone(selectedDungeonRoomZoneId)) {
+                return selectedDungeonRoomZoneId;
+            }
+            return isDungeonRoomZone(currentZoneId) ? currentZoneId : null;
         }
         return selectedZoneId == null ? Zone.UNKNOWN.id() : selectedZoneId;
     }
 
     static String newRouteBlockedNotice(String selectedZoneId) {
         if (isDungeonRoomsZone(selectedZoneId)) {
-            return "Dungeon routes are read-only.";
+            return "Stand in a detected dungeon room to create a room route.";
         }
         return "Choose a route zone first.";
     }
@@ -2415,16 +2411,15 @@ public final class WaypointerScreen extends Screen {
     private void deleteGroups(List<WaypointGroup> groups) {
         if (groups == null) return;
         for (WaypointGroup group : groups) {
-            if (!canDeleteRoute(group)) {
-                flashMainNotice("Dungeon routes are read-only.");
-                continue;
-            }
+            clearGeneratedDungeonRouteBeforeDelete(group);
             manager.remove(group.id());
         }
     }
 
-    static boolean canDeleteRoute(WaypointGroup group) {
-        return group != null && !isDungeonRoomZone(group.zoneId());
+    static boolean clearGeneratedDungeonRouteBeforeDelete(WaypointGroup group) {
+        if (!DungeonRoomRouteSync.isGeneratedGroup(group)) return false;
+        DungeonRoomData.clearWaypoints(group.zoneId());
+        return true;
     }
 
     private void resetDeleteButton() {
@@ -2616,17 +2611,19 @@ public final class WaypointerScreen extends Screen {
 
     private void importDungeonRoomsFromClipboard(String text) {
         DungeonRoomShareCodec.Decoded decoded = DungeonRoomShareCodec.decode(text);
-        int imported = DungeonRoomData.importCustomDefinitions(decoded.definitions());
-        if (decoded.definitions().isEmpty()) {
+        DungeonRoomData.importCustomDefinitions(decoded.definitions());
+        List<WaypointGroup> routes = DungeonRoomRouteSync.installEditableRoutes(
+                manager, WaypointerClient.dungeonConfig(), decoded.definitions());
+        if (routes.isEmpty()) {
             throw new IllegalArgumentException("dungeon route import contained no rooms");
         }
 
-        ImportFeedback.successDungeonRoutes(imported, decoded.waypointCount(), "clipboard");
+        ImportFeedback.successDungeonRoutes(routes.size(), decoded.waypointCount(), "clipboard");
         searchQuery = "";
         if (searchBox != null) searchBox.setValue("");
         selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
-        if (!decoded.definitions().isEmpty()) {
-            expandedDungeonRoomZoneIds.add(decoded.definitions().getFirst().id());
+        if (!routes.isEmpty()) {
+            expandedDungeonRoomZoneIds.add(routes.get(0).zoneId());
         }
         clearRouteSelection();
     }

@@ -38,8 +38,8 @@ import java.util.HexFormat;
  *
  * <p>Waypointer keeps the GPL-3.0 community route data out of the jar and makes
  * the user's own download a single click: room metadata lands in the local
- * custom store as a read-only route definition, with attribution, exactly as
- * if the user had run {@code /wpd import}.
+ * custom store and each secret path becomes an ordinary editable route, with
+ * attribution, exactly as if the user had run {@code /wpd import}.
  *
  * <p>The prompt fires once per session, on entering a dungeon with no route
  * data installed, and can be dismissed permanently.
@@ -223,16 +223,20 @@ public final class DungeonRouteDownloader {
     void importDownloadedRoutes(DungeonRouteImporter.Result result,
                                 Consumer<Component> feedback) {
         DungeonRoomData.importCustomDefinitions(result.definitions());
-        if (result.definitions().isEmpty()) {
+        var routes = DungeonRoomRouteSync.installEditableRoutes(
+                manager, config, result.definitions());
+        if (routes.isEmpty()) {
             feedback.accept(Component.translatable("waypointer.dungeon.routes.no_usable_routes")
                     .withStyle(ChatFormatting.RED));
             return;
         }
         feedback.accept(Component.translatableWithFallback(
                         "waypointer.dungeon.routes.installed",
-                        "Installed %s route actions in %s read-only dungeon routes.",
-                        result.waypointCount(), result.definitions().size())
+                        "Installed %s route actions as %s editable routes.",
+                        result.waypointCount(), routes.size())
                 .withStyle(ChatFormatting.GREEN));
+        feedback.accept(Component.translatable("waypointer.dungeon.routes.existing_disabled")
+                .withStyle(ChatFormatting.GRAY));
         feedback.accept(Component.translatable("waypointer.dungeon.routes.attribution")
                 .withStyle(ChatFormatting.GRAY));
         if (!result.unmatchedRooms().isEmpty()) {

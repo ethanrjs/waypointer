@@ -1,20 +1,28 @@
 package com.babbur.waypointer.dungeon;
 
 import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import java.lang.reflect.Field;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 
 class DungeonRoomWaypointPlacementTest {
+
+    @TempDir
+    Path tempDir;
 
     @Test
     void actualRoomWaypointStoresLocalAndProjectsBackToSameRunPosition() {
@@ -77,11 +85,13 @@ class DungeonRoomWaypointPlacementTest {
         assertEquals(actual.z(), editedActual.z());
     }
 
-    @Test
-    void durableMirrorEditsAreRejectedForReadOnlyDungeonRoutes() throws Exception {
+    @ParameterizedTest
+    @EnumSource(Direction.class)
+    void durableMirrorMoveStoresRoomLocalCoordinatesAndSurvivesReload(Direction direction)
+            throws Exception {
         DungeonRoomData.clearAllCustom();
         ActiveGroupManager manager = new ActiveGroupManager();
-        DungeonRoom room = room(Direction.SE, -74, -138);
+        DungeonRoom room = room(direction, -74, -138);
         DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
         Field trackerField = WaypointerClient.class.getDeclaredField("dungeonTracker");
         trackerField.setAccessible(true);
@@ -103,9 +113,30 @@ class DungeonRoomWaypointPlacementTest {
             mirror.add(DungeonRoomWaypointPlacement.toActualWaypoint(room, stored.get(0)));
             manager.add(mirror);
 
-            assertNull(DungeonRoomRouteSync.durableEditTarget(manager, mirror));
-            assertEquals(1, stored.size());
-            assertEquals("move me", stored.get(0).name());
+            WaypointGroup editTarget = DungeonRoomRouteSync.durableEditTarget(manager, mirror);
+            assertEquals(stored, editTarget);
+
+            Waypoint desiredLocal = Waypoint.at(7, 70, -5);
+            Waypoint desiredActual = DungeonRoomWaypointPlacement.toActualWaypoint(room, desiredLocal);
+            assertNotEquals(desiredActual.x(), desiredLocal.x());
+            DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(editTarget, 0,
+                    desiredActual.x(), desiredActual.y(), desiredActual.z());
+            manager.fireDataChanged();
+
+            Storage storage = new Storage(tempDir.resolve(direction.name() + "-waypoints.json"));
+            storage.save(manager);
+            ActiveGroupManager loadedManager = new ActiveGroupManager();
+            storage.load(loadedManager);
+
+            WaypointGroup loaded = loadedManager.get("stored");
+            Waypoint reprojected = DungeonRoomWaypointPlacement.toActualWaypoint(room, loaded.get(0));
+            assertEquals(desiredLocal.x(), loaded.get(0).x());
+            assertEquals(desiredLocal.y(), loaded.get(0).y());
+            assertEquals(desiredLocal.z(), loaded.get(0).z());
+            assertEquals(desiredActual.x(), reprojected.x());
+            assertEquals(desiredActual.y(), reprojected.y());
+            assertEquals(desiredActual.z(), reprojected.z());
+            assertEquals("move me", loaded.get(0).name());
         } finally {
             trackerField.set(null, previousTracker);
             DungeonRoomData.clearAllCustom();

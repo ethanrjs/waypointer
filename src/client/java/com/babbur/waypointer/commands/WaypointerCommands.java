@@ -1739,10 +1739,6 @@ public final class WaypointerCommands {
                     "waypointer.command.error.no_active_route"));
             return null;
         }
-        if (DungeonRoomRouteSync.isReadOnlyDungeonRoute(visibleGroup)) {
-            error(src, Component.literal("Dungeon routes are read-only."));
-            return null;
-        }
         WaypointGroup editTarget = DungeonRoomRouteSync.durableEditTarget(manager, visibleGroup);
         if (editTarget == null) {
             error(src, Component.translatable(
@@ -1759,12 +1755,7 @@ public final class WaypointerCommands {
                     index, all.size() - 1));
             return null;
         }
-        WaypointGroup group = all.get(index);
-        if (DungeonRoomRouteSync.isReadOnlyDungeonRoute(group)) {
-            error(src, Component.literal("Dungeon routes are read-only."));
-            return null;
-        }
-        return group;
+        return all.get(index);
     }
 
     private int resolveActiveWaypointIndex(FabricClientCommandSource src, WaypointGroup group,
@@ -2117,7 +2108,7 @@ public final class WaypointerCommands {
     static boolean definitionOnlyRouteRequiresConversion(ActiveGroupManager manager) {
         Zone currentZone = manager.currentZone();
         return currentZone != null
-                && DungeonRoomRouteSync.isReadOnlyDungeonRouteZone(currentZone.id());
+                && DungeonRoomRouteSync.secretsRequireConversion(manager, currentZone.id());
     }
 
     static Waypoint removeWaypointAt(WaypointGroup target, int index) {
@@ -2132,10 +2123,6 @@ public final class WaypointerCommands {
         if (zone == null) {
             error(src, Component.translatable(
                     "waypointer.command.error.no_active_zone"));
-            return 0;
-        }
-        if (DungeonRoomRouteSync.isReadOnlyDungeonRouteZone(zone.id())) {
-            error(src, Component.literal("Dungeon routes are read-only."));
             return 0;
         }
         List<WaypointGroup> here = manager.groupsForZone(zone.id());
@@ -2463,9 +2450,18 @@ public final class WaypointerCommands {
                     + " were already present; existing routes were kept."));
             return 0;
         }
+        // Match /wpd import and the route downloader: a room definition is only
+        // half the install. Each secret path also becomes an ordinary editable
+        // route so the player can retune it, and any prior route for the same
+        // room is disabled rather than deleted.
+        List<WaypointGroup> routes = DungeonRoomRouteSync.installEditableRoutes(
+                manager, WaypointerClient.dungeonConfig(), result.definitions());
         success(src, Component.literal("Imported " + imported + " dungeon room route"
                 + (imported == 1 ? "" : "s") + " with " + waypoints + " waypoint"
                 + (waypoints == 1 ? "" : "s") + " from " + origin + "."));
+        if (!routes.isEmpty()) {
+            info(src, Component.translatable("waypointer.dungeon.routes.existing_disabled"));
+        }
         return imported;
     }
 

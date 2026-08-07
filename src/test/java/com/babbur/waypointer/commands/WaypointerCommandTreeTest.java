@@ -245,7 +245,7 @@ class WaypointerCommandTreeTest {
     }
 
     @Test
-    void addPersistentWaypointAtRejectsReadOnlyDungeonRoutes() throws Exception {
+    void addPersistentWaypointAtStoresDungeonRoomLocalCoordinates() throws Exception {
         DungeonRoomData.clearAllCustom();
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerConfig config = new WaypointerConfig();
@@ -276,8 +276,11 @@ class WaypointerCommandTreeTest {
             int index = WaypointerCommands.addPersistentWaypointAt(manager, config,
                     new WaypointAddFlow(), -95, 68, -121, "beam");
 
-            assertEquals(-1, index);
-            assertTrue(manager.groupsForZone("command-room").isEmpty());
+            Waypoint waypoint = manager.groupsForZone("command-room").get(0).get(index);
+            assertEquals(21, waypoint.x());
+            assertEquals(68, waypoint.y());
+            assertEquals(-17, waypoint.z());
+            assertEquals("beam", waypoint.name());
         } finally {
             trackerField.set(null, previousTracker);
             DungeonRoomData.clearAllCustom();

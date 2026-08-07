@@ -198,10 +198,6 @@ public final class GroupEditScreen extends Screen {
 
     public static void openFocused(Screen parent, ActiveGroupManager manager, WaypointerConfig config,
                                    WaypointGroup group, int waypointIndex) {
-        if (DungeonRoomRouteSync.isReadOnlyDungeonRoute(group)) {
-            MinecraftCompat.setScreen(Minecraft.getInstance(), parent);
-            return;
-        }
         MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new GroupEditScreen(parent, manager, config, group, waypointIndex));
     }
