@@ -49,7 +49,9 @@ class PerformanceStatsTest {
         assertEquals(6, stats.activeVisibleWaypoints());
         assertEquals(6, stats.activeLabelCandidates());
         assertEquals(6 * 24, stats.estimatedLineBoxVertices());
-        assertEquals(0, stats.estimatedFillBoxVertices());
+        // Default box style is FILLED_OUTLINED, so a default config pays for
+        // both the outline and the fill; beams stay off by default.
+        assertEquals(6 * 24, stats.estimatedFillBoxVertices());
         assertEquals(0, stats.estimatedBeamVertices());
         assertEquals(6, stats.estimatedProximityIndexVisitsPerTick());
     }

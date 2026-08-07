@@ -181,6 +181,12 @@ public final class WaypointerScreen extends Screen {
     private OverlayButton downloadRoutesButton;
     private Button settingsButton;
     private String searchQuery = "";
+    /**
+     * Import decoding is asynchronous, so the button stays clickable while it
+     * runs. Without this, an impatient double-click on a big payload imports it
+     * twice.
+     */
+    private boolean importInFlight;
     private boolean islandDropdownOpen;
     private String zoneMoveGroupId;
     private DropdownTab dropdownTab = DropdownTab.ISLANDS;
@@ -234,6 +240,26 @@ public final class WaypointerScreen extends Screen {
     public static void open(ActiveGroupManager manager, WaypointerConfig config) {
         WaypointerScreen screen = new WaypointerScreen(manager, config);
         screen.focusCurrentDungeonRoomOnOpen();
+        MinecraftCompat.setScreen(Minecraft.getInstance(), screen);
+    }
+
+    /**
+     * Open straight to the dungeon-rooms list regardless of where the player is
+     * standing. {@link #open} only lands here when the tracker already knows the
+     * current room, which is never true when someone imports routes from the
+     * lobby -- they clicked a dungeon import and got the regular route list.
+     */
+    public static void openDungeonRooms(ActiveGroupManager manager, WaypointerConfig config) {
+        WaypointerScreen screen = new WaypointerScreen(manager, config);
+        screen.selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
+        String roomZoneId = currentDungeonRoomZoneId(manager);
+        if (roomZoneId != null) {
+            screen.lastObservedCurrentRoomZoneId = roomZoneId;
+            screen.selectedDungeonRoomZoneId = roomZoneId;
+            expandedDungeonRoomZoneIds.add(roomZoneId);
+            screen.pendingFocusRoomZoneId = roomZoneId;
+        }
+        screen.clearRouteSelection();
         MinecraftCompat.setScreen(Minecraft.getInstance(), screen);
     }
 
@@ -1672,7 +1698,7 @@ public final class WaypointerScreen extends Screen {
     }
 
     /**
-     * Downloaded/authored room secrets are definitions, not live groups — the
+     * Downloaded/authored room secrets are definitions, not live groups -- the
      * route group materializes only while standing in the room. Surfacing the
      * installed secret count keeps a freshly imported library from reading as
      * "0 routes" everywhere.
@@ -2256,12 +2282,17 @@ public final class WaypointerScreen extends Screen {
     private void hideShownRoutes(List<WaypointGroup> shownRoutes) {
         int hidden = 0;
         if (isDungeonRoomsZone(selectedZoneId)) {
-            for (WaypointGroup group : shownRoutes) {
-                if (group == null || !group.enabled()) continue;
-                DungeonRoomRouteSync.setRouteEnabled(
-                        manager, WaypointerClient.dungeonConfig(), group, false);
-                hidden++;
-            }
+            // One resync for the whole batch; see DungeonRoomRouteSync.batched.
+            int[] count = { 0 };
+            DungeonRoomRouteSync.batched(() -> {
+                for (WaypointGroup group : shownRoutes) {
+                    if (group == null || !group.enabled()) continue;
+                    DungeonRoomRouteSync.setRouteEnabled(
+                            manager, WaypointerClient.dungeonConfig(), group, false);
+                    count[0]++;
+                }
+            });
+            hidden = count[0];
         } else {
             hidden = hideRoutes(shownRoutes);
         }
@@ -2509,8 +2540,8 @@ public final class WaypointerScreen extends Screen {
             return;
         }
 
-        String payload = DungeonRoomShareCodec.encode(definitions);
-        DungeonRoomExportScreen.open(this, payload, definitions.size(), dungeonWaypointCount(definitions));
+        DungeonRoomExportScreen.open(this, definitions,
+                definitions.size(), dungeonWaypointCount(definitions));
     }
 
     static List<WaypointGroup> dungeonRouteGroupsForExport(List<WaypointGroup> selectedGroups,
@@ -2571,19 +2602,39 @@ public final class WaypointerScreen extends Screen {
         }
     }
 
+    /**
+     * Decoding a share code is as expensive as encoding one, so it runs on the
+     * codec worker and only the install lands back here. The payload is an
+     * immutable string and the decoder allocates fresh groups, so nothing the
+     * worker touches is shared with the client thread.
+     */
     private void importFromClipboard() {
+        if (importInFlight) return;
         String text = minecraft.keyboardHandler.getClipboard();
         if (text == null || text.isBlank()) {
             ImportFeedback.failure("Clipboard is empty.");
             return;
         }
-        try {
-            if (DungeonRoomShareCodec.isPayload(text)) {
-                importDungeonRoomsFromClipboard(text);
+        importInFlight = true;
+
+        if (DungeonRoomShareCodec.isPayload(text)) {
+            CodecWorker.run(() -> DungeonRoomShareCodec.decode(text), decoded -> {
+                importInFlight = false;
+                if (decoded == null) {
+                    ImportFeedback.failure("Invalid import text.");
+                    return;
+                }
+                installDecodedDungeonRooms(decoded);
+            });
+            return;
+        }
+
+        CodecWorker.run(() -> WaypointImporter.importAny(text), result -> {
+            importInFlight = false;
+            if (result == null) {
+                ImportFeedback.failure("Invalid import text.");
                 return;
             }
-
-            WaypointImporter.ImportResult result = WaypointImporter.importAny(text);
             // Retarget unknown-zone groups to the zone the user is actively
             // viewing, not the player's live position. Using selectedZoneId
             // matches intent better from the GUI: if the user navigated to
@@ -2604,18 +2655,16 @@ public final class WaypointerScreen extends Screen {
                 selectedZoneId = selectorEntryForZoneId(first.zoneId());
                 selectGroupById(first.id());
             }
-        } catch (IllegalArgumentException ignored) {
-            ImportFeedback.failure("Invalid import text.");
-        }
+        });
     }
 
-    private void importDungeonRoomsFromClipboard(String text) {
-        DungeonRoomShareCodec.Decoded decoded = DungeonRoomShareCodec.decode(text);
+    private void installDecodedDungeonRooms(DungeonRoomShareCodec.Decoded decoded) {
         DungeonRoomData.importCustomDefinitions(decoded.definitions());
         List<WaypointGroup> routes = DungeonRoomRouteSync.installEditableRoutes(
                 manager, WaypointerClient.dungeonConfig(), decoded.definitions());
         if (routes.isEmpty()) {
-            throw new IllegalArgumentException("dungeon route import contained no rooms");
+            ImportFeedback.failure("Invalid import text.");
+            return;
         }
 
         ImportFeedback.successDungeonRoutes(routes.size(), decoded.waypointCount(), "clipboard");

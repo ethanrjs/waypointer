@@ -142,7 +142,7 @@
   "waypointer.settings.setting.boxStyle.option.0": "Outlined",
   "waypointer.settings.setting.boxStyle.option.1": "Filled",
   "waypointer.settings.setting.boxStyle.option.2": "Filled + Outline",
-  "waypointer.settings.setting.beaconOpacity.label": "Waypoint box opacity (0-1)",
+  "waypointer.settings.setting.beaconOpacity.label": "Waypoint fill opacity (0-1)",
   "waypointer.settings.setting.waypointOutlineThickness.label": "Outline thickness (px)",
   "waypointer.settings.setting.showCompleted.label": "Show completed waypoints",
   "waypointer.settings.setting.showCompleted.tooltip": "Keep showing waypoints you've already reached.",
@@ -870,7 +870,8 @@
   "waypointer.screen.export.preview.hint": "Scroll to zoom",
   "waypointer.screen.export.preview.zoom": "%1$s×",
   "waypointer.screen.export.preview.zoom.tooltip": "Reset the preview to its default zoom.",
-  "waypointer.screen.export.preview.simplified": "Simplified preview — over 1,000 waypoints",
+  "waypointer.screen.export.encoding": "Building code...",
+  "waypointer.screen.export.preview.simplified": "Simplified preview: over 1,000 waypoints",
   "waypointer.screen.export.preview.duplicates": "%1$s waypoints share this position",
   "waypointer.screen.export.preview.narration": "Route preview: %1$s. %2$s"
 }

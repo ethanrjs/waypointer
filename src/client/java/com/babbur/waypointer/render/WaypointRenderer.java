@@ -1074,7 +1074,6 @@ public final class WaypointRenderer implements HudElement {
                                boolean depthCheckedPass, Minecraft mc, int screenW, int screenH) {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
-        float beaconOpacity = (float) config.beaconOpacity();
         float outlineThickness = effectiveOutlineThickness();
 
         g.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
@@ -1087,7 +1086,11 @@ public final class WaypointRenderer implements HudElement {
 
             Waypoint w = g.get(i);
             State state = stateFor(g, i, currentIdx);
-            float alpha = alphaFor(g, state) * beaconOpacity;
+            // Outlines deliberately ignore the box-opacity slider: that setting
+            // softens the translucent fill, and running the edges through it too
+            // washed out the one cue that stays legible at distance. Route state
+            // dimming (completed / sequence context) still applies.
+            float alpha = alphaFor(g, state);
             populateWaypointBoxBounds(level, w, waypointBoxBoundsScratch);
             float x1 = (float) waypointBoxBoundsScratch[BOX_MIN_X];
             float y1 = (float) waypointBoxBoundsScratch[BOX_MIN_Y];

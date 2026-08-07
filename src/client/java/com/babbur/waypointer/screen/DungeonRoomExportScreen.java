@@ -1,6 +1,8 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.compat.MinecraftCompat;
+import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
+import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -28,7 +30,14 @@ final class DungeonRoomExportScreen extends Screen {
     private static final long COPIED_FEEDBACK_MS = 1500;
 
     private final Screen parent;
-    private final String payload;
+    /**
+     * Filled in once the background encode finishes. Encoding every custom room
+     * definition is slow enough to be felt, and doing it before constructing the
+     * screen meant the click that asked for an export appeared to do nothing
+     * until it completed.
+     */
+    private String payload = "";
+    private boolean encoding = true;
     private final String subtitle;
 
     private Button copyButton;
@@ -36,17 +45,36 @@ final class DungeonRoomExportScreen extends Screen {
     private long copyFeedbackUntil;
     private long copyCodeBlockFeedbackUntil;
 
-    private DungeonRoomExportScreen(Screen parent, String payload, int roomCount, int waypointCount) {
+    private DungeonRoomExportScreen(Screen parent, int roomCount, int waypointCount) {
         super(Component.translatable("waypointer.screen.dungeon_export.title"));
         this.parent = parent;
-        this.payload = payload == null ? "" : payload;
         this.subtitle = Component.translatable("waypointer.screen.dungeon_export.subtitle",
                 roomCount, waypointCount).getString();
     }
 
-    static void open(Screen parent, String payload, int roomCount, int waypointCount) {
-        MinecraftCompat.setScreen(Minecraft.getInstance(),
-                new DungeonRoomExportScreen(parent, payload, roomCount, waypointCount));
+    /**
+     * Open immediately and encode in the background. {@code definitions} are
+     * immutable records, so the worker can read them without a snapshot.
+     */
+    static void open(Screen parent, List<DungeonRoomDefinition> definitions,
+                     int roomCount, int waypointCount) {
+        DungeonRoomExportScreen screen =
+                new DungeonRoomExportScreen(parent, roomCount, waypointCount);
+        MinecraftCompat.setScreen(Minecraft.getInstance(), screen);
+        List<DungeonRoomDefinition> encodeInput = List.copyOf(definitions);
+        CodecWorker.run(() -> DungeonRoomShareCodec.encode(encodeInput), screen::applyPayload);
+    }
+
+    private void applyPayload(String encoded) {
+        this.payload = encoded == null ? "" : encoded;
+        this.encoding = false;
+        updateCopyButtonsActive();
+    }
+
+    private void updateCopyButtonsActive() {
+        boolean ready = !encoding && !payload.isEmpty();
+        if (copyButton != null) copyButton.active = ready;
+        if (copyCodeBlockButton != null) copyCodeBlockButton.active = ready;
     }
 
     @Override
@@ -73,6 +101,7 @@ final class DungeonRoomExportScreen extends Screen {
                 Component.translatable("waypointer.export.copy_clipboard"), this::copyToClipboard, null);
         addRenderableWidget(copyCodeBlockButton);
         addRenderableWidget(copyButton);
+        updateCopyButtonsActive();
     }
 
     private void goBackToParent() {
@@ -102,7 +131,12 @@ final class DungeonRoomExportScreen extends Screen {
         g.text(font, subtitle, PAD_OUTER, PAD_OUTER + LINE_H, TEXT_DIM, false);
 
         int y = PAD_OUTER + LINE_H * 3;
-        ExportScreen.drawSizeLine(g, font, PAD_OUTER, y, width - PAD_OUTER, payload);
+        if (encoding) {
+            g.text(font, Component.translatable("waypointer.screen.export.encoding"),
+                    PAD_OUTER, y, TEXT_MUTED, false);
+        } else {
+            ExportScreen.drawSizeLine(g, font, PAD_OUTER, y, width - PAD_OUTER, payload);
+        }
 
         y += LINE_H + GAP_SECTION;
         g.text(font, Component.translatable("waypointer.screen.dungeon_export.preview"),
@@ -124,16 +158,28 @@ final class DungeonRoomExportScreen extends Screen {
     }
 
     private void drawPreview(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
-        g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
+        // Framed the same way as ExportScreen's preview: these are two views of
+        // the same export, so one reading as a panel and the other as a bare
+        // tint made them look like unrelated screens.
+        g.fill(x1, y1, x2, y2, 0x30FFFFFF);
+        g.fill(x1 + 1, y1 + 1, x2 - 1, y2 - 1, SURFACE_SUBTLE);
 
         int innerX = x1 + PREVIEW_INSET;
         int innerY = y1 + PREVIEW_INSET;
         int innerW = x2 - x1 - PREVIEW_INSET * 2;
+        if (encoding) {
+            g.text(font, Component.translatable("waypointer.screen.export.encoding"),
+                    innerX, innerY, TEXT_MUTED, false);
+            return;
+        }
 
         List<FormattedCharSequence> lines = font.split(FormattedText.of(payload), innerW);
         int lineH = font.lineHeight + 1;
+        // Reserve the last visible line for the "N more lines" marker, matching
+        // ExportScreen. Without the reservation the marker was drawn one line
+        // past the last one that fit and overran the bottom of the box.
         int available = (y2 - y1 - PREVIEW_INSET * 2) / lineH;
-        int shown = Math.min(lines.size(), available);
+        int shown = lines.size() <= available ? lines.size() : Math.max(0, available - 1);
 
         int y = innerY;
         for (int i = 0; i < shown; i++, y += lineH) {

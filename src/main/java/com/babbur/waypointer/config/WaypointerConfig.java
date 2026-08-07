@@ -45,6 +45,12 @@ public final class WaypointerConfig {
      * volume at distance where thin lines disappear against bright biomes.
      * FILLED_OUTLINED stacks both; the alpha on the fill is tuned so the edges
      * still register as the dominant cue on top.
+     *
+     * <p>FILLED_OUTLINED is the default: a bare wireframe is the cheapest style
+     * but the hardest to spot, and new players consistently read a translucent
+     * volume as "the marker" faster than twelve thin lines. Existing installs
+     * keep whatever their config says -- Gson persists the field explicitly, so
+     * only fresh configs pick this up.
      */
     public enum BoxStyle { OUTLINED, FILLED, FILLED_OUTLINED }
 
@@ -116,8 +122,12 @@ public final class WaypointerConfig {
      * tracers or giant lines that flood the screen.
      */
     private double tracerThickness = 3.0;
-    /** Pixel width for world-space and Iris HUD waypoint box outlines. */
-    private double waypointOutlineThickness = 3.0;
+    /**
+     * Pixel width for world-space and Iris HUD waypoint box outlines. Five
+     * reads as a deliberate marker edge rather than a hairline once the
+     * translucent fill sits behind it; existing configs keep their saved value.
+     */
+    private double waypointOutlineThickness = 5.0;
     private double beaconOpacity = 0.5;
     private boolean showWaypointNames = true;
     private boolean showWaypointDistances = true;
@@ -216,7 +226,7 @@ public final class WaypointerConfig {
      * most expensive render feature by far (the perf stress test measured
      * unlimited labels on a dense route at -86% FPS), and more than ~30 are
      * not legible at once anyway. Existing installs keep whatever their saved
-     * config says — Gson persists every field explicitly.
+     * config says -- Gson persists every field explicitly.
      */
     private int maxWaypointLabels = 32;
     /**
@@ -241,7 +251,7 @@ public final class WaypointerConfig {
      * receives a non-finite coordinate.
      */
     private double labelHeightOffset = 0.0;
-    private BoxStyle boxStyle = BoxStyle.OUTLINED;
+    private BoxStyle boxStyle = BoxStyle.FILLED_OUTLINED;
     private BeaconBeamMode beaconBeamMode = BeaconBeamMode.OFF;
     private boolean beaconBeamExtendsBelowWaypoint = false;
     /**
@@ -648,7 +658,7 @@ public final class WaypointerConfig {
         return Math.max(0.0, maxStaticWaypointRenderDistance);
     }
     public double labelHeightOffset()         { return labelHeightOffset; }
-    public BoxStyle boxStyle()                { return boxStyle == null ? BoxStyle.OUTLINED : boxStyle; }
+    public BoxStyle boxStyle()                { return boxStyle == null ? BoxStyle.FILLED_OUTLINED : boxStyle; }
     public BeaconBeamMode beaconBeamMode()    {
         return beaconBeamMode == null ? BeaconBeamMode.OFF : beaconBeamMode;
     }
@@ -877,7 +887,7 @@ public final class WaypointerConfig {
         this.labelHeightOffset = v;
         save();
     }
-    public void setBoxStyle(BoxStyle v)                { this.boxStyle = v == null ? BoxStyle.OUTLINED : v; save(); }
+    public void setBoxStyle(BoxStyle v)                { this.boxStyle = v == null ? BoxStyle.FILLED_OUTLINED : v; save(); }
     public void setBeaconBeamMode(BeaconBeamMode v)    {
         this.beaconBeamMode = v == null ? BeaconBeamMode.OFF : v;
         save();

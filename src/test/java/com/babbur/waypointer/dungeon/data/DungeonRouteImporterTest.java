@@ -78,7 +78,7 @@ class DungeonRouteImporterTest {
         DungeonRoomDefinition room = result.definitions().get(0);
         assertEquals("arrow-trap", room.id(), "DRM name suffix should map onto the catalog id");
 
-        assertEquals("Arrow Trap — Route 1", room.displayName());
+        assertEquals("Arrow Trap, route 1", room.displayName());
         DungeonWaypoint etherwarp = room.waypoints().get(0);
         assertEquals(1, etherwarp.secretIndex());
         assertEquals(DungeonWaypointTrigger.ETHERWARP, etherwarp.trigger());
@@ -101,7 +101,7 @@ class DungeonRouteImporterTest {
         assertEquals(2, item.secretIndex());
         assertEquals(DungeonWaypointTrigger.PICKUP_ITEM, item.trigger());
 
-        assertEquals("Arrow Trap — Route 2", result.definitions().get(1).displayName());
+        assertEquals("Arrow Trap, route 2", result.definitions().get(1).displayName());
     }
 
     @Test

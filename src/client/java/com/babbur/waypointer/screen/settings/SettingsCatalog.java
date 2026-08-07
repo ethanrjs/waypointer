@@ -18,7 +18,7 @@ import static com.babbur.waypointer.screen.settings.Setting.Store.MAIN;
  *
  * <p>Feature-first: every setting has exactly one home category. The catalog
  * replaces the old hand-maintained duplication between the screen's page
- * builders and {@code countChangedSettings} — the import diff is derived from
+ * builders and {@code countChangedSettings} -- the import diff is derived from
  * these entries, and parity tests guard the codec and the config bulk ops
  * against this list (see {@code SettingsCatalogTest}).
  *
@@ -178,7 +178,7 @@ public final class SettingsCatalog {
                                 (c, d) -> c.boxStyle(),
                                 (c, d, v) -> c.setBoxStyle((WaypointerConfig.BoxStyle) v))
                                 .impact(Setting.Impact.LOW),
-                        Setting.number("beaconOpacity", MAIN, "Waypoint box opacity (0-1)",
+                        Setting.number("beaconOpacity", MAIN, "Waypoint fill opacity (0-1)",
                                 null,
                                 (c, d) -> c.beaconOpacity(),
                                 (c, d, v) -> c.setBeaconOpacity(dbl(v)))

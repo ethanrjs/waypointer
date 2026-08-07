@@ -179,10 +179,25 @@ class WaypointerConfigTest {
     }
 
     @Test
-    void nullBoxStyleFallsBackToOutlined() {
+    void freshConfigDefaultsToFilledOutlinedBoxes() {
+        assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED, new WaypointerConfig().boxStyle());
+    }
+
+    @Test
+    void nullBoxStyleFallsBackToTheDefault() {
         WaypointerConfig config = new WaypointerConfig();
 
         config.setBoxStyle(null);
+
+        assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED, config.boxStyle());
+    }
+
+    @Test
+    void savedOutlinedBoxStyleSurvivesTheDefaultChange() {
+        // Existing installs wrote boxStyle explicitly, so flipping the default
+        // must not silently restyle their waypoints on upgrade.
+        WaypointerConfig config = WaypointerConfig.fromJson(
+                "{\"configSchemaVersion\":5,\"boxStyle\":\"OUTLINED\"}");
 
         assertEquals(WaypointerConfig.BoxStyle.OUTLINED, config.boxStyle());
     }
@@ -495,10 +510,10 @@ class WaypointerConfigTest {
     }
 
     @Test
-    void waypointOutlineThicknessDefaultsToHistoricalWidthAndClampsToSafeRange() {
+    void waypointOutlineThicknessDefaultsToMarkerWidthAndClampsToSafeRange() {
         WaypointerConfig config = new WaypointerConfig();
 
-        assertEquals(3.0, config.waypointOutlineThickness());
+        assertEquals(5.0, config.waypointOutlineThickness());
 
         config.setWaypointOutlineThickness(5.5);
         assertEquals(5.5, config.waypointOutlineThickness());
