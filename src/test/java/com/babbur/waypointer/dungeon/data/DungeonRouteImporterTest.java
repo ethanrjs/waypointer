@@ -1,10 +1,7 @@
 package com.babbur.waypointer.dungeon.data;
 
-import com.babbur.waypointer.dungeon.DungeonSecretCategory;
-import com.babbur.waypointer.dungeon.DungeonWaypoint;
-import com.babbur.waypointer.dungeon.DungeonWaypointTrigger;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
@@ -14,17 +11,10 @@ import java.util.List;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DungeonRouteImporterTest {
-
-    @BeforeEach
-    @AfterEach
-    void clearCustomRooms() {
-        DungeonRoomData.clearAllCustom();
-    }
 
     // ---- SecretRoutes ------------------------------------------------------
 
@@ -70,50 +60,42 @@ class DungeonRouteImporterTest {
         DungeonRouteImporter.Result result = DungeonRouteImporter.parse(SECRET_ROUTES_JSON);
 
         assertEquals(DungeonRouteImporter.Format.SECRET_ROUTES, result.format());
-        assertEquals(2, result.definitions().size());
+        assertEquals(2, result.groups().size());
         assertEquals(5, result.waypointCount());
         assertEquals(0, result.skippedVariants());
         assertEquals(List.of("Definitely-Not-A-Room-9"), result.unmatchedRooms());
 
-        DungeonRoomDefinition room = result.definitions().get(0);
-        assertEquals("arrow-trap", room.id(), "DRM name suffix should map onto the catalog id");
+        WaypointGroup room = result.groups().get(0);
+        assertEquals("arrow-trap", room.zoneId(), "DRM name suffix should map onto the catalog id");
+        assertEquals(WaypointGroup.RouteKind.DUNGEON, room.routeKind());
 
-        assertEquals("Arrow Trap, route 1", room.displayName());
-        DungeonWaypoint etherwarp = room.waypoints().get(0);
-        assertEquals(1, etherwarp.secretIndex());
-        assertEquals(DungeonWaypointTrigger.ETHERWARP, etherwarp.trigger());
+        assertEquals("Arrow Trap, route 1", room.name());
+        Waypoint etherwarp = room.waypoints().get(0);
+        assertTrue(etherwarp.hasFlag(Waypoint.FLAG_DUNGEON_ETHERWARP));
         assertEquals("TP", etherwarp.name());
 
-        DungeonWaypoint tnt = room.waypoints().get(1);
-        assertEquals(1, tnt.secretIndex());
-        assertEquals(DungeonWaypointTrigger.USE_SUPERBOOM, tnt.trigger());
+        Waypoint tnt = room.waypoints().get(1);
+        assertTrue(tnt.hasFlag(Waypoint.FLAG_DUNGEON_SUPERBOOM));
+        assertTrue(tnt.isSubwaypoint());
 
-        DungeonWaypoint bat = room.waypoints().get(2);
-        assertEquals(1, bat.secretIndex());
-        assertEquals(DungeonSecretCategory.BAT, bat.category());
-        assertEquals(DungeonWaypointTrigger.KILL_BAT, bat.trigger());
+        Waypoint bat = room.waypoints().get(2);
+        assertTrue(bat.hasFlag(Waypoint.FLAG_DUNGEON_BAT));
         assertEquals(26, bat.x());
         assertEquals(77, bat.y());
         assertEquals(10, bat.z());
-        assertTrue(bat.highlights().isEmpty());
 
-        DungeonWaypoint item = room.waypoints().get(3);
-        assertEquals(2, item.secretIndex());
-        assertEquals(DungeonWaypointTrigger.PICKUP_ITEM, item.trigger());
+        Waypoint item = room.waypoints().get(3);
+        assertTrue(item.hasFlag(Waypoint.FLAG_DUNGEON_ITEM));
+        assertTrue(item.hasFlag(Waypoint.FLAG_DUNGEON_SECRET));
 
-        assertEquals("Arrow Trap, route 2", result.definitions().get(1).displayName());
+        assertEquals("Arrow Trap, route 2", result.groups().get(1).name());
     }
 
     @Test
-    void importedSecretRoutesRoomsInheritBundledCoreHashes() {
+    void importedSecretRoutesUseBundledCatalogRoomIdentity() {
         DungeonRouteImporter.Result result = DungeonRouteImporter.parse(SECRET_ROUTES_JSON);
-        assertEquals(1, DungeonRoomData.importCustomDefinitions(result.definitions()));
-
-        DungeonRoomDefinition merged = DungeonRoomData.definition("arrow-trap");
-        assertNotNull(merged);
-        assertEquals(4, merged.waypoints().size());
-        assertTrue(merged.hasCoreHashes(),
-                "custom room must keep matching by the bundled core hash after import");
+        assertEquals("arrow-trap", result.groups().getFirst().zoneId());
+        assertTrue(DungeonRoomData.entry("arrow-trap").hasCoreHashes());
     }
 
     @Test
@@ -129,7 +111,7 @@ class DungeonRouteImporterTest {
         DungeonRouteImporter.Result result = DungeonRouteImporter.parse(json);
 
         assertEquals(List.of("banners", "staircase", "redstone-crypt"),
-                result.definitions().stream().map(DungeonRoomDefinition::id).toList());
+                result.groups().stream().map(WaypointGroup::zoneId).toList());
         assertEquals(3, result.waypointCount());
         assertTrue(result.unmatchedRooms().isEmpty());
     }
@@ -189,33 +171,28 @@ class DungeonRouteImporterTest {
 
         assertEquals(DungeonRouteImporter.Format.ODIN_PACK, result.format());
         assertEquals(List.of("Not A Real Odin Room"), result.unmatchedRooms());
-        assertEquals(1, result.definitions().size());
+        assertEquals(1, result.groups().size());
         assertEquals(4, result.waypointCount());
 
-        DungeonRoomDefinition altar = result.definitions().get(0);
-        assertEquals("altar", altar.id());
+        WaypointGroup altar = result.groups().get(0);
+        assertEquals("altar", altar.zoneId());
 
-        DungeonWaypoint secret = altar.waypoints().get(0);
-        assertEquals(1, secret.secretIndex());
-        assertEquals(DungeonWaypointTrigger.ANY_SECRET, secret.trigger());
+        Waypoint secret = altar.waypoints().get(0);
+        assertTrue(secret.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT));
         assertEquals("lever here", secret.name());
         assertEquals(0x00FF00, secret.color(), "current Odin #RRGGBBAA should keep its RGB");
         assertEquals(10, secret.x());
 
-        DungeonWaypoint ether = altar.waypoints().get(1);
-        assertEquals(2, ether.secretIndex());
-        assertEquals(DungeonSecretCategory.AOTV, ether.category());
-        assertEquals(DungeonWaypointTrigger.ETHERWARP, ether.trigger());
+        Waypoint ether = altar.waypoints().get(1);
+        assertTrue(ether.hasFlag(Waypoint.FLAG_DUNGEON_ETHERWARP));
 
-        DungeonWaypoint legacySecret = altar.waypoints().get(2);
-        assertEquals(3, legacySecret.secretIndex(),
+        Waypoint legacySecret = altar.waypoints().get(2);
+        assertTrue(legacySecret.hasFlag(Waypoint.FLAG_DUNGEON_SECRET),
                 "legacy 'secret: true' waypoints with flat x/y/z should still import");
-        assertEquals(DungeonWaypointTrigger.ANY_SECRET, legacySecret.trigger());
         assertEquals(0x112233, legacySecret.color());
 
-        DungeonWaypoint marker = altar.waypoints().get(3);
-        assertEquals(0, marker.secretIndex(), "untyped waypoints import as persistent markers");
-        assertEquals(DungeonWaypointTrigger.MANUAL, marker.trigger());
+        Waypoint marker = altar.waypoints().get(3);
+        assertTrue(marker.isSubwaypoint(), "untyped waypoints import as persistent markers");
         assertEquals("watch the trap", marker.name());
     }
 
@@ -223,8 +200,8 @@ class DungeonRouteImporterTest {
     void keepsPreviouslyAcceptedOpaqueLeadingAlphaColors() {
         String legacy = ODIN_PACK_JSON.replace("#00FF00FF", "#FF00FF00");
 
-        DungeonWaypoint secret = DungeonRouteImporter.parse(legacy)
-                .definitions().get(0).waypoints().get(0);
+        Waypoint secret = DungeonRouteImporter.parse(legacy)
+                .groups().get(0).waypoints().get(0);
 
         assertEquals(0x00FF00, secret.color());
     }
@@ -269,7 +246,7 @@ class DungeonRouteImporterTest {
 
         assertEquals(DungeonRouteImporter.Format.WAYPOINTER, result.format());
         assertEquals(1, result.waypointCount());
-        assertEquals("native-room", result.definitions().get(0).id());
+        assertEquals("native-room", result.groups().get(0).zoneId());
     }
 
     @Test
@@ -277,6 +254,14 @@ class DungeonRouteImporterTest {
         assertThrows(IllegalArgumentException.class, () -> DungeonRouteImporter.parse("hello"));
         assertThrows(IllegalArgumentException.class, () -> DungeonRouteImporter.parse("{\"a\": 1}"));
         assertThrows(IllegalArgumentException.class, () -> DungeonRouteImporter.parse("  "));
+    }
+
+    @Test
+    void normalizesMalformedNestedRouteDataToAnImportFailure() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> DungeonRouteImporter.parse("{\"Altar\":[{\"blockPos\":[]}] }"));
+
+        assertTrue(error.getMessage().contains("route import payload is malformed"));
     }
 
     @Test

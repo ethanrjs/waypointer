@@ -15,6 +15,13 @@ class RouteProgressTest {
     }
 
     @Test
+    void summaryHandlesAnEmptyRoute() {
+        WaypointGroup group = WaypointGroup.create("route", "hub");
+
+        assertEquals("0 pts", RouteProgress.summary(group));
+    }
+
+    @Test
     void summaryReportsCompletedMainWaypointsAndPercent() {
         WaypointGroup group = route();
 
@@ -25,6 +32,26 @@ class RouteProgressTest {
 
         group.advancePast(3);
         assertEquals("complete", RouteProgress.summary(group));
+    }
+
+    @Test
+    void staticRouteProgressUsesSequenceAdvancementWithoutAReachChecklist() {
+        WaypointGroup group = route();
+        group.setLoadMode(WaypointGroup.LoadMode.STATIC);
+
+        group.advancePast(1);
+
+        assertEquals("2/4 50.0%", RouteProgress.summary(group));
+    }
+
+    @Test
+    void staticRouteProgressUsesTheReachChecklistWhenItIsActive() {
+        WaypointGroup group = route();
+        group.setLoadMode(WaypointGroup.LoadMode.STATIC);
+
+        group.markStaticWaypointReached(2);
+
+        assertEquals("1/4 25.0%", RouteProgress.summary(group));
     }
 
     @Test

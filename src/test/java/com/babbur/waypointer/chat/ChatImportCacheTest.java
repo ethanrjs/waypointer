@@ -40,4 +40,20 @@ class ChatImportCacheTest {
         assertEquals(1, cache.handles().size());
         assertEquals(second, cache.handles().get(0));
     }
+
+    @Test
+    void capacityEvictsTheLeastRecentlyUsedHandle() {
+        AtomicLong now = new AtomicLong(1_000L);
+        ChatImportCache cache = new ChatImportCache(now::get, 10_000L);
+        String first = cache.put("WP:first");
+        String second = cache.put("WP:second");
+        for (int i = 2; i < 16; i++) cache.put("WP:" + i);
+
+        assertEquals("WP:first", cache.get(first));
+        cache.put("WP:overflow");
+
+        assertEquals("WP:first", cache.get(first));
+        assertNull(cache.get(second));
+        assertEquals(16, cache.size());
+    }
 }

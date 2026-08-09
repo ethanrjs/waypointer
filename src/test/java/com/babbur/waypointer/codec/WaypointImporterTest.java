@@ -525,6 +525,21 @@ class WaypointImporterTest {
     }
 
     @Test
+    void skyblocker_foragingThree_importsIntoTorrhusCanyon() throws Exception {
+        String json = "[{"
+                + "\"name\":\"Torrhus Route\","
+                + "\"island\":\"foraging_3\","
+                + "\"waypoints\":[{\"pos\":[10,64,20]}]"
+                + "}]";
+        String packed = WaypointImporter.SKYBLOCKER_V1_PREFIX
+                + Base64.getEncoder().encodeToString(gzip(json));
+
+        WaypointGroup group = WaypointImporter.importAny(packed).groups().getFirst();
+
+        assertEquals("torrhus_canyon", group.zoneId());
+    }
+
+    @Test
     void skyblocker_island_aliases_map_hypixel_ids_to_waypointer_zones() {
         // Spot-check every alias that re-routes a Hypixel internal id onto a
         // Waypointer display id. The full table lives in the importer; this
@@ -532,6 +547,7 @@ class WaypointImporterTest {
         assertEquals("private_island",    WaypointImporter.normalizeZone("dynamic"));
         assertEquals("the_farming_isles", WaypointImporter.normalizeZone("farming_1"));
         assertEquals("the_park",          WaypointImporter.normalizeZone("foraging_1"));
+        assertEquals("torrhus_canyon",    WaypointImporter.normalizeZone("foraging_3"));
         assertEquals("spiders_den",       WaypointImporter.normalizeZone("combat_1"));
         assertEquals("the_end",           WaypointImporter.normalizeZone("combat_3"));
         assertEquals("gold_mine",         WaypointImporter.normalizeZone("mining_1"));

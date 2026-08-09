@@ -10,15 +10,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.ClientSuggestionProvider;
 
-/**
- * Keeps the short {@code /wp} alias useful on servers that also advertise a
- * server-side {@code /wp} command.
- *
- * Fabric currently executes same-name client commands first, but the chat box
- * can still read suggestions from the server's command node. Merging the
- * Waypointer suggestion tree into the vanilla suggestion root for {@code /wp}
- * preserves Waypointer's short alias without touching unrelated server commands.
- */
+/** Keeps /wp suggestions available when the server registers its own /wp command. */
 public final class WaypointerCommandSuggestionOverride {
 
     private static final String ROOT = "wp";
@@ -85,8 +77,7 @@ public final class WaypointerCommandSuggestionOverride {
 
     static boolean isWaypointerRoot(CommandNode<?> node) {
         if (node == null) return false;
-        // Many unrelated servers expose add/group/import under /wp; Waypointer also
-        // registers importchat and importfile, which is a much tighter signature.
+        // These two children distinguish Waypointer from common server-side /wp trees.
         return node.getChild("importchat") != null && node.getChild("importfile") != null;
     }
 

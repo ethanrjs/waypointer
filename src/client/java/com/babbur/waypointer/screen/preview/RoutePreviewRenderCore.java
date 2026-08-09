@@ -7,12 +7,11 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import org.joml.Quaternionf;
 
-/** Shared geometry emitter used by both Minecraft-target PiP adapters. */
 public final class RoutePreviewRenderCore {
 
     private static final int FOCUS_CYAN = 0x4FB3C4;
     static final float MIN_CONNECTOR_WIDTH_PHYSICAL_PIXELS = 1.5f;
-    static final float MIN_OUTLINE_WIDTH_PHYSICAL_PIXELS = 1.5f;
+    static final float MIN_OUTLINE_WIDTH_PHYSICAL_PIXELS = 1.0f;
 
     @FunctionalInterface
     public interface Emitter {
@@ -100,7 +99,6 @@ public final class RoutePreviewRenderCore {
         }
     }
 
-    /** White translucent overlay makes painted pixels 20% brighter without texture filtering. */
     public static void emitPaintHover(RoutePreviewRenderState state, PoseStack ps,
                                       VertexConsumer vertices) {
         RoutePreviewScene scene = state.scene();
@@ -121,9 +119,11 @@ public final class RoutePreviewRenderCore {
             boolean hovered = i == state.hoveredWaypointIndex();
             if (!hovered && !drawOutline(scene)) continue;
             RoutePreviewScene.Box box = marker.box();
+            int outlineColor = scene.outlineMatchesWaypointColor()
+                    ? marker.color() : scene.outlineColor();
             emitBoxRibbons(vertices, ps, viewBasis, box,
-                    hovered ? FOCUS_CYAN : marker.color(),
-                    hovered ? 1.0f : scene.opacity(),
+                    hovered ? FOCUS_CYAN : outlineColor,
+                    hovered ? 1.0f : scene.outlineOpacity(),
                     physicalLineWidth(scene.outlineWidth(),
                             MIN_OUTLINE_WIDTH_PHYSICAL_PIXELS),
                     state.scale(), state.guiScale(), displayScale(marker, state));
@@ -135,12 +135,16 @@ public final class RoutePreviewRenderCore {
     }
 
     private static boolean drawFill(RoutePreviewScene scene, RoutePreviewScene.Marker marker) {
-        return scene.boxStyle() != WaypointerConfig.BoxStyle.OUTLINED
-                || (marker.flags() & Waypoint.FLAG_FILLED_SUBWAYPOINT) != 0;
+        return switch (scene.boxStyle()) {
+            case FILLED, FILLED_OUTLINED -> true;
+            case PAINT -> scene.paint() == null;
+            case OUTLINED -> (marker.flags() & Waypoint.FLAG_FILLED_SUBWAYPOINT) != 0;
+        };
     }
 
     private static boolean drawOutline(RoutePreviewScene scene) {
-        return scene.boxStyle() != WaypointerConfig.BoxStyle.FILLED;
+        return scene.boxStyle() == WaypointerConfig.BoxStyle.OUTLINED
+                || scene.boxStyle() == WaypointerConfig.BoxStyle.FILLED_OUTLINED;
     }
 
     private static void emitBox(VertexConsumer vertices, PoseStack ps,
@@ -230,12 +234,7 @@ public final class RoutePreviewRenderCore {
                 marker, state.scale(), state.guiScale());
     }
 
-    /**
-     * Emit a screen-facing quad with a constant logical-pixel width. Minecraft's
-     * native line shader measures width against the main framebuffer instead of
-     * this smaller PiP target, so its effective target width drops below one pixel.
-     * A filled ribbon stays continuous while the orthographic camera turns.
-     */
+    /** Uses a filled ribbon because the line shader measures against the main framebuffer. */
     private static void emitRibbon(VertexConsumer vertices, PoseStack ps, Basis basis,
                                    double x1, double y1, double z1,
                                    double x2, double y2, double z2,

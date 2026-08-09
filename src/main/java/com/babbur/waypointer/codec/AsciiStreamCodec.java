@@ -4,21 +4,10 @@ import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 
 /**
- * Trailer-free binary-to-text codec for Waypointer chat payloads.
- *
- * <p>The current alphabet is every printable one-byte ASCII character except
- * space, comma, {@code '.'}, and backtick. Space would split/collapse during
- * chat paste, comma is common prose punctuation that can stick to a shared
- * route, period trips Hypixel's URL-shaped advertising filter, and backticks
- * make shared payloads awkward in Markdown-heavy surfaces like Discord. Keeping
- * the alphabet entirely below {@code 0x80} preserves the important invariant
- * that one visible character is one UTF-8 wire byte.
- *
- * <p>The bit-packing is the basE91 streaming scheme generalized to an arbitrary
- * alphabet. It emits 13 or 14 source bits per two output characters depending
- * on whether the current 14-bit value fits in {@code alphabetSize^2}. Unlike
- * the old 4-byte/5-char base-85 packer, this has no pad trailer and round-trips
- * arbitrary byte arrays exactly.
+ * Trailer-free basE91-style encoding for chat payloads. Its one-byte ASCII
+ * alphabet excludes characters that split in chat, resemble URLs, or interfere
+ * with surrounding prose and Markdown. It writes 13 or 14 bits per pair and
+ * round-trips byte arrays of any length.
  */
 public final class AsciiStreamCodec {
 

@@ -1,5 +1,6 @@
 package com.babbur.waypointer.api;
 
+import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.core.Waypoint;
 
@@ -24,10 +25,12 @@ public record RouteSpec(
 
     public RouteSpec {
         name = name == null ? "" : name;
+        WaypointCodec.validateRouteDisplayName(name, "route name");
         zoneId = zoneId == null || zoneId.isBlank() ? Zone.UNKNOWN.id() : zoneId;
         loadMode = loadMode == null ? RouteLoadMode.STATIC : loadMode;
         defaultRadius = Waypoint.normalizeDefaultRadius(defaultRadius);
         waypoints = List.copyOf(Objects.requireNonNull(waypoints, "waypoints"));
+        waypoints.forEach(WaypointSpec::validatePersistentName);
     }
 
     public static Builder builder() {
@@ -45,7 +48,6 @@ public record RouteSpec(
         private Builder() {
         }
 
-        /** Route name shown in Waypointer's route list. */
         public Builder name(String name) {
             this.name = name;
             return this;
@@ -60,7 +62,6 @@ public record RouteSpec(
             return this;
         }
 
-        /** Whether Waypointer should render all points or sequence through them. */
         public Builder loadMode(RouteLoadMode loadMode) {
             this.loadMode = loadMode;
             return this;
@@ -78,13 +79,11 @@ public record RouteSpec(
             return this;
         }
 
-        /** Add one waypoint to the route, preserving insertion order. */
         public Builder waypoint(WaypointSpec waypoint) {
             waypoints.add(Objects.requireNonNull(waypoint, "waypoint"));
             return this;
         }
 
-        /** Add several waypoints to the route, preserving iteration order. */
         public Builder waypoints(Collection<WaypointSpec> waypoints) {
             for (WaypointSpec waypoint : waypoints) waypoint(waypoint);
             return this;

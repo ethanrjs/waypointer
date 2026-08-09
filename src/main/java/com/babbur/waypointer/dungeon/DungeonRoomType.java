@@ -1,18 +1,6 @@
 package com.babbur.waypointer.dungeon;
 
-/**
- * Coarse classification for a dungeon room derived from its color on the
- * Hypixel-supplied dungeon map item.
- *
- * <p>Not the same as {@link DungeonRoomShape}: a room's TYPE is "puzzle" or
- * "regular room", whereas its SHAPE is "1x2" or "L-shape". Type comes for
- * free from a single map-color lookup; shape requires flood-filling
- * same-colored segments.
- *
- * <p>Color constants taken from Skyblocker's
- * {@code DungeonMapUtils.getRoomType} (LGPL-3.0); values originate in the
- * vanilla {@code MapColor} table and are stable across MC versions.
- */
+/** Coarse room type read from the dungeon map color. */
 public enum DungeonRoomType {
     ENTRANCE(30),
     ROOM(63),
@@ -23,7 +11,6 @@ public enum DungeonRoomType {
     BLOOD(18),
     UNKNOWN(85);
 
-    /** Packed map-color byte, as stored in {@code MapItemSavedData.colors}. */
     public final byte packedColor;
 
     DungeonRoomType(int packedColor) {

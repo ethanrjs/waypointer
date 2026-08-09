@@ -4,9 +4,6 @@ import com.babbur.waypointer.codec.WaypointCodec;
 
 import java.util.Objects;
 
-/**
- * Options for exporting selected Waypointer routes through the public API.
- */
 public final class ExportOptions {
 
     private final ExportTarget target;

@@ -1,12 +1,6 @@
 package com.babbur.waypointer.dungeon;
 
-/**
- * Canonical runtime metadata for one scanned dungeon room-core column.
- *
- * <p>The hash remains compatible with the current Odin-derived catalog, while
- * the height/sample metadata gives the detector a stable place to grow toward
- * richer signatures without changing every caller again.
- */
+/** A room-core hash plus the column range used to calculate it. */
 public record DungeonCoreSignature(int hash, int topY, int sampleCount) {
     public static final DungeonCoreSignature UNKNOWN = new DungeonCoreSignature(0, 0, 0);
 

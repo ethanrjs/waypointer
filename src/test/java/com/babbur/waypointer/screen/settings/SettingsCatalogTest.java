@@ -17,33 +17,20 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Parity and round-trip guards for the settings catalog.
- *
- * <p>The catalog is the single source of truth for the settings UI and the
- * config-code import diff. These tests pin it to the actual config classes in
- * both directions: a new {@link WaypointerConfig} field fails here until it is
- * either cataloged or consciously exempted, and a cataloged entry that the
- * codec silently drops fails the per-entry round-trip. This is the guard that
- * would have caught the old {@code countChangedSettings} missing
- * {@code showContributorBadges}.
- */
 class SettingsCatalogTest {
 
-    /** Internal-only WaypointerConfig fields with no settings-surface meaning. */
     private static final Set<String> MAIN_EXEMPT = Set.of(
             "configSchemaVersion",
             "waypointPainterPalette",
             "waypointPainterDefaultPalette",
             "waypointPainterDefaultPixels");
 
-    /** DungeonConfig fields deliberately kept out of the GUI (debug/UX-state). */
     private static final Set<String> DUNGEON_EXEMPT = Set.of(
-            "debugLogRoomChanges", "routesPromptDismissed", "hiddenRouteRoomIds",
-            // Assumed room rotation is applied automatically / via /wpd; deliberately not surfaced in the GUI.
-            "defaultDirection");
+            "debugLogRoomChanges",
+            "defaultDirection", "visibleSecretStages");
 
     @Test
     void mainEntriesCoverEveryWaypointerConfigField() {
@@ -70,12 +57,40 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void translatedGroupsAndEnumOptionsUseStableSemanticIds() {
+        for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
+            Set<String> groupIds = new HashSet<>();
+            for (SettingsCatalog.Group group : category.groups()) {
+                if (group.label() == null) continue;
+                assertNotNull(group.id(), category.id() + " has a translated group without an id");
+                assertFalse(group.id().isBlank(), category.id() + " has a translated group without an id");
+                assertTrue(groupIds.add(group.id()),
+                        category.id() + " has duplicate group id " + group.id());
+                assertEquals("waypointer.settings.group." + category.id() + "." + group.id(),
+                        SettingsCatalog.groupTranslationKey(category, group));
+            }
+        }
+
+        for (Setting setting : SettingsCatalog.allSettings()) {
+            if (setting.kind() != Setting.Kind.ENUM) continue;
+            Set<String> optionIds = new HashSet<>();
+            for (int i = 0; i < setting.enumOptions().size(); i++) {
+                Setting.EnumOption option = setting.enumOptions().get(i);
+                assertTrue(optionIds.add(option.id()),
+                        setting.id() + " has duplicate enum option id " + option.id());
+                assertEquals("waypointer.settings.setting." + setting.id() + ".option." + option.id(),
+                        setting.enumOptionTranslationKey(i));
+                assertEquals("waypointer.settings.setting." + setting.id() + ".option." + i,
+                        setting.legacyEnumOptionTranslationKey(i));
+            }
+        }
+    }
+
+    @Test
     void everyVisibleEntryHasALabelAndNoWhitespaceOnlyTooltip() {
         for (Setting setting : SettingsCatalog.allSettings()) {
             if (setting.kind() == Setting.Kind.HIDDEN) continue;
             assertFalse(setting.label().isBlank(), setting.id() + " needs a label");
-            // Tooltips are optional -- self-explanatory rows deliberately omit
-            // them -- but a whitespace-only tooltip is a mistake.
             assertEquals(setting.tooltip().isEmpty(), setting.tooltip().isBlank(),
                     setting.id() + " has a whitespace-only tooltip");
         }
@@ -213,13 +228,13 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void waypointPainterIsAnActionInTheWaypointsCategory() {
+    void waypointPainterIsAnActionInTheAppearanceCategory() {
         Setting paint = SettingsCatalog.byId(SettingsCatalog.ACTION_WAYPOINT_PAINT);
 
         assertNotNull(paint);
         assertEquals("Paint", paint.label());
         assertEquals(Setting.Kind.ACTION, paint.kind());
-        assertEquals("waypoints", SettingsCatalog.categories().stream()
+        assertEquals("appearance", SettingsCatalog.categories().stream()
                 .filter(category -> category.groups().stream()
                         .flatMap(group -> group.settings().stream())
                         .anyMatch(setting -> setting.id().equals(SettingsCatalog.ACTION_WAYPOINT_PAINT)))
@@ -227,17 +242,55 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void routeTimesIsOffByDefaultUnderRoutesAndProgression() {
-        Setting routeTimes = SettingsCatalog.byId("routeTimesEnabled");
+    void globalWaypointAppearanceSettingsLiveTogether() {
+        for (String id : List.of(
+                "boxStyle", "beaconOpacity", "waypointOutlineThickness",
+                "waypointMarkerScale", "waypointOutlineOpacity", "defaultWaypointColor",
+                "matchWaypointOutlineToWaypointColor", "waypointOutlineColor",
+                "showWaypointNames", "showWaypointDistances", "showLabelBackdrop",
+                "showTracer", "tracerColor", "beaconBeamMode",
+                "showRouteLines", "routeLineColor")) {
+            assertEquals("appearance", categoryContaining(id), id);
+        }
+        assertFalse(SettingsCatalog.categories().stream()
+                .map(SettingsCatalog.Category::id)
+                .anyMatch(List.of("labels", "tracers", "beams")::contains));
+    }
 
-        assertNotNull(routeTimes);
-        assertEquals("Route times", routeTimes.label());
-        assertEquals(false, routeTimes.get(new WaypointerConfig(), null));
-        assertEquals("routes", SettingsCatalog.categories().stream()
-                .filter(category -> category.groups().stream()
-                        .flatMap(group -> group.settings().stream())
-                        .anyMatch(setting -> setting.id().equals("routeTimesEnabled")))
-                .findFirst().orElseThrow().id());
+    @Test
+    void markerAppearanceControlsFollowVisualDependencyOrder() {
+        SettingsCatalog.Category appearance = SettingsCatalog.categories().stream()
+                .filter(category -> category.id().equals("appearance"))
+                .findFirst().orElseThrow();
+
+        assertEquals(List.of(
+                        "boxStyle",
+                        "waypointMarkerScale",
+                        "defaultWaypointColor",
+                        "beaconOpacity",
+                        "matchWaypointOutlineToWaypointColor",
+                        "waypointOutlineColor",
+                        "waypointOutlineOpacity",
+                        "waypointOutlineThickness",
+                        SettingsCatalog.ACTION_WAYPOINT_PAINT),
+                appearance.groups().getFirst().settings().stream().map(Setting::id).toList());
+    }
+
+    @Test
+    void clampedNumberSettingsDeclareTheSameInputBounds() {
+        assertRange("maxStaticWaypointRenderDistance", 0.0, Double.POSITIVE_INFINITY, false);
+        assertRange("tempDefaultDurationSec", 1.0, 86_400.0, true);
+        assertRange("beaconOpacity", 0.0, 1.0, false);
+        assertRange("waypointOutlineThickness", 1.0, 12.0, false);
+        assertRange("waypointMarkerScale", 0.25, 3.0, false);
+        assertRange("waypointOutlineOpacity", 0.0, 1.0, false);
+        assertRange("labelScale", 0.25, 4.0, false);
+        assertRange("maxWaypointLabels", 0.0, Integer.MAX_VALUE, true);
+        assertRange("hideWaypointLabelsNearRadius", 0.5, 100.0, false);
+        assertRange("tracerOpacity", 0.0, 1.0, false);
+        assertRange("tracerThickness", 1.0, 12.0, false);
+        assertRange("defaultReachRadius", 0.5, 100.0, false);
+        assertRange("hideWaypointsNearRadius", 0.5, 100.0, false);
     }
 
     @Test
@@ -246,6 +299,8 @@ class SettingsCatalogTest {
 
         assertNotNull(routeIndices);
         assertEquals("Show route indices", routeIndices.label());
+        assertEquals("In the route list, show each route's index number for commands.",
+                routeIndices.tooltip());
         assertEquals(false, routeIndices.get(new WaypointerConfig(), null));
         assertEquals("routes", SettingsCatalog.categories().stream()
                 .filter(category -> category.groups().stream()
@@ -286,6 +341,11 @@ class SettingsCatalogTest {
         Setting entryPath = SettingsCatalog.byId("showDungeonEntryPathToFirstWaypoint");
 
         assertNotNull(entryPath);
+        assertEquals("Pathfind to First Waypoint", entryPath.label());
+        assertEquals("", entryPath.tooltip());
+        assertEquals("Pathfind to All Waypoints",
+                SettingsCatalog.byId("showDungeonEntryPathToFollowingWaypoints").label());
+        assertEquals("", SettingsCatalog.byId("showDungeonEntryPathToFollowingWaypoints").tooltip());
         assertEquals(false, entryPath.get(new WaypointerConfig(), new DungeonConfig()));
     }
 
@@ -306,35 +366,13 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void automaticDungeonColorsAreEditableInTheDungeonsCategory() {
-        WaypointerConfig main = new WaypointerConfig();
-        DungeonConfig dungeon = new DungeonConfig();
-        for (String id : List.of(
-                "automaticSecretColor",
-                "automaticEtherwarpColor",
-                "automaticBreakBlocksColor",
-                "automaticInteractColor",
-                "automaticSuperboomColor",
-                "automaticItemColor",
-                "automaticBatColor",
-                "automaticDungeonbreakerColor",
-                "automaticPearlColor")) {
-            Setting setting = SettingsCatalog.byId(id);
-            assertNotNull(setting, id);
-            assertEquals(Setting.Store.DUNGEON, setting.store(), id);
-            assertEquals(Setting.Kind.COLOR, setting.kind(), id);
-            assertEquals("dungeons", categoryContaining(id), id);
-            setting.set(main, dungeon, 0xAA123456);
-            assertEquals(0x123456, setting.get(main, dungeon), id);
-        }
-    }
-
-    @Test
     void theExportRoutePreviewIsOffByDefaultUnderSharing() {
         Setting preview = SettingsCatalog.byId("showExportRoutePreview");
 
         assertNotNull(preview);
         assertEquals("3D route preview", preview.label());
+        assertEquals("Show a rotating 3D preview of the route on the export screen.",
+                preview.tooltip());
         assertEquals(false, preview.get(new WaypointerConfig(), null));
         assertEquals("sharing", categoryContaining("showExportRoutePreview"));
 
@@ -361,7 +399,60 @@ class SettingsCatalogTest {
         return probeValue(setting, defaults, new DungeonConfig());
     }
 
-    /** A value guaranteed to differ from the default even after setter clamping. */
+    @Test
+    void conciseSettingsCopyMatchesTheRenderedControls() {
+        assertEquals("Focus mode for temporary waypoints",
+                SettingsCatalog.byId("focusTempWaypoints").label());
+        assertEquals("Show only the temporary waypoint that is active.",
+                SettingsCatalog.byId("focusTempWaypoints").tooltip());
+        assertEquals("Dim surrounding waypoints",
+                SettingsCatalog.byId("dimSequenceContextWaypoints").label());
+        assertEquals("Enable waypoint skipping",
+                SettingsCatalog.byId("skipAheadMechanicEnabled").label());
+        for (String id : List.of(
+                "tempDefaultMode", "waypointMarkerScale", "waypointOutlineColor",
+                "waypointOutlineOpacity", "dimSequenceContextWaypoints", "showRouteProgress",
+                "showLabelTextShadow", "labelHeightOffset", "hideWaypointLabelsNearPlayer",
+                "tracerOpacity", "tracerColor", "beaconBeamMode", "useBeaconBeamTextures",
+                "beaconBeamExtendsBelowWaypoint", "routeLineColor", "resetProgressOnWorldJoin",
+                "keepSubwaypointsVisibleUntilNextWaypoint",
+                "hideReachedStaticWaypointsUntilCycleComplete", "skipAheadMechanicEnabled",
+                "enabled", "hideCompletedRooms", "secretCompletionSound",
+                "showDungeonRouteLines", "showDungeonTracers",
+                "showDungeonEntryPathToFirstWaypoint",
+                "showDungeonEntryPathToFollowingWaypoints", "dungeonEntryPathColor",
+                "chatCoordDetection", "autoAddChatTempWaypoints",
+                "showWaypointChatShareButtons", "importedRouteDefaultColor",
+                "exportIncludeNames", "exportIncludeColors", "exportIncludeRadii",
+                "exportIncludeWaypointFlags", "exportIncludeGroupMeta", "exportIncludeZone",
+                "irisShaderHudFallback", SettingsCatalog.ACTION_CONFIG_CODE,
+                SettingsCatalog.ACTION_PRESETS, SettingsCatalog.ACTION_PERF_TEST)) {
+            assertEquals("", SettingsCatalog.byId(id).tooltip(), id);
+        }
+        assertEquals("Create Waypoints from Chat Messages",
+                SettingsCatalog.byId("autoAddChatTempWaypoints").label());
+        assertEquals("Chat Share Buttons",
+                SettingsCatalog.byId("showWaypointChatShareButtons").label());
+        assertEquals("Overrides imported waypoint colors.",
+                SettingsCatalog.byId("importedRouteColorMode").tooltip());
+        assertEquals("", SettingsCatalog.byId("dungeonEntryPathColor").colorSwatchTooltip());
+        assertEquals("", SettingsCatalog.byId("importedRouteDefaultColor").colorSwatchTooltip());
+        assertNull(SettingsCatalog.byId("routeTimesEnabled"));
+        assertNull(SettingsCatalog.byId("autoCompleteRoomsOnGreenCheckmark"));
+        assertNull(SettingsCatalog.byId("visibleSecretStages"));
+        assertNull(SettingsCatalog.byId(SettingsCatalog.ACTION_DISABLE_ALL));
+        assertNull(SettingsCatalog.byId(SettingsCatalog.ACTION_RESET_DEFAULTS));
+    }
+
+    private static void assertRange(String id, double minimum, double maximum,
+                                    boolean wholeNumber) {
+        Setting setting = SettingsCatalog.byId(id);
+        assertNotNull(setting, id);
+        assertEquals(minimum, setting.minimum(), id);
+        assertEquals(maximum, setting.maximum(), id);
+        assertEquals(wholeNumber, setting.requiresWholeNumber(), id);
+    }
+
     private static Object probeValue(Setting setting, WaypointerConfig defaults, DungeonConfig dungeonDefaults) {
         Object defaultValue = setting.get(defaults, dungeonDefaults);
         if (setting.kind() == Setting.Kind.ENUM) {
@@ -374,6 +465,7 @@ class SettingsCatalogTest {
             return ((Number) defaultValue).intValue() ^ 0x0F0F0F;
         }
         if (defaultValue instanceof Boolean b) return !b;
+        if ("waypointOutlineOpacity".equals(setting.id())) return 0.5;
         if (defaultValue instanceof Double d) return d + 2.0;
         if (defaultValue instanceof List<?>) return List.of("ProbePlayer");
         throw new AssertionError(setting.id() + " has unprobeable default " + defaultValue);

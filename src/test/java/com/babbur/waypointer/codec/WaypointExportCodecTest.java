@@ -233,7 +233,7 @@ class WaypointExportCodecTest {
             assertTrue(accepted.contains(WaypointExportCodec.skyblockerIslandId(zone.id())),
                     () -> "unsupported Skyblocker zone " + zone.id());
         }
-        DungeonRoomData.allDefinitions().forEach(room ->
+        DungeonRoomData.allEntries().forEach(room ->
                 assertEquals("dungeon", WaypointExportCodec.skyblockerIslandId(room.id())));
     }
 
@@ -257,7 +257,7 @@ class WaypointExportCodecTest {
                         () -> "unsupported Skytils zone " + zone.id());
             }
         }
-        DungeonRoomData.allDefinitions().forEach(room ->
+        DungeonRoomData.allEntries().forEach(room ->
                 assertEquals("dungeon", WaypointExportCodec.skytilsIslandId(room.id())));
     }
 

@@ -5,7 +5,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvents;
 
-/** One quiet, debounced cue when a secret stage completes. */
 public final class DungeonSecretCompletionSound {
 
     private static final long DEBOUNCE_MS = 150L;

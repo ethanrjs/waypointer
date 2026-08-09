@@ -4,22 +4,8 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * A single dungeon secret waypoint, expressed in room-local coordinates so
- * the same data can be re-rendered correctly regardless of how Hypixel
- * rotates the room within its map cell.
- *
- * <p>This is the parent half of the {@code waypoint -> highlights} one-to-many
- * relationship requested in issue #9. The waypoint itself draws a labelled
- * outline at its target position; its {@link #highlights} provide additional
- * colored cubes (door blocks, lever positions, item-pickup hints, etc.) that
- * point at the specific real-world blocks the player needs to interact with.
- *
- * <p>Immutable by design -- mirrors the immutability contract of
- * {@link com.babbur.waypointer.core.Waypoint}.
- *
- * @param customColor {@code 0xRRGGBB}, or {@link #INHERIT_COLOR} to use the
- *                    category's default color. Imported data (Odin packs)
- *                    carries author-chosen colors that should survive the trip.
+ * An immutable room-local dungeon waypoint. {@code customColor} is
+ * {@code 0xRRGGBB}, or {@link #INHERIT_COLOR} to use the category color.
  */
 public record DungeonWaypoint(
         String id,
@@ -55,7 +41,6 @@ public record DungeonWaypoint(
                 INHERIT_COLOR);
     }
 
-    /** Builder helper for waypoints that have no highlights. */
     public static DungeonWaypoint plain(String id, DungeonSecretCategory cat,
                                         int x, int y, int z, String name) {
         return new DungeonWaypoint(id, 1, cat, x, y, z, name, List.of());
@@ -89,10 +74,7 @@ public record DungeonWaypoint(
                 nextColor);
     }
 
-    /**
-     * True for the action that ends a SecretRoutes-style stage. Movement,
-     * Etherwarp, mining, levers, Superboom, and pearls are intermediary actions.
-     */
+    /** True when this action finishes a secret rather than moving toward it. */
     public boolean completesSecret() {
         return switch (trigger) {
             case PICKUP_ITEM, KILL_BAT, OPEN_CHEST, ANY_SECRET, CHAT_MESSAGE -> true;

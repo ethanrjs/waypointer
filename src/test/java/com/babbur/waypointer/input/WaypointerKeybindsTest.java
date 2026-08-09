@@ -104,9 +104,10 @@ class WaypointerKeybindsTest {
     void previousCanRecoverHiddenCompletedDungeonRoomRoute() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("spider", "Spider"));
-        assertNotNull(DungeonRoomData.definition("spider"));
+        assertNotNull(DungeonRoomData.entry("spider"));
 
         WaypointGroup group = WaypointGroup.create("Room Route", "spider");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         group.add(Waypoint.at(0, 0, 0));
         group.add(Waypoint.at(1, 0, 0));
         manager.add(group);
@@ -129,20 +130,6 @@ class WaypointerKeybindsTest {
     }
 
     @Test
-    void manualSkipDoesNotTrackOrFinishAStaleTimerWhenRouteTimesAreOff() {
-        WaypointGroup group = WaypointGroup.create("route", "hub");
-        group.add(Waypoint.at(0, 0, 0));
-        group.add(Waypoint.at(1, 0, 0));
-
-        WaypointerKeybinds.advanceManualSkip(group, true, 1_000L);
-        WaypointerKeybinds.advanceManualSkip(group, false, 2_000L);
-
-        assertTrue(group.isComplete());
-        assertNull(group.consumeRouteCompletion());
-        assertEquals(-1L, group.bestTimeMillis());
-    }
-
-    @Test
     void skipAndUnskipHelpersMoveEveryActiveRouteAndReverseEachOther() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("hub", "Hub"));
@@ -155,7 +142,7 @@ class WaypointerKeybindsTest {
         }
 
         assertEquals(2, WaypointerKeybinds.skipCurrentWaypointTargets(
-                manager, new WaypointerConfig(), 1_000L));
+                manager, new WaypointerConfig()));
         assertEquals(1, first.currentIndex());
         assertEquals(1, second.currentIndex());
         assertEquals(2, WaypointerKeybinds.unskipCurrentWaypointTargets(manager));

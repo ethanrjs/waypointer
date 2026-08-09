@@ -20,50 +20,19 @@ import java.util.function.IntConsumer;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
-/**
- * Modal colour picker. HSV saturation/value square on the left, hue slider on the
- * right, hex input under both, and a preview swatch + Save/Cancel footer.
- *
- * <p>Re-used by the gradient-endpoint swatches in {@link GroupEditScreen} and by
- * per-waypoint colour overrides. A single picker component means both flows feel
- * identical, and there is one place to fix bugs.
- *
- * <p>Editing model: the picker keeps its own working HSV state so dragging never
- * lerps through quantization artefacts from integer RGB round-trips. Only on
- * "Save" does the caller receive the final 0xRRGGBB value; "Cancel" is a true
- * no-op.
- *
- * <h3>Performance</h3>
- * The SV square and hue slider used to be drawn with ~20k {@code g.fill()} calls
- * per frame (one per pixel), which tanked framerate noticeably. They now render
- * to {@link DynamicTexture}s and are blitted as a single quad each. The SV
- * texture regenerates only when hue changes; the hue texture is built once and
- * reused. Both are released on {@link #removed()}.
- */
 public final class ColorPickerScreen extends Screen {
 
-    // Panel sizing is fixed so the layout stays predictable across GUI scales; the
-    // parent is centered on the screen and the picker grid is centered in the panel.
-    // PANEL_H was 220 before, which caused the hex field (bottom=200 rel) and the
-    // footer buttons (top=192 rel) to overlap by ~8px. Bumped so there is a clean
-    // gap between the hex row and the footer.
     private static final int PANEL_W = 280;
     private static final int PANEL_H = 252;
     private static final int SV_SIZE = 140;
     private static final int HUE_W   = 18;
 
-    // ResourceLocations for the picker's two dynamic textures. A per-instance
-    // suffix keeps two simultaneous pickers (e.g. a quickly swapped-open one)
-    // from sharing a texture slot; in practice only one exists at a time, but
-    // paying the few-bytes cost here is cheaper than chasing a stale-texture bug.
     private static final AtomicLong INSTANCE_SEQ = new AtomicLong();
 
     private final Screen parent;
     private final Component pickerTitle;
     private final IntConsumer onPicked;
 
-    // Working HSV state. Kept in floats so mid-drag updates are smooth even when
-    // the resulting RGB would snap the SV position back into the visible box.
     private float hue;       // [0, 360)
     private float sat;       // [0, 1]
     private float value;     // [0, 1]
@@ -77,9 +46,6 @@ public final class ColorPickerScreen extends Screen {
     private Identifier hueTexId;
     private float svTexBakedHue = -1f; // hue used when svTex was last filled; triggers re-upload when drifted
 
-    // Whether a drag started on the SV square vs the hue slider. Without this, a
-    // drag that starts on the SV box and wanders out would silently switch to
-    // editing the hue, which feels broken.
     private enum Drag { NONE, SV, HUE }
     private Drag drag = Drag.NONE;
 
@@ -98,7 +64,6 @@ public final class ColorPickerScreen extends Screen {
         this.value = hsv[2];
     }
 
-    /** Convenience opener so call sites read like "pick a colour → here's what to do". */
     public static void open(Screen parent, String title, int initialRgb, IntConsumer onPicked) {
         open(parent, Component.literal(title), initialRgb, onPicked);
     }
@@ -135,19 +100,15 @@ public final class ColorPickerScreen extends Screen {
                 sat = hsv[1];
                 value = hsv[2];
             } catch (NumberFormatException ignored) {
-                // Swallowed: partial edits are allowed without clobbering the swatch.
             }
         });
         addRenderableWidget(hexBox);
 
-        // Footer row lives below the hex field with a visible gap. The old layout
-        // overlapped them because PANEL_H was too tight; PANEL_H was bumped and
-        // the footer is anchored to the bottom of the panel.
         int footerY = panelY + PANEL_H - BTN_H - PAD_OUTER;
         int btnW = 70;
         addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), b -> onClose())
                 .bounds(panelX + PANEL_W - PAD_OUTER - btnW * 2 - GAP, footerY, btnW, BTN_H).build());
-        addRenderableWidget(Button.builder(Component.translatable("gui.save"), b -> {
+        addRenderableWidget(Button.builder(Component.translatable("waypointer.screen.color_picker.save"), b -> {
             onPicked.accept(currentRgb());
             onClose();
         }).bounds(panelX + PANEL_W - PAD_OUTER - btnW, footerY, btnW, BTN_H).build());
@@ -157,8 +118,6 @@ public final class ColorPickerScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
-        // Dim the world behind so the picker reads as a modal; matches the other
-        // Waypointer screens which use SURFACE as their backdrop.
         g.fill(0, 0, width, height, 0x80000000);
 
         int panelX = (width - PANEL_W) / 2;
@@ -174,11 +133,6 @@ public final class ColorPickerScreen extends Screen {
         super.extractRenderState(g, mouseX, mouseY, partial);
     }
 
-    /**
-     * SV square blitted from a cached {@link DynamicTexture}; the pixel grid is
-     * regenerated only when the hue changes. The crosshair marks the current
-     * (sat, value) sample.
-     */
     private void drawSvSquare(GuiGraphicsExtractor g) {
         if (svTex == null) return;
         if (Math.abs(hue - svTexBakedHue) > 0.01f) {
@@ -189,8 +143,6 @@ public final class ColorPickerScreen extends Screen {
 
         int mx = svX + Math.round(sat * (SV_SIZE - 1));
         int my = svY + Math.round((1f - value) * (SV_SIZE - 1));
-        // White crosshair with black outline keeps the cursor visible on both
-        // dark and bright parts of the SV field.
         g.fill(mx - 4, my, mx + 5, my + 1, 0xFF000000);
         g.fill(mx, my - 4, mx + 1, my + 5, 0xFF000000);
         g.fill(mx - 3, my, mx + 4, my + 1, 0xFFFFFFFF);
@@ -209,14 +161,12 @@ public final class ColorPickerScreen extends Screen {
     private void drawSwatch(GuiGraphicsExtractor g) {
         int rgb = currentRgb();
         int sw = 48, sh = 48;
-        // Border ring so a fully-white or fully-black pick is still visible.
         g.fill(swatchX - 1, swatchY - 1, swatchX + sw + 1, swatchY + sh + 1, 0xFF000000);
         g.fill(swatchX, swatchY, swatchX + sw, swatchY + sh, 0xFF000000 | rgb);
         String hex = String.format("#%06X", rgb);
         g.text(font, hex, swatchX, swatchY + sh + 4, TEXT_DIM, false);
     }
 
-    // --- texture management -------------------------------------------------------------------
 
     private void ensureTextures() {
         if (svTex != null && hueTex != null) return;
@@ -225,9 +175,6 @@ public final class ColorPickerScreen extends Screen {
         svTexId  = Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "picker_sv_" + seq);
         hueTexId = Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "picker_hue_" + seq);
 
-        // Both textures live in RGBA; setPixelABGR expects 0xAABBGGRR-packed ints,
-        // which matches what the NativeImage format wants even though the naming
-        // is confusing.
         svTex = new DynamicTexture(() -> "waypointer_picker_sv", SV_SIZE, SV_SIZE, false);
         hueTex = new DynamicTexture(() -> "waypointer_picker_hue", HUE_W, SV_SIZE, false);
 
@@ -267,7 +214,6 @@ public final class ColorPickerScreen extends Screen {
         hueTex.upload();
     }
 
-    /** Pack a 0xAARRGGBB + alpha into NativeImage's 0xAABBGGRR byte order. */
     private static int packAbgr(int alpha, int rgb) {
         int r = (rgb >> 16) & 0xFF;
         int g = (rgb >>  8) & 0xFF;
@@ -277,9 +223,6 @@ public final class ColorPickerScreen extends Screen {
 
     @Override
     public void removed() {
-        // The texture manager takes ownership of DynamicTextures registered with
-        // it; release() both unbinds the identifier and closes the underlying
-        // NativeImage, so we don't leak GPU memory when the picker closes.
         if (svTexId != null)  Minecraft.getInstance().getTextureManager().release(svTexId);
         if (hueTexId != null) Minecraft.getInstance().getTextureManager().release(hueTexId);
         svTex = null;
@@ -289,7 +232,6 @@ public final class ColorPickerScreen extends Screen {
         super.removed();
     }
 
-    // --- input --------------------------------------------------------------------------------
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
@@ -358,12 +300,7 @@ public final class ColorPickerScreen extends Screen {
         return MathUtil.clamp(v, 0d, 1d);
     }
 
-    // HSV ↔ RGB kept local (and not pushed into GradientColorizer) because the
-    // picker is the only code path that needs HSV; every other site thinks in
-    // HSL. Using the same model Photoshop / web pickers use makes the widget
-    // feel familiar.
 
-    /** H in [0,360), S/V in [0,1]. Returns 0xRRGGBB. */
     public static int hsvToRgb(float h, float s, float v) {
         float c = v * s;
         float hp = h / 60f;

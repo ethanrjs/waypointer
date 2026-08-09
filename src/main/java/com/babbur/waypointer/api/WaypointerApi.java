@@ -12,7 +12,8 @@ import java.util.function.Consumer;
  * operation that changes Waypointer state goes through this interface so the
  * renderer, autosave listener, and UI caches all observe the same change.
  * Calls from worker threads are dispatched synchronously to the Minecraft
- * client thread before returning.
+ * client thread before returning. Potentially expensive import parsing runs on
+ * the calling thread; only the resulting state mutation is dispatched.
  */
 public interface WaypointerApi {
 

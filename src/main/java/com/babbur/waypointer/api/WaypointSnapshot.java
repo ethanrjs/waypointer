@@ -17,7 +17,24 @@ public record WaypointSnapshot(
         int color,
         int flags,
         double radius,
-        boolean temporary) {
+        boolean temporary,
+        int preciseX,
+        int preciseY,
+        int preciseZ) {
+
+    public WaypointSnapshot {
+        x = Waypoint.blockCoordinateFromPrecise(preciseX);
+        y = Waypoint.blockCoordinateFromPrecise(preciseY);
+        z = Waypoint.blockCoordinateFromPrecise(preciseZ);
+    }
+
+    public WaypointSnapshot(int x, int y, int z, String name, int color, int flags,
+                            double radius, boolean temporary) {
+        this(x, y, z, name, color, flags, radius, temporary,
+                Waypoint.preciseBlockCenter(x),
+                Waypoint.preciseBlockCenter(y),
+                Waypoint.preciseBlockCenter(z));
+    }
 
     static WaypointSnapshot from(Waypoint waypoint) {
         return new WaypointSnapshot(
@@ -28,6 +45,9 @@ public record WaypointSnapshot(
                 waypoint.color(),
                 waypoint.flags(),
                 waypoint.customRadius(),
-                waypoint.isTemp());
+                waypoint.isTemp(),
+                waypoint.preciseX(),
+                waypoint.preciseY(),
+                waypoint.preciseZ());
     }
 }

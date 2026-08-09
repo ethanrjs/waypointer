@@ -2,17 +2,7 @@ package com.babbur.waypointer.dungeon;
 
 import java.util.Locale;
 
-/**
- * Type of secret a dungeon waypoint represents. Category ids match the
- * de-facto schema used by Skyblocker / DungeonRoomsMod for their curated
- * dataset, so user-supplied secret JSON authored against that schema can be
- * loaded as-is once a data source is wired up.
- *
- * <p>{@link #defaultColor} is the outline color used when the user hasn't
- * overridden it on a specific waypoint. Hues roughly track community
- * conventions (lever = orange, bat = brown, wither = white) but aren't a
- * spec; only the {@link #id} matters for data interchange.
- */
+/** Secret type, wire ID, and fallback display color. */
 public enum DungeonSecretCategory {
     ENTRANCE     ("entrance",  0x2EFF2E),
     SUPERBOOM    ("superboom", 0xFFB300),
@@ -39,11 +29,7 @@ public enum DungeonSecretCategory {
         this.defaultColor = defaultColor;
     }
 
-    /**
-     * Lookup by lower-case id. Unknown / blank input returns
-     * {@link #DEFAULT} rather than throwing -- imported data with a typo'd
-     * category should still render, just in the fallback color.
-     */
+    /** Unknown IDs use {@link #DEFAULT} so imported routes still render. */
     public static DungeonSecretCategory fromId(String id) {
         if (id == null || id.isBlank()) return DEFAULT;
         String norm = id.trim().toLowerCase(Locale.ROOT);

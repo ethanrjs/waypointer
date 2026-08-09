@@ -1,13 +1,9 @@
 package com.babbur.waypointer.dungeon;
 
-import com.babbur.waypointer.core.ActiveGroupManager;
-import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
-import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
+import com.babbur.waypointer.dungeon.data.DungeonRoomCatalogEntry;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -16,88 +12,67 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DungeonUnresolvedRetryTest {
 
     @Test
-    void failedRoomResolutionUsesExponentialTickBackoff() throws Exception {
-        DungeonStateTracker tracker = trackerWithQueuedRoom();
+    void failedRoomResolutionUsesExponentialTickBackoff() {
+        DungeonRoomResolver resolver = resolverWithQueuedRoom();
         CountingLookup lookup = new CountingLookup();
 
-        setDungeonTick(tracker, 0);
-        tracker.retryUnresolvedAssemblies(lookup);
+        resolver.retry(lookup, 0);
         int firstAttemptCalls = lookup.calls;
         assertTrue(firstAttemptCalls > 0);
 
         for (int tick = 1; tick < 5; tick++) {
-            setDungeonTick(tracker, tick);
-            tracker.retryUnresolvedAssemblies(lookup);
+            resolver.retry(lookup, tick);
         }
         assertEquals(firstAttemptCalls, lookup.calls);
 
-        setDungeonTick(tracker, 5);
-        tracker.retryUnresolvedAssemblies(lookup);
+        resolver.retry(lookup, 5);
         int secondAttemptCalls = lookup.calls;
         assertTrue(secondAttemptCalls > firstAttemptCalls);
 
         for (int tick = 6; tick < 15; tick++) {
-            setDungeonTick(tracker, tick);
-            tracker.retryUnresolvedAssemblies(lookup);
+            resolver.retry(lookup, tick);
         }
         assertEquals(secondAttemptCalls, lookup.calls);
 
-        setDungeonTick(tracker, 15);
-        tracker.retryUnresolvedAssemblies(lookup);
+        resolver.retry(lookup, 15);
         assertTrue(lookup.calls > secondAttemptCalls);
     }
 
     @Test
-    void chunkAvailabilityRequestRetriesBeforeTheBackoffDeadline() throws Exception {
-        DungeonStateTracker tracker = trackerWithQueuedRoom();
+    void chunkAvailabilityRequestRetriesBeforeTheBackoffDeadline() {
+        DungeonRoomResolver resolver = resolverWithQueuedRoom();
         CountingLookup lookup = new CountingLookup();
 
-        setDungeonTick(tracker, 0);
-        tracker.retryUnresolvedAssemblies(lookup);
+        resolver.retry(lookup, 0);
         int firstAttemptCalls = lookup.calls;
 
-        setDungeonTick(tracker, 1);
-        tracker.retryUnresolvedAssemblies(lookup);
+        resolver.retry(lookup, 1);
         assertEquals(firstAttemptCalls, lookup.calls);
 
-        Method requestRetry = DungeonStateTracker.class.getDeclaredMethod("requestUnresolvedRetry");
-        requestRetry.setAccessible(true);
-        requestRetry.invoke(tracker);
-        tracker.retryUnresolvedAssemblies(lookup);
+        resolver.requestRetry();
+        resolver.retry(lookup, 1);
 
         assertTrue(lookup.calls > firstAttemptCalls);
     }
 
-    private static DungeonStateTracker trackerWithQueuedRoom() throws Exception {
-        DungeonStateTracker tracker = new DungeonStateTracker(new ActiveGroupManager(), new DungeonConfig());
-        DungeonRoomDefinition definition = new DungeonRoomDefinition(
+    private static DungeonRoomResolver resolverWithQueuedRoom() {
+        DungeonRoomResolver resolver = new DungeonRoomResolver();
+        DungeonRoomCatalogEntry definition = new DungeonRoomCatalogEntry(
                 "retry-test",
                 "Retry Test",
                 DungeonRoomType.ROOM,
                 DungeonRoomShape.ONE_BY_ONE,
                 List.of(),
                 List.of(),
-                List.of());
-        Method attach = DungeonStateTracker.class.getDeclaredMethod(
-                "attachScannedSegment",
-                DungeonRoomDefinition.class,
-                long.class,
-                int.class);
-        attach.setAccessible(true);
-        Object assembly = attach.invoke(tracker, definition, DungeonRoom.packSegment(0, 0), 70);
-
-        Method queue = DungeonStateTracker.class.getDeclaredMethod(
-                "queueAssemblyForResolution",
-                assembly.getClass());
-        queue.setAccessible(true);
-        queue.invoke(tracker, assembly);
-        return tracker;
-    }
-
-    private static void setDungeonTick(DungeonStateTracker tracker, long tick) throws Exception {
-        Field field = DungeonStateTracker.class.getDeclaredField("dungeonTick");
-        field.setAccessible(true);
-        field.setLong(tracker, tick);
+                -1,
+                -1,
+                -1);
+        DungeonRoomResolver.RoomAssembly assembly = resolver.attachScannedSegment(
+                definition,
+                DungeonRoom.packSegment(0, 0),
+                70);
+        resolver.queueAssemblyForResolution(assembly);
+        return resolver;
     }
 
     private static final class CountingLookup implements DungeonRoomData.BlockLookup {

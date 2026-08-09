@@ -31,8 +31,7 @@ import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 import static com.babbur.waypointer.screen.GuiTokens.styledCheckbox;
 
 /**
- * Disclosure confirmation shown before a troubleshooting report reaches the
- * clipboard. Every category starts enabled, and cancelling never copies data.
+ * Disclosure confirmation shown before report is copied
  */
 public final class DebugReportConsentScreen extends net.minecraft.client.gui.screens.Screen {
 

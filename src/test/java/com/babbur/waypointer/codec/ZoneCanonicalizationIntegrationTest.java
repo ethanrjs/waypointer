@@ -33,6 +33,7 @@ class ZoneCanonicalizationIntegrationTest {
         assertEquals("mineshaft_crystal", Zone.canonicalId("MINESHAFT_JASPER_CRYSTAL"));
         assertEquals("mineshaft_crystal", Zone.canonicalId("mineshaft_crystal"));
         assertEquals("dwarven_mines", Zone.canonicalId("GLACITE_TUNNELS"));
+        assertEquals("torrhus_canyon", Zone.canonicalId("foraging_3"));
     }
 
     @Test
@@ -159,6 +160,27 @@ class ZoneCanonicalizationIntegrationTest {
         assertEquals("dungeon_f7", manager.get("mixed-case").zoneId());
         assertEquals(List.of("mixed-case"),
                 manager.activeGroups().stream().map(WaypointGroup::id).toList());
+    }
+
+    @Test
+    void storageLoadMigratesForagingThreeToTorrhusCanyon() throws Exception {
+        Path file = tempDir.resolve("waypoints.json");
+        Files.writeString(file, """
+                {
+                  "schema": 1,
+                  "groups": [{
+                    "id": "torrhus-route",
+                    "name": "Torrhus Route",
+                    "zone": "foraging_3",
+                    "waypoints": [{"x": 1, "y": 2, "z": 3}]
+                  }]
+                }
+                """);
+        ActiveGroupManager manager = new ActiveGroupManager();
+
+        new Storage(file).load(manager);
+
+        assertEquals("torrhus_canyon", manager.get("torrhus-route").zoneId());
     }
 
     private record LegacyV9Fixture(String legacyZoneId, int contentKind, String payload) {

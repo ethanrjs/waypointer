@@ -16,6 +16,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -62,6 +64,7 @@ class WaypointRepositionModeTest {
     void dungeonbreakerRightClickRemovesFromTheDurableRoute() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup stored = WaypointGroup.create("Dungeon", "remove-room");
+        stored.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         stored.add(Waypoint.at(1, 70, 1));
         stored.add(Waypoint.at(2, 70, 2));
         manager.add(stored);
@@ -69,6 +72,8 @@ class WaypointRepositionModeTest {
         WaypointGroup mirror = new WaypointGroup(
                 "dungeon:auto:remove-room", "Dungeon", "remove-room");
         mirror.setRuntimeOnly(true);
+        mirror.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        mirror.setRuntimeSourceGroupId(stored.id());
         mirror.addAll(stored.waypoints());
         manager.add(mirror);
 
@@ -124,36 +129,74 @@ class WaypointRepositionModeTest {
     }
 
     @Test
+    void selectedRouteIsTheOnlyVisibleRouteUntilEditModeEnds() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointGroup shownBefore = WaypointGroup.create("Shown", "hub");
+        WaypointGroup editedRoute = WaypointGroup.create("Edited", "hub");
+        WaypointGroup hiddenBefore = WaypointGroup.create("Hidden", "hub");
+        hiddenBefore.setEnabled(false);
+        manager.add(shownBefore);
+        manager.add(editedRoute);
+        manager.add(hiddenBefore);
+        manager.onZoneChanged(com.babbur.waypointer.core.Zone.fromId("hub"));
+
+        assertEquals(List.of(shownBefore, editedRoute), manager.activeGroups());
+
+        WaypointRepositionMode.setEditModeEnabled(manager, config, editedRoute, true);
+
+        assertEquals(List.of(editedRoute), manager.activeGroups());
+        assertTrue(shownBefore.enabled());
+        assertTrue(editedRoute.enabled());
+        assertFalse(hiddenBefore.enabled());
+
+        WaypointRepositionMode.setEditModeEnabled(manager, config, false);
+
+        assertEquals(List.of(shownBefore, editedRoute), manager.activeGroups());
+        assertTrue(shownBefore.enabled());
+        assertTrue(editedRoute.enabled());
+        assertFalse(hiddenBefore.enabled());
+    }
+
+    @Test
+    void hiddenSelectedRouteIsTemporarilyVisibleWithoutChangingItsState() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointGroup shownBefore = WaypointGroup.create("Shown", "hub");
+        WaypointGroup editedRoute = WaypointGroup.create("Edited", "hub");
+        editedRoute.setEnabled(false);
+        manager.add(shownBefore);
+        manager.add(editedRoute);
+        manager.onZoneChanged(com.babbur.waypointer.core.Zone.fromId("hub"));
+
+        WaypointRepositionMode.setEditModeEnabled(manager, config, editedRoute, true);
+
+        assertEquals(List.of(editedRoute), manager.activeGroups());
+        assertFalse(editedRoute.enabled());
+
+        WaypointRepositionMode.setEditModeEnabled(manager, config, false);
+
+        assertEquals(List.of(shownBefore), manager.activeGroups());
+        assertFalse(editedRoute.enabled());
+    }
+
+    @Test
     void defaultDungeonEditFlagsChooseOneTriggerOnlyForDungeonRooms() {
-        DungeonRoomData.clearAllCustom();
-        try {
-            DungeonRoomData.defineRoom("edit-default-test-room", "Edit Default Test",
-                    new DungeonRoom(
-                            DungeonRoomType.ROOM,
-                            DungeonRoomShape.ONE_BY_ONE,
-                            Direction.NW,
-                            0,
-                            0,
-                            java.util.List.of(DungeonRoom.packSegment(0, 0))));
+        WaypointGroup normalGroup = WaypointGroup.create("Normal", "hub");
+        WaypointGroup tempGroup = WaypointGroup.create("Temp", "edit-default-test-room");
+        tempGroup.setTemp(true);
+        WaypointGroup dungeonGroup = WaypointGroup.create("Dungeon", "edit-default-test-room");
+        dungeonGroup.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
 
-            WaypointGroup normalGroup = WaypointGroup.create("Normal", "hub");
-            WaypointGroup tempGroup = WaypointGroup.create("Temp", "edit-default-test-room");
-            tempGroup.setTemp(true);
-            WaypointGroup dungeonGroup = WaypointGroup.create(
-                    "Dungeon", "edit-default-test-room");
-
-            assertEquals(0, WaypointRepositionMode.defaultDungeonEditFlags(normalGroup));
-            assertEquals(0, WaypointRepositionMode.defaultDungeonEditFlags(tempGroup));
-            assertEquals(0, WaypointRepositionMode.defaultDungeonEditFlags(normalGroup, true));
-            assertEquals(Waypoint.FLAG_SKIP_ON_STAND,
-                    WaypointRepositionMode.defaultDungeonEditFlags(dungeonGroup));
-            assertEquals(Waypoint.FLAG_SKIP_ON_STAND,
-                    WaypointRepositionMode.defaultDungeonEditFlags(dungeonGroup, false));
-            assertEquals(Waypoint.FLAG_SKIP_ON_INTERACT,
-                    WaypointRepositionMode.defaultDungeonEditFlags(dungeonGroup, true));
-        } finally {
-            DungeonRoomData.clearAllCustom();
-        }
+        assertEquals(0, WaypointRepositionMode.defaultDungeonEditFlags(normalGroup));
+        assertEquals(0, WaypointRepositionMode.defaultDungeonEditFlags(tempGroup));
+        assertEquals(0, WaypointRepositionMode.defaultDungeonEditFlags(normalGroup, true));
+        assertEquals(Waypoint.FLAG_SKIP_ON_STAND,
+                WaypointRepositionMode.defaultDungeonEditFlags(dungeonGroup));
+        assertEquals(Waypoint.FLAG_SKIP_ON_STAND,
+                WaypointRepositionMode.defaultDungeonEditFlags(dungeonGroup, false));
+        assertEquals(Waypoint.FLAG_SKIP_ON_INTERACT,
+                WaypointRepositionMode.defaultDungeonEditFlags(dungeonGroup, true));
     }
 
     @Test

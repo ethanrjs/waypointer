@@ -247,11 +247,13 @@ public record Waypoint(
                 preciseX, preciseY, preciseZ);
     }
 
-    private static int preciseBlockCenter(int blockCoordinate) {
+    /** Convert a block coordinate to its center in sixteenth-block units. */
+    public static int preciseBlockCenter(int blockCoordinate) {
         return blockCoordinate * PRECISE_SCALE + PRECISE_BLOCK_CENTER_OFFSET;
     }
 
-    private static int blockCoordinateFromPrecise(int preciseCoordinate) {
+    /** Convert a sixteenth-block coordinate to its containing block. */
+    public static int blockCoordinateFromPrecise(int preciseCoordinate) {
         return Math.floorDiv(preciseCoordinate, PRECISE_SCALE);
     }
 }

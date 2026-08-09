@@ -1,7 +1,7 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.compat.MinecraftCompat;
-import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
+import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
@@ -30,13 +30,9 @@ final class DungeonRoomExportScreen extends Screen {
     private static final long COPIED_FEEDBACK_MS = 1500;
 
     private final Screen parent;
-    /**
-     * Filled in once the background encode finishes. Encoding every custom room
-     * definition is slow enough to be felt, and doing it before constructing the
-     * screen meant the click that asked for an export appeared to do nothing
-     * until it completed.
-     */
+
     private String payload = "";
+    private String encodingError = "";
     private boolean encoding = true;
     private final String subtitle;
 
@@ -52,21 +48,32 @@ final class DungeonRoomExportScreen extends Screen {
                 roomCount, waypointCount).getString();
     }
 
-    /**
-     * Open immediately and encode in the background. {@code definitions} are
-     * immutable records, so the worker can read them without a snapshot.
-     */
-    static void open(Screen parent, List<DungeonRoomDefinition> definitions,
+    static void open(Screen parent, List<WaypointGroup> routes,
                      int roomCount, int waypointCount) {
         DungeonRoomExportScreen screen =
                 new DungeonRoomExportScreen(parent, roomCount, waypointCount);
         MinecraftCompat.setScreen(Minecraft.getInstance(), screen);
-        List<DungeonRoomDefinition> encodeInput = List.copyOf(definitions);
-        CodecWorker.run(() -> DungeonRoomShareCodec.encode(encodeInput), screen::applyPayload);
+        List<WaypointGroup> encodeInput = List.copyOf(routes);
+        if (!CodecWorker.run(() -> DungeonRoomShareCodec.encode(encodeInput), screen::applyPayload)) {
+            screen.failEncoding(Component.translatable("waypointer.codec.busy").getString());
+        }
     }
 
     private void applyPayload(String encoded) {
-        this.payload = encoded == null ? "" : encoded;
+        if (encoded == null) {
+            failEncoding(Component.translatable(
+                    "waypointer.command.export.failed", "unexpected encoding failure").getString());
+            return;
+        }
+        this.payload = encoded;
+        this.encodingError = "";
+        this.encoding = false;
+        updateCopyButtonsActive();
+    }
+
+    private void failEncoding(String message) {
+        this.payload = "";
+        this.encodingError = message;
         this.encoding = false;
         updateCopyButtonsActive();
     }
@@ -116,7 +123,7 @@ final class DungeonRoomExportScreen extends Screen {
     }
 
     private void copyAsCodeBlock(Button button) {
-        minecraft.keyboardHandler.setClipboard(ExportScreen.codeBlockPayload(payload));
+        minecraft.keyboardHandler.setClipboard(ExportPolicy.codeBlockPayload(payload));
         copyCodeBlockFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
         copyCodeBlockButton.setMessage(Component.translatable("waypointer.common.copied")
                 .withStyle(ChatFormatting.GREEN));
@@ -134,6 +141,8 @@ final class DungeonRoomExportScreen extends Screen {
         if (encoding) {
             g.text(font, Component.translatable("waypointer.screen.export.encoding"),
                     PAD_OUTER, y, TEXT_MUTED, false);
+        } else if (!encodingError.isEmpty()) {
+            g.text(font, encodingError, PAD_OUTER, y, 0xFFFF5555, false);
         } else {
             ExportScreen.drawSizeLine(g, font, PAD_OUTER, y, width - PAD_OUTER, payload);
         }
@@ -158,9 +167,6 @@ final class DungeonRoomExportScreen extends Screen {
     }
 
     private void drawPreview(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
-        // Framed the same way as ExportScreen's preview: these are two views of
-        // the same export, so one reading as a panel and the other as a bare
-        // tint made them look like unrelated screens.
         g.fill(x1, y1, x2, y2, 0x30FFFFFF);
         g.fill(x1 + 1, y1 + 1, x2 - 1, y2 - 1, SURFACE_SUBTLE);
 
@@ -172,12 +178,13 @@ final class DungeonRoomExportScreen extends Screen {
                     innerX, innerY, TEXT_MUTED, false);
             return;
         }
+        if (!encodingError.isEmpty()) {
+            g.text(font, encodingError, innerX, innerY, 0xFFFF5555, false);
+            return;
+        }
 
         List<FormattedCharSequence> lines = font.split(FormattedText.of(payload), innerW);
         int lineH = font.lineHeight + 1;
-        // Reserve the last visible line for the "N more lines" marker, matching
-        // ExportScreen. Without the reservation the marker was drawn one line
-        // past the last one that fit and overran the bottom of the box.
         int available = (y2 - y1 - PREVIEW_INSET * 2) / lineH;
         int shown = lines.size() <= available ? lines.size() : Math.max(0, available - 1);
 
@@ -186,7 +193,7 @@ final class DungeonRoomExportScreen extends Screen {
             g.text(font, lines.get(i), innerX, y, TEXT, false);
         }
         if (shown < lines.size()) {
-            g.text(font, ExportScreen.previewOverflowText(lines.size() - shown),
+            g.text(font, ExportPolicy.previewOverflowText(lines.size() - shown),
                     innerX, y, TEXT_MUTED, false);
         }
     }

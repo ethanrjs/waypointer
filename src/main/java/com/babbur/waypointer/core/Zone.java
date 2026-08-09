@@ -8,32 +8,9 @@ import java.util.function.BiPredicate;
 import java.util.function.Predicate;
 
 /**
- * A Skyblock map/mode, keyed for waypoint grouping.
- *
- * Zones are intentionally coarse: e.g. all Catacombs F7 runs share one zone,
- * regardless of which instance the server assigned us. That's what makes "waypoints
- * across Skyblock servers" possible -- we key storage by zone id, not by instance.
- *
- * <p>Resolution pathways:
- * <ul>
- *   <li>{@link #resolve(String, String, String)} -- authoritative: Hypixel Mod API
- *       location packet fields {@code serverType}, {@code map}, {@code mode}.</li>
- *   <li>{@link #resolveFromDisplayName(String)} -- fallback/refinement from the
- *       visible sidebar location.</li>
- *   <li>{@link #fromId(String)} -- replay on-disk group ids back to a {@code Zone}
- *       with the current canonical display name.</li>
- * </ul>
- *
- * <p>Matching is deliberately permissive across {@code map} and {@code mode}:
- * Hypixel's mod-API documentation doesn't pin which field carries what, and field
- * ordering has varied across islands in practice (the {@code mode} field typically
- * carries the Skyblocker-style island id like {@code "foraging_1"}, but some
- * payloads instead put the friendly name in {@code map} and vice versa). For each
- * zone we therefore accept <em>either</em> the internal id <em>or</em> the friendly
- * name in <em>either</em> field.
- *
- * <p>Non-Skyblock server types return {@code null}; callers (e.g.
- * {@code ActiveGroupManager}) use that to hide all waypoints.
+ * A reusable SkyBlock area for grouping routes. Resolution accepts either a
+ * location ID or display name in either Hypixel packet field. Non-SkyBlock
+ * server types resolve to {@code null} so waypoints stay hidden.
  */
 public record Zone(String id, String displayName) {
 
@@ -62,13 +39,6 @@ public record Zone(String id, String displayName) {
         }
     }
 
-    /**
-     * A canonical Waypointer zone plus the matchers that recognise it.
-     *
-     * <p>{@code matches} is invoked with the raw ({@code map}, {@code mode}) pair
-     * from the Hypixel Mod API. {@code displayMatches} handles the scoreboard
-     * fallback where only one human-readable string is visible.
-     */
     private record Def(String id, String displayName,
                        BiPredicate<String, String> matches,
                        Predicate<String> displayMatches) {
@@ -77,16 +47,6 @@ public record Zone(String id, String displayName) {
         }
     }
 
-    // ---- matchers --------------------------------------------------------
-
-    /**
-     * Accept the zone if any of {@code accepted} matches either the {@code map}
-     * or {@code mode} field (case-insensitive exact match).
-     *
-     * <p>Typical use: passing the Skyblocker-style island id
-     * ({@code "foraging_1"}) <em>and</em> the friendly name ({@code "The Park"})
-     * so the resolver doesn't care which field Hypixel populated.
-     */
     private static BiPredicate<String, String> tokens(String... accepted) {
         return (map, mode) -> {
             for (String tok : accepted) {
@@ -96,11 +56,6 @@ public record Zone(String id, String displayName) {
         };
     }
 
-    /**
-     * Prefix variant of {@link #tokens}. Used for islands whose Hypixel payload
-     * or scoreboard line varies with a suffix (e.g. Galatea's scoreboard reads
-     * {@code "Galatea Foraging 2"} rather than the bare {@code "Galatea"}).
-     */
     private static BiPredicate<String, String> prefixTokens(String... accepted) {
         return (map, mode) -> {
             for (String tok : accepted) {
@@ -110,13 +65,7 @@ public record Zone(String id, String displayName) {
         };
     }
 
-    /**
-     * Dungeons are the one zone family where both fields must be inspected
-     * together: Hypixel sends {@code mode="dungeon"} plus the floor id
-     * (e.g. {@code "F7"}) in {@code map}. We additionally accept the swapped
-     * order defensively, since the packet's field semantics aren't formally
-     * documented and have shifted between data versions.
-     */
+    // Dungeon packets split "dungeon" and the floor between the two fields.
     private static BiPredicate<String, String> dungeonFloor(String floor) {
         return (map, mode) -> {
             boolean isDungeon = equalsIC(map, "dungeon") || equalsIC(mode, "dungeon");
@@ -125,14 +74,6 @@ public record Zone(String id, String displayName) {
         };
     }
 
-    /**
-     * Fallback for Hypixel payloads that only say "dungeon" in both fields
-     * before a floor id is available. Without this, the sanitize fallback
-     * displays the ugly "Dungeon Dungeon" zone the user hit in live testing.
-     * Floor-specific definitions below still win whenever F1/M7/etc. is
-     * present because this matcher requires both populated fields to be the
-     * generic dungeon token.
-     */
     private static boolean genericDungeon(String map, String mode) {
         return equalsIC(map, "dungeon") && equalsIC(mode, "dungeon");
     }
@@ -160,31 +101,12 @@ public record Zone(String id, String displayName) {
         return value != null && value.equalsIgnoreCase(token);
     }
 
-    /**
-     * Case-insensitive prefix check that doesn't allocate. The previous impl
-     * lowercased both strings, which hit hard on tick-level callers (scoreboard
-     * zone resolution runs every 2 ticks and tests every prefix in
-     * {@link #KNOWN} against the sidebar blob).
-     */
     private static boolean startsWithIC(String value, String prefix) {
         if (value == null || prefix == null) return false;
         if (value.length() < prefix.length()) return false;
         return value.regionMatches(true, 0, prefix, 0, prefix.length());
     }
 
-    // ---- known zones -----------------------------------------------------
-
-    /*
-     * Source of truth: Skyblocker's {@code Location} enum (which in turn
-     * mirrors Hypixel's LocationUpdateS2CPacket location ids). Each Def
-     * carries both the Skyblocker id (e.g. "foraging_1") and the friendly
-     * name (e.g. "The Park"); the `tokens` matcher accepts either in either
-     * mod-API field.
-     *
-     * Blazing Fortress (combat_2) is intentionally omitted -- the 1.8.9 island
-     * was removed years ago and only survives in legacy exports that should
-     * retarget to Crimson Isle manually.
-     */
     private static final List<Def> KNOWN = List.of(
             new Def("hub",               "Hub",                  tokens("hub", "Hub")),
             new Def("private_island",    "Private Island",       tokens("dynamic", "Private Island"),
@@ -205,38 +127,19 @@ public record Zone(String id, String displayName) {
             new Def("gold_mine",         "Gold Mine",            tokens("mining_1", "Gold Mine")),
             new Def("deep_caverns",      "Deep Caverns",         tokens("mining_2", "Deep Caverns")),
 
-            // The Hypixel location packet uses mining_3 across these connected
-            // surface areas. Keep their former names as input aliases, but expose
-            // one stable route target based on that location id.
+            // Hypixel reports these connected areas as one mining_3 zone.
             new Def(DWARVEN_MINES_ZONE_ID, DWARVEN_MINES_DISPLAY_NAME,
                     tokens("mining_3", DWARVEN_MINES_DISPLAY_NAME,
                             "Great Glacite Lake", "Glacite Tunnels", "Dwarven Base Camp"),
                     anyDisplay(DWARVEN_MINES_DISPLAY_NAME,
                             "Great Glacite Lake", "Glacite Tunnels", "Dwarven Base Camp")),
             new Def("crystal_hollows",   "Crystal Hollows",      tokens("crystal_hollows", "Crystal Hollows")),
-            // "Unknown Mineshaft" -- runtime zone emitted when we know the player
-            // is in Glacite Mineshafts but the sidebar didn't identify a variant
-            // (Topaz 1, Jasper Crystal, ...). Every mineshaft type has a distinct
-            // layout, so a waypoint group scoped to the generic `mineshaft`
-            // bucket would activate in ~33 unrelated layouts -- almost always
-            // the wrong answer. Users who genuinely want "this group triggers
-            // for any unidentified shaft" target this zone explicitly.
-            //
-            // Claims the "Glacite Mineshafts" / "Mineshaft" display names so
-            // scoreboard fallback + scoreboard-blob resolution + legacy
-            // Skyblocker imports all converge here; the generic `mineshaft`
-            // Def below still accepts mod-API tokens (because Hypixel's packet
-            // uses the bare "mineshaft" mode) but gets upgraded by
-            // refineIfDwarvenMinesContext before anything user-facing sees it.
+            // Use a safe fallback when the scoreboard does not identify the layout.
+            // Generic mineshaft routes must not activate across unrelated layouts.
             new Def("mineshaft_unknown", "Unknown Mineshaft",
                     (map, mode) -> false,
                     anyDisplay("Glacite Mineshafts", "Mineshaft", "Unknown Mineshaft")),
-            // Legacy mod-API anchor. Skyblocker's own enum notes the packet
-            // sometimes keeps reporting this location (the player stays on
-            // mining_3), so we still accept it to seed refinement. `fromId`
-            // resolves the id for legacy stored groups but the runtime pipeline
-            // never emits this zone -- every live path upgrades to either a
-            // specific variant or `mineshaft_unknown`.
+            // Legacy packet value used only as the starting point for refinement.
             new Def("mineshaft",         "Glacite Mineshafts",
                     tokens("mineshaft", "Glacite Mineshafts", "Mineshaft"),
                     name -> false),
@@ -255,10 +158,6 @@ public record Zone(String id, String displayName) {
                     anyDisplay("Jerry's Workshop", "Winter Island")),
             new Def("dark_auction",      "Dark Auction",         tokens("dark_auction", "Dark Auction")),
 
-            // Galatea: scoreboard reads "Galatea Foraging 2" while Skyblocker
-            // imports use the bare id. Prefix-match across both the Hypixel
-            // mod-API fields AND the scoreboard so every signal funnels into
-            // the one canonical zone id users actually type.
             new Def("galatea",           "Galatea",
                     prefixTokens("foraging_2", "Galatea"),
                     displayStartsWithAny("Galatea")),
@@ -287,28 +186,8 @@ public record Zone(String id, String displayName) {
             new Def("dungeon_m7", "Master Mode M7",   dungeonFloor("M7"))
     );
 
-    // ---- mineshaft sub-types ---------------------------------------------
-
-    /*
-     * Glacite Mineshaft has ~33 gemstone variants (Topaz 1, Ruby Crystal, Jasper,
-     * Littlefoot's Den, ...) that Hypixel's mod-API collapses into the single
-     * {@code mineshaft} zone. The variant is surfaced in the sidebar as a
-     * SHORT CODE appended to the server-identifier line, e.g.
-     * {@code "04/18/26 m197CD AQUA_C"} while inside an Aquamarine Crystal
-     * shaft. We match on those codes for detection -- the full display names
-     * ("Aquamarine Crystal") never appear in the live scoreboard text.
-     *
-     * <p>Token list mirrors the {@code MineshaftType.name()} values used by
-     * SkyHanni's MineshaftDetection module (5.0.0) for the same reason:
-     * those ARE the strings Hypixel writes to the scoreboard.
-     *
-     * <p>Codes are globally unique across variants, so {@link
-     * #tryResolveMineshaftTypeFromSidebarBlob} doesn't need any ordering
-     * gymnastics (unlike when we were matching on human display names, where
-     * "Jasper" used to collide with "Jasper Crystal"). The only collision to
-     * guard against is substring-inside-a-larger-word, handled by
-     * {@link #containsAsToken}.
-     */
+    // The packet only says "mineshaft". The scoreboard's unique short code
+    // identifies the actual layout.
     private record MineshaftType(String idSuffix, String code, String rawName) {}
 
     private static final List<MineshaftType> MINESHAFT_TYPES = List.of(
@@ -345,17 +224,11 @@ public record Zone(String id, String displayName) {
             new MineshaftType("titanium",       "TITA_1", "Titanium"),
             new MineshaftType("umber",          "UMBE_1", "Umber"),
             new MineshaftType("tungsten",       "TUNG_1", "Tungsten"),
-            // SkyHanni's enum constant for Vanguard is FAIR_1 -- matching the
-            // code Hypixel actually writes rather than the display name.
+            // Hypixel uses FAIR_1 for Vanguard.
             new MineshaftType("vanguard",       "FAIR_1", "Vanguard"),
             new MineshaftType("littlefoots_den", "LITT_L", "Littlefoot's Den")
     );
 
-    /**
-     * Lookup from canonical id to the mineshaft-type metadata, used so
-     * {@link #fromId(String)} renders imported mineshaft zones with a nice
-     * display name without polluting the main {@link #KNOWN} table.
-     */
         private static MineshaftType mineshaftTypeById(String id) {
         if (id == null || !id.startsWith("mineshaft_")) return null;
         if (MINESHAFT_CRYSTAL_ZONE_ID.equals(canonicalId(id))) return null;
@@ -381,11 +254,7 @@ public record Zone(String id, String displayName) {
         return t.idSuffix().endsWith("_crystal");
     }
 
-    /**
-     * Canonical zones users can target without first visiting Hypixel.
-     * The legacy broad mineshaft bucket is intentionally omitted because the
-     * runtime always refines it to a concrete or unknown mineshaft layout.
-     */
+    // Do not expose the legacy broad mineshaft bucket as a route target.
     private static final List<Zone> KNOWN_ZONES = buildKnownZones();
 
     private static List<Zone> buildKnownZones() {
@@ -402,20 +271,13 @@ public record Zone(String id, String displayName) {
         return List.copyOf(zones.values());
     }
 
-    // ---- resolve ---------------------------------------------------------
-
-    /**
-     * Resolve a Zone from a Hypixel Mod API (serverType, map, mode) triple.
-     * Returns null when the player isn't on Skyblock -- callers use that to
-     * hide every waypoint (see {@code ActiveGroupManager.activeGroups}).
-     */
+    /** Resolves a Hypixel location packet, or returns {@code null} outside SkyBlock. */
     public static Zone resolve(String serverType, String map, String mode) {
         if (serverType == null || !"SKYBLOCK".equalsIgnoreCase(serverType)) return null;
         for (Def def : KNOWN) {
             if (def.matches.test(map, mode)) return new Zone(def.id, def.displayName);
         }
-        // Fallback: prefer the friendly map label for display if present,
-        // otherwise use the mode id so we at least produce a stable zone key.
+        // Prefer the friendly map label when no known zone matches.
         String display = (map != null && !map.isBlank()) ? map
                        : (mode != null && !mode.isBlank()) ? mode
                        : null;
@@ -450,9 +312,6 @@ public record Zone(String id, String displayName) {
         for (Def def : KNOWN) {
             if (def.displayMatches.test(cleaned)) return new Zone(def.id, def.displayName);
         }
-        // Also allow the bare mineshaft-type name (e.g. "Topaz 1", "Jasper Crystal")
-        // to resolve -- handy when the scoreboard's ⏣ line carries the variant
-        // directly and users type it into /waypointer group commands.
         for (MineshaftType t : MINESHAFT_TYPES) {
             if (cleaned.equalsIgnoreCase(t.rawName())) {
                 return new Zone(canonicalMineshaftId(t), canonicalMineshaftDisplayName(t));
@@ -461,19 +320,11 @@ public record Zone(String id, String displayName) {
         return new Zone(sanitizeId(cleaned), cleaned);
     }
 
-    /**
-     * Detects Dwarven area names from the full sidebar text. The former surface
-     * sub-zones now resolve to the broad {@code dwarven_mines} zone. Mineshafts
-     * remain separate because each layout needs its own waypoint coordinates.
-     *
-     * @return the broad Dwarven or unknown mineshaft zone, or null if absent
-     */
+    /** Resolves legacy Dwarven sub-areas while keeping Mineshaft layouts separate. */
     public static Zone tryResolveDwarvenSubAreaFromSidebarBlob(String colorStrippedSidebarText) {
         if (colorStrippedSidebarText == null || colorStrippedSidebarText.isBlank()) return null;
         String b = colorStrippedSidebarText.toLowerCase(Locale.ROOT);
-        // A stale sidebar can briefly contain the previous surface area and the
-        // new Mineshaft line together. Mineshaft coordinates are a different
-        // layout, so this signal must win.
+        // Prefer the Mineshaft signal when the sidebar briefly shows both areas.
         if (b.contains("glacite mineshafts")) return fromId("mineshaft_unknown");
         if (b.contains("great glacite lake")
                 || b.contains("glacite tunnels")
@@ -483,27 +334,11 @@ public record Zone(String id, String displayName) {
         return null;
     }
 
-    /**
-     * Scan the sidebar for a Glacite Mineshaft variant code. Hypixel writes
-     * a compact identifier on the server-info line (e.g.
-     * {@code "04/18/26 m197CD AQUA_C"} inside an Aquamarine Crystal shaft);
-     * that code -- not the human-readable "Aquamarine Crystal" name -- is
-     * the only variant signal in the live scoreboard. Matches SkyHanni's
-     * MineshaftDetection strategy of scanning sidebar lines for the enum
-     * constant name.
-     *
-     * <p>Codes are unique across variants, so no ordering is required.
-     * {@link #containsAsToken} still guards against a code falsely matching
-     * inside a larger alphanumeric token.
-     *
-     * @return a mineshaft-type zone, or null if no variant code is found
-     */
+    /** Finds the unique layout code Hypixel writes on the Mineshaft sidebar. */
     public static Zone tryResolveMineshaftTypeFromSidebarBlob(String colorStrippedSidebarText) {
         if (colorStrippedSidebarText == null || colorStrippedSidebarText.isBlank()) return null;
         for (MineshaftType t : MINESHAFT_TYPES) {
-            // Case-sensitive: codes are all-caps in the scoreboard and making
-            // the match case-insensitive would let stray lowercase substrings
-            // like "tung_1" inside a username sneak through.
+            // Codes are uppercase; case-sensitive matching avoids usernames.
             if (containsAsToken(colorStrippedSidebarText, t.code())) {
                 return new Zone(canonicalMineshaftId(t), canonicalMineshaftDisplayName(t));
             }
@@ -511,14 +346,7 @@ public record Zone(String id, String displayName) {
         return null;
     }
 
-    /**
-     * Substring check that refuses matches wedged inside a larger alphanumeric
-     * run, so a username like {@code "xTOPA_1x"} can't satisfy the
-     * {@code TOPA_1} mineshaft probe. Underscore is treated as an interior
-     * character of the token itself (codes always contain one) and as a
-     * boundary character otherwise -- both halves fall out of
-     * {@link Character#isLetterOrDigit} naturally.
-     */
+    /** Rejects a code embedded in a larger alphanumeric token. */
     private static boolean containsAsToken(String haystack, String token) {
         int from = 0;
         while (true) {
@@ -532,16 +360,7 @@ public record Zone(String id, String displayName) {
         }
     }
 
-    /**
-     * When the mod API reports the Dwarven or mineshaft bucket, refine only the
-     * Glacite Mineshaft layout. The connected surface areas stay keyed to the
-     * broad {@code mining_3} / {@code dwarven_mines} location.
-     *
-     * <p>Mineshaft-variant refinement runs before the generic mineshaft-area
-     * check because "Topaz 1" is strictly more specific than "Glacite
-     * Mineshafts" -- both may appear in the same sidebar when entering a
-     * variant, and the variant is the one users keyed their waypoints to.
-     */
+    /** Refines only Mineshaft layouts; connected surface areas stay grouped. */
     public static Zone refineIfDwarvenMinesContext(Zone packetZone, String colorStrippedSidebarText) {
         if (packetZone == null) return null;
         String id = packetZone.id();
@@ -550,15 +369,10 @@ public record Zone(String id, String displayName) {
         if (mineshaftType != null) return mineshaftType;
         Zone sub = tryResolveDwarvenSubAreaFromSidebarBlob(colorStrippedSidebarText);
         if (sub != null) return sub.equals(packetZone) ? packetZone : sub;
-        // Packet said mineshaft but the sidebar didn't confirm the variant --
-        // upgrade to the Unknown Mineshaft zone so variant-scoped waypoint
-        // groups cleanly don't activate. A dwarven_mines packet with no
-        // sub-area identified stays as-is (player is in the central hub).
+        // Unknown prevents a route for the wrong Mineshaft layout from activating.
         if ("mineshaft".equals(id)) return fromId("mineshaft_unknown");
         return packetZone;
     }
-
-    // ---- helpers ---------------------------------------------------------
 
     public static String canonicalId(String id) {
         if (id == null || id.isBlank()) return "unknown";
@@ -568,6 +382,9 @@ public record Zone(String id, String displayName) {
         }
         if (normalized.startsWith("mineshaft_") && normalized.endsWith("_crystal")) {
             return MINESHAFT_CRYSTAL_ZONE_ID;
+        }
+        if ("foraging_3".equals(normalized)) {
+            return "torrhus_canyon";
         }
         return normalized;
     }

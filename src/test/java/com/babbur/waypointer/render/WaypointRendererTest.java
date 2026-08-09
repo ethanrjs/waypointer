@@ -20,6 +20,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointRendererTest {
 
     @Test
+    void outlineOpacityKeepsOutlinedWaypointsVisibleWhenFillIsTransparent() {
+        assertTrue(WaypointRenderer.worldRenderOpacityAllowsAnything(
+                0.0, 1.0, true, false, false));
+        assertFalse(WaypointRenderer.worldRenderOpacityAllowsAnything(
+                0.0, 0.0, true, false, false));
+        assertTrue(WaypointRenderer.worldRenderOpacityAllowsAnything(
+                0.0, 0.0, false, true, false));
+    }
+
+    @Test
+    void markerScaleKeepsTheBoxCenteredAndClampsToVisualLimits() {
+        double[] bounds = {2.0, 4.0, 6.0, 4.0, 8.0, 10.0};
+
+        WaypointRenderer.scaleBoundsAroundCenter(bounds, 0.5);
+
+        assertEquals(2.5, bounds[0]);
+        assertEquals(5.0, bounds[1]);
+        assertEquals(7.0, bounds[2]);
+        assertEquals(3.5, bounds[3]);
+        assertEquals(7.0, bounds[4]);
+        assertEquals(9.0, bounds[5]);
+    }
+
+    @Test
     void depthPassDetectionTracksDepthCheckedAndThroughWallWaypointsSeparately() {
         WaypointGroup normalOnly = groupWith(waypoint(0));
         WaypointGroup depthOnly = groupWith(waypoint(Waypoint.FLAG_DEPTH_CHECKED));
@@ -155,6 +179,18 @@ class WaypointRendererTest {
         assertEquals(List.of("1-2"), focusedDungeonRouteLineSegments(group, false));
         group.advancePast(2);
         assertEquals(List.of("2-3"), focusedDungeonRouteLineSegments(group, false));
+    }
+
+    @Test
+    void focusedDungeonConnectorIgnoresPassiveSubwaypointBeforeNextMainWaypoint() {
+        WaypointGroup group = groupWith(
+                waypointAt(0, 64, 0, 0),
+                waypointAt(9, 70, 4, Waypoint.FLAG_SUBWAYPOINT),
+                waypointAt(3, 64, 0, 0));
+
+        group.advancePast(0);
+
+        assertEquals(List.of("0-2"), focusedDungeonRouteLineSegments(group, false));
     }
 
     @Test
@@ -310,6 +346,23 @@ class WaypointRendererTest {
     }
 
     @Test
+    void renderAnchorUsesBoxCenterAfterSubwaypointBecomesMainWaypoint() {
+        Waypoint promotedWaypoint = new Waypoint(39, 98, 54,
+                "e", Waypoint.DEFAULT_COLOR, 0, 0.0,
+                Waypoint.TEMP_NONE, 0L,
+                39 * Waypoint.PRECISE_SCALE + 14,
+                98 * Waypoint.PRECISE_SCALE,
+                54 * Waypoint.PRECISE_SCALE + 1);
+        double[] anchor = new double[6];
+
+        WaypointRenderer.populateWaypointRenderAnchor(null, promotedWaypoint, anchor);
+
+        assertEquals(39.5, anchor[0]);
+        assertEquals(98.5, anchor[1]);
+        assertEquals(54.5, anchor[2]);
+    }
+
+    @Test
     void onScreenCheckAcceptsInclusiveScreenEdgesOnlyForFiniteCoordinates() {
         assertTrue(WaypointRenderer.isOnScreen(0.0, 0.0, 800, 600));
         assertTrue(WaypointRenderer.isOnScreen(800.0, 600.0, 800, 600));
@@ -338,12 +391,40 @@ class WaypointRendererTest {
     void labelScaleTracksDepthAndFovWhenDistanceScalingIsEnabled() {
         assertFloatEquals(1.0f,
                 WaypointRenderer.labelScaleForDepth(24.0, 70.0f, true, 1.0));
-        assertFloatEquals(2.0f,
+        assertFloatEquals(1.0f,
                 WaypointRenderer.labelScaleForDepth(12.0, 70.0f, true, 1.0));
         assertFloatEquals(0.5f,
                 WaypointRenderer.labelScaleForDepth(48.0, 70.0f, true, 1.0));
-        assertFloatEquals(0.25f,
+        assertFloatEquals(1.0f,
                 WaypointRenderer.labelScaleForDepth(0.0, 70.0f, true, 1.0));
+    }
+
+    @Test
+    void distanceScaledLabelsNeverExceedConfiguredSizeAtCloseRange() {
+        assertFloatEquals(2.0f,
+                WaypointRenderer.labelScaleForDepth(1.0, 70.0f, true, 2.0));
+        assertFloatEquals(1.0f,
+                WaypointRenderer.labelScaleForDepth(48.0, 70.0f, true, 2.0));
+    }
+
+    @Test
+    void staticTracerTargetsNearestVisibleWaypoint() {
+        Waypoint nearestHidden = waypointAt(1, 64, 0, 0);
+        Waypoint nearestVisible = waypointAt(4, 64, 0, 0);
+        Waypoint far = waypointAt(20, 64, 0, 0);
+        WaypointGroup group = groupWith(far, nearestHidden, nearestVisible);
+        group.setLoadMode(WaypointGroup.LoadMode.STATIC);
+
+        assertEquals(group.get(1), TracerRenderer.nearestStaticTracerTarget(
+                group, 0.5, 64.5, 0.5, 0.0, false, 0.0));
+        assertEquals(group.get(2), TracerRenderer.nearestStaticTracerTarget(
+                group, 0.5, 64.5, 0.5, 4.0, false, 0.0));
+
+        group.markStaticWaypointReached(2);
+        assertEquals(group.get(0), TracerRenderer.nearestStaticTracerTarget(
+                group, 0.5, 64.5, 0.5, 4.0, true, 0.0));
+        assertNull(TracerRenderer.nearestStaticTracerTarget(
+                group, 0.5, 64.5, 0.5, 4.0, true, 100.0));
     }
 
     @Test
@@ -368,6 +449,25 @@ class WaypointRendererTest {
         assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED,
                 WaypointRenderer.hudFallbackBoxStyle(
                         WaypointerConfig.BoxStyle.FILLED_OUTLINED));
+        assertEquals(WaypointerConfig.BoxStyle.OUTLINED,
+                WaypointRenderer.hudFallbackBoxStyle(WaypointerConfig.BoxStyle.PAINT));
+    }
+
+    @Test
+    void boxStylesSelectOnlyTheirNamedWorldPasses() {
+        assertTrue(WaypointRenderer.boxStyleDrawsOutline(WaypointerConfig.BoxStyle.OUTLINED));
+        assertFalse(WaypointRenderer.boxStyleDrawsRgbFill(WaypointerConfig.BoxStyle.OUTLINED));
+
+        assertFalse(WaypointRenderer.boxStyleDrawsOutline(WaypointerConfig.BoxStyle.FILLED));
+        assertTrue(WaypointRenderer.boxStyleDrawsRgbFill(WaypointerConfig.BoxStyle.FILLED));
+
+        assertTrue(WaypointRenderer.boxStyleDrawsOutline(
+                WaypointerConfig.BoxStyle.FILLED_OUTLINED));
+        assertTrue(WaypointRenderer.boxStyleDrawsRgbFill(
+                WaypointerConfig.BoxStyle.FILLED_OUTLINED));
+
+        assertFalse(WaypointRenderer.boxStyleDrawsOutline(WaypointerConfig.BoxStyle.PAINT));
+        assertFalse(WaypointRenderer.boxStyleDrawsRgbFill(WaypointerConfig.BoxStyle.PAINT));
     }
 
     @Test
@@ -383,20 +483,25 @@ class WaypointRendererTest {
     }
 
     @Test
-    void dungeonEntryPathReuseRequiresSameStartAndFreshCachedPath() {
+    void dungeonEntryPathReuseKeepsFailuresUntilThePlayerChangesBlock() {
         BlockPos oldStart = new BlockPos(0, 64, 0);
         BlockPos newStart = new BlockPos(1, 64, 0);
 
-        assertTrue(WaypointRenderer.shouldReuseDungeonEntryPath(oldStart, 0L, oldStart, 249_999_999L));
-        assertFalse(WaypointRenderer.shouldReuseDungeonEntryPath(oldStart, 0L, oldStart, 250_000_000L));
-        assertFalse(WaypointRenderer.shouldReuseDungeonEntryPath(oldStart, 0L, newStart, 249_999_999L));
-        assertFalse(WaypointRenderer.shouldReuseDungeonEntryPath(oldStart, 0L, newStart, 250_000_000L));
+        assertTrue(WaypointRenderer.shouldReuseDungeonEntryPath(
+                oldStart, true, 0L, oldStart, 249_999_999L));
+        assertFalse(WaypointRenderer.shouldReuseDungeonEntryPath(
+                oldStart, true, 0L, oldStart, 250_000_000L));
+        assertTrue(WaypointRenderer.shouldReuseDungeonEntryPath(
+                oldStart, false, 0L, oldStart, Long.MAX_VALUE));
+        assertFalse(WaypointRenderer.shouldReuseDungeonEntryPath(
+                oldStart, false, 0L, newStart, 249_999_999L));
     }
 
     @Test
     void dungeonEntryPathFollowingWaypointsRequiresOptIn() {
         WaypointGroup group = groupWith(waypoint(0), waypointAt(2, 64, 2, 0));
         group.setZoneId("altar");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         group.setCurrentIndex(1);
 
         assertFalse(WaypointRenderer.shouldRenderDungeonEntryPath(group, false));
@@ -430,6 +535,7 @@ class WaypointRendererTest {
         WaypointGroup normal = groupWith(waypoint(0));
         WaypointGroup dungeon = groupWith(waypoint(0));
         dungeon.setZoneId("altar");
+        dungeon.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
 
         config.setShowRouteLines(false);
         config.setShowTracer(true);
@@ -446,6 +552,44 @@ class WaypointRendererTest {
         assertFalse(WaypointRenderer.routeLinesEnabled(dungeon, config, dungeonConfig));
         assertFalse(TracerRenderer.tracersEnabled(normal, config, dungeonConfig));
         assertTrue(TracerRenderer.tracersEnabled(dungeon, config, dungeonConfig));
+    }
+
+    @Test
+    void beaconAnimationMatchesVanillaPartialTickTiming() {
+        assertFloatEquals(39.75f,
+                WaypointRenderer.beaconAnimationTime(39L, 0.75f));
+        assertFloatEquals(0.25f,
+                WaypointRenderer.beaconAnimationTime(40L, 0.25f));
+        assertFloatEquals(39.5f,
+                WaypointRenderer.beaconAnimationTime(-1L, 0.5f));
+        assertFloatEquals(-45.0f, WaypointRenderer.beaconRotationDegrees(0.0f));
+        assertFloatEquals(0.0f, WaypointRenderer.beaconRotationDegrees(20.0f));
+    }
+
+    @Test
+    void beaconRadiusMatchesVanillaDistanceAndSpyglassRules() {
+        Waypoint waypoint = waypointAt(0, 64, 0, 0);
+        var near = new net.minecraft.world.phys.Vec3(1.5, 64, 1.5);
+        var far = new net.minecraft.world.phys.Vec3(192.5, 64, 0.5);
+
+        assertFloatEquals(1.0f,
+                WaypointRenderer.beaconTextureRadiusScale(waypoint, near, false));
+        assertFloatEquals(2.0f,
+                WaypointRenderer.beaconTextureRadiusScale(waypoint, far, false));
+        assertFloatEquals(1.0f,
+                WaypointRenderer.beaconTextureRadiusScale(waypoint, far, true));
+        assertFloatEquals(1.0f,
+                WaypointRenderer.beaconTextureRadiusScale(waypoint, null, false));
+    }
+
+    @Test
+    void beaconTopUsesVanillaTwoThousandFortyEightBlockReach() {
+        assertFloatEquals(2112.0f,
+                WaypointRenderer.beaconBeamTop(64.0f, 64.0f, 320));
+        assertFloatEquals(2304.0f,
+                WaypointRenderer.beaconBeamTop(256.0f, -64.0f, 320));
+        assertFloatEquals(321.0f,
+                WaypointRenderer.beaconBeamTop(-4096.0f, 320.0f, 320));
     }
 
     private static WaypointGroup groupWith(Waypoint... waypoints) {

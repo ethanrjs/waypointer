@@ -113,7 +113,7 @@ public final class DungeonRoomWaypointPlacement {
 
     private static DungeonRoom currentRoomFor(WaypointGroup group) {
         if (group == null || group.temp() || group.runtimeOnly()) return null;
-        if (DungeonRoomData.definition(group.zoneId()) == null) return null;
+        if (group.routeKind() != WaypointGroup.RouteKind.DUNGEON) return null;
 
         DungeonStateTracker tracker = WaypointerClient.dungeonTracker();
         DungeonRoom room = tracker == null ? null : tracker.currentRoom();

@@ -43,8 +43,13 @@ public final class RouteProgress {
             completed = total;
             currentOrdinal = total;
         } else if (group.loadMode() == WaypointGroup.LoadMode.STATIC) {
-            completed = countStaticReachedMainWaypoints(group);
-            currentOrdinal = Math.min(total, completed + 1);
+            if (group.hasStaticReachState()) {
+                completed = countStaticReachedMainWaypoints(group);
+                currentOrdinal = Math.min(total, completed + 1);
+            } else {
+                currentOrdinal = MathUtil.clamp(group.currentMainOrdinal(), 1, total);
+                completed = currentOrdinal - 1;
+            }
         } else {
             currentOrdinal = MathUtil.clamp(group.currentMainOrdinal(), 1, total);
             completed = currentOrdinal - 1;

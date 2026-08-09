@@ -4,22 +4,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Statistics and verbose text formatting for the performance stress test.
- *
- * <p>MC-free on purpose: the controller feeds raw frame times and utilization
- * samples in; this class owns percentile math and the report layout, so both
- * are unit-testable without a running client.
- */
 public final class PerfReport {
 
-    /** Machine/session context printed at the top of the report. */
     public record Environment(String modVersion, String minecraftVersion, String osName,
                               String javaVersion, int cpuThreads, long maxHeapMb,
                               String gpuVendor, String gpuBackend, String gpuInfo,
                               boolean vsync, int fpsCap, String note) {}
 
-    /** One scenario's aggregated numbers. Negative utilization = unavailable. */
     public record ScenarioResult(String label, String description, int frames, long elapsedNanos,
                                  double minFrameMs, double avgFrameMs, double maxFrameMs,
                                  double p99FrameMs, double avgProcessCpuPct, double maxProcessCpuPct,
@@ -30,7 +21,6 @@ public final class PerfReport {
             return avgFrameMs <= 0 ? 0 : 1000.0 / avgFrameMs;
         }
 
-        /** "1% low" style figure: the frame rate at the 99th-percentile frame time. */
         public double onePercentLowFps() {
             return p99FrameMs <= 0 ? 0 : 1000.0 / p99FrameMs;
         }
@@ -38,11 +28,6 @@ public final class PerfReport {
 
     private PerfReport() {}
 
-    /**
-     * Aggregate raw samples into a result. {@code utilSamples} entries are
-     * {@code {processCpuPct, systemCpuPct, gpuPct}} with negatives meaning the
-     * source was unavailable.
-     */
     public static ScenarioResult result(String label, String description,
                                         List<Long> frameNanos, List<double[]> utilSamples,
                                         long heapDeltaBytes) {
@@ -69,11 +54,6 @@ public final class PerfReport {
                 proc[0], proc[1], sys[0], gpu[0], gpu[1], heapDeltaBytes);
     }
 
-    /**
-     * Upper nearest-rank percentile: the boundary lands inside the slow tail,
-     * so with 100 samples the p99 IS the single worst frame -- which is what a
-     * "1% low" figure should report.
-     */
     static double percentile(List<Long> values, double fraction) {
         if (values.isEmpty()) return 0;
         List<Long> sorted = new ArrayList<>(values);
@@ -82,7 +62,6 @@ public final class PerfReport {
         return sorted.get(Math.max(0, Math.min(sorted.size() - 1, index)));
     }
 
-    /** {@code {average, max}} over the given component, ignoring negative (unavailable) samples. */
     private static double[] averageAndMax(List<double[]> samples, int component) {
         double sum = 0;
         double max = -1;

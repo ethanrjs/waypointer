@@ -24,5 +24,9 @@ class LocationTrackerTest {
                 LocationTracker.zoneAfterPrivateWorldCheck(Zone.fromId("hub"), true, true));
         assertNull(LocationTracker.zoneAfterPrivateWorldCheck(
                 Zone.PRIVATE_WORLD, false, false));
+        assertNull(LocationTracker.zoneAfterPrivateWorldCheck(
+                Zone.PRIVATE_WORLD, true, true));
+        assertNull(LocationTracker.zoneAfterPrivateWorldCheck(
+                Zone.fromId("hub"), false, true));
     }
 }

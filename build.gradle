@@ -1,6 +1,7 @@
 plugins {
 	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 	id 'maven-publish'
+	id 'jacoco'
 }
 
 def minecraftTargets = [
@@ -87,6 +88,7 @@ test {
 	['coleweight.file'].each { prop ->
 		if (System.getProperty(prop)) systemProperty prop, System.getProperty(prop)
 	}
+	finalizedBy tasks.named('jacocoTestReport')
 }
 
 processResources {
@@ -101,6 +103,66 @@ processResources {
 
 tasks.withType(JavaCompile).configureEach {
 	it.options.release = 25
+	it.options.compilerArgs += ['-Xlint:deprecation', '-Xlint:unchecked', '-Werror']
+}
+
+tasks.register('verifyDocumentationVersion') {
+	inputs.file('README.md')
+	inputs.file('API.md')
+	inputs.property('modVersion', project.mod_version)
+
+	doLast {
+		def expectedVersion = project.mod_version.toString()
+		def readme = file('README.md').getText('UTF-8')
+		def api = file('API.md').getText('UTF-8')
+		def expectedApiSnippets = [
+				"# Waypointer API ${expectedVersion}",
+				"maven.modrinth:waypointer:${expectedVersion}",
+				"libs/waypointer-${expectedVersion}-mc26.1.2.jar"
+		]
+
+		if (!readme.contains("`${expectedVersion}`.")) {
+			throw new GradleException("README.md does not identify Waypointer ${expectedVersion} as the current version")
+		}
+		expectedApiSnippets.each { snippet ->
+			if (!api.contains(snippet)) {
+				throw new GradleException("API.md is missing current-version text: ${snippet}")
+			}
+		}
+	}
+}
+
+jacocoTestReport {
+	dependsOn tasks.named('test')
+	sourceSets sourceSets.main, sourceSets.client
+	reports {
+		xml.required = true
+		html.required = true
+	}
+}
+
+jacocoTestCoverageVerification {
+	dependsOn tasks.named('test')
+	sourceSets sourceSets.main, sourceSets.client
+	violationRules {
+		rule {
+			limit {
+				counter = 'LINE'
+				value = 'COVEREDRATIO'
+				minimum = 0.50
+			}
+			limit {
+				counter = 'BRANCH'
+				value = 'COVEREDRATIO'
+				minimum = 0.43
+			}
+		}
+	}
+}
+
+tasks.named('check') {
+	dependsOn tasks.named('verifyDocumentationVersion')
+	dependsOn tasks.named('jacocoTestCoverageVerification')
 }
 
 java {

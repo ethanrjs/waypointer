@@ -3,22 +3,17 @@ package com.babbur.waypointer.render;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.babbur.waypointer.core.WaypointPaint;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
-/**
- * Tiny render utilities shared by {@link WaypointRenderer} and {@link TracerRenderer}.
- *
- * Built around 1.21+'s VertexConsumer + RenderType pipeline. Boxes and lines reuse
- * the vanilla {@code lines} render type so they batch with debug overlays and the
- * vertex format matches what the line shader expects (POSITION_COLOR_NORMAL).
- */
 public final class RenderHelpers {
 
-    // 1.21.11 added LineWidth to the lines vertex format, so every vertex must carry
-    // a line width or the buffer check throws "Missing elements in vertex: LineWidth".
-    // We use a chunky 3px so outlined boxes stay legible at distance and against
-    // busy biomes -- 1px (vanilla default) was disappearing against grass and reeds.
+    // Line vertices require an explicit width on Minecraft 1.21.11 and newer.
     private static final float DEFAULT_LINE_WIDTH = 3.0f;
+    /** Small world-space overlap removes butt-cap pinholes where box edges meet. */
+    static final float LINE_BOX_JOIN_OVERLAP = 1.0f / 512.0f;
     private static final int FULL_BRIGHT_LIGHT = 0x00F000F0;
+    private static final int HUD_LINE_CULL_MARGIN = 64;
 
     private RenderHelpers() {}
 
@@ -32,11 +27,6 @@ public final class RenderHelpers {
         return (alpha << 24) | (argb & 0x00FFFFFF);
     }
 
-    /**
-     * Append the 12 segments of an axis-aligned cube outline to {@code consumer}.
-     * Caller is responsible for calling {@code endBatch} afterwards (or letting
-     * the world flush handle it).
-     */
     public static void emitLineBox(VertexConsumer consumer, PoseStack ps,
                                    float x1, float y1, float z1,
                                    float x2, float y2, float z2,
@@ -52,38 +42,21 @@ public final class RenderHelpers {
         int a = (int) (alpha * 255f) & 0xFF;
         PoseStack.Pose pose = ps.last();
 
-        // bottom rectangle
-        seg(consumer, pose, x1, y1, z1, x2, y1, z1, r, g, b, a, 1, 0, 0, width);
-        seg(consumer, pose, x2, y1, z1, x2, y1, z2, r, g, b, a, 0, 0, 1, width);
-        seg(consumer, pose, x2, y1, z2, x1, y1, z2, r, g, b, a, -1, 0, 0, width);
-        seg(consumer, pose, x1, y1, z2, x1, y1, z1, r, g, b, a, 0, 0, -1, width);
-        // top rectangle
-        seg(consumer, pose, x1, y2, z1, x2, y2, z1, r, g, b, a, 1, 0, 0, width);
-        seg(consumer, pose, x2, y2, z1, x2, y2, z2, r, g, b, a, 0, 0, 1, width);
-        seg(consumer, pose, x2, y2, z2, x1, y2, z2, r, g, b, a, -1, 0, 0, width);
-        seg(consumer, pose, x1, y2, z2, x1, y2, z1, r, g, b, a, 0, 0, -1, width);
-        // verticals
-        seg(consumer, pose, x1, y1, z1, x1, y2, z1, r, g, b, a, 0, 1, 0, width);
-        seg(consumer, pose, x2, y1, z1, x2, y2, z1, r, g, b, a, 0, 1, 0, width);
-        seg(consumer, pose, x2, y1, z2, x2, y2, z2, r, g, b, a, 0, 1, 0, width);
-        seg(consumer, pose, x1, y1, z2, x1, y2, z2, r, g, b, a, 0, 1, 0, width);
+        float join = LINE_BOX_JOIN_OVERLAP;
+        seg(consumer, pose, x1 - join, y1, z1, x2 + join, y1, z1, r, g, b, a, 1, 0, 0, width);
+        seg(consumer, pose, x2, y1, z1 - join, x2, y1, z2 + join, r, g, b, a, 0, 0, 1, width);
+        seg(consumer, pose, x2 + join, y1, z2, x1 - join, y1, z2, r, g, b, a, -1, 0, 0, width);
+        seg(consumer, pose, x1, y1, z2 + join, x1, y1, z1 - join, r, g, b, a, 0, 0, -1, width);
+        seg(consumer, pose, x1 - join, y2, z1, x2 + join, y2, z1, r, g, b, a, 1, 0, 0, width);
+        seg(consumer, pose, x2, y2, z1 - join, x2, y2, z2 + join, r, g, b, a, 0, 0, 1, width);
+        seg(consumer, pose, x2 + join, y2, z2, x1 - join, y2, z2, r, g, b, a, -1, 0, 0, width);
+        seg(consumer, pose, x1, y2, z2 + join, x1, y2, z1 - join, r, g, b, a, 0, 0, -1, width);
+        seg(consumer, pose, x1, y1 - join, z1, x1, y2 + join, z1, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x2, y1 - join, z1, x2, y2 + join, z1, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x2, y1 - join, z2, x2, y2 + join, z2, r, g, b, a, 0, 1, 0, width);
+        seg(consumer, pose, x1, y1 - join, z2, x1, y2 + join, z2, r, g, b, a, 0, 1, 0, width);
     }
 
-    /**
-     * Append the 6 faces of an axis-aligned cube as QUADS to {@code consumer}.
-     *
-     * <p>Used by the filled / filled+outlined box styles. Expects a vertex
-     * consumer pulled from {@link WaypointerRenderPipelines#quadsThroughWalls()}
-     * (POSITION_COLOR vertex format, QUADS draw mode, translucent blending,
-     * no depth test, culling disabled). Each face is wound counter-clockwise;
-     * because culling is disabled on that pipeline the winding doesn't matter
-     * for visibility but the order below matches DEBUG_FILLED_BOX for future
-     * consistency.
-     *
-     * <p>Alpha is deliberately clamped to the config's waypoint box opacity by the
-     * caller -- passing 1.0 here would produce a solid cube that obscures the
-     * world behind it. Typical values are 0.15-0.35.
-     */
     public static void emitFilledBox(VertexConsumer consumer, PoseStack ps,
                                      float x1, float y1, float z1,
                                      float x2, float y2, float z2,
@@ -92,21 +65,14 @@ public final class RenderHelpers {
         int a = (int) (alpha * 255f) & 0xFF;
         PoseStack.Pose pose = ps.last();
 
-        // -Y face
         quad(consumer, pose, x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, r, g, b, a);
-        // +Y face
         quad(consumer, pose, x1, y2, z2, x2, y2, z2, x2, y2, z1, x1, y2, z1, r, g, b, a);
-        // -Z face
         quad(consumer, pose, x1, y1, z1, x1, y2, z1, x2, y2, z1, x2, y1, z1, r, g, b, a);
-        // +Z face
         quad(consumer, pose, x2, y1, z2, x2, y2, z2, x1, y2, z2, x1, y1, z2, r, g, b, a);
-        // -X face
         quad(consumer, pose, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, r, g, b, a);
-        // +X face
         quad(consumer, pose, x2, y1, z1, x2, y2, z1, x2, y2, z2, x2, y1, z2, r, g, b, a);
     }
 
-    /** Append one POSITION_COLOR quad. Used by simplified route-preview billboards. */
     public static void emitFilledQuad(VertexConsumer consumer, PoseStack ps,
                                       float x1, float y1, float z1,
                                       float x2, float y2, float z2,
@@ -119,7 +85,6 @@ public final class RenderHelpers {
                 x3, y3, z3, x4, y4, z4, r, g, b, a);
     }
 
-    /** Append a six-face textured box using WaypointPaint's 64x48 T-atlas. */
     public static void emitTexturedBox(VertexConsumer consumer, PoseStack ps,
                                        float x1, float y1, float z1,
                                        float x2, float y2, float z2,
@@ -131,7 +96,6 @@ public final class RenderHelpers {
                 WaypointPaintTextureCache.ATLAS_HEIGHT, 0);
     }
 
-    /** Textured box variant for an atlas whose 16px face cells have replicated padding. */
     public static void emitTexturedBox(VertexConsumer consumer, PoseStack ps,
                                        float x1, float y1, float z1,
                                        float x2, float y2, float z2,
@@ -177,12 +141,7 @@ public final class RenderHelpers {
         return faces;
     }
 
-    /**
-     * Append the four side faces of a narrow vertical column.
-     *
-     * <p>The beam intentionally has no top or bottom cap: capped columns read as
-     * solid pillars at long range, while open sides feel closer to a beacon guide.
-     */
+    /** Emits an uncapped column so distant beams do not look like solid pillars. */
     public static void emitVerticalColumn(VertexConsumer consumer, PoseStack ps,
                                           float centerX, float y1, float centerZ,
                                           float y2, float halfWidth,
@@ -202,7 +161,6 @@ public final class RenderHelpers {
         quad(consumer, pose, x1, y1, z2, x1, y2, z2, x1, y2, z1, x1, y1, z1, r, g, b, a);
     }
 
-    /** Append a single line segment. */
     public static void emitLine(VertexConsumer consumer, PoseStack ps,
                                 float x1, float y1, float z1,
                                 float x2, float y2, float z2,
@@ -210,7 +168,6 @@ public final class RenderHelpers {
         emitLine(consumer, ps, x1, y1, z1, x2, y2, z2, rgb, alpha, DEFAULT_LINE_WIDTH);
     }
 
-    /** Append a single line segment using a caller-controlled pixel width. */
     public static void emitLine(VertexConsumer consumer, PoseStack ps,
                                 float x1, float y1, float z1,
                                 float x2, float y2, float z2,
@@ -223,6 +180,86 @@ public final class RenderHelpers {
         else { nx = 0; ny = 1; nz = 0; }
         PoseStack.Pose pose = ps.last();
         seg(consumer, pose, x1, y1, z1, x2, y2, z2, r, g, b, a, nx, ny, nz, width);
+    }
+
+    static void drawScreenLine(GuiGraphicsExtractor graphics, double x1, double y1,
+                               double x2, double y2, int argb, double thickness) {
+        double guiScale = Minecraft.getInstance().getWindow().getGuiScale();
+        double scaledThickness = Math.max(1.0 / guiScale,
+                crispHudLineThickness(thickness) / guiScale);
+        double margin = HUD_LINE_CULL_MARGIN / guiScale;
+        double minX = -margin;
+        double minY = -margin;
+        double maxX = graphics.guiWidth() + margin;
+        double maxY = graphics.guiHeight() + margin;
+        int out1 = outCode(x1, y1, minX, minY, maxX, maxY);
+        int out2 = outCode(x2, y2, minX, minY, maxX, maxY);
+        while ((out1 | out2) != 0) {
+            if ((out1 & out2) != 0) return;
+
+            int outside = out1 != 0 ? out1 : out2;
+            double x;
+            double y;
+            if ((outside & 8) != 0) {
+                x = x1 + (x2 - x1) * (maxY - y1) / (y2 - y1);
+                y = maxY;
+            } else if ((outside & 4) != 0) {
+                x = x1 + (x2 - x1) * (minY - y1) / (y2 - y1);
+                y = minY;
+            } else if ((outside & 2) != 0) {
+                y = y1 + (y2 - y1) * (maxX - x1) / (x2 - x1);
+                x = maxX;
+            } else {
+                y = y1 + (y2 - y1) * (minX - x1) / (x2 - x1);
+                x = minX;
+            }
+
+            if (outside == out1) {
+                x1 = x;
+                y1 = y;
+                out1 = outCode(x1, y1, minX, minY, maxX, maxY);
+            } else {
+                x2 = x;
+                y2 = y;
+                out2 = outCode(x2, y2, minX, minY, maxX, maxY);
+            }
+        }
+
+        double dx = x2 - x1;
+        double dy = y2 - y1;
+        if (Math.sqrt(dx * dx + dy * dy) < 0.5) return;
+
+        int samples = screenLineSampleCount(dx, dy);
+        int radius = Math.max(0, (int) Math.floor(scaledThickness * 0.5));
+        int lastX = Integer.MIN_VALUE;
+        int lastY = Integer.MIN_VALUE;
+        for (int i = 0; i <= samples; i++) {
+            double t = i / (double) samples;
+            int x = (int) Math.round(x1 + dx * t);
+            int y = (int) Math.round(y1 + dy * t);
+            if (x == lastX && y == lastY) continue;
+            graphics.fill(x - radius, y - radius, x + radius + 1, y + radius + 1, argb);
+            lastX = x;
+            lastY = y;
+        }
+    }
+
+    static double crispHudLineThickness(double thickness) {
+        return Math.max(1.0, Math.floor(thickness));
+    }
+
+    static int screenLineSampleCount(double dx, double dy) {
+        return Math.max(1, (int) Math.ceil(Math.max(Math.abs(dx), Math.abs(dy))));
+    }
+
+    private static int outCode(double x, double y, double minX, double minY,
+                               double maxX, double maxY) {
+        int code = 0;
+        if (x < minX) code |= 1;
+        else if (x > maxX) code |= 2;
+        if (y < minY) code |= 4;
+        else if (y > maxY) code |= 8;
+        return code;
     }
 
     private static void quad(VertexConsumer c, PoseStack.Pose pose,

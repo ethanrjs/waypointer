@@ -1,6 +1,5 @@
 package com.babbur.waypointer.screen.preview;
 
-/** Pause-safe 20-second route-preview orbit. */
 public final class RoutePreviewOrbit {
 
     public static final double START_YAW_DEGREES = 45.0;

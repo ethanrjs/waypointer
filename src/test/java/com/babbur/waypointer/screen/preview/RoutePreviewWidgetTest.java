@@ -30,8 +30,6 @@ class RoutePreviewWidgetTest {
 
     @Test
     void headerGivesBackTheArrowReserveWhenThereIsOnlyOneRoute() {
-        // 26 per side while the screen's < > buttons are up -- the same reserve
-        // the old hard-coded 52 assumed, but now conditional.
         assertEquals(240 - 52, RoutePreviewWidget.headerTextWidth(240, true));
         assertEquals(240 - 8, RoutePreviewWidget.headerTextWidth(240, false));
         assertEquals(0, RoutePreviewWidget.headerTextWidth(20, true));
@@ -42,6 +40,17 @@ class RoutePreviewWidgetTest {
         assertEquals("(3 waypoints)", RoutePreviewWidget.headerDetailText(3, ""));
         assertEquals("(3 waypoints)", RoutePreviewWidget.headerDetailText(3, null));
         assertEquals("(1 waypoint) · 2 of 5", RoutePreviewWidget.headerDetailText(1, "2 of 5"));
+    }
+
+    @Test
+    void settingsPreviewUsesACompactTitleOnlyHeader() {
+        RoutePreviewWidget widget = new RoutePreviewWidget(
+                0, 0, 240, 112, RoutePreviewScene.empty(), "",
+                new RoutePreviewOrbit(), new RoutePreviewZoom());
+
+        assertEquals(RoutePreviewWidget.HEADER_HEIGHT, widget.headerHeight());
+        widget.setHeaderDetailVisible(false);
+        assertEquals(RoutePreviewWidget.SINGLE_LINE_HEADER_HEIGHT, widget.headerHeight());
     }
 
     @Test
@@ -90,6 +99,14 @@ class RoutePreviewWidgetTest {
 
         widget.setScene(RoutePreviewScene.empty(), "");
         assertEquals(RoutePreviewZoom.DEFAULT_FACTOR, zoom.factor(), 0.0);
+    }
+
+    @Test
+    void orbitPauseUsesThePreviousHoverSoPickingRunsOnlyOncePerFrame() {
+        assertTrue(RoutePreviewWidget.shouldPauseOrbit(true, 2, true, true));
+        assertFalse(RoutePreviewWidget.shouldPauseOrbit(true, -1, true, true));
+        assertTrue(RoutePreviewWidget.shouldPauseOrbit(false, -1, false, true));
+        assertTrue(RoutePreviewWidget.shouldPauseOrbit(false, -1, true, false));
     }
 
     private static RoutePreviewScene.Marker marker(String name, String displayIndex) {

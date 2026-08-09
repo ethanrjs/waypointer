@@ -1,8 +1,8 @@
 package com.babbur.waypointer.screen.preview;
 
+import com.babbur.waypointer.Waypointer;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 
-/** One access-widened GUI submission boundary; no per-frame reflection. */
 public final class RoutePreviewGuiBridge {
 
     private RoutePreviewGuiBridge() {}
@@ -11,7 +11,9 @@ public final class RoutePreviewGuiBridge {
         try {
             graphics.guiRenderState.addPicturesInPictureState(state);
         } catch (RuntimeException allocationOrSubmissionFailure) {
-            RoutePreviewAvailability.markUnavailable();
+            state.availability().markUnavailable();
+            Waypointer.LOGGER.error("Could not submit route preview GUI state",
+                    allocationOrSubmissionFailure);
         }
     }
 }

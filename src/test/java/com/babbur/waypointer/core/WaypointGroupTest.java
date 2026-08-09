@@ -233,112 +233,6 @@ class WaypointGroupTest {
     }
 
     @Test
-    void timedRouteRecordsElapsedBestAndOnlyOmittedMainWaypoints() {
-        WaypointGroup g = route();
-        g.toggleSubwaypoint(2);
-
-        g.advancePastTimed(0, true, 1_000L);
-        g.advancePastTimed(3, true, 574_000L);
-
-        WaypointGroup.RouteCompletion completion = g.consumeRouteCompletion();
-        assertNotNull(completion);
-        assertEquals(573_000L, completion.elapsedMillis());
-        assertTrue(completion.newBest());
-        assertEquals(1, completion.skippedWaypoints(),
-                "the reached target and subwaypoints are not skips");
-        assertTrue(completion.skippingEnabled());
-        assertEquals(573_000L, g.bestTimeMillis());
-    }
-
-    @Test
-    void timedRouteKeepsFasterBestAndCanRemoveOnlyTheExpectedRecord() {
-        WaypointGroup g = route();
-        g.setBestTimeMillis(500_000L);
-
-        g.advancePastTimed(0, false, 1_000L);
-        g.advancePastTimed(3, false, 601_000L);
-
-        WaypointGroup.RouteCompletion completion = g.consumeRouteCompletion();
-        assertNotNull(completion);
-        assertFalse(completion.newBest());
-        assertFalse(completion.skippingEnabled());
-        assertEquals(500_000L, g.bestTimeMillis());
-        assertFalse(g.removeBestTimeMillis(600_000L), "a stale removal link must do nothing");
-        assertTrue(g.removeBestTimeMillis(500_000L));
-        assertEquals(-1L, g.bestTimeMillis());
-    }
-
-    @Test
-    void timedRouteDoesNotRecordAContinuationLoadedMidRoute() {
-        WaypointGroup g = route();
-        g.setCurrentIndex(2);
-
-        g.advancePastTimed(3, true, 10_000L);
-
-        assertNull(g.consumeRouteCompletion());
-        assertEquals(-1L, g.bestTimeMillis());
-    }
-
-    @Test
-    void completionSurvivesImmediateLoopRestartUntilFeedbackConsumesIt() {
-        WaypointGroup g = route();
-        g.advancePastTimed(0, true, 1_000L);
-        g.advancePastTimed(3, true, 2_000L);
-
-        g.restartIfRouteCompleted(true);
-
-        assertEquals(0, g.currentIndex());
-        assertNotNull(g.consumeRouteCompletion());
-    }
-
-    @Test
-    void manualSkipCountsAndKeepsSkipFeedbackEnabledForTheWholeRun() {
-        WaypointGroup g = route();
-
-        g.skipCurrentTimed(1_000L);
-        g.advancePastTimed(3, false, 574_000L);
-
-        WaypointGroup.RouteCompletion completion = g.consumeRouteCompletion();
-        assertNotNull(completion);
-        assertEquals(1, completion.skippedWaypoints());
-        assertTrue(completion.skippingEnabled(),
-                "disabling auto-skip before the finish must not hide an earlier manual skip");
-    }
-
-    @Test
-    void runtimeAndStaticGroupsDoNotCreateUnpersistableRecords() {
-        WaypointGroup runtime = route();
-        runtime.setRuntimeOnly(true);
-        runtime.advancePastTimed(0, true, 1_000L);
-        runtime.advancePastTimed(3, true, 2_000L);
-        assertNull(runtime.consumeRouteCompletion());
-        assertEquals(-1L, runtime.bestTimeMillis());
-
-        WaypointGroup mapOverlay = route();
-        mapOverlay.setLoadMode(WaypointGroup.LoadMode.STATIC);
-        mapOverlay.advancePastTimed(0, true, 1_000L);
-        mapOverlay.advancePastTimed(3, true, 2_000L);
-        assertNull(mapOverlay.consumeRouteCompletion());
-        assertEquals(-1L, mapOverlay.bestTimeMillis());
-    }
-
-    @Test
-    void changingZonesInvalidatesAnInProgressTimer() {
-        ActiveGroupManager manager = new ActiveGroupManager();
-        manager.onZoneChanged(new Zone("dungeon_f7", "Catacombs F7"));
-        WaypointGroup g = route();
-        manager.add(g);
-        g.advancePastTimed(0, true, 1_000L);
-
-        manager.onZoneChanged(new Zone("hub", "Hub"));
-        manager.onZoneChanged(new Zone("dungeon_f7", "Catacombs F7"));
-        g.advancePastTimed(3, true, 574_000L);
-
-        assertNull(g.consumeRouteCompletion());
-        assertEquals(-1L, g.bestTimeMillis());
-    }
-
-    @Test
     void effectiveRadius_prefersWaypointOverrideOverGroupDefault() {
         WaypointGroup g = route();
         g.setDefaultRadius(3.0);
@@ -458,6 +352,7 @@ class WaypointGroupTest {
     @Test
     void forEachVisibleIndex_dungeonRoomSequence_showsAllRemainingWaypoints() {
         WaypointGroup group = WaypointGroup.create("Dungeon Room", "altar");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         group.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         group.add(Waypoint.at(0, 70, 0));
         group.add(Waypoint.at(1, 70, 0));
@@ -574,6 +469,7 @@ class WaypointGroupTest {
     @Test
     void forEachVisibleIndex_keepsFlaggedDungeonSubwaypointUntilNextMainIsReached() {
         WaypointGroup g = route();
+        g.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
         g.toggleSubwaypoint(1);
         g.toggleSubwaypoint(2);
@@ -920,6 +816,7 @@ class WaypointGroupTest {
     @Test
     void exportSnapshotCarriesEverythingTheExportersRead() {
         WaypointGroup group = WaypointGroup.create("Shared route", "dungeon_f7");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         group.setLoadMode(WaypointGroup.LoadMode.STATIC);
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         group.setDefaultRadius(4.5);
@@ -936,6 +833,7 @@ class WaypointGroupTest {
         assertEquals(group.name(), snapshot.name());
         assertEquals(group.zoneId(), snapshot.zoneId());
         assertEquals(group.loadMode(), snapshot.loadMode());
+        assertEquals(group.routeKind(), snapshot.routeKind());
         assertEquals(group.gradientMode(), snapshot.gradientMode());
         assertEquals(group.defaultRadius(), snapshot.defaultRadius());
         assertEquals(group.skipAheadEnabled(), snapshot.skipAheadEnabled());
@@ -943,6 +841,17 @@ class WaypointGroupTest {
         assertEquals(group.gradientStartColor(), snapshot.gradientStartColor());
         assertEquals(group.gradientEndColor(), snapshot.gradientEndColor());
         assertEquals(group.waypoints(), snapshot.waypoints());
+    }
+
+    @Test
+    void routeKindDefaultsToRegularAndCanBeSetExplicitly() {
+        WaypointGroup group = WaypointGroup.create("Route", "admin");
+
+        assertEquals(WaypointGroup.RouteKind.REGULAR, group.routeKind());
+
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+
+        assertEquals(WaypointGroup.RouteKind.DUNGEON, group.routeKind());
     }
 
     @Test

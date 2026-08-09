@@ -91,6 +91,27 @@ class RoutePreviewProjectionTest {
     }
 
     @Test
+    void fixedAppearanceCameraPreservesMarkerScaleDifferences() {
+        WaypointGroup group = WaypointGroup.create("One", "hub");
+        group.add(Waypoint.at(0, 0, 0));
+        WaypointerConfig normalConfig = new WaypointerConfig();
+        WaypointerConfig largeConfig = new WaypointerConfig();
+        largeConfig.setWaypointMarkerScale(3.0);
+        RoutePreviewScene normal = RoutePreviewScene.build(group, normalConfig, null);
+        RoutePreviewScene large = RoutePreviewScene.build(group, largeConfig, null);
+
+        double pixelsPerBlock = 18.0;
+        double normalScale = Math.min(pixelsPerBlock,
+                RoutePreviewProjection.viewportSafeScale(normal, 300, 118));
+        double largeScale = Math.min(pixelsPerBlock,
+                RoutePreviewProjection.viewportSafeScale(large, 300, 118));
+
+        assertEquals(normalScale, largeScale, 1.0e-9);
+        assertEquals(normal.markers().getFirst().box().width() * 3.0 * normalScale,
+                large.markers().getFirst().box().width() * largeScale, 1.0e-9);
+    }
+
+    @Test
     void singleSmallWaypointUsesTheSameFortyEightPixelCap() {
         WaypointGroup group = WaypointGroup.create("One small", "hub");
         group.add(new Waypoint(0, 0, 0, "tiny", 0xFFFFFF,

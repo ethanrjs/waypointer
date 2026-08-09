@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen.preview;
 
+import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -16,7 +17,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Immutable, route-local data consumed by the export screen's 3D preview. */
 public final class RoutePreviewScene {
 
     public static final int SIMPLIFIED_THRESHOLD = 1_000;
@@ -29,6 +29,17 @@ public final class RoutePreviewScene {
         public double width() { return maxX - minX; }
         public double height() { return maxY - minY; }
         public double depth() { return maxZ - minZ; }
+        public Box scaled(double scale) {
+            double safeScale = Double.isFinite(scale) ? Math.clamp(scale, 0.25, 3.0) : 1.0;
+            double cx = centerX(), cy = centerY(), cz = centerZ();
+            return new Box(
+                    cx + (minX - cx) * safeScale,
+                    cy + (minY - cy) * safeScale,
+                    cz + (minZ - cz) * safeScale,
+                    cx + (maxX - cx) * safeScale,
+                    cy + (maxY - cy) * safeScale,
+                    cz + (maxZ - cz) * safeScale);
+        }
     }
 
     public record Marker(int sourceIndex, String name, String displayIndex,
@@ -55,7 +66,10 @@ public final class RoutePreviewScene {
     private final boolean paintUnavailable;
     private final WaypointerConfig.BoxStyle boxStyle;
     private final float opacity;
+    private final float outlineOpacity;
     private final float outlineWidth;
+    private final boolean outlineMatchesWaypointColor;
+    private final int outlineColor;
     private final int routeLineColor;
     private final double centerX;
     private final double centerY;
@@ -66,7 +80,9 @@ public final class RoutePreviewScene {
                               WaypointPaint paint, RoutePreviewPaintResource.Entry paintResource,
                               boolean paintUnavailable,
                               WaypointerConfig.BoxStyle boxStyle,
-                              float opacity, float outlineWidth, int routeLineColor,
+                              float opacity, float outlineOpacity, float outlineWidth,
+                              boolean outlineMatchesWaypointColor, int outlineColor,
+                              int routeLineColor,
                               double centerX, double centerY, double centerZ) {
         this.routeId = routeId;
         this.routeName = routeName;
@@ -78,7 +94,10 @@ public final class RoutePreviewScene {
         this.paintUnavailable = paintUnavailable;
         this.boxStyle = boxStyle;
         this.opacity = opacity;
+        this.outlineOpacity = outlineOpacity;
         this.outlineWidth = outlineWidth;
+        this.outlineMatchesWaypointColor = outlineMatchesWaypointColor;
+        this.outlineColor = outlineColor;
         this.routeLineColor = routeLineColor;
         this.centerX = centerX;
         this.centerY = centerY;
@@ -99,8 +118,8 @@ public final class RoutePreviewScene {
 
         for (Waypoint waypoint : group.waypoints()) {
             ClientLevel shapeLevel = loadedLevel;
-            if (shapeLevel != null && !shapeLevel.hasChunkAt(
-                    new net.minecraft.core.BlockPos(waypoint.x(), waypoint.y(), waypoint.z()))) {
+            if (shapeLevel != null
+                    && !shapeLevel.hasChunk(waypoint.x() >> 4, waypoint.z() >> 4)) {
                 shapeLevel = null;
             }
             AABB box = WaypointRenderer.waypointBoxBounds(shapeLevel, waypoint);
@@ -116,7 +135,7 @@ public final class RoutePreviewScene {
         double pivotX = worldBoxes.isEmpty() ? 0.0 : (minX + maxX) * 0.5;
         double pivotY = worldBoxes.isEmpty() ? 0.0 : (minY + maxY) * 0.5;
         double pivotZ = worldBoxes.isEmpty() ? 0.0 : (minZ + maxZ) * 0.5;
-        boolean roomLocal = DungeonRoomData.definition(group.zoneId()) != null;
+        boolean roomLocal = group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
 
         Map<PositionKey, Integer> duplicateCounts = new HashMap<>();
         for (Waypoint waypoint : group.waypoints()) {
@@ -131,7 +150,8 @@ public final class RoutePreviewScene {
             AABB worldBox = worldBoxes.get(i);
             Box localBox = new Box(
                     worldBox.minX - pivotX, worldBox.minY - pivotY, worldBox.minZ - pivotZ,
-                    worldBox.maxX - pivotX, worldBox.maxY - pivotY, worldBox.maxZ - pivotZ);
+                    worldBox.maxX - pivotX, worldBox.maxY - pivotY, worldBox.maxZ - pivotZ)
+                    .scaled(config.waypointMarkerScale());
             boolean small = waypoint.isSubwaypoint()
                     && waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT);
             PositionKey key = new PositionKey(
@@ -166,34 +186,49 @@ public final class RoutePreviewScene {
             previousMain = waypoint;
         }
 
-        WaypointPaint seasonalPaint = HappySnowmanSession.facePaint();
-        WaypointPaint paint = seasonalPaint != null
-                ? seasonalPaint
-                : group.paintEnabled()
-                        ? (group.paint() != null ? group.paint() : config.waypointPainterDefaultPaint())
-                        : null;
-        boolean paintUnavailable = false;
-        RoutePreviewPaintResource.Entry paintResource = null;
-        try {
-            paintResource = RoutePreviewPaintResource.activate(group.id(), paint);
-        } catch (RuntimeException decodeOrUploadFailure) {
-            if (paint != null) {
-                paint = null;
-                paintUnavailable = true;
-            }
-        }
-        float opacity = (float) Math.max(0.35, config.beaconOpacity());
+        WaypointPaint paint = effectivePaint(group, config);
+        float opacity = (float) Math.clamp(config.beaconOpacity(), 0.0, 1.0);
         return new RoutePreviewScene(
                 group.id(), routeName(group), roomLocal, markers, connectors,
-                paint, paintResource, paintUnavailable, config.boxStyle(), opacity,
-                (float) config.waypointOutlineThickness(), config.routeLineColor(),
+                paint, null, false, config.boxStyle(), opacity,
+                (float) config.waypointOutlineOpacity(),
+                (float) config.waypointOutlineThickness(),
+                config.matchWaypointOutlineToWaypointColor(), config.waypointOutlineColor(),
+                config.routeLineColor(),
                 pivotX, pivotY, pivotZ);
     }
 
     public static RoutePreviewScene empty() {
         return new RoutePreviewScene("", "", false, List.of(), List.of(), null, null, false,
-                WaypointerConfig.BoxStyle.OUTLINED, 0.35f, 1.0f, 0x00FF00,
+                WaypointerConfig.BoxStyle.OUTLINED, 0.35f, 1.0f, 1.0f,
+                true, 0x00FF00, 0x00FF00,
                 0.0, 0.0, 0.0);
+    }
+
+    RoutePreviewScene preparePaintResource(RoutePreviewPaintResource resources) {
+        if (resources == null) return this;
+        if (paint == null) {
+            resources.activate(routeId, null);
+            return this;
+        }
+        try {
+            RoutePreviewPaintResource.Entry resource = resources.activate(routeId, paint);
+            return copyWithPaint(paint, resource, false);
+        } catch (RuntimeException decodeOrUploadFailure) {
+            Waypointer.LOGGER.error("Could not prepare route preview paint for {}",
+                    routeId, decodeOrUploadFailure);
+            return copyWithPaint(null, null, true);
+        }
+    }
+
+    private RoutePreviewScene copyWithPaint(WaypointPaint nextPaint,
+                                            RoutePreviewPaintResource.Entry nextResource,
+                                            boolean unavailable) {
+        return new RoutePreviewScene(
+                routeId, routeName, roomLocal, markers, connectors,
+                nextPaint, nextResource, unavailable, boxStyle,
+                opacity, outlineOpacity, outlineWidth, outlineMatchesWaypointColor,
+                outlineColor, routeLineColor, centerX, centerY, centerZ);
     }
 
     private static String routeName(WaypointGroup group) {
@@ -227,6 +262,16 @@ public final class RoutePreviewScene {
         return BigDecimal.valueOf(value).stripTrailingZeros().toPlainString();
     }
 
+    static WaypointPaint effectivePaint(WaypointGroup group, WaypointerConfig config) {
+        if (group == null || config == null
+                || config.boxStyle() != WaypointerConfig.BoxStyle.PAINT
+                || !group.paintEnabled()) return null;
+        WaypointPaint seasonalPaint = HappySnowmanSession.facePaint();
+        return seasonalPaint != null
+                ? seasonalPaint
+                : group.paint() != null ? group.paint() : config.waypointPainterDefaultPaint();
+    }
+
     public String routeId() { return routeId; }
     public String routeName() { return routeName; }
     public boolean roomLocal() { return roomLocal; }
@@ -237,7 +282,10 @@ public final class RoutePreviewScene {
     public boolean paintUnavailable() { return paintUnavailable; }
     public WaypointerConfig.BoxStyle boxStyle() { return boxStyle; }
     public float opacity() { return opacity; }
+    public float outlineOpacity() { return outlineOpacity; }
     public float outlineWidth() { return outlineWidth; }
+    public boolean outlineMatchesWaypointColor() { return outlineMatchesWaypointColor; }
+    public int outlineColor() { return outlineColor; }
     public int routeLineColor() { return routeLineColor; }
     public double centerX() { return centerX; }
     public double centerY() { return centerY; }

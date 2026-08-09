@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -181,6 +182,8 @@ class WaypointerConfigTest {
     @Test
     void freshConfigDefaultsToFilledOutlinedBoxes() {
         assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED, new WaypointerConfig().boxStyle());
+        assertEquals(3, WaypointerConfig.BoxStyle.PAINT.ordinal(),
+                "Paint must stay appended because config codes serialize enum ordinals");
     }
 
     @Test
@@ -194,8 +197,6 @@ class WaypointerConfigTest {
 
     @Test
     void savedOutlinedBoxStyleSurvivesTheDefaultChange() {
-        // Existing installs wrote boxStyle explicitly, so flipping the default
-        // must not silently restyle their waypoints on upgrade.
         WaypointerConfig config = WaypointerConfig.fromJson(
                 "{\"configSchemaVersion\":5,\"boxStyle\":\"OUTLINED\"}");
 
@@ -219,8 +220,6 @@ class WaypointerConfigTest {
         assertFalse(config.beaconBeamExtendsBelowWaypoint());
         assertTrue(config.showWaypointDistances());
         assertTrue(config.showLabelTextShadow());
-        // Labels are the most expensive render feature (see the perf stress
-        // test), so the default budgets them to the 32 nearest.
         assertEquals(32, config.maxWaypointLabels());
         assertEquals(0.0, config.maxStaticWaypointRenderDistance());
     }
@@ -435,8 +434,22 @@ class WaypointerConfigTest {
         WaypointerConfig config = new WaypointerConfig();
 
         config.setTracerColor(0xAA112233);
+        config.setWaypointOutlineColor(0xBB445566);
 
         assertEquals(0x112233, config.tracerColor());
+        assertEquals(0x445566, config.waypointOutlineColor());
+    }
+
+    @Test
+    void outlineColorPreservesWaypointColorsByDefaultAndSupportsAFlatOverride() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        assertTrue(config.matchWaypointOutlineToWaypointColor());
+        assertEquals(0x123456, config.resolvedWaypointOutlineColor(0x123456));
+
+        config.setMatchWaypointOutlineToWaypointColor(false);
+        config.setWaypointOutlineColor(0xABCDEF);
+        assertEquals(0xABCDEF, config.resolvedWaypointOutlineColor(0x123456));
     }
 
     @Test
@@ -472,8 +485,21 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void opacitySettingsRejectNonFiniteValues() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setTracerOpacity(0.7);
+        config.setBeaconOpacity(0.6);
+
+        config.setTracerOpacity(Double.NaN);
+        config.setBeaconOpacity(Double.POSITIVE_INFINITY);
+
+        assertEquals(0.7, config.tracerOpacity());
+        assertEquals(0.6, config.beaconOpacity());
+    }
+
+    @Test
     void waypointOpacityDefaultsToHalfWithoutOverridingSavedValues() {
-        assertEquals(0.5, WaypointerConfig.fromJson("{}").beaconOpacity());
+        assertEquals(0.33, WaypointerConfig.fromJson("{}").beaconOpacity());
         assertEquals(0.8, WaypointerConfig.fromJson("{\"beaconOpacity\":0.8}").beaconOpacity());
     }
 
@@ -490,7 +516,6 @@ class WaypointerConfigTest {
         assertFalse(config.showDungeonEntryPathToFirstWaypoint());
         assertFalse(dungeonConfig.enabled());
         assertFalse(dungeonConfig.hideCompletedRooms());
-        assertFalse(dungeonConfig.autoCompleteRoomsOnGreenCheckmark());
     }
 
     @Test
@@ -535,6 +560,26 @@ class WaypointerConfigTest {
 
         config.setWaypointOutlineThickness(Double.POSITIVE_INFINITY);
         assertEquals(4.0, config.waypointOutlineThickness());
+    }
+
+    @Test
+    void waypointAppearanceSettingsClampAndRejectNonFiniteValues() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        config.setWaypointMarkerScale(2.25);
+        config.setWaypointOutlineOpacity(0.4);
+        assertEquals(2.25, config.waypointMarkerScale());
+        assertEquals(0.4, config.waypointOutlineOpacity());
+
+        config.setWaypointMarkerScale(99.0);
+        config.setWaypointOutlineOpacity(-1.0);
+        assertEquals(3.0, config.waypointMarkerScale());
+        assertEquals(0.0, config.waypointOutlineOpacity());
+
+        config.setWaypointMarkerScale(Double.NaN);
+        config.setWaypointOutlineOpacity(Double.POSITIVE_INFINITY);
+        assertEquals(3.0, config.waypointMarkerScale());
+        assertEquals(0.0, config.waypointOutlineOpacity());
     }
 
     @Test
@@ -676,6 +721,10 @@ class WaypointerConfigTest {
         config.setRestartRouteWhenComplete(false);
         config.setDefaultWaypointColor(0x123456);
         config.setTracerColor(0xABCDEF);
+        config.setWaypointMarkerScale(1.75);
+        config.setWaypointOutlineOpacity(0.35);
+        config.setMatchWaypointOutlineToWaypointColor(false);
+        config.setWaypointOutlineColor(0x654321);
         config.setMatchTracerToWaypointColor(false);
         config.setLabelScale(2.25);
         config.setHideWaypointLabelsNearPlayer(true);
@@ -692,7 +741,7 @@ class WaypointerConfigTest {
         config.setShowEditModeSubtitle(false);
         config.setShowContributorBadges(false);
         config.setShowLabelTextShadow(false);
-        config.setBoxStyle(WaypointerConfig.BoxStyle.FILLED_OUTLINED);
+        config.setBoxStyle(WaypointerConfig.BoxStyle.PAINT);
         config.addChatCoordSenderBlacklist("Babbur");
         config.setImportedRouteColorMode(WaypointGroup.GradientMode.AUTO);
         config.setImportedRouteDefaultColor(0x445566);
@@ -708,6 +757,10 @@ class WaypointerConfigTest {
         assertFalse(decoded.restartRouteWhenComplete());
         assertEquals(0x123456, decoded.defaultWaypointColor());
         assertEquals(0xABCDEF, decoded.tracerColor());
+        assertEquals(1.75, decoded.waypointMarkerScale());
+        assertEquals(0.35, decoded.waypointOutlineOpacity());
+        assertFalse(decoded.matchWaypointOutlineToWaypointColor());
+        assertEquals(0x654321, decoded.waypointOutlineColor());
         assertFalse(decoded.matchTracerToWaypointColor());
         assertEquals(2.25, decoded.labelScale());
         assertTrue(decoded.hideWaypointLabelsNearPlayer());
@@ -724,7 +777,7 @@ class WaypointerConfigTest {
         assertFalse(decoded.showEditModeSubtitle());
         assertFalse(decoded.showContributorBadges());
         assertFalse(decoded.showLabelTextShadow());
-        assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED, decoded.boxStyle());
+        assertEquals(WaypointerConfig.BoxStyle.PAINT, decoded.boxStyle());
         assertEquals(List.of("Babbur"), decoded.chatCoordSenderBlacklist());
         assertEquals(WaypointGroup.GradientMode.AUTO, decoded.importedRouteColorMode());
         assertEquals(0x445566, decoded.importedRouteDefaultColor());
@@ -753,11 +806,27 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void configCodecUsesVersionThreeAndStillReadsVersionTwo() throws IOException {
+        assertEquals(3, WaypointerConfigCodec.VERSION);
+
+        ByteArrayOutputStream raw = new ByteArrayOutputStream();
+        try (DataOutputStream out = new DataOutputStream(raw)) {
+            out.writeByte(2);
+            out.writeByte(72);
+            out.writeDouble(1.75);
+            out.writeByte(0);
+        }
+        String versionTwoCode = configCodeForRawPayload(raw.toByteArray());
+
+        assertEquals(1.75, WaypointerConfigCodec.decode(versionTwoCode).waypointMarkerScale());
+    }
+
+    @Test
     void legacyConfigCodeWithoutOpacityKeepsHistoricalDefault() throws IOException {
         String legacyCode = configCodeForRawPayload((byte) 1, (byte) 0);
 
         assertEquals(0.8, WaypointerConfigCodec.decode(legacyCode).beaconOpacity());
-        assertEquals(0.5, WaypointerConfigCodec.decode(
+        assertEquals(0.33, WaypointerConfigCodec.decode(
                 WaypointerConfigCodec.encode(new WaypointerConfig())).beaconOpacity());
     }
 
@@ -783,16 +852,56 @@ class WaypointerConfigTest {
         live.setUseEtherwarpHeight(true);
         live.setImportedRouteColorMode(WaypointGroup.GradientMode.AUTO);
         live.addChatCoordSenderBlacklist("Babbur");
+        live.setWaypointMarkerScale(2.5);
+        live.setWaypointOutlineOpacity(0.25);
+        live.setMatchWaypointOutlineToWaypointColor(false);
+        live.setWaypointOutlineColor(0x123456);
 
         WaypointerConfig replacement = WaypointerConfigCodec.decode(
                 WaypointerConfigCodec.encode(new WaypointerConfig()));
-        live.replaceWith(replacement);
+        live.replaceShareableSettingsWith(replacement);
 
         assertEquals(Waypoint.DEFAULT_COLOR, live.defaultWaypointColor());
         assertFalse(live.showRouteLines());
         assertFalse(live.useEtherwarpHeight());
         assertEquals(WaypointGroup.GradientMode.STATIC, live.importedRouteColorMode());
         assertTrue(live.chatCoordSenderBlacklist().isEmpty());
+        assertEquals(1.0, live.waypointMarkerScale());
+        assertEquals(1.0, live.waypointOutlineOpacity());
+        assertTrue(live.matchWaypointOutlineToWaypointColor());
+        assertEquals(Waypoint.DEFAULT_COLOR, live.waypointOutlineColor());
+    }
+
+    @Test
+    void shareableConfigReplacementPreservesLocalPainterState() {
+        WaypointerConfig live = new WaypointerConfig();
+        int[] palette = WaypointPaint.defaultPalette(0x123456);
+        byte[] pixels = new byte[WaypointPaint.PIXEL_COUNT];
+        pixels[0] = 4;
+        WaypointPaint paint = new WaypointPaint(palette, pixels);
+        live.setWaypointPainterPalette(palette);
+        live.setWaypointPainterDefaultPaint(paint);
+
+        live.replaceShareableSettingsWith(new WaypointerConfig());
+
+        assertArrayEquals(palette, live.waypointPainterPalette());
+        assertEquals(paint, live.waypointPainterDefaultPaint());
+    }
+
+    @Test
+    void resetToDefaultsRestoresWaypointAppearanceSettings() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setWaypointMarkerScale(2.5);
+        config.setWaypointOutlineOpacity(0.25);
+        config.setMatchWaypointOutlineToWaypointColor(false);
+        config.setWaypointOutlineColor(0x123456);
+
+        config.resetToDefaults();
+
+        assertEquals(1.0, config.waypointMarkerScale());
+        assertEquals(1.0, config.waypointOutlineOpacity());
+        assertTrue(config.matchWaypointOutlineToWaypointColor());
+        assertEquals(Waypoint.DEFAULT_COLOR, config.waypointOutlineColor());
     }
 
     @Test
@@ -874,26 +983,11 @@ class WaypointerConfigTest {
     }
 
     @Test
-    void routeTimesStayOffForFreshAndExistingConfigsUntilEnabled() {
-        assertFalse(new WaypointerConfig().routeTimesEnabled());
-        assertFalse(WaypointerConfig.fromJson(
-                "{\"configSchemaVersion\":4,\"restartRouteWhenComplete\":true}")
-                .routeTimesEnabled());
+    void configCodecConsumesLegacyRouteTimesField() throws IOException {
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(configCodeForRawPayload(
+                (byte) 3, (byte) 66, (byte) 1, (byte) 67, (byte) 1, (byte) 0));
 
-        WaypointerConfig enabled = new WaypointerConfig();
-        enabled.setRouteTimesEnabled(true);
-
-        assertTrue(WaypointerConfigCodec.decode(
-                WaypointerConfigCodec.encode(enabled)).routeTimesEnabled());
-
-        WaypointerConfig copied = new WaypointerConfig();
-        copied.replaceWith(enabled);
-        assertTrue(copied.routeTimesEnabled());
-        copied.disableAllSettings();
-        assertFalse(copied.routeTimesEnabled());
-        copied.setRouteTimesEnabled(true);
-        copied.resetToDefaults();
-        assertFalse(copied.routeTimesEnabled());
+        assertTrue(decoded.showRouteIndicesInGui());
     }
 
     private static String configCodeForRawPayload(byte... raw) throws IOException {

@@ -1,6 +1,5 @@
 package com.babbur.waypointer.screen.preview;
 
-/** Double-precision orthographic projection, fitting, and picking for route previews. */
 public final class RoutePreviewProjection {
 
     public static final double PITCH_DEGREES = 35.264;
@@ -17,6 +16,15 @@ public final class RoutePreviewProjection {
     private RoutePreviewProjection() {}
 
     public static double rotationSafeScale(RoutePreviewScene scene, int width, int height) {
+        return rotationSafeScale(scene, width, height, true);
+    }
+
+    public static double viewportSafeScale(RoutePreviewScene scene, int width, int height) {
+        return rotationSafeScale(scene, width, height, false);
+    }
+
+    private static double rotationSafeScale(RoutePreviewScene scene, int width, int height,
+                                            boolean capSingleWaypoint) {
         if (scene == null || scene.markers().isEmpty()) return 1.0;
         double maxRadial = 0.0;
         double maxAbsY = 0.0;
@@ -43,7 +51,7 @@ public final class RoutePreviewProjection {
                         + Math.sin(PITCH_RADIANS) * maxRadial);
         double scale = Math.min(availableW / (halfW * 2.0), availableH / (halfH * 2.0));
 
-        if (scene.markers().size() == 1) {
+        if (capSingleWaypoint && scene.markers().size() == 1) {
             RoutePreviewScene.Box box = scene.markers().getFirst().box();
             double radialSize = Math.hypot(box.width(), box.depth());
             double maxEnvelope = Math.max(
@@ -55,7 +63,6 @@ public final class RoutePreviewProjection {
         return Double.isFinite(scale) && scale > 0.0 ? scale : 1.0;
     }
 
-    /** Maximum camera-axis extent for every yaw, before GUI and preview scaling. */
     public static double rotationSafeDepthEnvelope(RoutePreviewScene scene) {
         if (scene == null || scene.markers().isEmpty()) return 0.0;
         double maxDepth = 0.0;
@@ -79,7 +86,6 @@ public final class RoutePreviewProjection {
         return maxDepth;
     }
 
-    /** Caps logical scale so Minecraft's fixed +/-1000 PiP depth plane cannot clip the route. */
     public static double depthSafeScale(double depthEnvelope, int guiScale) {
         if (!Double.isFinite(depthEnvelope) || depthEnvelope <= 1.0e-9) {
             return Double.POSITIVE_INFINITY;
@@ -97,7 +103,6 @@ public final class RoutePreviewProjection {
         return new Projected(centerX + viewX * scale, centerY - viewY * scale, depth);
     }
 
-    /** Uniformly enlarges only the displayed box while preserving its exact center and proportions. */
     public static double markerDisplayScale(RoutePreviewScene.Marker marker,
                                             double scale, int guiScale) {
         if (marker == null || !Double.isFinite(scale) || scale <= 0.0) return 1.0;
@@ -111,7 +116,6 @@ public final class RoutePreviewProjection {
         return Math.max(1.0, minimum / Math.max(1.0e-9, physicalEdge));
     }
 
-    /** Returns the front-most marker index under the pointer, or -1. */
     public static int pick(RoutePreviewScene scene, double mouseX, double mouseY,
                            int x, int y, int width, int height,
                            double yawRadians, double scale) {

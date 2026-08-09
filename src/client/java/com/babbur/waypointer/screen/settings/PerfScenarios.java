@@ -5,22 +5,8 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import java.util.List;
 import java.util.function.Consumer;
 
-/**
- * The scenario sweep behind the settings screen's performance stress test.
- *
- * <p>Each scenario is applied to the live config on top of a known "all
- * display features off" base, so results are order-independent and each
- * sample isolates one rendering subsystem (boxes, labels, tracers, beams,
- * route lines) before the combined worst-case scenarios at the end. The
- * first scenario hides waypoints entirely (near-hide at max radius) to
- * establish the no-waypoint baseline every other scenario is compared to.
- *
- * <p>MC-free so scenario definitions are unit-testable; the frame/CPU/GPU
- * sampling lives in {@code PerfStressTestController}.
- */
 public final class PerfScenarios {
 
-    /** 13 fixed 3s phases leave at least 21s for the adaptive ramp in a healthy run. */
     public static final long TARGET_ACTIVE_MS = 60_000;
     public static final long SETTLE_MS = 500;
     public static final long SAMPLE_MS = 2_500;
@@ -203,10 +189,7 @@ public final class PerfScenarios {
         c.setShowRouteLines(true);
     }
 
-    /**
-     * Deterministic starting point: every display feature off, budgets
-     * unlimited, default geometry. Scenarios enable exactly what they measure.
-     */
+    /** Scenarios start here and enable only the features they measure. */
     static void base(WaypointerConfig c) {
         c.setShowWaypointNames(false);
         c.setShowWaypointDistances(false);

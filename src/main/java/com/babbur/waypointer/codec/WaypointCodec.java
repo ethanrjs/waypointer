@@ -900,7 +900,7 @@ public final class WaypointCodec {
         for (int index = 0; index < groups.size(); index++) {
             WaypointGroup group = groups.get(index);
             if (group == null) throw new IllegalArgumentException("group " + index + " is null");
-            validateRouteDisplayNameForEncode(group.name(), "group " + index + " name");
+            validateRouteDisplayName(group.name(), "group " + index + " name");
             validateWireStringForEncode(exportedZoneId(group, opts), "group " + index + " zone");
             if (group.size() > MAX_WIRE_WAYPOINTS_PER_GROUP) {
                 throw new IllegalArgumentException("group " + index + " exceeds waypoint limit: "
@@ -913,7 +913,7 @@ public final class WaypointCodec {
             }
             if (opts.includeNames) {
                 for (int waypointIndex = 0; waypointIndex < group.size(); waypointIndex++) {
-                    validateRouteDisplayNameForEncode(group.get(waypointIndex).name(),
+                    validateRouteDisplayName(group.get(waypointIndex).name(),
                             "group " + index + " waypoint " + waypointIndex + " name");
                 }
             }
@@ -927,7 +927,8 @@ public final class WaypointCodec {
         }
     }
 
-    private static void validateRouteDisplayNameForEncode(String value, String field) {
+    /** Reject a persisted display name that cannot safely round-trip through the native codec. */
+    public static void validateRouteDisplayName(String value, String field) {
         if (!isValidRouteDisplayName(value)) {
             throw new IllegalArgumentException(field + " is unsafe or exceeds "
                     + MAX_ROUTE_DISPLAY_NAME_BYTES + " UTF-8 bytes");
@@ -943,7 +944,7 @@ public final class WaypointCodec {
         }
     }
 
-    static boolean isValidRouteDisplayName(String value) {
+    public static boolean isValidRouteDisplayName(String value) {
         String actual = value == null ? "" : value;
         int encodedLength = strictUtf8Length(actual);
         if (encodedLength < 0 || encodedLength > MAX_ROUTE_DISPLAY_NAME_BYTES) return false;

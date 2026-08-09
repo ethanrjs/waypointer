@@ -4,22 +4,12 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.LongSupplier;
 
-/**
- * In-memory LRU cache of codec strings the detector has seen in chat.
- *
- * The alternative -- stuffing the entire codec into a {@code /wp import} command
- * via a click event -- hits the vanilla 256-char chat input cap for any route of
- * meaningful size. Stashing the payload here and only passing a short handle through
- * the click event sidesteps that limit and keeps the chat log readable.
- *
- * Handles live only for this client session on purpose. An imported route persists
- * to the usual waypoint storage; the cache just shuttles the raw codec from the
- * message-modify hook to the click handler.
- */
+/** Stores chat share codes behind short handles that fit in click commands. */
 public final class ChatImportCache {
 
     private static final int CAPACITY = 16;
@@ -40,7 +30,6 @@ public final class ChatImportCache {
         this.ttlMillis = Math.max(1L, ttlMillis);
     }
 
-    /** Returns the handle to use in click events; caller stores the mapping. */
     public synchronized String put(String codec) {
         pruneExpired(clock.getAsLong());
         String handle = nextHandle();
@@ -56,7 +45,10 @@ public final class ChatImportCache {
     public synchronized String get(String handle) {
         pruneExpired(clock.getAsLong());
         Entry entry = entries.get(handle);
-        return entry == null ? null : entry.codec();
+        if (entry == null) return null;
+        order.remove(handle);
+        order.addLast(handle);
+        return entry.codec();
     }
 
     public synchronized void clear() {
@@ -69,35 +61,23 @@ public final class ChatImportCache {
         return entries.size();
     }
 
-    /**
-     * Snapshot of live handles in insertion order, newest last. Copied so the
-     * caller can iterate without holding the cache lock or racing the eviction
-     * path. Powers {@code /wp importchat} tab-complete.
-     */
+    /** Returns a copy of live handles in least-to-most-recently-used order. */
     public synchronized List<String> handles() {
         pruneExpired(clock.getAsLong());
         return new ArrayList<>(order);
     }
 
     private void pruneExpired(long now) {
-        while (!order.isEmpty()) {
-            String handle = order.peekFirst();
+        Iterator<String> handles = order.iterator();
+        while (handles.hasNext()) {
+            String handle = handles.next();
             Entry entry = entries.get(handle);
-            if (entry == null) {
-                order.removeFirst();
-                continue;
-            }
-            if (entry.createdAtMillis() + ttlMillis > now) return;
-            order.removeFirst();
-            entries.remove(handle);
+            if (entry != null && entry.createdAtMillis() + ttlMillis > now) continue;
+            handles.remove();
+            if (entry != null) entries.remove(handle);
         }
     }
 
-    /**
-     * Produces short (2-3 char) alphanumeric handles in order. Brevity matters
-     * because the handle ends up inside the click command and eats into the chat
-     * input limit if the user ever manually expands the pill.
-     */
     private String nextHandle() {
         String handle;
         do {

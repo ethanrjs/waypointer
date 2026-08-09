@@ -5,40 +5,21 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.util.MathUtil;
 
 /**
- * Paints a {@link WaypointGroup}'s waypoints with an evenly-spaced HSL gradient
- * between the group's configured start and end colours.
- *
- * <p>We interpolate in HSL rather than RGB because RGB interpolation between two
- * saturated colours tends to pass through a desaturated muddy midpoint (cyan →
- * red in RGB goes through gray; in HSL it sweeps through blue/purple). HSL keeps
- * the intermediate waypoints looking like real colours.
- *
- * <p>Hue is interpolated the "short way" around the wheel so a gradient from red
- * (0°) to magenta (300°) goes 0 → 330 → 300 instead of 0 → 60 → 120 → ... →
- * 300. That matches what a user sees in a hue slider and avoids surprising
- * rainbow sweeps for palettes that should be subtle.
- *
- * <p>Waypoints flagged with {@link Waypoint#FLAG_LOCKED_COLOR} are skipped so users
- * can force a specific color on a critical waypoint without it being overwritten.
+ * Applies an HSL gradient along a route using the shortest path around the hue
+ * wheel. Locked colors stay unchanged.
  */
 public final class GradientColorizer {
 
     private GradientColorizer() {}
 
-    /**
-     * Rewrites every unlocked waypoint in the group with a gradient-interpolated
-     * color. Subwaypoints inherit the nearest parent main waypoint's colour and
-     * do not consume their own step in the gradient.
-     */
+    /** Subwaypoints inherit their parent color and do not consume a gradient step. */
     public static void apply(WaypointGroup group) {
         int n = group.size();
         if (n == 0) return;
         int mainCount = group.mainWaypointCount();
         if (mainCount == 0) return;
 
-        // Pack the two HSL triples into locals rather than float[3]s so we
-        // don't allocate two throwaway arrays every time the group's gradient
-        // is recomputed (which happens on every waypoint add/remove/reorder).
+        // Avoid allocating HSL arrays whenever a route changes.
         int startRgb = group.gradientStartColor();
         int endRgb   = group.gradientEndColor();
         float sh = hueOf(startRgb),  ss = satOf(startRgb),  sl = lightOf(startRgb);
@@ -72,13 +53,6 @@ public final class GradientColorizer {
     private static float satOf(int rgb)   { return rgbToHslComponent(rgb, 1); }
     private static float lightOf(int rgb) { return rgbToHslComponent(rgb, 2); }
 
-    /**
-     * Component-wise reader used by {@link #hueOf}/{@link #satOf}/{@link #lightOf}
-     * to pull a single HSL channel from a packed RGB without ever materialising
-     * a {@code float[]}. Kept beside {@link #rgbToHsl} because they compute the
-     * same thing; that method stays public for color-picker previews where the
-     * triple-allocation doesn't happen in a hot loop.
-     */
     private static float rgbToHslComponent(int rgb, int component) {
         float r = ((rgb >> 16) & 0xFF) / 255f;
         float g = ((rgb >>  8) & 0xFF) / 255f;
@@ -105,11 +79,7 @@ public final class GradientColorizer {
         return a + (b - a) * t;
     }
 
-    /**
-     * Interpolate two hues in [0, 360) along the shorter arc of the colour wheel.
-     * Without this, a gradient from red (0°) to magenta (300°) would sweep the
-     * long way round through green and blue.
-     */
+    /** Interpolates hues in {@code [0, 360)} along the shorter arc. */
     private static float lerpHueShortWay(float a, float b, float t) {
         float diff = b - a;
         if (diff > 180f)  diff -= 360f;
@@ -140,7 +110,7 @@ public final class GradientColorizer {
                 | MathUtil.clampByte(bi);
     }
 
-    /** RGB (0xRRGGBB) → {H (0..360), S (0..1), L (0..1)}. */
+    /** Converts {@code 0xRRGGBB} to hue, saturation, and lightness. */
     public static float[] rgbToHsl(int rgb) {
         float r = ((rgb >> 16) & 0xFF) / 255f;
         float g = ((rgb >>  8) & 0xFF) / 255f;

@@ -2,12 +2,26 @@ package com.babbur.waypointer.screen;
 
 import org.junit.jupiter.api.Test;
 
+import javax.imageio.ImageIO;
+import java.io.IOException;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GuiTokensTest {
+
+    @Test
+    void checkboxCheckmarkPreservesTheSuppliedTextureCanvas() throws IOException {
+        try (var stream = GuiTokensTest.class.getResourceAsStream(
+                "/assets/waypointer/textures/gui/checkmark.png")) {
+            assertNotNull(stream);
+            var image = ImageIO.read(stream);
+            assertEquals(16, image.getWidth());
+            assertEquals(16, image.getHeight());
+        }
+    }
 
     @Test
     void opticalGeometryCentersVisiblePixelGlyphs() {

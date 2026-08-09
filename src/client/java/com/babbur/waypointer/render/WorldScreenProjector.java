@@ -11,16 +11,7 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
-/**
- * Projects world-space label anchors with the same extracted projection,
- * hurt-camera tilt, view bob, and view rotation used by the level renderer.
- * Keeping that full transform together prevents HUD labels from sliding away
- * from their world markers while the camera animates.
- *
- * <p>ponytail: Vanilla applies a later portal/nausea spin using private
- * animation state. If labels need to track those effects too, widen and mirror
- * that final projection mutation here; damage tilt and view bob are covered.
- */
+/** Projects labels with the same camera effects as the world renderer. */
 public final class WorldScreenProjector {
 
     private final Matrix4f viewProjection = new Matrix4f();

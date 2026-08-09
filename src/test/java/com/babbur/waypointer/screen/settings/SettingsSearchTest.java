@@ -3,6 +3,7 @@ package com.babbur.waypointer.screen.settings;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -31,8 +32,6 @@ class SettingsSearchTest {
 
     @Test
     void subsequenceMatchingIsGatedToFourCharacterTokens() {
-        // Three-character tokens no longer fuzz onto everything: "shw" is a
-        // subsequence of "show tracers" but must not match.
         assertEquals(-1, SettingsSearch.tierFor("shw", "show tracers", List.of(), "", "", ""));
         assertEquals(4, SettingsSearch.tierFor("shwt", "show tracers", List.of(), "", "", ""));
     }
@@ -108,7 +107,28 @@ class SettingsSearchTest {
     @Test
     void matchesCarryTheirCategoryForChipsAndJumping() {
         List<SettingsSearch.Match> matches = SettingsSearch.search("esp", SettingsCatalog.categories());
-        assertEquals("tracers", matches.get(0).categoryId());
-        assertEquals("Tracers", matches.get(0).categoryLabel());
+        assertEquals("appearance", matches.get(0).categoryId());
+        assertEquals("Appearance", matches.get(0).categoryLabel());
+    }
+
+    @Test
+    void localizedLabelsCategoriesAndGroupsAreSearchable() {
+        Map<String, String> french = Map.of(
+                "waypointer.settings.setting.showTracer.label", "Afficher les traceurs",
+                "waypointer.settings.category.appearance", "Apparence",
+                "waypointer.settings.group.appearance.tracers", "Traceurs");
+        SettingsSearch.TranslationResolver resolver =
+                (key, fallback) -> french.getOrDefault(key, fallback);
+
+        List<SettingsSearch.Match> labelMatches = SettingsSearch.search(
+                "afficher", SettingsCatalog.categories(), resolver);
+        assertEquals("showTracer", labelMatches.getFirst().setting().id());
+
+        SettingsSearch.Match groupMatch = SettingsSearch.search(
+                        "traceurs", SettingsCatalog.categories(), resolver).stream()
+                .filter(match -> match.setting().id().equals("tracerOpacity"))
+                .findFirst().orElseThrow();
+        assertEquals("Apparence", groupMatch.categoryLabel());
+        assertEquals("Traceurs", groupMatch.groupLabel());
     }
 }

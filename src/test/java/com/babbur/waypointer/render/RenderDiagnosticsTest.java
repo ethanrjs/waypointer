@@ -25,7 +25,6 @@ class RenderDiagnosticsTest {
     @AfterEach
     void disableDetailedCapture() {
         RenderDiagnostics.setDetailedCaptureEnabled(false);
-        RenderDiagnostics.setDeveloperModeCaptureEnabled(false);
     }
 
     @Test
@@ -60,21 +59,9 @@ class RenderDiagnosticsTest {
     }
 
     @Test
-    void developerModeKeepsCaptureEnabledAfterDebugScreenCloses() {
-        WaypointGroup group = WaypointGroup.create("Developer Route", "altar");
-        RenderDiagnostics.setDeveloperModeCaptureEnabled(true);
-        RenderDiagnostics.setDetailedCaptureEnabled(false);
-
-        RenderDiagnostics.beginFrame(List.of(group), new WaypointerConfig(), false);
-
-        assertEquals(1, RenderDiagnostics.snapshot().groups().size());
-        RenderDiagnostics.setDeveloperModeCaptureEnabled(false);
-        assertTrue(RenderDiagnostics.snapshot().groups().isEmpty());
-    }
-
-    @Test
     void cachedEmptyPathFallsThroughToStraightTracerAndReportsFinalDecision() {
         WaypointGroup group = WaypointGroup.create("Empty Path", "altar");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         group.add(new Waypoint(5, 64, 5, "Target", Waypoint.DEFAULT_COLOR, 0, 0.0));
         RenderDiagnostics.beginFrame(List.of(group), new WaypointerConfig(), false);
 

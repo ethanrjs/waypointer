@@ -5,9 +5,6 @@ import com.babbur.waypointer.core.WaypointGroup;
 
 import java.util.List;
 
-/**
- * Shared route color post-processing for imports and UI route edits.
- */
 public final class RouteColorPolicy {
 
         private RouteColorPolicy() {

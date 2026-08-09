@@ -5,11 +5,11 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 
-/** Exact Hypixel item identity checks shared by dungeon action detectors. */
 public final class DungeonItemIdentity {
 
     public static final String DUNGEONBREAKER_ID = "DUNGEONBREAKER";
-    private static final String ETHERWARP_CONDUIT_ID = "ETHERWARP_CONDUIT";
+    private static final String ASPECT_OF_THE_END_ID = "ASPECT_OF_THE_END";
+    private static final String ASPECT_OF_THE_VOID_ID = "ASPECT_OF_THE_VOID";
     private static final String SUPERBOOM_TNT_ID = "SUPERBOOM_TNT";
     private static final String INFINITE_SUPERBOOM_TNT_ID = "INFINITE_SUPERBOOM_TNT";
 
@@ -20,15 +20,17 @@ public final class DungeonItemIdentity {
     }
 
     /**
-     * Etherwarp is available on an Ethermerged item or the conduit itself.
-     * Display names are deliberately ignored: renamed shovels must not arm the detector.
+     * True only for Aspect of the End / Void with Etherwarp merged on
+     * ({@code ethermerge}). The standalone Etherwarp Conduit is a different item.
      */
     public static boolean isEtherwarpItem(ItemStack stack) {
         CompoundTag data = customData(stack);
         if (data == null) return false;
         CompoundTag attributes = attributes(data);
-        return attributes.getInt("ethermerge").orElse(0) == 1
-                || ETHERWARP_CONDUIT_ID.equals(attributes.getStringOr("id", ""));
+        String id = attributes.getStringOr("id", "");
+        if (!ASPECT_OF_THE_END_ID.equals(id) && !ASPECT_OF_THE_VOID_ID.equals(id)) return false;
+        return attributes.getBoolean("ethermerge").orElse(false)
+                || attributes.getInt("ethermerge").orElse(0) == 1;
     }
 
     public static boolean isSuperboom(ItemStack stack) {

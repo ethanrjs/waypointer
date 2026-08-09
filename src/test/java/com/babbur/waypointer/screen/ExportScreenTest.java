@@ -32,11 +32,11 @@ class ExportScreenTest {
 
     @Test
     void previewNavigationDoesNotChangeExportSelection() {
-        boolean[] selected = {true, false, true, true};
+        ExportRouteSelection selected = ExportRouteSelection.of(true, false, true, true);
 
-        assertEquals(2, ExportScreen.navigatePreviewRouteIndex(selected, 0, 1));
-        assertEquals(3, ExportScreen.navigatePreviewRouteIndex(selected, 0, -1));
-        assertArrayEquals(new boolean[]{true, false, true, true}, selected);
+        assertEquals(2, selected.navigate(0, 1));
+        assertEquals(3, selected.navigate(0, -1));
+        assertArrayEquals(new boolean[]{true, false, true, true}, selected.snapshot());
     }
 
     @Test
@@ -46,15 +46,15 @@ class ExportScreenTest {
         WaypointGroup second = WaypointGroup.create("Second", "hub");
         second.add(Waypoint.at(4, 5, 6));
         List<WaypointGroup> groups = List.of(first, second);
-        boolean[] selected = {true, true};
+        ExportRouteSelection selected = ExportRouteSelection.of(true, true);
         WaypointCodec.Options options = WaypointCodec.Options.builder().build();
         String before = WaypointExportCodec.encode(
-                ExportScreen.selectedGroupsForExport(groups, selected), options,
+                selected.selectedGroups(groups), options,
                 WaypointExportCodec.Target.WAYPOINTER);
 
-        assertEquals(1, ExportScreen.navigatePreviewRouteIndex(selected, 0, 1));
+        assertEquals(1, selected.navigate(0, 1));
         String after = WaypointExportCodec.encode(
-                ExportScreen.selectedGroupsForExport(groups, selected), options,
+                selected.selectedGroups(groups), options,
                 WaypointExportCodec.Target.WAYPOINTER);
 
         assertEquals(before, after);
@@ -62,18 +62,16 @@ class ExportScreenTest {
 
     @Test
     void deselectedPreviewRouteChoosesNextThenPrevious() {
-        assertEquals(3, ExportScreen.replacementPreviewRouteIndex(
-                new boolean[]{true, false, false, true}, 2));
-        assertEquals(0, ExportScreen.replacementPreviewRouteIndex(
-                new boolean[]{true, false, false, false}, 2));
+        assertEquals(3, ExportRouteSelection.of(true, false, false, true).replacementFor(2));
+        assertEquals(0, ExportRouteSelection.of(true, false, false, false).replacementFor(2));
     }
 
     @Test
     void initialRouteSelectionStartsEveryRouteSelected() {
-        assertArrayEquals(new boolean[0], ExportScreen.initialRouteSelection(-1));
-        assertArrayEquals(new boolean[0], ExportScreen.initialRouteSelection(0));
+        assertArrayEquals(new boolean[0], new ExportRouteSelection(-1).snapshot());
+        assertArrayEquals(new boolean[0], new ExportRouteSelection(0).snapshot());
         assertArrayEquals(new boolean[]{true, true, true},
-                ExportScreen.initialRouteSelection(3));
+                new ExportRouteSelection(3).snapshot());
     }
 
     @Test
@@ -87,31 +85,31 @@ class ExportScreenTest {
 
     @Test
     void toggleRouteSelectionKeepsAtLeastOneRouteSelected() {
-        boolean[] selected = {true, true, true};
+        ExportRouteSelection selected = ExportRouteSelection.of(true, true, true);
 
-        assertTrue(ExportScreen.toggleRouteSelectionState(selected, 1));
-        assertArrayEquals(new boolean[]{true, false, true}, selected);
-        assertEquals(2, ExportScreen.selectedGroupCount(selected));
-        assertTrue(ExportScreen.hasExcludedRoutes(selected));
+        assertTrue(selected.toggle(1));
+        assertArrayEquals(new boolean[]{true, false, true}, selected.snapshot());
+        assertEquals(2, selected.count());
+        assertTrue(selected.hasExcludedRoutes());
 
-        assertTrue(ExportScreen.toggleRouteSelectionState(selected, 0));
-        assertArrayEquals(new boolean[]{false, false, true}, selected);
-        assertEquals(1, ExportScreen.selectedGroupCount(selected));
+        assertTrue(selected.toggle(0));
+        assertArrayEquals(new boolean[]{false, false, true}, selected.snapshot());
+        assertEquals(1, selected.count());
 
-        assertFalse(ExportScreen.toggleRouteSelectionState(selected, 2));
-        assertArrayEquals(new boolean[]{false, false, true}, selected);
-        assertEquals(1, ExportScreen.selectedGroupCount(selected));
+        assertFalse(selected.toggle(2));
+        assertArrayEquals(new boolean[]{false, false, true}, selected.snapshot());
+        assertEquals(1, selected.count());
     }
 
     @Test
     void selectAllRoutesRestoresEveryExcludedRoute() {
-        boolean[] selected = {false, true, false};
+        ExportRouteSelection selected = ExportRouteSelection.of(false, true, false);
 
-        ExportScreen.selectAllRouteSelectionState(selected);
+        selected.selectAll();
 
-        assertArrayEquals(new boolean[]{true, true, true}, selected);
-        assertFalse(ExportScreen.hasExcludedRoutes(selected));
-        assertEquals(3, ExportScreen.selectedGroupCount(selected));
+        assertArrayEquals(new boolean[]{true, true, true}, selected.snapshot());
+        assertFalse(selected.hasExcludedRoutes());
+        assertEquals(3, selected.count());
     }
 
     @Test
@@ -120,23 +118,22 @@ class ExportScreenTest {
         WaypointGroup second = WaypointGroup.create("Second", "hub");
         WaypointGroup third = WaypointGroup.create("Third", "hub");
 
-        assertEquals(List.of(first), ExportScreen.selectedGroupsForExport(
-                List.of(first), new boolean[]{false}));
-        assertEquals(List.of(first, third), ExportScreen.selectedGroupsForExport(
-                List.of(first, second, third), new boolean[]{true, false, true}));
-        assertEquals(List.of(), ExportScreen.selectedGroupsForExport(
-                List.of(first, second, third), new boolean[]{false, false, false}));
+        assertEquals(List.of(first), ExportRouteSelection.of(false).selectedGroups(List.of(first)));
+        assertEquals(List.of(first, third), ExportRouteSelection.of(true, false, true)
+                .selectedGroups(List.of(first, second, third)));
+        assertEquals(List.of(), ExportRouteSelection.of(false, false, false)
+                .selectedGroups(List.of(first, second, third)));
     }
 
     @Test
     void codeBlockPayloadWrapsTheExactEncodedText() {
-        assertEquals("```\nWP:abc\n```", ExportScreen.codeBlockPayload("WP:abc"));
-        assertEquals("```\n\n```", ExportScreen.codeBlockPayload(null));
+        assertEquals("```\nWP:abc\n```", ExportPolicy.codeBlockPayload("WP:abc"));
+        assertEquals("```\n\n```", ExportPolicy.codeBlockPayload(null));
     }
 
     @Test
     void exportFitSummarySeparatesCommandFitFromChatFit() {
-        ExportScreen.ExportFitSummary commandFit = ExportScreen.exportFitSummary("a".repeat(253));
+        ExportPolicy.FitSummary commandFit = ExportPolicy.fitSummary("a".repeat(253));
         assertEquals(253, commandFit.characters());
         assertEquals(253, commandFit.wireBytes());
         assertEquals(256, commandFit.commandBytes());
@@ -144,12 +141,12 @@ class ExportScreenTest {
         assertTrue(commandFit.commandOk());
         assertEquals("waypointer.export.fit.chat_and_commands", commandFit.messageKey());
 
-        ExportScreen.ExportFitSummary chatOnly = ExportScreen.exportFitSummary("a".repeat(254));
+        ExportPolicy.FitSummary chatOnly = ExportPolicy.fitSummary("a".repeat(254));
         assertTrue(chatOnly.chatOk());
         assertFalse(chatOnly.commandOk());
         assertEquals("waypointer.export.fit.chat_only", chatOnly.messageKey());
 
-        ExportScreen.ExportFitSummary tooLong = ExportScreen.exportFitSummary("a".repeat(257));
+        ExportPolicy.FitSummary tooLong = ExportPolicy.fitSummary("a".repeat(257));
         assertFalse(tooLong.chatOk());
         assertFalse(tooLong.commandOk());
         assertEquals("waypointer.export.fit.too_long", tooLong.messageKey());
@@ -209,37 +206,37 @@ class ExportScreenTest {
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         group.add(Waypoint.at(0, 64, 0));
 
-        assertTrue(ExportScreen.builderFromConfig(config, List.of(group)).build().includeZone);
+        assertTrue(ExportPolicy.optionsFromConfig(config, List.of(group)).build().includeZone);
 
         config.setExportIncludeZone(false);
-        assertFalse(ExportScreen.builderFromConfig(config, List.of(group)).build().includeZone);
+        assertFalse(ExportPolicy.optionsFromConfig(config, List.of(group)).build().includeZone);
     }
 
     @Test
     void labelTooltipExplainsTargetSupport() {
         assertEquals("Optional title shown by Waypointer imports",
-                ExportScreen.labelInputTooltipText(WaypointExportCodec.Target.WAYPOINTER));
+                ExportPolicy.labelTooltipText(WaypointExportCodec.Target.WAYPOINTER));
         assertEquals("SkyHanni exports do not support Waypointer labels",
-                ExportScreen.labelInputTooltipText(WaypointExportCodec.Target.SKYHANNI));
+                ExportPolicy.labelTooltipText(WaypointExportCodec.Target.SKYHANNI));
     }
 
     @Test
     void waypointerLabelOverridesTheLivePreviewRouteName() {
-        assertEquals("Shared Route", ExportScreen.previewRouteName(
+        assertEquals("Shared Route", ExportPolicy.previewRouteName(
                 "Original Route", " Shared Route ", WaypointExportCodec.Target.WAYPOINTER, 1));
-        assertEquals("Original Route", ExportScreen.previewRouteName(
+        assertEquals("Original Route", ExportPolicy.previewRouteName(
                 "Original Route", "   ", WaypointExportCodec.Target.WAYPOINTER, 1));
-        assertEquals("Original Route", ExportScreen.previewRouteName(
+        assertEquals("Original Route", ExportPolicy.previewRouteName(
                 "Original Route", "Shared Route", WaypointExportCodec.Target.SKYHANNI, 1));
-        assertEquals("Original Route", ExportScreen.previewRouteName(
+        assertEquals("Original Route", ExportPolicy.previewRouteName(
                 "Original Route", "Bundle Name", WaypointExportCodec.Target.WAYPOINTER, 2));
     }
 
     @Test
     void previewOverflowTextUsesCompactCopy() {
-        assertEquals("...1 more line", ExportScreen.previewOverflowText(1));
-        assertEquals("...3 more lines", ExportScreen.previewOverflowText(3));
-        assertEquals("...0 more lines", ExportScreen.previewOverflowText(-1));
+        assertEquals("...1 more line", ExportPolicy.previewOverflowText(1));
+        assertEquals("...3 more lines", ExportPolicy.previewOverflowText(3));
+        assertEquals("...0 more lines", ExportPolicy.previewOverflowText(-1));
     }
 
     @Test
@@ -249,7 +246,7 @@ class ExportScreenTest {
         WaypointGroup normal = WaypointGroup.create("Normal", "hub");
         normal.add(Waypoint.at(0, 64, 0));
 
-        assertFalse(ExportScreen.builderFromConfig(config, List.of(normal))
+        assertFalse(ExportPolicy.optionsFromConfig(config, List.of(normal))
                 .build().includeWaypointFlags);
 
         WaypointGroup withSubwaypoint = WaypointGroup.create("Subway", "hub");
@@ -257,7 +254,7 @@ class ExportScreenTest {
         withSubwaypoint.add(Waypoint.at(1, 64, 1));
         assertTrue(withSubwaypoint.toggleSubwaypoint(1));
 
-        assertTrue(ExportScreen.builderFromConfig(config, List.of(withSubwaypoint))
+        assertTrue(ExportPolicy.optionsFromConfig(config, List.of(withSubwaypoint))
                 .build().includeWaypointFlags);
         assertFalse(config.exportIncludeWaypointFlags());
     }
@@ -272,13 +269,13 @@ class ExportScreenTest {
         withSubwaypoint.add(Waypoint.at(1, 64, 1));
         assertTrue(withSubwaypoint.toggleSubwaypoint(1));
 
-        assertFalse(ExportScreen.showSubwaypointCompatibilityWarning(
+        assertFalse(ExportPolicy.showSubwaypointWarning(
                 WaypointExportCodec.Target.WAYPOINTER, List.of(withSubwaypoint)));
-        assertFalse(ExportScreen.showSubwaypointCompatibilityWarning(
+        assertFalse(ExportPolicy.showSubwaypointWarning(
                 WaypointExportCodec.Target.SKYHANNI, List.of(normal)));
-        assertFalse(ExportScreen.showSubwaypointCompatibilityWarning(
+        assertFalse(ExportPolicy.showSubwaypointWarning(
                 WaypointExportCodec.Target.SKYHANNI, List.of()));
-        assertTrue(ExportScreen.showSubwaypointCompatibilityWarning(
+        assertTrue(ExportPolicy.showSubwaypointWarning(
                 WaypointExportCodec.Target.SKYHANNI, List.of(withSubwaypoint)));
     }
 }

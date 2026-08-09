@@ -4,7 +4,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
-import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
+import com.babbur.waypointer.dungeon.data.DungeonRoomCatalogEntry;
 import com.babbur.waypointer.dungeon.data.DungeonRoomFingerprint;
 import org.junit.jupiter.api.Test;
 
@@ -52,16 +52,16 @@ class DungeonDirectionResolutionTest {
 
     @Test
     void fingerprintsAutoDetectUniqueNeDirection() {
-        DungeonRoomDefinition definition = new DungeonRoomDefinition(
+        DungeonRoomCatalogEntry definition = new DungeonRoomCatalogEntry(
                 "fingerprinted",
                 "Fingerprinted",
                 DungeonRoomType.ROOM,
                 DungeonRoomShape.ONE_BY_ONE,
                 List.of(),
                 List.of(new DungeonRoomFingerprint(25, 77, 2, "gold_block")),
-                List.of());
+                -1, -1, -1);
 
-        Direction direction = DungeonStateTracker.detectDirectionFromFingerprints(
+        Direction direction = DungeonRoomOrientation.detectDirectionFromFingerprints(
                 definition,
                 List.of(DungeonRoom.packSegment(-104, -168)),
                 new MapBlockLookup(Map.of(
@@ -73,16 +73,16 @@ class DungeonDirectionResolutionTest {
 
     @Test
     void fingerprintDirectionDetectionReturnsNullForAmbiguousMatches() {
-        DungeonRoomDefinition definition = new DungeonRoomDefinition(
+        DungeonRoomCatalogEntry definition = new DungeonRoomCatalogEntry(
                 "ambiguous",
                 "Ambiguous",
                 DungeonRoomType.ROOM,
                 DungeonRoomShape.ONE_BY_ONE,
                 List.of(),
                 List.of(new DungeonRoomFingerprint(15, 70, 15, "minecraft:gold_block")),
-                List.of());
+                -1, -1, -1);
 
-        Direction direction = DungeonStateTracker.detectDirectionFromFingerprints(
+        Direction direction = DungeonRoomOrientation.detectDirectionFromFingerprints(
                 definition,
                 List.of(DungeonRoom.packSegment(-104, -168)),
                 new MapBlockLookup(Map.of(
@@ -94,7 +94,7 @@ class DungeonDirectionResolutionTest {
 
     @Test
     void dropMarkerAutoDetectsNeDirection() {
-        Direction direction = DungeonStateTracker.detectDirectionFromRoomMarker(
+        Direction direction = DungeonRoomOrientation.detectDirectionFromRoomMarker(
                 List.of(DungeonRoom.packSegment(-104, -168)),
                 69,
                 new MapBlockLookup(Map.of(
@@ -106,7 +106,7 @@ class DungeonDirectionResolutionTest {
 
     @Test
     void markerDetectionFallsBackFromUnreadyTopLayerToVisibleMarker() {
-        Direction direction = DungeonStateTracker.detectDirectionFromRoomMarker(
+        Direction direction = DungeonRoomOrientation.detectDirectionFromRoomMarker(
                 List.of(DungeonRoom.packSegment(-200, -136)),
                 11,
                 new MapBlockLookup(Map.of(
@@ -118,7 +118,7 @@ class DungeonDirectionResolutionTest {
 
     @Test
     void markerDirectionDetectionReturnsNullForAmbiguousMarkers() {
-        Direction direction = DungeonStateTracker.detectDirectionFromRoomMarker(
+        Direction direction = DungeonRoomOrientation.detectDirectionFromRoomMarker(
                 List.of(DungeonRoom.packSegment(-104, -168)),
                 69,
                 new MapBlockLookup(Map.of(
@@ -140,8 +140,8 @@ class DungeonDirectionResolutionTest {
                 MapBlockLookup.key(-138, 72, -200),
                 "minecraft:blue_terracotta"));
 
-        Direction direction = DungeonStateTracker.detectDirectionFromRoomMarker(segments, 72, lookup);
-        int[] anchor = DungeonStateTracker.detectRoomMarkerAnchor(segments, 72, lookup);
+        Direction direction = DungeonRoomOrientation.detectDirectionFromRoomMarker(segments, 72, lookup);
+        int[] anchor = DungeonRoomOrientation.detectRoomMarkerAnchor(segments, 72, lookup);
 
         assertEquals(Direction.NE, direction);
         assertArrayEquals(new int[] { -138, -200 }, anchor);

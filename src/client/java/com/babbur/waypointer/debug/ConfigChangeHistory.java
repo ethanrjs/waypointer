@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-/** Session-only audit trail for settings changes that may explain a new problem. */
+/** Per-session trail of settings changes that may explain a new/recent problem. */
 public final class ConfigChangeHistory {
 
     private static final int MAX_ENTRIES = 24;

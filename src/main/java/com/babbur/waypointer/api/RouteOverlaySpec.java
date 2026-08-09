@@ -40,31 +40,26 @@ public record RouteOverlaySpec(
         private Builder() {
         }
 
-        /** Overlay name shown anywhere Waypointer surfaces the temporary group. */
         public Builder name(String name) {
             this.name = name;
             return this;
         }
 
-        /** Waypointer zone id where the overlay should render. */
         public Builder zoneId(String zoneId) {
             this.zoneId = zoneId;
             return this;
         }
 
-        /** Whether Waypointer should render all overlay points or sequence them. */
         public Builder loadMode(RouteLoadMode loadMode) {
             this.loadMode = loadMode;
             return this;
         }
 
-        /** Add one waypoint to the overlay, preserving insertion order. */
         public Builder waypoint(WaypointSpec waypoint) {
             waypoints.add(Objects.requireNonNull(waypoint, "waypoint"));
             return this;
         }
 
-        /** Add several waypoints to the overlay, preserving iteration order. */
         public Builder waypoints(Collection<WaypointSpec> waypoints) {
             for (WaypointSpec waypoint : waypoints) waypoint(waypoint);
             return this;

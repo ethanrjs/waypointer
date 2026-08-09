@@ -32,7 +32,6 @@ import java.util.Iterator;
 import static com.babbur.waypointer.screen.GuiTokens.*;
 import static org.lwjgl.glfw.GLFW.*;
 
-/** Pixel editor for one repeated face or the full six-face waypoint cubemap. */
 public final class WaypointPainterScreen extends Screen {
 
     private enum FaceView { ONE, ALL }

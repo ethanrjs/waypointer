@@ -4,15 +4,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.core.WaypointGroup;
-import com.babbur.waypointer.dungeon.Direction;
-import com.babbur.waypointer.dungeon.DungeonRoom;
-import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
-import com.babbur.waypointer.dungeon.DungeonRoomShape;
-import com.babbur.waypointer.dungeon.DungeonRoomType;
-import com.babbur.waypointer.dungeon.DungeonSecretCategory;
-import com.babbur.waypointer.dungeon.DungeonWaypoint;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
-import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -27,12 +19,13 @@ class WaypointerScreenTest {
 
     @Test
     void roomHeaderSubtitleShowsInstalledSecretsSoImportsDoNotReadAsEmpty() {
-        assertEquals("0 routes", WaypointerScreen.roomHeaderSubtitle(0, 0, false, false));
-        assertEquals("0 routes  3 secrets", WaypointerScreen.roomHeaderSubtitle(0, 3, false, false));
+        assertEquals("0 routes", RouteListPresentation.roomHeaderSubtitle(0, 0, false, false));
+        assertEquals("0 routes  3 secrets",
+                RouteListPresentation.roomHeaderSubtitle(0, 3, false, false));
         assertEquals("1 route  1 secret  current",
-                WaypointerScreen.roomHeaderSubtitle(1, 1, true, false));
+                RouteListPresentation.roomHeaderSubtitle(1, 1, true, false));
         assertEquals("2 routes  5 secrets  current  search",
-                WaypointerScreen.roomHeaderSubtitle(2, 5, true, true));
+                RouteListPresentation.roomHeaderSubtitle(2, 5, true, true));
     }
 
     @Test
@@ -43,28 +36,28 @@ class WaypointerScreenTest {
         temporary.setTemp(true);
         temporary.add(Waypoint.at(2, 70, 2));
 
-        assertEquals(0, WaypointerScreen.displayedInstalledSecretCount(
+        assertEquals(0, RouteListPresentation.displayedInstalledSecretCount(
                 4, List.of(temporary, editable)));
-        assertEquals(4, WaypointerScreen.displayedInstalledSecretCount(
+        assertEquals(4, RouteListPresentation.displayedInstalledSecretCount(
                 4, List.of(temporary)));
     }
 
     @Test
     void nextRouteNamePicksTheSmallestFreeNumber() {
-        assertEquals("Route 1", WaypointerScreen.nextRouteName(List.of()));
+        assertEquals("Route 1", RouteListPresentation.nextRouteName(List.of()));
 
         WaypointGroup first = WaypointGroup.create("Route 1", "hub");
         WaypointGroup third = WaypointGroup.create("Route 3", "hub");
-        assertEquals("Route 2", WaypointerScreen.nextRouteName(List.of(first, third)));
+        assertEquals("Route 2", RouteListPresentation.nextRouteName(List.of(first, third)));
 
         WaypointGroup custom = WaypointGroup.create("Foraging", "hub");
-        assertEquals("Route 1", WaypointerScreen.nextRouteName(List.of(custom)));
+        assertEquals("Route 1", RouteListPresentation.nextRouteName(List.of(custom)));
     }
 
     @Test
     void mainContentRightUsesTheFullAvailableWidth() {
-        assertEquals(500, WaypointerScreen.mainContentRight(180, 500));
-        assertEquals(2000, WaypointerScreen.mainContentRight(180, 2000));
+        assertEquals(500, WaypointerRouteList.contentRight(180, 500));
+        assertEquals(2000, WaypointerRouteList.contentRight(180, 2000));
     }
 
     @Test
@@ -102,10 +95,10 @@ class WaypointerScreenTest {
     void routeToggleGeometryUsesSharedReadableChip() {
         int rowRight = 500;
 
-        assertEquals(438, WaypointerScreen.routeToggleChipX(rowRight));
-        assertEquals(436, WaypointerScreen.routeToggleHitLeft(rowRight));
-        assertEquals("Shown", WaypointerScreen.routeToggleLabel(true));
-        assertEquals("Hidden", WaypointerScreen.routeToggleLabel(false));
+        assertEquals(438, RouteListPresentation.routeToggleChipX(rowRight));
+        assertEquals(436, RouteListPresentation.routeToggleHitLeft(rowRight));
+        assertEquals("Shown", RouteListPresentation.routeToggleLabel(true));
+        assertEquals("Hidden", RouteListPresentation.routeToggleLabel(false));
     }
 
     @Test
@@ -116,14 +109,14 @@ class WaypointerScreenTest {
         manager.add(filteredOut);
         manager.add(visible);
 
-        var indices = WaypointerScreen.routeCommandIndices(manager.allGroupsList());
+        var indices = RouteListPresentation.routeCommandIndices(manager.allGroupsList());
 
         assertEquals(0, indices.get(filteredOut.id()));
         assertEquals(1, indices.get(visible.id()));
-        assertEquals("[1] Visible", WaypointerScreen.routeRowName(visible,
+        assertEquals("[1] Visible", RouteListPresentation.routeRowName(visible,
                 indices.get(visible.id()), true));
-        assertEquals("Visible", WaypointerScreen.routeRowName(visible, 1, false));
-        assertEquals("Visible", WaypointerScreen.routeRowName(visible, -1, true));
+        assertEquals("Visible", RouteListPresentation.routeRowName(visible, 1, false));
+        assertEquals("Visible", RouteListPresentation.routeRowName(visible, -1, true));
     }
 
     @Test
@@ -131,9 +124,9 @@ class WaypointerScreenTest {
         int rowLeft = 24;
 
         assertEquals(rowLeft + GuiTokens.GAP + 2,
-                WaypointerScreen.routeRowTextX(rowLeft, false));
-        assertTrue(WaypointerScreen.routeRowTextX(rowLeft, true)
-                > WaypointerScreen.routeRowTextX(rowLeft, false));
+                RouteListPresentation.routeRowTextX(rowLeft, false));
+        assertTrue(RouteListPresentation.routeRowTextX(rowLeft, true)
+                > RouteListPresentation.routeRowTextX(rowLeft, false));
     }
 
     @Test
@@ -142,50 +135,24 @@ class WaypointerScreenTest {
         WaypointGroup alreadyHidden = WaypointGroup.create("Hidden", "hub");
         alreadyHidden.setEnabled(false);
 
-        assertEquals(1, WaypointerScreen.hideRoutes(List.of(shown, alreadyHidden)));
+        assertEquals(1, RouteListPresentation.hideRoutes(List.of(shown, alreadyHidden)));
         assertFalse(shown.enabled());
         assertFalse(alreadyHidden.enabled());
-        assertEquals(0, WaypointerScreen.hideRoutes(List.of(shown, alreadyHidden)));
-        assertEquals(0, WaypointerScreen.hideRoutes(null));
-    }
-
-    @Test
-    void definitionRoutePillReflectsPersistedDungeonVisibility() {
-        com.babbur.waypointer.dungeon.config.DungeonConfig config =
-                new com.babbur.waypointer.dungeon.config.DungeonConfig();
-
-        assertTrue(WaypointerScreen.definitionRouteEnabled(config, "room-a"));
-        config.setRoomRouteEnabled("room-a", false);
-        assertFalse(WaypointerScreen.definitionRouteEnabled(config, "room-a"));
-    }
-
-    @Test
-    void hideAllConfirmationRequiresSameShownRoutesInsideWindow() {
-        WaypointGroup first = WaypointGroup.create("First", "hub");
-        WaypointGroup second = WaypointGroup.create("Second", "hub");
-        List<WaypointGroup> armedRoutes = List.of(first, second);
-        long now = 1_000L;
-        long armedUntil = 2_000L;
-
-        assertTrue(WaypointerScreen.hideAllConfirmationMatches(
-                armedRoutes, WaypointerScreen.routeIds(armedRoutes), now, armedUntil));
-        assertFalse(WaypointerScreen.hideAllConfirmationMatches(
-                List.of(first), WaypointerScreen.routeIds(armedRoutes), now, armedUntil));
-        assertFalse(WaypointerScreen.hideAllConfirmationMatches(
-                armedRoutes, WaypointerScreen.routeIds(armedRoutes), armedUntil, armedUntil));
+        assertEquals(0, RouteListPresentation.hideRoutes(List.of(shown, alreadyHidden)));
+        assertEquals(0, RouteListPresentation.hideRoutes(null));
     }
 
     @Test
     void routeDoubleClickOnlyOpensAlreadyPrimarySelectedRoute() {
-        assertTrue(WaypointerScreen.shouldOpenGroupEditorFromRouteDoubleClick(
+        assertTrue(RouteListPresentation.shouldOpenEditor(
                 true, true, false, false));
-        assertFalse(WaypointerScreen.shouldOpenGroupEditorFromRouteDoubleClick(
+        assertFalse(RouteListPresentation.shouldOpenEditor(
                 false, true, false, false));
-        assertFalse(WaypointerScreen.shouldOpenGroupEditorFromRouteDoubleClick(
+        assertFalse(RouteListPresentation.shouldOpenEditor(
                 true, false, false, false));
-        assertFalse(WaypointerScreen.shouldOpenGroupEditorFromRouteDoubleClick(
+        assertFalse(RouteListPresentation.shouldOpenEditor(
                 true, true, true, false));
-        assertFalse(WaypointerScreen.shouldOpenGroupEditorFromRouteDoubleClick(
+        assertFalse(RouteListPresentation.shouldOpenEditor(
                 true, true, false, true));
     }
 
@@ -198,13 +165,13 @@ class WaypointerScreenTest {
         group.add(Waypoint.at(3, 64, 3));
         group.setCurrentIndex(1);
 
-        assertTrue(WaypointerScreen.groupMatchesSearch(group, "crystal"));
-        assertTrue(WaypointerScreen.groupMatchesSearch(group, "dwarven_mines"));
-        assertTrue(WaypointerScreen.groupMatchesSearch(group, "dwarven mines"));
-        assertTrue(WaypointerScreen.groupMatchesSearch(group, "sequence"));
-        assertTrue(WaypointerScreen.groupMatchesSearch(group, "1/3"));
-        assertTrue(WaypointerScreen.groupMatchesSearch(group, "33.3%"));
-        assertFalse(WaypointerScreen.groupMatchesSearch(group, "garden"));
+        assertTrue(routeMatches(group, "crystal"));
+        assertTrue(routeMatches(group, "dwarven_mines"));
+        assertTrue(routeMatches(group, "dwarven mines"));
+        assertTrue(routeMatches(group, "sequence"));
+        assertTrue(routeMatches(group, "1/3"));
+        assertTrue(routeMatches(group, "33.3%"));
+        assertFalse(routeMatches(group, "garden"));
     }
 
     @Test
@@ -214,45 +181,47 @@ class WaypointerScreenTest {
         group.add(new Waypoint(13, 71, -5, "Tiny", Waypoint.DEFAULT_COLOR, 0, 0.0));
         assertTrue(group.toggleSubwaypoint(1));
 
-        assertTrue(WaypointerScreen.groupMatchesSearch(group, "gem spot"));
-        assertTrue(WaypointerScreen.groupMatchesSearch(group, "#1.1"));
-        assertTrue(WaypointerScreen.groupMatchesSearch(group, "12,70,-4"));
-        assertTrue(WaypointerScreen.waypointMatchesSearch(group, 1, "13,71,-5"));
-        assertFalse(WaypointerScreen.groupMatchesSearch(group, "missing"));
+        assertTrue(routeMatches(group, "gem spot"));
+        assertTrue(routeMatches(group, "#1.1"));
+        assertTrue(routeMatches(group, "12,70,-4"));
+        assertTrue(RouteListPresentation.waypointMatchesSearch(group, 1, "13,71,-5"));
+        assertFalse(routeMatches(group, "missing"));
     }
 
     @Test
     void newRouteTargetKeepsNormalZonesAndTemporaryCurrentZone() {
-        assertEquals("hub", WaypointerScreen.newRouteTargetZoneId("hub", "dungeon_hub"));
-        assertEquals("crimson_isle", WaypointerScreen.newRouteTargetZoneId(
-                WaypointerScreen.TEMPORARY_ZONE_ID, "crimson_isle"));
-        assertEquals(Zone.UNKNOWN.id(), WaypointerScreen.newRouteTargetZoneId(
-                WaypointerScreen.TEMPORARY_ZONE_ID, null));
+        assertEquals("hub", WaypointerZoneCatalog.newRouteTargetZoneId("hub", "dungeon_hub"));
+        assertEquals("crimson_isle", WaypointerZoneCatalog.newRouteTargetZoneId(
+                WaypointerZoneCatalog.TEMPORARY_ZONE_ID, "crimson_isle"));
+        assertEquals(Zone.UNKNOWN.id(), WaypointerZoneCatalog.newRouteTargetZoneId(
+                WaypointerZoneCatalog.TEMPORARY_ZONE_ID, null));
     }
 
     @Test
     void privateWorldRoutesCanMoveToKnownWorldZones() {
         WaypointGroup route = WaypointGroup.create("Offline route", Zone.PRIVATE_WORLD.id());
 
-        assertTrue(WaypointerScreen.canMoveRouteZone(route));
-        assertTrue(WaypointerScreen.retargetRoute(route, "hub"));
+        assertTrue(WaypointerZoneCatalog.canMoveRouteZone(route));
+        assertTrue(WaypointerZoneCatalog.retargetRoute(route, "hub"));
         assertEquals("hub", route.zoneId());
-        assertFalse(WaypointerScreen.retargetRoute(route, "hub"));
+        assertFalse(WaypointerZoneCatalog.retargetRoute(route, "hub"));
 
         WaypointGroup temporary = WaypointGroup.create("Temporary", Zone.PRIVATE_WORLD.id());
         temporary.setTemp(true);
-        assertFalse(WaypointerScreen.canMoveRouteZone(temporary));
+        assertFalse(WaypointerZoneCatalog.canMoveRouteZone(temporary));
 
         WaypointGroup generated = WaypointGroup.create("Generated", Zone.PRIVATE_WORLD.id());
         generated.setRuntimeOnly(true);
-        assertFalse(WaypointerScreen.canMoveRouteZone(generated));
+        assertFalse(WaypointerZoneCatalog.canMoveRouteZone(generated));
 
-        assertFalse(WaypointerScreen.canMoveRouteZone(
-                WaypointGroup.create("Room route", "admin")));
-        assertFalse(WaypointerScreen.retargetRoute(route, "admin"));
-        assertFalse(WaypointerScreen.retargetRoute(route, WaypointerScreen.TEMPORARY_ZONE_ID));
-        assertFalse(WaypointerScreen.retargetRoute(route, Zone.UNKNOWN.id()));
-        assertFalse(WaypointerScreen.retargetRoute(route, Zone.PRIVATE_WORLD.id()));
+        WaypointGroup dungeonRoute = WaypointGroup.create("Room route", "admin");
+        dungeonRoute.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        assertFalse(WaypointerZoneCatalog.canMoveRouteZone(dungeonRoute));
+        assertFalse(WaypointerZoneCatalog.retargetRoute(route, "admin"));
+        assertFalse(WaypointerZoneCatalog.retargetRoute(
+                route, WaypointerZoneCatalog.TEMPORARY_ZONE_ID));
+        assertFalse(WaypointerZoneCatalog.retargetRoute(route, Zone.UNKNOWN.id()));
+        assertFalse(WaypointerZoneCatalog.retargetRoute(route, Zone.PRIVATE_WORLD.id()));
     }
 
     @Test
@@ -266,44 +235,38 @@ class WaypointerScreenTest {
                 "dungeon_m5", "dungeon_m6", "dungeon_m7");
 
         for (String zoneId : dungeonZones) {
-            assertTrue(WaypointerScreen.isCatacombsOrMasterModeZone(zoneId));
-            assertFalse(WaypointerScreen.canRetargetRoute(route, zoneId));
+            assertTrue(WaypointerZoneCatalog.isCatacombsOrMasterModeZone(zoneId));
+            assertFalse(WaypointerZoneCatalog.canRetargetRoute(route, zoneId));
         }
-        assertTrue(WaypointerScreen.isCatacombsOrMasterModeZone(" DUNGEON_M7 "));
-        assertFalse(WaypointerScreen.isCatacombsOrMasterModeZone("dungeon_hub"));
-        assertTrue(WaypointerScreen.canRetargetRoute(route, "dungeon_hub"));
+        assertTrue(WaypointerZoneCatalog.isCatacombsOrMasterModeZone(" DUNGEON_M7 "));
+        assertFalse(WaypointerZoneCatalog.isCatacombsOrMasterModeZone("dungeon_hub"));
+        assertTrue(WaypointerZoneCatalog.canRetargetRoute(route, "dungeon_hub"));
     }
 
     @Test
     void newRouteTargetRequiresDetectedRoomFromDungeonRoomsBucket() {
-        assertEquals("admin", WaypointerScreen.newRouteTargetZoneId(
-                WaypointerScreen.DUNGEON_ROOMS_ZONE_ID, "admin"));
-        assertNull(WaypointerScreen.newRouteTargetZoneId(
-                WaypointerScreen.DUNGEON_ROOMS_ZONE_ID, "dungeon_hub"));
+        assertEquals("admin", WaypointerZoneCatalog.newRouteTargetZoneId(
+                WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID, "admin"));
+        assertNull(WaypointerZoneCatalog.newRouteTargetZoneId(
+                WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID, "dungeon_hub"));
         assertEquals("Stand in a detected dungeon room to create a room route.",
-                WaypointerScreen.newRouteBlockedNotice(WaypointerScreen.DUNGEON_ROOMS_ZONE_ID));
+                WaypointerZoneCatalog.newRouteBlockedNotice(
+                        WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID));
     }
 
     @Test
     void newRouteTargetUsesSelectedDungeonRoomWhilePlayerIsElsewhere() {
-        DungeonRoomData.clearAllCustom();
-        try {
-            defineRoom("offline-room", "Offline Room");
-
-            assertEquals("offline-room", WaypointerScreen.newRouteTargetZoneId(
-                    WaypointerScreen.DUNGEON_ROOMS_ZONE_ID,
-                    "offline-room",
-                    "dungeon_hub"));
-        } finally {
-            DungeonRoomData.clearAllCustom();
-        }
+        assertEquals("offline-room", WaypointerZoneCatalog.newRouteTargetZoneId(
+                WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID,
+                "offline-room",
+                "dungeon_hub"));
     }
 
     @Test
     void offlineZoneListIncludesHypixelTargetsWithoutExistingRoutes() {
-        List<String> zones = WaypointerScreen.zoneIdsForManager(new ActiveGroupManager());
+        List<String> zones = WaypointerZoneCatalog.zoneIdsForManager(new ActiveGroupManager());
 
-        assertEquals(WaypointerScreen.TEMPORARY_ZONE_ID, zones.get(0));
+        assertEquals(WaypointerZoneCatalog.TEMPORARY_ZONE_ID, zones.get(0));
         assertEquals(Zone.UNKNOWN.id(), zones.get(1));
         assertTrue(zones.contains("hub"));
         assertTrue(zones.contains("dungeon_f7"));
@@ -317,16 +280,15 @@ class WaypointerScreenTest {
 
     @Test
     void islandDropdownInitiallyShowsCurrentAndPopulatedIslandsOnly() {
-        DungeonRoomData.clearAllCustom();
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(Zone.fromId("hub"));
         manager.add(WaypointGroup.create("Garden route", "garden"));
 
-        List<String> ids = WaypointerScreen.islandDropdownIdsForManager(manager);
+        List<String> ids = WaypointerZoneCatalog.islandDropdownIdsForManager(manager);
 
         assertEquals(List.of("hub", "garden"), ids);
 
-        List<String> expanded = WaypointerScreen.islandDropdownIdsForManager(manager, true);
+        List<String> expanded = WaypointerZoneCatalog.islandDropdownIdsForManager(manager, true);
         assertEquals("hub", expanded.get(0));
         assertEquals("garden", expanded.get(1));
         assertTrue(expanded.contains("safari"));
@@ -341,68 +303,50 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void openOverlaySuppressesHoverOnBackgroundControls() {
+        assertTrue(WaypointerScreen.backgroundHoverAllowed(false, false));
+        assertFalse(WaypointerScreen.backgroundHoverAllowed(true, false));
+        assertFalse(WaypointerScreen.backgroundHoverAllowed(false, true));
+    }
+
+    @Test
     void privateWorldIsTheCurrentRouteBucketDuringOfflineAuthoring() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(Zone.PRIVATE_WORLD);
         manager.add(WaypointGroup.create("Offline route", Zone.PRIVATE_WORLD.id()));
 
         assertEquals(List.of(Zone.PRIVATE_WORLD.id()),
-                WaypointerScreen.islandDropdownIdsForManager(manager));
+                WaypointerZoneCatalog.islandDropdownIdsForManager(manager));
         assertEquals(Zone.PRIVATE_WORLD.id(),
-                WaypointerScreen.zoneIdsForManager(manager).get(1));
+                WaypointerZoneCatalog.zoneIdsForManager(manager).get(1));
     }
 
     @Test
     void islandsTabDoesNotMixInTheDungeonBucket() {
-        DungeonRoomData.clearAllCustom();
-        try {
-            defineRoom("dropdown-room", "Dropdown Room");
-            ActiveGroupManager manager = new ActiveGroupManager();
-            manager.onZoneChanged(Zone.fromId("hub"));
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
 
-            List<String> ids = WaypointerScreen.islandDropdownIdsForManager(manager);
+        List<String> ids = WaypointerZoneCatalog.islandDropdownIdsForManager(manager);
 
-            assertEquals(List.of("hub"), ids);
-            assertFalse(ids.contains(WaypointerScreen.DUNGEON_ROOMS_ZONE_ID));
-        } finally {
-            DungeonRoomData.clearAllCustom();
-        }
+        assertEquals(List.of("hub"), ids);
+        assertFalse(ids.contains(WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID));
     }
 
     @Test
     void dungeonRoomsOrderPopulatedAlphabeticallyBeforeEmptyAlphabetically() {
-        DungeonRoomData.clearAllCustom();
-        try {
-            defineRoom("zed-populated", "Zed Populated");
-            defineRoom("alpha-empty", "Alpha Empty");
-            defineRoom("beta-populated", "Beta Populated");
-            defineRoom("gamma-empty", "Gamma Empty");
-
-            assertEquals(List.of("beta-populated", "zed-populated", "alpha-empty", "gamma-empty"),
-                    WaypointerScreen.orderedDungeonRoomIds(
-                            List.of("gamma-empty", "zed-populated", "alpha-empty", "beta-populated"),
-                            Set.of("zed-populated", "beta-populated")));
-        } finally {
-            DungeonRoomData.clearAllCustom();
-        }
+        assertEquals(List.of("beta-populated", "zed-populated", "alpha-empty", "gamma-empty"),
+                WaypointerZoneCatalog.orderedDungeonRoomIds(
+                        List.of("gamma-empty", "zed-populated", "alpha-empty", "beta-populated"),
+                        Set.of("zed-populated", "beta-populated")));
     }
 
     @Test
     void currentDungeonRoomSortsFirstEvenWhenItHasNoSavedRoute() {
-        DungeonRoomData.clearAllCustom();
-        try {
-            defineRoom("zed-populated", "Zed Populated");
-            defineRoom("alpha-current", "Alpha Current");
-            defineRoom("beta-populated", "Beta Populated");
-
-            assertEquals(List.of("alpha-current", "beta-populated", "zed-populated"),
-                    WaypointerScreen.orderedDungeonRoomIds(
-                            List.of("zed-populated", "alpha-current", "beta-populated"),
-                            Set.of("zed-populated", "beta-populated"),
-                            "alpha-current"));
-        } finally {
-            DungeonRoomData.clearAllCustom();
-        }
+        assertEquals(List.of("alpha-current", "beta-populated", "zed-populated"),
+                WaypointerZoneCatalog.orderedDungeonRoomIds(
+                        List.of("zed-populated", "alpha-current", "beta-populated"),
+                        Set.of("zed-populated", "beta-populated"),
+                        "alpha-current"));
     }
 
     @Test
@@ -410,30 +354,30 @@ class WaypointerScreenTest {
         int pitch = GuiTokens.ROW_H + 4;
         int viewport = pitch * 3;
 
-        assertEquals(pitch * 2, WaypointerScreen.scrollOffsetToRevealRow(
+        assertEquals(pitch * 2, WaypointerRouteList.scrollOffsetToRevealRow(
                 pitch * 2, 3, 10, viewport),
                 "an already-visible target preserves user scroll");
 
-        int revealed = WaypointerScreen.scrollOffsetToRevealRow(0, 7, 10, viewport);
+        int revealed = WaypointerRouteList.scrollOffsetToRevealRow(0, 7, 10, viewport);
         int rowTop = 7 * pitch;
         int rowBottom = rowTop + GuiTokens.ROW_H + 2;
         assertTrue(rowTop >= revealed);
         assertTrue(rowBottom <= revealed + viewport);
 
-        assertEquals(0, WaypointerScreen.scrollOffsetToRevealRow(
+        assertEquals(0, WaypointerRouteList.scrollOffsetToRevealRow(
                 revealed, 0, 10, viewport),
                 "a newly-current first room scrolls back to the top");
     }
 
     @Test
     void currentDungeonRoomHeaderUsesPersistentGreenHighlight() {
-        assertEquals(WaypointerScreen.CURRENT_DUNGEON_ROOM_ACCENT,
-                WaypointerScreen.roomHeaderAccent(true));
-        assertTrue(WaypointerScreen.roomHeaderAccent(true)
-                != WaypointerScreen.roomHeaderAccent(false));
-        assertTrue(WaypointerScreen.roomHeaderBackground(false, false, true) != 0,
+        assertEquals(RouteListPresentation.CURRENT_DUNGEON_ROOM_ACCENT,
+                RouteListPresentation.roomHeaderAccent(true));
+        assertTrue(RouteListPresentation.roomHeaderAccent(true)
+                != RouteListPresentation.roomHeaderAccent(false));
+        assertTrue(RouteListPresentation.roomHeaderBackground(false, false, true) != 0,
                 "current room stays highlighted when a child route owns selection");
-        assertEquals(0, WaypointerScreen.roomHeaderBackground(false, false, false));
+        assertEquals(0, RouteListPresentation.roomHeaderBackground(false, false, false));
     }
 
     @Test
@@ -442,21 +386,15 @@ class WaypointerScreenTest {
     }
 
     @Test
-    void offlineZoneListIncludesEmptyCustomDungeonRoomDefinitions() {
-        DungeonRoomData.clearAllCustom();
-        try {
-            defineRoom("empty-offline-room", "Empty Offline Room");
+    void offlineZoneListIncludesStoredDungeonRoutes() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = WaypointGroup.create("Offline", "empty-offline-room");
+        route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        manager.add(route);
 
-            List<String> zones = WaypointerScreen.zoneIdsForManager(new ActiveGroupManager());
+        List<String> zones = WaypointerZoneCatalog.zoneIdsForManager(manager);
 
-            assertTrue(zones.contains(WaypointerScreen.DUNGEON_ROOMS_ZONE_ID));
-            assertEquals("empty-offline-room", WaypointerScreen.newRouteTargetZoneId(
-                    WaypointerScreen.DUNGEON_ROOMS_ZONE_ID,
-                    "empty-offline-room",
-                    null));
-        } finally {
-            DungeonRoomData.clearAllCustom();
-        }
+        assertTrue(zones.contains(WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID));
     }
 
     @Test
@@ -464,53 +402,20 @@ class WaypointerScreenTest {
         assertEquals("Nothing to export in Hub.",
                 WaypointerScreen.emptyExportNotice("hub"));
         assertEquals("Nothing to export in Temporary.",
-                WaypointerScreen.emptyExportNotice(WaypointerScreen.TEMPORARY_ZONE_ID));
+                WaypointerScreen.emptyExportNotice(WaypointerZoneCatalog.TEMPORARY_ZONE_ID));
         assertEquals("Nothing to export in Dungeon Rooms.",
-                WaypointerScreen.emptyExportNotice(WaypointerScreen.DUNGEON_ROOMS_ZONE_ID));
+                WaypointerScreen.emptyExportNotice(WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID));
         assertEquals("Nothing to export in Dungeons: Admin.",
                 WaypointerScreen.emptyExportNotice("admin"));
     }
 
     @Test
-    void dungeonDefinitionsForExportSkipsEmptyRoomsAndSortsByDisplayName() {
-        DungeonRoomDefinition zed = new DungeonRoomDefinition(
-                "zed",
-                "Zed",
-                DungeonRoomType.ROOM,
-                DungeonRoomShape.ONE_BY_ONE,
-                List.of(),
-                List.of(DungeonWaypoint.plain("z", DungeonSecretCategory.CHEST, 1, 70, 1, "")));
-        DungeonRoomDefinition empty = new DungeonRoomDefinition(
-                "empty",
-                "Empty",
-                DungeonRoomType.ROOM,
-                DungeonRoomShape.ONE_BY_ONE,
-                List.of(),
-                List.of());
-        DungeonRoomDefinition alpha = new DungeonRoomDefinition(
-                "alpha",
-                "Alpha",
-                DungeonRoomType.ROOM,
-                DungeonRoomShape.ONE_BY_ONE,
-                List.of(),
-                List.of(DungeonWaypoint.plain("a", DungeonSecretCategory.LEVER, 2, 70, 2, "")));
-
-        List<DungeonRoomDefinition> out =
-                WaypointerScreen.dungeonDefinitionsForExport(List.of(zed, empty, alpha));
-
-        assertEquals(List.of(alpha, zed), out);
-        assertEquals(2, WaypointerScreen.dungeonWaypointCount(out));
-    }
-
-    @Test
     void dungeonRouteExportWithoutSelectionUsesShownRoomRoutesOnly() {
-        DungeonRoomData.clearAllCustom();
-        try {
-            defineRoom("waterfall", "Waterfall");
-            defineRoom("creeper-beams", "Creeper Beams");
-
+        {
             WaypointGroup shown = WaypointGroup.create("Shown", "waterfall");
+            shown.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
             WaypointGroup hidden = WaypointGroup.create("Hidden", "creeper-beams");
+            hidden.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
             hidden.setEnabled(false);
             WaypointGroup normal = WaypointGroup.create("Normal", "hub");
             WaypointGroup temp = WaypointGroup.create("Temp", "waterfall");
@@ -520,82 +425,53 @@ class WaypointerScreenTest {
                     List.of(), List.of(hidden, normal, shown, temp));
 
             assertEquals(List.of(shown), out);
-        } finally {
-            DungeonRoomData.clearAllCustom();
         }
     }
 
     @Test
     void dungeonRouteExportUsesSelectedRouteWhenPresent() {
-        DungeonRoomData.clearAllCustom();
-        try {
-            defineRoom("doors", "Doors");
-
+        {
             WaypointGroup selected = WaypointGroup.create("Selected", "doors");
+            selected.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
             selected.setEnabled(false);
             WaypointGroup shown = WaypointGroup.create("Shown", "doors");
+            shown.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
 
             List<WaypointGroup> out = WaypointerScreen.dungeonRouteGroupsForExport(
                     List.of(selected), List.of(shown));
 
             assertEquals(List.of(selected), out);
-        } finally {
-            DungeonRoomData.clearAllCustom();
         }
     }
 
     @Test
-    void generatedDungeonRouteDeleteClearsRoomWaypoints() {
-        DungeonRoomData.clearAllCustom();
-        try {
-            DungeonRoom room = new DungeonRoom(
-                    DungeonRoomType.ROOM,
-                    DungeonRoomShape.ONE_BY_ONE,
-                    Direction.NW,
-                    0,
-                    0,
-                    List.of(DungeonRoom.packSegment(0, 0)));
-            DungeonRoomDefinition definition = DungeonRoomData.defineRoom(
-                    "generated-delete", "Generated Delete", room);
-            DungeonRoomData.addWaypoint(definition.id(), DungeonWaypoint.plain(
-                    "secret",
-                    DungeonSecretCategory.CHEST,
-                    4,
-                    70,
-                    7,
-                    ""));
-            WaypointGroup generated = new WaypointGroup(
-                    DungeonRoomRouteSync.generatedGroupId(definition.id()),
-                    "Dungeon Secrets -- Generated Delete",
-                    definition.id());
-            generated.setRuntimeOnly(true);
+    void deletingGeneratedDungeonRouteHasNoSecondaryDatastoreSideEffect() {
+        WaypointGroup generated = new WaypointGroup(
+                DungeonRoomRouteProjection.generatedGroupId("generated-delete"),
+                "Dungeon Route", "generated-delete");
+        generated.setRuntimeOnly(true);
 
-            assertTrue(WaypointerScreen.clearGeneratedDungeonRouteBeforeDelete(generated));
-
-            assertTrue(DungeonRoomData.definition(definition.id()).waypoints().isEmpty());
-        } finally {
-            DungeonRoomData.clearAllCustom();
-        }
+        assertFalse(WaypointerScreen.clearGeneratedDungeonRouteBeforeDelete(generated));
     }
 
     @Test
     void importTargetKeepsNormalZonesAndResolvesTemporaryToCurrentZone() {
-        assertEquals("hub", WaypointerScreen.importTargetZoneId("hub", "crimson_isle"));
-        assertEquals("crimson_isle", WaypointerScreen.importTargetZoneId(
-                WaypointerScreen.TEMPORARY_ZONE_ID, "crimson_isle"));
-        assertEquals(Zone.UNKNOWN.id(), WaypointerScreen.importTargetZoneId(
-                WaypointerScreen.TEMPORARY_ZONE_ID, null));
-        assertEquals(Zone.UNKNOWN.id(), WaypointerScreen.importTargetZoneId(null, "hub"));
+        assertEquals("hub", WaypointerZoneCatalog.importTargetZoneId("hub", "crimson_isle"));
+        assertEquals("crimson_isle", WaypointerZoneCatalog.importTargetZoneId(
+                WaypointerZoneCatalog.TEMPORARY_ZONE_ID, "crimson_isle"));
+        assertEquals(Zone.UNKNOWN.id(), WaypointerZoneCatalog.importTargetZoneId(
+                WaypointerZoneCatalog.TEMPORARY_ZONE_ID, null));
+        assertEquals(Zone.UNKNOWN.id(), WaypointerZoneCatalog.importTargetZoneId(null, "hub"));
     }
 
     @Test
     void importTargetUsesCurrentRoomOrUnknownFromDungeonRoomsBucket() {
-        assertEquals("admin", WaypointerScreen.importTargetZoneId(
-                WaypointerScreen.DUNGEON_ROOMS_ZONE_ID, "admin"));
-        assertEquals(Zone.UNKNOWN.id(), WaypointerScreen.importTargetZoneId(
-                WaypointerScreen.DUNGEON_ROOMS_ZONE_ID, "dungeon_hub"));
-        assertEquals(Zone.UNKNOWN.id(), WaypointerScreen.importTargetZoneId(
-                WaypointerScreen.DUNGEON_ROOMS_ZONE_ID, null));
+        assertEquals("admin", WaypointerZoneCatalog.importTargetZoneId(
+                WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID, "admin"));
+        assertEquals(Zone.UNKNOWN.id(), WaypointerZoneCatalog.importTargetZoneId(
+                WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID, "dungeon_hub"));
+        assertEquals(Zone.UNKNOWN.id(), WaypointerZoneCatalog.importTargetZoneId(
+                WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID, null));
     }
 
     @Test
@@ -603,7 +479,8 @@ class WaypointerScreenTest {
         WaypointGroup unknown = WaypointGroup.create("Unknown", Zone.UNKNOWN.id());
         WaypointGroup explicit = WaypointGroup.create("Explicit", "hub");
 
-        WaypointerScreen.retargetUnknownImportedGroups(List.of(unknown, explicit), "crimson_isle");
+        WaypointerZoneCatalog.retargetUnknownImportedGroups(
+                List.of(unknown, explicit), "crimson_isle");
 
         assertEquals("crimson_isle", unknown.zoneId());
         assertEquals("hub", explicit.zoneId());
@@ -613,31 +490,29 @@ class WaypointerScreenTest {
     void retargetUnknownImportedGroupsKeepsUnknownFallbackWhenTargetIsUnknown() {
         WaypointGroup unknown = WaypointGroup.create("Unknown", Zone.UNKNOWN.id());
 
-        WaypointerScreen.retargetUnknownImportedGroups(List.of(unknown), Zone.UNKNOWN.id());
+        WaypointerZoneCatalog.retargetUnknownImportedGroups(
+                List.of(unknown), Zone.UNKNOWN.id());
 
         assertEquals(Zone.UNKNOWN.id(), unknown.zoneId());
     }
 
     @Test
     void importedGroupSelectorEntryCollapsesDungeonRoomsToVisibleParent() {
-        assertEquals("hub", WaypointerScreen.selectorEntryForZoneId("hub"));
-        assertEquals(WaypointerScreen.TEMPORARY_ZONE_ID,
-                WaypointerScreen.selectorEntryForZoneId(WaypointerScreen.TEMPORARY_ZONE_ID));
-        assertEquals(Zone.UNKNOWN.id(), WaypointerScreen.selectorEntryForZoneId(Zone.UNKNOWN.id()));
-        assertEquals(WaypointerScreen.DUNGEON_ROOMS_ZONE_ID,
-                WaypointerScreen.selectorEntryForZoneId("admin"));
-        assertEquals("dungeon_hub", WaypointerScreen.selectorEntryForZoneId("dungeon_hub"));
-        assertNull(WaypointerScreen.selectorEntryForZoneId(null));
+        assertEquals("hub", WaypointerZoneCatalog.selectorEntryForZoneId("hub"));
+        assertEquals(WaypointerZoneCatalog.TEMPORARY_ZONE_ID,
+                WaypointerZoneCatalog.selectorEntryForZoneId(
+                        WaypointerZoneCatalog.TEMPORARY_ZONE_ID));
+        assertEquals(Zone.UNKNOWN.id(),
+                WaypointerZoneCatalog.selectorEntryForZoneId(Zone.UNKNOWN.id()));
+        assertEquals(WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID,
+                WaypointerZoneCatalog.selectorEntryForZoneId("admin"));
+        assertEquals("dungeon_hub",
+                WaypointerZoneCatalog.selectorEntryForZoneId("dungeon_hub"));
+        assertNull(WaypointerZoneCatalog.selectorEntryForZoneId(null));
     }
 
-    private static DungeonRoomDefinition defineRoom(String id, String name) {
-        DungeonRoom room = new DungeonRoom(
-                DungeonRoomType.ROOM,
-                DungeonRoomShape.ONE_BY_ONE,
-                Direction.NW,
-                0,
-                0,
-                List.of(DungeonRoom.packSegment(0, 0)));
-        return DungeonRoomData.defineRoom(id, name, room);
+    private static boolean routeMatches(WaypointGroup group, String query) {
+        return RouteListPresentation.groupMatchesSearch(
+                group, query, Zone.fromId(group.zoneId()).displayName());
     }
 }

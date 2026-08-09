@@ -11,6 +11,20 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Builds a stable core hash for each 32x32 room segment. We scan one vertical
+ * block column through the segment's center, from Y 140 down to Y 12. Air and
+ * gold above the roof are stored as zeroes. After the roof, blocks that can
+ * change without changing the room, such as chests and oak planks, are skipped.
+ * The remaining block types are added in height order and the resulting text is
+ * turned into a normal Java string hash. A room's core is the list of hashes
+ * from all of its segments.
+ *
+ * This stays fast because it checks at most 129 blocks per segment instead of
+ * scanning the whole room. It reads directly from an already loaded chunk,
+ * reuses one block position, and usually stops when it finds empty space below
+ * the bedrock floor, filling the rest with zeroes.
+ */
 final class DungeonRoomCoreScanner implements DungeonRoomData.CoreHashLookup {
 
     private static final int ROOM_CENTER_OFFSET = 15;

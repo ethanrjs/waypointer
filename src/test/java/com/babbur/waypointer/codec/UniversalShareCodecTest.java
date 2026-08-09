@@ -1,13 +1,10 @@
 package com.babbur.waypointer.codec;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.config.WaypointerConfigCodec;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
-import com.babbur.waypointer.dungeon.DungeonRoomShape;
-import com.babbur.waypointer.dungeon.DungeonRoomType;
-import com.babbur.waypointer.dungeon.DungeonSecretCategory;
-import com.babbur.waypointer.dungeon.DungeonWaypoint;
-import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
+import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 
 import java.util.List;
 
@@ -15,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UniversalShareCodecTest {
@@ -50,18 +48,28 @@ class UniversalShareCodecTest {
 
     @Test
     void dispatchesDungeonRoutes() {
-        DungeonRoomDefinition definition = new DungeonRoomDefinition(
-                "crypt-a", "Crypt A", DungeonRoomType.ROOM, DungeonRoomShape.ONE_BY_ONE,
-                List.of(), List.of(), List.of(DungeonWaypoint.plain(
-                        "crypt-a:1", DungeonSecretCategory.CHEST, 4, 68, 9, "Chest")));
+        WaypointGroup route = WaypointGroup.create("Crypt A", "crypt-a");
+        route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        route.add(new Waypoint(4, 68, 9, "Chest", 0xAA5500,
+                Waypoint.FLAG_SKIP_ON_INTERACT | Waypoint.FLAG_DUNGEON_SECRET, 0.0));
 
         UniversalShareCodec.Decoded decoded = UniversalShareCodec.decode(
-                UniversalShareCodec.encodeDungeon(List.of(definition)));
+                UniversalShareCodec.encodeDungeon(List.of(route)));
 
         UniversalShareCodec.DungeonRoutes dungeon =
                 assertInstanceOf(UniversalShareCodec.DungeonRoutes.class, decoded);
         assertEquals(UniversalShareCodec.Type.DUNGEON, dungeon.type());
-        assertEquals(1, dungeon.result().definitions().size());
-        assertEquals(definition, dungeon.result().definitions().get(0));
+        assertEquals(1, dungeon.result().groups().size());
+        assertEquals(route.waypoints(), dungeon.result().groups().getFirst().waypoints());
+    }
+
+    @Test
+    void rejectsOversizedPayloadsBeforeDispatchingToFeatureCodecs() {
+        String body = "A".repeat(WaypointImporter.MAX_TEXT_PAYLOAD_CHARS);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> UniversalShareCodec.decode(WaypointerConfigCodec.MAGIC + body));
+        assertThrows(IllegalArgumentException.class,
+                () -> UniversalShareCodec.decode(DungeonRoomShareCodec.MAGIC + body));
     }
 }

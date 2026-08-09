@@ -11,26 +11,12 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-/**
- * Authoritative zone source backed by the Hypixel Mod API's location event packet.
- * Hypixel sends this packet every time the player switches instances, so we never
- * have to poll anything -- each packet is a guaranteed correct state update.
- *
- * <p>Glacite Mineshaft layouts are a special case: the packet can stay on the
- * broad Dwarven or mineshaft location while the sidebar carries the layout code.
- * We re-check that code every few ticks. Connected Dwarven surface areas stay in
- * the packet-backed {@code dwarven_mines} zone.
- *
- * <p>Debounced on the Zone id so two identical transitions (e.g. re-login) don't
- * trigger duplicate load/unload cycles in {@code ActiveGroupManager}.
- */
 public final class HypixelApiZoneSource implements ZoneSource {
 
     private static final int REFINE_POLL_TICKS = 2;
     private static volatile DebugSnapshot lastDebugSnapshot;
 
     private Zone lastEmitted;
-    /** Last raw zone from {@link Zone#resolve(String, String, String)} before sidebar refinement. */
     private Zone lastRawPacketZone;
     private Consumer<Zone> listener;
     private int tickCounter;
@@ -55,11 +41,24 @@ public final class HypixelApiZoneSource implements ZoneSource {
     }
 
     private void onTick(Minecraft mc) {
+        if (mc.level == null || mc.getCurrentServer() == null) {
+            resetLocation();
+            return;
+        }
         if (++tickCounter < REFINE_POLL_TICKS) return;
         tickCounter = 0;
         if (lastRawPacketZone == null) return;
         if (!shouldPollSidebarRefinement(lastRawPacketZone)) return;
         emitRefined(null, null, null);
+    }
+
+    private void resetLocation() {
+        lastRawPacketZone = null;
+        tickCounter = 0;
+        lastDebugSnapshot = null;
+        if (lastEmitted == null) return;
+        lastEmitted = null;
+        if (listener != null) listener.accept(null);
     }
 
     private static boolean shouldPollSidebarRefinement(Zone zone) {
@@ -69,9 +68,6 @@ public final class HypixelApiZoneSource implements ZoneSource {
         return CatacombsFloorRefiner.shouldPoll(zone);
     }
 
-    /**
-     * @param serverType map mode only used for logging on packet path; may be null on tick path
-     */
     private void emitRefined(String serverType, String map, String mode) {
         Minecraft mc = Minecraft.getInstance();
         String blob = SidebarTexts.collectColorStripped(mc);

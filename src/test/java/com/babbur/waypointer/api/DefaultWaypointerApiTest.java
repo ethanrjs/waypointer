@@ -75,6 +75,46 @@ class DefaultWaypointerApiTest {
     }
 
     @Test
+    void publicSpecsExposeExactSixteenthBlockCoordinates() {
+        WaypointSpec spec = WaypointSpec.atPreciseSixteenths(17, 34, -47)
+                .name("exact");
+
+        assertEquals(1, spec.x());
+        assertEquals(2, spec.y());
+        assertEquals(-3, spec.z());
+
+        WaypointerApi api = new DefaultWaypointerApi(new ActiveGroupManager());
+        api.createRoute(RouteSpec.builder().name("Route").waypoint(spec).build());
+        WaypointSnapshot snapshot = api.savedRoutes().get(0).waypoints().get(0);
+
+        assertEquals(17, snapshot.preciseX());
+        assertEquals(34, snapshot.preciseY());
+        assertEquals(-47, snapshot.preciseZ());
+    }
+
+    @Test
+    void publicSpecsRejectNamesThatCannotBePersistedOrExported() {
+        assertThrows(IllegalArgumentException.class,
+                () -> RouteSpec.builder().name("bad\nroute").build());
+        assertThrows(IllegalArgumentException.class,
+                () -> RouteSpec.builder()
+                        .waypoint(WaypointSpec.at(0, 0, 0).name("\u00A7cformatted"))
+                        .build());
+        assertThrows(IllegalArgumentException.class,
+                () -> RouteSpec.builder()
+                        .waypoint(WaypointSpec.at(0, 0, 0).name("x".repeat(257)))
+                        .build());
+
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        String groupId = api.createRoute(RouteSpec.builder().name("safe").build());
+        assertThrows(IllegalArgumentException.class,
+                () -> api.addWaypoint(groupId,
+                        WaypointSpec.at(0, 0, 0).name("bad\nwaypoint")));
+        assertEquals(0, manager.get(groupId).size());
+    }
+
+    @Test
     void createRoute_returnsImmutableSnapshotData() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerApi api = new DefaultWaypointerApi(manager);
@@ -165,6 +205,24 @@ class DefaultWaypointerApiTest {
         assertFalse(api.removeWaypoint(stale));
         assertEquals("second", live.get(0).name());
         assertEquals(1, changes.get(), "stale references must not notify listeners");
+    }
+
+    @Test
+    void optimisticWaypointReferencesDetectPreciseEditsWithinTheSameBlock() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        String groupId = api.createRoute(RouteSpec.builder()
+                .name("Route")
+                .waypoint(WaypointSpec.atPreciseSixteenths(17, 34, 51))
+                .build());
+        WaypointReference stale = api.savedRoutes().get(0).waypointReferences().get(0);
+
+        WaypointGroup live = manager.get(groupId);
+        live.set(0, live.get(0).withPreciseSixteenths(18, 34, 51));
+
+        assertEquals(1, live.get(0).x(), "the edit must remain inside the same block");
+        assertFalse(api.updateWaypoint(stale, WaypointSpec.at(9, 9, 9)));
+        assertFalse(api.removeWaypoint(stale));
     }
 
     @Test
@@ -430,6 +488,22 @@ class DefaultWaypointerApiTest {
         assertEquals(List.of("Existing"), api.savedRoutes().stream()
                 .map(WaypointGroupSnapshot::name)
                 .toList());
+    }
+
+    @Test
+    void rejectedImportDoesNotDispatchParsingToTheClientExecutor() {
+        AtomicInteger dispatches = new AtomicInteger();
+        WaypointerApi api = new DefaultWaypointerApi(
+                new ActiveGroupManager(),
+                () -> false,
+                action -> {
+                    dispatches.incrementAndGet();
+                    action.run();
+                });
+
+        assertThrows(IllegalArgumentException.class, () -> api.importRoutes("not waypoint data"));
+
+        assertEquals(0, dispatches.get());
     }
 
     @Test

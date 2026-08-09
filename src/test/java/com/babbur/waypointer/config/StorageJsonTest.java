@@ -441,6 +441,36 @@ class StorageJsonTest {
     }
 
     @Test
+    void group_routeKindRoundTripsIncludingExplicitRegularForKnownRoom() {
+        WaypointGroup dungeon = WaypointGroup.create("Dungeon route", "admin");
+        dungeon.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        WaypointGroup regular = WaypointGroup.create("Regular route", "admin");
+
+        JsonObject dungeonJson = Storage.groupToJson(dungeon);
+        JsonObject regularJson = Storage.groupToJson(regular);
+
+        assertEquals("DUNGEON", dungeonJson.get("routeKind").getAsString());
+        assertEquals(WaypointGroup.RouteKind.DUNGEON,
+                Storage.groupFromJson(dungeonJson).routeKind());
+        assertEquals("REGULAR", regularJson.get("routeKind").getAsString());
+        assertEquals(WaypointGroup.RouteKind.REGULAR,
+                Storage.groupFromJson(regularJson).routeKind());
+    }
+
+    @Test
+    void group_missingRouteKindUsesTemporaryDungeonCatalogInference() {
+        JsonObject knownRoom = Storage.groupToJson(WaypointGroup.create("Legacy", "admin"));
+        knownRoom.remove("routeKind");
+        JsonObject ordinaryZone = Storage.groupToJson(WaypointGroup.create("Legacy", "hub"));
+        ordinaryZone.remove("routeKind");
+
+        assertEquals(WaypointGroup.RouteKind.DUNGEON,
+                Storage.groupFromJson(knownRoom).routeKind());
+        assertEquals(WaypointGroup.RouteKind.REGULAR,
+                Storage.groupFromJson(ordinaryZone).routeKind());
+    }
+
+    @Test
     void group_waypointPaintRoundTripsAndInvalidOptionalPaintIsIgnored() {
         WaypointGroup group = WaypointGroup.create("painted", "hub");
         byte[] pixels = new byte[WaypointPaint.PIXEL_COUNT];
@@ -536,16 +566,13 @@ class StorageJsonTest {
     }
 
     @Test
-    void group_bestRouteTimeRoundTripsAndIsAbsentUntilRecorded() {
-        WaypointGroup group = WaypointGroup.create("timed-route", "hub");
-        assertFalse(Storage.groupToJson(group).has("bestTimeMillis"));
+    void groupIgnoresLegacyBestRouteTime() {
+        JsonObject legacy = Storage.groupToJson(WaypointGroup.create("route", "hub"));
+        legacy.addProperty("bestTimeMillis", 573_000L);
 
-        group.setBestTimeMillis(573_000L);
-        JsonObject json = Storage.groupToJson(group);
-        WaypointGroup copy = Storage.groupFromJson(json);
+        WaypointGroup copy = Storage.groupFromJson(legacy);
 
-        assertEquals(573_000L, json.get("bestTimeMillis").getAsLong());
-        assertEquals(573_000L, copy.bestTimeMillis());
+        assertFalse(Storage.groupToJson(copy).has("bestTimeMillis"));
     }
 
     @Test
@@ -648,7 +675,6 @@ class StorageJsonTest {
         assertEquals(WaypointGroup.LoadMode.STATIC, tunnels.loadMode());
         assertEquals(3.5, tunnels.defaultRadius());
         assertFalse(tunnels.skipAheadEnabled());
-        assertEquals(12345L, tunnels.bestTimeMillis());
         assertEquals(0x123456, tunnels.staticColor());
         assertEquals(0x112233, tunnels.gradientStartColor());
         assertEquals(0xFEDCBA, tunnels.gradientEndColor());

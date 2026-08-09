@@ -7,20 +7,14 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Privacy-aware plain-text export for the {@code /wp debug} report.
- *
- * <p>Every report section has exactly one disclosure category. The screen may
- * render all captured data locally, but the clipboard export only includes the
- * categories the user confirms. Excluded section bodies are replaced with the
- * same explicit marker so support can distinguish missing telemetry from a
- * capture failure.
+ * Exports the debug report using only the categories the user approved.
+ * Excluded sections are marked as redacted rather than silently omitted.
  */
 public final class DebugReportExport {
 
     public static final String REDACTED = "[User redacted]";
     private static final int MAX_EXPORTED_LINE_CHARS = 4_000;
 
-    /** User-facing disclosure groups shown in the copy confirmation screen. */
     public enum Category {
         CORE("", ""),
         PC_SPECS("PC Specs",
@@ -65,7 +59,6 @@ public final class DebugReportExport {
         }
     }
 
-    /** One export section with already formatted body lines. */
     public record Section(String heading, Category category, List<String> lines) {
         public Section {
             heading = sanitizeLine(heading).trim();
@@ -74,7 +67,7 @@ public final class DebugReportExport {
         }
     }
 
-    /** Immutable set of user-approved categories. Core diagnostics are always included. */
+    /** Core data is included even when it is absent from {@code included}. */
     public record Options(Set<Category> included) {
         public Options {
             EnumSet<Category> copy = included == null || included.isEmpty()
@@ -96,7 +89,6 @@ public final class DebugReportExport {
     private DebugReportExport() {
     }
 
-    /** Formats a deterministic, readable report suitable for chat, issues, or support DMs. */
     public static String format(List<Section> sections, Options options) {
         Options approved = options == null ? Options.allEnabled() : options;
         StringBuilder report = new StringBuilder();

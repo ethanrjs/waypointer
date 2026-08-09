@@ -2,9 +2,6 @@ package com.babbur.waypointer.screen;
 
 import net.minecraft.client.gui.screens.Screen;
 
-/**
- * Small ownership helper for Waypointer GUI screens.
- */
 public final class WaypointerGuiScreens {
 
     private WaypointerGuiScreens() {}

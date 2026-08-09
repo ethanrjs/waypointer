@@ -1,11 +1,14 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.Waypointer;
+import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
+import com.babbur.waypointer.dungeon.DungeonWaypointType;
 import com.babbur.waypointer.input.WaypointAddFlow;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import net.minecraft.client.Minecraft;
@@ -14,8 +17,11 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,25 +30,27 @@ import static com.babbur.waypointer.screen.GuiTokens.*;
 
 /**
  * One-field modal for creating a waypoint with an optional name.
- *
- * <p>The normal create action stays instant and unnamed. This prompt is the
- * explicit naming path: focus a single text box, commit on Enter, and close on
- * Cancel or Confirm. Leaving the field blank creates an unnamed waypoint.
  */
 public final class AddNamedWaypointScreen extends Screen {
 
     private static final int PANEL_W = 280;
     private static final int PANEL_H = 136;
-    private static final int OPTIONS_PANEL_H = 126;
+    private static final int OPTIONS_PANEL_H = 158;
+    private static final int DUNGEON_OPTIONS_PANEL_H = 174;
     private static final int GLFW_KEY_ENTER = 257;
     private static final int GLFW_KEY_KP_ENTER = 335;
     private static final int MAX_NAME_LENGTH = 64;
+    private static final int DUNGEON_TYPE_BUTTON_SIZE = 20;
+    private static final int DUNGEON_TYPE_ROW_WIDTH = PANEL_W - PAD_OUTER * 2;
+    private static final Identifier DUNGEON_TYPE_ICONS = Identifier.fromNamespaceAndPath(
+            Waypointer.MOD_ID, "textures/gui/dungeon_waypoint_types.png");
+    private static String rememberedDungeonRoomKey;
+    private static DungeonWaypointType rememberedDungeonType;
 
     private final Screen parent;
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
     private final WaypointGroup targetGroup;
-    /** When true, waypoint coords come from {@link #fixedX}/{@link #fixedY}/{@link #fixedZ} (keybind press). */
     private final boolean useFixedPosition;
     private final int fixedX;
     private final int fixedY;
@@ -53,6 +61,8 @@ public final class AddNamedWaypointScreen extends Screen {
     private final int fixedPreciseY;
     private final int fixedPreciseZ;
     private final boolean subwaypointAvailable;
+    private final boolean showDungeonTypes;
+    private final String dungeonRoomKey;
 
     private EditBox nameBox;
     private GuiTokens.StyledCheckbox subwaypointCheckbox;
@@ -60,6 +70,8 @@ public final class AddNamedWaypointScreen extends Screen {
     private String enteredName = "";
     private boolean subwaypointSelected;
     private boolean smallSelected;
+    private DungeonWaypointType selectedDungeonType;
+    private boolean dungeonTypeIconsAvailable;
     private WaypointGroup previewGroup;
 
     public AddNamedWaypointScreen(Screen parent, ActiveGroupManager manager,
@@ -100,6 +112,15 @@ public final class AddNamedWaypointScreen extends Screen {
         this.fixedPreciseY = fixedPreciseY;
         this.fixedPreciseZ = fixedPreciseZ;
         this.subwaypointAvailable = canCreateSubwaypoint(targetGroup);
+        this.showDungeonTypes = showSubtypeOptions
+                && targetGroup != null
+                && targetGroup.routeKind() == WaypointGroup.RouteKind.DUNGEON;
+        this.dungeonRoomKey = showDungeonTypes
+                ? dungeonRoomSelectionKey(targetGroup, currentDungeonRoomIdentity())
+                : null;
+        this.selectedDungeonType = showDungeonTypes
+                ? selectionForRoom(dungeonRoomKey, DungeonWaypointType.firstType(fixedFlags))
+                : null;
     }
 
     public static void open(Screen parent, ActiveGroupManager manager,
@@ -138,6 +159,8 @@ public final class AddNamedWaypointScreen extends Screen {
         int panelY = (height - panelH) / 2;
         int inner = panelX + PAD_OUTER;
         int fieldW = PANEL_W - PAD_OUTER * 2;
+        dungeonTypeIconsAvailable = minecraft != null
+                && minecraft.getResourceManager().getResource(DUNGEON_TYPE_ICONS).isPresent();
 
         nameBox = new EditBox(font, inner, panelY + 34, fieldW, BTN_H,
                 Component.translatable("waypointer.screen.add_named.name"));
@@ -172,7 +195,9 @@ public final class AddNamedWaypointScreen extends Screen {
                 Component.translatable("gui.cancel"), this::onCancelButtonClicked, null));
         Button confirmButton = styledButton(
                 panelX + PANEL_W - PAD_OUTER - 70, footerY, 70, BTN_H,
-                Component.translatable("gui.confirm"), this::onConfirmButtonClicked, null);
+                Component.translatableWithFallback(
+                        "waypointer.screen.add_named.confirm", "Confirm"),
+                this::onConfirmButtonClicked, null);
         addRenderableWidget(confirmButton);
         updatePreview();
     }
@@ -210,8 +235,23 @@ public final class AddNamedWaypointScreen extends Screen {
                     smallLabelX, labelY,
                     subwaypointSelected ? TEXT : TEXT_MUTED, false);
         }
+        if (showDungeonTypes) {
+            Component selectedType = selectedDungeonType == null
+                    ? Component.translatable("waypointer.screen.add_named.none")
+                    : Component.literal(selectedDungeonType.label());
+            g.text(font, Component.translatable("waypointer.screen.add_named.waypoint_type", selectedType),
+                    panelX + PAD_OUTER, panelY + 91, TEXT_DIM, false);
+        }
 
         super.extractRenderState(g, mouseX, mouseY, partial);
+        if (showDungeonTypes) {
+            renderDungeonTypes(g, mouseX, mouseY);
+            int hoveredType = dungeonTypeAt(mouseX, mouseY);
+            if (hoveredType >= 0) {
+                renderDungeonTypeTooltip(g,
+                        DungeonWaypointType.values()[hoveredType].label(), mouseX, mouseY);
+            }
+        }
     }
 
     @Override
@@ -246,7 +286,7 @@ public final class AddNamedWaypointScreen extends Screen {
             x = fixedX;
             y = fixedY;
             z = fixedZ;
-            flags = creationFlags(fixedFlags, options);
+            flags = creationFlags(fixedFlags, options, selectedDungeonType);
         } else {
             LocalPlayer player = Minecraft.getInstance().player;
             if (player == null) {
@@ -263,7 +303,6 @@ public final class AddNamedWaypointScreen extends Screen {
                 ? manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled())
                 : targetGroup;
 
-        // Stored dungeon-room routes keep room-local coordinates.
         Waypoint waypoint;
         if (useFixedPosition && options.small()) {
             waypoint = new Waypoint(
@@ -292,6 +331,11 @@ public final class AddNamedWaypointScreen extends Screen {
 
     private void onSubwaypointChanged(boolean selected) {
         subwaypointSelected = subwaypointAvailable && selected;
+        if (!subwaypointSelected && smallSelected) {
+            smallSelected = false;
+            rebuildWidgets();
+            return;
+        }
         updateSubtypeControls();
         updatePreview();
     }
@@ -307,6 +351,7 @@ public final class AddNamedWaypointScreen extends Screen {
     }
 
     private int panelHeight() {
+        if (showDungeonTypes) return DUNGEON_OPTIONS_PANEL_H;
         return showSubtypeOptions ? OPTIONS_PANEL_H : PANEL_H;
     }
 
@@ -327,6 +372,44 @@ public final class AddNamedWaypointScreen extends Screen {
         if (options == null || !options.subwaypoint()) return baseFlags;
         int flags = baseFlags | Waypoint.FLAG_SUBWAYPOINT;
         return options.small() ? flags | Waypoint.FLAG_SMALL_SUBWAYPOINT : flags;
+    }
+
+    static int creationFlags(int baseFlags, CreationOptions options,
+                             DungeonWaypointType dungeonType) {
+        int flags = creationFlags(baseFlags, options) & ~Waypoint.DUNGEON_METADATA_FLAGS;
+        return dungeonType == null ? flags : dungeonType.applyExclusive(flags);
+    }
+
+    static DungeonWaypointType toggleDungeonType(DungeonWaypointType selected,
+                                                   DungeonWaypointType clicked) {
+        return selected == clicked ? null : clicked;
+    }
+
+    static String dungeonRoomSelectionKey(WaypointGroup group, String physicalRoomIdentity) {
+        if (group == null || group.routeKind() != WaypointGroup.RouteKind.DUNGEON) return null;
+        if (physicalRoomIdentity != null && !physicalRoomIdentity.isBlank()) {
+            return physicalRoomIdentity;
+        }
+        return group.zoneId();
+    }
+
+    static synchronized DungeonWaypointType selectionForRoom(
+            String roomKey, DungeonWaypointType suggestedType) {
+        if (!java.util.Objects.equals(rememberedDungeonRoomKey, roomKey)) {
+            rememberedDungeonRoomKey = roomKey;
+            rememberedDungeonType = suggestedType;
+        }
+        return rememberedDungeonType;
+    }
+
+    static synchronized void rememberSelection(String roomKey, DungeonWaypointType type) {
+        rememberedDungeonRoomKey = roomKey;
+        rememberedDungeonType = type;
+    }
+
+    static synchronized void resetRememberedSelectionForTests() {
+        rememberedDungeonRoomKey = null;
+        rememberedDungeonType = null;
     }
 
     static String sanitizeWaypointName(String rawName) {
@@ -355,7 +438,7 @@ public final class AddNamedWaypointScreen extends Screen {
 
         CreationOptions options = creationOptions(
                 subwaypointAvailable, subwaypointSelected, smallSelected);
-        int flags = creationFlags(fixedFlags, options);
+        int flags = creationFlags(fixedFlags, options, selectedDungeonType);
         String previewName = enteredName == null ? "" : enteredName.trim();
         Waypoint preview = options.small()
                 ? new Waypoint(
@@ -378,6 +461,114 @@ public final class AddNamedWaypointScreen extends Screen {
         if (previewGroup == null || manager == null) return;
         manager.clearWaypointPreview(previewGroup);
         previewGroup = null;
+    }
+
+    private static String currentDungeonRoomIdentity() {
+        var tracker = WaypointerClient.dungeonTracker();
+        var room = tracker == null ? null : tracker.currentRoom();
+        return room == null ? null : room.identityKey();
+    }
+
+    private int dungeonTypeRowX() {
+        return (width - DUNGEON_TYPE_ROW_WIDTH) / 2;
+    }
+
+    private int dungeonTypeRowY() {
+        return (height - panelHeight()) / 2 + 104;
+    }
+
+    static int dungeonTypeCellX(int rowX, int typeIndex) {
+        int gapCount = DungeonWaypointType.values().length - 1;
+        if (gapCount <= 0) return rowX;
+        int usableSpan = DUNGEON_TYPE_ROW_WIDTH - DUNGEON_TYPE_BUTTON_SIZE;
+        return rowX + (typeIndex * usableSpan + gapCount / 2) / gapCount;
+    }
+
+    private int dungeonTypeAt(double mouseX, double mouseY) {
+        return dungeonTypeAt(showDungeonTypes, dungeonTypeRowX(), dungeonTypeRowY(),
+                mouseX, mouseY);
+    }
+
+    static int dungeonTypeAt(boolean showDungeonTypes, int rowX, int rowY,
+                             double mouseX, double mouseY) {
+        if (!showDungeonTypes) return -1;
+        for (int i = 0; i < DungeonWaypointType.values().length; i++) {
+            int x = dungeonTypeCellX(rowX, i);
+            if (mouseX >= x && mouseX < x + DUNGEON_TYPE_BUTTON_SIZE
+                    && mouseY >= rowY && mouseY < rowY + DUNGEON_TYPE_BUTTON_SIZE) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void renderDungeonTypes(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+        int rowX = dungeonTypeRowX();
+        int rowY = dungeonTypeRowY();
+        DungeonWaypointType[] types = DungeonWaypointType.values();
+        for (int i = 0; i < types.length; i++) {
+            DungeonWaypointType type = types[i];
+            int x = dungeonTypeCellX(rowX, i);
+            boolean active = type == selectedDungeonType;
+            boolean hovered = dungeonTypeAt(mouseX, mouseY) == i;
+            int border = hovered ? 0xFFFFFFFF : BORDER;
+            int fill = active ? 0xFF2D6B3E : hovered ? 0xFF303844 : 0xFF20242A;
+            g.fill(x, rowY, x + DUNGEON_TYPE_BUTTON_SIZE,
+                    rowY + DUNGEON_TYPE_BUTTON_SIZE, border);
+            g.fill(x + 1, rowY + 1, x + DUNGEON_TYPE_BUTTON_SIZE - 1,
+                    rowY + DUNGEON_TYPE_BUTTON_SIZE - 1, fill);
+            renderDungeonTypeIcon(g, x, rowY, type, active ? TEXT : TEXT_DIM);
+        }
+    }
+
+    private void renderDungeonTypeIcon(GuiGraphicsExtractor g, int x, int y,
+                                       DungeonWaypointType type, int color) {
+        int inset = (DUNGEON_TYPE_BUTTON_SIZE - DungeonWaypointType.ICON_SIZE) / 2;
+        if (dungeonTypeIconsAvailable) {
+            g.blit(RenderPipelines.GUI_TEXTURED, DUNGEON_TYPE_ICONS,
+                    x + inset, y + inset,
+                    type.iconIndex() * (float) DungeonWaypointType.ICON_SIZE, 0f,
+                    DungeonWaypointType.ICON_SIZE, DungeonWaypointType.ICON_SIZE,
+                    DungeonWaypointType.ICON_ATLAS_WIDTH, DungeonWaypointType.ICON_SIZE);
+            return;
+        }
+        String glyph = type.fallbackGlyph();
+        g.text(font, glyph,
+                x + (DUNGEON_TYPE_BUTTON_SIZE - font.width(glyph)) / 2,
+                y + (DUNGEON_TYPE_BUTTON_SIZE - font.lineHeight) / 2,
+                color, false);
+    }
+
+    private void renderDungeonTypeTooltip(GuiGraphicsExtractor g, String text,
+                                          int mouseX, int mouseY) {
+        int pad = 4;
+        int tooltipW = font.width(text) + pad * 2;
+        int tooltipH = font.lineHeight + pad * 2;
+        int x = Math.max(PAD_OUTER,
+                Math.min(mouseX + 12, width - PAD_OUTER - tooltipW));
+        int y = Math.max(PAD_OUTER,
+                Math.min(mouseY + 12, height - PAD_OUTER - tooltipH));
+        g.fill(x, y, x + tooltipW, y + tooltipH, 0xF0101216);
+        g.fill(x, y, x + tooltipW, y + 1, BORDER);
+        g.fill(x, y + tooltipH - 1, x + tooltipW, y + tooltipH, BORDER);
+        g.fill(x, y, x + 1, y + tooltipH, BORDER);
+        g.fill(x + tooltipW - 1, y, x + tooltipW, y + tooltipH, BORDER);
+        g.text(font, text, x + pad, y + pad, TEXT, false);
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (event.button() == 0) {
+            int typeIndex = dungeonTypeAt(event.x(), event.y());
+            if (typeIndex >= 0) {
+                selectedDungeonType = toggleDungeonType(
+                        selectedDungeonType, DungeonWaypointType.values()[typeIndex]);
+                rememberSelection(dungeonRoomKey, selectedDungeonType);
+                updatePreview();
+                return true;
+            }
+        }
+        return super.mouseClicked(event, doubleClick);
     }
 
     @Override

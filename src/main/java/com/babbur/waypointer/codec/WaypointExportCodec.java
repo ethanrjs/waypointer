@@ -25,10 +25,7 @@ import java.util.zip.GZIPOutputStream;
  */
 public final class WaypointExportCodec {
 
-    /**
-     * User-selectable export targets. Capability flags are UI-facing: they say
-     * whether a Waypointer option can survive a round trip through that target.
-     */
+    /** Capability flags show which settings survive export to each format. */
     public enum Target {
         WAYPOINTER("Waypointer", true, true, true, true, true, true, true),
         SKYBLOCKER("Skyblocker", true, true, false, false, false, false, false),
@@ -72,14 +69,7 @@ public final class WaypointExportCodec {
 
         public boolean supportsLabel()       { return supportsLabel; }
 
-        /**
-         * Whether the sender may drop the island a route was recorded on.
-         *
-         * Only the native format can: Skyblocker and Skytils both require an
-         * island field their client recognizes ("unknown" is not in Skytils'
-         * island enum at all), and SkyHanni's route JSON has no island field to
-         * begin with, so there is nothing for the sender to decide.
-         */
+        /** Whether the sender may remove the route's island. */
         public boolean supportsIslandChoice() { return supportsIslandChoice; }
 
         public Target next() {
@@ -94,8 +84,7 @@ public final class WaypointExportCodec {
                     .includeRadii(supportsRadii && opts.includeRadii)
                     .includeWaypointFlags(supportsWaypointFlags && opts.includeWaypointFlags)
                     .includeGroupMeta(supportsGroupMeta && opts.includeGroupMeta)
-                    // Inverted on purpose: the unsupported thing here is *dropping*
-                    // the island, so a target without the choice always keeps it.
+                    // Formats that cannot drop an island must always keep it.
                     .includeZone(!supportsIslandChoice || opts.includeZone)
                     .label(supportsLabel ? opts.label : "")
                     .build();
@@ -278,7 +267,7 @@ public final class WaypointExportCodec {
         if (mapped != null) return mapped;
         if (canonicalZoneId.startsWith("mineshaft_")) return "mineshaft";
         if (isCatacombsFloor(canonicalZoneId)
-                || DungeonRoomData.definition(canonicalZoneId) != null) {
+                || DungeonRoomData.entry(canonicalZoneId) != null) {
             return "dungeon";
         }
         return canonicalZoneId;

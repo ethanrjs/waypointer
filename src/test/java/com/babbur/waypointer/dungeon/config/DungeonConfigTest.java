@@ -45,15 +45,6 @@ class DungeonConfigTest {
         assertFalse(config.showDungeonTracers());
         assertEquals(1, config.visibleSecretStages());
         assertTrue(config.secretCompletionSound());
-        assertEquals(0x2EE0FF, config.automaticSecretColor());
-        assertEquals(0x9C2EFF, config.automaticEtherwarpColor());
-        assertEquals(0x4FE05A, config.automaticBreakBlocksColor());
-        assertEquals(0xFF8A2E, config.automaticInteractColor());
-        assertEquals(0xFFB300, config.automaticSuperboomColor());
-        assertEquals(0xFFD800, config.automaticItemColor());
-        assertEquals(0x9C5A2E, config.automaticBatColor());
-        assertEquals(0x6EE7B7, config.automaticDungeonbreakerColor());
-        assertEquals(0xC0C0FF, config.automaticPearlColor());
     }
 
     @Test
@@ -96,7 +87,6 @@ class DungeonConfigTest {
         assertFalse(config.enabled());
         assertFalse(config.debugLogRoomChanges());
         assertFalse(config.hideCompletedRooms());
-        assertFalse(config.autoCompleteRoomsOnGreenCheckmark());
         assertFalse(config.showDungeonRouteLines());
         assertFalse(config.showDungeonTracers());
         assertFalse(config.secretCompletionSound());
@@ -111,21 +101,10 @@ class DungeonConfigTest {
         config.setDebugLogRoomChanges(true);
         config.setDefaultDirection("SE");
         config.setHideCompletedRooms(false);
-        config.setAutoCompleteRoomsOnGreenCheckmark(false);
         config.setShowDungeonRouteLines(false);
         config.setShowDungeonTracers(true);
         config.setVisibleSecretStages(5);
         config.setSecretCompletionSound(false);
-        config.setAutomaticSecretColor(0x010101);
-        config.setAutomaticEtherwarpColor(0x020202);
-        config.setAutomaticBreakBlocksColor(0x030303);
-        config.setAutomaticInteractColor(0x040404);
-        config.setAutomaticSuperboomColor(0x050505);
-        config.setAutomaticItemColor(0x060606);
-        config.setAutomaticBatColor(0x070707);
-        config.setAutomaticDungeonbreakerColor(0x080808);
-        config.setAutomaticPearlColor(0x090909);
-        config.setRoutesPromptDismissed(true);
         enabledChanges.set(0);
 
         config.resetToDefaults();
@@ -134,21 +113,10 @@ class DungeonConfigTest {
         assertFalse(config.debugLogRoomChanges());
         assertEquals("NW", config.defaultDirection());
         assertTrue(config.hideCompletedRooms());
-        assertTrue(config.autoCompleteRoomsOnGreenCheckmark());
         assertTrue(config.showDungeonRouteLines());
         assertFalse(config.showDungeonTracers());
         assertEquals(1, config.visibleSecretStages());
         assertTrue(config.secretCompletionSound());
-        assertEquals(0x2EE0FF, config.automaticSecretColor());
-        assertEquals(0x9C2EFF, config.automaticEtherwarpColor());
-        assertEquals(0x4FE05A, config.automaticBreakBlocksColor());
-        assertEquals(0xFF8A2E, config.automaticInteractColor());
-        assertEquals(0xFFB300, config.automaticSuperboomColor());
-        assertEquals(0xFFD800, config.automaticItemColor());
-        assertEquals(0x9C5A2E, config.automaticBatColor());
-        assertEquals(0x6EE7B7, config.automaticDungeonbreakerColor());
-        assertEquals(0xC0C0FF, config.automaticPearlColor());
-        assertFalse(config.routesPromptDismissed());
         assertEquals(1, enabledChanges.get());
     }
 
@@ -164,32 +132,6 @@ class DungeonConfigTest {
 
         config.setDefaultDirection(null);
         assertEquals("SE", config.defaultDirection());
-    }
-
-    @Test
-    void definitionRouteVisibilityDefaultsShownAndPersistsPerRoom() {
-        DungeonConfig config = new DungeonConfig();
-
-        assertTrue(config.roomRouteEnabled("room-a"));
-        assertTrue(config.roomRouteEnabled("room-b"));
-
-        config.setRoomRouteEnabled("room-a", false);
-        assertFalse(config.roomRouteEnabled("room-a"));
-        assertTrue(config.roomRouteEnabled("room-b"));
-
-        config.setRoomRouteEnabled("room-a", true);
-        assertTrue(config.roomRouteEnabled("room-a"));
-    }
-
-    @Test
-    void bulkDisableHidesExistingDefinitionRoutes() {
-        DungeonConfig config = new DungeonConfig();
-
-        config.disableRoomRoutes(List.of("room-a", "room-b", "room-a"));
-
-        assertFalse(config.roomRouteEnabled("room-a"));
-        assertFalse(config.roomRouteEnabled("room-b"));
-        assertTrue(config.roomRouteEnabled("room-c"));
     }
 
     @Test
@@ -228,8 +170,6 @@ class DungeonConfigTest {
         config.setDebugLogRoomChanges(true);
         config.setHideCompletedRooms(true);
         config.setHideCompletedRooms(false);
-        config.setAutoCompleteRoomsOnGreenCheckmark(true);
-        config.setAutoCompleteRoomsOnGreenCheckmark(false);
         config.setShowDungeonRouteLines(true);
         config.setShowDungeonRouteLines(false);
         config.setShowDungeonTracers(false);
@@ -239,42 +179,10 @@ class DungeonConfigTest {
         config.setVisibleSecretStages(2);
         config.setSecretCompletionSound(true);
         config.setSecretCompletionSound(false);
-        config.setAutomaticSecretColor(0x010101);
-        config.setAutomaticEtherwarpColor(0x020202);
-        config.setAutomaticBreakBlocksColor(0x030303);
-        config.setAutomaticInteractColor(0x040404);
-        config.setAutomaticSuperboomColor(0x050505);
-        config.setAutomaticItemColor(0x060606);
-        config.setAutomaticBatColor(0x070707);
-        config.setAutomaticDungeonbreakerColor(0x080808);
-        config.setAutomaticPearlColor(0x090909);
-        config.setRoutesPromptDismissed(false);
-        config.setRoutesPromptDismissed(true);
         config.setDefaultDirection("nw");
         config.setDefaultDirection("se");
         config.setDefaultDirection("SE");
-        config.setRoomRouteEnabled("room-a", true);
-        config.setRoomRouteEnabled("room-a", false);
-        config.setRoomRouteEnabled("room-a", false);
-        config.setRoomRouteEnabled("room-a", true);
-        config.disableRoomRoutes(List.of("room-a", "room-a"));
-        config.disableRoomRoutes(List.of("room-a"));
-
-        assertEquals(22, changes.get());
-    }
-
-    @Test
-    void automaticColorsMaskAlphaAndPersist(@TempDir Path dir) {
-        Path file = dir.resolve("dungeon.json");
-        DungeonConfig config = DungeonConfig.load(file);
-
-        config.setAutomaticSecretColor(0xAA112233);
-        config.setAutomaticEtherwarpColor(0xBB445566);
-        config.flush();
-
-        DungeonConfig loaded = DungeonConfig.load(file);
-        assertEquals(0x112233, loaded.automaticSecretColor());
-        assertEquals(0x445566, loaded.automaticEtherwarpColor());
+        assertEquals(8, changes.get());
     }
 
     @Test

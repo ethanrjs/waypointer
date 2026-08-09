@@ -10,19 +10,7 @@ import net.minecraft.client.Minecraft;
 
 import java.util.function.BooleanSupplier;
 
-/**
- * Picks the best available {@link ZoneSource} at boot and routes its signals into
- * {@link ActiveGroupManager#onZoneChanged(Zone)}.
- *
- * Resolution order:
- *
- *   1. {@code hypixel-mod-api} installed -- use {@link HypixelApiZoneSource}
- *      (authoritative, event-driven).
- *   2. Otherwise -- use {@link ScoreboardZoneResolver} as a defensive fallback.
- *
- * Hypixel Mod API is a dependency now, so there is no user-facing override for
- * forcing scoreboard detection.
- */
+/** Uses the Hypixel Mod API when available, otherwise the scoreboard fallback. */
 public final class LocationTracker {
 
     private final ActiveGroupManager manager;
@@ -63,7 +51,8 @@ public final class LocationTracker {
     }
 
     static Zone zoneAfterPrivateWorldCheck(Zone current, boolean worldLoaded, boolean remoteServer) {
-        if (worldLoaded && !remoteServer) return Zone.PRIVATE_WORLD;
+        if (!worldLoaded) return null;
+        if (!remoteServer) return Zone.PRIVATE_WORLD;
         return Zone.PRIVATE_WORLD.equals(current) ? null : current;
     }
 

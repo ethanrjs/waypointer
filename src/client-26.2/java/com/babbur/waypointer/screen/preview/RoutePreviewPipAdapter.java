@@ -10,7 +10,6 @@ import net.minecraft.client.renderer.feature.FeatureRenderDispatcher;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.gui.GuiRenderState;
 
-/** Minecraft 26.2 deferred-submit adapter for the route preview. */
 public final class RoutePreviewPipAdapter
         extends PictureInPictureRenderer<RoutePreviewRenderState> {
 
@@ -35,7 +34,7 @@ public final class RoutePreviewPipAdapter
         } catch (RuntimeException allocationFailure) {
             RenderSystem.outputColorTextureOverride = null;
             RenderSystem.outputDepthTextureOverride = null;
-            RoutePreviewAvailability.markUnavailable();
+            state.availability().markUnavailable();
             Waypointer.LOGGER.error("Could not allocate route preview target", allocationFailure);
         }
     }
@@ -56,18 +55,15 @@ public final class RoutePreviewPipAdapter
         poseStack.pushPose();
         try {
             RoutePreviewRenderCore.applyView(state, poseStack);
-            submitPass(collector, 0, state, poseStack, RoutePreviewPipelines.depthOnly(),
-                    RoutePreviewRenderCore::emitDepth);
-            submitPass(collector, 1, state, poseStack, surfaceType(state),
-                    RoutePreviewRenderCore::emitSurfaces);
-            submitPass(collector, 2, state, poseStack, RoutePreviewPipelines.surfaces(),
-                    RoutePreviewRenderCore::emitPaintHover);
-            submitPass(collector, 3, state, poseStack, RoutePreviewPipelines.connectors(),
-                    RoutePreviewRenderCore::emitConnectors);
-            submitPass(collector, 4, state, poseStack, RoutePreviewPipelines.outlines(),
-                    RoutePreviewRenderCore::emitOutlines);
+            int order = 0;
+            for (RoutePreviewPassPlan.Pass pass
+                    : RoutePreviewPassPlan.orderedPasses(state.selfOcclusion())) {
+                submitPass(collector, order++, state, poseStack,
+                        RoutePreviewPassPlan.renderType(pass, state),
+                        RoutePreviewPassPlan.emitter(pass));
+            }
         } catch (RuntimeException error) {
-            RoutePreviewAvailability.markUnavailable();
+            state.availability().markUnavailable();
             Waypointer.LOGGER.error("Could not submit route preview geometry", error);
         } finally {
             poseStack.popPose();
@@ -84,16 +80,10 @@ public final class RoutePreviewPipAdapter
                     try {
                         emitter.emit(state, snapshot, vertices);
                     } catch (RuntimeException error) {
-                        RoutePreviewAvailability.markUnavailable();
+                        state.availability().markUnavailable();
                         Waypointer.LOGGER.error("Could not render route preview geometry", error);
                     }
                 });
     }
 
-    private static RenderType surfaceType(RoutePreviewRenderState state) {
-        RoutePreviewScene scene = state.scene();
-        return scene.paint() != null && !scene.simplified()
-                ? RoutePreviewPipelines.painted(scene)
-                : RoutePreviewPipelines.surfaces();
-    }
 }
