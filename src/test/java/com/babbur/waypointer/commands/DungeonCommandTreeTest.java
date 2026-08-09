@@ -1,19 +1,24 @@
-package com.babbur.waypointer.dungeon;
+package com.babbur.waypointer.commands;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.ParseResults;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
-import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
+import com.mojang.brigadier.context.CommandContextBuilder;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DungeonCommandTreeTest {
@@ -21,13 +26,17 @@ class DungeonCommandTreeTest {
     @Test
     void dungeonAuthoringCommandsAreNotRegistered() throws Exception {
         CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
+        var canonical = dispatcher.getRoot().getChild("wpd");
+        assertSame(canonical, dispatcher.getRoot().getChild("waypointer-dungeon").getRedirect());
         for (String root : List.of("wpd", "waypointer-dungeon")) {
             var rootNode = dispatcher.getRoot().getChild(root);
             assertNotNull(rootNode, "missing dungeon command root " + root);
+            if (rootNode.getRedirect() != null) rootNode = rootNode.getRedirect();
             assertNull(rootNode.getChild("test"));
             assertNull(rootNode.getChild("reset"));
             assertNull(rootNode.getChild("highlight"));
             assertNull(rootNode.getChild("breakbox"));
+            assertNull(rootNode.getChild("routes"));
 
             var room = rootNode.getChild("room");
             assertNotNull(room);
@@ -45,19 +54,16 @@ class DungeonCommandTreeTest {
         List<String> commands = List.of(
                 "wpd info",
                 "wpd room list",
-                "wpd waypoint list",
                 "wpd import routes.json",
-                "wpd routes download",
-                "wpd routes dismiss",
                 "wpd route next",
                 "wpd route reset",
                 "wpd route found 1",
                 "wpd rotate sw",
                 "wpd rotate auto",
                 "wpd toggle enabled",
-                "wpd toggle greencheck",
                 "wpd toggle hidecompleted",
-                "wpd toggle debug");
+                "wpd toggle debug",
+                "waypointer-dungeon info");
 
         for (String command : commands) {
             assertParses(dispatcher, command);
@@ -65,39 +71,39 @@ class DungeonCommandTreeTest {
     }
 
     @Test
-    void authoredSecretCheckRejectsNonexistentRouteSecrets() {
-        DungeonRoomData.clearAllCustom();
-        try {
-            DungeonRoom room = new DungeonRoom(DungeonRoomType.ROOM, DungeonRoomShape.ONE_BY_ONE,
-                    Direction.NW, 0, 0, List.of(DungeonRoom.packSegment(0, 0)));
-            DungeonRoomDefinition definition = DungeonRoomData.defineRoom(
-                    "command-route-room", "Command Route", room);
-            DungeonWaypoint support = waypoint("support", 0);
-            DungeonRoom authoredRoom = room.withDefinition(definition.id(), definition.displayName());
-            DungeonRoomData.addWaypoint(definition.id(), support);
-            DungeonRoomData.addWaypoint(definition.id(), waypoint("first", 1));
-            DungeonRoomData.addWaypoint(definition.id(), waypoint("third", 3));
+    void dungeonImportReaderRejectsInputPastItsByteLimit(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("routes.json");
+        Files.writeString(file, "oversized");
 
-            assertFalse(DungeonCommands.isProgressSecretWaypoint(support));
-            assertEquals("support", DungeonCommands.secretIndexDescriptor(support));
-            assertTrue(DungeonCommands.isAuthoredSecretIndex(authoredRoom, 1));
-            assertTrue(DungeonCommands.isAuthoredSecretIndex(authoredRoom, 3));
-            assertFalse(DungeonCommands.isAuthoredSecretIndex(authoredRoom, 0));
-            assertFalse(DungeonCommands.isAuthoredSecretIndex(authoredRoom, 2));
-            assertEquals("#1, #3", DungeonCommands.availableAuthoredSecretIndexes(authoredRoom));
-        } finally {
-            DungeonRoomData.clearAllCustom();
-        }
+        DungeonCommands.ImportReadResult result = DungeonCommands.readImportFile(file, 8);
+
+        assertTrue(result.readFailure());
+        assertTrue(result.error().contains("too large"));
+        assertNull(result.result());
+    }
+
+    @Test
+    void authoredSecretCheckRejectsNonexistentRouteSecrets() {
+        WaypointGroup route = WaypointGroup.create("Command Route", "command-route-room");
+        route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        route.add(Waypoint.at(0, 70, 0));
+        route.add(Waypoint.at(1, 70, 0).withSubwaypoint(true));
+        route.add(Waypoint.at(2, 70, 0));
+
+        assertTrue(DungeonCommands.isAuthoredSecretIndex(route, 1));
+        assertTrue(DungeonCommands.isAuthoredSecretIndex(route, 2));
+        assertFalse(DungeonCommands.isAuthoredSecretIndex(route, 0));
+        assertFalse(DungeonCommands.isAuthoredSecretIndex(route, 3));
+        assertEquals("#1, #2", DungeonCommands.availableAuthoredSecretIndexes(route));
     }
 
     private static CommandDispatcher<FabricClientCommandSource> registeredDispatcher() throws Exception {
         CommandDispatcher<FabricClientCommandSource> dispatcher = new CommandDispatcher<>();
         DungeonCommands commands = new DungeonCommands(null, null, null);
         Method register = DungeonCommands.class.getDeclaredMethod(
-                "register", CommandDispatcher.class, String.class);
+                "register", CommandDispatcher.class);
         register.setAccessible(true);
-        register.invoke(commands, dispatcher, "wpd");
-        register.invoke(commands, dispatcher, "waypointer-dungeon");
+        register.invoke(commands, dispatcher);
         return dispatcher;
     }
 
@@ -106,12 +112,21 @@ class DungeonCommandTreeTest {
         ParseResults<FabricClientCommandSource> parsed = dispatcher.parse(command, null);
         assertTrue(parsed.getExceptions().isEmpty(),
                 command + " should parse without syntax errors: " + parsed.getExceptions());
+        assertFalse(parsed.getReader().canRead(),
+                command + " left unread input: " + parsed.getReader().getRemaining());
         assertTrue(!parsed.getContext().getNodes().isEmpty(),
                 command + " should produce parsed command nodes");
+        assertTrue(hasCommand(parsed.getContext()),
+                command + " should resolve to an executable command");
     }
 
-    private static DungeonWaypoint waypoint(String id, int secretIndex) {
-        return new DungeonWaypoint(id, secretIndex, DungeonSecretCategory.CHEST,
-                16, 70, 16, id, List.of());
+    private static boolean hasCommand(CommandContextBuilder<FabricClientCommandSource> context) {
+        for (CommandContextBuilder<FabricClientCommandSource> current = context;
+             current != null;
+             current = current.getChild()) {
+            if (current.getCommand() != null) return true;
+        }
+        return false;
     }
+
 }

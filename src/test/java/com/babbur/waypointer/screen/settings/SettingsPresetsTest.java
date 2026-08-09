@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen.settings;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,26 +23,8 @@ class SettingsPresetsTest {
         assertFalse(minimal.showEditModeSubtitle());
         assertFalse(minimal.showWaypointChatShareButtons());
         assertFalse(minimal.showContributorBadges());
-        assertFalse(minimal.routeTimesEnabled());
         assertEquals(12, minimal.maxWaypointLabels());
         assertEquals(128.0, minimal.maxStaticWaypointRenderDistance());
-    }
-
-    @Test
-    void everythingPresetEnablesAllDisplayFeaturesWithUnlimitedBudgets() {
-        WaypointerConfig everything = SettingsPresets.everything(new WaypointerConfig());
-
-        assertTrue(everything.showWaypointNames());
-        assertTrue(everything.showWaypointDistances());
-        assertTrue(everything.showRouteProgress());
-        assertTrue(everything.showLabelTextShadow());
-        assertTrue(everything.showTracer());
-        assertTrue(everything.showRouteLines());
-        assertTrue(everything.showDungeonEntryPathToFirstWaypoint());
-        assertTrue(everything.routeTimesEnabled());
-        assertEquals(WaypointerConfig.BeaconBeamMode.ALL_VISIBLE, everything.beaconBeamMode());
-        assertEquals(0, everything.maxWaypointLabels());
-        assertEquals(0.0, everything.maxStaticWaypointRenderDistance());
     }
 
     @Test
@@ -50,7 +33,6 @@ class SettingsPresetsTest {
         live.addChatCoordSenderBlacklist("Notch");
 
         assertTrue(SettingsPresets.minimal(live).isChatCoordSenderBlacklisted("Notch"));
-        assertTrue(SettingsPresets.everything(live).isChatCoordSenderBlacklisted("Notch"));
         assertTrue(SettingsPresets.minimal(null).chatCoordSenderBlacklist().isEmpty());
     }
 
@@ -58,7 +40,23 @@ class SettingsPresetsTest {
     void presetsRegisterAsChangedSettingsAgainstDefaults() {
         WaypointerConfig defaults = new WaypointerConfig();
         assertTrue(SettingsCatalog.countChangedSettings(defaults, SettingsPresets.minimal(defaults)) > 0);
-        assertTrue(SettingsCatalog.countChangedSettings(defaults, SettingsPresets.everything(defaults)) > 0);
+    }
+
+    @Test
+    void disableAllPresetKeepsStoredValues() {
+        WaypointerConfig config = new WaypointerConfig();
+        DungeonConfig dungeon = new DungeonConfig();
+        config.addChatCoordSenderBlacklist("Notch");
+        config.setImportedRouteDefaultColor(0x123456);
+
+        SettingsPresets.applyDisableAll(config, dungeon);
+
+        assertFalse(config.showWaypointNames());
+        assertFalse(config.chatCoordDetection());
+        assertFalse(dungeon.enabled());
+        assertFalse(dungeon.showDungeonRouteLines());
+        assertTrue(config.isChatCoordSenderBlacklisted("Notch"));
+        assertEquals(0x123456, config.importedRouteDefaultColor());
     }
 
     @Test

@@ -6,15 +6,7 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.lang.reflect.Method;
 
-/**
- * Detects whether tracer and waypoint outlines should use the Iris-safe HUD
- * renderer instead of their normal world-space lines for this frame.
- *
- * <p>Iris is optional, so this class talks to its public API reflectively. A
- * direct dependency would make Waypointer require Iris at runtime; reflection
- * lets vanilla/Sodium installs keep using the normal renderer with no extra mod
- * relationship.
- */
+/** Chooses the HUD fallback when Iris shaders cannot draw the world overlay. */
 final class IrisShaderFallback {
 
     private static final String IRIS_MOD_ID = "iris";

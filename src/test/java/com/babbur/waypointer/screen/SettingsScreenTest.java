@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
 import net.minecraft.ChatFormatting;
@@ -18,6 +19,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SettingsScreenTest {
 
     @Test
+    void booleanSettingsUseTwentyPixelCheckboxes() {
+        assertEquals(20, SettingsScreen.CHECKBOX_SIZE);
+    }
+
+    @Test
+    void presetsAppearAsMinimalDefaultAndNothing() {
+        assertEquals(java.util.List.of("minimal", "default", "nothing"),
+                SettingsValuePolicy.visiblePresetIds());
+    }
+
+    @Test
     void newEditModeVisualDefaultsMatchRequestedStates() {
         WaypointerConfig config = new WaypointerConfig();
 
@@ -26,21 +38,23 @@ class SettingsScreenTest {
     }
 
     @Test
-    void hideReachedStaticWaypointsTooltipExplainsChecklistSemantics() {
-        Setting setting = SettingsCatalog.byId("hideReachedStaticWaypointsUntilCycleComplete");
-        String tooltip = setting.tooltip();
+    void disableAllCountIncludesEveryEnabledDungeonToggle() {
+        DungeonConfig config = new DungeonConfig();
+        config.setDebugLogRoomChanges(true);
+        config.setShowDungeonTracers(true);
 
-        assertTrue(tooltip.contains("disappear as you reach them"));
-        assertTrue(tooltip.contains("like a checklist"));
-        assertTrue(tooltip.contains("come back once you've reached every one"));
+        assertEquals(6, SettingsScreen.changedDungeonSettingsWhenDisabled(config));
+
+        config.disableAllSettings();
+        assertEquals(0, SettingsScreen.changedDungeonSettingsWhenDisabled(config));
     }
 
     @Test
     void settingsSearchClearButtonActivatesOnlyWhenQueryHasText() {
-        assertFalse(SettingsScreen.settingsSearchClearButtonActive(null));
-        assertFalse(SettingsScreen.settingsSearchClearButtonActive(""));
-        assertTrue(SettingsScreen.settingsSearchClearButtonActive(" "));
-        assertTrue(SettingsScreen.settingsSearchClearButtonActive("tracer"));
+        assertFalse(SettingsValuePolicy.searchClearActive(null));
+        assertFalse(SettingsValuePolicy.searchClearActive(""));
+        assertTrue(SettingsValuePolicy.searchClearActive(" "));
+        assertTrue(SettingsValuePolicy.searchClearActive("tracer"));
     }
 
     @Test
@@ -51,24 +65,10 @@ class SettingsScreenTest {
     }
 
     @Test
-    void parseRgbHexColorCommitsOnlyCompleteSixDigitHexValues() {
-        assertEquals(0x12ABEF, SettingsScreen.parseRgbHexColor("12ABEF"));
-        assertEquals(0x00FFAA, SettingsScreen.parseRgbHexColor(" 00ffaa "));
-
-        assertNull(SettingsScreen.parseRgbHexColor(null));
-        assertNull(SettingsScreen.parseRgbHexColor(""));
-        assertNull(SettingsScreen.parseRgbHexColor("FFF"));
-        assertNull(SettingsScreen.parseRgbHexColor("1234567"));
-        assertNull(SettingsScreen.parseRgbHexColor("GGGGGG"));
-    }
-
-    @Test
     void maxScrollClampsToZeroWhenContentFitsAndKeepsBottomSlackOtherwise() {
         assertEquals(0, SettingsScreen.maxScrollFor(100, 200));
         assertEquals(0, SettingsScreen.maxScrollFor(0, 200));
-        // 300 of content in a 200 viewport: 100 overflow + 8 bottom slack.
         assertEquals(108, SettingsScreen.maxScrollFor(300, 200));
-        // Degenerate viewport never yields a negative clamp ceiling.
         assertEquals(300 + 8, SettingsScreen.maxScrollFor(300, -50));
     }
 
@@ -81,11 +81,9 @@ class SettingsScreenTest {
         int bottom = 300;
         int footerTop = 332;
 
-        // Header strip and the gap between list bottom and footer are dead.
         assertTrue(SettingsScreen.inContentDeadStrip(200, 50, mainLeft, mainRight, top, rowsTop, bottom, footerTop));
         assertTrue(SettingsScreen.inContentDeadStrip(200, 310, mainLeft, mainRight, top, rowsTop, bottom, footerTop));
 
-        // Inside the viewport, in the sidebar, and in the footer are live.
         assertFalse(SettingsScreen.inContentDeadStrip(200, 100, mainLeft, mainRight, top, rowsTop, bottom, footerTop));
         assertFalse(SettingsScreen.inContentDeadStrip(50, 50, mainLeft, mainRight, top, rowsTop, bottom, footerTop));
         assertFalse(SettingsScreen.inContentDeadStrip(200, 340, mainLeft, mainRight, top, rowsTop, bottom, footerTop));
@@ -96,31 +94,65 @@ class SettingsScreenTest {
         Setting boxStyle = SettingsCatalog.byId("boxStyle");
 
         assertEquals(WaypointerConfig.BoxStyle.FILLED,
-                SettingsScreen.nextEnumValue(boxStyle, WaypointerConfig.BoxStyle.OUTLINED));
+                SettingsValuePolicy.nextEnumValue(boxStyle, WaypointerConfig.BoxStyle.OUTLINED));
         assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED,
-                SettingsScreen.nextEnumValue(boxStyle, WaypointerConfig.BoxStyle.FILLED));
+                SettingsValuePolicy.nextEnumValue(boxStyle, WaypointerConfig.BoxStyle.FILLED));
+        assertEquals(WaypointerConfig.BoxStyle.PAINT,
+                SettingsValuePolicy.nextEnumValue(boxStyle, WaypointerConfig.BoxStyle.FILLED_OUTLINED));
         assertEquals(WaypointerConfig.BoxStyle.OUTLINED,
-                SettingsScreen.nextEnumValue(boxStyle, WaypointerConfig.BoxStyle.FILLED_OUTLINED));
-        // Unknown current value falls back to the first option.
+                SettingsValuePolicy.nextEnumValue(boxStyle, WaypointerConfig.BoxStyle.PAINT));
         assertEquals(WaypointerConfig.BoxStyle.OUTLINED,
-                SettingsScreen.nextEnumValue(boxStyle, "garbage"));
+                SettingsValuePolicy.nextEnumValue(boxStyle, "garbage"));
+    }
+
+    @Test
+    void boundedNumberInputRejectsInvalidTextInsteadOfSilentlyClamping() {
+        Setting size = SettingsCatalog.byId("waypointMarkerScale");
+        Setting duration = SettingsCatalog.byId("tempDefaultDurationSec");
+
+        assertEquals(0.25, SettingsValuePolicy.acceptedNumberValue(size, "0.25"));
+        assertEquals(3.0, SettingsValuePolicy.acceptedNumberValue(size, "3"));
+        assertNull(SettingsValuePolicy.acceptedNumberValue(size, "0.24"));
+        assertNull(SettingsValuePolicy.acceptedNumberValue(size, "3.01"));
+        assertNull(SettingsValuePolicy.acceptedNumberValue(size, "NaN"));
+        assertNull(SettingsValuePolicy.acceptedNumberValue(size, "Infinity"));
+        assertNull(SettingsValuePolicy.acceptedNumberValue(size, ""));
+        assertEquals(3.0, SettingsValuePolicy.acceptedNumberValue(duration, "3"));
+        assertNull(SettingsValuePolicy.acceptedNumberValue(duration, "3.5"));
+    }
+
+    @Test
+    void multiButtonRowsUseEqualColumnsAndTheSameOuterEdges() {
+        int controlRight = 400;
+        int clusterWidth = 232;
+
+        assertEquals(112, SettingsScreen.actionGridButtonWidth(clusterWidth, 2));
+        assertEquals(72, SettingsScreen.actionGridButtonWidth(clusterWidth, 3));
+        assertEquals(168, SettingsScreen.actionGridButtonX(controlRight, clusterWidth, 2, 0));
+        assertEquals(168, SettingsScreen.actionGridButtonX(controlRight, clusterWidth, 3, 0));
+        assertEquals(controlRight,
+                SettingsScreen.actionGridButtonX(controlRight, clusterWidth, 2, 1)
+                        + SettingsScreen.actionGridButtonWidth(clusterWidth, 2));
+        assertEquals(controlRight,
+                SettingsScreen.actionGridButtonX(controlRight, clusterWidth, 3, 2)
+                        + SettingsScreen.actionGridButtonWidth(clusterWidth, 3));
     }
 
     @Test
     void tooltipNormalizationCollapsesLinesButKeepsParagraphBreaks() {
-        assertEquals("", SettingsScreen.normalizeTooltipText(null));
-        assertEquals("one two", SettingsScreen.normalizeTooltipText("one\ntwo"));
-        assertEquals("one\n\ntwo", SettingsScreen.normalizeTooltipText("one\n\ntwo"));
-        assertEquals("a b\n\nc", SettingsScreen.normalizeTooltipText("  a \r\n b \r\n\r\n c "));
+        assertEquals("", SettingsText.normalizeTooltip(null));
+        assertEquals("one two", SettingsText.normalizeTooltip("one\ntwo"));
+        assertEquals("one\n\ntwo", SettingsText.normalizeTooltip("one\n\ntwo"));
+        assertEquals("a b\n\nc", SettingsText.normalizeTooltip("  a \r\n b \r\n\r\n c "));
     }
 
     @Test
-    void settingTooltipsStartWithTheGrayControlLabel() {
+    void descriptionlessSettingTooltipIsOnlyTheGrayControlLabel() {
         Setting setting = SettingsCatalog.byId("hideReachedStaticWaypointsUntilCycleComplete");
 
-        Component tooltip = SettingsScreen.tooltipFor(setting);
+        Component tooltip = SettingsText.tooltip(setting);
 
-        assertTrue(tooltip.getString().startsWith(setting.label() + "\n"));
+        assertEquals(setting.label(), tooltip.getString());
         assertEquals(TextColor.fromLegacyFormat(ChatFormatting.GRAY), tooltip.getStyle().getColor());
     }
 }

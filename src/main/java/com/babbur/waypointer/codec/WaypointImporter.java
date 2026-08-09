@@ -9,7 +9,7 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
-import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
+import com.babbur.waypointer.dungeon.data.DungeonRoomCatalogEntry;
 import org.brotli.dec.BrotliInputStream;
 
 import java.io.ByteArrayInputStream;
@@ -67,6 +67,9 @@ public final class WaypointImporter {
     static final int MAX_GROUPS_PER_IMPORT = 256;
     static final int MAX_WAYPOINTS_PER_GROUP = 20_000;
     static final int MAX_TOTAL_WAYPOINTS_PER_IMPORT = 50_000;
+    private static final int MAX_NATIVE_REPAIR_CANDIDATES = 4;
+    private static final int MAX_JSON_REPAIR_CANDIDATES = 16;
+    private static final int MAX_JSON_REPAIR_DEPTH = 512;
 
     /**
      * Skyblocker's deprecated ordered-waypoints prefix. Payload is the same base64(gzip(json))
@@ -97,6 +100,7 @@ public final class WaypointImporter {
             Map.entry("farming_1",       "the_farming_isles"),
             Map.entry("foraging_1",      "the_park"),
             Map.entry("foraging_2",      "galatea"),
+            Map.entry("foraging_3",      "torrhus_canyon"),
             Map.entry("combat_1",        "spiders_den"),
             Map.entry("combat_3",        "the_end"),
             Map.entry("mining_1",        "gold_mine"),
@@ -123,14 +127,14 @@ public final class WaypointImporter {
 
     public static ImportResult importAny(String payload) {
         if (payload == null) throw new IllegalArgumentException("null payload");
-        String trimmed = stripMarkdownCodeFence(payload.trim());
+        String trimmed = stripMarkdownCodeFence(payload);
         enforceTextPayloadLimit(trimmed);
 
         IllegalArgumentException originalFailure;
         try {
             return importAnyCore(trimmed);
-        } catch (IllegalArgumentException e) {
-            originalFailure = e;
+        } catch (RuntimeException e) {
+            originalFailure = normalizedImportFailure(e);
         }
 
         IllegalArgumentException repairFailure = null;
@@ -138,14 +142,22 @@ public final class WaypointImporter {
             if (candidate.equals(trimmed)) continue;
             try {
                 return importAnyCore(candidate);
-            } catch (IllegalArgumentException e) {
-                repairFailure = e;
+            } catch (RuntimeException e) {
+                repairFailure = normalizedImportFailure(e);
             }
         }
 
         if (repairFailure == null) throw originalFailure;
         throw new IllegalArgumentException(originalFailure.getMessage()
                 + " (repair also failed: " + repairFailure.getMessage() + ")", originalFailure);
+    }
+
+    private static IllegalArgumentException normalizedImportFailure(RuntimeException failure) {
+        if (failure instanceof IllegalArgumentException illegalArgument) return illegalArgument;
+        String detail = failure.getMessage();
+        return new IllegalArgumentException(detail == null || detail.isBlank()
+                ? "malformed waypoint payload"
+                : "malformed waypoint payload: " + detail, failure);
     }
 
     private static ImportResult importAnyCore(String trimmed) {
@@ -206,7 +218,7 @@ public final class WaypointImporter {
                 "unrecognized waypoint payload (tried Waypointer, Skyblocker, Skytils, SkyHanni, Soopy, Firmament, JSON)");
     }
 
-    private static void enforceTextPayloadLimit(String text) {
+    static void enforceTextPayloadLimit(String text) {
         if (text.length() > MAX_TEXT_PAYLOAD_CHARS) {
             throw new IllegalArgumentException("waypoint payload is too large (max "
                     + MAX_TEXT_PAYLOAD_CHARS + " chars)");
@@ -248,8 +260,8 @@ public final class WaypointImporter {
         List<String> candidates = new ArrayList<>();
         addRepairCandidate(candidates, stripMinecraftFormattingAndInvisibleChars(trimmed).trim());
         addRepairCandidate(candidates, compactLikelyEncodedWhitespace(trimmed));
-        addRepairCandidate(candidates, extractNativeCodecCandidate(trimmed));
-        addRepairCandidate(candidates, extractJsonCandidate(trimmed));
+        addNativeCodecRepairCandidates(candidates, trimmed);
+        addJsonRepairCandidates(candidates, trimmed);
         return candidates;
     }
 
@@ -302,52 +314,63 @@ public final class WaypointImporter {
         return out.toString();
     }
 
-    private static String extractNativeCodecCandidate(String text) {
+    private static void addNativeCodecRepairCandidates(List<String> candidates, String text) {
         int start = text.indexOf(WaypointCodec.MAGIC);
-        if (start < 0) return null;
+        if (start < 0) return;
 
         int end = start + WaypointCodec.MAGIC.length();
+        int minLength = WaypointCodec.MAGIC.length() + 3;
+        StringBuilder compact = new StringBuilder(text.length() - start);
+        compact.append(WaypointCodec.MAGIC);
+        int[] whitespaceBoundaries = new int[MAX_NATIVE_REPAIR_CANDIDATES];
+        int boundaryCount = 0;
         while (end < text.length()) {
             char c = text.charAt(end);
             if (!AsciiStreamCodec.isAlphabetChar(c) && !Character.isWhitespace(c)) break;
+            if (AsciiStreamCodec.isAlphabetChar(c)) {
+                compact.append(c);
+            } else if (compact.length() >= minLength) {
+                whitespaceBoundaries[boundaryCount % whitespaceBoundaries.length] = compact.length();
+                boundaryCount++;
+            }
             end++;
         }
 
-        String compact = WaypointCodec.MAGIC
-                + removeWhitespace(text.substring(start + WaypointCodec.MAGIC.length(), end));
-        if (WaypointCodec.isValidCodec(compact)) return compact;
-
-        int minLength = WaypointCodec.MAGIC.length() + 3;
-        for (int candidateEnd = compact.length() - 1; candidateEnd >= minLength; candidateEnd--) {
-            String shorter = compact.substring(0, candidateEnd);
-            if (WaypointCodec.isValidCodec(shorter)) return shorter;
+        if (compact.length() < minLength) return;
+        String full = compact.toString();
+        addRepairCandidate(candidates, full);
+        int retainedBoundaries = Math.min(boundaryCount, whitespaceBoundaries.length);
+        for (int offset = 1; offset <= retainedBoundaries; offset++) {
+            int boundary = whitespaceBoundaries[(boundaryCount - offset) % whitespaceBoundaries.length];
+            if (boundary < full.length()) {
+                addRepairCandidate(candidates, full.substring(0, boundary));
+            }
         }
-        return compact.length() >= minLength ? compact : null;
     }
 
-    private static String extractJsonCandidate(String text) {
-        for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i);
-            if (c != '{' && c != '[') continue;
-            int end = findBalancedJsonEnd(text, i);
-            if (end > i) return text.substring(i, end);
-        }
-        return null;
-    }
-
-    private static int findBalancedJsonEnd(String text, int start) {
-        if (start < 0 || start >= text.length()) return -1;
-        char opener = text.charAt(start);
-        if (opener != '{' && opener != '[') return -1;
-
-        char[] stack = new char[text.length() - start];
+    private static void addJsonRepairCandidates(List<String> candidates, String text) {
+        char[] stack = new char[MAX_JSON_REPAIR_DEPTH];
+        int[] starts = new int[MAX_JSON_REPAIR_DEPTH];
         int depth = 0;
-        stack[depth++] = opener;
+        int completedCandidates = 0;
+        int rootStart = -1;
+        int fallbackStart = -1;
+        int fallbackEnd = -1;
         boolean inString = false;
         boolean escaped = false;
 
-        for (int i = start + 1; i < text.length(); i++) {
+        for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
+            if (depth == 0) {
+                if (c != '{' && c != '[') continue;
+                rootStart = i;
+                stack[0] = c;
+                starts[0] = i;
+                depth = 1;
+                inString = false;
+                escaped = false;
+                continue;
+            }
             if (inString) {
                 if (escaped) {
                     escaped = false;
@@ -364,23 +387,48 @@ public final class WaypointImporter {
                 continue;
             }
             if (c == '{' || c == '[') {
-                stack[depth++] = c;
+                if (depth == stack.length) {
+                    depth = 0;
+                    inString = false;
+                    escaped = false;
+                    continue;
+                }
+                stack[depth] = c;
+                starts[depth] = i;
+                depth++;
                 continue;
             }
             if (c == '}' || c == ']') {
-                if (depth == 0 || !jsonCloserMatches(stack[depth - 1], c)) return -1;
+                if (!jsonCloserMatches(stack[depth - 1], c)) {
+                    depth = 0;
+                    inString = false;
+                    escaped = false;
+                    continue;
+                }
+                int completedStart = starts[depth - 1];
                 depth--;
-                if (depth == 0) return i + 1;
+                if (depth == 0) {
+                    addRepairCandidate(candidates, text.substring(rootStart, i + 1));
+                    completedCandidates++;
+                    if (completedCandidates >= MAX_JSON_REPAIR_CANDIDATES) return;
+                    continue;
+                }
+                fallbackStart = completedStart;
+                fallbackEnd = i + 1;
             }
         }
-        return -1;
+        if (fallbackStart >= 0) {
+            addRepairCandidate(candidates, text.substring(fallbackStart, fallbackEnd));
+        }
     }
 
     private static boolean jsonCloserMatches(char opener, char closer) {
         return (opener == '{' && closer == '}') || (opener == '[' && closer == ']');
     }
 
-    private static String stripMarkdownCodeFence(String text) {
+    static String stripMarkdownCodeFence(String payload) {
+        if (payload == null) throw new IllegalArgumentException("null payload");
+        String text = payload.trim();
         if (!text.startsWith("```") || !text.endsWith("```") || text.length() < 6) {
             return text;
         }
@@ -845,7 +893,7 @@ public final class WaypointImporter {
     }
 
     private static WaypointGroup parseOdinRoomGroup(String roomName, JsonArray points) {
-        DungeonRoomDefinition definition = roomDefinitionForOdinKey(roomName);
+        DungeonRoomCatalogEntry definition = roomEntryForOdinKey(roomName);
         String zoneId = odinRoomZoneId(roomName, definition);
         String fallbackName = roomName == null || roomName.isBlank()
                 ? "Odin Dungeon Waypoints"
@@ -867,20 +915,20 @@ public final class WaypointImporter {
         return group;
     }
 
-    private static DungeonRoomDefinition roomDefinitionForOdinKey(String roomName) {
+    private static DungeonRoomCatalogEntry roomEntryForOdinKey(String roomName) {
         if (roomName == null || roomName.isBlank()) return null;
-        DungeonRoomDefinition direct = DungeonRoomData.definition(roomName);
+        DungeonRoomCatalogEntry direct = DungeonRoomData.entry(roomName);
         if (direct != null) return direct;
         String trimmed = roomName.trim();
-        for (DungeonRoomDefinition definition : DungeonRoomData.allDefinitions()) {
-            if (definition.displayName().equalsIgnoreCase(trimmed)) return definition;
+        for (DungeonRoomCatalogEntry entry : DungeonRoomData.allEntries()) {
+            if (entry.displayName().equalsIgnoreCase(trimmed)) return entry;
         }
         return null;
     }
 
-    private static String odinRoomZoneId(String roomName, DungeonRoomDefinition definition) {
+    private static String odinRoomZoneId(String roomName, DungeonRoomCatalogEntry definition) {
         if (definition != null) return definition.id();
-        String normalized = DungeonRoomDefinition.normalizeId(roomName);
+        String normalized = DungeonRoomCatalogEntry.normalizeId(roomName);
         return normalized.isBlank() ? Zone.UNKNOWN.id() : normalized;
     }
 

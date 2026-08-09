@@ -17,20 +17,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DungeonItemIdentityTest {
 
     @Test
-    void etherwarpRequiresExactCustomDataInsteadOfAName() {
+    void etherwarpRequiresMergedAspectOfTheEndOrVoid() {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
-        ItemStack ethermerged = shovelWithData(data("ASPECT_OF_THE_VOID", 1, false));
-        ItemStack legacyEthermerged = shovelWithData(data("ASPECT_OF_THE_END", 1, true));
-        ItemStack conduit = shovelWithData(data("ETHERWARP_CONDUIT", 0, false));
+        ItemStack ethermergedVoid = shovelWithData(data("ASPECT_OF_THE_VOID", 1, false));
+        ItemStack ethermergedEnd = shovelWithData(data("ASPECT_OF_THE_END", 1, true));
         ItemStack plainAotv = shovelWithData(data("ASPECT_OF_THE_VOID", 0, false));
+        ItemStack plainAote = shovelWithData(data("ASPECT_OF_THE_END", 0, false));
+        ItemStack conduit = shovelWithData(data("ETHERWARP_CONDUIT", 0, false));
+        ItemStack conduitWithFlag = shovelWithData(data("ETHERWARP_CONDUIT", 1, false));
+        ItemStack randomWithFlag = shovelWithData(data("HYPERION", 1, false));
         ItemStack renamed = emptyShovel();
         renamed.set(DataComponents.CUSTOM_NAME, Component.literal("Aspect of the Void"));
 
-        assertTrue(DungeonItemIdentity.isEtherwarpItem(ethermerged));
-        assertTrue(DungeonItemIdentity.isEtherwarpItem(legacyEthermerged));
-        assertTrue(DungeonItemIdentity.isEtherwarpItem(conduit));
+        assertTrue(DungeonItemIdentity.isEtherwarpItem(ethermergedVoid));
+        assertTrue(DungeonItemIdentity.isEtherwarpItem(ethermergedEnd));
         assertFalse(DungeonItemIdentity.isEtherwarpItem(plainAotv));
+        assertFalse(DungeonItemIdentity.isEtherwarpItem(plainAote));
+        assertFalse(DungeonItemIdentity.isEtherwarpItem(conduit));
+        assertFalse(DungeonItemIdentity.isEtherwarpItem(conduitWithFlag));
+        assertFalse(DungeonItemIdentity.isEtherwarpItem(randomWithFlag));
         assertFalse(DungeonItemIdentity.isEtherwarpItem(renamed));
         assertFalse(DungeonItemIdentity.isEtherwarpItem(ItemStack.EMPTY));
     }
@@ -68,6 +74,7 @@ class DungeonItemIdentityTest {
         return stack;
     }
 
+    @SuppressWarnings("deprecation")
     private static ItemStack emptyShovel() {
         var holder = Items.DIAMOND_SHOVEL.builtInRegistryHolder();
         if (!holder.areComponentsBound()) holder.bindComponents(DataComponentMap.EMPTY);

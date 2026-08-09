@@ -7,9 +7,7 @@ package com.babbur.waypointer.codec;
  */
 public final class CjkBase16384 {
 
-    /** First code point in the 2^14 alphabet. */
     static final char ALPHABET_BASE = 0x4E00;
-    /** One past the last code point, exclusive. */
     static final char ALPHABET_END_EXCLUSIVE = (char) (ALPHABET_BASE + 16384);
 
     private static final int GROUP_BYTES = 7;

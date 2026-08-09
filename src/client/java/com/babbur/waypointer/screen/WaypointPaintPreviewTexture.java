@@ -10,7 +10,6 @@ import net.minecraft.resources.Identifier;
 import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** Perspective-correct software cube used for the painter's rotating live preview. */
 final class WaypointPaintPreviewTexture {
 
     static final int SIZE = 256;
@@ -68,7 +67,6 @@ final class WaypointPaintPreviewTexture {
         }
 
         double yaw = Math.toRadians(angleDegrees);
-        // Positive pitch presents the cube from above, matching the world view and mockup.
         double pitch = Math.toRadians(24.0);
         double cy = Math.cos(yaw), sy = Math.sin(yaw);
         double cp = Math.cos(pitch), sp = Math.sin(pitch);

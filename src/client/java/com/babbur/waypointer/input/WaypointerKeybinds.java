@@ -9,11 +9,10 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
-import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
-import com.babbur.waypointer.progression.ProximityTracker;
 import com.babbur.waypointer.screen.AddNamedWaypointScreen;
 import com.babbur.waypointer.screen.WaypointerGuiScreens;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -35,39 +34,6 @@ import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Registers and polls the mod's keybinds.
- *
- * Ten bindings today:
- *
- *   - Open Waypointer GUI -- the primary way into the GUI.
- *   - Add Waypoint -- drops a waypoint at the player's position into the
- *     first active group (auto-creating one if the zone has none). Matches
- *     {@code /wp add} in behavior so muscle memory transfers between the command
- *     and the keybind.
- *   - Add Named Waypoint -- opens a one-field prompt, then creates the
- *     waypoint at the player's current position with that name.
- *   - Add Temp Waypoint at Player -- drops a temporary waypoint using the
- *     user's default expiry mode and duration.
- *   - Add Waypoint Where Looking -- pick a block in-world, then name it and
- *     optionally make it a SubWP or small SubWP.
- *   - Skip Waypoint -- advances the current active group(s) past their current
- *     waypoint. Useful for dungeon speedruns or when a waypoint is physically
- *     unreachable. Unbound by default; players who don't want it just don't
- *     bind the key.
- *   - Unskip Waypoint -- moves route progress back one waypoint, the
- *     inverse of Skip Waypoint. Also unbound by default because it mutates
- *     route progress.
- *   - Enter Edit Mode -- explicitly enables the persistent world waypoint
- *     picker where left-clicking an existing waypoint starts moving it.
- *   - Exit Edit Mode -- explicitly disables persistent edit mode.
- *   - Toggle Edit Mode -- flips persistent edit mode for players who prefer one
- *     bind instead of separate enter/exit binds.
- * All bindings are registered under a single Waypointer category via the
- * identifier-based API so the vanilla controls screen groups them together.
- * Most bindings are unbound by default so players opt in to actions that mutate
- * route data or change edit mode.
- */
 public final class WaypointerKeybinds {
 
     static final String CATEGORY_TRANSLATION_KEY = "key.category." + Waypointer.MOD_ID + ".main";
@@ -109,7 +75,7 @@ public final class WaypointerKeybinds {
     private static final KeyMapping.Category CATEGORY =
             KeyMapping.Category.register(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "main"));
     private static final Component HELP_CONVERT_SECRETS_FIRST = Component.translatable(
-            "waypointer.input.edit_mode.convert_first")
+            "waypointer.input.edit_mode.convert_definition_first")
             .withStyle(ChatFormatting.YELLOW);
     private static KeyMapping registeredOpenEditor;
     private static KeyMapping registeredExitEditMode;
@@ -134,68 +100,23 @@ public final class WaypointerKeybinds {
         this.manager = manager;
         this.config = config;
         this.addFlow = new WaypointAddFlow();
-        this.openEditor = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                OPEN_EDITOR_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                OPEN_EDITOR_DEFAULT_KEY,
-                CATEGORY));
+        this.openEditor = register(OPEN_EDITOR_TRANSLATION_KEY, OPEN_EDITOR_DEFAULT_KEY);
         registeredOpenEditor = this.openEditor;
-        // Also unbound by default. Adding a waypoint is non-destructive but it *does*
-        // create persistent data, which we don't want triggering on whatever default
-        // key we pick. Players bind it intentionally.
-        this.addWaypointHere = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                ADD_WAYPOINT_HERE_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
-        this.addNamedWaypointHere = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                ADD_NAMED_WAYPOINT_HERE_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
-        // Same opt-in story as the other creation keybinds. Uses the user's
-        // last-picked mode + duration (stored in config) so a single tap drops
-        // a temp without an intermediate picker: the editor button path is for
-        // changing those defaults, the keybind is for fast repeat use.
-        this.addTempWaypointHere = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                ADD_TEMP_WAYPOINT_HERE_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
-        // Unbound by default: skip is a destructive-ish shortcut (it mutates route
-        // progress) and players should opt in by choosing a key, not discover it by
-        // accident on first launch.
-        this.skipWaypoint = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                SKIP_WAYPOINT_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
-        this.unskipWaypoint = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                UNSKIP_WAYPOINT_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
-        this.enterEditMode = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                ENTER_EDIT_MODE_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
-        this.exitEditMode = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                EXIT_EDIT_MODE_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
+        this.addWaypointHere = register(ADD_WAYPOINT_HERE_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
+        this.addNamedWaypointHere = register(ADD_NAMED_WAYPOINT_HERE_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
+        this.addTempWaypointHere = register(ADD_TEMP_WAYPOINT_HERE_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
+        this.skipWaypoint = register(SKIP_WAYPOINT_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
+        this.unskipWaypoint = register(UNSKIP_WAYPOINT_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
+        this.enterEditMode = register(ENTER_EDIT_MODE_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
+        this.exitEditMode = register(EXIT_EDIT_MODE_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
         registeredExitEditMode = this.exitEditMode;
-        this.toggleEditMode = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                TOGGLE_EDIT_MODE_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
-        this.addWaypointWhereLooking = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-                REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY,
-                InputConstants.Type.KEYSYM,
-                UNBOUND_DEFAULT_KEY,
-                CATEGORY));
+        this.toggleEditMode = register(TOGGLE_EDIT_MODE_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
+        this.addWaypointWhereLooking = register(REPOSITION_ADD_WAYPOINT_TRANSLATION_KEY, UNBOUND_DEFAULT_KEY);
+    }
+
+    private static KeyMapping register(String translationKey, int defaultKey) {
+        return KeyMappingHelper.registerKeyMapping(new KeyMapping(
+                translationKey, InputConstants.Type.KEYSYM, defaultKey, CATEGORY));
     }
 
     public void install() {
@@ -211,7 +132,6 @@ public final class WaypointerKeybinds {
         });
     }
 
-    /** Live bindings and conflicts for the troubleshooting report. */
     public List<DebugBinding> debugSnapshot() {
         List<KeyMapping> mappings = List.of(
                 openEditor,
@@ -283,8 +203,6 @@ public final class WaypointerKeybinds {
             return;
         }
 
-        // consumeClick returns true at most once per press, so holding the key doesn't
-        // spam new screens / repeated skips / repeated adds.
         while (openEditor.consumeClick()) {
             openGui.run();
             drainWaypointKeybindClicks();
@@ -335,42 +253,27 @@ public final class WaypointerKeybinds {
     }
 
     private void skipCurrentWaypoint() {
-        skipCurrentWaypointTargets(manager, config, System.currentTimeMillis());
+        skipCurrentWaypointTargets(manager, config);
     }
 
-    public static int skipCurrentWaypointTargets(ActiveGroupManager manager, WaypointerConfig config,
-                                                  long nowMillis) {
+    public static int skipCurrentWaypointTargets(ActiveGroupManager manager, WaypointerConfig config) {
         int skipped = 0;
         boolean loop = config.restartRouteWhenComplete();
-        boolean trackRouteTimes = config.routeTimesEnabled();
         for (WaypointGroup g : manager.activeGroups()) {
             if (g.isComplete() || g.isEmpty()) continue;
-            advanceManualSkip(g, trackRouteTimes, nowMillis);
+            g.advancePast(g.currentIndex());
             g.restartIfRouteCompleted(shouldRestartCompletedRoute(g, loop));
-            ProximityTracker.reportRouteCompletion(manager, g, trackRouteTimes);
             skipped++;
         }
         if (skipped == 0) return 0;
-        // fireDataChanged re-caches activeGroups() and triggers autosave so the new
-        // progress index survives a crash or /reload.
         manager.fireDataChanged();
         return skipped;
-    }
-
-    static void advanceManualSkip(WaypointGroup group, boolean trackRouteTimes, long nowMillis) {
-        if (trackRouteTimes) {
-            group.skipCurrentTimed(nowMillis);
-            return;
-        }
-        group.resetRouteTiming();
-        group.consumeRouteCompletion();
-        group.advancePast(group.currentIndex());
     }
 
     private static boolean shouldRestartCompletedRoute(WaypointGroup group, boolean globalRestart) {
         if (group != null
                 && !group.temp()
-                && DungeonRoomData.definition(group.zoneId()) != null) {
+                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON) {
             return false;
         }
         return globalRestart;
@@ -380,7 +283,7 @@ public final class WaypointerKeybinds {
         return group != null
                 && !group.temp()
                 && group.isComplete()
-                && DungeonRoomData.definition(group.zoneId()) != null;
+                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
     }
 
     private void unskipCurrentWaypoint() {
@@ -419,7 +322,6 @@ public final class WaypointerKeybinds {
 
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         int flags = WaypointRepositionMode.defaultDungeonEditFlags(target);
-        // Stored dungeon-room routes keep room-local coordinates.
         target.add(DungeonRoomWaypointPlacement.toStoredWaypoint(target, new Waypoint(
                 pos.x(), pos.y(), pos.z(), "", config.defaultWaypointColor(), flags, 0.0)));
         addFlow.afterWaypointAdded(target, target.size() - 1,
@@ -439,12 +341,7 @@ public final class WaypointerKeybinds {
     }
 
     private boolean addBlockedByInstalledSecrets(Minecraft mc) {
-        if (manager == null || manager.currentZone() == null) return false;
-        if (!DungeonRoomRouteSync.secretsRequireConversion(manager, manager.currentZone().id())) {
-            return false;
-        }
-        showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
-        return true;
+        return false;
     }
 
     private static void showStatus(Minecraft mc, Component message) {

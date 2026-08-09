@@ -17,15 +17,20 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 
-/** Small bridge for Mojang API moves between Minecraft 26.1 and 26.2. */
+/**
+ * Bridge for Mojang API moves between Minecraft 26.1 and 26.2.
+ * Resolves whichever accessor exists at runtime via reflection.
+ */
 public final class MinecraftCompat {
 
+    // Screen: Minecraft.screen / setScreen (26.1) vs Gui.screen / setScreen (26.2)
     private static final Field MINECRAFT_SCREEN = findField(Minecraft.class, "screen");
     private static final Method MINECRAFT_SET_SCREEN =
             findMethod(Minecraft.class, "setScreen", Screen.class);
     private static final Method GUI_SCREEN = findMethod(Gui.class, "screen");
     private static final Method GUI_SET_SCREEN = findMethod(Gui.class, "setScreen", Screen.class);
 
+    // Chat / overlay / toasts: Gui helpers vs nested Hud object
     private static final Method GUI_GET_CHAT = findMethod(Gui.class, "getChat");
     private static final Method GUI_SET_OVERLAY_MESSAGE =
             findMethod(Gui.class, "setOverlayMessage", Component.class, boolean.class);
@@ -38,6 +43,7 @@ public final class MinecraftCompat {
     private static final Method HUD_SET_OVERLAY_MESSAGE = GUI_HUD == null
             ? null : findMethod(GUI_HUD.getType(), "setOverlayMessage", Component.class, boolean.class);
 
+    // getX vs bare x naming on GameRenderer
     private static final Method GAME_RENDERER_GET_MAIN_CAMERA =
             findMethod(GameRenderer.class, "getMainCamera");
     private static final Method GAME_RENDERER_MAIN_CAMERA =
@@ -47,6 +53,7 @@ public final class MinecraftCompat {
     private static final Method GAME_RENDERER_GAME_RENDER_STATE =
             findMethod(GameRenderer.class, "gameRenderState");
 
+    // Flat GpuDevice getters vs DeviceInfo object
     private static final Method GPU_GET_VENDOR = findMethod(GpuDevice.class, "getVendor");
     private static final Method GPU_GET_BACKEND_NAME = findMethod(GpuDevice.class, "getBackendName");
     private static final Method GPU_GET_IMPLEMENTATION_INFORMATION =

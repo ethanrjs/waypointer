@@ -1,6 +1,5 @@
 package com.babbur.waypointer.api;
 
-/** Stable render and route-behavior flags accepted by {@link WaypointSpec}. */
 public final class WaypointFlags {
 
     public static final int HIDE_BEACON = 1;
@@ -24,14 +23,12 @@ public final class WaypointFlags {
     private WaypointFlags() {
     }
 
-    /** Combine flags without requiring callers to spell out bitwise operations. */
     public static int of(int... flags) {
         int combined = 0;
         for (int flag : flags) combined |= flag;
         return combined;
     }
 
-    /** Whether {@code flags} contains every bit in {@code required}. */
     public static boolean contains(int flags, int required) {
         return (flags & required) == required;
     }

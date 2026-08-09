@@ -1,8 +1,5 @@
 package com.babbur.waypointer.util;
 
-/**
- * Generic numeric helpers shared across Waypointer packages.
- */
 public final class MathUtil {
 
     private MathUtil() {}

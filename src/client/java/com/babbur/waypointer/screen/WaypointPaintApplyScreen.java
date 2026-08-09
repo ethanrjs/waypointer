@@ -23,7 +23,6 @@ import java.util.Locale;
 import static com.babbur.waypointer.screen.GuiTokens.*;
 import static org.lwjgl.glfw.GLFW.*;
 
-/** Apply-target chooser and searchable route picker for Waypoint Painter. */
 public final class WaypointPaintApplyScreen extends Screen {
 
     private enum Mode { CHOICE, GROUPS }

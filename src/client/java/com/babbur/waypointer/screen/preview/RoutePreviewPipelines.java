@@ -5,18 +5,20 @@ import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.platform.CompareOp;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 
-/** Preview-only pipelines. They do not alter the live world renderer's depth behavior. */
 public final class RoutePreviewPipelines {
 
     private static RenderType depthOnly;
     private static RenderType surfaces;
+    private static RenderType surfacesNoDepth;
     private static RenderType connectors;
     private static RenderType outlines;
+    private static RenderType outlinesNoDepth;
 
     private RoutePreviewPipelines() {}
 
@@ -48,6 +50,20 @@ public final class RoutePreviewPipelines {
         return surfaces;
     }
 
+    public static RenderType surfacesNoDepth() {
+        if (surfacesNoDepth == null) {
+            RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
+                    .withLocation(id("waypoint_preview_surfaces"))
+                    .withDepthStencilState(noDepthTest())
+                    .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+                    .withCull(false)
+                    .build();
+            surfacesNoDepth = RenderType.create("waypointer_waypoint_preview_surfaces",
+                    RenderSetup.builder(pipeline).createRenderSetup());
+        }
+        return surfacesNoDepth;
+    }
+
     public static RenderType painted(RoutePreviewScene scene) {
         if (scene.paintResource() == null) return surfaces();
         return scene.paintResource().renderType();
@@ -68,6 +84,13 @@ public final class RoutePreviewPipelines {
         return outlines;
     }
 
+    public static RenderType outlinesNoDepth() {
+        if (outlinesNoDepth == null) {
+            outlinesNoDepth = buildRibbons("waypoint_preview_outlines", noDepthTest());
+        }
+        return outlinesNoDepth;
+    }
+
     private static RenderType buildRibbons(String path, DepthStencilState depthState) {
         RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
                 .withLocation(id(path))
@@ -81,6 +104,10 @@ public final class RoutePreviewPipelines {
 
     private static DepthStencilState readOnlyDepth() {
         return new DepthStencilState(DepthStencilState.DEFAULT.depthTest(), false);
+    }
+
+    private static DepthStencilState noDepthTest() {
+        return new DepthStencilState(CompareOp.ALWAYS_PASS, false);
     }
 
     private static Identifier id(String path) {

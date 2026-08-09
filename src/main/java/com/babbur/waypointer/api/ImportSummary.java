@@ -2,9 +2,6 @@ package com.babbur.waypointer.api;
 
 import java.util.List;
 
-/**
- * Result of importing routes through {@link WaypointerApi#importRoutes}.
- */
 public record ImportSummary(
         ImportSource source,
         String label,

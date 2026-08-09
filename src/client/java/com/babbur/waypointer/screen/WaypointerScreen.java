@@ -13,11 +13,11 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
-import com.babbur.waypointer.dungeon.DungeonRouteDownloader;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
-import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
 import com.babbur.waypointer.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -32,7 +32,6 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -41,89 +40,29 @@ import java.util.Map;
 import java.util.Set;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
+import static com.babbur.waypointer.screen.WaypointerZoneCatalog.*;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
 
-/**
- * Top-level editor screen.
- *
- * Layout (clinical / utility aesthetic):
- *   +------------------------------------------+
- *   | [Settings]    Waypointer (i)  [> Hub   ] |
- *   |                                          |
- *   |        | search...        [Hide All] |   |
- *   |        | route list ...               |  |
- *   |        | route list ...               |  |
- *   |                                          |
- *   | [Import/Export][New Route][Delete][Done] |
- *   +------------------------------------------+
- *
- * The old zone sidebar is gone: an island selector button in the top-right
- * (defaulting to the island the player is standing on) opens a dropdown with
- * Temporary and Dungeon Rooms first, then islands -- current island on top,
- * populated islands next, empty islands dimmed at the bottom. The reclaimed
- * width goes to an edge-to-edge route workspace.
- *
- * Editing is double-click on a row (no Edit button). Import and Export share
- * one footer button that opens a two-item menu. Footer uses
- * {@link GuiTokens#layoutFooter} -- primary actions on the left, Done pinned
- * right, both aligned to the content column.
- *
- * Hand-rolled list (rather than ObjectSelectionList) so we can render custom
- * row content. The whole list fits in a few hundred lines and handles clicks
- * and scroll explicitly, which is easier to debug than the vanilla widget.
- */
 public final class WaypointerScreen extends Screen {
 
-    static final String TEMPORARY_ZONE_ID = "__temporary__";
-    private static final String TEMPORARY_ZONE_LABEL = "Temporary";
-    private static final int TEMPORARY_ACCENT = 0xFF58C878;
-    static final String DUNGEON_ROOMS_ZONE_ID = "__dungeon_rooms__";
-    private static final String DUNGEON_ROOMS_LABEL = "Dungeon Rooms";
-    private static final String DUNGEON_ROOM_LABEL_PREFIX = "Dungeons: ";
-    private static final int DUNGEON_ROOM_ACCENT = 0xFFFF8A8A;
-    static final int CURRENT_DUNGEON_ROOM_ACCENT = 0xFF58C878;
-    private static final int CURRENT_DUNGEON_ROOM_BG = 0x332A7040;
-    private static final int CURRENT_DUNGEON_ROOM_SELECTED_BG = 0x553A8A50;
-    private static final int ROUTE_ROW_PITCH = ROW_H + 4;
-    private static final int ROUTE_TOGGLE_CHIP_W = 54;
-    private static final int ROUTE_TOGGLE_CHIP_H = 14;
-    private static final int ROUTE_TOGGLE_HIT_PAD = 2;
-    private static final int DUNGEON_ROUTE_CHILD_INDENT = 18;
-    private static final int MOUSE_BUTTON_LEFT = 0;
-    private static final int MOUSE_BUTTON_RIGHT = 1;
+    static final int TEMPORARY_ACCENT = 0xFF58C878;
+    static final int DUNGEON_ROOM_ACCENT = 0xFFFF8A8A;
     private static final Set<String> expandedDungeonRoomZoneIds = new HashSet<>();
 
-    private final ActiveGroupManager manager;
-    private final WaypointerConfig config;
-    private String selectedZoneId;
-    private String selectedDungeonRoomZoneId;
-    private int scrollOffset;
-    private String selectedGroupId;
-    private final LinkedHashSet<String> selectedGroupIds = new LinkedHashSet<>();
+    final ActiveGroupManager manager;
+    final WaypointerConfig config;
+    String selectedZoneId;
+    String selectedDungeonRoomZoneId;
+    int scrollOffset;
+    String selectedGroupId;
+    final LinkedHashSet<String> selectedGroupIds = new LinkedHashSet<>();
+    private final WaypointerRouteList routeList;
     private String selectionAnchorGroupId;
-    /**
-     * Group id the screen should focus on its next {@link #init()} pass --
-     * set by {@link #openFocused} and consumed on first init. Nullable by design
-     * so {@code init()} after window resize doesn't re-snap the scroll offset.
-     */
     private String pendingFocusGroupId;
-    /**
-     * Dungeon room zone id whose section should be brought on screen during the
-     * next {@link #init()} pass. This is separate from pendingFocusGroupId so
-     * opening Waypointer inside a room can highlight the room without selecting
-     * a specific route.
-     */
     private String pendingFocusRoomZoneId;
     private String lastObservedCurrentRoomZoneId;
 
-    // Delete uses a two-click confirm: first click arms, second within CONFIRM_WINDOW_MS
-    // commits. A full modal would be more intrusive than this class of action warrants;
-    // undo is cheap (re-add the group) but accidental taps shouldn't silently destroy data.
-    //
-    // The armed state reuses the same button label ("Confirm?") regardless of which group
-    // is selected -- stuffing the group name into the label overflowed the button bounds
-    // at long names, and the name belongs in the tooltip where wrapping is free.
     private static final long CONFIRM_WINDOW_MS = 2500L;
     private static final String DELETE_LABEL  = "Delete";
     private static final String HIDE_ALL_ROUTES_LABEL = "Hide All";
@@ -138,39 +77,18 @@ public final class WaypointerScreen extends Screen {
     private static final int SEARCH_CLEAR_BTN_W = 52;
     private static final int MOVE_ZONE_BTN_W = 76;
     private static final long MAIN_NOTICE_MS = 2500L;
-    // Sized for the widest transient state label ("Confirm?") so the button doesn't
-    // visibly grow or shrink when arming/disarming. Leave some horizontal slack so
-    // vanilla's "hover" narration arrow has room without clipping the text.
     private static final int NEW_ROUTE_BTN_W = 72;
     private static final int HIDE_ALL_ROUTES_BTN_W = 64;
     private static final int IMPORT_EXPORT_BTN_W = 96;
     private static final int DELETE_BTN_W = 56;
     private static final int DONE_BTN_W = 56;
-    private static final int DOWNLOAD_ROUTES_BTN_W = 112;
     private static final int SETTINGS_BTN_W = 76;
     private static final int ISLAND_SELECTOR_W = 150;
     private static final int ISLAND_DROPDOWN_W = 210;
-    /** Header widgets sit slightly above the title baseline, mirroring the old settings button. */
     private static final int HEADER_BTN_Y = PAD_OUTER - 5;
     private static final String IMPORT_EXPORT_LABEL = "Import/Export";
     private static final String MENU_IMPORT_LABEL = "Import from clipboard";
     private static final String MENU_EXPORT_LABEL = "Export...";
-    private static final int INFO_BUTTON_SIZE = 12;
-    private static final String ROUTE_LIST_INFO_TITLE = "Route list controls";
-    private static final String[] ROUTE_LIST_INFO_LABELS = {
-            "Double-click",
-            "Shown/Hidden chip",
-            "Shift-right-click",
-            "Ctrl / Shift-click",
-            "Delete key",
-    };
-    private static final String[] ROUTE_LIST_INFO_DESCRIPTIONS = {
-            "open a route in the editor",
-            "toggle a route in the world",
-            "move a world route to another zone",
-            "select multiple routes",
-            "delete the selection (confirm)",
-    };
     private OverlayButton hideAllRoutesBtn;
     private Button deleteBtn;
     private Button importExportBtn;
@@ -178,14 +96,8 @@ public final class WaypointerScreen extends Screen {
     private EditBox searchBox;
     private OverlayButton clearSearchButton;
     private OverlayButton moveZoneButton;
-    private OverlayButton downloadRoutesButton;
     private Button settingsButton;
-    private String searchQuery = "";
-    /**
-     * Import decoding is asynchronous, so the button stays clickable while it
-     * runs. Without this, an impatient double-click on a big payload imports it
-     * twice.
-     */
+    String searchQuery = "";
     private boolean importInFlight;
     private boolean islandDropdownOpen;
     private String zoneMoveGroupId;
@@ -193,20 +105,14 @@ public final class WaypointerScreen extends Screen {
     private boolean showAllIslands;
     private int dropdownScrollOffset;
     private boolean importExportMenuOpen;
-    private long hideAllArmedUntil = 0L;
-    private final LinkedHashSet<String> hideAllArmedGroupIds = new LinkedHashSet<>();
-    private long deleteArmedUntil = 0L;
-    private final LinkedHashSet<String> deleteArmedGroupIds = new LinkedHashSet<>();
+    private final TimedIdConfirmation hideAllConfirmation = new TimedIdConfirmation();
+    private final TimedIdConfirmation deleteConfirmation = new TimedIdConfirmation();
     private String mainNotice = "";
     private long mainNoticeUntil = 0L;
 
     private enum DropdownTab { ISLANDS, DUNGEONS }
 
     private List<GuiTokens.ButtonSpec> footerActions() {
-        // Import/Export leads (matching the reference layout), New Route next,
-        // Delete isolated at the end of the cluster. Edit is gone -- rows open
-        // on double-click. Hide All lives in the list toolbar (it acts on the
-        // visible zone, not the selection); Settings lives in the header.
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
         left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.main.import_export").getString(),
@@ -233,6 +139,7 @@ public final class WaypointerScreen extends Screen {
         super(Component.translatable("waypointer.screen.main.title"));
         this.manager = manager;
         this.config = config;
+        this.routeList = new WaypointerRouteList(this);
         this.selectedZoneId = initialSelectedZoneId(manager);
         this.lastObservedCurrentRoomZoneId = currentDungeonRoomZoneId(manager);
     }
@@ -243,12 +150,6 @@ public final class WaypointerScreen extends Screen {
         MinecraftCompat.setScreen(Minecraft.getInstance(), screen);
     }
 
-    /**
-     * Open straight to the dungeon-rooms list regardless of where the player is
-     * standing. {@link #open} only lands here when the tracker already knows the
-     * current room, which is never true when someone imports routes from the
-     * lobby -- they clicked a dungeon import and got the regular route list.
-     */
     public static void openDungeonRooms(ActiveGroupManager manager, WaypointerConfig config) {
         WaypointerScreen screen = new WaypointerScreen(manager, config);
         screen.selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
@@ -267,14 +168,12 @@ public final class WaypointerScreen extends Screen {
                                    WaypointGroup focus) {
         WaypointerScreen screen = new WaypointerScreen(manager, config);
         if (focus != null) {
-            // Select by id rather than by index -- index lookups into
-            // visible rows are fragile when groups added mid-list shift
-            // indices. The init() pass will resolve the id to a current
-            // route row after it knows the list ordering for the zone.
             screen.selectedZoneId = focus.temp()
                     ? TEMPORARY_ZONE_ID
-                    : selectorEntryForZoneId(focus.zoneId());
-            if (!focus.temp() && isDungeonRoomZone(focus.zoneId())) {
+                    : focus.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                    ? DUNGEON_ROOMS_ZONE_ID
+                    : focus.zoneId();
+            if (!focus.temp() && focus.routeKind() == WaypointGroup.RouteKind.DUNGEON) {
                 screen.pendingFocusRoomZoneId = focus.zoneId();
                 screen.selectedDungeonRoomZoneId = focus.zoneId();
                 expandedDungeonRoomZoneIds.add(focus.zoneId());
@@ -298,10 +197,8 @@ public final class WaypointerScreen extends Screen {
     @Override
     protected void init() {
         int footerY = height - FOOTER_H;
-        hideAllArmedUntil = 0L;
-        hideAllArmedGroupIds.clear();
-        deleteArmedUntil = 0L;
-        deleteArmedGroupIds.clear();
+        hideAllConfirmation.clear();
+        deleteConfirmation.clear();
         hideAllRoutesBtn = null;
         deleteBtn = null;
         importExportBtn = null;
@@ -309,24 +206,18 @@ public final class WaypointerScreen extends Screen {
         searchBox = null;
         clearSearchButton = null;
         moveZoneButton = null;
-        downloadRoutesButton = null;
         settingsButton = null;
+        routeList.resetNavigation();
         islandDropdownOpen = false;
         zoneMoveGroupId = null;
         importExportMenuOpen = false;
 
-        // Fixed width so the label can toggle between "Delete" and "Confirm?" without
-        // the footer re-flowing or the text sliding past the bevel.
         Layout layout = layout();
         List<GuiTokens.ButtonSpec> left = footerActions();
         GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec(
                 Component.translatable("gui.done").getString(),
                 DONE_BTN_W, this::onClose);
 
-        // We need references to stateful footer buttons so we can refresh labels and
-        // enabled state after selection or route visibility changes. Intercept every
-        // built button and still register all of them exactly once. The footer is
-        // aligned to the content column so list and actions read as one region.
         GuiTokens.layoutFooter(width, footerY, left, done,
                 b -> {
             if (Component.translatable("waypointer.screen.main.import_export").getString()
@@ -368,8 +259,6 @@ public final class WaypointerScreen extends Screen {
         syncSearchBoxGeometry();
         addRenderableWidget(moveZoneButton);
 
-        // Zone-scoped, so it lives with the list rather than in the footer: it
-        // hides every shown route in whichever zone the selector points at.
         OverlayButton hideAll = new OverlayButton(0, 0, HIDE_ALL_ROUTES_BTN_W, BTN_H,
                 Component.translatable("waypointer.screen.main.hide_all"),
                 b -> onHideAllRoutesClicked());
@@ -378,15 +267,6 @@ public final class WaypointerScreen extends Screen {
         hideAllRoutesBtn = hideAll;
         syncSearchBoxGeometry();
         addRenderableWidget(hideAll);
-
-        downloadRoutesButton = new OverlayButton(0, 0, DOWNLOAD_ROUTES_BTN_W, BTN_H,
-                Component.translatable("waypointer.screen.main.download_routes"),
-                b -> startRouteDownload());
-        downloadRoutesButton.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.main.download_routes.tooltip",
-                DungeonRouteDownloader.attributionText())));
-        syncSearchBoxGeometry();
-        addRenderableWidget(downloadRoutesButton);
 
         settingsButton = new GuiTokens.StyledButton(PAD_OUTER, HEADER_BTN_Y,
                 SETTINGS_BTN_W, BTN_H,
@@ -398,15 +278,8 @@ public final class WaypointerScreen extends Screen {
         islandSelectorBtn = new GuiTokens.StyledButton(
                 width - PAD_OUTER - ISLAND_SELECTOR_W, HEADER_BTN_Y,
                 ISLAND_SELECTOR_W, BTN_H, islandSelectorLabel(), b -> toggleIslandDropdown());
-        islandSelectorBtn.setTooltip(Tooltip.create(Component.translatable(
-                "waypointer.screen.main.zone_selector.tooltip")));
         addRenderableWidget(islandSelectorBtn);
 
-        // Resolve pending focus requests from open/openFocused(). We do this here
-        // rather than in the constructor because the zone's group list can
-        // only be meaningfully indexed after the screen knows its current
-        // zone -- the rendered row list is keyed off selectedZoneId, which is
-        // settled by the time init() runs.
         if (pendingFocusRoomZoneId != null) {
             focusRoomByZoneId(pendingFocusRoomZoneId);
             pendingFocusRoomZoneId = null;
@@ -415,90 +288,17 @@ public final class WaypointerScreen extends Screen {
             selectGroupById(pendingFocusGroupId);
             pendingFocusGroupId = null;
         }
+        routeList.buildNavigation(
+                layout.mainLeft(), layout.top(), layout.mainRight(), layout.bottom());
         refreshActionButtons();
     }
 
-    /**
-     * The selector always opens on the island the player is standing on --
-     * that's the zone whose routes they most likely came to manage. No
-     * remembered selection: the dropdown makes switching cheap.
-     */
-    private static String initialSelectedZoneId(ActiveGroupManager manager) {
-        List<String> ids = zoneIdsForManager(manager);
-        String fallback = selectorEntryForZoneId(currentZoneId(manager));
-        if (ids.contains(fallback)) {
-            return fallback;
-        }
-        return ids.isEmpty() ? Zone.UNKNOWN.id() : ids.get(0);
-    }
-
-    private static String currentZoneId(ActiveGroupManager manager) {
-        Zone current = manager.currentZone();
-        return current == null ? Zone.UNKNOWN.id() : current.id();
-    }
-
     private void selectGroupById(String id) {
-        if (id == null) return;
-        WaypointGroup storedGroup = manager.get(id);
-        if (storedGroup != null && !storedGroup.temp() && isDungeonRoomZone(storedGroup.zoneId())) {
-            selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
-            selectedDungeonRoomZoneId = storedGroup.zoneId();
-            expandedDungeonRoomZoneIds.add(storedGroup.zoneId());
-        }
-        List<RouteListRow> rows = routeListRows();
-        for (int i = 0; i < rows.size(); i++) {
-            RouteListRow row = rows.get(i);
-            if (!row.roomHeader && row.group != null && row.group.id().equals(id)) {
-                selectOnlyGroupId(id);
-                scrollRowIndexIntoView(i);
-                return;
-            }
-        }
+        routeList.selectGroupById(id);
     }
 
     private void focusRoomByZoneId(String roomZoneId) {
-        if (!isDungeonRoomZone(roomZoneId)) return;
-        selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
-        selectedDungeonRoomZoneId = roomZoneId;
-        expandedDungeonRoomZoneIds.add(roomZoneId);
-        clearRouteSelection();
-        List<RouteListRow> rows = routeListRows();
-        for (int i = 0; i < rows.size(); i++) {
-            RouteListRow row = rows.get(i);
-            if (row.roomHeader && roomZoneId.equals(row.roomZoneId)) {
-                scrollRowIndexIntoView(i);
-                return;
-            }
-        }
-    }
-
-    private void scrollRowIndexIntoView(int rowIndex) {
-        if (rowIndex < 0) return;
-        List<RouteListRow> rows = routeListRows();
-        Layout layout = layout();
-        int rowsTop = mainRowsTop(layout.top());
-        int listHeight = Math.max(0, layout.bottom() - rowsTop);
-        scrollOffset = scrollOffsetToRevealRow(
-                scrollOffset, rowIndex, rows.size(), listHeight);
-    }
-
-    static int scrollOffsetToRevealRow(int currentOffset, int rowIndex,
-                                       int rowCount, int listHeight) {
-        if (rowIndex < 0 || rowIndex >= rowCount) return currentOffset;
-        int rowTop = rowIndex * ROUTE_ROW_PITCH;
-        int rowBottom = rowTop + ROW_H + 2;
-        int next = currentOffset;
-        if (rowTop < next) {
-            next = rowTop;
-        } else if (rowBottom > next + listHeight) {
-            next = rowBottom - listHeight + GAP;
-        }
-        return MathUtil.clamp(next, 0, maxMainScroll(rowCount, listHeight));
-    }
-
-    private static int maxMainScroll(int rowCount, int listHeight) {
-        int contentHeight = rowCount * ROUTE_ROW_PITCH;
-        return Math.max(0, contentHeight - Math.max(0, listHeight) + 8);
+        routeList.focusRoomByZoneId(roomZoneId);
     }
 
     private void onSearchChanged(String raw) {
@@ -527,23 +327,17 @@ public final class WaypointerScreen extends Screen {
         searchBox.setY(toolbarY);
         int availableWidth = layout.mainRight() - layout.mainLeft() - GAP * 2;
         int clearWidth = clearSearchButton == null ? 0 : SEARCH_CLEAR_BTN_W + GAP_TIGHT;
-        boolean showDownloadButton = isDungeonRoomsZone(selectedZoneId)
-                && WaypointerClient.dungeonRouteDownloader() != null;
         boolean showMoveZoneButton = Zone.PRIVATE_WORLD.id().equals(selectedZoneId);
         int hideAllWidth = hideAllRoutesBtn == null ? 0 : HIDE_ALL_ROUTES_BTN_W + GAP;
         int moveZoneWidth = showMoveZoneButton ? MOVE_ZONE_BTN_W + GAP : 0;
-        int downloadWidth = showDownloadButton ? DOWNLOAD_ROUTES_BTN_W + GAP : 0;
         int searchWidth = Math.max(80,
-                Math.min(180, availableWidth - clearWidth - downloadWidth
-                        - moveZoneWidth - hideAllWidth));
+                Math.min(180, availableWidth - clearWidth - moveZoneWidth - hideAllWidth));
         searchBox.setWidth(searchWidth);
         if (clearSearchButton != null) {
             clearSearchButton.setX(left + searchWidth + GAP_TIGHT);
             clearSearchButton.setY(toolbarY);
             clearSearchButton.setWidth(SEARCH_CLEAR_BTN_W);
         }
-        // Right cluster: Hide All pinned at the edge (always present), the
-        // contextual Download routes button slots in to its left.
         int rightEdge = layout.mainRight() - GAP;
         if (hideAllRoutesBtn != null) {
             hideAllRoutesBtn.setX(rightEdge - HIDE_ALL_ROUTES_BTN_W);
@@ -558,18 +352,6 @@ public final class WaypointerScreen extends Screen {
             moveZoneButton.setWidth(MOVE_ZONE_BTN_W);
             if (showMoveZoneButton) rightEdge -= MOVE_ZONE_BTN_W + GAP;
         }
-        if (downloadRoutesButton != null) {
-            downloadRoutesButton.visible = showDownloadButton;
-            downloadRoutesButton.setX(rightEdge - DOWNLOAD_ROUTES_BTN_W);
-            downloadRoutesButton.setY(toolbarY);
-            downloadRoutesButton.setWidth(DOWNLOAD_ROUTES_BTN_W);
-        }
-    }
-
-    private void startRouteDownload() {
-        DungeonRouteDownloader downloader = WaypointerClient.dungeonRouteDownloader();
-        if (downloader == null) return;
-        downloader.download(message -> flashMainNotice(message.getString()));
     }
 
     private void updateClearSearchButton() {
@@ -599,118 +381,9 @@ public final class WaypointerScreen extends Screen {
         return ids;
     }
 
-    /** Current island first, then populated islands; empty islands live behind Show More. */
-    static List<String> islandDropdownIdsForManager(ActiveGroupManager manager) {
-        return islandDropdownIdsForManager(manager, false);
-    }
-
-    static List<String> islandDropdownIdsForManager(ActiveGroupManager manager,
-                                                     boolean includeEmpty) {
-        List<String> all = zoneIdsForManager(manager);
-        String currentSelection = selectorEntryForZoneId(currentZoneId(manager));
-        List<String> out = new ArrayList<>();
-        List<String> populated = new ArrayList<>();
-        List<String> empty = new ArrayList<>();
-
-        if (zoneHasRoutes(manager, TEMPORARY_ZONE_ID)) out.add(TEMPORARY_ZONE_ID);
-        if (all.contains(currentSelection) && !isDungeonRoomsZone(currentSelection)
-                && !out.contains(currentSelection)) {
-            out.add(currentSelection);
-        }
-        for (String id : all) {
-            if (out.contains(id) || isTemporaryZone(id) || isDungeonRoomsZone(id)) continue;
-            if (zoneHasRoutes(manager, id)) populated.add(id);
-            else empty.add(id);
-        }
-        Comparator<String> byLabel = Comparator
-                .comparing((String id) -> displayZoneLabel(id).toLowerCase(Locale.ROOT))
-                .thenComparing(id -> id);
-        populated.sort(byLabel);
-        empty.sort(byLabel);
-        out.addAll(populated);
-        if (includeEmpty) out.addAll(empty);
-        return out;
-    }
-
     private boolean canToggleEmptyIslands() {
         return islandDropdownIdsForManager(manager, true).size()
                 > islandDropdownIdsForManager(manager, false).size();
-    }
-
-    private static boolean zoneHasRoutes(ActiveGroupManager manager, String zoneId) {
-        if (isTemporaryZone(zoneId)) {
-            for (WaypointGroup group : manager.allGroups()) {
-                if (group.temp() && !group.isEmpty()) return true;
-            }
-            return false;
-        }
-        if (isDungeonRoomsZone(zoneId)) {
-            if (dungeonRoomGroupCount(manager) > 0) return true;
-            for (DungeonRoomDefinition definition : DungeonRoomData.customDefinitions()) {
-                if (definition != null && !definition.waypoints().isEmpty()) return true;
-            }
-            return false;
-        }
-        return normalGroupCountForZone(manager, zoneId) > 0;
-    }
-
-    static List<String> zoneIdsForManager(ActiveGroupManager manager) {
-        List<String> zones = new ArrayList<>();
-        zones.add(TEMPORARY_ZONE_ID);
-        zones.add(Zone.UNKNOWN.id());
-        List<String> dungeonRooms = new ArrayList<>();
-        for (String zoneId : manager.knownZoneIds()) {
-            if (isDungeonRoomZone(zoneId)) {
-                if (normalGroupCountForZone(manager, zoneId) > 0
-                        && !dungeonRooms.contains(zoneId)) {
-                    dungeonRooms.add(zoneId);
-                }
-            } else if (normalGroupCountForZone(manager, zoneId) > 0 && !zones.contains(zoneId)) {
-                zones.add(zoneId);
-            }
-        }
-        Zone currentZone = manager.currentZone();
-        if (currentZone != null) {
-            String currentId = currentZone.id();
-            if (isDungeonRoomZone(currentId)) {
-                if (!dungeonRooms.contains(currentId)) dungeonRooms.add(0, currentId);
-            } else {
-                zones.remove(currentId);
-                zones.add(1, currentId);
-            }
-        }
-        for (Zone zone : Zone.knownZones()) {
-            if (!zones.contains(zone.id())) zones.add(zone.id());
-        }
-        for (DungeonRoomDefinition definition : DungeonRoomData.customDefinitions()) {
-            if (!dungeonRooms.contains(definition.id())) dungeonRooms.add(definition.id());
-        }
-        if (!dungeonRooms.isEmpty()) {
-            zones.add(DUNGEON_ROOMS_ZONE_ID);
-        }
-        return zones;
-    }
-
-    private List<WaypointGroup> visibleGroups() {
-        List<WaypointGroup> out = new ArrayList<>();
-        if (isTemporaryZone(selectedZoneId)) {
-            out.addAll(temporaryGroups());
-        } else if (isDungeonRoomsZone(selectedZoneId)) {
-            out.addAll(dungeonRoomGroups());
-        } else {
-            for (WaypointGroup group : manager.groupsForZone(selectedZoneId)) {
-                if (!group.temp()) out.add(group);
-            }
-        }
-
-        String query = normalizedSearchQuery();
-        if (query.isEmpty()) return out;
-
-        List<WaypointGroup> filtered = new ArrayList<>();
-        for (WaypointGroup group : out) {
-            if (groupMatchesSearch(group, query)) filtered.add(group);
-        }
-        return filtered;
     }
 
     private List<WaypointGroup> shownRoutesForSelectedZone() {
@@ -734,193 +407,16 @@ public final class WaypointerScreen extends Screen {
             if (group != null
                     && !group.temp()
                     && group.enabled()
-                    && isDungeonRoomZone(group.zoneId())) {
+                    && group.routeKind() == WaypointGroup.RouteKind.DUNGEON) {
                 out.add(group);
             }
-        }
-        return out;
-    }
-
-    static int hideRoutes(Iterable<WaypointGroup> groups) {
-        int changed = 0;
-        if (groups == null) return changed;
-        for (WaypointGroup group : groups) {
-            if (group == null || !group.enabled()) continue;
-            group.setEnabled(false);
-            changed++;
-        }
-        return changed;
-    }
-
-    private List<RouteListRow> routeListRows() {
-        List<RouteListRow> rows = new ArrayList<>();
-        if (!isDungeonRoomsZone(selectedZoneId)) {
-            for (WaypointGroup group : visibleGroups()) {
-                rows.add(new RouteListRow(false, null, group, 0, 0,
-                        false, false, false));
-            }
-            return rows;
-        }
-
-        String query = normalizedSearchQuery();
-        boolean searching = !query.isEmpty();
-        String currentRoomZoneId = currentDungeonRoomZoneId(manager);
-        for (String roomZoneId : dungeonRoomZoneIdsForMainList(currentRoomZoneId)) {
-            List<WaypointGroup> roomGroups = dungeonRoomGroupsForZone(roomZoneId);
-            boolean roomMatches = searching && containsSearch(displayZoneLabel(roomZoneId), query);
-            List<WaypointGroup> displayGroups = new ArrayList<>();
-            for (WaypointGroup group : roomGroups) {
-                if (!searching || roomMatches || groupMatchesSearch(group, query)) {
-                    displayGroups.add(group);
-                }
-            }
-            if (searching && !roomMatches && displayGroups.isEmpty()) continue;
-
-            boolean expanded = true;
-            boolean currentRoom = roomZoneId.equals(currentRoomZoneId);
-            boolean revealRoutes = true;
-            int secretCount = displayedInstalledSecretCount(
-                    installedSecretCountForRoom(roomZoneId), roomGroups);
-            rows.add(new RouteListRow(true, roomZoneId, null, roomGroups.size(),
-                    secretCount, revealRoutes, currentRoom, searching));
-            if (revealRoutes) {
-                for (WaypointGroup group : displayGroups) {
-                    rows.add(new RouteListRow(false, roomZoneId, group, 0, 0,
-                            false, currentRoom, false));
-                }
-            }
-        }
-        return rows;
-    }
-
-    private List<String> dungeonRoomZoneIdsForMainList(String currentRoomZoneId) {
-        List<String> roomIds = new ArrayList<>();
-        for (WaypointGroup group : manager.allGroups()) {
-            if (!group.temp() && isDungeonRoomZone(group.zoneId())
-                    && !roomIds.contains(group.zoneId())) {
-                roomIds.add(group.zoneId());
-            }
-        }
-        for (DungeonRoomDefinition definition : DungeonRoomData.allDefinitions()) {
-            if (!roomIds.contains(definition.id())) roomIds.add(definition.id());
-        }
-        if (isDungeonRoomZone(currentRoomZoneId) && !roomIds.contains(currentRoomZoneId)) {
-            roomIds.add(0, currentRoomZoneId);
-        }
-        Set<String> populated = new HashSet<>();
-        for (String roomId : roomIds) {
-            if (dungeonRoomHasRoutes(roomId)) populated.add(roomId);
-        }
-        return orderedDungeonRoomIds(roomIds, populated, currentRoomZoneId);
-    }
-
-    static List<String> orderedDungeonRoomIds(Collection<String> roomIds,
-                                               Set<String> populatedRoomIds) {
-        return orderedDungeonRoomIds(roomIds, populatedRoomIds, null);
-    }
-
-    static List<String> orderedDungeonRoomIds(Collection<String> roomIds,
-                                               Set<String> populatedRoomIds,
-                                               String currentRoomZoneId) {
-        List<String> ordered = new ArrayList<>(new LinkedHashSet<>(roomIds));
-        Set<String> populated = populatedRoomIds == null ? Set.of() : populatedRoomIds;
-        ordered.sort(Comparator
-                .comparing((String id) -> !populated.contains(id))
-                .thenComparing(id -> displayZoneLabel(id).toLowerCase(Locale.ROOT))
-                .thenComparing(id -> id));
-        if (currentRoomZoneId != null && ordered.remove(currentRoomZoneId)) {
-            ordered.add(0, currentRoomZoneId);
-        }
-        return ordered;
-    }
-
-    private boolean dungeonRoomHasRoutes(String roomZoneId) {
-        return normalGroupCountForZone(manager, roomZoneId) > 0
-                || installedSecretCountForRoom(roomZoneId) > 0;
-    }
-
-    private List<WaypointGroup> dungeonRoomGroupsForZone(String roomZoneId) {
-        List<WaypointGroup> out = new ArrayList<>();
-        boolean hasStoredRoute = false;
-        for (WaypointGroup group : manager.allGroups()) {
-            if (!group.temp() && roomZoneId != null && roomZoneId.equals(group.zoneId())) {
-                out.add(group);
-                if (!group.runtimeOnly() && !group.isEmpty()) hasStoredRoute = true;
-            }
-        }
-        // While inside the room, a stored route also has a projected runtime
-        // mirror under the generated id. The stored group is the canonical GUI
-        // object; listing the mirror too would show the same route twice.
-        if (hasStoredRoute) {
-            out.removeIf(DungeonRoomRouteSync::isGeneratedGroup);
-        }
-        return out;
-    }
-
-    private String normalizedSearchQuery() {
-        return searchQuery == null ? "" : searchQuery.trim().toLowerCase(Locale.ROOT);
-    }
-
-    static boolean groupMatchesSearch(WaypointGroup group, String query) {
-        if (containsSearch(group.name(), query)) return true;
-        if (containsSearch(group.zoneId(), query)) return true;
-        if (containsSearch(displayZoneLabel(group.zoneId()), query)) return true;
-        if (containsSearch(group.loadMode().name(), query)) return true;
-        if (containsSearch(RouteProgress.summary(group), query)) return true;
-
-        for (int i = 0; i < group.size(); i++) {
-            if (waypointMatchesSearch(group, i, query)) return true;
-        }
-        return false;
-    }
-
-    static boolean waypointMatchesSearch(WaypointGroup group, int index, String query) {
-        var waypoint = group.get(index);
-        if (containsSearch(waypoint.name(), query)) return true;
-        if (containsSearch(group.displayIndexLabel(index), query)) return true;
-        String coords = waypoint.x() + "," + waypoint.y() + "," + waypoint.z();
-        return containsSearch(coords, query);
-    }
-
-    private static boolean containsSearch(String text, String query) {
-        return text != null && text.toLowerCase(Locale.ROOT).contains(query);
-    }
-
-    private List<WaypointGroup> temporaryGroups() {
-        List<WaypointGroup> out = new ArrayList<>();
-        for (WaypointGroup group : manager.allGroups()) {
-            if (group.temp() && !group.isEmpty()) out.add(group);
-        }
-        return out;
-    }
-
-    private List<WaypointGroup> dungeonRoomGroups() {
-        List<WaypointGroup> out = new ArrayList<>();
-        for (WaypointGroup group : manager.allGroups()) {
-            if (!group.temp() && isDungeonRoomZone(group.zoneId())) out.add(group);
         }
         return out;
     }
 
     private int normalGroupCountForZone(String zoneId) {
         if (isDungeonRoomsZone(zoneId)) return dungeonRoomGroupCount(manager);
-        return normalGroupCountForZone(manager, zoneId);
-    }
-
-    private static int normalGroupCountForZone(ActiveGroupManager manager, String zoneId) {
-        int count = 0;
-        for (WaypointGroup group : manager.groupsForZone(zoneId)) {
-            if (!group.temp()) count++;
-        }
-        return count;
-    }
-
-    private static int dungeonRoomGroupCount(ActiveGroupManager manager) {
-        int count = 0;
-        for (WaypointGroup group : manager.allGroups()) {
-            if (!group.temp() && isDungeonRoomZone(group.zoneId())) count++;
-        }
-        return count;
+        return WaypointerZoneCatalog.normalGroupCountForZone(manager, zoneId);
     }
 
     private int temporaryWaypointCount() {
@@ -931,80 +427,36 @@ public final class WaypointerScreen extends Screen {
         return count;
     }
 
-    private static boolean isTemporaryZone(String zoneId) {
-        return TEMPORARY_ZONE_ID.equals(zoneId);
-    }
-
-    private static boolean isDungeonRoomsZone(String zoneId) {
-        return DUNGEON_ROOMS_ZONE_ID.equals(zoneId);
-    }
-
-    private static boolean isDungeonRoomZone(String zoneId) {
-        return DungeonRoomData.definition(zoneId) != null;
-    }
-
-    private static String currentDungeonRoomZoneId(ActiveGroupManager manager) {
-        if (manager == null || manager.currentZone() == null) return null;
-        String zoneId = manager.currentZone().id();
-        return isDungeonRoomZone(zoneId) ? zoneId : null;
-    }
-
-    static String selectorEntryForZoneId(String zoneId) {
-        if (zoneId != null && isDungeonRoomZone(zoneId)) {
-            return DUNGEON_ROOMS_ZONE_ID;
-        }
-        return zoneId;
-    }
-
-    private static String displayZoneLabel(String zoneId) {
-        if (isTemporaryZone(zoneId)) return TEMPORARY_ZONE_LABEL;
-        if (isDungeonRoomsZone(zoneId)) return DUNGEON_ROOMS_LABEL;
-        DungeonRoomDefinition definition = DungeonRoomData.definition(zoneId);
-        if (definition != null) return DUNGEON_ROOM_LABEL_PREFIX + definition.displayName();
-        return Zone.fromId(zoneId).displayName();
-    }
-
-    // --- render ------------------------------------------------------------------------------
-
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
         focusCurrentDungeonRoomIfChanged();
-        super.extractRenderState(g, mouseX, mouseY, partial);
+        boolean allowBackgroundHover = backgroundHoverAllowed(
+                islandDropdownOpen, importExportMenuOpen);
+        int backgroundMouseX = allowBackgroundHover ? mouseX : -1;
+        int backgroundMouseY = allowBackgroundHover ? mouseY : -1;
+        super.extractRenderState(g, backgroundMouseX, backgroundMouseY, partial);
 
-        // Reset the Delete button label once the confirm/flash window elapses.
-        // Doing this in render (rather than tick) keeps the screen dependency-free
-        // and runs every frame which is plenty for a short confirmation transition.
         long now = System.currentTimeMillis();
-        if (hideAllRoutesBtn != null && hideAllArmedUntil != 0 && now > hideAllArmedUntil) {
-            hideAllArmedUntil = 0L;
-            hideAllArmedGroupIds.clear();
+        if (hideAllRoutesBtn != null && hideAllConfirmation.expire(now)) {
             resetHideAllRoutesButton();
         }
         if (deleteBtn != null) {
-            if (deleteArmedUntil != 0 && now > deleteArmedUntil) {
-                deleteArmedUntil = 0;
+            if (deleteConfirmation.expire(now)) {
                 resetDeleteButton();
             }
             if (labelFlashUntil != 0 && now > labelFlashUntil) {
                 labelFlashUntil = 0;
-                if (deleteArmedUntil == 0) resetDeleteButton();
+                if (!deleteConfirmation.isArmed(now)) resetDeleteButton();
             }
         }
 
-        // Header: Settings (widget, top-left), centered title with the info
-        // button beside it, island selector (widget, top-right). The selector
-        // label re-syncs every frame so zone changes from any path (import,
-        // focus, New Route) are always reflected.
         if (islandSelectorBtn != null) {
             islandSelectorBtn.setMessage(islandSelectorLabel());
         }
-        // The title centers between the header buttons but never under them:
-        // at tiny GUI widths it clips (and drops the info button) rather than
-        // colliding with Settings or the island selector.
         String headerTitle = getTitle().getString();
         int titleLeftLimit = PAD_OUTER + SETTINGS_BTN_W + GAP;
         int titleRightLimit = width - PAD_OUTER - ISLAND_SELECTOR_W - GAP;
-        int infoSpan = GAP_TIGHT + 1 + INFO_BUTTON_SIZE;
+        int infoSpan = GAP_TIGHT + 1 + WaypointerRouteList.INFO_BUTTON_SIZE;
         String clippedTitle = font.plainSubstrByWidth(headerTitle,
                 Math.max(0, titleRightLimit - titleLeftLimit - infoSpan));
         int titleW = font.width(clippedTitle);
@@ -1015,19 +467,19 @@ public final class WaypointerScreen extends Screen {
             g.text(font, clippedTitle, titleX, PAD_OUTER, TEXT, false);
             int infoX = headerInfoButtonX(titleX, titleW);
             int infoY = headerInfoButtonY();
-            infoHovered = isInside(mouseX, mouseY, infoX, infoY,
-                    INFO_BUTTON_SIZE, INFO_BUTTON_SIZE);
-            renderHeaderInfoButton(g, infoX, infoY, infoHovered);
+            infoHovered = isInside(backgroundMouseX, backgroundMouseY, infoX, infoY,
+                    WaypointerRouteList.INFO_BUTTON_SIZE,
+                    WaypointerRouteList.INFO_BUTTON_SIZE);
+            routeList.renderInfoButton(g, infoX, infoY, infoHovered);
         }
 
-        // Region geometry
         Layout layout = layout();
 
-        renderMain(g, layout.mainLeft(), layout.top(), layout.mainRight(),
-                layout.bottom(), mouseX, mouseY);
-        renderSearchBox(g, mouseX, mouseY, partial);
+        routeList.render(g, layout.mainLeft(), layout.top(), layout.mainRight(),
+                layout.bottom(), backgroundMouseX, backgroundMouseY);
+        routeList.renderNavigationOverlay(g, backgroundMouseX, backgroundMouseY, partial);
+        renderSearchBox(g, backgroundMouseX, backgroundMouseY, partial);
 
-        // Overlays paint above everything drawn so far.
         if (islandDropdownOpen) {
             renderIslandDropdown(g, mouseX, mouseY);
         }
@@ -1035,7 +487,7 @@ public final class WaypointerScreen extends Screen {
             renderImportExportMenu(g, mouseX, mouseY);
         }
         if (infoHovered) {
-            renderRouteListInfoTooltip(g, mouseX, mouseY);
+            routeList.renderInfoTooltip(g, mouseX, mouseY, width, layout.bottom());
         }
     }
 
@@ -1073,14 +525,9 @@ public final class WaypointerScreen extends Screen {
         if (hideAllRoutesBtn != null) {
             hideAllRoutesBtn.extractOverlay(g, mouseX, mouseY, partial);
         }
-        if (downloadRoutesButton != null && downloadRoutesButton.visible) {
-            downloadRoutesButton.extractOverlay(g, mouseX, mouseY, partial);
-        }
     }
 
     private Layout layout() {
-        // The route workspace uses the available screen width. This keeps the
-        // toolbar, rows, and footer on one shared edge-to-edge grid.
         int mainLeft = PAD_OUTER;
         int mainRight = width - PAD_OUTER;
         GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec(
@@ -1093,7 +540,32 @@ public final class WaypointerScreen extends Screen {
         return new Layout(top, bottom, mainLeft, mainRight);
     }
 
-    private record Layout(int top, int bottom, int mainLeft, int mainRight) {}
+    static boolean backgroundHoverAllowed(boolean islandDropdownOpen,
+                                          boolean importExportMenuOpen) {
+        return !islandDropdownOpen && !importExportMenuOpen;
+    }
+
+    Layout layoutForRouteList() {
+        return layout();
+    }
+
+    net.minecraft.client.gui.Font routeListFont() {
+        return font;
+    }
+
+    void registerRouteListNavigation(ListNavigationWidget navigation) {
+        addRenderableWidget(navigation);
+    }
+
+    void openGroupEditor(WaypointGroup group) {
+        MinecraftCompat.setScreen(minecraft, new GroupEditScreen(this, manager, config, group));
+    }
+
+    void expandDungeonRoom(String roomZoneId) {
+        if (roomZoneId != null) expandedDungeonRoomZoneIds.add(roomZoneId);
+    }
+
+    record Layout(int top, int bottom, int mainLeft, int mainRight) {}
 
     private static final class OverlayButton extends GuiTokens.StyledButton {
         private OverlayButton(int x, int y, int width, int height,
@@ -1107,33 +579,6 @@ public final class WaypointerScreen extends Screen {
 
     }
 
-    private static final class RouteListRow {
-        private final boolean roomHeader;
-        private final String roomZoneId;
-        private final WaypointGroup group;
-        private final int roomRouteCount;
-        private final int roomSecretCount;
-        private final boolean expanded;
-        private final boolean currentRoom;
-        private final boolean searchReveal;
-
-        private RouteListRow(boolean roomHeader, String roomZoneId, WaypointGroup group,
-                             int roomRouteCount, int roomSecretCount,
-                             boolean expanded, boolean currentRoom, boolean searchReveal) {
-            this.roomHeader = roomHeader;
-            this.roomZoneId = roomZoneId;
-            this.group = group;
-            this.roomRouteCount = roomRouteCount;
-            this.roomSecretCount = roomSecretCount;
-            this.expanded = expanded;
-            this.currentRoom = currentRoom;
-            this.searchReveal = searchReveal;
-        }
-    }
-
-    // --- island selector dropdown --------------------------------------------------------------
-
-    /** Near-opaque fill for floating overlays (dropdown, menu, info tooltip). */
     private static final int OVERLAY_SURFACE = 0xF0101216;
 
     private record DropdownGeometry(int x1, int y1, int x2, int y2,
@@ -1165,7 +610,6 @@ public final class WaypointerScreen extends Screen {
         }
     }
 
-    /** Opening scrolls the selected zone into the middle of the dropdown viewport. */
     private int dropdownScrollForSelectedZone() {
         if (dropdownTab == DropdownTab.DUNGEONS) return 0;
         List<String> ids = islandDropdownIds();
@@ -1266,7 +710,7 @@ public final class WaypointerScreen extends Screen {
                                  String label, boolean selected, int mouseX, int mouseY) {
         boolean hovered = mouseX >= x1 && mouseX < x2 && mouseY >= y1 && mouseY < y2;
         if (selected || hovered) g.fill(x1, y1, x2, y2, selected ? SELECTED : HOVER);
-        if (selected) g.fill(x1 + 1, y2 - 2, x2 - 1, y2, ACCENT);
+        if (selected) g.fill(x1, y2 - 1, x2, y2, ACCENT);
         int textX = x1 + (x2 - x1 - font.width(label)) / 2;
         g.text(font, label, textX, y1 + 6, selected || hovered ? TEXT : TEXT_DIM, false);
         if (hovered) g.requestCursor(CursorTypes.POINTING_HAND);
@@ -1282,8 +726,6 @@ public final class WaypointerScreen extends Screen {
         int bg = selected ? SELECTED : hovered ? HOVER : 0;
         if (bg != 0) g.fill(x1, y, x2, y + ROW_H, bg);
 
-        // "unknown" is intentionally quiet -- it's a placeholder zone, not the focal
-        // point of an empty state. So it never gets the accent bar and renders in muted text.
         boolean isUnknown = Zone.UNKNOWN.id().equals(zoneId);
         int accent = temporary ? TEMPORARY_ACCENT
                 : dungeonParent ? DUNGEON_ROOM_ACCENT
@@ -1295,11 +737,7 @@ public final class WaypointerScreen extends Screen {
         String label = displayZoneLabel(zoneId);
         int count = temporary ? temporaryWaypointCount() : normalGroupCountForZone(zoneId);
         int textColor = isUnknown && !temporary ? TEXT_MUTED : selected ? TEXT : TEXT_DIM;
-        // Zones with nothing in them recede so the populated ones carry the
-        // dropdown's hierarchy. (Dungeon Rooms keeps normal weight while it has
-        // installed secrets even with zero user routes.)
-        boolean emptyZone = count == 0
-                && !(dungeonParent && !DungeonRoomData.customDefinitions().isEmpty());
+        boolean emptyZone = count == 0;
         if (emptyZone && !selected && !isCurrent) textColor = TEXT_MUTED;
 
         String countStr = Integer.toString(count);
@@ -1308,7 +746,6 @@ public final class WaypointerScreen extends Screen {
         int labelMaxW = Math.max(12, countX - GAP_TIGHT - labelX);
         g.text(font, font.plainSubstrByWidth(label, labelMaxW), labelX, y + 6, textColor, false);
 
-        // live "current zone" indicator -- a tiny filled dot, no color, just a glyph
         if (isCurrent) {
             int dotX = x2 - GAP - 6;
             g.fill(dotX, y + ROW_H / 2 - 2, dotX + 4, y + ROW_H / 2 + 2, accent);
@@ -1341,9 +778,7 @@ public final class WaypointerScreen extends Screen {
         DropdownGeometry geo = islandDropdownGeometry(rowCount);
         boolean inside = mx >= geo.x1() && mx < geo.x2() && my >= geo.y1() && my < geo.y2();
         if (!inside) {
-            // Any outside click closes the dropdown and is swallowed so it
-            // doesn't also activate whatever sits underneath (including the
-            // selector button, which would immediately reopen it).
+            // Consume outside clicks so the selector cannot reopen immediately.
             islandDropdownOpen = false;
             zoneMoveGroupId = null;
             return true;
@@ -1398,7 +833,6 @@ public final class WaypointerScreen extends Screen {
             zoneMoveGroupId = null;
             if (retargetRoute(group, zoneId)) {
                 manager.fireDataChangedFor(group);
-                // Keep the source-zone menu open for quick batch organization.
                 clearRouteSelection();
                 flashMainNotice(Component.translatable("waypointer.screen.main.moved",
                         displayGroupName(group), displayZoneLabel(group.zoneId())));
@@ -1415,8 +849,6 @@ public final class WaypointerScreen extends Screen {
         refreshActionButtons();
         syncSearchBoxGeometry();
     }
-
-    // --- import/export split menu --------------------------------------------------------------
 
     private record MenuGeometry(int x1, int y1, int x2, int y2) {}
 
@@ -1474,15 +906,13 @@ public final class WaypointerScreen extends Screen {
         return true;
     }
 
-    private void fillOutlinedOverlay(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
+    void fillOutlinedOverlay(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         g.fill(x1, y1, x2, y2, OVERLAY_SURFACE);
         g.fill(x1, y1, x2, y1 + 1, BORDER);
         g.fill(x1, y2 - 1, x2, y2, BORDER);
         g.fill(x1, y1, x1 + 1, y2, BORDER);
         g.fill(x2 - 1, y1, x2, y2, BORDER);
     }
-
-    // --- header info button --------------------------------------------------------------------
 
     private int headerInfoButtonX(int titleX, int titleW) {
         return titleX + titleW + GAP_TIGHT + 1;
@@ -1492,138 +922,8 @@ public final class WaypointerScreen extends Screen {
         return GuiTokens.opticalInfoButtonY(PAD_OUTER);
     }
 
-    private void renderHeaderInfoButton(GuiGraphicsExtractor g, int x, int y, boolean hovered) {
-        int border = hovered ? 0xFFFFFFFF : BORDER;
-        int fill = hovered ? 0xFF26343A : 0xFF1A1F24;
-        g.fill(x, y, x + INFO_BUTTON_SIZE, y + INFO_BUTTON_SIZE, border);
-        g.fill(x + 1, y + 1, x + INFO_BUTTON_SIZE - 1, y + INFO_BUTTON_SIZE - 1, fill);
-        String glyph = "i";
-        int glyphX = x + (INFO_BUTTON_SIZE - font.width(glyph)) / 2;
-        int glyphY = y + 2;
-        g.text(font, glyph, glyphX, glyphY, hovered ? ACCENT : TEXT_DIM, false);
-    }
-
-    private void renderRouteListInfoTooltip(GuiGraphicsExtractor g, int mouseX, int mouseY) {
-        int lineCount = Math.min(ROUTE_LIST_INFO_LABELS.length,
-                ROUTE_LIST_INFO_DESCRIPTIONS.length);
-        int pad = 7;
-        int lineGap = 3;
-        int maxLabelWidth = 0;
-        int maxLineWidth = font.width(ROUTE_LIST_INFO_TITLE);
-        for (int i = 0; i < lineCount; i++) {
-            maxLabelWidth = Math.max(maxLabelWidth, font.width(ROUTE_LIST_INFO_LABELS[i]));
-        }
-        for (int i = 0; i < lineCount; i++) {
-            maxLineWidth = Math.max(maxLineWidth,
-                    maxLabelWidth + GAP + font.width(ROUTE_LIST_INFO_DESCRIPTIONS[i]));
-        }
-
-        int tooltipW = maxLineWidth + pad * 2;
-        int tooltipH = pad * 2 + font.lineHeight + 5
-                + lineCount * font.lineHeight + Math.max(0, lineCount - 1) * lineGap;
-        int x = Math.min(mouseX + 12, Math.max(PAD_OUTER, width - PAD_OUTER - tooltipW));
-        int y = Math.min(mouseY + 12, Math.max(PAD_OUTER, layout().bottom() - tooltipH));
-        x = Math.max(PAD_OUTER, x);
-        y = Math.max(PAD_OUTER, y);
-
-        fillOutlinedOverlay(g, x, y, x + tooltipW, y + tooltipH);
-
-        int textX = x + pad;
-        int textY = y + pad;
-        g.text(font, ROUTE_LIST_INFO_TITLE, textX, textY, ACCENT, false);
-        int separatorY = textY + font.lineHeight + 2;
-        g.fill(textX, separatorY, x + tooltipW - pad, separatorY + 1, 0x55FFFFFF);
-
-        int rowY = separatorY + 4;
-        for (int i = 0; i < lineCount; i++) {
-            g.text(font, ROUTE_LIST_INFO_LABELS[i], textX, rowY, TEXT, false);
-            g.text(font, ROUTE_LIST_INFO_DESCRIPTIONS[i], textX + maxLabelWidth + GAP,
-                    rowY, TEXT_DIM, false);
-            rowY += font.lineHeight + lineGap;
-        }
-    }
-
     private static boolean isInside(int mx, int my, int x, int y, int w, int h) {
         return mx >= x && mx < x + w && my >= y && my < y + h;
-    }
-
-    private void renderMain(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
-        List<RouteListRow> rows = routeListRows();
-        g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
-        int rowsTop = mainRowsTop(y1);
-        renderMainNotice(g, x1, y1, x2);
-        if (rows.isEmpty()) {
-            renderEmptyState(g, x1, rowsTop);
-            return;
-        }
-
-        g.enableScissor(x1, rowsTop, x2, y2);
-
-        // Rows render inside the capped content column so a row's text and its
-        // Shown/Hidden chip stay one visual unit on wide screens.
-        int rowRight = mainContentRight(x1, x2);
-        int y = rowsTop - scrollOffset;
-        int listW = rowRight - x1;
-        Map<String, Integer> routeIndices = routeCommandIndices(
-                config.showRouteIndicesInGui() ? manager.allGroupsList() : List.of());
-        for (int i = 0; i < rows.size(); i++, y += ROUTE_ROW_PITCH) {
-            int rowTop = y;
-            int rowBot = y + ROW_H + 2;
-            if (rowBot < rowsTop || rowTop > y2) continue;
-
-            boolean hovered = mouseX >= x1 + 2 && mouseX <= rowRight - 2
-                    && mouseY >= rowTop && mouseY <= rowBot;
-            RouteListRow row = rows.get(i);
-            if (hovered) g.requestCursor(CursorTypes.POINTING_HAND);
-            if (row.roomHeader) {
-                renderRoomHeader(g, row, x1 + 2, rowTop, rowRight - 2, hovered);
-            } else if (row.group != null) {
-                boolean selected = selectedGroupIds.contains(row.group.id());
-                int routeIndex = routeIndices.getOrDefault(row.group.id(), -1);
-                renderGroupRow(g, row.group, routeIndex, x1 + 2, rowTop, rowRight - 2, listW,
-                        hovered, selected, row.roomZoneId != null);
-            }
-        }
-        g.disableScissor();
-        renderListScrollbar(g, rowRight - 4, rowsTop, y2, rows.size(), scrollOffset);
-    }
-
-    static int mainContentRight(int mainLeft, int mainRight) {
-        return mainRight;
-    }
-
-    private static int mainRowsTop(int panelTop) {
-        return panelTop + 4 + BTN_H + GAP;
-    }
-
-    private void renderEmptyState(GuiGraphicsExtractor g, int x1, int y1) {
-        int textX = x1 + GAP;
-        if (!normalizedSearchQuery().isEmpty()) {
-            g.text(font, Component.translatable("waypointer.screen.main.empty.search"),
-                    textX, y1 + 8, TEXT, false);
-            g.text(font, Component.translatable("waypointer.screen.main.empty.search_hint"),
-                    textX, y1 + 8 + 14, TEXT_DIM, false);
-            return;
-        }
-        if (isTemporaryZone(selectedZoneId)) {
-            g.text(font, Component.translatable("waypointer.screen.main.empty.temporary"),
-                    textX, y1 + 8, TEXT, false);
-            g.text(font, Component.translatable(
-                            "waypointer.screen.main.empty.temporary_hint"),
-                    textX, y1 + 8 + 14, TEXT_DIM, false);
-            return;
-        }
-        if (isDungeonRoomsZone(selectedZoneId)) {
-            g.text(font, Component.translatable("waypointer.screen.main.empty.dungeons"),
-                    textX, y1 + 8, TEXT, false);
-            g.text(font, Component.translatable("waypointer.screen.main.empty.dungeons_hint"),
-                    textX, y1 + 8 + 14, TEXT_DIM, false);
-            return;
-        }
-        g.text(font, Component.translatable("waypointer.screen.main.empty.zone"),
-                textX, y1 + 8, TEXT, false);
-        g.text(font, Component.translatable("waypointer.screen.main.empty.zone_hint"),
-                textX, y1 + 8 + 14, TEXT_DIM, false);
     }
 
     private void flashMainNotice(String notice) {
@@ -1635,7 +935,7 @@ public final class WaypointerScreen extends Screen {
         flashMainNotice(notice == null ? "" : notice.getString());
     }
 
-    private void renderMainNotice(GuiGraphicsExtractor g, int x1, int y1, int x2) {
+    void renderMainNotice(GuiGraphicsExtractor g, int x1, int y1, int x2) {
         if (mainNotice == null || mainNotice.isEmpty()) return;
         if (System.currentTimeMillis() > mainNoticeUntil) {
             mainNotice = "";
@@ -1652,9 +952,6 @@ public final class WaypointerScreen extends Screen {
         if (hideAllRoutesBtn != null) {
             rightLimit = Math.min(rightLimit, hideAllRoutesBtn.getX() - GAP);
         }
-        if (downloadRoutesButton != null && downloadRoutesButton.visible) {
-            rightLimit = Math.min(rightLimit, downloadRoutesButton.getX() - GAP);
-        }
         int maxWidth = rightLimit - noticeX;
         if (maxWidth < 24) return;
 
@@ -1662,319 +959,22 @@ public final class WaypointerScreen extends Screen {
         g.text(font, clipped, noticeX, y1 + 10, TEXT_DIM, false);
     }
 
-    private void renderRoomHeader(GuiGraphicsExtractor g, RouteListRow row,
-                                  int x1, int y1, int x2, boolean hovered) {
-        int rowBot = y1 + ROW_H + 2;
-        boolean selected = !hasSelectedGroupInRoom(row.roomZoneId)
-                && (row.roomZoneId.equals(selectedDungeonRoomZoneId)
-                || selectedDungeonRoomZoneId == null && row.currentRoom);
-        int accent = roomHeaderAccent(row.currentRoom);
-        int bg = roomHeaderBackground(selected, hovered, row.currentRoom);
-        if (bg != 0) g.fill(x1, y1, x2, rowBot, bg);
-        if (selected || row.currentRoom) g.fill(x1, y1, x1 + 2, rowBot, accent);
-
-        int labelX = x1 + GAP + 2;
-        boolean hasRoutes = row.roomRouteCount > 0 || row.roomSecretCount > 0;
-        int textColor = row.currentRoom ? accent : hasRoutes ? DUNGEON_ROOM_ACCENT : TEXT_DIM;
-        int labelMaxW = Math.max(24, x2 - GAP - labelX);
-        String label = font.plainSubstrByWidth(displayZoneLabel(row.roomZoneId), labelMaxW);
-        g.text(font, label, labelX, y1 + 4, textColor, false);
-
-        String subtitle = roomHeaderSubtitle(row.roomRouteCount, row.roomSecretCount,
-                row.currentRoom, row.searchReveal && !row.expanded);
-        String clippedSubtitle = font.plainSubstrByWidth(subtitle, labelMaxW);
-        g.text(font, clippedSubtitle, labelX, y1 + 14, TEXT_MUTED, false);
-    }
-
-    static int roomHeaderAccent(boolean currentRoom) {
-        return currentRoom ? CURRENT_DUNGEON_ROOM_ACCENT : DUNGEON_ROOM_ACCENT;
-    }
-
-    static int roomHeaderBackground(boolean selected, boolean hovered, boolean currentRoom) {
-        if (currentRoom) {
-            return selected ? CURRENT_DUNGEON_ROOM_SELECTED_BG : CURRENT_DUNGEON_ROOM_BG;
-        }
-        return selected ? SELECTED : hovered ? HOVER : 0;
-    }
-
-    /**
-     * Downloaded/authored room secrets are definitions, not live groups -- the
-     * route group materializes only while standing in the room. Surfacing the
-     * installed secret count keeps a freshly imported library from reading as
-     * "0 routes" everywhere.
-     */
-    static String roomHeaderSubtitle(int routeCount, int secretCount,
-                                     boolean currentRoom, boolean searchOnly) {
-        StringBuilder subtitle = new StringBuilder();
-        subtitle.append(routeCount).append(" route").append(routeCount == 1 ? "" : "s");
-        if (secretCount > 0) {
-            subtitle.append("  ").append(secretCount)
-                    .append(" secret").append(secretCount == 1 ? "" : "s");
-        }
-        if (currentRoom) subtitle.append("  current");
-        if (searchOnly) subtitle.append("  search");
-        return subtitle.toString();
-    }
-
-    private static int installedSecretCountForRoom(String roomZoneId) {
-        DungeonRoomDefinition definition = DungeonRoomData.customDefinition(roomZoneId);
-        return definition == null ? 0 : definition.waypoints().size();
-    }
-
-    static int displayedInstalledSecretCount(
-            int installedSecretCount, Iterable<WaypointGroup> roomGroups) {
-        if (roomGroups != null) {
-            for (WaypointGroup group : roomGroups) {
-                if (group != null && !group.temp() && !group.runtimeOnly() && !group.isEmpty()) {
-                    return 0;
-                }
-            }
-        }
-        return installedSecretCount;
-    }
-
-    private boolean hasSelectedGroupInRoom(String roomZoneId) {
-        if (roomZoneId == null || selectedGroupIds.isEmpty()) return false;
-        for (String selectedId : selectedGroupIds) {
-            WaypointGroup group = manager.get(selectedId);
-            if (group != null && roomZoneId.equals(group.zoneId())) return true;
-        }
-        return false;
-    }
-
-    private void renderListScrollbar(GuiGraphicsExtractor g, int x, int y1, int y2,
-                                     int rowCount, int currentScrollOffset) {
-        int viewportHeight = y2 - y1;
-        int contentHeight = rowCount * ROUTE_ROW_PITCH;
-        if (viewportHeight <= 0 || contentHeight <= viewportHeight) return;
-
-        int thumbHeight = Math.max(12, viewportHeight * viewportHeight / contentHeight);
-        int maxScroll = maxMainScroll(rowCount, viewportHeight);
-        int travel = viewportHeight - thumbHeight;
-        if (maxScroll <= 0 || travel <= 0) return;
-
-        int thumbY = y1 + currentScrollOffset * travel / maxScroll;
-        g.fill(x, y1 + 2, x + 2, y2 - 2, BORDER);
-        g.fill(x, thumbY, x + 2, thumbY + thumbHeight, TEXT_MUTED);
-    }
-
-    private void renderGroupRow(GuiGraphicsExtractor g, WaypointGroup group, int index,
-                                int x1, int y1, int x2, int listW,
-                                boolean hovered, boolean selected, boolean dungeonRoomChild) {
-        int rowBot = y1 + ROW_H + 2;
-        int bg = selected ? SELECTED : hovered ? HOVER : 0;
-        if (bg != 0) g.fill(x1, y1, x2, rowBot, bg);
-        int accent = group.temp() ? TEMPORARY_ACCENT
-                : isDungeonRoomZone(group.zoneId()) ? DUNGEON_ROOM_ACCENT
-                : ACCENT;
-        if (selected) g.fill(x1, y1, x1 + 2, rowBot, accent);
-
-        int chipX = routeToggleChipX(x2);
-        int textX = routeRowTextX(x1, dungeonRoomChild);
-        int textMaxW = Math.max(12, chipX - GAP - textX);
-        int textColor = group.enabled() ? TEXT : TEXT_MUTED;
-        String name = routeRowName(group, index, config.showRouteIndicesInGui());
-        g.text(font, font.plainSubstrByWidth(name, textMaxW), textX, y1 + 4,
-                textColor, false);
-
-        String sub = routeRowSubtitle(group);
-        g.text(font, font.plainSubstrByWidth(sub, textMaxW), textX, y1 + 14,
-                TEXT_DIM, false);
-
-        // Right-aligned toggle pill -- kept as the one exception to "no button chrome",
-        // because it's genuinely a tap target with two states and the pill shape
-        // communicates that more clearly than a checkbox in a dense row.
-        renderRouteToggleChip(g, group.enabled(), x2, y1);
-
-        // Cross-zone hint (rare, but possible if a group's zone id drifts)
-        String zid = group.zoneId();
-        if (!group.temp() && !zid.equals(selectedZoneId) && !isDungeonRoomsZone(selectedZoneId)) {
-            String hint = "(" + displayZoneLabel(zid) + ")";
-            String clippedHint = font.plainSubstrByWidth(hint, Math.max(0, chipX - GAP - textX));
-            g.text(font, clippedHint, chipX - GAP - font.width(clippedHint), y1 + 10,
-                    TEXT_MUTED, false);
-        }
-    }
-
-    static int routeToggleChipX(int rowRight) {
-        return rowRight - ROUTE_TOGGLE_CHIP_W - GAP;
-    }
-
-    static int routeToggleHitLeft(int rowRight) {
-        return routeToggleChipX(rowRight) - ROUTE_TOGGLE_HIT_PAD;
-    }
-
-    static int routeRowTextX(int rowLeft, boolean dungeonRoomChild) {
-        return rowLeft + GAP + 2 + (dungeonRoomChild ? DUNGEON_ROUTE_CHILD_INDENT : 0);
-    }
-
-    static Map<String, Integer> routeCommandIndices(List<WaypointGroup> groups) {
-        Map<String, Integer> indices = new HashMap<>();
-        if (groups == null) return indices;
-        for (int i = 0; i < groups.size(); i++) {
-            WaypointGroup group = groups.get(i);
-            if (group != null) indices.put(group.id(), i);
-        }
-        return indices;
-    }
-
-    static String routeRowName(WaypointGroup group, int routeIndex, boolean showRouteIndex) {
-        String name = displayGroupName(group);
-        return showRouteIndex && routeIndex >= 0 ? "[" + routeIndex + "] " + name : name;
-    }
-
-    static String routeToggleLabel(boolean enabled) {
-        return enabled ? "Shown" : "Hidden";
-    }
-
-    private void renderRouteToggleChip(GuiGraphicsExtractor g, boolean enabled,
-                                       int rowRight, int rowY) {
-        int chipX = routeToggleChipX(rowRight);
-        int chipY = rowY + 5;
-        int chipRight = chipX + ROUTE_TOGGLE_CHIP_W;
-        int chipBottom = chipY + ROUTE_TOGGLE_CHIP_H;
-        g.fill(chipX, chipY, chipRight, chipBottom, enabled ? ACCENT : BORDER);
-        g.fill(chipX + 1, chipY + 1, chipRight - 1, chipBottom - 1, 0xE0181D22);
-        if (enabled) {
-            g.fill(chipX + 1, chipBottom - 2, chipRight - 1, chipBottom - 1, ACCENT);
-        }
-        String toggle = routeToggleLabel(enabled);
-        int tw = font.width(toggle);
-        g.text(font, toggle, chipX + (ROUTE_TOGGLE_CHIP_W - tw) / 2,
-                chipY + 3, enabled ? TEXT : TEXT_DIM, false);
-    }
-
-    private static boolean definitionRouteEnabled(String roomZoneId) {
-        return definitionRouteEnabled(WaypointerClient.dungeonConfig(), roomZoneId);
-    }
-
-    static boolean definitionRouteEnabled(DungeonConfig config, String roomZoneId) {
-        return config == null || config.roomRouteEnabled(roomZoneId);
-    }
-
-    /**
-     * Empty routes previously rendered "0 pts 0 pts sequenced" (size and
-     * progress summary both report zero); tell the user what to do instead.
-     */
-    String routeRowSubtitle(WaypointGroup group) {
-        if (group.temp()) {
-            return group.size() + " temp pts  " + displayZoneLabel(group.zoneId());
-        }
-        if (group.isEmpty()) {
-            return "empty - double-click to add waypoints";
-        }
-        return group.size() + " pts  " + RouteProgress.summary(group)
-                + "  " + loadModeLabel(group);
-    }
-
     private static String displayGroupName(WaypointGroup group) {
         String name = group.name().trim();
         if (!group.temp()) return name.isEmpty() ? "(unnamed)" : name;
-        if (name.isEmpty() || name.startsWith("Temp --")) return TEMPORARY_ZONE_LABEL;
+        if (name.isEmpty() || name.startsWith("Temp --")) return displayZoneLabel(TEMPORARY_ZONE_ID);
         return name;
     }
 
-    // --- input -------------------------------------------------------------------------------
-
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        // Floating overlays eat clicks before widgets: they render above
-        // everything, so they must also hit-test above everything.
+        // Hit-test overlays before the widgets beneath them.
         if (islandDropdownOpen && handleIslandDropdownClick(event.x(), event.y())) return true;
         if (importExportMenuOpen && handleImportExportMenuClick(event.x(), event.y())) return true;
         if (super.mouseClicked(event, doubleClick)) return true;
-        boolean leftClick = event.button() == MOUSE_BUTTON_LEFT;
-        boolean shiftRightClick = event.button() == MOUSE_BUTTON_RIGHT
-                && routeSelectionShiftDown();
-        if (!leftClick && !shiftRightClick) return false;
-
-        double mx = event.x();
-        double my = event.y();
-
         Layout layout = layout();
-
-        // Main area click -> select group row (and toggle chip if within the right edge)
-        if (mx < layout.mainLeft() || mx > layout.mainRight()
-                || my < layout.top() || my > layout.bottom()) return false;
-
-        List<RouteListRow> rows = routeListRows();
-        if (rows.isEmpty()) return false;
-        int rowsTop = mainRowsTop(layout.top());
-        if (my < rowsTop) return false;
-
-        double yInList = my - rowsTop + scrollOffset;
-        int idx = (int) (yInList / ROUTE_ROW_PITCH);
-        if (idx < 0 || idx >= rows.size()) return false;
-        int rowTop = rowsTop - scrollOffset + idx * ROUTE_ROW_PITCH;
-        int rowBottom = rowTop + ROW_H + 2;
-        if (my > rowBottom) return false;
-
-        RouteListRow row = rows.get(idx);
-        int rowRight = mainContentRight(layout.mainLeft(), layout.mainRight()) - 2;
-        if (row.roomHeader) {
-            String selectedBefore = selectedGroupId == null ? "(none)" : selectedGroupId;
-            selectedDungeonRoomZoneId = row.roomZoneId;
-            clearRouteSelection();
-            int listHeight = layout.bottom() - rowsTop;
-            scrollOffset = MathUtil.clamp(scrollOffset, 0,
-                    maxMainScroll(routeListRows().size(), listHeight));
-            refreshActionButtons();
-            DebugEventLog.record("WaypointerScreen", "room-header", row.roomZoneId,
-                    idx, selectedBefore, "(none)", doubleClick,
-                    routeSelectionShiftDown(), routeSelectionControlDown(),
-                    "room-header", "select-room");
-            return true;
-        }
-
-        WaypointGroup group = row.group;
-        if (group == null) return false;
-        if (shiftRightClick) {
-            startZoneMove(group);
-            return true;
-        }
-        if (row.roomZoneId != null) selectedDungeonRoomZoneId = row.roomZoneId;
-        String selectedBefore = selectedGroupId == null ? "(none)" : selectedGroupId;
-        boolean wasAlreadyPrimarySelected = group.id().equals(selectedGroupId)
-                && selectedGroupIds.contains(group.id());
-        boolean shiftDown = routeSelectionShiftDown();
-        boolean controlDown = routeSelectionControlDown();
-        applyRouteRowSelection(group, rows);
-        refreshActionButtons();
-        String selectedAfter = selectedGroupId == null ? "(none)" : selectedGroupId;
-
-        // Toggle-chip hit test -- rightmost region of the row.
-        if (mx >= routeToggleHitLeft(rowRight) && mx <= rowRight) {
-            DungeonRoomRouteSync.setRouteEnabled(
-                    manager, WaypointerClient.dungeonConfig(), group, !group.enabled());
-            manager.fireDataChanged();
-            DebugEventLog.record("WaypointerScreen", "route", group.id(), idx,
-                    selectedBefore, selectedAfter, doubleClick, shiftDown, controlDown,
-                    "toggle-chip", group.enabled() ? "show-route" : "hide-route");
-            return true;
-        }
-
-        boolean openEditor = shouldOpenGroupEditorFromRouteDoubleClick(
-                doubleClick, wasAlreadyPrimarySelected, shiftDown, controlDown);
-        if (openEditor) {
-            DebugEventLog.record("WaypointerScreen", "route", group.id(), idx,
-                    selectedBefore, selectedAfter, true, false, false,
-                    "route-row", "open-editor");
-            MinecraftCompat.setScreen(minecraft, new GroupEditScreen(this, manager, config, group));
-        } else {
-            DebugEventLog.record("WaypointerScreen", "route", group.id(), idx,
-                    selectedBefore, selectedAfter, doubleClick, shiftDown, controlDown,
-                    "route-row", doubleClick
-                            ? "double-click ignored: route was not already primary selected"
-                            : "select");
-        }
-        return true;
-    }
-
-    static boolean shouldOpenGroupEditorFromRouteDoubleClick(boolean doubleClick,
-                                                            boolean wasAlreadyPrimarySelected,
-                                                            boolean shiftDown,
-                                                            boolean controlDown) {
-        return doubleClick && wasAlreadyPrimarySelected && !shiftDown && !controlDown;
+        return routeList.mouseClicked(event, doubleClick,
+                layout.mainLeft(), layout.top(), layout.mainRight(), layout.bottom());
     }
 
     private static void toggleDungeonRoomSection(String roomZoneId) {
@@ -1984,13 +984,12 @@ public final class WaypointerScreen extends Screen {
         }
     }
 
-    private void applyRouteRowSelection(WaypointGroup group, List<RouteListRow> rows) {
+    void applyRouteRowSelection(WaypointGroup group, List<String> visibleGroupIds) {
         if (group == null) return;
-        List<String> visibleGroupIds = visibleGroupIds(rows);
         String clickedGroupId = group.id();
         boolean shiftDown = routeSelectionShiftDown();
         boolean controlDown = routeSelectionControlDown();
-        LinkedHashSet<String> nextSelection = routeSelectionAfterClick(
+        LinkedHashSet<String> nextSelection = RouteSelectionPolicy.afterClick(
                 visibleGroupIds, selectedGroupIds, selectionAnchorGroupId,
                 clickedGroupId, controlDown, shiftDown);
         replaceRouteSelection(nextSelection);
@@ -2006,12 +1005,13 @@ public final class WaypointerScreen extends Screen {
         if (selectedGroupIds.contains(clickedGroupId)) {
             selectedGroupId = clickedGroupId;
         } else {
-            selectedGroupId = firstVisibleSelectedGroupId(visibleGroupIds, selectedGroupIds);
+            selectedGroupId = RouteSelectionPolicy.firstVisibleSelection(
+                    visibleGroupIds, selectedGroupIds);
         }
         syncAuthoringRouteFocus();
     }
 
-    private static boolean routeSelectionShiftDown() {
+    static boolean routeSelectionShiftDown() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return false;
         var window = mc.getWindow();
@@ -2019,81 +1019,12 @@ public final class WaypointerScreen extends Screen {
                 || InputConstants.isKeyDown(window, 344 /* GLFW_KEY_RIGHT_SHIFT */);
     }
 
-    private static boolean routeSelectionControlDown() {
+    static boolean routeSelectionControlDown() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return false;
         var window = mc.getWindow();
         return InputConstants.isKeyDown(window, 341 /* GLFW_KEY_LEFT_CONTROL */)
                 || InputConstants.isKeyDown(window, 345 /* GLFW_KEY_RIGHT_CONTROL */);
-    }
-
-    static LinkedHashSet<String> routeSelectionAfterClick(List<String> visibleGroupIds,
-                                                          Set<String> previousSelectionIds,
-                                                          String anchorGroupId,
-                                                          String clickedGroupId,
-                                                          boolean controlDown,
-                                                          boolean shiftDown) {
-        LinkedHashSet<String> orderedVisibleIds = new LinkedHashSet<>();
-        if (visibleGroupIds != null) {
-            for (String id : visibleGroupIds) {
-                if (id != null) orderedVisibleIds.add(id);
-            }
-        }
-
-        LinkedHashSet<String> next = new LinkedHashSet<>();
-        if (clickedGroupId == null || clickedGroupId.isBlank()) return next;
-        if (!orderedVisibleIds.contains(clickedGroupId)) {
-            next.add(clickedGroupId);
-            return next;
-        }
-
-        if (shiftDown) {
-            List<String> ordered = new ArrayList<>(orderedVisibleIds);
-            String rangeAnchor = orderedVisibleIds.contains(anchorGroupId)
-                    ? anchorGroupId
-                    : clickedGroupId;
-            int anchorIndex = ordered.indexOf(rangeAnchor);
-            int clickedIndex = ordered.indexOf(clickedGroupId);
-            int start = Math.min(anchorIndex, clickedIndex);
-            int end = Math.max(anchorIndex, clickedIndex);
-            for (int i = start; i <= end; i++) {
-                next.add(ordered.get(i));
-            }
-            return next;
-        }
-
-        if (controlDown) {
-            if (previousSelectionIds != null) {
-                for (String id : orderedVisibleIds) {
-                    if (previousSelectionIds.contains(id)) next.add(id);
-                }
-            }
-            if (!next.remove(clickedGroupId)) {
-                next.add(clickedGroupId);
-            }
-            return next;
-        }
-
-        next.add(clickedGroupId);
-        return next;
-    }
-
-    private static List<String> visibleGroupIds(List<RouteListRow> rows) {
-        List<String> ids = new ArrayList<>();
-        if (rows == null) return ids;
-        for (RouteListRow row : rows) {
-            if (row == null || row.roomHeader || row.group == null) continue;
-            ids.add(row.group.id());
-        }
-        return ids;
-    }
-
-    private static String firstVisibleSelectedGroupId(List<String> visibleGroupIds, Set<String> selectedIds) {
-        if (visibleGroupIds == null || selectedIds == null) return null;
-        for (String id : visibleGroupIds) {
-            if (selectedIds.contains(id)) return id;
-        }
-        return null;
     }
 
     private void replaceRouteSelection(Set<String> nextSelectionIds) {
@@ -2108,7 +1039,7 @@ public final class WaypointerScreen extends Screen {
         clearDeleteConfirmation();
     }
 
-    private void selectOnlyGroupId(String groupId) {
+    void selectOnlyGroupId(String groupId) {
         if (groupId == null) {
             clearRouteSelection();
             return;
@@ -2120,7 +1051,7 @@ public final class WaypointerScreen extends Screen {
         syncAuthoringRouteFocus();
     }
 
-    private void clearRouteSelection() {
+    void clearRouteSelection() {
         selectedGroupIds.clear();
         selectedGroupId = null;
         selectionAnchorGroupId = null;
@@ -2134,14 +1065,12 @@ public final class WaypointerScreen extends Screen {
     }
 
     private void clearHideAllConfirmation() {
-        hideAllArmedUntil = 0L;
-        hideAllArmedGroupIds.clear();
+        hideAllConfirmation.clear();
         resetHideAllRoutesButton();
     }
 
     private void clearDeleteConfirmation() {
-        deleteArmedUntil = 0L;
-        deleteArmedGroupIds.clear();
+        deleteConfirmation.clear();
     }
 
     @Override
@@ -2161,16 +1090,12 @@ public final class WaypointerScreen extends Screen {
             }
         }
         Layout layout = layout();
-        int rowsTop = mainRowsTop(layout.top());
-        int listHeight = layout.bottom() - rowsTop;
-        int maxScroll = maxMainScroll(routeListRows().size(), listHeight);
-        scrollOffset = MathUtil.clamp(scrollOffset - (int) (vert * ROUTE_ROW_PITCH), 0, maxScroll);
+        routeList.scroll(vert, layout.top(), layout.bottom());
         return true;
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        // Esc dismisses an open overlay before it can close the whole screen.
         if (event.key() == GLFW_KEY_ESCAPE && (islandDropdownOpen || importExportMenuOpen)) {
             islandDropdownOpen = false;
             importExportMenuOpen = false;
@@ -2185,8 +1110,6 @@ public final class WaypointerScreen extends Screen {
         return false;
     }
 
-    // --- actions -----------------------------------------------------------------------------
-
     private void createGroup() {
         Zone current = manager.currentZone();
         String currentZoneId = current == null ? null : current.id();
@@ -2197,58 +1120,21 @@ public final class WaypointerScreen extends Screen {
             return;
         }
         WaypointGroup g = WaypointGroup.create(
-                nextRouteName(manager.groupsForZone(targetZoneId)),
+                RouteListPresentation.nextRouteName(manager.groupsForZone(targetZoneId)),
                 targetZoneId, config.skipAheadMechanicEnabled());
+        if (isDungeonRoomsZone(selectedZoneId)) {
+            g.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        }
         g.setDefaultRadius(config.defaultReachRadius());
         manager.add(g);
-        selectedZoneId = selectorEntryForZoneId(targetZoneId);
-        if (isDungeonRoomZone(targetZoneId)) {
+        selectedZoneId = g.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                ? DUNGEON_ROOMS_ZONE_ID : targetZoneId;
+        if (g.routeKind() == WaypointGroup.RouteKind.DUNGEON) {
             selectedDungeonRoomZoneId = targetZoneId;
             expandedDungeonRoomZoneIds.add(targetZoneId);
         }
         selectOnlyGroupId(g.id());
         MinecraftCompat.setScreen(minecraft, new GroupEditScreen(this, manager, config, g));
-    }
-
-    /**
-     * Smallest free "Route N" in the zone, so two fresh routes never share a
-     * name and a row is identifiable without opening it.
-     */
-    static String nextRouteName(Iterable<WaypointGroup> zoneGroups) {
-        Set<String> taken = new HashSet<>();
-        for (WaypointGroup group : zoneGroups) {
-            taken.add(group.name().trim());
-        }
-        for (int n = 1; ; n++) {
-            String candidate = "Route " + n;
-            if (!taken.contains(candidate)) return candidate;
-        }
-    }
-
-    static String newRouteTargetZoneId(String selectedZoneId, String currentZoneId) {
-        return newRouteTargetZoneId(selectedZoneId, null, currentZoneId);
-    }
-
-    static String newRouteTargetZoneId(String selectedZoneId,
-                                       String selectedDungeonRoomZoneId,
-                                       String currentZoneId) {
-        if (isTemporaryZone(selectedZoneId)) {
-            return currentZoneId == null ? Zone.UNKNOWN.id() : currentZoneId;
-        }
-        if (isDungeonRoomsZone(selectedZoneId)) {
-            if (isDungeonRoomZone(selectedDungeonRoomZoneId)) {
-                return selectedDungeonRoomZoneId;
-            }
-            return isDungeonRoomZone(currentZoneId) ? currentZoneId : null;
-        }
-        return selectedZoneId == null ? Zone.UNKNOWN.id() : selectedZoneId;
-    }
-
-    static String newRouteBlockedNotice(String selectedZoneId) {
-        if (isDungeonRoomsZone(selectedZoneId)) {
-            return "Stand in a detected dungeon room to create a room route.";
-        }
-        return "Choose a route zone first.";
     }
 
     private void onHideAllRoutesClicked() {
@@ -2260,10 +1146,9 @@ public final class WaypointerScreen extends Screen {
         }
 
         long now = System.currentTimeMillis();
-        if (!hideAllConfirmationMatches(shownRoutes, hideAllArmedGroupIds, now, hideAllArmedUntil)) {
-            hideAllArmedUntil = now + CONFIRM_WINDOW_MS;
-            hideAllArmedGroupIds.clear();
-            hideAllArmedGroupIds.addAll(routeIds(shownRoutes));
+        LinkedHashSet<String> shownRouteIds = routeIds(shownRoutes);
+        if (!hideAllConfirmation.matches(shownRouteIds, now)) {
+            hideAllConfirmation.arm(shownRouteIds, now, CONFIRM_WINDOW_MS);
             if (hideAllRoutesBtn != null) {
                 int count = shownRoutes.size();
                 hideAllRoutesBtn.setMessage(Component.translatable("waypointer.common.confirm"));
@@ -2282,19 +1167,18 @@ public final class WaypointerScreen extends Screen {
     private void hideShownRoutes(List<WaypointGroup> shownRoutes) {
         int hidden = 0;
         if (isDungeonRoomsZone(selectedZoneId)) {
-            // One resync for the whole batch; see DungeonRoomRouteSync.batched.
             int[] count = { 0 };
             DungeonRoomRouteSync.batched(() -> {
                 for (WaypointGroup group : shownRoutes) {
                     if (group == null || !group.enabled()) continue;
-                    DungeonRoomRouteSync.setRouteEnabled(
+                    DungeonRoomRouteLibrary.setRouteEnabled(
                             manager, WaypointerClient.dungeonConfig(), group, false);
                     count[0]++;
                 }
             });
             hidden = count[0];
         } else {
-            hidden = hideRoutes(shownRoutes);
+                hidden = RouteListPresentation.hideRoutes(shownRoutes);
         }
         if (hidden == 0) {
             clearHideAllConfirmation();
@@ -2307,7 +1191,7 @@ public final class WaypointerScreen extends Screen {
         refreshActionButtons();
     }
 
-    private void refreshActionButtons() {
+    void refreshActionButtons() {
         if (hideAllRoutesBtn != null) {
             boolean hasShownRoutes = !shownRoutesForSelectedZone().isEmpty();
             hideAllRoutesBtn.active = hasShownRoutes;
@@ -2329,10 +1213,10 @@ public final class WaypointerScreen extends Screen {
         startZoneMove(selected.get(0));
     }
 
-    private void startZoneMove(WaypointGroup group) {
+    void startZoneMove(WaypointGroup group) {
         if (!canMoveRouteZone(group)) {
             flashMainNotice(Component.translatable(
-                    isDungeonRoomZone(group == null ? null : group.zoneId())
+                    group != null && group.routeKind() == WaypointGroup.RouteKind.DUNGEON
                             ? "waypointer.screen.main.move_zone.dungeon_blocked"
                             : "waypointer.screen.main.move_zone.generated_blocked"));
             return;
@@ -2346,47 +1230,7 @@ public final class WaypointerScreen extends Screen {
         dropdownScrollOffset = 0;
     }
 
-    static boolean canMoveRouteZone(WaypointGroup group) {
-        return group != null && !group.temp() && !group.runtimeOnly()
-                && !isDungeonRoomZone(group.zoneId());
-    }
-
-    static boolean canRetargetRoute(WaypointGroup group, String zoneId) {
-        String canonicalTarget = Zone.canonicalId(zoneId);
-        if (!canMoveRouteZone(group) || zoneId == null
-                || isTemporaryZone(zoneId) || isDungeonRoomsZone(zoneId)
-                || isDungeonRoomZone(zoneId)
-                || isCatacombsOrMasterModeZone(canonicalTarget)
-                || Zone.UNKNOWN.id().equals(canonicalTarget)
-                || Zone.PRIVATE_WORLD.id().equals(canonicalTarget)) {
-            return false;
-        }
-        return !canonicalTarget.equals(group.zoneId());
-    }
-
-    static boolean isCatacombsOrMasterModeZone(String zoneId) {
-        String id = Zone.canonicalId(zoneId);
-        return id.equals("dungeon")
-                || id.startsWith("dungeon_f")
-                || id.startsWith("dungeon_m");
-    }
-
-    static boolean retargetRoute(WaypointGroup group, String zoneId) {
-        if (!canRetargetRoute(group, zoneId)) return false;
-        String canonicalTarget = Zone.canonicalId(zoneId);
-        group.setZoneId(canonicalTarget);
-        return true;
-    }
-
-    static boolean hideAllConfirmationMatches(List<WaypointGroup> shownRoutes,
-                                              Set<String> armedGroupIds,
-                                              long now,
-                                              long armedUntil) {
-        if (shownRoutes == null || shownRoutes.isEmpty() || armedGroupIds == null) return false;
-        return now < armedUntil && routeIds(shownRoutes).equals(armedGroupIds);
-    }
-
-    static LinkedHashSet<String> routeIds(Collection<WaypointGroup> groups) {
+    private static LinkedHashSet<String> routeIds(Collection<WaypointGroup> groups) {
         LinkedHashSet<String> ids = new LinkedHashSet<>();
         if (groups == null) return ids;
         for (WaypointGroup group : groups) {
@@ -2398,8 +1242,6 @@ public final class WaypointerScreen extends Screen {
     private void onDeleteClicked() {
         List<WaypointGroup> selectedGroups = selectedVisibleGroups();
         if (selectedGroups.isEmpty()) {
-            // Nothing selected. Don't silently no-op -- briefly borrow the button label
-            // to tell the user what they need to do.
             flashDeleteLabel(
                     Component.translatable("waypointer.screen.main.delete.select"),
                     Component.translatable("waypointer.screen.main.delete.select.tooltip"));
@@ -2410,25 +1252,16 @@ public final class WaypointerScreen extends Screen {
             currentSelectedIds.add(group.id());
         }
         long now = System.currentTimeMillis();
-        if (now < deleteArmedUntil && deleteArmedGroupIds.equals(currentSelectedIds)) {
-            // Second click inside the confirm window -- commit.
+        if (deleteConfirmation.matches(currentSelectedIds, now)) {
             deleteGroups(selectedGroups);
             clearRouteSelection();
             Layout layout = layout();
-            int rowsTop = mainRowsTop(layout.top());
-            int listHeight = layout.bottom() - rowsTop;
-            scrollOffset = MathUtil.clamp(scrollOffset, 0,
-                    maxMainScroll(routeListRows().size(), listHeight));
+            routeList.scroll(0, layout.top(), layout.bottom());
             refreshActionButtons();
             resetDeleteButton();
             return;
         }
-        // First click -- arm. render() resets the label after the confirm window elapses.
-        // Group name lives in the tooltip (which wraps freely) so the button stays a
-        // fixed width and the dangerous state is discoverable on hover.
-        deleteArmedUntil = now + CONFIRM_WINDOW_MS;
-        deleteArmedGroupIds.clear();
-        deleteArmedGroupIds.addAll(currentSelectedIds);
+        deleteConfirmation.arm(currentSelectedIds, now, CONFIRM_WINDOW_MS);
         if (deleteBtn != null) {
             String targetText = selectedGroups.size() == 1
                     ? "\"" + selectedGroups.get(0).name() + "\""
@@ -2448,9 +1281,7 @@ public final class WaypointerScreen extends Screen {
     }
 
     static boolean clearGeneratedDungeonRouteBeforeDelete(WaypointGroup group) {
-        if (!DungeonRoomRouteSync.isGeneratedGroup(group)) return false;
-        DungeonRoomData.clearWaypoints(group.zoneId());
-        return true;
+        return false;
     }
 
     private void resetDeleteButton() {
@@ -2477,18 +1308,7 @@ public final class WaypointerScreen extends Screen {
     }
 
     private List<WaypointGroup> selectedVisibleGroups() {
-        List<WaypointGroup> selectedGroups = new ArrayList<>();
-        if (selectedGroupIds.isEmpty()) return selectedGroups;
-        for (RouteListRow row : routeListRows()) {
-            if (!row.roomHeader && row.group != null && selectedGroupIds.contains(row.group.id())) {
-                selectedGroups.add(row.group);
-            }
-        }
-        return selectedGroups;
-    }
-
-    private static String loadModeLabel(WaypointGroup group) {
-        return group.loadMode() == WaypointGroup.LoadMode.SEQUENCE ? "sequenced" : "static";
+        return routeList.selectedVisibleGroups();
     }
 
     private void exportZone() {
@@ -2507,7 +1327,8 @@ public final class WaypointerScreen extends Screen {
             return;
         }
 
-        List<WaypointGroup> groups = exportGroupsForSelection(selectedGroups, visibleGroups());
+        List<WaypointGroup> groups = exportGroupsForSelection(
+                selectedGroups, routeList.visibleGroups());
         if (groups.isEmpty()) {
             flashMainNotice(emptyExportNotice(selectedZoneId));
             return;
@@ -2520,28 +1341,13 @@ public final class WaypointerScreen extends Screen {
         List<WaypointGroup> selectedGroups = selectedVisibleGroups();
         List<WaypointGroup> routeGroups =
                 dungeonRouteGroupsForExport(selectedGroups, manager.allGroups());
-        if (selectedGroups.size() == 1) {
-            ExportScreen.openForGroup(this, config, selectedGroups.get(0));
-            return;
-        }
-        if (selectedGroups.size() > 1) {
-            ExportScreen.openForGroups(this, config, selectedGroups, "Selected routes");
-            return;
-        }
         if (!routeGroups.isEmpty()) {
-            ExportScreen.openForGroups(this, config, routeGroups, displayZoneLabel(selectedZoneId));
+            int roomCount = (int) routeGroups.stream().map(WaypointGroup::zoneId).distinct().count();
+            DungeonRoomExportScreen.open(this, routeGroups, roomCount,
+                    DungeonRoomShareCodec.waypointCount(routeGroups));
             return;
         }
-
-        List<DungeonRoomDefinition> definitions =
-                dungeonDefinitionsForExport(DungeonRoomData.customDefinitions());
-        if (definitions.isEmpty()) {
-            flashMainNotice(emptyExportNotice(selectedZoneId));
-            return;
-        }
-
-        DungeonRoomExportScreen.open(this, definitions,
-                definitions.size(), dungeonWaypointCount(definitions));
+        flashMainNotice(emptyExportNotice(selectedZoneId));
     }
 
     static List<WaypointGroup> dungeonRouteGroupsForExport(List<WaypointGroup> selectedGroups,
@@ -2556,23 +1362,6 @@ public final class WaypointerScreen extends Screen {
         return visibleGroups == null ? List.of() : visibleGroups;
     }
 
-    static List<DungeonRoomDefinition> dungeonDefinitionsForExport(
-            Collection<DungeonRoomDefinition> definitions) {
-        if (definitions == null) return List.of();
-        List<DungeonRoomDefinition> out = new ArrayList<>();
-        for (DungeonRoomDefinition definition : definitions) {
-            if (definition != null && !definition.waypoints().isEmpty()) out.add(definition);
-        }
-        out.sort(Comparator
-                .comparing((DungeonRoomDefinition d) -> d.displayName().toLowerCase(Locale.ROOT))
-                .thenComparing(DungeonRoomDefinition::id));
-        return out;
-    }
-
-    static int dungeonWaypointCount(Collection<DungeonRoomDefinition> definitions) {
-        return DungeonRoomShareCodec.waypointCount(definitions);
-    }
-
     static String emptyExportNotice(String selectedZoneId) {
         return "Nothing to export in " + displayZoneLabel(selectedZoneId) + ".";
     }
@@ -2580,34 +1369,10 @@ public final class WaypointerScreen extends Screen {
     private String importTargetZoneId() {
         Zone current = manager.currentZone();
         String currentZoneId = current == null ? null : current.id();
-        return importTargetZoneId(selectedZoneId, currentZoneId);
+        return WaypointerZoneCatalog.importTargetZoneId(selectedZoneId, currentZoneId);
     }
 
-    static String importTargetZoneId(String selectedZoneId, String currentZoneId) {
-        if (isTemporaryZone(selectedZoneId)) {
-            return currentZoneId == null ? Zone.UNKNOWN.id() : currentZoneId;
-        }
-        if (isDungeonRoomsZone(selectedZoneId)) {
-            return isDungeonRoomZone(currentZoneId) ? currentZoneId : Zone.UNKNOWN.id();
-        }
-        return selectedZoneId == null ? Zone.UNKNOWN.id() : selectedZoneId;
-    }
-
-    static void retargetUnknownImportedGroups(List<WaypointGroup> groups, String targetZoneId) {
-        if (groups == null || Zone.UNKNOWN.id().equals(targetZoneId)) return;
-        for (WaypointGroup group : groups) {
-            if (group != null && Zone.UNKNOWN.id().equals(group.zoneId())) {
-                group.setZoneId(targetZoneId);
-            }
-        }
-    }
-
-    /**
-     * Decoding a share code is as expensive as encoding one, so it runs on the
-     * codec worker and only the install lands back here. The payload is an
-     * immutable string and the decoder allocates fresh groups, so nothing the
-     * worker touches is shared with the client thread.
-     */
+    /** Decodes on the codec worker and installs the new groups on the client thread. */
     private void importFromClipboard() {
         if (importInFlight) return;
         String text = minecraft.keyboardHandler.getClipboard();
@@ -2616,58 +1381,57 @@ public final class WaypointerScreen extends Screen {
             return;
         }
         importInFlight = true;
+        String targetZoneId = importTargetZoneId();
 
         if (DungeonRoomShareCodec.isPayload(text)) {
-            CodecWorker.run(() -> DungeonRoomShareCodec.decode(text), decoded -> {
+            if (!CodecWorker.run(() -> DungeonRoomShareCodec.decode(text), decoded -> {
                 importInFlight = false;
                 if (decoded == null) {
                     ImportFeedback.failure("Invalid import text.");
                     return;
                 }
                 installDecodedDungeonRooms(decoded);
-            });
+            })) {
+                importInFlight = false;
+                ImportFeedback.failure(Component.translatable("waypointer.codec.busy").getString());
+            }
             return;
         }
 
-        CodecWorker.run(() -> WaypointImporter.importAny(text), result -> {
+        if (!CodecWorker.run(() -> WaypointImporter.importAny(text), result -> {
             importInFlight = false;
             if (result == null) {
                 ImportFeedback.failure("Invalid import text.");
                 return;
             }
-            // Retarget unknown-zone groups to the zone the user is actively
-            // viewing, not the player's live position. Using selectedZoneId
-            // matches intent better from the GUI: if the user navigated to
-            // "The Park" and then pasted, that's where the import goes.
-            String targetZoneId = importTargetZoneId();
             retargetUnknownImportedGroups(result.groups(), targetZoneId);
             RouteColorPolicy.applyImportedRouteDefaults(result.groups(), config);
             manager.addAll(result.groups());
 
             ImportFeedback.success(result.groups(), "clipboard");
-            // Navigate the user to the first imported group so the import
-            // result is visible immediately -- no more "did it work?" moments
-            // where the user has to hunt through zone tabs.
             if (!result.groups().isEmpty()) {
                 WaypointGroup first = result.groups().get(0);
                 searchQuery = "";
                 if (searchBox != null) searchBox.setValue("");
-                selectedZoneId = selectorEntryForZoneId(first.zoneId());
+                selectedZoneId = first.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                        ? DUNGEON_ROOMS_ZONE_ID : first.zoneId();
                 selectGroupById(first.id());
             }
-        });
+        })) {
+            importInFlight = false;
+            ImportFeedback.failure(Component.translatable("waypointer.codec.busy").getString());
+        }
     }
 
     private void installDecodedDungeonRooms(DungeonRoomShareCodec.Decoded decoded) {
-        DungeonRoomData.importCustomDefinitions(decoded.definitions());
-        List<WaypointGroup> routes = DungeonRoomRouteSync.installEditableRoutes(
-                manager, WaypointerClient.dungeonConfig(), decoded.definitions());
+        List<WaypointGroup> routes = DungeonRoomRouteLibrary.installRoutes(manager, decoded.routes());
         if (routes.isEmpty()) {
             ImportFeedback.failure("Invalid import text.");
             return;
         }
 
-        ImportFeedback.successDungeonRoutes(routes.size(), decoded.waypointCount(), "clipboard");
+        ImportFeedback.successDungeonRoutes(routes.size(),
+                DungeonRoomShareCodec.waypointCount(routes), "clipboard");
         searchQuery = "";
         if (searchBox != null) searchBox.setValue("");
         selectedZoneId = DUNGEON_ROOMS_ZONE_ID;

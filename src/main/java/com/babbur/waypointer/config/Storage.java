@@ -10,6 +10,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
+import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
@@ -24,27 +25,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-/**
- * Reads and writes the user's waypoint groups as JSON at
- * {@code <config>/waypointer/waypoints.json}.
- *
- * Intentionally hand-written (not Gson auto-binding) so we can evolve the schema
- * without breaking on field renames and can version the file. Saves are atomic:
- * write to .tmp, then move. That prevents a crash mid-write from nuking the user's
- * entire route library.
- */
 public final class Storage {
 
     public static final int SCHEMA_VERSION = 1;
     private static final String FILE_NAME = "waypoints.json";
 
-    /**
-     * Quiet window before a dirty marker triggers a disk write. Waypoint
-     * mutations clump hard -- dragging to reorder fires a listener per swap,
-     * gradient repaint fires once per waypoint, bulk import fires once per
-     * waypoint. Debouncing collapses these into one write per intent while
-     * still feeling instant to the user.
-     */
     private static final long SAVE_DEBOUNCE_MS = 400L;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -53,14 +38,7 @@ public final class Storage {
     private AsyncSaver saver;
     private ActiveGroupManager managerRef;
     private volatile String pendingSnapshotJson;
-    /**
-     * Set when the manager reports a persistent change, cleared by
-     * {@link #pumpPendingSnapshot()}. Serializing the whole library is O(all
-     * waypoints), so doing it inline on every data-changed event made bulk
-     * operations quadratic -- hiding a hundred routes or closing the route list
-     * re-serialized the library once per affected route. The flag defers that
-     * work to at most once per client tick.
-     */
+    /** Defers snapshot creation so a burst of changes is serialized once per client tick. */
     private boolean snapshotStale;
     private int snapshotCount;
     private volatile int writeCount;
@@ -80,7 +58,6 @@ public final class Storage {
         return file;
     }
 
-    /** Read-only storage health used by the troubleshooting report. */
     public DebugSnapshot debugSnapshot() {
         boolean exists = Files.isRegularFile(file);
         long size = -1L;
@@ -90,7 +67,7 @@ public final class Storage {
                 size = Files.size(file);
                 modifiedAtMillis = Files.getLastModifiedTime(file).toMillis();
             } catch (IOException ignored) {
-                // The status flags remain useful even if metadata races a file replacement.
+                // A concurrent file replacement can make metadata unavailable.
             }
         }
         return new DebugSnapshot(file.getFileName().toString(), exists, size, modifiedAtMillis,
@@ -130,16 +107,6 @@ public final class Storage {
         Waypointer.LOGGER.info("Loaded {} waypoint group(s) from {}", parsedGroups.groups().size(), file);
     }
 
-    /**
-     * Wire storage to persistent data changes. Transient temp markers, API
-     * overlays, and generated dungeon mirrors still invalidate render/API data
-     * listeners, but never serialize the user's route library. The persistent
-     * listener path is the only live-save channel -- callers don't invoke
-     * {@link #save(ActiveGroupManager)} directly any more. Kept separate from
-     * {@link #load} so callers can rehydrate before the listener is active.
-     * If loading canonicalized legacy zone IDs, attaching schedules one atomic
-     * rewrite of the migrated library.
-     */
     public void attach(ActiveGroupManager manager) {
         this.managerRef = manager;
         this.pendingSnapshotJson = captureSnapshot(manager);
@@ -153,11 +120,6 @@ public final class Storage {
         }
     }
 
-    /**
-     * Public entrypoint for explicit saves (e.g. tests, one-off writes before
-     * {@link #attach} has run). Normal live saves go through the async path
-     * driven by {@link #attach}'s listener.
-     */
     public void save(ActiveGroupManager manager) {
         boolean attachedToSameManager = saver != null && managerRef == manager;
         this.managerRef = manager;
@@ -169,23 +131,14 @@ public final class Storage {
         writeToDisk();
     }
 
-    /**
-     * Synchronously flush any pending waypoint write. Called on client
-     * shutdown so an atomic rename in flight lands before the JVM exits.
-     */
     public void flush() {
         pumpPendingSnapshot();
         if (saver != null) saver.flush();
     }
 
     /**
-     * Serialize the library if anything changed since the last pump, then arm
-     * the debounced write. Must be called from the thread that mutates the
-     * manager (the client thread) -- that is the whole reason the snapshot is
-     * taken here rather than on the saver thread.
-     *
-     * <p>Cheap and safe to call every tick: with no pending change it does
-     * nothing at all.
+     * Creates a snapshot on the manager's client thread and schedules its write.
+     * Call this once per client tick.
      */
     public void pumpPendingSnapshot() {
         if (!snapshotStale) return;
@@ -201,8 +154,6 @@ public final class Storage {
 
     private void markDirtyFromManager() {
         if (managerRef == null) return;
-        // Deliberately does not serialize: a burst of changes costs one flag
-        // write, and the next pump pays for a single snapshot covering them all.
         snapshotStale = true;
     }
 
@@ -270,8 +221,6 @@ public final class Storage {
         return writeCount;
     }
 
-    // --- JSON codec -----------------------------------------------------------------
-
     private record ParsedGroups(List<WaypointGroup> groups, int canonicalizedZoneCount) {
     }
 
@@ -337,22 +286,16 @@ public final class Storage {
         o.addProperty("currentIndex", g.currentIndex());
         o.addProperty("gradientMode", g.gradientMode().name());
         o.addProperty("loadMode", g.loadMode().name());
+        o.addProperty("routeKind", g.routeKind().name());
         o.addProperty("defaultRadius", g.defaultRadius());
         o.addProperty("skipAheadEnabled", g.skipAheadEnabled());
-        if (g.bestTimeMillis() >= 0L) o.addProperty("bestTimeMillis", g.bestTimeMillis());
         o.addProperty("staticColor", g.staticColor());
-        // Per-group gradient endpoints. Stored as ints rather than hex strings
-        // because the rest of the waypoint colour fields are already ints -- one
-        // less parser branch in load().
         o.addProperty("gradientStartColor", g.gradientStartColor());
         o.addProperty("gradientEndColor",   g.gradientEndColor());
         o.addProperty("paintEnabled", g.paintEnabled());
         if (g.paint() != null) o.add("paint", paintToJson(g.paint()));
         JsonArray wps = new JsonArray();
         for (Waypoint w : g.waypoints()) {
-            // Temporary waypoints are client-session ephemeral by contract.
-            // Skipping them here is the single authoritative filter -- there is
-            // no separate "before save" pass to keep in sync.
             if (w.isTemp()) continue;
             wps.add(waypointToJson(w));
         }
@@ -372,10 +315,14 @@ public final class Storage {
                 o.get("gradientMode").getAsString()).ifPresent(g::setGradientMode);
         if (o.has("loadMode")) parseEnum(WaypointGroup.LoadMode.class,
                 o.get("loadMode").getAsString()).ifPresent(g::setLoadMode);
+        if (o.has("routeKind")) {
+            parseEnum(WaypointGroup.RouteKind.class,
+                    o.get("routeKind").getAsString()).ifPresent(g::setRouteKind);
+        } else if (DungeonRoomData.entry(zone) != null) {
+            g.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        }
         if (o.has("skipAheadEnabled")) g.setSkipAheadEnabled(o.get("skipAheadEnabled").getAsBoolean());
-        if (o.has("bestTimeMillis")) g.setBestTimeMillis(o.get("bestTimeMillis").getAsLong());
-        // Gradient endpoints were added after schema v1 so both fields are optional;
-        // missing values leave the group on its built-in cyan/red defaults.
+        // These fields are optional for files written before gradient endpoints existed.
         if (o.has("gradientStartColor")) g.setGradientStartColor(o.get("gradientStartColor").getAsInt());
         if (o.has("gradientEndColor"))   g.setGradientEndColor(o.get("gradientEndColor").getAsInt());
         if (o.has("paintEnabled")) g.setPaintEnabled(o.get("paintEnabled").getAsBoolean());
@@ -383,9 +330,7 @@ public final class Storage {
             try {
                 g.setPaint(paintFromJson(o.getAsJsonObject("paint")));
             } catch (RuntimeException invalidPaint) {
-                // Paint is optional presentation metadata. A damaged texture must
-                // not quarantine an otherwise valid route library and risk hiding
-                // every waypoint from the user.
+                // Invalid optional paint data must not quarantine valid routes.
                 Waypointer.LOGGER.warn("Ignoring invalid waypoint paint for group {}", id, invalidPaint);
             }
         }

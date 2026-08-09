@@ -1,70 +1,10 @@
 package com.babbur.waypointer.codec;
 
 /**
- * Base-85 binary-to-text codec, derived from the Z85 alphabet (ZeroMQ RFC 32)
- * with the ASCII period replaced by a semicolon.
- *
- * History:
- *
- * The codec originally shipped as CJK base-16384 (3 UTF-8 bytes per glyph,
- * ~4.67 bits per wire byte), chosen to maximise density in the 256-character
- * chat textbox. The real bottleneck turned out to be the 256-UTF-8-byte cap
- * on {@code ServerboundChatCommandPacket}: the Minecraft client silently
- * drops any command whose wire packet exceeds that cap, so commands like
- * {@code /pc} disappear mid-send with no visible error. Switching to a
- * single-byte-per-char ASCII base (log2(85) = 6.41 bits/byte) shipped ~37%
- * more compressed DEFLATE bytes through the same 256-byte envelope.
- *
- * Hypixel's advertising filter, however, flags payloads that look URL-shaped.
- * Straight Z85 includes {@code .}, and bodies like {@code H.vD} (base-85
- * digits happening to land that way) trip the "Advertising is against the
- * rules" disconnect even when no actual URL is present. The fix is to swap
- * the period for a different safe character rather than drop it entirely:
- *
- *   base-84 (drop {@code .})         doesn't work -- {@code 84^5} =
- *                                    {@code 4_182_119_424} is LESS than
- *                                    {@code 2^32}, so not every 4-byte input
- *                                    group fits in 5 digits.
- *
- *   base-85 ({@code .} -> {@code ;}) works   -- {@code 85^5} =
- *                                    {@code 4_437_053_125} still clears
- *                                    {@code 2^32}, and a semicolon never
- *                                    appears inside a URL so the ad filter
- *                                    stays silent.
- *
- * Alphabet:
- *
- * 85 printable ASCII characters, identical to Z85 except digit 62 (the first
- * punctuation slot) is {@code ';'} instead of {@code '.'}:
- * {@code 0..9 a..z A..Z ;-:+=^!/*?&<>()[]{}@%$#}. Every character:
- *
- *   - is a single UTF-8 byte, so 256-byte wire budgets are exactly character
- *     budgets,
- *   - is not {@code '.'}, so digit sequences cannot resemble a domain name,
- *   - prints fine in Minecraft chat (every character has been verified on a
- *     live Hypixel server through a {@code /pc} command),
- *   - is not equal to U+00A7 ({@code §}), so the chat validator never treats
- *     a body character as a formatting escape,
- *   - is not whitespace, so paste can't collapse runs of them,
- *   - is not the space character, so word splits on the magic prefix still
- *     correctly extract the full body.
- *
- * Packing:
- *
- * Four input bytes (32 bits) pack into a big-endian unsigned integer and are
- * emitted as five base-85 digits, most-significant digit first. Arbitrary
- * input lengths are supported by zero-padding the tail and appending a single
- * trailer character whose digit value (0..3) records how many pad bytes to
- * discard on decode. The trailer is itself a valid alphabet character, so
- * {@link #isValidBody(String)} is a straight alphabet-range check.
- *
- * Output length is {@code ceil(n / 4) * 5 + 1} characters for n input bytes,
- * or {@code 1} when n = 0.
- *
- * Bit budget reminder: a full 256-byte command packet with a 3-byte
- * {@code "pc "} prefix and 3-byte {@code "WP:"} magic leaves 250 body
- * characters (= 49 complete groups + 1 trailer), carrying 196 bytes of
- * compressed DEFLATE.
+ * Packs four bytes into five printable base-85 characters. The alphabet is
+ * Z85 with {@code .} replaced by {@code ;} so route codes do not look like
+ * URLs to Hypixel's chat filter. A final character stores the number of padded
+ * bytes, so inputs of any length round-trip exactly.
  */
 public final class AsciiPackCodec {
 
@@ -86,7 +26,6 @@ public final class AsciiPackCodec {
             '%','$','#'
     };
 
-    /** Reverse lookup from ASCII code point to digit value; -1 for non-alphabet chars. */
     private static final int[] DECODE_TABLE = new int[128];
 
     static {
@@ -96,25 +35,17 @@ public final class AsciiPackCodec {
         }
     }
 
-    /** 85^4. Computed once so the hot path doesn't re-multiply. */
     private static final long P4 = 85L * 85L * 85L * 85L;
-    /** 85^3. */
     private static final long P3 = 85L * 85L * 85L;
-    /** 85^2. */
     private static final long P2 = 85L * 85L;
-    /** Radix. */
     private static final long BASE = 85L;
 
-    /** Bytes per pack group. */
     private static final int GROUP_BYTES = 4;
-    /** Chars per pack group (not counting the trailer). */
     private static final int GROUP_CHARS = 5;
-    /** Max number of pad bytes appended to a tail group. */
     private static final int MAX_PAD = GROUP_BYTES - 1;
 
     private AsciiPackCodec() {}
 
-    /** Number of output characters produced for {@code inputByteCount} input bytes. */
     public static int encodedLength(int inputByteCount) {
         if (inputByteCount < 0) {
             throw new IllegalArgumentException("negative input byte count");
@@ -131,8 +62,7 @@ public final class AsciiPackCodec {
     public static String encode(byte[] input) {
         if (input == null) throw new IllegalArgumentException("null input");
         if (input.length == 0) {
-            // One trailer character encoding pad=0. Keeps the "always has a
-            // trailer" invariant so decode can be branch-free on that side.
+            // Every payload has a trailer, including an empty payload.
             return String.valueOf(ALPHABET[0]);
         }
 
@@ -141,17 +71,13 @@ public final class AsciiPackCodec {
 
         StringBuilder out = new StringBuilder(totalLen / GROUP_BYTES * GROUP_CHARS + 1);
         for (int off = 0; off < totalLen; off += GROUP_BYTES) {
-            // Pack 4 bytes into a 32-bit unsigned integer, MSB-first. Bytes
-            // past the real input length are implicitly zero (pad).
             long v = 0L;
             for (int i = 0; i < GROUP_BYTES; i++) {
                 int idx = off + i;
                 int b = idx < input.length ? (input[idx] & 0xFF) : 0;
                 v = (v << 8) | b;
             }
-            // Emit 5 base-85 digits MSB-first. Hand-unrolled: this runs for
-            // every shared codec string, and the compiler can't eliminate
-            // the per-iteration divmod overhead of a loop here.
+            // This hot loop is unrolled to avoid repeated division setup.
             int d0 = (int) (v / P4);
             long r  = v - d0 * P4;
             int d1 = (int) (r / P3);
@@ -204,10 +130,7 @@ public final class AsciiPackCodec {
                 }
                 v = v * BASE + digit;
             }
-            // 85^5 = 4_437_053_125, which exceeds 2^32. Five base-85 digits
-            // can therefore encode values past the 32-bit range; any group
-            // whose digits produce v >= 2^32 would silently overflow the
-            // output integer, so reject loudly instead of truncating.
+            // Five base-85 digits can exceed 32 bits, so reject overflow.
             if (v > 0xFFFFFFFFL) {
                 throw new IllegalArgumentException(
                         "group " + g + " overflows 32 bits (v=" + v + ")");
@@ -224,7 +147,6 @@ public final class AsciiPackCodec {
         return trimmed;
     }
 
-    /** True iff every character in {@code s} is part of the base-85 alphabet. */
     public static boolean isValidBody(String s) {
         if (s == null || s.isEmpty()) return false;
         for (int i = 0; i < s.length(); i++) {
@@ -233,7 +155,6 @@ public final class AsciiPackCodec {
         return true;
     }
 
-    /** True iff {@code c} is one of the 84 valid alphabet characters. */
     public static boolean isAlphabetChar(char c) {
         return c < DECODE_TABLE.length && DECODE_TABLE[c] >= 0;
     }

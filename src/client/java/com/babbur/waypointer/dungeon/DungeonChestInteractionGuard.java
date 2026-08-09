@@ -10,11 +10,7 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Holds chest-driven dungeon progress long enough for Hypixel to reject a
- * locked chest. The server message does not identify a position, so every
- * chest action still inside the five-tick window is canceled together.
- */
+/** Waits for Hypixel's locked-chest response before completing a chest secret. */
 public final class DungeonChestInteractionGuard {
 
     static final int LOCK_GRACE_TICKS = 5;

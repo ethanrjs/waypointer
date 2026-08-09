@@ -13,20 +13,9 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-/**
- * Renders the full Skyblock sidebar as plain text so zone logic can identify
- * Glacite Mineshaft layouts and Catacombs floors that are not distinct
- * {@code mode} values in the Hypixel location packet.
- *
- * <p>Hot path (called every 2 game ticks): avoids regex stripping and caches
- * the last-seen rendered lines so repeated unchanged sidebars reuse the
- * prior stripped result. The 10Hz caller was allocating a {@link StringBuilder}
- * + stripped output string per invocation; the manual strip + cache keeps the
- * unchanged case out of that work.
- */
+/** Reads and caches the visible scoreboard sidebar text used for zone detection. */
 public final class SidebarTexts {
 
-    /** Minecraft's formatting code escape. Kept as a constant to document the parse. */
     private static final char FORMATTING_PREFIX = '\u00a7';
 
     private static Scoreboard cachedScoreboard;
@@ -36,10 +25,7 @@ public final class SidebarTexts {
 
     private SidebarTexts() {}
 
-    /**
-     * @return all sidebar lines concatenated with newlines, formatting codes
-     *         stripped, or null if the sidebar isn't available.
-     */
+    /** Returns the sidebar's score lines as plain text, or {@code null} when none are shown. */
     public static String collectColorStripped(Minecraft mc) {
         ClientLevel level = mc.level;
         if (level == null) {
@@ -47,27 +33,27 @@ public final class SidebarTexts {
             return null;
         }
 
-        Scoreboard sb = level.getScoreboard();
-        Objective side = sb.getDisplayObjective(DisplaySlot.SIDEBAR);
-        if (side == null) {
+        Scoreboard scoreboard = level.getScoreboard();
+        Objective sidebar = scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
+        if (sidebar == null) {
             clearCache();
             return null;
         }
 
-        Collection<PlayerScoreEntry> entries = sb.listPlayerScores(side);
-        List<String> renderedLines = scanSidebar(sb, entries);
-        if (matchesCache(sb, side, renderedLines)) return cachedText;
+        Collection<PlayerScoreEntry> entries = scoreboard.listPlayerScores(sidebar);
+        List<String> renderedLines = scanSidebar(scoreboard, entries);
+        if (matchesCache(scoreboard, sidebar, renderedLines)) return cachedText;
 
         String text = buildStrippedText(renderedLines);
-        remember(sb, side, renderedLines, text);
+        remember(scoreboard, sidebar, renderedLines, text);
         return text;
     }
 
     private static List<String> scanSidebar(
-            Scoreboard sb, Collection<PlayerScoreEntry> entries) {
+            Scoreboard scoreboard, Collection<PlayerScoreEntry> entries) {
         List<String> renderedLines = new ArrayList<>();
         for (PlayerScoreEntry entry : entries) {
-            String line = renderLine(sb, entry);
+            String line = renderLine(scoreboard, entry);
             if (line == null) continue;
 
             renderedLines.add(line);
@@ -76,16 +62,16 @@ public final class SidebarTexts {
     }
 
     private static boolean matchesCache(
-            Scoreboard sb, Objective side, List<String> renderedLines) {
-        return cachedScoreboard == sb
-                && cachedObjective == side
+            Scoreboard scoreboard, Objective sidebar, List<String> renderedLines) {
+        return cachedScoreboard == scoreboard
+                && cachedObjective == sidebar
                 && renderedLines.equals(cachedRenderedLines);
     }
 
     private static void remember(
-            Scoreboard sb, Objective side, List<String> renderedLines, String text) {
-        cachedScoreboard = sb;
-        cachedObjective = side;
+            Scoreboard scoreboard, Objective sidebar, List<String> renderedLines, String text) {
+        cachedScoreboard = scoreboard;
+        cachedObjective = sidebar;
         cachedRenderedLines = List.copyOf(renderedLines);
         cachedText = text;
     }
@@ -106,21 +92,16 @@ public final class SidebarTexts {
         return out.isEmpty() ? null : out.toString();
     }
 
-    private static String renderLine(Scoreboard sb, PlayerScoreEntry entry) {
+    private static String renderLine(Scoreboard scoreboard, PlayerScoreEntry entry) {
         String owner = entry.owner();
-        PlayerTeam team = sb.getPlayersTeam(owner);
+        PlayerTeam team = scoreboard.getPlayersTeam(owner);
         Component formatted = team == null
                 ? Component.literal(owner)
                 : PlayerTeam.formatNameForTeam(team, Component.literal(owner));
         return formatted.getString();
     }
 
-    /**
-     * Manual single-pass formatting-token stripper. Hypixel uses nonstandard
-     * {@code §} pairs in hidden scoreboard owner names so each entry stays
-     * unique. Those pairs can split visible text such as {@code TUNG_1}; remove
-     * every pair instead of accepting only vanilla color and style codes.
-     */
+    // Hidden row names contain formatting pairs; strip the pairs, not their text.
     private static void appendStripped(StringBuilder out, String line) {
         int n = line.length();
         for (int i = 0; i < n; i++) {

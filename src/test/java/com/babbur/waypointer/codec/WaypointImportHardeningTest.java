@@ -4,6 +4,7 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -45,7 +46,8 @@ class WaypointImportHardeningTest {
 
     @Test
     void repairsJsonEmbeddedInChatText() {
-        String payload = "Player123: take this route {\"name\":\"chat\",\"waypoints\":[{\"x\":7,\"y\":64,\"z\":9}]} ty";
+        String payload = "Player123: {waves} take this route "
+                + "{\"name\":\"chat\",\"waypoints\":[{\"x\":7,\"y\":64,\"z\":9}]} ty";
 
         WaypointImporter.ImportResult result = WaypointImporter.importAny(payload);
 
@@ -65,5 +67,35 @@ class WaypointImportHardeningTest {
         assertEquals(WaypointImporter.Source.WAYPOINTER, result.source());
         assertEquals(1, result.groups().size());
         assertEquals(3, result.groups().get(0).get(0).x());
+    }
+
+    @Test
+    void repairsNativeCodecEmbeddedInChatTextWithoutGuessingEverySuffix() {
+        WaypointGroup group = WaypointGroup.create("native", "hub");
+        group.add(Waypoint.at(3, 64, 5));
+        String codec = WaypointCodec.encode(List.of(group));
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(
+                "Player123: use " + codec + " thanks");
+
+        assertEquals(WaypointImporter.Source.WAYPOINTER, result.source());
+        assertEquals(3, result.groups().get(0).get(0).x());
+    }
+
+    @Test
+    void rejectsDeeplyUnbalancedJsonInLinearTime() {
+        String payload = "{".repeat(100_000);
+
+        assertTimeout(Duration.ofSeconds(2), () ->
+                assertThrows(IllegalArgumentException.class,
+                        () -> WaypointImporter.importAny(payload)));
+    }
+
+    @Test
+    void malformedJsonIsNormalizedToAnImportFailure() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> WaypointImporter.importAny("{\"waypoints\":["));
+
+        assertTrue(error.getMessage().contains("malformed waypoint payload"));
     }
 }

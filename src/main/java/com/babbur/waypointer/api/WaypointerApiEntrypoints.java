@@ -9,9 +9,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.BiConsumer;
 
-/**
- * Discovers and invokes third-party Waypointer API entrypoints.
- */
 public final class WaypointerApiEntrypoints {
 
     public static final String ENTRYPOINT_KEY = "waypointer:api";

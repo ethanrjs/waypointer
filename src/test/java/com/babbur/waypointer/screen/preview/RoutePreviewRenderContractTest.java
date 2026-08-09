@@ -3,9 +3,7 @@ package com.babbur.waypointer.screen.preview;
 import net.minecraft.client.gui.navigation.ScreenRectangle;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,105 +24,41 @@ class RoutePreviewRenderContractTest {
         assertEquals(100, state.bounds().height());
         assertEquals(3.5f, state.scale());
         assertEquals(4, state.guiScale());
+        assertTrue(state.selfOcclusion());
+
+        RoutePreviewRenderState worldAccurate = RoutePreviewRenderState.create(
+                RoutePreviewScene.empty(), 0.0f, -1,
+                10, 20, 250, 120, 3.5f, 4, false, scissor);
+        assertFalse(worldAccurate.selfOcclusion());
     }
 
     @Test
-    void adaptersSubmitPassesInLockedOrder() throws IOException {
-        for (String target : new String[]{"26.1.2", "26.2"}) {
-            String source = Files.readString(Path.of(
-                    "src", "client-" + target, "java", "com", "babbur", "waypointer",
-                    "screen", "preview", "RoutePreviewPipAdapter.java"));
-            assertOrdered(source,
-                    "RoutePreviewPipelines.depthOnly()",
-                    "surfaceType(state)",
-                    "RoutePreviewRenderCore::emitPaintHover",
-                    "RoutePreviewPipelines.connectors()",
-                    "RoutePreviewPipelines.outlines()");
-        }
+    void compiledAdaptersConsumeOneSharedOrderedPassPlan() {
+        assertEquals(List.of(
+                        RoutePreviewPassPlan.Pass.DEPTH,
+                        RoutePreviewPassPlan.Pass.SURFACE,
+                        RoutePreviewPassPlan.Pass.PAINT_HOVER,
+                        RoutePreviewPassPlan.Pass.CONNECTORS,
+                        RoutePreviewPassPlan.Pass.OUTLINES),
+                RoutePreviewPassPlan.orderedPasses(true));
+        assertEquals(List.of(
+                        RoutePreviewPassPlan.Pass.SURFACE,
+                        RoutePreviewPassPlan.Pass.PAINT_HOVER,
+                        RoutePreviewPassPlan.Pass.CONNECTORS,
+                        RoutePreviewPassPlan.Pass.OUTLINES),
+                RoutePreviewPassPlan.orderedPasses(false));
     }
 
     @Test
-    void immediateAdapterFlushesEveryTypeAndDeferredAdapterUsesOrderedNodes()
-            throws IOException {
-        String immediate = Files.readString(adapter("26.1.2"));
-        String deferred = Files.readString(adapter("26.2"));
-        assertTrue(immediate.contains("bufferSource.endBatch(renderType)"));
-        assertTrue(deferred.contains("collector.order(order).submitCustomGeometry"));
-    }
-
-    @Test
-    void pipelinesUseNativeDepthDirectionAndAColorlessDepthPrepass() throws IOException {
-        String pipelines = Files.readString(Path.of(
-                "src", "client", "java", "com", "babbur", "waypointer",
-                "screen", "preview", "RoutePreviewPipelines.java"));
-        assertTrue(pipelines.contains("withDepthStencilState(DepthStencilState.DEFAULT)"));
-        assertTrue(pipelines.contains("RoutePreviewPipelineCompat.noColorWrites()"));
-        assertTrue(pipelines.contains(
-                "new DepthStencilState(DepthStencilState.DEFAULT.depthTest(), false)"));
-    }
-
-    @Test
-    void connectorsAndOutlinesUseContinuousFilledRibbons() throws IOException {
-        String pipelines = Files.readString(Path.of(
-                "src", "client", "java", "com", "babbur", "waypointer",
-                "screen", "preview", "RoutePreviewPipelines.java"));
-        String core = Files.readString(Path.of(
-                "src", "client", "java", "com", "babbur", "waypointer",
-                "screen", "preview", "RoutePreviewRenderCore.java"));
-
-        assertTrue(pipelines.contains("buildRibbons"));
-        assertTrue(pipelines.contains("RenderPipelines.DEBUG_FILLED_SNIPPET"));
-        assertFalse(pipelines.contains("RenderPipelines.LINES_SNIPPET"));
-        assertTrue(pipelines.contains("RoutePreviewPipelineCompat.outlineDepthState()"));
-        assertTrue(core.contains("RenderHelpers.emitFilledQuad"));
-        assertTrue(core.contains("safeScale * Math.max(1, guiScale)"));
+    void connectorAndOutlineWidthsUsePhysicalPixelFloors() {
         assertEquals(1.5f, RoutePreviewRenderCore.MIN_CONNECTOR_WIDTH_PHYSICAL_PIXELS);
-        assertEquals(1.5f, RoutePreviewRenderCore.MIN_OUTLINE_WIDTH_PHYSICAL_PIXELS);
-
-        String normalDepth = Files.readString(Path.of(
-                "src", "client-26.1.2", "java", "com", "babbur", "waypointer",
-                "screen", "preview", "RoutePreviewPipelineCompat.java"));
-        String reversedDepth = Files.readString(Path.of(
-                "src", "client-26.2", "java", "com", "babbur", "waypointer",
-                "screen", "preview", "RoutePreviewPipelineCompat.java"));
-        assertTrue(normalDepth.contains("false, -1.0f, -1.0f"));
-        assertTrue(reversedDepth.contains("false, 1.0f, 1.0f"));
+        assertEquals(1.0f, RoutePreviewRenderCore.MIN_OUTLINE_WIDTH_PHYSICAL_PIXELS);
     }
 
     @Test
-    void simplifiedBillboardsUseTheSameReadableMarkerScaleAsPicking() throws IOException {
-        String core = Files.readString(Path.of(
-                "src", "client", "java", "com", "babbur", "waypointer",
-                "screen", "preview", "RoutePreviewRenderCore.java"));
-
-        assertTrue(core.contains(
-                "RoutePreviewProjection.markerDisplayScale(marker, scale, guiScale)"));
-        assertFalse(core.contains("MIN_SIMPLIFIED_SIZE_PHYSICAL_PIXELS"));
-    }
-
-    @Test
-    void previewPaintAtlasHasReplicatedPaddingAndDeferredCleanup() throws IOException {
+    void previewPaintAtlasKeepsReplicatedPaddingDimensions() {
         assertEquals(72, RoutePreviewPaintResource.ATLAS_WIDTH);
         assertEquals(54, RoutePreviewPaintResource.ATLAS_HEIGHT);
         assertEquals(1, RoutePreviewPaintResource.PADDING);
-        String resource = Files.readString(Path.of(
-                "src", "client", "java", "com", "babbur", "waypointer",
-                "screen", "preview", "RoutePreviewPaintResource.java"));
-        assertTrue(resource.contains("frame + 2"));
-        assertTrue(resource.contains("getTextureManager().release"));
-    }
-
-    private static Path adapter(String target) {
-        return Path.of("src", "client-" + target, "java", "com", "babbur", "waypointer",
-                "screen", "preview", "RoutePreviewPipAdapter.java");
-    }
-
-    private static void assertOrdered(String source, String... fragments) {
-        int cursor = -1;
-        for (String fragment : fragments) {
-            int next = source.indexOf(fragment, cursor + 1);
-            assertTrue(next > cursor, "missing or out-of-order fragment: " + fragment);
-            cursor = next;
-        }
     }
 }

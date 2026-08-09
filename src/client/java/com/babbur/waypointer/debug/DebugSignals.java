@@ -6,7 +6,6 @@ import com.babbur.waypointer.dungeon.Direction;
 import com.babbur.waypointer.dungeon.DungeonDetectionConfidence;
 import com.babbur.waypointer.dungeon.DungeonRoom;
 import com.babbur.waypointer.dungeon.DungeonRoomZoneBridge;
-import com.babbur.waypointer.dungeon.DungeonRouteSession;
 import com.babbur.waypointer.dungeon.DungeonStateTracker;
 import com.babbur.waypointer.location.HypixelApiZoneSource;
 import com.babbur.waypointer.location.SidebarTexts;
@@ -23,18 +22,12 @@ public final class DebugSignals {
 
     public static DungeonDebugSnapshot dungeonDebugSnapshot() {
         DungeonStateTracker tracker = WaypointerClient.dungeonTracker();
-        DungeonRouteSession session = WaypointerClient.dungeonRouteSession();
-        DungeonRoom room = tracker == null ? null : tracker.currentRoom();
         DungeonStateTracker.DebugSnapshot trackerSnapshot = tracker == null
                 ? null
                 : tracker.debugSnapshot();
-        DungeonRouteSession.DebugSnapshot routeSnapshot = session == null
-                ? null
-                : session.debugSnapshot(room);
         return new DungeonDebugSnapshot(
                 trackerSnapshot,
                 DungeonRoomZoneBridge.debugSnapshot(),
-                routeSnapshot,
                 DebugEventLog.snapshot());
     }
 
@@ -197,16 +190,13 @@ public final class DebugSignals {
     public static final class DungeonDebugSnapshot {
         public final DungeonStateTracker.DebugSnapshot tracker;
         public final DungeonRoomZoneBridge.DebugSnapshot bridge;
-        public final DungeonRouteSession.DebugSnapshot routeSession;
         public final List<DebugEventLog.Entry> inputEvents;
 
         private DungeonDebugSnapshot(DungeonStateTracker.DebugSnapshot tracker,
                                      DungeonRoomZoneBridge.DebugSnapshot bridge,
-                                     DungeonRouteSession.DebugSnapshot routeSession,
                                      List<DebugEventLog.Entry> inputEvents) {
             this.tracker = tracker;
             this.bridge = bridge;
-            this.routeSession = routeSession;
             this.inputEvents = inputEvents == null ? List.of() : List.copyOf(inputEvents);
         }
     }

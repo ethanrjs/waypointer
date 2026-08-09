@@ -14,19 +14,12 @@ import java.util.zip.DeflaterOutputStream;
 import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
 
-/**
- * Compact pasteable codec for Waypointer settings.
- *
- * <p>The wire body is a tiny tagged diff from default settings, raw-deflated and
- * encoded with Waypointer's chat-safe ASCII stream alphabet. It deliberately
- * does not include waypoint groups; route sharing stays on the {@code WP:}
- * codec and settings sharing uses {@code WPC:}.
- */
 public final class WaypointerConfigCodec {
 
     public static final String MAGIC = "WPC:";
-    private static final int VERSION = 2;
-    private static final int LEGACY_VERSION = 1;
+    static final int VERSION = 3;
+    private static final int LEGACY_VERSION_2 = 2;
+    private static final int LEGACY_VERSION_1 = 1;
     private static final int END = 0;
     private static final int MAX_INFLATED_BYTES = 32 * 1024;
 
@@ -95,12 +88,16 @@ public final class WaypointerConfigCodec {
     private static final int SHOW_CONTRIBUTOR_BADGES = 63;
     private static final int SHOW_LABEL_TEXT_SHADOW = 64;
     private static final int SHOW_WAYPOINT_CHAT_SHARE_BUTTONS = 65;
-    private static final int ROUTE_TIMES_ENABLED = 66;
+    private static final int LEGACY_ROUTE_TIMES_ENABLED = 66;
     private static final int SHOW_ROUTE_INDICES_IN_GUI = 67;
     private static final int KEEP_SUBWAYPOINTS_VISIBLE_UNTIL_NEXT = 68;
     private static final int EXPORT_INCLUDE_ZONE = 69;
     private static final int USE_ETHERWARP_HEIGHT = 70;
     private static final int SHOW_EXPORT_ROUTE_PREVIEW = 71;
+    private static final int WAYPOINT_MARKER_SCALE = 72;
+    private static final int WAYPOINT_OUTLINE_OPACITY = 73;
+    private static final int MATCH_WAYPOINT_OUTLINE_TO_WAYPOINT_COLOR = 74;
+    private static final int WAYPOINT_OUTLINE_COLOR = 75;
 
     private WaypointerConfigCodec() {
     }
@@ -134,11 +131,13 @@ public final class WaypointerConfigCodec {
             byte[] inflated = inflate(AsciiStreamCodec.decode(body));
             DataInputStream in = new DataInputStream(new ByteArrayInputStream(inflated));
             int version = in.readUnsignedByte();
-            if (version != LEGACY_VERSION && version != VERSION) {
+            if (version != LEGACY_VERSION_1
+                    && version != LEGACY_VERSION_2
+                    && version != VERSION) {
                 throw new IllegalArgumentException("Unsupported config code version: " + version);
             }
             WaypointerConfig config = new WaypointerConfig();
-            if (version == LEGACY_VERSION) {
+            if (version == LEGACY_VERSION_1) {
                 config.setBeaconOpacity(0.8);
             }
             readFields(in, config);
@@ -152,7 +151,6 @@ public final class WaypointerConfigCodec {
         writeDouble(out, DEFAULT_REACH_RADIUS, config.defaultReachRadius(), defaults.defaultReachRadius());
         writeBoolean(out, RESET_PROGRESS_ON_WORLD_JOIN, config.resetProgressOnWorldJoin(), defaults.resetProgressOnWorldJoin());
         writeBoolean(out, RESTART_ROUTE_WHEN_COMPLETE, config.restartRouteWhenComplete(), defaults.restartRouteWhenComplete());
-        writeBoolean(out, ROUTE_TIMES_ENABLED, config.routeTimesEnabled(), defaults.routeTimesEnabled());
         writeBoolean(out, SHOW_ROUTE_INDICES_IN_GUI,
                 config.showRouteIndicesInGui(), defaults.showRouteIndicesInGui());
         writeBoolean(out, KEEP_SUBWAYPOINTS_VISIBLE_UNTIL_NEXT,
@@ -164,6 +162,13 @@ public final class WaypointerConfigCodec {
         writeDouble(out, TRACER_OPACITY, config.tracerOpacity(), defaults.tracerOpacity());
         writeDouble(out, TRACER_THICKNESS, config.tracerThickness(), defaults.tracerThickness());
         writeDouble(out, WAYPOINT_OUTLINE_THICKNESS, config.waypointOutlineThickness(), defaults.waypointOutlineThickness());
+        writeDouble(out, WAYPOINT_MARKER_SCALE, config.waypointMarkerScale(), defaults.waypointMarkerScale());
+        writeDouble(out, WAYPOINT_OUTLINE_OPACITY, config.waypointOutlineOpacity(), defaults.waypointOutlineOpacity());
+        writeBoolean(out, MATCH_WAYPOINT_OUTLINE_TO_WAYPOINT_COLOR,
+                config.matchWaypointOutlineToWaypointColor(),
+                defaults.matchWaypointOutlineToWaypointColor());
+        writeInt(out, WAYPOINT_OUTLINE_COLOR,
+                config.waypointOutlineColor(), defaults.waypointOutlineColor());
         writeDouble(out, BEACON_OPACITY, config.beaconOpacity(), defaults.beaconOpacity());
         writeBoolean(out, SHOW_WAYPOINT_NAMES, config.showWaypointNames(), defaults.showWaypointNames());
         writeBoolean(out, SHOW_WAYPOINT_DISTANCES, config.showWaypointDistances(), defaults.showWaypointDistances());
@@ -237,7 +242,7 @@ public final class WaypointerConfigCodec {
                 case DEFAULT_REACH_RADIUS -> config.setDefaultReachRadius(in.readDouble());
                 case RESET_PROGRESS_ON_WORLD_JOIN -> config.setResetProgressOnWorldJoin(in.readBoolean());
                 case RESTART_ROUTE_WHEN_COMPLETE -> config.setRestartRouteWhenComplete(in.readBoolean());
-                case ROUTE_TIMES_ENABLED -> config.setRouteTimesEnabled(in.readBoolean());
+                case LEGACY_ROUTE_TIMES_ENABLED -> in.readBoolean();
                 case SHOW_ROUTE_INDICES_IN_GUI -> config.setShowRouteIndicesInGui(in.readBoolean());
                 case KEEP_SUBWAYPOINTS_VISIBLE_UNTIL_NEXT ->
                         config.setKeepSubwaypointsVisibleUntilNextWaypoint(in.readBoolean());
@@ -247,6 +252,11 @@ public final class WaypointerConfigCodec {
                 case TRACER_OPACITY -> config.setTracerOpacity(in.readDouble());
                 case TRACER_THICKNESS -> config.setTracerThickness(in.readDouble());
                 case WAYPOINT_OUTLINE_THICKNESS -> config.setWaypointOutlineThickness(in.readDouble());
+                case WAYPOINT_MARKER_SCALE -> config.setWaypointMarkerScale(in.readDouble());
+                case WAYPOINT_OUTLINE_OPACITY -> config.setWaypointOutlineOpacity(in.readDouble());
+                case MATCH_WAYPOINT_OUTLINE_TO_WAYPOINT_COLOR ->
+                        config.setMatchWaypointOutlineToWaypointColor(in.readBoolean());
+                case WAYPOINT_OUTLINE_COLOR -> config.setWaypointOutlineColor(in.readInt());
                 case LEGACY_SHARP_WAYPOINT_EDGES -> in.readBoolean();
                 case BEACON_OPACITY -> config.setBeaconOpacity(in.readDouble());
                 case SHOW_WAYPOINT_NAMES -> config.setShowWaypointNames(in.readBoolean());

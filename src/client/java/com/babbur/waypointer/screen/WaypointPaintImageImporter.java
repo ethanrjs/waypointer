@@ -10,7 +10,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.TreeMap;
 
-/** Converts ordinary images into the painter's fixed sixteen-color format. */
+/** Converts ordinary images into the painter's fixed 16-color format. */
 final class WaypointPaintImageImporter {
 
     static final int ATLAS_WIDTH = WaypointPaint.SIZE * 4;
@@ -26,7 +26,6 @@ final class WaypointPaintImageImporter {
         BufferedImage read() throws IOException;
     }
 
-    /** Loads and converts an image without changing the caller's current paint on failure. */
     static WaypointPaint importFrom(ImageSource source, WaypointPaint existing,
                                     boolean atlas) throws IOException {
         if (source == null) throw new IllegalArgumentException("image source is required");
@@ -47,7 +46,6 @@ final class WaypointPaintImageImporter {
         }
     }
 
-    /** Fits an image to one face and immediately repeats it across all six faces. */
     static WaypointPaint importFace(BufferedImage source, WaypointPaint existing) {
         requireInputs(source, existing);
         requireSupportedDimensions(source);
@@ -71,7 +69,6 @@ final class WaypointPaintImageImporter {
         return new WaypointPaint(quantized.palette(), pixels);
     }
 
-    /** Fits an image to the full 64x48 UV atlas and imports its six face regions. */
     static WaypointPaint importAtlas(BufferedImage source, WaypointPaint existing) {
         requireInputs(source, existing);
         requireSupportedDimensions(source);
@@ -350,7 +347,7 @@ final class WaypointPaintImageImporter {
         return colorDistance(rgb, palette.get(nearestIndex(rgb, palette)));
     }
 
-    // Red-mean distance weights RGB channels without the cost of a color-space conversion.
+    // Red-mean distance weights RGB channels without color-space conversion.
     private static int colorDistance(int first, int second) {
         int redMean = (((first >>> 16) & 0xFF) + ((second >>> 16) & 0xFF)) >>> 1;
         int red = ((first >>> 16) & 0xFF) - ((second >>> 16) & 0xFF);

@@ -24,28 +24,15 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Sniffs incoming game chat for "x y z" coordinate triples and recolors the coord
- * numbers themselves into clickable aqua-underlined runs. If the user enables
- * automatic chat temp waypoints, each detected coordinate also drops a temporary
- * waypoint into the zone's temp bucket; the default stays click-to-add only.
+ * Monitors game chat for incoming coordinates
+ * 
  *
- * <p>Chat-shared coords are almost always one-offs -- "meet me at 100 64 200"
- * -- so committing them to the permanent route was the wrong default and
- * caused routes to accumulate stale waypoints from old sessions. The
- * {@code addtemp} variant matches the intent: mark it while useful, let it
- * vanish on its own.
- *
- * We walk the original component's styled runs with {@link FormattedText#visit}
- * so styling on non-coord text (rank prefixes, mode colors, etc.) is preserved.
- * Only the coord-number substrings pick up the aqua/underline/click overrides,
- * giving the message an inline-highlighted look instead of a trailing chip.
- *
- * False-positive policy lives in {@link CoordScanner} -- that class has no
+ * False-positive policy lives in {@link CoordScanner}. that class has no
  * Minecraft dependencies and is unit-tested.
  */
 public final class ChatCoordDetector {
 
-    private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]");
+    private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]"); 
     private static final Pattern USERNAME_TOKEN = Pattern.compile("\\b[A-Za-z0-9_]{3,16}\\b");
     private static final char FORMAT_PREFIX = '\u00A7';
     private static final long AUTO_ADD_DEDUPE_MS = 15_000L;
@@ -123,20 +110,13 @@ public final class ChatCoordDetector {
         return line + "\n@" + match.x() + "," + match.y() + "," + match.z();
     }
 
-    /**
-     * Walk {@code msg}'s styled runs and rebuild a new component with the coord
-     * substrings restyled as click chips. Segments outside coord matches keep their
-     * original style verbatim; segments inside coord matches override color +
-     * underline + click event (hover wraps both).
-     */
     private static Component rebuildWithHighlights(Component msg, List<CoordScanner.Match> matches,
                                                    String flatText,
                                                    boolean chatTempAlreadyAutoAdded,
                                                    List<String> tempLabels,
                                                    List<String> senderNames) {
         Builder builder = new Builder(matches, flatText, chatTempAlreadyAutoAdded, tempLabels, senderNames);
-        // visit() walks the full styled-run tree and returns Optional.empty() on
-        // success; we rely on that to feed every substring into our builder in order.
+
         msg.visit((style, content) -> {
             builder.append(style, content);
             return Optional.<Boolean>empty();
@@ -146,9 +126,7 @@ public final class ChatCoordDetector {
 
     /**
      * Stateful assembler that knows the absolute character offset it has consumed so
-     * far, the remaining coord matches to inject, and the output component. Each
-     * styled run is either (a) fully outside every match (appended verbatim),
-     * (b) fully inside a match (restyled), or (c) spans a match boundary (split).
+     * far.
      */
     private static final class Builder {
         private final List<CoordScanner.Match> matches;
@@ -175,24 +153,20 @@ public final class ChatCoordDetector {
             int segmentStart = cursor;
             int segmentEnd = cursor + content.length();
 
-            int localStart = 0; // offset within `content` we've emitted up to
+            int localStart = 0; // offset within 'content'
             while (matchIdx < matches.size()) {
                 CoordScanner.Match m = matches.get(matchIdx);
                 if (m.end() <= segmentStart) {
-                    // Match is entirely before this segment -- the producer skipped
-                    // whitespace or similar. Advance and keep scanning.
                     matchIdx++;
                     continue;
                 }
                 if (m.start() >= segmentEnd) break; // match is after this segment
 
-                // Emit pre-match slice (if any) in the original style.
                 int preStartLocal = Math.max(0, m.start() - segmentStart);
                 if (preStartLocal > localStart) {
                     out.append(Component.literal(content.substring(localStart, preStartLocal)).setStyle(style));
                 }
 
-                // Emit overlapping-with-match slice in chip style.
                 int matchEndLocal = Math.min(content.length(), m.end() - segmentStart);
                 int sliceStart = Math.max(localStart, preStartLocal);
                 if (matchEndLocal > sliceStart) {
@@ -204,7 +178,6 @@ public final class ChatCoordDetector {
                 }
 
                 if (m.end() > segmentEnd) {
-                    // Match continues into a later segment; don't advance matchIdx yet.
                     break;
                 }
                 out.append(blockSenderAction(senderNames.get(matchIdx)));
@@ -222,14 +195,10 @@ public final class ChatCoordDetector {
     }
 
     /**
-     * Style overrides applied to coord-match substrings. We inherit the base style's
-     * font / insertion / shadow so server-side formatting isn't clobbered, then
-     * force aqua + underline + click + hover so the coord reads as a button.
+     * Create temp waypoint chat message
      */
     private static Style chipStyle(Style base, CoordScanner.Match m, String flatText,
             boolean chatTempAlreadyAutoAdded, String tempLabel, String senderName) {
-        // Target the temp variant so chat-shared coords stay ephemeral instead
-        // of being appended to the user's permanent route.
         Style styled = base
                 .withColor(ChatFormatting.AQUA)
                 .withUnderlined(true);
@@ -354,6 +323,7 @@ public final class ChatCoordDetector {
         return out;
     }
 
+    // 
     private static String legacyFormattedSlice(Component message, int start, int end) {
         LegacySliceBuilder builder = new LegacySliceBuilder(start, end);
         message.visit((style, content) -> {

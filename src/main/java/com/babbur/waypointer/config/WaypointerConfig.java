@@ -23,45 +23,10 @@ import java.util.List;
 
 import static com.babbur.waypointer.util.MathUtil.clamp;
 
-/**
- * User-tunable runtime settings, persisted as JSON alongside the waypoint data.
- *
- * Not using owo-config's annotation processor here because we want dev loop
- * changes to the schema to not require a compile pass over generated sources --
- * a hand-written config with explicit defaults is simpler to evolve and keeps
- * build/runtime coupling low. Values are plain and Gson-friendly.
- *
- * All mutations should go through the setters so the dirty flag trips and the
- * autosave path fires. Callers read fields through getters to keep the door open
- * for future validation/constraints without a visible API churn.
- */
 public final class WaypointerConfig {
 
-    /**
-     * How the world-space cube is drawn for each waypoint.
-     *
-     * OUTLINED is the old behaviour -- just the twelve edge lines.
-     * FILLED hides the edges and draws six translucent faces, which reads as a
-     * volume at distance where thin lines disappear against bright biomes.
-     * FILLED_OUTLINED stacks both; the alpha on the fill is tuned so the edges
-     * still register as the dominant cue on top.
-     *
-     * <p>FILLED_OUTLINED is the default: a bare wireframe is the cheapest style
-     * but the hardest to spot, and new players consistently read a translucent
-     * volume as "the marker" faster than twelve thin lines. Existing installs
-     * keep whatever their config says -- Gson persists the field explicitly, so
-     * only fresh configs pick this up.
-     */
-    public enum BoxStyle { OUTLINED, FILLED, FILLED_OUTLINED }
+    public enum BoxStyle { OUTLINED, FILLED, FILLED_OUTLINED, PAINT }
 
-    /**
-     * Which visible waypoints receive a vertical beacon-style guide.
-     *
-     * OFF preserves the historical render surface. CURRENT keeps the beam focused
-     * on the immediate target for each active group, which is the useful default
-     * for noisy temp/chat sessions. ALL_VISIBLE is for players who want every
-     * shown marker to punch through terrain as a vertical reference.
-     */
     public enum BeaconBeamMode { OFF, CURRENT, ALL_VISIBLE }
 
     private static final String FILE_NAME = "config.json";
@@ -71,336 +36,88 @@ public final class WaypointerConfig {
     private static final int TEMP_DURATION_MAX_SECONDS = 24 * 60 * 60;
     private static final int SECONDS_PER_MINUTE = 60;
 
-    // Progression
     private int configSchemaVersion = CONFIG_SCHEMA_VERSION;
     private double defaultReachRadius = Waypoint.DEFAULT_REACH_RADIUS;
-    /**
-     * When {@code true}, every waypoint group's progress index resets to 0 each time
-     * the client connects to a world (single-player load or multiplayer join).
-     * Matches the expectation that a play session starts fresh; turn off to keep
-     * progress across reconnects (still persisted in waypoints.json).
-     */
     private boolean resetProgressOnWorldJoin = true;
-    /**
-     * When {@code true}, finishing the last waypoint (route complete) immediately
-     * wraps progress back to the first waypoint so farming / loop routes do not
-     * stall in the completed state.
-     */
     private boolean restartRouteWhenComplete = true;
-    /** Track route completion times and persist best records. Disabled by default; users opt in. */
-    private boolean routeTimesEnabled = false;
-    /** Show zero-based command route indices in the route-list GUI. */
     private boolean showRouteIndicesInGui = false;
-    /** Keep a reached parent waypoint's subwaypoints visible until the next main waypoint is reached. */
     private boolean keepSubwaypointsVisibleUntilNextWaypoint = true;
 
-    // Rendering -- tracer defaults to the same green as Waypoint.DEFAULT_COLOR so
-    // a fresh install with matchTracerToWaypointColor=false still shows one
-    // consistent color scheme across boxes and lines.
     private int defaultWaypointColor = Waypoint.DEFAULT_COLOR;
-    /** Local painter swatches. Null keeps old configs on the generated defaults. */
     private int[] waypointPainterPalette;
-    /** Paint inherited by routes without their own paint after Apply to All. */
     private int[] waypointPainterDefaultPalette;
     private String waypointPainterDefaultPixels;
     private transient WaypointPaint waypointPainterDefaultPaintCache;
     private int tracerColor = 0x4FE05A;
-    /**
-     * When {@code true} (default), the tracer line to the current waypoint
-     * inherits that waypoint's rendered colour -- so gradient groups draw a
-     * tracer that smoothly changes hue as the user progresses, and a
-     * manually-coloured checkpoint lights its tracer the same shade. Set
-     * {@code false} to fall back to the flat {@link #tracerColor} override,
-     * which is the old behaviour and useful if a user wants every tracer to
-     * read as one distinct visual element regardless of the active waypoint.
-     */
     private boolean matchTracerToWaypointColor = true;
     private double tracerOpacity = 0.95;
-    /**
-     * Pixel width for the crosshair tracer line. Defaults to the historical
-     * hardcoded width; clamped so accidental config edits cannot create invisible
-     * tracers or giant lines that flood the screen.
-     */
     private double tracerThickness = 3.0;
-    /**
-     * Pixel width for world-space and Iris HUD waypoint box outlines. Five
-     * reads as a deliberate marker edge rather than a hairline once the
-     * translucent fill sits behind it; existing configs keep their saved value.
-     */
     private double waypointOutlineThickness = 5.0;
-    private double beaconOpacity = 0.5;
+    private double waypointMarkerScale = 1.0;
+    private double waypointOutlineOpacity = 1.0;
+    private boolean matchWaypointOutlineToWaypointColor = true;
+    private int waypointOutlineColor = Waypoint.DEFAULT_COLOR;
+    private double beaconOpacity = 0.33;
     private boolean showWaypointNames = true;
     private boolean showWaypointDistances = true;
-    /**
-     * Optional route progress percentage row for waypoint HUD labels.
-     * Default-off keeps labels compact unless the player asks for route progress
-     * at every visible waypoint.
-     */
     private boolean showRouteProgress = false;
-    /** User multiplier for waypoint HUD label size. */
     private double labelScale = 1.0;
-    /**
-     * Optional readability mode: labels shrink as their world anchor gets farther
-     * from the camera. Default-off preserves the stable fixed-size HUD labels
-     * existing users are used to.
-     */
     private boolean scaleWaypointTextWithDistance = false;
-    /**
-     * When {@code true}, the primary waypoint label uses the waypoint's own RGB
-     * instead of flat white. Default-on makes color-coded routes read as a single
-     * visual system across boxes, tracers, and labels.
-     */
     private boolean matchWaypointTextToWaypointColor = true;
     private boolean showCompleted = true;
     private boolean showTracer = true;
-    /**
-     * When {@code true}, SEQUENCE routes keep the active target prominent and
-     * dim the surrounding context points (previous/current-location marker and
-     * the point after the active target). Static routes keep their usual alpha.
-     */
     private boolean dimSequenceContextWaypoints = true;
-    /**
-     * When {@code true} (default), groups in {@link com.babbur.waypointer.core.WaypointGroup.LoadMode#STATIC}
-     * do not draw the crosshair tracer. Static routes already surface every waypoint, so the
-     * line is often visual noise; {@link com.babbur.waypointer.core.WaypointGroup.LoadMode#SEQUENCE}
-     * groups still get a tracer to the active breadcrumb target.
-     */
     private boolean hideTracerOnStaticRoutes = true;
-    /**
-     * Optional proximity declutter: waypoints temporarily stop rendering while
-     * the player stands near them, then reappear when the player walks away.
-     * Default-off keeps existing routes visually stable.
-     */
     private boolean hideWaypointsNearPlayer = false;
-    /** Radius in blocks for {@link #hideWaypointsNearPlayer}. */
     private double hideWaypointsNearRadius = 5.0;
-    /**
-     * Optional label-only proximity declutter: labels hide near the player while
-     * boxes, beams, and tracers remain visible.
-     */
     private boolean hideWaypointLabelsNearPlayer = false;
-    /** Radius in blocks for {@link #hideWaypointLabelsNearPlayer}. */
     private double hideWaypointLabelsNearRadius = 5.0;
-    /**
-     * Optional checklist behavior for STATIC groups: when the player enters a
-     * waypoint's reach radius, that marker hides until every waypoint in the
-     * group has been reached, then the whole group becomes visible again.
-     */
     private boolean hideReachedStaticWaypointsUntilCycleComplete = false;
-    /**
-     * When skip-ahead is on, limit automatic proximity jumps to currently
-     * visible route-context waypoints. Default-on keeps contextual routes from
-     * silently jumping to a far-future waypoint the player could not see.
-     */
     private boolean skipAheadOnlyVisibleWaypoints = true;
-    /** Draw route connector segments between currently visible waypoints. */
     private boolean showRouteLines = false;
-    /** Aim route connectors from crouching eye height above the previous waypoint block. */
     private boolean useEtherwarpHeight = false;
-    /**
-     * Draw a short ground path from the player to the first waypoint of the
-     * current dungeon room while that first waypoint is still the active target.
-     */
     private boolean showDungeonEntryPathToFirstWaypoint = false;
-    /**
-     * Extend the dungeon entry path to later active waypoints in sequenced room
-     * routes. Default-off keeps the historical entry-only behavior.
-     */
     private boolean showDungeonEntryPathToFollowingWaypoints = false;
-    /** RGB color for the dungeon entry path and its arrows. */
     private int dungeonEntryPathColor = 0x00FF00;
-    /** RGB color for route connector segments. Defaults to import green. */
     private int routeLineColor = 0x00FF00;
-    /**
-     * When {@code true}, each waypoint label draws a translucent black rectangle
-     * behind its text for readability. Some players find it obtrusive in busy
-     * routes where labels stack -- turning it off lets the text sit directly
-     * against the world, vanilla-nametag style.
-     */
     private boolean showLabelBackdrop = true;
-    /** Draw the vanilla font shadow behind waypoint label text. */
     private boolean showLabelTextShadow = true;
-    /**
-     * Maximum number of waypoint labels drawn per frame, nearest first;
-     * {@code 0} means unlimited. Defaults to the 32 nearest: labels are the
-     * most expensive render feature by far (the perf stress test measured
-     * unlimited labels on a dense route at -86% FPS), and more than ~30 are
-     * not legible at once anyway. Existing installs keep whatever their saved
-     * config says -- Gson persists every field explicitly.
-     */
     private int maxWaypointLabels = 32;
-    /**
-     * Optional distance gate for STATIC route markers. Sequenced routes remain
-     * uncapped because their current target is navigationally important even
-     * when it is far away; huge static overlays are the case where users can
-     * trade cosmetic density for frame time.
-     */
     private double maxStaticWaypointRenderDistance = 0.0;
-    /**
-     * Extra vertical offset (blocks) added on top of the renderer's baseline
-     * label lift. The renderer already pushes labels {@code 1.6} blocks above
-     * the waypoint's bottom corner -- enough to clear the cube at close range
-     * but, by user report, not enough at distance where the label projects
-     * directly over the marker. Players can dial this up so the label rides
-     * higher and stops obscuring the cube from far away. Default {@code 0}
-     * preserves the historical placement.
-     *
-     * <p>Intentionally unclamped: users testing long-distance routes need to
-     * push labels much farther than a small "reasonable" range. We only reject
-     * NaN / infinity in the setter so JSON stays valid and the renderer never
-     * receives a non-finite coordinate.
-     */
     private double labelHeightOffset = 0.0;
     private BoxStyle boxStyle = BoxStyle.FILLED_OUTLINED;
     private BeaconBeamMode beaconBeamMode = BeaconBeamMode.OFF;
     private boolean beaconBeamExtendsBelowWaypoint = false;
-    /**
-     * When enabled, beacon beams use Minecraft's real beacon beam texture with
-     * core/glow layers. Turning it off keeps the older flat colored quad beam,
-     * which is cheaper for dense overlays.
-     */
     private boolean useBeaconBeamTextures = true;
-    /**
-     * When enabled, edit-mode transitions and commits play small local UI cues.
-     * Default-on makes mode changes feel acknowledged without sending anything
-     * to the server.
-     */
     private boolean editSounds = true;
-    /**
-     * When enabled, persistent edit mode draws a small aqua EDIT MODE subtitle on
-     * the HUD so players know their clicks are modal.
-     */
     private boolean showEditModeSubtitle = true;
 
-    // Quality-of-life
     private boolean chatCoordDetection = true;
-    /**
-     * Plain usernames ignored by chat coordinate detection. Toggled from the
-     * clickable red [B] action beside chat coordinates, and intentionally kept as
-     * names rather than UUIDs because chat callouts only expose display text.
-     */
     private List<String> chatCoordSenderBlacklist = new ArrayList<>();
-    /**
-     * When {@code true}, detected chat coordinate callouts immediately create
-     * temp waypoints using the user's temp expiry defaults. Default-off keeps
-     * chat detection click-to-add first unless the player explicitly opts into
-     * automatic markers.
-     */
     private boolean autoAddChatTempWaypoints = false;
-    /**
-     * Player-relative add flows default to the block below the player's feet so
-     * newly-created markers sit on the floor instead of inside the player's body.
-     * Explicit coordinate flows, such as {@code /wp add at}, keep using exactly
-     * what the user typed.
-     */
     private boolean placeNewWaypointsBelowPlayer = true;
-    /**
-     * When enabled, every user-created temp waypoint becomes the only waypoint
-     * shown in the active zone until the server session ends or the temp vanishes.
-     * This is transient render focus, not a persistent route enable/disable.
-     */
     private boolean focusTempWaypoints = false;
-    /** Show one-click All/Party chat actions after a player creates a waypoint. */
     private boolean showWaypointChatShareButtons = true;
     private boolean chatCodecDetection = true;
     private boolean showContributorBadges = true;
-    /** Default color mode applied after any route import. */
     private WaypointGroup.GradientMode importedRouteColorMode = WaypointGroup.GradientMode.STATIC;
-    /** Default one-color import palette: pure green, requested as RGB (0, 255, 0). */
     private int importedRouteDefaultColor = 0x00FF00;
-    /** Lossless by default; users can explicitly disable names for smaller shares. */
     private boolean exportIncludeNames = true;
-    /** Lossless by default; users can explicitly project colors to recipient defaults. */
     private boolean exportIncludeColors = true;
-    /**
-     * Per-waypoint custom radii. Included by default so tuned routes retain
-     * their exact reach behavior unless the sender explicitly opts out.
-     */
     private boolean exportIncludeRadii = true;
-    /**
-     * Persistent per-waypoint flags. Included by default; compact/lossy export
-     * presets can explicitly omit non-structural flags for chat size.
-     */
     private boolean exportIncludeWaypointFlags = true;
-    /**
-     * Group-level metadata: gradient mode, load mode, custom default radius.
-     * On by default because a group with a non-default radius or sequenced load
-     * mode will play very differently if these are stripped, and a recipient
-     * has no way to know the original intent.
-     */
     private boolean exportIncludeGroupMeta = true;
-    /**
-     * The island a route was recorded on. Included by default so a shared route
-     * lands where the sender built it; senders who want a portable route (one
-     * the recipient can drop on whatever island they are standing on) can turn
-     * it off per export.
-     */
     private boolean exportIncludeZone = true;
-    /**
-     * Whether the export screen draws its rotating 3D route preview.
-     *
-     * Off by default. It is a picture-in-picture render on a screen whose job
-     * is to hand you a code, so it stays opt-in rather than costing every
-     * player a second render target the first time they share a route; anyone
-     * who wants to see the route before sending it turns it on under
-     * Sharing -> Export screen. Off collapses the export screen back to the
-     * single centered column; nothing about the encoded payload changes.
-     */
     private boolean showExportRoutePreview = false;
-    /**
-     * Legacy hidden flag retained so older config files and config-code imports
-     * keep round-tripping. The dungeon subsystem now installs unconditionally;
-     * {@code DungeonConfig.enabled()} is the runtime feature switch.
-     */
     private boolean dungeonWaypointsFeatureEnabled = false;
-    /**
-     * Global gate for the "skip-ahead" proximity mechanic -- the behaviour where
-     * walking into a later waypoint's radius advances progress past every
-     * waypoint before it (rather than only advancing when the player reaches
-     * the current target). Default {@code true} because skip-ahead is what
-     * makes the mod useful for non-linear routes; disabling forces strict
-     * sequential play for every group regardless of individual group settings.
-     *
-     * <p>Replaces the previous {@code skipWaypointKeybindEnabled} toggle --
-     * the keybind itself is always consumable now (players who don't want to
-     * skip just don't bind the key); the setting here is about the automatic
-     * advancement the ProximityTracker performs based on position.
-     *
-     * <p>Works in concert with {@link com.babbur.waypointer.core.WaypointGroup}'s
-     * per-group {@code skipAheadEnabled} flag: the group flag can disable
-     * skip-ahead on a specific route (e.g. because a waypoint was just added
-     * and would be skipped immediately) without touching the global mechanic.
-     */
     private boolean skipAheadMechanicEnabled = true;
 
-    /**
-     * Compatibility path for Iris shader packs that composite after
-     * Waypointer's no-depth world render pass. When enabled, active Iris shaders
-     * draw tracer and waypoint outline lines as projected HUD overlays so shader
-     * depth buffers cannot hide them; fills, paints, beams, and route paths stay
-     * on the normal world renderer.
-     */
     private boolean irisShaderHudFallback = true;
-    /**
-     * Default mode for the "Add Temp Waypoint Here" keybind, and the pre-selected
-     * mode in the Add Temp modal. Values match
-     * {@link com.babbur.waypointer.core.Waypoint}'s tempMode encoding:
-     * 1 = time-based, 2 = until reached, 3 = until server leave.
-     */
     private int tempDefaultMode = Waypoint.TEMP_TIME;
-    /** Default duration (seconds) for time-based temp waypoints. */
     private int tempDefaultDurationSec = SECONDS_PER_MINUTE;
 
-    /**
-     * Debounce window for config writes. Configs mutate in bursts (EditBox
-     * responders fire per keystroke, color pickers fire per slider tick); 500ms
-     * is long enough for a typing burst to settle and short enough that a user
-     * who clicks Done immediately after a change still gets their write before
-     * any reasonable "did my change save?" doubt sets in.
-     */
     private static final long SAVE_DEBOUNCE_MS = 500L;
 
-    // Transient; never persisted.
     private transient Path file;
     private transient AsyncSaver saver;
     private transient boolean migratedDuringLoad;
@@ -464,9 +181,6 @@ public final class WaypointerConfig {
             migrateIssue31TempDefaults();
         }
         if (schemaVersion < 5) {
-            // Shader packs can composite over our world line pipeline. Existing
-            // installs predate the safe HUD path being the compatibility default,
-            // so enable it once on upgrade; users can still disable it afterward.
             irisShaderHudFallback = true;
             migratedDuringLoad = true;
         }
@@ -515,22 +229,12 @@ public final class WaypointerConfig {
         }
     }
 
-    /**
-     * Mark the config dirty. Setters call this instead of hitting the disk
-     * directly -- actual writes run on the shared saver thread after a short
-     * quiet window (see {@link AsyncSaver}). Shutdown paths must call
-     * {@link #flush()} to guarantee the last write completes.
-     */
     public void save() {
         if (saver == null) return;
         pendingSnapshotJson = GSON.toJson(this);
         saver.markDirty();
     }
 
-    /**
-     * Synchronously flush any pending write. Called on client shutdown so the
-     * last mutation lands on disk before the JVM exits.
-     */
     public void flush() {
         if (saver != null) saver.flush();
     }
@@ -585,13 +289,11 @@ public final class WaypointerConfig {
         }
     }
 
-    // --- getters/setters ---------------------------------------------------------------------
 
     public int configSchemaVersion()               { return configSchemaVersion; }
     public double defaultReachRadius()        { return Waypoint.normalizeDefaultRadius(defaultReachRadius); }
     public boolean resetProgressOnWorldJoin() { return resetProgressOnWorldJoin; }
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
-    public boolean routeTimesEnabled()        { return routeTimesEnabled; }
     public boolean showRouteIndicesInGui()    { return showRouteIndicesInGui; }
     public boolean keepSubwaypointsVisibleUntilNextWaypoint() {
         return keepSubwaypointsVisibleUntilNextWaypoint;
@@ -628,6 +330,15 @@ public final class WaypointerConfig {
     public double tracerOpacity()             { return tracerOpacity; }
     public double tracerThickness()           { return clamp(tracerThickness, 1.0, 12.0); }
     public double waypointOutlineThickness()  { return clamp(waypointOutlineThickness, 1.0, 12.0); }
+    public double waypointMarkerScale()       { return clamp(waypointMarkerScale, 0.25, 3.0); }
+    public double waypointOutlineOpacity()    { return clamp(waypointOutlineOpacity, 0.0, 1.0); }
+    public boolean matchWaypointOutlineToWaypointColor() { return matchWaypointOutlineToWaypointColor; }
+    public int waypointOutlineColor()         { return waypointOutlineColor & 0xFFFFFF; }
+    public int resolvedWaypointOutlineColor(int waypointColor) {
+        return matchWaypointOutlineToWaypointColor
+                ? waypointColor & 0xFFFFFF
+                : waypointOutlineColor();
+    }
     public double beaconOpacity()             { return beaconOpacity; }
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showWaypointDistances()    { return showWaypointDistances; }
@@ -724,7 +435,6 @@ public final class WaypointerConfig {
     public void setDefaultReachRadius(double v)        { this.defaultReachRadius = Waypoint.normalizeDefaultRadius(v); save(); }
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
-    public void setRouteTimesEnabled(boolean v)        { this.routeTimesEnabled = v; save(); }
     public void setShowRouteIndicesInGui(boolean v)    { this.showRouteIndicesInGui = v; save(); }
     public void setKeepSubwaypointsVisibleUntilNextWaypoint(boolean v) {
         this.keepSubwaypointsVisibleUntilNextWaypoint = v;
@@ -749,7 +459,11 @@ public final class WaypointerConfig {
     }
     public void setTracerColor(int v)                  { this.tracerColor = v & 0xFFFFFF; save(); }
     public void setMatchTracerToWaypointColor(boolean v) { this.matchTracerToWaypointColor = v; save(); }
-    public void setTracerOpacity(double v)             { this.tracerOpacity = clamp(v, 0, 1); save(); }
+    public void setTracerOpacity(double v) {
+        if (!Double.isFinite(v)) return;
+        this.tracerOpacity = clamp(v, 0, 1);
+        save();
+    }
     public void setTracerThickness(double v) {
         if (!Double.isFinite(v)) return;
         this.tracerThickness = clamp(v, 1.0, 12.0);
@@ -760,7 +474,26 @@ public final class WaypointerConfig {
         this.waypointOutlineThickness = clamp(v, 1.0, 12.0);
         save();
     }
-    public void setBeaconOpacity(double v)             { this.beaconOpacity = clamp(v, 0, 1); save(); }
+    public void setWaypointMarkerScale(double v) {
+        if (!Double.isFinite(v)) return;
+        this.waypointMarkerScale = clamp(v, 0.25, 3.0);
+        save();
+    }
+    public void setWaypointOutlineOpacity(double v) {
+        if (!Double.isFinite(v)) return;
+        this.waypointOutlineOpacity = clamp(v, 0.0, 1.0);
+        save();
+    }
+    public void setMatchWaypointOutlineToWaypointColor(boolean v) {
+        this.matchWaypointOutlineToWaypointColor = v;
+        save();
+    }
+    public void setWaypointOutlineColor(int v)         { this.waypointOutlineColor = v & 0xFFFFFF; save(); }
+    public void setBeaconOpacity(double v) {
+        if (!Double.isFinite(v)) return;
+        this.beaconOpacity = clamp(v, 0, 1);
+        save();
+    }
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
     public void setShowWaypointDistances(boolean v)    { this.showWaypointDistances = v; save(); }
     public void setShowRouteProgress(boolean v)        { this.showRouteProgress = v; save(); }
@@ -930,12 +663,14 @@ public final class WaypointerConfig {
         setTempDefaultMode(v ? Waypoint.TEMP_TIME : Waypoint.TEMP_UNTIL_LEAVE);
     }
     public void replaceWith(WaypointerConfig replacement) {
+        replaceShareableSettingsWith(replacement);
+    }
+    public void replaceShareableSettingsWith(WaypointerConfig replacement) {
         if (replacement == null) return;
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
         defaultReachRadius = replacement.defaultReachRadius;
         resetProgressOnWorldJoin = replacement.resetProgressOnWorldJoin;
         restartRouteWhenComplete = replacement.restartRouteWhenComplete;
-        routeTimesEnabled = replacement.routeTimesEnabled;
         showRouteIndicesInGui = replacement.showRouteIndicesInGui;
         keepSubwaypointsVisibleUntilNextWaypoint =
                 replacement.keepSubwaypointsVisibleUntilNextWaypoint;
@@ -945,6 +680,10 @@ public final class WaypointerConfig {
         tracerOpacity = replacement.tracerOpacity;
         tracerThickness = replacement.tracerThickness;
         waypointOutlineThickness = replacement.waypointOutlineThickness;
+        waypointMarkerScale = replacement.waypointMarkerScale;
+        waypointOutlineOpacity = replacement.waypointOutlineOpacity;
+        matchWaypointOutlineToWaypointColor = replacement.matchWaypointOutlineToWaypointColor;
+        waypointOutlineColor = replacement.waypointOutlineColor;
         beaconOpacity = replacement.beaconOpacity;
         showWaypointNames = replacement.showWaypointNames;
         showWaypointDistances = replacement.showWaypointDistances;
@@ -1008,14 +747,15 @@ public final class WaypointerConfig {
     public void disableAllSettings() {
         resetProgressOnWorldJoin = false;
         restartRouteWhenComplete = false;
-        routeTimesEnabled = false;
         showRouteIndicesInGui = false;
         keepSubwaypointsVisibleUntilNextWaypoint = false;
         matchTracerToWaypointColor = false;
+        matchWaypointOutlineToWaypointColor = false;
         showWaypointNames = false;
         showWaypointDistances = false;
         showRouteProgress = false;
         beaconOpacity = 0.0;
+        waypointOutlineOpacity = 0.0;
         scaleWaypointTextWithDistance = false;
         matchWaypointTextToWaypointColor = false;
         showCompleted = false;
@@ -1069,7 +809,6 @@ public final class WaypointerConfig {
         defaultReachRadius = defaults.defaultReachRadius;
         resetProgressOnWorldJoin = defaults.resetProgressOnWorldJoin;
         restartRouteWhenComplete = defaults.restartRouteWhenComplete;
-        routeTimesEnabled = defaults.routeTimesEnabled;
         showRouteIndicesInGui = defaults.showRouteIndicesInGui;
         keepSubwaypointsVisibleUntilNextWaypoint =
                 defaults.keepSubwaypointsVisibleUntilNextWaypoint;
@@ -1083,6 +822,10 @@ public final class WaypointerConfig {
         tracerOpacity = defaults.tracerOpacity;
         tracerThickness = defaults.tracerThickness;
         waypointOutlineThickness = defaults.waypointOutlineThickness;
+        waypointMarkerScale = defaults.waypointMarkerScale;
+        waypointOutlineOpacity = defaults.waypointOutlineOpacity;
+        matchWaypointOutlineToWaypointColor = defaults.matchWaypointOutlineToWaypointColor;
+        waypointOutlineColor = defaults.waypointOutlineColor;
         beaconOpacity = defaults.beaconOpacity;
         showWaypointNames = defaults.showWaypointNames;
         showWaypointDistances = defaults.showWaypointDistances;

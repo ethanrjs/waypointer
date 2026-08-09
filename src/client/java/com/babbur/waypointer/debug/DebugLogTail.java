@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** Reads a bounded tail of recent log lines that are likely useful for support. */
 public final class DebugLogTail {
 
     private static final int MAX_TAIL_BYTES = 256 * 1024;

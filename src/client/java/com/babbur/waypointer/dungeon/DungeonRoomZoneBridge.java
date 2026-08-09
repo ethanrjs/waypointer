@@ -109,7 +109,7 @@ public final class DungeonRoomZoneBridge {
     }
 
     static boolean isRoomZone(Zone zone) {
-        return zone != null && DungeonRoomData.definition(zone.id()) != null;
+        return zone != null && DungeonRoomData.entry(zone.id()) != null;
     }
 
     public static String debugLine() {

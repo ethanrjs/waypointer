@@ -5,10 +5,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-/**
- * Shared trigger matching logic kept free of Minecraft runtime types so route
- * selection stays covered by ordinary unit tests.
- */
 final class DungeonTriggerSelection {
 
     private static final int MIN_CHAT_TRIGGER_CHARS = 4;

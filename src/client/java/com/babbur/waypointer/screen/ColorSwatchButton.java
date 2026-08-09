@@ -11,14 +11,6 @@ import net.minecraft.network.chat.Component;
  * Square-ish button whose primary visual IS the colour it represents -- the
  * fill spans the full button, with centered text so the control still reads
  * as an action rather than a passive chip.
- *
- * <p>Replaces the previous text-only Button that read e.g. {@code "Start #F6FBFC"}.
- * Players picking a gradient want to see the actual colour alongside the label;
- * a hex string is an abstraction they have to parse.
- *
- * <p>Hover and focus are signalled with a brighter outline ring. The caption
- * auto-flips between dark and light to stay legible on both ends of the
- * luminance spectrum.
  */
 public final class ColorSwatchButton extends AbstractButton {
 
@@ -76,9 +68,6 @@ public final class ColorSwatchButton extends AbstractButton {
             g.fill(x1 + 1, y1 + 1, x2 - 1, y2 - 1, DISABLED_OVERLAY);
         }
 
-        // Caption with a dark 1px drop shadow offset by (+1, +1). Drop shadow is
-        // enough contrast for the bright-swatch case without needing to pick a
-        // fully inverted text colour per swatch.
         int textColor = !active ? 0xFF9A9A9A : isLightColor(rgb) ? 0xFF101216 : 0xFFE6E9EC;
         int shadow = textColor == 0xFF101216 ? 0x40FFFFFF : 0x80000000;
         var font = Minecraft.getInstance().font;
@@ -89,12 +78,11 @@ public final class ColorSwatchButton extends AbstractButton {
         g.text(font, clipped, textX, textY, textColor, false);
     }
 
-    /** Cheap perceptual-luminance threshold to flip caption colour for contrast. */
     private static boolean isLightColor(int rgb) {
         int r = (rgb >> 16) & 0xFF;
         int g = (rgb >>  8) & 0xFF;
         int b =  rgb        & 0xFF;
-        // Rec. 601 luma; good enough for "should my text be black or white?"
+        // Rec. 601 luma; good enough
         int luma = (r * 299 + g * 587 + b * 114) / 1000;
         return luma > 150;
     }

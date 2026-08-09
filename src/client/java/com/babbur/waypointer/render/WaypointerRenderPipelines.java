@@ -12,21 +12,6 @@ import net.minecraft.client.renderer.rendertype.RenderSetup;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.resources.Identifier;
 
-/**
- * Custom render pipelines for Waypointer.
- *
- * <p>Vanilla's stock pipelines (e.g. {@code RenderTypes.lines()}) use
- * {@code LEQUAL_DEPTH_TEST} so geometry occludes behind terrain. Waypoint
- * overlays intentionally pierce terrain so markers remain usable through caves
- * and walls.
- *
- * <p>We reuse the private {@code *_SNIPPET} base pipelines (exposed via
- * access widener) to inherit the correct shader + vertex format, then flip
- * depth testing off and -- for filled boxes -- force translucent blending.
- *
- * <p>Pipelines are built lazily because {@link RenderPipelines} static init
- * has to finish before we derive new pipelines from its snippets.
- */
 public final class WaypointerRenderPipelines {
 
     private static RenderType linesThroughWalls;
@@ -37,23 +22,18 @@ public final class WaypointerRenderPipelines {
     private static RenderType beaconBeamDepthTested;
     private static RenderPipeline paintedQuadsThroughWallsPipeline;
     private static RenderPipeline paintedQuadsDepthTestedPipeline;
-    private static final DepthStencilState NO_DEPTH_TEST = new DepthStencilState(CompareOp.ALWAYS_PASS, false);
+    private static final DepthStencilState NO_DEPTH_TEST =
+            new DepthStencilState(CompareOp.ALWAYS_PASS, false);
     private static final DepthStencilState DEPTH_TESTED =
             new DepthStencilState(DepthStencilState.DEFAULT.depthTest(), false);
 
     private WaypointerRenderPipelines() {}
 
-    /** Opaque lines that ignore the depth buffer -- visible through terrain. */
     public static RenderType linesThroughWalls() {
         if (linesThroughWalls == null) linesThroughWalls = buildLinesType();
         return linesThroughWalls;
     }
 
-    /**
-     * Translucent coloured quads that ignore the depth buffer. Used by the
-     * filled box style so the cube fill reads through terrain the same way
-     * the line outline does.
-     */
     public static RenderType quadsThroughWalls() {
         if (quadsThroughWalls == null) quadsThroughWalls = buildQuadsType();
         return quadsThroughWalls;
@@ -89,7 +69,6 @@ public final class WaypointerRenderPipelines {
         return beaconBeamDepthTested;
     }
 
-    /** Textured translucent quads for a waypoint paint atlas. */
     public static RenderType paintedQuads(Identifier texture, boolean depthTested) {
         RenderPipeline pipeline = depthTested
                 ? paintedQuadsDepthTestedPipeline()
@@ -139,13 +118,6 @@ public final class WaypointerRenderPipelines {
     }
 
     private static RenderType buildQuadsType() {
-        // DEBUG_FILLED_SNIPPET is the shared base vanilla uses for DEBUG_FILLED_BOX
-        // / DEBUG_QUADS -- POSITION_COLOR vertex format, position_color shader.
-        // We layer translucent blending on top (the snippet is opaque) and disable
-        // the depth test/write so the fill is visible through walls like the lines.
-        // Backface culling also stays off because emitFilledBox emits all six faces
-        // in a single winding; culling would make back faces pop out when looking
-        // around the cube.
         RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
                 .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "quads_through_walls"))
                 .withDepthStencilState(NO_DEPTH_TEST)
@@ -172,7 +144,6 @@ public final class WaypointerRenderPipelines {
                 .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, pipelinePath))
                 .withDepthStencilState(depthState)
                 .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
-                .withCull(false)
                 .build();
         RenderSetup setup = RenderSetup.builder(pipeline)
                 .withTexture("Sampler0", BeaconRenderer.BEAM_LOCATION)

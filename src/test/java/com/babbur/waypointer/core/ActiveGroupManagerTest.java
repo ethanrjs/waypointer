@@ -177,13 +177,14 @@ class ActiveGroupManagerTest {
 
     @Test
     void completedDungeonRoomRouteIsHiddenFromActiveGroups() {
-        assertNotNull(DungeonRoomData.definition("spider"));
+        assertNotNull(DungeonRoomData.entry("spider"));
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("spider", "Spider"));
         // Runtime mirror: the projected form DungeonRoomRouteSync surfaces for
         // the current room placement. Stored room groups never surface (they
         // hold room-local coordinates); see the test below.
         WaypointGroup group = new WaypointGroup("dungeon:auto:spider", "Room Route", "spider");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         group.setRuntimeOnly(true);
         group.add(Waypoint.at(0, 0, 0));
         manager.add(group);
@@ -200,10 +201,11 @@ class ActiveGroupManagerTest {
 
     @Test
     void storedDungeonRoomRoutesActOnlyThroughTheirRuntimeMirror() {
-        assertNotNull(DungeonRoomData.definition("spider"));
+        assertNotNull(DungeonRoomData.entry("spider"));
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("spider", "Spider"));
         WaypointGroup stored = WaypointGroup.create("Room Route", "spider");
+        stored.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         stored.add(Waypoint.at(0, 0, 0));
         manager.add(stored);
 
@@ -285,5 +287,20 @@ class ActiveGroupManagerTest {
         assertEquals(1, manager.removeTempWaypointsFromSender("BABBUR"));
         assertEquals(1, temp.size());
         assertEquals("\u00A7eFrom SomeoneElse", temp.get(0).name());
+    }
+
+    @Test
+    void tempWaypointLookupStaysInTheCurrentZone() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        manager.addTempWaypoint(6, 1, 1, "From Babbur");
+        manager.onZoneChanged(Zone.fromId("the_park"));
+        WaypointGroup park = manager.addTempWaypoint(6, 1, 1, "From Babbur");
+
+        ActiveGroupManager.TempWaypointSelection selection =
+                manager.findTempWaypoint(6, 1, 1, "Babbur");
+
+        assertNotNull(selection);
+        assertSame(park, selection.group());
     }
 }

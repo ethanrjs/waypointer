@@ -1,19 +1,8 @@
 package com.babbur.waypointer.progression;
 
-import com.babbur.waypointer.dungeon.Direction;
-import com.babbur.waypointer.dungeon.DungeonRoom;
-import com.babbur.waypointer.dungeon.DungeonRoomShape;
-import com.babbur.waypointer.dungeon.DungeonRoomType;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
-import net.minecraft.ChatFormatting;
-import net.minecraft.network.chat.ClickEvent;
-import net.minecraft.network.chat.Component;
-import net.minecraft.network.chat.TextColor;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -31,12 +20,6 @@ class ProximityAdvanceTest {
 
     private static final String DUNGEON_TRIGGER_ROOM_ID = "progress-trigger-room";
 
-    @BeforeEach
-    @AfterEach
-    void clearCustomDungeonRooms() {
-        DungeonRoomData.clearAllCustom();
-    }
-
     private static WaypointGroup line() {
         WaypointGroup g = WaypointGroup.create("route", "test_zone");
         g.setDefaultRadius(2.0);
@@ -48,18 +31,8 @@ class ProximityAdvanceTest {
     }
 
     private static WaypointGroup dungeonTriggerGroup() {
-        DungeonRoom room = new DungeonRoom(
-                DungeonRoomType.ROOM,
-                DungeonRoomShape.ONE_BY_ONE,
-                Direction.NW,
-                0,
-                0,
-                List.of(DungeonRoom.packSegment(0, 0)));
-        var definition = DungeonRoomData.defineRoom(
-                DUNGEON_TRIGGER_ROOM_ID,
-                "Progress Trigger Room",
-                room);
-        WaypointGroup group = WaypointGroup.create("trigger", definition.id());
+        WaypointGroup group = WaypointGroup.create("trigger", DUNGEON_TRIGGER_ROOM_ID);
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         group.setDefaultRadius(0.5);
         return group;
     }
@@ -172,15 +145,15 @@ class ProximityAdvanceTest {
 
         assertFalse(ProximityTracker.updateMinedWaypointProgress(
                 group, (x, y, z) -> ProximityTracker.MINE_BLOCK_AIR,
-                observed, new HashSet<>(), false, false, 1_000L, false));
+                observed, new HashSet<>(), false, false));
         assertFalse(ProximityTracker.advanceIfReached(group, 4.5, 2.5, 6.5,
                 false, true, false, 1_000L));
         assertFalse(ProximityTracker.updateMinedWaypointProgress(
                 group, (x, y, z) -> ProximityTracker.MINE_BLOCK_PRESENT,
-                observed, new HashSet<>(), false, false, 1_100L, false));
+                observed, new HashSet<>(), false, false));
         assertTrue(ProximityTracker.updateMinedWaypointProgress(
                 group, (x, y, z) -> ProximityTracker.MINE_BLOCK_AIR,
-                observed, new HashSet<>(), false, false, 1_200L, false));
+                observed, new HashSet<>(), false, false));
 
         assertTrue(group.isComplete());
     }
@@ -194,6 +167,7 @@ class ProximityAdvanceTest {
 
         WaypointGroup rebuilt = new WaypointGroup(
                 original.id(), original.name(), original.zoneId());
+        rebuilt.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         rebuilt.add(Waypoint.at(4, 2, 6).withFlags(Waypoint.FLAG_SKIP_ON_INTERACT));
         manager.add(rebuilt);
 
@@ -252,44 +226,6 @@ class ProximityAdvanceTest {
         assertFalse(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5, true));
         assertFalse(ProximityTracker.advanceIfReached(group, 5.0, 0.5, 0.5, true));
         assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5, true));
-    }
-
-    @Test
-    void oneMainWaypointWithSubwaypointsNeverCreatesRouteTimingRecords() {
-        WaypointGroup group = WaypointGroup.create("single", "test_zone");
-        group.setDefaultRadius(2.0);
-        group.add(Waypoint.at(0, 0, 0));
-        group.add(Waypoint.at(1, 0, 0));
-        group.toggleSubwaypoint(1);
-
-        assertEquals(1, group.mainWaypointCount());
-        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5,
-                true, true, false, 1_000L, true));
-        assertEquals(0, group.currentIndex(), "looping progress should still restart");
-        assertNull(group.consumeRouteCompletion());
-        assertEquals(-1L, group.bestTimeMillis());
-
-        assertFalse(ProximityTracker.advanceIfReached(group, 5.0, 0.5, 0.5,
-                true, true, false, 1_500L, true));
-        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5,
-                true, true, false, 2_000L, true));
-        assertNull(group.consumeRouteCompletion());
-        assertEquals(-1L, group.bestTimeMillis());
-    }
-
-    @Test
-    void multipleMainWaypointsStillCreateRouteTimingRecords() {
-        WaypointGroup group = line();
-
-        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5,
-                false, false, false, 1_000L, true));
-        assertTrue(ProximityTracker.advanceIfReached(group, 30.5, 0.5, 0.5,
-                false, true, false, 2_000L, true));
-
-        WaypointGroup.RouteCompletion completion = group.consumeRouteCompletion();
-        assertNotNull(completion);
-        assertEquals(1_000L, completion.elapsedMillis());
-        assertEquals(1_000L, group.bestTimeMillis());
     }
 
     @Test
@@ -640,74 +576,6 @@ class ProximityAdvanceTest {
         }
     }
 
-    @Test
-    void completionFeedbackMatchesRequestedFormatAndRemovalCommand() {
-        WaypointGroup group = new WaypointGroup("route-id", "route name", "hub");
-        WaypointGroup.RouteCompletion completion = new WaypointGroup.RouteCompletion(
-                573_000L, true, 2, true);
-
-        Component message = ProximityTracker.routeCompletionMessage(group.name(), completion);
-        Component remove = ProximityTracker.removeRecordMessage(group, completion);
-
-        assertEquals("Route \"route name\" cleared in 9m 33s (New Best!) [2 skips]",
-                message.getString());
-        assertEquals(TextColor.fromLegacyFormat(ChatFormatting.YELLOW),
-                message.getStyle().getColor());
-        assertEquals(TextColor.fromLegacyFormat(ChatFormatting.LIGHT_PURPLE),
-                message.getSiblings().get(0).getStyle().getColor());
-        assertEquals(TextColor.fromLegacyFormat(ChatFormatting.GRAY),
-                message.getSiblings().get(1).getStyle().getColor());
-        assertEquals("[REMOVE RECORD]", remove.getString());
-        ClickEvent.RunCommand click = assertInstanceOf(
-                ClickEvent.RunCommand.class, remove.getStyle().getClickEvent());
-        assertEquals("/wp removerecord cm91dGUtaWQ 573000", click.command());
-    }
-
-    @Test
-    void completionFeedbackOmitsSkipCountWhenSkippingIsDisabled() {
-        WaypointGroup.RouteCompletion completion = new WaypointGroup.RouteCompletion(
-                9_000L, false, 0, false);
-
-        assertEquals("Route \"strict\" cleared in 0m 9s",
-                ProximityTracker.routeCompletionMessage("strict", completion).getString());
-    }
-
-    @Test
-    void worldJoinInvalidatesTimerEvenWhenProgressResetIsDisabled() {
-        ActiveGroupManager manager = new ActiveGroupManager();
-        WaypointGroup group = line();
-        manager.add(group);
-        group.advancePastTimed(0, true, 1_000L);
-
-        WorldJoinProgressReset.resetForWorldJoin(manager, false);
-        group.advancePastTimed(3, true, 574_000L);
-
-        assertNull(group.consumeRouteCompletion());
-        assertEquals(-1L, group.bestTimeMillis());
-        assertTrue(group.isComplete(), "the opt-out still preserves route progress");
-    }
-
-    @Test
-    void routeTimesOffStillAdvancesButNeverRecordsAndCancelsAnActiveRun() {
-        WaypointGroup disabled = line();
-
-        assertTrue(ProximityTracker.advanceIfReached(disabled, 0.5, 0.5, 0.5,
-                false, false, false, 1_000L, false));
-        assertTrue(ProximityTracker.advanceIfReached(disabled, 30.5, 0.5, 0.5,
-                false, true, false, 574_000L, false));
-        assertTrue(disabled.isComplete());
-        assertNull(disabled.consumeRouteCompletion());
-        assertEquals(-1L, disabled.bestTimeMillis());
-
-        WaypointGroup cancelled = line();
-        assertTrue(ProximityTracker.advanceIfReached(cancelled, 0.5, 0.5, 0.5,
-                false, false, false, 1_000L, true));
-        assertTrue(ProximityTracker.advanceIfReached(cancelled, 30.5, 0.5, 0.5,
-                false, true, false, 574_000L, false));
-        assertNull(cancelled.consumeRouteCompletion());
-        assertEquals(-1L, cancelled.bestTimeMillis());
-    }
-
     private static int[] visibleIndices(WaypointGroup group) {
         List<Integer> indices = new ArrayList<>();
         group.forEachVisibleIndex(indices::add);
@@ -726,9 +594,9 @@ class ProximityAdvanceTest {
                 (blockX, blockY, blockZ) -> blockX == x && blockY == y && blockZ == z
                         ? ProximityTracker.MINE_BLOCK_PRESENT
                         : ProximityTracker.MINE_BLOCK_AIR,
-                observed, new HashSet<>(), false, false, nowMillis, false));
+                observed, new HashSet<>(), false, false));
         assertTrue(ProximityTracker.updateMinedWaypointProgress(
                 group, (blockX, blockY, blockZ) -> ProximityTracker.MINE_BLOCK_AIR,
-                observed, new HashSet<>(), false, false, nowMillis + 1L, false));
+                observed, new HashSet<>(), false, false));
     }
 }

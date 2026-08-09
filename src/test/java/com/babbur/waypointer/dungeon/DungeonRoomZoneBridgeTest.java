@@ -18,13 +18,14 @@ class DungeonRoomZoneBridgeTest {
 
     @Test
     void namedRoomZoneTemporarilyActivatesRoomRoutesThenRestoresBroadDungeonZone() {
-        assertNotNull(DungeonRoomData.definition("spider"));
+        assertNotNull(DungeonRoomData.entry("spider"));
         ActiveGroupManager manager = new ActiveGroupManager();
         DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
         DungeonRoomZoneBridge bridge = new DungeonRoomZoneBridge(manager, tracker);
         DungeonRoomRouteSync sync = new DungeonRoomRouteSync(manager, tracker);
         WaypointGroup floorRoute = route("F7 Route", "dungeon_f7", 0);
         WaypointGroup roomRoute = route("Spider Route", "spider", 1);
+        roomRoute.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         manager.add(floorRoute);
         manager.add(roomRoute);
         bridge.install();

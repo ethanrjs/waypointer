@@ -33,9 +33,9 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * Contract for Waypointer's language resources.
  *
- * <p>{@code en_us.json} is the canonical catalog. Adding any other JSON file
- * under the same directory opts that locale into exact key and formatting
- * parity, so an incomplete translation cannot silently ship.
+ * <p>{@code en_us.json} is the canonical catalog. Other locale files are
+ * partial overlays: absent keys deliberately use Minecraft's English fallback,
+ * while every translated key must remain known and formatting-compatible.
  */
 class TranslationCatalogTest {
 
@@ -52,7 +52,7 @@ class TranslationCatalogTest {
             "%(?:(\\d+)\\$)?([A-Za-z%])");
 
     @Test
-    void everySupportedLocaleMatchesTheCanonicalCatalog() throws IOException {
+    void everySupportedLocaleIsAValidPartialOverlayOfTheCanonicalCatalog() throws IOException {
         Map<String, String> english = readCatalog(LANG_DIR.resolve("en_us.json"));
         assertFalse(english.isEmpty(), "en_us.json must not be empty");
 
@@ -60,7 +60,7 @@ class TranslationCatalogTest {
             Map<String, String> locale = readCatalog(localeFile);
             String localeName = localeName(localeFile);
 
-            assertExactKeys(english.keySet(), locale.keySet(), localeName);
+            assertKnownKeys(english.keySet(), locale.keySet(), localeName);
             for (Map.Entry<String, String> entry : locale.entrySet()) {
                 String key = entry.getKey();
                 String value = entry.getValue();
@@ -83,9 +83,10 @@ class TranslationCatalogTest {
     @Test
     void tooLongForChatMessageDoesNotSuggestDiscord() throws IOException {
         String key = "waypointer.export.fit.too_long";
-        assertEquals("Too long for chat", readCatalog(LANG_DIR.resolve("en_us.json")).get(key));
+        String englishValue = readCatalog(LANG_DIR.resolve("en_us.json")).get(key);
+        assertEquals("Too long for chat", englishValue);
         for (Path localeFile : localeFiles()) {
-            String value = readCatalog(localeFile).get(key);
+            String value = readCatalog(localeFile).getOrDefault(key, englishValue);
             assertFalse(value.toLowerCase(java.util.Locale.ROOT).contains("discord"),
                     localeName(localeFile) + " still suggests Discord for " + key);
         }
@@ -189,13 +190,11 @@ class TranslationCatalogTest {
         return entries;
     }
 
-    private static void assertExactKeys(Set<String> english, Set<String> locale, String localeName) {
-        Set<String> missing = new TreeSet<>(english);
-        missing.removeAll(locale);
+    private static void assertKnownKeys(Set<String> english, Set<String> locale, String localeName) {
         Set<String> extra = new TreeSet<>(locale);
         extra.removeAll(english);
-        assertTrue(missing.isEmpty() && extra.isEmpty(),
-                () -> localeName + " catalog differs from en_us; missing=" + missing + ", extra=" + extra);
+        assertTrue(extra.isEmpty(),
+                () -> localeName + " contains keys missing from en_us: " + extra);
     }
 
     private static boolean isWaypointerKey(String key) {

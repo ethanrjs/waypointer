@@ -13,7 +13,6 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** Builds and caches the tiny 64x48 T-atlas used by painted waypoint boxes. */
 final class WaypointPaintTextureCache {
 
     static final int ATLAS_WIDTH = WaypointPaint.SIZE * 4;

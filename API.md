@@ -1,4 +1,4 @@
-# Waypointer API 1.8.6
+# Waypointer API 1.8.7
 
 Waypointer exposes a client-side Fabric API for reading routes, creating saved
 user routes, rendering session-only markers and overlays, importing and
@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-modImplementation "maven.modrinth:waypointer:1.8.6"
+    modImplementation "maven.modrinth:waypointer:1.8.7"
 }
 ```
 
@@ -34,7 +34,7 @@ directory instead:
 
 ```groovy
 dependencies {
-modImplementation files("libs/waypointer-1.8.6-mc26.1.2.jar")
+    modImplementation files("libs/waypointer-1.8.7-mc26.1.2.jar")
 }
 ```
 
@@ -163,6 +163,10 @@ for (WaypointGroupSnapshot group : waypointer.savedRoutes()) {
 
 Snapshot lists are immutable. `WaypointGroupSnapshot.currentWaypoint()` may
 return `null` when the route is empty, complete, or has no valid current index.
+Block coordinates are available through `x()`, `y()`, and `z()`. Exact
+sixteenth-block coordinates are available through `preciseX()`, `preciseY()`,
+and `preciseZ()`; construct them with `WaypointSpec.atPreciseSixteenths(...)`
+or `Builder.precisePositionSixteenths(...)`.
 
 `currentZone()` may return `null` before detection or after leaving a detected
 SkyBlock zone. Prefer `currentZoneOptional()` and `onZoneStateChanged(...)` in

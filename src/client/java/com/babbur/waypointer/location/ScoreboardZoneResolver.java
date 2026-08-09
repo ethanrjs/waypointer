@@ -10,22 +10,10 @@ import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * Fallback zone source that reads the Skyblock scoreboard sidebar.
- *
- * Skyblock's sidebar reliably contains one line formatted like {@code "⏣ Dwarven Mines"}
- * while the player is on a Skyblock server -- and goes missing on other Hypixel game modes.
- * That's enough to detect both the map AND whether we're on Skyblock at all.
- *
- * We poll at 10 Hz (every 2 ticks) which is plenty: zone changes aren't time-critical
- * for rendering, and the sidebar updates slower than that anyway.
- */
+/** Detects SkyBlock zones from the sidebar every two ticks. */
 public final class ScoreboardZoneResolver implements ZoneSource {
 
-    /**
-     * Skyblock prefixes every location line with the ⏣ symbol. Capture everything after it
-     * up to whitespace-comma (because the scoreboard sometimes appends " , (Coords)").
-     */
+    /** Captures the location name before an optional coordinate suffix. */
     private static final Pattern LOCATION_LINE = Pattern.compile(
             "(?m)⏣[\\t ]*([^,\\r\\n]+?)[\\t ]*(?:,|$)");
 
@@ -63,9 +51,7 @@ public final class ScoreboardZoneResolver implements ZoneSource {
         Matcher location = LOCATION_LINE.matcher(blob);
         if (!location.find()) return null;
 
-        // Specific mineshaft variants need scoreboard data because the Hypixel
-        // location id does not identify their layouts. Dwarven surface areas use
-        // the broad mining_3 location and resolve to dwarven_mines below.
+
         Zone mineshaftType = Zone.tryResolveMineshaftTypeFromSidebarBlob(blob);
         if (mineshaftType != null) return mineshaftType;
         Zone mineshaftArea = Zone.tryResolveDwarvenSubAreaFromSidebarBlob(blob);

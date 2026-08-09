@@ -13,48 +13,20 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-/**
- * Pure math for translating between three coordinate systems used by Hypixel
- * Skyblock dungeons:
- *
- * <ol>
- *   <li><b>Physical world coords</b> -- standard Minecraft block positions.</li>
- *   <li><b>Map-pixel coords</b> -- 0..127 indexes into the 128x128 dungeon
- *       map item the player carries in inventory slot 9.</li>
- *   <li><b>Room-local coords</b> -- coordinates relative to the room's
- *       canonical NW corner, rotated by the room's {@link Direction} so the
- *       same room layout reads identically regardless of the world rotation
- *       Hypixel applied.</li>
- * </ol>
- *
- * <p>The algorithms here are a re-implementation of Skyblocker's
- * {@code DungeonMapUtils} (LGPL-3.0). Every public method has a 1:1 analogue
- * in that class; the math is identical because dungeons are a fixed grid and
- * there's only one correct answer.
- *
- * <p>{@code MapItemSavedData} stores its 128x128 byte array as a single flat
- * row-major buffer indexed by {@code x + (z << 7)}; that addressing is also
- * fixed by the Minecraft format, not chosen by us.
- */
+/** Converts between world blocks, dungeon-map pixels, and rotated room-local coordinates. */
 public final class DungeonMapMath {
 
-    /** Map color for an entrance-room pixel. Constant since MC stabilised the {@code MapColor} ids. */
     public static final byte ENTRANCE_COLOR = DungeonRoomType.ENTRANCE.packedColor;
 
-    /** Block size of a dungeon room segment. Hypixel pins rooms to a 32-block grid. */
     public static final int SEGMENT_BLOCKS = 32;
 
-    /** Offset Hypixel applied to dungeons in Skyblock 0.12.3 -- room corners sit on a {@code grid + 8} lattice. */
     public static final int DUNGEON_BLOCK_OFFSET = 8;
 
-    /** Gap (in map pixels) between adjacent rooms on the dungeon map. */
     public static final int MAP_ROOM_GAP_PX = 4;
 
     private DungeonMapMath() {}
 
-    // ---- map-side: read player + room positions off the map item -------
-
-    /** Player position in map-pixel coords, or {@code null} if no player decoration is on the map. */
+    /** Returns the player's map-pixel position, or {@code null} before it appears. */
     public static int[] getMapPlayerPos(MapItemSavedData map) {
         for (MapDecoration decoration : map.getDecorations()) {
             if (decoration.type().value().equals(MapDecorationTypes.FRAME.value())) {
@@ -75,17 +47,7 @@ public final class DungeonMapMath {
         return getColor(map, x, z) == ENTRANCE_COLOR;
     }
 
-    /**
-     * Locate the entrance room on the map and measure how many pixels wide a
-     * room is. Returned as {@code [entranceX, entranceZ, roomSize]} or
-     * {@code null} if the player isn't shown on the map (rare, but happens
-     * during the initial 1-2 frames after world join).
-     *
-     * <p>Walks outward from the player's map position in 10-pixel steps,
-     * looking for an entrance-colored pixel; from there scans left/up to
-     * find the entrance's NW corner and right to measure the room size.
-     * Direct port of Skyblocker's {@code getMapEntrancePosAndRoomSize}.
-     */
+    /** Returns {@code [entranceX, entranceZ, roomSize]}, or {@code null} before the map is ready. */
     public static int[] findEntranceAndRoomSize(MapItemSavedData map) {
         int[] start = getMapPlayerPos(map);
         if (start == null) return null;
@@ -128,16 +90,7 @@ public final class DungeonMapMath {
         return (((long) x) << 32) | (z & 0xFFFFFFFFL);
     }
 
-    // ---- map<->physical -------------------------------------------------
-
-    /**
-     * Snap a world-space position to the NW corner of the 32x32 segment it
-     * falls inside. Hypixel offsets dungeons by 8 blocks (see
-     * {@link #DUNGEON_BLOCK_OFFSET}); the {@code +0.5} centres the rounding so
-     * room borders split evenly between adjacent segments.
-     *
-     * <p>Direct port of Skyblocker's {@code getPhysicalRoomPos(double, double)}.
-     */
+    /** Snaps a world position to its 32x32 room-segment corner. */
     public static int[] physicalSegmentCorner(double x, double z) {
         int px = (int) Math.floor(x + 0.5) + DUNGEON_BLOCK_OFFSET;
         int pz = (int) Math.floor(z + 0.5) + DUNGEON_BLOCK_OFFSET;
@@ -146,12 +99,6 @@ public final class DungeonMapMath {
         return new int[] { cx, cz };
     }
 
-    /**
-     * Map a physical room-corner back to its NW pixel on the dungeon map.
-     * Both the physical-entrance and map-entrance reference points are needed
-     * because the entrance is the only room with a known one-to-one anchor
-     * between the two coordinate systems.
-     */
     public static int[] physicalToMap(int physEntranceX, int physEntranceZ,
                                       int mapEntranceX, int mapEntranceZ,
                                       int mapRoomSize, int physX, int physZ) {
@@ -163,10 +110,6 @@ public final class DungeonMapMath {
         };
     }
 
-    /**
-     * Inverse of {@link #physicalToMap} -- given a NW map pixel, recover the
-     * physical NW corner of the corresponding room segment.
-     */
     public static int[] mapToPhysical(int mapEntranceX, int mapEntranceZ,
                                       int mapRoomSize,
                                       int physEntranceX, int physEntranceZ,
@@ -179,16 +122,7 @@ public final class DungeonMapMath {
         };
     }
 
-    // ---- segment flood-fill ---------------------------------------------
-
-    /**
-     * Find every map pixel that belongs to the same room as {@code (mapX, mapZ)}
-     * by flooding outward across same-colored cells, jumping the {@code +4}
-     * pixel gap that the dungeon map draws between adjacent rooms. Returned
-     * positions are NW-corner pixels of each segment.
-     *
-     * <p>Direct port of Skyblocker's {@code getRoomSegments}.
-     */
+    /** Finds all same-colored room segments connected across map gaps. */
     public static List<int[]> floodSegments(MapItemSavedData map, int mapX, int mapZ,
                                             int mapRoomSize, byte color) {
         List<int[]> out = new ArrayList<>();
@@ -198,16 +132,10 @@ public final class DungeonMapMath {
             out.add(new int[] { mapX, mapZ });
             queue.add(new int[] { mapX, mapZ });
         }
-        // Distance from this cell's NW corner to its left/up neighbour's NW
-        // corner: hop the room body (mapRoomSize) plus the 4px gap, but the
-        // probe pixel is already one step in the direction we're hopping, so
-        // the residual jump is (mapRoomSize + 4) - 1 = mapRoomSize + 3.
+        // The probe is already one pixel into the room gap.
         int backStep = mapRoomSize + 3;
         int[] cur;
         while ((cur = queue.poll()) != null) {
-            // probe-pixel sits inside the inter-room gap; if it carries the
-            // room color, the cell on the other side of the gap is part of
-            // the same room.
             tryHop(map, queue, seen, out, cur[0] - 1,             cur[1],                 -backStep,            0,                color);
             tryHop(map, queue, seen, out, cur[0],                 cur[1] - 1,             0,                    -backStep,        color);
             tryHop(map, queue, seen, out, cur[0] + mapRoomSize,   cur[1],                 +MAP_ROOM_GAP_PX,     0,                color);
@@ -226,23 +154,11 @@ public final class DungeonMapMath {
         }
     }
 
-    // ---- direction-aware room-local <-> world ---------------------------
-
-    /**
-     * Pick the physical corner that corresponds to the canonical NW origin of
-     * the room data for the given direction, given the bounding box of the
-     * room's segments.
-     *
-     * <p>Mirror of Skyblocker's {@code getPhysicalCornerPos}.
-     */
+    /** Finds the physical corner used as the room data's local origin. */
     public static int[] physicalCorner(Direction dir,
                                        int minSegmentX, int minSegmentZ,
                                        int maxSegmentX, int maxSegmentZ) {
-        // The +30 offset is verbatim from Skyblocker's getPhysicalCornerPos; the
-        // canonical origin of a rotated room is the *inner* opposite corner of
-        // the segment, not the outer +32 edge. Curated room data is authored
-        // against that origin, so changing the offset would shift every secret
-        // by 1-2 blocks. Don't touch without reading Skyblocker's room data.
+        // Authored routes use the inner corner at +30, not the outer +32 edge.
         int farX = maxSegmentX + 30;
         int farZ = maxSegmentZ + 30;
         return switch (dir) {
@@ -253,12 +169,7 @@ public final class DungeonMapMath {
         };
     }
 
-    /**
-     * Project a room-local block position to a world block position. Inverse
-     * is {@link #actualToRelative}. The four-way switch is the same rotation
-     * Skyblocker uses; Y is unaffected because rooms are aligned to the
-     * world's vertical axis.
-     */
+    /** Converts a room-local block to a world block. */
     public static int[] relativeToActual(Direction dir,
                                          int physicalCornerX, int physicalCornerZ,
                                          int rx, int ry, int rz) {
@@ -298,7 +209,6 @@ public final class DungeonMapMath {
         }
     }
 
-    /** Inverse of {@link #relativeToActual} -- world coords back into the room's frame. */
     public static int[] actualToRelative(Direction dir,
                                          int physicalCornerX, int physicalCornerZ,
                                          int wx, int wy, int wz) {
@@ -311,13 +221,8 @@ public final class DungeonMapMath {
     }
 
     /**
-     * Precise-coordinate ({@link Waypoint#PRECISE_SCALE} 16ths of a block)
-     * variant of {@link #relativeToActual}. Negated axes mirror through
-     * {@code corner*16 + 15 - p} rather than plain negation: a block cell
-     * {@code [16b, 16b+16)} rotates onto the cell the block math selects, and
-     * the sub-block offset flips within it ({@code f -> 15 - f}), so
-     * {@code Math.floorDiv(precise, 16)} of the result always equals the
-     * block-coordinate projection of the waypoint's block position.
+     * Converts room-local sixteenth-block coordinates to world coordinates.
+     * Mirrored axes also flip the position inside the block.
      */
     public static int[] relativePreciseToActual(Direction dir,
                                                 int physicalCornerX, int physicalCornerZ,
@@ -333,7 +238,6 @@ public final class DungeonMapMath {
         };
     }
 
-    /** Exact inverse of {@link #relativePreciseToActual}. */
     public static int[] actualPreciseToRelative(Direction dir,
                                                 int physicalCornerX, int physicalCornerZ,
                                                 int px, int py, int pz) {
@@ -348,9 +252,6 @@ public final class DungeonMapMath {
         };
     }
 
-    // ---- misc utility ---------------------------------------------------
-
-    /** Lower-case label for a direction; handy when serialising. */
     public static String label(Direction dir) {
         return dir.name().toLowerCase(Locale.ROOT);
     }

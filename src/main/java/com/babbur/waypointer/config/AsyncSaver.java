@@ -7,36 +7,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-/**
- * Debounced, off-thread writer for config-like files.
- *
- * <p>The stock "save on every setter" path ran the full JSON serialize + atomic
- * file rename on whatever thread the setter ran on, which in practice meant the
- * render or tick thread. Typing "15" into a numeric field fired {@code save()}
- * three times in close succession; a drag-reorder in the group list could fire
- * dozens of saves per second. Each one was a synchronous disk round-trip.
- *
- * <p>Callers wrap their actual write body in a {@link Runnable} and poke
- * {@link #markDirty()} whenever state changes. Multiple marks within
- * {@link #delayMs} collapse into a single write; after the quiet window elapses
- * the writer runs on the shared background thread. {@link #flush()} forces an
- * immediate synchronous write on the calling thread -- used on shutdown so the
- * atomic-rename step has a guaranteed completion point before the JVM exits.
- * A failed write remains dirty; scheduled failures are logged, while flush
- * failures propagate so shutdown cannot silently report unsaved state as safe.
- *
- * <p>Not reusable after a flush race: serializing with {@code synchronized} on
- * {@code lock} keeps the writer body single-threaded and cheap, which matters
- * because the writer itself is allowed to throw and we don't want a partial
- * rename-in-flight colliding with the shutdown flush.
- */
 public final class AsyncSaver {
 
-    /**
-     * Shared across every saver so we don't leak one thread per config file.
-     * Daemon so a lingering write never blocks JVM exit; the shutdown hook's
-     * {@link #flush()} is the only path we actually want to wait on.
-     */
     private static final ScheduledExecutorService EXEC = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "waypointer-saver");
         t.setDaemon(true);
@@ -62,11 +34,6 @@ public final class AsyncSaver {
         this.delayMs = delayMs;
     }
 
-    /**
-     * Record a pending change and schedule a write after the quiet window.
-     * Cancels any in-flight schedule so rapid-fire mutations collapse into
-     * one write instead of fighting for the disk.
-     */
     public void markDirty() {
         synchronized (lock) {
             dirty = true;
@@ -75,12 +42,7 @@ public final class AsyncSaver {
         }
     }
 
-    /**
-     * Write synchronously on the calling thread if anything is pending.
-     * Safe to call from a shutdown hook -- the guaranteed-completion semantics
-     * here are the reason saves aren't purely async. Writer failures propagate
-     * and leave the saver dirty so a later flush can retry the same snapshot.
-     */
+    /** Writes pending data on the calling thread. A failure remains pending. */
     public void flush() {
         synchronized (lock) {
             if (pending != null) { pending.cancel(false); pending = null; }
@@ -88,11 +50,6 @@ public final class AsyncSaver {
         }
     }
 
-    /**
-     * Drop any pending write without running it. Used when the backing data is
-     * about to be replaced wholesale from disk, so a queued in-memory write
-     * would otherwise clobber the file we are about to read.
-     */
     public void discard() {
         synchronized (lock) {
             if (pending != null) { pending.cancel(false); pending = null; }

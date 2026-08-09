@@ -6,7 +6,6 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 
 final class DungeonRoomBlockLookup implements DungeonRoomData.BlockLookup {
-
     private final ClientLevel level;
 
     DungeonRoomBlockLookup(ClientLevel level) {

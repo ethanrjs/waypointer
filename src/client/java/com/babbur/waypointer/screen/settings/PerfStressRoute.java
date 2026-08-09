@@ -8,23 +8,6 @@ import com.babbur.waypointer.core.Zone;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * The synthetic waypoint load behind the settings screen's performance stress
- * test. A sweep over the user's live scene is only as informative as the scene
- * itself -- two waypoints on a private island stress nothing -- so the test
- * installs deterministic 2D, 3D, dungeon-secret, and subwaypoint loads around
- * the player for its duration and removes them afterwards.
- *
- * <p>Every profile sits entirely inside the 100-block near-hide cap used by
- * the baseline. The legacy 45x45 plane reaches about 93 blocks at its corners;
- * 3D profiles use an 83-block Fibonacci ellipsoid.
- *
- * <p>The group is runtime-only, so it never persists while still exercising
- * route-progress labels (which intentionally skip temporary groups).
- *
- * <p>MC-free so plain JUnit can exercise install/replace/remove; the caller
- * supplies the player position.
- */
 public final class PerfStressRoute {
 
     public static final String GROUP_ID_PREFIX = "perf-stress::";
@@ -57,11 +40,7 @@ public final class PerfStressRoute {
 
     private PerfStressRoute() {}
 
-    /**
-     * Install the stress grid centered on the player, replacing any grid left
-     * by a previous run. Returns the number of waypoints installed, or 0 when
-     * no zone is active (the sweep then measures only the live scene).
-     */
+    /** Returns zero when no zone is active. */
     public static int install(ActiveGroupManager manager,
                               double playerX, double playerY, double playerZ) {
         return install(manager, playerX, playerY, playerZ,
@@ -115,7 +94,6 @@ public final class PerfStressRoute {
         return group.size();
     }
 
-    /** Remove any stress grids from previous or current runs. Returns groups removed. */
     public static int remove(ActiveGroupManager manager) {
         if (manager == null) return 0;
         List<String> ids = new ArrayList<>();
@@ -172,7 +150,6 @@ public final class PerfStressRoute {
         return categories[index % categories.length] + " secret " + (index + 1);
     }
 
-    /** Blue-to-red sweep across the grid so label/box color variety is realistic. */
     private static int gridColor(int index, int count) {
         double t = count <= 1 ? 0.0 : index / (double) (count - 1);
         int red = (int) Math.round(64.0 + 191.0 * t);

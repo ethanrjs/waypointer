@@ -17,7 +17,6 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Session-only visual override enabled by the intentionally unadvertised command. */
 public final class HappySnowmanSession {
     private static final Identifier SKIN_ID =
             Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "happy_snowman");
@@ -32,6 +31,7 @@ public final class HappySnowmanSession {
             return SKIN_ID;
         }
     };
+
     private static final String SKIN_PNG =
             "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAMAAACdt4HsAAAAOVBMVEUAAAAAAAADUweq5f+u5f+05f+65f+84P/D5f/H5f/J5f/NAADS5f/T6//e8P/t5f/v9//3+//4jQBwcn8aAAAAAXRSTlMAQObYZgAAAldJREFUWMPtl90SmjAQhVXU9UTPMfT9H7YX2YUEiEJ70067OsOAy+cm+8PhdHIzAAAsjqeOpfeQbtfH+neAJAGAEoEe4GXpNgyvtAaQEglQpNgFvNN1SNfbYwOgUSIgElQXMNxfgyV7bQGyA/AJkCxdH/e0tQRJ2rOE4ZHS/d4HqFgPYMmGW7LbRhYkCfiWxvvjfbNrmiMoN5CUJEUqv9dD9c9x91lniVIwPtdDU0Aas85l6WflUSQQWalcf/QBWTq7STkA0odstICFHQZQmiDTJpAkdwDMuygA3lNxeQcg8gXUZTBdfl7Kxw/P5/NZjn4hOhGowrWSQrMShVUdCwO5ioISKbEqa2+q0uKTXxbBDqCOoAtQB1BCm0M9tATfrKj/snnRmYBh3mSYHwxVdgDSv24kNZ7l9TDf3/o1s5AS5ZkAKY25LklEZfp3CZDfwLJySpp6ixAFyZsr/FaA7M5Zms/9mrImgPv1AaWUS1vHEsqPLSAjfwNMexAtUvutNjGcyw7FBZ8LE6DyW6Qxluv95xMue1uLIoWp7YkVgNUM8D7WXAYVYLMOzBMdNWMWs4QEzARAgqH88eS3mgc+A8ysKe7KopStLeUti+Fx+lX7ywGXy6UZoM3wPBbF6ffsDwCc/tu/bku94OfcDVjqBSqTOgjAQhfwSARLvXBoCVt6odIFe7TzWi9sPg8+hL/QCx1d0AdIyuNCL4zK2rkP8AdjaIM4z/42cxCgBlDXxmGA9gMWemFxvieNS70wvQLsBTR6oamDPYCVXujpgm/vD7NeaHTBqpR/AqbwTaLwf8cgAAAAAElFTkSuQmCC";
 

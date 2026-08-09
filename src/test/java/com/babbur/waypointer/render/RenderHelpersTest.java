@@ -9,6 +9,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RenderHelpersTest {
 
@@ -56,16 +57,33 @@ class RenderHelpersTest {
                 consumer.textureUs);
     }
 
+    @Test
+    void outlinedBoxEdgesOverlapAtEveryCorner() {
+        RecordingConsumer consumer = new RecordingConsumer();
+
+        RenderHelpers.emitLineBox(consumer, new PoseStack(),
+                0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0xFFFFFF, 1.0f);
+
+        assertEquals(24, consumer.positions.size());
+        float join = RenderHelpers.LINE_BOX_JOIN_OVERLAP;
+        assertTrue(consumer.positions.contains(List.of(-join, 0.0f, 0.0f)));
+        assertTrue(consumer.positions.contains(List.of(1.0f + join, 0.0f, 0.0f)));
+        assertTrue(consumer.positions.contains(List.of(0.0f, -join, 0.0f)));
+        assertTrue(consumer.positions.contains(List.of(0.0f, 1.0f + join, 0.0f)));
+    }
+
     private static final class RecordingConsumer implements VertexConsumer {
         private int vertices;
         private int colors;
         private int uvs;
         private int lights;
         private final List<Float> textureUs = new ArrayList<>();
+        private final List<List<Float>> positions = new ArrayList<>();
 
         @Override
         public VertexConsumer addVertex(float x, float y, float z) {
             vertices++;
+            positions.add(List.of(x, y, z));
             return this;
         }
 

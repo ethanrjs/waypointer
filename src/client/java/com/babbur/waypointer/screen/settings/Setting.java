@@ -8,32 +8,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 
-/**
- * Declarative descriptor for one settings-screen entry.
- *
- * <p>This is the single source of truth the settings UI is built from: label,
- * tooltip, search aliases, performance impact, widget kind, graying predicate,
- * and unbound accessors. The accessors take the config instances as parameters
- * so one descriptor serves live editing, the config-code import diff
- * ({@link SettingsCatalog#countChangedSettings}), per-row reset against a
- * defaults instance, presets, and the parity tests.
- *
- * <p>Deliberately free of Minecraft classes so plain JUnit can construct and
- * iterate the whole catalog; {@code Component}s and {@code Tooltip}s are built
- * at row-construction time in the screen.
- */
 public final class Setting {
 
-    /** Which config object backs this entry. {@code NONE} = action rows. */
     public enum Store { MAIN, DUNGEON, NONE }
 
-    /**
-     * Widget family. {@code HIDDEN} entries have no row but still participate
-     * in the import diff and parity tests (legacy/codec-only fields).
-     */
     public enum Kind { BOOL, NUMBER, COLOR, ENUM, ACTION, HIDDEN }
 
-    /** Performance impact rating, rendered as a colored chip on the row. */
     public enum Impact {
         HIGH("HIGH", "HIGH"),
         MEDIUM("MEDIUM", "MED"),
@@ -47,10 +27,8 @@ public final class Setting {
             this.chip = chip;
         }
 
-        /** Full word used in the tooltip suffix ("Impact: HIGH"). */
         public String word() { return word; }
 
-        /** Short label rendered inline on the row. */
         public String chip() { return chip; }
 
         public String wordTranslationKey() {
@@ -62,8 +40,18 @@ public final class Setting {
         }
     }
 
-    /** One choice of an ENUM entry, in cycle order. */
-    public record EnumOption(String label, Object value) {}
+    public record EnumOption(String id, String label, Object value) {
+        public EnumOption {
+            if (id == null || id.isBlank()) {
+                throw new IllegalArgumentException("enum option id must not be blank");
+            }
+            label = label == null ? "" : label;
+        }
+
+        public EnumOption(String label, Object value) {
+            this(String.valueOf(value).toLowerCase(Locale.ROOT), label, value);
+        }
+    }
 
     @FunctionalInterface
     public interface Getter { Object get(WaypointerConfig config, DungeonConfig dungeon); }
@@ -82,13 +70,15 @@ public final class Setting {
     private final Getter getter;
     private final Setter setter;
 
-    // Decorated during catalog construction only; effectively immutable afterwards.
     private Impact impact;
     private List<String> aliases = new ArrayList<>();
     private List<EnumOption> enumOptions = List.of();
     private EnabledWhen enabledWhen;
     private String colorPickerTitle = "";
     private String colorSwatchTooltip = "";
+    private double minimum = Double.NEGATIVE_INFINITY;
+    private double maximum = Double.POSITIVE_INFINITY;
+    private boolean wholeNumber;
 
     private Setting(String id, Store store, Kind kind, String label, String tooltip,
                     Getter getter, Setter setter) {
@@ -135,13 +125,11 @@ public final class Setting {
         return new Setting(id, Store.MAIN, Kind.HIDDEN, id, "", getter, setter);
     }
 
-    /** Attach an impact rating; auto-adds "performance" and the impact word as aliases. */
     public Setting impact(Impact impact) {
         this.impact = impact;
         return aliases("performance", impact.word().toLowerCase(Locale.ROOT));
     }
 
-    /** Add hidden search terms so users can find the row in their own words. */
     public Setting aliases(String... extra) {
         for (String alias : extra) {
             String normalized = alias == null ? "" : alias.trim().toLowerCase(Locale.ROOT);
@@ -150,9 +138,24 @@ public final class Setting {
         return this;
     }
 
-    /** Graying predicate: the row stays visible but its controls disable when false. */
     public Setting enabledWhen(EnabledWhen predicate) {
         this.enabledWhen = predicate;
+        return this;
+    }
+
+    public Setting range(double minimum, double maximum) {
+        if (kind != Kind.NUMBER || !Double.isFinite(minimum) || Double.isNaN(maximum)
+                || maximum < minimum) {
+            throw new IllegalArgumentException("invalid numeric range for " + id);
+        }
+        this.minimum = minimum;
+        this.maximum = maximum;
+        return this;
+    }
+
+    public Setting wholeNumber() {
+        if (kind != Kind.NUMBER) throw new IllegalStateException(id + " is not numeric");
+        wholeNumber = true;
         return this;
     }
 
@@ -166,6 +169,17 @@ public final class Setting {
     public List<EnumOption> enumOptions() { return enumOptions; }
     public String colorPickerTitle() { return colorPickerTitle; }
     public String colorSwatchTooltip() { return colorSwatchTooltip; }
+    public double minimum() { return minimum; }
+    public double maximum() { return maximum; }
+    public boolean requiresWholeNumber() { return wholeNumber; }
+
+    public boolean acceptsNumber(double value) {
+        return kind == Kind.NUMBER
+                && Double.isFinite(value)
+                && value >= minimum
+                && value <= maximum
+                && (!wholeNumber || value == Math.rint(value));
+    }
 
     public String labelTranslationKey() {
         return "waypointer.settings.setting." + id + ".label";
@@ -184,6 +198,10 @@ public final class Setting {
     }
 
     public String enumOptionTranslationKey(int index) {
+        return "waypointer.settings.setting." + id + ".option." + enumOptions.get(index).id();
+    }
+
+    public String legacyEnumOptionTranslationKey(int index) {
         return "waypointer.settings.setting." + id + ".option." + index;
     }
 
@@ -209,7 +227,6 @@ public final class Setting {
         return !Objects.equals(get(live, dungeonLive), get(defaults, dungeonDefaults));
     }
 
-    /** Human-readable value string for reset tooltips ("default: On", "default: #00FF00"). */
     public String formatValue(Object value) {
         return formatValue(kind, value, enumOptions);
     }

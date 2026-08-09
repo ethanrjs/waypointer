@@ -4,14 +4,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
-/**
- * The footprint of a dungeon room, derived from how many 32x32-block segments
- * share its map color and how those segments are arranged in space.
- *
- * <p>Shape is meaningful primarily for {@link DungeonRoomType#ROOM}. Room
- * identity comes from core hashes and authored definitions; shape is retained
- * as geometry metadata and as a safe fallback for generic rooms.
- */
+/** A room footprint made from one or more 32x32-block map segments. */
 public enum DungeonRoomShape {
     ONE_BY_ONE,
     ONE_BY_TWO,
@@ -25,7 +18,6 @@ public enum DungeonRoomShape {
         if (segmentCount <= 1) return ONE_BY_ONE;
         if (segmentCount == 2) return ONE_BY_TWO;
         if (segmentCount == 3) {
-            // 3-in-a-line vs L. A straight line has either spanX==1 or spanZ==1.
             return (spanX == 1 || spanZ == 1) ? ONE_BY_THREE : L_SHAPE;
         }
         if (segmentCount == 4) {

@@ -1,8 +1,5 @@
 package com.babbur.waypointer.api;
 
-/**
- * Options for importing waypoint share strings through the public API.
- */
 public record ImportOptions(boolean targetCurrentZoneWhenUnknown) {
 
     /** Default import behavior: keep unknown-zone routes in the unknown bucket. */
@@ -10,7 +7,6 @@ public record ImportOptions(boolean targetCurrentZoneWhenUnknown) {
         return new ImportOptions(false);
     }
 
-    /** Start building import options. */
     public static Builder builder() {
         return new Builder();
     }

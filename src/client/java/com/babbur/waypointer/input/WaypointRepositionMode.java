@@ -10,12 +10,11 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.DungeonItemIdentity;
-import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.render.RenderHelpers;
 import com.babbur.waypointer.render.RenderSubmission;
-import com.babbur.waypointer.render.WaypointRenderer;
 import com.babbur.waypointer.render.WaypointerRenderPipelines;
 import com.babbur.waypointer.screen.AddNamedWaypointScreen;
 import com.babbur.waypointer.screen.GroupEditScreen;
@@ -23,7 +22,7 @@ import com.babbur.waypointer.screen.WaypointerScreen;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.event.client.player.ClientPreAttackCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
+import com.babbur.waypointer.render.WorldOverlayCompat;
 import net.fabricmc.fabric.api.event.player.UseBlockCallback;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.minecraft.ChatFormatting;
@@ -35,7 +34,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.phys.AABB;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -45,22 +44,8 @@ import net.minecraft.world.level.block.EnderChestBlock;
 import net.minecraft.world.level.block.LeverBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
-import java.util.ArrayList;
 import java.util.List;
 
-/**
- * One-shot "pick a block in the world" mode for waypoint edits.
- *
- * <p>The editor starts this from Shift + left-click on a waypoint row, and keybinds
- * can start the same picker for creating new waypoints at the targeted block. While
- * active we close the GUI, outline the currently-targeted block, intercept left
- * click to commit, and intercept right click to cancel without placing or using
- * items.
- *
- * <p>Persistent edit mode is different from a one-shot placement session: left
- * click selects an existing visible waypoint for movement, and right-click adds
- * a waypoint at the targeted block without server interaction.
- */
 public final class WaypointRepositionMode {
 
     private static final int OUTLINE_COLOR = 0x4FB3C4;
@@ -68,9 +53,6 @@ public final class WaypointRepositionMode {
     private static final float OUTLINE_WIDTH = 4.0f;
     private static final double OUTLINE_EXPAND = 0.002;
     private static final double PRECISE_SMALL_SIZE = 1.0 / 16.0;
-    private static final double EDIT_PICK_RANGE = 512.0;
-    private static final double EDIT_PICK_PADDING = 0.18;
-    private static final double RAY_AXIS_EPSILON = 1.0E-7;
     private static final Component HELP_ADD_WHERE_LOOKING = Component.translatable(
             "waypointer.input.reposition.add_named")
             .withStyle(ChatFormatting.AQUA);
@@ -90,23 +72,17 @@ public final class WaypointRepositionMode {
             "waypointer.input.edit_mode.removed")
             .withStyle(ChatFormatting.AQUA);
     private static final Component HELP_CONVERT_SECRETS_FIRST = Component.translatable(
-            "waypointer.input.edit_mode.convert_first")
+            "waypointer.input.edit_mode.convert_definition_first")
             .withStyle(ChatFormatting.YELLOW);
 
+    private static final WaypointEditPicker EDIT_PICKER = new WaypointEditPicker();
     private static Session active;
     private static ActiveGroupManager editManager;
     private static WaypointerConfig editConfig;
-    /**
-     * Id of the persistent route selected when Edit Mode was opened from its
-     * editor. A null id keeps the keybind and command behaviour, which targets
-     * the normal active route for the player's current zone.
-     */
     private static String editTargetGroupId;
     private static ClientLevel lastEditModeActionLevel;
     private static long lastEditModeActionGameTime = Long.MIN_VALUE;
     private static boolean editModeEnabled;
-    private static WaypointGroup lastEditSelectionGroup;
-    private static int lastEditSelectionIndex = -1;
 
     private WaypointRepositionMode() {}
 
@@ -121,30 +97,17 @@ public final class WaypointRepositionMode {
             if (!editModeEnabled) return false;
             return handleEditModeAttack(client, clickCount);
         });
-        UseItemCallback.EVENT.register(
-                (player, world, hand) -> {
-            if (!world.isClientSide()) return InteractionResult.PASS;
-
-            Minecraft mc = Minecraft.getInstance();
-            if (active != null) {
-                return handleEditModeRightClick(mc, player.getItemInHand(hand));
-            }
-            if (!editModeEnabled) return InteractionResult.PASS;
-            return handleEditModeRightClick(mc, player.getItemInHand(hand));
-        });
-        UseBlockCallback.EVENT.register(
-                (player, world, hand, hitResult) -> {
-            if (!world.isClientSide()) return InteractionResult.PASS;
-
-            Minecraft mc = Minecraft.getInstance();
-            if (active != null) {
-                return handleEditModeRightClick(mc, player.getItemInHand(hand));
-            }
-            if (!editModeEnabled) return InteractionResult.PASS;
-            return handleEditModeRightClick(mc, player.getItemInHand(hand));
-        });
+        UseItemCallback.EVENT.register((player, world, hand) ->
+                handleRightClick(world, player.getItemInHand(hand)));
+        UseBlockCallback.EVENT.register((player, world, hand, hitResult) ->
+                handleRightClick(world, player.getItemInHand(hand)));
         ClientTickEvents.END_CLIENT_TICK.register(WaypointRepositionMode::onTick);
-        LevelRenderEvents.COLLECT_SUBMITS.register(WaypointRepositionMode::renderOutline);
+        WorldOverlayCompat.register(WaypointRepositionMode::renderOutline);
+    }
+
+    private static InteractionResult handleRightClick(Level world, ItemStack heldItem) {
+        if (!world.isClientSide() || (active == null && !editModeEnabled)) return InteractionResult.PASS;
+        return handleEditModeRightClick(Minecraft.getInstance(), heldItem);
     }
 
     public static boolean isEditModeEnabled() {
@@ -156,7 +119,6 @@ public final class WaypointRepositionMode {
         return editModeEnabled;
     }
 
-    /** Enable or disable Edit Mode for the route currently open in its editor. */
     public static boolean toggleEditMode(ActiveGroupManager manager, WaypointerConfig config,
                                          WaypointGroup target) {
         setEditModeEnabled(manager, config, target, !editModeEnabled);
@@ -168,11 +130,6 @@ public final class WaypointRepositionMode {
         setEditModeEnabled(manager, config, null, enabled);
     }
 
-    /**
-     * Configure Edit Mode and, when supplied, keep writes bound to the
-     * persistent route that opened it rather than choosing another active
-     * route or creating a new one.
-     */
     public static void setEditModeEnabled(ActiveGroupManager manager, WaypointerConfig config,
                                           WaypointGroup target, boolean enabled) {
         Minecraft mc = Minecraft.getInstance();
@@ -182,6 +139,7 @@ public final class WaypointRepositionMode {
         clearEditSelectionCycle();
         if (enabled) {
             if (manager == null || config == null) {
+                if (editManager != null) editManager.isolateRouteForEditing(null);
                 editModeEnabled = false;
                 editManager = null;
                 editConfig = null;
@@ -190,11 +148,16 @@ public final class WaypointRepositionMode {
                 showStatus(mc, HELP_EDIT_UNAVAILABLE);
                 return;
             }
+            if (editManager != null && editManager != manager) {
+                editManager.isolateRouteForEditing(null);
+            }
             editManager = manager;
             editConfig = config;
             if (target != null || !wasEnabled) {
                 editTargetGroupId = target == null ? null : target.id();
             }
+            editManager.isolateRouteForEditing(
+                    editTargetGroupId == null ? null : editManager.get(editTargetGroupId));
             editModeEnabled = true;
             showStatus(mc, HELP_EDIT_ON);
             if (!wasEnabled) {
@@ -204,6 +167,7 @@ public final class WaypointRepositionMode {
         }
 
         WaypointerConfig soundConfig = config == null ? editConfig : config;
+        if (editManager != null) editManager.isolateRouteForEditing(null);
         editModeEnabled = false;
         editManager = null;
         editConfig = null;
@@ -216,8 +180,7 @@ public final class WaypointRepositionMode {
     }
 
     private static void clearEditSelectionCycle() {
-        lastEditSelectionGroup = null;
-        lastEditSelectionIndex = -1;
+        EDIT_PICKER.clear();
     }
 
     public static void start(ActiveGroupManager manager, WaypointerConfig config,
@@ -232,10 +195,8 @@ public final class WaypointRepositionMode {
         if (waypointIndex < 0 || waypointIndex >= group.size()) return;
 
         Minecraft mc = Minecraft.getInstance();
-        // A definition-backed mirror (downloaded secrets, no user route) has no
-        // stored group to write the move into; the edit would silently vanish
-        // on the mirror's next rebuild.
-        if (DungeonRoomRouteSync.durableEditTarget(manager, group) == null) {
+        // Reject edits that would disappear on the next room rebuild.
+        if (DungeonRoomRouteLibrary.durableEditTarget(manager, group) == null) {
             showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
             return;
         }
@@ -252,7 +213,6 @@ public final class WaypointRepositionMode {
         startAddSession(manager, config, Mode.ADD_WHERE_LOOKING, false);
     }
 
-    /** Capture the current crosshair target and open the naming screen immediately. */
     public static void openAddWhereLooking(ActiveGroupManager manager, WaypointerConfig config) {
         if (manager == null || config == null) return;
 
@@ -302,9 +262,11 @@ public final class WaypointRepositionMode {
             }
         }
         if (editModeEnabled && missingWorld) {
+            if (editManager != null) editManager.isolateRouteForEditing(null);
             editModeEnabled = false;
             editManager = null;
             editConfig = null;
+            editTargetGroupId = null;
         }
     }
 
@@ -312,7 +274,7 @@ public final class WaypointRepositionMode {
         if (clickCount == 0) return true;
         if (!editModeEnabled) return false;
 
-        SelectedWaypoint selected = findWaypointUnderCrosshair(mc);
+        WaypointEditPicker.Selection selected = EDIT_PICKER.find(mc, editManager, editConfig);
         if (selected == null) {
             clearEditSelectionCycle();
             return true;
@@ -348,7 +310,7 @@ public final class WaypointRepositionMode {
         if (isDuplicateEditModeAction(mc.level)) return InteractionResult.FAIL;
         rememberEditModeAction(mc.level);
 
-        SelectedWaypoint selected = findWaypointUnderCrosshair(mc);
+        WaypointEditPicker.Selection selected = EDIT_PICKER.find(mc, editManager, editConfig);
         if (selected == null) {
             return InteractionResult.FAIL;
         }
@@ -367,7 +329,7 @@ public final class WaypointRepositionMode {
     static boolean removeWaypoint(ActiveGroupManager manager, WaypointGroup visibleGroup,
                                   int waypointIndex) {
         if (manager == null || visibleGroup == null || waypointIndex < 0) return false;
-        WaypointGroup target = DungeonRoomRouteSync.durableEditTarget(manager, visibleGroup);
+        WaypointGroup target = DungeonRoomRouteLibrary.durableEditTarget(manager, visibleGroup);
         if (target == null || waypointIndex >= target.size()) return false;
         target.remove(waypointIndex);
         return true;
@@ -406,18 +368,13 @@ public final class WaypointRepositionMode {
         return InteractionResult.FAIL;
     }
 
-    /**
-     * Resolve the route that receives a right-click waypoint while Edit Mode is
-     * active. Editor-started sessions must retain their explicit route. Generic
-     * keybind sessions keep the long-standing active-route fallback.
-     */
     static WaypointGroup editModeAddTarget(ActiveGroupManager manager) {
         if (manager == null) return null;
         if (editTargetGroupId == null) return manager.getOrCreateActiveGroup();
 
         WaypointGroup selected = manager.get(editTargetGroupId);
         if (selected == null) return null;
-        return DungeonRoomRouteSync.durableEditTarget(manager, selected);
+        return DungeonRoomRouteLibrary.durableEditTarget(manager, selected);
     }
 
     private static boolean isDuplicateEditModeAction(ClientLevel level) {
@@ -468,7 +425,7 @@ public final class WaypointRepositionMode {
     private static boolean isDungeonRoomGroup(WaypointGroup group) {
         return group != null
                 && !group.temp()
-                && DungeonRoomData.definition(group.zoneId()) != null;
+                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
     }
 
     private static boolean isShiftDown() {
@@ -482,182 +439,6 @@ public final class WaypointRepositionMode {
     private static void playEditSound(Minecraft mc, WaypointerConfig config) {
         if (mc == null || config == null || !config.editSounds()) return;
         mc.getSoundManager().play(SimpleSoundInstance.forUI(SoundEvents.STONE_HIT, 0.55F, 0.55F));
-    }
-
-    private static SelectedWaypoint findWaypointUnderCrosshair(Minecraft mc) {
-        if (mc == null || mc.player == null || mc.level == null) return null;
-        if (editManager == null || editConfig == null) return null;
-
-        ClientLevel level = mc.level;
-        Vec3 origin = MinecraftCompat.mainCamera(mc.gameRenderer).position();
-        Vec3 view = mc.player.getViewVector(1.0F);
-        Vec3 direction = normalizedDirection(view);
-        if (direction == null) return null;
-
-        List<SelectedWaypoint> candidates = new ArrayList<>();
-        List<Double> distances = new ArrayList<>();
-
-        for (WaypointGroup group : editManager.activeGroups()) {
-            group.forEachVisibleIndex(editConfig.keepSubwaypointsVisibleUntilNextWaypoint(),
-                    index -> {
-                if (index < 0 || index >= group.size()) return;
-
-                Waypoint waypoint = group.get(index);
-                AABB bounds = WaypointRenderer.waypointBoxBounds(level, waypoint);
-                if (bounds == null) return;
-
-                double distance = rayBoxDistance(origin, direction,
-                        expandedBounds(bounds, EDIT_PICK_PADDING), EDIT_PICK_RANGE);
-                if (distance < 0.0) return;
-
-                insertEditPickCandidate(candidates, distances,
-                        new SelectedWaypoint(group, index), distance);
-            });
-        }
-
-        return chooseEditSelectionCandidate(candidates);
-    }
-
-    private static void insertEditPickCandidate(List<SelectedWaypoint> candidates,
-                                                List<Double> distances,
-                                                SelectedWaypoint candidate,
-                                                double distance) {
-        if (candidates == null
-                || distances == null
-                || candidate == null
-                || !Double.isFinite(distance)
-                || distance < 0.0) {
-            return;
-        }
-        if (candidates.size() != distances.size()) {
-            candidates.clear();
-            distances.clear();
-        }
-
-        int insertAt = 0;
-        while (insertAt < distances.size() && distances.get(insertAt) <= distance) {
-            insertAt++;
-        }
-        candidates.add(insertAt, candidate);
-        distances.add(insertAt, distance);
-    }
-
-    private static SelectedWaypoint chooseEditSelectionCandidate(List<SelectedWaypoint> candidates) {
-        if (candidates == null || candidates.isEmpty()) {
-            clearEditSelectionCycle();
-            return null;
-        }
-
-        int previousPosition = -1;
-        for (int i = 0; i < candidates.size(); i++) {
-            SelectedWaypoint candidate = candidates.get(i);
-            if (candidate.group() == lastEditSelectionGroup
-                    && candidate.waypointIndex() == lastEditSelectionIndex) {
-                previousPosition = i;
-                break;
-            }
-        }
-
-        int chosenIndex = previousPosition >= 0
-                ? (previousPosition + 1) % candidates.size()
-                : 0;
-        SelectedWaypoint chosen = candidates.get(chosenIndex);
-        lastEditSelectionGroup = chosen.group();
-        lastEditSelectionIndex = chosen.waypointIndex();
-        return chosen;
-    }
-
-    private static Vec3 normalizedDirection(Vec3 view) {
-        if (view == null
-                || !Double.isFinite(view.x)
-                || !Double.isFinite(view.y)
-                || !Double.isFinite(view.z)) {
-            return null;
-        }
-
-        double lengthSq = view.x * view.x + view.y * view.y + view.z * view.z;
-        if (lengthSq <= RAY_AXIS_EPSILON * RAY_AXIS_EPSILON) return null;
-
-        double invLength = 1.0 / Math.sqrt(lengthSq);
-        return new Vec3(view.x * invLength, view.y * invLength, view.z * invLength);
-    }
-
-    private static AABB expandedBounds(AABB bounds, double padding) {
-        double safePadding = Double.isFinite(padding) && padding > 0.0 ? padding : 0.0;
-        return new AABB(
-                bounds.minX - safePadding,
-                bounds.minY - safePadding,
-                bounds.minZ - safePadding,
-                bounds.maxX + safePadding,
-                bounds.maxY + safePadding,
-                bounds.maxZ + safePadding);
-    }
-
-    private static double rayBoxDistance(Vec3 origin, Vec3 direction, AABB box,
-                                         double maxDistance) {
-        if (origin == null || direction == null || box == null) return -1.0;
-        if (!Double.isFinite(maxDistance) || maxDistance < 0.0) return -1.0;
-        if (!Double.isFinite(origin.x) || !Double.isFinite(origin.y) || !Double.isFinite(origin.z)) {
-            return -1.0;
-        }
-        if (!Double.isFinite(direction.x)
-                || !Double.isFinite(direction.y)
-                || !Double.isFinite(direction.z)) {
-            return -1.0;
-        }
-
-        double tMin = 0.0;
-        double tMax = maxDistance;
-
-        if (Math.abs(direction.x) < RAY_AXIS_EPSILON) {
-            if (origin.x < box.minX || origin.x > box.maxX) return -1.0;
-        } else {
-            double inv = 1.0 / direction.x;
-            double near = (box.minX - origin.x) * inv;
-            double far = (box.maxX - origin.x) * inv;
-            if (near > far) {
-                double swap = near;
-                near = far;
-                far = swap;
-            }
-            tMin = Math.max(tMin, near);
-            tMax = Math.min(tMax, far);
-            if (tMin > tMax) return -1.0;
-        }
-
-        if (Math.abs(direction.y) < RAY_AXIS_EPSILON) {
-            if (origin.y < box.minY || origin.y > box.maxY) return -1.0;
-        } else {
-            double inv = 1.0 / direction.y;
-            double near = (box.minY - origin.y) * inv;
-            double far = (box.maxY - origin.y) * inv;
-            if (near > far) {
-                double swap = near;
-                near = far;
-                far = swap;
-            }
-            tMin = Math.max(tMin, near);
-            tMax = Math.min(tMax, far);
-            if (tMin > tMax) return -1.0;
-        }
-
-        if (Math.abs(direction.z) < RAY_AXIS_EPSILON) {
-            if (origin.z < box.minZ || origin.z > box.maxZ) return -1.0;
-        } else {
-            double inv = 1.0 / direction.z;
-            double near = (box.minZ - origin.z) * inv;
-            double far = (box.maxZ - origin.z) * inv;
-            if (near > far) {
-                double swap = near;
-                near = far;
-                far = swap;
-            }
-            tMin = Math.max(tMin, near);
-            tMax = Math.min(tMax, far);
-            if (tMin > tMax) return -1.0;
-        }
-
-        return tMin <= maxDistance ? tMin : -1.0;
     }
 
     private static void commit(Minecraft mc) {
@@ -698,17 +479,8 @@ public final class WaypointRepositionMode {
             showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
             return;
         }
-        if (isDungeonRoomGroup(target)) {
-            // Stored room routes are room-local; convert the picked world block
-            // into the room frame before writing.
-            int[] stored = DungeonRoomWaypointPlacement.toStoredPrecisePosition(target,
-                    pos.getX() * Waypoint.PRECISE_SCALE,
-                    pos.getY() * Waypoint.PRECISE_SCALE,
-                    pos.getZ() * Waypoint.PRECISE_SCALE);
-            target.moveWaypointToPrecise(session.waypointIndex, stored[0], stored[1], stored[2]);
-        } else {
-            target.moveWaypointTo(session.waypointIndex, pos.getX(), pos.getY(), pos.getZ());
-        }
+        DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(
+                target, session.waypointIndex, pos.getX(), pos.getY(), pos.getZ());
         session.manager.fireDataChanged();
         active = null;
         finishMoveSession(mc, session);
@@ -734,15 +506,8 @@ public final class WaypointRepositionMode {
         finishMoveSession(mc, session);
     }
 
-    /**
-     * The group a committed move must mutate. Edit-mode picks select the
-     * runtime mirror (that is what renders), but the mirror is rebuilt on
-     * every data change -- the durable edit goes to the stored room-local
-     * source at the same index (mirror and source share waypoint order).
-     * Returns null when the mirror has no stored source (downloaded secrets).
-     */
     private static WaypointGroup moveWriteTarget(Session session) {
-        WaypointGroup target = DungeonRoomRouteSync.durableEditTarget(
+        WaypointGroup target = DungeonRoomRouteLibrary.durableEditTarget(
                 session.manager, session.group);
         if (target == null || session.waypointIndex >= target.size()) return null;
         return target;
@@ -755,27 +520,12 @@ public final class WaypointRepositionMode {
         }
     }
 
-    /**
-     * Append with room-local conversion: stored dungeon-room routes keep
-     * room-local coordinates, so a waypoint picked in world space converts
-     * before it lands in the group. Identity for every other group.
-     */
     private static void addStored(WaypointGroup group, Waypoint actualWaypoint) {
         group.add(DungeonRoomWaypointPlacement.toStoredWaypoint(group, actualWaypoint));
     }
 
-    /**
-     * In a room showing downloaded secrets with no user route, an add would
-     * either land on the throwaway mirror or silently suppress the secrets.
-     * Refuse and point at the conversion flow instead.
-     */
     private static boolean addBlockedByInstalledSecrets(Minecraft mc, ActiveGroupManager manager) {
-        if (manager == null || manager.currentZone() == null) return false;
-        if (!DungeonRoomRouteSync.secretsRequireConversion(manager, manager.currentZone().id())) {
-            return false;
-        }
-        showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
-        return true;
+        return false;
     }
 
     private static void openWhereLookingPrompt(Minecraft mc, Session session, BlockPos pos,
@@ -802,7 +552,7 @@ public final class WaypointRepositionMode {
         mc.execute(
                 () -> {
             WaypointerScreen parent = new WaypointerScreen(session.manager, session.config);
-            WaypointGroup editTarget = DungeonRoomRouteSync.durableEditTarget(
+            WaypointGroup editTarget = DungeonRoomRouteLibrary.durableEditTarget(
                     session.manager, session.group);
             if (editTarget == null) return;
             GroupEditScreen.openFocused(parent, session.manager, session.config,
@@ -894,8 +644,6 @@ public final class WaypointRepositionMode {
         MOVE_EXISTING,
         ADD_WHERE_LOOKING
     }
-
-    private record SelectedWaypoint(WaypointGroup group, int waypointIndex) {}
 
     private record PreciseTarget(int preciseX, int preciseY, int preciseZ) {
         double x() {

@@ -3,9 +3,9 @@
     "package": "com.babbur.waypointer.mixin.client",
     "compatibilityLevel": "JAVA_21",
     "client": [
-        "AvatarRendererMixin",
         "ChatComponentMixin",
         "ClientPacketListenerMixin",
+        "ContributorNameTagMixin",
         "PlayerInfoMixin",
         "PlayerTabOverlayMixin"
     ],

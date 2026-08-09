@@ -5,25 +5,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Ranked settings search over the catalog.
- *
- * <p>Per-token tiers, best (lowest) wins per token; an entry's rank is its
- * worst token tier so multi-token queries stay an AND. Tiers:
- *
- * <ol start="0">
- *   <li>substring of the label</li>
- *   <li>substring of a hidden alias ("esp", "fade", "performance", ...)</li>
- *   <li>substring of the category or group label (typing "chat" surfaces the family)</li>
- *   <li>substring of the tooltip</li>
- *   <li>subsequence of label+aliases, only for tokens of {@value #MIN_SUBSEQUENCE_TOKEN_LENGTH}+
- *       characters -- the old any-length subsequence fallback matched nearly everything
- *       on short queries, which recreated the overwhelm inside search</li>
- * </ol>
- *
- * <p>Final order: tier ascending, catalog declaration order as the stable
- * tiebreak. Results are complete -- the screen scrolls them, never truncates.
- */
 public final class SettingsSearch {
 
     static final int MIN_SUBSEQUENCE_TOKEN_LENGTH = 4;
@@ -31,21 +12,42 @@ public final class SettingsSearch {
     public record Match(Setting setting, String categoryId, String categoryLabel,
                         String groupLabel, int tier) {}
 
+    @FunctionalInterface
+    public interface TranslationResolver {
+        String resolve(String key, String fallback);
+    }
+
     private SettingsSearch() {}
 
     public static List<Match> search(String rawQuery, List<SettingsCatalog.Category> categories) {
+        return search(rawQuery, categories, (key, fallback) -> fallback);
+    }
+
+    public static List<Match> search(String rawQuery, List<SettingsCatalog.Category> categories,
+                                     TranslationResolver translations) {
         String query = rawQuery == null ? "" : rawQuery.trim().toLowerCase(Locale.ROOT);
         if (query.isEmpty()) return List.of();
         String[] tokens = query.split("\\s+");
+        TranslationResolver resolver = translations == null
+                ? (key, fallback) -> fallback
+                : translations;
 
         List<Match> out = new ArrayList<>();
         for (SettingsCatalog.Category category : categories) {
+            String categoryLabel = resolve(resolver,
+                    SettingsCatalog.categoryTranslationKey(category), category.label());
             for (SettingsCatalog.Group group : category.groups()) {
+                String groupLabel = group.label() == null ? "" : resolve(resolver,
+                        SettingsCatalog.groupTranslationKey(category, group), group.label());
                 for (Setting setting : group.settings()) {
                     if (setting.kind() == Setting.Kind.HIDDEN) continue;
-                    int tier = entryTier(tokens, setting, category.label(), group.label());
+                    String label = resolve(resolver, setting.labelTranslationKey(), setting.label());
+                    String tooltip = setting.tooltip().isEmpty() ? "" : resolve(resolver,
+                            setting.tooltipTranslationKey(), setting.tooltip());
+                    int tier = entryTier(tokens, label, setting.aliases(), tooltip,
+                            categoryLabel, groupLabel);
                     if (tier >= 0) {
-                        out.add(new Match(setting, category.id(), category.label(), group.label(), tier));
+                        out.add(new Match(setting, category.id(), categoryLabel, groupLabel, tier));
                     }
                 }
             }
@@ -54,13 +56,17 @@ public final class SettingsSearch {
         return out;
     }
 
-    /** Worst token tier, or -1 when any token fails to match. */
     static int entryTier(String[] tokens, Setting setting, String categoryLabel, String groupLabel) {
-        String label = setting.label().toLowerCase(Locale.ROOT);
-        String tooltip = setting.tooltip().toLowerCase(Locale.ROOT);
+        return entryTier(tokens, setting.label(), setting.aliases(), setting.tooltip(),
+                categoryLabel, groupLabel);
+    }
+
+    private static int entryTier(String[] tokens, String settingLabel, List<String> aliases,
+                                 String settingTooltip, String categoryLabel, String groupLabel) {
+        String label = settingLabel.toLowerCase(Locale.ROOT);
+        String tooltip = settingTooltip.toLowerCase(Locale.ROOT);
         String category = categoryLabel == null ? "" : categoryLabel.toLowerCase(Locale.ROOT);
         String group = groupLabel == null ? "" : groupLabel.toLowerCase(Locale.ROOT);
-        List<String> aliases = setting.aliases();
 
         int worst = 0;
         for (String token : tokens) {
@@ -70,6 +76,11 @@ public final class SettingsSearch {
             worst = Math.max(worst, tier);
         }
         return worst;
+    }
+
+    private static String resolve(TranslationResolver resolver, String key, String fallback) {
+        String resolved = resolver.resolve(key, fallback);
+        return resolved == null ? fallback : resolved;
     }
 
     /** All inputs must already be lowercase. */

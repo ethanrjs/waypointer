@@ -25,7 +25,6 @@ import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.dungeon.DungeonCoreSignature;
 import com.babbur.waypointer.dungeon.DungeonRoom;
 import com.babbur.waypointer.dungeon.DungeonRoomZoneBridge;
-import com.babbur.waypointer.dungeon.DungeonRouteSession;
 import com.babbur.waypointer.dungeon.DungeonStateTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -54,32 +53,14 @@ import static com.babbur.waypointer.screen.GuiTokens.HOVER;
 import static com.babbur.waypointer.screen.GuiTokens.PAD_OUTER;
 import static com.babbur.waypointer.screen.GuiTokens.ROW_H;
 import static com.babbur.waypointer.screen.GuiTokens.SELECTED;
-import static com.babbur.waypointer.screen.GuiTokens.SIDEBAR_W;
 import static com.babbur.waypointer.screen.GuiTokens.SURFACE;
 import static com.babbur.waypointer.screen.GuiTokens.SURFACE_SUBTLE;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 
-/**
- * All-in-one troubleshooting report for Waypointer. Mirrors the clinical sidebar/main
- * shape used by the other screens: a jump-list of sections on the left, a
- * structured, column-aligned report on the right. Never mutates the user's
- * groups or config -- read-only diagnostic surface for {@code /wp debug}.
- *
- * Rendering is a flat {@code List<Row>} with a uniform pixel pitch so scroll math
- * stays a single integer. Every section gets an anchor index so clicking the
- * sidebar jumps the report, and manual scrolling updates the sidebar highlight to
- * whatever section's header just crossed the top of the viewport.
- */
 public final class DebugInspectScreen extends Screen {
 
-    // --- report row model -----------------------------------------------------------------
-    //
-    // Using a sealed type instead of preformatted text strings so each row can render with
-    // pixel-aligned columns (the default MC font is proportional -- space-padded keys never
-    // line up cleanly). Every row renders in one lineH of vertical space so scroll can stay
-    // an integer row index; breathing room above sections is a Blank row, not a tall row.
 
     private sealed interface Row {
         record Section(String title, DebugReportExport.Category category) implements Row {}
@@ -93,24 +74,20 @@ public final class DebugInspectScreen extends Screen {
         record Blank() implements Row {}
     }
 
-    private record SectionAnchor(String label, String subtitle, int rowIndex) {}
+    private record SectionAnchor(String label, int rowIndex) {}
 
-    /** How many rows a single wheel notch advances the scroll. */
     private static final int SCROLL_ROWS_PER_NOTCH = 3;
+    private static final int DEBUG_SIDEBAR_W = 208;
+    private static final int DEBUG_MAIN_MIN_W = 100;
 
-    /** How long the Copy button keeps its confirmation label before reverting. */
     private static final long FEEDBACK_MS = 1500L;
 
-    /** Pixel column where the value half of every key:value row starts (relative to the row's inner left). */
     private static final int KEY_COL_W = 140;
 
-    /** Pixel column where a bit-row's label starts (after "bit N"). */
     private static final int BIT_LABEL_OFFSET = 30;
 
-    /** Pixel column where a string-pool entry's content starts (after "[N]"). */
     private static final int POOL_CONTENT_OFFSET = 30;
 
-    /** Subdued warm tone for error surfaces. Errors are signal, not decoration -- allowed as a one-off. */
     private static final int ERROR_TONE = 0xFFCA7A7A;
     private static final int SUCCESS_TONE = 0xFF8BD49C;
     private static final int WARN_TONE = 0xFFE6C07B;
@@ -139,7 +116,6 @@ public final class DebugInspectScreen extends Screen {
     private long rendererCaptureRequestedAt;
     private boolean awaitingFreshRendererCapture;
 
-    // Geometry recomputed each render(). Stashed so mouse handlers can hit-test.
     private int sidebarX1, sidebarX2, sidebarContentTop;
     private int mainX1, mainX2, mainTop, mainBottom;
     private int visibleRowCount;
@@ -166,7 +142,6 @@ public final class DebugInspectScreen extends Screen {
                 new DebugInspectScreen(parent, manager, config));
     }
 
-    // --- lifecycle -------------------------------------------------------------------------
 
     @Override
     protected void init() {
@@ -195,9 +170,6 @@ public final class DebugInspectScreen extends Screen {
         int footerY = height - FOOTER_H;
         GuiTokens.layoutFooter(width, footerY, left, back,
                 b -> {
-            // Stash the Copy button so we can swap its label on the copy-confirmation flash.
-            // Matching on the label string is ugly but the footer helper doesn't expose
-            // a better hook and this screen builds exactly one button with that label.
             if (Component.translatable("waypointer.screen.debug.copy_report").getString()
                             .contentEquals(b.getMessage().getString())
                     || Component.translatable("waypointer.screen.debug.copied").getString()
@@ -212,13 +184,7 @@ public final class DebugInspectScreen extends Screen {
         }
     }
 
-    // --- actions ---------------------------------------------------------------------------
 
-    /**
-     * The FPS stress test lives on the settings screen (System > Diagnostics);
-     * this deep-links there rather than duplicating the sweep UI here. Back
-     * from settings returns to this inspector.
-     */
     private void openPerfStressTest() {
         MinecraftCompat.setScreen(minecraft, SettingsScreen.atSetting(this, config,
                 WaypointerClient.dungeonConfig(), SettingsCatalog.ACTION_PERF_TEST));
@@ -378,7 +344,6 @@ public final class DebugInspectScreen extends Screen {
                 gpuImplementation = oneLine(gpu.implementation());
             }
         } catch (Throwable ignored) {
-            // Optional render backend diagnostics must never break /wp debug.
         }
         rows.add(new Row.KV("GPU vendor", gpuVendor));
         rows.add(new Row.KV("GPU backend", gpuBackend));
@@ -516,7 +481,6 @@ public final class DebugInspectScreen extends Screen {
                 ? "(none)" : "configured (hash " + config.waypointPainterDefaultPaint().hashCode() + ")"));
         if (dungeonConfig != null) {
             rows.add(new Row.KV("debugLogRoomChanges", String.valueOf(dungeonConfig.debugLogRoomChanges())));
-            rows.add(new Row.KV("routesPromptDismissed", String.valueOf(dungeonConfig.routesPromptDismissed())));
             rows.add(new Row.KV("defaultDirection", dungeonConfig.defaultDirection()));
         }
     }
@@ -550,9 +514,6 @@ public final class DebugInspectScreen extends Screen {
             rows.add(new Row.KV("Route behavior", "skipAhead=" + group.skipAheadEnabled()
                     + ", defaultRadius=" + formatRadius(group.defaultRadius())
                     + ", activeSubParent=" + group.activeSubwaypointParentIndex()));
-            rows.add(new Row.KVDim("Best time", group.bestTimeMillis() < 0L
-                    ? "(none)" : group.bestTimeMillis() + " ms"));
-
             List<Waypoint> waypoints = group.waypoints();
             for (int i = 0; i < waypoints.size(); i++) {
                 Waypoint waypoint = waypoints.get(i);
@@ -719,15 +680,6 @@ public final class DebugInspectScreen extends Screen {
             }
         }
 
-        var monitor = WaypointerClient.developerModeMonitor();
-        if (monitor != null) {
-            rows.add(new Row.KVDim("Dev monitor", "enabled=" + monitor.enabled()
-                    + ", visits=" + monitor.roomVisits()
-                    + ", uniqueRooms=" + monitor.uniqueRoomCount()
-                    + ", anomalies=" + monitor.anomalyCount()
-                    + (monitor.writeFailure().isBlank() ? "" : ", writeError=" + oneLine(monitor.writeFailure()))));
-        }
-
         List<String> logs = DebugLogTail.capture(60);
         addSection(rows, sections, "Recent Relevant Log Lines", logs.size() + " lines",
                 DebugReportExport.Category.RECENT_LOGS_AND_ACTIVITY);
@@ -757,7 +709,7 @@ public final class DebugInspectScreen extends Screen {
         if (group.runtimeOnly() && group.id().startsWith("dungeon:auto:")) {
             return "transformed world coordinates";
         }
-        if (com.babbur.waypointer.dungeon.data.DungeonRoomData.definition(group.zoneId()) != null) {
+        if (group.routeKind() == WaypointGroup.RouteKind.DUNGEON) {
             return "stored dungeon room-local coordinates";
         }
         return "world coordinates";
@@ -795,8 +747,6 @@ public final class DebugInspectScreen extends Screen {
         String report = DebugReportExport.format(exportSections(), options);
         minecraft.keyboardHandler.setClipboard(report);
         copyFeedbackUntil = System.currentTimeMillis() + FEEDBACK_MS;
-        // Plain label swap -- no color. The design system reserves the one accent for
-        // "the currently selected thing", not for ephemeral UI feedback.
         if (copyButton != null) {
             copyButton.setMessage(Component.translatable("waypointer.screen.debug.copied"));
         }
@@ -831,7 +781,6 @@ public final class DebugInspectScreen extends Screen {
         while (!lines.isEmpty() && lines.getLast().isBlank()) lines.removeLast();
     }
 
-    // --- input -----------------------------------------------------------------------------
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
@@ -877,9 +826,6 @@ public final class DebugInspectScreen extends Screen {
     }
 
     private void syncSelectedSectionWithScroll() {
-        // The "current" section is the last one whose header has scrolled at-or-above
-        // the top of the viewport. A binary search is overkill given sections <20;
-        // a linear walk is honest about the workload.
         int best = 0;
         for (int i = 0; i < sections.size(); i++) {
             if (sections.get(i).rowIndex() <= scrollRows) best = i;
@@ -900,7 +846,6 @@ public final class DebugInspectScreen extends Screen {
                 Math.max(0, sections.size() - sidebarVisibleRows));
     }
 
-    // --- rendering -------------------------------------------------------------------------
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
@@ -914,19 +859,13 @@ public final class DebugInspectScreen extends Screen {
             }
         }
 
-        // --- header (title + right-aligned compact summary) ------------------------------
         g.text(font, getTitle(), PAD_OUTER, PAD_OUTER, TEXT, false);
-        String summary = buildHeaderSummary();
-        if (summary != null) {
-            int sw = font.width(summary);
-            g.text(font, summary, width - PAD_OUTER - sw, PAD_OUTER, TEXT_DIM, false);
-        }
 
         int top = PAD_OUTER + 10 + GAP_SECTION;
         int bottom = height - FOOTER_H - GAP_SECTION;
 
         this.sidebarX1 = PAD_OUTER;
-        this.sidebarX2 = sidebarX1 + SIDEBAR_W;
+        this.sidebarX2 = sidebarX1 + debugSidebarWidth(width);
         this.mainX1 = sidebarX2 + GAP_SECTION;
         this.mainX2 = width - PAD_OUTER;
         this.mainTop = top;
@@ -936,35 +875,12 @@ public final class DebugInspectScreen extends Screen {
         renderMain(g, mainX1, top, mainX2, bottom);
     }
 
-    private String buildHeaderSummary() {
-        StringBuilder summary = new StringBuilder();
-        if (performanceStats != null) {
-            summary.append(performanceStats.activeGroups()).append(" active groups")
-                    .append("   .   ").append(performanceStats.activeWaypoints()).append(" active pts")
-                    .append("   .   ").append(performanceStats.activeVisibleWaypoints()).append(" renderable")
-                    .append("   .   ")
-                    .append(performanceStats.estimatedProximityIndexVisitsPerTick())
-                    .append(" proximity visits/tick");
-        }
-        if (debug != null) {
-            if (!summary.isEmpty()) summary.append("   |   ");
-            int wps = totalWaypoints(debug);
-            summary.append("codec ")
-                    .append(debug.inputChars()).append(" ch -> ")
-                    .append(debug.compressedBytes()).append(" B")
-                    .append("   .   ")
-                    .append(debug.decodedGroups().size())
-                    .append(debug.decodedGroups().size() == 1 ? " group" : " groups")
-                    .append("   .   ")
-                    .append(wps).append(wps == 1 ? " pt" : " pts");
-        } else if (codecError != null) {
-            if (!summary.isEmpty()) summary.append("   |   ");
-            summary.append("codec unavailable");
-        }
-        return summary.isEmpty() ? null : summary.toString();
+    static int debugSidebarWidth(int screenWidth) {
+        int available = Math.max(0, screenWidth - PAD_OUTER * 2 - GAP_SECTION);
+        return Math.min(available, Math.max(80,
+                Math.min(DEBUG_SIDEBAR_W, available - DEBUG_MAIN_MIN_W)));
     }
 
-    // --- sidebar ---------------------------------------------------------------------------
 
     private void renderSidebar(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2,
                                 int mouseX, int mouseY) {
@@ -1010,15 +926,11 @@ public final class DebugInspectScreen extends Screen {
         if (selected) g.fill(x1, y, x1 + 2, y + ROW_H, ACCENT);
 
         int textColor = selected ? TEXT : TEXT_DIM;
-        g.text(font, s.label(), x1 + GAP + 2, y + 6, textColor, false);
-
-        if (s.subtitle() != null && !s.subtitle().isEmpty()) {
-            int sw = font.width(s.subtitle());
-            g.text(font, s.subtitle(), x2 - GAP - sw, y + 6, TEXT_MUTED, false);
-        }
+        String shown = font.plainSubstrByWidth(s.label(),
+                Math.max(0, x2 - x1 - GAP * 2 - 4));
+        g.text(font, shown, x1 + GAP + 2, y + 6, textColor, false);
     }
 
-    // --- main report -----------------------------------------------------------------------
 
     private void renderMain(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
         g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
@@ -1133,8 +1045,6 @@ public final class DebugInspectScreen extends Screen {
 
     private void drawWaypointRow(GuiGraphicsExtractor g, DecodeDebug.WaypointDebug wp,
                                   int x, int y, int xEnd) {
-        // Column layout (measured in pixels, not spaces):
-        //   [ #idx (3) ] [ coords (120) ] [ flags (50) ] [ swatch+hex (70) ] [ name+radius fill ]
         int xIdx    = x;
         int xCoords = x + 20;
         int xFlags  = x + 20 + 120;
@@ -1149,9 +1059,6 @@ public final class DebugInspectScreen extends Screen {
 
         g.text(font, shortByte(wp.wpFlagsByte()), xFlags, y, HEX_TONE, false);
 
-        // 7x7 color swatch so the wire-level color is visible at a glance alongside the hex.
-        // This is data, not chrome -- the ACCENT-only rule is about UI surface color,
-        // and a waypoint's color is part of the payload we're inspecting.
         if (wp.hasColor()) {
             int swatchColor = 0xFF000000 | (wp.color() & 0xFFFFFF);
             g.fill(xSwatch, y + 1, xSwatch + 7, y + 8, swatchColor);
@@ -1159,8 +1066,6 @@ public final class DebugInspectScreen extends Screen {
                     xHex, y, HEX_TONE, false);
         }
 
-        // Name and radius share the right tail. Name takes priority; if both, name wins
-        // and radius is suppressed in the tabular view (it still shows in the Copy report).
         int cx = xExtras;
         if (wp.hasName()) {
             String name = "\"" + wp.name() + "\"";
@@ -1198,8 +1103,6 @@ public final class DebugInspectScreen extends Screen {
         for (int i = 0; i < lines.length; i++) {
             int tw = font.width(lines[i]);
             int tx = x1 + ((x2 - x1) - tw) / 2;
-            // First line gets the warm error tone; the rest (hint / detail) stay neutral
-            // so the color doesn't shout over every remediation instruction.
             g.text(font, lines[i], tx, cy + i * lineH, i == 0 ? ERROR_TONE : TEXT_DIM, false);
         }
     }
@@ -1213,7 +1116,6 @@ public final class DebugInspectScreen extends Screen {
         g.fill(x, thumbY, x + 2, thumbY + thumbH, 0xC0FFFFFF);
     }
 
-    // --- report building --------------------------------------------------------------------
 
     private static void buildReport(DecodeDebug d, List<Row> rows, List<SectionAnchor> sections) {
         addSection(rows, sections, "Codec Pipeline", null,
@@ -1255,9 +1157,6 @@ public final class DebugInspectScreen extends Screen {
             rows.add(new Row.Bit(7, "reserved",      d.reservedBit7()));
         }
         if (d.hasLabel()) {
-            // Show the sanitized label inline; useful both as proof the bit
-            // matches reality and so debugging weird labels (truncation, hidden
-            // codepoints) doesn't require a separate command.
             String shown = d.label().isEmpty() ? "(empty after sanitize)" : "\"" + d.label() + "\"";
             rows.add(new Row.KV("Label", shown));
         }
@@ -1387,33 +1286,6 @@ public final class DebugInspectScreen extends Screen {
             rows.add(new Row.KVDim("Line", bridge.line));
         }
 
-        DungeonRouteSession.DebugSnapshot route = snapshot == null ? null : snapshot.routeSession;
-        addSection(rows, sections, "Built-in Dungeon Secret Progress",
-                route == null ? "unavailable" : route.roomKey,
-                DebugReportExport.Category.SERVER_CONTEXT);
-        rows.add(new Row.KVDim("Source", "DungeonRoomData built-in secret definitions"));
-        rows.add(new Row.KVDim("Lifetime", "Current dungeon run; not persisted user-route progress"));
-        if (route == null) {
-            rows.add(new Row.KVWarn("Unavailable", "Dungeon route session is not installed."));
-        } else {
-            rows.add(new Row.KV("Room present", String.valueOf(route.roomPresent)));
-            rows.add(new Row.KV("Room key", route.roomKey));
-            rows.add(new Row.KVDim("Physical key", route.physicalKey));
-            rows.add(new Row.KV("Initialized", String.valueOf(route.progressInitialized)));
-            rows.add(new Row.KV("Current secret", String.valueOf(route.currentSecretIndex)));
-            rows.add(new Row.KV("Counts", "total=" + route.totalProgressWaypoints
-                    + ", found=" + route.foundCount
-                    + ", current=" + route.currentCount
-                    + ", upcoming=" + route.upcomingCount
-                    + ", nonProgress=" + route.nonProgressCount));
-            rows.add(new Row.KV("Found indexes", route.foundSecretIndices.isEmpty()
-                    ? "(none)"
-                    : route.foundSecretIndices.toString()));
-            rows.add(new Row.KV("Complete", String.valueOf(route.complete)));
-            rows.add(new Row.KV("Aliases", route.aliasCount + " for room, " + route.progressEntryCount + " stored"));
-            rows.add(new Row.KVDim("Last reset", route.lastResetReason + " " + formatAge(route.lastResetAtMillis)));
-        }
-
     }
 
     private static void buildPerformanceReport(PerformanceStats stats,
@@ -1498,11 +1370,37 @@ public final class DebugInspectScreen extends Screen {
                                    String label, String subtitle,
                                    DebugReportExport.Category category) {
         if (!rows.isEmpty()) rows.add(new Row.Blank());
-        sections.add(new SectionAnchor(label, subtitle, rows.size()));
+        sections.add(new SectionAnchor(sidebarSectionLabel(label), rows.size()));
         rows.add(new Row.Section(label, category));
     }
 
-    // --- text formatting --------------------------------------------------------------------
+    static String sidebarSectionLabel(String label) {
+        if (label == null) return "";
+        String unavailableSuffix = " (Unavailable)";
+        boolean unavailable = label.endsWith(unavailableSuffix);
+        String base = unavailable
+                ? label.substring(0, label.length() - unavailableSuffix.length())
+                : label;
+        String concise = switch (base) {
+            case "Troubleshooting Report" -> "Summary";
+            case "Active Mods and Versions" -> "Mods";
+            case "Server, Player, and Location" -> "Server & location";
+            case "Storage Health" -> "Storage";
+            case "Performance Snapshot" -> "Performance";
+            case "All Settings" -> "Settings";
+            case "Tracer and Dungeon Path Settings" -> "Tracers & paths";
+            case "Dungeon Entry Path Outcomes" -> "Dungeon paths";
+            case "Active Routes and Waypoints" -> "Active routes";
+            case "Dungeon Overview" -> "Dungeon";
+            case "Built-in Dungeon Secret Progress" -> "Secret progress";
+            case "Recent Settings Changes" -> "Recent changes";
+            case "Recent Logs and Activity" -> "Recent activity";
+            case "Codec Clipboard" -> "Codec";
+            default -> base;
+        };
+        return unavailable ? concise + " unavailable" : concise;
+    }
+
 
     private static String formatSegments(List<Long> segments) {
         if (segments == null || segments.isEmpty()) return "(none)";
@@ -1577,16 +1475,12 @@ public final class DebugInspectScreen extends Screen {
         return sb.toString();
     }
 
-    /** Compact hex form for table cells -- {@code "0xFF"}. */
     private static String shortByte(int byteValue) {
         return String.format(Locale.ROOT, "0x%02X", byteValue & 0xFF);
     }
 
-    /** Full hex + binary form for key:value rows -- {@code "0xFF  0b11111111"}. */
     private static String formatByteFull(int byteValue) {
         int b = byteValue & 0xFF;
-        // Pad the binary view independently so the space between "0x.." and "0b.." isn't
-        // consumed by a blanket zero-fill.
         String bin = String.format(Locale.ROOT, "%8s", Integer.toBinaryString(b)).replace(' ', '0');
         return String.format(Locale.ROOT, "0x%02X  0b%s", b, bin);
     }
@@ -1614,14 +1508,6 @@ public final class DebugInspectScreen extends Screen {
         if (nanos < 1_000_000_000L)     return String.format(Locale.ROOT, "%.2f ms", nanos / 1_000_000.0);
         return String.format(Locale.ROOT, "%.2f s", nanos / 1_000_000_000.0);
     }
-
-    private static int totalWaypoints(DecodeDebug d) {
-        int n = 0;
-        for (DecodeDebug.GroupDebug g : d.groups()) n += g.pointCount();
-        return n;
-    }
-
-    // --- boilerplate -----------------------------------------------------------------------
 
     @Override
     public boolean isPauseScreen() { return false; }

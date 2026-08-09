@@ -12,13 +12,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 
-/**
- * Captures a copyable performance snapshot from Waypointer's live model.
- *
- * <p>The values are intentionally counts and estimates, not profiler claims:
- * they describe how much work the current config asks hot paths to consider
- * before camera frustum, distance, and GPU-side effects enter the picture.
- */
+/** Reports workload estimates, not profiler measurements. */
 public record PerformanceStats(
         Instant capturedAt,
         String currentZoneId,
@@ -300,8 +294,9 @@ public record PerformanceStats(
     }
 
     private static boolean drawsLines(WaypointerConfig config) {
-        return config.beaconOpacity() > 0.0
-                && config.boxStyle() != WaypointerConfig.BoxStyle.FILLED;
+        return config.waypointOutlineOpacity() > 0.0
+                && (config.boxStyle() == WaypointerConfig.BoxStyle.OUTLINED
+                || config.boxStyle() == WaypointerConfig.BoxStyle.FILLED_OUTLINED);
     }
 
     private static boolean drawsFills(WaypointerConfig config) {

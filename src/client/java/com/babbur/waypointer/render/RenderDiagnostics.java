@@ -14,14 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/**
- * Last-frame renderer decisions exposed to the debug report.
- *
- * <p>The waypoint and tracer renderers are separate Fabric callbacks. Keeping the
- * decision state here lets the tracer suppress itself only after the waypoint
- * renderer has actually submitted a drawable dungeon path, while also giving
- * troubleshooting reports a single immutable view of what happened.</p>
- */
+/** Last-frame renderer decisions exposed to the debug report. */
 public final class RenderDiagnostics {
 
     private static final String PENDING_OUTCOME = "pending renderer decision";
@@ -32,8 +25,6 @@ public final class RenderDiagnostics {
     private static TracerSettings tracerSettings = new TracerSettings(
             false, 0.0, 0.0, false, false, 0.0, false, false, false);
     private static DungeonPathSettings dungeonPathSettings = new DungeonPathSettings(false, false);
-    private static volatile boolean debugScreenCaptureEnabled;
-    private static volatile boolean developerModeCaptureEnabled;
     private static volatile boolean detailedCaptureEnabled;
     private static volatile boolean irisHudFallbackActive;
     private static volatile long updatedAtEpochMillis;
@@ -41,22 +32,9 @@ public final class RenderDiagnostics {
     private RenderDiagnostics() {
     }
 
-    /** Enables detailed per-frame snapshots while the troubleshooting screen is open. */
     public static synchronized void setDetailedCaptureEnabled(boolean enabled) {
-        debugScreenCaptureEnabled = enabled;
-        updateDetailedCaptureEnabled();
-    }
-
-    /** Keeps renderer diagnostics live while internal diagnostic capture is enabled. */
-    public static synchronized void setDeveloperModeCaptureEnabled(boolean enabled) {
-        developerModeCaptureEnabled = enabled;
-        updateDetailedCaptureEnabled();
-    }
-
-    private static void updateDetailedCaptureEnabled() {
-        boolean next = debugScreenCaptureEnabled || developerModeCaptureEnabled;
-        if (detailedCaptureEnabled == next) return;
-        detailedCaptureEnabled = next;
+        if (detailedCaptureEnabled == enabled) return;
+        detailedCaptureEnabled = enabled;
         GROUPS.clear();
         tracerSettings = new TracerSettings(
                 false, 0.0, 0.0, false, false, 0.0, false, false, false);
@@ -68,7 +46,6 @@ public final class RenderDiagnostics {
         return updatedAtEpochMillis;
     }
 
-    /** Returns an immutable copy safe for report formatting off the render callback. */
     public static synchronized Snapshot snapshot() {
         List<GroupSnapshot> groups = new ArrayList<>(GROUPS.size());
         for (MutableGroupSnapshot group : GROUPS.values()) {
@@ -108,7 +85,7 @@ public final class RenderDiagnostics {
             GROUPS.clear();
             if (groups == null) return;
             for (WaypointGroup group : groups) {
-                if (group == null || DungeonRoomData.definition(group.zoneId()) == null) continue;
+                if (group == null || group.routeKind() != WaypointGroup.RouteKind.DUNGEON) continue;
                 boolean eligible = WaypointRenderer.shouldRenderDungeonEntryPath(
                         group, config.showDungeonEntryPathToFollowingWaypoints());
                 GROUPS.put(group.id(), MutableGroupSnapshot.from(group, eligible));

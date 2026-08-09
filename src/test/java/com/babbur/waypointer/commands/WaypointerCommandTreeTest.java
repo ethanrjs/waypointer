@@ -4,6 +4,7 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.ParseResults;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.mojang.brigadier.tree.CommandNode;
+import com.mojang.brigadier.tree.LiteralCommandNode;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.codec.WaypointCodec;
@@ -17,12 +18,8 @@ import com.babbur.waypointer.dungeon.DungeonDetectionConfidence;
 import com.babbur.waypointer.dungeon.DungeonRoom;
 import com.babbur.waypointer.dungeon.DungeonRoomShape;
 import com.babbur.waypointer.dungeon.DungeonRoomType;
-import com.babbur.waypointer.dungeon.DungeonSecretCategory;
 import com.babbur.waypointer.dungeon.DungeonStateTracker;
-import com.babbur.waypointer.dungeon.DungeonWaypoint;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
-import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
 import com.babbur.waypointer.input.WaypointAddFlow;
 import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
@@ -41,14 +38,15 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 class WaypointerCommandTreeTest {
 
     @Test
-    void registerAddsHighValueBranchesToEveryRootAlias() throws Exception {
+    void registerAddsHighValueBranchesAndRedirectsAliases() throws Exception {
         CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
-        List<String> roots = List.of("waypointer", "wptr", "wp");
         List<String> branches = List.of(
                 "gui",
                 "help",
@@ -85,13 +83,16 @@ class WaypointerCommandTreeTest {
                 "area",
                 "group");
 
-        for (String root : roots) {
-            CommandNode<FabricClientCommandSource> rootNode = dispatcher.getRoot().getChild(root);
-            assertNotNull(rootNode, "missing command root " + root);
-            for (String branch : branches) {
-                assertNotNull(rootNode.getChild(branch),
-                        "missing /" + root + " " + branch + " command branch");
-            }
+        CommandNode<FabricClientCommandSource> rootNode = dispatcher.getRoot().getChild("wp");
+        assertNotNull(rootNode, "missing canonical command root wp");
+        for (String branch : branches) {
+            assertNotNull(rootNode.getChild(branch), "missing /wp " + branch + " command branch");
+        }
+        for (String alias : List.of("waypointer", "wptr")) {
+            CommandNode<FabricClientCommandSource> aliasNode = dispatcher.getRoot().getChild(alias);
+            assertNotNull(aliasNode, "missing command alias " + alias);
+            assertSame(rootNode, aliasNode.getRedirect(), "/" + alias + " should redirect to /wp");
+            assertNotNull(aliasNode.getCommand(), "/" + alias + " should retain the root action");
         }
     }
 
@@ -104,6 +105,8 @@ class WaypointerCommandTreeTest {
                 Map.entry("wp help all", "all-command help lookup"),
                 Map.entry("wp help sub", "short subwaypoint help lookup"),
                 Map.entry("wp help debug", "debug help lookup"),
+                Map.entry("wptr help", "short alias redirect"),
+                Map.entry("waypointer list", "long alias redirect"),
                 Map.entry("wp skip", "advance active routes by one waypoint"),
                 Map.entry("wp unskip", "move routes back one waypoint"),
                 Map.entry("wp add at 10 64 -20 Secret Lever", "coordinate route insertion"),
@@ -118,7 +121,7 @@ class WaypointerCommandTreeTest {
                 Map.entry("wp reset", "active route progress reset"),
                 Map.entry("wp mode static", "active route mode command"),
                 Map.entry("wp radius 4.5", "active route radius command"),
-                Map.entry("wp move 1 0", "active route reorder command"),
+                Map.entry("wp move 1 1", "active route reorder command"),
                 Map.entry("wp waypoint move 1 here", "move waypoint to player"),
                 Map.entry("wp waypoint move 1 at 10 64 -20", "move waypoint to coordinates"),
                 Map.entry("wp waypoint rename 1 Secret Lever", "rename waypoint"),
@@ -170,7 +173,7 @@ class WaypointerCommandTreeTest {
 
         for (String command : List.of(
                 "wp radius 100.1",
-                "wp waypoint radius 0 100.1",
+                "wp waypoint radius 1 100.1",
                 "wp group radius 0 100.1")) {
             ParseResults<FabricClientCommandSource> parsed = dispatcher.parse(command, null);
             assertFalse(parsed.getExceptions().isEmpty(), command + " should reject unsafe reach radii");
@@ -246,7 +249,6 @@ class WaypointerCommandTreeTest {
 
     @Test
     void addPersistentWaypointAtStoresDungeonRoomLocalCoordinates() throws Exception {
-        DungeonRoomData.clearAllCustom();
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerConfig config = new WaypointerConfig();
         DungeonRoom room = new DungeonRoom(
@@ -268,10 +270,12 @@ class WaypointerCommandTreeTest {
         setCurrentRoom.setAccessible(true);
 
         try {
-            DungeonRoomData.defineRoom("command-room", "Command Room", room);
             trackerField.set(null, tracker);
             setCurrentRoom.invoke(tracker, room);
             manager.onZoneChanged(new Zone("command-room", "Command Room"));
+            WaypointGroup route = WaypointGroup.create("Route", "command-room");
+            route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+            manager.add(route);
 
             int index = WaypointerCommands.addPersistentWaypointAt(manager, config,
                     new WaypointAddFlow(), -95, 68, -121, "beam");
@@ -283,39 +287,6 @@ class WaypointerCommandTreeTest {
             assertEquals("beam", waypoint.name());
         } finally {
             trackerField.set(null, previousTracker);
-            DungeonRoomData.clearAllCustom();
-        }
-    }
-
-    @Test
-    void addPersistentWaypointRefusesDefinitionOnlyDungeonSecrets() {
-        DungeonRoomData.clearAllCustom();
-        ActiveGroupManager manager = new ActiveGroupManager();
-        WaypointerConfig config = new WaypointerConfig();
-        DungeonRoom room = new DungeonRoom(
-                DungeonRoomType.PUZZLE,
-                DungeonRoomShape.ONE_BY_ONE,
-                Direction.NW,
-                -74,
-                -138,
-                List.of(DungeonRoom.packSegment(-104, -168)),
-                "downloaded-room",
-                "Downloaded Room",
-                DungeonDetectionConfidence.CORE_CONFIRMED);
-
-        try {
-            DungeonRoomDefinition definition = DungeonRoomData.defineRoom(
-                    "downloaded-room", "Downloaded Room", room);
-            DungeonRoomData.addWaypoint(definition.id(), DungeonWaypoint.plain(
-                    "secret", DungeonSecretCategory.CHEST, 4, 70, 7, ""));
-            manager.onZoneChanged(new Zone("downloaded-room", "Downloaded Room"));
-
-            assertTrue(WaypointerCommands.definitionOnlyRouteRequiresConversion(manager));
-            assertEquals(-1, WaypointerCommands.addPersistentWaypointAt(
-                    manager, config, new WaypointAddFlow(), 10, 64, -20, "blocked"));
-            assertTrue(manager.allGroups().isEmpty());
-        } finally {
-            DungeonRoomData.clearAllCustom();
         }
     }
 
@@ -448,8 +419,30 @@ class WaypointerCommandTreeTest {
         group.add(Waypoint.at(1, 0, 0));
         group.toggleSubwaypoint(1);
 
-        assertEquals("index 1 (#1.1) 1, 0, 0",
+        assertEquals("Waypoint 2 (#1.1) 1, 0, 0",
                 WaypointerCommands.activeGroupIndexTooltip(group, 1));
+    }
+
+    @Test
+    void waypointNumbersConvertToZeroBasedStorageOnlyAtTheCommandBoundary() {
+        assertEquals(0, WaypointerCommands.waypointIndexFromNumber(1));
+        assertEquals(49, WaypointerCommands.waypointIndexFromNumber(50));
+    }
+
+    @Test
+    void waypointCommandsRejectZeroButRouteIndicesRemainZeroBased() throws Exception {
+        CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
+
+        for (String command : List.of(
+                "wp remove 0",
+                "wp insert 0",
+                "wp move 0 1",
+                "wp waypoint move 0 here",
+                "wp waypoint rename 0 name",
+                "wp sub 0")) {
+            assertFalse(dispatcher.parse(command, null).getExceptions().isEmpty(), command);
+        }
+        assertTrue(dispatcher.parse("wp group rename 0 route", null).getExceptions().isEmpty());
     }
 
     @Test
@@ -464,41 +457,55 @@ class WaypointerCommandTreeTest {
     }
 
     @Test
-    void helpTargetsResolveCommandAliasesToUsefulPages() throws Exception {
-        assertEquals(0, invokeResolveHelpPage(null), "blank help should open basics");
-        assertEquals(0, invokeResolveHelpPage("gui"), "gui command should resolve to basics");
-        assertEquals(0, invokeResolveHelpPage("list"), "list command should resolve to basics");
-        assertEquals(1, invokeResolveHelpPage("add"), "add command should resolve to route editing");
-        assertEquals(1, invokeResolveHelpPage("edit"), "nested edit alias should resolve to route editing");
-        assertEquals(1, invokeResolveHelpPage("editmode"), "editmode command should resolve to route editing");
-        assertEquals(1, invokeResolveHelpPage("insert"), "insert command should resolve to route editing");
-        assertEquals(2, invokeResolveHelpPage("sub"), "short sub command should resolve to subwaypoint help");
-        assertEquals(2, invokeResolveHelpPage("tiny"), "tiny command should resolve to subwaypoint help");
-        assertEquals(2, invokeResolveHelpPage("filled"), "filled command should resolve to subwaypoint help");
-        assertEquals(2, invokeResolveHelpPage("hap"), "hap command should resolve to subwaypoint help");
-        assertEquals(2, invokeResolveHelpPage("sts"), "sts command should resolve to subwaypoint help");
-        assertEquals(2, invokeResolveHelpPage("its"), "its command should resolve to subwaypoint help");
-        assertEquals(2, invokeResolveHelpPage("los"), "los command should resolve to subwaypoint help");
-        assertEquals(3, invokeResolveHelpPage("waypoint"), "waypoint command should resolve to details");
-        assertEquals(4, invokeResolveHelpPage("group"), "group command should resolve to groups");
-        assertEquals(4, invokeResolveHelpPage("area"), "area command should resolve to groups");
-        assertEquals(5, invokeResolveHelpPage("import"), "import command should resolve to sharing");
-        assertEquals(5, invokeResolveHelpPage("export"), "export command should resolve to sharing");
-        assertEquals(5, invokeResolveHelpPage("importfile"), "importfile command should resolve to sharing");
-        assertEquals(5, invokeResolveHelpPage("importchat"), "importchat command should resolve to sharing");
-        assertEquals(6, invokeResolveHelpPage("chat"), "chat section should resolve directly");
-        assertEquals(6, invokeResolveHelpPage("addtemp"), "addtemp command should resolve to chat/temp help");
-        assertEquals(6, invokeResolveHelpPage("chattemp"), "chattemp command should resolve to chat/temp help");
-        assertEquals(6, invokeResolveHelpPage("blacklist"), "blacklist command should resolve to chat/temp help");
-        assertEquals(7, invokeResolveHelpPage("debug"), "debug command should resolve to debug");
-        assertEquals(-1, invokeResolveHelpPage("devmode"),
-                "removed devmode command should not resolve to help");
-        assertEquals(-1, invokeResolveHelpPage("all"), "all is handled by runHelp, not page resolution");
-        assertEquals(-1, invokeResolveHelpPage("missing"), "unknown target should still be rejected");
+    void importSuccessCombinesStatusAndOpenActionIntoOneChatComponent() {
+        Component line = WaypointerCommands.importSuccessMessage(
+                1, "clipboard", "WAYPOINTER", 1,
+                new Zone("crystal_hollows", "Crystal Hollows"), "");
+
+        assertTrue(line.toString().contains("waypointer.command.import.success"));
+        assertTrue(line.toString().contains("waypointer.command.import.retargeted.one"));
+        assertTrue(line.getString().contains(" \u00B7 "));
+        assertFalse(line.getString().contains("\u00C2"));
+        Component openRun = line.getSiblings().get(line.getSiblings().size() - 1);
+        ClickEvent.RunCommand runCommand = assertInstanceOf(
+                ClickEvent.RunCommand.class, openRun.getStyle().getClickEvent());
+        assertEquals("/waypointer gui", runCommand.command());
     }
 
     @Test
-    void helpOutputHasBlankLinesBeforeAndAfterEveryPage() throws Exception {
+    void helpTargetsResolveCommandAliasesToUsefulPages() {
+        assertEquals(0, WaypointerCommandHelp.resolvePage(null), "blank help should open basics");
+        assertEquals(0, WaypointerCommandHelp.resolvePage("gui"), "gui command should resolve to basics");
+        assertEquals(0, WaypointerCommandHelp.resolvePage("list"), "list command should resolve to basics");
+        assertEquals(1, WaypointerCommandHelp.resolvePage("add"), "add command should resolve to route editing");
+        assertEquals(1, WaypointerCommandHelp.resolvePage("edit"), "nested edit alias should resolve to route editing");
+        assertEquals(1, WaypointerCommandHelp.resolvePage("editmode"), "editmode command should resolve to route editing");
+        assertEquals(1, WaypointerCommandHelp.resolvePage("insert"), "insert command should resolve to route editing");
+        assertEquals(2, WaypointerCommandHelp.resolvePage("sub"), "short sub command should resolve to subwaypoint help");
+        assertEquals(2, WaypointerCommandHelp.resolvePage("tiny"), "tiny command should resolve to subwaypoint help");
+        assertEquals(2, WaypointerCommandHelp.resolvePage("filled"), "filled command should resolve to subwaypoint help");
+        assertEquals(2, WaypointerCommandHelp.resolvePage("hap"), "hap command should resolve to subwaypoint help");
+        assertEquals(2, WaypointerCommandHelp.resolvePage("sts"), "sts command should resolve to subwaypoint help");
+        assertEquals(2, WaypointerCommandHelp.resolvePage("its"), "its command should resolve to subwaypoint help");
+        assertEquals(2, WaypointerCommandHelp.resolvePage("los"), "los command should resolve to subwaypoint help");
+        assertEquals(3, WaypointerCommandHelp.resolvePage("waypoint"), "waypoint command should resolve to details");
+        assertEquals(4, WaypointerCommandHelp.resolvePage("group"), "group command should resolve to groups");
+        assertEquals(4, WaypointerCommandHelp.resolvePage("area"), "area command should resolve to groups");
+        assertEquals(5, WaypointerCommandHelp.resolvePage("import"), "import command should resolve to sharing");
+        assertEquals(5, WaypointerCommandHelp.resolvePage("export"), "export command should resolve to sharing");
+        assertEquals(5, WaypointerCommandHelp.resolvePage("importfile"), "importfile command should resolve to sharing");
+        assertEquals(5, WaypointerCommandHelp.resolvePage("importchat"), "importchat command should resolve to sharing");
+        assertEquals(6, WaypointerCommandHelp.resolvePage("chat"), "chat section should resolve directly");
+        assertEquals(6, WaypointerCommandHelp.resolvePage("addtemp"), "addtemp command should resolve to chat/temp help");
+        assertEquals(6, WaypointerCommandHelp.resolvePage("chattemp"), "chattemp command should resolve to chat/temp help");
+        assertEquals(6, WaypointerCommandHelp.resolvePage("blacklist"), "blacklist command should resolve to chat/temp help");
+        assertEquals(7, WaypointerCommandHelp.resolvePage("debug"), "debug command should resolve to debug");
+        assertEquals(-1, WaypointerCommandHelp.resolvePage("all"), "all is handled before page resolution");
+        assertEquals(-1, WaypointerCommandHelp.resolvePage("missing"), "unknown target should still be rejected");
+    }
+
+    @Test
+    void helpOutputHasBlankLinesBeforeAndAfterEveryPage() {
         List<Component> feedback = new ArrayList<>();
         FabricClientCommandSource source = (FabricClientCommandSource) Proxy.newProxyInstance(
                 getClass().getClassLoader(),
@@ -510,32 +517,12 @@ class WaypointerCommandTreeTest {
                     }
                     throw new AssertionError("Unexpected command source call: " + method.getName());
                 });
-        WaypointerCommands commands = new WaypointerCommands(
-                new ActiveGroupManager(),
-                null,
-                new WaypointerConfig(),
-                new ChatImportCache(),
-                WaypointerCommandTreeTest::doNothingOpenGui);
-        Method runHelp = WaypointerCommands.class.getDeclaredMethod(
-                "runHelp", FabricClientCommandSource.class, String.class, String.class);
-        runHelp.setAccessible(true);
-
         for (String target : List.of("sharing", "all")) {
             feedback.clear();
 
-            assertEquals(1, runHelp.invoke(commands, source, "wp", target));
+            assertEquals(1, WaypointerCommandHelp.run(source, "wp", target));
             assertEquals("", feedback.getFirst().getString());
             assertEquals("", feedback.getLast().getString());
-        }
-    }
-
-    @Test
-    void registerOmitsDeveloperModeBranchFromEveryRootAlias() throws Exception {
-        CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
-
-        for (String root : List.of("waypointer", "wptr", "wp")) {
-            assertNull(dispatcher.getRoot().getChild(root).getChild("devmode"),
-                    "removed /" + root + " devmode command should stay absent");
         }
     }
 
@@ -566,12 +553,6 @@ class WaypointerCommandTreeTest {
         return (Integer) retarget.invoke(null, groups, target);
     }
 
-    private static int invokeResolveHelpPage(String target) throws Exception {
-        Method resolve = WaypointerCommands.class.getDeclaredMethod("resolveHelpPage", String.class);
-        resolve.setAccessible(true);
-        return (Integer) resolve.invoke(null, new Object[]{target});
-    }
-
     private static WaypointCodec.Options invokeExportOptionsFromConfig(WaypointerConfig config) throws Exception {
         WaypointerCommands commands = new WaypointerCommands(
                 new ActiveGroupManager(),
@@ -595,9 +576,12 @@ class WaypointerCommandTreeTest {
         Method register = WaypointerCommands.class.getDeclaredMethod(
                 "register", CommandDispatcher.class, String.class);
         register.setAccessible(true);
-        for (String root : List.of("waypointer", "wptr", "wp")) {
-            register.invoke(commands, dispatcher, root);
-        }
+        @SuppressWarnings("unchecked")
+        LiteralCommandNode<FabricClientCommandSource> root =
+                (LiteralCommandNode<FabricClientCommandSource>) register.invoke(
+                        commands, dispatcher, "wp");
+        commands.registerAlias(dispatcher, "wptr", root);
+        commands.registerAlias(dispatcher, "waypointer", root);
         return dispatcher;
     }
 

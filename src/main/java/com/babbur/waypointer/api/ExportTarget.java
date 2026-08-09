@@ -2,9 +2,6 @@ package com.babbur.waypointer.api;
 
 import com.babbur.waypointer.codec.WaypointExportCodec;
 
-/**
- * Share formats supported by Waypointer's public export API.
- */
 public enum ExportTarget {
     WAYPOINTER(WaypointExportCodec.Target.WAYPOINTER),
     SKYBLOCKER(WaypointExportCodec.Target.SKYBLOCKER),

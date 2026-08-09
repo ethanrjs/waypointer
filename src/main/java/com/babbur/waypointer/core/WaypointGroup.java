@@ -1,8 +1,6 @@
 package com.babbur.waypointer.core;
 
 import com.babbur.waypointer.color.GradientColorizer;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -14,51 +12,27 @@ import java.util.UUID;
 import java.util.function.IntConsumer;
 import java.util.function.IntPredicate;
 
-/**
- * An ordered, named route of {@link Waypoint}s bound to a single {@link Zone}.
- *
- * Mutable so the UI can rename/reorder without thrashing GC, but structural mutations
- * always run on the client thread (guaranteed by driving them from ticks and Screen callbacks).
- *
- * Progress tracking lives on the group, not on individual waypoints. That keeps
- * waypoints pure data and lets us swap groups in/out on zone changes without losing state.
- */
+/** Mutable route state. Mutate it only on the client thread. */
 public final class WaypointGroup {
 
-    /**
-     * Spatial bucket edge length for proximity checks. The default reach radius
-     * is 3 blocks, so 16 keeps normal queries to a small neighbourhood while
-     * still being coarse enough that large imports don't create huge maps.
-     */
     private static final int PROXIMITY_CELL_SIZE = 16;
     private static final int MAX_PROXIMITY_CELL_VISITS = 4096;
 
     public enum GradientMode {
-        /** Every waypoint uses the group's single static color. */
         STATIC,
-        /** Colors are auto-interpolated across the list; manual edits to unlocked entries get overwritten. */
         AUTO,
-        /** Each waypoint keeps its own color. Reordering does not recolor. */
         MANUAL
     }
 
-    /**
-     * How many waypoints of the group are surfaced to the renderer at once.
-     *
-     * SEQUENCE is the default because loaded routes usually have an intended
-     * order. It renders only the neighborhood of {@code currentIndex}, which
-     * keeps the HUD clean on long routes. STATIC remains available for map-like
-     * overlays where every point should be visible at once.
-     */
     public enum LoadMode {
-        /** All waypoints render at once (subject to FLAG_HIDE_BEACON / completion state). */
         STATIC,
-        /** Only the previous/current/next waypoints around {@code currentIndex} render. */
         SEQUENCE
     }
 
-    public record RouteCompletion(long elapsedMillis, boolean newBest,
-                                  int skippedWaypoints, boolean skippingEnabled) {}
+    public enum RouteKind {
+        REGULAR,
+        DUNGEON
+    }
 
     private final String id;
     private String name;
@@ -68,89 +42,26 @@ public final class WaypointGroup {
     private boolean enabled;
     private GradientMode gradientMode;
     private LoadMode loadMode;
+    private RouteKind routeKind;
     private double defaultRadius;
-    /**
-     * Per-group gate for the proximity skip-ahead mechanic. When {@code false},
-     * the proximity tracker only advances when the player reaches the
-     * immediate current waypoint on this group, even if the global mechanic is
-     * on. Flipped off automatically when a new waypoint is added so a
-     * freshly-added waypoint near the player isn't instantly skipped past.
-     */
     private boolean skipAheadEnabled = true;
-    /**
-     * Marks a group as a container for temporary-only waypoints (the dedicated
-     * "Temp Waypoints" bucket per zone). Temp groups are excluded from the
-     * progression pipeline -- proximity never advances them, completion never
-     * resets them -- because their contents come and go on their own schedule
-     * and shouldn't interact with the player's route through the zone.
-     */
     private boolean temp = false;
     private boolean runtimeOnly = false;
-    /** Fastest complete timed run; negative means this route has no saved record. */
-    private long bestTimeMillis = -1L;
-    /** Single-color route palette used when {@link #gradientMode} is {@link GradientMode#STATIC}. */
     private int staticColor = Waypoint.DEFAULT_COLOR;
-    // Per-group gradient endpoints (RGB). Each group can pick its own palette so a
-    // Foraging route and a Dungeons route don't have to share one theme. Defaults
-    // match the old globals: cyan start, red end -- picked to read as cool → hot
-    // so "next" is visually the calmest point on a route.
     private int gradientStartColor = 0x00BFFF;
     private int gradientEndColor   = 0xFF3040;
-    /** Optional six-face pixel paint. Null keeps the normal per-waypoint color fill. */
     private WaypointPaint paint;
-    /**
-     * Whether this route uses painted faces when either a route paint or the
-     * painter's global default exists. Defaults on so an "All Waypoints" paint
-     * also reaches routes created later; choosing Color, Gradient, or One turns
-     * it off for that route without deleting its artwork.
-     */
     private boolean paintEnabled = true;
-    /**
-     * Session-only reach state for static-route cycling. Unlike currentIndex,
-     * this is unordered: a static map overlay lets the player visit points in
-     * any order, hiding each one until the whole set has been touched.
-     */
     private transient boolean[] staticReached;
-    /**
-     * Newly-created waypoints are often at the player's feet. Suppress proximity
-     * on that one index until the player leaves its radius, otherwise the tick
-     * loop immediately marks it reached and the user never sees feedback that
-     * the add succeeded.
-     */
     private transient int proximitySuppressedIndex = -1;
-    /**
-     * Optional render-only focus for temp waypoint mode. Kept on the group so
-     * index shifts caused by temp expiry/removal stay local to the list mutation
-     * that caused them, instead of leaving a manager-level pointer stale.
-     */
     private transient Integer focusedVisibleIndex;
-    /**
-     * Sequence-mode visual hold for a reached main waypoint that owns
-     * subwaypoints. Progress still advances to the next main waypoint so the
-     * tracer navigates forward, but renderers keep this parent and its children
-     * bright until the next main waypoint is reached.
-     */
     private transient int activeSubwaypointParentIndex = -1;
-    /**
-     * Runtime-only cap on visible sequence stages. Zero keeps the normal route
-     * behavior; dungeon mirrors set 1..5 from Dungeon settings.
-     */
     private transient int visibleMainSteps;
-    /** Stored group id projected into this runtime-only dungeon mirror. */
     private transient String runtimeSourceGroupId;
     private transient int standSkipHoldIndex = -1;
     private transient long standSkipHoldStartedAtMillis;
-    /**
-     * Set when a static reach pass completes the full set and clears {@link #staticReached}.
-     * Lets {@link com.babbur.waypointer.progression.ProximityTracker} stop scanning for the
-     * rest of the tick so every waypoint shows as visible for at least one frame.
-     */
     private transient boolean staticCycleJustCompleted;
     private transient ProximityIndex proximityIndex;
-    private transient long routeStartedAtMillis = -1L;
-    private transient int routeSkippedWaypoints;
-    private transient boolean routeSkippingEnabled;
-    private transient RouteCompletion pendingRouteCompletion;
 
         public WaypointGroup(String id, String name, String zoneId) {
         this.id = Objects.requireNonNull(id);
@@ -161,6 +72,7 @@ public final class WaypointGroup {
         this.enabled = true;
         this.gradientMode = GradientMode.AUTO;
         this.loadMode = LoadMode.SEQUENCE;
+        this.routeKind = RouteKind.REGULAR;
         this.defaultRadius = Waypoint.DEFAULT_REACH_RADIUS;
     }
 
@@ -174,20 +86,10 @@ public final class WaypointGroup {
         return group;
     }
 
-    /**
-     * Independent copy carrying every field the export codecs read, detached
-     * from the live route so a background encode can never observe a concurrent
-     * edit -- {@link #waypoints()} hands out a view of the live list, not a
-     * copy, so iterating it off-thread would race any client-thread mutation.
-     *
-     * <p>Copies fields directly instead of going through the setters on
-     * purpose: the colour setters re-run {@code applyColorMode()}, which would
-     * repaint the copy and change what gets exported. {@link Waypoint} is an
-     * immutable record, so sharing the elements is safe.
-     */
     public WaypointGroup exportSnapshot() {
         WaypointGroup copy = new WaypointGroup(id, name, zoneId);
         copy.loadMode = loadMode;
+        copy.routeKind = routeKind;
         copy.gradientMode = gradientMode;
         copy.staticColor = staticColor;
         copy.gradientStartColor = gradientStartColor;
@@ -205,6 +107,7 @@ public final class WaypointGroup {
     public boolean enabled()      { return enabled; }
     public GradientMode gradientMode() { return gradientMode; }
     public LoadMode loadMode()    { return loadMode; }
+    public RouteKind routeKind()  { return routeKind; }
     public double defaultRadius() { return defaultRadius; }
         public int staticColor()      { return staticColor; }
     public int gradientStartColor() { return gradientStartColor; }
@@ -216,7 +119,6 @@ public final class WaypointGroup {
     public boolean runtimeOnly()    { return runtimeOnly; }
     public int visibleMainSteps()   { return visibleMainSteps; }
     public String runtimeSourceGroupId() { return runtimeSourceGroupId; }
-    public long bestTimeMillis()    { return bestTimeMillis; }
     public List<Waypoint> waypoints() { return Collections.unmodifiableList(waypoints); }
     public int size()             { return waypoints.size(); }
     public boolean isEmpty()      { return waypoints.isEmpty(); }
@@ -346,7 +248,6 @@ public final class WaypointGroup {
     public void setName(String newName)                 { this.name = newName == null ? "" : newName; }
         public void setZoneId(String newZoneId)             { this.zoneId = Zone.canonicalId(Objects.requireNonNull(newZoneId)); }
     public void setEnabled(boolean on)                  {
-        if (this.enabled != on) resetRouteTiming();
         this.enabled = on;
     }
     public void setDefaultRadius(double r)              { this.defaultRadius = Waypoint.normalizeDefaultRadius(r); invalidateProximityIndex(); }
@@ -355,16 +256,10 @@ public final class WaypointGroup {
     public void setRuntimeOnly(boolean on)              { this.runtimeOnly = on; }
     public void setVisibleMainSteps(int count)           { this.visibleMainSteps = Math.max(0, count); }
     public void setRuntimeSourceGroupId(String id)       { this.runtimeSourceGroupId = id; }
-    public void setBestTimeMillis(long millis)           { this.bestTimeMillis = Math.max(-1L, millis); }
+    public void setRouteKind(RouteKind kind)              { this.routeKind = Objects.requireNonNull(kind); }
     public void setPaint(WaypointPaint paint)            { this.paint = paint; }
     public void setPaintEnabled(boolean on)               { this.paintEnabled = on; }
 
-    /**
-     * Set the group's gradient endpoints. Setters immediately reapply the gradient
-     * when the group is in AUTO mode so the colour change is visible without the
-     * user needing a separate "apply" action. Locked waypoints are preserved by
-     * GradientColorizer so a per-waypoint override survives a gradient re-colour.
-     */
         public void setGradientStartColor(int rgb) {
         this.gradientStartColor = rgb & 0xFFFFFF;
         applyColorMode();
@@ -387,7 +282,6 @@ public final class WaypointGroup {
 
     public void setLoadMode(LoadMode mode) {
         LoadMode next = Objects.requireNonNull(mode);
-        if (loadMode != next) resetRouteTiming();
         this.loadMode = next;
     }
 
@@ -495,13 +389,11 @@ public final class WaypointGroup {
     }
 
     private boolean isDungeonRoute() {
-        return zoneId.equals("dungeon")
-                || zoneId.startsWith("dungeon_")
-                || DungeonRoomData.definition(zoneId) != null;
+        return routeKind == RouteKind.DUNGEON;
     }
 
     private boolean isDungeonRoomRoute() {
-        return DungeonRoomData.definition(zoneId) != null;
+        return routeKind == RouteKind.DUNGEON;
     }
 
     public Waypoint get(int index) {
@@ -522,15 +414,6 @@ public final class WaypointGroup {
         afterWaypointStructureChanged();
     }
 
-    /**
-     * Repositioning a waypoint is a visibility-affecting edit, not just a data
-     * replacement: if static reach hiding had already hidden this index, the
-     * moved marker would stay invisible until the whole static cycle reset.
-     *
-     * Block-coordinate moves intentionally re-center precise coordinates in the
-     * target block. Use {@link #moveWaypointToPrecise(int, int, int, int)} for
-     * sub-block editing flows that should preserve or set sixteenth-block offsets.
-     */
     public void moveWaypointTo(int index, int x, int y, int z) {
         waypoints.set(index, waypoints.get(index).withPos(x, y, z));
         afterWaypointStructureChanged();
@@ -547,7 +430,6 @@ public final class WaypointGroup {
         public void add(Waypoint w) {
         int oldSize = waypoints.size();
         waypoints.add(w);
-        resetRouteTiming();
         normalizeSubwaypointStructure();
         resizeStaticReachAfterAppend(oldSize);
         normalizeCurrentIndexToMain();
@@ -559,7 +441,6 @@ public final class WaypointGroup {
         if (additions.isEmpty()) return;
         int oldSize = waypoints.size();
         waypoints.addAll(additions);
-        resetRouteTiming();
         normalizeSubwaypointStructure();
         resizeStaticReachAfterAppend(oldSize);
         normalizeCurrentIndexToMain();
@@ -583,7 +464,6 @@ public final class WaypointGroup {
         public void insert(int index, Waypoint w) {
         int oldSize = waypoints.size();
         waypoints.add(index, w);
-        resetRouteTiming();
         waypoints.set(index, normalizeWaypointForIndex(index, w));
         if (index <= currentIndex) currentIndex++;
         if (proximitySuppressedIndex >= index) proximitySuppressedIndex++;
@@ -729,73 +609,6 @@ public final class WaypointGroup {
                 && (waypoint.flags() & Waypoint.DUNGEON_COMPLETION_FLAGS) != 0;
     }
 
-    /**
-     * Advance route progress while tracking a complete run. Timing begins when
-     * the first main waypoint is reached, so merely loading or enabling a route
-     * never counts as time spent on it.
-     */
-    public void advancePastTimed(int reachedIndex, boolean skippingEnabled, long nowMillis) {
-        advancePastTimed(reachedIndex, skippingEnabled, nowMillis, 0);
-    }
-
-    /** Advance the current target as an explicit user skip. */
-    public void skipCurrentTimed(long nowMillis) {
-        advancePastTimed(currentIndex, true, nowMillis, 1);
-    }
-
-    private void advancePastTimed(int reachedIndex, boolean skippingEnabled,
-                                  long nowMillis, int explicitSkips) {
-        if (temp || runtimeOnly || loadMode != LoadMode.SEQUENCE) {
-            advancePast(reachedIndex);
-            return;
-        }
-        // A single destination has no meaningful start-to-finish interval. Keep
-        // its normal progression/loop behavior, but never manufacture a 0 ms
-        // record or completion message from entering the same point.
-        if (mainWaypointCount() == 1) {
-            resetRouteTiming();
-            pendingRouteCompletion = null;
-            advancePast(reachedIndex);
-            return;
-        }
-
-        int from = currentIndex;
-        boolean timing = routeStartedAtMillis >= 0L;
-        if (!timing && from == firstMainIndex()) {
-            routeStartedAtMillis = nowMillis;
-            timing = true;
-        }
-
-        if (timing) {
-            routeSkippingEnabled |= skippingEnabled;
-            if (skippingEnabled) {
-                routeSkippedWaypoints += explicitSkips + skippedMainWaypoints(from, reachedIndex);
-            }
-        }
-
-        advancePast(reachedIndex);
-        if (!timing || !isComplete()) return;
-
-        long elapsedMillis = Math.max(0L, nowMillis - routeStartedAtMillis);
-        boolean newBest = bestTimeMillis < 0L || elapsedMillis < bestTimeMillis;
-        if (newBest) bestTimeMillis = elapsedMillis;
-        pendingRouteCompletion = new RouteCompletion(
-                elapsedMillis, newBest, routeSkippedWaypoints, routeSkippingEnabled);
-        resetRouteTiming();
-    }
-
-    public RouteCompletion consumeRouteCompletion() {
-        RouteCompletion completion = pendingRouteCompletion;
-        pendingRouteCompletion = null;
-        return completion;
-    }
-
-    public boolean removeBestTimeMillis(long expectedMillis) {
-        if (bestTimeMillis != expectedMillis) return false;
-        bestTimeMillis = -1L;
-        return true;
-    }
-
     public boolean retreatToPreviousTarget() {
         if (waypoints.isEmpty()) return false;
 
@@ -820,14 +633,6 @@ public final class WaypointGroup {
         return currentIndex != before;
     }
 
-    /**
-     * If {@code loopWhenComplete} is on and the player just finished the route
-     * (current index is past the last waypoint), snap back to the first waypoint
-     * so the route can be run again without manual reset.
-     *
-     * Call immediately after {@link #advancePast(int)} when that advance may have
-     * completed the route.
-     */
     public void restartIfRouteCompleted(boolean loopWhenComplete) {
         if (!loopWhenComplete || isEmpty()) return;
         if (!isComplete()) return;
@@ -845,7 +650,6 @@ public final class WaypointGroup {
         activeSubwaypointParentIndex = -1;
         resetStaticReachState();
         clearProximitySuppression();
-        resetRouteTiming();
     }
 
     public boolean isStaticWaypointReached(int index) {
@@ -855,11 +659,10 @@ public final class WaypointGroup {
                 && staticReached[index];
     }
 
-    /**
-     * Mark one static waypoint as reached. If that completes the visible set,
-     * the cycle immediately resets so every waypoint appears again for the next
-     * pass through the route.
-     */
+    boolean hasStaticReachState() {
+        return staticReached != null;
+    }
+
     public boolean markStaticWaypointReached(int index) {
         if (index < 0 || index >= waypoints.size()) return false;
         if (isSubwaypoint(index)) return false;
@@ -875,10 +678,6 @@ public final class WaypointGroup {
         return true;
     }
 
-    /**
-     * Whether this group just finished a static reach cycle on the current tick.
-     * Clears the flag so it is a one-shot signal for callers that batch marks per tick.
-     */
     public boolean consumeStaticCycleJustCompleted() {
         boolean v = staticCycleJustCompleted;
         staticCycleJustCompleted = false;
@@ -894,12 +693,7 @@ public final class WaypointGroup {
         focusNewWaypoint(index, true);
     }
 
-    /**
-     * @param resetStaticReachState when {@code false}, leaves {@link #staticReached} unchanged
-     *     (used after add/insert, which already resized reach bits to match the new list).
-     */
     public void focusNewWaypoint(int index, boolean resetStaticReachState) {
-        resetRouteTiming();
         if (waypoints.isEmpty()) {
             proximitySuppressedIndex = -1;
             return;
@@ -932,7 +726,6 @@ public final class WaypointGroup {
         return index == proximitySuppressedIndex;
     }
 
-    /** Keep a just-wrapped waypoint inert until the player leaves its reach radius. */
     public void suppressProximityUntilExit(int index) {
         proximitySuppressedIndex = index >= 0 && index < waypoints.size() ? index : -1;
     }
@@ -941,16 +734,6 @@ public final class WaypointGroup {
         proximitySuppressedIndex = -1;
     }
 
-    /**
-     * Drop every time-based temporary waypoint whose deadline has passed.
-     * Returns the number of waypoints removed so callers can short-circuit
-     * save/dirty notifications when nothing changed.
-     *
-     * <p>The reach-based and server-leave-based temps are handled elsewhere
-     * ({@code ProximityTracker} / {@code TempWaypointCleaner#onDisconnect}).
-     * Centralising only the time branch here keeps the scheduler code in one
-     * place and avoids spreading "what counts as expired" across modules.
-     */
     public int removeExpired(long nowMillis) {
         int removed = 0;
         for (int i = waypoints.size() - 1; i >= 0; i--) {
@@ -962,11 +745,6 @@ public final class WaypointGroup {
         return removed;
     }
 
-    /**
-     * Drop every temporary waypoint regardless of mode. Used on server
-     * disconnect -- the contract is that no temp waypoint outlives the session
-     * that created it.
-     */
     public int removeAllTemp() {
         int removed = 0;
         for (int i = waypoints.size() - 1; i >= 0; i--) {
@@ -979,7 +757,6 @@ public final class WaypointGroup {
     }
 
     public void setCurrentIndex(int index) {
-        resetRouteTiming();
         currentIndex = normalizedMainIndexFor(index);
         activeSubwaypointParentIndex = -1;
         clearProximitySuppression();
@@ -987,7 +764,6 @@ public final class WaypointGroup {
     }
 
     public void setCurrentTargetIndex(int index) {
-        resetRouteTiming();
         if (waypoints.isEmpty()) {
             currentIndex = 0;
             activeSubwaypointParentIndex = -1;
@@ -1008,7 +784,6 @@ public final class WaypointGroup {
         clearStandSkipHold();
     }
 
-    /** Radius the tracker should use for a given waypoint (its own override, else the group default). */
     public double effectiveRadius(Waypoint w) {
         return w.customRadius() > 0 ? w.customRadius() : defaultRadius;
     }
@@ -1067,7 +842,6 @@ public final class WaypointGroup {
     }
 
     private void afterWaypointStructureChanged() {
-        resetRouteTiming();
         normalizeSubwaypointStructure();
         normalizeCurrentIndexToMain();
         if (!isActiveSubwaypointParent(activeSubwaypointParentIndex)) {
@@ -1076,21 +850,6 @@ public final class WaypointGroup {
         clearStandSkipHold();
         staticReached = null;
         invalidateProximityIndex();
-    }
-
-    private int skippedMainWaypoints(int from, int reachedIndex) {
-        int skipped = 0;
-        int end = Math.min(reachedIndex, waypoints.size());
-        for (int i = Math.max(0, from); i < end; i++) {
-            if (!isSubwaypoint(i)) skipped++;
-        }
-        return skipped;
-    }
-
-    public void resetRouteTiming() {
-        routeStartedAtMillis = -1L;
-        routeSkippedWaypoints = 0;
-        routeSkippingEnabled = false;
     }
 
     private Waypoint normalizeWaypointForIndex(int index, Waypoint waypoint) {

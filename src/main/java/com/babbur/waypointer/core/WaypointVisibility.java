@@ -1,6 +1,5 @@
 package com.babbur.waypointer.core;
 
-/** Shared render/progression visibility helpers for waypoint-distance checks. */
 public final class WaypointVisibility {
 
     private WaypointVisibility() {

@@ -39,7 +39,7 @@ class DungeonRoomWaypointPlacementTest {
         WaypointGroup source = new WaypointGroup("source", "Creeper Beams", "creeper-beams");
         source.add(stored);
 
-        WaypointGroup projected = DungeonRoomRouteSync.transformedRouteGroupForRoom(room, source, null);
+        WaypointGroup projected = DungeonRoomRouteProjection.transformedRouteGroupForRoom(room, source);
 
         assertEquals(actual.preciseX(), projected.get(0).preciseX());
         assertEquals(actual.preciseY(), projected.get(0).preciseY());
@@ -58,7 +58,7 @@ class DungeonRoomWaypointPlacementTest {
         WaypointGroup source = new WaypointGroup("source", "Creeper Beams", "creeper-beams");
         source.add(stored);
 
-        WaypointGroup projected = DungeonRoomRouteSync.transformedRouteGroupForRoom(room, source, null);
+        WaypointGroup projected = DungeonRoomRouteProjection.transformedRouteGroupForRoom(room, source);
 
         assertEquals(actual.preciseX(), projected.get(0).preciseX());
         assertEquals(actual.preciseY(), projected.get(0).preciseY());
@@ -89,7 +89,6 @@ class DungeonRoomWaypointPlacementTest {
     @EnumSource(Direction.class)
     void durableMirrorMoveStoresRoomLocalCoordinatesAndSurvivesReload(Direction direction)
             throws Exception {
-        DungeonRoomData.clearAllCustom();
         ActiveGroupManager manager = new ActiveGroupManager();
         DungeonRoom room = room(direction, -74, -138);
         DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
@@ -98,22 +97,24 @@ class DungeonRoomWaypointPlacementTest {
         Object previousTracker = trackerField.get(null);
 
         try {
-            DungeonRoomData.defineRoom("creeper-beams", "Creeper Beams", room);
             tracker.setCurrentRoom(room);
             trackerField.set(null, tracker);
 
             WaypointGroup stored = new WaypointGroup("stored", "User Route", "creeper-beams");
+            stored.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
             stored.add(Waypoint.at(1, 68, 2).withName("move me"));
             manager.add(stored);
 
             WaypointGroup mirror = new WaypointGroup(
-                    DungeonRoomRouteSync.generatedGroupId("creeper-beams"),
+                    DungeonRoomRouteProjection.generatedGroupId("creeper-beams"),
                     "User Route", "creeper-beams");
             mirror.setRuntimeOnly(true);
+            mirror.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+            mirror.setRuntimeSourceGroupId(stored.id());
             mirror.add(DungeonRoomWaypointPlacement.toActualWaypoint(room, stored.get(0)));
             manager.add(mirror);
 
-            WaypointGroup editTarget = DungeonRoomRouteSync.durableEditTarget(manager, mirror);
+            WaypointGroup editTarget = DungeonRoomRouteLibrary.durableEditTarget(manager, mirror);
             assertEquals(stored, editTarget);
 
             Waypoint desiredLocal = Waypoint.at(7, 70, -5);
@@ -139,7 +140,6 @@ class DungeonRoomWaypointPlacementTest {
             assertEquals("move me", loaded.get(0).name());
         } finally {
             trackerField.set(null, previousTracker);
-            DungeonRoomData.clearAllCustom();
         }
     }
 

@@ -31,6 +31,7 @@ public final class HypixelPlayerRankSource {
                 packet.getPrefix().orElse(null));
     }
 
+    /** Copy of the cached rank prefix, or null if unknown / not on Hypixel. */
     public static Component currentRankPrefix() {
         Component prefix = currentRankPrefix;
         return prefix == null ? null : prefix.copy();

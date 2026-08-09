@@ -12,20 +12,6 @@ import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
-/**
- * Shared side-effects run on every "player just created a waypoint" event,
- * regardless of source (keybind, command, chat-coord click, GUI "Add here").
- *
- * <p>Centralising the post-add behaviour prevents the bug where the rule was
- * added at one entry point but forgotten at another -- every add site now
- * funnels through {@link #afterWaypointAdded(WaypointGroup, int, boolean)} after mutating the
- * group, keeping the user-visible contract consistent.
- *
- * <p>The flow focuses the route on the newly-created waypoint, keeps the route
- * sequenced, disables route-level skip-ahead, then suppresses proximity for that
- * one index until the player steps away. Without the suppression, a waypoint
- * created at the player's feet would be advanced or hidden on the very next tick.
- */
 public final class WaypointAddFlow {
 
     public void afterWaypointAdded(WaypointGroup group, int waypointIndex,

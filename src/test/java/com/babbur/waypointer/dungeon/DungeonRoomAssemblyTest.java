@@ -1,17 +1,11 @@
 package com.babbur.waypointer.dungeon;
 
-import com.babbur.waypointer.core.ActiveGroupManager;
-import com.babbur.waypointer.dungeon.config.DungeonConfig;
-import com.babbur.waypointer.dungeon.data.DungeonRoomDefinition;
+import com.babbur.waypointer.dungeon.data.DungeonRoomCatalogEntry;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -20,7 +14,7 @@ class DungeonRoomAssemblyTest {
     private static final int STEP = DungeonMapMath.SEGMENT_BLOCKS;
 
     @Test
-    void everySegmentLoadOrderProducesOneCompleteAssemblyForSupportedRoomShapes() throws Exception {
+    void everySegmentLoadOrderProducesOneCompleteAssemblyForSupportedRoomShapes() {
         assertEveryLoadOrderAssembles(DungeonRoomShape.ONE_BY_TWO, List.of(
                 segment(0, 0), segment(1, 0)));
         assertEveryLoadOrderAssembles(DungeonRoomShape.ONE_BY_THREE, List.of(
@@ -34,46 +28,44 @@ class DungeonRoomAssemblyTest {
     }
 
     @Test
-    void bridgeDoesNotMergeAssembliesIntoAnIncompatibleRoomShape() throws Exception {
-        DungeonStateTracker tracker = new DungeonStateTracker(new ActiveGroupManager(), new DungeonConfig());
-        DungeonRoomDefinition definition = definition(DungeonRoomShape.ONE_BY_THREE);
+    void bridgeDoesNotMergeAssembliesIntoAnIncompatibleRoomShape() {
+        DungeonRoomResolver resolver = new DungeonRoomResolver();
+        DungeonRoomCatalogEntry definition = definition(DungeonRoomShape.ONE_BY_THREE);
 
-        attach(tracker, definition, segment(0, 0));
-        attach(tracker, definition, segment(2, 0));
-        attach(tracker, definition, segment(1, 1));
-        attach(tracker, definition, segment(1, 0));
+        attach(resolver, definition, segment(0, 0));
+        attach(resolver, definition, segment(2, 0));
+        attach(resolver, definition, segment(1, 1));
+        attach(resolver, definition, segment(1, 0));
 
-        assertEquals(3, assemblies(tracker, definition.id()).size());
+        assertEquals(3, resolver.assemblies(definition.id()).size());
     }
 
     private static void assertEveryLoadOrderAssembles(
             DungeonRoomShape shape,
-            List<Long> expectedSegments) throws Exception {
+            List<Long> expectedSegments) {
         for (List<Long> loadOrder : permutations(expectedSegments)) {
-            DungeonStateTracker tracker = new DungeonStateTracker(
-                    new ActiveGroupManager(),
-                    new DungeonConfig());
-            DungeonRoomDefinition definition = definition(shape);
-            for (long segment : loadOrder) attach(tracker, definition, segment);
+            DungeonRoomResolver resolver = new DungeonRoomResolver();
+            DungeonRoomCatalogEntry definition = definition(shape);
+            for (long segment : loadOrder) attach(resolver, definition, segment);
 
-            List<?> assemblies = assemblies(tracker, definition.id());
+            List<DungeonRoomResolver.RoomAssembly> assemblies = resolver.assemblies(definition.id());
             assertEquals(1, assemblies.size(), shape + " failed for load order " + loadOrder);
             assertEquals(
                     new HashSet<>(expectedSegments),
-                    assemblySegments(assemblies.getFirst()),
+                    assemblies.getFirst().segments(),
                     shape + " lost segments for load order " + loadOrder);
         }
     }
 
-    private static DungeonRoomDefinition definition(DungeonRoomShape shape) {
-        return new DungeonRoomDefinition(
+    private static DungeonRoomCatalogEntry definition(DungeonRoomShape shape) {
+        return new DungeonRoomCatalogEntry(
                 "test-" + shape.name().toLowerCase(),
                 "Test",
                 DungeonRoomType.ROOM,
                 shape,
                 List.of(),
                 List.of(),
-                List.of());
+                -1, -1, -1);
     }
 
     private static long segment(int gridX, int gridZ) {
@@ -81,31 +73,10 @@ class DungeonRoomAssemblyTest {
     }
 
     private static void attach(
-            DungeonStateTracker tracker,
-            DungeonRoomDefinition definition,
-            long segment) throws Exception {
-        Method method = DungeonStateTracker.class.getDeclaredMethod(
-                "attachScannedSegment",
-                DungeonRoomDefinition.class,
-                long.class,
-                int.class);
-        method.setAccessible(true);
-        method.invoke(tracker, definition, segment, 70);
-    }
-
-    @SuppressWarnings("unchecked")
-    private static List<?> assemblies(DungeonStateTracker tracker, String definitionId) throws Exception {
-        Field field = DungeonStateTracker.class.getDeclaredField("assembliesByDefinition");
-        field.setAccessible(true);
-        Map<String, List<?>> byDefinition = (Map<String, List<?>>) field.get(tracker);
-        return byDefinition.getOrDefault(definitionId, List.of());
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Set<Long> assemblySegments(Object assembly) throws Exception {
-        Field field = assembly.getClass().getDeclaredField("segments");
-        field.setAccessible(true);
-        return Set.copyOf((Set<Long>) field.get(assembly));
+            DungeonRoomResolver resolver,
+            DungeonRoomCatalogEntry definition,
+            long segment) {
+        resolver.attachScannedSegment(definition, segment, 70);
     }
 
     private static List<List<Long>> permutations(List<Long> values) {

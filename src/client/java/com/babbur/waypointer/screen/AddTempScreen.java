@@ -17,25 +17,6 @@ import net.minecraft.network.chat.Component;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
-/**
- * Modal for creating a temporary waypoint. Three expiry modes are offered and
- * a duration (seconds) for the one mode that needs it; every mode produces a
- * waypoint at the configured player-relative position.
- *
- * <p>The mode + duration defaults come from
- * {@link WaypointerConfig#tempDefaultMode()} / {@link WaypointerConfig#tempDefaultDurationSec()}
- * so the keybind path ("Add temp waypoint here") and the sidebar button path
- * share a single "what did the user last pick" memory without the user having
- * to re-confirm in the GUI for the keybind variant.
- *
- * <p>The temp waypoint lands in the current zone's dedicated temp bucket
- * ({@link ActiveGroupManager#getOrCreateTempGroup()}), <em>not</em> into the
- * group the screen was opened from. Temps used to be appended to the caller's
- * group, which caused real routes to pick up stray temp entries that then
- * polluted gradient recolouring, proximity advance, and reorder history. The
- * dedicated bucket keeps that separation clean even when the player opens
- * this modal from a regular route's edit screen.
- */
 public final class AddTempScreen extends Screen {
 
     private static final int PANEL_W = 280;
@@ -127,10 +108,6 @@ public final class AddTempScreen extends Screen {
     }
 
     private void cycleMode() {
-        // TIME (1) -> REACH (2) -> LEAVE (3) -> TIME (1).
-        // We skip TEMP_NONE (0) because this whole screen is for temp creation;
-        // picking "none" would mean "add a normal waypoint", which is already a
-        // different button.
         mode = nextTempMode(mode);
         modeBtn.setMessage(modeLabel());
         updateDurationVisibility();
@@ -192,8 +169,6 @@ public final class AddTempScreen extends Screen {
         }
         manager.fireTransientDataChanged();
 
-        // Persist the user's last picks so the next "add temp" (whether from
-        // here or the keybind) starts on the same settings.
         config.setTempDefaultMode(mode);
         if (mode == Waypoint.TEMP_TIME) config.setTempDefaultDurationSec(durationSec);
 

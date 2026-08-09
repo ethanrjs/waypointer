@@ -14,7 +14,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
-/** Owns only the active preview route's paint atlas and retires old atlases after two frames. */
+/** Active preview route's paint atlas; disposes of old atlases after 2 frames. */
 final class RoutePreviewPaintResource {
 
     static final int PADDING = 1;
@@ -22,16 +22,16 @@ final class RoutePreviewPaintResource {
     static final int ATLAS_WIDTH = CELL_SIZE * 4;
     static final int ATLAS_HEIGHT = CELL_SIZE * 3;
     private static final AtomicLong SEQUENCE = new AtomicLong();
-    private static final List<Retired> RETIRED = new ArrayList<>();
-    private static Entry active;
-    private static long frame;
+    private final List<Retired> retired = new ArrayList<>();
+    private Entry active;
+    private long frame;
 
     record Entry(String routeId, WaypointPaint paint, Identifier id, RenderType renderType) {}
     private record Retired(Identifier id, long releaseFrame) {}
 
-    private RoutePreviewPaintResource() {}
+    RoutePreviewPaintResource() {}
 
-    static synchronized Entry activate(String routeId, WaypointPaint paint) {
+    synchronized Entry activate(String routeId, WaypointPaint paint) {
         if (paint == null) {
             retireActive();
             return null;
@@ -48,22 +48,27 @@ final class RoutePreviewPaintResource {
                 () -> "waypointer_route_preview_paint_" + sequence,
                 ATLAS_WIDTH, ATLAS_HEIGHT, false);
         var textureManager = Minecraft.getInstance().getTextureManager();
-        textureManager.register(id, texture);
+        boolean registered = false;
         boolean complete = false;
         try {
+            textureManager.register(id, texture);
+            registered = true;
             bake(texture, paint);
             active = new Entry(routeId, paint, id,
                     WaypointerRenderPipelines.paintedQuads(id, true));
             complete = true;
             return active;
         } finally {
-            if (!complete) textureManager.release(id);
+            if (!complete) {
+                if (registered) textureManager.release(id);
+                else texture.close();
+            }
         }
     }
 
-    static synchronized void advanceFrame() {
+    synchronized void advanceFrame() {
         frame++;
-        Iterator<Retired> iterator = RETIRED.iterator();
+        Iterator<Retired> iterator = retired.iterator();
         while (iterator.hasNext()) {
             Retired retired = iterator.next();
             if (retired.releaseFrame() > frame) continue;
@@ -72,20 +77,20 @@ final class RoutePreviewPaintResource {
         }
     }
 
-    static synchronized void close() {
+    synchronized void close() {
         if (active != null) {
             Minecraft.getInstance().getTextureManager().release(active.id());
             active = null;
         }
-        for (Retired retired : RETIRED) {
-            Minecraft.getInstance().getTextureManager().release(retired.id());
+        for (Retired entry : retired) {
+            Minecraft.getInstance().getTextureManager().release(entry.id());
         }
-        RETIRED.clear();
+        retired.clear();
     }
 
-    private static void retireActive() {
+    private void retireActive() {
         if (active == null) return;
-        RETIRED.add(new Retired(active.id(), frame + 2));
+        retired.add(new Retired(active.id(), frame + 2));
         active = null;
     }
 

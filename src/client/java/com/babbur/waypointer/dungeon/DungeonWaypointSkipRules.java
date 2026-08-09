@@ -25,11 +25,6 @@ public final class DungeonWaypointSkipRules {
         return flagsForTrigger(trigger);
     }
 
-    /**
-     * Trigger-only mapping with no world lookup. Use for room-local coordinates
-     * (e.g. converting a secret-route definition into a stored route), where a
-     * block lookup would read whatever happens to be at the raw local position.
-     */
     public static int flagsForTrigger(DungeonWaypointTrigger trigger) {
         if (trigger == null) return Waypoint.FLAG_SKIP_ON_STAND;
         return switch (trigger) {

@@ -3,20 +3,6 @@ package com.babbur.waypointer.codec;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Tiny built-in dictionary for zone IDs that are common in shared waypoint routes.
- *
- * <p>The coarse island coverage is derived from Skyblocker's
- * {@code de.hysky.skyblocker.utils.Location} enum, which mirrors Hypixel's
- * location IDs and friendly names:
- * https://github.com/SkyblockerMod/Skyblocker/blob/master/src/main/java/de/hysky/skyblocker/utils/Location.java
- *
- * <p>Waypointer stores a few friendlier canonical IDs (for example
- * {@code the_park} instead of Skyblocker's raw {@code foraging_1}), so this
- * dictionary includes those aliases plus Waypointer-only floor/sub-area IDs.
- * Changing this table changes the wire format: bump {@link WaypointCodec}'s
- * wire version if any entry is added, removed, or reordered.
- */
 public final class CodecZoneDictionary {
 
     private static final String[] IDS = {
@@ -143,7 +129,6 @@ public final class CodecZoneDictionary {
         return IDS[index];
     }
 
-    /** Whether {@code index} names a real entry rather than an unrecognized zone. */
     public static boolean isKnownIndex(int index) {
         return index >= 0 && index < IDS.length;
     }

@@ -1,6 +1,5 @@
 package com.babbur.waypointer.screen.preview;
 
-/** Persistent orthographic zoom for the export route preview. */
 public final class RoutePreviewZoom {
 
     static final double DEFAULT_FACTOR = 1.10;
@@ -18,7 +17,6 @@ public final class RoutePreviewZoom {
         factor = DEFAULT_FACTOR;
     }
 
-    /** Applies one or more mouse-wheel steps and reports whether the zoom changed. */
     public boolean scroll(double verticalAmount) {
         if (!Double.isFinite(verticalAmount) || verticalAmount == 0.0) return false;
         double next = factor * Math.pow(STEP_FACTOR, verticalAmount);

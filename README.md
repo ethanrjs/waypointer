@@ -6,14 +6,9 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 
 - Per-zone waypoints
 - Dungeon rooms support (Odin-compatible room detection, all 140 Catacombs rooms)
-- Dungeon secret routes with automatic progress: chest/lever/essence clicks,
-  item pickups, bat kills, and etherwarps are detected and completed secrets
-  disappear from the route; a green map checkmark clears the whole room
-- One-click community route install (`/wpd routes download`, prompted on first
-  dungeon join) plus `/wpd import <file>` for SecretRoutes `routes.json` and
-  Odin waypoint packs
 - Ordered routes
 - World rendering
+- Subwaypoints
 - Extremely compact export format
 - Importable from chat messages
 - Keybindings
@@ -26,7 +21,6 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 - Customizable waypoint visuals
 - Public API for other Fabric client mods
 - Works with shaders
-- Subwaypoints
 
 ## Waypoint Import/Export Compatibility
 
@@ -46,7 +40,7 @@ and [Firmament](https://github.com/FirmamentMC/Firmament/blob/e86d4692ac19e71a68
 
 ### Dungeon route import
 
-- SecretRoutes `routes.json` (I) — `/wpd import <file>` or `/wpd routes download`
+- SecretRoutes `routes.json` (I) — `/wpd import <file>`
 - Odin dungeon waypoint packs (I) — JSON pack file or shared Base64+GZIP string
 - Waypointer `WPD:` share payloads (I/E)
 
@@ -55,7 +49,7 @@ and [Odin](https://github.com/odtheking/Odin/blob/ea0883587f5a352165c98b5467e5cb
 
 ## Requirements
 
-- Minecraft 26.1.2 or 26.2 — install the jar matching your Minecraft version
+- Minecraft 26.1.2 or 26.2
 - Java 25+
 - Fabric Loader 0.19.3+
 - [Fabric API](https://modrinth.com/mod/fabric-api):
@@ -63,15 +57,10 @@ and [Odin](https://github.com/odtheking/Odin/blob/ea0883587f5a352165c98b5467e5cb
   - Minecraft 26.2: 0.147.1+26.2 or newer compatible 26.2 release
 - [Hypixel Mod API](https://modrinth.com/mod/hypixel-mod-api) 1.0.2+
 
-Install and update Waypointer and its dependencies through your launcher or
-Modrinth-managed instance. Waypointer does not modify the instance's mod files.
-
 ## Building
-
-```powershell
+```powersh
 ./gradlew buildAllTargets
 ```
-
 This builds and tests both targets serially and produces separate runnable jars;
 it does not produce one universal jar:
 
@@ -79,11 +68,10 @@ it does not produce one universal jar:
 - `build/libs/waypointer-<mod-version>-mc26.2.jar`
 
 Matching `-sources.jar` files are also generated. The current mod version is
-`1.8.6`.
+`1.8.7`.
 
 ## Testing
-
-```powershell
+```powershe
 ./gradlew test
 ```
 
@@ -94,8 +82,7 @@ Matching `-sources.jar` files are also generated. The current mod version is
 - `src/test/` JUnit 5 tests for codec, scanners, storage, and progression.
 
 ## CODEC Specification
-
-See [CODEC.md](CODEC.md) for the full specification.
+See [CODEC.md](CODEC.md) for the full overengineered specification.
 
 ## API for Other Mods
 

@@ -5,15 +5,6 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 
-/**
- * Resets every group's {@link WaypointGroup#currentIndex()} when the client
- * connects to a world, so a play session starts at the beginning of each route
- * unless the player opts out via {@link WaypointerConfig#resetProgressOnWorldJoin()}.
- *
- * Wired to {@link ClientPlayConnectionEvents#JOIN} (single-player load and
- * multiplayer connect), not dimension changes -- the player keeps progress while
- * moving between overworld and nether in the same session.
- */
 public final class WorldJoinProgressReset {
 
     private final ActiveGroupManager manager;
@@ -33,9 +24,9 @@ public final class WorldJoinProgressReset {
     }
 
     static void resetForWorldJoin(ActiveGroupManager manager, boolean resetProgress) {
+        if (!resetProgress) return;
         for (WaypointGroup group : manager.allGroups()) {
-            if (resetProgress) group.resetProgress();
-            else group.resetRouteTiming();
+            group.resetProgress();
         }
     }
 }

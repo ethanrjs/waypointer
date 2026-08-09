@@ -13,44 +13,23 @@ import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * Passive native-PiP route preview with exact hover picking and native-font labels.
- *
- * <p>The widget is two bands: a header that names the route being previewed and
- * a viewport that draws it. They are separated by a hairline rather than by
- * spacing alone, because the PiP render bleeds to the edge of its scissor and
- * without the rule the route appeared to float into the title.
- *
- * <p>Route navigation ({@code <} / {@code >}) and the zoom reset live in the
- * header and the viewport's bottom-right corner respectively, but they are
- * owned by the screen -- this widget is not focusable and takes no clicks, so
- * anything clickable has to be a sibling. What it does own is the reserve those
- * siblings need: {@link #setNavigationVisible(boolean)} tells the header how
- * much room to leave, so a single-route preview gets its full width back
- * instead of permanently budgeting for arrows that are not there.
- */
 public final class RoutePreviewWidget extends AbstractWidget {
 
-    /** Header band: two text lines, tall enough to hold a {@code BTN_H} nav button. */
     public static final int HEADER_HEIGHT = 32;
-    /** Nav button geometry, shared with the screen that places the buttons. */
+    static final int SINGLE_LINE_HEADER_HEIGHT = 22;
     public static final int NAV_BUTTON_W = 18;
     public static final int NAV_BUTTON_INSET = 4;
     public static final int NAV_BUTTON_Y_OFFSET = 6;
-    /** Zoom-reset button geometry, anchored to the viewport's bottom-right. */
     public static final int ZOOM_BUTTON_W = 34;
     public static final int ZOOM_BUTTON_H = 14;
     public static final int ZOOM_BUTTON_INSET = 4;
 
-    /** Horizontal room a header line must leave for one nav button. */
     private static final int NAV_RESERVE = NAV_BUTTON_INSET + NAV_BUTTON_W + 4;
 
     private static final int LABEL_PAD = 4;
     private static final int BORDER = 0xFF20252B;
     private static final int BACKGROUND = 0xD0121519;
-    /** Darkens the viewport so the render band reads as a separate surface. */
     private static final int VIEWPORT = 0x30000000;
-    /** Hairline under the header and the 1px top sheen on the outer frame. */
     private static final int RULE = 0x24FFFFFF;
     private static final int TEXT = 0xFFE6E9EC;
     private static final int TEXT_DIM = 0xFFAAB2BA;
@@ -59,6 +38,8 @@ public final class RoutePreviewWidget extends AbstractWidget {
 
     private final RoutePreviewOrbit orbit;
     private final RoutePreviewZoom zoom;
+    private final RoutePreviewPaintResource paintResources = new RoutePreviewPaintResource();
+    private final RoutePreviewAvailability availability = new RoutePreviewAvailability();
     private RoutePreviewScene scene;
     private String routeName;
     private String routeCounter;
@@ -71,31 +52,35 @@ public final class RoutePreviewWidget extends AbstractWidget {
     private int fitHeight = -1;
     private int lastMouseX;
     private int lastMouseY;
+    private boolean hoverPickingEnabled = true;
+    private boolean headerDetailVisible = true;
+    private boolean selfOcclusion = true;
+    private double preferredPixelsPerBlock = Double.NaN;
 
     public RoutePreviewWidget(int x, int y, int width, int height,
                               RoutePreviewScene scene, String routeCounter,
                               RoutePreviewOrbit orbit, RoutePreviewZoom zoom) {
         super(x, y, width, height, Component.empty());
-        this.scene = scene;
-        this.routeName = scene.routeName();
+        availability.beginScene(scene.routeId());
+        this.scene = scene.preparePaintResource(paintResources);
+        this.routeName = this.scene.routeName();
         this.routeCounter = routeCounter;
         this.orbit = orbit;
         this.zoom = zoom;
-        this.depthEnvelope = RoutePreviewProjection.rotationSafeDepthEnvelope(scene);
+        this.depthEnvelope = RoutePreviewProjection.rotationSafeDepthEnvelope(this.scene);
         this.active = false;
-        RoutePreviewAvailability.beginScene(scene.routeId());
     }
 
     public void setScene(RoutePreviewScene nextScene, String nextCounter) {
-        this.scene = nextScene;
-        this.routeName = nextScene.routeName();
+        availability.beginScene(nextScene.routeId());
+        this.scene = nextScene.preparePaintResource(paintResources);
+        this.routeName = this.scene.routeName();
         this.routeCounter = nextCounter;
         this.hoveredIndex = -1;
         this.zoom.reset();
-        this.depthEnvelope = RoutePreviewProjection.rotationSafeDepthEnvelope(nextScene);
+        this.depthEnvelope = RoutePreviewProjection.rotationSafeDepthEnvelope(this.scene);
         this.fitWidth = -1;
         this.fitHeight = -1;
-        RoutePreviewAvailability.beginScene(nextScene.routeId());
     }
 
     public void setRouteCounter(String nextCounter) {
@@ -106,9 +91,32 @@ public final class RoutePreviewWidget extends AbstractWidget {
         this.routeName = nextName == null || nextName.isBlank() ? scene.routeName() : nextName;
     }
 
-    /** Tells the header whether to reserve room for the screen's route arrows. */
     public void setNavigationVisible(boolean shown) {
         this.navigationVisible = shown;
+    }
+
+    public void setHoverPickingEnabled(boolean enabled) {
+        this.hoverPickingEnabled = enabled;
+        if (!enabled) hoveredIndex = -1;
+    }
+
+    public void setHeaderDetailVisible(boolean visible) {
+        headerDetailVisible = visible;
+    }
+
+    public void setSelfOcclusion(boolean enabled) {
+        selfOcclusion = enabled;
+    }
+
+    int headerHeight() {
+        return headerDetailVisible ? HEADER_HEIGHT : SINGLE_LINE_HEADER_HEIGHT;
+    }
+
+    public void setPreferredPixelsPerBlock(double pixels) {
+        preferredPixelsPerBlock = Double.isFinite(pixels) && pixels > 0.0
+                ? pixels : Double.NaN;
+        fitWidth = -1;
+        fitHeight = -1;
     }
 
     public void setPreviewVisible(boolean shown) {
@@ -118,8 +126,8 @@ public final class RoutePreviewWidget extends AbstractWidget {
     }
 
     public void releaseResources() {
-        RoutePreviewPaintResource.close();
-        RoutePreviewAvailability.reset();
+        paintResources.close();
+        availability.reset();
     }
 
     public void pauseOrbit() {
@@ -130,12 +138,10 @@ public final class RoutePreviewWidget extends AbstractWidget {
         return hoveredIndex;
     }
 
-    /** True once the wheel has moved the view off its default framing. */
     public boolean zoomed() {
         return zoom.factor() != RoutePreviewZoom.DEFAULT_FACTOR;
     }
 
-    /** Current zoom rendered for the reset control, e.g. {@code "1.4"}. */
     public String zoomLabel() {
         return zoomFactorText(zoom.factor());
     }
@@ -144,12 +150,12 @@ public final class RoutePreviewWidget extends AbstractWidget {
         zoom.reset();
     }
 
-    /** Zooms around the fixed preview center without making this widget selectable. */
     public boolean scrollZoom(double mouseX, double mouseY, double verticalAmount) {
+        int headerHeight = headerHeight();
         int renderX = getX() + 2;
-        int renderY = getY() + HEADER_HEIGHT;
+        int renderY = getY() + headerHeight;
         int renderW = Math.max(1, getWidth() - 4);
-        int renderH = Math.max(1, getHeight() - HEADER_HEIGHT - 2);
+        int renderH = Math.max(1, getHeight() - headerHeight - 2);
         if (!visible
                 || !contains(mouseX, mouseY, renderX, renderY, renderW, renderH)
                 || !Double.isFinite(verticalAmount)
@@ -163,7 +169,7 @@ public final class RoutePreviewWidget extends AbstractWidget {
     @Override
     protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY,
                                             float partial) {
-        RoutePreviewPaintResource.advanceFrame();
+        paintResources.advanceFrame();
         lastMouseX = mouseX;
         lastMouseY = mouseY;
         int x1 = getX();
@@ -172,28 +178,33 @@ public final class RoutePreviewWidget extends AbstractWidget {
         int y2 = y1 + getHeight();
         g.fill(x1, y1, x2, y2, BORDER);
         g.fill(x1 + 1, y1 + 1, x2 - 1, y2 - 1, BACKGROUND);
-        // Same 1px sheen the shared control frame uses, so the preview reads as
-        // part of the same surface family as the buttons around it.
         g.fill(x1 + 1, y1 + 1, x2 - 1, y1 + 2, RULE);
 
         var font = Minecraft.getInstance().font;
+        int headerHeight = headerHeight();
         int headerWidth = headerTextWidth(getWidth(), navigationVisible);
         String clippedName = font.plainSubstrByWidth(routeName, headerWidth);
-        String clippedDetail = font.plainSubstrByWidth(
-                headerDetailText(scene.markers().size(), routeCounter), headerWidth);
         g.text(font, clippedName, x1 + (getWidth() - font.width(clippedName)) / 2,
-                y1 + 6, TEXT, false);
-        g.text(font, clippedDetail, x1 + (getWidth() - font.width(clippedDetail)) / 2,
-                y1 + 17, TEXT_DIM, false);
-        g.fill(x1 + 1, y1 + HEADER_HEIGHT - 1, x2 - 1, y1 + HEADER_HEIGHT, RULE);
+                y1 + (headerHeight - font.lineHeight) / 2, TEXT, false);
+        if (headerDetailVisible) {
+            String clippedDetail = font.plainSubstrByWidth(
+                    headerDetailText(scene.markers().size(), routeCounter), headerWidth);
+            g.text(font, clippedDetail, x1 + (getWidth() - font.width(clippedDetail)) / 2,
+                    y1 + 17, TEXT_DIM, false);
+        }
+        g.fill(x1 + 1, y1 + headerHeight - 1, x2 - 1, y1 + headerHeight, RULE);
 
         int renderX = x1 + 2;
-        int renderY = y1 + HEADER_HEIGHT;
+        int renderY = y1 + headerHeight;
         int renderW = Math.max(1, getWidth() - 4);
-        int renderH = Math.max(1, getHeight() - HEADER_HEIGHT - 2);
+        int renderH = Math.max(1, getHeight() - headerHeight - 2);
         g.fill(renderX, renderY, renderX + renderW, renderY + renderH, VIEWPORT);
         if (fitWidth != renderW || fitHeight != renderH) {
-            fitScale = RoutePreviewProjection.rotationSafeScale(scene, renderW, renderH);
+            double safeScale = RoutePreviewProjection.viewportSafeScale(
+                    scene, renderW, renderH);
+            fitScale = Double.isFinite(preferredPixelsPerBlock)
+                    ? Math.min(preferredPixelsPerBlock, safeScale)
+                    : RoutePreviewProjection.rotationSafeScale(scene, renderW, renderH);
             fitWidth = renderW;
             fitHeight = renderH;
         }
@@ -201,19 +212,16 @@ public final class RoutePreviewWidget extends AbstractWidget {
         double scale = Math.min(
                 fitScale * zoom.factor(),
                 RoutePreviewProjection.depthSafeScale(depthEnvelope, guiScale));
-        boolean pointerInside = contains(mouseX, mouseY, renderX, renderY, renderW, renderH);
-        hoveredIndex = pointerInside
-                ? RoutePreviewProjection.pick(scene, mouseX, mouseY,
-                        renderX, renderY, renderW, renderH, currentYaw, scale, guiScale)
-                : -1;
-        boolean paused = hoveredIndex >= 0
-                || !visible || !Minecraft.getInstance().isWindowActive();
+        boolean pointerInside = hoverPickingEnabled
+                && contains(mouseX, mouseY, renderX, renderY, renderW, renderH);
+        boolean paused = shouldPauseOrbit(pointerInside, hoveredIndex, visible,
+                Minecraft.getInstance().isWindowActive());
         currentYaw = orbit.update(System.nanoTime(), !paused);
         hoveredIndex = pointerInside
                 ? RoutePreviewProjection.pick(scene, mouseX, mouseY,
                         renderX, renderY, renderW, renderH, currentYaw, scale, guiScale)
                 : -1;
-        if (RoutePreviewAvailability.unavailable()) {
+        if (availability.unavailable()) {
             drawPlaceholder(g, renderY, renderH,
                     Component.translatable(
                             "waypointer.screen.export.preview.unavailable").getString(),
@@ -232,24 +240,13 @@ public final class RoutePreviewWidget extends AbstractWidget {
             RoutePreviewGuiBridge.submit(g, RoutePreviewRenderState.create(
                     scene, (float) currentYaw, hoveredWaypointIndex(),
                     renderX, renderY, renderX + renderW, renderY + renderH,
-                    (float) scale, guiScale, scissor));
+                    (float) scale, guiScale, selfOcclusion, availability, scissor));
         }
 
         g.nextStratum();
         drawNoticesAndLabel(g, renderX, renderY, renderW, renderH);
     }
 
-    /**
-     * The viewport's bottom strip plus the hover label.
-     *
-     * <p>Notices used to sit at the top-left, directly under the header rule and
-     * in the same corner the route itself drifts through as it orbits. They live
-     * along the bottom now, opposite the zoom control, where nothing is drawn
-     * except at the extremes of a zoom-in. The scroll hint is deliberately
-     * hover-only: an always-on instruction line is clutter for the 99% of visits
-     * that never zoom, but there is otherwise nothing to suggest the wheel does
-     * anything here.
-     */
     private void drawNoticesAndLabel(GuiGraphicsExtractor g, int renderX, int renderY,
                                      int renderW, int renderH) {
         var font = Minecraft.getInstance().font;
@@ -288,11 +285,6 @@ public final class RoutePreviewWidget extends AbstractWidget {
         for (String line : lines) widest = Math.max(widest, font.width(line));
         int labelW = Math.max(1, Math.min(renderW - 8, widest + LABEL_PAD * 2));
         int labelH = lines.size() * (font.lineHeight + 1) + LABEL_PAD * 2 - 1;
-        // Keep clear of the bottom strip: the notices and the screen's zoom
-        // control live down there, and a hover label parked over either of them
-        // hides state the player did not dismiss. Both bounds are floored
-        // against the top inset so a preview squeezed to nothing still places
-        // the label instead of failing the clamp.
         int labelX = Math.clamp(lastMouseX + 8, renderX + 4,
                 Math.max(renderX + 4, renderX + renderW - labelW - 4));
         int labelY = Math.clamp(lastMouseY + 8, renderY + 4,
@@ -322,49 +314,38 @@ public final class RoutePreviewWidget extends AbstractWidget {
         return "(" + safeCount + " waypoint" + (safeCount == 1 ? "" : "s") + ")";
     }
 
-    /** Second header line: how many waypoints, and which of the selected routes this is. */
     static String headerDetailText(int markerCount, String routeCounter) {
         String counter = routeCounter == null ? "" : routeCounter;
         return waypointCountText(markerCount)
                 + (counter.isBlank() ? "" : " · " + counter);
     }
 
-    /**
-     * Width a centered header line may use.
-     *
-     * <p>The header text is centered on the whole widget, so it has to give up
-     * the arrow reserve on <em>both</em> sides even though only the wide one
-     * matters -- otherwise a long route name grows into the left arrow while
-     * looking centered. When the screen hides the arrows the whole width comes
-     * back, which is the common single-route case.
-     */
     static int headerTextWidth(int widgetWidth, boolean navigationVisible) {
         int reserve = navigationVisible ? NAV_RESERVE : 4;
         return Math.max(0, widgetWidth - reserve * 2);
     }
 
-    /** Zoom shown on the reset control, e.g. {@code 1.4} for 1.4x. */
     public static String zoomFactorText(double factor) {
         return String.format(java.util.Locale.ROOT, "%.1f", factor);
     }
 
-    /** True while the wheel would actually do something the user has not found yet. */
-    private boolean showsScrollHint() {
-        return !scene.markers().isEmpty()
-                && hoveredIndex < 0
-                && !RoutePreviewAvailability.unavailable()
-                && zoom.factor() == RoutePreviewZoom.DEFAULT_FACTOR
-                && contains(lastMouseX, lastMouseY,
-                        getX() + 2, getY() + HEADER_HEIGHT,
-                        Math.max(1, getWidth() - 4),
-                        Math.max(1, getHeight() - HEADER_HEIGHT - 2));
+    static boolean shouldPauseOrbit(boolean pointerInside, int previousHoveredIndex,
+                                    boolean visible, boolean windowActive) {
+        return (pointerInside && previousHoveredIndex >= 0) || !visible || !windowActive;
     }
 
-    /**
-     * The two empty-viewport states. Both get a headline plus a dim second line,
-     * because on their own "3D preview unavailable" reads like the export
-     * failed -- the detail line is there to say the code is fine.
-     */
+    private boolean showsScrollHint() {
+        return hoverPickingEnabled
+                && !scene.markers().isEmpty()
+                && hoveredIndex < 0
+                && !availability.unavailable()
+                && zoom.factor() == RoutePreviewZoom.DEFAULT_FACTOR
+                && contains(lastMouseX, lastMouseY,
+                        getX() + 2, getY() + headerHeight(),
+                        Math.max(1, getWidth() - 4),
+                        Math.max(1, getHeight() - headerHeight() - 2));
+    }
+
     private void drawPlaceholder(GuiGraphicsExtractor g, int renderY, int renderH,
                                  String headline, String detail, int headlineColor) {
         var font = Minecraft.getInstance().font;
@@ -396,6 +377,5 @@ public final class RoutePreviewWidget extends AbstractWidget {
 
     @Override
     protected void updateWidgetNarration(NarrationElementOutput output) {
-        // Passive previews are not part of focus or narration traversal.
     }
 }

@@ -10,7 +10,6 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.state.gui.GuiRenderState;
 
-/** Minecraft 26.1.2 immediate-buffer adapter for the route preview. */
 public final class RoutePreviewPipAdapter
         extends PictureInPictureRenderer<RoutePreviewRenderState> {
 
@@ -35,7 +34,7 @@ public final class RoutePreviewPipAdapter
         } catch (RuntimeException allocationFailure) {
             RenderSystem.outputColorTextureOverride = null;
             RenderSystem.outputDepthTextureOverride = null;
-            RoutePreviewAvailability.markUnavailable();
+            state.availability().markUnavailable();
             Waypointer.LOGGER.error("Could not allocate route preview target", allocationFailure);
         }
     }
@@ -55,18 +54,13 @@ public final class RoutePreviewPipAdapter
         poseStack.pushPose();
         try {
             RoutePreviewRenderCore.applyView(state, poseStack);
-            submitPass(state, poseStack, RoutePreviewPipelines.depthOnly(),
-                    RoutePreviewRenderCore::emitDepth);
-            submitPass(state, poseStack, surfaceType(state),
-                    RoutePreviewRenderCore::emitSurfaces);
-            submitPass(state, poseStack, RoutePreviewPipelines.surfaces(),
-                    RoutePreviewRenderCore::emitPaintHover);
-            submitPass(state, poseStack, RoutePreviewPipelines.connectors(),
-                    RoutePreviewRenderCore::emitConnectors);
-            submitPass(state, poseStack, RoutePreviewPipelines.outlines(),
-                    RoutePreviewRenderCore::emitOutlines);
+            for (RoutePreviewPassPlan.Pass pass
+                    : RoutePreviewPassPlan.orderedPasses(state.selfOcclusion())) {
+                submitPass(state, poseStack, RoutePreviewPassPlan.renderType(pass, state),
+                        RoutePreviewPassPlan.emitter(pass));
+            }
         } catch (RuntimeException error) {
-            RoutePreviewAvailability.markUnavailable();
+            state.availability().markUnavailable();
             Waypointer.LOGGER.error("Could not render route preview", error);
         } finally {
             poseStack.popPose();
@@ -83,10 +77,4 @@ public final class RoutePreviewPipAdapter
         }
     }
 
-    private static RenderType surfaceType(RoutePreviewRenderState state) {
-        RoutePreviewScene scene = state.scene();
-        return scene.paint() != null && !scene.simplified()
-                ? RoutePreviewPipelines.painted(scene)
-                : RoutePreviewPipelines.surfaces();
-    }
 }

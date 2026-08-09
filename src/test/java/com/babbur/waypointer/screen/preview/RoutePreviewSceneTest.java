@@ -51,6 +51,63 @@ class RoutePreviewSceneTest {
     }
 
     @Test
+    void appliesLiveAppearanceScaleAndIndependentOpacities() {
+        WaypointGroup group = WaypointGroup.create("Appearance", "hub");
+        group.add(Waypoint.at(1, 2, 3));
+        WaypointerConfig config = new WaypointerConfig();
+        config.setWaypointMarkerScale(1.75);
+        config.setBeaconOpacity(0.2);
+        config.setWaypointOutlineOpacity(0.65);
+        config.setMatchWaypointOutlineToWaypointColor(false);
+        config.setWaypointOutlineColor(0xABCDEF);
+
+        RoutePreviewScene scene = RoutePreviewScene.build(group, config, null);
+
+        assertEquals(1.75, scene.markers().getFirst().box().width(), 0.000001);
+        assertEquals(0.2f, scene.opacity(), 0.000001f);
+        assertEquals(0.65f, scene.outlineOpacity(), 0.000001f);
+        assertFalse(scene.outlineMatchesWaypointColor());
+        assertEquals(0xABCDEF, scene.outlineColor());
+    }
+
+    @Test
+    void disabledPaintLeavesTheWaypointColorAndFillModeInControl() {
+        WaypointGroup group = WaypointGroup.create("Appearance", "hub");
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.setPaintEnabled(false);
+        group.add(new Waypoint(0, 0, 0, "Red", 0xE04F4F, 0,
+                Waypoint.DEFAULT_REACH_RADIUS));
+        WaypointerConfig config = new WaypointerConfig();
+        config.setBoxStyle(WaypointerConfig.BoxStyle.OUTLINED);
+
+        RoutePreviewScene scene = RoutePreviewScene.build(group, config, null);
+
+        assertEquals(0xE04F4F, scene.markers().getFirst().color());
+        assertEquals(null, scene.paint());
+        assertEquals(WaypointerConfig.BoxStyle.OUTLINED, scene.boxStyle());
+    }
+
+    @Test
+    void paintStyleUsesConfiguredPaintAndOtherStylesUseRgbSurfaces() {
+        WaypointGroup group = WaypointGroup.create("Paint", "hub");
+        group.add(Waypoint.at(0, 0, 0));
+        WaypointerConfig config = new WaypointerConfig();
+        config.setWaypointPainterDefaultPaint(
+                com.babbur.waypointer.core.WaypointPaint.solid(0x123456));
+
+        config.setBoxStyle(WaypointerConfig.BoxStyle.PAINT);
+        assertEquals(config.waypointPainterDefaultPaint(),
+                RoutePreviewScene.effectivePaint(group, config));
+        RoutePreviewScene paintScene = RoutePreviewScene.build(group, config, null);
+        assertEquals(config.waypointPainterDefaultPaint(), paintScene.paint());
+        assertEquals(null, paintScene.paintResource(),
+                "scene construction must stay CPU-only until a widget owns the texture");
+
+        config.setBoxStyle(WaypointerConfig.BoxStyle.FILLED);
+        assertEquals(null, RoutePreviewScene.effectivePaint(group, config));
+    }
+
+    @Test
     void connectsOnlyMainWaypointsInStoredOrder() {
         WaypointGroup group = WaypointGroup.create("Ordered", "hub");
         group.add(Waypoint.at(0, 0, 0).withName("A"));

@@ -8,23 +8,22 @@ import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.chat.ChatImportDetector;
 import com.babbur.waypointer.chat.HypixelPlayerRankSource;
 import com.babbur.waypointer.commands.WaypointerCommands;
+import com.babbur.waypointer.commands.DungeonCommands;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
-import com.babbur.waypointer.debug.DeveloperModeMonitor;
-import com.babbur.waypointer.dungeon.DungeonCommands;
 import com.babbur.waypointer.dungeon.DungeonChestInteractionGuard;
-import com.babbur.waypointer.dungeon.DungeonMapCheckmarks;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.DungeonRoomZoneBridge;
-import com.babbur.waypointer.dungeon.DungeonRouteDownloader;
-import com.babbur.waypointer.dungeon.DungeonRouteSession;
 import com.babbur.waypointer.dungeon.DungeonStateTracker;
 import com.babbur.waypointer.dungeon.DungeonTriggerDetector;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
+import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.input.WaypointRepositionMode;
 import com.babbur.waypointer.input.WaypointerKeybinds;
 import com.babbur.waypointer.location.LocationTracker;
@@ -42,14 +41,11 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import net.fabricmc.loader.api.FabricLoader;
 
-/**
- * Client-side bootstrap.
- *
- * Owns the singleton {@link ActiveGroupManager} for the whole session.
- * Other client components are spawned here so the wiring is one-stop and
- * easy to read -- no mystery lifecycles in static init blocks elsewhere.
- */
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 public final class WaypointerClient implements ClientModInitializer {
 
     private static ActiveGroupManager manager;
@@ -58,11 +54,8 @@ public final class WaypointerClient implements ClientModInitializer {
     private static WaypointerApi api;
     private static DungeonConfig dungeonConfig;
     private static DungeonStateTracker dungeonTracker;
-    private static DungeonRouteSession dungeonRouteSession;
-    private static DungeonRouteDownloader dungeonRouteDownloader;
-    private static DeveloperModeMonitor developerModeMonitor;
     private static WaypointerKeybinds keybinds;
-    private static boolean dungeonRouteSessionInDungeonContext;
+    private static boolean dungeonRouteInDungeonContext;
     private static Screen suspendedWaypointerGuiScreen;
 
     public static ActiveGroupManager manager() {
@@ -89,18 +82,6 @@ public final class WaypointerClient implements ClientModInitializer {
         return dungeonTracker;
     }
 
-    public static DungeonRouteSession dungeonRouteSession() {
-        return dungeonRouteSession;
-    }
-
-    public static DungeonRouteDownloader dungeonRouteDownloader() {
-        return dungeonRouteDownloader;
-    }
-
-    public static DeveloperModeMonitor developerModeMonitor() {
-        return developerModeMonitor;
-    }
-
     public static WaypointerKeybinds keybinds() {
         return keybinds;
     }
@@ -112,7 +93,7 @@ public final class WaypointerClient implements ClientModInitializer {
         manager = new ActiveGroupManager();
         storage = Storage.defaultLocation();
         storage.load(manager);
-        // attach AFTER load so rehydration doesn't trigger a no-op write.
+        migrateLegacyDungeonRoutes();
         storage.attach(manager);
         Minecraft minecraft = Minecraft.getInstance();
         api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft);
@@ -146,8 +127,6 @@ public final class WaypointerClient implements ClientModInitializer {
             Waypointer.LOGGER.info("Invoked {} Waypointer API integration(s)", apiEntrypoints);
         }
 
-        // Route mutations only flag the library dirty; the actual serialization
-        // happens here, at most once per tick, on the thread that owns the data.
         ClientTickEvents.END_CLIENT_TICK.register(client -> storage.pumpPendingSnapshot());
         ClientLifecycleEvents.CLIENT_STOPPING.register(WaypointerClient::onClientStopping);
 
@@ -155,11 +134,42 @@ public final class WaypointerClient implements ClientModInitializer {
     }
 
     private static void onClientStopping(Minecraft client) {
-        storage.flush();
-        config.flush();
-        if (dungeonConfig != null) dungeonConfig.flush();
-        DungeonRoomData.flush();
-        if (developerModeMonitor != null) developerModeMonitor.flushAndShutdown();
+        runShutdownStep("waypoint storage", storage::flush);
+        runShutdownStep("configuration", config::flush);
+        if (dungeonConfig != null) {
+            runShutdownStep("dungeon configuration", dungeonConfig::flush);
+        }
+    }
+
+    private static void migrateLegacyDungeonRoutes() {
+        Path legacyFile = FabricLoader.getInstance().getConfigDir()
+                .resolve(Waypointer.MOD_ID)
+                .resolve("dungeon_rooms.json");
+        if (!Files.isRegularFile(legacyFile)) return;
+        try {
+            DungeonRouteImporter.Result decoded =
+                    DungeonRouteImporter.parse(Files.readString(legacyFile));
+            int migrated = DungeonRoomRouteLibrary.installMissingLegacyRoutes(
+                    manager, decoded.groups());
+            if (migrated > 0) {
+                storage.save(manager);
+                Waypointer.LOGGER.info(
+                        "Migrated {} legacy dungeon route(s) into waypoint storage; kept {} as a backup",
+                        migrated, legacyFile);
+            }
+        } catch (Exception failure) {
+            Waypointer.LOGGER.warn(
+                    "Could not migrate legacy dungeon routes from {}; leaving the file untouched",
+                    legacyFile, failure);
+        }
+    }
+
+    private static void runShutdownStep(String name, Runnable step) {
+        try {
+            step.run();
+        } catch (RuntimeException failure) {
+            Waypointer.LOGGER.error("Failed to close {} during client shutdown", name, failure);
+        }
     }
 
     public static void openGui() {
@@ -192,36 +202,25 @@ public final class WaypointerClient implements ClientModInitializer {
     }
 
     private static void installDungeonSubsystem(DungeonChestInteractionGuard chestInteractionGuard) {
-        DungeonRoomData.loadDefaultCustomStore();
         dungeonTracker = new DungeonStateTracker(manager, dungeonConfig);
-        dungeonRouteSession = new DungeonRouteSession();
-        dungeonRouteSessionInDungeonContext = false;
-        manager.addZoneListener(WaypointerClient::onDungeonRouteSessionZoneChanged);
+        dungeonRouteInDungeonContext = false;
+        manager.addZoneListener(WaypointerClient::onDungeonRouteContextChanged);
         Zone currentZone = manager.currentZone();
-        if (currentZone != null) onDungeonRouteSessionZoneChanged(currentZone);
+        if (currentZone != null) onDungeonRouteContextChanged(currentZone);
         dungeonTracker.install();
         new DungeonRoomZoneBridge(manager, dungeonTracker).install();
-        new DungeonRoomRouteSync(manager, dungeonTracker, dungeonRouteSession, dungeonConfig).install();
-        new DungeonTriggerDetector(
-                dungeonTracker, dungeonRouteSession, chestInteractionGuard, dungeonConfig, manager)
-                .install();
-        new DungeonMapCheckmarks(dungeonTracker, dungeonRouteSession, dungeonConfig).install();
-        developerModeMonitor = new DeveloperModeMonitor(dungeonTracker, dungeonConfig, manager);
-        developerModeMonitor.install();
-        dungeonRouteDownloader = new DungeonRouteDownloader(manager, dungeonConfig);
-        dungeonRouteDownloader.install();
-        new DungeonCommands(dungeonTracker, dungeonConfig, dungeonRouteSession,
-                dungeonRouteDownloader, manager).install();
+        new DungeonRoomRouteSync(manager, dungeonTracker, dungeonConfig).install();
+        new DungeonTriggerDetector(dungeonTracker, dungeonConfig, manager).install();
+        new DungeonCommands(dungeonTracker, dungeonConfig, manager).install();
     }
 
-    private static void onDungeonRouteSessionZoneChanged(Zone zone) {
-        boolean nowBroadDungeon = isBroadDungeonZoneForRouteSession(zone);
-        boolean nowDungeonContext = isDungeonRouteSessionContextZone(zone);
-        if (nowBroadDungeon && !dungeonRouteSessionInDungeonContext && dungeonRouteSession != null) {
-            dungeonRouteSession.resetAll();
+    private static void onDungeonRouteContextChanged(Zone zone) {
+        boolean nowBroadDungeon = isBroadDungeonRouteZone(zone);
+        boolean nowDungeonContext = isDungeonRouteContextZone(zone);
+        if (nowBroadDungeon && !dungeonRouteInDungeonContext) {
             resetDungeonRoomRouteGroupProgress();
         }
-        dungeonRouteSessionInDungeonContext = nowDungeonContext;
+        dungeonRouteInDungeonContext = nowDungeonContext;
     }
 
     private static void resetDungeonRoomRouteGroupProgress() {
@@ -245,15 +244,15 @@ public final class WaypointerClient implements ClientModInitializer {
     private static boolean isDungeonRoomRouteGroup(com.babbur.waypointer.core.WaypointGroup group) {
         return group != null
                 && !group.temp()
-                && DungeonRoomData.definition(group.zoneId()) != null;
+                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
     }
 
-    private static boolean isDungeonRouteSessionContextZone(Zone zone) {
-        if (isBroadDungeonZoneForRouteSession(zone)) return true;
-        return zone != null && DungeonRoomData.definition(zone.id()) != null;
+    private static boolean isDungeonRouteContextZone(Zone zone) {
+        if (isBroadDungeonRouteZone(zone)) return true;
+        return zone != null && DungeonRoomData.entry(zone.id()) != null;
     }
 
-    private static boolean isBroadDungeonZoneForRouteSession(Zone zone) {
+    private static boolean isBroadDungeonRouteZone(Zone zone) {
         if (zone == null || zone.id() == null) return false;
         String id = zone.id();
         return id.equals("dungeon") || id.startsWith("dungeon_f") || id.startsWith("dungeon_m");

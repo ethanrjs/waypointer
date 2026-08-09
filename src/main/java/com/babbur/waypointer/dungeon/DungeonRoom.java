@@ -4,19 +4,8 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * The dungeon room the player is currently standing in, as identified by
- * Waypointer at runtime: type, shape, the canonical-frame physical corner,
- * the orientation that maps room-local coordinates back into the world, and
- * the NW-corner positions of the 32x32 segments that make up the footprint.
- *
- * <p>This is intentionally a "thin" room descriptor -- it carries only the
- * geometry needed to project room-local secret coordinates back into the
- * world plus the optional catalog identity that {@code DungeonRoomData}
- * attaches after matching room-core hashes or authored fingerprints.
- *
- * <p>Segments are encoded as {@code packed = (x << 32) | (z & 0xFFFFFFFF)}
- * to avoid allocating a list of pairs; the helpers
- * {@link #packSegment}/{@link #segmentX}/{@link #segmentZ} do the round trip.
+ * Geometry and optional catalog identity for the current room. Segment X/Z
+ * pairs are packed into longs to avoid allocating coordinate objects.
  */
 public record DungeonRoom(
         DungeonRoomType type,

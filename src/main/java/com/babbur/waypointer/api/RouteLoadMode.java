@@ -2,13 +2,7 @@ package com.babbur.waypointer.api;
 
 import com.babbur.waypointer.core.WaypointGroup;
 
-/**
- * Controls how many waypoints in a route are visible at once.
- *
- * <p>The API keeps this enum separate from Waypointer's mutable route model so
- * third-party integrations can depend on a small, stable surface instead of the
- * full internal group type.
- */
+/** Controls how many waypoints in a route are visible at once. */
 public enum RouteLoadMode {
     /** Every waypoint in the route may render at the same time. */
     STATIC,

@@ -15,7 +15,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
-import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Camera;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -29,36 +28,18 @@ import net.minecraft.util.Mth;
 import net.minecraft.world.phys.Vec3;
 import org.joml.Vector3fc;
 
-/**
- * Draws a thick line from the player's crosshair to the
- * {@link WaypointGroup#current()} waypoint of every active group.
- *
- * The line's origin is pushed a small distance forward along the camera's look
- * vector. Starting at raw {@code camera.position()} would put the near end behind
- * the near clip plane (or visually on top of the crosshair as a single pixel),
- * which is why the old implementation dropped the origin below the crosshair and
- * the user saw the tracer "start at the feet" from certain angles. Offsetting
- * along the look vector makes the line visibly emerge from the crosshair
- * regardless of view pitch.
- *
- * Shares {@link WaypointerRenderPipelines#linesThroughWalls()} with
- * {@link WaypointRenderer} so the tracer pierces terrain; without that, the
- * tracer vanishes the moment you look at a wall between you and the current
- * waypoint.
- */
+import java.util.ArrayList;
+import java.util.List;
+
 public final class TracerRenderer implements HudElement {
+
+    private record StraightTracerTarget(WaypointGroup group, float x, float y, float z,
+                                        int color) {}
 
     private static final Identifier HUD_FALLBACK_ID =
             Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "iris_tracer_fallback");
 
-    /**
-     * Distance (in blocks) to push the tracer origin forward along the camera's
-     * look vector. Large enough that the near end isn't clipped by the camera
-     * near plane; small enough that the line still visually anchors to the
-     * crosshair rather than floating in space ahead of the player.
-     */
     private static final float CROSSHAIR_FORWARD = 0.4f;
-    /** When temp-waypoint focus forces a tracer, opacity 0 would hide it entirely. */
     private static final float TEMP_FOCUS_TRACER_ALPHA_FLOOR = 0.5f;
     private static final float DEG_TO_RAD = (float) Math.PI / 180.0f;
 
@@ -66,6 +47,7 @@ public final class TracerRenderer implements HudElement {
     private final WaypointerConfig config;
     private final DungeonConfig dungeonConfig;
     private final float[] tracerOriginDelta = new float[3];
+    private final double[] waypointBoxBoundsScratch = new double[6];
     private final WorldScreenProjector projector = new WorldScreenProjector();
     private final double[] screenScratch = new double[2];
 
@@ -81,7 +63,7 @@ public final class TracerRenderer implements HudElement {
     }
 
     public void install() {
-        LevelRenderEvents.COLLECT_SUBMITS.register(this::onRender);
+        WorldOverlayCompat.register(this::onRender);
         HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT, HUD_FALLBACK_ID, this);
     }
 
@@ -118,57 +100,50 @@ public final class TracerRenderer implements HudElement {
         try {
             ps.translate(-camPos.x, -camPos.y, -camPos.z);
 
-            // Push slightly forward along the camera vector so the start point sits at
-            // the crosshair regardless of pitch, and so the near-plane doesn't clip it.
             LocalPlayer player = mc.player;
             writeTracerOriginDelta(mc, cam, player, tracerOriginDelta);
-            // Keep the tracer origin in primitives so the per-group loop doesn't touch
-            // the Vec3#add allocation path for each active group.
             float fromX = (float) camPos.x + tracerOriginDelta[0];
             float fromY = (float) camPos.y + tracerOriginDelta[1];
             float fromZ = (float) camPos.z + tracerOriginDelta[2];
             double nearHideDistanceSq = nearHideDistanceSq();
-            // Matching the tracer to the live waypoint colour means gradient groups
-            // draw a tracer whose hue advances with progress, and manually-coloured
-            // checkpoints light their tracer in the same tint. The flat-override path
-            // is still available for users who prefer one tracer colour across groups.
             boolean matchWaypoint = config.matchTracerToWaypointColor();
             int overrideColor = config.tracerColor();
             float thickness = (float) config.tracerThickness();
             float renderAlpha = alpha;
-            boolean hasTracerLines = false;
+            List<StraightTracerTarget> targets = new ArrayList<>();
             for (WaypointGroup group : groups) {
-                if (straightTracerTarget(
-                        group, tempFocus, player, nearHideDistanceSq, true) != null) {
-                    hasTracerLines = true;
+                Waypoint target = straightTracerTarget(
+                        group, tempFocus, player, nearHideDistanceSq, true);
+                if (target != null) {
+                    WaypointWorldRenderer.populateWaypointRenderAnchor(
+                            mc.level, target, waypointBoxBoundsScratch);
+                    targets.add(new StraightTracerTarget(
+                            group,
+                            (float) waypointBoxBoundsScratch[0],
+                            (float) waypointBoxBoundsScratch[1],
+                            (float) waypointBoxBoundsScratch[2],
+                            target.color()));
                 }
             }
 
-            if (hasTracerLines) {
+            if (!targets.isEmpty()) {
                 RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
                 boolean submitted = RenderSubmission.submit(
                         ctx, ps, lineType, (lines, submittedPose) -> {
-                    for (WaypointGroup group : groups) {
-                        Waypoint target = straightTracerTarget(
-                                group, tempFocus, player, nearHideDistanceSq, false);
-                        if (target == null) continue;
+                    for (StraightTracerTarget target : targets) {
                         int color = matchWaypoint ? target.color() : overrideColor;
                         RenderHelpers.emitLine(lines, submittedPose,
                                 fromX, fromY, fromZ,
-                                (float) target.centerX(), (float) target.centerY(),
-                                (float) target.centerZ(),
+                                target.x(), target.y(), target.z(),
                                 color, renderAlpha, thickness);
                     }
                 });
-                for (WaypointGroup group : groups) {
-                    Waypoint target = straightTracerTarget(
-                            group, tempFocus, player, nearHideDistanceSq, false);
-                    if (target == null) continue;
+                for (StraightTracerTarget target : targets) {
                     if (submitted) {
-                        RenderDiagnostics.recordStraightTracerSubmitted(group);
+                        RenderDiagnostics.recordStraightTracerSubmitted(target.group());
                     } else {
                         RenderDiagnostics.recordNoStraightTracer(
-                                group, "world render submission failed");
+                                target.group(), "world render submission failed");
                     }
                 }
             }
@@ -197,6 +172,17 @@ public final class TracerRenderer implements HudElement {
             return null;
         }
         Waypoint target = group.current();
+        if (!tempFocus
+                && !group.temp()
+                && group.loadMode() == WaypointGroup.LoadMode.STATIC
+                && !isDungeonRoomRoute(group)
+                && player != null) {
+            double maxDistance = config.maxStaticWaypointRenderDistance();
+            target = nearestStaticTracerTarget(
+                    group, player.getX(), player.getY(), player.getZ(), nearHideDistanceSq,
+                    config.hideReachedStaticWaypointsUntilCycleComplete(),
+                    maxDistance > 0.0 ? maxDistance * maxDistance : 0.0);
+        }
         if (target == null) {
             if (recordDecision) RenderDiagnostics.recordNoStraightTracer(group, "no current target");
             return null;
@@ -208,6 +194,38 @@ public final class TracerRenderer implements HudElement {
             return null;
         }
         return target;
+    }
+
+    private static boolean isDungeonRoomRoute(WaypointGroup group) {
+        return group != null
+                && !group.temp()
+                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
+    }
+
+    static Waypoint nearestStaticTracerTarget(WaypointGroup group,
+                                              double playerX, double playerY, double playerZ,
+                                              double nearHideDistanceSq,
+                                              boolean hideReached,
+                                              double maxDistanceSq) {
+        if (group == null || group.loadMode() != WaypointGroup.LoadMode.STATIC) return null;
+
+        Waypoint nearest = null;
+        double nearestDistanceSq = Double.POSITIVE_INFINITY;
+        for (int index = 0; index < group.size(); index++) {
+            if (hideReached && group.isStaticWaypointReached(index)) continue;
+            Waypoint waypoint = group.get(index);
+            double dx = waypoint.centerX() - playerX;
+            double dy = waypoint.centerY() - playerY;
+            double dz = waypoint.centerZ() - playerZ;
+            double distanceSq = dx * dx + dy * dy + dz * dz;
+            if (nearHideDistanceSq > 0.0 && distanceSq <= nearHideDistanceSq) continue;
+            if (maxDistanceSq > 0.0 && distanceSq > maxDistanceSq) continue;
+            if (distanceSq < nearestDistanceSq) {
+                nearest = waypoint;
+                nearestDistanceSq = distanceSq;
+            }
+        }
+        return nearest;
     }
 
     @Override
@@ -251,14 +269,21 @@ public final class TracerRenderer implements HudElement {
             Waypoint target = straightTracerTarget(
                     group, tempFocus, player, nearHideDistanceSq, true);
             if (target == null) continue;
-            if (!projector.project(target.centerX(), target.centerY(), target.centerZ(),
+            WaypointWorldRenderer.populateWaypointRenderAnchor(
+                    mc.level, target, waypointBoxBoundsScratch);
+            double targetX = waypointBoxBoundsScratch[0];
+            double targetY = waypointBoxBoundsScratch[1];
+            double targetZ = waypointBoxBoundsScratch[2];
+            if (!projector.project(targetX, targetY, targetZ,
                     screenW, screenH, screenScratch)) {
-                projectOffscreenTarget(camera, target, screenW, screenH, screenScratch);
+                projectOffscreenTarget(
+                        camera, targetX, targetY, targetZ,
+                        screenW, screenH, screenScratch);
             }
 
             int color = matchWaypoint ? target.color() : overrideColor;
             int argb = RenderHelpers.withAlpha(0xFF000000 | (color & 0xFFFFFF), alpha);
-            WaypointRenderer.drawScreenLine(g, fromX, fromY,
+        RenderHelpers.drawScreenLine(g, fromX, fromY,
                     screenScratch[0], screenScratch[1], argb, thickness);
             RenderDiagnostics.recordStraightTracerSubmitted(group);
         }
@@ -268,23 +293,24 @@ public final class TracerRenderer implements HudElement {
                                   DungeonConfig dungeonConfig) {
         if (group != null
                 && !group.temp()
-                && DungeonRoomData.definition(group.zoneId()) != null
+                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON
                 && dungeonConfig != null) {
             return dungeonConfig.showDungeonTracers();
         }
         return config != null && config.showTracer();
     }
 
-    private static void projectOffscreenTarget(Camera camera, Waypoint target,
+    private static void projectOffscreenTarget(Camera camera,
+                                               double targetX, double targetY, double targetZ,
                                                int screenW, int screenH,
                                                double[] out) {
         Vec3 cameraPos = camera.position();
         Vector3fc left = camera.leftVector();
         Vector3fc up = camera.upVector();
 
-        double dx = target.centerX() - cameraPos.x;
-        double dy = target.centerY() - cameraPos.y;
-        double dz = target.centerZ() - cameraPos.z;
+        double dx = targetX - cameraPos.x;
+        double dy = targetY - cameraPos.y;
+        double dz = targetZ - cameraPos.z;
 
         double screenDirX = -(dx * left.x() + dy * left.y() + dz * left.z());
         double screenDirY = -(dx * up.x() + dy * up.y() + dz * up.z());
@@ -339,9 +365,7 @@ public final class TracerRenderer implements HudElement {
         float roll = Mth.sin(walkPhase * Mth.PI) * bob * 3.0f * DEG_TO_RAD;
         float pitch = Math.abs(Mth.cos(walkPhase * Mth.PI - 0.2f) * bob) * 5.0f * DEG_TO_RAD;
 
-        // Vanilla view bob applies camera-local translation plus small roll/pitch
-        // rotations. Solve the inverse transform for a point that should appear
-        // directly under the crosshair after those bob transforms run.
+        // Invert vanilla view bob so the origin remains under the crosshair.
         float localX = -bobX;
         float localY = -bobY;
         float localZ = -CROSSHAIR_FORWARD;

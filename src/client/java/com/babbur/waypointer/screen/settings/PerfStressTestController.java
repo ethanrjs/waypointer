@@ -20,30 +20,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
-/**
- * Frame-driven state machine behind the settings screen's performance stress
- * test. {@code onFrame()} is called once per rendered frame while the settings
- * screen remains open with its normal overlay suppressed; the controller sweeps the {@link PerfScenarios} list over
- * the live config (settle window discarded, sample window recorded), collects
- * frame times plus CPU/GPU/heap utilization, restores the user's settings from
- * a snapshot, and hands {@link PerfReport} the numbers.
- *
- * <p>A sweep over whatever happens to be in the scene measures nothing when
- * the user has two waypoints, so {@code start()} installs the synthetic
- * {@link PerfStressRoute} profiles around the player and removes them with the
- * settings restore. The final phase doubles subwaypoint density until it hits
- * the configured ceiling or sustained four-FPS frame time.
- *
- * <p>State is static so a finished report survives screen rebuilds and
- * reopen. The pre-test snapshot is additionally written to disk
- * ({@code perf-test-backup.wpc}) so a crash mid-sweep cannot permanently
- * strand the user on stress-test settings -- the next settings-screen open
- * recovers it. Stress groups are runtime-only and never persist past the session.
- */
 public final class PerfStressTestController {
 
     private static final long UTIL_SAMPLE_INTERVAL_MS = 200;
-    /** Frames longer than this are screen-transition hitches, not render cost. */
     private static final long STALE_FRAME_NANOS = 500_000_000L;
     private static final long LAG_FRAME_NANOS = 250_000_000L;
     private static final long HARD_STALL_NANOS = 1_000_000_000L;
@@ -132,7 +111,6 @@ public final class PerfStressTestController {
         return Component.translatable("waypointer.screen.settings.perf.status.description");
     }
 
-    /** Begin a sweep over the live config. No-op when one is already running. */
     public static synchronized boolean start(WaypointerConfig config) {
         if (running || config == null) return false;
         var minecraft = Minecraft.getInstance();
@@ -188,7 +166,6 @@ public final class PerfStressTestController {
         }
     }
 
-    /** Restore settings and stop; used by the Cancel button and screen close. */
     public static synchronized boolean cancelIfRunning() {
         if (!running) return false;
         running = false;
@@ -199,12 +176,7 @@ public final class PerfStressTestController {
         return true;
     }
 
-    /**
-     * Advance the sweep by one rendered frame.
-     *
-     * @return true when the scenario set changed (the screen should rebuild
-     *         its rows so controls reflect the scenario's config values).
-     */
+    /** Returns true when the screen must rebuild for a new scenario. */
     public static synchronized boolean onFrame() {
         if (!running) return false;
         try {
@@ -455,11 +427,7 @@ public final class PerfStressTestController {
                 stressX, stressY, stressZ, load);
     }
 
-    /**
-     * Crash safety net: if a previous sweep never restored (JVM died
-     * mid-test), put the user's settings back the next time the settings
-     * screen opens. Returns true when a recovery happened.
-     */
+    /** Restores settings left behind by an interrupted test. */
     public static synchronized boolean recoverInterruptedTest(WaypointerConfig config) {
         if (running || config == null) return false;
         Path backup = backupPath();
@@ -565,8 +533,6 @@ public final class PerfStressTestController {
         return FabricLoader.getInstance().getConfigDir()
                 .resolve(Waypointer.MOD_ID).resolve(BACKUP_FILE_NAME);
     }
-
-    // --- metrics -------------------------------------------------------------------------------
 
     /** {@code {processCpuPct, systemCpuPct, gpuPct}}; negative = unavailable. */
     private static double[] sampleUtilization() {

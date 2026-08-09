@@ -186,9 +186,9 @@ public final class DefaultWaypointerApi implements WaypointerApi {
     @Override
     public ImportSummary importRoutes(String payload, ImportOptions options) {
         Objects.requireNonNull(payload, "payload");
+        ImportOptions actualOptions = options == null ? ImportOptions.defaults() : options;
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(payload);
         return callOnClientThread(() -> {
-            ImportOptions actualOptions = options == null ? ImportOptions.defaults() : options;
-            WaypointImporter.ImportResult result = WaypointImporter.importAny(payload);
             List<String> ids = addImportedGroups(result.groups(), actualOptions);
             int waypointCount = result.groups().stream().mapToInt(WaypointGroup::size).sum();
             return new ImportSummary(
