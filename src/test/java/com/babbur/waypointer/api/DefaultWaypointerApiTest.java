@@ -45,6 +45,7 @@ class DefaultWaypointerApiTest {
         assertEquals(Waypoint.FLAG_DEPTH_CHECKED, WaypointFlags.DEPTH_CHECKED);
         assertEquals(Waypoint.FLAG_SKIP_ON_STAND, WaypointFlags.SKIP_ON_STAND);
         assertEquals(Waypoint.FLAG_SKIP_ON_INTERACT, WaypointFlags.SKIP_ON_INTERACT);
+        assertEquals(Waypoint.FLAG_DISABLED, WaypointFlags.DISABLED);
         assertEquals(Waypoint.SUBWAYPOINT_STYLE_FLAGS, WaypointFlags.SUBWAYPOINT_STYLE);
         assertEquals(Waypoint.STRUCTURAL_FLAGS, WaypointFlags.STRUCTURAL);
 

@@ -4,6 +4,8 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.DungeonWaypointType;
+import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,19 +25,55 @@ final class GroupEditPolicy {
     static final int WAYPOINT_CONTROL_ACTION_MINE_SKIP = 3;
     static final int WAYPOINT_CONTROL_ACTION_DEPTH_CHECK = 4;
 
-    private static final List<String> ROUTE_INFO_LABELS = List.of(
-            "Click", "Double-click selected", "Right-click",
-            "Shift-left-click", "Shift-right-click", "Color swatch");
-    private static final List<String> ROUTE_INFO_DESCRIPTIONS = List.of(
-            "Select a waypoint row", "Rename that waypoint", "Set the current waypoint",
-            "Move in world", "Toggle subwaypoint", "Edit color; Shift-click unlocks");
-    private static final List<String> DUNGEON_ROUTE_INFO_LABELS = List.of(
-            "Types", "No trigger", "Stand", "Interact", "Mine", "Skip Ahead");
-    private static final List<String> DUNGEON_ROUTE_INFO_DESCRIPTIONS = List.of(
-            "Label the selected dungeon waypoint", "Skip when near",
-            "Skip when standing for 0.5 seconds", "Right-click to skip",
-            "Break to skip", "Waypoints can be skipped");
-
+    private static final List<Component> ROUTE_INFO_LABELS = List.of(
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.click.label", "Click"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.double_click_selected.label",
+                    "Double-click selected"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.right_click.label", "Right-click"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.middle_click.label", "Middle-click"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.shift_left_click.label", "Shift-left-click"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.shift_right_click.label", "Shift-right-click"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.color_swatch.label", "Color swatch"));
+    private static final List<Component> ROUTE_INFO_DESCRIPTIONS = List.of(
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.click.description", "Select a waypoint row"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.double_click_selected.description",
+                    "Rename that waypoint"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.right_click.description",
+                    "Set the current waypoint"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.middle_click.description",
+                    "Enable or disable the waypoint"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.shift_left_click.description", "Move in world"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.shift_right_click.description",
+                    "Toggle subwaypoint"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.color_swatch.description",
+                    "Edit color; Shift-click unlocks"));
+    private static final List<Component> DUNGEON_ROUTE_INFO_LABELS = List.of(
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.dungeon.types.label", "Types"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.dungeon.no_trigger.label", "No trigger"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.dungeon.stand.label", "Stand"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.dungeon.interact.label", "Interact"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.dungeon.mine.label", "Mine"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.dungeon.skip_ahead.label", "Skip Ahead"));
     private GroupEditPolicy() {}
 
     static RouteColorMode routeColorMode(WaypointGroup.GradientMode mode, boolean paintActive) {
@@ -92,12 +130,35 @@ final class GroupEditPolicy {
     }
 
     static List<String> routeInfoLabels(boolean dungeonRoomGroup) {
-        return appendDungeonInfo(ROUTE_INFO_LABELS, DUNGEON_ROUTE_INFO_LABELS, dungeonRoomGroup);
+        return localizedInfo(ROUTE_INFO_LABELS, DUNGEON_ROUTE_INFO_LABELS, dungeonRoomGroup);
     }
 
     static List<String> routeInfoDescriptions(boolean dungeonRoomGroup) {
-        return appendDungeonInfo(
-                ROUTE_INFO_DESCRIPTIONS, DUNGEON_ROUTE_INFO_DESCRIPTIONS, dungeonRoomGroup);
+        return localizedInfo(
+                ROUTE_INFO_DESCRIPTIONS, dungeonRouteInfoDescriptions(), dungeonRoomGroup);
+    }
+
+    private static List<Component> dungeonRouteInfoDescriptions() {
+        return List.of(
+                Component.translatableWithFallback(
+                        "waypointer.screen.group_edit.info.dungeon.types.description",
+                        "Label the selected dungeon waypoint"),
+                Component.translatableWithFallback(
+                        "waypointer.screen.group_edit.info.dungeon.no_trigger.description",
+                        "Skip when near"),
+                Component.translatableWithFallback(
+                        "waypointer.screen.group_edit.info.dungeon.stand.description",
+                        "Skip when standing for %1$s seconds",
+                        LocalizedNumberFormatter.active().oneDecimal(0.5)),
+                Component.translatableWithFallback(
+                        "waypointer.screen.group_edit.info.dungeon.interact.description",
+                        "Right-click to skip"),
+                Component.translatableWithFallback(
+                        "waypointer.screen.group_edit.info.dungeon.mine.description",
+                        "Break to skip"),
+                Component.translatableWithFallback(
+                        "waypointer.screen.group_edit.info.dungeon.skip_ahead.description",
+                        "Waypoints can be skipped"));
     }
 
     static List<ConnectorSegment> connectorSegments(WaypointGroup group) {
@@ -151,6 +212,7 @@ final class GroupEditPolicy {
 
     static boolean isWaypointRowVisuallyActive(WaypointGroup group, int index) {
         if (group == null || index < 0 || index >= group.size()) return false;
+        if (group.isWaypointDisabled(index)) return false;
         if (group.loadMode() == WaypointGroup.LoadMode.STATIC) return true;
         int currentIndex = group.currentIndex();
         int activeParent = group.activeSubwaypointParentIndex();
@@ -168,18 +230,37 @@ final class GroupEditPolicy {
         List<String> active = new ArrayList<>();
         if (dungeonRoomGroup) {
             active.addAll(DungeonWaypointType.activeTypes(waypoint).stream()
-                    .map(DungeonWaypointType::label)
+                    .map(GroupEditPolicy::dungeonWaypointTypeLabel)
                     .toList());
         }
-        if (subwaypoint && waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT)) active.add("Tiny");
-        if (subwaypoint && waypoint.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT)) active.add("Filled");
-        if (subwaypoint && waypoint.hasFlag(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED)) {
-            active.add("Hide");
+        if (subwaypoint && waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT)) {
+            active.add(Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.control.subwaypoint.tiny", "Tiny").getString());
         }
-        if (dungeonRoomGroup && waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_STAND)) active.add("Stand");
-        if (dungeonRoomGroup && waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT)) active.add("Interact");
-        if (dungeonRoomGroup && waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_MINE)) active.add("Mine");
-        if (waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)) active.add("LOS");
+        if (subwaypoint && waypoint.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT)) {
+            active.add(Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.control.subwaypoint.filled", "Filled").getString());
+        }
+        if (subwaypoint && waypoint.hasFlag(Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED)) {
+            active.add(Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.control.subwaypoint.hide", "Hide").getString());
+        }
+        if (dungeonRoomGroup && waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_STAND)) {
+            active.add(Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.control.stand.label", "Stand").getString());
+        }
+        if (dungeonRoomGroup && waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_INTERACT)) {
+            active.add(Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.control.interact.label", "Interact").getString());
+        }
+        if (dungeonRoomGroup && waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_MINE)) {
+            active.add(Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.control.mine.label", "Mine").getString());
+        }
+        if (waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)) {
+            active.add(Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.control.los.label", "LOS").getString());
+        }
         return String.join(" · ", active);
     }
 
@@ -192,19 +273,51 @@ final class GroupEditPolicy {
     }
 
     static String swatchGestureTooltipText(boolean shiftDown) {
-        return shiftDown ? "Shift-click unlocks locked color" : "Click to edit waypoint color";
+        return shiftDown
+                ? Component.translatableWithFallback(
+                        "waypointer.screen.group_edit.control.color.unlock",
+                        "Shift-click unlocks locked color").getString()
+                : Component.translatableWithFallback(
+                        "waypointer.screen.group_edit.control.color.edit",
+                        "Click to edit waypoint color").getString();
     }
 
     static String dungeonStandSkipTooltipText() {
-        return "Stand to skip";
+        return Component.translatableWithFallback(
+                "waypointer.screen.group_edit.control.stand.tooltip", "Stand to skip").getString();
     }
 
     static String dungeonInteractSkipTooltipText() {
-        return "Interact to skip";
+        return Component.translatableWithFallback(
+                "waypointer.screen.group_edit.control.interact.tooltip",
+                "Interact to skip").getString();
     }
 
     static String dungeonMineSkipTooltipText() {
-        return "Mine to skip";
+        return Component.translatableWithFallback(
+                "waypointer.screen.group_edit.control.mine.tooltip", "Mine to skip").getString();
+    }
+
+    static String dungeonWaypointTypeLabel(DungeonWaypointType type) {
+        if (type == null) return "";
+        return switch (type) {
+            case SECRET -> Component.translatableWithFallback(
+                    "waypointer.dungeon.waypoint_type.secret", "Secret").getString();
+            case ETHERWARP -> Component.translatableWithFallback(
+                    "waypointer.dungeon.waypoint_type.etherwarp", "Etherwarp").getString();
+            case DUNGEONBREAKER -> Component.translatableWithFallback(
+                    "waypointer.dungeon.waypoint_type.dungeonbreaker", "Dungeonbreaker").getString();
+            case SUPERBOOM -> Component.translatableWithFallback(
+                    "waypointer.dungeon.waypoint_type.superboom", "Superboom").getString();
+            case PEARL -> Component.translatableWithFallback(
+                    "waypointer.dungeon.waypoint_type.pearl", "Pearl").getString();
+            case PEARL_TARGET -> Component.translatableWithFallback(
+                    "waypointer.dungeon.waypoint_type.pearl_target", "Pearl target").getString();
+            case ITEM -> Component.translatableWithFallback(
+                    "waypointer.dungeon.waypoint_type.item", "Item").getString();
+            case BAT -> Component.translatableWithFallback(
+                    "waypointer.dungeon.waypoint_type.bat", "Bat").getString();
+        };
     }
 
     static int waypointControlFlagForAction(int action, boolean dungeonRoomGroup) {
@@ -249,11 +362,11 @@ final class GroupEditPolicy {
         return currentName;
     }
 
-    private static List<String> appendDungeonInfo(
-            List<String> base, List<String> dungeon, boolean dungeonRoomGroup) {
-        if (!dungeonRoomGroup) return base;
-        List<String> result = new ArrayList<>(base);
-        result.addAll(dungeon);
+    private static List<String> localizedInfo(
+            List<Component> base, List<Component> dungeon, boolean dungeonRoomGroup) {
+        List<String> result = new ArrayList<>(base.size() + (dungeonRoomGroup ? dungeon.size() : 0));
+        base.stream().map(Component::getString).forEach(result::add);
+        if (dungeonRoomGroup) dungeon.stream().map(Component::getString).forEach(result::add);
         return List.copyOf(result);
     }
 

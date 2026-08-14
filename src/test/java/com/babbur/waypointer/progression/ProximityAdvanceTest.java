@@ -229,6 +229,20 @@ class ProximityAdvanceTest {
     }
 
     @Test
+    void oneEnabledWaypointLoopRearmsWhenOtherWaypointsAreDisabled() {
+        WaypointGroup group = WaypointGroup.create("single-enabled", "test_zone");
+        group.setDefaultRadius(2.0);
+        group.add(Waypoint.at(0, 0, 0));
+        group.add(Waypoint.at(10, 0, 0));
+        group.setWaypointDisabled(1, true);
+
+        assertTrue(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5, true));
+        assertEquals(0, group.currentIndex());
+        assertTrue(group.isProximitySuppressed(0));
+        assertFalse(ProximityTracker.advanceIfReached(group, 0.5, 0.5, 0.5, true));
+    }
+
+    @Test
     void dungeonRoomRouteDoesNotLoopWhenRestartEnabled() {
         WaypointGroup group = dungeonTriggerGroup();
         group.add(Waypoint.at(0, 0, 0));
@@ -511,6 +525,26 @@ class ProximityAdvanceTest {
         assertEquals(0, g.currentIndex());
         assertFalse(g.isStaticWaypointReached(0));
         assertTrue(g.isStaticWaypointReached(2));
+    }
+
+    @Test
+    void disabledWaypointsCannotAdvanceSequenceOrStaticProgress() {
+        WaypointGroup sequence = line();
+        sequence.setWaypointDisabled(1, true);
+
+        assertFalse(ProximityTracker.advanceIfReached(
+                sequence, 10.5, 0.5, 0.5, false, true));
+        assertEquals(0, sequence.currentIndex());
+        assertTrue(ProximityTracker.advanceIfReached(
+                sequence, 0.5, 0.5, 0.5, false, false));
+        assertEquals(2, sequence.currentIndex());
+
+        WaypointGroup staticRoute = line();
+        staticRoute.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        staticRoute.setWaypointDisabled(1, true);
+        assertFalse(ProximityTracker.markReachedStaticWaypoints(
+                staticRoute, 10.5, 0.5, 0.5));
+        assertFalse(staticRoute.isStaticWaypointReached(1));
     }
 
     @Test

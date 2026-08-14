@@ -32,7 +32,7 @@ public final class RouteProgress {
     public static Snapshot snapshot(WaypointGroup group) {
         Objects.requireNonNull(group, "group");
 
-        int total = group.mainWaypointCount();
+        int total = group.enabledMainWaypointCount();
         if (total == 0) {
             return new Snapshot(0, 0, 0, 0.0, false);
         }
@@ -79,7 +79,7 @@ public final class RouteProgress {
     private static int countStaticReachedMainWaypoints(WaypointGroup group) {
         int count = 0;
         for (int i = 0; i < group.size(); i++) {
-            if (group.isSubwaypoint(i)) continue;
+            if (group.isSubwaypoint(i) || group.isWaypointDisabled(i)) continue;
             if (group.isStaticWaypointReached(i)) count++;
         }
         return count;

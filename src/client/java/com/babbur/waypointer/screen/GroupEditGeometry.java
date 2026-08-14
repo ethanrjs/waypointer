@@ -54,9 +54,33 @@ final class GroupEditGeometry {
     }
 
     static Integer parseCoordinate(String raw) {
-        if (raw == null || raw.trim().isEmpty()) return null;
+        if (raw == null || raw.strip().isEmpty()) return null;
+        String stripped = raw.strip();
+        StringBuilder normalized = new StringBuilder(stripped.length());
+        for (int offset = 0; offset < stripped.length();) {
+            int codePoint = stripped.codePointAt(offset);
+            offset += Character.charCount(codePoint);
+            if (Character.getType(codePoint) == Character.FORMAT) {
+                continue;
+            }
+            if (Character.isWhitespace(codePoint)) return null;
+            if (normalized.isEmpty() && (codePoint == '-' || codePoint == 0x2212)) {
+                normalized.append('-');
+                continue;
+            }
+            if (normalized.isEmpty() && (codePoint == '+' || codePoint == 0xFF0B)) {
+                normalized.append('+');
+                continue;
+            }
+            int digit = Character.digit(codePoint, 10);
+            if (digit < 0) return null;
+            normalized.append((char) ('0' + digit));
+        }
+        if (normalized.isEmpty()
+                || "-".contentEquals(normalized)
+                || "+".contentEquals(normalized)) return null;
         try {
-            return Integer.parseInt(raw.trim());
+            return Integer.parseInt(normalized.toString());
         } catch (NumberFormatException ignored) {
             return null;
         }

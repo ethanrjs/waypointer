@@ -212,6 +212,7 @@ public final class TracerRenderer implements HudElement {
         Waypoint nearest = null;
         double nearestDistanceSq = Double.POSITIVE_INFINITY;
         for (int index = 0; index < group.size(); index++) {
+            if (group.isWaypointDisabled(index)) continue;
             if (hideReached && group.isStaticWaypointReached(index)) continue;
             Waypoint waypoint = group.get(index);
             double dx = waypoint.centerX() - playerX;

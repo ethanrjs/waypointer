@@ -417,6 +417,9 @@ class WaypointRendererTest {
 
         assertEquals(group.get(1), TracerRenderer.nearestStaticTracerTarget(
                 group, 0.5, 64.5, 0.5, 0.0, false, 0.0));
+        group.setWaypointDisabled(1, true);
+        assertEquals(group.get(2), TracerRenderer.nearestStaticTracerTarget(
+                group, 0.5, 64.5, 0.5, 0.0, false, 0.0));
         assertEquals(group.get(2), TracerRenderer.nearestStaticTracerTarget(
                 group, 0.5, 64.5, 0.5, 4.0, false, 0.0));
 
