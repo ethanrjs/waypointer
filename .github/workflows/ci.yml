@@ -33,7 +33,12 @@ jobs:
         uses: gradle/actions/wrapper-validation@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
 
       - name: Test and build all targets
-        run: ./gradlew --no-daemon --max-workers=1 clean buildAllTargets --stacktrace --console=plain
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit="$(git rev-parse HEAD)"
+          ./gradlew --no-daemon --max-workers=1 clean buildAllTargets \
+            "-PtranslationCommit=${source_commit}" --stacktrace --console=plain
 
       - name: Upload final-target test and coverage reports
         if: always()

@@ -33,14 +33,16 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * Contract for Waypointer's language resources.
  *
- * <p>{@code en_us.json} is the canonical catalog. Other locale files are
- * partial overlays: absent keys deliberately use Minecraft's English fallback,
- * while every translated key must remain known and formatting-compatible.
+ * <p>{@code en_us.json} is the canonical catalog. Every remote locale must
+ * contain exactly the canonical key set with formatting-compatible values.
  */
 class TranslationCatalogTest {
 
-    private static final Path LANG_DIR = Path.of(
+    private static final Path ENGLISH_FILE = Path.of(
             "src", "main", "resources", "assets", "waypointer", "lang");
+    private static final Path REMOTE_LANG_DIR = Path.of("translations", "lang");
+    private static final Path MOJANG_LOCALE_MANIFEST = Path.of(
+            "src", "test", "resources", "mojang_asset_locales.txt");
     private static final List<Path> JAVA_SOURCE_ROOTS = List.of(
             Path.of("src", "main", "java"),
             Path.of("src", "client", "java"));
@@ -52,21 +54,22 @@ class TranslationCatalogTest {
             "%(?:(\\d+)\\$)?([A-Za-z%])");
 
     @Test
-    void everySupportedLocaleIsAValidPartialOverlayOfTheCanonicalCatalog() throws IOException {
-        Map<String, String> english = readCatalog(LANG_DIR.resolve("en_us.json"));
+    void everySupportedLocaleMatchesTheCanonicalCatalog() throws IOException {
+        Map<String, String> english = readCatalog(ENGLISH_FILE.resolve("en_us.json"));
         assertFalse(english.isEmpty(), "en_us.json must not be empty");
 
         for (Path localeFile : localeFiles()) {
             Map<String, String> locale = readCatalog(localeFile);
             String localeName = localeName(localeFile);
 
-            assertKnownKeys(english.keySet(), locale.keySet(), localeName);
-            for (Map.Entry<String, String> entry : locale.entrySet()) {
+            assertEquals(english.keySet(), locale.keySet(),
+                    localeName + " must have exactly the canonical translation keys");
+            for (Map.Entry<String, String> entry : english.entrySet()) {
                 String key = entry.getKey();
-                String value = entry.getValue();
+                String value = locale.get(key);
                 assertFalse(value.isBlank(), localeName + " has a blank value for " + key);
                 assertEquals(
-                        placeholderSignature(english.get(key), "en_us", key),
+                        placeholderSignature(entry.getValue(), "en_us", key),
                         placeholderSignature(value, localeName, key),
                         localeName + " changes the placeholder arguments for " + key);
             }
@@ -74,8 +77,37 @@ class TranslationCatalogTest {
     }
 
     @Test
+    void languageDirectoryMatchesTheMojangLocaleManifest() throws IOException {
+        List<String> manifestEntries = Files.readAllLines(
+                        MOJANG_LOCALE_MANIFEST, StandardCharsets.UTF_8).stream()
+                .map(String::trim)
+                .filter(line -> !line.isEmpty() && !line.startsWith("#"))
+                .toList();
+        Set<String> mojangLocales = new LinkedHashSet<>(manifestEntries);
+
+        assertEquals(manifestEntries.size(), mojangLocales.size(),
+                "Mojang locale manifest contains duplicate codes");
+        assertEquals(142, mojangLocales.size(),
+                "Mojang 26.1.2/26.2 shared locale manifest size changed");
+        assertEquals(new ArrayList<>(new TreeSet<>(mojangLocales)), manifestEntries,
+                "Mojang locale manifest must stay sorted");
+        assertTrue(mojangLocales.contains("fil_ph"), "manifest must include fil_ph");
+        assertTrue(mojangLocales.contains("tl_ph"), "manifest must include tl_ph");
+        assertFalse(mojangLocales.contains("en_us"),
+                "en_us is bundled separately from Mojang asset locales");
+
+        Set<String> expected = new TreeSet<>(mojangLocales);
+        expected.add("en_us");
+        Set<String> actual = localeFiles().stream()
+                .map(TranslationCatalogTest::localeName)
+                .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+        assertEquals(expected, actual,
+                "language directory must contain the 142 Mojang asset locales plus en_us");
+    }
+
+    @Test
     void canonicalKeysUseTheWaypointerNamespace() throws IOException {
-        for (String key : readCatalog(LANG_DIR.resolve("en_us.json")).keySet()) {
+        for (String key : readCatalog(ENGLISH_FILE.resolve("en_us.json")).keySet()) {
             assertTrue(isWaypointerKey(key), "translation key is outside Waypointer's namespace: " + key);
         }
     }
@@ -83,7 +115,7 @@ class TranslationCatalogTest {
     @Test
     void tooLongForChatMessageDoesNotSuggestDiscord() throws IOException {
         String key = "waypointer.export.fit.too_long";
-        String englishValue = readCatalog(LANG_DIR.resolve("en_us.json")).get(key);
+        String englishValue = readCatalog(ENGLISH_FILE.resolve("en_us.json")).get(key);
         assertEquals("Too long for chat", englishValue);
         for (Path localeFile : localeFiles()) {
             String value = readCatalog(localeFile).getOrDefault(key, englishValue);
@@ -94,7 +126,7 @@ class TranslationCatalogTest {
 
     @Test
     void literalComponentTranslationKeysExistInTheCanonicalCatalog() throws IOException {
-        Set<String> englishKeys = readCatalog(LANG_DIR.resolve("en_us.json")).keySet();
+        Set<String> englishKeys = readCatalog(ENGLISH_FILE.resolve("en_us.json")).keySet();
         Map<String, Set<String>> references = literalTranslationReferences();
 
         Set<String> missing = new TreeSet<>(references.keySet());
@@ -105,7 +137,7 @@ class TranslationCatalogTest {
 
     @Test
     void everyVisibleSettingHasCanonicalTranslationKeys() throws IOException {
-        Set<String> englishKeys = readCatalog(LANG_DIR.resolve("en_us.json")).keySet();
+        Set<String> englishKeys = readCatalog(ENGLISH_FILE.resolve("en_us.json")).keySet();
         Set<String> required = new LinkedHashSet<>();
 
         for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
@@ -161,12 +193,16 @@ class TranslationCatalogTest {
     }
 
     private static List<Path> localeFiles() throws IOException {
-        assertTrue(Files.isDirectory(LANG_DIR), "missing language directory: " + LANG_DIR);
-        try (Stream<Path> files = Files.list(LANG_DIR)) {
-            return files
+        assertTrue(Files.isDirectory(REMOTE_LANG_DIR), "missing remote language directory: " + REMOTE_LANG_DIR);
+        try (Stream<Path> files = Files.list(REMOTE_LANG_DIR)) {
+            List<Path> remote = files
                     .filter(path -> path.getFileName().toString().endsWith(".json"))
                     .sorted()
                     .toList();
+            List<Path> all = new ArrayList<>(remote.size() + 1);
+            all.add(ENGLISH_FILE.resolve("en_us.json"));
+            all.addAll(remote);
+            return List.copyOf(all);
         }
     }
 
@@ -188,13 +224,6 @@ class TranslationCatalogTest {
             assertEquals(JsonToken.END_DOCUMENT, json.peek(), path + " has trailing JSON content");
         }
         return entries;
-    }
-
-    private static void assertKnownKeys(Set<String> english, Set<String> locale, String localeName) {
-        Set<String> extra = new TreeSet<>(locale);
-        extra.removeAll(english);
-        assertTrue(extra.isEmpty(),
-                () -> localeName + " contains keys missing from en_us: " + extra);
     }
 
     private static boolean isWaypointerKey(String key) {

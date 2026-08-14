@@ -1,3 +1,8 @@
+import groovy.json.JsonOutput
+
+import java.nio.file.Files
+import java.security.MessageDigest
+
 plugins {
 	id 'net.fabricmc.fabric-loom' version "${loom_version}"
 	id 'maven-publish'
@@ -17,12 +22,20 @@ if (target == null) {
 def wrapperCommand = System.getProperty('os.name').startsWith('Windows')
 		? ['cmd', '/d', '/c', file('gradlew.bat').absolutePath]
 		: [file('gradlew').absolutePath]
+def requestedTranslationCommit = providers.gradleProperty('translationCommit')
+def translationCommitArguments = requestedTranslationCommit.isPresent()
+		? ["-PtranslationCommit=${requestedTranslationCommit.get()}"]
+		: []
 def buildMinecraft26_1_2 = tasks.register('buildMinecraft26_1_2', Exec) {
-	commandLine wrapperCommand + ['clean', 'build', '-Pminecraft_version=26.1.2', '--console=plain']
+	commandLine(wrapperCommand
+			+ ['clean', 'build', '-Pminecraft_version=26.1.2', '--console=plain']
+			+ translationCommitArguments)
 }
 def buildMinecraft26_2 = tasks.register('buildMinecraft26_2', Exec) {
 	dependsOn buildMinecraft26_1_2
-	commandLine wrapperCommand + ['build', '-Pminecraft_version=26.2', '--console=plain']
+	commandLine(wrapperCommand
+			+ ['build', '-Pminecraft_version=26.2', '--console=plain']
+			+ translationCommitArguments)
 }
 tasks.register('buildAllTargets') {
 	group = 'build'
@@ -68,6 +81,80 @@ loom {
 // source directory while the preview scene and geometry remain shared.
 sourceSets.client.java.srcDir("src/client-${targetMinecraft}/java")
 
+def remoteLocaleDirectory = layout.projectDirectory.dir('translations/lang')
+def generatedRemoteLocaleResources = layout.buildDirectory.dir('generated/remote-locale-resources')
+def remoteLocaleManifest = generatedRemoteLocaleResources.map {
+	it.file('assets/waypointer/i18n/remote-locales.json')
+}
+
+def generateRemoteLocaleManifest = tasks.register('generateRemoteLocaleManifest') {
+	def localeFiles = fileTree(remoteLocaleDirectory) {
+		include '*.json'
+	}
+	inputs.files(localeFiles).withPathSensitivity(PathSensitivity.RELATIVE)
+	inputs.property('translationCommit', requestedTranslationCommit.orElse(''))
+	outputs.file(remoteLocaleManifest)
+
+	doLast {
+		def commit = requestedTranslationCommit.orElse('').get().trim()
+		def enabled = !commit.isEmpty()
+		if (enabled && !(commit ==~ /[0-9a-f]{40}/)) {
+			throw new GradleException('translationCommit must be a lowercase 40-character Git commit SHA')
+		}
+
+		def catalogs = new TreeMap<String, Object>()
+		localeFiles.files.sort { left, right -> left.name <=> right.name }.each { localeFile ->
+			def locale = localeFile.name.substring(0, localeFile.name.length() - '.json'.length())
+			if (!(locale ==~ /[a-z0-9]+(?:_[a-z0-9]+)*/)) {
+				throw new GradleException("Unsafe locale filename: ${localeFile.name}")
+			}
+			if (!localeFile.isFile() || Files.isSymbolicLink(localeFile.toPath())) {
+				throw new GradleException("Locale must be a regular non-symlink file: ${localeFile}")
+			}
+
+			byte[] bytes = localeFile.bytes
+			if (enabled) {
+				byte[] committedBytes
+				try {
+					committedBytes = providers.exec {
+						commandLine 'git', 'show', "${commit}:translations/lang/${localeFile.name}"
+					}.standardOutput.asBytes.get()
+				} catch (Exception failure) {
+					throw new GradleException(
+							"Could not read translations/lang/${localeFile.name} from ${commit}", failure)
+				}
+				if (!Arrays.equals(bytes, committedBytes)) {
+					throw new GradleException(
+							"Working-tree locale differs from ${commit}: translations/lang/${localeFile.name}")
+				}
+			}
+
+			def digest = MessageDigest.getInstance('SHA-256').digest(bytes).encodeHex().toString()
+			catalogs.put(locale, [sha256: digest, bytes: bytes.length])
+		}
+		if (catalogs.isEmpty()) {
+			throw new GradleException("No remote locale catalogs found in ${remoteLocaleDirectory.asFile}")
+		}
+
+		def manifest = [
+				schema      : 1,
+				enabled     : enabled,
+				repository  : 'ethanrjs/waypointer',
+				commit      : enabled ? commit : '',
+				pathTemplate: 'translations/lang/{locale}.json',
+				locales     : catalogs
+		]
+		def output = remoteLocaleManifest.get().asFile
+		output.parentFile.mkdirs()
+		output.setText(JsonOutput.prettyPrint(JsonOutput.toJson(manifest)) + System.lineSeparator(), 'UTF-8')
+	}
+}
+
+sourceSets.main.resources.srcDir(generatedRemoteLocaleResources)
+tasks.withType(Jar).configureEach {
+	if (name == 'sourcesJar') dependsOn generateRemoteLocaleManifest
+}
+
 dependencies {
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
@@ -92,6 +179,7 @@ test {
 }
 
 processResources {
+	dependsOn generateRemoteLocaleManifest
 	inputs.property "version", project.version
 	inputs.property "minecraft_dependency", target.dependency
 
