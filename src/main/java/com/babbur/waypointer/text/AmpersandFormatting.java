@@ -5,7 +5,7 @@ package com.babbur.waypointer.text;
  *
  * <p>Waypoint names stay stored exactly as the user typed them. Rendering paths
  * call this helper at the edge so names like {@code &e&lMineshaft} display with
- * the same colour/style language Skyblock players already use in chat.
+ * the same color/style language Skyblock players already use in chat.
  */
 public final class AmpersandFormatting {
 

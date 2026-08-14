@@ -4,6 +4,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.dungeon.DungeonChestInteractionGuard;
 import com.babbur.waypointer.dungeon.DungeonItemIdentity;
 import com.babbur.waypointer.dungeon.DungeonSecretCompletionSound;
@@ -163,7 +164,7 @@ public final class ProximityTracker {
                 return level.getBlockState(pos).isAir() ? MINE_BLOCK_AIR : MINE_BLOCK_PRESENT;
             }, observedMineTargets, liveMineTargets, loop, skippingEnabled);
             boolean changed = updateGroupProgress(group, px, py, pz, loop, globalSkipAhead,
-                    skipOnlyVisible, hideReachedStatic);
+                    skipOnlyVisible, hideReachedStatic, config.sequenceVisibility());
             if ((mined || changed) && completingSecret && group.currentIndex() != beforeIndex) {
                 DungeonSecretCompletionSound.play(dungeonConfig);
             }
@@ -180,6 +181,17 @@ public final class ProximityTracker {
                                               boolean globalSkipAhead,
                                               boolean skipOnlyVisible,
                                               boolean hideReachedStatic) {
+        return updateGroupProgress(group, px, py, pz, restartWhenComplete, globalSkipAhead,
+                skipOnlyVisible, hideReachedStatic, SequenceVisibility.DEFAULT);
+    }
+
+    static boolean updateGroupProgress(WaypointGroup group,
+                                       double px, double py, double pz,
+                                       boolean restartWhenComplete,
+                                       boolean globalSkipAhead,
+                                       boolean skipOnlyVisible,
+                                       boolean hideReachedStatic,
+                                       SequenceVisibility visibility) {
         // Temporary bucket groups are unordered and use their own expiry rules.
         if (group.temp()) return false;
         boolean releasedSubwaypointParentHold =
@@ -194,7 +206,7 @@ public final class ProximityTracker {
         boolean allowSkip = globalSkipAhead && group.skipAheadEnabled();
         boolean restart = restartWhenComplete && !isDungeonRoomRouteGroup(group);
         boolean advanced = advanceIfReached(group, px, py, pz, restart, allowSkip,
-                skipOnlyVisible);
+                skipOnlyVisible, visibility);
         return releasedSubwaypointParentHold || advanced;
     }
 
@@ -271,12 +283,27 @@ public final class ProximityTracker {
                                            boolean restartWhenComplete, boolean allowSkipAhead,
                                            boolean skipOnlyVisible) {
         return advanceIfReached(group, px, py, pz, restartWhenComplete, allowSkipAhead,
-                skipOnlyVisible, System.currentTimeMillis());
+                skipOnlyVisible, SequenceVisibility.DEFAULT, System.currentTimeMillis());
+    }
+
+    private static boolean advanceIfReached(WaypointGroup group, double px, double py, double pz,
+                                            boolean restartWhenComplete, boolean allowSkipAhead,
+                                            boolean skipOnlyVisible, SequenceVisibility visibility) {
+        return advanceIfReached(group, px, py, pz, restartWhenComplete, allowSkipAhead,
+                skipOnlyVisible, visibility, System.currentTimeMillis());
     }
 
     static boolean advanceIfReached(WaypointGroup group, double px, double py, double pz,
                                     boolean restartWhenComplete, boolean allowSkipAhead,
                                     boolean skipOnlyVisible, long nowMillis) {
+        return advanceIfReached(group, px, py, pz, restartWhenComplete, allowSkipAhead,
+                skipOnlyVisible, SequenceVisibility.DEFAULT, nowMillis);
+    }
+
+    private static boolean advanceIfReached(WaypointGroup group, double px, double py, double pz,
+                                            boolean restartWhenComplete, boolean allowSkipAhead,
+                                            boolean skipOnlyVisible, SequenceVisibility visibility,
+                                            long nowMillis) {
         if (group.isComplete()) return false;
         updateProximitySuppression(group, px, py, pz);
         resetStandSkipHoldIfNotStanding(group, px, py, pz);
@@ -291,7 +318,7 @@ public final class ProximityTracker {
                     : -1;
             if (reachedIndex < 0) {
                 reachedIndex = highestNearbyReachedIndex(group, from, px, py, pz,
-                        skipOnlyVisible, nowMillis);
+                        skipOnlyVisible, visibility, nowMillis);
             }
         } else {
             reachedIndex = currentReachedIndex(group, from, px, py, pz, nowMillis);
@@ -443,14 +470,15 @@ public final class ProximityTracker {
     private static int highestNearbyReachedIndex(WaypointGroup group, int from,
                                                  double px, double py, double pz,
                                                  boolean skipOnlyVisible,
+                                                 SequenceVisibility visibility,
                                                  long nowMillis) {
-        boolean[] visible = skipOnlyVisible ? visibleIndexMask(group) : null;
+        boolean[] visible = skipOnlyVisible ? visibleIndexMask(group, visibility) : null;
         int[] reachedIndex = { -1 };
         double scanRadius = Math.max(group.maxEffectiveRadius(), STAND_SKIP_SCAN_RADIUS);
         group.forEachNearbyIndex(px, py, pz, scanRadius, i -> {
             if (group.isWaypointDisabled(i)) return true;
             if (i < from || group.isProximitySuppressed(i)) return true;
-            if (visible != null && (i >= visible.length || !visible[i])) return true;
+            if (i > from && visible != null && (i >= visible.length || !visible[i])) return true;
             if (i > from && group.isSubwaypoint(i)) return true;
             if (i <= reachedIndex[0]) return true;
             Waypoint waypoint = group.get(i);
@@ -466,9 +494,9 @@ public final class ProximityTracker {
         return reachedIndex[0];
     }
 
-    private static boolean[] visibleIndexMask(WaypointGroup group) {
+    private static boolean[] visibleIndexMask(WaypointGroup group, SequenceVisibility visibility) {
         boolean[] visible = new boolean[group.size()];
-        group.forEachVisibleIndex(i -> {
+        group.forEachVisibleIndex(visibility, i -> {
             if (i >= 0 && i < visible.length) visible[i] = true;
         });
         return visible;

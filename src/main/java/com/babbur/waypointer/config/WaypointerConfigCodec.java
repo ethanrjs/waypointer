@@ -17,7 +17,8 @@ import java.util.zip.InflaterInputStream;
 public final class WaypointerConfigCodec {
 
     public static final String MAGIC = "WPC:";
-    static final int VERSION = 3;
+    static final int VERSION = 4;
+    private static final int LEGACY_VERSION_3 = 3;
     private static final int LEGACY_VERSION_2 = 2;
     private static final int LEGACY_VERSION_1 = 1;
     private static final int END = 0;
@@ -98,6 +99,10 @@ public final class WaypointerConfigCodec {
     private static final int WAYPOINT_OUTLINE_OPACITY = 73;
     private static final int MATCH_WAYPOINT_OUTLINE_TO_WAYPOINT_COLOR = 74;
     private static final int WAYPOINT_OUTLINE_COLOR = 75;
+    private static final int SEQUENCE_PREVIOUS_WAYPOINT_COUNT = 76;
+    private static final int SHOW_CURRENT_SEQUENCE_WAYPOINT = 77;
+    private static final int SEQUENCE_NEXT_WAYPOINT_COUNT = 78;
+    private static final int ETHERWARP_ALIGNMENT_SOUND = 79;
 
     private WaypointerConfigCodec() {
     }
@@ -133,6 +138,7 @@ public final class WaypointerConfigCodec {
             int version = in.readUnsignedByte();
             if (version != LEGACY_VERSION_1
                     && version != LEGACY_VERSION_2
+                    && version != LEGACY_VERSION_3
                     && version != VERSION) {
                 throw new IllegalArgumentException("Unsupported config code version: " + version);
             }
@@ -176,7 +182,12 @@ public final class WaypointerConfigCodec {
         writeDouble(out, LABEL_SCALE, config.labelScale(), defaults.labelScale());
         writeBoolean(out, SCALE_WAYPOINT_TEXT_WITH_DISTANCE, config.scaleWaypointTextWithDistance(), defaults.scaleWaypointTextWithDistance());
         writeBoolean(out, MATCH_WAYPOINT_TEXT_TO_WAYPOINT_COLOR, config.matchWaypointTextToWaypointColor(), defaults.matchWaypointTextToWaypointColor());
-        writeBoolean(out, SHOW_COMPLETED, config.showCompleted(), defaults.showCompleted());
+        writeInt(out, SEQUENCE_PREVIOUS_WAYPOINT_COUNT,
+                config.sequencePreviousWaypointCount(), defaults.sequencePreviousWaypointCount());
+        writeBoolean(out, SHOW_CURRENT_SEQUENCE_WAYPOINT,
+                config.showCurrentSequenceWaypoint(), defaults.showCurrentSequenceWaypoint());
+        writeInt(out, SEQUENCE_NEXT_WAYPOINT_COUNT,
+                config.sequenceNextWaypointCount(), defaults.sequenceNextWaypointCount());
         writeBoolean(out, SHOW_TRACER, config.showTracer(), defaults.showTracer());
         writeBoolean(out, DIM_SEQUENCE_CONTEXT_WAYPOINTS, config.dimSequenceContextWaypoints(), defaults.dimSequenceContextWaypoints());
         writeBoolean(out, HIDE_TRACER_ON_STATIC_ROUTES, config.hideTracerOnStaticRoutes(), defaults.hideTracerOnStaticRoutes());
@@ -233,6 +244,8 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, IRIS_SHADER_HUD_FALLBACK, config.irisShaderHudFallback(), defaults.irisShaderHudFallback());
         writeInt(out, TEMP_DEFAULT_MODE, config.tempDefaultMode(), defaults.tempDefaultMode());
         writeInt(out, TEMP_DEFAULT_DURATION_SEC, config.tempDefaultDurationSec(), defaults.tempDefaultDurationSec());
+        writeBoolean(out, ETHERWARP_ALIGNMENT_SOUND,
+                config.etherwarpAlignmentSound(), defaults.etherwarpAlignmentSound());
     }
     private static void readFields(DataInputStream in, WaypointerConfig config) throws IOException {
         while (true) {
@@ -266,6 +279,12 @@ public final class WaypointerConfigCodec {
                 case SCALE_WAYPOINT_TEXT_WITH_DISTANCE -> config.setScaleWaypointTextWithDistance(in.readBoolean());
                 case MATCH_WAYPOINT_TEXT_TO_WAYPOINT_COLOR -> config.setMatchWaypointTextToWaypointColor(in.readBoolean());
                 case SHOW_COMPLETED -> config.setShowCompleted(in.readBoolean());
+                case SEQUENCE_PREVIOUS_WAYPOINT_COUNT ->
+                        config.setSequencePreviousWaypointCount(in.readInt());
+                case SHOW_CURRENT_SEQUENCE_WAYPOINT ->
+                        config.setShowCurrentSequenceWaypoint(in.readBoolean());
+                case SEQUENCE_NEXT_WAYPOINT_COUNT ->
+                        config.setSequenceNextWaypointCount(in.readInt());
                 case SHOW_TRACER -> config.setShowTracer(in.readBoolean());
                 case DIM_SEQUENCE_CONTEXT_WAYPOINTS -> config.setDimSequenceContextWaypoints(in.readBoolean());
                 case HIDE_TRACER_ON_STATIC_ROUTES -> config.setHideTracerOnStaticRoutes(in.readBoolean());
@@ -319,6 +338,7 @@ public final class WaypointerConfigCodec {
                 case TEMP_DEFAULT_MODE -> config.setTempDefaultMode(in.readInt());
                 case TEMP_DEFAULT_DURATION_MIN -> config.setTempDefaultDurationMin(in.readInt());
                 case TEMP_DEFAULT_DURATION_SEC -> config.setTempDefaultDurationSec(in.readInt());
+                case ETHERWARP_ALIGNMENT_SOUND -> config.setEtherwarpAlignmentSound(in.readBoolean());
                 default -> throw new IllegalArgumentException("Unknown config field tag: " + tag);
             }
         }

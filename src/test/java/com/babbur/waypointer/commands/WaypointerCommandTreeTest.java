@@ -183,14 +183,15 @@ class WaypointerCommandTreeTest {
     }
 
     @Test
-    void cliExportGroupsUseCurrentZoneOrAllGroupsWhenNoZoneIsKnown() {
+    void cliExportGroupsUseOnlyTheFirstActiveRoute() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup hub = WaypointGroup.create("Hub", "hub");
+        hub.add(Waypoint.at(1, 2, 3));
         WaypointGroup dungeon = WaypointGroup.create("Dungeon", "dungeon_f7");
         manager.add(hub);
         manager.add(dungeon);
 
-        assertEquals(List.of(hub, dungeon), WaypointerCommands.cliExportGroups(manager));
+        assertTrue(WaypointerCommands.cliExportGroups(manager).isEmpty());
 
         manager.onZoneChanged(new Zone("hub", "Hub"));
 

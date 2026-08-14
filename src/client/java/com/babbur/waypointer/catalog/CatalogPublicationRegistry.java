@@ -9,19 +9,11 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
 import java.net.URI;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
-import java.security.MessageDigest;
 import java.time.Instant;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -78,13 +70,10 @@ public final class CatalogPublicationRegistry {
     }
 
     public CatalogPublication recordSuccessfulPublish(
-            CatalogPublishResult published,
-            CatalogPublishRequest request,
-            PublisherIdentity identity,
+            CatalogPublishReceipt receipt,
             String apiRoot,
             Instant recordedAt) {
-        CatalogPublication record = verifiedRecord(
-                published, request, identity, apiRoot, recordedAt);
+        CatalogPublication record = recordFromReceipt(receipt, apiRoot, recordedAt);
         synchronized (IO_LOCK) {
             List<CatalogPublication> records = new ArrayList<>(readRecords());
             records.removeIf(existing -> existing.routeId().equals(record.routeId()));
@@ -109,38 +98,14 @@ public final class CatalogPublicationRegistry {
         }
     }
 
-    private static CatalogPublication verifiedRecord(
-            CatalogPublishResult published,
-            CatalogPublishRequest request,
-            PublisherIdentity identity,
+    private static CatalogPublication recordFromReceipt(
+            CatalogPublishReceipt receipt,
             String apiRoot,
             Instant recordedAt) {
-        if (published == null || published.route() == null) {
-            throw new IllegalArgumentException("Published route result is required");
-        }
-        if (request == null || identity == null || recordedAt == null) {
+        if (receipt == null || recordedAt == null) {
             throw new IllegalArgumentException("Publication provenance is required");
         }
-        CatalogRouteSummary route = published.route();
-        String expectedName;
-        if (identity.publisherName() == null) {
-            expectedName = PublisherNamePolicy.requireValid(request.publisherName());
-        } else {
-            if (request.publisherName() != null
-                    && !identity.publisherName().equals(request.publisherName())) {
-                throw new IllegalArgumentException(
-                        "The request conflicts with the permanent publisher name");
-            }
-            expectedName = identity.publisherName();
-        }
-        if (!identity.publisherId().equals(route.publisherId())) {
-            throw new IllegalArgumentException(
-                    "The published route does not belong to the signing identity");
-        }
-        if (!expectedName.equals(route.authorName())) {
-            throw new IllegalArgumentException(
-                    "The published route has a different publisher name");
-        }
+        CatalogRouteSummary route = receipt.result().route();
         requireRouteId(route.id());
         requirePublisherId(route.publisherId());
         PublisherNamePolicy.requireValid(route.authorName());
@@ -151,32 +116,14 @@ public final class CatalogPublicationRegistry {
             case "unlisted" -> CatalogPublishRequest.Visibility.UNLISTED;
             default -> throw new IllegalArgumentException("Invalid route visibility");
         };
-        if (visibility != request.visibility()) {
-            throw new IllegalArgumentException(
-                    "The published route has a different visibility");
-        }
-        if (route.version() <= 0 || route.codecVersion() <= 0) {
-            throw new IllegalArgumentException("Invalid route version");
-        }
         String normalizedApiRoot = requireApiRoot(apiRoot);
         String sharePath = "/r/" + route.id();
-        if (route.sharePath() != null && !route.sharePath().isBlank()
-                && !sharePath.equals(route.sharePath())) {
-            throw new IllegalArgumentException("Invalid route share path");
-        }
         String serverCreatedAt = route.createdAt() == null ? "" : route.createdAt();
-        if (!serverCreatedAt.isEmpty()) {
-            try {
-                Instant.parse(serverCreatedAt);
-            } catch (DateTimeParseException failure) {
-                throw new IllegalArgumentException("Invalid route creation time", failure);
-            }
-        }
         return new CatalogPublication(
                 route.id(), route.publisherId(), route.authorName(), title,
                 visibility, zoneId, route.version(), route.codecVersion(),
                 serverCreatedAt, sharePath, normalizedApiRoot,
-                payloadHash(request.payload()), recordedAt);
+                receipt.payloadSha256(), recordedAt);
     }
 
     private List<CatalogPublication> readRecords() {
@@ -203,11 +150,7 @@ public final class CatalogPublicationRegistry {
                     .sorted(Comparator.comparing(CatalogPublication::recordedAt).reversed())
                     .toList();
         } catch (IOException | RuntimeException failure) {
-            if (failure instanceof IllegalStateException state
-                    && state.getMessage() != null
-                    && state.getMessage().startsWith("Published route registry")) {
-                throw state;
-            }
+            if (failure instanceof CatalogStorageException storage) throw storage;
             throw invalidRegistry(failure);
         }
     }
@@ -244,8 +187,7 @@ public final class CatalogPublicationRegistry {
 
     private void writeRecords(List<CatalogPublication> records) {
         Path parent = file.getParent();
-        if (parent == null) throw new IllegalStateException("Registry path has no parent");
-        Path temporary = null;
+        if (parent == null) throw new CatalogStorageException("Registry path has no parent");
         try {
             Files.createDirectories(parent);
             if (Files.isSymbolicLink(file)) throw invalidRegistry(null);
@@ -257,29 +199,9 @@ public final class CatalogPublicationRegistry {
             byte[] json = (root + System.lineSeparator()).getBytes(
                     java.nio.charset.StandardCharsets.UTF_8);
             if (json.length > MAX_FILE_BYTES) throw invalidRegistry(null);
-            temporary = Files.createTempFile(parent, "publications-", ".tmp");
-            try (FileChannel channel = FileChannel.open(temporary,
-                    StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
-                writeFully(channel, ByteBuffer.wrap(json));
-                channel.force(true);
-            }
-            try {
-                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
-            }
-            temporary = null;
+            CatalogAtomicFile.replace(file, json, "publications-");
         } catch (IOException failure) {
-            throw new IllegalStateException("Could not save published route records", failure);
-        } finally {
-            if (temporary != null) {
-                try {
-                    Files.deleteIfExists(temporary);
-                } catch (IOException ignored) {
-                    // The temporary file contains public route metadata only.
-                }
-            }
+            throw new CatalogStorageException("Could not save published route records", failure);
         }
     }
 
@@ -369,26 +291,9 @@ public final class CatalogPublicationRegistry {
         }
     }
 
-    private static String payloadHash(String payload) {
-        if (payload == null || !payload.startsWith("WP:")) {
-            throw new IllegalArgumentException("Invalid route payload");
-        }
-        try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(
-                    payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            return Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
-        } catch (Exception failure) {
-            throw new IllegalStateException("Could not hash route payload", failure);
-        }
-    }
-
-    private static void writeFully(FileChannel channel, ByteBuffer data) throws IOException {
-        while (data.hasRemaining()) channel.write(data);
-    }
-
-    private static IllegalStateException invalidRegistry(Throwable cause) {
+    private static CatalogStorageException invalidRegistry(Throwable cause) {
         String message = "Published route registry is invalid. Move publications.json aside manually.";
-        return cause == null ? new IllegalStateException(message)
-                : new IllegalStateException(message, cause);
+        return cause == null ? new CatalogStorageException(message)
+                : new CatalogStorageException(message, cause);
     }
 }

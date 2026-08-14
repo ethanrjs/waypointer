@@ -1,5 +1,8 @@
 package com.babbur.waypointer.catalog;
 
+import com.babbur.waypointer.codec.WaypointCodec;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.net.URI;
@@ -7,6 +10,7 @@ import java.net.http.HttpRequest;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
@@ -18,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteCatalogClientTest {
     private static final String ID = "Abcdefghijklmnopqrstuv";
+    private static final String PAYLOAD = catalogPayload();
 
     @Test
     void listUsesBoundedJsonRequestAndParsesRoutes() {
@@ -122,21 +127,14 @@ class RouteCatalogClientTest {
     @Test
     void publishSignsTheExactJsonBody() {
         PublisherIdentity identity = PublisherIdentity.generate(Instant.EPOCH);
-        RecordingTransport transport = new RecordingTransport(new RouteCatalogClient.Response(
-                201, "application/json", ("""
-                {"route":{
-                  "id":"Abcdefghijklmnopqrstuv","title":"Route",
-                  "authorName":"Tester","publisherId":"%s",
-                  "visibility":"unlisted","zoneId":"hub","zoneLabel":"Hub",
-                  "waypointCount":1,"groupCount":1,"codecVersion":9
-                },"manageToken":"token"}
-                """.formatted(identity.publisherId())).getBytes(StandardCharsets.UTF_8)));
+        RecordingTransport transport = publishTransport(identity, "Tester");
         RouteCatalogClient client = client(transport);
         CatalogPublishRequest request = new CatalogPublishRequest(
-                "WP:test", "Route", "Description",
+                PAYLOAD, "Route", "Description",
                 CatalogPublishRequest.Visibility.UNLISTED, "hub", "Tester");
 
-        CatalogPublishResult result = client.publishRoute(request, identity).join();
+        CatalogPublishReceipt receipt = client.publishRoute(request, identity).join();
+        CatalogPublishResult result = receipt.result();
 
         assertEquals(ID, result.route().id());
         assertEquals("token", result.manageToken());
@@ -205,47 +203,61 @@ class RouteCatalogClientTest {
     void publishRejectsAResponseForAnotherPublisher() {
         PublisherIdentity identity = PublisherIdentity.generate(Instant.EPOCH);
         PublisherIdentity other = PublisherIdentity.generate(Instant.EPOCH);
-        RecordingTransport transport = new RecordingTransport(new RouteCatalogClient.Response(
-                201, "application/json", ("""
-                {"route":{
-                  "id":"Abcdefghijklmnopqrstuv","title":"Route",
-                  "authorName":"Tester","publisherId":"%s",
-                  "visibility":"unlisted","zoneId":"hub","zoneLabel":"Hub",
-                  "waypointCount":1,"groupCount":1,"codecVersion":9
-                }}
-                """.formatted(other.publisherId())).getBytes(StandardCharsets.UTF_8)));
+        RecordingTransport transport = publishTransport(other, "Tester");
         CatalogPublishRequest request = new CatalogPublishRequest(
-                "WP:test", "Route", "Description",
+                PAYLOAD, "Route", "Description",
                 CatalogPublishRequest.Visibility.UNLISTED, "hub", "Tester");
 
         Exception joined = assertThrows(Exception.class,
                 () -> client(transport).publishRoute(request, identity).join());
 
         CatalogApiException failure = (CatalogApiException) joined.getCause();
-        assertEquals("publisher_mismatch", failure.code());
+        assertEquals("publish_response_mismatch", failure.code());
     }
 
     @Test
     void publishRejectsAResponseWithAnotherPublisherName() {
         PublisherIdentity identity = PublisherIdentity.generate(Instant.EPOCH);
-        RecordingTransport transport = new RecordingTransport(new RouteCatalogClient.Response(
-                201, "application/json", ("""
-                {"route":{
-                  "id":"Abcdefghijklmnopqrstuv","title":"Route",
-                  "authorName":"WrongName","publisherId":"%s",
-                  "visibility":"unlisted","zoneId":"hub","zoneLabel":"Hub",
-                  "waypointCount":1,"groupCount":1,"codecVersion":9
-                }}
-                """.formatted(identity.publisherId())).getBytes(StandardCharsets.UTF_8)));
+        RecordingTransport transport = publishTransport(identity, "WrongName");
         CatalogPublishRequest request = new CatalogPublishRequest(
-                "WP:test", "Route", "Description",
+                PAYLOAD, "Route", "Description",
                 CatalogPublishRequest.Visibility.UNLISTED, "hub", "Tester");
 
         Exception joined = assertThrows(Exception.class,
                 () -> client(transport).publishRoute(request, identity).join());
 
         CatalogApiException failure = (CatalogApiException) joined.getCause();
-        assertEquals("publisher_mismatch", failure.code());
+        assertEquals("publish_response_mismatch", failure.code());
+    }
+
+    @Test
+    void publishBindsEveryPayloadFieldBeforeSuccess() {
+        PublisherIdentity identity = PublisherIdentity.generate(Instant.EPOCH);
+        CatalogPublishRequest request = new CatalogPublishRequest(
+                PAYLOAD, "Route", "Description",
+                CatalogPublishRequest.Visibility.UNLISTED, "hub", "Tester");
+        String valid = publishResponse(identity, "Tester");
+
+        for (String changed : List.of(
+                valid.replace("\"title\":\"Route\"", "\"title\":\"Other\""),
+                valid.replace("\"description\":\"Description\"",
+                        "\"description\":\"Other description\""),
+                valid.replace("\"visibility\":\"unlisted\"",
+                        "\"visibility\":\"public\""),
+                valid.replace("\"zoneId\":\"hub\"", "\"zoneId\":\"garden\""),
+                valid.replace("\"waypointCount\":1", "\"waypointCount\":2"),
+                valid.replace("\"groupCount\":1", "\"groupCount\":2"),
+                valid.replace("\"codecVersion\":9", "\"codecVersion\":8"),
+                valid.replace("\"sharePath\":\"/r/" + ID + "\"",
+                        "\"sharePath\":\"/r/Zbcdefghijklmnopqrstuv\""))) {
+            RecordingTransport transport = new RecordingTransport(
+                    new RouteCatalogClient.Response(201, "application/json",
+                            changed.getBytes(StandardCharsets.UTF_8)));
+            CompletionException failure = assertThrows(CompletionException.class,
+                    () -> client(transport).publishRoute(request, identity).join());
+            assertEquals("publish_response_mismatch",
+                    ((CatalogApiException) failure.getCause()).code());
+        }
     }
 
     @Test
@@ -254,7 +266,7 @@ class RouteCatalogClientTest {
                 .withPublisherName("Tester");
         RecordingTransport transport = new RecordingTransport(null);
         CatalogPublishRequest request = new CatalogPublishRequest(
-                "WP:test", "Route", "Description",
+                PAYLOAD, "Route", "Description",
                 CatalogPublishRequest.Visibility.UNLISTED, "hub", "OtherName");
 
         assertThrows(IllegalArgumentException.class,
@@ -265,6 +277,32 @@ class RouteCatalogClientTest {
     private static RouteCatalogClient client(RecordingTransport transport) {
         return new RouteCatalogClient(
                 URI.create("https://catalog.example/api/"), transport, "Waypointer/Test");
+    }
+
+    private static RecordingTransport publishTransport(
+            PublisherIdentity identity, String publisherName) {
+        return new RecordingTransport(new RouteCatalogClient.Response(
+                201, "application/json",
+                publishResponse(identity, publisherName).getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private static String publishResponse(
+            PublisherIdentity identity, String publisherName) {
+        return """
+                {"route":{
+                  "id":"%s","title":"Route","description":"Description",
+                  "authorName":"%s","publisherId":"%s",
+                  "visibility":"unlisted","zoneId":"hub","zoneLabel":"Hub",
+                  "waypointCount":1,"groupCount":1,"codecVersion":9,"version":1,
+                  "sharePath":"/r/%s"
+                },"manageToken":"token"}
+                """.formatted(ID, publisherName, identity.publisherId(), ID);
+    }
+
+    private static String catalogPayload() {
+        WaypointGroup group = WaypointGroup.create("Route", "hub");
+        group.add(new Waypoint(1, 64, 2, "Start", 0x44AA66, 0, 0.0));
+        return WaypointCodec.encodeCatalog(List.of(group));
     }
 
     private static final class RecordingTransport implements RouteCatalogClient.Transport {

@@ -1,5 +1,8 @@
 package com.babbur.waypointer.catalog;
 
+import com.babbur.waypointer.codec.WaypointCodec;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -9,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -20,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CatalogPublicationRegistryTest {
     private static final String ROUTE_ID = "Abcdefghijklmnopqrstuv";
     private static final String API_ROOT = "https://waypointermod.com/api/";
+    private static final String PAYLOAD = catalogPayload();
 
     @TempDir
     Path temporaryDirectory;
@@ -33,8 +38,9 @@ class CatalogPublicationRegistryTest {
         CatalogPublishRequest request = request(null);
 
         CatalogPublication recorded = registry.recordSuccessfulPublish(
-                result(identity, "Tester_1", 1, "secret-manage-token"),
-                request, identity, API_ROOT, Instant.parse("2026-08-13T01:00:00Z"));
+                receipt(result(identity, "Tester_1", 1, "secret-manage-token"),
+                        request, identity),
+                API_ROOT, Instant.parse("2026-08-13T01:00:00Z"));
         CatalogPublication reloaded = new CatalogPublicationRegistry(file).list().getFirst();
         String json = Files.readString(file);
 
@@ -44,7 +50,7 @@ class CatalogPublicationRegistryTest {
         assertEquals(CatalogPublishRequest.Visibility.UNLISTED, reloaded.visibility());
         assertEquals(43, reloaded.payloadSha256().length());
         assertFalse(json.contains("secret-manage-token"));
-        assertFalse(json.contains("WP:test"));
+        assertFalse(json.contains(PAYLOAD));
         assertFalse(json.contains("privateKey"));
     }
 
@@ -55,10 +61,8 @@ class CatalogPublicationRegistryTest {
         CatalogPublicationRegistry registry = new CatalogPublicationRegistry(
                 temporaryDirectory.resolve("publisher/publications.json"));
 
-        assertThrows(IllegalArgumentException.class,
-                () -> registry.recordSuccessfulPublish(
-                        result(other, "Tester_1", 1, ""), request("Tester_1"),
-                        signer, API_ROOT, Instant.EPOCH));
+        assertThrows(CatalogApiException.class, () -> receipt(
+                result(other, "Tester_1", 1, ""), request("Tester_1"), signer));
         assertFalse(Files.exists(registry.file()));
     }
 
@@ -70,11 +74,11 @@ class CatalogPublicationRegistryTest {
                 temporaryDirectory.resolve("publisher/publications.json"));
 
         registry.recordSuccessfulPublish(
-                result(identity, "Tester_1", 1, ""), request(null),
-                identity, API_ROOT, Instant.EPOCH);
+                receipt(result(identity, "Tester_1", 1, ""), request(null), identity),
+                API_ROOT, Instant.EPOCH);
         registry.recordSuccessfulPublish(
-                result(identity, "Tester_1", 2, ""), request(null),
-                identity, API_ROOT, Instant.EPOCH.plusSeconds(1));
+                receipt(result(identity, "Tester_1", 2, ""), request(null), identity),
+                API_ROOT, Instant.EPOCH.plusSeconds(1));
 
         assertEquals(1, registry.listForPublisher(identity.publisherId()).size());
         assertEquals(2, registry.list().getFirst().version());
@@ -112,19 +116,21 @@ class CatalogPublicationRegistryTest {
     }
 
     @Test
-    void routeRecordSurvivesWhenPublisherNameFileCannotBeUpdated() {
+    void routeRecordSurvivesWhenPublisherNameFileCannotBeUpdated() throws Exception {
         PublisherIdentity identity = PublisherIdentity.generate(Instant.EPOCH);
         PublisherIdentityStore differentIdentityStore = new PublisherIdentityStore(
                 temporaryDirectory.resolve("identity.json"));
-        differentIdentityStore.loadOrCreate();
+        Files.writeString(differentIdentityStore.file(), "{}");
         CatalogPublicationRegistry registry = new CatalogPublicationRegistry(
                 temporaryDirectory.resolve("publications.json"));
 
         CatalogPublishLifecycle.Completion completed = CatalogPublishLifecycle.persist(
-                result(identity, "Tester_1", 1, ""), request("Tester_1"), identity,
+                receipt(result(identity, "Tester_1", 1, ""),
+                        request("Tester_1"), identity),
                 differentIdentityStore, registry, API_ROOT, Instant.EPOCH);
 
         assertTrue(completed.nameSaveFailed());
+        assertEquals("Tester_1", completed.identity().publisherName());
         assertFalse(completed.publicationSaveFailed());
         assertEquals(ROUTE_ID, registry.list().getFirst().routeId());
     }
@@ -198,7 +204,7 @@ class CatalogPublicationRegistryTest {
 
     private static CatalogPublishRequest request(String publisherName) {
         return new CatalogPublishRequest(
-                "WP:test", "Route", "A useful route description.",
+                PAYLOAD, "Route", "A useful route description.",
                 CatalogPublishRequest.Visibility.UNLISTED, "hub", publisherName);
     }
 
@@ -207,8 +213,8 @@ class CatalogPublicationRegistryTest {
                 "registry-" + System.nanoTime() + "/publications.json");
         CatalogPublicationRegistry registry = new CatalogPublicationRegistry(path);
         registry.recordSuccessfulPublish(
-                result(identity, identity.publisherName(), 1, ""), request(null),
-                identity, API_ROOT, Instant.EPOCH);
+                receipt(result(identity, identity.publisherName(), 1, ""),
+                        request(null), identity), API_ROOT, Instant.EPOCH);
         return registry;
     }
 
@@ -244,6 +250,22 @@ class CatalogPublicationRegistryTest {
                   "sharePath":"/r/Abcdefghijklmnopqrstuv"
                 },"manageToken":"discarded-token"}
                 """.formatted(publisherName, identity.publisherId());
+    }
+
+    private static CatalogPublishReceipt receipt(
+            CatalogPublishResult result,
+            CatalogPublishRequest request,
+            PublisherIdentity identity) {
+        CatalogProtocol.PublishExpectation expectation =
+                CatalogProtocol.validatePublishRequest(request, identity);
+        return CatalogProtocol.validatePublishResponse(
+                result, request, identity, expectation);
+    }
+
+    private static String catalogPayload() {
+        WaypointGroup group = WaypointGroup.create("Route", "hub");
+        group.add(new Waypoint(1, 64, 2, "Start", 0x44AA66, 0, 0.0));
+        return WaypointCodec.encodeCatalog(List.of(group));
     }
 
     private static final class RecordingTransport implements RouteCatalogClient.Transport {

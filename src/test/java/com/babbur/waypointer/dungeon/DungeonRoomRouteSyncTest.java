@@ -88,4 +88,5 @@ class DungeonRoomRouteSyncTest {
                 "Sync Room",
                 DungeonDetectionConfidence.CORE_CONFIRMED);
     }
+
 }

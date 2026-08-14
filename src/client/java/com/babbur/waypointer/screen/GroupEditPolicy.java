@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/** Route-editor behavior */
 final class GroupEditPolicy {
 
     static final int SUBWAY_STYLE_ACTION_NONE = 0;

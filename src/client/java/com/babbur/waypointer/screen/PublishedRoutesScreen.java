@@ -39,7 +39,6 @@ public final class PublishedRoutesScreen extends Screen {
     private static final int PANEL_MARGIN = 12;
     private static final int ROW_H = 24;
     private static final int ROW_GAP = 2;
-    private static final int ROWS_PER_PAGE = 7;
     private static final int STATUS_ERROR = 0xFFE47B7B;
     private static final int STATUS_OK = 0xFF7ACB89;
 
@@ -48,10 +47,8 @@ public final class PublishedRoutesScreen extends Screen {
     private final PublisherIdentityStore identityStore;
     private final CatalogPublicationRegistry publicationRegistry;
 
-    private List<CatalogPublication> publications = List.of();
+    private final PublishedRoutesModel model = new PublishedRoutesModel();
     private PublisherIdentity identity;
-    private String selectedRouteId;
-    private int page;
     private boolean loading = true;
     private boolean deleting;
     private boolean screenActive;
@@ -103,6 +100,9 @@ public final class PublishedRoutesScreen extends Screen {
         rowsY = panelY + 46;
         int footerY = panelY + panelH - PAD_OUTER - BTN_H;
         statusY = footerY - 14;
+        int pagerY = statusY - BTN_H - GAP;
+        model.setRowsPerPage(PublishedRoutesLayout.rowsPerPage(
+                rowsY, pagerY, ROW_H, ROW_GAP, GAP));
 
         addRenderableWidget(styledButton(contentX, footerY, 64, BTN_H,
                 Component.translatable("gui.back"), button -> onClose(), null));
@@ -126,9 +126,9 @@ public final class PublishedRoutesScreen extends Screen {
         addRenderableWidget(copyButton);
 
         int pageW = 28;
-        previousButton = styledButton(contentX, statusY - BTN_H - GAP,
+        previousButton = styledButton(contentX, pagerY,
                 pageW, BTN_H, Component.literal("<"), button -> changePage(-1), null);
-        nextButton = styledButton(contentX + contentW - pageW, statusY - BTN_H - GAP,
+        nextButton = styledButton(contentX + contentW - pageW, pagerY,
                 pageW, BTN_H, Component.literal(">"), button -> changePage(1), null);
         addRenderableWidget(previousButton);
         addRenderableWidget(nextButton);
@@ -145,10 +145,9 @@ public final class PublishedRoutesScreen extends Screen {
                 return new Loaded(null, List.of());
             }
             PublisherIdentity loadedIdentity = identityStore.load();
-            List<CatalogPublication> records = publicationRegistry
-                    .listForPublisher(loadedIdentity.publisherId()).stream()
-                    .filter(record -> record.apiRoot().equals(catalogClient.apiRoot()))
-                    .toList();
+            List<CatalogPublication> records = PublishedRoutesUiState.forApiRoot(
+                    publicationRegistry.listForPublisher(loadedIdentity.publisherId()),
+                    catalogClient.apiRoot());
             return new Loaded(loadedIdentity, records);
         }).whenComplete((loaded, failure) -> runOnClient(() -> {
             if (!screenActive || minecraft == null
@@ -159,31 +158,29 @@ public final class PublishedRoutesScreen extends Screen {
                 statusColor = STATUS_ERROR;
             } else {
                 identity = loaded.identity();
-                publications = loaded.publications();
-                clampPage();
-                status = Component.translatable(publications.isEmpty()
+                model.replace(loaded.publications());
+                status = Component.translatable(model.publications().isEmpty()
                         ? "waypointer.screen.published_routes.status.empty"
                         : "waypointer.screen.published_routes.status.ready",
-                        publications.size());
-                statusColor = publications.isEmpty() ? TEXT_DIM : TEXT_MUTED;
+                        model.publications().size());
+                statusColor = model.publications().isEmpty() ? TEXT_DIM : TEXT_MUTED;
             }
             rebuildWidgets();
         }));
     }
 
     private void addRows() {
-        int start = page * ROWS_PER_PAGE;
-        int end = Math.min(publications.size(), start + ROWS_PER_PAGE);
-        for (int index = start; index < end; index++) {
-            CatalogPublication publication = publications.get(index);
-            int rowY = rowsY + (index - start) * (ROW_H + ROW_GAP);
+        List<CatalogPublication> visible = model.visiblePublications();
+        for (int index = 0; index < visible.size(); index++) {
+            CatalogPublication publication = visible.get(index);
+            int rowY = rowsY + index * (ROW_H + ROW_GAP);
             String title = font.plainSubstrByWidth(
                     publication.title(), Math.max(40, contentW - 92));
             Component label = Component.literal(title + "  " + publication.routeId());
             Button row = styledButton(contentX, rowY, contentW, ROW_H, label,
                     button -> select(publication.routeId()),
                     Tooltip.create(Component.literal(publication.shareUrl())));
-            if (publication.routeId().equals(selectedRouteId)) {
+            if (publication.routeId().equals(model.selectedRouteId())) {
                 row.setMessage(label.copy().withStyle(net.minecraft.ChatFormatting.AQUA));
             }
             addRenderableWidget(row);
@@ -191,7 +188,7 @@ public final class PublishedRoutesScreen extends Screen {
     }
 
     private void select(String routeId) {
-        selectedRouteId = routeId;
+        if (!model.select(routeId)) return;
         status = Component.translatable(
                 "waypointer.screen.published_routes.status.selected");
         statusColor = TEXT_DIM;
@@ -199,9 +196,7 @@ public final class PublishedRoutesScreen extends Screen {
     }
 
     private void changePage(int delta) {
-        int maximum = maximumPage();
-        page = Math.max(0, Math.min(maximum, page + delta));
-        rebuildWidgets();
+        if (model.changePage(delta)) rebuildWidgets();
     }
 
     private void copyLink() {
@@ -243,12 +238,9 @@ public final class PublishedRoutesScreen extends Screen {
                         status = friendlyDeleteFailure(failure);
                         statusColor = STATUS_ERROR;
                     } else {
-                        publications = publicationRegistry
-                                .listForPublisher(identity.publisherId()).stream()
-                                .filter(record -> record.apiRoot().equals(catalogClient.apiRoot()))
-                                .toList();
-                        selectedRouteId = null;
-                        clampPage();
+                        model.replace(PublishedRoutesUiState.forApiRoot(
+                                publicationRegistry.listForPublisher(identity.publisherId()),
+                                catalogClient.apiRoot()));
                         status = Component.translatable(
                                 "waypointer.screen.published_routes.status.deleted");
                         statusColor = STATUS_OK;
@@ -258,31 +250,23 @@ public final class PublishedRoutesScreen extends Screen {
     }
 
     private void refreshButtons() {
-        boolean selected = selected() != null && identity != null;
+        PublishedRoutesUiState.Controls controls = PublishedRoutesUiState.controls(
+                model, identity != null, deleting);
         if (deleteButton != null) {
-            deleteButton.active = selected && !deleting;
+            deleteButton.active = controls.deleteEnabled();
             deleteButton.setMessage(Component.translatable(deleting
                     ? "waypointer.screen.published_routes.action.deleting"
                     : "waypointer.screen.published_routes.action.delete"));
         }
-        if (copyButton != null) copyButton.active = selected && !deleting;
-        if (previousButton != null) previousButton.active = page > 0 && !deleting;
-        if (nextButton != null) nextButton.active = page < maximumPage() && !deleting;
+        if (copyButton != null) copyButton.active = controls.copyEnabled();
+        if (previousButton != null) previousButton.active = controls.previousEnabled();
+        if (nextButton != null) {
+            nextButton.active = controls.nextEnabled();
+        }
     }
 
     private CatalogPublication selected() {
-        if (selectedRouteId == null) return null;
-        return publications.stream()
-                .filter(record -> record.routeId().equals(selectedRouteId))
-                .findFirst().orElse(null);
-    }
-
-    private int maximumPage() {
-        return publications.isEmpty() ? 0 : (publications.size() - 1) / ROWS_PER_PAGE;
-    }
-
-    private void clampPage() {
-        page = Math.max(0, Math.min(page, maximumPage()));
+        return model.selected();
     }
 
     private static Component friendlyDeleteFailure(Throwable failure) {
@@ -315,11 +299,12 @@ public final class PublishedRoutesScreen extends Screen {
         graphics.text(font, font.plainSubstrByWidth(Component.translatable(
                         "waypointer.screen.published_routes.subtitle").getString(), contentW),
                 contentX, panelY + PAD_OUTER + 12, TEXT_DIM, false);
-        if (selectedRouteId != null) {
+        if (model.selectedRouteId() != null) {
             graphics.fill(contentX, rowsY - 2, contentX + 2,
-                    rowsY + ROWS_PER_PAGE * (ROW_H + ROW_GAP), SELECTED);
+                    PublishedRoutesLayout.rowsBottom(
+                            rowsY, model.rowsPerPage(), ROW_H, ROW_GAP), SELECTED);
         }
-        String pageText = (page + 1) + "/" + (maximumPage() + 1);
+        String pageText = (model.page() + 1) + "/" + (model.maximumPage() + 1);
         graphics.text(font, pageText,
                 contentX + (contentW - font.width(pageText)) / 2,
                 statusY - BTN_H - GAP + 6, ACCENT, false);

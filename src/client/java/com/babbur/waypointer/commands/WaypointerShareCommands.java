@@ -4,6 +4,7 @@ import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
+import com.babbur.waypointer.codec.RouteLibraryMetadata;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
@@ -28,6 +29,8 @@ import java.nio.file.Path;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
+import java.util.function.Consumer;
 
 import static com.babbur.waypointer.commands.CommandHelpers.*;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
@@ -40,35 +43,66 @@ final class WaypointerShareCommands {
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
     private final ChatImportCache chatImportCache;
+    private final RouteExportScheduler routeExportScheduler;
 
     WaypointerShareCommands(ActiveGroupManager manager, WaypointerConfig config,
                             ChatImportCache chatImportCache) {
+        this(manager, config, chatImportCache, WaypointerShareCommands::scheduleRouteExport);
+    }
+
+    WaypointerShareCommands(ActiveGroupManager manager, WaypointerConfig config,
+                            ChatImportCache chatImportCache,
+                            RouteExportScheduler routeExportScheduler) {
         this.manager = manager;
         this.config = config;
         this.chatImportCache = chatImportCache;
+        this.routeExportScheduler = Objects.requireNonNull(
+                routeExportScheduler, "routeExportScheduler");
     }
 
     int runExport(FabricClientCommandSource src, WaypointCodec.Options opts) {
-        Zone zone = manager.currentZone();
         List<WaypointGroup> toExport = cliExportGroups(manager);
         if (toExport.isEmpty()) {
-            info(src, zone == null
-                    ? Component.translatable("waypointer.command.export.empty")
-                    : Component.translatable(
-                            "waypointer.command.export.empty_in_zone",
-                            zone.displayName()));
+            info(src, Component.translatable(
+                    "waypointer.command.export.no_active_route"));
             return 0;
         }
+        return scheduleExport(src, toExport, opts);
+    }
 
+    int runExportRoutes(FabricClientCommandSource src, WaypointCodec.Options opts) {
+        List<WaypointGroup> toExport = cliBulkExportGroups(manager);
+        if (toExport.isEmpty()) {
+            info(src, Component.translatable(
+                    "waypointer.command.export.no_bulk_routes"));
+            return 0;
+        }
+        return scheduleExport(src, toExport, opts);
+    }
+
+    private int scheduleExport(FabricClientCommandSource src,
+                               List<WaypointGroup> toExport,
+                               WaypointCodec.Options opts) {
+        RouteLibraryMetadata metadata = RouteLibraryMetadata.capture(manager, toExport);
         List<WaypointGroup> snapshot = toExport.stream()
                 .map(WaypointGroup::exportSnapshot)
                 .toList();
-        if (!CodecWorker.run(() -> UniversalShareCodec.encodeWaypoints(snapshot, opts),
+        info(src, Component.translatable("waypointer.command.export.exporting"));
+        if (!routeExportScheduler.schedule(snapshot, opts, metadata,
                 payload -> finishExport(src, snapshot.size(), payload, opts))) {
             codecBusy(src);
             return 0;
         }
         return snapshot.size();
+    }
+
+    private static boolean scheduleRouteExport(
+            List<WaypointGroup> groups,
+            WaypointCodec.Options options,
+            RouteLibraryMetadata metadata,
+            Consumer<String> completion) {
+        return CodecWorker.run(
+                () -> UniversalShareCodec.encodeWaypoints(groups, options, metadata), completion);
     }
 
     static void finishExport(FabricClientCommandSource src, int routeCount,
@@ -179,8 +213,55 @@ final class WaypointerShareCommands {
     }
 
     static List<WaypointGroup> cliExportGroups(ActiveGroupManager manager) {
-        Zone zone = manager.currentZone();
-        return zone == null ? manager.allGroupsList() : manager.groupsForZone(zone.id());
+        if (manager == null) return List.of();
+        for (WaypointGroup visible : manager.activeGroups()) {
+            if (visible == null || visible.isEmpty() || visible.temp()) continue;
+            if (!visible.runtimeOnly()
+                    && visible.routeKind() == WaypointGroup.RouteKind.REGULAR) {
+                return List.of(visible);
+            }
+            if (!visible.runtimeOnly()
+                    || visible.routeKind() != WaypointGroup.RouteKind.DUNGEON) {
+                continue;
+            }
+            WaypointGroup durable = DungeonRoomRouteLibrary.durableEditTarget(manager, visible);
+            if (isSafeDurableDungeonTarget(manager, visible, durable)) {
+                return List.of(durable);
+            }
+        }
+        return List.of();
+    }
+
+    private static boolean isSafeDurableDungeonTarget(
+            ActiveGroupManager manager,
+            WaypointGroup visible,
+            WaypointGroup durable) {
+        return durable != null
+                && manager.get(durable.id()) == durable
+                && !durable.temp()
+                && !durable.runtimeOnly()
+                && !durable.isEmpty()
+                && durable.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                && durable.id().equals(visible.runtimeSourceGroupId())
+                && durable.zoneId().equals(visible.zoneId());
+    }
+
+    static List<WaypointGroup> cliBulkExportGroups(ActiveGroupManager manager) {
+        if (manager == null) return List.of();
+        return manager.allGroups().stream()
+                .filter(group -> group != null
+                        && !group.temp()
+                        && !group.runtimeOnly()
+                        && group.routeKind() == WaypointGroup.RouteKind.REGULAR)
+                .toList();
+    }
+
+    @FunctionalInterface
+    interface RouteExportScheduler {
+        boolean schedule(List<WaypointGroup> groups,
+                         WaypointCodec.Options options,
+                         RouteLibraryMetadata metadata,
+                         Consumer<String> completion);
     }
 
     int runImportFromClipboard(FabricClientCommandSource src) {
@@ -289,9 +370,12 @@ final class WaypointerShareCommands {
 
         WaypointImporter.ImportResult imported = ((UniversalShareCodec.Waypoints) decoded).result();
         int retargeted = retargetUnknownGroups(imported.groups(), targetZone);
-        RouteColorPolicy.applyImportedRouteDefaults(imported.groups(), config);
+        if (imported.libraryMetadata().isEmpty()) {
+            RouteColorPolicy.applyImportedRouteDefaults(imported.groups(), config);
+        }
 
         manager.addAll(imported.groups());
+        imported.libraryMetadata().installFolders(manager, imported.groups());
         success(src, importSuccessMessage(
                 imported.groups().size(), origin, imported.source(),
                 retargeted, targetZone, imported.label()));

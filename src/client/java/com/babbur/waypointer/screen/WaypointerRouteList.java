@@ -3,6 +3,7 @@ package com.babbur.waypointer.screen;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.core.RouteProgress;
+import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
@@ -22,7 +23,6 @@ import java.util.Set;
 import static com.babbur.waypointer.screen.GuiTokens.*;
 import static com.babbur.waypointer.screen.WaypointerZoneCatalog.*;
 
-/** Route rows, navigation, rendering, and pointer hit-testing for {@link WaypointerScreen}. */
 final class WaypointerRouteList {
 
     static final int ROW_PITCH = ROW_H + 4;
@@ -31,6 +31,7 @@ final class WaypointerRouteList {
     private static final int ROUTE_TOGGLE_CHIP_H = 14;
     private static final int MOUSE_BUTTON_LEFT = 0;
     private static final int MOUSE_BUTTON_RIGHT = 1;
+    private static final double DRAG_THRESHOLD_SQUARED = 16.0;
     static final int INFO_BUTTON_SIZE = 12;
     private static final String INFO_TITLE = "Route list controls";
     private static final String[] INFO_LABELS = {
@@ -45,6 +46,11 @@ final class WaypointerRouteList {
 
     private final WaypointerScreen screen;
     private ListNavigationWidget navigation;
+    private String dragGroupId;
+    private double dragStartX;
+    private double dragStartY;
+    private boolean dragging;
+    private DropTarget dropTarget;
 
     WaypointerRouteList(WaypointerScreen screen) {
         this.screen = screen;
@@ -52,6 +58,7 @@ final class WaypointerRouteList {
 
     void resetNavigation() {
         navigation = null;
+        clearDrag();
     }
 
     void buildNavigation(int left, int panelTop, int right, int bottom) {
@@ -130,6 +137,10 @@ final class WaypointerRouteList {
             screen.selectedDungeonRoomZoneId = storedGroup.zoneId();
             screen.expandDungeonRoom(storedGroup.zoneId());
         }
+        RouteFolder folder = screen.manager.folderForGroup(id);
+        if (folder != null && folder.collapsed()) {
+            screen.manager.setFolderCollapsed(folder.id(), false);
+        }
         List<Row> rows = rows();
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
@@ -207,11 +218,8 @@ final class WaypointerRouteList {
     List<WaypointGroup> selectedVisibleGroups() {
         List<WaypointGroup> selectedGroups = new ArrayList<>();
         if (screen.selectedGroupIds.isEmpty()) return selectedGroups;
-        for (Row row : rows()) {
-            if (!row.roomHeader && row.group != null
-                    && screen.selectedGroupIds.contains(row.group.id())) {
-                selectedGroups.add(row.group);
-            }
+        for (WaypointGroup group : visibleGroups()) {
+            if (screen.selectedGroupIds.contains(group.id())) selectedGroups.add(group);
         }
         return selectedGroups;
     }
@@ -219,9 +227,25 @@ final class WaypointerRouteList {
     List<Row> rows() {
         List<Row> rows = new ArrayList<>();
         if (!isDungeonRoomsZone(screen.selectedZoneId)) {
-            for (WaypointGroup group : visibleGroups()) {
-                rows.add(new Row(false, null, group, 0, 0,
-                        false, false, false));
+            if (isTemporaryZone(screen.selectedZoneId)) {
+                for (WaypointGroup group : visibleGroups()) {
+                    rows.add(Row.group(null, group, false, false));
+                }
+                return rows;
+            }
+            RouteFolderListModel.Snapshot snapshot = RouteFolderListModel.build(
+                    screen.manager, screen.selectedZoneId, normalizedSearchQuery());
+            for (RouteFolderListModel.FolderSection section : snapshot.folders()) {
+                rows.add(Row.folder(section.folder(), section.groups().size(),
+                        section.searchReveal()));
+                if (!section.folder().collapsed() || section.searchReveal()) {
+                    for (WaypointGroup group : section.groups()) {
+                        rows.add(Row.group(null, group, true, true));
+                    }
+                }
+            }
+            for (WaypointGroup group : snapshot.unfiled()) {
+                rows.add(Row.group(null, group, false, false));
             }
             return rows;
         }
@@ -244,11 +268,10 @@ final class WaypointerRouteList {
             boolean currentRoom = roomZoneId.equals(currentRoomZoneId);
             int secretCount = RouteListPresentation.displayedInstalledSecretCount(
                     installedSecretCountForRoom(roomZoneId), roomGroups);
-            rows.add(new Row(true, roomZoneId, null, roomGroups.size(),
-                    secretCount, true, currentRoom, searching));
+            rows.add(Row.room(roomZoneId, roomGroups.size(), secretCount,
+                    true, currentRoom, searching));
             for (WaypointGroup group : displayGroups) {
-                rows.add(new Row(false, roomZoneId, group, 0, 0,
-                        false, currentRoom, false));
+                rows.add(Row.group(roomZoneId, group, true, false));
             }
         }
         return rows;
@@ -282,14 +305,18 @@ final class WaypointerRouteList {
             if (hovered) graphics.requestCursor(CursorTypes.POINTING_HAND);
             if (row.roomHeader) {
                 renderRoomHeader(graphics, row, x1 + 2, rowTop, rowRight - 2, hovered);
+            } else if (row.folder != null) {
+                renderFolderHeader(graphics, row, x1 + 2, rowTop, rowRight - 2,
+                        mouseX, hovered);
             } else if (row.group != null) {
                 boolean selected = screen.selectedGroupIds.contains(row.group.id());
                 int routeIndex = routeIndices.getOrDefault(row.group.id(), -1);
                 renderGroupRow(graphics, row.group, routeIndex,
                         x1 + 2, rowTop, rowRight - 2,
-                        hovered, selected, row.roomZoneId != null);
+                        hovered, selected, row.indented, row.folderChild);
             }
         }
+        renderDropTarget(graphics, x1 + 2, rowRight - 2);
         graphics.disableScissor();
         renderScrollbar(graphics, rowRight - 4, rowsTop, y2, rows.size(), screen.scrollOffset);
     }
@@ -300,6 +327,7 @@ final class WaypointerRouteList {
         boolean shiftRightClick = event.button() == MOUSE_BUTTON_RIGHT
                 && WaypointerScreen.routeSelectionShiftDown();
         if (!leftClick && !shiftRightClick) return false;
+        if (leftClick) clearDrag();
 
         double mouseX = event.x();
         double mouseY = event.y();
@@ -331,6 +359,22 @@ final class WaypointerRouteList {
                     WaypointerScreen.routeSelectionShiftDown(),
                     WaypointerScreen.routeSelectionControlDown(),
                     "room-header", "select-room");
+            return true;
+        }
+
+        if (row.folder != null) {
+            switch (RouteListPresentation.folderHeaderAction(
+                    mouseX, rowRight, doubleClick)) {
+                case SELECT -> screen.selectFolderRoutes(row.folder);
+                case EDIT -> screen.openFolderEditor(row.folder, List.of());
+                case TOGGLE -> {
+                    screen.manager.toggleFolderCollapsed(row.folder.id());
+                    screen.scrollOffset = MathUtil.clamp(screen.scrollOffset, 0,
+                            maxScroll(rows().size(), bottom - rowsTop));
+                }
+                case NONE -> {
+                }
+            }
             return true;
         }
 
@@ -368,6 +412,10 @@ final class WaypointerRouteList {
                     "route-row", "open-editor");
             screen.openGroupEditor(group);
         } else {
+            if (leftClick && RouteListPresentation.canStartRouteDrag(
+                    group, normalizedSearchQuery(), shiftDown, controlDown)) {
+                beginDragCandidate(group.id(), mouseX, mouseY);
+            }
             DebugEventLog.record("WaypointerScreen", "route", group.id(), index,
                     selectedBefore, selectedAfter, doubleClick, shiftDown, controlDown,
                     "route-row", doubleClick
@@ -375,6 +423,125 @@ final class WaypointerRouteList {
                             : "select");
         }
         return true;
+    }
+
+    boolean mouseDragged(
+            MouseButtonEvent event, int left, int top, int right, int bottom) {
+        if (dragGroupId == null || event.button() != MOUSE_BUTTON_LEFT) return false;
+        if (!normalizedSearchQuery().isEmpty()) {
+            clearDrag();
+            return false;
+        }
+        double dx = event.x() - dragStartX;
+        double dy = event.y() - dragStartY;
+        if (!dragging && dx * dx + dy * dy < DRAG_THRESHOLD_SQUARED) return false;
+        dragging = true;
+        dropTarget = dropTargetAt(event.x(), event.y(), left, top, right, bottom);
+        return true;
+    }
+
+    boolean mouseReleased(MouseButtonEvent event) {
+        if (dragGroupId == null || event.button() != MOUSE_BUTTON_LEFT) return false;
+        boolean consumed = dragging;
+        String movedGroupId = dragGroupId;
+        DropTarget target = dropTarget;
+        clearDrag();
+        if (consumed && target != null && screen.manager.moveGroupToContainer(
+                movedGroupId, target.folderId, target.beforeGroupId)) {
+            screen.selectOnlyGroupId(movedGroupId);
+            screen.refreshActionButtons();
+        }
+        return consumed;
+    }
+
+    private void beginDragCandidate(String groupId, double x, double y) {
+        dragGroupId = groupId;
+        dragStartX = x;
+        dragStartY = y;
+        dragging = false;
+        dropTarget = null;
+    }
+
+    private void clearDrag() {
+        dragGroupId = null;
+        dragging = false;
+        dropTarget = null;
+    }
+
+    private DropTarget dropTargetAt(
+            double mouseX, double mouseY,
+            int left, int top, int right, int bottom) {
+        if (mouseX < left || mouseX > right || mouseY < top || mouseY > bottom) return null;
+        List<Row> rows = rows();
+        int rowsTop = rowsTop(top);
+        if (mouseY < rowsTop) return null;
+        int index = (int) ((mouseY - rowsTop + screen.scrollOffset) / ROW_PITCH);
+        if (index < 0) return null;
+        if (index >= rows.size()) {
+            int lineY = Math.max(rowsTop, Math.min(bottom - 2,
+                    rowsTop - screen.scrollOffset + rows.size() * ROW_PITCH));
+            if (!screen.manager.canMoveGroupToContainer(dragGroupId, null, null)) return null;
+            return new DropTarget(null, null, lineY, lineY, false);
+        }
+        int rowTop = rowsTop - screen.scrollOffset + index * ROW_PITCH;
+        int rowBottom = rowTop + ROW_H + 2;
+        if (mouseY > rowBottom) return null;
+
+        Row row = rows.get(index);
+        String folderId;
+        String beforeGroupId;
+        boolean band;
+        if (row.folder != null) {
+            folderId = row.folder.id();
+            beforeGroupId = null;
+            band = true;
+        } else if (row.group != null && !row.group.temp() && !row.group.runtimeOnly()) {
+            folderId = row.group.routeKind() == WaypointGroup.RouteKind.REGULAR
+                    ? screen.manager.folderIdForGroup(row.group.id()) : null;
+            if (mouseY < rowTop + (ROW_H + 2) / 2.0) {
+                beforeGroupId = row.group.id();
+                band = false;
+                rowBottom = rowTop;
+            } else {
+                beforeGroupId = nextGroupIdInContainer(rows, index, row.group, folderId);
+                band = false;
+                rowTop = rowBottom;
+            }
+        } else {
+            return null;
+        }
+        if (!screen.manager.canMoveGroupToContainer(
+                dragGroupId, folderId, beforeGroupId)) return null;
+        return new DropTarget(folderId, beforeGroupId, rowTop, rowBottom, band);
+    }
+
+    private String nextGroupIdInContainer(
+            List<Row> rows, int index, WaypointGroup target, String folderId) {
+        for (int next = index + 1; next < rows.size(); next++) {
+            Row candidateRow = rows.get(next);
+            WaypointGroup candidate = candidateRow.group;
+            if (candidate == null || candidate.id().equals(dragGroupId)
+                    || candidate.temp() || candidate.runtimeOnly()) continue;
+            if (candidate.routeKind() != target.routeKind()
+                    || !candidate.zoneId().equals(target.zoneId())) continue;
+            if (candidate.routeKind() == WaypointGroup.RouteKind.REGULAR
+                    && !java.util.Objects.equals(
+                    folderId, screen.manager.folderIdForGroup(candidate.id()))) continue;
+            return candidate.id();
+        }
+        return null;
+    }
+
+    private void renderDropTarget(GuiGraphicsExtractor graphics, int left, int right) {
+        if (!dragging || dropTarget == null) return;
+        graphics.requestCursor(CursorTypes.POINTING_HAND);
+        if (dropTarget.band) {
+            graphics.fill(left, dropTarget.top, right, dropTarget.bottom, 0x3038CFE8);
+            graphics.fill(left, dropTarget.top, left + 3, dropTarget.bottom, ACCENT);
+            return;
+        }
+        int y = dropTarget.top;
+        graphics.fill(left + GAP, y - 1, right - GAP, y + 2, ACCENT);
     }
 
     void scroll(double wheelDelta, int panelTop, int bottom) {
@@ -415,10 +582,47 @@ final class WaypointerRouteList {
                     row.roomRouteCount, row.roomSecretCount,
                     row.currentRoom, row.searchReveal && !row.expanded));
         }
+        if (row.folder != null) {
+            return Component.literal(row.folder.name() + ". ").append(
+                    RouteListPresentation.folderSubtitle(row.folderRouteCount,
+                            row.searchReveal));
+        }
         if (row.group == null) return Component.empty();
         return Component.literal(RouteListPresentation.routeRowName(row.group, -1, false) + ". "
                 + routeRowSubtitle(row.group) + ". "
                 + RouteListPresentation.routeToggleLabel(row.group.enabled()));
+    }
+
+    private void renderFolderHeader(GuiGraphicsExtractor graphics, Row row,
+                                    int x1, int y1, int x2, int mouseX, boolean hovered) {
+        int rowBottom = y1 + ROW_H + 2;
+        if (hovered) graphics.fill(x1, y1, x2, rowBottom, HOVER);
+        int folderColor = 0xFF000000 | row.folder.color();
+        graphics.fill(x1, y1, x1 + 3, rowBottom, folderColor);
+        String glyph = RouteListPresentation.folderGlyph(row.folder, row.searchReveal);
+        int textX = x1 + GAP + 2;
+        graphics.text(font(), glyph, textX, y1 + 4, folderColor, false);
+        int nameX = textX + font().width(glyph) + GAP;
+        int editX = RouteListPresentation.folderEditControlX(x2);
+        int selectX = RouteListPresentation.folderSelectControlX(x2);
+        int maxWidth = Math.max(16, selectX - nameX - GAP);
+        graphics.text(font(), font().plainSubstrByWidth(row.folder.name(), maxWidth),
+                nameX, y1 + 4, TEXT, false);
+        Component subtitle = RouteListPresentation.folderSubtitle(row.folderRouteCount,
+                row.searchReveal);
+        graphics.text(font(), font().plainSubstrByWidth(subtitle.getString(), maxWidth),
+                nameX, y1 + 14, TEXT_DIM, false);
+        int chipY = y1 + 5;
+        List<String> folderMembers = screen.manager.groupIdsInFolder(row.folder.id());
+        renderCompactChip(graphics,
+                Component.translatable("waypointer.screen.main.folder.select").getString(),
+                selectX, chipY,
+                !folderMembers.isEmpty() && screen.selectedGroupIds.containsAll(folderMembers),
+                hovered && RouteListPresentation.isFolderSelectControlHit(mouseX, x2));
+        renderCompactChip(graphics,
+                Component.translatable("waypointer.screen.main.folder.edit").getString(),
+                editX, chipY, false,
+                hovered && RouteListPresentation.isFolderEditControlHit(mouseX, x2));
     }
 
     private void activateRow(int index) {
@@ -429,6 +633,10 @@ final class WaypointerRouteList {
             screen.selectedDungeonRoomZoneId = row.roomZoneId;
             screen.clearRouteSelection();
             screen.refreshActionButtons();
+            return;
+        }
+        if (row.folder != null) {
+            screen.manager.toggleFolderCollapsed(row.folder.id());
             return;
         }
         WaypointGroup group = row.group;
@@ -585,18 +793,20 @@ final class WaypointerRouteList {
 
     private void renderGroupRow(GuiGraphicsExtractor graphics, WaypointGroup group, int index,
                                 int x1, int y1, int x2,
-                                boolean hovered, boolean selected, boolean dungeonRoomChild) {
+                                boolean hovered, boolean selected,
+                                boolean indented, boolean folderChild) {
         int rowBottom = y1 + ROW_H + 2;
         int background = selected ? SELECTED : hovered ? HOVER : 0;
-        if (background != 0) graphics.fill(x1, y1, x2, rowBottom, background);
+        int bandX = RouteListPresentation.routeRowBandLeft(x1, folderChild);
+        if (background != 0) graphics.fill(bandX, y1, x2, rowBottom, background);
         int accent = group.temp() ? WaypointerScreen.TEMPORARY_ACCENT
                 : group.routeKind() == WaypointGroup.RouteKind.DUNGEON
                 ? WaypointerScreen.DUNGEON_ROOM_ACCENT
                 : ACCENT;
-        if (selected) graphics.fill(x1, y1, x1 + 2, rowBottom, accent);
+        if (selected) graphics.fill(bandX, y1, bandX + 2, rowBottom, accent);
 
         int chipX = RouteListPresentation.routeToggleChipX(x2);
-        int textX = RouteListPresentation.routeRowTextX(x1, dungeonRoomChild);
+        int textX = RouteListPresentation.routeRowTextX(x1, indented);
         int textMaxWidth = Math.max(12, chipX - GAP - textX);
         int textColor = group.enabled() ? TEXT : TEXT_MUTED;
         String name = RouteListPresentation.routeRowName(
@@ -624,14 +834,22 @@ final class WaypointerRouteList {
                                        int rowRight, int rowY) {
         int chipX = RouteListPresentation.routeToggleChipX(rowRight);
         int chipY = rowY + 5;
+        renderCompactChip(graphics, RouteListPresentation.routeToggleLabel(enabled),
+                chipX, chipY, enabled, false);
+    }
+
+    private void renderCompactChip(
+            GuiGraphicsExtractor graphics, String label,
+            int chipX, int chipY, boolean selected, boolean hovered) {
         int chipRight = chipX + ROUTE_TOGGLE_CHIP_W;
         int chipBottom = chipY + ROUTE_TOGGLE_CHIP_H;
-        graphics.fill(chipX, chipY, chipRight, chipBottom, enabled ? ACCENT : BORDER);
+        graphics.fill(chipX, chipY, chipRight, chipBottom,
+                selected ? ACCENT : hovered ? 0xB0FFFFFF : BORDER);
         graphics.fill(chipX + 1, chipY + 1, chipRight - 1, chipBottom - 1, 0xE0181D22);
-        if (enabled) graphics.fill(chipX + 1, chipBottom - 2, chipRight - 1, chipBottom - 1, ACCENT);
-        String toggle = RouteListPresentation.routeToggleLabel(enabled);
-        graphics.text(font(), toggle, chipX + (ROUTE_TOGGLE_CHIP_W - font().width(toggle)) / 2,
-                chipY + 3, enabled ? TEXT : TEXT_DIM, false);
+        String clipped = font().plainSubstrByWidth(label, ROUTE_TOGGLE_CHIP_W - 6);
+        graphics.text(font(), clipped,
+                chipX + (ROUTE_TOGGLE_CHIP_W - font().width(clipped)) / 2,
+                chipY + 3, selected ? TEXT : hovered ? ACCENT : TEXT_DIM, false);
     }
 
     private void renderScrollbar(GuiGraphicsExtractor graphics, int x, int y1, int y2,
@@ -671,13 +889,39 @@ final class WaypointerRouteList {
         List<String> ids = new ArrayList<>();
         if (rows == null) return ids;
         for (Row row : rows) {
-            if (row == null || row.roomHeader || row.group == null) continue;
+            if (row == null || row.roomHeader || row.folder != null || row.group == null) continue;
             ids.add(row.group.id());
         }
         return ids;
     }
 
-    private record Row(boolean roomHeader, String roomZoneId, WaypointGroup group,
-                       int roomRouteCount, int roomSecretCount,
-                       boolean expanded, boolean currentRoom, boolean searchReveal) {}
+    private record DropTarget(
+            String folderId, String beforeGroupId,
+            int top, int bottom, boolean band) {
+    }
+
+    private record Row(boolean roomHeader,
+                       String roomZoneId, WaypointGroup group,
+                       RouteFolder folder, int roomRouteCount, int roomSecretCount,
+                       int folderRouteCount, boolean expanded, boolean currentRoom,
+                       boolean searchReveal, boolean indented, boolean folderChild) {
+        static Row group(
+                String roomZoneId, WaypointGroup group,
+                boolean indented, boolean folderChild) {
+            return new Row(false, roomZoneId, group, null, 0, 0, 0,
+                    false, false, false, indented, folderChild);
+        }
+
+        static Row room(String roomZoneId, int routeCount, int secretCount,
+                        boolean expanded, boolean currentRoom, boolean searchReveal) {
+            return new Row(true, roomZoneId, null, null,
+                    routeCount, secretCount, 0,
+                    expanded, currentRoom, searchReveal, false, false);
+        }
+
+        static Row folder(RouteFolder folder, int routeCount, boolean searchReveal) {
+            return new Row(false, null, null, folder, 0, 0, routeCount,
+                    !folder.collapsed(), false, searchReveal, false, false);
+        }
+    }
 }

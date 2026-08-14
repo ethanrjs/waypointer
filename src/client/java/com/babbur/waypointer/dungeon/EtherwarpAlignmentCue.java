@@ -1,0 +1,141 @@
+package com.babbur.waypointer.dungeon;
+
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.resources.sounds.SimpleSoundInstance;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.BlockPos;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.function.BooleanSupplier;
+
+public final class EtherwarpAlignmentCue {
+    // Prevent aim flicker from replaying the cue.
+    private static final long JITTER_GUARD_MILLIS = 350L;
+
+    private final ActiveGroupManager manager;
+    private final BooleanSupplier enabled;
+    private final AlignmentState state = new AlignmentState(JITTER_GUARD_MILLIS);
+
+    public EtherwarpAlignmentCue(ActiveGroupManager manager, BooleanSupplier enabled) {
+        this.manager = Objects.requireNonNull(manager, "manager");
+        this.enabled = Objects.requireNonNull(enabled, "enabled");
+    }
+
+    public void install() {
+        ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
+    }
+
+    private void onTick(Minecraft minecraft) {
+        if (!enabled.getAsBoolean() || minecraft == null
+                || minecraft.level == null || minecraft.player == null) {
+            state.update(null, false, System.currentTimeMillis());
+            return;
+        }
+        LocalPlayer player = minecraft.player;
+        Optional<EtherwarpAbility> ability = heldAbility(player);
+        List<Target> targets = activeTargets();
+        if (!canCheckAlignment(ability, player.isShiftKeyDown(), targets)) {
+            state.update(null, false, System.currentTimeMillis());
+            return;
+        }
+
+        Target aligned = EtherwarpTargetResolver.resolve(
+                        minecraft.level, player, ability.get())
+                .map(support -> matchedTarget(support, targets))
+                .orElse(null);
+        if (aligned == null) {
+            state.update(null, false, System.currentTimeMillis());
+            return;
+        }
+        if (!state.update(aligned.key(), true, System.currentTimeMillis())) return;
+        minecraft.getSoundManager().play(SimpleSoundInstance.forUI(
+                SoundEvents.EXPERIENCE_ORB_PICKUP, 1.65F, 0.30F));
+    }
+
+    private Optional<EtherwarpAbility> heldAbility(LocalPlayer player) {
+        ItemStack mainHand = player.getMainHandItem();
+        Optional<EtherwarpAbility> main = DungeonItemIdentity.etherwarpAbility(mainHand);
+        return main.isPresent() ? main
+                : DungeonItemIdentity.etherwarpAbility(player.getOffhandItem());
+    }
+
+    List<Target> activeTargets() {
+        List<Target> targets = new ArrayList<>();
+        for (WaypointGroup group : manager.activeGroups()) {
+            for (int index = 0; index < group.size(); index++) {
+                Waypoint waypoint = group.get(index);
+                if (waypoint.isDisabled()) continue;
+                targets.add(new Target(group.id() + ":" + index, waypoint));
+            }
+        }
+        return List.copyOf(targets);
+    }
+
+    static boolean canCheckAlignment(
+            Optional<EtherwarpAbility> ability, boolean sneaking, List<Target> targets) {
+        return ability != null && ability.isPresent()
+                && ability.get().canUse(sneaking)
+                && targets != null && !targets.isEmpty();
+    }
+
+    static Target matchedTarget(BlockPos supportBlock, Iterable<Target> targets) {
+        if (supportBlock == null || targets == null) return null;
+        for (Target target : targets) {
+            if (target != null && EtherwarpTargetResolver.alignsWith(
+                    supportBlock, target.waypoint())) {
+                return target;
+            }
+        }
+        return null;
+    }
+
+    record Target(String key, Waypoint waypoint) {
+    }
+
+    static final class AlignmentState {
+        private final long jitterGuardMillis;
+        private String targetKey;
+        private boolean aligned;
+        private long lastCueAtMillis = Long.MIN_VALUE;
+
+        AlignmentState(long jitterGuardMillis) {
+            this.jitterGuardMillis = jitterGuardMillis;
+        }
+
+        boolean update(String nextTargetKey, boolean nextAligned, long nowMillis) {
+            if (nextTargetKey == null) {
+                targetKey = null;
+                aligned = false;
+                return false;
+            }
+            boolean targetChanged = !nextTargetKey.equals(targetKey);
+            boolean transition = nextAligned && (targetChanged || !aligned);
+            targetKey = nextTargetKey;
+            if (!transition) {
+                aligned = nextAligned;
+                return false;
+            }
+            if (elapsed(nowMillis, lastCueAtMillis) < jitterGuardMillis) {
+                aligned = false;
+                return false;
+            }
+            aligned = true;
+            lastCueAtMillis = nowMillis;
+            return true;
+        }
+
+        private static long elapsed(long nowMillis, long previousMillis) {
+            if (previousMillis == Long.MIN_VALUE) return Long.MAX_VALUE;
+            return Math.max(0L, nowMillis - previousMillis);
+        }
+    }
+}

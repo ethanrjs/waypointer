@@ -1,4 +1,4 @@
-# Waypointer API 1.8.7
+# Waypointer API 1.9.0
 
 Waypointer exposes a client-side Fabric API for reading routes, creating saved
 user routes, rendering session-only markers and overlays, importing and
@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    modImplementation "maven.modrinth:waypointer:1.8.7"
+    modImplementation "maven.modrinth:waypointer:1.9.0"
 }
 ```
 
@@ -34,7 +34,7 @@ directory instead:
 
 ```groovy
 dependencies {
-    modImplementation files("libs/waypointer-1.8.7-mc26.1.2.jar")
+    modImplementation files("libs/waypointer-1.9.0-mc26.1.2.jar")
 }
 ```
 
@@ -345,8 +345,9 @@ try {
 }
 ```
 
-Supported input families are Waypointer `WP:` payloads, Skyblocker, Skytils,
-SkyHanni/Coleweight, Soopy V1, Firmament, Odin, and recognized JSON shapes.
+Supported input families are Waypointer `WP:` and `WPL:` payloads, Skyblocker,
+Skytils, SkyHanni/Coleweight, Soopy V1, Firmament, Odin, and recognized JSON
+shapes.
 `ImportSummary.source()` returns the API-owned `ImportSource` enum.
 
 Malformed, unsupported, or oversized input throws `IllegalArgumentException`
@@ -370,7 +371,9 @@ ids are skipped. `exportRoutes(ids)` uses full-fidelity Waypointer defaults.
 
 Supported targets are Waypointer, Skyblocker, Skytils, and SkyHanni.
 Third-party formats cannot represent every Waypointer field, so use
-`WAYPOINTER` for lossless round trips.
+`WAYPOINTER` for lossless round trips. When selected routes have route-library
+metadata, the Waypointer target uses a `WPL:` wrapper to preserve folder
+membership, folder colors, and hidden manual colors.
 
 ## Change Notifications
 

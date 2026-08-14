@@ -7,11 +7,6 @@ import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.input.InputWithModifiers;
 import net.minecraft.network.chat.Component;
 
-/**
- * Square-ish button whose primary visual IS the colour it represents -- the
- * fill spans the full button, with centered text so the control still reads
- * as an action rather than a passive chip.
- */
 public final class ColorSwatchButton extends AbstractButton {
 
     private static final int BORDER_IDLE    = 0xFF000000;
@@ -82,7 +77,7 @@ public final class ColorSwatchButton extends AbstractButton {
         int r = (rgb >> 16) & 0xFF;
         int g = (rgb >>  8) & 0xFF;
         int b =  rgb        & 0xFF;
-        // Rec. 601 luma; good enough
+        // Keep the label readable on light colors.
         int luma = (r * 299 + g * 587 + b * 114) / 1000;
         return luma > 150;
     }

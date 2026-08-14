@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen.settings;
 
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.config.WaypointerConfigCodec;
+import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import org.junit.jupiter.api.Test;
 
@@ -350,6 +351,44 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void etherwarpAlignmentSoundIsOffUnderWaypointVisibility() {
+        Setting setting = SettingsCatalog.byId("etherwarpAlignmentSound");
+
+        assertNotNull(setting);
+        assertEquals("Etherwarp alignment sound", setting.label());
+        assertEquals("Play a sound when you can etherwarp to a waypoint",
+                setting.tooltip());
+        assertEquals(false, setting.get(new WaypointerConfig(), new DungeonConfig()));
+        assertEquals(Setting.Store.MAIN, setting.store());
+        assertEquals("appearance", categoryContaining(setting.id()));
+        assertEquals("waypoint_visibility", groupContaining(setting.id()));
+    }
+
+    @Test
+    void sequenceVisibilityControlsUseBoundedWholeNumbers() {
+        assertRange("sequencePreviousWaypointCount", 0,
+                SequenceVisibility.MAX_CONTEXT_WAYPOINTS, true);
+        assertRange("sequenceNextWaypointCount", 0,
+                SequenceVisibility.MAX_CONTEXT_WAYPOINTS, true);
+        Setting previous = SettingsCatalog.byId("sequencePreviousWaypointCount");
+        Setting next = SettingsCatalog.byId("sequenceNextWaypointCount");
+        assertEquals("All", previous.formatValue((double) SequenceVisibility.ALL));
+        assertEquals("32", previous.formatValue(32.0D));
+        assertNull(next.numberDisplayValue());
+        assertEquals("Amount of surroundings you want to see. 0-32", next.tooltip());
+        assertFalse(previous.tooltip().contains("33"));
+        assertEquals(Setting.Kind.BOOL,
+                SettingsCatalog.byId("showCurrentSequenceWaypoint").kind());
+        for (String id : List.of(
+                "sequencePreviousWaypointCount",
+                "showCurrentSequenceWaypoint",
+                "sequenceNextWaypointCount")) {
+            assertEquals("appearance", categoryContaining(id), id);
+            assertEquals("waypoint_visibility", groupContaining(id), id);
+        }
+    }
+
+    @Test
     void dungeonRoutePresentationDefaultsLiveInTheDungeonsCategory() {
         WaypointerConfig main = new WaypointerConfig();
         DungeonConfig dungeon = new DungeonConfig();
@@ -498,5 +537,16 @@ class SettingsCatalogTest {
                 .findFirst()
                 .orElseThrow()
                 .id();
+    }
+
+    private static String groupContaining(String id) {
+        for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
+            for (SettingsCatalog.Group group : category.groups()) {
+                if (group.settings().stream().anyMatch(setting -> setting.id().equals(id))) {
+                    return group.id();
+                }
+            }
+        }
+        throw new IllegalArgumentException("Unknown setting " + id);
     }
 }

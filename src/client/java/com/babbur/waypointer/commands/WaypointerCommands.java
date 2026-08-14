@@ -216,7 +216,8 @@ public final class WaypointerCommands {
                 .then(literal("export")
                         .executes(ctx -> shareCommands.runExport(ctx.getSource(), exportOptionsFromConfig()))
                         .then(literal("routes")
-                                .executes(ctx -> shareCommands.runExport(ctx.getSource(), exportOptionsFromConfig())))
+                                .executes(ctx -> shareCommands.runExportRoutes(
+                                        ctx.getSource(), exportOptionsFromConfig())))
                         .then(literal("config")
                                 .executes(ctx -> shareCommands.runExportConfig(ctx.getSource())))
                         .then(literal("dungeon")
@@ -337,6 +338,10 @@ public final class WaypointerCommands {
 
     static List<WaypointGroup> cliExportGroups(ActiveGroupManager manager) {
         return WaypointerShareCommands.cliExportGroups(manager);
+    }
+
+    static List<WaypointGroup> cliBulkExportGroups(ActiveGroupManager manager) {
+        return WaypointerShareCommands.cliBulkExportGroups(manager);
     }
 
     static MutableComponent importSuccessMessage(int routeCount, String origin, Object source,

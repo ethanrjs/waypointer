@@ -5,6 +5,7 @@ import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.codec.DecodeDebug;
+import com.babbur.waypointer.codec.RouteLibraryCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -256,6 +257,15 @@ public final class DebugInspectScreen extends Screen {
             return;
         }
         String trimmed = text.trim();
+        if (RouteLibraryCodec.isPayload(trimmed)) {
+            try {
+                trimmed = RouteLibraryCodec.unwrapNativePayload(trimmed);
+            } catch (IllegalArgumentException failure) {
+                this.codecError = "Decode failed: " + failure.getMessage();
+                buildCodecClipboardReport(rows, sections, codecError);
+                return;
+            }
+        }
         if (!WaypointCodec.isCodecString(trimmed)) {
             this.codecError = "Clipboard does not start with " + WaypointCodec.MAGIC
                     + ". Copy a Waypointer export string to inspect codec details.";

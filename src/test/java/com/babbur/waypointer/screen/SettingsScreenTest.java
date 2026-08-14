@@ -19,6 +19,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SettingsScreenTest {
 
     @Test
+    void nextSequenceCountRejectsAll() {
+        Setting setting = SettingsCatalog.byId("sequenceNextWaypointCount");
+
+        assertEquals("32", SettingsText.localizedValue(setting, 32.0D).getString());
+        assertNull(SettingsValuePolicy.acceptedNumberValue(setting, "All"));
+        assertNull(SettingsValuePolicy.acceptedNumberValue(setting, "33"));
+    }
+
+    @Test
     void booleanSettingsUseTwentyPixelCheckboxes() {
         assertEquals(20, SettingsScreen.CHECKBOX_SIZE);
     }

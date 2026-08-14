@@ -30,13 +30,15 @@ Settings keys are derived from their stable catalog IDs:
 
 ## Adding a locale
 
-Copy `en_us.json` to an exact Minecraft locale filename such as `de_de.json`,
-translate only the values, and keep the file UTF-8. Minecraft 26.2 exposes 142
-locales, but Waypointer does not need to include untranslated copies of them:
-add only locales that have a real translation. Every JSON file in the language
-directory is treated as a supported locale and must contain exactly the
-canonical keys with matching placeholder arguments. Blank values and duplicate
-keys are rejected.
+Use an exact Minecraft locale filename such as `de_de.json` and keep the file
+UTF-8. Locale files are sparse overlays. Add only keys that have a translation.
+Do not copy a value that is identical to `en_us`; omit that key and Minecraft
+will use the English fallback. An empty `{}` catalog is valid. Each included key
+must exist in `en_us.json`, have a nonblank string value, and keep the same
+placeholder arguments. Duplicate keys are rejected.
+
+Keep all 142 Mojang locale files in `translations/lang` so the remote manifest
+has stable locale coverage. A locale can remain `{}` until translations arrive.
 
 Run the catalog checks before submitting:
 

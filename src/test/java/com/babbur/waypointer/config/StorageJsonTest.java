@@ -4,6 +4,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.CatalogRouteProvenance;
+import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
@@ -105,6 +107,23 @@ class StorageJsonTest {
         assertEquals(1, copy.size(), "temp waypoints must not round-trip");
         assertEquals("keeper", copy.get(0).name());
         assertFalse(copy.get(0).isTemp(), "surviving waypoint is not temporary");
+    }
+
+    @Test
+    void group_catalogProvenanceRoundTripsButMalformedOptionalDataIsDropped() {
+        WaypointGroup group = WaypointGroup.create("Catalog route", "hub");
+        CatalogRouteProvenance provenance = new CatalogRouteProvenance(
+                "https://catalog.example/api/", "Abcdefghijklmnopqrstuv",
+                3, 9, "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", 1, 2);
+        group.setCatalogProvenance(provenance);
+
+        JsonObject json = Storage.groupToJson(group);
+        assertEquals(provenance, Storage.groupFromJson(json).catalogProvenance());
+
+        json.getAsJsonObject("catalogSource").addProperty("groupIndex", 5);
+        WaypointGroup recovered = assertDoesNotThrow(() -> Storage.groupFromJson(json));
+        assertNull(recovered.catalogProvenance());
+        assertEquals(group.id(), recovered.id());
     }
 
     @Test
@@ -338,7 +357,7 @@ class StorageJsonTest {
         Path file = tempDir.resolve("future-schema.json");
         String raw = """
                 {
-                  "schema": 2,
+                  "schema": 3,
                   "groups": [{"id": "future", "name": "Future", "zone": "hub"}]
                 }
                 """;
@@ -439,6 +458,31 @@ class StorageJsonTest {
 
         assertEquals(0x112233, copy.gradientStartColor());
         assertEquals(0xFEDCBA, copy.gradientEndColor());
+    }
+
+    @Test
+    void group_hiddenManualColorsSurviveNonManualModeRoundTrip() {
+        WaypointGroup group = WaypointGroup.create("subway colors", "hub");
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.add(Waypoint.at(0, 70, 0).withColor(0xAA1100));
+        group.add(Waypoint.at(1, 70, 0).withColor(0xFF9900));
+        group.add(Waypoint.at(2, 70, 0).withColor(0x0033CC));
+        assertTrue(group.toggleSubwaypoint(1));
+        group.setGradientStartColor(0x123456);
+        group.setGradientEndColor(0xABCDEF);
+        group.setStaticColor(0x556677);
+        group.setGradientMode(WaypointGroup.GradientMode.STATIC);
+
+        JsonObject json = Storage.groupToJson(group);
+        WaypointGroup copy = Storage.groupFromJson(json);
+
+        assertTrue(json.has("manualColors"));
+        assertEquals(WaypointGroup.GradientMode.STATIC, copy.gradientMode());
+        copy.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        assertEquals(List.of(0xAA1100, 0xFF9900, 0x0033CC),
+                copy.waypoints().stream().map(Waypoint::color).toList());
+        assertEquals(0x123456, copy.gradientStartColor());
+        assertEquals(0xABCDEF, copy.gradientEndColor());
     }
 
     @Test
@@ -688,6 +732,8 @@ class StorageJsonTest {
 
         assertEquals(1, storage.writeCount());
         JsonObject saved = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertEquals(2, saved.get("schema").getAsInt());
+        assertTrue(saved.getAsJsonArray("folders").isEmpty());
         assertEquals(3, saved.getAsJsonArray("groups").size());
         for (int index = 0; index < 3; index++) {
             assertEquals("dwarven_mines", saved.getAsJsonArray("groups").get(index)
@@ -714,6 +760,92 @@ class StorageJsonTest {
         assertEquals(List.of("First", "Second"),
                 reloadedManager.get("tunnels-route").waypoints().stream()
                         .map(Waypoint::name).toList());
+    }
+
+    @Test
+    void foldersRoundTripWithOrderCollapseAndMembership() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup first = new WaypointGroup("first", "First", "hub");
+        WaypointGroup second = new WaypointGroup("second", "Second", "hub");
+        manager.addAll(List.of(first, second));
+        manager.addFolder(new RouteFolder("folder", "Mining", "hub", true, 0xC46DFF),
+                List.of(second.id(), first.id()));
+        Path file = tempDir.resolve("folders.json");
+
+        new Storage(file).save(manager);
+        ActiveGroupManager loaded = new ActiveGroupManager();
+        new Storage(file).load(loaded);
+
+        assertEquals(2, JsonParser.parseString(Files.readString(file)).getAsJsonObject()
+                .get("schema").getAsInt());
+        JsonObject saved = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertEquals(0xC46DFF, saved.getAsJsonArray("folders").get(0)
+                .getAsJsonObject().get("color").getAsInt());
+        assertEquals(List.of(new RouteFolder(
+                        "folder", "Mining", "hub", true, 0xC46DFF)),
+                loaded.folders());
+        assertEquals(List.of("first", "second"), loaded.groupIdsInFolder("folder"),
+                "folder membership follows the manager's global route order");
+    }
+
+    @Test
+    void schemaTwoFolderWithoutColorUsesTheCyanDefault() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = new WaypointGroup("route", "Route", "hub");
+        manager.add(route);
+        manager.addFolder(new RouteFolder("folder", "Mining", "hub", false),
+                List.of(route.id()));
+        Path file = tempDir.resolve("legacy-folder-color.json");
+        new Storage(file).save(manager);
+        JsonObject saved = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        saved.getAsJsonArray("folders").get(0).getAsJsonObject().remove("color");
+        Files.writeString(file, saved.toString());
+
+        ActiveGroupManager loaded = new ActiveGroupManager();
+        new Storage(file).load(loaded);
+
+        assertEquals(RouteFolder.DEFAULT_COLOR, loaded.folder("folder").color());
+        assertEquals(List.of("route"), loaded.groupIdsInFolder("folder"));
+    }
+
+    @Test
+    void malformedOptionalFolderColorKeepsTheFolderWithTheCyanDefault() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = new WaypointGroup("route", "Route", "hub");
+        manager.add(route);
+        manager.addFolder(new RouteFolder("folder", "Mining", "hub", false),
+                List.of(route.id()));
+        Path file = tempDir.resolve("malformed-folder-color.json");
+        new Storage(file).save(manager);
+        JsonObject saved = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        saved.getAsJsonArray("folders").get(0).getAsJsonObject()
+                .addProperty("color", "not-a-color");
+        Files.writeString(file, saved.toString());
+
+        ActiveGroupManager loaded = new ActiveGroupManager();
+        new Storage(file).load(loaded);
+
+        assertEquals(RouteFolder.DEFAULT_COLOR, loaded.folder("folder").color());
+        assertEquals(List.of("route"), loaded.groupIdsInFolder("folder"));
+    }
+
+    @Test
+    void catalogSourceRoundTripsAndMalformedOptionalSourceKeepsGroup() {
+        CatalogRouteProvenance source = new CatalogRouteProvenance(
+                "https://catalog.example/api", "abcdefghijklmnopqrstuv", 2, 9,
+                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQ", 0, 1);
+        WaypointGroup group = new WaypointGroup("route", "Route", "hub");
+        group.setCatalogProvenance(source);
+
+        WaypointGroup copy = Storage.groupFromJson(Storage.groupToJson(group));
+
+        assertEquals(source, copy.catalogProvenance());
+
+        JsonObject malformed = Storage.groupToJson(group);
+        malformed.add("catalogSource", JsonParser.parseString("{\"routeId\":7}"));
+        WaypointGroup retained = assertDoesNotThrow(() -> Storage.groupFromJson(malformed));
+        assertEquals("route", retained.id());
+        assertNull(retained.catalogProvenance());
     }
 
     private static ActiveGroupManager managerWithExistingGroup() {

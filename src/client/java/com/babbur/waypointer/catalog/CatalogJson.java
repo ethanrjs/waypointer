@@ -33,8 +33,7 @@ final class CatalogJson {
         List<CatalogRouteSummary> routes = new ArrayList<>(values.size());
         Set<String> ids = new HashSet<>();
         int rejectedRoutes = 0;
-        // Isolate bad rows. Keep wire order, keep the first valid copy of an ID,
-        // and fail closed if a non-empty page contains no usable route.
+        // Preserve wire order and the first occurrence of each route ID.
         for (JsonElement value : values) {
             try {
                 CatalogRouteSummary route = parseSummary(object(value, "route"));
@@ -136,7 +135,7 @@ final class CatalogJson {
                 requiredString(route, "zoneLabel", 80),
                 waypointCount,
                 groupCount,
-                nonNegativeInt(route, "codecVersion"),
+                positiveInt(route, "codecVersion"),
                 optionalPositiveInt(route, "version", 1),
                 optionalNonNegativeLong(route, "downloads", 0L),
                 optionalString(route, "createdAt", MAX_TEXT, ""),
@@ -224,6 +223,12 @@ final class CatalogJson {
 
     private static int optionalPositiveInt(JsonObject object, String key, int fallback) {
         if (!object.has(key) || object.get(key).isJsonNull()) return fallback;
+        int value = nonNegativeInt(object, key);
+        if (value == 0) throw new IllegalArgumentException(key + " must be positive");
+        return value;
+    }
+
+    private static int positiveInt(JsonObject object, String key) {
         int value = nonNegativeInt(object, key);
         if (value == 0) throw new IllegalArgumentException(key + " must be positive");
         return value;

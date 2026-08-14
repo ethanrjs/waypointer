@@ -592,37 +592,6 @@ class WaypointCodecV9Test {
     }
 
     @Test
-    void catalogV8BridgePublishesOnlyLosslessRoutes() {
-        WaypointGroup compatible = WaypointGroup.create("Catalog route", "hub");
-        compatible.add(new Waypoint(2, 70, -3, "Start", 0x55AAEE,
-                Waypoint.FLAG_HIDE_BEACON, 1.5));
-
-        String payload = WaypointCodec.encodeCatalogV8IfLossless(List.of(compatible));
-
-        assertEquals(8, WaypointCodec.debugDecode(payload).version());
-        assertEquals("Catalog route", WaypointCodec.decode(payload).getFirst().name());
-
-        compatible.setSkipAheadEnabled(false);
-        IllegalArgumentException unsupported = assertThrows(IllegalArgumentException.class,
-                () -> WaypointCodec.encodeCatalogV8IfLossless(List.of(compatible)));
-        assertTrue(unsupported.getMessage().contains("catalog cannot publish yet"));
-    }
-
-    @Test
-    void catalogV8BridgeRejectsRadiusRoundingAndPersistentPaletteLoss() {
-        WaypointGroup rounded = WaypointGroup.create("Rounded", "hub");
-        rounded.add(new Waypoint(0, 64, 0, "Point", 0xFFFFFF, 0, 1.25));
-        assertThrows(IllegalArgumentException.class,
-                () -> WaypointCodec.encodeCatalogV8IfLossless(List.of(rounded)));
-
-        WaypointGroup palette = WaypointGroup.create("Palette", "hub");
-        palette.setStaticColor(0x123456);
-        palette.add(Waypoint.at(0, 64, 0));
-        assertThrows(IllegalArgumentException.class,
-                () -> WaypointCodec.encodeCatalogV8IfLossless(List.of(palette)));
-    }
-
-    @Test
     void catalogEncoderKeepsFullV9Meaning() {
         WaypointGroup route = WaypointGroup.create("Catalog v9", "hub");
         route.setSkipAheadEnabled(false);

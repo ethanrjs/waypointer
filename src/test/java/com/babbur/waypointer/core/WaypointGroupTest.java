@@ -308,6 +308,40 @@ class WaypointGroupTest {
     }
 
     @Test
+    void colorModeCycleRestoresManualMainAndSubwaypointColors() {
+        WaypointGroup group = WaypointGroup.create("subway colors", "hub");
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.add(Waypoint.at(0, 70, 0).withColor(0xAA1100)
+                .withFlags(Waypoint.FLAG_LOCKED_COLOR));
+        group.add(Waypoint.at(1, 70, 0).withColor(0xFF9900)
+                .withFlags(Waypoint.FLAG_LOCKED_COLOR));
+        group.add(Waypoint.at(2, 70, 0).withColor(0x0033CC));
+        assertTrue(group.toggleSubwaypoint(1));
+        group.setGradientStartColor(0x123456);
+        group.setGradientEndColor(0xABCDEF);
+
+        group.setGradientMode(WaypointGroup.GradientMode.AUTO);
+        assertEquals(0xAA1100, group.get(0).color());
+        assertEquals(0xFF9900, group.get(1).color());
+
+        group.setStaticColor(0x556677);
+        group.setGradientMode(WaypointGroup.GradientMode.STATIC);
+        assertTrue(group.waypoints().stream().allMatch(w -> w.color() == 0x556677));
+
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        assertEquals(List.of(0xAA1100, 0xFF9900, 0x0033CC),
+                group.waypoints().stream().map(Waypoint::color).toList());
+        assertEquals(0x123456, group.gradientStartColor());
+        assertEquals(0xABCDEF, group.gradientEndColor());
+
+        group.setGradientMode(WaypointGroup.GradientMode.AUTO);
+        assertEquals(0xAA1100, group.get(0).color());
+        assertEquals(0xFF9900, group.get(1).color());
+        assertEquals(0x123456, group.gradientStartColor());
+        assertEquals(0xABCDEF, group.gradientEndColor());
+    }
+
+    @Test
     void gradientLockedColor_isNotOverwritten() {
         WaypointGroup g = WaypointGroup.create("x", "z");
         int lockedColor = 0xFF00FF;

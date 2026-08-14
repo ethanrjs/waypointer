@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen.settings;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
@@ -142,11 +143,6 @@ public final class SettingsCatalog {
     private static Category waypoints() {
         return Category.of("waypoints", "Waypoints",
                 Group.plain(
-                        Setting.bool("showCompleted", MAIN, "Show completed waypoints",
-                                "Keep showing waypoints you've already reached.",
-                                (c, d) -> c.showCompleted(),
-                                (c, d, v) -> c.setShowCompleted((Boolean) v))
-                                .impact(Setting.Impact.MEDIUM),
                         Setting.bool("placeNewWaypointsBelowPlayer", MAIN, "Add new waypoints below player",
                                 "Waypoints created at your position go one block below you, under your feet.",
                                 (c, d) -> c.placeNewWaypointsBelowPlayer(),
@@ -207,7 +203,7 @@ public final class SettingsCatalog {
                                 .aliases("marker scale", "box size"),
                         Setting.color("defaultWaypointColor", MAIN, "Default waypoint color",
                                 null,
-                                "Default Waypoint Colour", null,
+                                "Default Waypoint Color", null,
                                 (c, d) -> c.defaultWaypointColor(),
                                 (c, d, v) -> c.setDefaultWaypointColor(rgb(v))),
                         Setting.number("beaconOpacity", MAIN, "Waypoint fill opacity (0-1)",
@@ -226,7 +222,7 @@ public final class SettingsCatalog {
                                         || c.boxStyle() == WaypointerConfig.BoxStyle.FILLED_OUTLINED),
                         Setting.color("waypointOutlineColor", MAIN, "Outline color",
                                 null,
-                                "Waypoint Outline Colour", null,
+                                "Waypoint Outline Color", null,
                                 (c, d) -> c.waypointOutlineColor(),
                                 (c, d, v) -> c.setWaypointOutlineColor(rgb(v)))
                                 .enabledWhen((c, d) -> !c.matchWaypointOutlineToWaypointColor()
@@ -253,10 +249,33 @@ public final class SettingsCatalog {
                                 .enabledWhen((c, d) -> c.boxStyle() == WaypointerConfig.BoxStyle.PAINT)
                                 .aliases("painter", "texture", "pixel")),
                 Group.plain("waypoint_visibility", "Waypoint visibility",
+                        Setting.number("sequencePreviousWaypointCount", MAIN,
+                                "Previous waypoints", "Enter 0-32 reached route steps, or enter All.",
+                                (c, d) -> (double) c.sequencePreviousWaypointCount(),
+                                (c, d, v) -> c.setSequencePreviousWaypointCount(((Number) v).intValue()))
+                                .range(0, SequenceVisibility.MAX_CONTEXT_WAYPOINTS).wholeNumber()
+                                .numberDisplay(SequenceVisibility.ALL,
+                                        "waypointer.settings.value.all", "All")
+                                .impact(Setting.Impact.MEDIUM),
+                        Setting.bool("showCurrentSequenceWaypoint", MAIN,
+                                "Current waypoint", "Show the current route step.",
+                                (c, d) -> c.showCurrentSequenceWaypoint(),
+                                (c, d, v) -> c.setShowCurrentSequenceWaypoint((Boolean) v)),
+                        Setting.number("sequenceNextWaypointCount", MAIN,
+                                "Next waypoints", "Amount of surroundings you want to see. 0-32",
+                                (c, d) -> (double) c.sequenceNextWaypointCount(),
+                                (c, d, v) -> c.setSequenceNextWaypointCount(((Number) v).intValue()))
+                                .range(0, SequenceVisibility.MAX_CONTEXT_WAYPOINTS).wholeNumber()
+                                .impact(Setting.Impact.MEDIUM),
                         Setting.bool("dimSequenceContextWaypoints", MAIN, "Dim surrounding waypoints",
                                 null,
                                 (c, d) -> c.dimSequenceContextWaypoints(),
-                                (c, d, v) -> c.setDimSequenceContextWaypoints((Boolean) v))),
+                                (c, d, v) -> c.setDimSequenceContextWaypoints((Boolean) v)),
+                        Setting.bool("etherwarpAlignmentSound", MAIN,
+                                "Etherwarp alignment sound",
+                                "Play a sound when you can etherwarp to a waypoint",
+                                (c, d) -> c.etherwarpAlignmentSound(),
+                                (c, d, v) -> c.setEtherwarpAlignmentSound((Boolean) v))),
                 Group.plain("labels", "Labels",
                         Setting.bool("showWaypointNames", MAIN, "Show waypoint names",
                                 null,
@@ -362,7 +381,7 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setMatchTracerToWaypointColor((Boolean) v)),
                         Setting.color("tracerColor", MAIN, "Tracer color",
                                 null,
-                                "Tracer Colour", null,
+                                "Tracer Color", null,
                                 (c, d) -> c.tracerColor(),
                                 (c, d, v) -> c.setTracerColor(rgb(v)))
                                 .enabledWhen((c, d) -> c.showTracer() && !c.matchTracerToWaypointColor()),
@@ -403,7 +422,7 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setUseEtherwarpHeight((Boolean) v)),
                         Setting.color("routeLineColor", MAIN, "Route line color",
                                 null,
-                                "Route Line Colour", null,
+                                "Route Line Color", null,
                                 (c, d) -> c.routeLineColor(),
                                 (c, d, v) -> c.setRouteLineColor(rgb(v)))));
     }
@@ -508,7 +527,7 @@ public final class SettingsCatalog {
                                         (c, d, v) -> c.setShowDungeonEntryPathToFollowingWaypoints((Boolean) v)),
                                 Setting.color("dungeonEntryPathColor", MAIN, "Dungeon entry path color",
                                         null,
-                                        "Dungeon Entry Path Colour", null,
+                                        "Dungeon Entry Path Color", null,
                                         (c, d) -> c.dungeonEntryPathColor(),
                                         (c, d, v) -> c.setDungeonEntryPathColor(rgb(v))))));
     }
@@ -555,7 +574,7 @@ public final class SettingsCatalog {
                                 .aliases("gradient", "import"),
                         Setting.color("importedRouteDefaultColor", MAIN, "Imported color",
                                 null,
-                                "Imported Route Colour", null,
+                                "Imported Route Color", null,
                                 (c, d) -> c.importedRouteDefaultColor(),
                                 (c, d, v) -> c.setImportedRouteDefaultColor(rgb(v)))),
                 Group.plain("export_screen", "Export screen",

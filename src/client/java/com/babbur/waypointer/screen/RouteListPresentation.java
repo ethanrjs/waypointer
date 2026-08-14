@@ -1,7 +1,10 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.core.RouteProgress;
+import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -24,6 +27,8 @@ final class RouteListPresentation {
     private static final int ROUTE_TOGGLE_CHIP_W = 54;
     private static final int ROUTE_TOGGLE_HIT_PAD = 2;
     private static final int DUNGEON_ROUTE_CHILD_INDENT = 18;
+    private static final int FOLDER_ROUTE_BAND_INDENT = 10;
+    private static final int FOLDER_CONTROL_WIDTH = 54;
 
     private RouteListPresentation() {}
 
@@ -86,6 +91,48 @@ final class RouteListPresentation {
         return rowLeft + GAP + 2 + (dungeonRoomChild ? DUNGEON_ROUTE_CHILD_INDENT : 0);
     }
 
+    static int routeRowBandLeft(int rowLeft, boolean folderChild) {
+        return rowLeft + (folderChild ? FOLDER_ROUTE_BAND_INDENT : 0);
+    }
+
+    static int folderEditControlX(int rowRight) {
+        return rowRight - GAP - FOLDER_CONTROL_WIDTH;
+    }
+
+    static int folderSelectControlX(int rowRight) {
+        return folderEditControlX(rowRight) - GAP - FOLDER_CONTROL_WIDTH;
+    }
+
+    static boolean isFolderEditControlHit(double mouseX, int rowRight) {
+        int left = folderEditControlX(rowRight);
+        return mouseX >= left && mouseX < left + FOLDER_CONTROL_WIDTH;
+    }
+
+    static boolean isFolderSelectControlHit(double mouseX, int rowRight) {
+        int left = folderSelectControlX(rowRight);
+        return mouseX >= left && mouseX < left + FOLDER_CONTROL_WIDTH;
+    }
+
+    static FolderHeaderAction folderHeaderAction(
+            double mouseX, int rowRight, boolean doubleClick) {
+        if (isFolderEditControlHit(mouseX, rowRight)) return FolderHeaderAction.EDIT;
+        if (isFolderSelectControlHit(mouseX, rowRight)) return FolderHeaderAction.SELECT;
+        return doubleClick ? FolderHeaderAction.NONE : FolderHeaderAction.TOGGLE;
+    }
+
+    static boolean canStartRouteDrag(
+            WaypointGroup group, String query, boolean shiftDown, boolean controlDown) {
+        return group != null && !group.temp() && !group.runtimeOnly()
+                && (query == null || query.isBlank()) && !shiftDown && !controlDown;
+    }
+
+    enum FolderHeaderAction {
+        SELECT,
+        EDIT,
+        TOGGLE,
+        NONE
+    }
+
     static Map<String, Integer> routeCommandIndices(List<WaypointGroup> groups) {
         Map<String, Integer> indices = new HashMap<>();
         if (groups == null) return indices;
@@ -103,6 +150,28 @@ final class RouteListPresentation {
 
     static String routeToggleLabel(boolean enabled) {
         return enabled ? "Shown" : "Hidden";
+    }
+
+    static String folderGlyph(RouteFolder folder, boolean searchReveal) {
+        return folder.collapsed() && !searchReveal ? "[+]" : "[-]";
+    }
+
+    static Component folderSubtitle(int routeCount, boolean searchReveal) {
+        MutableComponent subtitle = Component.translatable(folderRouteCountKey(routeCount), routeCount);
+        if (searchReveal) {
+            subtitle.append(Component.translatable(folderSearchSuffixKey()));
+        }
+        return subtitle;
+    }
+
+    static String folderRouteCountKey(int routeCount) {
+        return routeCount == 1
+                ? "waypointer.screen.main.folder.routes.one"
+                : "waypointer.screen.main.folder.routes.many";
+    }
+
+    static String folderSearchSuffixKey() {
+        return "waypointer.screen.main.folder.search_suffix";
     }
 
     static boolean shouldOpenEditor(

@@ -118,6 +118,15 @@ final class WaypointerGroupCommands {
                                 .suggests(suggestions.suggestAllGroupIndices())
                                 .executes(ctx -> runSetGroupEnabled(ctx.getSource(),
                                         IntegerArgumentType.getInteger(ctx, "index"), false))))
+                .then(literal("move")
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestions.suggestAllGroupIndices())
+                                .then(literal("up")
+                                        .executes(ctx -> runMoveGroup(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"), -1)))
+                                .then(literal("down")
+                                        .executes(ctx -> runMoveGroup(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "index"), 1)))))
                 .then(literal("colormode")
                         .then(argument("index", IntegerArgumentType.integer(0))
                                 .suggests(suggestions.suggestAllGroupIndices())
@@ -235,6 +244,19 @@ final class WaypointerGroupCommands {
                         ? "waypointer.command.route.enabled"
                         : "waypointer.command.route.disabled",
                 index, group.name()));
+        return 1;
+    }
+
+    int runMoveGroup(FabricClientCommandSource src, int index, int delta) {
+        WaypointGroup group = groupAtIndexOrError(src, index);
+        if (group == null) return 0;
+        if (!manager.moveGroupBy(group.id(), delta)) {
+            error(src, Component.translatable("waypointer.command.route.move_blocked"));
+            return 0;
+        }
+        int newIndex = manager.allGroupsList().indexOf(group);
+        success(src, Component.translatable("waypointer.command.route.moved",
+                group.name(), newIndex));
         return 1;
     }
 

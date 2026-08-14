@@ -42,7 +42,6 @@ final class TranslationCatalogValidator {
         if (!MessageDigest.isEqual(actual, expected)) throw new IOException("Locale digest does not match the manifest");
 
         Map<String, String> translated = parse(bytes, locale);
-        if (translated.isEmpty()) throw new IOException("Locale catalog is empty");
         for (Map.Entry<String, String> value : translated.entrySet()) {
             String englishValue = english.get(value.getKey());
             if (englishValue == null) throw new IOException("Locale contains an unknown key: " + value.getKey());

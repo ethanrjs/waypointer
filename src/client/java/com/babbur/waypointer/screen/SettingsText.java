@@ -9,7 +9,6 @@ import net.minecraft.network.chat.MutableComponent;
 
 import java.util.Objects;
 
-/** Localized labels, values, and tooltip composition for the settings UI. */
 final class SettingsText {
 
     private SettingsText() {}
@@ -55,6 +54,11 @@ final class SettingsText {
                     return enumOption(setting, i);
                 }
             }
+        }
+        if (setting.hasNumberDisplay(value)) {
+            return Component.translatableWithFallback(
+                    setting.numberDisplayTranslationKey(),
+                    setting.numberDisplayFallback());
         }
         return Component.literal(setting.formatValue(value));
     }

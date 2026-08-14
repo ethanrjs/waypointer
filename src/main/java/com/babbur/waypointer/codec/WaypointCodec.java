@@ -506,31 +506,13 @@ public final class WaypointCodec {
         return encode(groups, opts, PackingMode.AUTO);
     }
 
-    /**
-     * Encode a catalog payload that the current public Worker can validate.
-     *
-     * <p>The Worker currently implements wire v8. This method refuses the
-     * downgrade unless decoding v8 produces the same persistent route meaning
-     * as decoding Waypointer's native v9 payload. It never silently rounds a
-     * radius or drops v9-only group metadata.
-     */
-    public static String encodeCatalogV8IfLossless(List<WaypointGroup> groups) {
-        Options options = Options.FULL_FIDELITY;
-        List<WaypointGroup> nativeMeaning = decode(encode(groups, options));
-        String legacy = encodeLegacyForTest(
-                groups, options, PackingMode.AUTO, LEGACY_V8_WIRE_VERSION);
-        List<WaypointGroup> legacyMeaning = decode(legacy);
-        if (!samePersistentRouteMeaning(nativeMeaning, legacyMeaning)) {
-            throw new IllegalArgumentException(
-                    "This route uses details that the catalog cannot publish yet. "
-                            + "Use default skip-ahead and colors, and radii in 0.1-block steps.");
-        }
-        return legacy;
-    }
-
     /** Encode a full-fidelity v9 payload for the public route catalog. */
     public static String encodeCatalog(List<WaypointGroup> groups) {
         return encode(groups, Options.FULL_FIDELITY);
+    }
+
+    public static int currentWireVersion() {
+        return WIRE_VERSION;
     }
 
     /**
@@ -568,28 +550,6 @@ public final class WaypointCodec {
         } catch (IOException e) {
             throw new IllegalStateException("codec encode failed", e);
         }
-    }
-
-    private static boolean samePersistentRouteMeaning(
-            List<WaypointGroup> expected, List<WaypointGroup> actual) {
-        if (expected.size() != actual.size()) return false;
-        for (int index = 0; index < expected.size(); index++) {
-            WaypointGroup left = expected.get(index);
-            WaypointGroup right = actual.get(index);
-            if (!left.name().equals(right.name())
-                    || !left.zoneId().equals(right.zoneId())
-                    || left.loadMode() != right.loadMode()
-                    || left.gradientMode() != right.gradientMode()
-                    || Double.compare(left.defaultRadius(), right.defaultRadius()) != 0
-                    || left.skipAheadEnabled() != right.skipAheadEnabled()
-                    || left.staticColor() != right.staticColor()
-                    || left.gradientStartColor() != right.gradientStartColor()
-                    || left.gradientEndColor() != right.gradientEndColor()
-                    || !left.waypoints().equals(right.waypoints())) {
-                return false;
-            }
-        }
-        return true;
     }
 
     public static List<WaypointGroup> decode(String text) {

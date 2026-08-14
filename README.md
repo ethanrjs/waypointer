@@ -22,12 +22,16 @@ Features
 
 Waypoint Import/Export Compatibility
 
+- Waypointer codes (I/E)
 - Coleweight/SkyHanni (I/E)
 - Skytils 1.x V1 (I/E) and V2 (I)
 - Skyblocker V1 (I/E)
 - Soopy V1 (I)
 - Firmament (I)
 - Generic JSON-based (I)
+
+Waypointer route-library codes preserve folder membership and folder colors.
+Config import/export uses separate `WPC:` codes.
 
 Dungeon route import
 
@@ -41,8 +45,8 @@ Requirements
 - Java 25+
 - Fabric Loader 0.19.3+
 - [Fabric API](https://modrinth.com/mod/fabric-api):
-  - Minecraft 26.1.2: 0.145.4+26.1.2 or newer compatible 26.1.2 release
-  - Minecraft 26.2: 0.147.1+26.2 or newer compatible 26.2 release
+  - Minecraft 26.1.2: 0.154.2+26.1.2 or newer compatible 26.1.2 release
+  - Minecraft 26.2: 0.154.2+26.2 or newer compatible 26.2 release
 - [Hypixel Mod API](https://modrinth.com/mod/hypixel-mod-api) 1.0.2+
 
 Building
@@ -56,10 +60,10 @@ it does not produce one universal jar:
 - `build/libs/waypointer-<mod-version>-mc26.2.jar`
 
 Matching `-sources.jar` files are also generated. The current mod version is
-`1.8.7`.
+`1.9.0`.
 
 CODEC Specification
-See [CODEC.md](CODEC.md) for the full overengineered specification.
+See [CODEC.md](CODEC.md) for the full specification.
 
 API for Other Mods
 

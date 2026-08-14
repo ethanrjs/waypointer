@@ -26,6 +26,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -33,8 +34,8 @@ import static org.junit.jupiter.api.Assertions.fail;
 /**
  * Contract for Waypointer's language resources.
  *
- * <p>{@code en_us.json} is the canonical catalog. Every remote locale must
- * contain exactly the canonical key set with formatting-compatible values.
+ * <p>{@code en_us.json} is the canonical catalog. Each remote locale is a
+ * sparse overlay with known keys and formatting-compatible translated values.
  */
 class TranslationCatalogTest {
 
@@ -54,22 +55,24 @@ class TranslationCatalogTest {
             "%(?:(\\d+)\\$)?([A-Za-z%])");
 
     @Test
-    void everySupportedLocaleMatchesTheCanonicalCatalog() throws IOException {
+    void everyRemoteLocaleIsASparseCanonicalOverlay() throws IOException {
         Map<String, String> english = readCatalog(ENGLISH_FILE.resolve("en_us.json"));
         assertFalse(english.isEmpty(), "en_us.json must not be empty");
 
-        for (Path localeFile : localeFiles()) {
+        for (Path localeFile : remoteLocaleFiles()) {
             Map<String, String> locale = readCatalog(localeFile);
             String localeName = localeName(localeFile);
 
-            assertEquals(english.keySet(), locale.keySet(),
-                    localeName + " must have exactly the canonical translation keys");
-            for (Map.Entry<String, String> entry : english.entrySet()) {
+            for (Map.Entry<String, String> entry : locale.entrySet()) {
                 String key = entry.getKey();
-                String value = locale.get(key);
+                String value = entry.getValue();
+                assertTrue(english.containsKey(key),
+                        localeName + " contains an unknown translation key: " + key);
                 assertFalse(value.isBlank(), localeName + " has a blank value for " + key);
+                assertNotEquals(english.get(key), value,
+                        localeName + " must omit the unchanged English value for " + key);
                 assertEquals(
-                        placeholderSignature(entry.getValue(), "en_us", key),
+                        placeholderSignature(english.get(key), "en_us", key),
                         placeholderSignature(value, localeName, key),
                         localeName + " changes the placeholder arguments for " + key);
             }
@@ -180,6 +183,45 @@ class TranslationCatalogTest {
     }
 
     @Test
+    void routeFolderDefaultNameKeepsItsSinglePlaceholder() throws IOException {
+        String key = "waypointer.screen.route_folder.default_name";
+        String format = readCatalog(ENGLISH_FILE.resolve("en_us.json")).get(key);
+
+        assertEquals("Folder %s", format);
+        assertEquals(List.of(1), placeholderSignature(format, "en_us", key));
+    }
+
+    @Test
+    void routeFolderInteractionKeysExistInTheCanonicalCatalog() throws IOException {
+        Map<String, String> english = readCatalog(ENGLISH_FILE.resolve("en_us.json"));
+        Set<String> required = Set.of(
+                "waypointer.screen.main.folder.select",
+                "waypointer.screen.main.folder.edit",
+                "waypointer.screen.route_folder.color",
+                "waypointer.screen.route_folder.color_picker",
+                "waypointer.screen.route_folder.color_picker.tooltip",
+                "waypointer.screen.route_folder.color.default",
+                "waypointer.screen.route_folder.color.invalid");
+
+        assertTrue(english.keySet().containsAll(required));
+        assertEquals("New Folder", english.get("waypointer.screen.main.folder"));
+        assertEquals("Move the selected route up or down",
+                english.get("waypointer.screen.main.move_up.tooltip"));
+        assertEquals("Move the selected route up or down",
+                english.get("waypointer.screen.main.move_down.tooltip"));
+    }
+
+    @Test
+    void waypointColorPickerUsesTheRequestedSubwaypointCopy() throws IOException {
+        Map<String, String> english = readCatalog(ENGLISH_FILE.resolve("en_us.json"));
+
+        assertEquals("Apply to subwaypoints",
+                english.get("waypointer.screen.color_picker.apply_to_subwaypoints"));
+        assertEquals("Apply this color to all subwaypoints as well",
+                english.get("waypointer.screen.color_picker.apply_to_subwaypoints.tooltip"));
+    }
+
+    @Test
     void placeholderSignatureAllowsReorderingButRejectsChangedArguments() {
         assertEquals(
                 placeholderSignature("%s then %s", "test", "key"),
@@ -193,16 +235,20 @@ class TranslationCatalogTest {
     }
 
     private static List<Path> localeFiles() throws IOException {
+        List<Path> remote = remoteLocaleFiles();
+        List<Path> all = new ArrayList<>(remote.size() + 1);
+        all.add(ENGLISH_FILE.resolve("en_us.json"));
+        all.addAll(remote);
+        return List.copyOf(all);
+    }
+
+    private static List<Path> remoteLocaleFiles() throws IOException {
         assertTrue(Files.isDirectory(REMOTE_LANG_DIR), "missing remote language directory: " + REMOTE_LANG_DIR);
         try (Stream<Path> files = Files.list(REMOTE_LANG_DIR)) {
-            List<Path> remote = files
+            return files
                     .filter(path -> path.getFileName().toString().endsWith(".json"))
                     .sorted()
                     .toList();
-            List<Path> all = new ArrayList<>(remote.size() + 1);
-            all.add(ENGLISH_FILE.resolve("en_us.json"));
-            all.addAll(remote);
-            return List.copyOf(all);
         }
     }
 

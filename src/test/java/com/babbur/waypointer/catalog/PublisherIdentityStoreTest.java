@@ -118,7 +118,7 @@ class PublisherIdentityStoreTest {
                 java.nio.charset.StandardCharsets.UTF_8);
         ShortWriteChannel channel = new ShortWriteChannel(3);
 
-        PublisherIdentityStore.writeFully(channel, ByteBuffer.wrap(expected));
+        CatalogAtomicFile.writeFully(channel, ByteBuffer.wrap(expected));
 
         assertArrayEquals(expected, channel.bytes());
         assertTrue(channel.writeCalls > 1);

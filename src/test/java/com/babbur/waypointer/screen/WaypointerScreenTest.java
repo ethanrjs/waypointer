@@ -1,6 +1,12 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.codec.RouteLibraryCodec;
+import com.babbur.waypointer.codec.RouteLibraryMetadata;
+import com.babbur.waypointer.codec.WaypointCodec;
+import com.babbur.waypointer.codec.WaypointImporter;
+import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -16,6 +22,101 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerScreenTest {
+
+    @Test
+    void guiImportInstallsLibraryMetadataWithoutOverwritingHiddenColors() {
+        ActiveGroupManager source = new ActiveGroupManager();
+        WaypointGroup group = new WaypointGroup("route", "Route", "hub");
+        group.add(Waypoint.at(1, 2, 3).withColor(0x112233));
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.set(0, group.get(0).withColor(0xABCDEF));
+        List<Integer> hiddenColors = group.manualColorSnapshot();
+        group.setStaticColor(0x2468AC);
+        group.setGradientMode(WaypointGroup.GradientMode.STATIC);
+        source.add(group);
+        source.addFolder(new RouteFolder(
+                "source-folder", "Imported", "hub", true, 0x13579B),
+                List.of(group.id()));
+        RouteLibraryMetadata metadata = RouteLibraryMetadata.capture(source, List.of(group));
+        String payload = RouteLibraryCodec.encode(
+                List.of(group.exportSnapshot()),
+                WaypointCodec.Options.FULL_FIDELITY, metadata);
+        WaypointImporter.ImportResult imported = WaypointImporter.importAny(payload);
+        WaypointerConfig config = new WaypointerConfig();
+        config.setImportedRouteColorMode(WaypointGroup.GradientMode.STATIC);
+        config.setImportedRouteDefaultColor(0x00FF00);
+        ActiveGroupManager target = new ActiveGroupManager();
+
+        WaypointerScreen.installImportedWaypointGroups(
+                target, config, imported, "hub");
+
+        WaypointGroup installed = target.allGroupsList().getFirst();
+        assertEquals(0x2468AC, installed.get(0).color());
+        assertEquals(hiddenColors, installed.manualColorSnapshot());
+        RouteFolder folder = target.folderForGroup(installed.id());
+        assertEquals("Imported", folder.name());
+        assertTrue(folder.collapsed());
+    }
+
+    @Test
+    void routeFolderModelKeepsManagerOrderAndSearchRevealsCollapsedMatches() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup amber = new WaypointGroup("amber", "Amber Route", "hub");
+        WaypointGroup ruby = new WaypointGroup("ruby", "Ruby Route", "hub");
+        WaypointGroup unfiled = new WaypointGroup("free", "Free Route", "hub");
+        manager.addAll(List.of(amber, ruby, unfiled));
+        RouteFolder folder = new RouteFolder("gems", "Gemstones", "hub", true);
+        manager.addFolder(folder, List.of(amber.id(), ruby.id()));
+
+        RouteFolderListModel.Snapshot normal = RouteFolderListModel.build(manager, "hub", "");
+        assertEquals(List.of(amber, ruby), normal.folders().get(0).groups());
+        assertEquals(List.of(unfiled), normal.unfiled());
+        assertFalse(normal.folders().get(0).searchReveal());
+
+        RouteFolderListModel.Snapshot search = RouteFolderListModel.build(
+                manager, "hub", "ruby");
+        assertEquals(List.of(ruby), search.folders().get(0).groups());
+        assertTrue(search.folders().get(0).searchReveal());
+        assertTrue(search.unfiled().isEmpty());
+        assertEquals("[+]", RouteListPresentation.folderGlyph(folder, false));
+        assertEquals("[-]", RouteListPresentation.folderGlyph(folder, true));
+        assertEquals("waypointer.screen.main.folder.routes.one",
+                RouteListPresentation.folderRouteCountKey(1));
+        assertEquals("waypointer.screen.main.folder.routes.many",
+                RouteListPresentation.folderRouteCountKey(0));
+        assertEquals("waypointer.screen.main.folder.routes.many",
+                RouteListPresentation.folderRouteCountKey(2));
+        assertEquals("waypointer.screen.main.folder.search_suffix",
+                RouteListPresentation.folderSearchSuffixKey());
+    }
+
+    @Test
+    void reorderArrowPolicySupportsStoredDungeonRoutesButNotRuntimeRows() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup first = dungeonGroup("first", "room-a");
+        WaypointGroup runtime = dungeonGroup("runtime", "room-a");
+        runtime.setRuntimeOnly(true);
+        WaypointGroup second = dungeonGroup("second", "room-a");
+        manager.addAll(List.of(first, runtime, second));
+
+        assertEquals(new WaypointerScreen.ReorderActionState(false, true),
+                WaypointerScreen.reorderActionState(manager,
+                        WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID, "", List.of(first)));
+        assertEquals(new WaypointerScreen.ReorderActionState(true, false),
+                WaypointerScreen.reorderActionState(manager,
+                        WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID, "", List.of(second)));
+        assertEquals(new WaypointerScreen.ReorderActionState(false, false),
+                WaypointerScreen.reorderActionState(manager,
+                        WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID, "", List.of(runtime)));
+        assertEquals(new WaypointerScreen.ReorderActionState(false, false),
+                WaypointerScreen.reorderActionState(manager,
+                        WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID, "route", List.of(first)));
+        assertEquals(new WaypointerScreen.ReorderActionState(false, false),
+                WaypointerScreen.reorderActionState(manager,
+                        WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID, "", List.of(first, second)));
+        assertEquals(new WaypointerScreen.ReorderActionState(false, false),
+                WaypointerScreen.reorderActionState(manager, "room-a", "", List.of(first)));
+    }
 
     @Test
     void roomHeaderSubtitleShowsInstalledSecretsSoImportsDoNotReadAsEmpty() {
@@ -127,6 +228,53 @@ class WaypointerScreenTest {
                 RouteListPresentation.routeRowTextX(rowLeft, false));
         assertTrue(RouteListPresentation.routeRowTextX(rowLeft, true)
                 > RouteListPresentation.routeRowTextX(rowLeft, false));
+    }
+
+    @Test
+    void folderChildrenIndentTheirBandAndExposeMatchingSelectAndEditTargets() {
+        int rowLeft = 24;
+        int rowRight = 500;
+
+        assertEquals(rowLeft, RouteListPresentation.routeRowBandLeft(rowLeft, false));
+        assertTrue(RouteListPresentation.routeRowBandLeft(rowLeft, true) > rowLeft);
+        assertEquals(438, RouteListPresentation.folderEditControlX(rowRight));
+        assertEquals(376, RouteListPresentation.folderSelectControlX(rowRight));
+        assertFalse(RouteListPresentation.isFolderEditControlHit(437, rowRight));
+        assertTrue(RouteListPresentation.isFolderEditControlHit(438, rowRight));
+        assertFalse(RouteListPresentation.isFolderEditControlHit(492, rowRight));
+        assertTrue(RouteListPresentation.isFolderSelectControlHit(376, rowRight));
+        assertEquals(RouteListPresentation.FolderHeaderAction.EDIT,
+                RouteListPresentation.folderHeaderAction(460, rowRight, false));
+        assertEquals(RouteListPresentation.FolderHeaderAction.SELECT,
+                RouteListPresentation.folderHeaderAction(400, rowRight, false));
+        assertEquals(RouteListPresentation.FolderHeaderAction.TOGGLE,
+                RouteListPresentation.folderHeaderAction(300, rowRight, false));
+        assertEquals(RouteListPresentation.FolderHeaderAction.NONE,
+                RouteListPresentation.folderHeaderAction(300, rowRight, true));
+    }
+
+    @Test
+    void routeDragRequiresASavedRouteAndAnUnfilteredUnmodifiedList() {
+        WaypointGroup saved = WaypointGroup.create("Saved", "hub");
+        WaypointGroup temporary = WaypointGroup.create("Temporary", "hub");
+        temporary.setTemp(true);
+        WaypointGroup runtime = WaypointGroup.create("Runtime", "hub");
+        runtime.setRuntimeOnly(true);
+
+        assertTrue(RouteListPresentation.canStartRouteDrag(
+                saved, "", false, false));
+        assertTrue(RouteListPresentation.canStartRouteDrag(
+                saved, "   ", false, false));
+        assertFalse(RouteListPresentation.canStartRouteDrag(
+                saved, "saved", false, false));
+        assertFalse(RouteListPresentation.canStartRouteDrag(
+                saved, "", true, false));
+        assertFalse(RouteListPresentation.canStartRouteDrag(
+                saved, "", false, true));
+        assertFalse(RouteListPresentation.canStartRouteDrag(
+                temporary, "", false, false));
+        assertFalse(RouteListPresentation.canStartRouteDrag(
+                runtime, "", false, false));
     }
 
     @Test
@@ -514,5 +662,11 @@ class WaypointerScreenTest {
     private static boolean routeMatches(WaypointGroup group, String query) {
         return RouteListPresentation.groupMatchesSearch(
                 group, query, Zone.fromId(group.zoneId()).displayName());
+    }
+
+    private static WaypointGroup dungeonGroup(String id, String roomId) {
+        WaypointGroup group = new WaypointGroup(id, id, roomId);
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        return group;
     }
 }

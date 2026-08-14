@@ -12,6 +12,7 @@ import net.minecraft.world.item.component.CustomData;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DungeonItemIdentityTest {
@@ -42,6 +43,22 @@ class DungeonItemIdentityTest {
     }
 
     @Test
+    void etherwarpAbilityRequiresAMergedAspectAndIncludesTuners() {
+        SharedConstants.tryDetectVersion();
+        Bootstrap.bootStrap();
+        ItemStack merged = shovelWithData(data(
+                "ASPECT_OF_THE_VOID", 1, false, 3));
+        ItemStack conduit = shovelWithData(data(
+                "ETHERWARP_CONDUIT", 0, false, 99));
+
+        EtherwarpAbility mergedAbility = DungeonItemIdentity
+                .etherwarpAbility(merged).orElseThrow();
+        assertEquals(60, mergedAbility.range());
+        assertTrue(DungeonItemIdentity.etherwarpAbility(conduit).isEmpty());
+        assertTrue(DungeonItemIdentity.etherwarpAbility(ItemStack.EMPTY).isEmpty());
+    }
+
+    @Test
     void superboomRequiresAnExactSkyBlockIdInsteadOfAName() {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
@@ -59,9 +76,15 @@ class DungeonItemIdentityTest {
     }
 
     private static CompoundTag data(String id, int ethermerge, boolean legacyLayout) {
+        return data(id, ethermerge, legacyLayout, 0);
+    }
+
+    private static CompoundTag data(
+            String id, int ethermerge, boolean legacyLayout, int transmissionTuners) {
         CompoundTag values = new CompoundTag();
         values.putString("id", id);
         values.putInt("ethermerge", ethermerge);
+        values.putInt("tuned_transmission", transmissionTuners);
         if (!legacyLayout) return values;
         CompoundTag root = new CompoundTag();
         root.put("ExtraAttributes", values);

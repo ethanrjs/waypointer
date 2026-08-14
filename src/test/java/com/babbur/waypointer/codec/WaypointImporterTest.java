@@ -5,6 +5,7 @@ import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.zip.GZIPOutputStream;
@@ -12,6 +13,25 @@ import java.util.zip.GZIPOutputStream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class WaypointImporterTest {
+
+    @Test
+    void publicImportResultOwnsAnImmutableNonNullBoundary() {
+        WaypointGroup group = new WaypointGroup("route", "Route", "hub");
+        ArrayList<WaypointGroup> sourceGroups = new ArrayList<>(List.of(group));
+
+        WaypointImporter.ImportResult result = new WaypointImporter.ImportResult(
+                WaypointImporter.Source.WAYPOINTER, sourceGroups, null);
+        sourceGroups.clear();
+
+        assertEquals(List.of(group), result.groups());
+        assertEquals("", result.label());
+        assertThrows(UnsupportedOperationException.class,
+                () -> result.groups().add(group));
+        assertThrows(NullPointerException.class, () -> new WaypointImporter.ImportResult(
+                null, List.of(group), "label"));
+        assertThrows(NullPointerException.class, () -> new WaypointImporter.ImportResult(
+                WaypointImporter.Source.WAYPOINTER, null, "label"));
+    }
 
     @Test
     void boundsUnsafeLooseJsonReachRadii() {
@@ -341,6 +361,19 @@ class WaypointImporterTest {
     }
 
     @Test
+    void legacySkyblockerPrefixUsesTheCallersLocalizedFallbackName() throws Exception {
+        String json = "[{\"x\":1,\"y\":2,\"z\":3}]";
+        String packed = WaypointImporter.SKYBLOCKER_LEGACY_ORDERED_PREFIX
+                + Base64.getEncoder().encodeToString(gzip(json));
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(
+                packed, "Ruta importada");
+
+        assertEquals(WaypointImporter.Source.SKYBLOCKER, result.source());
+        assertEquals("Ruta importada", result.groups().getFirst().name());
+    }
+
+    @Test
     void rejects_garbage() {
         assertThrows(IllegalArgumentException.class,
                 () -> WaypointImporter.importAny("not-json-and-not-base64-gzip"));
@@ -386,6 +419,18 @@ class WaypointImporterTest {
                 json, "Импортированный маршрут");
 
         assertEquals("Импортированный маршрут", result.groups().getFirst().name());
+    }
+
+    @Test
+    void usesCallerSuppliedNameForLooseWaypointArray() {
+        String json = "[{\"x\":100,\"y\":64,\"z\":200,\"name\":\"Start\"}]";
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(
+                json, "Imported from clipboard");
+
+        assertEquals(WaypointImporter.Source.JSON, result.source());
+        assertEquals("Imported from clipboard", result.groups().getFirst().name());
+        assertEquals("Start", result.groups().getFirst().get(0).name());
     }
 
     @Test

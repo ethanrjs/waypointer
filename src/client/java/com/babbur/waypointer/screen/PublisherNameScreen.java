@@ -1,6 +1,5 @@
 package com.babbur.waypointer.screen;
 
-import com.babbur.waypointer.catalog.PublisherNamePolicy;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -14,7 +13,6 @@ import java.util.function.Consumer;
 
 import static com.babbur.waypointer.screen.GuiTokens.BTN_H;
 import static com.babbur.waypointer.screen.GuiTokens.GAP;
-import static com.babbur.waypointer.screen.GuiTokens.GAP_SECTION;
 import static com.babbur.waypointer.screen.GuiTokens.SURFACE;
 import static com.babbur.waypointer.screen.GuiTokens.SURFACE_SUBTLE;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT;
@@ -22,31 +20,20 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 
 final class PublisherNameScreen extends Screen {
-    private static final int PANEL_W = 336;
-    private static final int PANEL_H = 176;
-    private static final int PAD = 16;
-    private static final int ACTION_W = 104;
-
-    private enum Stage { ENTRY, CONFIRM }
-
     private final Screen parent;
     private final Consumer<String> confirmed;
-    private Stage stage = Stage.ENTRY;
-    private String nameValue;
+    private final PublisherNameModel model;
     private EditBox nameBox;
     private Button primaryButton;
 
-    private int panelX;
-    private int panelY;
-    private int panelW;
-    private int panelH;
+    private PublisherNameLayout.Layout layout;
 
     PublisherNameScreen(
             Screen parent, String suggestedName, Consumer<String> confirmed) {
         super(Component.translatable("waypointer.screen.publisher_name.title"));
         this.parent = parent;
         this.confirmed = confirmed;
-        this.nameValue = PublisherNamePolicy.valid(suggestedName) ? suggestedName : "";
+        this.model = new PublisherNameModel(suggestedName);
     }
 
     static void open(Screen parent, String suggestedName, Consumer<String> confirmed) {
@@ -56,23 +43,22 @@ final class PublisherNameScreen extends Screen {
 
     @Override
     protected void init() {
-        panelW = Math.min(PANEL_W, Math.max(220, width - GAP * 2));
-        panelH = Math.min(PANEL_H, Math.max(140, height - GAP * 2));
-        panelX = Math.max(0, (width - panelW) / 2);
-        panelY = Math.max(0, (height - panelH) / 2);
-        int contentX = panelX + PAD;
-        int contentW = Math.max(1, panelW - PAD * 2);
-        int footerY = panelY + panelH - PAD - BTN_H;
+        int preferredPrimaryWidth = Math.max(104, font.width(Component.translatable(
+                model.stage() == PublisherNameModel.Stage.ENTRY
+                        ? "waypointer.screen.publisher_name.action.continue"
+                        : "waypointer.screen.publisher_name.action.confirm")) + 16);
+        layout = PublisherNameLayout.calculate(width, height, preferredPrimaryWidth);
 
-        if (stage == Stage.ENTRY) {
-            nameBox = new EditBox(font, contentX, panelY + 72, contentW, BTN_H,
+        if (model.stage() == PublisherNameModel.Stage.ENTRY) {
+            nameBox = new EditBox(font, layout.contentX(), layout.fieldY(),
+                    layout.contentWidth(), BTN_H,
                     Component.translatable("waypointer.screen.publisher_name.field"));
             nameBox.setMaxLength(16);
-            nameBox.setValue(nameValue);
+            nameBox.setValue(model.name());
             nameBox.setResponder(value -> {
-                nameValue = value == null ? "" : value;
+                model.edit(value);
                 if (primaryButton != null) {
-                    primaryButton.active = PublisherNamePolicy.valid(nameValue);
+                    primaryButton.active = model.valid();
                 }
             });
             nameBox.setTooltip(Tooltip.create(Component.translatable(
@@ -81,40 +67,36 @@ final class PublisherNameScreen extends Screen {
             setInitialFocus(nameBox);
         }
 
-        addRenderableWidget(styledButton(contentX, footerY, ACTION_W, BTN_H,
-                Component.translatable(stage == Stage.ENTRY ? "gui.cancel" : "gui.back"),
+        addRenderableWidget(styledButton(
+                layout.secondaryX(), layout.footerY(), layout.secondaryWidth(), BTN_H,
+                Component.translatable(model.stage() == PublisherNameModel.Stage.ENTRY
+                        ? "gui.cancel" : "gui.back"),
                 button -> back(), null));
-        int primaryW = Math.max(ACTION_W, font.width(Component.translatable(
-                stage == Stage.ENTRY
-                        ? "waypointer.screen.publisher_name.action.continue"
-                        : "waypointer.screen.publisher_name.action.confirm")) + 16);
-        primaryW = Math.min(primaryW, contentW - ACTION_W - GAP_SECTION);
-        primaryButton = styledButton(contentX + contentW - primaryW, footerY,
-                primaryW, BTN_H,
-                Component.translatable(stage == Stage.ENTRY
+        primaryButton = styledButton(
+                layout.primaryX(), layout.footerY(), layout.primaryWidth(), BTN_H,
+                Component.translatable(model.stage() == PublisherNameModel.Stage.ENTRY
                         ? "waypointer.screen.publisher_name.action.continue"
                         : "waypointer.screen.publisher_name.action.confirm"),
                 button -> advance(), null);
-        primaryButton.active = PublisherNamePolicy.valid(nameValue);
+        primaryButton.active = model.valid();
         addRenderableWidget(primaryButton);
     }
 
     private void advance() {
-        if (!PublisherNamePolicy.valid(nameValue)) return;
-        if (stage == Stage.ENTRY) {
-            stage = Stage.CONFIRM;
+        PublisherNameModel.AdvanceResult result = model.advance();
+        if (result == PublisherNameModel.AdvanceResult.REJECTED) return;
+        if (result == PublisherNameModel.AdvanceResult.SHOW_CONFIRMATION) {
             rebuildWidgets();
-            return;
+        } else {
+            Minecraft client = minecraft == null ? Minecraft.getInstance() : minecraft;
+            String chosenName = model.confirmedName();
+            MinecraftCompat.setScreen(client, parent);
+            client.execute(() -> confirmed.accept(chosenName));
         }
-        Minecraft client = minecraft == null ? Minecraft.getInstance() : minecraft;
-        String chosenName = nameValue;
-        MinecraftCompat.setScreen(client, parent);
-        client.execute(() -> confirmed.accept(chosenName));
     }
 
     private void back() {
-        if (stage == Stage.CONFIRM) {
-            stage = Stage.ENTRY;
+        if (!model.back()) {
             rebuildWidgets();
         } else {
             onClose();
@@ -125,39 +107,50 @@ final class PublisherNameScreen extends Screen {
     public void extractRenderState(
             GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, width, height, 0x80000000);
-        graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, SURFACE);
-        int contentX = panelX + PAD;
-        int contentW = Math.max(1, panelW - PAD * 2);
-        graphics.text(font, font.plainSubstrByWidth(getTitle().getString(), contentW),
-                contentX, panelY + PAD, TEXT, false);
+        graphics.fill(layout.panelX(), layout.panelY(),
+                layout.panelX() + layout.panelWidth(), layout.panelBottom(), SURFACE);
+        graphics.text(font, font.plainSubstrByWidth(
+                        getTitle().getString(), layout.contentWidth()),
+                layout.contentX(), layout.titleY(), TEXT, false);
 
-        if (stage == Stage.ENTRY) {
-            graphics.text(font, font.plainSubstrByWidth(Component.translatable(
-                            "waypointer.screen.publisher_name.explanation").getString(), contentW),
-                    contentX, panelY + 34, TEXT_DIM, false);
-            graphics.text(font, Component.translatable(
-                            "waypointer.screen.publisher_name.rules").getString(),
-                    contentX, panelY + 52, TEXT_DIM, false);
+        if (model.stage() == PublisherNameModel.Stage.ENTRY) {
+            if (layout.entryDetailsVisible()) {
+                graphics.text(font, font.plainSubstrByWidth(Component.translatable(
+                                "waypointer.screen.publisher_name.explanation").getString(),
+                                layout.contentWidth()),
+                        layout.contentX(), layout.panelY() + 34, TEXT_DIM, false);
+                graphics.text(font, font.plainSubstrByWidth(Component.translatable(
+                                "waypointer.screen.publisher_name.rules").getString(),
+                                layout.contentWidth()),
+                        layout.contentX(), layout.panelY() + 52, TEXT_DIM, false);
+            }
             graphics.text(font, Component.translatable(
                             "waypointer.screen.publisher_name.field").getString(),
-                    contentX, panelY + 63, TEXT_DIM, false);
+                    layout.contentX(), layout.fieldLabelY(), TEXT_DIM, false);
         } else {
-            graphics.text(font, Component.translatable(
-                            "waypointer.screen.publisher_name.confirm.question").getString(),
-                    contentX, panelY + 38, TEXT_DIM, false);
-            graphics.fill(contentX, panelY + 58, contentX + contentW,
-                    panelY + 86, SURFACE_SUBTLE);
-            graphics.fill(contentX, panelY + 58, contentX + 1,
-                    panelY + 86, GuiTokens.ACCENT);
-            String clippedName = font.plainSubstrByWidth(nameValue, contentW - GAP * 2);
+            if (layout.questionVisible()) {
+                graphics.text(font, font.plainSubstrByWidth(Component.translatable(
+                                "waypointer.screen.publisher_name.confirm.question").getString(),
+                                layout.contentWidth()),
+                        layout.contentX(), layout.questionY(), TEXT_DIM, false);
+            }
+            graphics.fill(layout.contentX(), layout.cardY(), layout.contentRight(),
+                    layout.cardY() + 28, SURFACE_SUBTLE);
+            graphics.fill(layout.contentX(), layout.cardY(), layout.contentX() + 1,
+                    layout.cardY() + 28, GuiTokens.ACCENT);
+            String clippedName = font.plainSubstrByWidth(
+                    model.name(), Math.max(1, layout.contentWidth() - GAP * 2));
             graphics.text(font, clippedName,
-                    contentX + (contentW - font.width(clippedName)) / 2,
-                    panelY + 68, GuiTokens.ACCENT, false);
-            var warningLines = font.split(Component.translatable(
-                    "waypointer.screen.publisher_name.confirm.warning"), contentW);
-            for (int index = 0; index < Math.min(2, warningLines.size()); index++) {
-                graphics.text(font, warningLines.get(index), contentX,
-                        panelY + 98 + index * 11, TEXT_DIM, false);
+                    layout.contentX() + (layout.contentWidth() - font.width(clippedName)) / 2,
+                    layout.cardY() + 10, GuiTokens.ACCENT, false);
+            if (layout.warningVisible()) {
+                var warningLines = font.split(Component.translatable(
+                        "waypointer.screen.publisher_name.confirm.warning"),
+                        layout.contentWidth());
+                for (int index = 0; index < Math.min(2, warningLines.size()); index++) {
+                    graphics.text(font, warningLines.get(index), layout.contentX(),
+                            layout.warningY() + index * 11, TEXT_DIM, false);
+                }
             }
         }
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
