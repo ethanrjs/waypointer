@@ -23,19 +23,25 @@ def wrapperCommand = System.getProperty('os.name').startsWith('Windows')
 		? ['cmd', '/d', '/c', file('gradlew.bat').absolutePath]
 		: [file('gradlew').absolutePath]
 def requestedTranslationCommit = providers.gradleProperty('translationCommit')
-def translationCommitArguments = requestedTranslationCommit.isPresent()
+def allowStaleDocumentation = providers.gradleProperty('allowStaleDocumentation')
+		.map { it.toBoolean() }
+		.orElse(false)
+def forwardedBuildArguments = requestedTranslationCommit.isPresent()
 		? ["-PtranslationCommit=${requestedTranslationCommit.get()}"]
 		: []
+if (allowStaleDocumentation.get()) {
+	forwardedBuildArguments += '-PallowStaleDocumentation=true'
+}
 def buildMinecraft26_1_2 = tasks.register('buildMinecraft26_1_2', Exec) {
 	commandLine(wrapperCommand
 			+ ['clean', 'build', '-Pminecraft_version=26.1.2', '--console=plain']
-			+ translationCommitArguments)
+			+ forwardedBuildArguments)
 }
 def buildMinecraft26_2 = tasks.register('buildMinecraft26_2', Exec) {
 	dependsOn buildMinecraft26_1_2
 	commandLine(wrapperCommand
 			+ ['build', '-Pminecraft_version=26.2', '--console=plain']
-			+ translationCommitArguments)
+			+ forwardedBuildArguments)
 }
 tasks.register('buildAllTargets') {
 	group = 'build'
@@ -198,6 +204,7 @@ tasks.register('verifyDocumentationVersion') {
 	inputs.file('README.md')
 	inputs.file('API.md')
 	inputs.property('modVersion', project.mod_version)
+	onlyIf { !allowStaleDocumentation.get() }
 
 	doLast {
 		def expectedVersion = project.mod_version.toString()

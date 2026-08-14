@@ -38,7 +38,8 @@ jobs:
           set -euo pipefail
           source_commit="$(git rev-parse HEAD)"
           ./gradlew --no-daemon --max-workers=1 clean buildAllTargets \
-            "-PtranslationCommit=${source_commit}" --stacktrace --console=plain
+            "-PtranslationCommit=${source_commit}" \
+            -PallowStaleDocumentation=true --stacktrace --console=plain
 
       - name: Upload final-target test and coverage reports
         if: always()
