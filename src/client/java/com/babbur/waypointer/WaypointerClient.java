@@ -26,6 +26,7 @@ import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.input.WaypointRepositionMode;
 import com.babbur.waypointer.input.WaypointerKeybinds;
+import com.babbur.waypointer.i18n.RemoteLocales;
 import com.babbur.waypointer.location.LocationTracker;
 import com.babbur.waypointer.progression.ProximityTracker;
 import com.babbur.waypointer.progression.TempWaypointCleaner;
@@ -36,6 +37,7 @@ import com.babbur.waypointer.render.HappySnowmanSession;
 import com.babbur.waypointer.screen.WaypointerGuiScreens;
 import com.babbur.waypointer.screen.preview.RoutePreviewPipAdapter;
 import com.babbur.waypointer.screen.WaypointerScreen;
+import com.babbur.waypointer.update.WaypointerUpdateChecker;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -122,6 +124,8 @@ public final class WaypointerClient implements ClientModInitializer {
         keybinds.install();
         new ChatCoordDetector(config, manager).install();
         new ChatImportDetector(config, chatImportCache).install();
+        RemoteLocales.install();
+        WaypointerUpdateChecker.install();
         int apiEntrypoints = WaypointerApiEntrypoints.invokeFabricEntrypoints(api);
         if (apiEntrypoints > 0) {
             Waypointer.LOGGER.info("Invoked {} Waypointer API integration(s)", apiEntrypoints);
