@@ -836,7 +836,7 @@
   "waypointer.screen.export.toggle.group_meta.label": "Ahûttê de la ruta",
   "waypointer.screen.export.toggle.group_meta.tooltip": "Er nombre, er modo d'orden y er modo de colôh de la ruta.",
   "waypointer.screen.export.toggle.group_meta.unsupported": "Lô códigô de %1$s conçerban er nombre de la ruta, pero no lô ahûttê de ruta de Waypointer.",
-  "waypointer.screen.export.toggle.zone.label": "ÃŽl-la",
+  "waypointer.screen.export.toggle.zone.label": "Îl-la",
   "waypointer.screen.export.toggle.zone.tooltip": "La îl-la en la que çe hiço êtta ruta.",
   "waypointer.screen.export.toggle.zone.unsupported": "Lô códigô de %1$s çiempre conçerban la îl-la.",
   "waypointer.dungeon.route.complete_hidden": "Ruta de la çala completá -- ocurta âtta la próççima partida. Purça Anteriôh pa borbêh a abrîl-la.",
