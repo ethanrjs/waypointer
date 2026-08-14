@@ -22,6 +22,9 @@ class GroupEditScreenTest {
     void parseCoordinateInputAcceptsTrimmedWholeNumbers() {
         assertEquals(64, GroupEditGeometry.parseCoordinate("64"));
         assertEquals(-12, GroupEditGeometry.parseCoordinate("  -12  "));
+        assertEquals(12, GroupEditGeometry.parseCoordinate("+12"));
+        assertEquals(123, GroupEditGeometry.parseCoordinate("\u0661\u0662\u0663"));
+        assertEquals(-123, GroupEditGeometry.parseCoordinate("\u200e\u2212\u06f1\u06f2\u06f3"));
     }
 
     @Test
@@ -30,6 +33,7 @@ class GroupEditScreenTest {
         assertNull(GroupEditGeometry.parseCoordinate(""));
         assertNull(GroupEditGeometry.parseCoordinate("   "));
         assertNull(GroupEditGeometry.parseCoordinate("-"));
+        assertNull(GroupEditGeometry.parseCoordinate("1 2"));
         assertNull(GroupEditGeometry.parseCoordinate("12.5"));
         assertNull(GroupEditGeometry.parseCoordinate("north"));
     }
@@ -282,14 +286,15 @@ class GroupEditScreenTest {
 
     @Test
     void dungeonRouteInfoExplainsTriggerAndRadiusSkipBehaviors() {
-        assertEquals(6, GroupEditPolicy.routeInfoLabels(false).size());
-        assertEquals(12, GroupEditPolicy.routeInfoLabels(true).size());
+        assertEquals(7, GroupEditPolicy.routeInfoLabels(false).size());
+        assertEquals(13, GroupEditPolicy.routeInfoLabels(true).size());
         assertTrue(GroupEditPolicy.routeInfoLabels(true).containsAll(
                 java.util.List.of("Types", "No trigger", "Stand", "Interact", "Mine", "Skip Ahead")));
         assertEquals(java.util.List.of(
                 "Select a waypoint row",
                 "Rename that waypoint",
                 "Set the current waypoint",
+                "Enable or disable the waypoint",
                 "Move in world",
                 "Toggle subwaypoint",
                 "Edit color; Shift-click unlocks"

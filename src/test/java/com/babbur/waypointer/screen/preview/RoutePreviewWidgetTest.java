@@ -36,10 +36,14 @@ class RoutePreviewWidgetTest {
     }
 
     @Test
-    void headerDetailOmitsTheRouteCounterForSingleRouteExports() {
-        assertEquals("(3 waypoints)", RoutePreviewWidget.headerDetailText(3, ""));
-        assertEquals("(3 waypoints)", RoutePreviewWidget.headerDetailText(3, null));
-        assertEquals("(1 waypoint) · 2 of 5", RoutePreviewWidget.headerDetailText(1, "2 of 5"));
+    void headerCentersOneOrTwoLinesWithThreePixelsOfLeading() {
+        assertEquals(List.of(15), asList(RoutePreviewWidget.headerLineY(10, 20, 9, false)));
+        assertEquals(List.of(19, 31), asList(
+                RoutePreviewWidget.headerLineY(10, 40, 9, true)));
+    }
+
+    private static List<Integer> asList(int[] values) {
+        return java.util.Arrays.stream(values).boxed().toList();
     }
 
     @Test

@@ -23,6 +23,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.MultiLineEditBox;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
@@ -176,7 +177,8 @@ public final class WaypointerKeybinds {
     static boolean focusedEditBox(Screen screen) {
         if (screen == null) return false;
         GuiEventListener focused = screen.getFocused();
-        return focused instanceof EditBox editBox && editBox.isFocused();
+        return focused instanceof EditBox editBox && editBox.isFocused()
+                || focused instanceof MultiLineEditBox multiLine && multiLine.isFocused();
     }
 
     public static String exitEditModeKeyName() {

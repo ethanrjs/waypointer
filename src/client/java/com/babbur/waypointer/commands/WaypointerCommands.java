@@ -20,6 +20,7 @@ import com.babbur.waypointer.input.WaypointAddFlow;
 import com.babbur.waypointer.input.WaypointRepositionMode;
 import com.babbur.waypointer.render.HappySnowmanSession;
 import com.babbur.waypointer.screen.DebugInspectScreen;
+import com.babbur.waypointer.screen.RouteCatalogScreen;
 import com.babbur.waypointer.screen.WaypointerScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -98,6 +99,10 @@ public final class WaypointerCommands {
                                 .executes(ctx -> WaypointerCommandHelp.run(ctx.getSource(), root,
                                         StringArgumentType.getString(ctx, "target")))))
                 .then(literal("list").executes(ctx -> routeCommands.runList(ctx.getSource())))
+                .then(literal("routes").executes(ctx -> {
+                    scheduleOpenRouteCatalog();
+                    return 1;
+                }))
                 .then(literal("skip").executes(ctx -> routeCommands.runSkipCurrentWaypoint(ctx.getSource())))
                 .then(literal("unskip").executes(ctx -> routeCommands.runUnskipCurrentWaypoint(ctx.getSource())))
                 .then(literal("skipto")
@@ -254,6 +259,10 @@ public final class WaypointerCommands {
     private void scheduleOpenDungeonGui() {
         Minecraft.getInstance().execute(
                 () -> WaypointerScreen.openDungeonRooms(manager, config));
+    }
+
+    private void scheduleOpenRouteCatalog() {
+        Minecraft.getInstance().execute(() -> RouteCatalogScreen.open(null));
     }
 
     private void scheduleOpenDebugInspector() {
