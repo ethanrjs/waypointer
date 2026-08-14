@@ -184,13 +184,24 @@ public final class RoutePreviewWidget extends AbstractWidget {
         int headerHeight = headerHeight();
         int headerWidth = headerTextWidth(getWidth(), navigationVisible);
         String clippedName = font.plainSubstrByWidth(routeName, headerWidth);
+        int[] lineY = headerLineY(y1, headerHeight, font.lineHeight, headerDetailVisible);
         g.text(font, clippedName, x1 + (getWidth() - font.width(clippedName)) / 2,
-                y1 + (headerHeight - font.lineHeight) / 2, TEXT, false);
+                lineY[0], TEXT, false);
         if (headerDetailVisible) {
-            String clippedDetail = font.plainSubstrByWidth(
-                    headerDetailText(scene.markers().size(), routeCounter), headerWidth);
-            g.text(font, clippedDetail, x1 + (getWidth() - font.width(clippedDetail)) / 2,
-                    y1 + 17, TEXT_DIM, false);
+            String waypointText = font.plainSubstrByWidth(
+                    waypointCountText(scene.markers().size()), headerWidth);
+            if (routeCounter == null || routeCounter.isBlank()) {
+                g.text(font, waypointText,
+                        x1 + (getWidth() - font.width(waypointText)) / 2,
+                        lineY[1], TEXT_DIM, false);
+            } else {
+                int detailLeft = x1 + (navigationVisible ? NAV_RESERVE : 4);
+                int detailRight = x2 - (navigationVisible ? NAV_RESERVE : 4);
+                g.text(font, waypointText, detailLeft, lineY[1], TEXT_DIM, false);
+                String clippedCounter = font.plainSubstrByWidth(routeCounter, headerWidth / 2);
+                g.text(font, clippedCounter, detailRight - font.width(clippedCounter),
+                        lineY[1], TEXT_DIM, false);
+            }
         }
         g.fill(x1 + 1, y1 + headerHeight - 1, x2 - 1, y1 + headerHeight, RULE);
 
@@ -314,10 +325,15 @@ public final class RoutePreviewWidget extends AbstractWidget {
         return "(" + safeCount + " waypoint" + (safeCount == 1 ? "" : "s") + ")";
     }
 
-    static String headerDetailText(int markerCount, String routeCounter) {
-        String counter = routeCounter == null ? "" : routeCounter;
-        return waypointCountText(markerCount)
-                + (counter.isBlank() ? "" : " · " + counter);
+    static int[] headerLineY(
+            int top, int headerHeight, int lineHeight, boolean detailVisible) {
+        if (!detailVisible) {
+            return new int[]{top + (headerHeight - lineHeight) / 2};
+        }
+        int gap = 3;
+        int blockHeight = lineHeight * 2 + gap;
+        int blockTop = top + Math.max(0, (headerHeight - blockHeight) / 2);
+        return new int[]{blockTop, blockTop + lineHeight + gap};
     }
 
     static int headerTextWidth(int widgetWidth, boolean navigationVisible) {
