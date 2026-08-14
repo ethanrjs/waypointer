@@ -26,6 +26,79 @@ class WaypointImporterTest {
     }
 
     @Test
+    void rejectsJsonContainerBombBeforeBuildingAGsonTree() {
+        String json = "[" + "[],".repeat(WaypointImporter.MAX_JSON_CONTAINERS) + "[]]";
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> WaypointImporter.importAny(json));
+
+        assertTrue(error.getMessage().contains("too many arrays or objects"));
+    }
+
+    @Test
+    void rejectsJsonTokenBombBeforeBuildingAGsonTree() {
+        String json = "{" + "\"a\":null,".repeat(WaypointImporter.MAX_JSON_TOKENS / 2)
+                + "\"a\":null}";
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> WaypointImporter.importAny(json));
+
+        assertTrue(error.getMessage().contains("too many tokens"));
+    }
+
+    @Test
+    void rejectsJsonScalarBombBeforeBuildingAGsonTree() {
+        String json = "[" + "0,".repeat(WaypointImporter.MAX_JSON_SCALAR_VALUES) + "0]";
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> WaypointImporter.importAny(json));
+
+        assertTrue(error.getMessage().contains("too many values"));
+    }
+
+    @Test
+    void rejectsExcessiveJsonStringContentBeforeBuildingAGsonTree() {
+        String json = "[{\"x\":0,\"y\":0,\"z\":0,\"ignored\":\""
+                + "a".repeat(WaypointImporter.MAX_JSON_STRING_CHARS + 1) + "\"}]";
+
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> WaypointImporter.importAny(json));
+
+        assertTrue(error.getMessage().contains("too much text"));
+    }
+
+    @Test
+    void rejectsCoordinatesThatCannotBeConvertedToPreciseUnits() {
+        String tooHigh = "[{\"x\":" + (Waypoint.MAX_BLOCK_COORDINATE + 1)
+                + ",\"y\":0,\"z\":0}]";
+        String tooLow = "[{\"x\":" + (Waypoint.MIN_BLOCK_COORDINATE - 1)
+                + ",\"y\":0,\"z\":0}]";
+        String wrapsJsonInteger = "[{\"x\":2147483648,\"y\":0,\"z\":0}]";
+
+        assertThrows(IllegalArgumentException.class, () -> WaypointImporter.importAny(tooHigh));
+        assertThrows(IllegalArgumentException.class, () -> WaypointImporter.importAny(tooLow));
+        assertThrows(IllegalArgumentException.class,
+                () -> WaypointImporter.importAny(wrapsJsonInteger));
+    }
+
+    @Test
+    void rejectsOverflowingOdinCoordinatesBeforeIntegerConversion() {
+        String json = "{\"room\":[{\"blockPos\":{\"x\":4294967296,\"y\":0,\"z\":0}}]}";
+
+        assertThrows(IllegalArgumentException.class, () -> WaypointImporter.importAny(json));
+    }
+
+    @Test
+    void validatesCatalogEmbeddedZoneIds() {
+        WaypointGroup valid = WaypointGroup.create("valid", "crystal_hollows");
+        WaypointImporter.validateCatalogEmbeddedZones(List.of(valid));
+
+        WaypointGroup invalid = WaypointGroup.create("invalid", "A".repeat(65));
+        assertThrows(IllegalArgumentException.class,
+                () -> WaypointImporter.validateCatalogEmbeddedZones(List.of(invalid)));
+    }
+
+    @Test
     void delegates_to_native_codec_for_wptr1_payload() {
         WaypointGroup g = WaypointGroup.create("Gold", "dungeon_f7");
         g.add(Waypoint.at(1, 2, 3));
@@ -302,6 +375,17 @@ class WaypointImporterTest {
         // AUTO gradient rewrites colors on insert; what matters is the group picked AUTO
         // (so users can see route direction), not the specific post-gradient color.
         assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());
+    }
+
+    @Test
+    void usesCallerSuppliedNameForAnUnnamedImportedRoute() {
+        String json = "[{\"x\":100,\"y\":64,\"z\":200,"
+                + "\"r\":0,\"g\":1,\"b\":0,\"options\":{\"name\":1}}]";
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(
+                json, "Импортированный маршрут");
+
+        assertEquals("Импортированный маршрут", result.groups().getFirst().name());
     }
 
     @Test

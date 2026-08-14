@@ -1377,7 +1377,7 @@ class WaypointCodecTest {
             boolean fixedEligible = true;
             for (int i = 0; i < n; i++) {
                 // Mix of origin-adjacent and far coords to stress both modes.
-                int scale = r.nextBoolean() ? 1 : 1_000_000;
+                int scale = r.nextBoolean() ? 1 : 100_000;
                 int x = (r.nextInt(2000) - 1000) * scale;
                 int z = (r.nextInt(2000) - 1000) * scale;
                 int y = r.nextInt(320);

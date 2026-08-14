@@ -1398,7 +1398,9 @@ public final class WaypointerScreen extends Screen {
             return;
         }
 
-        if (!CodecWorker.run(() -> WaypointImporter.importAny(text), result -> {
+        String defaultImportedRouteName = Component.translatable(
+                "waypointer.import.default_route_name").getString();
+        if (!CodecWorker.run(() -> WaypointImporter.importAny(text, defaultImportedRouteName), result -> {
             importInFlight = false;
             if (result == null) {
                 ImportFeedback.failure("Invalid import text.");

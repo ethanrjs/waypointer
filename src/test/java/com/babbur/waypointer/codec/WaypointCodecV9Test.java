@@ -66,7 +66,7 @@ class WaypointCodecV9Test {
         route.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         route.setDefaultRadius(7.5);
         route.add(new Waypoint(4, 70, -8, "named", 0x123456,
-                Waypoint.FLAG_DEPTH_CHECKED, 4.5));
+                Waypoint.FLAG_DEPTH_CHECKED | Waypoint.FLAG_DISABLED, 4.5));
 
         WaypointGroup decoded = WaypointCodec.decode(WaypointCodec.encode(List.of(route))).get(0);
 
@@ -74,6 +74,7 @@ class WaypointCodecV9Test {
         assertEquals(0x123456, decoded.get(0).color());
         assertEquals(4.5, decoded.get(0).customRadius());
         assertTrue(decoded.get(0).hasFlag(Waypoint.FLAG_DEPTH_CHECKED));
+        assertTrue(decoded.get(0).hasFlag(Waypoint.FLAG_DISABLED));
         assertEquals(7.5, decoded.defaultRadius());
     }
 
@@ -588,6 +589,60 @@ class WaypointCodecV9Test {
                 () -> WaypointCodec.decode(encodeBody(truncated)));
         assertTrue(shortPayload.getMessage().contains("truncated compact coordinate payload")
                 || shortPayload.getMessage().contains("truncated or non-canonical"));
+    }
+
+    @Test
+    void catalogV8BridgePublishesOnlyLosslessRoutes() {
+        WaypointGroup compatible = WaypointGroup.create("Catalog route", "hub");
+        compatible.add(new Waypoint(2, 70, -3, "Start", 0x55AAEE,
+                Waypoint.FLAG_HIDE_BEACON, 1.5));
+
+        String payload = WaypointCodec.encodeCatalogV8IfLossless(List.of(compatible));
+
+        assertEquals(8, WaypointCodec.debugDecode(payload).version());
+        assertEquals("Catalog route", WaypointCodec.decode(payload).getFirst().name());
+
+        compatible.setSkipAheadEnabled(false);
+        IllegalArgumentException unsupported = assertThrows(IllegalArgumentException.class,
+                () -> WaypointCodec.encodeCatalogV8IfLossless(List.of(compatible)));
+        assertTrue(unsupported.getMessage().contains("catalog cannot publish yet"));
+    }
+
+    @Test
+    void catalogV8BridgeRejectsRadiusRoundingAndPersistentPaletteLoss() {
+        WaypointGroup rounded = WaypointGroup.create("Rounded", "hub");
+        rounded.add(new Waypoint(0, 64, 0, "Point", 0xFFFFFF, 0, 1.25));
+        assertThrows(IllegalArgumentException.class,
+                () -> WaypointCodec.encodeCatalogV8IfLossless(List.of(rounded)));
+
+        WaypointGroup palette = WaypointGroup.create("Palette", "hub");
+        palette.setStaticColor(0x123456);
+        palette.add(Waypoint.at(0, 64, 0));
+        assertThrows(IllegalArgumentException.class,
+                () -> WaypointCodec.encodeCatalogV8IfLossless(List.of(palette)));
+    }
+
+    @Test
+    void catalogEncoderKeepsFullV9Meaning() {
+        WaypointGroup route = WaypointGroup.create("Catalog v9", "hub");
+        route.setSkipAheadEnabled(false);
+        route.setStaticColor(0x123456);
+        route.setGradientStartColor(0x010203);
+        route.setGradientEndColor(0xA0B0C0);
+        route.add(new Waypoint(0, 64, 0, "Exact", 0xABCDEF,
+                Integer.MIN_VALUE | Waypoint.FLAG_DISABLED, 1.25));
+
+        String payload = WaypointCodec.encodeCatalog(List.of(route));
+
+        assertEquals(9, WaypointCodec.debugDecode(payload).version());
+        WaypointGroup decoded = WaypointCodec.decode(payload).getFirst();
+        assertFalse(decoded.skipAheadEnabled());
+        assertEquals(0x123456, decoded.staticColor());
+        assertEquals(0x010203, decoded.gradientStartColor());
+        assertEquals(0xA0B0C0, decoded.gradientEndColor());
+        assertEquals(Double.doubleToRawLongBits(1.25),
+                Double.doubleToRawLongBits(decoded.get(0).customRadius()));
+        assertEquals(Integer.MIN_VALUE | Waypoint.FLAG_DISABLED, decoded.get(0).flags());
     }
 
     private static WaypointGroup compactRoute(int count) {
