@@ -886,6 +886,35 @@ class WaypointGroupTest {
         assertEquals("Live route", snapshot.name());
     }
 
+    @Test
+    void disablingCurrentWaypointSkipsItButKeepsItInTheEditorList() {
+        WaypointGroup group = route();
+
+        assertTrue(group.toggleWaypointDisabled(0));
+        assertEquals(4, group.size());
+        assertTrue(group.get(0).isDisabled());
+        assertEquals(1, group.currentIndex());
+        assertArrayEquals(new int[]{1, 2}, visibleIndices(group));
+
+        assertTrue(group.toggleWaypointDisabled(0));
+        assertFalse(group.get(0).isDisabled());
+        assertEquals(1, group.currentIndex(), "re-enabling does not rewind route progress");
+    }
+
+    @Test
+    void disablingEveryWaypointCompletesTheRouteWithoutAHiddenTarget() {
+        WaypointGroup group = route();
+
+        for (int i = 0; i < group.size(); i++) {
+            assertTrue(group.setWaypointDisabled(i, true));
+        }
+
+        assertTrue(group.isComplete());
+        assertNull(group.current());
+        assertArrayEquals(new int[0], visibleIndices(group));
+        assertEquals(0, group.enabledMainWaypointCount());
+    }
+
     private static int[] visibleIndices(WaypointGroup group) {
         List<Integer> indices = new ArrayList<>();
         group.forEachVisibleIndex(indices::add);

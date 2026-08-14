@@ -48,7 +48,8 @@ class StorageJsonTest {
     @Test
     void waypoint_roundTripPreservesAllFields() {
         Waypoint original = new Waypoint(-123, 67, 512, "Terminal 3", 0xABCDEF,
-                Waypoint.FLAG_THROUGH_WALL | Waypoint.FLAG_LOCKED_COLOR, 4.5);
+                Waypoint.FLAG_THROUGH_WALL | Waypoint.FLAG_LOCKED_COLOR
+                        | Waypoint.FLAG_DISABLED, 4.5);
         JsonObject json = Storage.waypointToJson(original);
         Waypoint copy = Storage.waypointFromJson(json);
         assertEquals(original, copy);

@@ -665,7 +665,8 @@ class WaypointWorldRenderer {
         if (group.isSubwaypoint(current)) {
             int previous = current - 1;
             while (previous >= 0
-                    && group.get(previous).hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)) {
+                    && (group.isWaypointDisabled(previous)
+                    || group.get(previous).hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET))) {
                 previous--;
             }
             return previous;
@@ -673,7 +674,8 @@ class WaypointWorldRenderer {
 
         int previous = current - 1;
         while (previous >= 0
-                && group.get(previous).hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)) {
+                && (group.isWaypointDisabled(previous)
+                || group.get(previous).hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET))) {
             previous--;
         }
         if (previous >= 0
@@ -682,7 +684,8 @@ class WaypointWorldRenderer {
             return previous;
         }
         int activeParent = group.activeSubwaypointParentIndex();
-        return activeParent >= 0 ? activeParent : group.previousMainIndexBefore(current);
+        if (activeParent >= 0 && group.isWaypointEnabled(activeParent)) return activeParent;
+        return group.previousEnabledMainIndexBefore(current);
     }
 
     static boolean isFocusedDungeonRouteLabel(WaypointGroup group, int index) {
@@ -696,6 +699,7 @@ class WaypointWorldRenderer {
                                                   Vec3 playerPos, double maxStaticDistanceSq,
                                                   double nearHideDistanceSq) {
         if (index < 0 || index >= group.size()) return false;
+        if (group.isWaypointDisabled(index)) return false;
         if (shouldHideStaticReached(group, index)) return false;
 
         Waypoint waypoint = group.get(index);

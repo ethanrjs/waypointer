@@ -124,7 +124,8 @@ public final class ProximityTracker {
             int current = group.currentIndex();
             if (current < 0 || current >= group.size()) continue;
             Waypoint waypoint = group.get(current);
-            if (!waypoint.hasFlag(Waypoint.FLAG_DUNGEON_PEARL)
+            if (waypoint.isDisabled()
+                    || !waypoint.hasFlag(Waypoint.FLAG_DUNGEON_PEARL)
                     || !isWithinReach(group, waypoint,
                     player.getX(), player.getY(), player.getZ())) {
                 continue;
@@ -234,6 +235,7 @@ public final class ProximityTracker {
         double scanRadius = Math.max(group.maxEffectiveRadius(), STAND_SKIP_SCAN_RADIUS);
         group.forEachNearbyIndex(px, py, pz, scanRadius, i -> {
             if (group.isSubwaypoint(i)) return true;
+            if (group.isWaypointDisabled(i)) return true;
             if (group.isStaticWaypointReached(i)) return true;
             if (group.isProximitySuppressed(i)) return true;
 
@@ -317,6 +319,7 @@ public final class ProximityTracker {
         int highestMined = -1;
         boolean staticChanged = false;
         for (int i = Math.max(0, from); i <= to; i++) {
+            if (group.isWaypointDisabled(i)) continue;
             if (group.isSubwaypoint(i) && i != from) continue;
             Waypoint waypoint = group.get(i);
             if (!waypoint.hasFlag(Waypoint.FLAG_SKIP_ON_MINE)) continue;
@@ -367,6 +370,7 @@ public final class ProximityTracker {
                 : group.size() - 1;
         for (int i = end; i >= from; i--) {
             Waypoint waypoint = group.get(i);
+            if (waypoint.isDisabled()) continue;
             if (waypoint.hasFlag(Waypoint.FLAG_DUNGEON_SUPERBOOM) && !superboomHeld) {
                 continue;
             }
@@ -419,7 +423,7 @@ public final class ProximityTracker {
         }
         boolean restart = restartWhenComplete && !isDungeonRoomRouteGroup(group);
         group.restartIfRouteCompleted(restart);
-        if (restart && group.mainWaypointCount() == 1) {
+        if (restart && group.enabledMainWaypointCount() == 1) {
             group.suppressProximityUntilExit(group.currentIndex());
         }
         return true;
@@ -429,6 +433,7 @@ public final class ProximityTracker {
                                            double px, double py, double pz,
                                            long nowMillis) {
         if (index < 0 || index >= group.size()) return -1;
+        if (group.isWaypointDisabled(index)) return -1;
         if (group.isProximitySuppressed(index)) return -1;
         return isReachedByRadiusOrStand(group, index, group.get(index), px, py, pz, nowMillis)
                 ? index
@@ -443,6 +448,7 @@ public final class ProximityTracker {
         int[] reachedIndex = { -1 };
         double scanRadius = Math.max(group.maxEffectiveRadius(), STAND_SKIP_SCAN_RADIUS);
         group.forEachNearbyIndex(px, py, pz, scanRadius, i -> {
+            if (group.isWaypointDisabled(i)) return true;
             if (i < from || group.isProximitySuppressed(i)) return true;
             if (visible != null && (i >= visible.length || !visible[i])) return true;
             if (i > from && group.isSubwaypoint(i)) return true;

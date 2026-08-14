@@ -59,4 +59,16 @@ class RouteProgressTest {
         assertEquals("Next (1/4, 0.0%)", RouteProgress.nextTargetLabel(1, 4));
         assertEquals("Next (3/4, 50.0%)", RouteProgress.nextTargetLabel(3, 4));
     }
+
+    @Test
+    void disabledWaypointsDoNotCountAsRouteSteps() {
+        WaypointGroup group = route();
+
+        assertTrue(group.setWaypointDisabled(1, true));
+        assertEquals("0/3 0.0%", RouteProgress.summary(group));
+
+        group.advancePast(0);
+        assertEquals(2, group.currentIndex());
+        assertEquals("1/3 33.3%", RouteProgress.summary(group));
+    }
 }

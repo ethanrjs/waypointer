@@ -71,6 +71,8 @@ public record Waypoint(
     public static final int FLAG_DUNGEON_ITEM = 1 << 18;
     /** Dungeon metadata: this secret completes when its bat dies. */
     public static final int FLAG_DUNGEON_BAT = 1 << 19;
+    /** Persistent state: keep this waypoint in the editor, but exclude it from the active route. */
+    public static final int FLAG_DISABLED = 1 << 20;
     /** Any event-driven completion flag used by sequential dungeon actions. */
     public static final int DUNGEON_COMPLETION_FLAGS = FLAG_SKIP_ON_STAND
             | FLAG_SKIP_ON_INTERACT
@@ -90,7 +92,9 @@ public record Waypoint(
             | FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED;
     /** Flags that define route structure and must survive even when visual flags are stripped from exports. */
     public static final int STRUCTURAL_FLAGS  = FLAG_SUBWAYPOINT;
-    public static final int PERSISTENT_BEHAVIOR_FLAGS = STRUCTURAL_FLAGS | DUNGEON_METADATA_FLAGS;
+    public static final int PERSISTENT_BEHAVIOR_FLAGS = STRUCTURAL_FLAGS
+            | DUNGEON_METADATA_FLAGS
+            | FLAG_DISABLED;
 
     public static final int TEMP_NONE = 0;
     public static final int TEMP_TIME = 1;
@@ -103,6 +107,9 @@ public record Waypoint(
     public static final double MAX_REACH_RADIUS = 100.0;
     public static final int PRECISE_SCALE = 16;
     private static final int PRECISE_BLOCK_CENTER_OFFSET = PRECISE_SCALE / 2;
+    /** Block range whose centered sixteenth-block representation fits in a signed int. */
+    public static final int MIN_BLOCK_COORDINATE = -134_217_728;
+    public static final int MAX_BLOCK_COORDINATE = 134_217_727;
 
     public Waypoint {
         name = name == null ? "" : name;
@@ -154,6 +161,10 @@ public record Waypoint(
 
     public boolean isSubwaypoint() {
         return hasFlag(FLAG_SUBWAYPOINT);
+    }
+
+    public boolean isDisabled() {
+        return hasFlag(FLAG_DISABLED);
     }
 
     /** True iff this is a time-based temp and the deadline has passed. */
@@ -231,7 +242,14 @@ public record Waypoint(
     }
 
     public static int snapToPreciseSixteenths(double coordinate) {
-        return (int) Math.floor(coordinate * PRECISE_SCALE);
+        if (!Double.isFinite(coordinate)) {
+            throw new IllegalArgumentException("coordinate must be finite");
+        }
+        double precise = Math.floor(coordinate * PRECISE_SCALE);
+        if (precise < Integer.MIN_VALUE || precise > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("coordinate is outside the precise range");
+        }
+        return (int) precise;
     }
 
     public Waypoint withSubwaypoint(boolean subwaypoint) {
@@ -249,7 +267,15 @@ public record Waypoint(
 
     /** Convert a block coordinate to its center in sixteenth-block units. */
     public static int preciseBlockCenter(int blockCoordinate) {
+        if (!isRepresentableBlockCoordinate(blockCoordinate)) {
+            throw new IllegalArgumentException("block coordinate is outside the precise range");
+        }
         return blockCoordinate * PRECISE_SCALE + PRECISE_BLOCK_CENTER_OFFSET;
+    }
+
+    public static boolean isRepresentableBlockCoordinate(int blockCoordinate) {
+        return blockCoordinate >= MIN_BLOCK_COORDINATE
+                && blockCoordinate <= MAX_BLOCK_COORDINATE;
     }
 
     /** Convert a sixteenth-block coordinate to its containing block. */

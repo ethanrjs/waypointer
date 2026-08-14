@@ -128,6 +128,14 @@ public final class WaypointGroup {
         return index >= 0 && index < waypoints.size() && waypoints.get(index).isSubwaypoint();
     }
 
+    public boolean isWaypointDisabled(int index) {
+        return index >= 0 && index < waypoints.size() && waypoints.get(index).isDisabled();
+    }
+
+    public boolean isWaypointEnabled(int index) {
+        return index >= 0 && index < waypoints.size() && !isWaypointDisabled(index);
+    }
+
     public boolean hasSubwaypoints() {
         for (Waypoint waypoint : waypoints) {
             if (waypoint.isSubwaypoint()) return true;
@@ -143,6 +151,14 @@ public final class WaypointGroup {
         return count;
     }
 
+    public int enabledMainWaypointCount() {
+        int count = 0;
+        for (int i = 0; i < waypoints.size(); i++) {
+            if (!isSubwaypoint(i) && isWaypointEnabled(i)) count++;
+        }
+        return count;
+    }
+
     public int currentMainIndex() {
         if (waypoints.isEmpty() || currentIndex >= waypoints.size()) return -1;
         if (!isSubwaypoint(currentIndex)) return currentIndex;
@@ -154,8 +170,13 @@ public final class WaypointGroup {
 
     public int currentMainOrdinal() {
         int current = currentMainIndex();
-        if (current < 0) return mainWaypointCount();
-        return mainOrdinal(current);
+        if (current < 0) return enabledMainWaypointCount();
+
+        int ordinal = 0;
+        for (int i = 0; i <= current; i++) {
+            if (!isSubwaypoint(i) && isWaypointEnabled(i)) ordinal++;
+        }
+        return ordinal;
     }
 
     public int mainOrdinal(int index) {
@@ -198,6 +219,13 @@ public final class WaypointGroup {
     public int previousMainIndexBefore(int index) {
         for (int i = Math.min(index - 1, waypoints.size() - 1); i >= 0; i--) {
             if (!isSubwaypoint(i)) return i;
+        }
+        return -1;
+    }
+
+    public int previousEnabledMainIndexBefore(int index) {
+        for (int i = Math.min(index - 1, waypoints.size() - 1); i >= 0; i--) {
+            if (!isSubwaypoint(i) && isWaypointEnabled(i)) return i;
         }
         return -1;
     }
@@ -296,12 +324,14 @@ public final class WaypointGroup {
 
         if (focusedVisibleIndex != null) {
             int index = focusedVisibleIndex;
-            if (index >= 0 && index < n) action.accept(index);
+            if (isWaypointEnabled(index)) action.accept(index);
             return;
         }
 
         if (loadMode == LoadMode.STATIC) {
-            for (int i = 0; i < n; i++) action.accept(i);
+            for (int i = 0; i < n; i++) {
+                if (isWaypointEnabled(i)) action.accept(i);
+            }
             return;
         }
 
@@ -309,9 +339,10 @@ public final class WaypointGroup {
             int activeParent = activeSubwaypointParentIndex();
             int lastMain = activeParent >= 0 ? activeParent : lastMainIndex();
             if (lastMain >= 0) {
-                action.accept(lastMain);
+                if (isWaypointEnabled(lastMain)) action.accept(lastMain);
                 for (int child = lastMain + 1; child < n && isSubwaypoint(child); child++) {
-                    if (shouldSurfaceSubwaypointForParent(child, lastMain, activeParent,
+                    if (isWaypointEnabled(child)
+                            && shouldSurfaceSubwaypointForParent(child, lastMain, activeParent,
                             keepSubwaypointsVisibleUntilNextWaypoint)) {
                         action.accept(child);
                     }
@@ -330,48 +361,52 @@ public final class WaypointGroup {
                 if (exactCurrent >= 0 && exactCurrent < n
                         && !waypoints.get(exactCurrent).hasFlag(
                         Waypoint.FLAG_DUNGEON_PEARL_TARGET)) {
-                    action.accept(exactCurrent);
+                    if (isWaypointEnabled(exactCurrent)) action.accept(exactCurrent);
                 }
                 int stage = currentMainIndex();
                 for (int remaining = visibleMainSteps - 1; remaining > 0 && stage >= 0; remaining--) {
                     stage = nextMainIndexAfter(stage);
-                    if (stage >= 0) action.accept(stage);
+                    if (stage >= 0 && isWaypointEnabled(stage)) action.accept(stage);
                 }
                 return;
             }
             if (activeParent >= 0) {
-                action.accept(activeParent);
+                if (isWaypointEnabled(activeParent)) action.accept(activeParent);
                 for (int child = activeParent + 1; child < n && isSubwaypoint(child); child++) {
-                    action.accept(child);
+                    if (isWaypointEnabled(child)) action.accept(child);
                 }
             }
-            for (int i = cur; i < n; i++) action.accept(i);
+            for (int i = cur; i < n; i++) {
+                if (isWaypointEnabled(i)) action.accept(i);
+            }
             return;
         }
 
-        int prev = previousMainIndexBefore(cur);
+        int prev = previousEnabledMainIndexBefore(cur);
         if (activeParent >= 0) {
-            action.accept(activeParent);
+            if (isWaypointEnabled(activeParent)) action.accept(activeParent);
             for (int child = activeParent + 1; child < n && isSubwaypoint(child); child++) {
-                if (shouldSurfaceSubwaypointForParent(child, activeParent, activeParent,
+                if (isWaypointEnabled(child)
+                        && shouldSurfaceSubwaypointForParent(child, activeParent, activeParent,
                         keepSubwaypointsVisibleUntilNextWaypoint)) {
                     action.accept(child);
                 }
             }
         } else if (prev >= 0) {
-            action.accept(prev);
+            if (isWaypointEnabled(prev)) action.accept(prev);
         }
-        if (cur != activeParent) action.accept(cur);
+        if (cur != activeParent && isWaypointEnabled(cur)) action.accept(cur);
         if (activeParent < 0) {
             for (int child = cur + 1; child < n && isSubwaypoint(child); child++) {
-                if (shouldSurfaceSubwaypointForParent(child, cur, activeParent,
+                if (isWaypointEnabled(child)
+                        && shouldSurfaceSubwaypointForParent(child, cur, activeParent,
                         keepSubwaypointsVisibleUntilNextWaypoint)) {
                     action.accept(child);
                 }
             }
         }
         int next = nextMainIndexAfter(cur);
-        if (next >= 0) action.accept(next);
+        if (next >= 0 && isWaypointEnabled(next)) action.accept(next);
     }
 
     private boolean shouldSurfaceSubwaypointForParent(int childIndex,
@@ -402,7 +437,33 @@ public final class WaypointGroup {
 
     public Waypoint current() {
         if (currentIndex < 0 || currentIndex >= waypoints.size()) return null;
-        return waypoints.get(currentIndex);
+        Waypoint current = waypoints.get(currentIndex);
+        return current.isDisabled() ? null : current;
+    }
+
+    public boolean setWaypointDisabled(int index, boolean disabled) {
+        if (index < 0 || index >= waypoints.size()) return false;
+        Waypoint current = waypoints.get(index);
+        if (current.isDisabled() == disabled) return false;
+        int flags = disabled
+                ? current.flags() | Waypoint.FLAG_DISABLED
+                : current.flags() & ~Waypoint.FLAG_DISABLED;
+        waypoints.set(index, current.withFlags(flags));
+        normalizeCurrentIndexToEnabledTarget();
+        if (focusedVisibleIndex != null && !isWaypointEnabled(focusedVisibleIndex)) {
+            focusedVisibleIndex = null;
+        }
+        if (proximitySuppressedIndex == index && disabled) {
+            proximitySuppressedIndex = -1;
+        }
+        clearStandSkipHold();
+        invalidateProximityIndex();
+        return true;
+    }
+
+    public boolean toggleWaypointDisabled(int index) {
+        return index >= 0 && index < waypoints.size()
+                && setWaypointDisabled(index, !isWaypointDisabled(index));
     }
 
         public void set(int index, Waypoint replacement) {
@@ -589,7 +650,7 @@ public final class WaypointGroup {
         }
         int end = childEndExclusive(parentIndex);
         for (int i = parentIndex + 1; i < end; i++) {
-            if (hasDungeonCompletion(waypoints.get(i))) return i;
+            if (isWaypointEnabled(i) && hasDungeonCompletion(waypoints.get(i))) return i;
         }
         return -1;
     }
@@ -599,7 +660,7 @@ public final class WaypointGroup {
         if (parent < 0) return -1;
         int end = childEndExclusive(parent);
         for (int i = childIndex + 1; i < end; i++) {
-            if (hasDungeonCompletion(waypoints.get(i))) return i;
+            if (isWaypointEnabled(i) && hasDungeonCompletion(waypoints.get(i))) return i;
         }
         return -1;
     }
@@ -623,7 +684,7 @@ public final class WaypointGroup {
         } else if (isActiveSubwaypointParent(activeSubwaypointParentIndex)) {
             target = activeSubwaypointParentIndex;
         } else {
-            target = previousMainIndexBefore(currentIndex);
+            target = previousEnabledMainIndexBefore(currentIndex);
         }
 
         if (target < 0) return false;
@@ -646,7 +707,7 @@ public final class WaypointGroup {
 
     public void resetProgress() {
         int firstMain = nextMainIndexAtOrAfter(0);
-        currentIndex = firstMain >= 0 ? firstMain : 0;
+        currentIndex = firstMain >= 0 ? firstMain : waypoints.size();
         activeSubwaypointParentIndex = -1;
         resetStaticReachState();
         clearProximitySuppression();
@@ -778,8 +839,9 @@ public final class WaypointGroup {
             clearStandSkipHold();
             return;
         }
-        currentIndex = Math.max(0, index);
         activeSubwaypointParentIndex = -1;
+        currentIndex = Math.max(0, index);
+        normalizeCurrentIndexToEnabledTarget();
         clearProximitySuppression();
         clearStandSkipHold();
     }
@@ -868,6 +930,24 @@ public final class WaypointGroup {
         currentIndex = normalizedMainIndexFor(currentIndex);
     }
 
+    private void normalizeCurrentIndexToEnabledTarget() {
+        if (currentIndex < 0 || currentIndex >= waypoints.size()) return;
+        if (isWaypointEnabled(currentIndex)) return;
+
+        if (isSubwaypoint(currentIndex)) {
+            int child = nextCompletableChildAfter(currentIndex);
+            if (child >= 0) {
+                currentIndex = child;
+                activeSubwaypointParentIndex = parentMainIndex(child);
+                return;
+            }
+        }
+
+        int next = nextMainIndexAtOrAfter(currentIndex + 1);
+        currentIndex = next >= 0 ? next : waypoints.size();
+        activeSubwaypointParentIndex = -1;
+    }
+
     private boolean canHoldActiveSubwaypointParent(int index) {
         return loadMode == LoadMode.SEQUENCE
                 && index >= 0
@@ -889,10 +969,10 @@ public final class WaypointGroup {
         if (index >= waypoints.size()) return waypoints.size();
 
         int clamped = Math.max(0, index);
-        if (!isSubwaypoint(clamped)) return clamped;
+        if (!isSubwaypoint(clamped) && isWaypointEnabled(clamped)) return clamped;
 
         int parent = parentMainIndex(clamped);
-        if (parent >= 0) return parent;
+        if (parent >= 0 && isWaypointEnabled(parent)) return parent;
 
         int next = nextMainIndexAtOrAfter(clamped);
         return next >= 0 ? next : waypoints.size();
@@ -900,7 +980,7 @@ public final class WaypointGroup {
 
     private int nextMainIndexAtOrAfter(int index) {
         for (int i = Math.max(0, index); i < waypoints.size(); i++) {
-            if (!isSubwaypoint(i)) return i;
+            if (!isSubwaypoint(i) && isWaypointEnabled(i)) return i;
         }
         return -1;
     }
@@ -911,7 +991,7 @@ public final class WaypointGroup {
 
     public int lastMainIndex() {
         for (int i = waypoints.size() - 1; i >= 0; i--) {
-            if (!isSubwaypoint(i)) return i;
+            if (!isSubwaypoint(i) && isWaypointEnabled(i)) return i;
         }
         return -1;
     }
@@ -1046,7 +1126,7 @@ public final class WaypointGroup {
 
         boolean hasMainWaypoint = false;
         for (int i = 0; i < staticReached.length; i++) {
-            if (isSubwaypoint(i)) continue;
+            if (isSubwaypoint(i) || isWaypointDisabled(i)) continue;
             hasMainWaypoint = true;
             if (!staticReached[i]) return false;
         }
@@ -1073,7 +1153,7 @@ public final class WaypointGroup {
 
             for (int i = 0; i < group.waypoints.size(); i++) {
                 Waypoint waypoint = group.waypoints.get(i);
-                if (waypoint.isSubwaypoint()) continue;
+                if (waypoint.isSubwaypoint() || waypoint.isDisabled()) continue;
 
                 double radius = group.effectiveRadius(waypoint);
                 if (radius > maxRadius) maxRadius = radius;
