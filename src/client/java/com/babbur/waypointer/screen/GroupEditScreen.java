@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.Waypointer;
+import com.babbur.waypointer.WaypointerClient;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.color.GradientColorizer;
@@ -41,6 +42,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static com.babbur.waypointer.screen.GroupEditGeometry.*;
+import static com.babbur.waypointer.screen.GroupEditInputRouter.MOUSE_BUTTON_LEFT;
 import static com.babbur.waypointer.screen.GroupEditPolicy.*;
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
@@ -65,7 +67,7 @@ public final class GroupEditScreen extends Screen {
     private ColorSwatchButton staticColorBtn;
     private ColorSwatchButton gradientStartBtn;
     private ColorSwatchButton gradientEndBtn;
-    private int waypointColorPickerIndex = -1;
+    private WaypointColorPickerState waypointColorPickerState;
     private int dungeonTypePickerIndex = -1;
     private boolean dungeonTypeIconsAvailable;
 
@@ -86,10 +88,8 @@ public final class GroupEditScreen extends Screen {
     private static final int WAYPOINT_CONTROL_ICON_ATLAS_W = WAYPOINT_CONTROL_ICON_SIZE * 7;
     private static final Identifier WAYPOINT_CONTROL_ICONS = Identifier.fromNamespaceAndPath(
             Waypointer.MOD_ID, "textures/gui/waypoint_controls.png");
-    /**
-     * Optional user-authored atlas: eight horizontal 12x12 RGBA cells, no gutters.
-     * Order: Secret, Etherwarp, Dungeonbreaker, Superboom, Pearl, Pearl target, Item, Bat.
-     */
+    // Optional atlas: eight horizontal 12x12 RGBA cells, no gutters.
+    // Order: Secret, Etherwarp, Dungeonbreaker, Superboom, Pearl, Pearl target, Item, Bat.
     private static final Identifier DUNGEON_TYPE_ICONS = Identifier.fromNamespaceAndPath(
             Waypointer.MOD_ID, "textures/gui/dungeon_waypoint_types.png");
     private static final int DUNGEON_TYPE_BUTTON_SIZE = 20;
@@ -127,6 +127,63 @@ public final class GroupEditScreen extends Screen {
     private int editingIndex = -1;
     private boolean draggingRouteScrollbar;
     private int routeScrollbarDragOffset;
+
+    private final GroupEditInputRouter.Geometry inputGeometry =
+            new GroupEditInputRouter.Geometry() {
+                @Override
+                public int dungeonPickerTypeAt(double x, double y) {
+                    return dungeonTypePickerTypeAt(x, y);
+                }
+
+                @Override
+                public boolean dungeonPickerAnchorAt(double x, double y) {
+                    return dungeonTypeButtonIndexAt(x, y) == dungeonTypePickerIndex;
+                }
+
+                @Override
+                public boolean insideDungeonPicker(double x, double y) {
+                    DungeonTypePickerBounds picker = dungeonTypePickerBounds();
+                    return picker != null && picker.contains(x, y);
+                }
+
+                @Override
+                public boolean overRouteScrollbar(double x, double y) {
+                    Layout current = layout();
+                    return isOverRouteScrollbar(x, y, current)
+                            && routeScrollbarGeometry(current) != null;
+                }
+
+                @Override
+                public int rowIndexAt(double x, double y) {
+                    return GroupEditScreen.this.rowIndexAt(x, y);
+                }
+
+                @Override
+                public int dungeonTypeButtonIndexAt(double x, double y) {
+                    return GroupEditScreen.this.dungeonTypeButtonIndexAt(x, y);
+                }
+
+                @Override
+                public int waypointControlActionAt(double x, double y) {
+                    return GroupEditScreen.this.waypointControlActionAt(x, y);
+                }
+
+                @Override
+                public int subwaypointStyleActionAt(double x, double y) {
+                    return GroupEditScreen.this.subwaypointStyleActionAt(x, y);
+                }
+
+                @Override
+                public int swatchIndexAt(double x, double y) {
+                    return GroupEditScreen.this.swatchIndexAt(x, y);
+                }
+
+                @Override
+                public boolean lockedColorAt(int rowIndex) {
+                    return rowIndex >= 0 && rowIndex < group.size()
+                            && group.get(rowIndex).hasFlag(Waypoint.FLAG_LOCKED_COLOR);
+                }
+            };
 
     private static final int GLFW_KEY_ESCAPE   = 256;
     private static final int GLFW_KEY_ENTER    = 257;
@@ -772,7 +829,7 @@ public final class GroupEditScreen extends Screen {
         renderMain(g, layout.mainLeft(), layout.top(),
                 layout.mainRight(), layout.bottom(), mouseX, mouseY);
         renderDungeonTypePicker(g, mouseX, mouseY);
-        // Screen renders widgets before custom panels, so panel widgets render again here.
+        // Redraw these widgets because screens normally render widgets before custom panels.
         for (SidebarWidget slot : sidebarWidgets) {
             if (!slot.widget().visible) continue;
             if (slot.widget() instanceof GuiTokens.StyledButton button) {
@@ -1192,7 +1249,7 @@ public final class GroupEditScreen extends Screen {
             g.text(font, clippedLabel, textX, rowY + 7, labelColor, false);
         }
 
-        // Do not draw text behind the active EditBox.
+        // Keep text out from under the active EditBox.
         if (!waypoint.hasName() || index == editingIndex) return;
 
         int nameX = textX + font.width(clippedLabel) + GAP;
@@ -1621,10 +1678,6 @@ public final class GroupEditScreen extends Screen {
         return group != null && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
     }
 
-    private static final int MOUSE_BUTTON_LEFT  = 0;
-    private static final int MOUSE_BUTTON_RIGHT = 1;
-    private static final int MOUSE_BUTTON_MIDDLE = 2;
-
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         int selectedBeforeClick = selectedIndex;
@@ -1632,158 +1685,136 @@ public final class GroupEditScreen extends Screen {
             commitLabelEdit();
         }
 
-        if (event.button() == MOUSE_BUTTON_LEFT && dungeonTypePickerIndex >= 0) {
-            int typeIndex = dungeonTypePickerTypeAt(event.x(), event.y());
-            if (typeIndex >= 0) {
-                toggleDungeonType(typeIndex);
-                playUiClickSound();
+        GroupEditInputRouter.Pointer pointer = new GroupEditInputRouter.Pointer(
+                event.x(), event.y(), event.button(), hasShiftDown(), doubleClick);
+        GroupEditInputRouter.State state = new GroupEditInputRouter.State(
+                dungeonTypePickerIndex >= 0, selectedIndex);
+        GroupEditInputRouter.Action action = GroupEditInputRouter.beforeWidgets(
+                pointer, state, inputGeometry);
+        if (action.handledBeforeWidgets()) {
+            return applyInputAction(action, pointer, selectedBeforeClick);
+        }
+        if (super.mouseClicked(event, doubleClick)) return true;
+
+        GroupEditInputRouter.Action rowAction = GroupEditInputRouter.afterWidgets(
+                pointer,
+                new GroupEditInputRouter.State(dungeonTypePickerIndex >= 0, selectedIndex),
+                inputGeometry);
+        return applyInputAction(rowAction, pointer, selectedBeforeClick);
+    }
+
+    private boolean applyInputAction(
+            GroupEditInputRouter.Action action,
+            GroupEditInputRouter.Pointer pointer,
+            int selectedBeforeClick) {
+        int index = action.rowIndex();
+        switch (action.type()) {
+            case NONE -> {
+                return false;
+            }
+            case CONSUME -> {
                 return true;
             }
-            DungeonTypePickerBounds picker = dungeonTypePickerBounds();
-            int anchorIndex = dungeonTypeButtonIndexAt(event.x(), event.y());
-            if (anchorIndex == dungeonTypePickerIndex) {
+            case SELECT_DUNGEON_TYPE -> {
+                toggleDungeonType(action.value());
+                playUiClickSound();
+            }
+            case CLOSE_DUNGEON_PICKER_WITH_SOUND -> {
                 dungeonTypePickerIndex = -1;
                 playUiClickSound();
-                return true;
             }
-            if (picker != null && picker.contains(event.x(), event.y())) return true;
-            dungeonTypePickerIndex = -1;
-            return true;
-        }
-
-        if (event.button() == MOUSE_BUTTON_LEFT
-                && beginRouteScrollbarDrag(event.x(), event.y())) {
-            return true;
-        }
-
-        if (event.button() == MOUSE_BUTTON_MIDDLE) {
-            int idx = rowIndexAt(event.x(), event.y());
-            if (idx >= 0) {
-                selectWaypoint(idx);
-                if (group.toggleWaypointDisabled(idx)) {
+            case CLOSE_DUNGEON_PICKER -> dungeonTypePickerIndex = -1;
+            case BEGIN_ROUTE_SCROLLBAR_DRAG -> {
+                return beginRouteScrollbarDrag(pointer.x(), pointer.y());
+            }
+            case TOGGLE_DISABLED -> {
+                selectWaypoint(index);
+                if (group.toggleWaypointDisabled(index)) {
                     manager.fireDataChanged();
                     playUiClickSound();
                 }
-                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
-                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
-                        doubleClick, hasShiftDown(), false, "middle-click-row",
-                        group.isWaypointDisabled(idx) ? "disable" : "enable");
-                return true;
+                recordRowClick(index, selectedBeforeClick, pointer.doubleClick(),
+                        "middle-click-row",
+                        group.isWaypointDisabled(index) ? "disable" : "enable");
             }
-        }
-
-        // Handle row right-clicks before widgets can consume the event.
-        if (event.button() == MOUSE_BUTTON_RIGHT) {
-            int idx = rowIndexAt(event.x(), event.y());
-            if (idx >= 0) {
-                selectWaypoint(idx);
-                String action;
-                if (hasShiftDown()) {
-                    if (group.toggleSubwaypoint(idx)) {
-                        if (group.isSubwaypoint(idx)) {
-                            disableSkipAheadForSequencingEdit();
-                        }
-                        coordinateEditorIndex = -1;
-                        syncCoordinateEditors();
-                        manager.fireDataChanged();
-                    }
-                    action = "toggle-subwaypoint";
-                } else {
-                    DungeonRoomRouteLibrary.setManualCurrentIndex(manager, group, idx);
+            case TOGGLE_SUBWAYPOINT -> {
+                selectWaypoint(index);
+                if (group.toggleSubwaypoint(index)) {
+                    if (group.isSubwaypoint(index)) disableSkipAheadForSequencingEdit();
+                    coordinateEditorIndex = -1;
+                    syncCoordinateEditors();
                     manager.fireDataChanged();
-                    action = "goto";
                 }
-                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
-                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
-                        doubleClick, hasShiftDown(), false, "right-click-row", action);
-                return true;
+                recordRowClick(index, selectedBeforeClick, pointer.doubleClick(),
+                        "right-click-row", "toggle-subwaypoint");
             }
-        }
-
-        if (event.button() == MOUSE_BUTTON_LEFT) {
-            int dungeonTypeIndex = dungeonTypeButtonIndexAt(event.x(), event.y());
-            if (dungeonTypeIndex >= 0) {
-                selectWaypoint(dungeonTypeIndex);
-                dungeonTypePickerIndex = dungeonTypeIndex;
-                playUiClickSound();
-                return true;
+            case GOTO -> {
+                selectWaypoint(index);
+                DungeonRoomRouteLibrary.setManualCurrentIndex(manager, group, index);
+                manager.fireDataChanged();
+                recordRowClick(index, selectedBeforeClick, pointer.doubleClick(),
+                        "right-click-row", "goto");
             }
-
-            int waypointControlAction = waypointControlActionAt(event.x(), event.y());
-            if (waypointControlAction != WAYPOINT_CONTROL_ACTION_NONE) {
-                int idx = rowIndexAt(event.x(), event.y());
-                toggleWaypointControl(idx, waypointControlAction);
-                selectWaypoint(idx);
+            case OPEN_DUNGEON_TYPE_PICKER -> {
+                selectWaypoint(index);
+                dungeonTypePickerIndex = index;
                 playUiClickSound();
-                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
-                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
-                        doubleClick, hasShiftDown(), false, "waypoint-control",
-                        "toggle-control-" + waypointControlAction);
-                return true;
             }
-
-            int subwaypointStyleAction = subwaypointStyleActionAt(event.x(), event.y());
-            if (subwaypointStyleAction != SUBWAY_STYLE_ACTION_NONE) {
-                int idx = rowIndexAt(event.x(), event.y());
-                toggleSubwaypointStyle(idx, subwaypointStyleAction);
-                selectWaypoint(idx);
+            case TOGGLE_WAYPOINT_CONTROL -> {
+                toggleWaypointControl(index, action.value());
+                selectWaypoint(index);
                 playUiClickSound();
-                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
-                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
-                        doubleClick, hasShiftDown(), false, "subwaypoint-style",
-                        "toggle-style-" + subwaypointStyleAction);
-                return true;
+                recordRowClick(index, selectedBeforeClick, pointer.doubleClick(),
+                        "waypoint-control", "toggle-control-" + action.value());
             }
-        }
-
-        if (event.button() == MOUSE_BUTTON_LEFT && hasShiftDown()) {
-            int idx = rowIndexAt(event.x(), event.y());
-            if (idx >= 0 && swatchIndexAt(event.x(), event.y()) < 0) {
-                selectWaypoint(idx);
-                WaypointRepositionMode.start(manager, config, group, idx);
-            DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
-                    selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
-                    doubleClick, true, false, "shift-row", "start-edit-move");
-            return true;
-        }
-        }
-
-        if (event.button() == MOUSE_BUTTON_LEFT) {
-            int swatchIdx = swatchIndexAt(event.x(), event.y());
-            if (swatchIdx >= 0) {
+            case TOGGLE_SUBWAYPOINT_STYLE -> {
+                toggleSubwaypointStyle(index, action.value());
+                selectWaypoint(index);
                 playUiClickSound();
-                // MouseButtonInfo does not expose modifier bits on these mappings.
-                if (hasShiftDown() && group.get(swatchIdx).hasFlag(Waypoint.FLAG_LOCKED_COLOR)) {
-                    unlockWaypointColor(swatchIdx);
+                recordRowClick(index, selectedBeforeClick, pointer.doubleClick(),
+                        "subwaypoint-style", "toggle-style-" + action.value());
+            }
+            case REPOSITION -> {
+                selectWaypoint(index);
+                WaypointRepositionMode.start(manager, config, group, index);
+                recordRowClick(index, selectedBeforeClick, pointer.doubleClick(),
+                        "shift-row", "start-edit-move");
+            }
+            case UNLOCK_COLOR, EDIT_COLOR -> {
+                playUiClickSound();
+                if (action.type() == GroupEditInputRouter.ActionType.UNLOCK_COLOR) {
+                    unlockWaypointColor(index);
                 } else {
-                    openWaypointColorPicker(swatchIdx);
+                    openWaypointColorPicker(index);
                 }
-                selectWaypoint(swatchIdx);
-                DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(swatchIdx), swatchIdx,
-                        selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
-                        doubleClick, hasShiftDown(), false, "color-swatch",
-                        hasShiftDown() ? "unlock-or-edit-color" : "edit-color");
-                return true;
+                selectWaypoint(index);
+                recordRowClick(index, selectedBeforeClick, pointer.doubleClick(),
+                        "color-swatch",
+                        pointer.shiftDown() ? "unlock-or-edit-color" : "edit-color");
+            }
+            case SELECT, RENAME -> {
+                selectWaypoint(index);
+                if (action.type() == GroupEditInputRouter.ActionType.RENAME) {
+                    beginLabelEdit(index);
+                }
+                recordRowClick(index, selectedBeforeClick, pointer.doubleClick(),
+                        "waypoint-row",
+                        action.type() == GroupEditInputRouter.ActionType.RENAME
+                                ? "rename"
+                                : pointer.doubleClick()
+                                        ? "double-click ignored: waypoint was not already selected"
+                                        : "select");
             }
         }
-
-        if (super.mouseClicked(event, doubleClick)) return true;
-        if (event.button() != MOUSE_BUTTON_LEFT) return false;
-
-        int idx = rowIndexAt(event.x(), event.y());
-        if (idx < 0) return false;
-        boolean wasAlreadySelected = idx == selectedIndex;
-        selectWaypoint(idx);
-
-        boolean startRename = shouldStartRenameFromRowClick(doubleClick, wasAlreadySelected);
-        if (startRename) beginLabelEdit(idx);
-        DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(idx), idx,
-                selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
-                doubleClick, false, false, "waypoint-row",
-                startRename ? "rename" : doubleClick
-                        ? "double-click ignored: waypoint was not already selected"
-                        : "select");
         return true;
+    }
+
+    private void recordRowClick(
+            int index, int selectedBeforeClick, boolean doubleClick,
+            String gesture, String action) {
+        DebugEventLog.record("GroupEditScreen", "waypoint", waypointDebugId(index), index,
+                selectionDebugLabel(selectedBeforeClick), selectionDebugLabel(selectedIndex),
+                doubleClick, hasShiftDown(), false, gesture, action);
     }
 
     private boolean beginRouteScrollbarDrag(double mouseX, double mouseY) {
@@ -2075,29 +2106,19 @@ public final class GroupEditScreen extends Screen {
 
         private void openWaypointColorPicker(int idx) {
         if (idx < 0 || idx >= group.size()) return;
-        waypointColorPickerIndex = idx;
+        waypointColorPickerState = WaypointColorPickerState.forTarget(group, idx);
         Waypoint w = group.get(idx);
-        ColorPickerScreen.open(this, Component.translatable(
+        ColorPickerScreen.openWaypoint(this, Component.translatable(
                         "waypointer.screen.group_edit.picker.waypoint",
                         displayNumbers().integer(idx + 1)),
-                w.color(), this::onWaypointColorPicked);
+                w.color(), waypointColorPickerState, this::onWaypointColorPicked);
     }
 
     private void onWaypointColorPicked(int picked) {
-        int idx = waypointColorPickerIndex;
-        waypointColorPickerIndex = -1;
-        if (idx < 0 || idx >= group.size()) return;
+        WaypointColorPickerState state = waypointColorPickerState;
+        waypointColorPickerState = null;
+        if (state == null || !state.applyColor(group, picked)) return;
         group.setPaintEnabled(false);
-        if (group.gradientMode() != WaypointGroup.GradientMode.MANUAL) {
-            group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-            Waypoint cur = group.get(idx);
-            group.set(idx, cur.withColor(picked).withFlags(cur.flags() | Waypoint.FLAG_LOCKED_COLOR));
-            manager.fireDataChanged();
-            rebuildWidgets();
-            return;
-        }
-        Waypoint cur = group.get(idx);
-        group.set(idx, cur.withColor(picked).withFlags(cur.flags() | Waypoint.FLAG_LOCKED_COLOR));
         manager.fireDataChanged();
         rebuildWidgets();
     }

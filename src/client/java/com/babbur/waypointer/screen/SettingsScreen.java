@@ -752,12 +752,14 @@ public final class SettingsScreen extends Screen {
                 super.setFocused(focused);
                 if (!wasFocused || focused) return;
                 normalizing[0] = true;
-                setValue(setting.formatValue(setting.get(config, dungeonConfig)));
+                setValue(SettingsText.localizedValue(
+                        setting, setting.get(config, dungeonConfig)).getString());
                 normalizing[0] = false;
             }
         };
         box.setMaxLength(24);
-        box.setValue(setting.formatValue(setting.get(config, dungeonConfig)));
+        box.setValue(SettingsText.localizedValue(
+                setting, setting.get(config, dungeonConfig)).getString());
         box.setResponder(v -> {
             if (normalizing[0]) return;
             Double value = SettingsValuePolicy.acceptedNumberValue(setting, v);

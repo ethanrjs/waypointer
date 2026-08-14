@@ -45,6 +45,13 @@ public final class UniversalShareCodec {
         return WaypointCodec.encode(groups, options);
     }
 
+    public static String encodeWaypoints(
+            List<com.babbur.waypointer.core.WaypointGroup> groups,
+            WaypointCodec.Options options,
+            RouteLibraryMetadata metadata) {
+        return RouteLibraryCodec.encode(groups, options, metadata);
+    }
+
     public static String encodeConfig(WaypointerConfig config) {
         return WaypointerConfigCodec.encode(config);
     }

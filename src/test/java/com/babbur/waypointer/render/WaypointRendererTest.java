@@ -4,6 +4,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
+import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
@@ -229,6 +230,26 @@ class WaypointRendererTest {
         assertEquals(2_047, segmentCount[0]);
         assertEquals(2_046, lastFrom[0]);
         assertEquals(2_047, lastTo[0]);
+    }
+
+    @Test
+    void unlimitedPreviousRouteLineVisibilityDoesNotStopAtThirtyTwoSteps() {
+        WaypointGroup group = WaypointGroup.create("Long Sequence", "hub");
+        for (int i = 0; i < 80; i++) {
+            group.add(waypointAt(i, 64, 0, 0));
+        }
+        group.setCurrentIndex(79);
+        List<Integer> endpoints = new ArrayList<>();
+
+        WaypointRenderer.forEachRouteLineSegment(
+                group, false,
+                new SequenceVisibility(
+                        SequenceVisibility.ALL, true, 32),
+                false, i -> true, (from, to) -> endpoints.add(to));
+
+        assertEquals(79, endpoints.size());
+        assertEquals(1, endpoints.get(0));
+        assertEquals(79, endpoints.get(endpoints.size() - 1));
     }
 
     @Test
@@ -483,43 +504,6 @@ class WaypointRendererTest {
     @Test
     void editModeSubtitleNamesTheExitCommand() {
         assertEquals("EDIT MODE (exit: /wp editmode)", WaypointRenderer.editModeSubtitleText());
-    }
-
-    @Test
-    void dungeonEntryPathReuseKeepsFailuresUntilThePlayerChangesBlock() {
-        BlockPos oldStart = new BlockPos(0, 64, 0);
-        BlockPos newStart = new BlockPos(1, 64, 0);
-
-        assertTrue(WaypointRenderer.shouldReuseDungeonEntryPath(
-                oldStart, true, 0L, oldStart, 249_999_999L));
-        assertFalse(WaypointRenderer.shouldReuseDungeonEntryPath(
-                oldStart, true, 0L, oldStart, 250_000_000L));
-        assertTrue(WaypointRenderer.shouldReuseDungeonEntryPath(
-                oldStart, false, 0L, oldStart, Long.MAX_VALUE));
-        assertFalse(WaypointRenderer.shouldReuseDungeonEntryPath(
-                oldStart, false, 0L, newStart, 249_999_999L));
-    }
-
-    @Test
-    void dungeonEntryPathFollowingWaypointsRequiresOptIn() {
-        WaypointGroup group = groupWith(waypoint(0), waypointAt(2, 64, 2, 0));
-        group.setZoneId("altar");
-        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
-        group.setCurrentIndex(1);
-
-        assertFalse(WaypointRenderer.shouldRenderDungeonEntryPath(group, false));
-        assertTrue(WaypointRenderer.shouldRenderDungeonEntryPath(group, true));
-    }
-
-    @Test
-    void dungeonEntryPathDoesNotTargetSubwaypoints() {
-        WaypointGroup group = groupWith(
-                waypoint(0),
-                waypointAt(2, 64, 2, Waypoint.FLAG_SUBWAYPOINT));
-        group.setZoneId("altar");
-        group.advancePast(0);
-
-        assertFalse(WaypointRenderer.shouldRenderDungeonEntryPath(group, true));
     }
 
     @Test

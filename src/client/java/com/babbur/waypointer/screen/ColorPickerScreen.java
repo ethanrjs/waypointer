@@ -6,8 +6,8 @@ import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -24,6 +24,7 @@ public final class ColorPickerScreen extends Screen {
 
     private static final int PANEL_W = 280;
     private static final int PANEL_H = 252;
+    private static final int PANEL_H_WITH_OPTION = 280;
     private static final int SV_SIZE = 140;
     private static final int HUE_W   = 18;
 
@@ -32,6 +33,7 @@ public final class ColorPickerScreen extends Screen {
     private final Screen parent;
     private final Component pickerTitle;
     private final IntConsumer onPicked;
+    private final WaypointColorPickerState waypointState;
 
     private float hue;       // [0, 360)
     private float sat;       // [0, 1]
@@ -54,10 +56,16 @@ public final class ColorPickerScreen extends Screen {
     }
 
     public ColorPickerScreen(Screen parent, Component title, int initialRgb, IntConsumer onPicked) {
+        this(parent, title, initialRgb, onPicked, null);
+    }
+
+    private ColorPickerScreen(Screen parent, Component title, int initialRgb,
+                              IntConsumer onPicked, WaypointColorPickerState waypointState) {
         super(title);
         this.parent = parent;
         this.pickerTitle = title;
         this.onPicked = onPicked;
+        this.waypointState = waypointState;
         float[] hsv = rgbToHsv(initialRgb & 0xFFFFFF);
         this.hue = hsv[0];
         this.sat = hsv[1];
@@ -73,10 +81,17 @@ public final class ColorPickerScreen extends Screen {
                 new ColorPickerScreen(parent, title, initialRgb, onPicked));
     }
 
+    static void openWaypoint(Screen parent, Component title, int initialRgb,
+                             WaypointColorPickerState state, IntConsumer onPicked) {
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new ColorPickerScreen(parent, title, initialRgb, onPicked, state));
+    }
+
     @Override
     protected void init() {
         int panelX = (width - PANEL_W) / 2;
-        int panelY = (height - PANEL_H) / 2;
+        int panelH = panelHeight();
+        int panelY = (height - panelH) / 2;
 
         svX = panelX + PAD_OUTER;
         svY = panelY + 32;
@@ -104,14 +119,31 @@ public final class ColorPickerScreen extends Screen {
         });
         addRenderableWidget(hexBox);
 
-        int footerY = panelY + PANEL_H - BTN_H - PAD_OUTER;
+        if (showsApplyToSubwaypoints()) {
+            int optionY = hexY + BTN_H + GAP_TIGHT;
+            Component optionLabel = Component.translatable(
+                    "waypointer.screen.color_picker.apply_to_subwaypoints");
+            addRenderableWidget(styledCheckbox(
+                    svX, optionY, BTN_H, optionLabel,
+                    waypointState.applyToSubwaypoints(),
+                    waypointState::setApplyToSubwaypoints,
+                    Tooltip.create(Component.translatable(
+                            "waypointer.screen.color_picker.apply_to_subwaypoints.tooltip"))));
+        }
+
+        int footerY = panelY + panelH - BTN_H - PAD_OUTER;
         int btnW = 70;
-        addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), b -> onClose())
-                .bounds(panelX + PANEL_W - PAD_OUTER - btnW * 2 - GAP, footerY, btnW, BTN_H).build());
-        addRenderableWidget(Button.builder(Component.translatable("waypointer.screen.color_picker.save"), b -> {
-            onPicked.accept(currentRgb());
-            onClose();
-        }).bounds(panelX + PANEL_W - PAD_OUTER - btnW, footerY, btnW, BTN_H).build());
+        addRenderableWidget(styledButton(
+                panelX + PANEL_W - PAD_OUTER - btnW * 2 - GAP,
+                footerY, btnW, BTN_H,
+                Component.translatable("gui.cancel"), b -> onClose(), null));
+        addRenderableWidget(styledButton(
+                panelX + PANEL_W - PAD_OUTER - btnW,
+                footerY, btnW, BTN_H,
+                Component.translatable("waypointer.screen.color_picker.save"), b -> {
+                    onPicked.accept(currentRgb());
+                    onClose();
+                }, null));
 
         ensureTextures();
     }
@@ -121,8 +153,9 @@ public final class ColorPickerScreen extends Screen {
         g.fill(0, 0, width, height, 0x80000000);
 
         int panelX = (width - PANEL_W) / 2;
-        int panelY = (height - PANEL_H) / 2;
-        g.fill(panelX, panelY, panelX + PANEL_W, panelY + PANEL_H, SURFACE);
+        int panelH = panelHeight();
+        int panelY = (height - panelH) / 2;
+        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, SURFACE);
 
         g.text(font, pickerTitle, panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
 
@@ -130,7 +163,29 @@ public final class ColorPickerScreen extends Screen {
         drawHueSlider(g);
         drawSwatch(g);
 
+        if (showsApplyToSubwaypoints()) {
+            int labelX = svX + BTN_H + GAP_TIGHT;
+            int labelY = opticalTextY(svY + SV_SIZE + GAP + BTN_H + GAP_TIGHT, BTN_H);
+            Component label = Component.translatable(
+                    "waypointer.screen.color_picker.apply_to_subwaypoints");
+            String clipped = font.plainSubstrByWidth(
+                    label.getString(), panelX + PANEL_W - PAD_OUTER - labelX);
+            g.text(font, clipped, labelX, labelY, TEXT, false);
+        }
+
         super.extractRenderState(g, mouseX, mouseY, partial);
+    }
+
+    static int panelHeight(boolean showApplyToSubwaypoints) {
+        return showApplyToSubwaypoints ? PANEL_H_WITH_OPTION : PANEL_H;
+    }
+
+    private int panelHeight() {
+        return panelHeight(showsApplyToSubwaypoints());
+    }
+
+    private boolean showsApplyToSubwaypoints() {
+        return waypointState != null && waypointState.applyToSubwaypointsVisible();
     }
 
     private void drawSvSquare(GuiGraphicsExtractor g) {

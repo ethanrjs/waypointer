@@ -22,7 +22,6 @@ class DungeonRoomShareCodecTest {
         route.add(new Waypoint(16, 70, 16, "Chest", 0x123456,
                 Waypoint.FLAG_SKIP_ON_INTERACT | Waypoint.FLAG_DUNGEON_SECRET, 2.5)
                 .withPreciseSixteenths(264, 1128, 260));
-
         DungeonRoomShareCodec.Decoded decoded = DungeonRoomShareCodec.decode(
                 "```text\n" + DungeonRoomShareCodec.encode(List.of(route)) + "\n```");
 
@@ -62,12 +61,29 @@ class DungeonRoomShareCodecTest {
         assertTrue(decoded.routes().getFirst().get(0).hasFlag(Waypoint.FLAG_DUNGEON_SECRET));
     }
 
+    @Test
+    void legacyActivationFieldIsIgnored() throws Exception {
+        String payload = DungeonRoomShareCodec.MAGIC + gzipBase64(currentJson(
+                ",\"activation\":{\"match\":\"ALL\",\"rules\":[{\"type\":\"UNKNOWN\"}]}"));
+
+        WaypointGroup decoded = DungeonRoomShareCodec.decode(payload).routes().getFirst();
+
+        assertEquals("Route", decoded.name());
+    }
+
     private static WaypointGroup route(String room, String name) {
         WaypointGroup route = WaypointGroup.create(name, room);
         route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         route.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         route.setSkipAheadEnabled(false);
         return route;
+    }
+
+    private static String currentJson(String activationField) {
+        return "{\"schema\":2,\"routes\":[{\"room\":\"room-a\","
+                + "\"name\":\"Route\",\"loadMode\":\"SEQUENCE\","
+                + "\"waypoints\":[{\"x\":1,\"y\":2,\"z\":3}]"
+                + activationField + "}]}";
     }
 
     private static String gzipBase64(String text) throws Exception {

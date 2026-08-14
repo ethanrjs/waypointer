@@ -7,6 +7,8 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.CatalogRouteProvenance;
+import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
@@ -21,13 +23,15 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
 public final class Storage {
 
-    public static final int SCHEMA_VERSION = 1;
+    public static final int SCHEMA_VERSION = 2;
     private static final String FILE_NAME = "waypoints.json";
 
     private static final long SAVE_DEBOUNCE_MS = 400L;
@@ -44,6 +48,7 @@ public final class Storage {
     private volatile int writeCount;
     private volatile boolean writesBlocked;
     private int pendingCanonicalRewriteGroups;
+    private boolean pendingSchemaRewrite;
 
     public Storage(Path file) {
         this.file = file;
@@ -82,6 +87,7 @@ public final class Storage {
 
     public void load(ActiveGroupManager manager) {
         pendingCanonicalRewriteGroups = 0;
+        pendingSchemaRewrite = false;
         if (!Files.exists(file)) return;
 
         String raw;
@@ -103,7 +109,8 @@ public final class Storage {
 
         writesBlocked = false;
         pendingCanonicalRewriteGroups = parsedGroups.canonicalizedZoneCount();
-        manager.replaceAll(parsedGroups.groups());
+        pendingSchemaRewrite = parsedGroups.requiresRewrite();
+        manager.replaceAll(parsedGroups.groups(), parsedGroups.folders(), parsedGroups.memberships());
         Waypointer.LOGGER.info("Loaded {} waypoint group(s) from {}", parsedGroups.groups().size(), file);
     }
 
@@ -112,10 +119,11 @@ public final class Storage {
         this.pendingSnapshotJson = captureSnapshot(manager);
         this.saver = new AsyncSaver("waypoints", this::writeToDisk, SAVE_DEBOUNCE_MS);
         manager.addPersistentDataListener(this::markDirtyFromManager);
-        if (pendingCanonicalRewriteGroups > 0) {
-            Waypointer.LOGGER.info("Migrating zone IDs for {} waypoint group(s) in {}",
-                    pendingCanonicalRewriteGroups, file);
+        if (pendingCanonicalRewriteGroups > 0 || pendingSchemaRewrite) {
+            Waypointer.LOGGER.info("Migrating waypoint storage in {} ({} canonicalized zone ID(s))",
+                    file, pendingCanonicalRewriteGroups);
             pendingCanonicalRewriteGroups = 0;
+            pendingSchemaRewrite = false;
             saver.markDirty();
         }
     }
@@ -205,6 +213,22 @@ public final class Storage {
             if (!g.temp() && !g.runtimeOnly()) groups.add(groupToJson(g));
         }
         root.add("groups", groups);
+        JsonArray folders = new JsonArray();
+        for (RouteFolder folder : manager.folders()) {
+            JsonObject encoded = new JsonObject();
+            encoded.addProperty("id", folder.id());
+            encoded.addProperty("name", folder.name());
+            encoded.addProperty("zone", folder.zoneId());
+            encoded.addProperty("collapsed", folder.collapsed());
+            encoded.addProperty("color", folder.color());
+            JsonArray groupIds = new JsonArray();
+            for (String groupId : manager.groupIdsInFolder(folder.id())) {
+                groupIds.add(groupId);
+            }
+            encoded.add("groupIds", groupIds);
+            folders.add(encoded);
+        }
+        root.add("folders", folders);
         return GSON.toJson(root);
     }
 
@@ -221,7 +245,9 @@ public final class Storage {
         return writeCount;
     }
 
-    private record ParsedGroups(List<WaypointGroup> groups, int canonicalizedZoneCount) {
+    private record ParsedGroups(List<WaypointGroup> groups, List<RouteFolder> folders,
+                                Map<String, String> memberships,
+                                int canonicalizedZoneCount, boolean requiresRewrite) {
     }
 
     private static ParsedGroups parseGroups(String raw) {
@@ -242,7 +268,7 @@ public final class Storage {
             throw new IllegalArgumentException("waypoints schema must be " + SCHEMA_VERSION);
         }
         int schema = schemaElement.getAsBigDecimal().intValueExact();
-        if (schema != SCHEMA_VERSION) {
+        if (schema != 1 && schema != SCHEMA_VERSION) {
             throw new IllegalArgumentException("unsupported waypoints schema " + schema);
         }
 
@@ -274,7 +300,75 @@ public final class Storage {
             }
             groups.add(group);
         }
-        return new ParsedGroups(List.copyOf(groups), canonicalizedZoneCount);
+        if (schema == 1) {
+            return new ParsedGroups(List.copyOf(groups), List.of(), Map.of(),
+                    canonicalizedZoneCount, true);
+        }
+
+        JsonElement foldersElement = root.get("folders");
+        if (foldersElement == null || foldersElement.isJsonNull() || !foldersElement.isJsonArray()) {
+            throw new IllegalArgumentException("waypoints folders must be a JSON array");
+        }
+        Map<String, WaypointGroup> groupsById = new LinkedHashMap<>();
+        for (WaypointGroup group : groups) groupsById.put(group.id(), group);
+        List<RouteFolder> folders = new ArrayList<>();
+        Map<String, String> memberships = new LinkedHashMap<>();
+        Set<String> folderIds = new HashSet<>();
+        for (JsonElement element : foldersElement.getAsJsonArray()) {
+            if (element == null || !element.isJsonObject()) {
+                throw new IllegalArgumentException("route folder entry must be a JSON object");
+            }
+            JsonObject encoded = element.getAsJsonObject();
+            String id = encoded.get("id").getAsString();
+            String name = encoded.get("name").getAsString();
+            String storedZone = encoded.get("zone").getAsString();
+            boolean collapsed = encoded.has("collapsed") && encoded.get("collapsed").getAsBoolean();
+            int color = folderColorFromJson(encoded);
+            RouteFolder folder = new RouteFolder(id, name, storedZone, collapsed, color);
+            if (!folderIds.add(folder.id())) {
+                throw new IllegalArgumentException("duplicate route folder id " + folder.id());
+            }
+            if (!folder.zoneId().equals(storedZone)) canonicalizedZoneCount++;
+            JsonElement memberElement = encoded.get("groupIds");
+            if (memberElement == null || memberElement.isJsonNull() || !memberElement.isJsonArray()) {
+                throw new IllegalArgumentException("route folder groupIds must be a JSON array");
+            }
+            for (JsonElement member : memberElement.getAsJsonArray()) {
+                if (member == null || !member.isJsonPrimitive()
+                        || !member.getAsJsonPrimitive().isString()) {
+                    throw new IllegalArgumentException("route folder group ID must be a string");
+                }
+                String groupId = member.getAsString();
+                WaypointGroup group = groupsById.get(groupId);
+                if (group == null) {
+                    throw new IllegalArgumentException("route folder references missing group " + groupId);
+                }
+                if (group.temp() || group.runtimeOnly()
+                        || group.routeKind() != WaypointGroup.RouteKind.REGULAR
+                        || !folder.zoneId().equals(group.zoneId())) {
+                    throw new IllegalArgumentException("invalid route folder member " + groupId);
+                }
+                if (memberships.putIfAbsent(groupId, folder.id()) != null) {
+                    throw new IllegalArgumentException("route belongs to more than one folder " + groupId);
+                }
+            }
+            folders.add(folder);
+        }
+        return new ParsedGroups(List.copyOf(groups), List.copyOf(folders),
+                Map.copyOf(memberships), canonicalizedZoneCount, canonicalizedZoneCount > 0);
+    }
+
+    private static int folderColorFromJson(JsonObject encoded) {
+        JsonElement color = encoded.get("color");
+        if (color == null || color.isJsonNull() || !color.isJsonPrimitive()
+                || !color.getAsJsonPrimitive().isNumber()) {
+            return RouteFolder.DEFAULT_COLOR;
+        }
+        try {
+            return color.getAsBigDecimal().intValueExact();
+        } catch (ArithmeticException | NumberFormatException failure) {
+            return RouteFolder.DEFAULT_COLOR;
+        }
     }
 
         static JsonObject groupToJson(WaypointGroup g) {
@@ -293,13 +387,24 @@ public final class Storage {
         o.addProperty("gradientStartColor", g.gradientStartColor());
         o.addProperty("gradientEndColor",   g.gradientEndColor());
         o.addProperty("paintEnabled", g.paintEnabled());
+        if (g.catalogProvenance() != null) {
+            o.add("catalogSource", catalogProvenanceToJson(g.catalogProvenance()));
+        }
         if (g.paint() != null) o.add("paint", paintToJson(g.paint()));
         JsonArray wps = new JsonArray();
-        for (Waypoint w : g.waypoints()) {
+        JsonArray manualColors = new JsonArray();
+        List<Integer> manualColorSnapshot = g.manualColorSnapshot();
+        boolean hasHiddenManualColors = false;
+        for (int i = 0; i < g.size(); i++) {
+            Waypoint w = g.get(i);
             if (w.isTemp()) continue;
             wps.add(waypointToJson(w));
+            int manualColor = manualColorSnapshot.get(i);
+            manualColors.add(manualColor);
+            hasHiddenManualColors |= manualColor != (w.color() & 0xFFFFFF);
         }
         o.add("waypoints", wps);
+        if (hasHiddenManualColors) o.add("manualColors", manualColors);
         return o;
     }
 
@@ -308,6 +413,17 @@ public final class Storage {
         String name = o.has("name") ? o.get("name").getAsString() : "";
         String zone = o.has("zone") ? o.get("zone").getAsString() : "unknown";
         WaypointGroup g = new WaypointGroup(id, name, zone);
+        if (o.has("catalogSource") && !o.get("catalogSource").isJsonNull()) {
+            try {
+                g.setCatalogProvenance(catalogProvenanceFromJson(
+                        o.getAsJsonObject("catalogSource")));
+            } catch (RuntimeException invalidProvenance) {
+                // Bad optional provenance must not make a route unreadable.
+                Waypointer.LOGGER.warn(
+                        "Ignoring invalid catalog provenance for group {}", id,
+                        invalidProvenance);
+            }
+        }
         if (o.has("enabled"))       g.setEnabled(o.get("enabled").getAsBoolean());
         if (o.has("defaultRadius")) g.setDefaultRadius(o.get("defaultRadius").getAsDouble());
         if (o.has("staticColor"))   g.setStaticColor(o.get("staticColor").getAsInt());
@@ -341,8 +457,45 @@ public final class Storage {
             }
             g.addAll(waypoints);
         }
+        if (o.has("manualColors") && !o.get("manualColors").isJsonNull()) {
+            try {
+                JsonArray encodedColors = o.getAsJsonArray("manualColors");
+                List<Integer> manualColors = new ArrayList<>(encodedColors.size());
+                for (JsonElement color : encodedColors) manualColors.add(color.getAsInt());
+                if (!g.setManualColorSnapshot(manualColors)) {
+                    Waypointer.LOGGER.warn("Ignoring invalid manual colors for group {}", id);
+                }
+            } catch (RuntimeException invalidManualColors) {
+                Waypointer.LOGGER.warn(
+                        "Ignoring invalid manual colors for group {}", id, invalidManualColors);
+            }
+        }
         if (o.has("currentIndex")) g.setCurrentIndex(o.get("currentIndex").getAsInt());
         return g;
+    }
+
+    private static JsonObject catalogProvenanceToJson(CatalogRouteProvenance provenance) {
+        JsonObject out = new JsonObject();
+        out.addProperty("apiRoot", provenance.apiRoot());
+        out.addProperty("routeId", provenance.routeId());
+        out.addProperty("routeVersion", provenance.routeVersion());
+        out.addProperty("codecVersion", provenance.codecVersion());
+        out.addProperty("payloadSha256", provenance.payloadSha256());
+        out.addProperty("groupIndex", provenance.groupIndex());
+        out.addProperty("groupCount", provenance.groupCount());
+        return out;
+    }
+
+    private static CatalogRouteProvenance catalogProvenanceFromJson(JsonObject object) {
+        if (object == null) throw new IllegalArgumentException("catalogSource must be an object");
+        return new CatalogRouteProvenance(
+                object.get("apiRoot").getAsString(),
+                object.get("routeId").getAsString(),
+                object.get("routeVersion").getAsInt(),
+                object.get("codecVersion").getAsInt(),
+                object.get("payloadSha256").getAsString(),
+                object.get("groupIndex").getAsInt(),
+                object.get("groupCount").getAsInt());
     }
 
     static JsonObject waypointToJson(Waypoint w) {

@@ -6,16 +6,11 @@ import com.google.gson.JsonParser;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
-import java.nio.channels.WritableByteChannel;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.AclEntry;
@@ -68,7 +63,7 @@ public final class PublisherIdentityStore {
             if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return load();
             Path parent = file.getParent();
             if (parent == null) {
-                throw new IllegalStateException("Publisher identity path has no parent");
+                throw new CatalogStorageException("Publisher identity path has no parent");
             }
             try {
                 Files.createDirectories(parent);
@@ -83,7 +78,7 @@ public final class PublisherIdentityStore {
                     return load();
                 }
             } catch (IOException failure) {
-                throw new IllegalStateException(
+                throw new CatalogStorageException(
                         "Could not lock the publisher identity", failure);
             }
         }
@@ -122,14 +117,13 @@ public final class PublisherIdentityStore {
         }
     }
 
-    /** Saves the server-confirmed name without changing the publisher key. */
     public PublisherIdentity savePublisherName(PublisherIdentity identity, String name) {
         if (identity == null) throw new IllegalArgumentException("Publisher identity is required");
         String validName = PublisherNamePolicy.requireValid(name);
         synchronized (CREATION_LOCK) {
             Path parent = file.getParent();
             if (parent == null) {
-                throw new IllegalStateException("Publisher identity path has no parent");
+                throw new CatalogStorageException("Publisher identity path has no parent");
             }
             try {
                 Files.createDirectories(parent);
@@ -155,7 +149,7 @@ public final class PublisherIdentityStore {
                     return load();
                 }
             } catch (IOException failure) {
-                throw new IllegalStateException(
+                throw new CatalogStorageException(
                         "Could not save the publisher name", failure);
             }
         }
@@ -163,78 +157,32 @@ public final class PublisherIdentityStore {
 
     private void writeNew(PublisherIdentity identity) {
         Path parent = file.getParent();
-        if (parent == null) throw new IllegalStateException("Publisher identity path has no parent");
-        Path temporary = null;
-        boolean moved = false;
+        if (parent == null) {
+            throw new CatalogStorageException("Publisher identity path has no parent");
+        }
         try {
             Files.createDirectories(parent);
             if (Files.isSymbolicLink(file)) throw invalidIdentity(null);
-            temporary = Files.createTempFile(parent, "identity-", ".tmp");
-            setOwnerOnlyPermissions(temporary);
             byte[] json = serialize(identity).getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            try (FileChannel channel = FileChannel.open(temporary,
-                    StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
-                writeFully(channel, ByteBuffer.wrap(json));
-                channel.force(true);
-            }
-            try {
-                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE);
-                moved = true;
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, file);
-                moved = true;
-            } catch (FileAlreadyExistsException race) {
-                // Another caller created the same identity file first. Load that file below.
-            }
-            if (moved) temporary = null;
-            setOwnerOnlyPermissions(file);
-        } catch (FileAlreadyExistsException race) {
-            // Another caller created the same identity file first. loadOrCreate() will load it.
+            CatalogAtomicFile.create(
+                    file, json, "identity-", PublisherIdentityStore::setOwnerOnlyPermissions);
         } catch (IOException failure) {
-            throw new IllegalStateException("Could not save the publisher identity", failure);
-        } finally {
-            if (temporary != null) {
-                try {
-                    Files.deleteIfExists(temporary);
-                } catch (IOException ignored) {
-                    // The temporary file contains a key. A later manual cleanup can remove it.
-                }
-            }
+            throw new CatalogStorageException("Could not save the publisher identity", failure);
         }
     }
 
     private void writeReplacement(PublisherIdentity identity) {
         Path parent = file.getParent();
-        if (parent == null) throw new IllegalStateException("Publisher identity path has no parent");
-        Path temporary = null;
+        if (parent == null) {
+            throw new CatalogStorageException("Publisher identity path has no parent");
+        }
         try {
             rejectUnsafeFile();
-            temporary = Files.createTempFile(parent, "identity-", ".tmp");
-            setOwnerOnlyPermissions(temporary);
             byte[] json = serialize(identity).getBytes(java.nio.charset.StandardCharsets.UTF_8);
-            try (FileChannel channel = FileChannel.open(temporary,
-                    StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
-                writeFully(channel, ByteBuffer.wrap(json));
-                channel.force(true);
-            }
-            try {
-                Files.move(temporary, file, StandardCopyOption.ATOMIC_MOVE,
-                        StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException ignored) {
-                Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING);
-            }
-            temporary = null;
-            setOwnerOnlyPermissions(file);
+            CatalogAtomicFile.replace(
+                    file, json, "identity-", PublisherIdentityStore::setOwnerOnlyPermissions);
         } catch (IOException failure) {
-            throw new IllegalStateException("Could not save the publisher name", failure);
-        } finally {
-            if (temporary != null) {
-                try {
-                    Files.deleteIfExists(temporary);
-                } catch (IOException ignored) {
-                    // The temporary file contains a key. A later manual cleanup can remove it.
-                }
-            }
+            throw new CatalogStorageException("Could not save the publisher name", failure);
         }
     }
 
@@ -288,13 +236,9 @@ public final class PublisherIdentityStore {
         acl.setAcl(List.of(ownerOnly));
     }
 
-    static void writeFully(WritableByteChannel channel, ByteBuffer data) throws IOException {
-        while (data.hasRemaining()) channel.write(data);
-    }
-
-    private static IllegalStateException invalidIdentity(Throwable cause) {
+    private static CatalogStorageException invalidIdentity(Throwable cause) {
         String message = "Publisher identity is invalid. Restore identity.json from a backup or move it aside manually.";
-        return cause == null ? new IllegalStateException(message)
-                : new IllegalStateException(message, cause);
+        return cause == null ? new CatalogStorageException(message)
+                : new CatalogStorageException(message, cause);
     }
 }

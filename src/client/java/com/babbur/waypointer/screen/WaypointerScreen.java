@@ -9,6 +9,7 @@ import com.babbur.waypointer.color.RouteColorPolicy;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
+import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.debug.DebugEventLog;
@@ -82,6 +83,8 @@ public final class WaypointerScreen extends Screen {
     private static final int IMPORT_EXPORT_BTN_W = 96;
     private static final int DELETE_BTN_W = 56;
     private static final int DONE_BTN_W = 56;
+    private static final int FOLDER_BTN_W = 78;
+    private static final int REORDER_BTN_W = 28;
     private static final int SETTINGS_BTN_W = 76;
     private static final int ISLAND_SELECTOR_W = 150;
     private static final int ISLAND_DROPDOWN_W = 210;
@@ -92,6 +95,9 @@ public final class WaypointerScreen extends Screen {
     private OverlayButton hideAllRoutesBtn;
     private Button deleteBtn;
     private Button importExportBtn;
+    private Button folderBtn;
+    private Button moveUpBtn;
+    private Button moveDownBtn;
     private Button islandSelectorBtn;
     private EditBox searchBox;
     private OverlayButton clearSearchButton;
@@ -124,6 +130,15 @@ public final class WaypointerScreen extends Screen {
                 Component.translatable("waypointer.screen.main.new_route").getString(),
                 NEW_ROUTE_BTN_W, this::createGroup));
         left.add(new GuiTokens.ButtonSpec(
+                Component.translatable("waypointer.screen.main.folder").getString(),
+                FOLDER_BTN_W, this::openNewFolderEditor));
+        left.add(new GuiTokens.ButtonSpec(
+                "\u2191", REORDER_BTN_W, () -> moveSelectedRouteBy(-1),
+                Tooltip.create(Component.translatable("waypointer.screen.main.move_up.tooltip"))));
+        left.add(new GuiTokens.ButtonSpec(
+                "\u2193", REORDER_BTN_W, () -> moveSelectedRouteBy(1),
+                Tooltip.create(Component.translatable("waypointer.screen.main.move_down.tooltip"))));
+        left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.main.delete").getString(),
                 DELETE_BTN_W, this::onDeleteClicked));
         return left;
@@ -131,8 +146,9 @@ public final class WaypointerScreen extends Screen {
 
     static int footerRequiredWidth() {
         return PAD_OUTER
-                + IMPORT_EXPORT_BTN_W + NEW_ROUTE_BTN_W + DELETE_BTN_W
-                + GAP * 2 + GAP_SECTION + DONE_BTN_W + PAD_OUTER;
+                + IMPORT_EXPORT_BTN_W + NEW_ROUTE_BTN_W + FOLDER_BTN_W
+                + REORDER_BTN_W * 2 + DELETE_BTN_W
+                + GAP * 5 + GAP_SECTION + DONE_BTN_W + PAD_OUTER;
     }
 
     public WaypointerScreen(ActiveGroupManager manager, WaypointerConfig config) {
@@ -202,6 +218,9 @@ public final class WaypointerScreen extends Screen {
         hideAllRoutesBtn = null;
         deleteBtn = null;
         importExportBtn = null;
+        folderBtn = null;
+        moveUpBtn = null;
+        moveDownBtn = null;
         islandSelectorBtn = null;
         searchBox = null;
         clearSearchButton = null;
@@ -229,6 +248,14 @@ public final class WaypointerScreen extends Screen {
                 deleteBtn = b;
                 deleteBtn.setTooltip(Tooltip.create(Component.translatable(
                         "waypointer.screen.main.delete.tooltip")));
+            }
+            if (Component.translatable("waypointer.screen.main.folder").getString()
+                    .contentEquals(b.getMessage().getString())) {
+                folderBtn = b;
+            } else if ("\u2191".contentEquals(b.getMessage().getString())) {
+                moveUpBtn = b;
+            } else if ("\u2193".contentEquals(b.getMessage().getString())) {
+                moveDownBtn = b;
             }
             addRenderableWidget(b);
         }, font, layout.mainLeft(), width - layout.mainRight());
@@ -977,6 +1004,22 @@ public final class WaypointerScreen extends Screen {
                 layout.mainLeft(), layout.top(), layout.mainRight(), layout.bottom());
     }
 
+    @Override
+    public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        Layout layout = layout();
+        if (routeList.mouseDragged(event,
+                layout.mainLeft(), layout.top(), layout.mainRight(), layout.bottom())) {
+            return true;
+        }
+        return super.mouseDragged(event, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (routeList.mouseReleased(event)) return true;
+        return super.mouseReleased(event);
+    }
+
     private static void toggleDungeonRoomSection(String roomZoneId) {
         if (!isDungeonRoomZone(roomZoneId)) return;
         if (!expandedDungeonRoomZoneIds.remove(roomZoneId)) {
@@ -1049,6 +1092,21 @@ public final class WaypointerScreen extends Screen {
         replaceRouteSelection(singleton);
         selectionAnchorGroupId = groupId;
         syncAuthoringRouteFocus();
+    }
+
+    void selectFolderRoutes(RouteFolder folder) {
+        if (folder == null) return;
+        LinkedHashSet<String> folderRoutes = new LinkedHashSet<>();
+        for (String groupId : manager.groupIdsInFolder(folder.id())) {
+            WaypointGroup group = manager.get(groupId);
+            if (group != null && !group.temp() && !group.runtimeOnly()) {
+                folderRoutes.add(groupId);
+            }
+        }
+        replaceRouteSelection(folderRoutes);
+        selectionAnchorGroupId = folderRoutes.isEmpty() ? null : folderRoutes.iterator().next();
+        syncAuthoringRouteFocus();
+        refreshActionButtons();
     }
 
     void clearRouteSelection() {
@@ -1201,6 +1259,63 @@ public final class WaypointerScreen extends Screen {
             moveZoneButton.visible = Zone.PRIVATE_WORLD.id().equals(selectedZoneId);
             moveZoneButton.active = moveZoneButton.visible && selectedVisibleGroups().size() == 1;
         }
+        boolean regularZone = !isTemporaryZone(selectedZoneId)
+                && !isDungeonRoomsZone(selectedZoneId);
+        if (folderBtn != null) folderBtn.active = regularZone;
+        List<WaypointGroup> selected = selectedVisibleGroups();
+        ReorderActionState reorder = reorderActionState(
+                manager, selectedZoneId, searchQuery, selected);
+        if (moveUpBtn != null) {
+            moveUpBtn.active = reorder.moveUp();
+        }
+        if (moveDownBtn != null) {
+            moveDownBtn.active = reorder.moveDown();
+        }
+    }
+
+    static ReorderActionState reorderActionState(
+            ActiveGroupManager manager, String selectedZoneId, String searchQuery,
+            List<WaypointGroup> selected) {
+        if (manager == null || selected == null || selected.size() != 1
+                || isTemporaryZone(selectedZoneId)
+                || searchQuery != null && !searchQuery.isBlank()) {
+            return ReorderActionState.DISABLED;
+        }
+        WaypointGroup group = selected.get(0);
+        boolean correctView = group != null && (isDungeonRoomsZone(selectedZoneId)
+                ? group.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                : group.routeKind() == WaypointGroup.RouteKind.REGULAR
+                && group.zoneId().equals(selectedZoneId));
+        if (!correctView) return ReorderActionState.DISABLED;
+        return new ReorderActionState(
+                manager.canMoveGroupBy(group.id(), -1),
+                manager.canMoveGroupBy(group.id(), 1));
+    }
+
+    record ReorderActionState(boolean moveUp, boolean moveDown) {
+        private static final ReorderActionState DISABLED =
+                new ReorderActionState(false, false);
+    }
+
+    private void openNewFolderEditor() {
+        if (isTemporaryZone(selectedZoneId) || isDungeonRoomsZone(selectedZoneId)) return;
+        openFolderEditor(null, List.copyOf(selectedGroupIds));
+    }
+
+    void openFolderEditor(RouteFolder folder, List<String> selectedIds) {
+        String zoneId = folder == null ? selectedZoneId : folder.zoneId();
+        MinecraftCompat.setScreen(minecraft, new RouteFolderEditScreen(
+                this, manager, zoneId, folder, selectedIds));
+    }
+
+    private void moveSelectedRouteBy(int delta) {
+        if (!searchQuery.isBlank()) return;
+        List<WaypointGroup> selected = selectedVisibleGroups();
+        if (selected.size() != 1) return;
+        WaypointGroup group = selected.get(0);
+        if (!manager.moveGroupBy(group.id(), delta)) return;
+        selectOnlyGroupId(group.id());
+        refreshActionButtons();
     }
 
     private void startZoneMoveForSelection(Button ignored) {
@@ -1319,11 +1434,12 @@ public final class WaypointerScreen extends Screen {
 
         List<WaypointGroup> selectedGroups = selectedVisibleGroups();
         if (selectedGroups.size() == 1) {
-            ExportScreen.openForGroup(this, config, selectedGroups.get(0));
+            ExportScreen.openForGroup(this, config, manager, selectedGroups.get(0));
             return;
         }
         if (selectedGroups.size() > 1) {
-            ExportScreen.openForGroups(this, config, selectedGroups, "Selected routes");
+            ExportScreen.openForGroups(
+                    this, config, manager, selectedGroups, "Selected routes");
             return;
         }
 
@@ -1334,7 +1450,7 @@ public final class WaypointerScreen extends Screen {
             return;
         }
         String label = displayZoneLabel(selectedZoneId);
-        ExportScreen.openForGroups(this, config, groups, label);
+        ExportScreen.openForGroups(this, config, manager, groups, label);
     }
 
     private void exportDungeonRooms() {
@@ -1372,7 +1488,7 @@ public final class WaypointerScreen extends Screen {
         return WaypointerZoneCatalog.importTargetZoneId(selectedZoneId, currentZoneId);
     }
 
-    /** Decodes on the codec worker and installs the new groups on the client thread. */
+    // Decode off-thread, then install on the client thread.
     private void importFromClipboard() {
         if (importInFlight) return;
         String text = minecraft.keyboardHandler.getClipboard();
@@ -1406,9 +1522,7 @@ public final class WaypointerScreen extends Screen {
                 ImportFeedback.failure("Invalid import text.");
                 return;
             }
-            retargetUnknownImportedGroups(result.groups(), targetZoneId);
-            RouteColorPolicy.applyImportedRouteDefaults(result.groups(), config);
-            manager.addAll(result.groups());
+            installImportedWaypointGroups(manager, config, result, targetZoneId);
 
             ImportFeedback.success(result.groups(), "clipboard");
             if (!result.groups().isEmpty()) {
@@ -1423,6 +1537,19 @@ public final class WaypointerScreen extends Screen {
             importInFlight = false;
             ImportFeedback.failure(Component.translatable("waypointer.codec.busy").getString());
         }
+    }
+
+    static void installImportedWaypointGroups(
+            ActiveGroupManager manager,
+            WaypointerConfig config,
+            WaypointImporter.ImportResult result,
+            String targetZoneId) {
+        retargetUnknownImportedGroups(result.groups(), targetZoneId);
+        if (result.libraryMetadata().isEmpty()) {
+            RouteColorPolicy.applyImportedRouteDefaults(result.groups(), config);
+        }
+        manager.addAll(result.groups());
+        result.libraryMetadata().installFolders(manager, result.groups());
     }
 
     private void installDecodedDungeonRooms(DungeonRoomShareCodec.Decoded decoded) {

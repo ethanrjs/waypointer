@@ -2,7 +2,9 @@ package com.babbur.waypointer.api;
 
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
+import com.babbur.waypointer.codec.RouteLibraryCodec;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
@@ -409,7 +411,7 @@ class DefaultWaypointerApiTest {
                         .includeNames(true)
                         .label("API Export")
                         .build());
-        WaypointCodec.Decoded decoded = WaypointCodec.decodeFull(payload);
+        WaypointImporter.ImportResult decoded = WaypointImporter.importAny(payload);
 
         assertEquals("API Export", decoded.label());
         assertEquals(2, decoded.groups().size());
@@ -442,6 +444,41 @@ class DefaultWaypointerApiTest {
         assertEquals("Route", imported.groups().get(0).name());
         assertEquals("Start", imported.groups().get(0).get(0).name());
         assertFalse(payload.startsWith(WaypointCodec.MAGIC));
+    }
+
+    @Test
+    void nativeApiExportAndImportPreserveRouteLibraryMetadata() {
+        ActiveGroupManager sourceManager = new ActiveGroupManager();
+        WaypointerApi sourceApi = new DefaultWaypointerApi(sourceManager);
+        String groupId = sourceApi.createRoute(RouteSpec.builder()
+                .name("Library Route")
+                .zoneId("hub")
+                .waypoint(WaypointSpec.at(1, 2, 3).color(0x112233))
+                .build());
+        WaypointGroup live = sourceManager.get(groupId);
+        live.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        live.set(0, live.get(0).withColor(0xABCDEF));
+        live.setGradientMode(WaypointGroup.GradientMode.STATIC);
+        sourceManager.addFolder(new RouteFolder(
+                "source-folder", "Library", "hub", true, 0x2468AC),
+                List.of(groupId));
+
+        String payload = sourceApi.exportRoutes(
+                List.of(groupId), ExportOptions.defaults());
+        ActiveGroupManager targetManager = new ActiveGroupManager();
+        WaypointerApi targetApi = new DefaultWaypointerApi(targetManager);
+        ImportSummary summary = targetApi.importRoutes(payload, ImportOptions.defaults());
+
+        assertTrue(payload.startsWith(RouteLibraryCodec.MAGIC));
+        assertEquals(1, summary.groupIds().size());
+        String importedId = summary.groupIds().getFirst();
+        WaypointGroup imported = targetManager.get(importedId);
+        assertEquals(0xABCDEF, imported.manualColorSnapshot().getFirst());
+        RouteFolder folder = targetManager.folderForGroup(importedId);
+        assertEquals("Library", folder.name());
+        assertEquals(0x2468AC, folder.color());
+        assertTrue(folder.collapsed());
+        assertNotEquals("source-folder", folder.id());
     }
 
     @Test

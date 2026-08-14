@@ -1,8 +1,11 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.codec.RouteLibraryMetadata;
 import com.babbur.waypointer.codec.WaypointExportCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
@@ -15,6 +18,25 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExportScreenTest {
+
+    @Test
+    void guiExportCapturesFoldersOnlyForTheNativeTarget() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup group = WaypointGroup.create("Route", "hub");
+        group.add(Waypoint.at(1, 2, 3));
+        manager.add(group);
+        manager.addFolder(new RouteFolder(
+                "folder", "Mining", "hub", true, 0x123456), List.of(group.id()));
+
+        RouteLibraryMetadata nativeMetadata = ExportScreen.captureLibraryMetadata(
+                manager, List.of(group), WaypointExportCodec.Target.WAYPOINTER);
+        RouteLibraryMetadata thirdPartyMetadata = ExportScreen.captureLibraryMetadata(
+                manager, List.of(group), WaypointExportCodec.Target.SKYBLOCKER);
+
+        assertEquals(List.of(0),
+                nativeMetadata.folders().getFirst().memberOrdinals());
+        assertTrue(thirdPartyMetadata.isEmpty());
+    }
 
     @Test
     void routePreviewLayoutSwitchesAtExactWideBoundary() {

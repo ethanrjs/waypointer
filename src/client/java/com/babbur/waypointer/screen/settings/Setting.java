@@ -79,6 +79,11 @@ public final class Setting {
     private double minimum = Double.NEGATIVE_INFINITY;
     private double maximum = Double.POSITIVE_INFINITY;
     private boolean wholeNumber;
+    private NumberDisplay numberDisplay;
+
+    private record NumberDisplay(
+            double value, String translationKey, String fallback) {
+    }
 
     private Setting(String id, Store store, Kind kind, String label, String tooltip,
                     Getter getter, Setter setter) {
@@ -159,6 +164,18 @@ public final class Setting {
         return this;
     }
 
+    // Maps a numeric sentinel to a localized label.
+    public Setting numberDisplay(
+            double value, String translationKey, String fallback) {
+        if (kind != Kind.NUMBER || !Double.isFinite(value)
+                || translationKey == null || translationKey.isBlank()) {
+            throw new IllegalArgumentException("invalid number display for " + id);
+        }
+        numberDisplay = new NumberDisplay(
+                value, translationKey, fallback == null ? "" : fallback);
+        return this;
+    }
+
     public String id() { return id; }
     public Store store() { return store; }
     public Kind kind() { return kind; }
@@ -172,6 +189,23 @@ public final class Setting {
     public double minimum() { return minimum; }
     public double maximum() { return maximum; }
     public boolean requiresWholeNumber() { return wholeNumber; }
+
+    public boolean hasNumberDisplay(Object value) {
+        return kind == Kind.NUMBER && numberDisplay != null && value instanceof Number number
+                && Double.compare(number.doubleValue(), numberDisplay.value()) == 0;
+    }
+
+    public String numberDisplayTranslationKey() {
+        return numberDisplay == null ? "" : numberDisplay.translationKey();
+    }
+
+    public String numberDisplayFallback() {
+        return numberDisplay == null ? "" : numberDisplay.fallback();
+    }
+
+    public Double numberDisplayValue() {
+        return numberDisplay == null ? null : numberDisplay.value();
+    }
 
     public boolean acceptsNumber(double value) {
         return kind == Kind.NUMBER
@@ -228,6 +262,7 @@ public final class Setting {
     }
 
     public String formatValue(Object value) {
+        if (hasNumberDisplay(value)) return numberDisplayFallback();
         return formatValue(kind, value, enumOptions);
     }
 

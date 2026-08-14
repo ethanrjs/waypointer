@@ -2,9 +2,11 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
+import com.babbur.waypointer.codec.RouteLibraryMetadata;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointExportCodec;
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
@@ -93,6 +95,7 @@ public final class ExportScreen extends Screen {
 
     private final Screen parent;
     private final WaypointerConfig config;
+    private final ActiveGroupManager manager;
     private final List<WaypointGroup> groups;
     private final ExportRouteSelection routeSelection;
     private final String subtitle;
@@ -156,9 +159,15 @@ public final class ExportScreen extends Screen {
     private final boolean previewEnabled;
 
     public ExportScreen(Screen parent, WaypointerConfig config, List<WaypointGroup> groups, String subtitle) {
+        this(parent, config, null, groups, subtitle);
+    }
+
+    public ExportScreen(Screen parent, WaypointerConfig config, ActiveGroupManager manager,
+                        List<WaypointGroup> groups, String subtitle) {
         super(Component.translatable("waypointer.screen.export.title"));
         this.parent = parent;
         this.config = config;
+        this.manager = manager;
         this.groups = groups;
         this.routeSelection = new ExportRouteSelection(groups.size());
         this.subtitle = subtitle;
@@ -170,15 +179,26 @@ public final class ExportScreen extends Screen {
     }
 
     public static void openForGroup(Screen parent, WaypointerConfig config, WaypointGroup group) {
+        openForGroup(parent, config, WaypointerClient.manager(), group);
+    }
+
+    public static void openForGroup(Screen parent, WaypointerConfig config,
+                                    ActiveGroupManager manager, WaypointGroup group) {
         String title = Component.translatable(group.size() == 1
                 ? "waypointer.screen.export.subtitle.route.one"
                 : "waypointer.screen.export.subtitle.route.many",
                 routeDisplayName(group), group.size()).getString();
         MinecraftCompat.setScreen(Minecraft.getInstance(),
-                new ExportScreen(parent, config, List.of(group), title));
+                new ExportScreen(parent, config, manager, List.of(group), title));
     }
 
     public static void openForGroups(Screen parent, WaypointerConfig config,
+                                     List<WaypointGroup> groups, String zoneLabel) {
+        openForGroups(parent, config, WaypointerClient.manager(), groups, zoneLabel);
+    }
+
+    public static void openForGroups(Screen parent, WaypointerConfig config,
+                                     ActiveGroupManager manager,
                                      List<WaypointGroup> groups, String zoneLabel) {
         int totalPts = groups.stream().mapToInt(WaypointGroup::size).sum();
         String title = Component.translatable(groups.size() == 1
@@ -186,7 +206,7 @@ public final class ExportScreen extends Screen {
                 : "waypointer.screen.export.subtitle.zone.many",
                 zoneLabel, groups.size(), totalPts).getString();
         MinecraftCompat.setScreen(Minecraft.getInstance(),
-                new ExportScreen(parent, config, groups, title));
+                new ExportScreen(parent, config, manager, groups, title));
     }
 
     @Override
@@ -576,8 +596,11 @@ public final class ExportScreen extends Screen {
     }
 
     private void reencode() {
+        List<WaypointGroup> selected = selectedGroupsForExport();
+        RouteLibraryMetadata metadata = captureLibraryMetadata(
+                manager, selected, exportTarget);
         List<WaypointGroup> snapshot = new ArrayList<>();
-        for (WaypointGroup group : selectedGroupsForExport()) {
+        for (WaypointGroup group : selected) {
             if (group != null) snapshot.add(group.exportSnapshot());
         }
         WaypointCodec.Options options = optsBuilder.build();
@@ -589,11 +612,21 @@ public final class ExportScreen extends Screen {
         updateCopyButtons();
 
         if (!CodecWorker.run(
-                () -> new EncodeResult(WaypointExportCodec.encode(snapshot, options, target), ""),
+                () -> new EncodeResult(WaypointExportCodec.encode(
+                        snapshot, options, target, metadata), ""),
                 encoded -> applyEncodeResult(generation, encoded))) {
             applyEncodeResult(generation, new EncodeResult("",
                     Component.translatable("waypointer.codec.busy").getString()));
         }
+    }
+
+    static RouteLibraryMetadata captureLibraryMetadata(
+            ActiveGroupManager manager,
+            List<WaypointGroup> selected,
+            WaypointExportCodec.Target target) {
+        return target == WaypointExportCodec.Target.WAYPOINTER
+                ? RouteLibraryMetadata.capture(manager, selected)
+                : RouteLibraryMetadata.empty();
     }
 
     private record EncodeResult(String code, String error) {}

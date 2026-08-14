@@ -38,6 +38,7 @@ public final class WaypointGroup {
     private String name;
     private String zoneId;
     private final List<Waypoint> waypoints;
+    private final List<Integer> manualColors;
     private int currentIndex;
     private boolean enabled;
     private GradientMode gradientMode;
@@ -52,6 +53,7 @@ public final class WaypointGroup {
     private int gradientEndColor   = 0xFF3040;
     private WaypointPaint paint;
     private boolean paintEnabled = true;
+    private CatalogRouteProvenance catalogProvenance;
     private transient boolean[] staticReached;
     private transient int proximitySuppressedIndex = -1;
     private transient Integer focusedVisibleIndex;
@@ -68,6 +70,7 @@ public final class WaypointGroup {
         this.name = name == null ? "" : name;
         this.zoneId = Zone.canonicalId(Objects.requireNonNull(zoneId));
         this.waypoints = new ArrayList<>();
+        this.manualColors = new ArrayList<>();
         this.currentIndex = 0;
         this.enabled = true;
         this.gradientMode = GradientMode.AUTO;
@@ -97,6 +100,7 @@ public final class WaypointGroup {
         copy.defaultRadius = defaultRadius;
         copy.skipAheadEnabled = skipAheadEnabled;
         copy.waypoints.addAll(waypoints);
+        copy.manualColors.addAll(manualColors);
         return copy;
     }
 
@@ -117,12 +121,19 @@ public final class WaypointGroup {
     public boolean skipAheadEnabled() { return skipAheadEnabled; }
     public boolean temp()           { return temp; }
     public boolean runtimeOnly()    { return runtimeOnly; }
+    public CatalogRouteProvenance catalogProvenance() { return catalogProvenance; }
     public int visibleMainSteps()   { return visibleMainSteps; }
     public String runtimeSourceGroupId() { return runtimeSourceGroupId; }
     public List<Waypoint> waypoints() { return Collections.unmodifiableList(waypoints); }
+    public List<Integer> manualColorSnapshot() { return List.copyOf(manualColors); }
     public int size()             { return waypoints.size(); }
     public boolean isEmpty()      { return waypoints.isEmpty(); }
     public boolean isComplete()   { return currentIndex >= waypoints.size(); }
+
+    /** Catalog provenance stays local and is omitted from exports. */
+    public void setCatalogProvenance(CatalogRouteProvenance provenance) {
+        this.catalogProvenance = provenance;
+    }
 
     public boolean isSubwaypoint(int index) {
         return index >= 0 && index < waypoints.size() && waypoints.get(index).isSubwaypoint();
@@ -304,8 +315,35 @@ public final class WaypointGroup {
     }
 
         public void setGradientMode(GradientMode mode) {
-        this.gradientMode = Objects.requireNonNull(mode);
+        GradientMode next = Objects.requireNonNull(mode);
+        if (next != gradientMode && gradientMode == GradientMode.MANUAL) {
+            captureManualColors();
+        }
+        gradientMode = next;
+        if (next == GradientMode.MANUAL) {
+            restoreManualColors(false);
+        } else if (next == GradientMode.AUTO) {
+            restoreManualColors(true);
+        }
         applyColorMode();
+    }
+
+    public boolean setManualColorSnapshot(Collection<Integer> colors) {
+        if (colors == null || colors.size() != waypoints.size()) return false;
+        List<Integer> normalized = new ArrayList<>(colors.size());
+        for (Integer color : colors) {
+            if (color == null) return false;
+            normalized.add(color & 0xFFFFFF);
+        }
+        manualColors.clear();
+        manualColors.addAll(normalized);
+        if (gradientMode == GradientMode.MANUAL) {
+            restoreManualColors(false);
+        } else if (gradientMode == GradientMode.AUTO) {
+            restoreManualColors(true);
+            applyColorMode();
+        }
+        return true;
     }
 
     public void setLoadMode(LoadMode mode) {
@@ -314,11 +352,24 @@ public final class WaypointGroup {
     }
 
     public void forEachVisibleIndex(IntConsumer action) {
-        forEachVisibleIndex(false, action);
+        forEachVisibleIndex(SequenceVisibility.DEFAULT, false, action);
     }
 
     public void forEachVisibleIndex(boolean keepSubwaypointsVisibleUntilNextWaypoint,
                                     IntConsumer action) {
+        forEachVisibleIndex(SequenceVisibility.DEFAULT,
+                keepSubwaypointsVisibleUntilNextWaypoint, action);
+    }
+
+    public void forEachVisibleIndex(SequenceVisibility visibility, IntConsumer action) {
+        forEachVisibleIndex(visibility, false, action);
+    }
+
+    public void forEachVisibleIndex(SequenceVisibility visibility,
+                                    boolean keepSubwaypointsVisibleUntilNextWaypoint,
+                                    IntConsumer action) {
+        Objects.requireNonNull(visibility, "visibility");
+        Objects.requireNonNull(action, "action");
         int n = waypoints.size();
         if (n == 0) return;
 
@@ -338,16 +389,8 @@ public final class WaypointGroup {
         if (isComplete()) {
             int activeParent = activeSubwaypointParentIndex();
             int lastMain = activeParent >= 0 ? activeParent : lastMainIndex();
-            if (lastMain >= 0) {
-                if (isWaypointEnabled(lastMain)) action.accept(lastMain);
-                for (int child = lastMain + 1; child < n && isSubwaypoint(child); child++) {
-                    if (isWaypointEnabled(child)
-                            && shouldSurfaceSubwaypointForParent(child, lastMain, activeParent,
-                            keepSubwaypointsVisibleUntilNextWaypoint)) {
-                        action.accept(child);
-                    }
-                }
-            }
+            emitPreviousMainContext(lastMain, visibility.previousLimit(n), activeParent,
+                    keepSubwaypointsVisibleUntilNextWaypoint, action, true);
             return;
         }
 
@@ -382,31 +425,64 @@ public final class WaypointGroup {
             return;
         }
 
-        int prev = previousEnabledMainIndexBefore(cur);
-        if (activeParent >= 0) {
-            if (isWaypointEnabled(activeParent)) action.accept(activeParent);
-            for (int child = activeParent + 1; child < n && isSubwaypoint(child); child++) {
-                if (isWaypointEnabled(child)
-                        && shouldSurfaceSubwaypointForParent(child, activeParent, activeParent,
-                        keepSubwaypointsVisibleUntilNextWaypoint)) {
-                    action.accept(child);
-                }
-            }
-        } else if (prev >= 0) {
-            if (isWaypointEnabled(prev)) action.accept(prev);
+        emitPreviousMainContext(cur, visibility.previousLimit(n), activeParent,
+                keepSubwaypointsVisibleUntilNextWaypoint, action, false);
+        boolean activeParentAlreadyEmitted = activeParent > cur
+                && isWaypointEnabled(activeParent)
+                && visibility.previousLimit(n) > 0;
+        if (visibility.current()) {
+            emitMainBlock(cur, activeParent,
+                    keepSubwaypointsVisibleUntilNextWaypoint, action,
+                    activeParent < 0 || activeParent == cur);
         }
-        if (cur != activeParent && isWaypointEnabled(cur)) action.accept(cur);
-        if (activeParent < 0) {
-            for (int child = cur + 1; child < n && isSubwaypoint(child); child++) {
-                if (isWaypointEnabled(child)
-                        && shouldSurfaceSubwaypointForParent(child, cur, activeParent,
-                        keepSubwaypointsVisibleUntilNextWaypoint)) {
-                    action.accept(child);
-                }
+        int next = cur;
+        for (int remaining = visibility.nextLimit(n); remaining > 0; remaining--) {
+            next = nextMainIndexAfter(next);
+            if (next < 0) break;
+            if (activeParentAlreadyEmitted && next == activeParent) continue;
+            action.accept(next);
+        }
+    }
+
+    private void emitPreviousMainContext(int beforeOrLast, int count, int activeParent,
+                                         boolean keepSubwaypointsVisibleUntilNextWaypoint,
+                                         IntConsumer action, boolean includeAnchor) {
+        if (count <= 0 || beforeOrLast < 0) return;
+        if (!includeAnchor && activeParent > beforeOrLast && isWaypointEnabled(activeParent)) {
+            emitMainBlock(activeParent, activeParent,
+                    keepSubwaypointsVisibleUntilNextWaypoint, action, true);
+            count--;
+            if (count == 0) return;
+        }
+        int newest = includeAnchor
+                ? beforeOrLast : previousEnabledMainIndexBefore(beforeOrLast);
+        if (newest < 0) return;
+        int oldest = newest;
+        for (int found = 1; found < count; found++) {
+            int previous = previousEnabledMainIndexBefore(oldest);
+            if (previous < 0) break;
+            oldest = previous;
+        }
+        for (int main = oldest; main >= 0; main = nextMainIndexAfter(main)) {
+            emitMainBlock(main, activeParent,
+                    keepSubwaypointsVisibleUntilNextWaypoint, action, main == activeParent);
+            if (main == newest) break;
+        }
+    }
+
+    private void emitMainBlock(int main, int activeParent,
+                               boolean keepSubwaypointsVisibleUntilNextWaypoint,
+                               IntConsumer action, boolean includeChildren) {
+        if (main < 0 || !isWaypointEnabled(main)) return;
+        action.accept(main);
+        if (!includeChildren) return;
+        for (int child = main + 1; child < waypoints.size() && isSubwaypoint(child); child++) {
+            if (isWaypointEnabled(child)
+                    && shouldSurfaceSubwaypointForParent(child, main, activeParent,
+                    keepSubwaypointsVisibleUntilNextWaypoint)) {
+                action.accept(child);
             }
         }
-        int next = nextMainIndexAfter(cur);
-        if (next >= 0 && isWaypointEnabled(next)) action.accept(next);
     }
 
     private boolean shouldSurfaceSubwaypointForParent(int childIndex,
@@ -449,6 +525,9 @@ public final class WaypointGroup {
                 ? current.flags() | Waypoint.FLAG_DISABLED
                 : current.flags() & ~Waypoint.FLAG_DISABLED;
         waypoints.set(index, current.withFlags(flags));
+        if (!disabled && staticReached != null && index < staticReached.length) {
+            staticReached[index] = false;
+        }
         normalizeCurrentIndexToEnabledTarget();
         if (focusedVisibleIndex != null && !isWaypointEnabled(focusedVisibleIndex)) {
             focusedVisibleIndex = null;
@@ -458,6 +537,7 @@ public final class WaypointGroup {
         }
         clearStandSkipHold();
         invalidateProximityIndex();
+        reconcileStaticReachState();
         return true;
     }
 
@@ -472,6 +552,9 @@ public final class WaypointGroup {
             normalized = normalized.withColor(staticColor);
         }
         waypoints.set(index, normalized);
+        if (gradientMode == GradientMode.MANUAL) {
+            manualColors.set(index, normalized.color() & 0xFFFFFF);
+        }
         afterWaypointStructureChanged();
     }
 
@@ -491,6 +574,7 @@ public final class WaypointGroup {
         public void add(Waypoint w) {
         int oldSize = waypoints.size();
         waypoints.add(w);
+        manualColors.add(w.color() & 0xFFFFFF);
         normalizeSubwaypointStructure();
         resizeStaticReachAfterAppend(oldSize);
         normalizeCurrentIndexToMain();
@@ -502,6 +586,9 @@ public final class WaypointGroup {
         if (additions.isEmpty()) return;
         int oldSize = waypoints.size();
         waypoints.addAll(additions);
+        for (int i = oldSize; i < waypoints.size(); i++) {
+            manualColors.add(waypoints.get(i).color() & 0xFFFFFF);
+        }
         normalizeSubwaypointStructure();
         resizeStaticReachAfterAppend(oldSize);
         normalizeCurrentIndexToMain();
@@ -512,6 +599,10 @@ public final class WaypointGroup {
         public void replaceWaypoints(Collection<Waypoint> replacements) {
         waypoints.clear();
         waypoints.addAll(replacements);
+        manualColors.clear();
+        for (Waypoint waypoint : waypoints) {
+            manualColors.add(waypoint.color() & 0xFFFFFF);
+        }
         normalizeSubwaypointStructure();
         currentIndex = Math.min(currentIndex, waypoints.size());
         if (proximitySuppressedIndex >= waypoints.size()) proximitySuppressedIndex = -1;
@@ -525,6 +616,7 @@ public final class WaypointGroup {
         public void insert(int index, Waypoint w) {
         int oldSize = waypoints.size();
         waypoints.add(index, w);
+        manualColors.add(index, w.color() & 0xFFFFFF);
         waypoints.set(index, normalizeWaypointForIndex(index, w));
         if (index <= currentIndex) currentIndex++;
         if (proximitySuppressedIndex >= index) proximitySuppressedIndex++;
@@ -564,6 +656,7 @@ public final class WaypointGroup {
         public void remove(int index) {
         boolean removedSubwaypoint = isSubwaypoint(index);
         waypoints.remove(index);
+        manualColors.remove(index);
         if (!removedSubwaypoint) promoteOrphanedSubwaypoints(index);
         if (currentIndex > index) currentIndex--;
         currentIndex = Math.min(currentIndex, waypoints.size());
@@ -689,9 +782,27 @@ public final class WaypointGroup {
 
         if (target < 0) return false;
 
+        target = previousEnabledTargetAtOrBefore(target);
+        if (target < 0) return false;
+
         int before = currentIndex;
-        setCurrentTargetIndex(target);
+        currentIndex = target;
+        activeSubwaypointParentIndex = -1;
+        clearProximitySuppression();
+        clearStandSkipHold();
         return currentIndex != before;
+    }
+
+    private int previousEnabledTargetAtOrBefore(int index) {
+        for (int i = Math.min(index, waypoints.size() - 1); i >= 0; i--) {
+            if (!isWaypointEnabled(i)) continue;
+            if (routeKind != RouteKind.DUNGEON
+                    || !isSubwaypoint(i)
+                    || hasDungeonCompletion(waypoints.get(i))) {
+                return i;
+            }
+        }
+        return -1;
     }
 
     public void restartIfRouteCompleted(boolean loopWhenComplete) {
@@ -893,6 +1004,31 @@ public final class WaypointGroup {
         }
     }
 
+    private void captureManualColors() {
+        if (manualColors.size() != waypoints.size()) {
+            manualColors.clear();
+            for (Waypoint waypoint : waypoints) {
+                manualColors.add(waypoint.color() & 0xFFFFFF);
+            }
+            return;
+        }
+        for (int i = 0; i < waypoints.size(); i++) {
+            manualColors.set(i, waypoints.get(i).color() & 0xFFFFFF);
+        }
+    }
+
+    private void restoreManualColors(boolean lockedOnly) {
+        if (manualColors.size() != waypoints.size()) return;
+        for (int i = 0; i < waypoints.size(); i++) {
+            Waypoint waypoint = waypoints.get(i);
+            if (lockedOnly && !waypoint.hasFlag(Waypoint.FLAG_LOCKED_COLOR)) continue;
+            int color = manualColors.get(i);
+            if (waypoint.color() != color) {
+                waypoints.set(i, waypoint.withColor(color));
+            }
+        }
+    }
+
         private void applyStaticColor() {
         int target = staticColor & 0xFFFFFF;
         for (int i = 0; i < waypoints.size(); i++) {
@@ -985,6 +1121,13 @@ public final class WaypointGroup {
         return -1;
     }
 
+    private int nextPhysicalMainIndexAfter(int index) {
+        for (int i = Math.max(0, index + 1); i < waypoints.size(); i++) {
+            if (!isSubwaypoint(i)) return i;
+        }
+        return -1;
+    }
+
     private int firstMainIndex() {
         return nextMainIndexAtOrAfter(0);
     }
@@ -1029,7 +1172,7 @@ public final class WaypointGroup {
             if (previous < 0) return index;
             insertAt = previous;
         } else {
-            int next = nextMainIndexAfter(index);
+            int next = nextPhysicalMainIndexAfter(index);
             if (next < 0) return index;
             insertAt = childEndExclusive(next);
         }
@@ -1049,16 +1192,21 @@ public final class WaypointGroup {
     private void moveSingle(int from, int to) {
         if (from == to) return;
         Waypoint waypoint = waypoints.remove(from);
+        int manualColor = manualColors.remove(from);
         waypoints.add(to, waypoint);
+        manualColors.add(to, manualColor);
     }
 
     private void moveRange(int start, int end, int insertAt) {
         if (start >= end || insertAt >= start && insertAt <= end) return;
 
         List<Waypoint> block = new ArrayList<>(waypoints.subList(start, end));
+        List<Integer> manualBlock = new ArrayList<>(manualColors.subList(start, end));
         waypoints.subList(start, end).clear();
+        manualColors.subList(start, end).clear();
         int adjustedInsert = insertAt > start ? insertAt - block.size() : insertAt;
         waypoints.addAll(adjustedInsert, block);
+        manualColors.addAll(adjustedInsert, manualBlock);
     }
 
     private Waypoint currentWaypointReference() {
@@ -1131,6 +1279,14 @@ public final class WaypointGroup {
             if (!staticReached[i]) return false;
         }
         return hasMainWaypoint;
+    }
+
+    private void reconcileStaticReachState() {
+        if (staticReached == null) return;
+        if (allStaticWaypointsReached()) {
+            resetStaticReachState();
+            staticCycleJustCompleted = true;
+        }
     }
 
     private static int cell(double value) {

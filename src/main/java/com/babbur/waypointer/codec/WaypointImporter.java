@@ -28,6 +28,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.zip.GZIPInputStream;
 
@@ -40,6 +41,7 @@ import static com.babbur.waypointer.util.MathUtil.clampByte;
  *
  * Supported:
  *
+ *   - {@code WPL:} route-library wrappers around native routes and metadata.
  *   - Native {@code WP:} codec payloads (delegated to {@link WaypointCodec}).
  *   - Skyblocker-style: Base64(Gzip(JSON)) where JSON is an array of groups or a
  *     map of {@code {"island": [points...]}}.
@@ -134,7 +136,23 @@ public final class WaypointImporter {
             Map.entry("unknown",         Zone.UNKNOWN.id())
     );
 
-    public record ImportResult(Source source, List<WaypointGroup> groups, String label) {}
+    public record ImportResult(
+            Source source,
+            List<WaypointGroup> groups,
+            String label,
+            RouteLibraryMetadata libraryMetadata) {
+        public ImportResult(Source source, List<WaypointGroup> groups, String label) {
+            this(source, groups, label, RouteLibraryMetadata.empty());
+        }
+
+        public ImportResult {
+            source = Objects.requireNonNull(source, "source");
+            groups = List.copyOf(Objects.requireNonNull(groups, "groups"));
+            label = label == null ? "" : label;
+            libraryMetadata = libraryMetadata == null
+                    ? RouteLibraryMetadata.empty() : libraryMetadata;
+        }
+    }
 
     private WaypointImporter() {}
 
@@ -182,6 +200,20 @@ public final class WaypointImporter {
     }
 
     private static ImportResult importAnyCore(String trimmed, String defaultImportedRouteName) {
+        if (RouteLibraryCodec.isPayload(trimmed)) {
+            RouteLibraryCodec.Decoded decoded = RouteLibraryCodec.decode(trimmed);
+            List<WaypointGroup> groups = decoded.groups();
+            if (!decoded.label().isBlank() && groups.size() == 1) {
+                groups.getFirst().setName(decoded.label());
+            }
+            ImportResult checked = checkedImport(new ImportResult(
+                    Source.WAYPOINTER,
+                    groups,
+                    decoded.label(),
+                    decoded.metadata()));
+            checked.libraryMetadata().applyTo(checked.groups());
+            return checked;
+        }
         if (WaypointCodec.isCodecString(trimmed)) {
             WaypointCodec.Decoded d = WaypointCodec.decodeFull(trimmed);
             List<WaypointGroup> groups = d.groups();
@@ -196,10 +228,13 @@ public final class WaypointImporter {
         // bracketed prefix, losing us the useful error context ("this was clearly
         // meant as a Skyblocker payload, but the body was malformed").
         if (trimmed.startsWith(SKYBLOCKER_V1_PREFIX)) {
-            return decodeSkyblockerPrefixed(trimmed, SKYBLOCKER_V1_PREFIX);
+            return decodeSkyblockerPrefixed(
+                    trimmed, SKYBLOCKER_V1_PREFIX, defaultImportedRouteName);
         }
         if (trimmed.startsWith(SKYBLOCKER_LEGACY_ORDERED_PREFIX)) {
-            return decodeSkyblockerPrefixed(trimmed, SKYBLOCKER_LEGACY_ORDERED_PREFIX);
+            return decodeSkyblockerPrefixed(
+                    trimmed, SKYBLOCKER_LEGACY_ORDERED_PREFIX,
+                    defaultImportedRouteName);
         }
         if (trimmed.startsWith(SKYTILS_PREFIX)) {
             return decodeSkytilsPrefixed(trimmed);
@@ -276,7 +311,7 @@ public final class WaypointImporter {
             throw new IllegalArgumentException("import contained no waypoints");
         }
         return new ImportResult(result.source(), List.copyOf(groups),
-                result.label() == null ? "" : result.label());
+                result.label() == null ? "" : result.label(), result.libraryMetadata());
     }
 
     /** Revalidates an already decoded import before a caller commits it to storage. */
@@ -490,7 +525,8 @@ public final class WaypointImporter {
         return body.isEmpty() ? text : body;
     }
 
-    private static ImportResult decodeSkyblockerPrefixed(String trimmed, String prefix) {
+    private static ImportResult decodeSkyblockerPrefixed(
+            String trimmed, String prefix, String defaultImportedRouteName) {
         String body = trimmed.substring(prefix.length()).trim();
         String json;
         try {
@@ -506,7 +542,7 @@ public final class WaypointImporter {
         }
         ImportResult r = prefix.equals(SKYBLOCKER_V1_PREFIX)
                 ? importSkyblockerV1Json(json)
-                : importJson(json, DEFAULT_IMPORTED_ROUTE_NAME);
+                : importJson(json, defaultImportedRouteName);
         return checkedImport(new ImportResult(Source.SKYBLOCKER, r.groups(), ""));
     }
 
@@ -843,7 +879,7 @@ public final class WaypointImporter {
                 if (!g.isEmpty()) groups.add(g);
                 source = hasNullCoordinatePlaceholder(arr) ? Source.SOOPY : Source.SKYHANNI;
             } else {
-                WaypointGroup g = WaypointGroup.create("Imported", Zone.UNKNOWN.id());
+                WaypointGroup g = WaypointGroup.create(defaultImportedRouteName, Zone.UNKNOWN.id());
                 g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
                 List<Waypoint> waypoints = new ArrayList<>(arr.size());
                 for (JsonElement el : arr) {

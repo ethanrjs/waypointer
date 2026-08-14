@@ -30,4 +30,17 @@ class RoutePublishScreenTest {
         assertTrue(RoutePublishScreen.descriptionCharactersRemaining("x".repeat(100)) == 400);
         assertTrue(RoutePublishScreen.descriptionCharactersRemaining("😀".repeat(500)) == 0);
     }
+
+    @Test
+    void backCannotDestroyAnInFlightPublishSession() {
+        assertFalse(RoutePublishScreen.canNavigateBack(
+                CatalogPublishSession.Phase.LOADING_IDENTITY));
+        assertFalse(RoutePublishScreen.canNavigateBack(
+                CatalogPublishSession.Phase.PUBLISHING));
+        assertTrue(RoutePublishScreen.canNavigateBack(CatalogPublishSession.Phase.IDLE));
+        assertTrue(RoutePublishScreen.canNavigateBack(
+                CatalogPublishSession.Phase.NEEDS_PUBLISHER_NAME));
+        assertTrue(RoutePublishScreen.canNavigateBack(CatalogPublishSession.Phase.SUCCEEDED));
+        assertTrue(RoutePublishScreen.canNavigateBack(CatalogPublishSession.Phase.FAILED));
+    }
 }

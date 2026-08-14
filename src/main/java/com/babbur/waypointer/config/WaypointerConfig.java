@@ -9,6 +9,7 @@ import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
+import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import net.fabricmc.loader.api.FabricLoader;
 
@@ -31,7 +32,7 @@ public final class WaypointerConfig {
 
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int CONFIG_SCHEMA_VERSION = 5;
+    private static final int CONFIG_SCHEMA_VERSION = 6;
     private static final int TEMP_DURATION_MIN_SECONDS = 1;
     private static final int TEMP_DURATION_MAX_SECONDS = 24 * 60 * 60;
     private static final int SECONDS_PER_MINUTE = 60;
@@ -64,7 +65,9 @@ public final class WaypointerConfig {
     private double labelScale = 1.0;
     private boolean scaleWaypointTextWithDistance = false;
     private boolean matchWaypointTextToWaypointColor = true;
-    private boolean showCompleted = true;
+    private int sequencePreviousWaypointCount = SequenceVisibility.DEFAULT.previous();
+    private boolean showCurrentSequenceWaypoint = SequenceVisibility.DEFAULT.current();
+    private int sequenceNextWaypointCount = SequenceVisibility.DEFAULT.next();
     private boolean showTracer = true;
     private boolean dimSequenceContextWaypoints = true;
     private boolean hideTracerOnStaticRoutes = true;
@@ -79,6 +82,7 @@ public final class WaypointerConfig {
     private boolean showDungeonEntryPathToFirstWaypoint = false;
     private boolean showDungeonEntryPathToFollowingWaypoints = false;
     private int dungeonEntryPathColor = 0x00FF00;
+    private boolean etherwarpAlignmentSound = false;
     private int routeLineColor = 0x00FF00;
     private boolean showLabelBackdrop = true;
     private boolean showLabelTextShadow = true;
@@ -160,6 +164,7 @@ public final class WaypointerConfig {
         }
         int loadedSchemaVersion = schemaVersion(raw);
         config.migrateLegacyTempDurationMinutes(raw, loadedSchemaVersion);
+        config.migrateSequenceVisibility(raw, loadedSchemaVersion);
         config.applyMigrations(loadedSchemaVersion);
         return config;
     }
@@ -185,6 +190,30 @@ public final class WaypointerConfig {
             migratedDuringLoad = true;
         }
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
+    }
+    private void migrateSequenceVisibility(String raw, int schemaVersion) {
+        if (schemaVersion >= 6) {
+            sequencePreviousWaypointCount = sequenceVisibility().previous();
+            sequenceNextWaypointCount = sequenceVisibility().next();
+            return;
+        }
+        boolean legacyShowCompleted = true;
+        try {
+            JsonElement parsed = JsonParser.parseString(raw);
+            if (parsed != null && parsed.isJsonObject()) {
+                JsonObject root = parsed.getAsJsonObject();
+                if (root.has("showCompleted")) {
+                    legacyShowCompleted = root.get("showCompleted").getAsBoolean();
+                }
+            }
+        } catch (Exception ignored) {
+            legacyShowCompleted = true;
+        }
+        sequencePreviousWaypointCount = legacyShowCompleted
+                ? SequenceVisibility.DEFAULT.previous() : 0;
+        showCurrentSequenceWaypoint = true;
+        sequenceNextWaypointCount = SequenceVisibility.DEFAULT.next();
+        migratedDuringLoad = true;
     }
     private void migrateLegacyTempDurationMinutes(String raw, int schemaVersion) {
         int originalDurationSec = tempDefaultDurationSec;
@@ -346,7 +375,15 @@ public final class WaypointerConfig {
         public double labelScale()                { return clamp(labelScale, 0.25, 4.0); }
     public boolean scaleWaypointTextWithDistance() { return scaleWaypointTextWithDistance; }
     public boolean matchWaypointTextToWaypointColor() { return matchWaypointTextToWaypointColor; }
-    public boolean showCompleted()            { return showCompleted; }
+    /** Maps the old boolean API to previous-step visibility. */
+    public boolean showCompleted()            { return sequenceVisibility().previous() > 0; }
+    public int sequencePreviousWaypointCount() { return sequenceVisibility().previous(); }
+    public boolean showCurrentSequenceWaypoint() { return showCurrentSequenceWaypoint; }
+    public int sequenceNextWaypointCount() { return sequenceVisibility().next(); }
+    public SequenceVisibility sequenceVisibility() {
+        return new SequenceVisibility(sequencePreviousWaypointCount,
+                showCurrentSequenceWaypoint, sequenceNextWaypointCount);
+    }
     public boolean showTracer()               { return showTracer; }
     public boolean dimSequenceContextWaypoints() { return dimSequenceContextWaypoints; }
     public boolean hideTracerOnStaticRoutes() { return hideTracerOnStaticRoutes; }
@@ -361,6 +398,7 @@ public final class WaypointerConfig {
     public boolean showDungeonEntryPathToFirstWaypoint() { return showDungeonEntryPathToFirstWaypoint; }
     public boolean showDungeonEntryPathToFollowingWaypoints() { return showDungeonEntryPathToFollowingWaypoints; }
     public int dungeonEntryPathColor()        { return dungeonEntryPathColor & 0xFFFFFF; }
+    public boolean etherwarpAlignmentSound() { return etherwarpAlignmentSound; }
     public int routeLineColor()               { return routeLineColor & 0xFFFFFF; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
     public boolean showLabelTextShadow()      { return showLabelTextShadow; }
@@ -504,7 +542,30 @@ public final class WaypointerConfig {
     }
     public void setScaleWaypointTextWithDistance(boolean v) { this.scaleWaypointTextWithDistance = v; save(); }
     public void setMatchWaypointTextToWaypointColor(boolean v) { this.matchWaypointTextToWaypointColor = v; save(); }
-    public void setShowCompleted(boolean v)            { this.showCompleted = v; save(); }
+    /** Maps the old boolean setting to the default previous-step window. */
+    public void setShowCompleted(boolean v) {
+        this.sequencePreviousWaypointCount = v ? SequenceVisibility.DEFAULT.previous() : 0;
+        save();
+    }
+    public void setSequencePreviousWaypointCount(int v) {
+        this.sequencePreviousWaypointCount = new SequenceVisibility(v, true, 0).previous();
+        save();
+    }
+    public void setShowCurrentSequenceWaypoint(boolean v) {
+        this.showCurrentSequenceWaypoint = v;
+        save();
+    }
+    public void setSequenceNextWaypointCount(int v) {
+        this.sequenceNextWaypointCount = new SequenceVisibility(0, true, v).next();
+        save();
+    }
+    public void setSequenceVisibility(SequenceVisibility visibility) {
+        if (visibility == null) return;
+        sequencePreviousWaypointCount = visibility.previous();
+        showCurrentSequenceWaypoint = visibility.current();
+        sequenceNextWaypointCount = visibility.next();
+        save();
+    }
     public void setShowTracer(boolean v)               { this.showTracer = v; save(); }
     public void setDimSequenceContextWaypoints(boolean v) { this.dimSequenceContextWaypoints = v; save(); }
     public void setHideTracerOnStaticRoutes(boolean v) { this.hideTracerOnStaticRoutes = v; save(); }
@@ -549,6 +610,10 @@ public final class WaypointerConfig {
     }
     public void setDungeonEntryPathColor(int v) {
         this.dungeonEntryPathColor = v & 0xFFFFFF;
+        save();
+    }
+    public void setEtherwarpAlignmentSound(boolean v) {
+        this.etherwarpAlignmentSound = v;
         save();
     }
     public void setRouteLineColor(int v) {
@@ -691,7 +756,9 @@ public final class WaypointerConfig {
         labelScale = replacement.labelScale;
         scaleWaypointTextWithDistance = replacement.scaleWaypointTextWithDistance;
         matchWaypointTextToWaypointColor = replacement.matchWaypointTextToWaypointColor;
-        showCompleted = replacement.showCompleted;
+        sequencePreviousWaypointCount = replacement.sequencePreviousWaypointCount;
+        showCurrentSequenceWaypoint = replacement.showCurrentSequenceWaypoint;
+        sequenceNextWaypointCount = replacement.sequenceNextWaypointCount;
         showTracer = replacement.showTracer;
         dimSequenceContextWaypoints = replacement.dimSequenceContextWaypoints;
         hideTracerOnStaticRoutes = replacement.hideTracerOnStaticRoutes;
@@ -706,6 +773,7 @@ public final class WaypointerConfig {
         showDungeonEntryPathToFirstWaypoint = replacement.showDungeonEntryPathToFirstWaypoint;
         showDungeonEntryPathToFollowingWaypoints = replacement.showDungeonEntryPathToFollowingWaypoints;
         dungeonEntryPathColor = replacement.dungeonEntryPathColor;
+        etherwarpAlignmentSound = replacement.etherwarpAlignmentSound;
         routeLineColor = replacement.routeLineColor;
         showLabelBackdrop = replacement.showLabelBackdrop;
         showLabelTextShadow = replacement.showLabelTextShadow;
@@ -758,7 +826,9 @@ public final class WaypointerConfig {
         waypointOutlineOpacity = 0.0;
         scaleWaypointTextWithDistance = false;
         matchWaypointTextToWaypointColor = false;
-        showCompleted = false;
+        sequencePreviousWaypointCount = 0;
+        showCurrentSequenceWaypoint = false;
+        sequenceNextWaypointCount = 0;
         showTracer = false;
         dimSequenceContextWaypoints = false;
         hideTracerOnStaticRoutes = false;
@@ -770,6 +840,7 @@ public final class WaypointerConfig {
         useEtherwarpHeight = false;
         showDungeonEntryPathToFirstWaypoint = false;
         showDungeonEntryPathToFollowingWaypoints = false;
+        etherwarpAlignmentSound = false;
         showLabelBackdrop = false;
         showLabelTextShadow = false;
         beaconBeamExtendsBelowWaypoint = false;
@@ -833,7 +904,9 @@ public final class WaypointerConfig {
         labelScale = defaults.labelScale;
         scaleWaypointTextWithDistance = defaults.scaleWaypointTextWithDistance;
         matchWaypointTextToWaypointColor = defaults.matchWaypointTextToWaypointColor;
-        showCompleted = defaults.showCompleted;
+        sequencePreviousWaypointCount = defaults.sequencePreviousWaypointCount;
+        showCurrentSequenceWaypoint = defaults.showCurrentSequenceWaypoint;
+        sequenceNextWaypointCount = defaults.sequenceNextWaypointCount;
         showTracer = defaults.showTracer;
         dimSequenceContextWaypoints = defaults.dimSequenceContextWaypoints;
         hideTracerOnStaticRoutes = defaults.hideTracerOnStaticRoutes;
@@ -848,6 +921,7 @@ public final class WaypointerConfig {
         showDungeonEntryPathToFirstWaypoint = defaults.showDungeonEntryPathToFirstWaypoint;
         showDungeonEntryPathToFollowingWaypoints = defaults.showDungeonEntryPathToFollowingWaypoints;
         dungeonEntryPathColor = defaults.dungeonEntryPathColor;
+        etherwarpAlignmentSound = defaults.etherwarpAlignmentSound;
         routeLineColor = defaults.routeLineColor;
         showLabelBackdrop = defaults.showLabelBackdrop;
         showLabelTextShadow = defaults.showLabelTextShadow;

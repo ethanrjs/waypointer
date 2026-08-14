@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -20,6 +21,8 @@ public final class ActiveGroupManager {
 
     private final Map<String, WaypointGroup> byId = new LinkedHashMap<>();
     private final Collection<WaypointGroup> allGroupsView = Collections.unmodifiableCollection(byId.values());
+    private final Map<String, RouteFolder> foldersById = new LinkedHashMap<>();
+    private final Map<String, String> folderIdByGroupId = new LinkedHashMap<>();
     private Zone currentZone;
     private final List<Consumer<Zone>> zoneListeners = new ArrayList<>();
     private String focusedTempGroupId;
@@ -57,7 +60,8 @@ public final class ActiveGroupManager {
         if (currentZone == null) {
             WaypointGroup focused = focusedAuthoringGroup();
             List<WaypointGroup> active = focused != null
-                    && focused.enabled() && shouldSurfaceActiveGroup(focused)
+                    && focused.enabled()
+                    && shouldSurfaceActiveGroup(focused)
                     ? List.of(focused)
                     : Collections.emptyList();
             cachedActive = withWaypointPreview(active);
@@ -72,7 +76,8 @@ public final class ActiveGroupManager {
 
         List<WaypointGroup> active = new ArrayList<>();
         for (WaypointGroup g : byId.values()) {
-            if (g.enabled() && zoneId.equals(g.zoneId()) && shouldSurfaceActiveGroup(g)) {
+            if (g.enabled()
+                    && zoneId.equals(g.zoneId()) && shouldSurfaceActiveGroup(g)) {
                 active.add(g);
             }
         }
@@ -136,6 +141,308 @@ public final class ActiveGroupManager {
 
     public List<WaypointGroup> allGroupsList() {
         return List.copyOf(byId.values());
+    }
+
+    public List<RouteFolder> folders() {
+        return List.copyOf(foldersById.values());
+    }
+
+    public List<RouteFolder> foldersForZone(String zoneId) {
+        String canonical = Zone.canonicalId(Objects.requireNonNull(zoneId, "zoneId"));
+        List<RouteFolder> out = new ArrayList<>();
+        for (RouteFolder folder : foldersById.values()) {
+            if (canonical.equals(folder.zoneId())) out.add(folder);
+        }
+        return List.copyOf(out);
+    }
+
+    public RouteFolder folder(String folderId) {
+        return foldersById.get(folderId);
+    }
+
+    public RouteFolder folderForGroup(String groupId) {
+        return foldersById.get(folderIdByGroupId.get(groupId));
+    }
+
+    public String folderIdForGroup(String groupId) {
+        return folderIdByGroupId.get(groupId);
+    }
+
+    public List<String> groupIdsInFolder(String folderId) {
+        if (!foldersById.containsKey(folderId)) return List.of();
+        List<String> out = new ArrayList<>();
+        for (String groupId : byId.keySet()) {
+            if (folderId.equals(folderIdByGroupId.get(groupId))) out.add(groupId);
+        }
+        return List.copyOf(out);
+    }
+
+    public RouteFolder createFolder(String name, String zoneId, Collection<String> groupIds) {
+        return createFolder(name, zoneId, groupIds, RouteFolder.DEFAULT_COLOR);
+    }
+
+    public RouteFolder createFolder(
+            String name, String zoneId, Collection<String> groupIds, int color) {
+        RouteFolder folder = new RouteFolder(
+                UUID.randomUUID().toString(), name, zoneId, false, color);
+        addFolder(folder, groupIds);
+        return folder;
+    }
+
+    public void addFolder(RouteFolder folder, Collection<String> groupIds) {
+        Objects.requireNonNull(folder, "folder");
+        Objects.requireNonNull(groupIds, "groupIds");
+        if (foldersById.containsKey(folder.id())) {
+            throw new IllegalArgumentException("Duplicate route folder ID " + folder.id());
+        }
+        List<String> members = List.copyOf(groupIds);
+        for (String groupId : members) validateFolderMember(folder, groupId);
+        foldersById.put(folder.id(), folder);
+        for (String groupId : members) folderIdByGroupId.put(groupId, folder.id());
+        fireDataChanged(true);
+    }
+
+    public boolean renameFolder(String folderId, String name) {
+        RouteFolder current = foldersById.get(folderId);
+        if (current == null) return false;
+        RouteFolder replacement = current.withName(name);
+        if (replacement.equals(current)) return false;
+        foldersById.put(folderId, replacement);
+        fireDataChanged(true);
+        return true;
+    }
+
+    public boolean setFolderCollapsed(String folderId, boolean collapsed) {
+        RouteFolder current = foldersById.get(folderId);
+        if (current == null || current.collapsed() == collapsed) return false;
+        foldersById.put(folderId, current.withCollapsed(collapsed));
+        fireDataChanged(true);
+        return true;
+    }
+
+    public boolean setFolderColor(String folderId, int color) {
+        RouteFolder current = foldersById.get(folderId);
+        if (current == null) return false;
+        RouteFolder replacement = current.withColor(color);
+        if (replacement.equals(current)) return false;
+        foldersById.put(folderId, replacement);
+        fireDataChanged(true);
+        return true;
+    }
+
+    public boolean toggleFolderCollapsed(String folderId) {
+        RouteFolder current = foldersById.get(folderId);
+        return current != null && setFolderCollapsed(folderId, !current.collapsed());
+    }
+
+    /** Routes remain saved when their folder is deleted. */
+    public boolean deleteFolder(String folderId) {
+        if (foldersById.remove(folderId) == null) return false;
+        folderIdByGroupId.values().removeIf(folderId::equals);
+        fireDataChanged(true);
+        return true;
+    }
+
+    public boolean assignGroupToFolder(String groupId, String folderId) {
+        RouteFolder folder = foldersById.get(folderId);
+        if (folder == null) throw new IllegalArgumentException("Unknown route folder " + folderId);
+        validateFolderMember(folder, groupId);
+        if (folderId.equals(folderIdByGroupId.get(groupId))) return false;
+        folderIdByGroupId.put(groupId, folderId);
+        fireDataChanged(true);
+        return true;
+    }
+
+    public boolean removeGroupFromFolder(String groupId) {
+        if (folderIdByGroupId.remove(groupId) == null) return false;
+        fireDataChanged(true);
+        return true;
+    }
+
+    public boolean canMoveGroupToContainer(
+            String groupId, String destinationFolderId, String beforeGroupId) {
+        return dropDestination(groupId, destinationFolderId, beforeGroupId) != null;
+    }
+
+    public boolean moveGroupToContainer(
+            String groupId, String destinationFolderId, String beforeGroupId) {
+        DropDestination destination = dropDestination(
+                groupId, destinationFolderId, beforeGroupId);
+        if (destination == null) return false;
+
+        List<WaypointGroup> original = new ArrayList<>(byId.values());
+        int originalIndex = indexOfGroup(original, groupId);
+        List<WaypointGroup> reordered = new ArrayList<>(original);
+        reordered.remove(originalIndex);
+
+        int insertIndex;
+        if (beforeGroupId != null) {
+            insertIndex = indexOfGroup(reordered, beforeGroupId);
+            if (insertIndex < 0) return false;
+        } else {
+            insertIndex = insertionIndexAtContainerEnd(
+                    reordered, destination.source(), destinationFolderId, originalIndex);
+        }
+        reordered.add(insertIndex, destination.source());
+
+        boolean membershipChanged = destination.source().routeKind()
+                == WaypointGroup.RouteKind.REGULAR
+                && !Objects.equals(folderIdByGroupId.get(groupId), destinationFolderId);
+        boolean orderChanged = !sameGroupOrder(original, reordered);
+        if (!membershipChanged && !orderChanged) return false;
+
+        byId.clear();
+        for (WaypointGroup group : reordered) byId.put(group.id(), group);
+        if (destination.source().routeKind() == WaypointGroup.RouteKind.REGULAR) {
+            if (destinationFolderId == null) {
+                folderIdByGroupId.remove(groupId);
+            } else {
+                folderIdByGroupId.put(groupId, destinationFolderId);
+            }
+        }
+        fireDataChanged(true);
+        return true;
+    }
+
+    private DropDestination dropDestination(
+            String groupId, String destinationFolderId, String beforeGroupId) {
+        WaypointGroup source = byId.get(groupId);
+        if (!isReorderEligible(source)) return null;
+
+        if (source.routeKind() == WaypointGroup.RouteKind.REGULAR) {
+            if (destinationFolderId != null) {
+                RouteFolder folder = foldersById.get(destinationFolderId);
+                if (folder == null || !folder.zoneId().equals(source.zoneId())) return null;
+            }
+        } else if (destinationFolderId != null) {
+            return null;
+        }
+
+        if (beforeGroupId != null) {
+            if (beforeGroupId.equals(groupId)) return null;
+            WaypointGroup before = byId.get(beforeGroupId);
+            if (!isReorderEligible(before)
+                    || before.routeKind() != source.routeKind()
+                    || !before.zoneId().equals(source.zoneId())) {
+                return null;
+            }
+            if (source.routeKind() == WaypointGroup.RouteKind.REGULAR
+                    && !Objects.equals(
+                    destinationFolderId, folderIdByGroupId.get(beforeGroupId))) {
+                return null;
+            }
+        }
+        return new DropDestination(source);
+    }
+
+    private int insertionIndexAtContainerEnd(
+            List<WaypointGroup> groups, WaypointGroup source,
+            String destinationFolderId, int originalIndex) {
+        int last = -1;
+        for (int index = 0; index < groups.size(); index++) {
+            WaypointGroup candidate = groups.get(index);
+            if (!isReorderEligible(candidate)
+                    || candidate.routeKind() != source.routeKind()
+                    || !candidate.zoneId().equals(source.zoneId())) {
+                continue;
+            }
+            if (source.routeKind() == WaypointGroup.RouteKind.REGULAR
+                    && !Objects.equals(
+                    destinationFolderId, folderIdByGroupId.get(candidate.id()))) {
+                continue;
+            }
+            last = index;
+        }
+        return last >= 0 ? last + 1 : Math.min(originalIndex, groups.size());
+    }
+
+    private static boolean sameGroupOrder(
+            List<WaypointGroup> left, List<WaypointGroup> right) {
+        if (left.size() != right.size()) return false;
+        for (int index = 0; index < left.size(); index++) {
+            if (!left.get(index).id().equals(right.get(index).id())) return false;
+        }
+        return true;
+    }
+
+    private record DropDestination(WaypointGroup source) {
+    }
+
+    public boolean canMoveGroupBy(String groupId, int delta) {
+        return adjacentReorderPeer(groupId, delta) != null;
+    }
+
+    /** Moves a saved route one slot without crossing its folder, zone, or dungeon room. */
+    public boolean moveGroupBy(String groupId, int delta) {
+        if (delta == 0) return false;
+        String peerId = adjacentReorderPeer(groupId, delta);
+        if (peerId == null) return false;
+        List<WaypointGroup> ordered = new ArrayList<>(byId.values());
+        int from = indexOfGroup(ordered, groupId);
+        int to = indexOfGroup(ordered, peerId);
+        Collections.swap(ordered, from, to);
+        byId.clear();
+        for (WaypointGroup group : ordered) byId.put(group.id(), group);
+        fireDataChanged(true);
+        return true;
+    }
+
+    private String adjacentReorderPeer(String groupId, int delta) {
+        WaypointGroup group = byId.get(groupId);
+        if (!isReorderEligible(group)) return null;
+        String folderId = folderIdByGroupId.get(groupId);
+        List<String> peers = new ArrayList<>();
+        for (WaypointGroup candidate : byId.values()) {
+            if (!sameReorderContainer(group, folderId, candidate)) continue;
+            peers.add(candidate.id());
+        }
+        int from = peers.indexOf(groupId);
+        int to = from + Integer.signum(delta);
+        return from >= 0 && to >= 0 && to < peers.size() ? peers.get(to) : null;
+    }
+
+    private boolean sameReorderContainer(
+            WaypointGroup group, String folderId, WaypointGroup candidate) {
+        if (!isReorderEligible(candidate)
+                || group.routeKind() != candidate.routeKind()
+                || !group.zoneId().equals(candidate.zoneId())) {
+            return false;
+        }
+        return group.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                || Objects.equals(folderId, folderIdByGroupId.get(candidate.id()));
+    }
+
+    private static int indexOfGroup(List<WaypointGroup> groups, String id) {
+        for (int i = 0; i < groups.size(); i++) {
+            if (groups.get(i).id().equals(id)) return i;
+        }
+        return -1;
+    }
+
+    private void validateFolderMember(RouteFolder folder, String groupId) {
+        WaypointGroup group = byId.get(Objects.requireNonNull(groupId, "groupId"));
+        validateFolderMember(folder, group, groupId);
+    }
+
+    private static void validateFolderMember(
+            RouteFolder folder, WaypointGroup group, String groupId) {
+        if (!isFolderEligible(group)) {
+            throw new IllegalArgumentException("Route folder member is not a saved regular route " + groupId);
+        }
+        if (!folder.zoneId().equals(group.zoneId())) {
+            throw new IllegalArgumentException("Route folder member belongs to another zone " + groupId);
+        }
+    }
+
+    private static boolean isFolderEligible(WaypointGroup group) {
+        return group != null
+                && !group.temp()
+                && !group.runtimeOnly()
+                && group.routeKind() == WaypointGroup.RouteKind.REGULAR;
+    }
+
+    private static boolean isReorderEligible(WaypointGroup group) {
+        return group != null && !group.temp() && !group.runtimeOnly();
     }
 
     public WaypointGroup firstActiveGroup() {
@@ -424,7 +731,125 @@ public final class ActiveGroupManager {
         fireDataChanged(persistent);
     }
 
+    public void replaceGroupsAtomically(
+            Collection<String> removeIds, Collection<WaypointGroup> replacements) {
+        replaceGroupsAtomically(removeIds, replacements, Map.of());
+    }
+
+    public void replaceGroupsAtomically(
+            Collection<String> removeIds, Collection<WaypointGroup> replacements,
+            Map<String, String> replacementFolderIds) {
+        replaceGroupsAtomically(
+                removeIds, replacements, replacementFolderIds, Map.of());
+    }
+
+    public void replaceGroupsAtomically(
+            Collection<String> removeIds, Collection<WaypointGroup> replacements,
+            Map<String, String> replacementFolderIds,
+            Map<String, String> replacementIdByRemovedId) {
+        Objects.requireNonNull(removeIds, "removeIds");
+        Objects.requireNonNull(replacements, "replacements");
+        Objects.requireNonNull(replacementFolderIds, "replacementFolderIds");
+        Objects.requireNonNull(replacementIdByRemovedId, "replacementIdByRemovedId");
+
+        Set<String> removals = new LinkedHashSet<>();
+        for (String id : removeIds) removals.add(Objects.requireNonNull(id, "removeId"));
+
+        List<WaypointGroup> additions = List.copyOf(replacements);
+        Set<String> additionIds = new LinkedHashSet<>();
+        Map<String, WaypointGroup> additionsById = new LinkedHashMap<>();
+        for (WaypointGroup group : additions) {
+            Objects.requireNonNull(group, "replacement");
+            if (!additionIds.add(group.id())) {
+                throw new IllegalArgumentException("Duplicate replacement group ID " + group.id());
+            }
+            additionsById.put(group.id(), group);
+            if (byId.containsKey(group.id()) && !removals.contains(group.id())) {
+                throw new IllegalArgumentException(
+                        "Replacement group ID already exists " + group.id());
+            }
+        }
+        Map<String, String> folderTransfers = Map.copyOf(replacementFolderIds);
+        for (Map.Entry<String, String> transfer : folderTransfers.entrySet()) {
+            String groupId = Objects.requireNonNull(transfer.getKey(), "replacementGroupId");
+            String folderId = Objects.requireNonNull(transfer.getValue(), "replacementFolderId");
+            WaypointGroup group = additionsById.get(groupId);
+            if (group == null) {
+                throw new IllegalArgumentException(
+                        "Folder transfer does not name a replacement group " + groupId);
+            }
+            RouteFolder folder = foldersById.get(folderId);
+            if (folder == null) {
+                throw new IllegalArgumentException("Unknown route folder " + folderId);
+            }
+            validateFolderMember(folder, group, groupId);
+        }
+        Map<String, String> replacementAnchors = Map.copyOf(replacementIdByRemovedId);
+        Set<String> anchoredReplacementIds = new LinkedHashSet<>();
+        for (Map.Entry<String, String> anchor : replacementAnchors.entrySet()) {
+            String removedId = Objects.requireNonNull(anchor.getKey(), "removedGroupId");
+            String replacementId = Objects.requireNonNull(
+                    anchor.getValue(), "anchoredReplacementId");
+            if (!removals.contains(removedId) || !byId.containsKey(removedId)) {
+                throw new IllegalArgumentException(
+                        "Replacement anchor does not name a live removed group " + removedId);
+            }
+            if (!additionIds.contains(replacementId)) {
+                throw new IllegalArgumentException(
+                        "Replacement anchor does not name a replacement group " + replacementId);
+            }
+            if (!anchoredReplacementIds.add(replacementId)) {
+                throw new IllegalArgumentException(
+                        "Replacement group has more than one list anchor " + replacementId);
+            }
+        }
+
+        boolean changed = !additions.isEmpty();
+        boolean persistent = false;
+        for (String id : removals) {
+            WaypointGroup current = byId.get(id);
+            if (current == null) continue;
+            changed = true;
+            persistent |= isPersistent(current);
+        }
+        for (WaypointGroup group : additions) persistent |= isPersistent(group);
+        if (!changed) return;
+
+        for (String id : removals) folderIdByGroupId.remove(id);
+        if (replacementAnchors.isEmpty()) {
+            for (String id : removals) byId.remove(id);
+            for (WaypointGroup group : additions) byId.put(group.id(), group);
+        } else {
+            Map<String, WaypointGroup> nextGroups = new LinkedHashMap<>();
+            for (WaypointGroup current : byId.values()) {
+                if (!removals.contains(current.id())) {
+                    nextGroups.put(current.id(), current);
+                    continue;
+                }
+                String replacementId = replacementAnchors.get(current.id());
+                if (replacementId != null) {
+                    nextGroups.put(replacementId, additionsById.get(replacementId));
+                }
+            }
+            for (WaypointGroup group : additions) {
+                nextGroups.putIfAbsent(group.id(), group);
+            }
+            byId.clear();
+            byId.putAll(nextGroups);
+        }
+        folderIdByGroupId.putAll(folderTransfers);
+        fireDataChanged(persistent);
+    }
+
     public void replaceAll(Collection<WaypointGroup> groups) {
+        replaceAll(groups, List.of(), Map.of());
+    }
+
+    public void replaceAll(Collection<WaypointGroup> groups, Collection<RouteFolder> folders,
+                           Map<String, String> folderMemberships) {
+        Objects.requireNonNull(groups, "groups");
+        Objects.requireNonNull(folders, "folders");
+        Objects.requireNonNull(folderMemberships, "folderMemberships");
         boolean persistent = false;
         for (WaypointGroup group : byId.values()) persistent |= isPersistent(group);
         byId.clear();
@@ -432,11 +857,25 @@ public final class ActiveGroupManager {
             byId.put(group.id(), group);
             persistent |= isPersistent(group);
         }
+        foldersById.clear();
+        folderIdByGroupId.clear();
+        for (RouteFolder folder : folders) {
+            if (foldersById.putIfAbsent(folder.id(), folder) != null) {
+                throw new IllegalArgumentException("Duplicate route folder ID " + folder.id());
+            }
+        }
+        for (Map.Entry<String, String> entry : folderMemberships.entrySet()) {
+            RouteFolder folder = foldersById.get(entry.getValue());
+            if (folder == null) throw new IllegalArgumentException("Unknown route folder " + entry.getValue());
+            validateFolderMember(folder, entry.getKey());
+            folderIdByGroupId.put(entry.getKey(), entry.getValue());
+        }
         fireDataChanged(persistent);
     }
 
     public void remove(String id) {
         WaypointGroup removed = byId.remove(id);
+        folderIdByGroupId.remove(id);
         if (removed != null) fireDataChanged(isPersistent(removed));
     }
 
@@ -446,6 +885,7 @@ public final class ActiveGroupManager {
         for (String id : ids) {
             WaypointGroup removed = byId.remove(id);
             if (removed == null) continue;
+            folderIdByGroupId.remove(id);
             changed = true;
             persistent |= isPersistent(removed);
         }
@@ -456,6 +896,8 @@ public final class ActiveGroupManager {
         boolean persistent = false;
         for (WaypointGroup group : byId.values()) persistent |= isPersistent(group);
         byId.clear();
+        foldersById.clear();
+        folderIdByGroupId.clear();
         fireDataChanged(persistent);
     }
 
@@ -472,11 +914,21 @@ public final class ActiveGroupManager {
     }
 
     private void fireDataChanged(boolean persistent) {
+        reconcileFolderMemberships();
         cachedActive = null;
         for (Runnable l : List.copyOf(dataListeners)) l.run();
         if (persistent) {
             for (Runnable l : List.copyOf(persistentDataListeners)) l.run();
         }
+    }
+
+    private void reconcileFolderMemberships() {
+        folderIdByGroupId.entrySet().removeIf(entry -> {
+            RouteFolder folder = foldersById.get(entry.getValue());
+            WaypointGroup group = byId.get(entry.getKey());
+            return folder == null || !isFolderEligible(group)
+                    || !folder.zoneId().equals(group.zoneId());
+        });
     }
 
     private static boolean isPersistent(WaypointGroup group) {
@@ -512,4 +964,5 @@ public final class ActiveGroupManager {
     public void removePersistentDataListener(Runnable listener) { persistentDataListeners.remove(listener); }
 
     public record TempWaypointSelection(WaypointGroup group, int index) {}
+
 }

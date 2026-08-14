@@ -93,7 +93,7 @@ public final class RouteCatalogClient {
         });
     }
 
-    public CompletableFuture<CatalogPublishResult> publishRoute(
+    CompletableFuture<CatalogPublishReceipt> publishRoute(
             CatalogPublishRequest publish, PublisherIdentity identity) {
         if (publish == null) {
             throw new IllegalArgumentException("Publish request is required");
@@ -101,7 +101,8 @@ public final class RouteCatalogClient {
         if (identity == null) {
             throw new IllegalArgumentException("Publisher identity is required");
         }
-        String expectedPublisherName = expectedPublisherName(publish, identity);
+        CatalogProtocol.PublishExpectation expectation =
+                CatalogProtocol.validatePublishRequest(publish, identity);
         String json = CatalogJson.publishBody(publish);
         byte[] body = json.getBytes(StandardCharsets.UTF_8);
         HttpRequest.Builder builder = request("routes")
@@ -113,8 +114,8 @@ public final class RouteCatalogClient {
         }
         return sendJson(builder.build(), MAX_LIST_BYTES, 201)
                 .thenApply(CatalogJson::parsePublishResult)
-                .thenApply(result -> requirePublishIdentity(
-                        result, expectedPublisherName, identity));
+                .thenApply(result -> CatalogProtocol.validatePublishResponse(
+                        result, publish, identity, expectation));
     }
 
     public String apiRoot() {
@@ -210,31 +211,6 @@ public final class RouteCatalogClient {
                 identity, signatureAudience, method, path, body).entrySet()) {
             builder.header(header.getKey(), header.getValue());
         }
-    }
-
-    private static CatalogPublishResult requirePublishIdentity(
-            CatalogPublishResult result,
-            String expectedName,
-            PublisherIdentity identity) {
-        if (!identity.publisherId().equals(result.route().publisherId())
-                || !expectedName.equals(result.route().authorName())) {
-            throw new CatalogApiException(201, "publisher_mismatch",
-                    "The catalog returned a route for a different publisher.");
-        }
-        return result;
-    }
-
-    private static String expectedPublisherName(
-            CatalogPublishRequest request, PublisherIdentity identity) {
-        if (identity.publisherName() == null) {
-            return PublisherNamePolicy.requireValid(request.publisherName());
-        }
-        if (request.publisherName() != null
-                && !identity.publisherName().equals(request.publisherName())) {
-            throw new IllegalArgumentException(
-                    "The publish request conflicts with the permanent publisher name");
-        }
-        return identity.publisherName();
     }
 
     private static void appendQuery(StringBuilder relative, String name, String value) {

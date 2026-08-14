@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Last-frame renderer decisions exposed to the debug report. */
+// Captures last-frame decisions for the debug report.
 public final class RenderDiagnostics {
 
     private static final String PENDING_OUTCOME = "pending renderer decision";
@@ -86,7 +86,7 @@ public final class RenderDiagnostics {
             if (groups == null) return;
             for (WaypointGroup group : groups) {
                 if (group == null || group.routeKind() != WaypointGroup.RouteKind.DUNGEON) continue;
-                boolean eligible = WaypointRenderer.shouldRenderDungeonEntryPath(
+                boolean eligible = DungeonEntryPathController.shouldPrepare(
                         group, config.showDungeonEntryPathToFollowingWaypoints());
                 GROUPS.put(group.id(), MutableGroupSnapshot.from(group, eligible));
             }

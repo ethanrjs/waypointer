@@ -76,6 +76,57 @@ class UpdateNotificationControllerTest {
         assertEquals(List.of(update), notifications);
     }
 
+    @Test
+    void pendingFailureBlocksDuplicateJoinThenAllowsRetry() {
+        AtomicInteger lookups = new AtomicInteger();
+        CompletableFuture<Optional<AvailableUpdate>> pending = new CompletableFuture<>();
+        List<Runnable> delayedTasks = new ArrayList<>();
+        AvailableUpdate update = update();
+        List<AvailableUpdate> notifications = new ArrayList<>();
+        UpdateNotificationController controller = new UpdateNotificationController(
+                () -> lookups.getAndIncrement() == 0
+                        ? pending
+                        : CompletableFuture.completedFuture(Optional.of(update)),
+                delayedTasks::add,
+                notifications::add);
+
+        controller.onJoin();
+        delayedTasks.removeFirst().run();
+        controller.onJoin();
+        assertEquals(1, lookups.get());
+
+        pending.completeExceptionally(new IllegalStateException("offline"));
+        controller.onJoin();
+        delayedTasks.removeFirst().run();
+
+        assertEquals(2, lookups.get());
+        assertEquals(List.of(update), notifications);
+    }
+
+    @Test
+    void synchronousLookupFailureAlsoAllowsRetry() {
+        AtomicInteger lookups = new AtomicInteger();
+        List<Runnable> delayedTasks = new ArrayList<>();
+        AvailableUpdate update = update();
+        List<AvailableUpdate> notifications = new ArrayList<>();
+        UpdateNotificationController controller = new UpdateNotificationController(
+                () -> {
+                    if (lookups.getAndIncrement() == 0) {
+                        throw new IllegalStateException("lookup unavailable");
+                    }
+                    return CompletableFuture.completedFuture(Optional.of(update));
+                },
+                delayedTasks::add,
+                notifications::add);
+
+        controller.onJoin();
+        controller.onJoin();
+        delayedTasks.removeFirst().run();
+
+        assertEquals(2, lookups.get());
+        assertEquals(List.of(update), notifications);
+    }
+
     private static AvailableUpdate update() {
         return new AvailableUpdate(
                 "1.8.7",

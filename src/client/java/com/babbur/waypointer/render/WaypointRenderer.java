@@ -178,7 +178,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         boolean showCompleted = config.showCompleted();
         float outlineOpacity = (float) config.waypointOutlineOpacity();
 
-        group.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
+        group.forEachVisibleIndex(config.sequenceVisibility(),
+                config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> {
             Waypoint waypoint = group.get(i);
             boolean depthChecked = waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED);
@@ -268,7 +269,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         String routeProgressText = showRouteProgressForGroup ? routeProgressText(group) : null;
         boolean dungeonRoomRoute = isDungeonRoomRoute(group);
 
-        group.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
+        group.forEachVisibleIndex(config.sequenceVisibility(),
+                config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> {
             if (dungeonRoomRoute && !isFocusedDungeonRouteLabel(group, i)) return;
             if (shouldHideStaticReached(group, i)) return;
@@ -449,8 +451,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         double currentFov = Math.max(1.0, Math.min(179.0, fovDegrees));
         double fovScale = Math.tan(Math.toRadians(LABEL_SCALE_BASELINE_FOV_DEGREES) * 0.5)
                 / Math.tan(Math.toRadians(currentFov) * 0.5);
-        // Distance scaling may make far labels smaller, but the user's configured
-        // scale remains the maximum so walking into a waypoint cannot make text huge.
+        // Cap distance scaling at the user's size to avoid huge nearby labels.
         double scale = Math.min(1.0, fovScale * LABEL_SCALE_REFERENCE_DEPTH / depth);
         return (float) clampLabelScale(baseScale * scale);
     }
@@ -464,10 +465,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         return (font.lineHeight + DISTANCE_ROW_GAP) * scale;
     }
 
-    /**
-     * Draws centered text with a label backdrop. The fractional anchor prevents
-     * visible one-pixel jumps during FOV animation.
-     */
+    // Fractional centering avoids one-pixel jumps during FOV animation.
     private void drawCenteredLabel(GuiGraphicsExtractor g, Font font, String text,
                                    double cx, double top, int argb, float alpha,
                                    float scale) {

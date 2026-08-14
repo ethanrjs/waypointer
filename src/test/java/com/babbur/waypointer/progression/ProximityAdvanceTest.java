@@ -3,6 +3,7 @@ package com.babbur.waypointer.progression;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.SequenceVisibility;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -394,8 +395,10 @@ class ProximityAdvanceTest {
     void skipAheadVisibleOnlyDoesNotJumpToHiddenFutureWaypoint() {
         WaypointGroup g = line();
 
-        assertFalse(ProximityTracker.advanceIfReached(g, 20.5, 0.5, 0.5,
-                false, true, true));
+        assertFalse(ProximityTracker.updateGroupProgress(
+                g, 20.5, 0.5, 0.5,
+                false, true, true, false,
+                new SequenceVisibility(SequenceVisibility.ALL, true, 1)));
 
         assertEquals(0, g.currentIndex());
     }
@@ -610,10 +613,51 @@ class ProximityAdvanceTest {
         }
     }
 
+    @Test
+    void hiddenCurrentWaypointCanStillAdvanceWhileFutureSkipUsesVisibilityPolicy() {
+        WaypointGroup group = line();
+        SequenceVisibility onlyNext = new SequenceVisibility(0, false, 1);
+
+        assertTrue(ProximityTracker.updateGroupProgress(group, 0.5, 0.5, 0.5,
+                false, true, true, false, onlyNext));
+        assertEquals(1, group.currentIndex());
+
+        SequenceVisibility noFuture = new SequenceVisibility(0, false, 0);
+        assertFalse(ProximityTracker.updateGroupProgress(group, 20.5, 0.5, 0.5,
+                false, true, true, false, noFuture));
+        assertEquals(1, group.currentIndex());
+    }
+
+    @Test
+    void upcomingVisibilityNeverAllowsSkipPastThirtyTwoSteps() {
+        WaypointGroup normalized = longLine(80);
+        WaypointGroup finite = longLine(80);
+
+        assertFalse(ProximityTracker.updateGroupProgress(
+                normalized, 700.5D, 0.5D, 0.5D,
+                false, true, true, false,
+                new SequenceVisibility(0, true, SequenceVisibility.ALL)));
+        assertEquals(0, normalized.currentIndex());
+
+        assertFalse(ProximityTracker.updateGroupProgress(
+                finite, 700.5D, 0.5D, 0.5D,
+                false, true, true, false,
+                new SequenceVisibility(0, true, 32)));
+        assertEquals(0, finite.currentIndex());
+    }
+
     private static int[] visibleIndices(WaypointGroup group) {
         List<Integer> indices = new ArrayList<>();
         group.forEachVisibleIndex(indices::add);
         return indices.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    private static WaypointGroup longLine(int size) {
+        WaypointGroup group = WaypointGroup.create("long", "test_zone");
+        for (int index = 0; index < size; index++) {
+            group.add(Waypoint.at(index * 10, 0, 0));
+        }
+        return group;
     }
 
     private static boolean advanceIfReached(WaypointGroup g, double px, double py, double pz) {

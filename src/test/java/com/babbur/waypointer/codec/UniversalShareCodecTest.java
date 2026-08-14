@@ -33,6 +33,27 @@ class UniversalShareCodecTest {
     }
 
     @Test
+    void dispatchesRouteLibraryWaypointWrappers() {
+        WaypointGroup group = WaypointGroup.create("Route", "hub");
+        group.add(Waypoint.at(12, 64, -8));
+        RouteLibraryMetadata metadata = new RouteLibraryMetadata(
+                List.of(new RouteLibraryMetadata.ManualColorsEntry(0, List.of(0x123456))),
+                List.of());
+
+        UniversalShareCodec.Decoded decoded = UniversalShareCodec.decode(
+                UniversalShareCodec.encodeWaypoints(
+                        List.of(group.exportSnapshot()),
+                        WaypointCodec.Options.FULL_FIDELITY,
+                        metadata));
+
+        UniversalShareCodec.Waypoints routes =
+                assertInstanceOf(UniversalShareCodec.Waypoints.class, decoded);
+        assertEquals(List.of(0x123456),
+                routes.result().groups().getFirst().manualColorSnapshot());
+        assertEquals(metadata, routes.result().libraryMetadata());
+    }
+
+    @Test
     void dispatchesFencedConfigCodes() {
         WaypointerConfig config = new WaypointerConfig();
         config.setShowTracer(false);

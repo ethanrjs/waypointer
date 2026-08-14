@@ -34,7 +34,8 @@ final class WaypointEditPicker {
 
         List<PickCandidate> candidates = new ArrayList<>();
         for (WaypointGroup group : manager.activeGroups()) {
-            group.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(), index -> {
+            group.forEachVisibleIndex(config.sequenceVisibility(),
+                    config.keepSubwaypointsVisibleUntilNextWaypoint(), index -> {
                 if (index < 0 || index >= group.size()) return;
 
                 AABB bounds = WaypointRenderer.waypointBoxBounds(level, group.get(index));

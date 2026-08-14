@@ -107,11 +107,6 @@ class GradientColorizerTest {
         g.add(Waypoint.at(1, 0, 0).withColor(0x112233));
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
 
-        // Reapply explicit colors after switching modes (setGradientMode(AUTO)
-        // would have rewritten them; MANUAL leaves them as-is).
-        g.set(0, g.get(0).withColor(0xAABBCC));
-        g.set(1, g.get(1).withColor(0x112233));
-
         g.move(0, 1);
 
         assertEquals(0xAABBCC, g.get(1).color(), "MANUAL mode must preserve per-waypoint colors across reorder");

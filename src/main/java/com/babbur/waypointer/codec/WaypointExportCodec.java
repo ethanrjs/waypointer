@@ -137,9 +137,17 @@ public final class WaypointExportCodec {
     private WaypointExportCodec() {}
 
     public static String encode(List<WaypointGroup> groups, WaypointCodec.Options opts, Target target) {
+        return encode(groups, opts, target, RouteLibraryMetadata.empty());
+    }
+
+    public static String encode(
+            List<WaypointGroup> groups,
+            WaypointCodec.Options opts,
+            Target target,
+            RouteLibraryMetadata metadata) {
         WaypointCodec.Options safeOpts = target.coerce(opts);
         return switch (target) {
-            case WAYPOINTER -> WaypointCodec.encode(groups, safeOpts);
+            case WAYPOINTER -> RouteLibraryCodec.encode(groups, safeOpts, metadata);
             case SKYBLOCKER -> WaypointImporter.SKYBLOCKER_V1_PREFIX
                     + Base64.getEncoder().encodeToString(gzip(skyblockerJson(groups, safeOpts)));
             case SKYTILS -> WaypointImporter.SKYTILS_V1_PREFIX

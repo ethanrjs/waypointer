@@ -1,6 +1,7 @@
 package com.babbur.waypointer.config;
 
 import com.babbur.waypointer.codec.AsciiStreamCodec;
+import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -806,8 +807,8 @@ class WaypointerConfigTest {
     }
 
     @Test
-    void configCodecUsesVersionThreeAndStillReadsVersionTwo() throws IOException {
-        assertEquals(3, WaypointerConfigCodec.VERSION);
+    void configCodecUsesVersionFourAndStillReadsVersionTwo() throws IOException {
+        assertEquals(4, WaypointerConfigCodec.VERSION);
 
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         try (DataOutputStream out = new DataOutputStream(raw)) {
@@ -980,6 +981,83 @@ class WaypointerConfigTest {
         assertFalse(WaypointerConfig.fromJson(
                 "{\"configSchemaVersion\":5,\"irisShaderHudFallback\":false}")
                 .irisShaderHudFallback());
+    }
+
+    @Test
+    void legacyVisibilityMigratesWithoutChangingExistingRouteContext() {
+        WaypointerConfig hiddenPrevious = WaypointerConfig.fromJson(
+                "{\"configSchemaVersion\":5,\"showCompleted\":false}");
+        WaypointerConfig shownPrevious = WaypointerConfig.fromJson(
+                "{\"configSchemaVersion\":5,\"showCompleted\":true}");
+
+        assertEquals(0, hiddenPrevious.sequencePreviousWaypointCount());
+        assertTrue(hiddenPrevious.showCurrentSequenceWaypoint());
+        assertEquals(1, hiddenPrevious.sequenceNextWaypointCount());
+        assertEquals(1, shownPrevious.sequencePreviousWaypointCount());
+        assertEquals(1, shownPrevious.sequenceNextWaypointCount());
+        assertEquals(1, shownPrevious.sequenceVisibility().previousLimit(80));
+        assertEquals(1, shownPrevious.sequenceVisibility().nextLimit(80));
+    }
+
+    @Test
+    void completedCompatibilityToggleRestoresOnePreviousStep() {
+        WaypointerConfig config = new WaypointerConfig();
+        assertEquals(1, config.sequencePreviousWaypointCount());
+        assertEquals(1, config.sequenceNextWaypointCount());
+
+        config.setShowCompleted(false);
+        assertEquals(0, config.sequencePreviousWaypointCount());
+
+        config.setShowCompleted(true);
+        assertEquals(1, config.sequencePreviousWaypointCount());
+
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(config));
+        assertEquals(1, decoded.sequencePreviousWaypointCount());
+        assertEquals(1, decoded.sequenceNextWaypointCount());
+    }
+
+    @Test
+    void sequenceVisibilityClampsAndRoundTripsThroughConfigCode() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setSequencePreviousWaypointCount(99);
+        config.setShowCurrentSequenceWaypoint(false);
+        config.setSequenceNextWaypointCount(-4);
+
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(config));
+
+        assertEquals(32, decoded.sequencePreviousWaypointCount());
+        assertFalse(decoded.showCurrentSequenceWaypoint());
+        assertEquals(0, decoded.sequenceNextWaypointCount());
+    }
+
+    @Test
+    void etherwarpAlignmentPreferencePersistsDisablesResetsAndReplaces() {
+        WaypointerConfig config = new WaypointerConfig();
+        assertFalse(config.etherwarpAlignmentSound());
+
+        config.setEtherwarpAlignmentSound(true);
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(config));
+        assertTrue(decoded.etherwarpAlignmentSound());
+
+        config.resetToDefaults();
+        assertFalse(config.etherwarpAlignmentSound());
+        config.disableAllSettings();
+        assertFalse(config.etherwarpAlignmentSound());
+
+        config.setEtherwarpAlignmentSound(true);
+        config.replaceShareableSettingsWith(new WaypointerConfig());
+        assertFalse(config.etherwarpAlignmentSound());
+    }
+
+    @Test
+    void legacyConfigMigrationLeavesEtherwarpAlignmentSoundOff() {
+        assertFalse(WaypointerConfig.fromJson(
+                "{\"configSchemaVersion\":5}").etherwarpAlignmentSound());
+        assertFalse(WaypointerConfig.fromJson(
+                "{\"configSchemaVersion\":6}").etherwarpAlignmentSound());
     }
 
     @Test

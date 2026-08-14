@@ -7,7 +7,6 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
 
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -25,14 +24,19 @@ public final class WaypointerUpdateChecker {
                 .orElse("");
         GitHubReleaseClient releaseClient = new GitHubReleaseClient(currentVersion);
         UpdateNotificationController controller = new UpdateNotificationController(
-                () -> releaseClient.findUpdate(currentVersion).exceptionally(failure -> {
-                    Waypointer.LOGGER.debug("Could not check for a Waypointer update", failure);
-                    return Optional.empty();
-                }),
+                () -> logLookupFailure(releaseClient.findUpdate(currentVersion)),
                 task -> CompletableFuture.delayedExecutor(
                         MESSAGE_DELAY_SECONDS, TimeUnit.SECONDS).execute(task),
                 WaypointerUpdateChecker::showMessage);
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> controller.onJoin());
+    }
+
+    static <T> CompletableFuture<T> logLookupFailure(CompletableFuture<T> lookup) {
+        return lookup.whenComplete((ignored, failure) -> {
+            if (failure != null) {
+                Waypointer.LOGGER.debug("Could not check for a Waypointer update", failure);
+            }
+        });
     }
 
     private static void showMessage(AvailableUpdate update) {

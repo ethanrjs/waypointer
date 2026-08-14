@@ -9,6 +9,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.core.WaypointVisibility;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
@@ -40,9 +41,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.IntPredicate;
 
@@ -85,10 +84,6 @@ class WaypointWorldRenderer {
     protected static final int BOX_MAX_Y = 4;
     protected static final int BOX_MAX_Z = 5;
     protected static final float DUNGEON_ENTRY_PATH_ALPHA = 0.9f;
-    protected static final long DUNGEON_ENTRY_REPATH_INTERVAL_NANOS = 250_000_000L;
-    protected static final int DUNGEON_ENTRY_PATH_CACHE_SIZE = 8;
-    protected static final int DUNGEON_ENTRY_MAX_EXPANSIONS = 8_000;
-    protected static final int DUNGEON_ENTRY_SEARCH_PADDING = 48;
 
     protected static final int DISTANCE_CACHE_MAX = 4096;
     protected static final int HUD_LINE_CULL_MARGIN = 64;
@@ -112,14 +107,8 @@ class WaypointWorldRenderer {
     private float beamRotationAnimationTime = Float.NaN;
     private float beamRotationCos;
     private float beamRotationSin;
-    private ClientLevel dungeonEntryPathLevel;
-    private final Map<DungeonEntryPathTarget, DungeonEntryPath> dungeonEntryPathCache =
-            new LinkedHashMap<>(DUNGEON_ENTRY_PATH_CACHE_SIZE + 1, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<DungeonEntryPathTarget, DungeonEntryPath> eldest) {
-                    return size() > DUNGEON_ENTRY_PATH_CACHE_SIZE;
-                }
-            };
+    private final DungeonEntryPathController dungeonEntryPathController =
+            new DungeonEntryPathController();
 
     public WaypointWorldRenderer(ActiveGroupManager manager, WaypointerConfig config) {
         this(manager, config, null);
@@ -153,7 +142,7 @@ class WaypointWorldRenderer {
         out[2] = centerZ;
     }
 
-    /** The opacity setting is authoritative: 100% must produce opaque faces. */
+    // Keep 100% opacity fully opaque.
     protected static final float FILLED_ALPHA_SCALE = 1.0f;
     protected static final float PAINTED_ALPHA_SCALE = 1.0f;
     protected static final float BEAM_ALPHA_SCALE = 0.18f;
@@ -212,9 +201,7 @@ class WaypointWorldRenderer {
         try {
             ps.translate(-camPos.x, -camPos.y, -camPos.z);
 
-        // Fills and lines require separate batches because non-fixed render types
-        // share one BufferBuilder. Starting the fill batch invalidates an active
-        // line consumer. Flush fills first so outlines render on top.
+        // Starting a fill batch invalidates the shared line consumer, so flush fills first.
         if (drawTexturedBeams && hasThroughWallWaypoints) {
             RenderType beamType = WaypointerRenderPipelines.beaconBeamThroughWalls();
             int minY = beamMinY(mc);
@@ -316,7 +303,7 @@ class WaypointWorldRenderer {
         if ((drawLines || drawRouteLines || drawDungeonEntryPaths)
                 && hasThroughWallWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
-            List<DungeonEntryPathSubmission> dungeonEntryPaths = drawDungeonEntryPaths
+            List<DungeonEntryPathController.Submission> dungeonEntryPaths = drawDungeonEntryPaths
                     ? prepareDungeonEntryPaths(groups, playerPos, level)
                     : List.of();
             boolean submitted = RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
@@ -339,7 +326,7 @@ class WaypointWorldRenderer {
                     }
                 }
             });
-            for (DungeonEntryPathSubmission path : dungeonEntryPaths) {
+            for (DungeonEntryPathController.Submission path : dungeonEntryPaths) {
                 RenderDiagnostics.recordDungeonPathSubmission(
                         path.group(), submitted && isDrawableDungeonEntryPath(path.points()));
             }
@@ -371,15 +358,15 @@ class WaypointWorldRenderer {
     }
 
     private void emitDungeonEntryPaths(PoseStack ps, VertexConsumer lines,
-                                       Iterable<DungeonEntryPathSubmission> paths) {
+                                       Iterable<DungeonEntryPathController.Submission> paths) {
         float alpha = DUNGEON_ENTRY_PATH_ALPHA;
         float width = effectiveOutlineThickness();
         int color = config.dungeonEntryPathColor();
-        for (DungeonEntryPathSubmission path : paths) {
+        for (DungeonEntryPathController.Submission path : paths) {
             List<Vec3> points = path.points();
-            for (int i = 1; i < points.size(); i++) {
-                Vec3 a = points.get(i - 1);
-                Vec3 b = points.get(i);
+            for (int index = 1; index < points.size(); index++) {
+                Vec3 a = points.get(index - 1);
+                Vec3 b = points.get(index);
                 RenderHelpers.emitLine(lines, ps,
                         (float) a.x, (float) a.y, (float) a.z,
                         (float) b.x, (float) b.y, (float) b.z,
@@ -388,112 +375,22 @@ class WaypointWorldRenderer {
         }
     }
 
-    private List<DungeonEntryPathSubmission> prepareDungeonEntryPaths(
+    private List<DungeonEntryPathController.Submission> prepareDungeonEntryPaths(
             Iterable<WaypointGroup> groups, Vec3 playerPos, ClientLevel level) {
-        if (playerPos == null || level == null) return List.of();
-
-        List<DungeonEntryPathSubmission> paths = new ArrayList<>();
-        for (WaypointGroup group : groups) {
-            if (!shouldRenderDungeonEntryPath(group,
-                    config.showDungeonEntryPathToFollowingWaypoints())) continue;
-
-            Waypoint target = group.current();
-            if (target == null) continue;
-            DungeonEntryPathLookup lookup = dungeonEntryPathPoints(level, playerPos, target);
+        DungeonEntryPathController.PreparedPaths prepared =
+                dungeonEntryPathController.prepare(
+                        groups, playerPos, level,
+                        config.showDungeonEntryPathToFollowingWaypoints());
+        for (DungeonEntryPathController.LookupDiagnostics lookup : prepared.lookups()) {
             RenderDiagnostics.recordPathLookup(
-                    group, lookup.result(), lookup.cacheHit(), lookup.cacheAgeNanos());
-            paths.add(new DungeonEntryPathSubmission(group, lookup.result().points()));
+                    lookup.group(), lookup.result(),
+                    lookup.cacheHit(), lookup.cacheAgeNanos());
         }
-        return paths;
-    }
-
-    private DungeonEntryPathLookup dungeonEntryPathPoints(ClientLevel level, Vec3 playerPos,
-                                                          Waypoint target) {
-        BlockPos start = GroundPathfinder.floorPos(playerPos);
-        DungeonEntryPathTarget targetKey = DungeonEntryPathTarget.from(target);
-        long now = System.nanoTime();
-        if (level != dungeonEntryPathLevel) {
-            dungeonEntryPathLevel = level;
-            dungeonEntryPathCache.clear();
-        }
-
-        DungeonEntryPath cached = dungeonEntryPathCache.get(targetKey);
-        if (cached != null
-                && shouldReuseDungeonEntryPath(cached.start(), cached.result().diagnostics().success(),
-                cached.computedAtNanos(), start, now)) {
-            GroundPathfinder.moveLineStart(cached.result().points(), playerPos);
-            return new DungeonEntryPathLookup(
-                    cached.result(), true, Math.max(0L, now - cached.computedAtNanos()));
-        }
-
-        long startedAtNanos = System.nanoTime();
-        GroundPathfinder.PathResult result;
-        try {
-            result = GroundPathfinder.findPathResult(
-                    level,
-                    playerPos,
-                    target,
-                    GroundPathfinder.NO_DISTANCE_LIMIT,
-                    DUNGEON_ENTRY_MAX_EXPANSIONS,
-                    DUNGEON_ENTRY_SEARCH_PADDING,
-                    DUNGEON_ENTRY_SEARCH_PADDING);
-        } catch (RuntimeException error) {
-            Waypointer.LOGGER.warn("Dungeon entry path calculation failed; using tracer fallback", error);
-            result = new GroundPathfinder.PathResult(List.of(), new GroundPathfinder.Diagnostics(
-                    start,
-                    GroundPathfinder.targetBlock(target),
-                    null,
-                    null,
-                    GroundPathfinder.FailureReason.CALCULATION_FAILED,
-                    0,
-                    DUNGEON_ENTRY_MAX_EXPANSIONS,
-                    Math.max(0L, System.nanoTime() - startedAtNanos)));
-        }
-        dungeonEntryPathCache.put(targetKey, new DungeonEntryPath(start, result, now));
-        return new DungeonEntryPathLookup(result, false, 0L);
-    }
-
-    static boolean shouldReuseDungeonEntryPath(BlockPos cachedStart, boolean cachedPathSucceeded,
-                                               long computedAtNanos, BlockPos start, long nowNanos) {
-        return Objects.equals(start, cachedStart)
-                && (!cachedPathSucceeded
-                || nowNanos - computedAtNanos < DUNGEON_ENTRY_REPATH_INTERVAL_NANOS);
-    }
-
-    private record DungeonEntryPathTarget(BlockPos block, double centerX, double centerY, double centerZ) {
-        static DungeonEntryPathTarget from(Waypoint target) {
-            return new DungeonEntryPathTarget(
-                    GroundPathfinder.targetBlock(target),
-                    target.centerX(),
-                    target.centerY(),
-                    target.centerZ());
-        }
+        return prepared.submissions();
     }
 
     static boolean isDrawableDungeonEntryPath(List<Vec3> points) {
         return points != null && points.size() >= 2;
-    }
-
-    private record DungeonEntryPath(BlockPos start, GroundPathfinder.PathResult result,
-                                    long computedAtNanos) {
-    }
-
-    private record DungeonEntryPathLookup(GroundPathfinder.PathResult result,
-                                          boolean cacheHit, long cacheAgeNanos) {
-    }
-
-    private record DungeonEntryPathSubmission(WaypointGroup group, List<Vec3> points) {
-    }
-
-    static boolean shouldRenderDungeonEntryPath(WaypointGroup group, boolean includeFollowingWaypoints) {
-        int currentIndex = group == null ? -1 : group.currentIndex();
-        return group != null
-                && !group.temp()
-                && !group.isComplete()
-                && (currentIndex == 0 || includeFollowingWaypoints)
-                && group.size() > 0
-                && !group.isSubwaypoint(currentIndex)
-                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
     }
 
     static boolean routeLinesEnabled(WaypointGroup group, WaypointerConfig config,
@@ -553,6 +450,7 @@ class WaypointWorldRenderer {
         forEachRouteLineSegment(
                 g,
                 depthCheckedPass,
+                config.sequenceVisibility(),
                 config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> shouldRenderRouteLineEndpoint(g, i, currentIdx, showCompleted,
                         camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq),
@@ -616,16 +514,18 @@ class WaypointWorldRenderer {
                                         boolean depthCheckedPass,
                                         IntPredicate endpointVisible,
                                         RouteLineSegmentConsumer consumer) {
-        forEachRouteLineSegment(group, depthCheckedPass, false, endpointVisible, consumer);
+        forEachRouteLineSegment(group, depthCheckedPass, SequenceVisibility.DEFAULT,
+                false, endpointVisible, consumer);
     }
 
-    private static void forEachRouteLineSegment(WaypointGroup group,
-                                                boolean depthCheckedPass,
-                                                boolean keepSubwaypointsVisibleUntilNextWaypoint,
-                                                IntPredicate endpointVisible,
-                                                RouteLineSegmentConsumer consumer) {
+    static void forEachRouteLineSegment(WaypointGroup group,
+                                        boolean depthCheckedPass,
+                                        SequenceVisibility visibility,
+                                        boolean keepSubwaypointsVisibleUntilNextWaypoint,
+                                        IntPredicate endpointVisible,
+                                        RouteLineSegmentConsumer consumer) {
         int[] previous = { -1 };
-        group.forEachVisibleIndex(keepSubwaypointsVisibleUntilNextWaypoint, i -> {
+        group.forEachVisibleIndex(visibility, keepSubwaypointsVisibleUntilNextWaypoint, i -> {
             if (group.isSubwaypoint(i)) return;
             if (endpointVisible != null && !endpointVisible.test(i)) return;
             if (previous[0] >= 0) {
@@ -1033,7 +933,8 @@ class WaypointWorldRenderer {
         boolean showCompleted = config.showCompleted();
         float outlineThickness = effectiveOutlineThickness();
 
-        g.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
+        g.forEachVisibleIndex(config.sequenceVisibility(),
+                config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> {
             if (!shouldRenderWaypointWorld(g, i, currentIdx, showCompleted,
                     camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
@@ -1065,7 +966,8 @@ class WaypointWorldRenderer {
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
 
-        g.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
+        g.forEachVisibleIndex(config.sequenceVisibility(),
+                config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> {
             if (!shouldRenderWaypointWorld(g, i, currentIdx, showCompleted,
                     camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
@@ -1099,7 +1001,8 @@ class WaypointWorldRenderer {
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
 
-        group.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(), i -> {
+        group.forEachVisibleIndex(config.sequenceVisibility(),
+                config.keepSubwaypointsVisibleUntilNextWaypoint(), i -> {
             if (!shouldRenderWaypointWorld(group, i, currentIndex, showCompleted,
                     camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
                     depthCheckedPass, mc, level)) {
@@ -1142,7 +1045,8 @@ class WaypointWorldRenderer {
             return;
         }
 
-        g.forEachVisibleIndex(config.keepSubwaypointsVisibleUntilNextWaypoint(),
+        g.forEachVisibleIndex(config.sequenceVisibility(),
+                config.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> emitBeaconBeamIfVisible(ps, quads, g, i,
                         currentIdx, showCompleted, camPos, playerPos, maxStaticDistanceSq,
                         nearHideDistanceSq, minY, maxY, depthCheckedPass, mc, level,

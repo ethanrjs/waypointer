@@ -1,6 +1,7 @@
 package com.babbur.waypointer.api;
 
 import com.babbur.waypointer.Waypointer;
+import com.babbur.waypointer.codec.RouteLibraryMetadata;
 import com.babbur.waypointer.codec.WaypointExportCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
@@ -190,23 +191,12 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         return commitPreparedImport(result, options);
     }
 
-    @Override
-    public ImportSummary importPreparedRoutes(WaypointImporter.ImportResult prepared,
-                                              ImportOptions options) {
-        Objects.requireNonNull(prepared, "prepared");
-        List<WaypointGroup> detachedGroups = prepared.groups().stream()
-                .map(WaypointGroup::exportSnapshot)
-                .toList();
-        WaypointImporter.ImportResult validated = WaypointImporter.validatePreparedImport(
-                prepared.source(), detachedGroups, prepared.label());
-        return commitPreparedImport(validated, options);
-    }
-
     private ImportSummary commitPreparedImport(WaypointImporter.ImportResult result,
                                                ImportOptions options) {
         ImportOptions actualOptions = options == null ? ImportOptions.defaults() : options;
         return callOnClientThread(() -> {
             List<String> ids = addImportedGroups(result.groups(), actualOptions);
+            result.libraryMetadata().installFolders(manager, result.groups());
             int waypointCount = result.groups().stream().mapToInt(WaypointGroup::size).sum();
             return new ImportSummary(
                     ImportSource.from(result.source()),
@@ -222,10 +212,16 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         Objects.requireNonNull(groupIds, "groupIds");
         return callOnClientThread(() -> {
             ExportOptions actualOptions = options == null ? ExportOptions.defaults() : options;
+            List<WaypointGroup> groups = exportGroups(groupIds);
+            WaypointExportCodec.Target target = actualOptions.target().toCodecTarget();
+            RouteLibraryMetadata metadata = target == WaypointExportCodec.Target.WAYPOINTER
+                    ? RouteLibraryMetadata.capture(manager, groups)
+                    : RouteLibraryMetadata.empty();
             return WaypointExportCodec.encode(
-                    exportGroups(groupIds),
+                    groups,
                     actualOptions.toCodecOptions(),
-                    actualOptions.target().toCodecTarget());
+                    target,
+                    metadata);
         });
     }
 

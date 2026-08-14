@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -302,5 +303,160 @@ class ActiveGroupManagerTest {
 
         assertNotNull(selection);
         assertSame(park, selection.group());
+    }
+
+    @Test
+    void foldersOwnLocalMembershipAndReorderOnlyWithinTheirContainer() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup first = new WaypointGroup("first", "First", "hub");
+        WaypointGroup second = new WaypointGroup("second", "Second", "hub");
+        WaypointGroup third = new WaypointGroup("third", "Third", "hub");
+        manager.addAll(List.of(first, second, third));
+        RouteFolder folder = new RouteFolder("folder", "Mining", "hub", false);
+
+        manager.addFolder(folder, List.of(first.id(), second.id()));
+
+        assertEquals(folder, manager.folderForGroup(first.id()));
+        assertEquals(List.of(first.id(), second.id()), manager.groupIdsInFolder(folder.id()));
+        assertTrue(manager.moveGroupBy(second.id(), -1));
+        assertEquals(List.of(second, first, third), manager.allGroupsList());
+        assertFalse(manager.moveGroupBy(first.id(), 1),
+                "a route cannot cross from its folder into the unfiled list");
+
+        assertTrue(manager.deleteFolder(folder.id()));
+        assertNull(manager.folderForGroup(first.id()));
+        assertEquals(List.of(second, first, third), manager.allGroupsList(),
+                "deleting a folder must not delete or reorder its routes");
+    }
+
+    @Test
+    void folderColorAndDragMovesPublishOneCanonicalChange() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup filedFirst = new WaypointGroup("filed-first", "Filed First", "hub");
+        WaypointGroup filedSecond = new WaypointGroup("filed-second", "Filed Second", "hub");
+        WaypointGroup unfiledFirst = new WaypointGroup("free-first", "Free First", "hub");
+        WaypointGroup unfiledSecond = new WaypointGroup("free-second", "Free Second", "hub");
+        manager.addAll(List.of(filedFirst, filedSecond, unfiledFirst, unfiledSecond));
+        RouteFolder folder = new RouteFolder("folder", "Mining", "hub", false);
+        manager.addFolder(folder, List.of(filedFirst.id(), filedSecond.id()));
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        assertTrue(manager.setFolderColor(folder.id(), 0xC46DFF));
+        assertEquals(0xC46DFF, manager.folder(folder.id()).color());
+        assertEquals(1, persistentChanges.get());
+
+        assertTrue(manager.moveGroupToContainer(
+                unfiledSecond.id(), folder.id(), filedSecond.id()));
+        assertEquals(List.of(filedFirst.id(), unfiledSecond.id(), filedSecond.id()),
+                manager.groupIdsInFolder(folder.id()));
+        assertEquals(2, persistentChanges.get());
+
+        assertTrue(manager.moveGroupToContainer(
+                filedFirst.id(), null, unfiledFirst.id()));
+        assertNull(manager.folderForGroup(filedFirst.id()));
+        assertEquals(List.of(unfiledSecond, filedSecond, filedFirst, unfiledFirst),
+                manager.allGroupsList());
+        assertEquals(List.of(unfiledSecond.id(), filedSecond.id()),
+                manager.groupIdsInFolder(folder.id()));
+        assertEquals(3, persistentChanges.get());
+    }
+
+    @Test
+    void dragMoveRejectsCrossZoneRuntimeAndMismatchedFolderTargets() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup source = new WaypointGroup("source", "Source", "hub");
+        WaypointGroup otherZone = new WaypointGroup("other", "Other", "the_park");
+        WaypointGroup runtime = new WaypointGroup("runtime", "Runtime", "hub");
+        runtime.setRuntimeOnly(true);
+        manager.addAll(List.of(source, otherZone, runtime));
+        RouteFolder hubFolder = new RouteFolder("hub-folder", "Hub", "hub", false);
+        RouteFolder parkFolder = new RouteFolder("park-folder", "Park", "the_park", false);
+        manager.addFolder(hubFolder, List.of());
+        manager.addFolder(parkFolder, List.of(otherZone.id()));
+
+        assertFalse(manager.canMoveGroupToContainer(
+                source.id(), parkFolder.id(), null));
+        assertFalse(manager.moveGroupToContainer(
+                source.id(), parkFolder.id(), null));
+        assertFalse(manager.moveGroupToContainer(
+                source.id(), null, otherZone.id()));
+        assertFalse(manager.moveGroupToContainer(
+                runtime.id(), hubFolder.id(), null));
+        assertEquals(List.of(source, otherZone, runtime), manager.allGroupsList());
+        assertNull(manager.folderForGroup(source.id()));
+    }
+
+    @Test
+    void dungeonReorderUsesOnlyPersistedPeersInTheSameRoom() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup regularFirst = new WaypointGroup("regular-first", "First", "hub");
+        WaypointGroup roomAFirst = dungeonGroup("room-a-first", "room-a");
+        WaypointGroup runtimeProjection = dungeonGroup("runtime", "room-a");
+        runtimeProjection.setRuntimeOnly(true);
+        WaypointGroup roomBOnly = dungeonGroup("room-b", "room-b");
+        WaypointGroup regularSecond = new WaypointGroup("regular-second", "Second", "hub");
+        WaypointGroup roomASecond = dungeonGroup("room-a-second", "room-a");
+        manager.addAll(List.of(regularFirst, roomAFirst, runtimeProjection,
+                roomBOnly, regularSecond, roomASecond));
+        RouteFolder folder = new RouteFolder("regular-folder", "Regular", "hub", false);
+        manager.addFolder(folder, List.of(regularFirst.id(), regularSecond.id()));
+
+        assertFalse(manager.canMoveGroupBy(roomAFirst.id(), -1));
+        assertTrue(manager.canMoveGroupBy(roomAFirst.id(), 1));
+        assertFalse(manager.canMoveGroupBy(runtimeProjection.id(), -1));
+        assertFalse(manager.canMoveGroupBy(runtimeProjection.id(), 1));
+        assertFalse(manager.canMoveGroupBy(roomBOnly.id(), -1));
+        assertFalse(manager.canMoveGroupBy(roomBOnly.id(), 1));
+
+        assertTrue(manager.moveGroupBy(roomASecond.id(), -1));
+        assertEquals(List.of(regularFirst, roomASecond, runtimeProjection,
+                        roomBOnly, regularSecond, roomAFirst),
+                manager.allGroupsList());
+        assertEquals(List.of(regularFirst.id(), regularSecond.id()),
+                manager.groupIdsInFolder(folder.id()),
+                "dungeon reordering must not change regular folder membership or order");
+        assertFalse(manager.moveGroupBy(roomASecond.id(), -1));
+        assertFalse(manager.moveGroupBy(roomAFirst.id(), 1));
+    }
+
+    @Test
+    void atomicReplacementTransfersValidatedFolderMembershipInOneChange() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup original = new WaypointGroup("old", "Old", "hub");
+        WaypointGroup neighbor = new WaypointGroup("neighbor", "Neighbor", "hub");
+        manager.addAll(List.of(original, neighbor));
+        RouteFolder folder = new RouteFolder("folder", "Catalog", "hub", false);
+        manager.addFolder(folder, List.of(original.id(), neighbor.id()));
+        AtomicInteger changes = new AtomicInteger();
+        manager.addPersistentDataListener(changes::incrementAndGet);
+        WaypointGroup replacement = new WaypointGroup("new", "New", "hub");
+
+        manager.replaceGroupsAtomically(
+                List.of(original.id()), List.of(replacement),
+                Map.of(replacement.id(), folder.id()),
+                Map.of(original.id(), replacement.id()));
+
+        assertEquals(1, changes.get());
+        assertNull(manager.get(original.id()));
+        assertEquals(folder, manager.folderForGroup(replacement.id()));
+        assertEquals(List.of(replacement, neighbor), manager.allGroupsList());
+        assertEquals(List.of(replacement.id(), neighbor.id()),
+                manager.groupIdsInFolder(folder.id()));
+
+        WaypointGroup wrongZone = new WaypointGroup("wrong-zone", "Wrong", "the_park");
+        assertThrows(IllegalArgumentException.class, () -> manager.replaceGroupsAtomically(
+                List.of(replacement.id()), List.of(wrongZone),
+                Map.of(wrongZone.id(), folder.id()),
+                Map.of(replacement.id(), wrongZone.id())));
+        assertSame(replacement, manager.get(replacement.id()),
+                "failed validation must not mutate the live manager");
+        assertEquals(folder, manager.folderForGroup(replacement.id()));
+    }
+
+    private static WaypointGroup dungeonGroup(String id, String roomId) {
+        WaypointGroup group = new WaypointGroup(id, id, roomId);
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        return group;
     }
 }

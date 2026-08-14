@@ -16,6 +16,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.DungeonChestInteractionGuard;
+import com.babbur.waypointer.dungeon.EtherwarpAlignmentCue;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.DungeonRoomZoneBridge;
 import com.babbur.waypointer.dungeon.DungeonStateTracker;
@@ -111,6 +112,7 @@ public final class WaypointerClient implements ClientModInitializer {
         RoutePreviewPipAdapter.install();
         new WaypointRenderer(manager, config, dungeonConfig).install();
         new TracerRenderer(manager, config, dungeonConfig).install();
+        new EtherwarpAlignmentCue(manager, config::etherwarpAlignmentSound).install();
         WaypointRepositionMode.install();
 
         installDungeonSubsystem(chestInteractionGuard);

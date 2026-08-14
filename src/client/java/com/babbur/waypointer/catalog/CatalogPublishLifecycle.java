@@ -17,26 +17,29 @@ public final class CatalogPublishLifecycle {
                 || identityStore == null || publicationRegistry == null) {
             throw new IllegalArgumentException("Publish lifecycle dependencies are required");
         }
-        return client.publishRoute(request, identity).thenApply(published -> persist(
-                published, request, identity, identityStore, publicationRegistry,
+        return client.publishRoute(request, identity).thenApply(receipt -> persist(
+                receipt, identityStore, publicationRegistry,
                 client.apiRoot(), Instant.now()));
     }
 
     static Completion persist(
-            CatalogPublishResult published,
-            CatalogPublishRequest request,
-            PublisherIdentity identity,
+            CatalogPublishReceipt receipt,
             PublisherIdentityStore identityStore,
             CatalogPublicationRegistry publicationRegistry,
             String apiRoot,
             Instant recordedAt) {
+        CatalogPublishResult published = receipt.result();
+        CatalogPublishRequest request = receipt.request();
+        PublisherIdentity identity = receipt.identity();
         PublisherIdentity durableIdentity = identity;
         boolean nameSaveFailed = false;
         if (identity.publisherName() == null) {
+            String publisherName = PublisherNamePolicy.requireValid(request.publisherName());
+            durableIdentity = identity.withPublisherName(publisherName);
             try {
                 durableIdentity = identityStore.savePublisherName(
-                        identity, PublisherNamePolicy.requireValid(request.publisherName()));
-            } catch (RuntimeException failure) {
+                        identity, publisherName);
+            } catch (CatalogStorageException failure) {
                 nameSaveFailed = true;
             }
         }
@@ -45,8 +48,8 @@ public final class CatalogPublishLifecycle {
         CatalogPublication publication = null;
         try {
             publication = publicationRegistry.recordSuccessfulPublish(
-                    published, request, identity, apiRoot, recordedAt);
-        } catch (RuntimeException failure) {
+                    receipt, apiRoot, recordedAt);
+        } catch (CatalogStorageException failure) {
             publicationSaveFailed = true;
         }
         return new Completion(

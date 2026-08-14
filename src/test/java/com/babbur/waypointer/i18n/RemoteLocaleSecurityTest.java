@@ -76,13 +76,19 @@ class RemoteLocaleSecurityTest {
     }
 
     @Test
-    void catalogValidationChecksDigestKeysAndPlaceholders() throws Exception {
+    void catalogValidationAcceptsSparseOverlaysAndRejectsUnsafeContent() throws Exception {
         TranslationCatalogValidator validator = new TranslationCatalogValidator();
         byte[] valid = bytes("{\"waypointer.chat.import.size\":\"Größe: %1$s Zeichen\"}");
         validator.validate(valid, entry(valid), "de_de");
 
+        byte[] empty = bytes("{}");
+        validator.validate(empty, entry(empty), "de_de");
+
         byte[] unknown = bytes("{\"evil.key\":\"value\"}");
         assertThrows(IOException.class, () -> validator.validate(unknown, entry(unknown), "de_de"));
+
+        byte[] blank = bytes("{\"waypointer.export.fit.too_long\":\"  \"}");
+        assertThrows(IOException.class, () -> validator.validate(blank, entry(blank), "de_de"));
 
         byte[] changedPlaceholder = bytes("{\"waypointer.chat.import.size\":\"Größe: %2$s Zeichen\"}");
         assertThrows(IOException.class,

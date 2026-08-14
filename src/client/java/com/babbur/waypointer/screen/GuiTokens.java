@@ -69,6 +69,38 @@ public final class GuiTokens {
         }
     }
 
+    public static final class ChoiceButton extends Button {
+        private final boolean selected;
+
+        private ChoiceButton(int x, int y, int width, int height,
+                             Component message, boolean selected, OnPress onPress) {
+            super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
+            this.selected = selected;
+        }
+
+        @Override
+        protected void extractContents(
+                GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+            int x = getX();
+            int y = getY();
+            boolean highlighted = active && isHoveredOrFocused();
+            drawControlFrame(g, x, y, getWidth(), getHeight(),
+                    active, highlighted, isFocused());
+            if (selected) {
+                g.fill(x + 2, y + 2, x + getWidth() - 2, y + getHeight() - 2,
+                        0x40213A40);
+                g.fill(x + 1, y + 1, x + 3, y + getHeight() - 1, ACCENT);
+            }
+
+            var font = Minecraft.getInstance().font;
+            String clipped = font.plainSubstrByWidth(
+                    getMessage().getString(), Math.max(1, getWidth() - 12));
+            int textX = x + (getWidth() - font.width(clipped)) / 2;
+            int color = !active ? TEXT_MUTED : selected ? ACCENT : TEXT;
+            g.text(font, clipped, textX, opticalTextY(y, getHeight()), color, false);
+        }
+    }
+
     public static final class StyledCheckbox extends Checkbox {
         private static final int CHECKMARK_TEXTURE_SIZE = 16;
         private static final Identifier CHECKMARK = Identifier.fromNamespaceAndPath(
@@ -149,6 +181,16 @@ public final class GuiTokens {
         StyledCheckbox checkbox = new StyledCheckbox(x, y, size, label, selected, onValueChange);
         if (tooltip != null) checkbox.setTooltip(tooltip);
         return checkbox;
+    }
+
+    public static Button choiceButton(
+            int x, int y, int width, int height,
+            Component message, boolean selected, Button.OnPress onPress,
+            Tooltip tooltip) {
+        Button button = new ChoiceButton(
+                x, y, width, height, message, selected, onPress);
+        if (tooltip != null) button.setTooltip(tooltip);
+        return button;
     }
 
     public record ButtonSpec(String label, int width, Runnable onClick, Tooltip tooltip) {

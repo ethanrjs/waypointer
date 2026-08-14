@@ -12,7 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-/** Keeps the rendered route matched to the current room. Saved routes win. */
+/** Saved room routes take priority over generated routes. */
 public final class DungeonRoomRouteSync {
 
     private final ActiveGroupManager manager;
@@ -117,10 +117,7 @@ public final class DungeonRoomRouteSync {
 
         WaypointGroup userRoute = firstUserRouteGroup(room);
         if (userRoute != null) {
-            if (!userRoute.enabled()) {
-                removeGeneratedGroup(generatedId);
-                return;
-            }
+            WaypointGroup existing = manager.get(generatedId);
             replaceGeneratedGroup(generatedId,
                     DungeonRoomRouteProjection.transformedRouteGroupForRoom(
                             room, userRoute, visibleSecretStages()));
@@ -196,23 +193,19 @@ public final class DungeonRoomRouteSync {
 
     private WaypointGroup firstUserRouteGroup(DungeonRoom room) {
         if (room == null) return null;
-        List<WaypointGroup> enabled = new ArrayList<>();
-        WaypointGroup disabled = null;
+        List<WaypointGroup> eligible = new ArrayList<>();
         for (WaypointGroup group : manager.groupsForZone(room.roomId())) {
             if (group.routeKind() != WaypointGroup.RouteKind.DUNGEON
                     || group.temp() || group.runtimeOnly() || group.isEmpty()) continue;
-            if (!group.enabled()) {
-                if (disabled == null) disabled = group;
-                continue;
-            }
-            enabled.add(group);
+            if (!group.enabled()) continue;
+            eligible.add(group);
         }
-        if (enabled.isEmpty()) {
-            selectedSourceGroupId = disabled == null ? null : disabled.id();
-            return disabled;
+        if (eligible.isEmpty()) {
+            selectedSourceGroupId = null;
+            return null;
         }
         if (selectedSourceGroupId != null) {
-            for (WaypointGroup group : enabled) {
+            for (WaypointGroup group : eligible) {
                 if (selectedSourceGroupId.equals(group.id())) return group;
             }
         }
@@ -221,11 +214,11 @@ public final class DungeonRoomRouteSync {
         Vec3 playerPos = minecraft == null || minecraft.player == null
                 ? null
                 : minecraft.player.position();
-        WaypointGroup selected = enabled.getFirst();
+        WaypointGroup selected = eligible.getFirst();
         if (playerPos != null) {
             double best = startDistanceSq(room, selected, playerPos);
-            for (int i = 1; i < enabled.size(); i++) {
-                WaypointGroup candidate = enabled.get(i);
+            for (int i = 1; i < eligible.size(); i++) {
+                WaypointGroup candidate = eligible.get(i);
                 double distance = startDistanceSq(room, candidate, playerPos);
                 if (distance < best) {
                     selected = candidate;
@@ -266,4 +259,5 @@ public final class DungeonRoomRouteSync {
             manager.remove(id);
         }
     }
+
 }

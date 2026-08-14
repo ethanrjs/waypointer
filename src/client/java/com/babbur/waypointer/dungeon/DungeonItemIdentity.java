@@ -5,6 +5,8 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.component.CustomData;
 
+import java.util.Optional;
+
 public final class DungeonItemIdentity {
 
     public static final String DUNGEONBREAKER_ID = "DUNGEONBREAKER";
@@ -19,10 +21,6 @@ public final class DungeonItemIdentity {
         return hasSkyBlockId(stack, DUNGEONBREAKER_ID);
     }
 
-    /**
-     * True only for Aspect of the End / Void with Etherwarp merged on
-     * ({@code ethermerge}). The standalone Etherwarp Conduit is a different item.
-     */
     public static boolean isEtherwarpItem(ItemStack stack) {
         CompoundTag data = customData(stack);
         if (data == null) return false;
@@ -31,6 +29,22 @@ public final class DungeonItemIdentity {
         if (!ASPECT_OF_THE_END_ID.equals(id) && !ASPECT_OF_THE_VOID_ID.equals(id)) return false;
         return attributes.getBoolean("ethermerge").orElse(false)
                 || attributes.getInt("ethermerge").orElse(0) == 1;
+    }
+
+    public static Optional<EtherwarpAbility> etherwarpAbility(ItemStack stack) {
+        CompoundTag data = customData(stack);
+        if (data == null) return Optional.empty();
+        CompoundTag attributes = attributes(data);
+        String id = attributes.getStringOr("id", "");
+        boolean mergedAspect = (ASPECT_OF_THE_END_ID.equals(id)
+                || ASPECT_OF_THE_VOID_ID.equals(id))
+                && (attributes.getBoolean("ethermerge").orElse(false)
+                || attributes.getInt("ethermerge").orElse(0) == 1);
+        if (!mergedAspect) return Optional.empty();
+
+        int tuners = Math.max(0, Math.min(EtherwarpAbility.MAX_TUNERS,
+                attributes.getInt("tuned_transmission").orElse(0)));
+        return Optional.of(new EtherwarpAbility(EtherwarpAbility.BASE_RANGE + tuners));
     }
 
     public static boolean isSuperboom(ItemStack stack) {

@@ -1,14 +1,10 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.catalog.CatalogPublishRequest;
-import com.babbur.waypointer.catalog.CatalogPublishResult;
 import com.babbur.waypointer.catalog.CatalogApiException;
 import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
-import com.babbur.waypointer.catalog.CatalogPublishLifecycle;
-import com.babbur.waypointer.catalog.PublisherIdentity;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
-import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -27,10 +23,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.util.FormattedCharSequence;
 
-import java.nio.file.Files;
-import java.text.Normalizer;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 import static com.babbur.waypointer.screen.GuiTokens.BTN_H;
@@ -63,10 +56,9 @@ public final class RoutePublishScreen extends Screen {
     private static final int STATUS_LINES = 2;
     private static final int COUNTER_AT_PERCENT = 75;
 
-    private static final int TITLE_MAX = 80;
-    private static final int DESCRIPTION_MIN = 10;
-    private static final int DESCRIPTION_MAX = 500;
-    private static final int DESCRIPTION_COUNTER_START = 100;
+    private static final int TITLE_MAX = CatalogPublishFormModel.TITLE_MAX;
+    private static final int DESCRIPTION_MIN = CatalogPublishFormModel.DESCRIPTION_MIN;
+    private static final int DESCRIPTION_MAX = CatalogPublishFormModel.DESCRIPTION_MAX;
 
     private static final int STATUS_OK = 0xFF7ACB89;
     private static final int STATUS_ERROR = 0xFFE47B7B;
@@ -79,27 +71,24 @@ public final class RoutePublishScreen extends Screen {
     private final RouteCatalogClient catalogClient;
     private final PublisherIdentityStore identityStore;
     private final CatalogPublicationRegistry publicationRegistry;
+    private final CatalogPublishSession session;
+    private final CatalogPublishFormModel form;
 
-    private String titleValue;
-    private String descriptionValue = "";
-    private String publisherName;
-    private CatalogPublishRequest.Visibility visibility =
-            CatalogPublishRequest.Visibility.UNLISTED;
-    private String identityLabel;
-    private boolean publishing;
+    private CatalogPublishSession.Snapshot publishState;
     private boolean normalizingDescription;
-    private CatalogPublishResult result;
-    private String publishedPayload;
     private Component statusText = Component.empty();
     private StatusKind statusKind = StatusKind.INFO;
     private boolean initializing;
     private boolean screenActive;
+    private long publisherPromptAttempt = -1L;
+    private Runnable removeSessionListener = () -> { };
 
     private EditBox titleBox;
     private MultiLineEditBox descriptionBox;
     private Button unlistedButton;
     private Button publicButton;
     private Button publishButton;
+    private Button backButton;
     private Button copyButton;
     private Button manageButton;
 
@@ -148,8 +137,11 @@ public final class RoutePublishScreen extends Screen {
         this.catalogClient = catalogClient;
         this.identityStore = identityStore;
         this.publicationRegistry = publicationRegistry;
-        this.titleValue = displayRouteName(group);
-        loadExistingIdentity();
+        this.session = new CatalogPublishSession(
+                group, catalogClient, identityStore, publicationRegistry);
+        this.form = session.form();
+        if (form.title().isBlank()) form.setTitle(displayRouteName(group));
+        this.publishState = session.snapshot();
     }
 
     public static void open(Screen parent, WaypointerConfig config, WaypointGroup group) {
@@ -164,17 +156,17 @@ public final class RoutePublishScreen extends Screen {
     protected void init() {
         screenActive = true;
         initializing = true;
+        applySessionState(session.snapshot());
 
         computeLayout();
 
         int y = formY + LABEL_H;
-        titleBox = editBox(y, TITLE_MAX, titleValue,
+        titleBox = editBox(y, TITLE_MAX, form.title(),
                 Component.translatable("waypointer.screen.route_publish.field.title"),
                 null);
         titleBox.setResponder(value -> {
             if (initializing) return;
-            titleValue = value == null ? "" : value;
-            onFormEdited();
+            form.setTitle(value);
         });
         y += FIELD_STRIDE;
 
@@ -188,7 +180,7 @@ public final class RoutePublishScreen extends Screen {
                         Component.translatable(
                                 "waypointer.screen.route_publish.field.description"));
         descriptionBox.setCharacterLimit(DESCRIPTION_MAX * 2);
-        descriptionBox.setValue(descriptionValue);
+        descriptionBox.setValue(form.description());
         descriptionBox.setTooltip(Tooltip.create(Component.translatable(
                 "waypointer.screen.route_publish.field.description.tooltip")));
         descriptionBox.setValueListener(value -> {
@@ -199,8 +191,7 @@ public final class RoutePublishScreen extends Screen {
                 descriptionBox.setValue(normalized);
                 normalizingDescription = false;
             }
-            descriptionValue = normalized;
-            onFormEdited();
+            form.setDescription(normalized);
         });
         addRenderableWidget(descriptionBox);
         y += LABEL_H + DESCRIPTION_H + GAP_TIGHT;
@@ -209,6 +200,8 @@ public final class RoutePublishScreen extends Screen {
         buildFooter();
 
         initializing = false;
+        removeSessionListener.run();
+        removeSessionListener = session.addListener(this::sessionChanged);
         refreshControlState();
         setInitialFocus(titleBox.getValue().isEmpty() ? titleBox : publishButton);
     }
@@ -267,7 +260,7 @@ public final class RoutePublishScreen extends Screen {
     }
 
     private int cardHeight() {
-        int lines = 4 + (result == null ? 0 : 1);
+        int lines = 4 + (publishState.result() == null ? 0 : 1);
         return CARD_PAD * 2 + lines * LINE_H;
     }
 
@@ -321,8 +314,10 @@ public final class RoutePublishScreen extends Screen {
     private void buildFooter() {
         int contentRight = contentX + contentW;
         int backY = footerWrapped ? footerY - BTN_H - GAP : footerY;
-        addRenderableWidget(styledButton(contentX, backY, backW, BTN_H,
-                Component.translatable("gui.back"), button -> onClose(), null));
+        backButton = styledButton(contentX, backY, backW, BTN_H,
+                Component.translatable("gui.back"), button -> onClose(), null);
+        backButton.active = canNavigateBack(publishState.phase());
+        addRenderableWidget(backButton);
         manageButton = styledButton(contentX + backW + GAP, backY, manageW, BTN_H,
                 Component.translatable("waypointer.screen.route_publish.action.manage"),
                 button -> PublishedRoutesScreen.open(
@@ -349,16 +344,16 @@ public final class RoutePublishScreen extends Screen {
     }
 
     private void chooseVisibility(CatalogPublishRequest.Visibility next) {
-        if (visibility == next) return;
-        visibility = next;
+        if (form.visibility() == next) return;
+        form.setVisibility(next);
         unlistedButton.setMessage(
                 visibilityOption(CatalogPublishRequest.Visibility.UNLISTED));
         publicButton.setMessage(visibilityOption(CatalogPublishRequest.Visibility.PUBLIC));
-        onFormEdited();
+        refreshControlState();
     }
 
     private Component visibilityOption(CatalogPublishRequest.Visibility option) {
-        boolean chosen = visibility == option;
+        boolean chosen = form.visibility() == option;
         MutableComponent label = Component.translatable(
                 option == CatalogPublishRequest.Visibility.PUBLIC
                         ? "waypointer.screen.route_publish.visibility.public"
@@ -367,193 +362,147 @@ public final class RoutePublishScreen extends Screen {
     }
 
     private Component visibilityHelp() {
-        return Component.translatable(visibility == CatalogPublishRequest.Visibility.PUBLIC
+        return Component.translatable(form.visibility() == CatalogPublishRequest.Visibility.PUBLIC
                 ? "waypointer.screen.route_publish.visibility.public.help"
                 : "waypointer.screen.route_publish.visibility.unlisted.help");
     }
 
     private Component publishButtonLabel() {
-        if (publishing) {
+        if (publishState.phase().busy()) {
             return Component.translatable(
                     "waypointer.screen.route_publish.action.publishing");
         }
-        return Component.translatable(result == null
+        return Component.translatable(publishState.result() == null
                 ? "waypointer.screen.route_publish.action.publish"
                 : "waypointer.screen.route_publish.action.publish_again");
     }
 
-    private void onFormEdited() {
-        result = null;
-        publishedPayload = null;
-        statusText = Component.empty();
-        statusKind = StatusKind.INFO;
-        refreshControlState();
-    }
-
     private void publish() {
-        if (publishing || !validInput()) return;
-        publishing = true;
-        result = null;
-        publishedPayload = null;
-        statusText = Component.translatable(
-                "waypointer.screen.route_publish.status.preparing");
-        statusKind = StatusKind.BUSY;
-        refreshControlState();
-
-        CompletableFuture.supplyAsync(identityStore::loadOrCreate)
-                .whenComplete((identity, failure) -> runOnClient(() -> {
-                    if (!screenActive || minecraft == null
-                            || MinecraftCompat.screen(minecraft) != this) return;
-                    if (failure != null) {
-                        publishing = false;
-                        statusText = friendlyFailure(failure);
-                        statusKind = StatusKind.ERROR;
-                        rebuildWidgets();
-                        return;
-                    }
-                    identityLabel = identity.shortPublisherId();
-                    publisherName = identity.publisherName();
-                    publishing = false;
-                    if (publisherName == null) {
-                        statusText = Component.empty();
-                        statusKind = StatusKind.INFO;
-                        PublisherNameScreen.open(this, defaultPublisherName(),
-                                name -> publishWithIdentity(identity, name));
-                    } else {
-                        publishWithIdentity(identity, null);
-                    }
-                }));
+        switch (RoutePublishUiState.primaryAction(publishState.phase())) {
+            case NONE -> {
+            }
+            case REQUEST_PUBLISHER_NAME -> {
+                publisherPromptAttempt = -1L;
+                showPublisherNamePrompt(publishState);
+            }
+            case BEGIN_PUBLISH -> session.beginPublish();
+        }
     }
 
-    private void publishWithIdentity(PublisherIdentity identity, String requestedName) {
-        if (!screenActive || publishing || !validInput()) return;
-        publishing = true;
-        result = null;
-        publishedPayload = null;
-        statusText = Component.translatable(
-                "waypointer.screen.route_publish.status.preparing");
-        statusKind = StatusKind.BUSY;
-        refreshControlState();
+    private void sessionChanged(CatalogPublishSession.Snapshot ignored) {
+        runOnClient(() -> applySessionState(session.snapshot()));
+    }
 
-        WaypointGroup snapshot = group.exportSnapshot();
-        String title = titleValue.trim();
-        String description = descriptionValue.trim();
-        CatalogPublishRequest.Visibility requestedVisibility = visibility;
+    private void applySessionState(CatalogPublishSession.Snapshot next) {
+        boolean resultLayoutChanged = RoutePublishUiState.resultLayoutChanged(
+                publishState, next);
+        publishState = next;
+        switch (next.phase()) {
+            case IDLE, NEEDS_PUBLISHER_NAME -> {
+                statusText = Component.empty();
+                statusKind = StatusKind.INFO;
+            }
+            case LOADING_IDENTITY, PUBLISHING -> {
+                statusText = Component.translatable(
+                        "waypointer.screen.route_publish.status.preparing");
+                statusKind = StatusKind.BUSY;
+            }
+            case FAILED -> {
+                statusText = friendlyFailure(next.failure());
+                statusKind = StatusKind.ERROR;
+            }
+            case SUCCEEDED -> applyPublishedStatus(next);
+        }
+        if (!initializing && screenActive && minecraft != null
+                && MinecraftCompat.screen(minecraft) == this) {
+            if (next.phase() == CatalogPublishSession.Phase.NEEDS_PUBLISHER_NAME) {
+                showPublisherNamePrompt(next);
+            } else if (resultLayoutChanged) {
+                rebuildWidgets();
+            } else {
+                refreshControlState();
+            }
+        }
+    }
 
-        CompletableFuture.supplyAsync(() -> {
-            String payload = WaypointCodec.encodeCatalog(List.of(snapshot));
-            CatalogPublishRequest request = new CatalogPublishRequest(
-                    payload, title, description, requestedVisibility,
-                    snapshot.zoneId(), requestedName);
-            return CatalogPublishLifecycle.publishAndPersist(
-                            catalogClient, request, identity, identityStore,
-                            publicationRegistry)
-                    .thenApply(completed -> new CompletedPublish(
-                            completed.result(), payload, completed.identity(),
-                            completed.nameSaveFailed(),
-                            completed.publicationSaveFailed()));
-        }).thenCompose(future -> future)
-                .whenComplete((completed, failure) -> runOnClient(() -> {
-                    if (!screenActive || minecraft == null
-                            || MinecraftCompat.screen(minecraft) != this) return;
-                    publishing = false;
-                    if (failure != null) {
-                        statusText = friendlyFailure(failure);
-                        statusKind = StatusKind.ERROR;
-                    } else {
-                        result = completed.result();
-                        publishedPayload = completed.payload();
-                        identityLabel = completed.identity().shortPublisherId();
-                        publisherName = completed.identity().publisherName();
-                        if (completed.publicationSaveFailed()) {
-                            statusText = Component.translatable(
-                                    "waypointer.screen.route_publish.status.record_not_saved");
-                            statusKind = StatusKind.ERROR;
-                        } else if (completed.nameSaveFailed()) {
-                            statusText = Component.translatable(
-                                    "waypointer.screen.route_publish.status.name_not_saved");
-                            statusKind = StatusKind.ERROR;
-                        } else {
-                            statusText = Component.translatable(
-                                    "waypointer.screen.route_publish.status.published",
-                                    LocalizedNumberFormatter.active().integer(
-                                            result.route().version()));
-                            statusKind = StatusKind.OK;
-                        }
-                    }
-                    rebuildWidgets();
-                }));
+    private void applyPublishedStatus(CatalogPublishSession.Snapshot next) {
+        if (next.copied()) {
+            statusText = Component.translatable(
+                    "waypointer.screen.route_publish.status.copied");
+            statusKind = StatusKind.OK;
+        } else if (next.publicationSaveFailed()) {
+            statusText = Component.translatable(
+                    "waypointer.screen.route_publish.status.record_not_saved");
+            statusKind = StatusKind.ERROR;
+        } else if (next.nameSaveFailed()) {
+            statusText = Component.translatable(
+                    "waypointer.screen.route_publish.status.name_not_saved");
+            statusKind = StatusKind.ERROR;
+        } else {
+            statusText = Component.translatable(
+                    "waypointer.screen.route_publish.status.published",
+                    LocalizedNumberFormatter.active().integer(
+                            next.result().route().version()));
+            statusKind = StatusKind.OK;
+        }
+    }
+
+    private void showPublisherNamePrompt(CatalogPublishSession.Snapshot state) {
+        if (!RoutePublishUiState.shouldPromptPublisherName(
+                publisherPromptAttempt, state)) return;
+        publisherPromptAttempt = state.attempt();
+        PublisherNameScreen.open(this, defaultPublisherName(),
+                session::confirmPublisherName);
     }
 
     private void copyPublishedCode() {
-        if (publishedPayload == null || minecraft == null) return;
-        minecraft.keyboardHandler.setClipboard(publishedPayload);
-        statusText = Component.translatable(
-                "waypointer.screen.route_publish.status.copied");
-        statusKind = StatusKind.OK;
+        if (publishState.publishedPayload() == null || minecraft == null) return;
+        minecraft.keyboardHandler.setClipboard(publishState.publishedPayload());
+        session.markCopied();
     }
 
     private boolean validInput() {
-        return validationHint() == null;
+        return form.valid();
     }
 
     private Component validationHint() {
-        if (group == null || group.isEmpty()) {
-            return Component.translatable(
+        CatalogPublishFormModel.Validation validation = form.validation();
+        if (validation == null) return null;
+        return switch (validation) {
+            case EMPTY_ROUTE -> Component.translatable(
                     "waypointer.screen.route_publish.validation.empty_route");
-        }
-        if (group.temp() || group.runtimeOnly()) {
-            return Component.translatable(
+            case TEMPORARY_ROUTE -> Component.translatable(
                     "waypointer.screen.route_publish.validation.temporary");
-        }
-        if (titleValue == null || titleValue.trim().isEmpty()) {
-            return Component.translatable(
+            case TITLE_REQUIRED -> Component.translatable(
                     "waypointer.screen.route_publish.validation.title_required");
-        }
-        String description = descriptionValue == null ? "" : descriptionValue.trim();
-        int descriptionLength = description.codePointCount(0, description.length());
-        if (descriptionLength < DESCRIPTION_MIN) {
-            return Component.translatable(
+            case DESCRIPTION_TOO_SHORT -> Component.translatable(
                     "waypointer.screen.route_publish.validation.description_min",
                     DESCRIPTION_MIN);
-        }
-        if (descriptionLength > DESCRIPTION_MAX) {
-            return Component.translatable(
+            case DESCRIPTION_TOO_LONG -> Component.translatable(
                     "waypointer.screen.route_publish.validation.description_max",
                     DESCRIPTION_MAX);
-        }
-        return null;
+        };
     }
 
     private void refreshControlState() {
-        boolean editable = !publishing;
+        RoutePublishUiState.Controls controls = RoutePublishUiState.controls(
+                publishState, validInput());
         if (publishButton != null) {
-            publishButton.active = validInput() && !publishing;
+            publishButton.active = controls.publishEnabled();
             publishButton.setMessage(publishButtonLabel());
         }
-        if (titleBox != null) titleBox.active = editable;
-        if (descriptionBox != null) descriptionBox.active = editable;
-        if (unlistedButton != null) unlistedButton.active = editable;
-        if (publicButton != null) publicButton.active = editable;
-        if (copyButton != null) {
-            boolean hasCode = result != null && publishedPayload != null;
-            copyButton.visible = hasCode;
-            copyButton.active = hasCode;
+        if (backButton != null) {
+            backButton.active = controls.backEnabled();
         }
-    }
-
-    private void loadExistingIdentity() {
-        if (!Files.isRegularFile(identityStore.file())) return;
-        CompletableFuture.supplyAsync(identityStore::load)
-                .whenComplete((identity, failure) -> runOnClient(() -> {
-                    if (failure != null) return;
-                    identityLabel = identity.shortPublisherId();
-                    publisherName = identity.publisherName();
-                    if (screenActive && minecraft != null
-                            && MinecraftCompat.screen(minecraft) == this) {
-                        rebuildWidgets();
-                    }
-                }));
+        if (manageButton != null) manageButton.active = controls.manageEnabled();
+        if (titleBox != null) titleBox.active = controls.editable();
+        if (descriptionBox != null) descriptionBox.active = controls.editable();
+        if (unlistedButton != null) unlistedButton.active = controls.editable();
+        if (publicButton != null) publicButton.active = controls.editable();
+        if (copyButton != null) {
+            copyButton.visible = controls.copyVisible();
+            copyButton.active = controls.copyEnabled();
+        }
     }
 
     @Override
@@ -568,7 +517,7 @@ public final class RoutePublishScreen extends Screen {
 
         drawFieldLabel(graphics,
                 Component.translatable("waypointer.screen.route_publish.field.title"),
-                formY, titleValue, TITLE_MAX);
+                formY, form.title(), TITLE_MAX);
         drawFieldLabel(graphics,
                 Component.translatable("waypointer.screen.route_publish.field.description"),
                 formY + FIELD_STRIDE,
@@ -590,7 +539,7 @@ public final class RoutePublishScreen extends Screen {
     }
 
     private void renderVisibilitySelection(GuiGraphicsExtractor graphics) {
-        Button selected = visibility == CatalogPublishRequest.Visibility.PUBLIC
+        Button selected = form.visibility() == CatalogPublishRequest.Visibility.PUBLIC
                 ? publicButton : unlistedButton;
         if (selected == null || !selected.visible) return;
         graphics.fill(selected.getX() + 1,
@@ -602,7 +551,7 @@ public final class RoutePublishScreen extends Screen {
 
     private void renderDescriptionCounter(GuiGraphicsExtractor graphics) {
         if (descriptionBox == null) return;
-        int remaining = descriptionCharactersRemaining(descriptionValue);
+        int remaining = descriptionCharactersRemaining(form.description());
         if (remaining < 0) return;
         String counter = Component.translatable(
                 "waypointer.screen.route_publish.field.remaining",
@@ -646,6 +595,8 @@ public final class RoutePublishScreen extends Screen {
         int innerX = formX + CARD_PAD + 1;
         int innerW = Math.max(0, formW - (CARD_PAD + 1) * 2);
         int y = cardY + CARD_PAD;
+        String identityLabel = publishState.identity() == null
+                ? null : publishState.identity().shortPublisherId();
         boolean known = identityLabel != null;
         drawCaptionValue(graphics,
                 Component.translatable("waypointer.screen.route_publish.identity.publisher_id"),
@@ -653,10 +604,10 @@ public final class RoutePublishScreen extends Screen {
                         "waypointer.screen.route_publish.identity.created_on_publish"),
                 innerX, y, innerW, known ? TEXT : TEXT_MUTED);
         y += LINE_H;
-        if (result != null) {
+        if (publishState.result() != null) {
             drawCaptionValue(graphics,
                     Component.translatable("waypointer.screen.route_publish.identity.route_id"),
-                    Component.literal(result.route().id()),
+                    Component.literal(publishState.result().route().id()),
                     innerX, y, innerW, TEXT);
             y += LINE_H;
         }
@@ -718,7 +669,7 @@ public final class RoutePublishScreen extends Screen {
     }
 
     private String previewName() {
-        String trimmed = titleValue == null ? "" : titleValue.trim();
+        String trimmed = form.previewName();
         return trimmed.isEmpty() ? displayRouteName(group) : trimmed;
     }
 
@@ -749,12 +700,19 @@ public final class RoutePublishScreen extends Screen {
 
     @Override
     public void onClose() {
+        if (!canNavigateBack(publishState.phase())) return;
         MinecraftCompat.setScreen(minecraft, parent);
+    }
+
+    static boolean canNavigateBack(CatalogPublishSession.Phase phase) {
+        return RoutePublishUiState.canNavigateBack(phase);
     }
 
     @Override
     public void removed() {
         screenActive = false;
+        removeSessionListener.run();
+        removeSessionListener = () -> { };
         super.removed();
     }
 
@@ -851,40 +809,14 @@ public final class RoutePublishScreen extends Screen {
     }
 
     static boolean descriptionLengthValid(String description) {
-        String trimmed = description == null ? "" : description.trim();
-        int length = trimmed.codePointCount(0, trimmed.length());
-        return length >= DESCRIPTION_MIN && length <= DESCRIPTION_MAX;
+        return CatalogPublishFormModel.descriptionLengthValid(description);
     }
 
     static String normalizeDescriptionInput(String value) {
-        if (value == null || value.isEmpty()) return "";
-        String normalized = Normalizer.normalize(
-                value.replace("\r\n", "\n").replace('\r', '\n'),
-                Normalizer.Form.NFKC);
-        StringBuilder result = new StringBuilder(Math.min(normalized.length(), DESCRIPTION_MAX));
-        int count = 0;
-        for (int offset = 0; offset < normalized.length() && count < DESCRIPTION_MAX;) {
-            int codePoint = normalized.codePointAt(offset);
-            offset += Character.charCount(codePoint);
-            if (codePoint != '\n' && (codePoint < 0x20 || codePoint == 0x7f)) continue;
-            result.appendCodePoint(codePoint);
-            count++;
-        }
-        return result.toString();
+        return CatalogPublishFormModel.normalizeDescriptionInput(value);
     }
 
     static int descriptionCharactersRemaining(String description) {
-        int length = description == null ? 0
-                : description.codePointCount(0, description.length());
-        return length < DESCRIPTION_COUNTER_START
-                ? -1 : Math.max(0, DESCRIPTION_MAX - length);
-    }
-
-    private record CompletedPublish(
-            CatalogPublishResult result,
-            String payload,
-            PublisherIdentity identity,
-            boolean nameSaveFailed,
-            boolean publicationSaveFailed) {
+        return CatalogPublishFormModel.descriptionCharactersRemaining(description);
     }
 }
