@@ -4,6 +4,7 @@
     "compatibilityLevel": "JAVA_21",
     "client": [
         "ChatComponentMixin",
+        "ClientLanguageMixin",
         "ClientPacketListenerMixin",
         "ContributorNameTagMixin",
         "PlayerInfoMixin",

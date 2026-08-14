@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Check out tagged commit
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ env.RELEASE_TAG }}
 
       - name: Set up Java 25
         uses: actions/setup-java@03ad4de0992f5dab5e18fcb136590ce7c4a0ac95 # v5.6.0
@@ -45,6 +47,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          source_commit="$(git rev-parse HEAD)"
+          tag_commit="$(git rev-parse "${RELEASE_TAG}^{commit}")"
+          if [[ "${source_commit}" != "${tag_commit}" ]]; then
+            echo "Checked-out commit does not match ${RELEASE_TAG}"
+            exit 1
+          fi
           mod_version="$(sed -n 's/^mod_version=//p' gradle.properties)"
           if [[ "${RELEASE_TAG}" != "v${mod_version}" ]]; then
             echo "Release tag ${RELEASE_TAG} does not match mod version ${mod_version}"
@@ -62,7 +70,12 @@ jobs:
           fi
 
       - name: Test and build Minecraft 26.x targets
-        run: ./gradlew --no-daemon --max-workers=1 clean buildAllTargets --stacktrace --console=plain
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_commit="$(git rev-parse HEAD)"
+          ./gradlew --no-daemon --max-workers=1 clean buildAllTargets \
+            "-PtranslationCommit=${source_commit}" --stacktrace --console=plain
 
       - name: Collect and verify all release files
         shell: bash
@@ -110,6 +123,38 @@ jobs:
 
           check_metadata "release/waypointer-${mod_version}-mc26.1.2.jar" ">=26.1.2 <26.2" ">=25" ">=1.0.2"
           check_metadata "release/waypointer-${mod_version}-mc26.2.jar" ">=26.2 <26.3" ">=25" ">=1.0.2"
+
+          verify_languages() {
+            local jar="$1"
+            local manifest="$(mktemp)"
+            local bundled_count
+            bundled_count="$(unzip -Z1 "${jar}" | grep -Ec '^assets/waypointer/lang/[^/]+\.json$')"
+            if [[ "${bundled_count}" -ne 1 ]] || ! unzip -Z1 "${jar}" | grep -qx 'assets/waypointer/lang/en_us.json'; then
+              echo "${jar} must bundle only en_us.json"
+              exit 1
+            fi
+            unzip -p "${jar}" assets/waypointer/i18n/remote-locales.json > "${manifest}"
+            jq -e --arg commit "$(git rev-parse HEAD)" \
+              '.schema == 1 and .enabled == true
+                and .repository == "ethanrjs/waypointer"
+                and .commit == $commit
+                and .pathTemplate == "translations/lang/{locale}.json"' \
+              "${manifest}" >/dev/null
+            while IFS=$'\t' read -r locale digest bytes; do
+              local file="translations/lang/${locale}.json"
+              test -f "${file}"
+              test "$(sha256sum "${file}" | cut -d' ' -f1)" = "${digest}"
+              test "$(wc -c < "${file}" | tr -d ' ')" = "${bytes}"
+            done < <(jq -r '.locales | to_entries[] | [.key, .value.sha256, .value.bytes] | @tsv' "${manifest}")
+            test "$(jq '.locales | length' "${manifest}")" = "$(find translations/lang -maxdepth 1 -type f -name '*.json' | wc -l | tr -d ' ')"
+            rm -f "${manifest}"
+          }
+
+          verify_languages "release/waypointer-${mod_version}-mc26.1.2.jar"
+          verify_languages "release/waypointer-${mod_version}-mc26.2.jar"
+          cmp \
+            <(unzip -p "release/waypointer-${mod_version}-mc26.1.2.jar" assets/waypointer/i18n/remote-locales.json) \
+            <(unzip -p "release/waypointer-${mod_version}-mc26.2.jar" assets/waypointer/i18n/remote-locales.json)
 
           mapfile -t jars < <(find release -maxdepth 1 -type f -name '*.jar' -print | sort)
           if [[ "${#jars[@]}" -ne 2 ]]; then
