@@ -1,8 +1,6 @@
-# Waypointer
-
 Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manager.
 
-## Features
+Features
 
 - Per-zone waypoints
 - Dungeon rooms support (Odin-compatible room detection, all 140 Catacombs rooms)
@@ -22,32 +20,22 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 - Public API for other Fabric client mods
 - Works with shaders
 
-## Waypoint Import/Export Compatibility
+Waypoint Import/Export Compatibility
 
-- Coleweight/SkyHanni ordered-route JSON (I/E)
+- Coleweight/SkyHanni (I/E)
 - Skytils 1.x V1 (I/E) and V2 (I)
 - Skyblocker V1 (I/E)
-- Soopy V1 binary share strings (I)
-- Firmament `FIRM_WAYPOINTS/` absolute share strings (I)
+- Soopy V1 (I)
+- Firmament (I)
 - Generic JSON-based (I)
 
-Formats are verified against the upstream
-implementations: [Skyblocker](https://github.com/SkyblockerMod/Skyblocker/tree/223a6e48cfd8302c50db3010df04412f61580123),
-[Skytils](https://github.com/Skytils/SkytilsMod/tree/276c07edf0f1e64956424016f438a5059c63a863),
-[SkyHanni](https://github.com/hannibal002/SkyHanni/tree/9597afac8ac1216fcc965069447c2a719470ecce),
-[Soopy V1](https://github.com/Soopyboo32/SoopyV2/blob/d8862d1dde6bfcaec5324236e699b50affba38b0/src/features/waypoints/index.js),
-and [Firmament](https://github.com/FirmamentMC/Firmament/blob/e86d4692ac19e71a687c84a5e1808235ade73d21/src/main/kotlin/features/world/FirmWaypointManager.kt).
+Dungeon route import
 
-### Dungeon route import
+- SecretRoutes `routes.json`: `/wpd import <file>`
+- Odin dungeon waypoints: JSON file or import string
+- Waypointer `WPD:` share codes (I/E)
 
-- SecretRoutes `routes.json` (I) — `/wpd import <file>`
-- Odin dungeon waypoint packs (I) — JSON pack file or shared Base64+GZIP string
-- Waypointer `WPD:` share payloads (I/E)
-
-Dungeon formats are verified against [SecretRoutes](https://github.com/yourboykyle/SecretRoutes/blob/9cf484146cbffceb93c9e27c2ee1ae3c5ce9e112/routes.json)
-and [Odin](https://github.com/odtheking/Odin/blob/ea0883587f5a352165c98b5467e5cb171ab32043/src/main/kotlin/com/odtheking/odin/config/DungeonWaypointConfig.kt).
-
-## Requirements
+Requirements
 
 - Minecraft 26.1.2 or 26.2
 - Java 25+
@@ -57,7 +45,7 @@ and [Odin](https://github.com/odtheking/Odin/blob/ea0883587f5a352165c98b5467e5cb
   - Minecraft 26.2: 0.147.1+26.2 or newer compatible 26.2 release
 - [Hypixel Mod API](https://modrinth.com/mod/hypixel-mod-api) 1.0.2+
 
-## Building
+Building
 ```powersh
 ./gradlew buildAllTargets
 ```
@@ -70,21 +58,10 @@ it does not produce one universal jar:
 Matching `-sources.jar` files are also generated. The current mod version is
 `1.8.7`.
 
-## Testing
-```powershe
-./gradlew test
-```
-
-## Layout
-
-- `src/main/` shared logic: codec, config, core waypoint/zone/group types, chat scanners.
-- `src/client/` client-only: rendering, screens, keybinds, location/zone tracking, chat hooks.
-- `src/test/` JUnit 5 tests for codec, scanners, storage, and progression.
-
-## CODEC Specification
+CODEC Specification
 See [CODEC.md](CODEC.md) for the full overengineered specification.
 
-## API for Other Mods
+API for Other Mods
 
 Waypointer exposes a Fabric entrypoint API for other client mods:
 
