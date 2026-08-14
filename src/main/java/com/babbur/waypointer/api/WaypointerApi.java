@@ -1,5 +1,7 @@
 package com.babbur.waypointer.api;
 
+import com.babbur.waypointer.codec.WaypointImporter;
+
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -182,6 +184,19 @@ public interface WaypointerApi {
      *         unsupported, or exceeds Waypointer's import limits
      */
     ImportSummary importRoutes(String payload, ImportOptions options);
+
+    /**
+     * Commit routes that a trusted boundary already decoded and validated.
+     * The implementation copies the groups before it mutates saved state.
+     *
+     * @param prepared an already decoded import
+     * @param options import options, or {@code null} for defaults
+     */
+    default ImportSummary importPreparedRoutes(WaypointImporter.ImportResult prepared,
+                                               ImportOptions options) {
+        throw new UnsupportedOperationException(
+                "Prepared route imports are not supported by this implementation");
+    }
 
     /** Import with {@link ImportOptions#defaults()}. */
     default ImportSummary importRoutes(String payload) {

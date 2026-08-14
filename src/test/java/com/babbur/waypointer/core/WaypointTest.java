@@ -3,6 +3,7 @@ package com.babbur.waypointer.core;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class WaypointTest {
 
@@ -41,5 +42,27 @@ class WaypointTest {
         assertEquals(0.0, Waypoint.at(0, 0, 0).withRadius(-1.0).customRadius());
         assertEquals(Waypoint.MAX_REACH_RADIUS,
                 Waypoint.at(0, 0, 0).withRadius(1_000_000.0).customRadius());
+    }
+
+    @Test
+    void blockCenterConversionRejectsIntegerOverflow() {
+        assertEquals(-2_147_483_640,
+                Waypoint.preciseBlockCenter(Waypoint.MIN_BLOCK_COORDINATE));
+        assertEquals(2_147_483_640,
+                Waypoint.preciseBlockCenter(Waypoint.MAX_BLOCK_COORDINATE));
+        assertThrows(IllegalArgumentException.class,
+                () -> Waypoint.preciseBlockCenter(Waypoint.MIN_BLOCK_COORDINATE - 1));
+        assertThrows(IllegalArgumentException.class,
+                () -> Waypoint.preciseBlockCenter(Waypoint.MAX_BLOCK_COORDINATE + 1));
+    }
+
+    @Test
+    void preciseSnapRejectsNonFiniteAndOverflowingCoordinates() {
+        assertThrows(IllegalArgumentException.class,
+                () -> Waypoint.snapToPreciseSixteenths(Double.NaN));
+        assertThrows(IllegalArgumentException.class,
+                () -> Waypoint.snapToPreciseSixteenths(Double.POSITIVE_INFINITY));
+        assertThrows(IllegalArgumentException.class,
+                () -> Waypoint.snapToPreciseSixteenths(Double.MAX_VALUE));
     }
 }
