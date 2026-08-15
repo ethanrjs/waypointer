@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.catalog.CatalogPublishRequest;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 
 import java.text.Normalizer;
 import java.util.Objects;
@@ -65,6 +66,7 @@ final class CatalogPublishFormModel {
     Validation validation() {
         if (group.isEmpty()) return Validation.EMPTY_ROUTE;
         if (group.temp() || group.runtimeOnly()) return Validation.TEMPORARY_ROUTE;
+        if (unpublishableZone(group.zoneId())) return Validation.UNPUBLISHABLE_ZONE;
         if (title.trim().isEmpty()) return Validation.TITLE_REQUIRED;
         int length = trimmedCodePointLength(description);
         if (length < DESCRIPTION_MIN) return Validation.DESCRIPTION_TOO_SHORT;
@@ -88,6 +90,13 @@ final class CatalogPublishFormModel {
         String normalized = normalizedTitle();
         if (!normalized.isEmpty()) return normalized;
         return group.name() == null ? "" : group.name().trim();
+    }
+
+    /** Routes without a real SkyBlock zone would be unfindable in the catalog. */
+    static boolean unpublishableZone(String zoneId) {
+        String canonical = Zone.canonicalId(zoneId);
+        return Zone.UNKNOWN.id().equals(canonical)
+                || Zone.PRIVATE_WORLD.id().equals(canonical);
     }
 
     static boolean descriptionLengthValid(String description) {
@@ -127,6 +136,7 @@ final class CatalogPublishFormModel {
     enum Validation {
         EMPTY_ROUTE,
         TEMPORARY_ROUTE,
+        UNPUBLISHABLE_ZONE,
         TITLE_REQUIRED,
         DESCRIPTION_TOO_SHORT,
         DESCRIPTION_TOO_LONG

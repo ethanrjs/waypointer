@@ -51,11 +51,10 @@ public final class AddTempScreen extends Screen {
         int fieldW = PANEL_W - PAD_OUTER * 2;
         int y = panelY + 32;
 
-        modeBtn = Button.builder(modeLabel(), this::onModeButtonPressed)
-                .bounds(inner, y, fieldW, BTN_H)
-                .tooltip(Tooltip.create(Component.translatable(
-                        "waypointer.screen.add_temp.mode.tooltip")))
-                .build();
+        modeBtn = styledButton(inner, y, fieldW, BTN_H, modeLabel(),
+                this::onModeButtonPressed,
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.add_temp.mode.tooltip")));
         addRenderableWidget(modeBtn);
         y += BTN_H + GAP;
 
@@ -70,11 +69,13 @@ public final class AddTempScreen extends Screen {
         updateDurationVisibility();
         y += BTN_H + GAP;
 
-        int footerY = panelY + PANEL_H - BTN_H - PAD_OUTER / 2;
-        addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), this::onCancelButtonPressed)
-                .bounds(panelX + PANEL_W - PAD_OUTER - 140 - GAP, footerY, 70, BTN_H).build());
-        addRenderableWidget(Button.builder(Component.translatable("gui.add"), this::onAddButtonPressed)
-                .bounds(panelX + PANEL_W - PAD_OUTER - 70, footerY, 70, BTN_H).build());
+        int footerY = panelY + PANEL_H - BTN_H - PAD_OUTER;
+        addRenderableWidget(styledButton(panelX + PANEL_W - PAD_OUTER - 140 - GAP, footerY,
+                70, BTN_H, Component.translatable("gui.cancel"),
+                this::onCancelButtonPressed, null));
+        addRenderableWidget(styledButton(panelX + PANEL_W - PAD_OUTER - 70, footerY,
+                70, BTN_H, Component.translatable("gui.add"),
+                this::onAddButtonPressed, null));
     }
     private void onModeButtonPressed(Button button) {
         cycleMode();

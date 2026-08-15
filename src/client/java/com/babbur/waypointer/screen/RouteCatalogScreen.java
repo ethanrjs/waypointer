@@ -14,6 +14,7 @@ import com.babbur.waypointer.catalog.RouteCatalogClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -22,9 +23,15 @@ import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.CompletionException;
 
 import static com.babbur.waypointer.screen.GuiTokens.ACCENT;
@@ -43,6 +50,7 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F5;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
@@ -65,11 +73,15 @@ public final class RouteCatalogScreen extends Screen {
     private static final int SCROLLBAR_W = 3;
     private static final int SCROLLBAR_INSET = 2;
     private static final int DETAIL_HEADER_H = 32;
-    private static final int SEARCH_DEBOUNCE_TICKS = 7;
+    // Client ticks run at 20/s, so six ticks of silence is roughly 300 ms.
+    private static final int SEARCH_DEBOUNCE_TICKS = 6;
+    private static final int SEARCH_CACHE_LIMIT = 32;
+    private static final int ZONE_ROW_H = GuiTokens.ROW_H;
+    private static final int ZONE_DROPDOWN_MIN_W = 150;
     private static final long MANUAL_REFRESH_COOLDOWN_NANOS = 10_000_000_000L;
 
-    private static final int STATUS_OK = 0xFF7ACB89;
-    private static final int STATUS_ERROR = 0xFFE47B7B;
+    private static final int STATUS_OK = GuiTokens.SUCCESS;
+    private static final int STATUS_ERROR = GuiTokens.DANGER;
 
     private final Screen parent;
     private final RouteCatalogClient catalogClient;
@@ -85,12 +97,21 @@ public final class RouteCatalogScreen extends Screen {
     private boolean lastLoadFailed;
     private Component statusText = Component.empty();
     private int statusColor = TEXT_DIM;
-    private int searchDebounceTicks = -1;
+    private int searchDebounceTicks;
     private boolean manualRefreshCooldownArmed;
     private long manualRefreshAllowedAtNanos;
     private int displayedRefreshCooldownSeconds = -1;
+    private final LinkedHashMap<String, CatalogPage> searchCache =
+            boundedPageCache(SEARCH_CACHE_LIMIT);
+    private boolean refocusSearchAfterRebuild;
+    private int pendingSearchCursor = -1;
+    private int pendingSearchHighlight = -1;
+    private boolean zoneDropdownOpen;
+    private int zoneDropdownScroll;
+    private List<String> zoneDropdownIds = List.of();
 
     private EditBox searchBox;
+    private Button zoneFilterButton;
     private Button refreshButton;
     private Button loadMoreButton;
     private Button installButton;
@@ -175,7 +196,14 @@ public final class RouteCatalogScreen extends Screen {
 
         Component refreshLabel = refreshButtonLabel(System.nanoTime());
         int refreshW = Math.min(contentW, Math.max(REFRESH_W, font.width(refreshLabel) + 16));
-        int searchW = toolbarStacked ? contentW : Math.max(40, contentW - refreshW - GAP);
+        Component zoneLabel = zoneFilterLabel();
+        int zoneW = toolbarStacked
+                ? Math.max(40, contentW - refreshW - GAP)
+                : Math.min(Math.max(84, font.width(zoneLabel.getString()) + 28),
+                        Math.max(84, contentW / 3));
+        int searchW = toolbarStacked
+                ? contentW
+                : Math.max(40, contentW - refreshW - zoneW - GAP * 2);
         searchBox = new EditBox(font, contentX, searchY, searchW, BTN_H,
                 Component.translatable("waypointer.screen.route_catalog.search"));
         searchBox.setMaxLength(80);
@@ -186,6 +214,11 @@ public final class RouteCatalogScreen extends Screen {
         addRenderableWidget(searchBox);
 
         int refreshY = toolbarStacked ? searchY + BTN_H + GAP_TIGHT : searchY;
+        int zoneX = toolbarStacked ? contentX : contentX + searchW + GAP;
+        zoneFilterButton = new ZoneFilterButton(zoneX, refreshY, zoneW, BTN_H, zoneLabel);
+        zoneFilterButton.setTooltip(Tooltip.create(Component.translatable(
+                "waypointer.screen.route_catalog.filter.tooltip")));
+        addRenderableWidget(zoneFilterButton);
         refreshButton = styledButton(contentRight - refreshW, refreshY, refreshW, BTN_H,
                 refreshLabel,
                 button -> requestManualRefresh(),
@@ -210,11 +243,76 @@ public final class RouteCatalogScreen extends Screen {
         addRenderableWidget(installButton);
 
         initializing = false;
-        if (!listRequested) {
-            refreshCatalog();
-        } else {
+        if (!listRequested) refreshCatalog();
+    }
+
+    // rebuildWidgets clears focus, so remember the search caret before it runs
+    // and let setInitialFocus() below restore it (see SettingsScreen).
+    @Override
+    protected void rebuildWidgets() {
+        rememberSearchFocus();
+        super.rebuildWidgets();
+    }
+
+    @Override
+    protected void setInitialFocus() {
+        if (refocusSearchAfterRebuild && searchBox != null) {
+            refocusSearchAfterRebuild = false;
             setInitialFocus(searchBox);
+            restoreSearchCaret();
+            return;
         }
+        super.setInitialFocus();
+    }
+
+    private void restoreSearchCaret() {
+        if (pendingSearchCursor >= 0) {
+            searchBox.setCursorPosition(pendingSearchCursor);
+            searchBox.setHighlightPos(pendingSearchHighlight >= 0
+                    ? pendingSearchHighlight : pendingSearchCursor);
+        }
+        pendingSearchCursor = -1;
+        pendingSearchHighlight = -1;
+    }
+
+    private void rememberSearchFocus() {
+        if (searchBox == null || !searchBox.isFocused()) return;
+        markSearchRefocus();
+    }
+
+    private void markSearchRefocus() {
+        if (searchBox == null) return;
+        refocusSearchAfterRebuild = true;
+        pendingSearchCursor = searchBox.getCursorPosition();
+        pendingSearchHighlight = searchHighlightAnchor(
+                searchBox.getValue(), pendingSearchCursor, searchBox.getHighlighted());
+    }
+
+    /**
+     * EditBox exposes the cursor but not the selection anchor; recover the
+     * anchor from the highlighted substring so a rebuilt box keeps both.
+     */
+    static int searchHighlightAnchor(String value, int cursor, String highlighted) {
+        if (highlighted == null || highlighted.isEmpty()) return cursor;
+        if (value != null
+                && value.regionMatches(cursor, highlighted, 0, highlighted.length())) {
+            return cursor + highlighted.length();
+        }
+        return Math.max(0, cursor - highlighted.length());
+    }
+
+    /** Bounded per-query response cache; the least recently used entry falls out. */
+    static <V> LinkedHashMap<String, V> boundedPageCache(int limit) {
+        return new LinkedHashMap<>(16, 0.75f, true) {
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, V> eldest) {
+                return size() > limit;
+            }
+        };
+    }
+
+    static String searchCacheKey(String zone, String query) {
+        return (zone == null ? "" : zone) + '\n' + (query == null ? "" : query);
     }
 
     private void handleSearchEdit(String value) {
@@ -287,10 +385,254 @@ public final class RouteCatalogScreen extends Screen {
         }
     }
 
+    /** Unconditional network reload of the first page (initial load, refresh). */
     private void refreshCatalog() {
-        searchDebounceTicks = -1;
+        searchDebounceTicks = 0;
         browser.submitPendingSearch();
         requestPage(null, false);
+    }
+
+    /**
+     * Runs the debounced search: a query whose first page was already fetched
+     * this session renders straight from the cache with zero network traffic.
+     */
+    private void runPendingSearch() {
+        searchDebounceTicks = 0;
+        browser.submitPendingSearch();
+        CatalogPage cached = searchCache.get(
+                searchCacheKey(browser.zoneFilter(), browser.normalizedQuery()));
+        if (cached != null) {
+            showCachedPage(cached);
+            return;
+        }
+        requestPage(null, false);
+    }
+
+    private void showCachedPage(CatalogPage page) {
+        requests.invalidateForSearch();
+        listRequested = true;
+        listLoading = false;
+        appending = false;
+        lastLoadFailed = false;
+        applyPage(page, false);
+        rebuildWidgets();
+    }
+
+    private String emptyListKey() {
+        return emptyListKey(browser.query().isBlank(), browser.zoneFilter() != null);
+    }
+
+    static String emptyListKey(boolean queryBlank, boolean zoneFiltered) {
+        if (!queryBlank) return "waypointer.screen.route_catalog.empty.search";
+        return zoneFiltered
+                ? "waypointer.screen.route_catalog.empty.zone"
+                : "waypointer.screen.route_catalog.empty";
+    }
+
+    private Component zoneFilterLabel() {
+        return browser.zoneFilter() == null
+                ? Component.translatable("waypointer.screen.route_catalog.filter.all_zones")
+                : Component.literal(Zone.fromId(browser.zoneFilter()).displayName());
+    }
+
+    /**
+     * Select-control geometry for the zone filter: {labelX, labelMaxW, caretCenterX,
+     * caretCenterY}. The label shares the dropdown rows' {@code x + GAP} column and the
+     * caret's right edge mirrors that inset.
+     */
+    static int[] filterSelectGeometry(int x, int y, int w, int h) {
+        return new int[] {x + GAP, Math.max(12, w - 27), x + w - 13, y + h / 2 - 1};
+    }
+
+    /** The zone filter renders as a select control: left-aligned value, right caret. */
+    private final class ZoneFilterButton extends GuiTokens.StyledButton {
+        ZoneFilterButton(int x, int y, int width, int height, Component label) {
+            super(x, y, width, height, label, button -> toggleZoneDropdown());
+        }
+
+        @Override
+        protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+            boolean highlighted = active && isHoveredOrFocused();
+            GuiTokens.drawControlFrame(g, getX(), getY(), getWidth(), getHeight(),
+                    active, highlighted, isFocused());
+            int[] geo = filterSelectGeometry(getX(), getY(), getWidth(), getHeight());
+            g.text(font, font.plainSubstrByWidth(getMessage().getString(), geo[1]),
+                    geo[0], GuiTokens.opticalTextY(getY(), getHeight()),
+                    active ? TEXT : TEXT_MUTED, false);
+            GuiTokens.drawDirectionGlyph(g, GuiTokens.Direction.DOWN, geo[2], geo[3],
+                    highlighted || zoneDropdownOpen ? TEXT : TEXT_DIM);
+        }
+    }
+
+    private String zoneOptionLabel(String id) {
+        return id.isEmpty()
+                ? Component.translatable(
+                        "waypointer.screen.route_catalog.filter.all_zones").getString()
+                : Zone.fromId(id).displayName();
+    }
+
+    /** Every canonical zone by display name, behind an all-zones sentinel ({@code ""}). */
+    static List<String> zoneFilterDropdownIds() {
+        List<String> ids = new ArrayList<>();
+        for (Zone zone : Zone.knownZones()) ids.add(zone.id());
+        ids.sort(Comparator
+                .comparing((String id) -> Zone.fromId(id).displayName()
+                        .toLowerCase(Locale.ROOT))
+                .thenComparing(id -> id));
+        List<String> out = new ArrayList<>(ids.size() + 1);
+        out.add("");
+        out.addAll(ids);
+        return List.copyOf(out);
+    }
+
+    private void toggleZoneDropdown() {
+        if (zoneDropdownOpen) {
+            closeZoneDropdown();
+            return;
+        }
+        if (searchBox != null && searchBox.isFocused()) markSearchRefocus();
+        zoneDropdownIds = zoneFilterDropdownIds();
+        zoneDropdownOpen = true;
+        zoneDropdownScroll = zoneDropdownScrollForSelection();
+    }
+
+    private void closeZoneDropdown() {
+        zoneDropdownOpen = false;
+        if (refocusSearchAfterRebuild && searchBox != null) {
+            refocusSearchAfterRebuild = false;
+            setFocused(searchBox);
+            searchBox.setFocused(true);
+            restoreSearchCaret();
+        }
+    }
+
+    private void chooseZoneFilter(String id) {
+        closeZoneDropdown();
+        String next = id == null || id.isEmpty() ? null : id;
+        if (!browser.setZoneFilter(next)) return;
+        requests.invalidateForSearch();
+        listLoading = false;
+        appending = false;
+        detailLoading = false;
+        lastLoadFailed = false;
+        runPendingSearch();
+    }
+
+    private int zoneDropdownScrollForSelection() {
+        String selected = browser.zoneFilter() == null ? "" : browser.zoneFilter();
+        ZoneDropdownGeometry geo = zoneDropdownGeometry(zoneDropdownIds.size());
+        return centeredDropdownScroll(zoneDropdownIds.indexOf(selected),
+                zoneDropdownIds.size(), geo.rowsBottom() - geo.rowsTop());
+    }
+
+    /** Scroll offset that centers the selected row inside the dropdown viewport. */
+    static int centeredDropdownScroll(int index, int rowCount, int viewport) {
+        if (index <= 0) return 0;
+        int target = index * ZONE_ROW_H - Math.max(0, viewport / 2 - ZONE_ROW_H / 2);
+        return Math.min(Math.max(0, target),
+                WaypointerScreen.maxDropdownScroll(rowCount, viewport));
+    }
+
+    record ZoneDropdownGeometry(
+            int x1, int y1, int x2, int y2, int rowsTop, int rowsBottom) {
+    }
+
+    private ZoneDropdownGeometry zoneDropdownGeometry(int rowCount) {
+        int anchorX = zoneFilterButton == null ? panelX + GAP : zoneFilterButton.getX();
+        int anchorBottom = zoneFilterButton == null
+                ? panelY + PAD_OUTER : zoneFilterButton.getY() + BTN_H;
+        int buttonW = zoneFilterButton == null ? 0 : zoneFilterButton.getWidth();
+        return zoneDropdownGeometry(
+                anchorX, anchorBottom, buttonW, panelX, panelW, statusY, rowCount);
+    }
+
+    /** Pure dropdown layout: anchored under its button, clipped to the panel. */
+    static ZoneDropdownGeometry zoneDropdownGeometry(
+            int anchorX, int anchorBottom, int buttonW,
+            int panelX, int panelW, int statusY, int rowCount) {
+        int w = Math.min(Math.max(ZONE_DROPDOWN_MIN_W, buttonW),
+                Math.max(60, panelW - GAP * 2));
+        int x1 = Math.max(panelX + 1, Math.min(anchorX, panelX + panelW - 1 - w));
+        int x2 = x1 + w;
+        int y1 = anchorBottom + GAP_TIGHT;
+        int maxBottom = Math.max(y1 + ZONE_ROW_H + 2, statusY - GAP_TIGHT);
+        int rowsTop = y1 + 1;
+        int availableRows = Math.max(1, (maxBottom - rowsTop - 1) / ZONE_ROW_H);
+        int visibleRows = Math.max(1, Math.min(rowCount, availableRows));
+        int y2 = rowsTop + visibleRows * ZONE_ROW_H + 1;
+        return new ZoneDropdownGeometry(x1, y1, x2, y2, rowsTop, y2 - 1);
+    }
+
+    /** Scrollbar thumb as {top offset, height}, or {@code null} when everything fits. */
+    static int[] dropdownThumb(int viewport, int contentHeight, int scroll, int maxScroll) {
+        if (contentHeight <= viewport) return null;
+        int thumbH = Math.max(8, viewport * viewport / contentHeight);
+        int travel = viewport - thumbH;
+        return new int[] {maxScroll == 0 ? 0 : scroll * travel / maxScroll, thumbH};
+    }
+
+    private void renderZoneDropdown(GuiGraphicsExtractor g, int mouseX, int mouseY) {
+        if (zoneDropdownIds.isEmpty()) return;
+        ZoneDropdownGeometry geo = zoneDropdownGeometry(zoneDropdownIds.size());
+        GuiTokens.drawTooltipPanel(g, geo.x1(), geo.y1(), geo.x2(), geo.y2());
+        int viewport = geo.rowsBottom() - geo.rowsTop();
+        zoneDropdownScroll = WaypointerScreen.dropdownScrollAfterWheel(
+                zoneDropdownScroll, 0, zoneDropdownIds.size(), viewport);
+        String selected = browser.zoneFilter() == null ? "" : browser.zoneFilter();
+        g.enableScissor(geo.x1(), geo.rowsTop(), geo.x2(), geo.rowsBottom());
+        for (int i = 0; i < zoneDropdownIds.size(); i++) {
+            int rowY = geo.rowsTop() - zoneDropdownScroll + i * ZONE_ROW_H;
+            if (rowY + ZONE_ROW_H <= geo.rowsTop()) continue;
+            if (rowY >= geo.rowsBottom()) break;
+            String id = zoneDropdownIds.get(i);
+            boolean isSelected = id.equals(selected);
+            boolean hovered = mouseX >= geo.x1() && mouseX < geo.x2()
+                    && mouseY >= Math.max(rowY, geo.rowsTop())
+                    && mouseY < Math.min(rowY + ZONE_ROW_H, geo.rowsBottom());
+            int background = isSelected ? SELECTED : hovered ? GuiTokens.HOVER : 0;
+            if (background != 0) {
+                g.fill(geo.x1() + 1, rowY, geo.x2() - 1, rowY + ZONE_ROW_H, background);
+            }
+            if (isSelected) {
+                g.fill(geo.x1() + 1, rowY, geo.x1() + 3, rowY + ZONE_ROW_H, ACCENT);
+            }
+            int labelMaxW = Math.max(12, geo.x2() - geo.x1() - GAP * 2);
+            g.text(font, font.plainSubstrByWidth(zoneOptionLabel(id), labelMaxW),
+                    geo.x1() + GAP, rowY + 7,
+                    isSelected || hovered ? TEXT : TEXT_DIM, false);
+            g.fill(geo.x1() + 1, rowY + ZONE_ROW_H - 1,
+                    geo.x2() - 1, rowY + ZONE_ROW_H, BORDER);
+        }
+        g.disableScissor();
+        int[] thumb = dropdownThumb(viewport, zoneDropdownIds.size() * ZONE_ROW_H,
+                zoneDropdownScroll,
+                WaypointerScreen.maxDropdownScroll(zoneDropdownIds.size(), viewport));
+        if (thumb != null) {
+            g.fill(geo.x2() - 3, geo.rowsTop() + thumb[0],
+                    geo.x2() - 1, geo.rowsTop() + thumb[0] + thumb[1], TEXT_MUTED);
+        }
+    }
+
+    private boolean handleZoneDropdownClick(double mx, double my) {
+        ZoneDropdownGeometry geo = zoneDropdownGeometry(zoneDropdownIds.size());
+        boolean inside = mx >= geo.x1() && mx < geo.x2()
+                && my >= geo.y1() && my < geo.y2();
+        if (!inside) {
+            // Consume outside clicks so the filter button cannot reopen at once.
+            closeZoneDropdown();
+            return true;
+        }
+        int index = WaypointerScreen.dropdownRowIndexAt(
+                my, geo.rowsTop(), geo.rowsBottom(),
+                zoneDropdownScroll, zoneDropdownIds.size());
+        if (index >= 0) chooseZoneFilter(zoneDropdownIds.get(index));
+        return true;
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (zoneDropdownOpen && handleZoneDropdownClick(event.x(), event.y())) return true;
+        return super.mouseClicked(event, doubleClick);
     }
 
     private void requestManualRefresh() {
@@ -307,6 +649,7 @@ public final class RouteCatalogScreen extends Screen {
         manualRefreshCooldownArmed = true;
         manualRefreshAllowedAtNanos = now + MANUAL_REFRESH_COOLDOWN_NANOS;
         displayedRefreshCooldownSeconds = -1;
+        searchCache.clear();
         refreshCatalog();
     }
 
@@ -330,7 +673,8 @@ public final class RouteCatalogScreen extends Screen {
         rebuildWidgets();
 
         String query = browser.normalizedQuery();
-        catalogClient.listRoutes(query, null, cursor)
+        String zone = browser.zoneFilter();
+        catalogClient.listRoutes(query, zone, cursor)
                 .whenComplete((page, failure) -> runOnClient(() -> {
             if (!requests.acceptsList(ticket)) return;
             listLoading = false;
@@ -342,6 +686,7 @@ public final class RouteCatalogScreen extends Screen {
                 browser.markLoadFailed(append);
             } else {
                 lastLoadFailed = false;
+                if (!append) searchCache.put(searchCacheKey(zone, query), page);
                 applyPage(page, append);
             }
             rebuildWidgets();
@@ -351,9 +696,7 @@ public final class RouteCatalogScreen extends Screen {
     private void applyPage(CatalogPage page, boolean append) {
         browser.applyPage(page, append);
         if (browser.routes().isEmpty()) {
-            statusText = Component.translatable(browser.query().isBlank()
-                    ? "waypointer.screen.route_catalog.empty"
-                    : "waypointer.screen.route_catalog.empty.search");
+            statusText = Component.translatable(emptyListKey());
             statusColor = TEXT_DIM;
         } else if (browser.nextCursor() != null) {
             statusText = Component.translatable(
@@ -547,6 +890,14 @@ public final class RouteCatalogScreen extends Screen {
             graphics.text(font, clipped, statusX, statusY, statusColor, false);
         }
         super.extractRenderState(graphics, mouseX, mouseY, partial);
+        if (zoneFilterButton != null) {
+            GuiTokens.drawDirectionGlyph(graphics,
+                    zoneDropdownOpen ? GuiTokens.Direction.UP : GuiTokens.Direction.DOWN,
+                    zoneFilterButton.getX() + zoneFilterButton.getWidth() - 9,
+                    zoneFilterButton.getY() + BTN_H / 2,
+                    zoneDropdownOpen ? ACCENT : TEXT_DIM);
+        }
+        if (zoneDropdownOpen) renderZoneDropdown(graphics, mouseX, mouseY);
     }
 
     private void renderListState(GuiGraphicsExtractor graphics) {
@@ -564,9 +915,7 @@ public final class RouteCatalogScreen extends Screen {
                     listX, listY, listW, listH, TEXT_MUTED);
             return;
         }
-        Component empty = Component.translatable(browser.query().isBlank()
-                ? "waypointer.screen.route_catalog.empty"
-                : "waypointer.screen.route_catalog.empty.search");
+        Component empty = Component.translatable(emptyListKey());
         drawCentered(graphics, empty, listX, listY, listW, listH, TEXT_DIM);
         if (!browser.query().isBlank()) {
             drawCenteredLine(graphics, Component.translatable(
@@ -598,7 +947,7 @@ public final class RouteCatalogScreen extends Screen {
         int travel = Math.max(0, trackH - thumbH);
         int max = Math.max(1, total - visible);
         int thumbY = trackY + travel * browser.scrollOffset() / max;
-        graphics.fill(trackX, trackY, trackX + SCROLLBAR_W, trackY + trackH, 0x40000000);
+        graphics.fill(trackX, trackY, trackX + SCROLLBAR_W, trackY + trackH, BORDER);
         graphics.fill(trackX, thumbY, trackX + SCROLLBAR_W, thumbY + thumbH, TEXT_MUTED);
     }
 
@@ -698,6 +1047,16 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public boolean mouseScrolled(
             double mouseX, double mouseY, double horizontal, double vertical) {
+        if (zoneDropdownOpen) {
+            ZoneDropdownGeometry geo = zoneDropdownGeometry(zoneDropdownIds.size());
+            if (mouseX >= geo.x1() && mouseX < geo.x2()
+                    && mouseY >= geo.y1() && mouseY < geo.y2()) {
+                zoneDropdownScroll = WaypointerScreen.dropdownScrollAfterWheel(
+                        zoneDropdownScroll, vertical, zoneDropdownIds.size(),
+                        geo.rowsBottom() - geo.rowsTop());
+                return true;
+            }
+        }
         if (mouseX < listX || mouseX > listX + listW
                 || mouseY < listY || mouseY > listY + listH) {
             return super.mouseScrolled(mouseX, mouseY, horizontal, vertical);
@@ -709,6 +1068,10 @@ public final class RouteCatalogScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (zoneDropdownOpen && event.key() == GLFW_KEY_ESCAPE) {
+            closeZoneDropdown();
+            return true;
+        }
         if (event.key() == GLFW_KEY_F && controlDown() && searchBox != null) {
             setFocused(searchBox);
             searchBox.setFocused(true);
@@ -722,7 +1085,8 @@ public final class RouteCatalogScreen extends Screen {
         if (event.key() == GLFW_KEY_UP) return moveSelection(-1);
         boolean enter = event.key() == GLFW_KEY_ENTER || event.key() == GLFW_KEY_KP_ENTER;
         if (enter && searchBox != null && searchBox.isFocused()) {
-            if (browser.submitPendingSearch()) refreshCatalog();
+            // Displayed results are never refetched; only a pending edit runs.
+            if (browser.searchPending()) runPendingSearch();
             return true;
         }
         if (enter && selectedRoute() != null && !detailLoading && !unselectedRowFocused()) {
@@ -783,7 +1147,9 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
-        if (searchDebounceTicks >= 0 && searchDebounceTicks-- == 0) refreshCatalog();
+        int before = searchDebounceTicks;
+        searchDebounceTicks = advanceSearchDebounce(before);
+        if (searchDebounceFired(before, searchDebounceTicks)) runPendingSearch();
         int seconds = refreshCooldownSeconds(System.nanoTime());
         if (seconds != displayedRefreshCooldownSeconds) {
             displayedRefreshCooldownSeconds = seconds;
@@ -842,6 +1208,16 @@ public final class RouteCatalogScreen extends Screen {
                 manualRefreshCooldownArmed, nowNanos, manualRefreshAllowedAtNanos);
     }
 
+    /** One debounce tick: counts the remaining keystroke-silence ticks down to zero. */
+    static int advanceSearchDebounce(int ticksRemaining) {
+        return Math.max(0, ticksRemaining - 1);
+    }
+
+    /** The debounced search fires exactly on the transition to zero. */
+    static boolean searchDebounceFired(int before, int after) {
+        return before > 0 && after == 0;
+    }
+
     static int refreshCooldownSeconds(
             boolean armed, long nowNanos, long allowedAtNanos) {
         if (!armed || nowNanos - allowedAtNanos >= 0) return 0;
@@ -884,7 +1260,7 @@ public final class RouteCatalogScreen extends Screen {
                 "waypointer.screen.route_catalog.waypoint_count.many", value);
     }
 
-    private static Component installCount(long value) {
+    static Component installCount(long value) {
         return pluralCount(
                 "waypointer.screen.route_catalog.install_count.one",
                 "waypointer.screen.route_catalog.install_count.many", value);

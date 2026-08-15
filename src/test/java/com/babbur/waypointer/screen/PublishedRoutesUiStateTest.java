@@ -17,6 +17,9 @@ class PublishedRoutesUiStateTest {
         PublishedRoutesModel model = new PublishedRoutesModel();
         model.replace(List.of(publication("one", "https://one")));
         model.select("one");
+        assertEquals(1, model.rowsPerPage());
+        assertEquals(1, model.publications().size());
+        assertEquals("one", model.selectedRouteId());
 
         PublishedRoutesUiState.Controls noIdentity = PublishedRoutesUiState.controls(
                 model, false, false);
@@ -65,6 +68,16 @@ class PublishedRoutesUiStateTest {
                 List.of(first, second), "https://one"));
         assertTrue(PublishedRoutesUiState.forApiRoot(null, "https://one").isEmpty());
         assertTrue(PublishedRoutesUiState.forApiRoot(List.of(first), null).isEmpty());
+    }
+
+    @Test
+    void publishedDateIsTheCalendarPortionOfTheServerTimestamp() {
+        assertEquals("2026-01-01",
+                PublishedRoutesUiState.publishedDate("2026-01-01T00:00:00Z"));
+        assertEquals("2026-08-14", PublishedRoutesUiState.publishedDate("2026-08-14"));
+        assertEquals("", PublishedRoutesUiState.publishedDate(null));
+        assertEquals("", PublishedRoutesUiState.publishedDate(""));
+        assertEquals("", PublishedRoutesUiState.publishedDate("2026-08"));
     }
 
     private static CatalogPublication publication(String routeId, String apiRoot) {

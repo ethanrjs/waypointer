@@ -20,7 +20,7 @@ final class GroupEditInputRouter {
         BEGIN_ROUTE_SCROLLBAR_DRAG,
         TOGGLE_DISABLED,
         TOGGLE_SUBWAYPOINT,
-        GOTO,
+        OPEN_CONTEXT_MENU,
         OPEN_DUNGEON_TYPE_PICKER,
         TOGGLE_WAYPOINT_CONTROL,
         TOGGLE_SUBWAYPOINT_STYLE,
@@ -102,7 +102,7 @@ final class GroupEditInputRouter {
         }
         if (rowIndex >= 0 && pointer.button() == MOUSE_BUTTON_RIGHT) {
             return Action.row(pointer.shiftDown()
-                    ? ActionType.TOGGLE_SUBWAYPOINT : ActionType.GOTO, rowIndex);
+                    ? ActionType.TOGGLE_SUBWAYPOINT : ActionType.OPEN_CONTEXT_MENU, rowIndex);
         }
         if (pointer.button() != MOUSE_BUTTON_LEFT) return Action.NONE;
 

@@ -3,6 +3,7 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.catalog.CatalogPublishRequest;
 import com.babbur.waypointer.catalog.CatalogApiException;
 import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
+import com.babbur.waypointer.catalog.PublisherIdentity;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
@@ -10,7 +11,6 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.concurrent.CompletionException;
 
 import static com.babbur.waypointer.screen.GuiTokens.BTN_H;
+import static com.babbur.waypointer.screen.GuiTokens.BORDER;
 import static com.babbur.waypointer.screen.GuiTokens.GAP;
 import static com.babbur.waypointer.screen.GuiTokens.GAP_SECTION;
 import static com.babbur.waypointer.screen.GuiTokens.GAP_TIGHT;
@@ -50,9 +51,8 @@ public final class RoutePublishScreen extends Screen {
 
     private static final int TIGHT_HEIGHT = 340;
 
-    private static final int FORM_W_TARGET = 320;
+    private static final int FORM_W_TARGET = 336;
     private static final int FORM_W_MIN = 176;
-    private static final int CARD_PAD = 5;
     private static final int STATUS_LINES = 2;
     private static final int COUNTER_AT_PERCENT = 75;
 
@@ -60,8 +60,8 @@ public final class RoutePublishScreen extends Screen {
     private static final int DESCRIPTION_MIN = CatalogPublishFormModel.DESCRIPTION_MIN;
     private static final int DESCRIPTION_MAX = CatalogPublishFormModel.DESCRIPTION_MAX;
 
-    private static final int STATUS_OK = 0xFF7ACB89;
-    private static final int STATUS_ERROR = 0xFFE47B7B;
+    private static final int STATUS_OK = GuiTokens.SUCCESS;
+    private static final int STATUS_ERROR = GuiTokens.DANGER;
 
     private enum StatusKind { INFO, BUSY, OK, ERROR }
 
@@ -104,20 +104,17 @@ public final class RoutePublishScreen extends Screen {
     private int formY;
     private int formW;
     private int visibilityHelpY;
-    private int cardY;
-    private int cardH;
     private int statusX;
     private int statusY;
     private int statusMaxW;
     private int statusLines;
     private int footerY;
+    private int copyY;
     private int backW;
     private int copyW;
     private int manageW;
     private int publishW;
-    private boolean footerWrapped;
     private boolean showDetail;
-    private boolean showCard;
 
     public RoutePublishScreen(
             Screen parent, WaypointerConfig config, WaypointGroup group,
@@ -163,7 +160,8 @@ public final class RoutePublishScreen extends Screen {
         int y = formY + LABEL_H;
         titleBox = editBox(y, TITLE_MAX, form.title(),
                 Component.translatable("waypointer.screen.route_publish.field.title"),
-                null);
+                Component.translatable(
+                        "waypointer.screen.route_publish.field.title.tooltip"));
         titleBox.setResponder(value -> {
             if (initializing) return;
             form.setTitle(value);
@@ -211,7 +209,6 @@ public final class RoutePublishScreen extends Screen {
         int margin = tight ? GAP : PANEL_MARGIN;
         int pad = tight ? GAP : PAD_OUTER;
         showDetail = !tight;
-        showCard = true;
         statusLines = tight ? 1 : STATUS_LINES;
 
         int availableW = Math.max(FORM_W_MIN, width - (margin + pad) * 2);
@@ -221,7 +218,8 @@ public final class RoutePublishScreen extends Screen {
         measureFooter();
 
         int headerH = LINE_H * 2 + GAP;
-        int footerH = footerWrapped ? BTN_H * 2 + GAP : BTN_H;
+        int copyRowH = publishState.result() == null ? 0 : BTN_H + GAP;
+        int footerH = BTN_H + copyRowH;
         int chromeH = pad * 2 + headerH + GAP + statusLines * LINE_H + GAP_TIGHT + footerH;
         int bodyH = formHeight();
 
@@ -237,50 +235,27 @@ public final class RoutePublishScreen extends Screen {
         formY = subtitleY + LINE_H + GAP;
 
         footerY = panelY + panelH - pad - BTN_H;
-        int topFooterY = footerWrapped ? footerY - BTN_H - GAP : footerY;
+        copyY = footerY - BTN_H - GAP;
+        int topFooterY = footerY - copyRowH;
         statusX = contentX;
         statusMaxW = contentW;
         statusY = topFooterY - GAP_TIGHT - statusLines * LINE_H;
         int bodyBottom = statusY - GAP;
 
         if (formY + formHeight() > bodyBottom) showDetail = false;
-        if (formY + formHeight() > bodyBottom) {
-            showCard = false;
-        }
         visibilityHelpY = formY + FORM_FIELDS_H;
-        cardY = visibilityHelpY + (showDetail ? LINE_H : 0) + GAP;
-        cardH = showCard ? cardHeight() : 0;
-
     }
 
     private int formHeight() {
-        return FORM_FIELDS_H
-                + (showDetail ? LINE_H : 0)
-                + (showCard ? GAP + cardHeight() : 0);
-    }
-
-    private int cardHeight() {
-        int lines = 4 + (publishState.result() == null ? 0 : 1);
-        return CARD_PAD * 2 + lines * LINE_H;
+        return FORM_FIELDS_H + (showDetail ? LINE_H : 0);
     }
 
     private void measureFooter() {
-        backW = footerButtonWidth(Component.translatable("gui.back"));
-        manageW = footerButtonWidth(Component.translatable(
-                "waypointer.screen.route_publish.action.manage"));
-        copyW = footerButtonWidth(copyLabel());
-        publishW = Math.max(footerButtonWidth(Component.translatable(
-                        "waypointer.screen.route_publish.action.publishing")),
-                Math.max(footerButtonWidth(Component.translatable(
-                                "waypointer.screen.route_publish.action.publish")),
-                        footerButtonWidth(Component.translatable(
-                                "waypointer.screen.route_publish.action.publish_again"))));
-        footerWrapped = backW + GAP + manageW + GAP_SECTION
-                + copyW + GAP + publishW > contentW;
-    }
-
-    private int footerButtonWidth(Component label) {
-        return Math.max(60, font.width(label) + 16);
+        int columnWidth = Math.max(1, (contentW - GAP * 2) / 3);
+        backW = columnWidth;
+        manageW = columnWidth;
+        publishW = columnWidth;
+        copyW = columnWidth;
     }
 
     private EditBox editBox(
@@ -294,8 +269,8 @@ public final class RoutePublishScreen extends Screen {
     }
 
     private void buildVisibilityChoice(int y) {
-        int leftW = formW / 2;
-        int rightX = formX + leftW;
+        int leftW = (formW - GAP_TIGHT) / 2;
+        int rightX = formX + leftW + GAP_TIGHT;
         int rightW = formX + formW - rightX;
         unlistedButton = styledButton(formX, y, leftW, BTN_H,
                 visibilityOption(CatalogPublishRequest.Visibility.UNLISTED),
@@ -312,13 +287,14 @@ public final class RoutePublishScreen extends Screen {
     }
 
     private void buildFooter() {
-        int contentRight = contentX + contentW;
-        int backY = footerWrapped ? footerY - BTN_H - GAP : footerY;
-        backButton = styledButton(contentX, backY, backW, BTN_H,
+        int gridWidth = backW + manageW + publishW + GAP * 2;
+        int gridX = contentX + Math.max(0, (contentW - gridWidth) / 2);
+        backButton = styledButton(gridX, footerY, backW, BTN_H,
                 Component.translatable("gui.back"), button -> onClose(), null);
         backButton.active = canNavigateBack(publishState.phase());
         addRenderableWidget(backButton);
-        manageButton = styledButton(contentX + backW + GAP, backY, manageW, BTN_H,
+        int manageX = gridX + backW + GAP;
+        manageButton = styledButton(manageX, footerY, manageW, BTN_H,
                 Component.translatable("waypointer.screen.route_publish.action.manage"),
                 button -> PublishedRoutesScreen.open(
                         this, catalogClient, identityStore, publicationRegistry),
@@ -326,13 +302,13 @@ public final class RoutePublishScreen extends Screen {
                         "waypointer.screen.route_publish.action.manage.tooltip")));
         addRenderableWidget(manageButton);
 
-        copyButton = styledButton(contentRight - publishW - GAP - copyW, footerY, copyW, BTN_H,
+        copyButton = styledButton(manageX, copyY, copyW, BTN_H,
                 copyLabel(), button -> copyPublishedCode(),
                 Tooltip.create(Component.translatable(
                         "waypointer.screen.route_publish.action.copy.tooltip")));
         addRenderableWidget(copyButton);
 
-        publishButton = styledButton(contentRight - publishW, footerY, publishW, BTN_H,
+        publishButton = styledButton(manageX + manageW + GAP, footerY, publishW, BTN_H,
                 publishButtonLabel(), button -> publish(),
                 Tooltip.create(Component.translatable(
                         "waypointer.screen.route_publish.action.publish.tooltip")));
@@ -358,7 +334,7 @@ public final class RoutePublishScreen extends Screen {
                 option == CatalogPublishRequest.Visibility.PUBLIC
                         ? "waypointer.screen.route_publish.visibility.public"
                         : "waypointer.screen.route_publish.visibility.unlisted");
-        return chosen ? label.withStyle(ChatFormatting.AQUA) : label;
+        return chosen ? GuiTokens.colored(label, GuiTokens.ACCENT) : label;
     }
 
     private Component visibilityHelp() {
@@ -369,12 +345,12 @@ public final class RoutePublishScreen extends Screen {
 
     private Component publishButtonLabel() {
         if (publishState.phase().busy()) {
-            return Component.translatable(
-                    "waypointer.screen.route_publish.action.publishing");
+            return GuiTokens.colored(Component.translatable(
+                    "waypointer.screen.route_publish.action.publishing"), GuiTokens.ACCENT);
         }
-        return Component.translatable(publishState.result() == null
+        return GuiTokens.colored(Component.translatable(publishState.result() == null
                 ? "waypointer.screen.route_publish.action.publish"
-                : "waypointer.screen.route_publish.action.publish_again");
+                : "waypointer.screen.route_publish.action.publish_again"), GuiTokens.ACCENT);
     }
 
     private void publish() {
@@ -451,8 +427,19 @@ public final class RoutePublishScreen extends Screen {
         if (!RoutePublishUiState.shouldPromptPublisherName(
                 publisherPromptAttempt, state)) return;
         publisherPromptAttempt = state.attempt();
-        PublisherNameScreen.open(this, defaultPublisherName(),
+        PublisherNameScreen.open(this, promptedPublisherName(state),
                 session::confirmPublisherName);
+    }
+
+    /**
+     * A catalog reset can forget a name this identity already confirmed; suggest
+     * the stored claim first so re-registering it is a single confirmation.
+     */
+    private String promptedPublisherName(CatalogPublishSession.Snapshot state) {
+        PublisherIdentity identity = state.identity();
+        return identity != null && identity.publisherName() != null
+                ? identity.publisherName()
+                : defaultPublisherName();
     }
 
     private void copyPublishedCode() {
@@ -473,6 +460,8 @@ public final class RoutePublishScreen extends Screen {
                     "waypointer.screen.route_publish.validation.empty_route");
             case TEMPORARY_ROUTE -> Component.translatable(
                     "waypointer.screen.route_publish.validation.temporary");
+            case UNPUBLISHABLE_ZONE -> Component.translatable(
+                    "waypointer.screen.route_publish.validation.zone");
             case TITLE_REQUIRED -> Component.translatable(
                     "waypointer.screen.route_publish.validation.title_required");
             case DESCRIPTION_TOO_SHORT -> Component.translatable(
@@ -514,6 +503,8 @@ public final class RoutePublishScreen extends Screen {
         graphics.text(font, font.plainSubstrByWidth(getTitle().getString(), contentW),
                 contentX, titleY, TEXT, false);
         renderRouteSummary(graphics);
+        graphics.fill(contentX, formY - GAP_TIGHT,
+                contentX + contentW, formY - GAP_TIGHT + 1, BORDER);
 
         drawFieldLabel(graphics,
                 Component.translatable("waypointer.screen.route_publish.field.title"),
@@ -531,7 +522,6 @@ public final class RoutePublishScreen extends Screen {
                             visibilityHelp().getString(), formW),
                     formX, visibilityHelpY, TEXT_MUTED, false);
         }
-        renderIdentityCard(graphics);
         renderStatus(graphics);
         super.extractRenderState(graphics, mouseX, mouseY, partial);
         renderVisibilitySelection(graphics);
@@ -564,7 +554,7 @@ public final class RoutePublishScreen extends Screen {
         int backdropTop = counterY - 2;
         int backdropBottom = counterY + LINE_H;
         graphics.fill(backdropLeft, backdropTop, backdropRight, backdropBottom, 0xFF10151A);
-        graphics.fill(backdropLeft, backdropTop, backdropRight, backdropTop + 1, 0x30FFFFFF);
+        graphics.fill(backdropLeft, backdropTop, backdropRight, backdropTop + 1, BORDER);
         graphics.text(font, counter, counterX, counterY,
                 remaining == 0 ? STATUS_ERROR : TEXT_MUTED, false);
     }
@@ -587,58 +577,15 @@ public final class RoutePublishScreen extends Screen {
                 TEXT_DIM, false);
     }
 
-    private void renderIdentityCard(GuiGraphicsExtractor graphics) {
-        if (!showCard || formW <= 0) return;
-        graphics.fill(formX, cardY, formX + formW, cardY + cardH, SURFACE_SUBTLE);
-        graphics.fill(formX, cardY, formX + 1, cardY + cardH, GuiTokens.ACCENT);
-
-        int innerX = formX + CARD_PAD + 1;
-        int innerW = Math.max(0, formW - (CARD_PAD + 1) * 2);
-        int y = cardY + CARD_PAD;
-        String identityLabel = publishState.identity() == null
-                ? null : publishState.identity().shortPublisherId();
-        boolean known = identityLabel != null;
-        drawCaptionValue(graphics,
-                Component.translatable("waypointer.screen.route_publish.identity.publisher_id"),
-                known ? Component.literal(identityLabel) : Component.translatable(
-                        "waypointer.screen.route_publish.identity.created_on_publish"),
-                innerX, y, innerW, known ? TEXT : TEXT_MUTED);
-        y += LINE_H;
-        if (publishState.result() != null) {
-            drawCaptionValue(graphics,
-                    Component.translatable("waypointer.screen.route_publish.identity.route_id"),
-                    Component.literal(publishState.result().route().id()),
-                    innerX, y, innerW, TEXT);
-            y += LINE_H;
-        }
-        List<FormattedCharSequence> lines = font.split(Component.translatable(
-                "waypointer.screen.route_publish.identity.device_help"), innerW);
-        for (int index = 0; index < Math.min(3, lines.size()); index++) {
-            graphics.text(font, lines.get(index), innerX, y + index * LINE_H,
-                    TEXT_MUTED, false);
-        }
-    }
-
-    private void drawCaptionValue(
-            GuiGraphicsExtractor graphics, Component caption, Component value,
-                                  int x, int y, int maxW, int valueColor) {
-        String clippedCaption = font.plainSubstrByWidth(caption.getString(), maxW);
-        graphics.text(font, clippedCaption, x, y, TEXT_MUTED, false);
-        int valueX = x + font.width(clippedCaption) + GAP;
-        int valueMaxW = x + maxW - valueX;
-        if (valueMaxW <= 0) return;
-        graphics.text(font, font.plainSubstrByWidth(value.getString(), valueMaxW), valueX, y,
-                valueColor, false);
-    }
-
     private void renderStatus(GuiGraphicsExtractor graphics) {
         Component validation = validationHint();
-        Component message = statusText.getString().isBlank() ? validation : statusText;
+        boolean showsValidation = statusText.getString().isBlank() && validation != null;
+        Component message = showsValidation ? validation : statusText;
         if (message == null || message.getString().isEmpty()) return;
 
-        int color = statusColor();
+        int color = showsValidation ? STATUS_ERROR : statusColor();
         int textX = statusX;
-        String marker = statusMarker();
+        String marker = showsValidation ? "!" : statusMarker();
         if (!marker.isEmpty()) {
             graphics.text(font, marker, textX, statusY, color, false);
             textX += font.width(marker) + GAP_TIGHT;
@@ -770,6 +717,11 @@ public final class RoutePublishScreen extends Screen {
             String key = switch (api.code()) {
                 case "publishing_disabled" ->
                         "waypointer.screen.route_publish.error.publishing_disabled";
+                case "daily_limit" ->
+                        "waypointer.screen.route_publish.error.daily_limit";
+                case "content_flagged" ->
+                        "waypointer.screen.route_publish.error.content_flagged";
+                case "title_taken" -> "waypointer.screen.route_publish.error.title_taken";
                 case "rate_limited" ->
                         "waypointer.screen.route_publish.error.rate_limited";
                 case "duplicate_route" ->

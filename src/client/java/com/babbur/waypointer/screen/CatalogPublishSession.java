@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.catalog.CatalogApiException;
 import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
 import com.babbur.waypointer.catalog.CatalogPublishLifecycle;
 import com.babbur.waypointer.catalog.CatalogPublishRequest;
@@ -179,11 +180,15 @@ final class CatalogPublishSession {
         }
         notifyListeners(snapshot());
 
+        // Always claim the name on the wire; a wiped catalog re-registers a
+        // stored claim automatically instead of failing with name_required.
+        String claimedName = requestedName != null
+                ? requestedName : signer.publisherName();
         CompletableFuture.supplyAsync(() -> WaypointCodec.encodeCatalog(List.of(route)), worker)
                 .thenCompose(payload -> {
                     CatalogPublishRequest request = new CatalogPublishRequest(
                             payload, title, description, visibility,
-                            route.zoneId(), requestedName);
+                            route.zoneId(), claimedName);
                     return publisher.publish(request, signer)
                             .thenApply(completion -> new Published(completion, payload));
                 })
@@ -196,6 +201,15 @@ final class CatalogPublishSession {
         synchronized (this) {
             if (token != attempt || phase != Phase.PUBLISHING) return;
             if (publishFailure != null) {
+                if (publisherNameRequired(publishFailure) && identity != null) {
+                    // The catalog does not know this publisher's name (for
+                    // example after a server reset). Ask for it again; a new
+                    // attempt number lets the view reopen its prompt.
+                    ++attempt;
+                    phase = Phase.NEEDS_PUBLISHER_NAME;
+                    notifyListeners(snapshotLocked());
+                    return;
+                }
                 phase = Phase.FAILED;
                 failure = publishFailure;
             } else {
@@ -209,6 +223,17 @@ final class CatalogPublishSession {
             }
         }
         notifyListeners(snapshot());
+    }
+
+    static boolean publisherNameRequired(Throwable failure) {
+        Throwable cause = failure;
+        while ((cause instanceof java.util.concurrent.CompletionException
+                || cause instanceof java.util.concurrent.ExecutionException)
+                && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause instanceof CatalogApiException api
+                && "publisher_name_required".equals(api.code());
     }
 
     private void formEdited() {

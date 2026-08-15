@@ -48,7 +48,7 @@ final class GroupEditPolicy {
                     "Rename that waypoint"),
             Component.translatableWithFallback(
                     "waypointer.screen.group_edit.info.right_click.description",
-                    "Set the current waypoint"),
+                    "Open the waypoint menu"),
             Component.translatableWithFallback(
                     "waypointer.screen.group_edit.info.middle_click.description",
                     "Enable or disable the waypoint"),

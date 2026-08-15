@@ -27,7 +27,8 @@ final class RouteListPresentation {
     private static final int ROUTE_TOGGLE_CHIP_W = 54;
     private static final int ROUTE_TOGGLE_HIT_PAD = 2;
     private static final int DUNGEON_ROUTE_CHILD_INDENT = 18;
-    private static final int FOLDER_ROUTE_BAND_INDENT = 10;
+    private static final int FOLDER_ROUTE_BAND_INDENT = 18;
+    private static final int FOLDER_ROUTE_TEXT_INDENT = 15;
     private static final int FOLDER_CONTROL_WIDTH = 54;
 
     private RouteListPresentation() {}
@@ -87,8 +88,11 @@ final class RouteListPresentation {
         return routeToggleChipX(rowRight) - ROUTE_TOGGLE_HIT_PAD;
     }
 
-    static int routeRowTextX(int rowLeft, boolean dungeonRoomChild) {
-        return rowLeft + GAP + 2 + (dungeonRoomChild ? DUNGEON_ROUTE_CHILD_INDENT : 0);
+    static int routeRowTextX(
+            int rowLeft, boolean indented, boolean folderChild) {
+        int indent = folderChild ? FOLDER_ROUTE_TEXT_INDENT
+                : indented ? DUNGEON_ROUTE_CHILD_INDENT : 0;
+        return rowLeft + GAP + 2 + indent;
     }
 
     static int routeRowBandLeft(int rowLeft, boolean folderChild) {
@@ -150,10 +154,6 @@ final class RouteListPresentation {
 
     static String routeToggleLabel(boolean enabled) {
         return enabled ? "Shown" : "Hidden";
-    }
-
-    static String folderGlyph(RouteFolder folder, boolean searchReveal) {
-        return folder.collapsed() && !searchReveal ? "[+]" : "[-]";
     }
 
     static Component folderSubtitle(int routeCount, boolean searchReveal) {

@@ -13,6 +13,7 @@ import java.util.Objects;
 final class CatalogBrowserModel {
     private List<CatalogRouteSummary> routes = List.of();
     private String query = "";
+    private String zoneFilter;
     private String nextCursor;
     private String selectedRouteId;
     private int scrollOffset;
@@ -44,6 +45,22 @@ final class CatalogBrowserModel {
 
     boolean searchPending() {
         return searchPending;
+    }
+
+    /** Server-side zone filter; {@code null} means every zone. */
+    String zoneFilter() {
+        return zoneFilter;
+    }
+
+    boolean setZoneFilter(String zoneId) {
+        String next = zoneId == null || zoneId.isBlank() ? null : zoneId;
+        if (Objects.equals(next, zoneFilter)) return false;
+        zoneFilter = next;
+        routes = List.of();
+        nextCursor = null;
+        selectedRouteId = null;
+        scrollOffset = 0;
+        return true;
     }
 
     boolean editSearch(String value) {

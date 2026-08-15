@@ -12,6 +12,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteFolderEditLayoutTest {
     @Test
+    void normalEditorUsesSectionSpacingWithoutADeadMiddleArea() {
+        RouteFolderEditLayout.Layout layout =
+                RouteFolderEditLayout.calculate(400, 240, true, true);
+
+        assertEquals(180, layout.panelHeight());
+        assertEquals(13, layout.sectionDividerY() - layout.detailY());
+        assertEquals(8, layout.nameLabelY() - layout.sectionDividerY());
+        assertEquals(8, layout.colorLabelY()
+                - (layout.nameFieldY() + BTN_H));
+        assertTrue(layout.footerY()
+                - (layout.colorControlY() + BTN_H) <= 28);
+    }
+
+    @Test
     void wideEditorKeepsAllThreeActionsOnOneFooterRow() {
         RouteFolderEditLayout.Layout layout =
                 RouteFolderEditLayout.calculate(400, 220, true, true);

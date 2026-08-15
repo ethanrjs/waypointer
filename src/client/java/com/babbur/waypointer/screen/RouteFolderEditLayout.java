@@ -11,7 +11,7 @@ import static com.babbur.waypointer.screen.GuiTokens.PAD_OUTER;
 
 final class RouteFolderEditLayout {
     private static final int PANEL_WIDTH = 360;
-    private static final int PANEL_HEIGHT = 208;
+    private static final int PANEL_HEIGHT = 180;
     private static final int CANCEL_WIDTH = 60;
     private static final int SAVE_WIDTH = 64;
     private static final int DELETE_WIDTH = 64;
@@ -67,15 +67,17 @@ final class RouteFolderEditLayout {
                 .orElse(footerY);
         int titleY = panelY + verticalPadding;
         int detailY = titleY + 14;
-        int nameLabelY = detailY + 14;
-        int nameFieldY = nameLabelY + 10;
+        int sectionDividerY = detailY + 13;
+        int nameLabelY = sectionDividerY + GAP;
+        int nameFieldY = nameLabelY + 11;
         int colorLabelY = nameFieldY + BTN_H + GAP;
-        int colorControlY = colorLabelY + 10;
+        int colorControlY = colorLabelY + 11;
         boolean detailVisible = true;
         boolean fieldLabelsVisible = true;
         if (colorControlY + BTN_H + 2 > firstActionY) {
             detailVisible = false;
             fieldLabelsVisible = false;
+            sectionDividerY = titleY + 10;
             nameLabelY = titleY + 10;
             nameFieldY = titleY + 12;
             colorLabelY = nameFieldY + BTN_H + GAP_TIGHT;
@@ -93,7 +95,7 @@ final class RouteFolderEditLayout {
         return new Layout(
                 panelX, panelY, panelWidth, panelHeight,
                 contentX, contentWidth,
-                titleY, detailY, detailVisible,
+                titleY, detailY, sectionDividerY, detailVisible,
                 nameLabelY, nameFieldY,
                 colorLabelY, colorControlY, fieldLabelsVisible,
                 validationY, validationVisible,
@@ -134,7 +136,7 @@ final class RouteFolderEditLayout {
     record Layout(
             int panelX, int panelY, int panelWidth, int panelHeight,
             int contentX, int contentWidth,
-            int titleY, int detailY, boolean detailVisible,
+            int titleY, int detailY, int sectionDividerY, boolean detailVisible,
             int nameLabelY, int nameFieldY,
             int colorLabelY, int colorControlY, boolean fieldLabelsVisible,
             int validationY, boolean validationVisible,

@@ -43,9 +43,14 @@ public final class EtherwarpTargetResolver {
     }
 
     public static boolean alignsWith(BlockPos supportBlock, Waypoint waypoint) {
-        return supportBlock != null && waypoint != null
-                && supportBlock.equals(new BlockPos(
-                waypoint.x(), waypoint.y() - 1, waypoint.z()));
+        if (supportBlock == null || waypoint == null) return false;
+        if (supportBlock.getX() != waypoint.x() || supportBlock.getZ() != waypoint.z()) {
+            return false;
+        }
+        // Floor-placed waypoints (placeNewWaypointsBelowPlayer, the default) store
+        // the support block itself; feet-placed waypoints store the landing block.
+        return supportBlock.getY() == waypoint.y()
+                || supportBlock.getY() == waypoint.y() - 1;
     }
 
     static boolean landingBlocksAreAir(boolean loaded, boolean feetAir, boolean headAir) {

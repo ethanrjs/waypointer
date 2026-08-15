@@ -64,6 +64,69 @@ class CatalogBrowserModelTest {
     }
 
     @Test
+    void refreshClearsSearchStateAndOnlyFullReloadFailuresDropRows() {
+        CatalogBrowserModel model = new CatalogBrowserModel();
+        CatalogRouteSummary route = summary("AAAAAAAAAAAAAAAAAAAAAA", "Route", 1);
+        model.editSearch("crystal");
+        model.applyPage(new CatalogPage(List.of(route), true, "next"), false);
+        model.select(route);
+
+        model.beginRefresh();
+        assertFalse(model.searchPending());
+        assertTrue(model.routes().isEmpty());
+        assertNull(model.nextCursor());
+        assertNull(model.selectedRouteId());
+        assertEquals(0, model.scrollOffset());
+
+        model.applyPage(new CatalogPage(List.of(route), false, null), false);
+        model.select(route);
+        model.markLoadFailed(true);
+        assertEquals(List.of(route), model.routes());
+        assertSame(route, model.selectedRoute());
+
+        model.markLoadFailed(false);
+        assertTrue(model.routes().isEmpty());
+        assertNull(model.selectedRoute());
+    }
+
+    @Test
+    void missingRouteResolvesToAFreshInstallState() {
+        CatalogBrowserModel model = new CatalogBrowserModel();
+        CatalogInstallState state = model.installState(
+                API_ROOT, new ActiveGroupManager(), null);
+        assertEquals(CatalogInstallState.Action.INSTALL, state.action());
+        assertEquals(0, state.localVersion());
+        assertTrue(state.matchingGroupIds().isEmpty());
+    }
+
+    @Test
+    void zoneFilterChangesResetPagingAndSelectionButKeepTheQuery() {
+        CatalogBrowserModel model = new CatalogBrowserModel();
+        CatalogRouteSummary route = summary("AAAAAAAAAAAAAAAAAAAAAA", "Route", 1);
+        model.editSearch("crystal");
+        model.submitPendingSearch();
+        model.applyPage(new CatalogPage(List.of(route), true, "next"), false);
+        model.select(route);
+
+        assertFalse(model.setZoneFilter(null));
+        assertFalse(model.setZoneFilter(" "));
+        assertNull(model.zoneFilter());
+
+        assertTrue(model.setZoneFilter("hub"));
+        assertEquals("hub", model.zoneFilter());
+        assertTrue(model.routes().isEmpty());
+        assertNull(model.nextCursor());
+        assertNull(model.selectedRoute());
+        assertEquals(0, model.scrollOffset());
+        assertEquals("crystal", model.query());
+        assertEquals("crystal", model.normalizedQuery());
+
+        assertFalse(model.setZoneFilter("hub"));
+        assertTrue(model.setZoneFilter(""));
+        assertNull(model.zoneFilter());
+    }
+
+    @Test
     void scrollingClampsAndKeepsKeyboardSelectionVisible() {
         CatalogBrowserModel model = new CatalogBrowserModel();
         List<CatalogRouteSummary> routes = java.util.stream.IntStream.range(0, 10)
@@ -78,6 +141,10 @@ class CatalogBrowserModelTest {
         assertEquals(1, model.scrollOffset());
         model.scrollIntoView(9, 3);
         assertEquals(7, model.scrollOffset());
+        model.clampScroll(3);
+        assertEquals(7, model.scrollOffset());
+        model.clampScroll(100);
+        assertEquals(0, model.scrollOffset());
     }
 
     @Test

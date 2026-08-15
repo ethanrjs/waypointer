@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen.preview;
 
+import com.babbur.waypointer.screen.GuiTokens;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.ComponentPath;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -31,10 +32,10 @@ public final class RoutePreviewWidget extends AbstractWidget {
     private static final int BACKGROUND = 0xD0121519;
     private static final int VIEWPORT = 0x30000000;
     private static final int RULE = 0x24FFFFFF;
-    private static final int TEXT = 0xFFE6E9EC;
-    private static final int TEXT_DIM = 0xFFAAB2BA;
-    private static final int TEXT_MUTED = 0xFF7A828A;
-    private static final int NOTICE = 0xFFFFB060;
+    private static final int TEXT = GuiTokens.TEXT;
+    private static final int TEXT_DIM = GuiTokens.TEXT_DIM;
+    private static final int TEXT_MUTED = GuiTokens.TEXT_MUTED;
+    private static final int NOTICE = GuiTokens.WARNING;
 
     private final RoutePreviewOrbit orbit;
     private final RoutePreviewZoom zoom;
@@ -301,8 +302,10 @@ public final class RoutePreviewWidget extends AbstractWidget {
         int labelY = Math.clamp(lastMouseY + 8, renderY + 4,
                 Math.max(renderY + 4,
                         renderY + renderH - labelH - ZOOM_BUTTON_H - ZOOM_BUTTON_INSET * 2));
-        g.fill(labelX, labelY, labelX + labelW, labelY + labelH, 0xE0101317);
-        g.fill(labelX, labelY, labelX + 1, labelY + labelH, 0xFF4FB3C4);
+        g.fill(labelX, labelY, labelX + labelW, labelY + labelH,
+                GuiTokens.OVERLAY);
+        g.fill(labelX, labelY, labelX + 2, labelY + labelH,
+                GuiTokens.ACCENT);
         int textY = labelY + LABEL_PAD;
         for (int i = 0; i < lines.size(); i++) {
             String clipped = font.plainSubstrByWidth(lines.get(i), labelW - LABEL_PAD * 2);

@@ -136,7 +136,7 @@ final class PublisherNameScreen extends Screen {
             }
             graphics.fill(layout.contentX(), layout.cardY(), layout.contentRight(),
                     layout.cardY() + 28, SURFACE_SUBTLE);
-            graphics.fill(layout.contentX(), layout.cardY(), layout.contentX() + 1,
+            graphics.fill(layout.contentX(), layout.cardY(), layout.contentX() + 2,
                     layout.cardY() + 28, GuiTokens.ACCENT);
             String clippedName = font.plainSubstrByWidth(
                     model.name(), Math.max(1, layout.contentWidth() - GAP * 2));

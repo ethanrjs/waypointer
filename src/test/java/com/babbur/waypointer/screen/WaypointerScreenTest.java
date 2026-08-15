@@ -13,15 +13,29 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
 import org.junit.jupiter.api.Test;
 
+import javax.imageio.ImageIO;
+import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerScreenTest {
+
+    @Test
+    void folderSpriteContainsTwoSixteenPixelFrames() throws IOException {
+        try (var stream = WaypointerScreenTest.class.getResourceAsStream(
+                "/assets/waypointer/textures/gui/folders.png")) {
+            assertNotNull(stream);
+            var image = ImageIO.read(stream);
+            assertEquals(32, image.getWidth());
+            assertEquals(16, image.getHeight());
+        }
+    }
 
     @Test
     void guiImportInstallsLibraryMetadataWithoutOverwritingHiddenColors() {
@@ -78,8 +92,6 @@ class WaypointerScreenTest {
         assertEquals(List.of(ruby), search.folders().get(0).groups());
         assertTrue(search.folders().get(0).searchReveal());
         assertTrue(search.unfiled().isEmpty());
-        assertEquals("[+]", RouteListPresentation.folderGlyph(folder, false));
-        assertEquals("[-]", RouteListPresentation.folderGlyph(folder, true));
         assertEquals("waypointer.screen.main.folder.routes.one",
                 RouteListPresentation.folderRouteCountKey(1));
         assertEquals("waypointer.screen.main.folder.routes.many",
@@ -225,9 +237,11 @@ class WaypointerScreenTest {
         int rowLeft = 24;
 
         assertEquals(rowLeft + GuiTokens.GAP + 2,
-                RouteListPresentation.routeRowTextX(rowLeft, false));
-        assertTrue(RouteListPresentation.routeRowTextX(rowLeft, true)
-                > RouteListPresentation.routeRowTextX(rowLeft, false));
+                RouteListPresentation.routeRowTextX(rowLeft, false, false));
+        assertTrue(RouteListPresentation.routeRowTextX(rowLeft, true, false)
+                > RouteListPresentation.routeRowTextX(rowLeft, false, false));
+        assertTrue(RouteListPresentation.routeRowTextX(rowLeft, true, true)
+                > RouteListPresentation.routeRowTextX(rowLeft, false, false));
     }
 
     @Test
@@ -668,5 +682,97 @@ class WaypointerScreenTest {
         WaypointGroup group = new WaypointGroup(id, id, roomId);
         group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         return group;
+    }
+
+    @Test
+    void importFailuresKeepTheCodecReasonAndOnlyGenericOnesFallBack() {
+        String unrecognized = net.minecraft.network.chat.Component.translatable(
+                "waypointer.import.error.unrecognized").getString();
+        assertEquals(unrecognized, WaypointerScreen.importFailureText(null));
+        assertEquals(unrecognized, WaypointerScreen.importFailureText(
+                new IllegalArgumentException("  ")));
+        assertEquals(unrecognized, WaypointerScreen.importFailureText(
+                new IllegalArgumentException(
+                        "unrecognized waypoint payload (tried Waypointer, Skyblocker)")));
+        assertEquals("group \"a\" has too many waypoints",
+                WaypointerScreen.importFailureText(new IllegalArgumentException(
+                        "group \"a\" has too many waypoints")));
+    }
+
+    @Test
+    void undoRestoreAnchorsToTheNextSurvivingRouteInTheSameContainer() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup a = new WaypointGroup("a", "A", "hub");
+        WaypointGroup b = new WaypointGroup("b", "B", "hub");
+        WaypointGroup c = new WaypointGroup("c", "C", "hub");
+        WaypointGroup d = new WaypointGroup("d", "D", "hub");
+        manager.add(a);
+        manager.add(b);
+        manager.add(c);
+        manager.add(d);
+        manager.addFolder(new RouteFolder(
+                "folder", "Folder", "hub", false, 0x123456), List.of(c.id()));
+
+        Set<String> deleting = Set.of("a", "b");
+        assertEquals("d", WaypointerScreen.nextSurvivorGroupId(manager, a, deleting, null),
+                "skips other deleted routes and folder members in another container");
+        assertEquals("d", WaypointerScreen.nextSurvivorGroupId(manager, b, deleting, null));
+        assertEquals("c", WaypointerScreen.nextSurvivorGroupId(
+                manager, b, Set.of("b"), "folder"));
+        assertNull(WaypointerScreen.nextSurvivorGroupId(
+                manager, d, Set.of("d"), null), "the last route has no later anchor");
+
+        WaypointGroup dungeon = new WaypointGroup("dg", "DG", "room");
+        dungeon.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        manager.add(dungeon);
+        assertNull(WaypointerScreen.nextSurvivorGroupId(
+                manager, dungeon, Set.of("dg"), null),
+                "dungeon routes restore without an ordering anchor");
+
+        List<WaypointerScreen.RouteRestore> plan =
+                WaypointerScreen.planUndoRestores(manager, List.of(c, dungeon));
+        assertEquals(2, plan.size());
+        assertEquals("folder", plan.get(0).folderId(),
+                "folder membership is captured before the delete");
+        assertNull(plan.get(0).beforeGroupId(), "c is the only folder member");
+        assertNull(plan.get(1).folderId(), "dungeon routes carry no folder");
+    }
+
+    @Test
+    void footerReservesRoomForEveryActionPlusTheDoneLane() {
+        assertEquals(408, WaypointerScreen.footerRequiredWidth());
+    }
+
+    @Test
+    void collapsedFolderRoutesLeaveTheSelectionSoDeleteOnlyHitsVisibleRows() {
+        var visible = List.of("a", "c");
+        var selected = new java.util.LinkedHashSet<>(List.of("a", "b", "c"));
+        assertEquals(new java.util.LinkedHashSet<>(List.of("a", "c")),
+                RouteSelectionPolicy.retainVisible(visible, selected),
+                "ids hidden by a collapsed folder must drop out of the selection");
+        assertTrue(RouteSelectionPolicy.retainVisible(List.of(), selected).isEmpty());
+        assertTrue(RouteSelectionPolicy.retainVisible(null, selected).isEmpty());
+        assertTrue(RouteSelectionPolicy.retainVisible(visible, null).isEmpty());
+    }
+
+    @Test
+    void zoneCatalogSelectionFallsBackSafelyWithoutACurrentZone() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        assertEquals(Zone.UNKNOWN.id(),
+                WaypointerZoneCatalog.initialSelectedZoneId(manager));
+        assertEquals(0, WaypointerZoneCatalog.dungeonRoomGroupCount(manager));
+        assertNull(WaypointerZoneCatalog.currentDungeonRoomZoneId(null));
+        assertNull(WaypointerZoneCatalog.currentDungeonRoomZoneId(manager));
+
+        WaypointGroup room = WaypointGroup.create("Room route", "admin");
+        room.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        WaypointGroup temporary = WaypointGroup.create("Temp", "hub");
+        temporary.setTemp(true);
+        manager.addAll(List.of(room, temporary));
+        assertEquals(1, WaypointerZoneCatalog.dungeonRoomGroupCount(manager));
+
+        manager.onZoneChanged(Zone.fromId("hub"));
+        assertEquals("hub", WaypointerZoneCatalog.initialSelectedZoneId(manager));
+        assertNull(WaypointerZoneCatalog.currentDungeonRoomZoneId(manager));
     }
 }
