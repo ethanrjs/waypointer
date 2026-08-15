@@ -82,9 +82,6 @@ public final class WaypointerScreen extends Screen {
     private static final int ISLAND_SELECTOR_W = ISLAND_DROPDOWN_W;
     // Centers a BTN_H control on the title's visible glyph box (title y + 4).
     private static final int HEADER_BTN_Y = PAD_OUTER - 6;
-    private static final String IMPORT_EXPORT_LABEL = "Import/Export";
-    private static final String MENU_IMPORT_LABEL = "Import from clipboard";
-    private static final String MENU_EXPORT_LABEL = "Export...";
     private OverlayButton hideAllRoutesBtn;
     private Button deleteBtn;
     private Button importExportBtn;
@@ -1128,7 +1125,12 @@ public final class WaypointerScreen extends Screen {
 
     private static String displayGroupName(WaypointGroup group) {
         String name = group.name().trim();
-        if (!group.temp()) return name.isEmpty() ? "(unnamed)" : name;
+        if (!group.temp()) {
+            return name.isEmpty()
+                    ? Component.translatableWithFallback(
+                            "waypointer.screen.main.route.unnamed", "(unnamed)").getString()
+                    : name;
+        }
         if (name.isEmpty() || name.startsWith("Temp --")) return displayZoneLabel(TEMPORARY_ZONE_ID);
         return name;
     }

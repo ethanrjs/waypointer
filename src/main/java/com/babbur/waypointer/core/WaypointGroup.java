@@ -929,13 +929,28 @@ public final class WaypointGroup {
     }
 
     public void setCurrentIndex(int index) {
+        if (isDisabledJumpTarget(index)) {
+            resetProgress();
+            clearStandSkipHold();
+            return;
+        }
         currentIndex = normalizedMainIndexFor(index);
         activeSubwaypointParentIndex = -1;
         clearProximitySuppression();
         clearStandSkipHold();
     }
 
+    /** Jumping to a disabled waypoint resets the route instead of warping past it. */
+    private boolean isDisabledJumpTarget(int index) {
+        return index >= 0 && index < waypoints.size() && isWaypointDisabled(index);
+    }
+
     public void setCurrentTargetIndex(int index) {
+        if (isDisabledJumpTarget(index)) {
+            resetProgress();
+            clearStandSkipHold();
+            return;
+        }
         if (waypoints.isEmpty()) {
             currentIndex = 0;
             activeSubwaypointParentIndex = -1;

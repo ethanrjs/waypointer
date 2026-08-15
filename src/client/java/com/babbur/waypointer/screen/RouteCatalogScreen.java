@@ -462,7 +462,7 @@ public final class RouteCatalogScreen extends Screen {
             GuiTokens.drawDirectionGlyph(g,
                     zoneDropdownOpen ? GuiTokens.Direction.UP : GuiTokens.Direction.DOWN,
                     geo[2], geo[3],
-                    highlighted || zoneDropdownOpen ? TEXT : TEXT_DIM);
+                    zoneDropdownOpen ? ACCENT : highlighted ? TEXT : TEXT_DIM);
         }
     }
 
@@ -892,13 +892,6 @@ public final class RouteCatalogScreen extends Screen {
             graphics.text(font, clipped, statusX, statusY, statusColor, false);
         }
         super.extractRenderState(graphics, mouseX, mouseY, partial);
-        if (zoneFilterButton != null) {
-            GuiTokens.drawDirectionGlyph(graphics,
-                    zoneDropdownOpen ? GuiTokens.Direction.UP : GuiTokens.Direction.DOWN,
-                    zoneFilterButton.getX() + zoneFilterButton.getWidth() - 9,
-                    zoneFilterButton.getY() + BTN_H / 2,
-                    zoneDropdownOpen ? ACCENT : TEXT_DIM);
-        }
         if (zoneDropdownOpen) renderZoneDropdown(graphics, mouseX, mouseY);
     }
 

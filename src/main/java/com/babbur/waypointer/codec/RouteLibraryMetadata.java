@@ -3,6 +3,7 @@ package com.babbur.waypointer.codec;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -15,7 +16,8 @@ import java.util.Set;
 
 public record RouteLibraryMetadata(
         List<ManualColorsEntry> manualColors,
-        List<FolderDefinition> folders) {
+        List<FolderDefinition> folders,
+        List<PaintEntry> paints) {
 
     public static final int MAX_GROUPS = 256;
     public static final int MAX_FOLDERS = 256;
@@ -23,19 +25,31 @@ public record RouteLibraryMetadata(
     public static final int MAX_FOLDER_NAME_BYTES = 256;
 
     private static final RouteLibraryMetadata EMPTY =
-            new RouteLibraryMetadata(List.of(), List.of());
+            new RouteLibraryMetadata(List.of(), List.of(), List.of());
 
     public RouteLibraryMetadata {
         manualColors = copyNoNulls(manualColors, "manualColors");
         folders = copyNoNulls(folders, "folders");
+        paints = copyNoNulls(paints, "paints");
         if (manualColors.size() > MAX_GROUPS) {
             throw new IllegalArgumentException("route library has too many manual color entries");
         }
         if (folders.size() > MAX_FOLDERS) {
             throw new IllegalArgumentException("route library has too many folders");
         }
+        if (paints.size() > MAX_GROUPS) {
+            throw new IllegalArgumentException("route library has too many paint entries");
+        }
         rejectDuplicateGroupOrdinals(
                 manualColors, ManualColorsEntry::groupOrdinal, "manual color");
+        rejectDuplicateGroupOrdinals(
+                paints, PaintEntry::groupOrdinal, "paint");
+    }
+
+    /** Pre-paint shape; callers without painted routes keep this arity. */
+    public RouteLibraryMetadata(
+            List<ManualColorsEntry> manualColors, List<FolderDefinition> folders) {
+        this(manualColors, folders, List.of());
     }
 
     public static RouteLibraryMetadata empty() {
@@ -43,7 +57,7 @@ public record RouteLibraryMetadata(
     }
 
     public boolean isEmpty() {
-        return manualColors.isEmpty() && folders.isEmpty();
+        return manualColors.isEmpty() && folders.isEmpty() && paints.isEmpty();
     }
 
     public static RouteLibraryMetadata capture(
@@ -55,6 +69,7 @@ public record RouteLibraryMetadata(
 
         Map<String, Integer> ordinalById = new LinkedHashMap<>();
         List<ManualColorsEntry> manualColors = new ArrayList<>();
+        List<PaintEntry> paints = new ArrayList<>();
         for (int i = 0; i < groups.size(); i++) {
             WaypointGroup group = Objects.requireNonNull(groups.get(i), "group");
             if (ordinalById.putIfAbsent(group.id(), i) != null) {
@@ -73,6 +88,9 @@ public record RouteLibraryMetadata(
                 if (color != (group.get(waypointIndex).color() & 0xFFFFFF)) differs = true;
             }
             if (differs) manualColors.add(new ManualColorsEntry(i, colors));
+            if (group.paint() != null) {
+                paints.add(new PaintEntry(i, group.paint(), group.paintEnabled()));
+            }
         }
 
         List<FolderDefinition> folders = new ArrayList<>();
@@ -90,7 +108,8 @@ public record RouteLibraryMetadata(
             }
         }
 
-        RouteLibraryMetadata metadata = new RouteLibraryMetadata(manualColors, folders);
+        RouteLibraryMetadata metadata =
+                new RouteLibraryMetadata(manualColors, folders, paints);
         metadata.validateForGroups(groups);
         return metadata;
     }
@@ -115,6 +134,10 @@ public record RouteLibraryMetadata(
                 throw new IllegalArgumentException(
                         "manual color count does not match waypoint count");
             }
+        }
+
+        for (PaintEntry entry : paints) {
+            requireGroupOrdinal(entry.groupOrdinal(), groups.size(), "paint");
         }
 
         Set<Integer> folderMembers = new HashSet<>();
@@ -142,13 +165,18 @@ public record RouteLibraryMetadata(
     }
 
     public void applyTo(List<WaypointGroup> groups) {
-        if (manualColors.isEmpty()) return;
+        if (manualColors.isEmpty() && paints.isEmpty()) return;
         validateForGroups(groups);
         for (ManualColorsEntry entry : manualColors) {
             if (!groups.get(entry.groupOrdinal()).setManualColorSnapshot(entry.colors())) {
                 throw new IllegalArgumentException(
                         "manual color count does not match waypoint count");
             }
+        }
+        for (PaintEntry entry : paints) {
+            WaypointGroup group = groups.get(entry.groupOrdinal());
+            group.setPaint(entry.paint());
+            group.setPaintEnabled(entry.enabled());
         }
     }
 
@@ -188,6 +216,15 @@ public record RouteLibraryMetadata(
                     throw new IllegalArgumentException("manual color is outside the RGB range");
                 }
             }
+        }
+    }
+
+    public record PaintEntry(int groupOrdinal, WaypointPaint paint, boolean enabled) {
+        public PaintEntry {
+            if (groupOrdinal < 0) {
+                throw new IllegalArgumentException("negative paint group ordinal");
+            }
+            Objects.requireNonNull(paint, "paint");
         }
     }
 

@@ -2,6 +2,7 @@ package com.babbur.waypointer.codec;
 
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -63,6 +64,11 @@ public final class RouteLibraryCodec {
         root.addProperty("payload", payload);
         root.add("manualColors", encodeManualColors(safeMetadata.manualColors()));
         root.add("folders", encodeFolders(safeMetadata.folders()));
+        // Written only when present so unpainted codes keep the pre-paint shape
+        // and older clients (which ignore unknown keys) stay compatible.
+        if (!safeMetadata.paints().isEmpty()) {
+            root.add("paints", encodePaints(safeMetadata.paints()));
+        }
         String body = encodeBody(root.toString());
         String wrapped = MAGIC + body;
         WaypointImporter.enforceTextPayloadLimit(wrapped);
@@ -86,7 +92,9 @@ public final class RouteLibraryCodec {
                             folder.collapsed(), folder.memberOrdinals()))
                     .toList();
         }
-        return new RouteLibraryMetadata(manualColors, folders);
+        List<RouteLibraryMetadata.PaintEntry> paints = options.includeColors
+                ? metadata.paints() : List.of();
+        return new RouteLibraryMetadata(manualColors, folders, paints);
     }
 
     public static Decoded decode(String payload) {
@@ -98,7 +106,12 @@ public final class RouteLibraryCodec {
                 requireArray(root, "manualColors"));
         List<RouteLibraryMetadata.FolderDefinition> folders = decodeFolders(
                 requireArray(root, "folders"));
-        RouteLibraryMetadata metadata = new RouteLibraryMetadata(manualColors, folders);
+        // Optional: codes written before waypoint paints existed omit the key.
+        List<RouteLibraryMetadata.PaintEntry> paints = root.has("paints")
+                ? decodePaints(requireArray(root, "paints"))
+                : List.of();
+        RouteLibraryMetadata metadata =
+                new RouteLibraryMetadata(manualColors, folders, paints);
 
         DecodeDebug nativePayload = WaypointCodec.debugDecode(inner);
         if (nativePayload.version() != WaypointCodec.currentWireVersion()) {
@@ -230,6 +243,51 @@ public final class RouteLibraryCodec {
             out.add(encoded);
         }
         return out;
+    }
+
+    private static JsonArray encodePaints(List<RouteLibraryMetadata.PaintEntry> paints) {
+        JsonArray out = new JsonArray();
+        for (RouteLibraryMetadata.PaintEntry entry : paints) {
+            JsonObject encoded = new JsonObject();
+            encoded.addProperty("group", entry.groupOrdinal());
+            JsonArray palette = new JsonArray();
+            for (int color : entry.paint().paletteCopy()) palette.add(color);
+            encoded.add("palette", palette);
+            encoded.addProperty("pixels", entry.paint().pixelsBase64());
+            encoded.addProperty("enabled", entry.enabled());
+            out.add(encoded);
+        }
+        return out;
+    }
+
+    private static List<RouteLibraryMetadata.PaintEntry> decodePaints(JsonArray encoded) {
+        if (encoded.size() > RouteLibraryMetadata.MAX_GROUPS) {
+            throw new IllegalArgumentException("route library has too many paint entries");
+        }
+        List<RouteLibraryMetadata.PaintEntry> out = new ArrayList<>(encoded.size());
+        for (JsonElement element : encoded) {
+            JsonObject entry = requireObject(element, "paint entry");
+            int group = requireInt(entry, "group");
+            JsonArray paletteJson = requireArray(entry, "palette");
+            if (paletteJson.size() != WaypointPaint.PALETTE_SIZE) {
+                throw new IllegalArgumentException(
+                        "waypoint paint palette must contain 16 colors");
+            }
+            int[] palette = new int[WaypointPaint.PALETTE_SIZE];
+            for (int i = 0; i < palette.length; i++) {
+                int color = requireInt(paletteJson.get(i), "paint palette color");
+                if (color < 0 || color > 0xFFFFFF) {
+                    throw new IllegalArgumentException(
+                            "paint palette color is outside the RGB range");
+                }
+                palette[i] = color;
+            }
+            byte[] pixels = WaypointPaint.decodePixels(requireString(entry, "pixels"));
+            boolean enabled = requireBoolean(entry, "enabled");
+            out.add(new RouteLibraryMetadata.PaintEntry(
+                    group, new WaypointPaint(palette, pixels), enabled));
+        }
+        return List.copyOf(out);
     }
 
     private static List<RouteLibraryMetadata.ManualColorsEntry> decodeManualColors(
