@@ -826,43 +826,49 @@ public final class GroupEditScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
-        super.extractRenderState(g, mouseX, mouseY, partial);
+        // While an overlay is open only it may react to the pointer; everything
+        // beneath renders with a dead mouse so hover states and tooltips do not
+        // bleed through (same idiom as WaypointerScreen.backgroundHoverAllowed).
+        boolean overlayOpen = contextMenu.isOpen() || dungeonTypePickerIndex >= 0;
+        int backgroundMouseX = overlayOpen ? -1 : mouseX;
+        int backgroundMouseY = overlayOpen ? -1 : mouseY;
+        super.extractRenderState(g, backgroundMouseX, backgroundMouseY, partial);
 
-        renderHeader(g, mouseX, mouseY);
+        renderHeader(g, backgroundMouseX, backgroundMouseY);
         Layout layout = layout();
         renderSidebarPanel(g, layout.sidebarLeft(), layout.top(),
                 layout.sidebarRight(), layout.bottom());
         renderMain(g, layout.mainLeft(), layout.top(),
-                layout.mainRight(), layout.bottom(), mouseX, mouseY);
+                layout.mainRight(), layout.bottom(), backgroundMouseX, backgroundMouseY);
         renderDungeonTypePicker(g, mouseX, mouseY);
         // Redraw these widgets because screens normally render widgets before custom panels.
         for (SidebarWidget slot : sidebarWidgets) {
             if (!slot.widget().visible) continue;
             if (slot.widget() instanceof GuiTokens.StyledButton button) {
-                button.extractOverPanel(g, mouseX, mouseY, partial);
+                button.extractOverPanel(g, backgroundMouseX, backgroundMouseY, partial);
             } else if (slot.widget() instanceof ColorSwatchButton swatch) {
-                swatch.extractOverPanel(g, mouseX, mouseY, partial);
+                swatch.extractOverPanel(g, backgroundMouseX, backgroundMouseY, partial);
             } else if (slot.widget() instanceof EditBox editBox) {
-                editBox.extractWidgetRenderState(g, mouseX, mouseY, partial);
+                editBox.extractWidgetRenderState(g, backgroundMouseX, backgroundMouseY, partial);
             }
         }
         if (labelEditor != null && labelEditor.visible) {
-            labelEditor.extractWidgetRenderState(g, mouseX, mouseY, partial);
+            labelEditor.extractWidgetRenderState(g, backgroundMouseX, backgroundMouseY, partial);
         }
         if (contextMenu.isOpen()) {
             contextMenu.render(g, font, mouseX, mouseY);
-        } else if (isHeaderInfoButtonHovered(mouseX, mouseY)) {
-            renderRouteInfoTooltip(g, mouseX, mouseY);
+        } else if (isHeaderInfoButtonHovered(backgroundMouseX, backgroundMouseY)) {
+            renderRouteInfoTooltip(g, backgroundMouseX, backgroundMouseY);
         } else {
-            String tooltip = dungeonTypeTooltipAt(mouseX, mouseY);
+            String tooltip = dungeonTypeTooltipAt(backgroundMouseX, backgroundMouseY);
             if (tooltip == null) {
-                tooltip = waypointControlTooltipAt(mouseX, mouseY);
+                tooltip = waypointControlTooltipAt(backgroundMouseX, backgroundMouseY);
             }
             if (tooltip == null) {
-                tooltip = rowSupplementalTooltipAt(mouseX, mouseY);
+                tooltip = rowSupplementalTooltipAt(backgroundMouseX, backgroundMouseY);
             }
             if (tooltip != null) {
-                renderInlineTooltip(g, tooltip, mouseX, mouseY);
+                renderInlineTooltip(g, tooltip, backgroundMouseX, backgroundMouseY);
             }
         }
     }

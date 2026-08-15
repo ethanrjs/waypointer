@@ -141,6 +141,23 @@ public final class RouteCatalogScreen extends Screen {
         this.parent = parent;
         this.catalogClient = catalogClient;
         this.manager = manager;
+        browser.setZoneFilter(initialZoneFilterId(
+                manager == null ? null : manager.currentZone()));
+    }
+
+    /** Open filtered to the player's zone; unknown, private, and dungeon zones start on All. */
+    static String initialZoneFilterId(Zone zone) {
+        if (zone == null) return null;
+        String id = zone.id();
+        if (id == null
+                || Zone.UNKNOWN.id().equals(id)
+                || Zone.PRIVATE_WORLD.id().equals(id)) {
+            return null;
+        }
+        if (id.equals("dungeon") || id.startsWith("dungeon_f") || id.startsWith("dungeon_m")) {
+            return null;
+        }
+        return zoneFilterDropdownIds().contains(id) ? id : null;
     }
 
     public static void open(Screen parent) {
@@ -197,9 +214,11 @@ public final class RouteCatalogScreen extends Screen {
         Component refreshLabel = refreshButtonLabel(System.nanoTime());
         int refreshW = Math.min(contentW, Math.max(REFRESH_W, font.width(refreshLabel) + 16));
         Component zoneLabel = zoneFilterLabel();
+        // Sized to the widest zone name, not the selected one, so the control
+        // keeps one width no matter which zone is picked.
         int zoneW = toolbarStacked
                 ? Math.max(40, contentW - refreshW - GAP)
-                : Math.min(Math.max(84, font.width(zoneLabel.getString()) + 28),
+                : Math.min(Math.max(84, widestZoneOptionWidth() + 28),
                         Math.max(84, contentW / 3));
         int searchW = toolbarStacked
                 ? contentW
@@ -464,6 +483,14 @@ public final class RouteCatalogScreen extends Screen {
                     geo[2], geo[3],
                     zoneDropdownOpen ? ACCENT : highlighted ? TEXT : TEXT_DIM);
         }
+    }
+
+    private int widestZoneOptionWidth() {
+        int widest = 0;
+        for (String id : zoneFilterDropdownIds()) {
+            widest = Math.max(widest, font.width(zoneOptionLabel(id)));
+        }
+        return widest;
     }
 
     private String zoneOptionLabel(String id) {
@@ -779,7 +806,9 @@ public final class RouteCatalogScreen extends Screen {
             statusColor = STATUS_ERROR;
         } else {
             showInstalled(summary);
-            catalogClient.recordInstall(requestedRouteId);
+            catalogClient.recordInstall(requestedRouteId, null,
+                    com.babbur.waypointer.catalog.InstallTokenStore.shared()
+                            .tokenFor(requestedRouteId));
             WaypointGroup focus = installedFocus(manager, summary);
             if (focus != null) {
                 WaypointerScreen.openFocused(
@@ -866,6 +895,10 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public void extractRenderState(
             GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partial) {
+        // Only the open dropdown may react to the pointer; everything beneath
+        // renders with a dead mouse so hover and tooltips do not bleed through.
+        int backgroundMouseX = zoneDropdownOpen ? -1 : mouseX;
+        int backgroundMouseY = zoneDropdownOpen ? -1 : mouseY;
         graphics.fill(0, 0, width, height, 0x80000000);
         graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, SURFACE);
 
@@ -891,7 +924,7 @@ public final class RouteCatalogScreen extends Screen {
             String clipped = font.plainSubstrByWidth(statusText.getString(), statusMaxW);
             graphics.text(font, clipped, statusX, statusY, statusColor, false);
         }
-        super.extractRenderState(graphics, mouseX, mouseY, partial);
+        super.extractRenderState(graphics, backgroundMouseX, backgroundMouseY, partial);
         if (zoneDropdownOpen) renderZoneDropdown(graphics, mouseX, mouseY);
     }
 

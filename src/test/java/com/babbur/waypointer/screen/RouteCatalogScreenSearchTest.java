@@ -14,6 +14,30 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteCatalogScreenSearchTest {
+
+    @Test
+    void initialZoneFilterFollowsTheCurrentZoneButNotDungeonsOrUnknowns() {
+        org.junit.jupiter.api.Assertions.assertEquals("hub",
+                RouteCatalogScreen.initialZoneFilterId(
+                        com.babbur.waypointer.core.Zone.fromId("hub")));
+        org.junit.jupiter.api.Assertions.assertNull(
+                RouteCatalogScreen.initialZoneFilterId(null));
+        org.junit.jupiter.api.Assertions.assertNull(
+                RouteCatalogScreen.initialZoneFilterId(
+                        com.babbur.waypointer.core.Zone.UNKNOWN));
+        org.junit.jupiter.api.Assertions.assertNull(
+                RouteCatalogScreen.initialZoneFilterId(
+                        com.babbur.waypointer.core.Zone.PRIVATE_WORLD));
+        org.junit.jupiter.api.Assertions.assertNull(
+                RouteCatalogScreen.initialZoneFilterId(
+                        com.babbur.waypointer.core.Zone.fromId("dungeon_f7")));
+        org.junit.jupiter.api.Assertions.assertNull(
+                RouteCatalogScreen.initialZoneFilterId(
+                        com.babbur.waypointer.core.Zone.fromId("dungeon")));
+        org.junit.jupiter.api.Assertions.assertEquals("dungeon_hub",
+                RouteCatalogScreen.initialZoneFilterId(
+                        com.babbur.waypointer.core.Zone.fromId("dungeon_hub")));
+    }
     @Test
     void editedSearchRebuildsTheClearedViewThenRestoresSearchFocus() {
         CatalogBrowserModel browser = new CatalogBrowserModel();
