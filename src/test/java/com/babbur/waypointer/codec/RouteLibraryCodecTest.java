@@ -4,6 +4,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
@@ -15,6 +16,7 @@ import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -121,17 +123,21 @@ class RouteLibraryCodecTest {
         group.set(0, group.get(0).withColor(0xABCDEF));
         List<Integer> hiddenColors = group.manualColorSnapshot();
         group.setGradientMode(WaypointGroup.GradientMode.STATIC);
-        manager.add(group);
+        WaypointGroup companion = group("companion", "Companion", 9);
+        manager.addAll(List.of(group, companion));
         manager.addFolder(new RouteFolder(
-                "folder", "Folder", "hub", true, 0x123456), List.of(group.id()));
-        RouteLibraryMetadata metadata = RouteLibraryMetadata.capture(manager, List.of(group));
+                "folder", "Folder", "hub", true, 0x123456),
+                List.of(group.id(), companion.id()));
+        List<WaypointGroup> live = List.of(group, companion);
+        RouteLibraryMetadata metadata = RouteLibraryMetadata.capture(manager, live);
+        List<WaypointGroup> snapshots = live.stream()
+                .map(WaypointGroup::exportSnapshot).toList();
 
         WaypointCodec.Options noColors = WaypointCodec.Options.FULL_FIDELITY.toBuilder()
                 .includeColors(false)
                 .build();
         WaypointImporter.ImportResult colorLoss = WaypointImporter.importAny(
-                RouteLibraryCodec.encode(
-                        List.of(group.exportSnapshot()), noColors, metadata));
+                RouteLibraryCodec.encode(snapshots, noColors, metadata));
 
         assertTrue(colorLoss.libraryMetadata().manualColors().isEmpty());
         assertEquals(RouteFolder.DEFAULT_COLOR,
@@ -144,8 +150,7 @@ class RouteLibraryCodecTest {
                         .includeGroupMeta(false)
                         .build();
         WaypointImporter.ImportResult metadataLoss = WaypointImporter.importAny(
-                RouteLibraryCodec.encode(
-                        List.of(group.exportSnapshot()), noGroupMetadata, metadata));
+                RouteLibraryCodec.encode(snapshots, noGroupMetadata, metadata));
 
         assertTrue(metadataLoss.libraryMetadata().folders().isEmpty());
         assertEquals(hiddenColors,
@@ -153,9 +158,50 @@ class RouteLibraryCodecTest {
 
         WaypointCodec.Options noColorsOrGroupMetadata =
                 noGroupMetadata.toBuilder().includeColors(false).build();
-        assertTrue(RouteLibraryCodec.encode(
-                        List.of(group.exportSnapshot()), noColorsOrGroupMetadata, metadata)
+        assertTrue(RouteLibraryCodec.encode(snapshots, noColorsOrGroupMetadata, metadata)
                 .startsWith(WaypointCodec.MAGIC));
+    }
+
+    @Test
+    void paintedRoutesRoundTripThroughShareCodes() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup group = group("route", "Route", 1);
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        byte[] pixels = new byte[WaypointPaint.PIXEL_COUNT];
+        for (int i = 0; i < pixels.length; i++) {
+            pixels[i] = (byte) (i % WaypointPaint.PALETTE_SIZE);
+        }
+        WaypointPaint paint = new WaypointPaint(
+                WaypointPaint.defaultPalette(0x123456), pixels);
+        group.setPaint(paint);
+        group.setPaintEnabled(true);
+        manager.add(group);
+        RouteLibraryMetadata metadata = RouteLibraryMetadata.capture(
+                manager, List.of(group));
+        assertEquals(1, metadata.paints().size());
+
+        String encoded = RouteLibraryCodec.encode(
+                List.of(group.exportSnapshot()),
+                WaypointCodec.Options.FULL_FIDELITY, metadata);
+        assertTrue(encoded.startsWith(RouteLibraryCodec.MAGIC));
+
+        WaypointGroup decoded = WaypointImporter.importAny(encoded)
+                .groups().getFirst();
+        assertEquals(paint, decoded.paint());
+        assertTrue(decoded.paintEnabled());
+
+        assertThrows(IllegalArgumentException.class, () -> RouteLibraryCodec.decode(
+                mutate(encoded, root -> root.getAsJsonArray("paints").get(0)
+                        .getAsJsonObject().addProperty("pixels", "AAAA"))));
+
+        String stripped = RouteLibraryCodec.encode(
+                List.of(group.exportSnapshot()),
+                WaypointCodec.Options.FULL_FIDELITY.toBuilder()
+                        .includeColors(false).build(),
+                metadata);
+        assertTrue(stripped.startsWith(WaypointCodec.MAGIC),
+                "stripping colors must also strip paint and skip the wrapper");
+        assertNull(WaypointImporter.importAny(stripped).groups().getFirst().paint());
     }
 
     @Test
@@ -223,12 +269,15 @@ class RouteLibraryCodecTest {
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         group.set(0, group.get(0).withColor(0x112233));
         group.setGradientMode(WaypointGroup.GradientMode.STATIC);
-        manager.add(group);
+        WaypointGroup companion = group("companion", "Companion", 5);
+        manager.addAll(List.of(group, companion));
         manager.addFolder(new RouteFolder(
-                "folder", "Folder", "hub", false, 0x123456), List.of(group.id()));
-        RouteLibraryMetadata metadata = RouteLibraryMetadata.capture(manager, List.of(group));
+                "folder", "Folder", "hub", false, 0x123456),
+                List.of(group.id(), companion.id()));
+        List<WaypointGroup> live = List.of(group, companion);
+        RouteLibraryMetadata metadata = RouteLibraryMetadata.capture(manager, live);
         return RouteLibraryCodec.encode(
-                List.of(group.exportSnapshot()),
+                live.stream().map(WaypointGroup::exportSnapshot).toList(),
                 WaypointCodec.Options.FULL_FIDELITY, metadata);
     }
 

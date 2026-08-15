@@ -20,22 +20,28 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ExportScreenTest {
 
     @Test
-    void guiExportCapturesFoldersOnlyForTheNativeTarget() {
+    void guiExportCapturesFoldersOnlyForMultiRouteNativeExports() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         group.add(Waypoint.at(1, 2, 3));
-        manager.add(group);
+        WaypointGroup second = WaypointGroup.create("Second", "hub");
+        second.add(Waypoint.at(4, 5, 6));
+        manager.addAll(List.of(group, second));
         manager.addFolder(new RouteFolder(
-                "folder", "Mining", "hub", true, 0x123456), List.of(group.id()));
+                "folder", "Mining", "hub", true, 0x123456),
+                List.of(group.id(), second.id()));
 
-        RouteLibraryMetadata nativeMetadata = ExportScreen.captureLibraryMetadata(
+        RouteLibraryMetadata multi = ExportScreen.captureLibraryMetadata(
+                manager, List.of(group, second), WaypointExportCodec.Target.WAYPOINTER);
+        RouteLibraryMetadata single = ExportScreen.captureLibraryMetadata(
                 manager, List.of(group), WaypointExportCodec.Target.WAYPOINTER);
-        RouteLibraryMetadata thirdPartyMetadata = ExportScreen.captureLibraryMetadata(
-                manager, List.of(group), WaypointExportCodec.Target.SKYBLOCKER);
+        RouteLibraryMetadata thirdParty = ExportScreen.captureLibraryMetadata(
+                manager, List.of(group, second), WaypointExportCodec.Target.SKYBLOCKER);
 
-        assertEquals(List.of(0),
-                nativeMetadata.folders().getFirst().memberOrdinals());
-        assertTrue(thirdPartyMetadata.isEmpty());
+        assertEquals(List.of(0, 1), multi.folders().getFirst().memberOrdinals());
+        assertTrue(single.folders().isEmpty(),
+                "sharing one route must not export the sender's folder layout");
+        assertTrue(thirdParty.isEmpty());
     }
 
     @Test

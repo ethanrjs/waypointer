@@ -4,6 +4,7 @@ import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointExportCodec;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.WaypointGroup;
+import net.minecraft.network.chat.Component;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -62,8 +63,13 @@ final class ExportPolicy {
 
     static String labelTooltipText(WaypointExportCodec.Target target) {
         return target.supportsLabel()
-                ? "Optional title shown by Waypointer imports"
-                : target.displayName() + " exports do not support Waypointer labels";
+                ? Component.translatableWithFallback(
+                        "waypointer.screen.export.label_tooltip.supported",
+                        "Optional title shown by Waypointer imports").getString()
+                : Component.translatableWithFallback(
+                        "waypointer.screen.export.label_tooltip.unsupported",
+                        "%1$s exports do not support Waypointer labels",
+                        target.displayName()).getString();
     }
 
     static String previewRouteName(
@@ -75,7 +81,13 @@ final class ExportPolicy {
 
     static String previewOverflowText(int hiddenLines) {
         int safeHidden = Math.max(0, hiddenLines);
-        return "..." + safeHidden + " more line" + (safeHidden == 1 ? "" : "s");
+        return safeHidden == 1
+                ? Component.translatableWithFallback(
+                        "waypointer.screen.export.preview.more.one",
+                        "...%1$s more line", safeHidden).getString()
+                : Component.translatableWithFallback(
+                        "waypointer.screen.export.preview.more.many",
+                        "...%1$s more lines", safeHidden).getString();
     }
 
     record FitSummary(int characters, int wireBytes, int commandBytes,

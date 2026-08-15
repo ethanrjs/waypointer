@@ -153,7 +153,11 @@ final class RouteListPresentation {
     }
 
     static String routeToggleLabel(boolean enabled) {
-        return enabled ? "Shown" : "Hidden";
+        return enabled
+                ? Component.translatableWithFallback(
+                        "waypointer.screen.main.route.shown", "Shown").getString()
+                : Component.translatableWithFallback(
+                        "waypointer.screen.main.route.hidden", "Hidden").getString();
     }
 
     static Component folderSubtitle(int routeCount, boolean searchReveal) {
@@ -194,13 +198,30 @@ final class RouteListPresentation {
     static String roomHeaderSubtitle(
             int routeCount, int secretCount, boolean currentRoom, boolean searchOnly) {
         StringBuilder subtitle = new StringBuilder();
-        subtitle.append(routeCount).append(" route").append(routeCount == 1 ? "" : "s");
+        subtitle.append(routeCount == 1
+                ? Component.translatableWithFallback(
+                        "waypointer.screen.main.room.routes.one",
+                        "%1$s route", routeCount).getString()
+                : Component.translatableWithFallback(
+                        "waypointer.screen.main.room.routes.many",
+                        "%1$s routes", routeCount).getString());
         if (secretCount > 0) {
-            subtitle.append("  ").append(secretCount)
-                    .append(" secret").append(secretCount == 1 ? "" : "s");
+            subtitle.append("  ").append(secretCount == 1
+                    ? Component.translatableWithFallback(
+                            "waypointer.screen.main.room.secrets.one",
+                            "%1$s secret", secretCount).getString()
+                    : Component.translatableWithFallback(
+                            "waypointer.screen.main.room.secrets.many",
+                            "%1$s secrets", secretCount).getString());
         }
-        if (currentRoom) subtitle.append("  current");
-        if (searchOnly) subtitle.append("  search");
+        if (currentRoom) {
+            subtitle.append("  ").append(Component.translatableWithFallback(
+                    "waypointer.screen.main.room.current", "current").getString());
+        }
+        if (searchOnly) {
+            subtitle.append("  ").append(Component.translatableWithFallback(
+                    "waypointer.screen.main.room.search", "search").getString());
+        }
         return subtitle.toString();
     }
 
@@ -222,10 +243,18 @@ final class RouteListPresentation {
     }
 
     private static String displayGroupName(WaypointGroup group) {
-        if (group == null) return "(unnamed)";
+        if (group == null) return unnamedRouteLabel();
         String name = group.name().trim();
-        if (!group.temp()) return name.isEmpty() ? "(unnamed)" : name;
-        if (name.isEmpty() || name.startsWith("Temp --")) return "Temporary";
+        if (!group.temp()) return name.isEmpty() ? unnamedRouteLabel() : name;
+        if (name.isEmpty() || name.startsWith("Temp --")) {
+            return Component.translatableWithFallback(
+                    "waypointer.screen.main.route.temporary", "Temporary").getString();
+        }
         return name;
+    }
+
+    private static String unnamedRouteLabel() {
+        return Component.translatableWithFallback(
+                "waypointer.screen.main.route.unnamed", "(unnamed)").getString();
     }
 }

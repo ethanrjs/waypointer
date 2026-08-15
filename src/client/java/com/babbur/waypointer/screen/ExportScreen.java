@@ -624,9 +624,17 @@ public final class ExportScreen extends Screen {
             ActiveGroupManager manager,
             List<WaypointGroup> selected,
             WaypointExportCodec.Target target) {
-        return target == WaypointExportCodec.Target.WAYPOINTER
-                ? RouteLibraryMetadata.capture(manager, selected)
-                : RouteLibraryMetadata.empty();
+        if (target != WaypointExportCodec.Target.WAYPOINTER) {
+            return RouteLibraryMetadata.empty();
+        }
+        RouteLibraryMetadata captured = RouteLibraryMetadata.capture(manager, selected);
+        // Folder membership is the sender's local organization. Sharing one
+        // route must not recreate it on the recipient's side, and dropping it
+        // keeps single-route codes out of the WPL wrapper (issue #114). The
+        // public API keeps full metadata; this trim is a share-screen choice.
+        if (selected.size() > 1) return captured;
+        return new RouteLibraryMetadata(
+                captured.manualColors(), List.of(), captured.paints());
     }
 
     private record EncodeResult(String code, String error) {}
