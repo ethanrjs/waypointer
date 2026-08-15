@@ -456,6 +456,8 @@ public final class RoutePublishScreen extends Screen {
         CatalogPublishFormModel.Validation validation = form.validation();
         if (validation == null) return null;
         return switch (validation) {
+            case DUNGEON_ROUTE -> Component.translatable(
+                    "waypointer.screen.route_publish.validation.dungeon");
             case EMPTY_ROUTE -> Component.translatable(
                     "waypointer.screen.route_publish.validation.empty_route");
             case TEMPORARY_ROUTE -> Component.translatable(

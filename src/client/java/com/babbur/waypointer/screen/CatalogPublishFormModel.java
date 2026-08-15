@@ -64,6 +64,7 @@ final class CatalogPublishFormModel {
     }
 
     Validation validation() {
+        if (dungeonRoute(group)) return Validation.DUNGEON_ROUTE;
         if (group.isEmpty()) return Validation.EMPTY_ROUTE;
         if (group.temp() || group.runtimeOnly()) return Validation.TEMPORARY_ROUTE;
         if (unpublishableZone(group.zoneId())) return Validation.UNPUBLISHABLE_ZONE;
@@ -90,6 +91,15 @@ final class CatalogPublishFormModel {
         String normalized = normalizedTitle();
         if (!normalized.isEmpty()) return normalized;
         return group.name() == null ? "" : group.name().trim();
+    }
+
+    /** Dungeon room routes and Catacombs floor routes stay local until the catalog supports them. */
+    static boolean dungeonRoute(WaypointGroup group) {
+        if (group.routeKind() == WaypointGroup.RouteKind.DUNGEON) return true;
+        String zone = Zone.canonicalId(group.zoneId());
+        return zone.equals("dungeon")
+                || zone.startsWith("dungeon_f")
+                || zone.startsWith("dungeon_m");
     }
 
     /** Routes without a real SkyBlock zone would be unfindable in the catalog. */
@@ -134,6 +144,7 @@ final class CatalogPublishFormModel {
     }
 
     enum Validation {
+        DUNGEON_ROUTE,
         EMPTY_ROUTE,
         TEMPORARY_ROUTE,
         UNPUBLISHABLE_ZONE,

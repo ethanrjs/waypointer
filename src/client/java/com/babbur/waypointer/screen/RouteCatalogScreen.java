@@ -459,7 +459,9 @@ public final class RouteCatalogScreen extends Screen {
             g.text(font, font.plainSubstrByWidth(getMessage().getString(), geo[1]),
                     geo[0], GuiTokens.opticalTextY(getY(), getHeight()),
                     active ? TEXT : TEXT_MUTED, false);
-            GuiTokens.drawDirectionGlyph(g, GuiTokens.Direction.DOWN, geo[2], geo[3],
+            GuiTokens.drawDirectionGlyph(g,
+                    zoneDropdownOpen ? GuiTokens.Direction.UP : GuiTokens.Direction.DOWN,
+                    geo[2], geo[3],
                     highlighted || zoneDropdownOpen ? TEXT : TEXT_DIM);
         }
     }

@@ -87,6 +87,31 @@ class CatalogPublishFormModelTest {
     }
 
     @Test
+    void dungeonRoutesCannotBePublishedYet() {
+        WaypointGroup room = WaypointGroup.create("Room route", "shape_L_rot_0");
+        room.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        room.add(Waypoint.at(1, 64, 2));
+        CatalogPublishFormModel form = new CatalogPublishFormModel(room, null);
+        form.setTitle("Published route");
+        form.setDescription("A useful route description.");
+
+        assertEquals(CatalogPublishFormModel.Validation.DUNGEON_ROUTE, form.validation());
+        assertFalse(form.valid());
+
+        assertTrue(CatalogPublishFormModel.dungeonRoute(room));
+        assertTrue(CatalogPublishFormModel.dungeonRoute(
+                WaypointGroup.create("Floor", "dungeon_f7")));
+        assertTrue(CatalogPublishFormModel.dungeonRoute(
+                WaypointGroup.create("Master floor", "dungeon_m5")));
+        assertTrue(CatalogPublishFormModel.dungeonRoute(
+                WaypointGroup.create("Entrance", "dungeon")));
+        assertFalse(CatalogPublishFormModel.dungeonRoute(
+                WaypointGroup.create("Lobby", "dungeon_hub")));
+        assertFalse(CatalogPublishFormModel.dungeonRoute(
+                WaypointGroup.create("Hub", "hub")));
+    }
+
+    @Test
     void descriptionLengthCountsCodePointsAndCapsInput() {
         assertFalse(CatalogPublishFormModel.descriptionLengthValid("123456789"));
         assertTrue(CatalogPublishFormModel.descriptionLengthValid("😀".repeat(500)));

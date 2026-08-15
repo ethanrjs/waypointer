@@ -322,12 +322,15 @@ public final class GroupEditScreen extends Screen {
         }
         syncCoordinateEditors();
 
+        boolean dungeonRoute = CatalogPublishFormModel.dungeonRoute(group);
         Button publishButton = styledButton(width - PAD_OUTER - PUBLISH_BUTTON_W, PAD_OUTER - 6,
                 PUBLISH_BUTTON_W, BTN_H,
                 Component.translatable("waypointer.screen.group_edit.publish"),
                 b -> publish(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.group_edit.publish.tooltip")));
+                Tooltip.create(Component.translatable(dungeonRoute
+                        ? "waypointer.screen.route_publish.validation.dungeon"
+                        : "waypointer.screen.group_edit.publish.tooltip")));
+        publishButton.active = !dungeonRoute;
         addRenderableWidget(publishButton);
 
         GuiTokens.layoutFooter(width, height - FOOTER_H, footerActionSpecs, footerDoneSpec,
@@ -815,6 +818,7 @@ public final class GroupEditScreen extends Screen {
     }
 
     private void publish() {
+        if (CatalogPublishFormModel.dungeonRoute(group)) return;
         WaypointGroup editTarget = durableEditTarget();
         if (editTarget == null || editTarget.isEmpty()) return;
         RoutePublishScreen.open(this, config, editTarget);

@@ -96,7 +96,7 @@ final class CatalogRouteRowButton extends AbstractButton {
                 textX, y1 + ROW_META_TOP, ACCENT, false);
         String stats = Component.translatable(
                 "waypointer.screen.route_catalog.row.stats",
-                RouteCatalogScreen.waypointCount(route.waypointCount()),
+                compactWaypoints(route.waypointCount()),
                 compactInstalls(route.downloads())).getString();
         graphics.text(font, font.plainSubstrByWidth(
                         stats, Math.max(1, columnW - GAP_TIGHT)),
@@ -141,6 +141,12 @@ final class CatalogRouteRowButton extends AbstractButton {
             return numbers.integer(tenths / 10) + suffix;
         }
         return numbers.oneDecimal(tenths / 10.0) + suffix;
+    }
+
+    private static Component compactWaypoints(long waypoints) {
+        return Component.translatable(
+                "waypointer.screen.route_catalog.row.waypoint_count",
+                compactCount(waypoints, LocalizedNumberFormatter.active()));
     }
 
     private static Component compactInstalls(long downloads) {
