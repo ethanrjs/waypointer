@@ -83,6 +83,7 @@ class PublishedRoutesUiStateTest {
     private static CatalogPublication publication(String routeId, String apiRoot) {
         return new CatalogPublication(
                 routeId, "publisher", "Publisher", "Title " + routeId,
+                "A route description.",
                 CatalogPublishRequest.Visibility.PUBLIC,
                 "crystal_hollows", 1, 9, "2026-01-01T00:00:00Z",
                 "/r/" + routeId, apiRoot, "sha256", Instant.EPOCH);

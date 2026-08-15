@@ -136,16 +136,25 @@ public final class RouteCatalogClient {
     }
 
     public CompletableFuture<Void> recordInstall(String routeId) {
-        return recordInstall(routeId, null);
+        return recordInstall(routeId, null, null);
     }
 
     public CompletableFuture<Void> recordInstall(
             String routeId, PublisherIdentity identity) {
+        return recordInstall(routeId, identity, null);
+    }
+
+    public CompletableFuture<Void> recordInstall(
+            String routeId, PublisherIdentity identity, String installToken) {
         requireRouteId(routeId);
         String path = "/api/routes/" + routeId + "/install";
         byte[] body = new byte[0];
         HttpRequest.Builder builder = request("routes/" + routeId + "/install")
                 .POST(HttpRequest.BodyPublishers.noBody());
+        if (installToken != null && !installToken.isBlank()) {
+            // Anonymous per-route dedupe mark; the server counts each token once.
+            builder.header("x-waypointer-install-token", installToken);
+        }
         if (identity != null) {
             addSignature(builder, identity, "POST", path, body);
         }

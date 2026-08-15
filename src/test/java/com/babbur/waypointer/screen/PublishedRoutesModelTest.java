@@ -67,6 +67,7 @@ class PublishedRoutesModelTest {
     private static CatalogPublication publication(int index) {
         return new CatalogPublication(
                 "route-" + index, "publisher", "Publisher", "Title " + index,
+                "A route description.",
                 com.babbur.waypointer.catalog.CatalogPublishRequest.Visibility.PUBLIC,
                 "crystal_hollows", 1, 9, "2026-01-01T00:00:00Z",
                 "/r/route-" + index, "https://catalog.example", "sha256", Instant.EPOCH);

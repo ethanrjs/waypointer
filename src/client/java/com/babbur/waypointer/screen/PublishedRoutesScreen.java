@@ -180,7 +180,10 @@ public final class PublishedRoutesScreen extends Screen {
             PublicationRow row = new PublicationRow(contentX, rowY, contentW, ROW_H,
                     publication, publication.routeId().equals(model.selectedRouteId()),
                     () -> select(publication.routeId()));
-            row.setTooltip(Tooltip.create(Component.literal(publication.shareUrl())));
+            row.setTooltip(Tooltip.create(Component.literal(
+                    publication.description().isBlank()
+                            ? publication.shareUrl()
+                            : publication.description())));
             addRenderableWidget(row);
         }
     }

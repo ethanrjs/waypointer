@@ -180,6 +180,19 @@ class RouteCatalogClientTest {
                 "/api/routes/" + ID + "/install");
     }
 
+    @Test
+    void installSendsTheDedupeTokenOnlyWhenMinted() {
+        RecordingTransport withToken = emptyTransport();
+        client(withToken).recordInstall(ID, null, "a".repeat(64)).join();
+        assertEquals("a".repeat(64), withToken.request.headers()
+                .firstValue("x-waypointer-install-token").orElseThrow());
+
+        RecordingTransport withoutToken = emptyTransport();
+        client(withoutToken).recordInstall(ID, null, null).join();
+        assertTrue(withoutToken.request.headers()
+                .firstValue("x-waypointer-install-token").isEmpty());
+    }
+
     private static RecordingTransport emptyTransport() {
         return new RecordingTransport(new RouteCatalogClient.Response(
                 204, "", new byte[0]));

@@ -8,6 +8,7 @@ public record CatalogPublication(
         String publisherId,
         String publisherName,
         String title,
+        String description,
         CatalogPublishRequest.Visibility visibility,
         String zoneId,
         int version,

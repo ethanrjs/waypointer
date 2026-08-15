@@ -119,9 +119,12 @@ public final class CatalogPublicationRegistry {
         String normalizedApiRoot = requireApiRoot(apiRoot);
         String sharePath = "/r/" + route.id();
         String serverCreatedAt = route.createdAt() == null ? "" : route.createdAt();
+        String description = receipt.request() == null
+                || receipt.request().description() == null
+                ? "" : receipt.request().description();
         return new CatalogPublication(
                 route.id(), route.publisherId(), route.authorName(), title,
-                visibility, zoneId, route.version(), route.codecVersion(),
+                description, visibility, zoneId, route.version(), route.codecVersion(),
                 serverCreatedAt, sharePath, normalizedApiRoot,
                 receipt.payloadSha256(), recordedAt);
     }
@@ -179,10 +182,12 @@ public final class CatalogPublicationRegistry {
         String payloadSha256 = requireMatch(
                 string(object, "payloadSha256"), "payload hash", PAYLOAD_HASH);
         Instant recordedAt = Instant.parse(string(object, "recordedAt"));
+        // Optional: records written before descriptions were kept omit the key.
+        String description = optionalString(object, "description");
         return new CatalogPublication(
-                routeId, publisherId, publisherName, title, visibility, zoneId,
-                version, codecVersion, serverCreatedAt, sharePath, apiRoot,
-                payloadSha256, recordedAt);
+                routeId, publisherId, publisherName, title, description,
+                visibility, zoneId, version, codecVersion, serverCreatedAt,
+                sharePath, apiRoot, payloadSha256, recordedAt);
     }
 
     private void writeRecords(List<CatalogPublication> records) {
@@ -211,6 +216,7 @@ public final class CatalogPublicationRegistry {
         object.addProperty("publisherId", record.publisherId());
         object.addProperty("publisherName", record.publisherName());
         object.addProperty("title", record.title());
+        object.addProperty("description", record.description());
         object.addProperty("visibility", record.visibility().name());
         object.addProperty("zoneId", record.zoneId());
         object.addProperty("version", record.version());
