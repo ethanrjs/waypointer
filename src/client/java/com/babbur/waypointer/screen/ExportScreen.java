@@ -311,13 +311,13 @@ public final class ExportScreen extends Screen {
         int navY = routePreviewY + RoutePreviewWidget.NAV_BUTTON_Y_OFFSET;
         previewPreviousButton = GuiTokens.styledButton(
                 routePreviewX + RoutePreviewWidget.NAV_BUTTON_INSET, navY, PREVIEW_NAV_W, BTN_H,
-                Component.literal("<"), button -> navigatePreviewRoute(-1),
+                Component.literal("\u25c0"), button -> navigatePreviewRoute(-1),
                 Tooltip.create(Component.translatable(
                         "waypointer.screen.export.preview.previous")));
         previewNextButton = GuiTokens.styledButton(
                 routePreviewX + routePreviewW - PREVIEW_NAV_W - RoutePreviewWidget.NAV_BUTTON_INSET,
                 navY, PREVIEW_NAV_W, BTN_H,
-                Component.literal(">"), button -> navigatePreviewRoute(1),
+                Component.literal("\u25b6"), button -> navigatePreviewRoute(1),
                 Tooltip.create(Component.translatable(
                         "waypointer.screen.export.preview.next")));
         addRenderableWidget(previewPreviousButton);
@@ -664,10 +664,9 @@ public final class ExportScreen extends Screen {
     }
 
     private Component routePickerToggleLabel() {
-        return Component.translatable(routePickerExpanded
+        return GuiTokens.colored(Component.translatable(routePickerExpanded
                 ? "waypointer.screen.export.routes.hide"
-                : "waypointer.screen.export.routes.show")
-                .withStyle(ChatFormatting.AQUA);
+                : "waypointer.screen.export.routes.show"), ACCENT);
     }
 
     private void toggleRoutePicker(Button button) {
@@ -869,8 +868,8 @@ public final class ExportScreen extends Screen {
     }
 
     private Component exportForButtonLabel() {
-        return Component.translatable("waypointer.screen.export.target",
-                exportTarget.displayName()).withStyle(ChatFormatting.AQUA);
+        return GuiTokens.colored(Component.translatable("waypointer.screen.export.target",
+                exportTarget.displayName()), ACCENT);
     }
 
     private int exportForButtonWidth() {
@@ -885,15 +884,15 @@ public final class ExportScreen extends Screen {
     private void copyToClipboard(Button button) {
         minecraft.keyboardHandler.setClipboard(encoded);
         copyFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
-        copyButton.setMessage(Component.translatable("waypointer.common.copied")
-                .withStyle(ChatFormatting.GREEN));
+        copyButton.setMessage(GuiTokens.colored(
+                Component.translatable("waypointer.common.copied"), GuiTokens.SUCCESS));
     }
 
     private void copyAsCodeBlock(Button button) {
         minecraft.keyboardHandler.setClipboard(ExportPolicy.codeBlockPayload(encoded));
         copyCodeBlockFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
-        copyCodeBlockButton.setMessage(Component.translatable("waypointer.common.copied")
-                .withStyle(ChatFormatting.GREEN));
+        copyCodeBlockButton.setMessage(GuiTokens.colored(
+                Component.translatable("waypointer.common.copied"), GuiTokens.SUCCESS));
     }
 
     @Override
@@ -974,20 +973,22 @@ public final class ExportScreen extends Screen {
         drawRouteScrollbar(g, x1, y1, x2, y2);
     }
 
+    private static final int ROW_SELECTED_TINT = 0x1C4FB3C4;
+
     private void renderRouteRow(GuiGraphicsExtractor g, WaypointGroup group, int index,
                                 int x1, int y1, int x2, boolean hovered) {
         boolean selected = routeSelection.isSelected(index);
         int rowBottom = y1 + ROUTE_ROW_H;
-        int bg = selected ? 0x1C4FB3C4 : hovered ? 0x18FFFFFF : 0;
+        int bg = selected ? ROW_SELECTED_TINT : hovered ? GuiTokens.HOVER : 0;
         if (bg != 0) g.fill(x1, y1, x2, rowBottom, bg);
-        if (selected) g.fill(x1, y1, x1 + 2, rowBottom, 0xFF4FB3C4);
+        if (selected) g.fill(x1, y1, x1 + 2, rowBottom, ACCENT);
 
         String marker = selected ? "[x]" : "[ ]";
-        int markerColor = selected ? 0xFF4FB3C4 : TEXT_MUTED;
+        int markerColor = selected ? ACCENT : TEXT_MUTED;
         int textColor = selected ? TEXT : TEXT_MUTED;
         int metaColor = selected ? TEXT_DIM : TEXT_MUTED;
         int textX = x1 + GAP;
-        int centerY = y1 + 7;
+        int centerY = y1 + (ROUTE_ROW_H - 8) / 2;
         g.text(font, marker, textX, centerY, markerColor, false);
 
         String rawMeta = displayZoneLabel(group.zoneId()) + "  " + group.size() + " pts  "
@@ -1015,7 +1016,7 @@ public final class ExportScreen extends Screen {
         int thumbH = Math.max(10, trackH * viewport / content);
         int travel = Math.max(0, trackH - thumbH);
         int thumbY = trackY + (maxScroll == 0 ? 0 : travel * routeScrollOffset / maxScroll);
-        g.fill(trackX, trackY, trackX + ROUTE_SCROLLBAR_W, trackY + trackH, 0x40000000);
+        g.fill(trackX, trackY, trackX + ROUTE_SCROLLBAR_W, trackY + trackH, GuiTokens.BORDER);
         g.fill(trackX, thumbY, trackX + ROUTE_SCROLLBAR_W, thumbY + thumbH, TEXT_MUTED);
     }
 
@@ -1026,7 +1027,7 @@ public final class ExportScreen extends Screen {
             return;
         }
         if (!encodingError.isEmpty()) {
-            drawClipped(g, encodingError, y, 0xFFDD7070);
+            drawClipped(g, encodingError, y, GuiTokens.DANGER);
             return;
         }
         int right = contentX + contentW;
@@ -1039,7 +1040,7 @@ public final class ExportScreen extends Screen {
         String chip = font.plainSubstrByWidth("\"" + sanitized + "\"", Math.max(0, right - chipX));
         if (chip.isEmpty()) return;
         g.text(font, SUMMARY_SEPARATOR, cursor, y, TEXT_MUTED, false);
-        g.text(font, chip, chipX, y, 0xFF88AACC, false);
+        g.text(font, chip, chipX, y, TEXT_DIM, false);
     }
 
     static int drawSizeLine(GuiGraphicsExtractor g, Font font, int x, int y, int right, String payload) {
@@ -1051,7 +1052,8 @@ public final class ExportScreen extends Screen {
 
         int separatorX = x + font.width(chars);
         int fitX = separatorX + font.width(SUMMARY_SEPARATOR);
-        int fitColor = fit.commandOk() ? 0xFF88DD88 : fit.chatOk() ? 0xFFE0C070 : 0xFFDD7070;
+        int fitColor = fit.commandOk() ? GuiTokens.SUCCESS
+                : fit.chatOk() ? GuiTokens.WARNING : GuiTokens.DANGER;
         String fitLine = font.plainSubstrByWidth(
                 Component.translatable(fit.messageKey()).getString(), Math.max(0, right - fitX));
         if (fitLine.isEmpty()) return separatorX;
@@ -1067,7 +1069,7 @@ public final class ExportScreen extends Screen {
         if (showSubwaypointCompatibilityWarning()) {
             return new SettingsHelp(Component.translatable(
                     "waypointer.screen.export.settings_help.subwaypoints").getString(),
-                    0xFFFFB060);
+                    GuiTokens.WARNING);
         }
         if (exportTarget != WaypointExportCodec.Target.WAYPOINTER) {
             return new SettingsHelp(Component.translatable(
@@ -1087,7 +1089,7 @@ public final class ExportScreen extends Screen {
     }
 
     private void drawPreview(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
-        g.fill(x1, y1, x2, y2, 0x30FFFFFF);
+        g.fill(x1, y1, x2, y2, GuiTokens.BORDER);
         g.fill(x1 + 1, y1 + 1, x2 - 1, y2 - 1, SURFACE_SUBTLE);
 
         int innerX = x1 + PREVIEW_INSET;

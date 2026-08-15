@@ -511,7 +511,7 @@ public final class AddNamedWaypointScreen extends Screen {
             int x = dungeonTypeCellX(rowX, i);
             boolean active = type == selectedDungeonType;
             boolean hovered = dungeonTypeAt(mouseX, mouseY) == i;
-            int border = hovered ? 0xFFFFFFFF : BORDER;
+            int border = hovered ? 0xB0FFFFFF : BORDER;
             int fill = active ? 0xFF2D6B3E : hovered ? 0xFF303844 : 0xFF20242A;
             g.fill(x, rowY, x + DUNGEON_TYPE_BUTTON_SIZE,
                     rowY + DUNGEON_TYPE_BUTTON_SIZE, border);
@@ -548,11 +548,7 @@ public final class AddNamedWaypointScreen extends Screen {
                 Math.min(mouseX + 12, width - PAD_OUTER - tooltipW));
         int y = Math.max(PAD_OUTER,
                 Math.min(mouseY + 12, height - PAD_OUTER - tooltipH));
-        g.fill(x, y, x + tooltipW, y + tooltipH, 0xF0101216);
-        g.fill(x, y, x + tooltipW, y + 1, BORDER);
-        g.fill(x, y + tooltipH - 1, x + tooltipW, y + tooltipH, BORDER);
-        g.fill(x, y, x + 1, y + tooltipH, BORDER);
-        g.fill(x + tooltipW - 1, y, x + tooltipW, y + tooltipH, BORDER);
+        GuiTokens.drawTooltipPanel(g, x, y, x + tooltipW, y + tooltipH);
         g.text(font, text, x + pad, y + pad, TEXT, false);
     }
 

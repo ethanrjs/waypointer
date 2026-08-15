@@ -293,7 +293,7 @@ class GroupEditScreenTest {
         assertEquals(java.util.List.of(
                 "Select a waypoint row",
                 "Rename that waypoint",
-                "Set the current waypoint",
+                "Open the waypoint menu",
                 "Enable or disable the waypoint",
                 "Move in world",
                 "Toggle subwaypoint",

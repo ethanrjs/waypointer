@@ -142,8 +142,15 @@ class EtherwarpTargetResolverTest {
                 Vec3.ZERO, Vec3.ZERO, 57, blocked).isEmpty());
         assertTrue(EtherwarpTargetResolver.resolve(
                 Vec3.ZERO, new Vec3(1, 0, 0), 57, blocked).isEmpty());
+        assertTrue(EtherwarpTargetResolver.alignsWith(
+                new BlockPos(10, 64, 0), Waypoint.at(10, 64, 0)),
+                "floor-placed waypoints are the support block itself");
         assertFalse(EtherwarpTargetResolver.alignsWith(
-                new BlockPos(10, 64, 0), Waypoint.at(10, 64, 0)));
+                new BlockPos(10, 62, 0), Waypoint.at(10, 64, 0)),
+                "two blocks below the waypoint is not aligned");
+        assertFalse(EtherwarpTargetResolver.alignsWith(
+                new BlockPos(11, 63, 0), Waypoint.at(10, 64, 0)),
+                "horizontal offsets are not aligned");
         assertFalse(EtherwarpTargetResolver.alignsWith(
                 null, Waypoint.at(10, 64, 0)));
         assertFalse(EtherwarpTargetResolver.alignsWith(

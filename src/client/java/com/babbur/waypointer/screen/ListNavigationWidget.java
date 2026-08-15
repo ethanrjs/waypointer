@@ -17,6 +17,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_END;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_HOME;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_DOWN;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_UP;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
 
 /** Keyboard and narration layer for a fixed-row list */
@@ -28,6 +29,7 @@ final class ListNavigationWidget extends AbstractButton {
     private final IntConsumer activateItem;
     private final IntSupplier scrollOffset;
     private final IntConsumer ensureVisible;
+    private final IntConsumer spaceAction;
     private final int rowInset;
     private final int rowPitch;
     private final int rowHeight;
@@ -39,6 +41,16 @@ final class ListNavigationWidget extends AbstractButton {
                          IntFunction<Component> itemNarration,
                          IntConsumer activateItem, IntSupplier scrollOffset,
                          IntConsumer ensureVisible) {
+        this(x, y, width, height, rowInset, rowPitch, rowHeight, itemCount, initialIndex,
+                itemNarration, activateItem, scrollOffset, ensureVisible, null);
+    }
+
+    ListNavigationWidget(int x, int y, int width, int height,
+                         int rowInset, int rowPitch, int rowHeight,
+                         IntSupplier itemCount, IntSupplier initialIndex,
+                         IntFunction<Component> itemNarration,
+                         IntConsumer activateItem, IntSupplier scrollOffset,
+                         IntConsumer ensureVisible, IntConsumer spaceAction) {
         super(x, y, width, height, Component.empty());
         this.rowInset = rowInset;
         this.rowPitch = Math.max(1, rowPitch);
@@ -49,6 +61,7 @@ final class ListNavigationWidget extends AbstractButton {
         this.activateItem = activateItem;
         this.scrollOffset = scrollOffset;
         this.ensureVisible = ensureVisible;
+        this.spaceAction = spaceAction;
     }
 
     void setCursor(int index) {
@@ -79,6 +92,13 @@ final class ListNavigationWidget extends AbstractButton {
         syncCursor();
         int count = count();
         if (count == 0) return false;
+        if (event.key() == GLFW_KEY_SPACE && spaceAction != null) {
+            if (cursor >= 0) {
+                spaceAction.accept(cursor);
+                refreshMessage();
+            }
+            return true;
+        }
         int page = Math.max(1, getHeight() / rowPitch);
         int next = switch (event.key()) {
             case GLFW_KEY_UP -> moveIndex(cursor, count, -1);

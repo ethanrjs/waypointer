@@ -30,6 +30,24 @@ class GuiTokensTest {
     }
 
     @Test
+    void coloredMessagesCarryTheTokenAsATextColor() {
+        var colored = GuiTokens.colored(
+                net.minecraft.network.chat.Component.literal("Copied"), GuiTokens.SUCCESS);
+        assertEquals("Copied", colored.getString());
+        assertNotNull(colored.getStyle().getColor());
+        assertEquals(GuiTokens.SUCCESS & 0xFFFFFF, colored.getStyle().getColor().getValue());
+    }
+
+    @Test
+    void solidTriangleLabelsUseTheSharedPixelDirections() {
+        assertEquals(GuiTokens.Direction.UP, GuiTokens.directionForLabel("\u25b2"));
+        assertEquals(GuiTokens.Direction.DOWN, GuiTokens.directionForLabel("\u25bc"));
+        assertEquals(GuiTokens.Direction.LEFT, GuiTokens.directionForLabel("\u25c0"));
+        assertEquals(GuiTokens.Direction.RIGHT, GuiTokens.directionForLabel("\u25b6"));
+        assertEquals(null, GuiTokens.directionForLabel("Done"));
+    }
+
+    @Test
     void footerPlacementsReserveRightButtonLaneWhenPrimaryActionsFit() {
         List<GuiTokens.ButtonSpec> left = List.of(
                 fixed("New", 80),

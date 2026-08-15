@@ -196,6 +196,8 @@ public final class SettingsScreen extends Screen {
         searchBox.setMaxLength(80);
         searchBox.setValue(searchQuery);
         searchBox.setHint(Component.translatable("waypointer.screen.settings.search"));
+        searchBox.setTooltip(Tooltip.create(Component.translatable(
+                "waypointer.screen.settings.search.tooltip")));
         searchBox.setResponder(this::onSearchChanged);
         addRenderableWidget(searchBox);
 
@@ -936,11 +938,11 @@ public final class SettingsScreen extends Screen {
         try {
             String code = WaypointerConfigCodec.encode(config);
             minecraft.keyboardHandler.setClipboard(code);
-            setConfigCodeStatus(Component.translatable(
-                    "waypointer.screen.settings.config.copied").withStyle(ChatFormatting.GREEN));
+            setConfigCodeStatus(GuiTokens.colored(Component.translatable(
+                    "waypointer.screen.settings.config.copied"), GuiTokens.SUCCESS));
         } catch (Throwable t) {
-            setConfigCodeStatus(Component.translatable(
-                    "waypointer.screen.settings.config.copy_failed").withStyle(ChatFormatting.RED));
+            setConfigCodeStatus(GuiTokens.colored(Component.translatable(
+                    "waypointer.screen.settings.config.copy_failed"), GuiTokens.DANGER));
         }
     }
 
@@ -949,13 +951,13 @@ public final class SettingsScreen extends Screen {
         try {
             text = minecraft.keyboardHandler.getClipboard();
         } catch (Throwable t) {
-            setConfigCodeStatus(Component.translatable(
-                    "waypointer.screen.settings.config.clipboard_failed").withStyle(ChatFormatting.RED));
+            setConfigCodeStatus(GuiTokens.colored(Component.translatable(
+                    "waypointer.screen.settings.config.clipboard_failed"), GuiTokens.DANGER));
             return;
         }
         if (text == null || text.isBlank()) {
-            setConfigCodeStatus(Component.translatable(
-                    "waypointer.screen.settings.config.clipboard_empty").withStyle(ChatFormatting.RED));
+            setConfigCodeStatus(GuiTokens.colored(Component.translatable(
+                    "waypointer.screen.settings.config.clipboard_empty"), GuiTokens.DANGER));
             return;
         }
 
@@ -964,15 +966,15 @@ public final class SettingsScreen extends Screen {
             int changedSettings = SettingsCatalog.countChangedSettings(config, decoded);
             showImportConfigConfirmation(decoded, changedSettings);
         } catch (RuntimeException e) {
-            setConfigCodeStatus(Component.translatable(
-                    "waypointer.screen.settings.config.invalid").withStyle(ChatFormatting.RED));
+            setConfigCodeStatus(GuiTokens.colored(Component.translatable(
+                    "waypointer.screen.settings.config.invalid"), GuiTokens.DANGER));
         }
     }
 
     private void showImportConfigConfirmation(WaypointerConfig decoded, int changedSettings) {
         if (decoded == null) {
-            setConfigCodeStatus(Component.translatable(
-                    "waypointer.screen.settings.config.invalid").withStyle(ChatFormatting.RED));
+            setConfigCodeStatus(GuiTokens.colored(Component.translatable(
+                    "waypointer.screen.settings.config.invalid"), GuiTokens.DANGER));
             return;
         }
 
@@ -986,9 +988,9 @@ public final class SettingsScreen extends Screen {
                     if (confirmed) {
                         applyConfirmedConfigImport(decoded, changedSettings);
                     } else {
-                        setConfigCodeStatus(Component.translatable(
-                                "waypointer.screen.settings.config.cancelled")
-                                .withStyle(ChatFormatting.GRAY));
+                        setConfigCodeStatus(GuiTokens.colored(Component.translatable(
+                                "waypointer.screen.settings.config.cancelled"),
+                                GuiTokens.TEXT_DIM));
                     }
                     MinecraftCompat.setScreen(minecraft, this);
                 }, title, message,
@@ -1001,10 +1003,10 @@ public final class SettingsScreen extends Screen {
         config.replaceWith(decoded);
         ConfigChangeHistory.recordBulk("Imported config code (" + changedSettings + " changed)");
         afterBulkConfigChange();
-        setConfigCodeStatus(Component.translatable(changedSettings == 1
+        setConfigCodeStatus(GuiTokens.colored(Component.translatable(changedSettings == 1
                 ? "waypointer.screen.settings.config.imported.one"
-                : "waypointer.screen.settings.config.imported.many", changedSettings)
-                .withStyle(ChatFormatting.GREEN));
+                : "waypointer.screen.settings.config.imported.many", changedSettings),
+                GuiTokens.SUCCESS));
     }
 
     private void setConfigCodeStatus(Component status) {
@@ -1287,18 +1289,19 @@ public final class SettingsScreen extends Screen {
                 if (count != null && count > 0) {
                     String countStr = Integer.toString(count);
                     int countX = x2 - GAP - font.width(countStr);
-                    g.text(font, countStr, countX, rowY + 6, TEXT_MUTED, false);
+                    g.text(font, countStr, countX, rowY + 7, TEXT_MUTED, false);
                     labelMaxW = countX - GAP_TIGHT - labelX;
                 }
             }
             String clipped = font.plainSubstrByWidth(entry.label(), Math.max(12, labelMaxW));
-            g.text(font, clipped, labelX, rowY + 6, selected ? TEXT : TEXT_DIM, false);
+            g.text(font, clipped, labelX, rowY + 7, selected ? TEXT : TEXT_DIM, false);
         }
         g.disableScissor();
     }
 
     static int sidebarRowsTop(int panelTop) {
-        return panelTop + 24;
+        // Matches Layout.rowsTop so the first sidebar row and first setting row align.
+        return panelTop + 4 + BTN_H + GAP;
     }
 
     static int maxSidebarScroll(int categoryCount, int viewportHeight) {
@@ -1349,9 +1352,10 @@ public final class SettingsScreen extends Screen {
         }
 
         if (row.header) {
-            String glyph = row.expanded ? "v" : ">";
-            g.text(font, glyph, labelX, rowTop + 8, TEXT_DIM, false);
-            labelX += font.width(glyph) + 5;
+            GuiTokens.drawDirectionGlyph(g,
+                    row.expanded ? GuiTokens.Direction.DOWN : GuiTokens.Direction.RIGHT,
+                    labelX + 4, rowTop + 12, TEXT_DIM);
+            labelX += 14;
         }
 
         int labelMaxW = labelLimit(row, layout) - labelX;
@@ -1391,7 +1395,7 @@ public final class SettingsScreen extends Screen {
         if (maxScroll <= 0 || travel <= 0) return;
 
         int thumbY = y1 + MathUtil.clamp(scrollOffset, 0, maxScroll) * travel / maxScroll;
-        g.fill(x, y1 + 2, x + 2, y2 - 2, BORDER);
+        g.fill(x, y1, x + 2, y2, BORDER);
         g.fill(x, thumbY, x + 2, thumbY + thumbHeight, TEXT_MUTED);
     }
 

@@ -9,6 +9,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -109,7 +110,7 @@ final class RouteFolderEditScreen extends Screen {
             }
             case DELETE -> {
                 label = Component.translatable("waypointer.screen.route_folder.delete");
-                onPress = button -> deleteFolder();
+                onPress = button -> confirmDeleteFolder();
             }
             default -> throw new IllegalStateException(
                     "Unexpected folder action: " + placement.action());
@@ -139,6 +140,21 @@ final class RouteFolderEditScreen extends Screen {
         }
         manager.setFolderCollapsed(target.id(), false);
         onClose();
+    }
+
+    private void confirmDeleteFolder() {
+        if (folder == null) return;
+        ConfirmScreen confirm = new ConfirmScreen(confirmed -> {
+            MinecraftCompat.setScreen(
+                    minecraft == null ? Minecraft.getInstance() : minecraft, this);
+            if (confirmed) deleteFolder();
+        }, Component.translatable("waypointer.screen.route_folder.confirm.title"),
+                Component.translatable(
+                        "waypointer.screen.route_folder.confirm.message", folder.name()),
+                Component.translatable("waypointer.screen.route_folder.delete"),
+                Component.translatable("gui.cancel"));
+        MinecraftCompat.setScreen(
+                minecraft == null ? Minecraft.getInstance() : minecraft, confirm);
     }
 
     private void deleteFolder() {
@@ -180,6 +196,8 @@ final class RouteFolderEditScreen extends Screen {
             graphics.text(font, font.plainSubstrByWidth(
                             detail, layout.contentWidth()),
                     layout.contentX(), layout.detailY(), TEXT_DIM, false);
+            graphics.fill(layout.contentX(), layout.sectionDividerY(),
+                    layout.contentRight(), layout.sectionDividerY() + 1, BORDER);
         }
         if (layout.fieldLabelsVisible()) {
             graphics.text(font, Component.translatable("waypointer.screen.route_folder.name"),
@@ -191,7 +209,7 @@ final class RouteFolderEditScreen extends Screen {
             String validation = Component.translatable(
                     "waypointer.screen.route_folder.color.invalid").getString();
             graphics.text(font, font.plainSubstrByWidth(validation, layout.contentWidth()),
-                    layout.contentX(), layout.validationY(), 0xFFE47B7B, false);
+                    layout.contentX(), layout.validationY(), DANGER, false);
         }
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }

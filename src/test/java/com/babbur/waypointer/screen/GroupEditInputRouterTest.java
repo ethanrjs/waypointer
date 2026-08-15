@@ -7,7 +7,7 @@ import static com.babbur.waypointer.screen.GroupEditInputRouter.ActionType.CLOSE
 import static com.babbur.waypointer.screen.GroupEditInputRouter.ActionType.CLOSE_DUNGEON_PICKER_WITH_SOUND;
 import static com.babbur.waypointer.screen.GroupEditInputRouter.ActionType.CONSUME;
 import static com.babbur.waypointer.screen.GroupEditInputRouter.ActionType.EDIT_COLOR;
-import static com.babbur.waypointer.screen.GroupEditInputRouter.ActionType.GOTO;
+import static com.babbur.waypointer.screen.GroupEditInputRouter.ActionType.OPEN_CONTEXT_MENU;
 import static com.babbur.waypointer.screen.GroupEditInputRouter.ActionType.NONE;
 import static com.babbur.waypointer.screen.GroupEditInputRouter.ActionType.OPEN_DUNGEON_TYPE_PICKER;
 import static com.babbur.waypointer.screen.GroupEditInputRouter.ActionType.RENAME;
@@ -70,7 +70,7 @@ class GroupEditInputRouterTest {
 
         assertAction(TOGGLE_DISABLED, 3, -1,
                 before(pointer(MOUSE_BUTTON_MIDDLE, true, true), false, geometry));
-        assertAction(GOTO, 3, -1,
+        assertAction(OPEN_CONTEXT_MENU, 3, -1,
                 before(pointer(MOUSE_BUTTON_RIGHT, false, true), false, geometry));
         assertAction(TOGGLE_SUBWAYPOINT, 3, -1,
                 before(pointer(MOUSE_BUTTON_RIGHT, true, true), false, geometry));

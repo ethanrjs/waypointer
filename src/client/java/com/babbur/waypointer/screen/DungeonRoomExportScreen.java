@@ -3,7 +3,6 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -94,7 +93,8 @@ final class DungeonRoomExportScreen extends Screen {
         int copyX = width - PAD_OUTER - copyW;
 
         GuiTokens.layoutFooter(width, footerY,
-                List.of(new GuiTokens.ButtonSpec("Back", this::goBackToParent)),
+                List.of(new GuiTokens.ButtonSpec(
+                        Component.translatable("gui.back").getString(), this::goBackToParent)),
                 null,
                 this::addRenderableWidget,
                 font,
@@ -118,15 +118,15 @@ final class DungeonRoomExportScreen extends Screen {
     private void copyToClipboard(Button button) {
         minecraft.keyboardHandler.setClipboard(payload);
         copyFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
-        copyButton.setMessage(Component.translatable("waypointer.common.copied")
-                .withStyle(ChatFormatting.GREEN));
+        copyButton.setMessage(GuiTokens.colored(
+                Component.translatable("waypointer.common.copied"), GuiTokens.SUCCESS));
     }
 
     private void copyAsCodeBlock(Button button) {
         minecraft.keyboardHandler.setClipboard(ExportPolicy.codeBlockPayload(payload));
         copyCodeBlockFeedbackUntil = System.currentTimeMillis() + COPIED_FEEDBACK_MS;
-        copyCodeBlockButton.setMessage(Component.translatable("waypointer.common.copied")
-                .withStyle(ChatFormatting.GREEN));
+        copyCodeBlockButton.setMessage(GuiTokens.colored(
+                Component.translatable("waypointer.common.copied"), GuiTokens.SUCCESS));
     }
 
     @Override
@@ -142,7 +142,7 @@ final class DungeonRoomExportScreen extends Screen {
             g.text(font, Component.translatable("waypointer.screen.export.encoding"),
                     PAD_OUTER, y, TEXT_MUTED, false);
         } else if (!encodingError.isEmpty()) {
-            g.text(font, encodingError, PAD_OUTER, y, 0xFFFF5555, false);
+            g.text(font, encodingError, PAD_OUTER, y, GuiTokens.DANGER, false);
         } else {
             ExportScreen.drawSizeLine(g, font, PAD_OUTER, y, width - PAD_OUTER, payload);
         }
@@ -167,7 +167,7 @@ final class DungeonRoomExportScreen extends Screen {
     }
 
     private void drawPreview(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
-        g.fill(x1, y1, x2, y2, 0x30FFFFFF);
+        g.fill(x1, y1, x2, y2, GuiTokens.BORDER);
         g.fill(x1 + 1, y1 + 1, x2 - 1, y2 - 1, SURFACE_SUBTLE);
 
         int innerX = x1 + PREVIEW_INSET;
@@ -179,7 +179,7 @@ final class DungeonRoomExportScreen extends Screen {
             return;
         }
         if (!encodingError.isEmpty()) {
-            g.text(font, encodingError, innerX, innerY, 0xFFFF5555, false);
+            g.text(font, encodingError, innerX, innerY, GuiTokens.DANGER, false);
             return;
         }
 

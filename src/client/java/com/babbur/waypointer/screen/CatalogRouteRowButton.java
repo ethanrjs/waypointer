@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.catalog.CatalogRouteSummary;
+import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractButton;
@@ -18,7 +19,7 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 
 final class CatalogRouteRowButton extends AbstractButton {
-    private static final int STATUS_OK = 0xFF7ACB89;
+    private static final int STATUS_OK = GuiTokens.SUCCESS;
     private static final int ROW_TITLE_TOP = 6;
     private static final int ROW_META_TOP = 20;
 
@@ -52,7 +53,7 @@ final class CatalogRouteRowButton extends AbstractButton {
         int background = selected ? SELECTED : isHoveredOrFocused() ? HOVER : 0;
         if (background != 0) graphics.fill(x1, y1, x2, y2, background);
         graphics.fill(x1, y2 - 1, x2, y2, BORDER);
-        if (selected) graphics.fill(x1, y1, x1 + 1, y2, ACCENT);
+        if (selected) graphics.fill(x1, y1, x1 + 2, y2, ACCENT);
         if (isFocused()) drawFocusBorder(graphics, x1, y1, x2, y2);
 
         var font = Minecraft.getInstance().font;
@@ -93,9 +94,12 @@ final class CatalogRouteRowButton extends AbstractButton {
         graphics.text(font, font.plainSubstrByWidth(
                         route.zoneLabel(), Math.max(1, columnW - GAP_TIGHT)),
                 textX, y1 + ROW_META_TOP, ACCENT, false);
-        String waypoints = RouteCatalogScreen.waypointCount(route.waypointCount()).getString();
+        String stats = Component.translatable(
+                "waypointer.screen.route_catalog.row.stats",
+                RouteCatalogScreen.waypointCount(route.waypointCount()),
+                compactInstalls(route.downloads())).getString();
         graphics.text(font, font.plainSubstrByWidth(
-                        waypoints, Math.max(1, columnW - GAP_TIGHT)),
+                        stats, Math.max(1, columnW - GAP_TIGHT)),
                 textX + columnW, y1 + ROW_META_TOP, TEXT_MUTED, false);
         String publisher = Component.translatable(
                 "waypointer.screen.route_catalog.publisher.by", author).getString();
@@ -123,6 +127,29 @@ final class CatalogRouteRowButton extends AbstractButton {
         }
     }
 
+    /** Row copy stays compact: full numbers below 1000, then 1.2k / 3M. */
+    static String compactCount(long value, LocalizedNumberFormatter numbers) {
+        if (value < 1_000) return numbers.integer(Math.max(0, value));
+        if (value < 1_000_000) return scaledCount(value, 1_000, "k", numbers);
+        return scaledCount(value, 1_000_000, "M", numbers);
+    }
+
+    private static String scaledCount(
+            long value, long unit, String suffix, LocalizedNumberFormatter numbers) {
+        long tenths = value * 10 / unit;
+        if (tenths >= 100 || tenths % 10 == 0) {
+            return numbers.integer(tenths / 10) + suffix;
+        }
+        return numbers.oneDecimal(tenths / 10.0) + suffix;
+    }
+
+    private static Component compactInstalls(long downloads) {
+        return Component.translatable(downloads == 1
+                        ? "waypointer.screen.route_catalog.install_count.one"
+                        : "waypointer.screen.route_catalog.install_count.many",
+                compactCount(downloads, LocalizedNumberFormatter.active()));
+    }
+
     @Override
     protected MutableComponent createNarrationMessage() {
         Component author = route.authorName().isBlank()
@@ -132,6 +159,9 @@ final class CatalogRouteRowButton extends AbstractButton {
                 "waypointer.screen.route_catalog.row.narration",
                 route.title(), route.zoneLabel(),
                 RouteCatalogScreen.waypointCount(route.waypointCount()), author);
+        description.append(Component.translatable(
+                "waypointer.screen.route_catalog.row.downloads_narration",
+                RouteCatalogScreen.installCount(route.downloads())));
         if (route.publisherVerified()) {
             description.append(Component.translatable(
                     "waypointer.screen.route_catalog.publisher.verified"));

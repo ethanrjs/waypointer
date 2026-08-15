@@ -39,8 +39,8 @@ public final class PublishedRoutesScreen extends Screen {
     private static final int PANEL_MARGIN = 12;
     private static final int ROW_H = 24;
     private static final int ROW_GAP = 2;
-    private static final int STATUS_ERROR = 0xFFE47B7B;
-    private static final int STATUS_OK = 0xFF7ACB89;
+    private static final int STATUS_ERROR = GuiTokens.DANGER;
+    private static final int STATUS_OK = GuiTokens.SUCCESS;
 
     private final Screen parent;
     private final RouteCatalogClient catalogClient;
@@ -52,6 +52,7 @@ public final class PublishedRoutesScreen extends Screen {
     private boolean loading = true;
     private boolean deleting;
     private boolean screenActive;
+    private boolean showEmptyState;
     private Component status = Component.translatable(
             "waypointer.screen.published_routes.status.loading");
     private int statusColor = TEXT_DIM;
@@ -67,6 +68,7 @@ public final class PublishedRoutesScreen extends Screen {
     private int contentX;
     private int contentW;
     private int rowsY;
+    private int pagerY;
     private int statusY;
 
     PublishedRoutesScreen(
@@ -97,10 +99,10 @@ public final class PublishedRoutesScreen extends Screen {
         panelY = Math.max(0, (height - panelH) / 2);
         contentX = panelX + PAD_OUTER;
         contentW = Math.max(1, panelW - PAD_OUTER * 2);
-        rowsY = panelY + 46;
+        rowsY = panelY + 34;
         int footerY = panelY + panelH - PAD_OUTER - BTN_H;
         statusY = footerY - 14;
-        int pagerY = statusY - BTN_H - GAP;
+        pagerY = statusY - BTN_H - GAP;
         model.setRowsPerPage(PublishedRoutesLayout.rowsPerPage(
                 rowsY, pagerY, ROW_H, ROW_GAP, GAP));
 
@@ -127,9 +129,9 @@ public final class PublishedRoutesScreen extends Screen {
 
         int pageW = 28;
         previousButton = styledButton(contentX, pagerY,
-                pageW, BTN_H, Component.literal("<"), button -> changePage(-1), null);
+                pageW, BTN_H, Component.literal("\u25c0"), button -> changePage(-1), null);
         nextButton = styledButton(contentX + contentW - pageW, pagerY,
-                pageW, BTN_H, Component.literal(">"), button -> changePage(1), null);
+                pageW, BTN_H, Component.literal("\u25b6"), button -> changePage(1), null);
         addRenderableWidget(previousButton);
         addRenderableWidget(nextButton);
 
@@ -153,17 +155,18 @@ public final class PublishedRoutesScreen extends Screen {
             if (!screenActive || minecraft == null
                     || MinecraftCompat.screen(minecraft) != this) return;
             if (failure != null) {
+                showEmptyState = false;
                 status = Component.translatable(
                         "waypointer.screen.published_routes.status.load_failed");
                 statusColor = STATUS_ERROR;
             } else {
                 identity = loaded.identity();
                 model.replace(loaded.publications());
-                status = Component.translatable(model.publications().isEmpty()
-                        ? "waypointer.screen.published_routes.status.empty"
-                        : "waypointer.screen.published_routes.status.ready",
+                showEmptyState = model.publications().isEmpty();
+                status = showEmptyState ? Component.empty() : Component.translatable(
+                        "waypointer.screen.published_routes.status.ready",
                         model.publications().size());
-                statusColor = model.publications().isEmpty() ? TEXT_DIM : TEXT_MUTED;
+                statusColor = TEXT_MUTED;
             }
             rebuildWidgets();
         }));
@@ -174,16 +177,81 @@ public final class PublishedRoutesScreen extends Screen {
         for (int index = 0; index < visible.size(); index++) {
             CatalogPublication publication = visible.get(index);
             int rowY = rowsY + index * (ROW_H + ROW_GAP);
-            String title = font.plainSubstrByWidth(
-                    publication.title(), Math.max(40, contentW - 92));
-            Component label = Component.literal(title + "  " + publication.routeId());
-            Button row = styledButton(contentX, rowY, contentW, ROW_H, label,
-                    button -> select(publication.routeId()),
-                    Tooltip.create(Component.literal(publication.shareUrl())));
-            if (publication.routeId().equals(model.selectedRouteId())) {
-                row.setMessage(label.copy().withStyle(net.minecraft.ChatFormatting.AQUA));
-            }
+            PublicationRow row = new PublicationRow(contentX, rowY, contentW, ROW_H,
+                    publication, publication.routeId().equals(model.selectedRouteId()),
+                    () -> select(publication.routeId()));
+            row.setTooltip(Tooltip.create(Component.literal(publication.shareUrl())));
             addRenderableWidget(row);
+        }
+    }
+
+    private static final class PublicationRow
+            extends net.minecraft.client.gui.components.AbstractButton {
+        private final CatalogPublication publication;
+        private final boolean selected;
+        private final Runnable onPress;
+
+        PublicationRow(int x, int y, int width, int height,
+                       CatalogPublication publication, boolean selected, Runnable onPress) {
+            super(x, y, width, height, Component.literal(publication.title()));
+            this.publication = publication;
+            this.selected = selected;
+            this.onPress = onPress;
+        }
+
+        @Override
+        public void onPress(net.minecraft.client.input.InputWithModifiers input) {
+            onPress.run();
+        }
+
+        @Override
+        protected void extractContents(
+                GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partial) {
+            int x1 = getX();
+            int y1 = getY();
+            int x2 = x1 + getWidth();
+            int y2 = y1 + getHeight();
+            int background = selected ? SELECTED : isHoveredOrFocused() ? GuiTokens.HOVER : 0;
+            if (background != 0) graphics.fill(x1, y1, x2, y2, background);
+            graphics.fill(x1, y2 - 1, x2, y2, GuiTokens.BORDER);
+            if (selected) graphics.fill(x1, y1, x1 + 2, y2, ACCENT);
+            if (isFocused()) {
+                graphics.fill(x1, y1, x2, y1 + 1, ACCENT);
+                graphics.fill(x1, y2 - 1, x2, y2, ACCENT);
+                graphics.fill(x1, y1, x1 + 1, y2, ACCENT);
+                graphics.fill(x2 - 1, y1, x2, y2, ACCENT);
+            }
+
+            var font = Minecraft.getInstance().font;
+            int textY = y1 + (getHeight() - 8) / 2;
+            String date = PublishedRoutesUiState.publishedDate(
+                    publication.serverCreatedAt());
+            int dateW = font.width(date);
+            int dateX = x2 - GAP - dateW;
+            int titleX = x1 + GAP + 2;
+            String title = font.plainSubstrByWidth(
+                    publication.title(), Math.max(24, dateX - GAP - titleX));
+            graphics.text(font, title, titleX, textY, selected ? TEXT : TEXT_DIM, false);
+            graphics.text(font, date, dateX, textY, TEXT_MUTED, false);
+        }
+
+        @Override
+        protected net.minecraft.network.chat.MutableComponent createNarrationMessage() {
+            String date = PublishedRoutesUiState.publishedDate(
+                    publication.serverCreatedAt());
+            Component base = Component.literal(date.isEmpty()
+                    ? publication.title()
+                    : publication.title() + ". " + date);
+            return selected
+                    ? Component.translatable(
+                            "waypointer.screen.route_catalog.row.narration.selected", base)
+                    : base.copy();
+        }
+
+        @Override
+        protected void updateWidgetNarration(
+                net.minecraft.client.gui.narration.NarrationElementOutput output) {
+            defaultButtonNarrationText(output);
         }
     }
 
@@ -241,6 +309,7 @@ public final class PublishedRoutesScreen extends Screen {
                         model.replace(PublishedRoutesUiState.forApiRoot(
                                 publicationRegistry.listForPublisher(identity.publisherId()),
                                 catalogClient.apiRoot()));
+                        showEmptyState = model.publications().isEmpty();
                         status = Component.translatable(
                                 "waypointer.screen.published_routes.status.deleted");
                         statusColor = STATUS_OK;
@@ -252,15 +321,24 @@ public final class PublishedRoutesScreen extends Screen {
     private void refreshButtons() {
         PublishedRoutesUiState.Controls controls = PublishedRoutesUiState.controls(
                 model, identity != null, deleting);
+        boolean hasRoutes = !model.publications().isEmpty();
         if (deleteButton != null) {
+            deleteButton.visible = hasRoutes;
             deleteButton.active = controls.deleteEnabled();
             deleteButton.setMessage(Component.translatable(deleting
                     ? "waypointer.screen.published_routes.action.deleting"
                     : "waypointer.screen.published_routes.action.delete"));
         }
-        if (copyButton != null) copyButton.active = controls.copyEnabled();
-        if (previousButton != null) previousButton.active = controls.previousEnabled();
+        if (copyButton != null) {
+            copyButton.visible = hasRoutes;
+            copyButton.active = controls.copyEnabled();
+        }
+        if (previousButton != null) {
+            previousButton.visible = hasRoutes;
+            previousButton.active = controls.previousEnabled();
+        }
         if (nextButton != null) {
+            nextButton.visible = hasRoutes;
             nextButton.active = controls.nextEnabled();
         }
     }
@@ -296,20 +374,24 @@ public final class PublishedRoutesScreen extends Screen {
         graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, SURFACE);
         graphics.text(font, font.plainSubstrByWidth(getTitle().getString(), contentW),
                 contentX, panelY + PAD_OUTER, TEXT, false);
-        graphics.text(font, font.plainSubstrByWidth(Component.translatable(
-                        "waypointer.screen.published_routes.subtitle").getString(), contentW),
-                contentX, panelY + PAD_OUTER + 12, TEXT_DIM, false);
-        if (model.selectedRouteId() != null) {
-            graphics.fill(contentX, rowsY - 2, contentX + 2,
-                    PublishedRoutesLayout.rowsBottom(
-                            rowsY, model.rowsPerPage(), ROW_H, ROW_GAP), SELECTED);
+        if (!model.publications().isEmpty()) {
+            String pageText = (model.page() + 1) + "/" + (model.maximumPage() + 1);
+            graphics.text(font, pageText,
+                    contentX + (contentW - font.width(pageText)) / 2,
+                    pagerY + 6, ACCENT, false);
         }
-        String pageText = (model.page() + 1) + "/" + (model.maximumPage() + 1);
-        graphics.text(font, pageText,
-                contentX + (contentW - font.width(pageText)) / 2,
-                statusY - BTN_H - GAP + 6, ACCENT, false);
-        graphics.text(font, font.plainSubstrByWidth(status.getString(), contentW),
-                contentX, statusY, statusColor, false);
+        if (showEmptyState) {
+            String empty = Component.translatable(
+                    "waypointer.screen.published_routes.status.empty").getString();
+            int emptyY = rowsY + Math.max(0, pagerY - rowsY - font.lineHeight) / 2;
+            graphics.text(font, empty,
+                    contentX + (contentW - font.width(empty)) / 2,
+                    emptyY, TEXT_DIM, false);
+        }
+        if (!status.getString().isBlank()) {
+            graphics.text(font, font.plainSubstrByWidth(status.getString(), contentW),
+                    contentX, statusY, statusColor, false);
+        }
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
     }
 

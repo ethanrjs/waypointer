@@ -53,6 +53,40 @@ class CatalogPublishFormModelTest {
     }
 
     @Test
+    void previewNamePrefersTheEditedTitleAndFallsBackToTheRouteName() {
+        WaypointGroup group = WaypointGroup.create("Saved name", "hub");
+        CatalogPublishFormModel form = new CatalogPublishFormModel(group, null);
+
+        assertEquals("Saved name", form.previewName());
+        form.setTitle("   ");
+        assertEquals("Saved name", form.previewName());
+        form.setTitle("  Edited  ");
+        assertEquals("Edited", form.previewName());
+        assertEquals("Edited", form.normalizedTitle());
+        assertEquals(group, form.group());
+    }
+
+    @Test
+    void routesWithoutARealSkyBlockZoneCannotBePublished() {
+        WaypointGroup group = WaypointGroup.create("Route", "unknown");
+        group.add(Waypoint.at(1, 64, 2));
+        CatalogPublishFormModel form = new CatalogPublishFormModel(group, null);
+        form.setTitle("Published route");
+        form.setDescription("A useful route description.");
+
+        assertEquals(CatalogPublishFormModel.Validation.UNPUBLISHABLE_ZONE,
+                form.validation());
+        assertFalse(form.valid());
+
+        assertTrue(CatalogPublishFormModel.unpublishableZone(null));
+        assertTrue(CatalogPublishFormModel.unpublishableZone("unknown"));
+        assertTrue(CatalogPublishFormModel.unpublishableZone("private_world"));
+        assertTrue(CatalogPublishFormModel.unpublishableZone("Private_World"));
+        assertFalse(CatalogPublishFormModel.unpublishableZone("hub"));
+        assertFalse(CatalogPublishFormModel.unpublishableZone("mineshaft_topaz_1"));
+    }
+
+    @Test
     void descriptionLengthCountsCodePointsAndCapsInput() {
         assertFalse(CatalogPublishFormModel.descriptionLengthValid("123456789"));
         assertTrue(CatalogPublishFormModel.descriptionLengthValid("😀".repeat(500)));

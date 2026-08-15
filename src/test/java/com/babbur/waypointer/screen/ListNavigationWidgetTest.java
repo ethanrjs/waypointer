@@ -25,4 +25,21 @@ class ListNavigationWidgetTest {
 
         assertFalse(widget.isMouseOver(50, 50));
     }
+
+    @Test
+    void spaceRunsTheSecondaryActionInsteadOfActivatingTheRow() {
+        java.util.concurrent.atomic.AtomicInteger toggled =
+                new java.util.concurrent.atomic.AtomicInteger(-1);
+        ListNavigationWidget widget = new ListNavigationWidget(
+                10, 20, 100, 80, 0, 22, 20,
+                () -> 3, () -> 1, ignored -> net.minecraft.network.chat.Component.empty(),
+                ignored -> {}, () -> 0, ignored -> {}, toggled::set);
+        widget.active = true;
+        widget.visible = true;
+
+        assertEquals(true, widget.keyPressed(new net.minecraft.client.input.KeyEvent(
+                org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE, 0, 0)));
+        assertEquals(1, toggled.get(),
+                "space must act on the cursor row without pressing the widget");
+    }
 }

@@ -34,4 +34,10 @@ final class PublishedRoutesUiState {
                 .filter(record -> apiRoot.equals(record.apiRoot()))
                 .toList();
     }
+
+    /** Calendar date of an ISO-8601 timestamp, or empty when it is missing or short. */
+    static String publishedDate(String serverCreatedAt) {
+        if (serverCreatedAt == null || serverCreatedAt.length() < 10) return "";
+        return serverCreatedAt.substring(0, 10);
+    }
 }

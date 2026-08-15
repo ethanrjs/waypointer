@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen;
 
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
+import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
@@ -12,7 +13,9 @@ import com.babbur.waypointer.util.MathUtil;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -29,19 +32,23 @@ final class WaypointerRouteList {
 
     private static final int ROUTE_TOGGLE_CHIP_W = 54;
     private static final int ROUTE_TOGGLE_CHIP_H = 14;
+    private static final int FOLDER_ICON_SIZE = 16;
+    private static final int FOLDER_ICON_ATLAS_WIDTH = FOLDER_ICON_SIZE * 2;
+    private static final Identifier FOLDER_ICONS = Identifier.fromNamespaceAndPath(
+            Waypointer.MOD_ID, "textures/gui/folders.png");
     private static final int MOUSE_BUTTON_LEFT = 0;
     private static final int MOUSE_BUTTON_RIGHT = 1;
     private static final double DRAG_THRESHOLD_SQUARED = 16.0;
     static final int INFO_BUTTON_SIZE = 12;
     private static final String INFO_TITLE = "Route list controls";
     private static final String[] INFO_LABELS = {
-            "Double-click", "Shown/Hidden chip", "Shift-right-click",
+            "Right-click", "Double-click", "Space", "Shown/Hidden chip",
             "Ctrl / Shift-click", "Delete key",
     };
     private static final String[] INFO_DESCRIPTIONS = {
-            "open a route in the editor", "toggle a route in the world",
-            "move a world route to another zone", "select multiple routes",
-            "delete the selection (confirm)",
+            "open the route menu", "open a route in the editor",
+            "show or hide the focused route", "toggle a route in the world",
+            "select multiple routes", "delete the selection (confirm)",
     };
 
     private final WaypointerScreen screen;
@@ -70,7 +77,8 @@ final class WaypointerRouteList {
                 listHeight, 0, ROW_PITCH, ROW_H + 2,
                 () -> rows().size(), this::initialNavigationIndex,
                 this::narration, this::activateRow,
-                () -> screen.scrollOffset, this::scrollRowIndexIntoView);
+                () -> screen.scrollOffset, this::scrollRowIndexIntoView,
+                this::spaceActivateRow);
         screen.registerRouteListNavigation(navigation);
     }
 
@@ -82,50 +90,13 @@ final class WaypointerRouteList {
     }
 
     void renderInfoButton(GuiGraphicsExtractor graphics, int x, int y, boolean hovered) {
-        int border = hovered ? 0xFFFFFFFF : BORDER;
-        int fill = hovered ? 0xFF26343A : 0xFF1A1F24;
-        graphics.fill(x, y, x + INFO_BUTTON_SIZE, y + INFO_BUTTON_SIZE, border);
-        graphics.fill(x + 1, y + 1, x + INFO_BUTTON_SIZE - 1, y + INFO_BUTTON_SIZE - 1, fill);
-        int glyphX = x + (INFO_BUTTON_SIZE - font().width("i")) / 2;
-        graphics.text(font(), "i", glyphX, y + 2, hovered ? ACCENT : TEXT_DIM, false);
+        GuiTokens.drawInfoButton(graphics, font(), x, y, INFO_BUTTON_SIZE, hovered);
     }
 
     void renderInfoTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
                            int screenWidth, int contentBottom) {
-        int lineCount = Math.min(INFO_LABELS.length, INFO_DESCRIPTIONS.length);
-        int padding = 7;
-        int lineGap = 3;
-        int maxLabelWidth = 0;
-        int maxLineWidth = font().width(INFO_TITLE);
-        for (String label : INFO_LABELS) {
-            maxLabelWidth = Math.max(maxLabelWidth, font().width(label));
-        }
-        for (int i = 0; i < lineCount; i++) {
-            maxLineWidth = Math.max(maxLineWidth,
-                    maxLabelWidth + GAP + font().width(INFO_DESCRIPTIONS[i]));
-        }
-
-        int width = maxLineWidth + padding * 2;
-        int height = padding * 2 + font().lineHeight + 5
-                + lineCount * font().lineHeight + Math.max(0, lineCount - 1) * lineGap;
-        int x = Math.max(PAD_OUTER,
-                Math.min(mouseX + 12, Math.max(PAD_OUTER, screenWidth - PAD_OUTER - width)));
-        int y = Math.max(PAD_OUTER,
-                Math.min(mouseY + 12, Math.max(PAD_OUTER, contentBottom - height)));
-        screen.fillOutlinedOverlay(graphics, x, y, x + width, y + height);
-
-        int textX = x + padding;
-        int textY = y + padding;
-        graphics.text(font(), INFO_TITLE, textX, textY, ACCENT, false);
-        int separatorY = textY + font().lineHeight + 2;
-        graphics.fill(textX, separatorY, x + width - padding, separatorY + 1, 0x55FFFFFF);
-        int rowY = separatorY + 4;
-        for (int i = 0; i < lineCount; i++) {
-            graphics.text(font(), INFO_LABELS[i], textX, rowY, TEXT, false);
-            graphics.text(font(), INFO_DESCRIPTIONS[i], textX + maxLabelWidth + GAP,
-                    rowY, TEXT_DIM, false);
-            rowY += font().lineHeight + lineGap;
-        }
+        GuiTokens.drawInfoTooltip(graphics, font(), INFO_TITLE, INFO_LABELS, INFO_DESCRIPTIONS,
+                null, mouseX, mouseY, screenWidth - PAD_OUTER, contentBottom);
     }
 
     void selectGroupById(String id) {
@@ -215,13 +186,23 @@ final class WaypointerRouteList {
         return filtered;
     }
 
+    /** Selection restricted to rows the user can actually see (collapsed folders excluded). */
     List<WaypointGroup> selectedVisibleGroups() {
         List<WaypointGroup> selectedGroups = new ArrayList<>();
         if (screen.selectedGroupIds.isEmpty()) return selectedGroups;
-        for (WaypointGroup group : visibleGroups()) {
-            if (screen.selectedGroupIds.contains(group.id())) selectedGroups.add(group);
+        for (Row row : rows()) {
+            if (row.group != null && screen.selectedGroupIds.contains(row.group.id())) {
+                selectedGroups.add(row.group);
+            }
         }
         return selectedGroups;
+    }
+
+    /** Collapsing a folder hides rows; drop them from the selection so actions stay honest. */
+    void toggleFolderCollapsed(RouteFolder folder) {
+        if (folder == null) return;
+        screen.manager.toggleFolderCollapsed(folder.id());
+        screen.pruneSelectionToVisible(visibleGroupIds(rows()));
     }
 
     List<Row> rows() {
@@ -324,9 +305,10 @@ final class WaypointerRouteList {
     boolean mouseClicked(MouseButtonEvent event, boolean doubleClick,
                          int left, int top, int right, int bottom) {
         boolean leftClick = event.button() == MOUSE_BUTTON_LEFT;
-        boolean shiftRightClick = event.button() == MOUSE_BUTTON_RIGHT
-                && WaypointerScreen.routeSelectionShiftDown();
-        if (!leftClick && !shiftRightClick) return false;
+        boolean rightClick = event.button() == MOUSE_BUTTON_RIGHT;
+        boolean shiftRightClick = rightClick && WaypointerScreen.routeSelectionShiftDown();
+        boolean plainRightClick = rightClick && !shiftRightClick;
+        if (!leftClick && !rightClick) return false;
         if (leftClick) clearDrag();
 
         double mouseX = event.x();
@@ -363,12 +345,16 @@ final class WaypointerRouteList {
         }
 
         if (row.folder != null) {
+            if (plainRightClick) {
+                screen.openFolderRowMenu(row.folder, mouseX, mouseY);
+                return true;
+            }
             switch (RouteListPresentation.folderHeaderAction(
                     mouseX, rowRight, doubleClick)) {
                 case SELECT -> screen.selectFolderRoutes(row.folder);
                 case EDIT -> screen.openFolderEditor(row.folder, List.of());
                 case TOGGLE -> {
-                    screen.manager.toggleFolderCollapsed(row.folder.id());
+                    toggleFolderCollapsed(row.folder);
                     screen.scrollOffset = MathUtil.clamp(screen.scrollOffset, 0,
                             maxScroll(rows().size(), bottom - rowsTop));
                 }
@@ -380,6 +366,15 @@ final class WaypointerRouteList {
 
         WaypointGroup group = row.group;
         if (group == null) return false;
+        if (plainRightClick) {
+            if (!screen.selectedGroupIds.contains(group.id())) {
+                screen.selectOnlyGroupId(group.id());
+                screen.refreshActionButtons();
+            }
+            if (row.roomZoneId != null) screen.selectedDungeonRoomZoneId = row.roomZoneId;
+            screen.openRouteRowMenu(group, mouseX, mouseY);
+            return true;
+        }
         if (shiftRightClick) {
             screen.startZoneMove(group);
             return true;
@@ -536,7 +531,7 @@ final class WaypointerRouteList {
         if (!dragging || dropTarget == null) return;
         graphics.requestCursor(CursorTypes.POINTING_HAND);
         if (dropTarget.band) {
-            graphics.fill(left, dropTarget.top, right, dropTarget.bottom, 0x3038CFE8);
+            graphics.fill(left, dropTarget.top, right, dropTarget.bottom, 0x304FB3C4);
             graphics.fill(left, dropTarget.top, left + 3, dropTarget.bottom, ACCENT);
             return;
         }
@@ -596,13 +591,17 @@ final class WaypointerRouteList {
     private void renderFolderHeader(GuiGraphicsExtractor graphics, Row row,
                                     int x1, int y1, int x2, int mouseX, boolean hovered) {
         int rowBottom = y1 + ROW_H + 2;
+        int folderTint = 0x24000000 | row.folder.color();
+        graphics.fill(x1, y1, x2, rowBottom, folderTint);
         if (hovered) graphics.fill(x1, y1, x2, rowBottom, HOVER);
-        int folderColor = 0xFF000000 | row.folder.color();
-        graphics.fill(x1, y1, x1 + 3, rowBottom, folderColor);
-        String glyph = RouteListPresentation.folderGlyph(row.folder, row.searchReveal);
-        int textX = x1 + GAP + 2;
-        graphics.text(font(), glyph, textX, y1 + 4, folderColor, false);
-        int nameX = textX + font().width(glyph) + GAP;
+        graphics.fill(x1, rowBottom - 1, x2, rowBottom, BORDER);
+        boolean closed = row.folder.collapsed() && !row.searchReveal;
+        float iconU = closed ? 0.0f : FOLDER_ICON_SIZE;
+        graphics.blit(RenderPipelines.GUI_TEXTURED, FOLDER_ICONS,
+                x1 + GAP, y1 + 4, iconU, 0.0f,
+                FOLDER_ICON_SIZE, FOLDER_ICON_SIZE,
+                FOLDER_ICON_ATLAS_WIDTH, FOLDER_ICON_SIZE);
+        int nameX = x1 + GAP + FOLDER_ICON_SIZE + GAP;
         int editX = RouteListPresentation.folderEditControlX(x2);
         int selectX = RouteListPresentation.folderSelectControlX(x2);
         int maxWidth = Math.max(16, selectX - nameX - GAP);
@@ -625,6 +624,46 @@ final class WaypointerRouteList {
                 hovered && RouteListPresentation.isFolderEditControlHit(mouseX, x2));
     }
 
+    /** Space on the focused row: the keyboard twin of the Shown/Hidden chip. */
+    private void spaceActivateRow(int index) {
+        List<Row> rows = rows();
+        if (index < 0 || index >= rows.size()) return;
+        Row row = rows.get(index);
+        if (row.group != null) {
+            screen.toggleRouteEnabled(row.group);
+        } else if (row.folder != null) {
+            toggleFolderCollapsed(row.folder);
+        } else if (row.roomHeader) {
+            activateRow(index);
+        }
+    }
+
+    /** Screen coordinates of a row's bottom-left corner, for anchoring the context menu. */
+    int rowMenuAnchorY(int index) {
+        WaypointerScreen.Layout layout = screen.layoutForRouteList();
+        return rowsTop(layout.top()) - screen.scrollOffset + index * ROW_PITCH + ROW_H + 2;
+    }
+
+    boolean openContextMenuAtCursor() {
+        if (navigation == null || !navigation.isFocused()) return false;
+        int index = navigation.cursor();
+        List<Row> rows = rows();
+        if (index < 0 || index >= rows.size()) return false;
+        Row row = rows.get(index);
+        WaypointerScreen.Layout layout = screen.layoutForRouteList();
+        int anchorX = layout.mainLeft() + GAP_SECTION;
+        int anchorY = rowMenuAnchorY(index);
+        if (row.group != null) {
+            screen.openRouteRowMenu(row.group, anchorX, anchorY);
+            return true;
+        }
+        if (row.folder != null) {
+            screen.openFolderRowMenu(row.folder, anchorX, anchorY);
+            return true;
+        }
+        return false;
+    }
+
     private void activateRow(int index) {
         List<Row> rows = rows();
         if (index < 0 || index >= rows.size()) return;
@@ -636,7 +675,7 @@ final class WaypointerRouteList {
             return;
         }
         if (row.folder != null) {
-            screen.manager.toggleFolderCollapsed(row.folder.id());
+            toggleFolderCollapsed(row.folder);
             return;
         }
         WaypointGroup group = row.group;
@@ -806,7 +845,7 @@ final class WaypointerRouteList {
         if (selected) graphics.fill(bandX, y1, bandX + 2, rowBottom, accent);
 
         int chipX = RouteListPresentation.routeToggleChipX(x2);
-        int textX = RouteListPresentation.routeRowTextX(x1, indented);
+        int textX = RouteListPresentation.routeRowTextX(x1, indented, folderChild);
         int textMaxWidth = Math.max(12, chipX - GAP - textX);
         int textColor = group.enabled() ? TEXT : TEXT_MUTED;
         String name = RouteListPresentation.routeRowName(
@@ -862,18 +901,18 @@ final class WaypointerRouteList {
         int travel = viewportHeight - thumbHeight;
         if (maxScroll <= 0 || travel <= 0) return;
         int thumbY = y1 + currentScrollOffset * travel / maxScroll;
-        graphics.fill(x, y1 + 2, x + 2, y2 - 2, BORDER);
+        graphics.fill(x, y1, x + 2, y2, BORDER);
         graphics.fill(x, thumbY, x + 2, thumbY + thumbHeight, TEXT_MUTED);
     }
 
     private String routeRowSubtitle(WaypointGroup group) {
         if (group.temp()) {
-            return group.size() + " temp pts  " + displayZoneLabel(group.zoneId());
+            return group.size() + " waypoints · " + displayZoneLabel(group.zoneId());
         }
-        if (group.isEmpty()) return "empty - double-click to add waypoints";
-        return group.size() + " pts  " + RouteProgress.summary(group)
-                + "  " + (group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
-                ? "sequenced" : "static");
+        if (group.isEmpty()) return "empty · double-click to add waypoints";
+        return group.size() + " waypoints · " + RouteProgress.summary(group)
+                + " · " + (group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
+                ? "step by step" : "all shown");
     }
 
     private Font font() {

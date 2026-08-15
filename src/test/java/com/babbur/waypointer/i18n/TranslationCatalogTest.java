@@ -201,13 +201,15 @@ class TranslationCatalogTest {
                 "waypointer.screen.route_folder.color_picker",
                 "waypointer.screen.route_folder.color_picker.tooltip",
                 "waypointer.screen.route_folder.color.default",
-                "waypointer.screen.route_folder.color.invalid");
+                "waypointer.screen.route_folder.color.invalid",
+                "waypointer.screen.route_folder.confirm.title",
+                "waypointer.screen.route_folder.confirm.message");
 
         assertTrue(english.keySet().containsAll(required));
         assertEquals("New Folder", english.get("waypointer.screen.main.folder"));
-        assertEquals("Move the selected route up or down",
+        assertEquals("Move the selected route up.",
                 english.get("waypointer.screen.main.move_up.tooltip"));
-        assertEquals("Move the selected route up or down",
+        assertEquals("Move the selected route down.",
                 english.get("waypointer.screen.main.move_down.tooltip"));
     }
 

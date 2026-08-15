@@ -8,6 +8,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.TextColor;
 import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
@@ -30,6 +32,7 @@ public final class GuiTokens {
 
     public static final int SURFACE        = 0xC0101216;
     public static final int SURFACE_SUBTLE = 0x60000000;
+    public static final int OVERLAY        = 0xF0101216;
     public static final int BORDER         = 0x30FFFFFF;
     public static final int HOVER          = 0x18FFFFFF;
     public static final int SELECTED       = 0x30FFFFFF;
@@ -38,6 +41,16 @@ public final class GuiTokens {
     public static final int TEXT       = 0xFFE6E9EC;
     public static final int TEXT_DIM   = 0xFFB0B6BE;
     public static final int TEXT_MUTED = 0xFF80868E;
+
+    public static final int SUCCESS = 0xFF7ACB89;
+    public static final int WARNING = 0xFFFFB060;
+    public static final int DANGER  = 0xFFE47B7B;
+
+    /** Message tinted with a token color, e.g. {@code colored(label, ACCENT)}. */
+    public static MutableComponent colored(Component message, int argb) {
+        return message.copy().withStyle(
+                style -> style.withColor(TextColor.fromRgb(argb & 0xFFFFFF)));
+    }
 
     public static class StyledButton extends Button {
         private static final int VISIBLE_GLYPH_HEIGHT = 8;
@@ -69,13 +82,20 @@ public final class GuiTokens {
         }
     }
 
-    public static final class ChoiceButton extends Button {
-        private final boolean selected;
+    public enum Direction {
+        UP,
+        DOWN,
+        LEFT,
+        RIGHT
+    }
 
-        private ChoiceButton(int x, int y, int width, int height,
-                             Component message, boolean selected, OnPress onPress) {
-            super(x, y, width, height, message, onPress, DEFAULT_NARRATION);
-            this.selected = selected;
+    private static final class DirectionButton extends StyledButton {
+        private final Direction direction;
+
+        private DirectionButton(int x, int y, int width, int height,
+                                Component message, Direction direction, OnPress onPress) {
+            super(x, y, width, height, message, onPress);
+            this.direction = direction;
         }
 
         @Override
@@ -86,18 +106,9 @@ public final class GuiTokens {
             boolean highlighted = active && isHoveredOrFocused();
             drawControlFrame(g, x, y, getWidth(), getHeight(),
                     active, highlighted, isFocused());
-            if (selected) {
-                g.fill(x + 2, y + 2, x + getWidth() - 2, y + getHeight() - 2,
-                        0x40213A40);
-                g.fill(x + 1, y + 1, x + 3, y + getHeight() - 1, ACCENT);
-            }
-
-            var font = Minecraft.getInstance().font;
-            String clipped = font.plainSubstrByWidth(
-                    getMessage().getString(), Math.max(1, getWidth() - 12));
-            int textX = x + (getWidth() - font.width(clipped)) / 2;
-            int color = !active ? TEXT_MUTED : selected ? ACCENT : TEXT;
-            g.text(font, clipped, textX, opticalTextY(y, getHeight()), color, false);
+            int color = !active ? TEXT_MUTED : highlighted ? ACCENT : TEXT;
+            drawDirectionGlyph(g, direction,
+                    x + getWidth() / 2, y + getHeight() / 2, color);
         }
     }
 
@@ -170,9 +181,102 @@ public final class GuiTokens {
     public static Button styledButton(int x, int y, int width, int height,
                                       Component message, Button.OnPress onPress,
                                       Tooltip tooltip) {
-        Button button = new StyledButton(x, y, width, height, message, onPress);
+        Direction direction = directionForLabel(message.getString());
+        Button button = direction == null
+                ? new StyledButton(x, y, width, height, message, onPress)
+                : new DirectionButton(x, y, width, height, message, direction, onPress);
         if (tooltip != null) button.setTooltip(tooltip);
         return button;
+    }
+
+    static Direction directionForLabel(String label) {
+        return switch (label) {
+            case "\u25b2" -> Direction.UP;
+            case "\u25bc" -> Direction.DOWN;
+            case "\u25c0" -> Direction.LEFT;
+            case "\u25b6" -> Direction.RIGHT;
+            default -> null;
+        };
+    }
+
+    public static void drawDirectionGlyph(
+            GuiGraphicsExtractor g, Direction direction,
+            int centerX, int centerY, int color) {
+        for (int step = 0; step < 5; step++) {
+            int span = step * 2 + 1;
+            switch (direction) {
+                case UP -> g.fill(centerX - step, centerY - 2 + step,
+                        centerX - step + span, centerY - 1 + step, color);
+                case DOWN -> g.fill(centerX - step, centerY + 2 - step,
+                        centerX - step + span, centerY + 3 - step, color);
+                case LEFT -> g.fill(centerX - 2 + step, centerY - step,
+                        centerX - 1 + step, centerY - step + span, color);
+                case RIGHT -> g.fill(centerX + 2 - step, centerY - step,
+                        centerX + 3 - step, centerY - step + span, color);
+            }
+        }
+    }
+
+    private static final int INFO_FILL       = 0xFF1A1F24;
+    private static final int INFO_FILL_HOVER = 0xFF26343A;
+    private static final int TOOLTIP_SEPARATOR = 0x55FFFFFF;
+
+    /** Floating panel used by tooltips, dropdowns, and pickers: OVERLAY fill, BORDER frame. */
+    public static void drawTooltipPanel(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
+        g.fill(x1, y1, x2, y2, OVERLAY);
+        g.fill(x1, y1, x2, y1 + 1, BORDER);
+        g.fill(x1, y2 - 1, x2, y2, BORDER);
+        g.fill(x1, y1, x1 + 1, y2, BORDER);
+        g.fill(x2 - 1, y1, x2, y2, BORDER);
+    }
+
+    public static void drawInfoButton(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font,
+                                      int x, int y, int size, boolean hovered) {
+        g.fill(x, y, x + size, y + size, hovered ? 0xB0FFFFFF : BORDER);
+        g.fill(x + 1, y + 1, x + size - 1, y + size - 1,
+                hovered ? INFO_FILL_HOVER : INFO_FILL);
+        int glyphX = x + (size - font.width("i")) / 2;
+        g.text(font, "i", glyphX, y + (size - StyledButton.VISIBLE_GLYPH_HEIGHT) / 2,
+                hovered ? ACCENT : TEXT_DIM, false);
+    }
+
+    public static void drawInfoTooltip(GuiGraphicsExtractor g, net.minecraft.client.gui.Font font,
+                                       String title, String[] labels, String[] descriptions,
+                                       int[] labelColors, int mouseX, int mouseY,
+                                       int maxRight, int maxBottom) {
+        int lineCount = Math.min(labels.length, descriptions.length);
+        int pad = GAP;
+        int lineGap = 3;
+        int maxLabelWidth = 0;
+        int maxLineWidth = font.width(title);
+        for (int i = 0; i < lineCount; i++) {
+            maxLabelWidth = Math.max(maxLabelWidth, font.width(labels[i]));
+        }
+        for (int i = 0; i < lineCount; i++) {
+            maxLineWidth = Math.max(maxLineWidth,
+                    maxLabelWidth + GAP + font.width(descriptions[i]));
+        }
+
+        int w = maxLineWidth + pad * 2;
+        int h = pad * 2 + font.lineHeight + 5
+                + lineCount * font.lineHeight + Math.max(0, lineCount - 1) * lineGap;
+        int x = Math.max(PAD_OUTER, Math.min(mouseX + 12, Math.max(PAD_OUTER, maxRight - w)));
+        int y = Math.max(PAD_OUTER, Math.min(mouseY + 12, Math.max(PAD_OUTER, maxBottom - h)));
+        drawTooltipPanel(g, x, y, x + w, y + h);
+
+        int textX = x + pad;
+        int textY = y + pad;
+        g.text(font, title, textX, textY, ACCENT, false);
+        int separatorY = textY + font.lineHeight + 2;
+        g.fill(textX, separatorY, x + w - pad, separatorY + 1, TOOLTIP_SEPARATOR);
+        int rowY = separatorY + 4;
+        for (int i = 0; i < lineCount; i++) {
+            int labelColor = labelColors != null && i < labelColors.length
+                    ? labelColors[i] : TEXT;
+            g.text(font, labels[i], textX, rowY, labelColor, false);
+            g.text(font, descriptions[i], textX + maxLabelWidth + GAP, rowY, TEXT_DIM, false);
+            rowY += font.lineHeight + lineGap;
+        }
     }
 
     public static StyledCheckbox styledCheckbox(int x, int y, int size, Component label,
@@ -181,16 +285,6 @@ public final class GuiTokens {
         StyledCheckbox checkbox = new StyledCheckbox(x, y, size, label, selected, onValueChange);
         if (tooltip != null) checkbox.setTooltip(tooltip);
         return checkbox;
-    }
-
-    public static Button choiceButton(
-            int x, int y, int width, int height,
-            Component message, boolean selected, Button.OnPress onPress,
-            Tooltip tooltip) {
-        Button button = new ChoiceButton(
-                x, y, width, height, message, selected, onPress);
-        if (tooltip != null) button.setTooltip(tooltip);
-        return button;
     }
 
     public record ButtonSpec(String label, int width, Runnable onClick, Tooltip tooltip) {
@@ -312,11 +406,7 @@ public final class GuiTokens {
     }
 
     private static Button buildButton(ButtonSpec spec, int x, int y, int w) {
-        Button button = new StyledButton(x, y, w, BTN_H,
-                Component.literal(spec.label), b -> spec.onClick.run());
-        if (spec.tooltip != null) {
-            button.setTooltip(spec.tooltip);
-        }
-        return button;
+        return styledButton(x, y, w, BTN_H,
+                Component.literal(spec.label), b -> spec.onClick.run(), spec.tooltip);
     }
 }
