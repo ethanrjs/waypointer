@@ -60,7 +60,7 @@ it does not produce one universal jar:
 - `build/libs/waypointer-<mod-version>-mc26.2.jar`
 
 Matching `-sources.jar` files are also generated. The current mod version is
-`1.9.1`.
+`1.9.2`.
 
 CODEC Specification
 See [CODEC.md](CODEC.md) for the full specification.
