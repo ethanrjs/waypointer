@@ -50,6 +50,7 @@ public final class WaypointPaint {
     private final int[] palette;
     private final byte[] pixels;
     private final int hashCode;
+    private final long contentFingerprint;
 
     public WaypointPaint(int[] palette, byte[] pixels) {
         if (palette == null || palette.length != PALETTE_SIZE) {
@@ -69,6 +70,7 @@ public final class WaypointPaint {
             }
         }
         this.hashCode = 31 * Arrays.hashCode(this.palette) + Arrays.hashCode(this.pixels);
+        this.contentFingerprint = fingerprint(this.palette, this.pixels);
     }
 
     public static WaypointPaint solid(int rgb) {
@@ -104,6 +106,10 @@ public final class WaypointPaint {
 
     public byte[] pixelsCopy() {
         return pixels.clone();
+    }
+
+    public long contentFingerprint() {
+        return contentFingerprint;
     }
 
     public String pixelsBase64() {
@@ -153,5 +159,16 @@ public final class WaypointPaint {
     @Override
     public int hashCode() {
         return hashCode;
+    }
+
+    private static long fingerprint(int[] palette, byte[] pixels) {
+        long value = 0xCBF29CE484222325L;
+        for (int color : palette) {
+            value = (value ^ color) * 0x100000001B3L;
+        }
+        for (byte pixel : pixels) {
+            value = (value ^ Byte.toUnsignedInt(pixel)) * 0x100000001B3L;
+        }
+        return value;
     }
 }

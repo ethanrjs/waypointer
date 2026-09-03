@@ -83,6 +83,44 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         super(manager, config, dungeonConfig);
     }
 
+    /** Emits world geometry into a supplied sink. */
+    public boolean emitWorldGeometryFor(LevelRenderContext ctx, PoseStack poseStack,
+                                        GeometrySink sink, net.minecraft.world.phys.Vec3 origin,
+                                        boolean gpuDepthTestOwnsOcclusion) {
+        boolean previous = trustGpuDepthTest;
+        trustGpuDepthTest = gpuDepthTestOwnsOcclusion;
+        try {
+            return emitWorldGeometry(ctx, poseStack, sink, origin, false);
+        } finally {
+            trustGpuDepthTest = previous;
+        }
+    }
+
+    public long depthVisibilityFingerprintFor(List<WaypointGroup> groups,
+                                              net.minecraft.world.phys.Vec3 cameraPosition) {
+        Minecraft mc = Minecraft.getInstance();
+        return depthVisibilityFingerprint(groups, mc, mc.level, cameraPosition);
+    }
+
+    public long blockShapeFingerprintFor(List<WaypointGroup> groups) {
+        Minecraft mc = Minecraft.getInstance();
+        net.minecraft.world.phys.Vec3 cameraPosition =
+                MinecraftCompat.mainCamera(mc.gameRenderer).position();
+        net.minecraft.world.phys.Vec3 playerPosition =
+                mc.player == null ? null : mc.player.position();
+        return blockShapeFingerprint(groups, mc.level, cameraPosition, playerPosition);
+    }
+
+    public long worldVisibilityFingerprintFor(List<WaypointGroup> groups,
+                                              net.minecraft.world.phys.Vec3 cameraPosition,
+                                              net.minecraft.world.phys.Vec3 playerPosition) {
+        return worldVisibilityFingerprint(groups, cameraPosition, playerPosition);
+    }
+
+    public int reserveActivePaintsFor(List<WaypointGroup> groups) {
+        return reserveActivePaints(groups);
+    }
+
     public void install() {
         WorldOverlayCompat.register(this::onWorldRender);
         // CHAT placement makes labels follow the F1 hide-GUI state.
@@ -94,7 +132,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         boolean showNames = config.showWaypointNames();
         boolean showRouteProgress = config.showRouteProgress();
         boolean showDistances = config.showWaypointDistances();
-        boolean drawIrisHudBoxes = IrisShaderFallback.shouldUse(config);
+        boolean drawIrisHudBoxes = IrisShaderFallback.shouldUse(config)
+                && !com.babbur.waypointer.render.gpu.OverlayRenderer.ownsWorldGeometry();
         boolean drawEditModeSubtitle = config.showEditModeSubtitle()
                 && WaypointRepositionMode.isEditModeEnabled();
         if (!showNames && !showRouteProgress && !showDistances && !drawIrisHudBoxes

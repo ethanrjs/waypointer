@@ -39,6 +39,20 @@ class RenderHelpersTest {
     }
 
     @Test
+    void retainedPaintedBoxWritesAllSixExteriorPlanes() {
+        RecordingConsumer consumer = new RecordingConsumer();
+
+        RenderHelpers.emitTexturedBoxAllFaces(consumer, new PoseStack(),
+                0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 0.75f);
+
+        assertAll(
+                () -> assertEquals(24, consumer.vertices),
+                () -> assertEquals(24, consumer.colors),
+                () -> assertEquals(24, consumer.uvs),
+                () -> assertEquals(24, consumer.lights));
+    }
+
+    @Test
     void paintedSideFaceMapsTextureRightToExteriorRight() {
         RecordingConsumer consumer = new RecordingConsumer();
 
