@@ -44,8 +44,13 @@ final class OverlayPassCompat {
         return RenderSystem.getProjectionMatrixBuffer();
     }
 
+    /**
+     * The level view matrix vanilla hands to LevelRenderer. Nothing in 26.x writes
+     * RenderSystem's model-view stack during level rendering, so reading it there
+     * yields identity and the overlay would ignore camera rotation.
+     */
     static Matrix4f positionMatrix(LevelRenderContext ctx) {
-        return RenderSystem.getModelViewMatrixCopy();
+        return new Matrix4f(ctx.levelState().cameraRenderState.viewRotationMatrix);
     }
 
     private static RenderTarget mainTarget() {
