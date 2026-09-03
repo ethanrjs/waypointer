@@ -171,7 +171,7 @@ public final class WaypointCodec {
      * v8, v7, v6, v5, v4, v3, v2, and v1 payloads still decode through legacy paths so
      * existing shared routes keep importing after text-layer changes.
      */
-    static final int WIRE_VERSION = 9;
+    static final int WIRE_VERSION = 10;
     static final int LEGACY_V8_WIRE_VERSION = 8;
     static final int LEGACY_V7_WIRE_VERSION = 7;
     static final int LEGACY_V6_WIRE_VERSION = 6;
