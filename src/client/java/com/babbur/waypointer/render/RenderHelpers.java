@@ -102,10 +102,30 @@ public final class RenderHelpers {
                                        float alpha,
                                        double cameraX, double cameraY, double cameraZ,
                                        int atlasWidth, int atlasHeight, int padding) {
-        int a = Math.round(Math.max(0.0f, Math.min(1.0f, alpha)) * 255.0f);
-        PoseStack.Pose pose = ps.last();
         int visible = visibleTexturedFaces(x1, y1, z1, x2, y2, z2,
                 cameraX, cameraY, cameraZ);
+        emitTexturedBoxFaces(consumer, ps, x1, y1, z1, x2, y2, z2, alpha,
+                visible, atlasWidth, atlasHeight, padding);
+    }
+
+    /** Emits every exterior face for a retained mesh; back-face culling selects at draw time. */
+    public static void emitTexturedBoxAllFaces(VertexConsumer consumer, PoseStack ps,
+                                               float x1, float y1, float z1,
+                                               float x2, float y2, float z2,
+                                               float alpha) {
+        int allFaces = (1 << WaypointPaint.Face.values().length) - 1;
+        emitTexturedBoxFaces(consumer, ps, x1, y1, z1, x2, y2, z2, alpha, allFaces,
+                WaypointPaintTextureCache.ATLAS_WIDTH,
+                WaypointPaintTextureCache.ATLAS_HEIGHT, 0);
+    }
+
+    private static void emitTexturedBoxFaces(VertexConsumer consumer, PoseStack ps,
+                                             float x1, float y1, float z1,
+                                             float x2, float y2, float z2,
+                                             float alpha, int visible,
+                                             int atlasWidth, int atlasHeight, int padding) {
+        int a = Math.round(Math.max(0.0f, Math.min(1.0f, alpha)) * 255.0f);
+        PoseStack.Pose pose = ps.last();
 
         if ((visible & 1 << WaypointPaint.Face.DOWN.ordinal()) != 0) texturedQuad(consumer, pose, WaypointPaint.Face.DOWN,
                 x1, y1, z1, x2, y1, z1, x2, y1, z2, x1, y1, z2, a,
