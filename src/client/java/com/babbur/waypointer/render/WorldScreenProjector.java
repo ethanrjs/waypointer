@@ -25,6 +25,13 @@ public final class WorldScreenProjector {
     private float forwardZ;
     private float fovDegrees = 70.0f;
 
+    /**
+     * Reads the camera state Minecraft extracted for this frame (Camera.update, then
+     * GameRenderer.extract fills cameraRenderState right before the HUD is extracted).
+     * Do not replace this with matrices cached during the world pass: on 26.x the HUD
+     * is extracted before the level renders, so such a cache would be one frame stale
+     * and labels would visibly lag behind the world when the camera turns.
+     */
     public void prepare(GameRenderer renderer, Camera camera) {
         GameRenderState gameState = MinecraftCompat.gameRenderState(renderer);
         CameraRenderState cameraState = gameState.levelRenderState.cameraRenderState;
