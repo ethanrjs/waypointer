@@ -10,7 +10,7 @@ plugins {
 }
 
 def minecraftTargets = [
-		'26.1.2': [fabricApi: '0.154.2+26.1.2', dependency: '>=26.1.2 <26.2'],
+		'26.1.2': [fabricApi: '0.154.2+26.1.2', dependency: '>=26.1 <26.2'],
 		'26.2'  : [fabricApi: '0.154.2+26.2',   dependency: '>=26.2 <26.3']
 ]
 def targetMinecraft = project.minecraft_version.toString()
