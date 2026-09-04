@@ -39,6 +39,7 @@ import com.babbur.waypointer.progression.WorldJoinProgressReset;
 import com.babbur.waypointer.render.TracerRenderer;
 import com.babbur.waypointer.render.WaypointRenderer;
 import com.babbur.waypointer.render.HappySnowmanSession;
+import com.babbur.waypointer.render.gpu.OverlayRenderer;
 import com.babbur.waypointer.screen.WaypointerGuiScreens;
 import com.babbur.waypointer.screen.preview.RoutePreviewPipAdapter;
 import com.babbur.waypointer.screen.WaypointerScreen;
@@ -46,6 +47,7 @@ import com.babbur.waypointer.update.WaypointerUpdateChecker;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -67,6 +69,7 @@ public final class WaypointerClient implements ClientModInitializer {
     private static CrystalHollowsTracker crystalHollowsTracker;
     private static WishingCompassController crystalHollowsCompass;
     private static WaypointerKeybinds keybinds;
+    private static OverlayRenderer overlayRenderer;
     private static boolean dungeonRouteInDungeonContext;
     private static Screen suspendedWaypointerGuiScreen;
 
@@ -134,7 +137,12 @@ public final class WaypointerClient implements ClientModInitializer {
         new WorldJoinProgressReset(manager, config).install();
         HappySnowmanSession.install();
         RoutePreviewPipAdapter.install();
-        new WaypointRenderer(manager, config, dungeonConfig).install();
+        WaypointRenderer waypointRenderer = new WaypointRenderer(manager, config, dungeonConfig);
+        waypointRenderer.install();
+        overlayRenderer = OverlayRenderer.install(waypointRenderer, manager, config);
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            if (overlayRenderer != null) overlayRenderer.resetScene();
+        });
         new TracerRenderer(manager, config, dungeonConfig).install();
         new EtherwarpAlignmentCue(manager, config::etherwarpAlignmentSound).install();
         WaypointRepositionMode.install();
@@ -165,6 +173,10 @@ public final class WaypointerClient implements ClientModInitializer {
     }
 
     private static void onClientStopping(Minecraft client) {
+        if (overlayRenderer != null) {
+            runShutdownStep("overlay renderer", overlayRenderer::close);
+            overlayRenderer = null;
+        }
         runShutdownStep("waypoint storage", storage::flush);
         runShutdownStep("configuration", config::flush);
         if (dungeonConfig != null) {

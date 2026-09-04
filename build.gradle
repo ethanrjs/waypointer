@@ -262,9 +262,25 @@ jacocoTestReport {
 	}
 }
 
+// Renderer lifecycle classes require a live GPU context.
+def gpuOnlyClasses = [
+		'com/babbur/waypointer/render/gpu/OverlayRenderer*',
+		'com/babbur/waypointer/render/gpu/OverlayPass*',
+		'com/babbur/waypointer/render/gpu/GpuMesh*',
+		'com/babbur/waypointer/render/gpu/DepthSnapshot*',
+		'com/babbur/waypointer/render/gpu/IrisBridge*',
+		'com/babbur/waypointer/render/gpu/RenderPassTextureBinder*',
+		'com/babbur/waypointer/render/gpu/*Compat*'
+]
+
 jacocoTestCoverageVerification {
 	dependsOn tasks.named('test')
 	sourceSets sourceSets.main, sourceSets.client
+	afterEvaluate {
+		classDirectories.setFrom(files(classDirectories.files.collect {
+			fileTree(dir: it, exclude: gpuOnlyClasses)
+		}))
+	}
 	violationRules {
 		rule {
 			limit {
