@@ -3,7 +3,6 @@ package com.babbur.waypointer.codec;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
@@ -12,162 +11,208 @@ import java.util.zip.Inflater;
 /**
  * Shared wire-v10 framing and text transport.
  *
- * <p>The bytes protected by the CRC are {@code selector || semanticBody}. The
- * selector is carried as the literal outer {@code A}/{@code B} character and
- * is deliberately omitted from the base-91 payload:
+ * <p>Every V10 share is one contextual base-91 string of a single payload:
  *
  * <pre>{@code
- * WP: A contextual-base91(semanticBody || crc32(0 || semanticBody))
- * WP: B contextual-base91(raw-deflate(semanticBody) || crc32(1 || semanticBody))
+ * payload = H' || content || CRC16_BE(H' || body)
+ *
+ * H'      = semantic header byte with bit 7 set to the transport mode
+ *           (0 direct, 1 raw DEFLATE); bits 0..3 = 10, bits 4..6 = kind
+ * body    = semantic bytes after the header
+ * content = body            (mode 0)
+ *         | rawDeflate(body) (mode 1)
  * }</pre>
  *
- * <p>This class does not interpret the semantic header. Every v10 content kind
- * shares this envelope and performs its own bounded body parse after unsealing.
+ * <p>The mode therefore costs no characters, the checksum is bound to the
+ * mode and the header, and a kind codec never sees the mode bit: the
+ * {@link CheckedFrame#semantic()} handed to it always starts with the plain
+ * semantic header. This class does not interpret the body. Every kind shares
+ * this envelope and performs its own bounded parse after unsealing.
  */
 final class V10Transport {
 
     static final int MODE_DIRECT = 0;
     static final int MODE_DEFLATE = 1;
+    /** Complete payload bound, including the header byte and the checksum. */
     static final int MAX_FRAME_BYTES = 2 * 1024 * 1024;
     static final int MAX_TRANSPORT_CHARS = 3 * 1024 * 1024;
+    static final int CHECKSUM_BYTES = 2;
+    /** Largest semantic body (header included) that still fits a frame. */
+    static final int MAX_SEMANTIC_BYTES = MAX_FRAME_BYTES - CHECKSUM_BYTES;
 
-    private static final char[] MODE_CHARACTERS = {'A', 'B'};
-    private static final int CHECKSUM_BYTES = Integer.BYTES;
+    static final int HEADER_MODE_BIT = 0x80;
+    private static final int HEADER_VERSION_MASK = 0x0F;
+    /** CRC-16/CCITT-FALSE: polynomial 0x1021, initial 0xFFFF, no reflection, no final XOR. */
+    private static final int CRC16_POLYNOMIAL = 0x1021;
+    private static final int CRC16_INITIAL = 0xFFFF;
 
     private V10Transport() {}
 
-    static boolean hasModeSelector(String payload) {
-        return payload != null && !payload.isEmpty()
-                && (payload.charAt(0) == MODE_CHARACTERS[MODE_DIRECT]
-                || payload.charAt(0) == MODE_CHARACTERS[MODE_DEFLATE]);
+    /**
+     * Cheap exact peek at the first payload byte: true when its version nibble
+     * is 10. About one legacy V1-V9 code in sixteen also passes; the full probe
+     * then rejects it through the checksum, so callers must treat this as a
+     * filter, never as a commitment.
+     */
+    static boolean looksLikeV10(String transport) {
+        if (transport == null || transport.length() < 2) return false;
+        String raw = unescapeContextual(transport.substring(0, Math.min(transport.length(), 4)));
+        if (raw.length() < 2) return false;
+        int first = AsciiStreamCodec.alphabetIndex(raw.charAt(0));
+        int second = AsciiStreamCodec.alphabetIndex(raw.charAt(1));
+        if (first < 0 || second < 0) return false;
+        int pair = first + second * AsciiStreamCodec.alphabetSize();
+        return (pair & HEADER_VERSION_MASK) == WaypointCodec.V10_WIRE_VERSION;
     }
 
-    static String encode(int mode, byte[] modePayload) {
-        validateMode(mode);
-        if (modePayload == null) throw new IllegalArgumentException("null v10 mode payload");
-        if (modePayload.length > MAX_FRAME_BYTES) {
-            throw new IllegalArgumentException("v10 mode payload exceeds frame limit");
+    /** Text-encode a complete payload whose first byte already carries the mode bit. */
+    static String encode(byte[] payload) {
+        if (payload == null || payload.length == 0) {
+            throw new IllegalArgumentException("empty v10 payload");
         }
-        String encoded = AsciiStreamCodec.encode(modePayload);
-        String transport = MODE_CHARACTERS[mode] + escapeContextual(encoded);
+        if (payload.length > MAX_FRAME_BYTES) {
+            throw new IllegalArgumentException("v10 payload exceeds frame limit");
+        }
+        String transport = escapeContextual(AsciiStreamCodec.encode(payload));
         if (transport.length() > MAX_TRANSPORT_CHARS) {
             throw new IllegalArgumentException("v10 transport exceeds text limit");
         }
         return transport;
     }
 
+    /** {@link #encode(byte[])} with a guard that the payload header agrees with {@code mode}. */
+    static String encode(int mode, byte[] payload) {
+        validateMode(mode);
+        if (payload == null || payload.length == 0) {
+            throw new IllegalArgumentException("empty v10 payload");
+        }
+        if (modeOf(payload[0]) != mode) {
+            throw new IllegalArgumentException("v10 payload header does not carry mode " + mode);
+        }
+        return encode(payload);
+    }
+
+    /** Physical decode: canonical text, bounded length, mode from the header bit. No version check. */
     static Frame decode(String transport) throws IOException {
         if (transport == null || transport.isEmpty()
                 || transport.length() > MAX_TRANSPORT_CHARS) {
             throw new IOException("v10 transport length is outside limit");
         }
-        int mode = switch (transport.charAt(0)) {
-            case 'A' -> MODE_DIRECT;
-            case 'B' -> MODE_DEFLATE;
-            default -> throw new IOException("unknown v10 compression selector");
-        };
-
         byte[] payload;
         try {
-            payload = AsciiStreamCodec.decode(unescapeContextual(transport.substring(1)));
+            payload = AsciiStreamCodec.decode(unescapeContextual(transport));
         } catch (IllegalArgumentException failure) {
             throw new IOException("invalid v10 base-91 payload: " + failure.getMessage(), failure);
         }
-        if (payload.length > MAX_FRAME_BYTES) {
-            throw new IOException("decoded v10 payload exceeds frame limit");
+        if (payload.length == 0 || payload.length > MAX_FRAME_BYTES) {
+            throw new IOException("decoded v10 payload length is outside limit");
         }
-        if (!encode(mode, payload).equals(transport)) {
+        if (!encode(payload).equals(transport)) {
             throw new IOException("non-canonical v10 text transport");
         }
-        return new Frame(mode, payload);
+        return new Frame(modeOf(payload[0]), payload);
     }
 
     /**
-     * Complete the ambiguity probe shared by every V10 kind. A returned value
-     * is a commitment to V10: transport, optional inflate, mode-bound CRC, and
-     * the version nibble have all validated. Kind-body failures after this
-     * point must not fall back to a legacy decoder.
+     * Complete the V10 probe shared by every kind: canonical text, version
+     * nibble, optional inflate, and the header-bound checksum. A returned frame
+     * is a validated V10 envelope; the kind body has not been parsed yet.
      */
     static CheckedFrame probe(String transport) throws IOException {
         Frame frame = decode(transport);
-        byte[] modePayload = frame.payload();
-        byte[] semantic = frame.mode() == MODE_DIRECT
-                ? unseal(frame.mode(), modePayload)
-                : inflateAndVerify(modePayload);
-        if (semantic.length == 0 || (semantic[0] & 0x0F) != WaypointCodec.V10_WIRE_VERSION) {
-            throw new IOException("v10 semantic version probe did not commit");
+        byte[] payload = frame.payload();
+        if ((payload[0] & HEADER_VERSION_MASK) != WaypointCodec.V10_WIRE_VERSION) {
+            throw new IOException("v10 version nibble did not match");
         }
+        byte[] semantic = frame.mode() == MODE_DIRECT
+                ? unseal(MODE_DIRECT, payload)
+                : inflateAndVerify(payload);
         return new CheckedFrame(frame.mode(), semantic);
     }
 
+    /** Build a direct payload: header with mode bit clear, body, checksum. */
     static byte[] seal(int mode, byte[] semanticBody) {
         validateMode(mode);
-        if (semanticBody == null) throw new IllegalArgumentException("null v10 semantic body");
-        if ((long) semanticBody.length + CHECKSUM_BYTES > MAX_FRAME_BYTES) {
-            throw new IllegalArgumentException("v10 semantic body exceeds frame limit");
+        if (mode != MODE_DIRECT) {
+            throw new IllegalArgumentException("seal builds direct payloads; use deflateAndSeal");
         }
-
-        CRC32 checksum = new CRC32();
-        checksum.update(mode);
-        checksum.update(semanticBody);
-        long value = checksum.getValue();
+        validateSemantic(semanticBody);
         byte[] sealed = Arrays.copyOf(semanticBody, semanticBody.length + CHECKSUM_BYTES);
-        int offset = semanticBody.length;
-        sealed[offset] = (byte) (value >>> 24);
-        sealed[offset + 1] = (byte) (value >>> 16);
-        sealed[offset + 2] = (byte) (value >>> 8);
-        sealed[offset + 3] = (byte) value;
+        sealed[0] = (byte) transmittedHeader(semanticBody[0], MODE_DIRECT);
+        writeChecksum(sealed, semanticBody.length, checksum(sealed, 0, semanticBody.length));
         return sealed;
     }
 
+    /** Verify a direct payload's mode bit and checksum; return the plain semantic body. */
     static byte[] unseal(int mode, byte[] sealed) throws IOException {
         validateMode(mode);
         if (sealed == null || sealed.length < CHECKSUM_BYTES + 1
                 || sealed.length > MAX_FRAME_BYTES) {
             throw new IOException("v10 inner frame length is outside limit");
         }
-        int bodyLength = sealed.length - CHECKSUM_BYTES;
-        long expected = ((long) (sealed[bodyLength] & 0xFF) << 24)
-                | ((long) (sealed[bodyLength + 1] & 0xFF) << 16)
-                | ((long) (sealed[bodyLength + 2] & 0xFF) << 8)
-                | (long) (sealed[bodyLength + 3] & 0xFF);
-        CRC32 checksum = new CRC32();
-        checksum.update(mode);
-        checksum.update(sealed, 0, bodyLength);
-        if (checksum.getValue() != expected) {
-            throw new IOException("v10 CRC-32 mismatch");
+        if (modeOf(sealed[0]) != mode) {
+            throw new IOException("v10 header mode bit does not match transport mode");
         }
-        return Arrays.copyOf(sealed, bodyLength);
+        int bodyLength = sealed.length - CHECKSUM_BYTES;
+        if (checksum(sealed, 0, bodyLength) != readChecksum(sealed, bodyLength)) {
+            throw new IOException("v10 CRC-16 mismatch");
+        }
+        byte[] semantic = Arrays.copyOf(sealed, bodyLength);
+        semantic[0] = (byte) (semantic[0] & ~HEADER_MODE_BIT);
+        return semantic;
     }
 
-    /** Build a B payload with the selector-bound checksum outside raw DEFLATE. */
+    /** Build a DEFLATE payload: header with the mode bit set, raw DEFLATE of the body, checksum. */
     static byte[] deflateAndSeal(byte[] semanticBody, int strategy) throws IOException {
-        byte[] sealed = seal(MODE_DEFLATE, semanticBody);
-        byte[] compressed = deflate(semanticBody, strategy);
-        if ((long) compressed.length + CHECKSUM_BYTES > MAX_FRAME_BYTES) {
-            throw new V10ProfileLimitException(
-                    "v10 compressed payload exceeds frame limit");
+        validateSemantic(semanticBody);
+        byte[] compressed = deflate(
+                Arrays.copyOfRange(semanticBody, 1, semanticBody.length), strategy);
+        return sealCompressed(semanticBody, compressed);
+    }
+
+    /**
+     * Assemble a DEFLATE payload from an already compressed body. Any standards-valid
+     * raw DEFLATE stream of the body is acceptable to the decoder; this lets tests and
+     * alternate encoders frame their own stream with the correct header and checksum.
+     */
+    static byte[] sealCompressed(byte[] semanticBody, byte[] compressed) throws IOException {
+        validateSemantic(semanticBody);
+        if (compressed == null || compressed.length == 0) {
+            throw new IllegalArgumentException("empty v10 compressed body");
         }
-        byte[] payload = Arrays.copyOf(compressed, compressed.length + CHECKSUM_BYTES);
-        System.arraycopy(sealed, semanticBody.length, payload, compressed.length,
-                CHECKSUM_BYTES);
+        if ((long) compressed.length + 1 + CHECKSUM_BYTES > MAX_FRAME_BYTES) {
+            throw new V10ProfileLimitException("v10 compressed payload exceeds frame limit");
+        }
+        byte[] payload = new byte[1 + compressed.length + CHECKSUM_BYTES];
+        payload[0] = (byte) transmittedHeader(semanticBody[0], MODE_DEFLATE);
+        System.arraycopy(compressed, 0, payload, 1, compressed.length);
+        int crc = checksum(payload[0], semanticBody, 1, semanticBody.length - 1);
+        writeChecksum(payload, 1 + compressed.length, crc);
         return payload;
     }
 
-    /** Decode exactly one raw-DEFLATE stream and verify its external CRC. */
+    /** Decode exactly one raw-DEFLATE stream and verify the header-bound checksum. */
     static byte[] inflateAndVerify(byte[] payload) throws IOException {
-        if (payload == null || payload.length < CHECKSUM_BYTES + 1
+        if (payload == null || payload.length < CHECKSUM_BYTES + 2
                 || payload.length > MAX_FRAME_BYTES) {
             throw new IOException("v10 deflate frame length is outside limit");
         }
-        int compressedLength = payload.length - CHECKSUM_BYTES;
-        byte[] semantic = inflate(Arrays.copyOf(payload, compressedLength));
-        if ((long) semantic.length + CHECKSUM_BYTES > MAX_FRAME_BYTES) {
+        if (modeOf(payload[0]) != MODE_DEFLATE) {
+            throw new IOException("v10 header mode bit does not match transport mode");
+        }
+        int compressedLength = payload.length - 1 - CHECKSUM_BYTES;
+        byte[] body = inflate(Arrays.copyOfRange(payload, 1, 1 + compressedLength));
+        if ((long) body.length + 1 + CHECKSUM_BYTES > MAX_FRAME_BYTES) {
             throw new IOException("v10 semantic body exceeds frame limit");
         }
-        byte[] sealed = Arrays.copyOf(semantic, semantic.length + CHECKSUM_BYTES);
-        System.arraycopy(payload, compressedLength, sealed, semantic.length, CHECKSUM_BYTES);
-        return unseal(MODE_DEFLATE, sealed);
+        int expected = readChecksum(payload, 1 + compressedLength);
+        if (checksum(payload[0], body, 0, body.length) != expected) {
+            throw new IOException("v10 CRC-16 mismatch");
+        }
+        byte[] semantic = new byte[body.length + 1];
+        semantic[0] = (byte) (payload[0] & ~HEADER_MODE_BIT);
+        System.arraycopy(body, 0, semantic, 1, body.length);
+        return semantic;
     }
 
     static byte[] deflate(byte[] input, int strategy) throws IOException {
@@ -194,7 +239,7 @@ final class V10Transport {
         return inflate(compressed, MAX_FRAME_BYTES, true);
     }
 
-    /** Inflate a bounded semantic prefix without a dictionary or EOF requirement. */
+    /** Inflate a bounded prefix without a dictionary or EOF requirement. */
     static byte[] inflatePrefix(byte[] compressed, int maximumOutputBytes) throws IOException {
         if (maximumOutputBytes <= 0 || maximumOutputBytes > MAX_FRAME_BYTES) {
             throw new IllegalArgumentException("v10 prefix output limit is outside frame bounds");
@@ -233,6 +278,9 @@ final class V10Transport {
                     }
                     continue;
                 }
+                // An empty body deflates to a stream that finishes on a call
+                // returning zero bytes; that is completion, not starvation.
+                if (inflater.finished()) break;
                 if (inflater.needsInput()) {
                     if (!requireFinished) return output.toByteArray();
                     throw new IOException("truncated v10 deflate stream");
@@ -259,6 +307,60 @@ final class V10Transport {
 
     static Outbound deflated(byte[] semantic, int strategy) throws IOException {
         return new Outbound(MODE_DEFLATE, deflateAndSeal(semantic, strategy));
+    }
+
+    /** CRC-16/CCITT-FALSE over {@code header} followed by {@code length} bytes of {@code body} from {@code offset}. */
+    static int checksum(byte header, byte[] body, int offset, int length) {
+        int crc = crc16Update(CRC16_INITIAL, header);
+        for (int index = offset; index < offset + length; index++) {
+            crc = crc16Update(crc, body[index]);
+        }
+        return crc;
+    }
+
+    private static int checksum(byte[] bytes, int offset, int length) {
+        int crc = CRC16_INITIAL;
+        for (int index = offset; index < offset + length; index++) {
+            crc = crc16Update(crc, bytes[index]);
+        }
+        return crc;
+    }
+
+    private static int crc16Update(int crc, byte value) {
+        crc ^= (value & 0xFF) << 8;
+        for (int bit = 0; bit < 8; bit++) {
+            crc = (crc & 0x8000) != 0 ? ((crc << 1) ^ CRC16_POLYNOMIAL) : (crc << 1);
+        }
+        return crc & 0xFFFF;
+    }
+
+    private static void writeChecksum(byte[] target, int offset, int crc) {
+        target[offset] = (byte) (crc >>> 8);
+        target[offset + 1] = (byte) crc;
+    }
+
+    private static int readChecksum(byte[] source, int offset) {
+        return ((source[offset] & 0xFF) << 8) | (source[offset + 1] & 0xFF);
+    }
+
+    static int modeOf(byte transmittedHeader) {
+        return (transmittedHeader & HEADER_MODE_BIT) != 0 ? MODE_DEFLATE : MODE_DIRECT;
+    }
+
+    private static int transmittedHeader(byte semanticHeader, int mode) {
+        return (semanticHeader & ~HEADER_MODE_BIT) | (mode == MODE_DEFLATE ? HEADER_MODE_BIT : 0);
+    }
+
+    private static void validateSemantic(byte[] semantic) {
+        if (semantic == null || semantic.length == 0) {
+            throw new IllegalArgumentException("empty v10 semantic body");
+        }
+        if ((semantic[0] & HEADER_MODE_BIT) != 0) {
+            throw new IllegalArgumentException("v10 semantic header bit 7 is reserved for the transport mode");
+        }
+        if ((long) semantic.length + CHECKSUM_BYTES > MAX_FRAME_BYTES) {
+            throw new IllegalArgumentException("v10 semantic body exceeds frame limit");
+        }
     }
 
     /** Insert an escape only where Hypixel would consume an emote-like pair. */
@@ -303,7 +405,7 @@ final class V10Transport {
 
     /**
      * One deterministic outbound representation. Comparing these values applies
-     * the envelope-wide selector contract: shortest final contextual text,
+     * the envelope-wide selection contract: shortest final contextual text,
      * direct before DEFLATE, shorter binary payload, then unsigned lexical bytes.
      */
     static final class Outbound implements Comparable<Outbound> {
@@ -347,6 +449,7 @@ final class V10Transport {
         }
     }
 
+    /** Physical frame: the complete decoded payload (header byte with mode bit, content, checksum). */
     record Frame(int mode, byte[] payload) {
         Frame {
             validateMode(mode);
@@ -359,6 +462,7 @@ final class V10Transport {
         }
     }
 
+    /** Verified envelope: the plain semantic body (header without the mode bit) and its transport mode. */
     record CheckedFrame(int mode, byte[] semantic) {
         CheckedFrame {
             validateMode(mode);

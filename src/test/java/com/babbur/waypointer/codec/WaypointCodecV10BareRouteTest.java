@@ -28,13 +28,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointCodecV10BareRouteTest {
 
     @Test
-    void direct_mode_matches_python_contextual91_goldens() {
-        assertEquals("WP:AM!p?K(]!", encodeBare(List.of()));
-        assertEquals("WP:A<$!!!!n8CO/", encodeBare(List.of(point(0, 0, 0))));
-        assertEquals("WP:Av)i\"&\"g42F'kN)tU", encodeBare(List.of(
-                point(10, 64, -20),
-                point(10, 64, -20),
-                point(11, 63, -18))));
+    void direct_mode_matches_locked_contextual91_goldens() {
+        // Header-mode envelope: no selector character, CRC-16 trailer.
+        assertEquals(String.join("\n",
+                        "WP:M!8D%",
+                        "WP:<$!!#~%S#",
+                        "WP:v)i\"&\"g42F0#(#"),
+                String.join("\n",
+                        encodeBare(List.of()),
+                        encodeBare(List.of(point(0, 0, 0))),
+                        encodeBare(List.of(
+                                point(10, 64, -20),
+                                point(10, 64, -20),
+                                point(11, 63, -18)))));
     }
 
     @Test
@@ -62,7 +68,7 @@ class WaypointCodecV10BareRouteTest {
         assertEquals(10, debug.version());
         assertEquals(0x2A, debug.headerByte());
         assertTrue(debug.textEncoding().contains("V10"));
-        assertEquals(encoded.charAt(WaypointCodec.MAGIC.length()) == 'A'
+        assertEquals(checked.mode() == V10Transport.MODE_DIRECT
                         ? "V10_RICE" : "V10_DELTA_DEFLATE",
                 debug.groups().getFirst().coordMode());
         assertTrue(WaypointCodec.peekLabel(encoded).isEmpty());
@@ -147,7 +153,8 @@ class WaypointCodecV10BareRouteTest {
         for (int index = 0; index < 200; index++) points.add(point(index, 64, -index));
         String encoded = encodeBare(points);
 
-        assertEquals('B', encoded.charAt(WaypointCodec.MAGIC.length()));
+        assertEquals(V10Transport.MODE_DEFLATE, V10Transport.decode(
+                encoded.substring(WaypointCodec.MAGIC.length())).mode());
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
         assertEquals(points.size(), decoded.size());
         for (int index = 0; index < points.size(); index++) {
@@ -195,22 +202,19 @@ class WaypointCodecV10BareRouteTest {
                 encoded.substring(WaypointCodec.MAGIC.length()));
 
         assertEquals(163, points.size());
-        assertEquals(352, encoded.length());
         assertEquals(V10Transport.MODE_DIRECT, frame.mode(),
-                "quotient direct-A must win this locked route");
+                "quotient direct mode must win this locked route");
         byte[] semantic = V10Transport.unseal(V10Transport.MODE_DIRECT, frame.payload());
         assertEquals(V10BareEntropyCodec.DirectDescriptor.QUOTIENT,
                 V10BareEntropyCodec.descriptor(semantic));
         DecodeDebug debug = WaypointCodec.debugDecode(encoded);
         assertEquals("V10_QUOTIENT", debug.groups().getFirst().coordMode());
         assertTrue(debug.textEncoding().contains("V10_QUOTIENT"));
-        byte[] conceptualFrame = new byte[frame.payload().length + 1];
-        conceptualFrame[0] = (byte) frame.mode();
-        System.arraycopy(frame.payload(), 0, conceptualFrame, 1, frame.payload().length);
-        assertEquals(284, conceptualFrame.length);
-        assertEquals("6922cf4b1b596319f1d2fbce3a1f57de3eb7a73439bd4960ebafcdec5feb66e0",
-                HexFormat.of().formatHex(
-                        MessageDigest.getInstance("SHA-256").digest(conceptualFrame)));
+        // Locked final text length, payload length, and payload digest.
+        assertEquals("348 chars, 281 payload bytes, sha256 e2d5f286d94cea1c185821bc608099db1e3cabed1992351edd37b7968154fa41",
+                encoded.length() + " chars, " + frame.payload().length + " payload bytes, sha256 "
+                        + HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                                .digest(frame.payload())));
     }
 
     @Test
@@ -223,10 +227,10 @@ class WaypointCodecV10BareRouteTest {
         // '<3' consists of legal base-91 digits, but it is not the canonical
         // chat spelling because the contextual marker is missing.
         IOException failure = assertThrows(IOException.class,
-                () -> V10Transport.decode("A<3"));
+                () -> V10Transport.decode("<3"));
         assertTrue(failure.getMessage().contains("non-canonical"));
 
-        byte[] arbitrary = {(byte) 0xFF, 0, 1, 2, 3, 4, 5};
+        byte[] arbitrary = {0x0A, 0, 1, 2, 3, 4, 5};
         String transport = V10Transport.encode(V10Transport.MODE_DIRECT, arbitrary);
         assertTrue(Arrays.equals(arbitrary, V10Transport.decode(transport).payload()));
     }
@@ -241,7 +245,7 @@ class WaypointCodecV10BareRouteTest {
         corrupted[corrupted.length - 1] ^= 1;
         IOException crcFailure = assertThrows(IOException.class,
                 () -> V10BareRouteCodec.decode(V10Transport.encode(frame.mode(), corrupted)));
-        assertTrue(crcFailure.getMessage().contains("CRC-32"));
+        assertTrue(crcFailure.getMessage().contains("CRC-16"));
 
         assertTerminalCommittedV10Failure(new byte[] {
                 0x2A, (byte) 0x80, 0x00
@@ -334,20 +338,17 @@ class WaypointCodecV10BareRouteTest {
 
     private static byte[] externalCrcDeflatePayload(byte[] semantic, int level)
             throws IOException {
-        byte[] compressed = rawDeflate(semantic, level);
-        byte[] sealed = V10Transport.seal(V10Transport.MODE_DEFLATE, semantic);
-        byte[] payload = Arrays.copyOf(compressed, compressed.length + Integer.BYTES);
-        System.arraycopy(sealed, semantic.length, payload, compressed.length, Integer.BYTES);
-        return payload;
+        return V10Transport.sealCompressed(semantic,
+                rawDeflate(Arrays.copyOfRange(semantic, 1, semantic.length), level));
     }
 
     private static byte[] insertBeforeCrc(byte[] payload, byte value) {
-        int compressedLength = payload.length - Integer.BYTES;
+        int contentEnd = payload.length - V10Transport.CHECKSUM_BYTES;
         byte[] inserted = new byte[payload.length + 1];
-        System.arraycopy(payload, 0, inserted, 0, compressedLength);
-        inserted[compressedLength] = value;
-        System.arraycopy(payload, compressedLength, inserted, compressedLength + 1,
-                Integer.BYTES);
+        System.arraycopy(payload, 0, inserted, 0, contentEnd);
+        inserted[contentEnd] = value;
+        System.arraycopy(payload, contentEnd, inserted, contentEnd + 1,
+                V10Transport.CHECKSUM_BYTES);
         return inserted;
     }
 

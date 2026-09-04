@@ -19,9 +19,10 @@ A third-party decoder can support the V10 wire codec without copying the referen
 Terms used in this document:
 
 - **Transport text**: the ASCII string after `WP:`.
-- **Selector**: the first transport character, `A` or `B`.
-- **Payload**: the bytes decoded from the base-91 part of the transport text.
-- **Semantic body**: the decompressed, checksum-free content bytes. It starts with the semantic header byte.
+- **Payload**: the bytes decoded from the transport text: the transmitted header byte, the content, and the checksum.
+- **Transmitted header**: the first payload byte. It is the semantic header with bit 7 set to the transport mode.
+- **Mode**: 0 (direct, "A") or 1 (raw DEFLATE, "B"). Carried in bit 7 of the transmitted header; it costs no characters.
+- **Semantic body**: the semantic header byte (bit 7 clear) followed by the decompressed, checksum-free content bytes.
 - **uvarint**: an unsigned integer in little-endian 7-bit groups. The high bit of each byte means "more bytes follow". Encoders MUST write the shortest form. Decoders MUST reject a longer form.
 - **svarint**: a signed integer, zigzag-mapped, then written as a uvarint.
 - **zigzag**: `v ≥ 0 → 2v`; `v < 0 → −2v−1`.
@@ -39,25 +40,33 @@ Terms used in this document:
 Every V10 object is one line of text:
 
 ```text
-WP:<selector><contextual base-91 of payload>
+WP:<contextual base-91 of payload>
+
+payload = H' || content || CRC16_BE(H' || body)
+
+H'      = semantic header with bit 7 = mode (bits 0..3 = 10, bits 4..6 = kind)
+body    = semantic body without its header byte
+content = body              (mode 0, direct)
+        | rawDeflate(body)  (mode 1, DEFLATE)
 ```
 
-- Selector `A` (mode 0, direct): `payload = semantic || CRC32_BE(0x00 || semantic)`.
-- Selector `B` (mode 1, DEFLATE): `payload = rawDeflate(semantic) || CRC32_BE(0x01 || semantic)`.
+There is no selector character and no version byte: the mode rides in the header bit that every kind leaves free, so a V10 share costs exactly one header byte and two checksum bytes beyond its content. A kind codec never sees bit 7; the decoder clears it before handing over the semantic body.
 
-CRC-32 uses the ISO-HDLC parameters of Java `CRC32`: reflected polynomial `0xEDB88320`, initial value `0xFFFFFFFF`, final XOR `0xFFFFFFFF`. The check value for ASCII `123456789` is `0xCBF43926`. The 4 CRC bytes are big-endian. The CRC input always starts with the binary mode byte (`0x00` or `0x01`), never the letter `A` or `B`. The selector is therefore bound to the CRC. A selector-only mutation is rejected by the conformance vectors.
+CRC-16 uses the CCITT-FALSE parameters: polynomial `0x1021`, initial value `0xFFFF`, no input or output reflection, no final XOR. The check value for ASCII `123456789` is `0x29B1`. The two CRC bytes are big-endian. The CRC input is the transmitted header (mode bit included) followed by the uncompressed body, so a mode-bit flip, a header change, or a body change each invalidate it.
 
-The CRC covers the semantic body, not the compressed bytes. For mode B, a decoder MUST accept any standards-valid Raw DEFLATE stream that inflates exactly to the semantic body. A decoder MUST NOT require re-compression equality for mode B. V10 Raw DEFLATE MUST NOT use a preset dictionary. A decoder MUST reject a stream that requests a dictionary.
+The CRC covers the semantic body, not the compressed bytes. For mode 1, a decoder MUST accept any standards-valid Raw DEFLATE stream that inflates exactly to the body. A decoder MUST NOT require re-compression equality for mode 1. V10 Raw DEFLATE MUST NOT use a preset dictionary. A decoder MUST reject a stream that requests a dictionary. An empty body deflates to a valid two-byte stream and MUST be accepted.
 
 Limits:
 
-- Complete payload: at most 2,097,152 bytes, including the four CRC bytes.
-- Semantic body: at most 2,097,148 bytes.
-- Compressed part of a B payload: at most 2,097,148 bytes.
-- Transport text after `WP:`: at most 3,145,728 characters, including `A` or `B`.
-- Inflate output: at most 2,097,152 bytes. The semantic-plus-CRC check then applies the smaller semantic limit.
+- Complete payload: at most 2,097,152 bytes, including the header and the two CRC bytes.
+- Semantic body (header included): at most 2,097,150 bytes.
+- Compressed part of a mode-1 payload: at most 2,097,149 bytes.
+- Transport text after `WP:`: at most 3,145,728 characters.
+- Inflate output: at most 2,097,152 bytes. The header-plus-body-plus-CRC check then applies the smaller semantic limit.
 
 The decoder rejects truncation, extra compressed input, a second DEFLATE member, a dictionary request, and a no-progress stream.
+
+Why 16 bits: the checksum only has to catch accidental corruption that survives the structural and canonical checks of section 4 and of each kind. Every kind rejects truncation, trailing bytes, out-of-range values, and non-canonical spellings on its own, so the checksum is the last filter, not the first. Two bytes cost about 2.5 characters; four cost about 4.9.
 
 ## 3. Text layer
 
@@ -91,31 +100,34 @@ Unescape removes one `~` after `<` or `o` only when the character after that `~`
 
 ### 3.3 Canonical text
 
-A decoder MUST re-encode the decoded payload (base-91 plus escape, with the same selector) and require byte equality with the received transport text. This rejects non-canonical escapes and alternate base-91 tails. This rule applies to the text layer only; it does not re-run DEFLATE.
+A decoder MUST re-encode the decoded payload (base-91 plus escape) and require byte equality with the received transport text. This rejects non-canonical escapes and alternate base-91 tails. This rule applies to the text layer only; it does not re-run DEFLATE.
 
 ## 4. Semantic header and commitment
 
 The first semantic byte is:
 
 ```text
-bit 7      label flag (kind 0 only; 0 for all other kinds)
+bit 7      always 0 in the semantic body (the transport uses it for the mode)
 bits 6..4  content kind
 bits 3..0  wire version = 10
 ```
 
-Implemented kinds are 0 (general route), 2 (bare route), 3 (configuration), 4 (dungeon collection), 5 (sparse route), 6 subtype 0 (bare route pack), and 6 subtype 1 (route library). Kinds 1 and 7 are reserved. Other kind-4 and kind-6 subtypes are reserved.
+Implemented kinds are 0 (general route), 2 (bare route), 3 (configuration), 4 (dungeon collection), 5 (sparse route), 6 subtype 0 (bare route pack), 6 subtype 1 (route library), and 7 (general route with a share label). Kind 1 is reserved. Other kind-4 and kind-6 subtypes are reserved.
 
 Import order for a `WP:` string:
 
-1. If the transport starts with `A` or `B`, attempt the V10 probe. Check canonical text, mode-B inflation, the mode-bound CRC, and version nibble 10.
-2. If the probe succeeds, the decoder has committed to V10. Dispatch by kind. Any later body error is a V10 error. The decoder MUST NOT fall back to a legacy decoder after commitment.
-3. If the probe fails, decode through the immutable V1-V9 path. A non-10 version nibble does not commit the A/B probe. Some legacy base-91 bodies start with `A` or `B`; the probe rejects them and they fall back correctly.
+1. Decode the first two base-91 digits. If the low nibble of the first payload byte is not 10, the string is not V10; decode it through the immutable V1-V9 path. About one legacy code in sixteen passes this filter by chance.
+2. Otherwise run the V10 probe: canonical text, mode from header bit 7, mode-1 inflation, and the header-bound CRC-16.
+3. If the probe succeeds the envelope is verified. Dispatch by kind. A reserved kind, reserved subtype, or malformed body is a V10 error and is reported as one.
+4. If the probe fails, decode through the V1-V9 path.
 
-After commitment, a decoder MUST reject reserved kinds, reserved subtypes, and malformed bodies. It MUST NOT retry them as V1-V9.
+A verified envelope with a failing body is almost always a damaged V10 share. The reference importer still gives the frozen V1-V9 readers one silent attempt before it reports the V10 error, so that no pre-V10 code can be locked out by a sixteen-bit coincidence; a third-party decoder MAY skip that attempt. It MUST NOT report a legacy error for a verified V10 envelope.
 
 V1-V9 decoding is frozen. Every V10 exporter (route, route library, configuration, dungeon) writes `WP:`. The legacy `WPC:`, `WPD:`, and `WPL:1:` prefixes are frozen input forms; the universal importer still accepts them, and the compatibility codecs that write them remain callable. The reference exporter writes `WPL:1:` only when a route library exceeds the V10 frame profile (section 6.1).
 
 V10 DEFLATE uses no preset dictionary. V10 also has no predefined waypoint-name vocabulary. Kind 0 still uses the frozen built-in zone-ID table as part of its semantic body.
+
+Kind 7 is kind 0 with a sender label. Its header is `0x7A`; the label (section 10.1) follows the header and the rest of the body is the kind-0 grammar. A kind-0 body (`0x0A`) never carries a label. Splitting the label into its own kind is what frees header bit 7 for the transport mode.
 
 ## 5. Kind 2: bare route
 
@@ -277,7 +289,7 @@ paint :=
                           in the paint's atlas pixel order (6 faces × 16 × 16)
 ```
 
-The route body is decoded by the kind-0 reader unchanged; its header byte is `0x0A` or `0x8A`, so the share label lives at the same offset a kind-0 reader expects after the library prefix. The body ends after the final paint. A decoder MUST reject trailing bytes.
+The route body is decoded by the general-route reader unchanged; its header byte is `0x0A` (kind 0) or `0x7A` (kind 7, labeled), so the share label lives at the same offset a kind-7 reader expects after the library prefix. The body ends after the final paint. A decoder MUST reject trailing bytes.
 
 Canonical rules:
 
@@ -669,7 +681,7 @@ The reference exporter compares direct A, default-strategy B, and filtered-strat
 
 Kind 0 carries general rich-route data. It reuses the V9 general-body grammar. V10 changes the version nibble and the outer transport. V10 does not use the V9 DEFLATE dictionary.
 
-The header is `0x0A` without a label and `0x8A` with a label.
+The header is `0x0A` without a label. A labeled export is kind 7 with header `0x7A` and the same grammar; the label field is present only for kind 7.
 
 ### 10.1 Top-level grammar
 
@@ -1005,16 +1017,16 @@ The bare selection applies to generic and public API exports. It is a projection
 - The current catalog remains V9. It hashes the exact canonical V9 payload text.
 - Anonymous install tokens use `HMAC(deviceSecret, routeId)`. They do not hash V10 semantic bytes.
 - The source does not define a V10 semantic content ID or a signed-share digest. Do not invent one from this document.
-- CRC-32 detects accidental corruption. It is not identity or authentication. Anyone can forge it.
+- CRC-16 detects accidental corruption. It is not identity or authentication. Anyone can forge it.
 - A decoder MUST apply all limits. Some bounded buffers are allocated before their decoded-size check. The transport-character limit bounds that work.
 
 ## 13. Limits summary
 
 | Item | Limit |
 |---|---|
-| Complete payload, including CRC | 2,097,152 bytes |
-| Semantic body | 2,097,148 bytes |
-| B compressed part | 2,097,148 bytes |
+| Complete payload, including header and CRC | 2,097,152 bytes |
+| Semantic body, header included | 2,097,150 bytes |
+| Mode-1 compressed part | 2,097,149 bytes |
 | Transport characters | 3,145,728 |
 | Kind 2/5 waypoints | 20,000 |
 | Quotient body waypoints | 1,024, checked after descriptor dispatch |
@@ -1035,28 +1047,26 @@ The bare selection applies to generic and public API exports. It is a projection
 
 ## 14. Example and golden fixtures
 
-Exact mode-A empty-route vector:
+Exact mode-0 empty-route vector:
 
 | Item | Value |
 |---|---|
 | Semantic body | `2A00` |
-| CRC | `902A153A` |
-| Payload | `2A00902A153A` |
-| Complete text | `WP:AM!p?K(]!` |
+| Transmitted header | `2A` (mode bit clear) |
+| CRC-16 over `2A00` | `F422` |
+| Payload | `2A00F422` |
+| Complete text | `WP:M!8D%` |
 
 Repository fixtures:
 
-- `src/test/resources/fixtures/waypointer-v10-next-no-golomb-goldens.json` has 21 quotient vectors and 6 DEFLATE vectors.
+- `src/test/resources/fixtures/waypointer-v10-next-no-golomb-goldens.json` has 20 quotient vectors, 1 Rice vector, and 6 DEFLATE vectors, plus the SHA-256 of their wires (`selectedWireSha256`).
 - `src/test/resources/fixtures/waypointer-v10-config-golden-vectors.json` has kind-3 vectors.
 - `src/test/resources/fixtures/waypointer-native-golden-vectors.json` has V1-V9 compatibility vectors and dictionary hashes.
 - `src/test/java/com/babbur/waypointer/codec/V10SparseRouteCodecTest.java` has the kind-5 reference strings.
 - `src/test/java/com/babbur/waypointer/codec/V10DungeonCodecTest.java` has the kind-4 reference checks.
+- `src/test/java/com/babbur/waypointer/codec/V10GoldenRegeneration.java` rebuilds the two V10 fixture files after a deliberate wire change (`-Pv10.regen=<repo root>`).
 
-The 302-route corpus is external benchmark evidence. It is not a complete repository fixture. Supply its path with the `v10.corpus` system property to run `V10LockedCorpusTest`. The reference result is 76,699 final characters. Its SHA-256 digest is `19ee966ed93d36e96fce91adeb6c02bf19a41bb1bc2c23696f84fdf3ec47c935`.
-
-The normalized corpus SHA-256 is `dc4fdd8368b3e25b982a4af509a1719b0e9c109692813ca56245c291fa967613`. The external reference candidate SHA-256 is `1b17d17a2f8e0871b98da8d974a317dbd186153ab83dd081eb1a86429bc5f058`.
-
-The digest input is the corpus-order sequence of complete ASCII wire strings. Prefix each string with its four-byte big-endian byte length before hashing.
+The digest input for `selectedWireSha256` is the fixture-order sequence of complete ASCII wire strings. Prefix each string with its four-byte big-endian byte length before hashing. The 302-route external corpus (`V10LockedCorpusTest`, `v10.corpus`) predates the header-mode envelope; its recorded totals are not comparable to current output.
 
 ## 15. File map and interoperability checklist
 
@@ -1081,20 +1091,21 @@ The digest input is the corpus-order sequence of complete ASCII wire strings. Pr
 
 Interoperability checks:
 
-1. CRC check value is `0xCBF43926`.
+1. CRC-16 check value is `0x29B1`.
 2. Base-91 pair threshold is 88.
 3. Contextual escape round-trips `<~3`, `o~/`, `<~~3`, and tilde runs.
 4. Canonical text rejects an unescaped raw `<3` pair.
-5. For selector-mutation conformance vectors, changing A to B or B to A is rejected by mode-specific decoding or the mode-bound CRC.
+5. Flipping header bit 7 (the mode) is rejected by mode-specific decoding or the header-bound CRC.
 6. Quotient count and work-limit violations are rejected.
 7. The reserved Golomb marker is rejected.
 8. Alternate valid Raw DEFLATE streams are accepted.
-9. Legacy V9 strings whose first body character is A or B reach V9 fallback.
-10. Mode-A reference output matches the repository's recorded vectors byte for byte.
-11. Mode-B input requires semantic equality, not DEFLATE byte equality.
+9. Legacy V1-V9 strings whose first payload byte happens to end in nibble 10 reach the legacy fallback.
+10. Mode-0 reference output matches the repository's recorded vectors byte for byte.
+11. Mode-1 input requires semantic equality, not DEFLATE byte equality.
+12. An empty body (a header-only semantic) round-trips in both modes.
 
 ## 16. History
 
 V1 uses CJK Base16384. V2 uses base 85. V3 uses base 93. V4 uses base 92. V5-V9 use the current base-91 alphabet. V1-V8 use the frozen 363-byte legacy DEFLATE dictionary. V9 uses a separate frozen 32 KiB dictionary. V8 introduced an internal CRC.
 
-V9 already had the three-bit content-kind field. V10 expands and unifies its use. V10 removes preset DEFLATE dictionaries and the waypoint-name vocabulary. It moves the CRC outside DEFLATE and uses contextual escaping. The built-in zone-ID table remains part of kind 0. This section is historical and is not normative V10 grammar.
+V9 already had the three-bit content-kind field. V10 expands and unifies its use. V10 removes preset DEFLATE dictionaries and the waypoint-name vocabulary. It moves the checksum outside DEFLATE, shrinks it to CRC-16, carries the transport mode in header bit 7 instead of a selector character, and uses contextual escaping. The built-in zone-ID table remains part of kind 0. This section is historical and is not normative V10 grammar.

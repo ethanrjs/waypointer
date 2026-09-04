@@ -28,7 +28,7 @@ class V10DungeonCodecTest {
 
     @Test
     void nearLimitDirectFrameSurvivesOversizedOptionalDeflateCandidates() throws Exception {
-        byte[] semantic = new byte[V10Transport.MAX_FRAME_BYTES - Integer.BYTES];
+        byte[] semantic = new byte[V10Transport.MAX_FRAME_BYTES - V10Transport.CHECKSUM_BYTES];
         new Random(0x6E656172436170L).nextBytes(semantic);
         semantic[0] = (byte) V10DungeonBodyCodec.SEMANTIC_HEADER;
 
@@ -47,19 +47,15 @@ class V10DungeonCodecTest {
 
     @Test
     void externalCrcCanMakeAnOtherwiseBoundedDeflateCandidateIneligible() throws Exception {
-        byte[] semantic = new byte[2_096_509];
-        new Random(0x10C0FFEEL).nextBytes(semantic);
-        semantic[0] = (byte) V10DungeonBodyCodec.SEMANTIC_HEADER;
+        byte[] semantic = V10FrameBoundary.semanticWhoseDeflateOnlyFitsWithoutChecksum(
+                (byte) V10DungeonBodyCodec.SEMANTIC_HEADER, 0x10C0FFEEL);
 
-        byte[] compressed = V10Transport.deflate(semantic, Deflater.DEFAULT_STRATEGY);
-        assertTrue(compressed.length <= V10Transport.MAX_FRAME_BYTES);
-        assertTrue(compressed.length + Integer.BYTES > V10Transport.MAX_FRAME_BYTES);
         assertThrows(V10ProfileLimitException.class, () ->
                 V10Transport.deflateAndSeal(semantic, Deflater.DEFAULT_STRATEGY));
 
         V10Transport.Outbound selected = V10DungeonCodec.selectCandidate(semantic);
         assertEquals(V10Transport.MODE_DIRECT, selected.mode());
-        assertEquals(semantic.length + Integer.BYTES, selected.payload().length);
+        assertEquals(semantic.length + V10Transport.CHECKSUM_BYTES, selected.payload().length);
         assertArrayEquals(semantic,
                 V10Transport.unseal(V10Transport.MODE_DIRECT, selected.payload()));
     }
@@ -78,7 +74,7 @@ class V10DungeonCodecTest {
         assertArrayEquals(HexFormat.of().parseHex(
                 "4a00012c0763727970742d61054372797074000100028c01031f054368657374"
                         + "12345680284004000000000000010001"), semantic);
-        assertEquals("WP:B>)N)mhQtw@Q[Le;F25E5N)lgj+^4bZalY<tJRQM'C#p6zQjD[;z3#!fX+&[",
+        assertEquals("WP:_+N)mhQtw@Q[Le;F25E5N)lgj+^4bZalY<tJRQM'C#p6zQjD[;z3#!iD%",
                 wire);
         assertEquals(V10Transport.MODE_DEFLATE, V10Transport.decode(
                 wire.substring(WaypointCodec.MAGIC.length())).mode());
@@ -163,7 +159,7 @@ class V10DungeonCodecTest {
         String crcCode = WaypointCodec.MAGIC
                 + V10Transport.encode(V10Transport.MODE_DIRECT, badCrc);
         assertTrue(assertThrows(IOException.class, () -> V10DungeonCodec.decode(crcCode))
-                .getMessage().contains("CRC-32"));
+                .getMessage().contains("CRC-16"));
 
         byte[] compressed = rawDeflateAndSeal(semantic, Deflater.BEST_SPEED);
         byte[] badDeflateCrc = compressed.clone();
@@ -172,28 +168,30 @@ class V10DungeonCodecTest {
                 + V10Transport.encode(V10Transport.MODE_DEFLATE, badDeflateCrc);
         assertTrue(assertThrows(IOException.class,
                 () -> V10DungeonCodec.decode(badDeflateCrcCode))
-                .getMessage().contains("CRC-32"));
+                .getMessage().contains("CRC-16"));
 
-        int compressedLength = compressed.length - Integer.BYTES;
+        // payload = header, compressed bytes, checksum; the last compressed byte
+        // therefore sits at index compressedLength.
+        int compressedLength = compressed.length - 1 - V10Transport.CHECKSUM_BYTES;
         byte[] badCompressedTail = compressed.clone();
-        badCompressedTail[compressedLength - 1] ^= 1;
+        badCompressedTail[compressedLength] ^= 1;
         String badCompressedTailCode = WaypointCodec.MAGIC
                 + V10Transport.encode(V10Transport.MODE_DEFLATE, badCompressedTail);
         assertThrows(IOException.class, () -> V10DungeonCodec.decode(badCompressedTailCode));
 
         byte[] trailing = new byte[compressed.length + 1];
-        System.arraycopy(compressed, 0, trailing, 0, compressedLength);
-        System.arraycopy(compressed, compressedLength, trailing, compressedLength + 1,
-                Integer.BYTES);
+        System.arraycopy(compressed, 0, trailing, 0, 1 + compressedLength);
+        System.arraycopy(compressed, 1 + compressedLength, trailing, 2 + compressedLength,
+                V10Transport.CHECKSUM_BYTES);
         String trailingCode = WaypointCodec.MAGIC
                 + V10Transport.encode(V10Transport.MODE_DEFLATE, trailing);
         assertTrue(assertThrows(IOException.class, () -> V10DungeonCodec.decode(trailingCode))
                 .getMessage().contains("trailing v10 compressed bytes"));
 
         byte[] truncated = new byte[compressed.length - 1];
-        System.arraycopy(compressed, 0, truncated, 0, compressedLength - 1);
-        System.arraycopy(compressed, compressedLength, truncated, compressedLength - 1,
-                Integer.BYTES);
+        System.arraycopy(compressed, 0, truncated, 0, compressedLength);
+        System.arraycopy(compressed, 1 + compressedLength, truncated, compressedLength,
+                V10Transport.CHECKSUM_BYTES);
         String truncatedCode = WaypointCodec.MAGIC
                 + V10Transport.encode(V10Transport.MODE_DEFLATE, truncated);
         IOException truncatedFailure = assertThrows(IOException.class,
@@ -243,11 +241,12 @@ class V10DungeonCodecTest {
         assertTrue(varintFailure.getMessage().contains("committed v10 kind 4"));
         assertTrue(varintFailure.getMessage().contains("non-canonical"));
 
-        String unsupportedKind = codeForSemantic(new byte[] {(byte) 0x7A});
+        // Kind 1 is the last unassigned kind; kind 7 became the labeled general route.
+        String unsupportedKind = codeForSemantic(new byte[] {(byte) 0x1A});
         IllegalArgumentException kindFailure = assertThrows(IllegalArgumentException.class,
                 () -> UniversalShareCodec.decode(unsupportedKind));
-        assertTrue(kindFailure.getMessage().contains("committed v10 kind 7"));
-        assertTrue(kindFailure.getMessage().contains("unsupported committed v10 share kind 7"));
+        assertTrue(kindFailure.getMessage().contains("committed v10 kind 1"));
+        assertTrue(kindFailure.getMessage().contains("unsupported committed v10 share kind 1"));
     }
 
     @Test
@@ -495,11 +494,8 @@ class V10DungeonCodecTest {
     }
 
     private static byte[] rawDeflateAndSeal(byte[] semantic, int level) throws IOException {
-        byte[] sealed = V10Transport.seal(V10Transport.MODE_DEFLATE, semantic);
-        byte[] compressed = rawDeflate(semantic, level);
-        byte[] payload = Arrays.copyOf(compressed, compressed.length + Integer.BYTES);
-        System.arraycopy(sealed, semantic.length, payload, compressed.length, Integer.BYTES);
-        return payload;
+        return V10Transport.sealCompressed(semantic,
+                rawDeflate(Arrays.copyOfRange(semantic, 1, semantic.length), level));
     }
 
     private static byte[] replaceUtf8(byte[] input, String source, String replacement) {

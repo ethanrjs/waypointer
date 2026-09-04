@@ -36,7 +36,8 @@ public final class V10DungeonBodyCodec {
     public static final int MAX_STRING_BYTES = 256;
     public static final int MAX_TOTAL_STRING_BYTES = 1024 * 1024;
     public static final int MAX_ROUTE_BODY_BYTES = 1024 * 1024;
-    public static final int MAX_SEMANTIC_BYTES = 2 * 1024 * 1024 - Integer.BYTES;
+    /** Frame limit minus the two-byte V10 checksum. */
+    public static final int MAX_SEMANTIC_BYTES = 2 * 1024 * 1024 - 2;
 
     private static final long MAX_WORK_UNITS = (long) MAX_SEMANTIC_BYTES
             + (long) MAX_TOTAL_WAYPOINTS * 16

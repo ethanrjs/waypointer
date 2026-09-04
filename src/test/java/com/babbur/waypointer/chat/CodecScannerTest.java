@@ -287,18 +287,21 @@ class CodecScannerTest {
     }
 
     private static String committedExplicitDefaultConfig() {
-        // Header kind=3/version=10, tag 2 one-byte token, explicit default true.
+        // Header kind=3/version=10 (direct mode, bit 7 clear), tag 2 one-byte
+        // token, explicit default true. Direct payload = header, body, CRC-16.
         byte[] semantic = {0x3A, 0x08, 0x01};
-        CRC32 crc = new CRC32();
-        crc.update(0);
-        crc.update(semantic);
-        long value = crc.getValue();
-        byte[] sealed = Arrays.copyOf(semantic, semantic.length + 4);
-        sealed[3] = (byte) (value >>> 24);
-        sealed[4] = (byte) (value >>> 16);
-        sealed[5] = (byte) (value >>> 8);
-        sealed[6] = (byte) value;
-        return "WP:A" + escapeContextual(AsciiStreamCodec.encode(sealed));
+        int crc = 0xFFFF;
+        for (byte b : semantic) {
+            crc ^= (b & 0xFF) << 8;
+            for (int bit = 0; bit < 8; bit++) {
+                crc = (crc & 0x8000) != 0 ? ((crc << 1) ^ 0x1021) : (crc << 1);
+            }
+            crc &= 0xFFFF;
+        }
+        byte[] sealed = Arrays.copyOf(semantic, semantic.length + 2);
+        sealed[3] = (byte) (crc >>> 8);
+        sealed[4] = (byte) crc;
+        return "WP:" + escapeContextual(AsciiStreamCodec.encode(sealed));
     }
 
     private static String escapeContextual(String body) {

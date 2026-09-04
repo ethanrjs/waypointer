@@ -176,7 +176,8 @@ class WaypointCodecV10BareRoutePackTest {
         WaypointCodec.Options labeledAllOff = WaypointCodec.Options.BARE_COORDINATES
                 .toBuilder().label("route pack").build();
         assertFalse(labeledAllOff.isBareCoordinateProjection());
-        assertV10Kind(0, WaypointCodec.encode(routes, labeledAllOff));
+        assertV10Kind(V10GeneralRouteCodec.LABELED_CONTENT_KIND,
+                WaypointCodec.encode(routes, labeledAllOff));
     }
 
     @Test
@@ -274,10 +275,14 @@ class WaypointCodecV10BareRoutePackTest {
 
         assertEquals(V10Transport.MODE_DEFLATE, physical.mode());
         byte[] payload = physical.payload();
-        byte[] compressedOnly = Arrays.copyOf(payload, payload.length - Integer.BYTES);
-        assertArrayEquals(checked.semantic(), V10Transport.inflate(compressedOnly));
-        assertThrows(IOException.class, () -> V10Transport.inflate(payload),
-                "the four CRC bytes must not be accepted as compressed input");
+        byte[] compressedOnly = Arrays.copyOfRange(
+                payload, 1, payload.length - V10Transport.CHECKSUM_BYTES);
+        byte[] semantic = checked.semantic();
+        assertArrayEquals(Arrays.copyOfRange(semantic, 1, semantic.length),
+                V10Transport.inflate(compressedOnly));
+        assertThrows(IOException.class,
+                () -> V10Transport.inflate(Arrays.copyOfRange(payload, 1, payload.length)),
+                "the checksum bytes must not be accepted as compressed input");
 
         byte[] alternate = V10Transport.deflateAndSeal(
                 checked.semantic(), Deflater.BEST_SPEED);

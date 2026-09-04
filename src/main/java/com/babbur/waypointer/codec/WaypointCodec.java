@@ -511,8 +511,9 @@ public final class WaypointCodec {
         }
         String payload = trimmed.substring(MAGIC.length());
         Exception v10Failure = null;
+        boolean committedV10 = false;
         V10Transport.CheckedFrame v10Frame = null;
-        if (V10Transport.hasModeSelector(payload)) {
+        if (V10Transport.looksLikeV10(payload)) {
             try {
                 v10Frame = V10Transport.probe(payload);
             } catch (IOException | IllegalArgumentException failure) {
@@ -523,8 +524,12 @@ public final class WaypointCodec {
             try {
                 return decodePayloadV10(v10Frame);
             } catch (IOException | IllegalArgumentException bodyFailure) {
-                throw new IllegalArgumentException(
-                        "codec decode failed: v10=" + bodyFailure.getMessage(), bodyFailure);
+                // A verified envelope with a bad body is almost certainly a
+                // damaged V10 share. The legacy readers still get one silent
+                // attempt so no pre-V10 code can ever be locked out by a
+                // checksum coincidence; if they also fail, the V10 error wins.
+                committedV10 = true;
+                v10Failure = bodyFailure;
             }
         }
         try {
@@ -550,6 +555,10 @@ public final class WaypointCodec {
                     failures.append("; v").append(version).append('=').append(legacyFailure.getMessage());
                     lastFailure = legacyFailure;
                 }
+            }
+            if (committedV10) {
+                throw new IllegalArgumentException(
+                        "codec decode failed: v10=" + v10Failure.getMessage(), v10Failure);
             }
             throw new IllegalArgumentException("codec decode failed: " + failures, lastFailure);
         }
@@ -676,8 +685,9 @@ public final class WaypointCodec {
         }
         String payload = trimmed.substring(MAGIC.length());
         Exception v10Failure = null;
+        boolean committedV10 = false;
         V10Transport.CheckedFrame v10Frame = null;
-        if (V10Transport.hasModeSelector(payload)) {
+        if (V10Transport.looksLikeV10(payload)) {
             try {
                 v10Frame = V10Transport.probe(payload);
             } catch (IOException | IllegalArgumentException failure) {
@@ -688,8 +698,8 @@ public final class WaypointCodec {
             try {
                 return debugDecodePayloadV10(text, payload, t0, v10Frame);
             } catch (IOException | IllegalArgumentException bodyFailure) {
-                throw new IllegalArgumentException(
-                        "codec debug decode failed: v10=" + bodyFailure.getMessage(), bodyFailure);
+                committedV10 = true;
+                v10Failure = bodyFailure;
             }
         }
         try {
@@ -715,6 +725,10 @@ public final class WaypointCodec {
                     failures.append("; v").append(version).append('=').append(legacyFailure.getMessage());
                     lastFailure = legacyFailure;
                 }
+            }
+            if (committedV10) {
+                throw new IllegalArgumentException(
+                        "codec debug decode failed: v10=" + v10Failure.getMessage(), v10Failure);
             }
             throw new IllegalArgumentException("codec debug decode failed: " + failures, lastFailure);
         }
@@ -896,19 +910,20 @@ public final class WaypointCodec {
 
     private static Optional<String> peekLabelV10(String payload) {
         try {
-            if (!V10Transport.hasModeSelector(payload)) return Optional.empty();
-            int mode = payload.charAt(0) == 'A'
-                    ? V10Transport.MODE_DIRECT : V10Transport.MODE_DEFLATE;
-            byte[] framed = AsciiStreamCodec.decode(
-                    V10Transport.unescapeContextual(payload.substring(1)));
-            // Enough for a kind-0 header plus label, or a kind-6 library prefix
-            // (header, subtype, route length) followed by the inner kind-0 header.
-            byte[] raw = mode == V10Transport.MODE_DIRECT
-                    ? framed
-                    : V10Transport.inflatePrefix(framed, 1 + 5 + 5 + 1 + 5 + MAX_LABEL_BYTES);
-            DataInputStream in = new DataInputStream(new ByteArrayInputStream(raw));
-            int header = in.readUnsignedByte();
-            if ((header & HEADER_VERSION_MASK) != V10_WIRE_VERSION) return Optional.empty();
+            if (!V10Transport.looksLikeV10(payload)) return Optional.empty();
+            byte[] framed = AsciiStreamCodec.decode(V10Transport.unescapeContextual(payload));
+            if (framed.length == 0) return Optional.empty();
+            int header = framed[0] & 0xFF;
+            int mode = V10Transport.modeOf((byte) header);
+            header &= ~V10Transport.HEADER_MODE_BIT;
+            // Enough for a kind-7 header plus label, or a kind-6 library prefix
+            // (subtype, route length) followed by the inner kind-7 header.
+            byte[] body = mode == V10Transport.MODE_DIRECT
+                    ? Arrays.copyOfRange(framed, 1, framed.length)
+                    : V10Transport.inflatePrefix(
+                            Arrays.copyOfRange(framed, 1, framed.length),
+                            5 + 5 + 1 + 5 + MAX_LABEL_BYTES);
+            DataInputStream in = new DataInputStream(new ByteArrayInputStream(body));
             int kind = v9ContentKind(header);
             if (kind == V10RouteLibraryCodec.CONTENT_KIND) {
                 if (readVarint(in) != V10RouteLibraryCodec.SUBTYPE_ROUTE_LIBRARY) {
@@ -919,8 +934,7 @@ public final class WaypointCodec {
                 if ((header & HEADER_VERSION_MASK) != V10_WIRE_VERSION) return Optional.empty();
                 kind = v9ContentKind(header);
             }
-            if (kind != V10GeneralRouteCodec.CONTENT_KIND
-                    || (header & V9_HEADER_FLAG_LABEL) == 0) {
+            if (kind != V10GeneralRouteCodec.LABELED_CONTENT_KIND) {
                 return Optional.empty();
             }
             String label = Options.sanitizeLabel(readLabel(in));
@@ -1115,18 +1129,18 @@ public final class WaypointCodec {
                                                       V10Transport.CheckedFrame frame)
             throws IOException {
         V10Transport.Frame transport = V10Transport.decode(payload);
-        if (frame.contentKind() == V10GeneralRouteCodec.CONTENT_KIND) {
+        if (V10GeneralRouteCodec.isGeneralKind(frame.contentKind())) {
             byte[] semantic = frame.semantic();
             byte[] v9Shape = semantic.clone();
-            v9Shape[0] = (byte) ((v9Shape[0] & 0xF0) | WIRE_VERSION);
+            v9Shape[0] = (byte) v9ShapeHeaderForV10General(frame.header());
             DebugCapture capture = new DebugCapture();
             List<WaypointGroup> groups = readBody(v9Shape, capture, null, WIRE_VERSION, false);
             long elapsed = System.nanoTime() - startNanos;
             DecodeDebug shape = capture.build(
                     input, payload,
                     frame.mode() == V10Transport.MODE_DIRECT
-                            ? "ASCII contextual base-91 + V10 general direct + CRC-32"
-                            : "ASCII contextual base-91 + V10 general raw DEFLATE + CRC-32",
+                            ? "ASCII contextual base-91 + V10 general direct + CRC-16"
+                            : "ASCII contextual base-91 + V10 general raw DEFLATE + CRC-16",
                     transport.payload(), semantic, groups, elapsed);
             return new DecodeDebug(
                     shape.rawInput(), shape.inputChars(), shape.magic(), shape.payloadChars(),
@@ -1141,8 +1155,9 @@ public final class WaypointCodec {
                 : V10RouteCodec.decode(frame);
         byte[] semantic = frame.semantic();
         String coordinateMode = switch (frame.contentKind()) {
-            case V10GeneralRouteCodec.CONTENT_KIND -> frame.mode() == V10Transport.MODE_DIRECT
-                    ? "V10_GENERAL_DIRECT" : "V10_GENERAL_DEFLATE";
+            case V10GeneralRouteCodec.CONTENT_KIND, V10GeneralRouteCodec.LABELED_CONTENT_KIND ->
+                    frame.mode() == V10Transport.MODE_DIRECT
+                            ? "V10_GENERAL_DIRECT" : "V10_GENERAL_DEFLATE";
             case 2 -> frame.mode() == V10Transport.MODE_DIRECT
                     ? switch (V10BareEntropyCodec.descriptor(semantic)) {
                         case RICE -> "V10_RICE";
@@ -1206,15 +1221,15 @@ public final class WaypointCodec {
                 MAGIC,
                 payload.length(),
                 frame.mode() == V10Transport.MODE_DIRECT
-                        ? "ASCII contextual base-91 + " + coordinateMode + " + CRC-32"
-                        : "ASCII contextual base-91 + V10 raw DEFLATE + CRC-32",
+                        ? "ASCII contextual base-91 + " + coordinateMode + " + CRC-16"
+                        : "ASCII contextual base-91 + V10 raw DEFLATE + CRC-16",
                 transport.payload().length,
                 semantic.length,
                 ratio,
                 frame.header(),
                 V10_WIRE_VERSION,
                 includesNames,
-                (frame.header() & V9_HEADER_FLAG_LABEL) != 0,
+                frame.contentKind() == V10GeneralRouteCodec.LABELED_CONTENT_KIND,
                 false,
                 false,
                 decoded.label(),
@@ -1369,8 +1384,24 @@ public final class WaypointCodec {
     /** V10 kind 0 uses the V9 general body shape without its compression dictionary. */
     static byte[] encodeV10GeneralSemantic(
             List<WaypointGroup> groups, Options opts, PackingMode mode) throws IOException {
-        int header = V10_WIRE_VERSION | (!opts.label.isEmpty() ? V9_HEADER_FLAG_LABEL : 0);
+        // A labeled export is kind 7 (label follows the header); an unlabeled
+        // one is kind 0. Header bit 7 belongs to the transport mode in V10.
+        int header = opts.label.isEmpty()
+                ? V10GeneralRouteCodec.SEMANTIC_HEADER
+                : V10GeneralRouteCodec.LABELED_SEMANTIC_HEADER;
         return writeGeneralBody(groups, opts, mode, WIRE_VERSION, true, true, header);
+    }
+
+    /** True when a V10 semantic header names the general route body, with or without a label. */
+    static boolean isV10GeneralHeader(int header) {
+        return (header & HEADER_VERSION_MASK) == V10_WIRE_VERSION
+                && V10GeneralRouteCodec.isGeneralKind(v9ContentKind(header));
+    }
+
+    /** Header byte of the V9-shaped body that mirrors a V10 kind 0/7 semantic. */
+    static int v9ShapeHeaderForV10General(int header) {
+        boolean labeled = v9ContentKind(header) == V10GeneralRouteCodec.LABELED_CONTENT_KIND;
+        return WIRE_VERSION | (labeled ? V9_HEADER_FLAG_LABEL : 0);
     }
 
     static Decoded decodeV10GeneralSemantic(byte[] semantic) throws IOException {
@@ -1378,12 +1409,11 @@ public final class WaypointCodec {
             throw new IOException("empty v10 general semantic body");
         }
         int header = semantic[0] & 0xFF;
-        if ((header & HEADER_VERSION_MASK) != V10_WIRE_VERSION
-                || v9ContentKind(header) != V9_CONTENT_KIND_GENERAL_ROUTE) {
+        if (!isV10GeneralHeader(header)) {
             throw new IOException("v10 general semantic header mismatch");
         }
         byte[] v9Shape = semantic.clone();
-        v9Shape[0] = (byte) ((header & ~HEADER_VERSION_MASK) | WIRE_VERSION);
+        v9Shape[0] = (byte) v9ShapeHeaderForV10General(header);
         return decodeBody(v9Shape, WIRE_VERSION, false);
     }
 

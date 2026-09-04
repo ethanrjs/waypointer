@@ -70,7 +70,7 @@ class V10ProductionTimingTest {
             byte[] mutation = hostileSeed.clone();
             int position = Math.floorMod(index * 2_654_435_761L + 17, mutation.length);
             mutation[position] ^= (byte) (1 << (index & 7));
-            String transport = V10Transport.encode(V10Transport.MODE_DEFLATE, mutation);
+            String transport = V10Transport.encode(mutation);
             long start = System.nanoTime();
             assertThrows(IOException.class, () -> V10Transport.probe(transport));
             hostile[index] = System.nanoTime() - start;

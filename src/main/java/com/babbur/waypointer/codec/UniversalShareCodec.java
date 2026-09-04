@@ -100,12 +100,12 @@ public final class UniversalShareCodec {
     private static V10Transport.CheckedFrame probeV10(String normalized) {
         if (!normalized.startsWith(WaypointCodec.MAGIC)) return null;
         String transport = normalized.substring(WaypointCodec.MAGIC.length());
-        if (!V10Transport.hasModeSelector(transport)) return null;
+        if (!V10Transport.looksLikeV10(transport)) return null;
         try {
             return V10Transport.probe(transport);
         } catch (IOException | IllegalArgumentException uncommitted) {
-            // A legacy V9 payload may begin with A/B. Only a valid transport,
-            // mode-bound CRC, and V10 version nibble commits this dispatch.
+            // About one legacy code in sixteen shares the version nibble; only
+            // canonical text plus the header-bound checksum commits this dispatch.
             return null;
         }
     }
@@ -122,7 +122,9 @@ public final class UniversalShareCodec {
                             decoded.routes(), decoded.waypointCount(), List.of(), 0,
                             DungeonRouteImporter.Format.WAYPOINTER));
                 }
-                case 0, 2, 5, V10BareRoutePackCodec.CONTENT_KIND ->
+                case V10GeneralRouteCodec.CONTENT_KIND, 2, 5,
+                     V10BareRoutePackCodec.CONTENT_KIND,
+                     V10GeneralRouteCodec.LABELED_CONTENT_KIND ->
                         new Waypoints(WaypointImporter.importAny(normalized));
                 default -> throw new IllegalArgumentException(
                         "unsupported committed v10 share kind " + frame.contentKind());

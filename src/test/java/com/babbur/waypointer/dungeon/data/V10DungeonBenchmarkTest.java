@@ -1,20 +1,14 @@
 package com.babbur.waypointer.dungeon.data;
 
-import com.babbur.waypointer.codec.AsciiStreamCodec;
 import com.babbur.waypointer.codec.UniversalShareCodec;
-import com.babbur.waypointer.codec.WaypointCodec;
+import com.babbur.waypointer.codec.V10TransportTestAccess;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
-import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
-import java.util.zip.CRC32;
-import java.util.zip.Deflater;
-import java.util.zip.DeflaterOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -30,7 +24,7 @@ class V10DungeonBenchmarkTest {
         for (int index = 0; index < 200; index++) {
             Scenario scenario = new Scenario("search-" + index,
                     1 + (index * 17 % 64), 2 + (index * 29 % 63),
-                    0xD00D0000L + index, 0, 0, 0);
+                    0xD00D0000L + index);
             List<WaypointGroup> groups = groups(scenario);
             int local = finalWire(V10DungeonBodyCodec.encode(
                     groups, V10DungeonBodyCodec.CoordinatePolicy.LOCAL_RAW)).length();
@@ -52,10 +46,16 @@ class V10DungeonBenchmarkTest {
     @Test
     void finalWireBeatsExactWpdAcrossLockedDungeonWorkloads() throws Exception {
         List<Scenario> scenarios = List.of(
-                new Scenario("small-party-pack", 4, 12, 0x51A11L, 1_449, 633, 659),
-                new Scenario("floor-pack", 16, 16, 0xF7002L, 5_593, 1_659, 1_829),
-                new Scenario("large-library", 64, 24, 0xC0DEC0DEL, 27_233, 5_026, 5_582));
+                new Scenario("small-party-pack", 4, 12, 0x51A11L),
+                new Scenario("floor-pack", 16, 16, 0xF7002L),
+                new Scenario("large-library", 64, 24, 0xC0DEC0DEL));
 
+        // Locked lengths: name=WPD/V10/forced-delta characters.
+        String expectedLengths = String.join("; ",
+                "small-party-pack=1449/630/652",
+                "floor-pack=5593/1656/1827",
+                "large-library=27233/5023/5579");
+        List<String> actualLengths = new ArrayList<>();
         for (Scenario scenario : scenarios) {
             List<WaypointGroup> groups = groups(scenario);
             String wpd = DungeonRoomShareCodec.encode(groups);
@@ -63,9 +63,7 @@ class V10DungeonBenchmarkTest {
             assertEquals(groups.stream().mapToInt(WaypointGroup::size).sum(),
                     ((UniversalShareCodec.DungeonRoutes) UniversalShareCodec.decode(v10))
                             .result().waypointCount());
-            assertEquals(scenario.expectedWpdChars(), wpd.length(), scenario.name());
-            assertEquals(scenario.expectedV10Chars(), v10.length(), scenario.name());
-            assertEquals('B', v10.charAt(WaypointCodec.MAGIC.length()), scenario.name());
+            assertEquals(1, V10TransportTestAccess.mode(v10), scenario.name());
             assertTrue(v10.length() < wpd.length(), scenario.name());
 
             String local = finalWire(V10DungeonBodyCodec.encode(
@@ -74,79 +72,16 @@ class V10DungeonBenchmarkTest {
                     groups, V10DungeonBodyCodec.CoordinatePolicy.FORCE_DELTA));
             String packed = finalWire(V10DungeonBodyCodec.encode(
                     groups, V10DungeonBodyCodec.CoordinatePolicy.PACK_WHEN_ELIGIBLE));
-            assertEquals(scenario.expectedV10Chars(), local.length(), scenario.name());
-            assertEquals(scenario.expectedDeltaChars(), delta.length(), scenario.name());
             assertEquals(v10, local, scenario.name());
             assertEquals(local, packed, scenario.name());
+            actualLengths.add(scenario.name() + "=" + wpd.length() + "/" + v10.length()
+                    + "/" + delta.length());
         }
+        assertEquals(expectedLengths, String.join("; ", actualLengths));
     }
 
     private static String finalWire(byte[] semantic) throws Exception {
-        List<String> candidates = new ArrayList<>();
-        candidates.add(transport(0, seal(0, semantic)));
-        candidates.add(transport(1,
-                deflateAndSeal(semantic, Deflater.DEFAULT_STRATEGY)));
-        candidates.add(transport(1,
-                deflateAndSeal(semantic, Deflater.FILTERED)));
-        return candidates.stream().min((left, right) -> {
-            int compared = Integer.compare(left.length(), right.length());
-            if (compared != 0) return compared;
-            compared = Character.compare(left.charAt(WaypointCodec.MAGIC.length()),
-                    right.charAt(WaypointCodec.MAGIC.length()));
-            return compared != 0 ? compared : left.compareTo(right);
-        }).orElseThrow();
-    }
-
-    private static String transport(int mode, byte[] payload) {
-        return WaypointCodec.MAGIC + (mode == 0 ? 'A' : 'B')
-                + escapeContextual(AsciiStreamCodec.encode(payload));
-    }
-
-    private static byte[] seal(int mode, byte[] semantic) {
-        CRC32 crc = new CRC32();
-        crc.update(mode);
-        crc.update(semantic);
-        long value = crc.getValue();
-        byte[] sealed = Arrays.copyOf(semantic, semantic.length + 4);
-        sealed[semantic.length] = (byte) (value >>> 24);
-        sealed[semantic.length + 1] = (byte) (value >>> 16);
-        sealed[semantic.length + 2] = (byte) (value >>> 8);
-        sealed[semantic.length + 3] = (byte) value;
-        return sealed;
-    }
-
-    private static byte[] deflate(byte[] input, int strategy) throws Exception {
-        Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION, true);
-        deflater.setStrategy(strategy);
-        ByteArrayOutputStream output = new ByteArrayOutputStream();
-        try (DeflaterOutputStream stream = new DeflaterOutputStream(output, deflater)) {
-            stream.write(input);
-        } finally {
-            deflater.end();
-        }
-        return output.toByteArray();
-    }
-
-    private static byte[] deflateAndSeal(byte[] semantic, int strategy) throws Exception {
-        byte[] sealed = seal(1, semantic);
-        byte[] compressed = deflate(semantic, strategy);
-        byte[] payload = Arrays.copyOf(compressed, compressed.length + Integer.BYTES);
-        System.arraycopy(sealed, semantic.length, payload, compressed.length, Integer.BYTES);
-        return payload;
-    }
-
-    private static String escapeContextual(String body) {
-        StringBuilder output = new StringBuilder(body.length());
-        for (int index = 0; index < body.length(); index++) {
-            char current = body.charAt(index);
-            output.append(current);
-            char following = index + 1 < body.length() ? body.charAt(index + 1) : '\0';
-            if ((current == '<' && (following == '3' || following == '~'))
-                    || (current == 'o' && (following == '/' || following == '~'))) {
-                output.append('~');
-            }
-        }
-        return output.toString();
+        return V10TransportTestAccess.finalWire(semantic);
     }
 
     private static List<WaypointGroup> groups(Scenario scenario) {
@@ -200,7 +135,5 @@ class V10DungeonBenchmarkTest {
         return groups;
     }
 
-    private record Scenario(String name, int routeCount, int pointsPerRoute, long seed,
-                            int expectedWpdChars, int expectedV10Chars,
-                            int expectedDeltaChars) {}
+    private record Scenario(String name, int routeCount, int pointsPerRoute, long seed) {}
 }

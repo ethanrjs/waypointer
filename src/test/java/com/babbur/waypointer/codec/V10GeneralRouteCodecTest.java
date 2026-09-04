@@ -14,7 +14,7 @@ class V10GeneralRouteCodecTest {
 
     @Test
     void nearLimitDirectFrameSurvivesOversizedOptionalDeflateCandidates() throws Exception {
-        byte[] semantic = new byte[V10Transport.MAX_FRAME_BYTES - Integer.BYTES];
+        byte[] semantic = new byte[V10Transport.MAX_FRAME_BYTES - V10Transport.CHECKSUM_BYTES];
         new Random(0x6E656172436170L).nextBytes(semantic);
         semantic[0] = (byte) V10GeneralRouteCodec.SEMANTIC_HEADER;
 
@@ -33,13 +33,9 @@ class V10GeneralRouteCodecTest {
 
     @Test
     void externalCrcCanMakeAnOtherwiseBoundedDeflateCandidateIneligible() throws Exception {
-        byte[] semantic = new byte[2_096_509];
-        new Random(0x10C0FFEEL).nextBytes(semantic);
-        semantic[0] = (byte) V10GeneralRouteCodec.SEMANTIC_HEADER;
+        byte[] semantic = V10FrameBoundary.semanticWhoseDeflateOnlyFitsWithoutChecksum(
+                (byte) V10GeneralRouteCodec.SEMANTIC_HEADER, 0x10C0FFEEL);
 
-        byte[] compressed = V10Transport.deflate(semantic, Deflater.DEFAULT_STRATEGY);
-        assertTrue(compressed.length <= V10Transport.MAX_FRAME_BYTES);
-        assertTrue(compressed.length + Integer.BYTES > V10Transport.MAX_FRAME_BYTES);
         assertThrows(V10ProfileLimitException.class, () ->
                 V10Transport.deflateAndSeal(semantic, Deflater.DEFAULT_STRATEGY));
 
