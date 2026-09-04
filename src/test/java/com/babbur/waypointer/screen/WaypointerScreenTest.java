@@ -21,6 +21,7 @@ import javax.imageio.ImageIO;
 import java.io.IOException;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -412,6 +413,51 @@ class WaypointerScreenTest {
         assertFalse(alreadyHidden.enabled());
         assertEquals(0, RouteListPresentation.hideRoutes(List.of(shown, alreadyHidden)));
         assertEquals(0, RouteListPresentation.hideRoutes(null));
+    }
+
+    @Test
+    void routeTogglePublishesPersistenceOnlyForSavedRoutes() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup saved = WaypointGroup.create("Saved", "hub");
+        WaypointGroup runtime = WaypointGroup.create("Generated", "hub");
+        runtime.setRuntimeOnly(true);
+        manager.addAll(List.of(saved, runtime));
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        WaypointerScreen.toggleRouteEnabled(manager, runtime);
+        WaypointerScreen.toggleRouteEnabled(manager, saved);
+
+        assertFalse(runtime.enabled());
+        assertFalse(saved.enabled());
+        assertEquals(2, allChanges.get());
+        assertEquals(1, persistentChanges.get());
+    }
+
+    @Test
+    void routeToggleOfDungeonMirrorPersistsItsSavedSource() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup saved = WaypointGroup.create("Stored room route", "room");
+        saved.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        WaypointGroup mirror = new WaypointGroup(
+                "dungeon:auto:room", "Stored room route", "room");
+        mirror.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        mirror.setRuntimeOnly(true);
+        mirror.setRuntimeSourceGroupId(saved.id());
+        manager.addAll(List.of(saved, mirror));
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        WaypointerScreen.toggleRouteEnabled(manager, mirror);
+
+        assertFalse(mirror.enabled());
+        assertFalse(saved.enabled());
+        assertEquals(1, allChanges.get());
+        assertEquals(1, persistentChanges.get());
     }
 
     @Test

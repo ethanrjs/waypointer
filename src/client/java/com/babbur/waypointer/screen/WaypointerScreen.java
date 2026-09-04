@@ -1419,17 +1419,23 @@ public final class WaypointerScreen extends Screen {
                 group.setEnabled(true);
             }
         }
-        manager.fireDataChanged();
+        manager.fireDataChangedFor(persistenceTargets(hiddenRoutes));
         refreshActionButtons();
     }
 
     /** Keyboard/menu twin of the Shown/Hidden chip. */
     void toggleRouteEnabled(WaypointGroup group) {
         if (group == null) return;
+        toggleRouteEnabled(manager, group);
+        refreshActionButtons();
+    }
+
+    static void toggleRouteEnabled(ActiveGroupManager manager, WaypointGroup group) {
+        if (manager == null || group == null) return;
         DungeonRoomRouteLibrary.setRouteEnabled(
                 manager, WaypointerClient.dungeonConfig(), group, !group.enabled());
-        manager.fireDataChanged();
-        refreshActionButtons();
+        manager.fireDataChangedFor(
+                DungeonRoomRouteLibrary.durableEditTarget(manager, group));
     }
 
     private void onHideAllRoutesClicked() {
@@ -1486,8 +1492,17 @@ public final class WaypointerScreen extends Screen {
         }
         clearHideAllConfirmation();
         clearDeleteConfirmation();
-        manager.fireDataChanged();
+        manager.fireDataChangedFor(persistenceTargets(shownRoutes));
         refreshActionButtons();
+    }
+
+    private List<WaypointGroup> persistenceTargets(List<WaypointGroup> groups) {
+        if (groups == null || groups.isEmpty()) return List.of();
+        List<WaypointGroup> targets = new ArrayList<>(groups.size());
+        for (WaypointGroup group : groups) {
+            targets.add(DungeonRoomRouteLibrary.durableEditTarget(manager, group));
+        }
+        return targets;
     }
 
     void refreshActionButtons() {
