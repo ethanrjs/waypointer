@@ -17,6 +17,7 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.crystal.CrystalHollowsStore;
 import com.babbur.waypointer.crystal.CrystalHollowsTracker;
+import com.babbur.waypointer.crystal.WishingCompassController;
 import com.babbur.waypointer.dungeon.DungeonChestInteractionGuard;
 import com.babbur.waypointer.dungeon.EtherwarpAlignmentCue;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
@@ -236,6 +237,7 @@ public final class WaypointerClient implements ClientModInitializer {
         crystalHollowsStore = CrystalHollowsStore.loadDefault();
         crystalHollowsTracker = new CrystalHollowsTracker(manager, config, crystalHollowsStore);
         crystalHollowsTracker.install();
+        new WishingCompassController(crystalHollowsTracker, config).install();
     }
 
     private static void onDungeonRouteContextChanged(Zone zone) {
