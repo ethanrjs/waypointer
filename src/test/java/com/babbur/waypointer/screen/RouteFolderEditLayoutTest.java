@@ -26,6 +26,22 @@ class RouteFolderEditLayoutTest {
     }
 
     @Test
+    void emptyCreateFolderHidesTheSelectionDetailLine() {
+        RouteFolderEditLayout.Layout layout =
+                RouteFolderEditLayout.calculate(400, 240, false, false);
+
+        assertFalse(layout.detailVisible());
+    }
+
+    @Test
+    void selectedCreateFolderKeepsTheRouteCountDetailLine() {
+        RouteFolderEditLayout.Layout layout =
+                RouteFolderEditLayout.calculate(400, 240, false, true);
+
+        assertTrue(layout.detailVisible());
+    }
+
+    @Test
     void wideEditorKeepsAllThreeActionsOnOneFooterRow() {
         RouteFolderEditLayout.Layout layout =
                 RouteFolderEditLayout.calculate(400, 220, true, true);

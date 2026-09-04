@@ -17,11 +17,17 @@ import java.util.Set;
 
 /** Validates catalog data before it reaches local route state. */
 public final class CatalogProtocol {
+    /**
+     * The public catalog remains pinned to its deployed canonical V9 contract.
+     * Product clipboard/chat exports may advance independently.
+     */
+    private static final int CATALOG_CODEC_VERSION = 9;
+
     private CatalogProtocol() {
     }
 
     public static int currentCodecVersion() {
-        return WaypointCodec.currentWireVersion();
+        return CATALOG_CODEC_VERSION;
     }
 
     public static void requireInstallable(CatalogRouteSummary summary) {

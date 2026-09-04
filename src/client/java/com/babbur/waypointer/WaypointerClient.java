@@ -44,6 +44,7 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import net.fabricmc.loader.api.FabricLoader;
 
 import java.nio.file.Files;
@@ -57,6 +58,7 @@ public final class WaypointerClient implements ClientModInitializer {
     private static WaypointerApi api;
     private static DungeonConfig dungeonConfig;
     private static DungeonStateTracker dungeonTracker;
+    private static ChatImportDetector chatImportDetector;
     private static WaypointerKeybinds keybinds;
     private static boolean dungeonRouteInDungeonContext;
     private static Screen suspendedWaypointerGuiScreen;
@@ -83,6 +85,12 @@ public final class WaypointerClient implements ClientModInitializer {
 
     public static DungeonStateTracker dungeonTracker() {
         return dungeonTracker;
+    }
+
+    /** Player chat bypasses Fabric's game-message modifier, so its mixin calls this. */
+    public static Component decorateChatImport(Component message) {
+        ChatImportDetector detector = chatImportDetector;
+        return detector == null ? message : detector.decorate(message);
     }
 
     public static WaypointerKeybinds keybinds() {
@@ -125,7 +133,8 @@ public final class WaypointerClient implements ClientModInitializer {
         keybinds = new WaypointerKeybinds(WaypointerClient::openGui, manager, config);
         keybinds.install();
         new ChatCoordDetector(config, manager).install();
-        new ChatImportDetector(config, chatImportCache).install();
+        chatImportDetector = new ChatImportDetector(config, chatImportCache);
+        chatImportDetector.install();
         RemoteLocales.install();
         WaypointerUpdateChecker.install();
         int apiEntrypoints = WaypointerApiEntrypoints.invokeFabricEntrypoints(api);

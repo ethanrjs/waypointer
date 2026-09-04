@@ -174,14 +174,40 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+def optInTestProperties = ['coleweight.file', 'v10.corpus', 'v10.timing']
+tasks.withType(Test).configureEach {
+	// Let opt-in tests receive only their explicit fixture/benchmark inputs.
+	optInTestProperties.each { prop ->
+		def value = providers.gradleProperty(prop)
+		if (System.getProperty(prop) != null) systemProperty prop, System.getProperty(prop)
+		else if (value.isPresent()) systemProperty prop, value.get()
+	}
+}
+
 test {
 	useJUnitPlatform()
-	// Let developers feed local fixture paths through to tests that opt in via
-	// @EnabledIfSystemProperty, without inheriting the whole Gradle JVM env.
-	['coleweight.file'].each { prop ->
-		if (System.getProperty(prop)) systemProperty prop, System.getProperty(prop)
-	}
 	finalizedBy tasks.named('jacocoTestReport')
+}
+
+tasks.register('validateV10Corpus', Test) {
+	group = 'verification'
+	description = 'Validates the V10 codec against the locked external corpus.'
+	dependsOn tasks.named('testClasses')
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform()
+	filter {
+		includeTestsMatching 'com.babbur.waypointer.codec.V10LockedCorpusTest'
+	}
+	testLogging.showStandardStreams = true
+	doFirst {
+		def corpus = System.getProperty('v10.corpus')
+		if (corpus == null) corpus = providers.gradleProperty('v10.corpus').orElse('').get()
+		if (corpus.trim().isEmpty()) {
+			throw new GradleException(
+					'validateV10Corpus requires -Pv10.corpus=<path-to-normalized.jsonl>')
+		}
+	}
 }
 
 processResources {

@@ -38,7 +38,20 @@ final class ExportPolicy {
             WaypointerConfig config, List<WaypointGroup> selectedGroups) {
         boolean includeWaypointFlags = config.exportIncludeWaypointFlags()
                 || containsSubwaypoints(selectedGroups);
-        return WaypointCodec.Options.builder()
+        boolean allOff = !config.exportIncludeNames()
+                && !config.exportIncludeColors()
+                && !config.exportIncludeRadii()
+                && !includeWaypointFlags
+                && !config.exportIncludeGroupMeta()
+                && !config.exportIncludeZone()
+                && selectedGroups != null
+                && !selectedGroups.isEmpty()
+                && selectedGroups.stream().allMatch(group -> group != null
+                        && group.routeKind() == WaypointGroup.RouteKind.REGULAR);
+        WaypointCodec.Options.Builder builder = allOff
+                ? WaypointCodec.Options.BARE_COORDINATES.toBuilder()
+                : WaypointCodec.Options.builder();
+        return builder
                 .includeNames(config.exportIncludeNames())
                 .includeColors(config.exportIncludeColors())
                 .includeRadii(config.exportIncludeRadii())
@@ -50,6 +63,7 @@ final class ExportPolicy {
     static boolean showSubwaypointWarning(
             WaypointExportCodec.Target target, List<WaypointGroup> selectedGroups) {
         return target != WaypointExportCodec.Target.WAYPOINTER
+                && target != WaypointExportCodec.Target.CHUNKLOGGER
                 && containsSubwaypoints(selectedGroups);
     }
 

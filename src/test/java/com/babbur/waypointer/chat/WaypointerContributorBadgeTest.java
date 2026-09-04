@@ -3,6 +3,7 @@ package com.babbur.waypointer.chat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.TextColor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -13,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 
 class WaypointerContributorBadgeTest {
     private static final UUID BABBUR_ID = UUID.fromString("d0d70e3d-2475-4001-b27e-16b5118e5534");
+    private static final UUID ACIDANGELS_ID = UUID.fromString("83ccd327-6c5c-49df-a826-a59b4b2e384b");
     private static final UUID SOMEONE_ELSE_ID = UUID.fromString("68b3d8a2-0f62-48a5-a958-4fb0ab1899a2");
 
     @Test
@@ -29,6 +31,24 @@ class WaypointerContributorBadgeTest {
         assertEquals("[WP] Babbur: hi", replaced.getString());
         assertEquals("[338] SomeoneElse: hi", ignored.getString());
         assertEquals("[WP] [MVP++] Babbur: hi", ranked.getString());
+    }
+
+    @Test
+    void replacesAcidangelsContributorBadgeAcrossChatTabAndNametag() {
+        WaypointerConfig config = new WaypointerConfig();
+
+        Component chat = WaypointerContributorBadge.apply(
+                Component.literal("[338] acidangels: hi"), config);
+        Component tab = WaypointerContributorBadge.applyTabName(
+                Component.literal("[338] acidangels: $"), config);
+        Component nametag = WaypointerContributorBadge.applyPlayerName(
+                Component.literal("[338] acidangels"), "", ACIDANGELS_ID, config);
+
+        assertEquals("[WP] acidangels: hi", chat.getString());
+        assertEquals("[WP] acidangels", tab.getString());
+        assertEquals("[WP] acidangels", nametag.getString());
+        assertEquals(TextColor.fromRgb(0x850C5A),
+                tab.getSiblings().getFirst().getStyle().getColor());
     }
 
     @Test

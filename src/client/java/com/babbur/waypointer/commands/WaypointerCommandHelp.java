@@ -107,8 +107,8 @@ final class WaypointerCommandHelp {
                             new HelpRow(" group ...", "waypointer.command.help.group_alias", "group list"))),
             new HelpSection("sharing", "waypointer.command.help.section.sharing",
                     List.of(
-                            new HelpRow(" export [names|nonames]", "waypointer.command.help.export",
-                                    "export", "export names"),
+                            new HelpRow(" export [bare|names|nonames]", "waypointer.command.help.export",
+                                    "export", "export bare", "export names"),
                             new HelpRow(" import [payload]", "waypointer.command.help.import",
                                     "import", "import WP:..."),
                             new HelpRow(" importfile <path>", "waypointer.command.help.importfile",

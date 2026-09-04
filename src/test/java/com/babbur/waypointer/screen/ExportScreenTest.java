@@ -3,6 +3,7 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.codec.RouteLibraryMetadata;
 import com.babbur.waypointer.codec.WaypointExportCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
@@ -18,6 +19,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExportScreenTest {
+
+    @Test
+    void dungeonExportScreenUsesUniversalKind4Payload() {
+        WaypointGroup route = WaypointGroup.create("Crypt", "crypt-a");
+        route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        route.add(Waypoint.at(1, 70, 2));
+
+        String payload = DungeonRoomExportScreen.encodePayload(List.of(route));
+
+        assertTrue(payload.startsWith("WP:A") || payload.startsWith("WP:B"));
+        assertTrue(UniversalShareCodec.decode(payload)
+                instanceof UniversalShareCodec.DungeonRoutes);
+    }
 
     @Test
     void guiExportCapturesFoldersOnlyForMultiRouteNativeExports() {
@@ -234,10 +248,72 @@ class ExportScreenTest {
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         group.add(Waypoint.at(0, 64, 0));
 
-        assertTrue(ExportPolicy.optionsFromConfig(config, List.of(group)).build().includeZone);
-
-        config.setExportIncludeZone(false);
         assertFalse(ExportPolicy.optionsFromConfig(config, List.of(group)).build().includeZone);
+
+        config.setExportIncludeZone(true);
+        assertTrue(ExportPolicy.optionsFromConfig(config, List.of(group)).build().includeZone);
+    }
+
+    @Test
+    void freshConfigAllOffPolicySelectsKind2AndKind6AndTracksToggleHistory() {
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointGroup first = WaypointGroup.create("Discarded first", "hub");
+        first.add(Waypoint.at(1, 64, 2));
+        first.add(Waypoint.at(2, 64, 3));
+        WaypointGroup second = WaypointGroup.create("Discarded second", "hub");
+        second.add(Waypoint.at(4, 65, 6));
+        List<WaypointGroup> routes = List.of(first, second);
+        WaypointCodec.Options.Builder builder = ExportPolicy.optionsFromConfig(config, routes);
+
+        WaypointCodec.Options allOff = builder.build();
+        assertTrue(allOff.isBareCoordinateProjection());
+        String single = WaypointExportCodec.encode(
+                List.of(first), allOff, WaypointExportCodec.Target.WAYPOINTER,
+                RouteLibraryMetadata.empty());
+        String multi = WaypointExportCodec.encode(
+                routes, allOff, WaypointExportCodec.Target.WAYPOINTER,
+                RouteLibraryMetadata.empty());
+
+        assertTrue(List.of("V10_RICE", "V10_QUOTIENT", "V10_DELTA_DEFLATE")
+                .contains(WaypointCodec.debugDecode(single).groups().getFirst().coordMode()));
+        assertTrue(WaypointCodec.debugDecode(multi).groups().stream().allMatch(group ->
+                group.coordMode().startsWith("V10_BARE_PACK_")));
+
+        builder.includeNames(true);
+        assertFalse(builder.build().isBareCoordinateProjection());
+        builder.includeNames(false);
+        assertTrue(builder.build().isBareCoordinateProjection());
+        builder.label("named export");
+        assertFalse(builder.build().isBareCoordinateProjection());
+        builder.label("");
+        assertTrue(builder.build().isBareCoordinateProjection());
+    }
+
+    @Test
+    void freshConfigDungeonSelectionDoesNotRequestABareRoute() {
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointGroup dungeon = WaypointGroup.create("Crypt", "crypt-a");
+        dungeon.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        dungeon.add(Waypoint.at(1, 70, 2));
+
+        WaypointCodec.Options options = ExportPolicy.optionsFromConfig(
+                config, List.of(dungeon)).build();
+        String payload = WaypointExportCodec.encode(
+                List.of(dungeon), options, WaypointExportCodec.Target.WAYPOINTER,
+                RouteLibraryMetadata.empty());
+
+        assertFalse(options.isBareCoordinateProjection());
+        assertTrue(WaypointCodec.debugDecode(payload).groups().stream().noneMatch(group ->
+                group.coordMode().startsWith("V10_BARE")));
+        assertTrue(UniversalShareCodec.decode(payload)
+                instanceof UniversalShareCodec.Waypoints);
+
+        WaypointGroup regular = WaypointGroup.create("Regular", "hub");
+        regular.add(Waypoint.at(4, 65, 6));
+        assertFalse(ExportPolicy.optionsFromConfig(
+                config, List.of(regular, dungeon)).build().isBareCoordinateProjection());
+        assertFalse(ExportPolicy.optionsFromConfig(
+                config, List.of()).build().isBareCoordinateProjection());
     }
 
     @Test
@@ -284,6 +360,8 @@ class ExportScreenTest {
 
         assertTrue(ExportPolicy.optionsFromConfig(config, List.of(withSubwaypoint))
                 .build().includeWaypointFlags);
+        assertFalse(ExportPolicy.optionsFromConfig(config, List.of(withSubwaypoint))
+                .build().isBareCoordinateProjection());
         assertFalse(config.exportIncludeWaypointFlags());
     }
 
@@ -299,6 +377,8 @@ class ExportScreenTest {
 
         assertFalse(ExportPolicy.showSubwaypointWarning(
                 WaypointExportCodec.Target.WAYPOINTER, List.of(withSubwaypoint)));
+        assertFalse(ExportPolicy.showSubwaypointWarning(
+                WaypointExportCodec.Target.CHUNKLOGGER, List.of(withSubwaypoint)));
         assertFalse(ExportPolicy.showSubwaypointWarning(
                 WaypointExportCodec.Target.SKYHANNI, List.of(normal)));
         assertFalse(ExportPolicy.showSubwaypointWarning(

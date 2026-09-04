@@ -14,10 +14,6 @@ public final class RenderSubmission {
 
     private RenderSubmission() {}
 
-    static boolean requiredBindingsAvailable() {
-        return WorldOverlayCompat.requiredBindingsAvailable();
-    }
-
     public static boolean submit(LevelRenderContext context, PoseStack poseStack,
                                  RenderType renderType, Geometry geometry) {
         if (context == null || poseStack == null || renderType == null || geometry == null) {

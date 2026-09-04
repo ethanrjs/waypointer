@@ -177,7 +177,7 @@ public final class RoutePublishScreen extends Screen {
                 .build(font, formW, DESCRIPTION_H,
                         Component.translatable(
                                 "waypointer.screen.route_publish.field.description"));
-        descriptionBox.setCharacterLimit(DESCRIPTION_MAX * 2);
+        // The listener enforces the code-point limit; Minecraft counts UTF-16 units.
         descriptionBox.setValue(form.description());
         descriptionBox.setTooltip(Tooltip.create(Component.translatable(
                 "waypointer.screen.route_publish.field.description.tooltip")));

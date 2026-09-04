@@ -9,11 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RenderSubmissionTest {
 
     @Test
-    void compiledMinecraftTargetProvidesAWorldRenderBackend() {
-        assertTrue(RenderSubmission.requiredBindingsAvailable());
-    }
-
-    @Test
     void geometryContractInvokesTheSubmittedEmitter() {
         AtomicBoolean emitted = new AtomicBoolean();
         RenderSubmission.Geometry geometry = (vertices, pose) -> emitted.set(true);

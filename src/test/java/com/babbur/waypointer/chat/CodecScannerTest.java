@@ -1,12 +1,17 @@
 package com.babbur.waypointer.chat;
 
 import com.babbur.waypointer.codec.WaypointCodec;
+import com.babbur.waypointer.codec.AsciiStreamCodec;
+import com.babbur.waypointer.codec.UniversalShareCodec;
+import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Arrays;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.CRC32;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -17,6 +22,56 @@ import static org.junit.jupiter.api.Assertions.*;
  * positives OR negatives) make the feature useless, so we test edge cases hard.
  */
 class CodecScannerTest {
+
+    @Test
+    void recognizesUniversalV10DungeonKindBeforeApply() {
+        WaypointGroup dungeon = WaypointGroup.create("Crypt", "crypt-a");
+        dungeon.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        dungeon.add(new Waypoint(1, 70, 2, "Chest", 0xAA5500,
+                Waypoint.FLAG_DUNGEON_SECRET, 0.0));
+        String kindFour = UniversalShareCodec.encodeDungeon(List.of(dungeon));
+
+        CodecScanner.Match match = CodecScanner.scan("share " + kindFour).getFirst();
+
+        assertTrue(match.valid());
+        assertEquals(kindFour, match.text());
+        assertEquals(UniversalShareCodec.Type.DUNGEON, match.type());
+        assertInstanceOf(UniversalShareCodec.DungeonRoutes.class,
+                UniversalShareCodec.decode(match.text()));
+    }
+
+    @Test
+    void recognizesValidV10ConfigAndExistingV9RouteShares() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setShowTracer(false);
+        String kindThree = UniversalShareCodec.encodeConfig(config);
+        String v9 = sampleExport();
+
+        CodecScanner.Match configMatch = CodecScanner.scan(kindThree).getFirst();
+        assertTrue(configMatch.valid());
+        assertEquals(UniversalShareCodec.Type.CONFIG, configMatch.type());
+        assertInstanceOf(UniversalShareCodec.Configuration.class,
+                UniversalShareCodec.decode(configMatch.text()));
+
+        CodecScanner.Match routeMatch = CodecScanner.scan(v9).getFirst();
+        assertTrue(routeMatch.valid());
+        assertEquals(UniversalShareCodec.Type.WAYPOINTS, routeMatch.type());
+        assertInstanceOf(UniversalShareCodec.Waypoints.class,
+                UniversalShareCodec.decode(routeMatch.text()));
+    }
+
+    @Test
+    void surfacesCommittedButSemanticallyInvalidKindThreeAsInvalid() {
+        String malformed = committedExplicitDefaultConfig();
+        assertThrows(IllegalArgumentException.class, () -> UniversalShareCodec.decode(malformed));
+
+        List<CodecScanner.Match> matches = CodecScanner.scan(malformed);
+
+        assertEquals(1, matches.size());
+        assertEquals(malformed, matches.getFirst().text());
+        assertFalse(matches.getFirst().valid());
+        assertNull(matches.getFirst().type());
+    }
 
     @Test
     void detects_export_embedded_in_chat_line() {
@@ -229,5 +284,34 @@ class CodecScannerTest {
 
     private static String truncatedRealChatExport() {
         return "WP:12^)a&p|zWy@Ie3A~~MMKlKe'Zj]MZxf4}+H4U'P]yT%bJR:o{g_?i&4_&U>zNl6q%6$Ar=4=Juwb_=kgD!%'";
+    }
+
+    private static String committedExplicitDefaultConfig() {
+        // Header kind=3/version=10, tag 2 one-byte token, explicit default true.
+        byte[] semantic = {0x3A, 0x08, 0x01};
+        CRC32 crc = new CRC32();
+        crc.update(0);
+        crc.update(semantic);
+        long value = crc.getValue();
+        byte[] sealed = Arrays.copyOf(semantic, semantic.length + 4);
+        sealed[3] = (byte) (value >>> 24);
+        sealed[4] = (byte) (value >>> 16);
+        sealed[5] = (byte) (value >>> 8);
+        sealed[6] = (byte) value;
+        return "WP:A" + escapeContextual(AsciiStreamCodec.encode(sealed));
+    }
+
+    private static String escapeContextual(String body) {
+        StringBuilder escaped = new StringBuilder(body.length());
+        for (int index = 0; index < body.length(); index++) {
+            char current = body.charAt(index);
+            char following = index + 1 < body.length() ? body.charAt(index + 1) : '\0';
+            escaped.append(current);
+            if ((current == '<' && (following == '3' || following == '~'))
+                    || (current == 'o' && (following == '/' || following == '~'))) {
+                escaped.append('~');
+            }
+        }
+        return escaped.toString();
     }
 }

@@ -47,8 +47,11 @@ class RouteLibraryCodecTest {
                 metadata);
         WaypointImporter.ImportResult imported = WaypointImporter.importAny(encoded);
 
-        assertTrue(encoded.startsWith(RouteLibraryCodec.MAGIC));
-        assertTrue(encoded.startsWith(RouteLibraryCodec.MAGIC + "."));
+        assertTrue(encoded.startsWith(WaypointCodec.MAGIC),
+                "rich libraries share the universal WP: prefix");
+        assertEquals(10, WaypointCodec.debugDecode(encoded).version());
+        assertTrue(WaypointCodec.debugDecode(encoded).groups().getFirst()
+                .coordMode().startsWith("V10_LIBRARY_"));
         assertEquals("Library", imported.label());
         assertEquals(hiddenManualColors,
                 imported.groups().getFirst().manualColorSnapshot());
@@ -69,7 +72,7 @@ class RouteLibraryCodecTest {
     }
 
     @Test
-    void emptyMetadataLeavesRawWpV9AndThirdPartyPayloadsUnchanged() {
+    void emptyMetadataLeavesRawWpAndThirdPartyPayloadsUnchanged() {
         WaypointGroup group = group("route", "Route", 1);
         List<WaypointGroup> groups = List.of(group);
         String raw = WaypointCodec.encode(groups, WaypointCodec.Options.FULL_FIDELITY);
@@ -98,7 +101,7 @@ class RouteLibraryCodecTest {
 
     @Test
     void compactWrapperIsShorterAndLegacyWrappersStillDecode() {
-        String compact = metadataPayload();
+        String compact = legacyMetadataPayload();
         String body = compact.substring(RouteLibraryCodec.MAGIC.length());
         String json = RouteLibraryCodec.decodeBody(body);
         String legacy = RouteLibraryCodec.MAGIC
@@ -109,10 +112,20 @@ class RouteLibraryCodecTest {
                 "compact=" + compact.length() + " legacy=" + legacy.length());
         RouteLibraryCodec.Decoded compactDecoded = RouteLibraryCodec.decode(compact);
         RouteLibraryCodec.Decoded legacyDecoded = RouteLibraryCodec.decode(legacy);
+        JsonObject v9Root = JsonParser.parseString(json).getAsJsonObject();
+        v9Root.addProperty("payload",
+                WaypointCodec.encodeCatalog(compactDecoded.groups()));
+        String v9Wrapped = RouteLibraryCodec.MAGIC
+                + RouteLibraryCodec.encodeBody(v9Root.toString());
+        RouteLibraryCodec.Decoded v9Decoded = RouteLibraryCodec.decode(v9Wrapped);
         assertEquals(compactDecoded.label(), legacyDecoded.label());
         assertEquals(compactDecoded.metadata(), legacyDecoded.metadata());
         assertEquals(compactDecoded.groups().getFirst().waypoints(),
                 legacyDecoded.groups().getFirst().waypoints());
+        assertEquals(compactDecoded.label(), v9Decoded.label());
+        assertEquals(compactDecoded.metadata(), v9Decoded.metadata());
+        assertEquals(compactDecoded.groups().getFirst().waypoints(),
+                v9Decoded.groups().getFirst().waypoints());
     }
 
     @Test
@@ -183,15 +196,21 @@ class RouteLibraryCodecTest {
         String encoded = RouteLibraryCodec.encode(
                 List.of(group.exportSnapshot()),
                 WaypointCodec.Options.FULL_FIDELITY, metadata);
-        assertTrue(encoded.startsWith(RouteLibraryCodec.MAGIC));
+        assertTrue(encoded.startsWith(WaypointCodec.MAGIC));
+        assertEquals(10, WaypointCodec.debugDecode(encoded).version());
 
         WaypointGroup decoded = WaypointImporter.importAny(encoded)
                 .groups().getFirst();
         assertEquals(paint, decoded.paint());
         assertTrue(decoded.paintEnabled());
 
+        String legacy = RouteLibraryCodec.encodeLegacyWrapper(
+                List.of(group.exportSnapshot()),
+                WaypointCodec.Options.FULL_FIDELITY, metadata);
+        assertTrue(legacy.startsWith(RouteLibraryCodec.MAGIC));
+        assertEquals(paint, WaypointImporter.importAny(legacy).groups().getFirst().paint());
         assertThrows(IllegalArgumentException.class, () -> RouteLibraryCodec.decode(
-                mutate(encoded, root -> root.getAsJsonArray("paints").get(0)
+                mutate(legacy, root -> root.getAsJsonArray("paints").get(0)
                         .getAsJsonObject().addProperty("pixels", "AAAA"))));
 
         String stripped = RouteLibraryCodec.encode(
@@ -241,7 +260,7 @@ class RouteLibraryCodecTest {
 
     @Test
     void decoderRejectsWrongTypesBoundsCountsAndDuplicateOrdinals() {
-        String base = metadataPayload();
+        String base = legacyMetadataPayload();
 
         assertThrows(IllegalArgumentException.class, () -> RouteLibraryCodec.decode(
                 mutate(base, root -> {
@@ -263,7 +282,42 @@ class RouteLibraryCodecTest {
                 () -> RouteLibraryCodec.decode(base.replace("WPL:1:", "WPL:2:")));
     }
 
+    @Test
+    void universalAndLegacyLibraryShapesDecodeToTheSameContent() {
+        String universal = metadataPayload();
+        String legacy = legacyMetadataPayload();
+
+        assertTrue(universal.startsWith(WaypointCodec.MAGIC));
+        assertTrue(legacy.startsWith(RouteLibraryCodec.MAGIC));
+        RouteLibraryCodec.Decoded fromUniversal = RouteLibraryCodec.decode(universal);
+        RouteLibraryCodec.Decoded fromLegacy = RouteLibraryCodec.decode(legacy);
+        assertEquals(fromLegacy.metadata(), fromUniversal.metadata());
+        assertEquals(fromLegacy.label(), fromUniversal.label());
+        assertEquals(fromLegacy.groups().size(), fromUniversal.groups().size());
+        for (int i = 0; i < fromLegacy.groups().size(); i++) {
+            assertEquals(fromLegacy.groups().get(i).name(), fromUniversal.groups().get(i).name());
+            assertEquals(fromLegacy.groups().get(i).waypoints(),
+                    fromUniversal.groups().get(i).waypoints());
+        }
+        // A plain route share is not a library, even though it uses WP:.
+        assertThrows(IllegalArgumentException.class, () -> RouteLibraryCodec.decode(
+                WaypointCodec.encode(List.of(group("plain", "Plain", 2)))));
+    }
+
     private static String metadataPayload() {
+        return metadataPayload(RouteLibraryCodec::encode);
+    }
+
+    private static String legacyMetadataPayload() {
+        return metadataPayload(RouteLibraryCodec::encodeLegacyWrapper);
+    }
+
+    private interface LibraryEncoder {
+        String encode(List<WaypointGroup> groups, WaypointCodec.Options options,
+                      RouteLibraryMetadata metadata);
+    }
+
+    private static String metadataPayload(LibraryEncoder encoder) {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup group = group("route", "Route", 1);
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
@@ -276,7 +330,7 @@ class RouteLibraryCodecTest {
                 List.of(group.id(), companion.id()));
         List<WaypointGroup> live = List.of(group, companion);
         RouteLibraryMetadata metadata = RouteLibraryMetadata.capture(manager, live);
-        return RouteLibraryCodec.encode(
+        return encoder.encode(
                 live.stream().map(WaypointGroup::exportSnapshot).toList(),
                 WaypointCodec.Options.FULL_FIDELITY, metadata);
     }

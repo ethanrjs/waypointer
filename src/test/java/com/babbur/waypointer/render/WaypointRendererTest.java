@@ -79,6 +79,16 @@ class WaypointRendererTest {
     }
 
     @Test
+    void paintedRouteSuppressesRgbFillRegardlessOfGlobalStyle() {
+        WaypointGroup painted = groupWith(waypoint(0));
+        painted.setPaint(WaypointPaint.solid(0x123456));
+
+        assertFalse(WaypointRenderer.shouldEmitRgbFill(painted, null));
+        painted.setPaintEnabled(false);
+        assertTrue(WaypointRenderer.shouldEmitRgbFill(painted, null));
+    }
+
+    @Test
     void routeSegmentsWithAnyDepthCheckedEndpointUseDepthCheckedPass() {
         Waypoint normal = waypoint(0);
         Waypoint depthChecked = waypoint(Waypoint.FLAG_DEPTH_CHECKED);

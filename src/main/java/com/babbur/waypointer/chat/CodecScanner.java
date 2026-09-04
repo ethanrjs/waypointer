@@ -2,16 +2,18 @@ package com.babbur.waypointer.chat;
 
 import com.babbur.waypointer.codec.AsciiStreamCodec;
 import com.babbur.waypointer.codec.CjkBase16384;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
- * Finds {@link WaypointCodec} strings in chat. Matches start at a word or
- * punctuation boundary, stay within the chat limit, and trim a few trailing
- * punctuation characters when needed.
+ * Finds route, configuration, and dungeon share strings in chat. Matches start
+ * at a word or punctuation boundary, stay within the chat limit, and trim
+ * trailing punctuation when needed.
  */
 public final class CodecScanner {
 
@@ -22,19 +24,32 @@ public final class CodecScanner {
 
     private CodecScanner() {}
 
-    public record Match(int start, int end, String text, boolean valid) {
+    public record Match(int start, int end, String text, boolean valid,
+                        UniversalShareCodec.Type type) {
         public Match(int start, int end, String text) {
-            this(start, end, text, true);
+            this(start, end, text, true, UniversalShareCodec.Type.WAYPOINTS);
+        }
+
+        public Match(int start, int end, String text, boolean valid) {
+            this(start, end, text, valid,
+                    valid ? UniversalShareCodec.Type.WAYPOINTS : null);
         }
 
         public int length() { return end - start; }
     }
 
     public static List<Match> scan(String message) {
-        return scan(message, WaypointCodec::isValidCodec);
+        return scanClassified(message, CodecScanner::classifyShare);
     }
 
     static List<Match> scan(String message, Predicate<String> validator) {
+        return scanClassified(message, payload -> validator.test(payload)
+                ? UniversalShareCodec.Type.WAYPOINTS
+                : null);
+    }
+
+    private static List<Match> scanClassified(
+            String message, Function<String, UniversalShareCodec.Type> classifier) {
         if (message == null || message.isEmpty()) return List.of();
 
         List<Match> out = new ArrayList<>();
@@ -49,32 +64,42 @@ public final class CodecScanner {
                 bodyEnd++;
             }
             int greedyBodyEnd = bodyEnd;
-            boolean valid = bodyEnd - bodyStart >= MIN_BODY
-                    && validator.test(message.substring(i, bodyEnd));
-            if (!valid) {
+            UniversalShareCodec.Type type = bodyEnd - bodyStart >= MIN_BODY
+                    ? classifier.apply(message.substring(i, bodyEnd))
+                    : null;
+            if (type == null) {
                 for (int trims = 0;
                      trims < MAX_SUFFIX_TRIMS
                              && bodyEnd > bodyStart + MIN_BODY
                              && isClauseSuffixDelim(message.charAt(bodyEnd - 1));
                      trims++) {
                     bodyEnd--;
-                    valid = validator.test(message.substring(i, bodyEnd));
-                    if (valid) break;
+                    type = classifier.apply(message.substring(i, bodyEnd));
+                    if (type != null) break;
                 }
             }
-            if (!valid) {
+            if (type == null) {
                 // Surface broken codes too, so the user sees an import error.
                 bodyEnd = greedyBodyEnd;
             }
             int bodyLen = bodyEnd - bodyStart;
             if (bodyLen >= MIN_BODY) {
-                out.add(new Match(i, bodyEnd, message.substring(i, bodyEnd), valid));
+                out.add(new Match(i, bodyEnd, message.substring(i, bodyEnd),
+                        type != null, type));
                 i = bodyEnd;
             } else {
                 i += WaypointCodec.MAGIC.length();
             }
         }
         return out;
+    }
+
+    private static UniversalShareCodec.Type classifyShare(String payload) {
+        try {
+            return UniversalShareCodec.decode(payload).type();
+        } catch (RuntimeException invalid) {
+            return null;
+        }
     }
 
     private static boolean matchMagicAt(String s, int i) {

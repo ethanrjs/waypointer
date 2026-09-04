@@ -1,4 +1,4 @@
-# Waypointer API 1.9.2
+# Waypointer API 1.10.0
 
 Waypointer exposes a client-side Fabric API for reading routes, creating saved
 user routes, rendering session-only markers and overlays, importing and
@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    modImplementation "maven.modrinth:waypointer:1.9.2"
+    modImplementation "maven.modrinth:waypointer:1.10.0"
 }
 ```
 
@@ -34,7 +34,7 @@ directory instead:
 
 ```groovy
 dependencies {
-    modImplementation files("libs/waypointer-1.9.2-mc26.1.2.jar")
+    modImplementation files("libs/waypointer-1.10.0-mc26.1.2.jar")
 }
 ```
 
@@ -184,7 +184,7 @@ WaypointerHandle burrow = waypointer.showTempWaypoint(
                 .color(0xFFD166)
                 .build());
 
-// Later; closing twice is also safe.
+// Safe to call more than once.
 burrow.close();
 ```
 
@@ -346,8 +346,8 @@ try {
 ```
 
 Supported input families are Waypointer `WP:` and `WPL:` payloads, Skyblocker,
-Skytils, SkyHanni/Coleweight, Soopy V1, Firmament, Odin, and recognized JSON
-shapes.
+Skytils, SkyHanni/Coleweight, ChunkLogger RouteSkipper, Soopy V1, Firmament,
+Odin, and recognized JSON shapes.
 `ImportSummary.source()` returns the API-owned `ImportSource` enum.
 
 Malformed, unsupported, or oversized input throws `IllegalArgumentException`
@@ -369,10 +369,13 @@ String shareText = waypointer.exportRoutes(
 Exports are read-only. Ids are processed in supplied order; missing and `null`
 ids are skipped. `exportRoutes(ids)` uses full-fidelity Waypointer defaults.
 
-Supported targets are Waypointer, Skyblocker, Skytils, and SkyHanni.
+Supported targets are Waypointer, Skyblocker, Skytils, SkyHanni, and
+ChunkLogger RouteSkipper.
 Third-party formats cannot represent every Waypointer field, so use
 `WAYPOINTER` for lossless round trips. When selected routes have route-library
-metadata, the Waypointer target uses a `WPL:` wrapper to preserve folder
+metadata, the Waypointer target writes a V10 route-library `WP:` share
+(the legacy `WPL:` wrapper is only used when a library exceeds the V10 frame
+profile, and it still imports) to preserve folder
 membership, folder colors, and hidden manual colors.
 
 ## Change Notifications
@@ -420,7 +423,7 @@ non-finite values. Routes and overlays default to the `unknown` zone and
   against the next major Waypointer API.
 - Snapshot types are API outputs; do not implement `WaypointerApi` or construct
   `DefaultWaypointerApi` yourself.
-- Existing flag bits will not be renumbered within the 1.8.x API line.
+- Existing flag bits will not be renumbered within the 1.x API line.
 - Add a `default` branch when switching over API enums so a future value does
   not crash your integration.
 - Treat group ids and waypoint references as opaque runtime values.

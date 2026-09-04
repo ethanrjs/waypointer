@@ -136,9 +136,12 @@ class WaypointerCommandTreeTest {
                 Map.entry("wp clear confirm", "confirmed clear command"),
                 Map.entry("wp export names", "named route export"),
                 Map.entry("wp export nonames", "anonymous route export"),
+                Map.entry("wp export bare", "coordinate-only route export"),
                 Map.entry("wp import WP:abc", "inline import payload"),
                 Map.entry("wp importfile C:\\routes\\waypoints.json", "file import payload"),
                 Map.entry("wp importchat A1b2", "cached chat import"),
+                Map.entry("wp importchat config A1b2", "typed cached config import"),
+                Map.entry("wp importchat dungeon A1b2", "typed cached dungeon import"),
                 Map.entry("wp edit mode", "edit mode nested alias"),
                 Map.entry("wp area 0 current", "short group area attachment"),
                 Map.entry("wp group create Dungeon Route", "group creation"),
@@ -202,11 +205,12 @@ class WaypointerCommandTreeTest {
     void cliExportDefaultOptionsMirrorConfigDefaultsWithoutImplicitLabel() throws Exception {
         WaypointCodec.Options options = invokeExportOptionsFromConfig(new WaypointerConfig());
 
-        assertTrue(options.includeNames);
-        assertTrue(options.includeColors);
-        assertTrue(options.includeRadii);
-        assertTrue(options.includeWaypointFlags);
-        assertTrue(options.includeGroupMeta);
+        assertFalse(options.includeNames);
+        assertFalse(options.includeColors);
+        assertFalse(options.includeRadii);
+        assertFalse(options.includeWaypointFlags);
+        assertFalse(options.includeGroupMeta);
+        assertFalse(options.includeZone);
         assertEquals("", options.label);
     }
 

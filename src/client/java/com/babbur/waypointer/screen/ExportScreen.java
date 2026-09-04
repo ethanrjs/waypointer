@@ -630,7 +630,7 @@ public final class ExportScreen extends Screen {
         RouteLibraryMetadata captured = RouteLibraryMetadata.capture(manager, selected);
         // Folder membership is the sender's local organization. Sharing one
         // route must not recreate it on the recipient's side, and dropping it
-        // keeps single-route codes out of the WPL wrapper (issue #114). The
+        // keeps single-route codes out of the route-library share kind (issue #114). The
         // public API keeps full metadata; this trim is a share-screen choice.
         if (selected.size() > 1) return captured;
         return new RouteLibraryMetadata(
@@ -1316,6 +1316,7 @@ public final class ExportScreen extends Screen {
                 case SKYBLOCKER -> "waypointer.screen.export.target.skyblocker.tooltip";
                 case SKYTILS -> "waypointer.screen.export.target.skytils.tooltip";
                 case SKYHANNI -> "waypointer.screen.export.target.skyhanni.tooltip";
+                case CHUNKLOGGER -> "waypointer.screen.export.target.chunklogger.tooltip";
             };
         }
 

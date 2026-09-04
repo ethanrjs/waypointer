@@ -1,8 +1,8 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.compat.MinecraftCompat;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.core.WaypointGroup;
-import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -53,9 +53,13 @@ final class DungeonRoomExportScreen extends Screen {
                 new DungeonRoomExportScreen(parent, roomCount, waypointCount);
         MinecraftCompat.setScreen(Minecraft.getInstance(), screen);
         List<WaypointGroup> encodeInput = List.copyOf(routes);
-        if (!CodecWorker.run(() -> DungeonRoomShareCodec.encode(encodeInput), screen::applyPayload)) {
+        if (!CodecWorker.run(() -> encodePayload(encodeInput), screen::applyPayload)) {
             screen.failEncoding(Component.translatable("waypointer.codec.busy").getString());
         }
+    }
+
+    static String encodePayload(List<WaypointGroup> routes) {
+        return UniversalShareCodec.encodeDungeon(routes);
     }
 
     private void applyPayload(String encoded) {

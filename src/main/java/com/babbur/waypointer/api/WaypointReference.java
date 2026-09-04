@@ -9,10 +9,6 @@ import java.util.Objects;
  * only while the route still contains the expected snapshot at the captured
  * index, so user edits and reorders fail safely instead of changing the wrong
  * waypoint.
- *
- * <p>ponytail: references are session-only optimistic guards, not persisted
- * identity. Add UUIDs to the core model, save migration, and every codec before
- * offering references that survive edits or restarts.
  */
 public record WaypointReference(String groupId, int index, WaypointSnapshot expected) {
 

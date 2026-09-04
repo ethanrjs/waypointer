@@ -4,6 +4,7 @@ import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.WaypointerClient;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.config.WaypointerConfigCodec;
 import com.babbur.waypointer.debug.ConfigChangeHistory;
@@ -936,7 +937,7 @@ public final class SettingsScreen extends Screen {
 
     private void copyConfigCode(Button b) {
         try {
-            String code = WaypointerConfigCodec.encode(config);
+            String code = UniversalShareCodec.encodeConfig(config);
             minecraft.keyboardHandler.setClipboard(code);
             setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                     "waypointer.screen.settings.config.copied"), GuiTokens.SUCCESS));
@@ -962,45 +963,37 @@ public final class SettingsScreen extends Screen {
         }
 
         try {
-            WaypointerConfig decoded = WaypointerConfigCodec.decode(text);
-            int changedSettings = SettingsCatalog.countChangedSettings(config, decoded);
-            showImportConfigConfirmation(decoded, changedSettings);
+            UniversalShareCodec.Decoded share = UniversalShareCodec.decode(text);
+            if (!(share instanceof UniversalShareCodec.Configuration configuration)) {
+                throw new IllegalArgumentException("clipboard share is not a configuration");
+            }
+            WaypointerConfig decoded = configuration.config();
+            showImportConfigConfirmation(decoded);
         } catch (RuntimeException e) {
             setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                     "waypointer.screen.settings.config.invalid"), GuiTokens.DANGER));
         }
     }
 
-    private void showImportConfigConfirmation(WaypointerConfig decoded, int changedSettings) {
+    private void showImportConfigConfirmation(WaypointerConfig decoded) {
         if (decoded == null) {
             setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                     "waypointer.screen.settings.config.invalid"), GuiTokens.DANGER));
             return;
         }
 
-        Component title = Component.translatable(
-                "waypointer.screen.settings.config.confirm.title");
-        Component message = Component.translatable(changedSettings == 1
-                ? "waypointer.screen.settings.config.confirm.one"
-                : "waypointer.screen.settings.config.confirm.many", changedSettings);
-        ConfirmScreen confirmScreen = new ConfirmScreen(
-                confirmed -> {
-                    if (confirmed) {
-                        applyConfirmedConfigImport(decoded, changedSettings);
+        ConfigImportConfirmation.open(this, config, decoded, outcome -> {
+                    if (outcome.confirmed()) {
+                        applyConfirmedConfigImport(outcome.changedSettings());
                     } else {
                         setConfigCodeStatus(GuiTokens.colored(Component.translatable(
                                 "waypointer.screen.settings.config.cancelled"),
                                 GuiTokens.TEXT_DIM));
                     }
-                    MinecraftCompat.setScreen(minecraft, this);
-                }, title, message,
-                Component.translatable("waypointer.screen.settings.config.import_settings"),
-                Component.translatable("gui.cancel"));
-        MinecraftCompat.setScreen(minecraft, confirmScreen);
+                });
     }
 
-    private void applyConfirmedConfigImport(WaypointerConfig decoded, int changedSettings) {
-        config.replaceWith(decoded);
+    private void applyConfirmedConfigImport(int changedSettings) {
         ConfigChangeHistory.recordBulk("Imported config code (" + changedSettings + " changed)");
         afterBulkConfigChange();
         setConfigCodeStatus(GuiTokens.colored(Component.translatable(changedSettings == 1
@@ -1098,7 +1091,8 @@ public final class SettingsScreen extends Screen {
         if (PerfStressTestController.running()) {
             hideWidgetsDuringPerformanceTest();
             String status = font.plainSubstrByWidth(
-                    PerfStressTestController.statusLine(), Math.max(0, width - PAD_OUTER * 2));
+                    PerfStressTestController.statusLine(),
+                    Math.max(0, width - PAD_OUTER * 2));
             String hint = font.plainSubstrByWidth(Component.translatable(
                     "waypointer.screen.settings.perf.restore_hint").getString(),
                     Math.max(0, width - PAD_OUTER * 2));
