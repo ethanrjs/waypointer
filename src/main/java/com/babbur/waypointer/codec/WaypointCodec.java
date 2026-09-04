@@ -179,7 +179,8 @@ public final class WaypointCodec {
         FIT_COMPACT(3),
         VECTOR_AXIS_SEPARATED(4),
         DELTA_FIT_AXIS_SEPARATED(5),
-        RANGE_DELTA(6);
+        RANGE_DELTA(6),
+        ENTROPY(7);
 
         final int wireValue;
 
@@ -1120,7 +1121,8 @@ public final class WaypointCodec {
             byte[] v9Shape = semantic.clone();
             v9Shape[0] = (byte) ((v9Shape[0] & 0xF0) | WIRE_VERSION);
             DebugCapture capture = new DebugCapture();
-            List<WaypointGroup> groups = readBody(v9Shape, capture, null, WIRE_VERSION, false);
+            List<WaypointGroup> groups = readBody(
+                    v9Shape, capture, null, WIRE_VERSION, false, true);
             long elapsed = System.nanoTime() - startNanos;
             DecodeDebug shape = capture.build(
                     input, payload,
@@ -1384,7 +1386,10 @@ public final class WaypointCodec {
         }
         byte[] v9Shape = semantic.clone();
         v9Shape[0] = (byte) ((header & ~HEADER_VERSION_MASK) | WIRE_VERSION);
-        return decodeBody(v9Shape, WIRE_VERSION, false);
+        DecodedHeader decodedHeader = new DecodedHeader();
+        return new Decoded(
+                readBody(v9Shape, null, decodedHeader, WIRE_VERSION, false, true),
+                decodedHeader.label);
     }
 
     private static boolean shouldUseAnonymousSingleGroup(List<WaypointGroup> groups, Options opts) {
@@ -1776,7 +1781,8 @@ public final class WaypointCodec {
                 | ((wire & 0b100) != 0 ? GROUP_FLAG_COORD_MODE_EXTENDED : 0);
     }
 
-    private static CoordMode decodeCoordMode(int groupFlags, int expectedVersion) {
+    private static CoordMode decodeCoordMode(
+            int groupFlags, int expectedVersion, boolean allowV10Entropy) {
         int wire = (groupFlags & GROUP_FLAG_COORD_MODE_MASK) >>> GROUP_FLAG_COORD_MODE_SHIFT;
         if (expectedVersion >= LEGACY_V5_WIRE_VERSION && (groupFlags & GROUP_FLAG_COORD_MODE_EXTENDED) != 0) {
             wire |= 0b100;
@@ -1786,6 +1792,9 @@ public final class WaypointCodec {
         }
         if (expectedVersion < RANGE_DELTA_MIN_VERSION && wire > CoordMode.DELTA_FIT_AXIS_SEPARATED.wireValue) {
             throw new IllegalArgumentException("coord mode " + wire + " is not available before v6");
+        }
+        if (wire == CoordMode.ENTROPY.wireValue && !allowV10Entropy) {
+            throw new IllegalArgumentException("coord mode 7 is reserved before v10");
         }
         return CoordMode.fromWire(wire);
     }
@@ -1872,6 +1881,15 @@ public final class WaypointCodec {
                 byte[] rd = allowRangeDelta && canUseRangeDelta(g.waypoints())
                         ? encodeRangeDelta(g.waypoints(), pool, opts, bodyless, wireVersion)
                         : null;
+                boolean allowEntropy = (bodyPrefix[0] & HEADER_VERSION_MASK) == V10_WIRE_VERSION;
+                byte[] entropyRice = allowEntropy
+                        ? encodeEntropy(g.waypoints(), pool, opts, bodyless, wireVersion, false)
+                        : null;
+                byte[] entropyQuotient = allowEntropy
+                        && g.size() > 1
+                        && g.size() <= V10BareEntropyCodec.MAX_QUOTIENT_WAYPOINTS
+                        ? encodeEntropy(g.waypoints(), pool, opts, bodyless, wireVersion, true)
+                        : null;
 
                 // Rank by final text size, not raw bytes. Raw-byte size mis-ranks
                 // candidates whose contents compress differently, and the v3
@@ -1905,6 +1923,16 @@ public final class WaypointCodec {
                                 baseGroupFlags, customRadius, wireVersion, opts,
                                 extendedCoordModes)
                         : Integer.MAX_VALUE;
+                int entropyRiceScore = entropyRice != null
+                        ? encodedGroupScore(bodyPrefix, g, pool, CoordMode.ENTROPY, entropyRice,
+                                baseGroupFlags, customRadius, wireVersion, opts,
+                                extendedCoordModes)
+                        : Integer.MAX_VALUE;
+                int entropyQuotientScore = entropyQuotient != null
+                        ? encodedGroupScore(bodyPrefix, g, pool, CoordMode.ENTROPY, entropyQuotient,
+                                baseGroupFlags, customRadius, wireVersion, opts,
+                                extendedCoordModes)
+                        : Integer.MAX_VALUE;
 
                 CoordPicked best = new CoordPicked(CoordMode.VECTOR, v);
                 int bestScore = vScore;
@@ -1930,6 +1958,14 @@ public final class WaypointCodec {
                 }
                 if (rdScore < bestScore) {
                     best = new CoordPicked(CoordMode.RANGE_DELTA, rd);
+                    bestScore = rdScore;
+                }
+                if (entropyRiceScore < bestScore) {
+                    best = new CoordPicked(CoordMode.ENTROPY, entropyRice);
+                    bestScore = entropyRiceScore;
+                }
+                if (entropyQuotientScore < bestScore) {
+                    best = new CoordPicked(CoordMode.ENTROPY, entropyQuotient);
                 }
                 return best;
             }
@@ -2208,6 +2244,33 @@ public final class WaypointCodec {
 
         if (!bodyless) {
             for (Waypoint w : pts) writeWaypointBody(out, w, pool, opts, wireVersion);
+        }
+        out.flush();
+        return scratch.toByteArray();
+    }
+
+    private static byte[] encodeEntropy(List<Waypoint> pts, StringPool pool, Options opts,
+                                        boolean bodyless, int wireVersion, boolean quotient)
+            throws IOException {
+        int[][] coordinates = new int[pts.size()][3];
+        for (int index = 0; index < pts.size(); index++) {
+            Waypoint waypoint = pts.get(index);
+            coordinates[index][0] = waypoint.x();
+            coordinates[index][1] = waypoint.y();
+            coordinates[index][2] = waypoint.z();
+        }
+        byte[] semantic = quotient
+                ? V10BareEntropyCodec.encodeQuotient(coordinates)
+                : V10BareRouteCodec.encodeRiceSemantic(coordinates);
+        byte[] coordinateBody = Arrays.copyOfRange(semantic, 1, semantic.length);
+        ByteArrayOutputStream scratch = new ByteArrayOutputStream();
+        DataOutputStream out = new DataOutputStream(scratch);
+        writeVarint(out, coordinateBody.length);
+        out.write(coordinateBody);
+        if (!bodyless) {
+            for (Waypoint waypoint : pts) {
+                writeWaypointBody(out, waypoint, pool, opts, wireVersion);
+            }
         }
         out.flush();
         return scratch.toByteArray();
@@ -2510,6 +2573,13 @@ public final class WaypointCodec {
     private static List<WaypointGroup> readBody(byte[] bytes, DebugCapture cap, DecodedHeader headerOut,
                                                 int expectedVersion, boolean legacyV2)
             throws IOException {
+        return readBody(bytes, cap, headerOut, expectedVersion, legacyV2, false);
+    }
+
+    private static List<WaypointGroup> readBody(byte[] bytes, DebugCapture cap, DecodedHeader headerOut,
+                                                int expectedVersion, boolean legacyV2,
+                                                boolean allowV10Entropy)
+            throws IOException {
         TrackedByteStream bais = new TrackedByteStream(bytes);
         DataInputStream in = new DataInputStream(bais);
         // Header byte: version in the low nibble, flags in the high nibble.
@@ -2585,7 +2655,7 @@ public final class WaypointCodec {
         for (int gi = 0; gi < groupCount; gi++) {
             WaypointGroup group = legacyV2
                     ? readLegacyV2Group(in, bais, pool, cap, gi, expectedVersion)
-                    : readGroup(in, bais, pool, cap, gi, expectedVersion);
+                    : readGroup(in, bais, pool, cap, gi, expectedVersion, allowV10Entropy);
             totalWaypoints = Math.addExact(totalWaypoints, group.size());
             if (totalWaypoints > MAX_WIRE_WAYPOINTS_TOTAL) {
                 throw new IOException("total waypoint count out of range: " + totalWaypoints);
@@ -2628,15 +2698,17 @@ public final class WaypointCodec {
     }
 
     private static WaypointGroup readGroup(DataInputStream in, TrackedByteStream bais, List<String> pool,
-                                           DebugCapture cap, int groupIndex, int expectedVersion)
+                                           DebugCapture cap, int groupIndex, int expectedVersion,
+                                           boolean allowV10Entropy)
             throws IOException {
-        return readGroupRecord(in, bais, pool, cap, groupIndex, false, expectedVersion);
+        return readGroupRecord(in, bais, pool, cap, groupIndex, false, expectedVersion,
+                allowV10Entropy);
     }
 
     private static WaypointGroup readLegacyV2Group(DataInputStream in, TrackedByteStream bais, List<String> pool,
                                                   DebugCapture cap, int groupIndex, int expectedVersion)
             throws IOException {
-        return readGroupRecord(in, bais, pool, cap, groupIndex, true, expectedVersion);
+        return readGroupRecord(in, bais, pool, cap, groupIndex, true, expectedVersion, false);
     }
 
     private static WaypointGroup readAnonymousGroupRecord(DataInputStream in, TrackedByteStream bais,
@@ -2656,7 +2728,7 @@ public final class WaypointCodec {
         boolean autoGrad = (groupFlags & GROUP_FLAG_GRAD_AUTO) != 0;
         boolean sequence = (groupFlags & GROUP_FLAG_LOAD_SEQUENCE) != 0;
         boolean customRadius = (groupFlags & GROUP_FLAG_CUSTOM_RADIUS) != 0;
-        CoordMode coordMode = decodeCoordMode(groupFlags, expectedVersion);
+        CoordMode coordMode = decodeCoordMode(groupFlags, expectedVersion, false);
 
         double radius = customRadius
                 ? readDefaultRadius(in, expectedVersion)
@@ -2687,7 +2759,7 @@ public final class WaypointCodec {
         }
 
         int coordStart = bais.position();
-        int[][] coords = readCoords(in, pointCount, coordMode, expectedVersion);
+        int[][] coords = readCoords(in, pointCount, coordMode, expectedVersion, false);
         int coordEnd = bais.position();
         if (gCap != null) gCap.coordBlockBytes = coordEnd - coordStart;
 
@@ -2711,7 +2783,7 @@ public final class WaypointCodec {
 
     private static WaypointGroup readGroupRecord(DataInputStream in, TrackedByteStream bais, List<String> pool,
                                                  DebugCapture cap, int groupIndex, boolean legacyV2,
-                                                 int expectedVersion)
+                                                 int expectedVersion, boolean allowV10Entropy)
             throws IOException {
         String encodedName = poolGet(pool, readVarint(in));
         String name = expectedVersion == WIRE_VERSION
@@ -2728,7 +2800,7 @@ public final class WaypointCodec {
         boolean customRadius = (groupFlags & GROUP_FLAG_CUSTOM_RADIUS) != 0;
         boolean persistentMeta = expectedVersion == WIRE_VERSION
                 && (groupFlags & GROUP_FLAG_V9_PERSISTENT_META) != 0;
-        CoordMode coordMode  = decodeCoordMode(groupFlags, expectedVersion);
+        CoordMode coordMode  = decodeCoordMode(groupFlags, expectedVersion, allowV10Entropy);
 
         WaypointGroup.GradientMode gradientMode = autoGrad
                 ? WaypointGroup.GradientMode.AUTO
@@ -2794,7 +2866,8 @@ public final class WaypointCodec {
         }
 
         int coordStart = bais.position();
-        int[][] coords = readCoords(in, pointCount, coordMode, expectedVersion);
+        int[][] coords = readCoords(
+                in, pointCount, coordMode, expectedVersion, allowV10Entropy);
         int coordEnd = bais.position();
         if (gCap != null) gCap.coordBlockBytes = coordEnd - coordStart;
 
@@ -2865,7 +2938,8 @@ public final class WaypointCodec {
     }
 
     /** Read every waypoint's (x,y,z) in order according to the group's coord mode. */
-    private static int[][] readCoords(DataInputStream in, int count, CoordMode mode, int wireVersion)
+    private static int[][] readCoords(DataInputStream in, int count, CoordMode mode, int wireVersion,
+                                      boolean allowV10Entropy)
             throws IOException {
         if (count < 0 || count > MAX_WIRE_WAYPOINTS_PER_GROUP) {
             throw new IOException("waypoint count out of range: " + count);
@@ -2962,6 +3036,20 @@ public final class WaypointCodec {
                 bits.alignToByteBoundary(strictV9Coordinates);
             }
             case RANGE_DELTA -> readRangeDeltaCoords(in, out, count, strictV9Coordinates);
+            case ENTROPY -> {
+                if (!allowV10Entropy) throw new IOException("coord mode 7 is reserved before v10");
+                int bodyLength = readVarint(in);
+                if (bodyLength < 1 || bodyLength > in.available()) {
+                    throw new IOException("v10 entropy coordinate body length is outside group bounds");
+                }
+                byte[] body = in.readNBytes(bodyLength);
+                int[][] decoded = V10BareRouteCodec.decodeCoordinateBody(
+                        body, V10Transport.MODE_DIRECT);
+                if (decoded.length != count) {
+                    throw new IOException("v10 entropy coordinate count mismatch");
+                }
+                out = decoded;
+            }
         }
         return out;
     }
