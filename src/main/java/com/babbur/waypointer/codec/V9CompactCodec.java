@@ -169,6 +169,45 @@ final class V9CompactCodec {
         return bytes.toByteArray();
     }
 
+    static byte[] encodeWaypointPayload(WaypointGroup group) throws IOException {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        DataOutputStream output = new DataOutputStream(bytes);
+        writeUnsignedVarint(output, group.size());
+        writeNameStream(output, group.waypoints().stream().map(Waypoint::name).toList());
+        writeColorStream(output, group.waypoints());
+        writeRangeCoordinates(output, group.waypoints());
+        output.flush();
+        return bytes.toByteArray();
+    }
+
+    static WaypointGroup decodeWaypointPayload(
+            DataInputStream input, String zoneId, String groupName) throws IOException {
+        if (!isCanonicalDisplayName(groupName)) {
+            throw new IOException("compact group name is not canonical");
+        }
+        int count = readUnsignedVarint(input);
+        if (count < 0 || count > MAX_WAYPOINTS) {
+            throw new IOException("compact waypoint count out of range: " + count);
+        }
+        String[] names = readNameStream(input, count);
+        int[] colors = readColorStream(input, count);
+        int[][] coordinates = readRangeCoordinates(input, count);
+        WaypointGroup group = WaypointGroup.create(groupName, zoneId);
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        List<Waypoint> waypoints = new ArrayList<>(count);
+        for (int index = 0; index < count; index++) {
+            if (!isCanonicalDisplayName(names[index])) {
+                throw new IOException("compact waypoint name is not canonical");
+            }
+            waypoints.add(new Waypoint(
+                    coordinates[index][0], coordinates[index][1], coordinates[index][2],
+                    names[index], colors[index], 0, 0.0));
+        }
+        group.addAll(waypoints);
+        return group;
+    }
+
     static WaypointGroup decodePayload(DataInputStream input) throws IOException {
         String zoneId = readZone(input);
         String groupName = readString(input);
