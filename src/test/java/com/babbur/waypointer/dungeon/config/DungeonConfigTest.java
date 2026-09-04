@@ -35,6 +35,48 @@ class DungeonConfigTest {
     }
 
     @Test
+    void corruptConfigIsQuarantinedBeforeDefaultsCanBeSaved(@TempDir Path dir)
+            throws IOException {
+        Path file = dir.resolve("dungeon.json");
+        String corrupt = "{ definitely not valid JSON";
+        Files.writeString(file, corrupt);
+
+        DungeonConfig config = DungeonConfig.load(file);
+
+        Path quarantine = dir.resolve("dungeon.json.invalid");
+        assertFalse(Files.exists(file));
+        assertEquals(corrupt, Files.readString(quarantine));
+
+        config.setShowDungeonTracers(true);
+        config.flush();
+
+        assertTrue(Files.exists(file));
+        assertTrue(DungeonConfig.load(file).showDungeonTracers());
+        assertEquals(corrupt, Files.readString(quarantine));
+    }
+
+    @Test
+    void nullConfigIsQuarantinedBeforeDefaultsCanBeSaved(@TempDir Path dir)
+            throws IOException {
+        Path file = dir.resolve("dungeon.json");
+        String corrupt = "null";
+        Files.writeString(file, corrupt);
+
+        DungeonConfig config = DungeonConfig.load(file);
+
+        Path quarantine = dir.resolve("dungeon.json.invalid");
+        assertFalse(Files.exists(file));
+        assertEquals(corrupt, Files.readString(quarantine));
+
+        config.setShowDungeonTracers(true);
+        config.flush();
+
+        assertTrue(Files.exists(file));
+        assertTrue(DungeonConfig.load(file).showDungeonTracers());
+        assertEquals(corrupt, Files.readString(quarantine));
+    }
+
+    @Test
     void defaultsEnableRoomDetectionWithoutDebugNoise() {
         DungeonConfig config = new DungeonConfig();
 

@@ -72,6 +72,7 @@ public final class DungeonConfig {
     private transient AsyncSaver saver;
     private transient final List<Runnable> enabledListeners = new ArrayList<>();
     private transient final List<Runnable> changeListeners = new ArrayList<>();
+    private transient IOException writeBlockCause;
 
     public static DungeonConfig load() {
         Path dir = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
@@ -80,19 +81,27 @@ public final class DungeonConfig {
 
     static DungeonConfig load(Path file) {
         DungeonConfig cfg;
+        IOException writeBlockCause = null;
         try {
             if (Files.exists(file)) {
                 String raw = Files.readString(file);
+                if (raw.isBlank()) {
+                    throw new IllegalArgumentException("dungeon config JSON is empty");
+                }
                 cfg = GSON.fromJson(raw, DungeonConfig.class);
-                if (cfg == null) cfg = new DungeonConfig();
+                if (cfg == null) {
+                    throw new IllegalArgumentException("dungeon config JSON is null");
+                }
             } else {
                 cfg = new DungeonConfig();
             }
         } catch (Exception e) {
             Waypointer.LOGGER.error("Failed to read dungeon config, using defaults", e);
             cfg = new DungeonConfig();
+            writeBlockCause = quarantineInvalidFile(file, e);
         }
         cfg.file = file;
+        cfg.writeBlockCause = writeBlockCause;
         cfg.saver = new AsyncSaver("dungeon-config", cfg::writeToDisk, SAVE_DEBOUNCE_MS);
         return cfg;
     }
@@ -123,6 +132,16 @@ public final class DungeonConfig {
 
     private void writeToDisk() {
         if (file == null) return;
+        if (writeBlockCause != null) {
+            IOException retryFailure = quarantineInvalidFile(file, writeBlockCause);
+            if (retryFailure != null) {
+                writeBlockCause = retryFailure;
+                throw new UncheckedIOException(
+                        "Cannot save dungeon config until the invalid file is preserved: " + file,
+                        retryFailure);
+            }
+            writeBlockCause = null;
+        }
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
@@ -135,6 +154,26 @@ public final class DungeonConfig {
             }
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to write dungeon config to " + file, e);
+        }
+    }
+
+    private static IOException quarantineInvalidFile(Path file, Exception cause) {
+        if (file == null || Files.notExists(file)) return null;
+        Path quarantine = file.resolveSibling(file.getFileName() + ".invalid");
+        int suffix = 1;
+        while (Files.exists(quarantine)) {
+            quarantine = file.resolveSibling(file.getFileName() + ".invalid." + suffix++);
+        }
+        try {
+            Files.move(file, quarantine);
+            Waypointer.LOGGER.error("Invalid dungeon config moved from {} to {}", file, quarantine, cause);
+            return null;
+        } catch (IOException quarantineFailure) {
+            if (Files.notExists(file)) return null;
+            Waypointer.LOGGER.error(
+                    "Invalid dungeon config at {} could not be preserved; saves are blocked to prevent data loss",
+                    file, quarantineFailure);
+            return quarantineFailure;
         }
     }
 
