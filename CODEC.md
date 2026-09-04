@@ -1039,7 +1039,7 @@ For one eligible route, the writer compares kind 0 with eligible kind 1 and kind
 
 ## 10A. Kind 1: compact single route
 
-Kind 1 carries exactly one route and an empty share label. It has two subtypes: 0 is full fidelity and 1 is the exact `NO_NAMES` projection. Other option combinations MUST use another kind. The body is canonical: after bounded decode, the decoder MUST re-encode the decoded projection and require byte-for-byte semantic equality.
+Kind 1 carries exactly one route and an empty share label. It has two subtypes: 0 is full fidelity and 1 is the exact `NO_NAMES` projection. Subtype 0 can also carry the equivalent names/colors/zone projection under the strict eligibility rules in section 10A.4. Other option combinations MUST use another kind. The body is canonical: after bounded decode, the decoder MUST re-encode the decoded projection and require byte-for-byte semantic equality.
 
 ### 10A.1 Control and common fields
 
@@ -1126,7 +1126,7 @@ The writer scores Rice and, for 2-1,024 points, quotient as complete direct/DEFL
 
 ### 10A.4 Eligibility and selection
 
-Kind 1 requires one route, an empty label, a valid zone, at most 20,000 points, valid display names, representable compact deltas, and no temporary waypoint state. Full subtype requires all six visible fields enabled. No-names subtype requires the exact `NO_NAMES` field set.
+Kind 1 requires one route, an empty label, a valid zone, at most 20,000 points, valid display names, representable compact deltas, and no temporary waypoint state. Full subtype is eligible with all six visible fields enabled. It is also eligible for the exact field set names/colors/zone enabled and radii/waypoint-flags/group-metadata disabled, when the regular source route already equals that projection: MANUAL gradient, SEQUENCE load, default radius and palette colors, skip-ahead enabled, no custom waypoint radii, 24-bit waypoint colors, and no waypoint flags or precision that the requested projection would remove. This additional writer choice uses the unchanged canonical full body; it does not change decoder rules or retain omitted nondefault values. No-names subtype requires the exact `NO_NAMES` field set.
 
 The writer independently builds the canonical kind-1 semantic body and its direct and two dictionaryless DEFLATE candidates. It compares the best kind 1 form with kind 0 by complete final text length and replaces kind 0 only when strictly shorter. Kind 0 wins a tie. Kind 5 is tested afterward and replaces the current result only when strictly shorter.
 
@@ -1141,6 +1141,7 @@ The six visible route fields are names, colors, radii, waypoint flags, group met
 | Explicit `BARE_COORDINATES` with a nonempty ineligible input | Reject; do not fall through to kind 0 |
 | Ordinary all-off request with a nonregular route | Kind 0 |
 | One eligible full or no-names route | Compare kind 0, kind 1, and eligible kind 5 |
+| One regular names/colors/zone route with omitted fields already equal to their defaults or required projection | Compare kind 0 and the existing kind-1 full body |
 | Dungeon collection through the typed dungeon exporter | Kind 4 |
 | Configuration through the typed configuration exporter | Kind 3 |
 | Library with folders, paints, or manual-color metadata after projection | Kind 6 subtype 1 |
