@@ -1,6 +1,7 @@
 package com.babbur.waypointer.chat;
 
 import com.babbur.waypointer.codec.AsciiStreamCodec;
+import com.babbur.waypointer.codec.CatalogShareLink;
 import com.babbur.waypointer.codec.CjkBase16384;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
@@ -39,7 +40,45 @@ public final class CodecScanner {
     }
 
     public static List<Match> scan(String message) {
-        return scanClassified(message, CodecScanner::classifyShare);
+        List<Match> codes = scanClassified(message, CodecScanner::classifyShare);
+        List<Match> links = scanCatalogLinks(message);
+        if (links.isEmpty()) return codes;
+        return merge(codes, links);
+    }
+
+    /** {@code waypointermod.com/r/<id>} links are the same share as a kind-6 reference code. */
+    private static List<Match> scanCatalogLinks(String message) {
+        if (message == null || message.isEmpty()) return List.of();
+        List<Match> out = new ArrayList<>();
+        java.util.regex.Matcher matcher = CatalogShareLink.find(message);
+        while (matcher.find() && out.size() < MAX_MATCHES_PER_MESSAGE) {
+            if (!isAtLinkBoundary(message, matcher.start())) continue;
+            out.add(new Match(matcher.start(), matcher.end(), matcher.group(), true,
+                    UniversalShareCodec.Type.CATALOG));
+        }
+        return out;
+    }
+
+    private static boolean isAtLinkBoundary(String s, int i) {
+        if (i == 0) return true;
+        char prev = s.charAt(i - 1);
+        return !Character.isLetterOrDigit(prev) && prev != '/' && prev != '.';
+    }
+
+    /** Earliest-start order, dropping overlaps and keeping the message-wide cap. */
+    private static List<Match> merge(List<Match> first, List<Match> second) {
+        List<Match> all = new ArrayList<>(first);
+        all.addAll(second);
+        all.sort(java.util.Comparator.comparingInt(Match::start));
+        List<Match> out = new ArrayList<>();
+        int lastEnd = -1;
+        for (Match match : all) {
+            if (match.start() < lastEnd) continue;
+            out.add(match);
+            lastEnd = match.end();
+            if (out.size() == MAX_MATCHES_PER_MESSAGE) break;
+        }
+        return out;
     }
 
     static List<Match> scan(String message, Predicate<String> validator) {

@@ -251,8 +251,15 @@ public final class RouteCatalogScreen extends Screen {
 
         addRenderableWidget(styledButton(contentX, footerY, BACK_W, BTN_H,
                 Component.translatable("gui.back"), button -> onClose(), null));
+        Component pasteLabel = Component.translatable(
+                "waypointer.screen.route_catalog.action.paste_link");
+        int pasteW = Math.min(120, font.width(pasteLabel) + 16);
+        addRenderableWidget(styledButton(contentX + BACK_W + GAP, footerY, pasteW, BTN_H,
+                pasteLabel, button -> openClipboardReference(),
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.route_catalog.action.paste_link.tooltip"))));
         int installW = Math.min(Math.max(PRIMARY_W, font.width(installButtonLabel()) + 16),
-                Math.max(PRIMARY_W, contentW - BACK_W - GAP_SECTION));
+                Math.max(PRIMARY_W, contentW - BACK_W - GAP - pasteW - GAP_SECTION));
         installButton = styledButton(contentRight - installW, footerY, installW, BTN_H,
                 installButtonLabel(),
                 button -> installSelectedRoute(),
@@ -745,6 +752,22 @@ public final class RouteCatalogScreen extends Screen {
                 "waypointer.screen.route_catalog.status.selection_help");
         statusColor = TEXT_DIM;
         rebuildWidgets();
+    }
+
+    /**
+     * A pasted share link or catalog-reference code opens the route's preview,
+     * which is how unlisted routes (never in this list) are reached in game.
+     */
+    private void openClipboardReference() {
+        String text = minecraft == null ? null : minecraft.keyboardHandler.getClipboard();
+        String routeId = CatalogRouteInstallScreen.referenceRouteId(text);
+        if (routeId == null) {
+            statusText = Component.translatable(
+                    "waypointer.screen.route_catalog.status.clipboard_not_reference");
+            statusColor = STATUS_ERROR;
+            return;
+        }
+        CatalogRouteInstallScreen.open(this, catalogClient, manager, routeId);
     }
 
     private void installSelectedRoute() {
@@ -1254,7 +1277,7 @@ public final class RouteCatalogScreen extends Screen {
                 (remaining + 999_999_999L) / 1_000_000_000L);
     }
 
-    private static Component friendlyFailure(Throwable failure) {
+    static Component friendlyFailure(Throwable failure) {
         Throwable cause = failure;
         while ((cause instanceof CompletionException
                 || cause instanceof java.util.concurrent.ExecutionException)

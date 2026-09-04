@@ -186,7 +186,10 @@ class WaypointCodecV10BareRoutePackTest {
         // Subtype 1 is the route library; a bare subtype byte is a truncated library.
         assertTerminalFailure(new byte[] {0x6A, 0x01},
                 "truncated v10 route library");
+        // Subtype 2 is the catalog reference; a bare subtype byte is a truncated one.
         assertTerminalFailure(new byte[] {0x6A, 0x02},
+                "truncated v10 catalog reference");
+        assertTerminalFailure(new byte[] {0x6A, 0x03},
                 "unsupported v10 bare-pack subtype");
         assertTerminalFailure(new byte[] {0x6A, 0x00, (byte) 0x82, 0x00},
                 "non-canonical v10 bare-pack uvarint");

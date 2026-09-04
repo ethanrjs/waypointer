@@ -127,6 +127,7 @@ public final class ChatImportDetector {
             case WAYPOINTS -> "/waypointer importchat " + handle;
             case CONFIG -> "/waypointer importchat config " + handle;
             case DUNGEON -> "/waypointer importchat dungeon " + handle;
+            case CATALOG -> "/waypointer importchat catalog " + handle;
         };
     }
 
@@ -135,6 +136,7 @@ public final class ChatImportDetector {
             case WAYPOINTS -> "waypointer.chat.import.click";
             case CONFIG -> "waypointer.chat.import.click.config";
             case DUNGEON -> "waypointer.chat.import.click.dungeon";
+            case CATALOG -> "waypointer.chat.import.click.catalog";
         };
     }
 
@@ -168,6 +170,7 @@ public final class ChatImportDetector {
                     case WAYPOINTS -> "waypointer.chat.import.route";
                     case CONFIG -> "waypointer.chat.import.config";
                     case DUNGEON -> "waypointer.chat.import.dungeon";
+                    case CATALOG -> "waypointer.chat.import.catalog";
                 })
                 .withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
 
@@ -190,6 +193,7 @@ public final class ChatImportDetector {
                     case WAYPOINTS -> "waypointer.chat.import.hover";
                     case CONFIG -> "waypointer.chat.import.hover.config";
                     case DUNGEON -> "waypointer.chat.import.hover.dungeon";
+                    case CATALOG -> "waypointer.chat.import.hover.catalog";
                 })
                 .withStyle(ChatFormatting.YELLOW));
         return c;

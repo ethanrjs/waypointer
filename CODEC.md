@@ -112,7 +112,7 @@ bits 6..4  content kind
 bits 3..0  wire version = 10
 ```
 
-Implemented kinds are 0 (general route), 1 (compact single route), 2 (bare route), 3 (configuration), 4 (dungeon collection), 5 (sparse route), 6 subtype 0 (bare route pack), 6 subtype 1 (route library), and 7 (general route with a share label). Every kind value is assigned; future extension uses the subtype fields of kinds 4 and 6, whose other subtype values are reserved.
+Implemented kinds are 0 (general route), 1 (compact single route), 2 (bare route), 3 (configuration), 4 (dungeon collection), 5 (sparse route), 6 subtype 0 (bare route pack), 6 subtype 1 (route library), 6 subtype 2 (catalog reference), and 7 (general route with a share label). Every kind value is assigned; future extension uses the subtype fields of kinds 4 and 6, whose other subtype values are reserved.
 
 Import order for a `WP:` string:
 
@@ -299,6 +299,26 @@ Canonical rules:
 - Colors are 24-bit RGB. Paint pixel nibbles are palette slots 0..15.
 
 The reference exporter applies the section 10.7 projection first: disabling colors drops manual colors and paints and resets folder colors to the default; disabling group metadata drops folders. When that projection leaves no metadata, the exporter writes the plain route kinds instead. Outer transport selection follows section 5.4 with the same three candidates as kind 0. When the library exceeds the frame profile, the reference exporter falls back to the legacy `WPL:1:` wrapper.
+
+### 6.2 Kind 6 subtype 2: catalog reference
+
+Subtype 2 does not carry a route. It names a route published in the public route catalog at `waypointermod.com`, so a share of about thirty characters can stand for a route of any size, whether the publication is listed or unlisted. The recipient's client fetches `GET https://waypointermod.com/api/routes/<routeId>` and installs the result through the normal catalog installer after the user confirms.
+
+Semantic body:
+
+```text
+0x6A              header
+subtype : uvarint MUST be 2
+catalog : uvarint MUST be 0; 0 = waypointermod.com, other values are reserved and MUST be rejected
+idForm  : u8      0 = packed, 1 = inline
+id:
+  packed : 16 bytes, the base64url decoding of a 22-character route id
+  inline : length:uvarint (1..64) then ASCII bytes matching [A-Za-z0-9_-]
+```
+
+Route ids issued by the catalog are 22 characters of `[A-Za-z0-9_-]` encoding 128 bits, so the final character's low four bits are zero. Canonical rules: when an id round-trips through the packed form the encoder MUST write packed and a decoder MUST reject the inline spelling of it; nothing follows the id; the reference exporter writes mode 0.
+
+A route-only decoder (`WaypointCodec.decode`) MUST reject a reference with an error that names the route id rather than returning an empty route. The universal importer returns a typed reference, and the share link `https://waypointermod.com/r/<routeId>` is treated as the same share: chat detection, `/wp import`, the clipboard importer, and the catalog browser's paste action all resolve both forms identically.
 
 ## 7. Kind 5: sparse route
 
@@ -1111,6 +1131,7 @@ The six visible route fields are names, colors, radii, waypoint flags, group met
 | Configuration through the typed configuration exporter | Kind 3 |
 | Library with folders, paints, or manual-color metadata after projection | Kind 6 subtype 1 |
 | Library that exceeds the V10 frame profile | Legacy `WPL:1:` wrapper |
+| Published catalog route shared by reference | Kind 6 subtype 2 (mode 0) |
 
 The bare selection applies to generic and public API exports. It is a projection: discarded names and metadata do not block it. If a supported general route exceeds the bounded V10 frame profile, `WaypointCodec.encode` can emit a canonical V9 `WP:` share as its compatibility fallback.
 
@@ -1188,6 +1209,8 @@ The digest input for `selectedWireSha256` is the fixture-order sequence of compl
 | `src/main/java/com/babbur/waypointer/codec/V10BareEntropyCodec.java` | Shared kind-0/kind-2 quotient descriptor and work budgets |
 | `src/main/java/com/babbur/waypointer/codec/V10BareRoutePackCodec.java` | Kind 6 subtype 0 |
 | `src/main/java/com/babbur/waypointer/codec/V10RouteLibraryCodec.java` | Kind 6 subtype 1 |
+| `src/main/java/com/babbur/waypointer/codec/V10CatalogReferenceCodec.java` | Kind 6 subtype 2 |
+| `src/main/java/com/babbur/waypointer/codec/CatalogShareLink.java` | `waypointermod.com/r/` link parsing |
 | `src/main/java/com/babbur/waypointer/codec/RouteLibraryCodec.java` | Library entry point; frozen `WPL:1:` reader and fallback writer |
 | `src/main/java/com/babbur/waypointer/codec/V10SparseRouteCodec.java` | Kind 5 |
 | `src/main/java/com/babbur/waypointer/codec/V10ConfigCodec.java` | Kind-3 transport selection |

@@ -263,7 +263,14 @@ public final class WaypointerCommands {
                                         .executes(ctx -> shareCommands.runImportChatTyped(
                                                 ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "handle"),
-                                                UniversalShareCodec.Type.DUNGEON)))))
+                                                UniversalShareCodec.Type.DUNGEON))))
+                        .then(literal("catalog")
+                                .then(argument("handle", StringArgumentType.word())
+                                        .suggests(suggestions.suggestChatHandles())
+                                        .executes(ctx -> shareCommands.runImportChatTyped(
+                                                ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "handle"),
+                                                UniversalShareCodec.Type.CATALOG)))))
                 .then(routeCommands.waypointCommand())
                 .then(groupCommands.areaCommand())
                 .then(groupCommands.groupCommand("route"))

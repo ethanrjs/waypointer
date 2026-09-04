@@ -1831,6 +1831,10 @@ public final class WaypointerScreen extends Screen {
                 reviewConfigImport(outcome.config());
                 return;
             }
+            if (outcome != null && outcome.catalogRouteId() != null) {
+                CatalogRouteInstallScreen.open(this, outcome.catalogRouteId());
+                return;
+            }
             WaypointImporter.ImportResult result = outcome == null ? null : outcome.waypoints();
             if (result == null) {
                 ImportFeedback.failure(outcome == null || outcome.error() == null
@@ -1861,25 +1865,31 @@ public final class WaypointerScreen extends Screen {
         try {
             UniversalShareCodec.Decoded decoded = UniversalShareCodec.decode(text);
             if (decoded instanceof UniversalShareCodec.DungeonRoutes dungeonRoutes) {
-                return new ClipboardImportOutcome(null, dungeonRoutes.result(), null, null);
+                return new ClipboardImportOutcome(null, dungeonRoutes.result(), null, null, null);
             }
             if (decoded instanceof UniversalShareCodec.Configuration configuration) {
                 // Settings never change here; the confirmation screen is the gate.
-                return new ClipboardImportOutcome(null, null, configuration.config(), null);
+                return new ClipboardImportOutcome(null, null, configuration.config(), null, null);
+            }
+            if (decoded instanceof UniversalShareCodec.CatalogReference reference) {
+                // Resolved by the catalog preview screen, which needs the network.
+                return new ClipboardImportOutcome(null, null, null, reference.routeId(), null);
             }
 
             // Keep the route editor's localized fallback-name behavior instead of
             // installing the generic name used by the universal command path.
             return new ClipboardImportOutcome(
-                    WaypointImporter.importAny(text, defaultImportedRouteName), null, null, null);
+                    WaypointImporter.importAny(text, defaultImportedRouteName),
+                    null, null, null, null);
         } catch (RuntimeException failure) {
-            return new ClipboardImportOutcome(null, null, null, importFailureText(failure));
+            return new ClipboardImportOutcome(null, null, null, null, importFailureText(failure));
         }
     }
 
     record ClipboardImportOutcome(WaypointImporter.ImportResult waypoints,
                                   DungeonRouteImporter.Result dungeonRoutes,
                                   WaypointerConfig config,
+                                  String catalogRouteId,
                                   String error) {}
 
     /** Configuration shares pasted into the route editor go through the same review gate as Settings. */

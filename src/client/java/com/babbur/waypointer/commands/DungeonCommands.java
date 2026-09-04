@@ -230,6 +230,10 @@ public final class DungeonCommands {
             throw new IllegalArgumentException(
                     "expected a dungeon route share, got a configuration share");
         }
+        if (decoded instanceof UniversalShareCodec.CatalogReference) {
+            throw new IllegalArgumentException(
+                    "expected a dungeon route share, got a catalog route link; use /wp import");
+        }
         throw new IllegalArgumentException(
                 "expected a dungeon route share, got a waypoint route share");
     }
