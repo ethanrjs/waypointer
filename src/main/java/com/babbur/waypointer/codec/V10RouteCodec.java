@@ -5,7 +5,7 @@ import com.babbur.waypointer.core.WaypointGroup;
 import java.io.IOException;
 import java.util.List;
 
-/** Typed V10 route selector/dispatcher for kinds 0, 2, 5, and 6. */
+/** Typed V10 route selector/dispatcher for route content kinds. */
 final class V10RouteCodec {
 
     private V10RouteCodec() {}
@@ -49,6 +49,11 @@ final class V10RouteCodec {
         }
 
         V10Transport.Outbound best = V10GeneralRouteCodec.encodeCandidate(groups, options);
+        if (groups.size() == 1 && V10CompactRouteCodec.canEncode(groups.get(0), options)) {
+            V10Transport.Outbound compact = V10CompactRouteCodec.encodeCandidate(
+                    groups.get(0), options);
+            if (compact.compareTo(best) < 0) best = compact;
+        }
         if (groups.size() == 1 && V10SparseRouteCodec.canEncode(groups.get(0), options)) {
             V10Transport.Outbound sparse = V10SparseRouteCodec.encodeCandidate(
                     groups.get(0), options);
@@ -61,6 +66,8 @@ final class V10RouteCodec {
         return switch (frame.contentKind()) {
             case V10GeneralRouteCodec.CONTENT_KIND, V10GeneralRouteCodec.LABELED_CONTENT_KIND ->
                     V10GeneralRouteCodec.decode(frame);
+            case V10CompactRouteCodec.CONTENT_KIND ->
+                    new WaypointCodec.Decoded(List.of(V10CompactRouteCodec.decode(frame)), "");
             case 2 -> new WaypointCodec.Decoded(List.of(V10BareRouteCodec.decode(frame)), "");
             case V10SparseRouteCodec.CONTENT_KIND ->
                     new WaypointCodec.Decoded(List.of(V10SparseRouteCodec.decode(frame)), "");

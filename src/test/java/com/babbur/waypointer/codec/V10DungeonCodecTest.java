@@ -241,12 +241,13 @@ class V10DungeonCodecTest {
         assertTrue(varintFailure.getMessage().contains("committed v10 kind 4"));
         assertTrue(varintFailure.getMessage().contains("non-canonical"));
 
-        // Kind 1 is the last unassigned kind; kind 7 became the labeled general route.
-        String unsupportedKind = codeForSemantic(new byte[] {(byte) 0x1A});
+        // Every kind value is assigned; the reserved space lives in kind-4 and
+        // kind-6 subtypes. A reserved kind-6 subtype must fail as a V10 error.
+        String reservedSubtype = codeForSemantic(new byte[] {(byte) 0x6A, 0x02, 0x02});
         IllegalArgumentException kindFailure = assertThrows(IllegalArgumentException.class,
-                () -> UniversalShareCodec.decode(unsupportedKind));
-        assertTrue(kindFailure.getMessage().contains("committed v10 kind 1"));
-        assertTrue(kindFailure.getMessage().contains("unsupported committed v10 share kind 1"));
+                () -> UniversalShareCodec.decode(reservedSubtype));
+        assertTrue(kindFailure.getMessage().contains("committed v10 kind 6"), kindFailure.getMessage());
+        assertTrue(kindFailure.getMessage().contains("subtype"), kindFailure.getMessage());
     }
 
     @Test
