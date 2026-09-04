@@ -56,7 +56,7 @@ final class V10RouteLibraryCodec {
     static final int FOLDER_FLAG_COLLAPSED = 1;
     static final int PACKED_PIXEL_BYTES = WaypointPaint.PIXEL_COUNT / 2;
 
-    private static final int CHECKSUM_BYTES = Integer.BYTES;
+    private static final int CHECKSUM_BYTES = V10Transport.CHECKSUM_BYTES;
     private static final int MAX_SEMANTIC_BYTES = V10Transport.MAX_FRAME_BYTES - CHECKSUM_BYTES;
     private static final int MAX_RGB = 0xFFFFFF;
 

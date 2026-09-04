@@ -160,7 +160,7 @@ public final class RouteLibraryCodec {
         String transport = payload.substring(WaypointCodec.MAGIC.length());
         V10Transport.CheckedFrame frame;
         try {
-            if (!V10Transport.hasModeSelector(transport)) {
+            if (!V10Transport.looksLikeV10(transport)) {
                 throw new IllegalArgumentException("not a route library payload");
             }
             frame = V10Transport.probe(transport);

@@ -154,7 +154,7 @@ class WaypointerShareCommandsTest {
 
         String payload = UniversalShareCodec.encodeDungeon(List.of(route));
 
-        assertTrue(payload.startsWith("WP:A") || payload.startsWith("WP:B"));
+        assertTrue(payload.startsWith("WP:") && WaypointCodec.debugDecode(payload).version() == 10);
         assertInstanceOf(UniversalShareCodec.DungeonRoutes.class,
                 UniversalShareCodec.decode(payload));
     }
@@ -221,7 +221,7 @@ class WaypointerShareCommandsTest {
 
         String payload = UniversalShareCodec.encodeWaypoints(
                 scheduler.groups, scheduler.options, scheduler.metadata);
-        assertTrue(payload.startsWith("WP:A") || payload.startsWith("WP:B"));
+        assertTrue(payload.startsWith("WP:") && WaypointCodec.debugDecode(payload).version() == 10);
         List<WaypointGroup> decoded = WaypointCodec.decode(payload);
         assertEquals(1, decoded.size());
         assertEquals(List.of(

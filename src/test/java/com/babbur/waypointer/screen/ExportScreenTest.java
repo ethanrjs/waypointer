@@ -28,7 +28,7 @@ class ExportScreenTest {
 
         String payload = DungeonRoomExportScreen.encodePayload(List.of(route));
 
-        assertTrue(payload.startsWith("WP:A") || payload.startsWith("WP:B"));
+        assertTrue(payload.startsWith("WP:") && WaypointCodec.debugDecode(payload).version() == 10);
         assertTrue(UniversalShareCodec.decode(payload)
                 instanceof UniversalShareCodec.DungeonRoutes);
     }

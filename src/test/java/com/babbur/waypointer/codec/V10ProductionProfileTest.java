@@ -13,6 +13,7 @@ import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
@@ -34,15 +35,13 @@ class V10ProductionProfileTest {
     @Test
     void matchesAllSelectedPythonQuotientAndDeflateGoldens() throws Exception {
         JsonObject fixture = fixture();
-        assertEquals("crc-outside+rice+quotient<=1024;golomb-reserved",
-                fixture.get("profile").getAsString());
-        JsonObject oracle = fixture.getAsJsonObject("oracle");
-        assertEquals("1b17d17a2f8e0871b98da8d974a317dbd186153ab83dd081eb1a86429bc5f058",
-                oracle.get("candidateSha256").getAsString());
-        assertEquals("19ee966ed93d36e96fce91adeb6c02bf19a41bb1bc2c23696f84fdf3ec47c935",
-                oracle.get("selectedWireSha256").getAsString());
+        assertEquals(V10GoldenRegeneration.KIND2_PROFILE, fixture.get("profile").getAsString());
+        assertEquals(fixture.get("selectedWireSha256").getAsString(),
+                V10GoldenRegeneration.selectedWireSha256(fixture.getAsJsonArray("vectors")),
+                "vector wires must match the recorded selection digest");
 
         int quotient = 0;
+        int rice = 0;
         int deflate = 0;
         int maximumQuotientPoints = 0;
         for (var element : fixture.getAsJsonArray("vectors")) {
@@ -61,19 +60,29 @@ class V10ProductionProfileTest {
             // A decoded semantic route must select the same canonical Java wire.
             assertEquals(expectedWire, WaypointCodec.MAGIC + V10BareRouteCodec.encode(decoded));
 
-            if (vector.get("mode").getAsString().equals("quotient")) {
-                quotient++;
-                maximumQuotientPoints = Math.max(maximumQuotientPoints, decoded.size());
-                assertEquals(V10Transport.MODE_DIRECT, checked.mode());
-                assertEquals(V10BareEntropyCodec.DirectDescriptor.QUOTIENT,
-                        V10BareEntropyCodec.descriptor(checked.semantic()));
-                assertCoordinates(vector.getAsJsonArray("coordinates"), decoded);
-            } else {
-                deflate++;
-                assertEquals(V10Transport.MODE_DEFLATE, checked.mode());
+            switch (vector.get("mode").getAsString()) {
+                case "quotient" -> {
+                    quotient++;
+                    maximumQuotientPoints = Math.max(maximumQuotientPoints, decoded.size());
+                    assertEquals(V10Transport.MODE_DIRECT, checked.mode());
+                    assertEquals(V10BareEntropyCodec.DirectDescriptor.QUOTIENT,
+                            V10BareEntropyCodec.descriptor(checked.semantic()));
+                    assertCoordinates(vector.getAsJsonArray("coordinates"), decoded);
+                }
+                case "rice" -> {
+                    rice++;
+                    assertEquals(V10Transport.MODE_DIRECT, checked.mode());
+                    assertEquals(V10BareEntropyCodec.DirectDescriptor.RICE,
+                            V10BareEntropyCodec.descriptor(checked.semantic()));
+                }
+                default -> {
+                    deflate++;
+                    assertEquals(V10Transport.MODE_DEFLATE, checked.mode());
+                }
             }
         }
-        assertEquals(21, quotient);
+        assertEquals(20, quotient);
+        assertEquals(1, rice);
         assertEquals(6, deflate);
         assertEquals(514, maximumQuotientPoints);
     }
@@ -128,37 +137,64 @@ class V10ProductionProfileTest {
         assertFalse(Arrays.equals(payload, alternate));
         assertArrayEquals(semantic, V10Transport.inflateAndVerify(alternate));
 
-        int compressedLength = payload.length - Integer.BYTES;
+        // payload = header byte, compressed bytes, two checksum bytes.
+        int compressedLength = payload.length - 1 - V10Transport.CHECKSUM_BYTES;
         byte[] lastDeflate = payload.clone();
-        lastDeflate[compressedLength - 1] ^= 1;
+        lastDeflate[1 + compressedLength / 2] ^= 1;
         assertBRejected(lastDeflate);
         byte[] lastCrc = payload.clone();
         lastCrc[lastCrc.length - 1] ^= 1;
         assertBRejected(lastCrc);
+        byte[] modeFlip = payload.clone();
+        modeFlip[0] ^= (byte) V10Transport.HEADER_MODE_BIT;
+        assertBRejected(modeFlip);
         assertBRejected(insertBeforeCrc(payload, (byte) 0));
         assertBRejected(Arrays.copyOf(payload, payload.length + 1));
-        byte[] concatenated = new byte[compressedLength * 2 + Integer.BYTES];
-        System.arraycopy(payload, 0, concatenated, 0, compressedLength);
-        System.arraycopy(payload, 0, concatenated, compressedLength, compressedLength);
-        System.arraycopy(payload, compressedLength, concatenated,
-                compressedLength * 2, Integer.BYTES);
+        byte[] concatenated = new byte[1 + compressedLength * 2 + V10Transport.CHECKSUM_BYTES];
+        System.arraycopy(payload, 0, concatenated, 0, 1 + compressedLength);
+        System.arraycopy(payload, 1, concatenated, 1 + compressedLength, compressedLength);
+        System.arraycopy(payload, 1 + compressedLength, concatenated,
+                1 + compressedLength * 2, V10Transport.CHECKSUM_BYTES);
         assertBRejected(concatenated);
 
-        byte[] bomb = new byte[V10Transport.MAX_FRAME_BYTES + 1];
-        bomb[0] = V10BareRouteCodec.SEMANTIC_HEADER;
+        // A body one byte past the frame limit must be refused by the bounded
+        // inflater before the checksum is even consulted.
+        byte[] bombBody = new byte[V10Transport.MAX_FRAME_BYTES + 1];
+        byte[] bombCompressed = rawDeflate(bombBody, Deflater.BEST_COMPRESSION);
+        byte[] bombPayload = new byte[1 + bombCompressed.length + V10Transport.CHECKSUM_BYTES];
+        bombPayload[0] = (byte) (V10BareRouteCodec.SEMANTIC_HEADER | V10Transport.HEADER_MODE_BIT);
+        System.arraycopy(bombCompressed, 0, bombPayload, 1, bombCompressed.length);
         IOException oversized = assertThrows(IOException.class,
-                () -> V10Transport.inflateAndVerify(
-                        alternateDeflatePayload(bomb, Deflater.BEST_COMPRESSION)));
+                () -> V10Transport.inflateAndVerify(bombPayload));
         assertTrue(oversized.getMessage().contains("inflated payload exceeds"),
                 oversized.getMessage());
 
-        // Deterministic 20k hostile variants across the DEFLATE/trailer boundary.
+        // Deterministic 20k hostile variants across the header/DEFLATE/trailer
+        // boundary. The guarantee is that no single-bit flip yields a different
+        // accepted body. A flip inside DEFLATE padding bits leaves the body
+        // unchanged and is legitimately accepted; anything else must be refused.
+        List<String> silentlyChanged = new ArrayList<>();
+        List<String> acceptedOutsidePadding = new ArrayList<>();
+        int lastCompressedByte = payload.length - 1 - V10Transport.CHECKSUM_BYTES;
         for (int index = 0; index < 20_000; index++) {
             byte[] mutation = payload.clone();
             int position = Math.floorMod(index * 2_654_435_761L + 17, mutation.length);
             mutation[position] ^= (byte) (1 << (index & 7));
-            assertBRejected(mutation);
+            byte[] accepted;
+            try {
+                accepted = V10Transport.probe(V10Transport.encode(mutation)).semantic();
+            } catch (IOException rejected) {
+                continue;
+            }
+            if (!Arrays.equals(accepted, semantic)) {
+                silentlyChanged.add("mutation " + index + " at byte " + position);
+            } else if (position != lastCompressedByte) {
+                acceptedOutsidePadding.add("mutation " + index + " at byte " + position);
+            }
         }
+        assertEquals(List.of(), silentlyChanged);
+        assertEquals(List.of(), acceptedOutsidePadding,
+                "only flips in the final DEFLATE byte's padding bits may be accepted");
     }
 
     private static byte[] semanticWithMarker(int[][] coordinates, int marker) {
@@ -173,8 +209,13 @@ class V10ProductionProfileTest {
 
     private static byte[] alternateDeflatePayload(byte[] semantic, int level)
             throws IOException {
+        return V10Transport.sealCompressed(semantic,
+                rawDeflate(Arrays.copyOfRange(semantic, 1, semantic.length), level));
+    }
+
+    private static byte[] rawDeflate(byte[] input, int level) {
         Deflater deflater = new Deflater(level, true);
-        deflater.setInput(semantic);
+        deflater.setInput(input);
         deflater.finish();
         ByteArrayOutputStream compressed = new ByteArrayOutputStream();
         byte[] buffer = new byte[512];
@@ -182,32 +223,21 @@ class V10ProductionProfileTest {
             compressed.write(buffer, 0, deflater.deflate(buffer));
         }
         deflater.end();
-        byte[] payload = Arrays.copyOf(compressed.toByteArray(),
-                compressed.size() + Integer.BYTES);
-        CRC32 checksum = new CRC32();
-        checksum.update(V10Transport.MODE_DEFLATE);
-        checksum.update(semantic);
-        long value = checksum.getValue();
-        payload[compressed.size()] = (byte) (value >>> 24);
-        payload[compressed.size() + 1] = (byte) (value >>> 16);
-        payload[compressed.size() + 2] = (byte) (value >>> 8);
-        payload[compressed.size() + 3] = (byte) value;
-        return payload;
+        return compressed.toByteArray();
     }
 
     private static byte[] insertBeforeCrc(byte[] payload, byte value) {
-        int compressedLength = payload.length - Integer.BYTES;
+        int contentEnd = payload.length - V10Transport.CHECKSUM_BYTES;
         byte[] inserted = new byte[payload.length + 1];
-        System.arraycopy(payload, 0, inserted, 0, compressedLength);
-        inserted[compressedLength] = value;
-        System.arraycopy(payload, compressedLength, inserted, compressedLength + 1,
-                Integer.BYTES);
+        System.arraycopy(payload, 0, inserted, 0, contentEnd);
+        inserted[contentEnd] = value;
+        System.arraycopy(payload, contentEnd, inserted, contentEnd + 1,
+                V10Transport.CHECKSUM_BYTES);
         return inserted;
     }
 
     private static void assertBRejected(byte[] payload) {
-        assertThrows(IOException.class, () -> V10Transport.probe(
-                V10Transport.encode(V10Transport.MODE_DEFLATE, payload)));
+        assertThrows(IOException.class, () -> V10Transport.probe(V10Transport.encode(payload)));
     }
 
     private static void assertCoordinates(JsonArray expected, WaypointGroup actual) {

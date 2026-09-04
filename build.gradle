@@ -174,7 +174,7 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-def optInTestProperties = ['coleweight.file', 'v10.corpus', 'v10.timing', 'v10.routes', 'v10.report']
+def optInTestProperties = ['coleweight.file', 'v10.corpus', 'v10.timing', 'v10.routes', 'v10.report', 'v10.regen']
 tasks.withType(Test).configureEach {
 	// Let opt-in tests receive only their explicit fixture/benchmark inputs.
 	optInTestProperties.each { prop ->

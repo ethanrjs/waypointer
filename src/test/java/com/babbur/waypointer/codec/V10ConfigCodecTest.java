@@ -31,7 +31,7 @@ class V10ConfigCodecTest {
     void universalWriterUsesKindThreeAndRoundTripsDefaultLightHeavyAndEdges() throws Exception {
         for (NamedConfig fixture : fixtures()) {
             String code = UniversalShareCodec.encodeConfig(fixture.config());
-            assertTrue(code.startsWith("WP:A") || code.startsWith("WP:B"), fixture.name());
+            assertTrue(code.startsWith("WP:"), fixture.name());
             V10Transport.CheckedFrame frame = V10Transport.probe(
                     code.substring(WaypointCodec.MAGIC.length()));
             assertEquals(V10ConfigBodyCodec.CONTENT_KIND, frame.contentKind(), fixture.name());
@@ -40,8 +40,14 @@ class V10ConfigCodecTest {
             assertSameShareableConfig(fixture.config(), decoded.config());
             assertEquals(code, UniversalShareCodec.encodeConfig(decoded.config()), fixture.name());
         }
-        assertTrue(UniversalShareCodec.encodeConfig(new WaypointerConfig()).startsWith("WP:A"));
-        assertTrue(UniversalShareCodec.encodeConfig(heavyConfig()).startsWith("WP:B"));
+        assertEquals(V10Transport.MODE_DIRECT,
+                probeMode(UniversalShareCodec.encodeConfig(new WaypointerConfig())));
+        assertEquals(V10Transport.MODE_DEFLATE,
+                probeMode(UniversalShareCodec.encodeConfig(heavyConfig())));
+    }
+
+    static int probeMode(String code) throws IOException {
+        return V10Transport.probe(code.substring(WaypointCodec.MAGIC.length())).mode();
     }
 
     @Test
@@ -84,7 +90,8 @@ class V10ConfigCodecTest {
             assertEquals(vector.get("bWire").getAsString(), bestDeflate.wire(), fixture.name());
             assertEquals(vector.get("currentWpcChars").getAsInt(),
                     WaypointerConfigCodec.encode(fixture.config()).length(), fixture.name());
-            assertEquals(vector.get("mode").getAsString().charAt(0), wire.charAt(3), fixture.name());
+            assertEquals(vector.get("mode").getAsString(),
+                    frame.mode() == V10Transport.MODE_DIRECT ? "A" : "B", fixture.name());
             assertEquals(vector.get("semanticHex").getAsString(),
                     HexFormat.of().formatHex(frame.semantic()), fixture.name());
             assertSameShareableConfig(fixture.config(), decodedConfig(vector.get("wire").getAsString()));
@@ -220,7 +227,7 @@ class V10ConfigCodecTest {
         assertTrue(UniversalShareCodec.encodeConfig(lightConfig()).startsWith("WP:"));
     }
 
-    private static List<NamedConfig> fixtures() {
+    static List<NamedConfig> fixtures() {
         return List.of(new NamedConfig("default", new WaypointerConfig()),
                 new NamedConfig("light", lightConfig()),
                 new NamedConfig("heavy", heavyConfig()),
@@ -342,15 +349,12 @@ class V10ConfigCodecTest {
             throws IOException {
         byte[] payload = V10Transport.deflateAndSeal(input, strategy);
         return new DeflateCandidate(codeFor(V10Transport.MODE_DEFLATE, payload),
-                payload.length - Integer.BYTES, payload);
+                payload.length - 1 - V10Transport.CHECKSUM_BYTES, payload);
     }
 
-    private static byte[] alternateDeflatePayload(byte[] semantic, int level) {
-        byte[] compressed = rawDeflate(semantic, level);
-        byte[] sealed = V10Transport.seal(V10Transport.MODE_DEFLATE, semantic);
-        byte[] payload = Arrays.copyOf(compressed, compressed.length + Integer.BYTES);
-        System.arraycopy(sealed, semantic.length, payload, compressed.length, Integer.BYTES);
-        return payload;
+    private static byte[] alternateDeflatePayload(byte[] semantic, int level) throws IOException {
+        return V10Transport.sealCompressed(semantic,
+                rawDeflate(Arrays.copyOfRange(semantic, 1, semantic.length), level));
     }
 
     private static String legacyWpc(byte... raw) throws IOException {
@@ -366,7 +370,7 @@ class V10ConfigCodecTest {
         } while (value != 0);
     }
 
-    private record NamedConfig(String name, WaypointerConfig config) {}
+    record NamedConfig(String name, WaypointerConfig config) {}
 
     private record DeflateCandidate(String wire, int compressedBytes, byte[] payload)
             implements Comparable<DeflateCandidate> {

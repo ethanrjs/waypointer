@@ -30,7 +30,7 @@ final class V10BareRoutePackCodec {
     static final int MAX_ROUTES = WaypointImporter.MAX_GROUPS_PER_IMPORT;
     static final int MAX_TOTAL_WAYPOINTS = WaypointImporter.MAX_TOTAL_WAYPOINTS_PER_IMPORT;
 
-    private static final int CHECKSUM_BYTES = Integer.BYTES;
+    private static final int CHECKSUM_BYTES = V10Transport.CHECKSUM_BYTES;
     private static final int MAX_SEMANTIC_BYTES = V10Transport.MAX_FRAME_BYTES - CHECKSUM_BYTES;
 
     private V10BareRoutePackCodec() {}

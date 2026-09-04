@@ -143,6 +143,11 @@ public final class AsciiStreamCodec {
         return CURRENT.has(c) || LEGACY_V4.has(c) || LEGACY_V3.has(c);
     }
 
+    /** Digit value of {@code c} in the current alphabet, or -1. */
+    static int alphabetIndex(char c) {
+        return CURRENT.digitOf(c);
+    }
+
     public static int alphabetSize() {
         return CURRENT.base();
     }

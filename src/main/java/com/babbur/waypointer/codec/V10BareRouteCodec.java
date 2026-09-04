@@ -359,7 +359,7 @@ final class V10BareRouteCodec {
     }
 
     static byte[] requireSemanticLimit(byte[] semantic, String mode) {
-        if ((long) semantic.length + Integer.BYTES > V10Transport.MAX_FRAME_BYTES) {
+        if ((long) semantic.length + V10Transport.CHECKSUM_BYTES > V10Transport.MAX_FRAME_BYTES) {
             throw new IllegalArgumentException("v10 " + mode + " semantic body exceeds limit");
         }
         return semantic;

@@ -19,7 +19,7 @@ final class V10DungeonCodec {
 
     /** Score independent A/B candidates without letting an oversized optional B discard A. */
     static V10Transport.Outbound selectCandidate(byte[] semantic) throws IOException {
-        if ((long) semantic.length + Integer.BYTES > V10Transport.MAX_FRAME_BYTES) {
+        if ((long) semantic.length + V10Transport.CHECKSUM_BYTES > V10Transport.MAX_FRAME_BYTES) {
             throw new V10ProfileLimitException(
                     "v10 dungeon semantic body exceeds the 2 MiB frame profile");
         }

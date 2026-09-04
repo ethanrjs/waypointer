@@ -130,7 +130,7 @@ class V10LengthReport {
         if (code == null) return "error";
         try {
             String transport = code.substring(WaypointCodec.MAGIC.length());
-            if (!V10Transport.hasModeSelector(transport)) return "v9-fallback";
+            if (!V10Transport.looksLikeV10(transport)) return "v9-fallback";
             V10Transport.CheckedFrame frame = V10Transport.probe(transport);
             String mode = frame.mode() == V10Transport.MODE_DIRECT ? "A" : "B";
             String detail = "";

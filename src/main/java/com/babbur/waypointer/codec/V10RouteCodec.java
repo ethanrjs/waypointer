@@ -59,7 +59,8 @@ final class V10RouteCodec {
 
     static WaypointCodec.Decoded decode(V10Transport.CheckedFrame frame) throws IOException {
         return switch (frame.contentKind()) {
-            case V10GeneralRouteCodec.CONTENT_KIND -> V10GeneralRouteCodec.decode(frame);
+            case V10GeneralRouteCodec.CONTENT_KIND, V10GeneralRouteCodec.LABELED_CONTENT_KIND ->
+                    V10GeneralRouteCodec.decode(frame);
             case 2 -> new WaypointCodec.Decoded(List.of(V10BareRouteCodec.decode(frame)), "");
             case V10SparseRouteCodec.CONTENT_KIND ->
                     new WaypointCodec.Decoded(List.of(V10SparseRouteCodec.decode(frame)), "");
