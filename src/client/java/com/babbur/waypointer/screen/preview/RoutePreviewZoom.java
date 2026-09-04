@@ -2,7 +2,7 @@ package com.babbur.waypointer.screen.preview;
 
 public final class RoutePreviewZoom {
 
-    static final double DEFAULT_FACTOR = 1.10;
+    static final double DEFAULT_FACTOR = 1.00;
     static final double MIN_FACTOR = 0.50;
     static final double MAX_FACTOR = 4.00;
     static final double STEP_FACTOR = 1.15;

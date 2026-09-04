@@ -72,6 +72,33 @@ class RenderHelpersTest {
     }
 
     @Test
+    void paddedPreviewFaceSamplesEveryPaintedColumnAtItsIntendedWidth() {
+        RecordingConsumer consumer = new RecordingConsumer();
+        int padding = 1;
+        int stride = com.babbur.waypointer.core.WaypointPaint.SIZE + padding * 2;
+        int width = stride * 4;
+        int height = stride * 3;
+        var face = com.babbur.waypointer.core.WaypointPaint.Face.SOUTH;
+        int faceX = face.atlasX() / com.babbur.waypointer.core.WaypointPaint.SIZE * stride + padding;
+
+        RenderHelpers.emitTexturedBox(consumer, new PoseStack(),
+                0, 0, 0, 1, 1, 1, 1,
+                0.5, 0.5, 2.0, width, height, padding);
+
+        // Sample near both edges of each screen-space painted column. Center-only
+        // samples would miss the old half-texel inset compressing the border columns.
+        float left = consumer.textureUs.get(2);
+        float right = consumer.textureUs.get(0);
+        for (int column = 0; column < 16; column++) {
+            for (double within : new double[]{0.1, 0.9}) {
+                double uv = left + (right - left) * ((column + within) / 16.0);
+                assertEquals(column, (int) Math.floor(uv * width) - faceX,
+                        "Painted column " + column + " must retain its full width");
+            }
+        }
+    }
+
+    @Test
     void outlinedBoxEdgesOverlapAtEveryCorner() {
         RecordingConsumer consumer = new RecordingConsumer();
 

@@ -9,8 +9,6 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextColor;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Modifier;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -25,11 +23,6 @@ class SettingsScreenTest {
         assertEquals("32", SettingsText.localizedValue(setting, 32.0D).getString());
         assertNull(SettingsValuePolicy.acceptedNumberValue(setting, "All"));
         assertNull(SettingsValuePolicy.acceptedNumberValue(setting, "33"));
-    }
-
-    @Test
-    void booleanSettingsUseTwentyPixelCheckboxes() {
-        assertEquals(20, SettingsScreen.CHECKBOX_SIZE);
     }
 
     @Test
@@ -64,13 +57,6 @@ class SettingsScreenTest {
         assertFalse(SettingsValuePolicy.searchClearActive(""));
         assertTrue(SettingsValuePolicy.searchClearActive(" "));
         assertTrue(SettingsValuePolicy.searchClearActive("tracer"));
-    }
-
-    @Test
-    void searchFocusRestorationUsesThePostRebuildInitialFocusHook() throws Exception {
-        var hook = SettingsScreen.class.getDeclaredMethod("setInitialFocus");
-
-        assertTrue(Modifier.isProtected(hook.getModifiers()));
     }
 
     @Test

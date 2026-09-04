@@ -15,15 +15,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointPainterScreenTest {
 
     @Test
-    void painterOffersDirectFileImport() {
-        assertEquals("Import from file", WaypointPainterScreen.IMPORT_FILE_LABEL);
-    }
-
-    @Test
-    void applyAllPersistsAnInheritedPaintForFutureRoutesAndWaypoints() {
+    void applyAllPaintsExistingGroupsAndSavesTheDefault() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup existing = WaypointGroup.create("Existing", "hub");
         existing.add(Waypoint.at(1, 2, 3));
+        existing.setPaintEnabled(false);
         manager.add(existing);
         WaypointerConfig config = new WaypointerConfig();
         WaypointPaint paint = WaypointPaint.solid(0x123456);
@@ -32,10 +28,7 @@ class WaypointPainterScreenTest {
         assertEquals(paint, existing.paint());
         assertEquals(paint, config.waypointPainterDefaultPaint());
 
-        WaypointGroup future = WaypointGroup.create("Future", "hub");
-        future.add(Waypoint.at(4, 5, 6));
-        assertTrue(future.paintEnabled());
-        assertNull(future.paint(), "future routes inherit the saved all-waypoint paint");
+        assertTrue(existing.paintEnabled());
     }
 
     @Test

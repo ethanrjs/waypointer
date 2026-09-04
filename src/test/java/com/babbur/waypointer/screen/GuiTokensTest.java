@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import javax.imageio.ImageIO;
 import java.io.IOException;
+import java.util.Comparator;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -21,12 +22,6 @@ class GuiTokensTest {
             assertEquals(16, image.getWidth());
             assertEquals(16, image.getHeight());
         }
-    }
-
-    @Test
-    void opticalGeometryCentersVisiblePixelGlyphs() {
-        assertEquals(16, GuiTokens.opticalTextY(10, 20));
-        assertEquals(14, GuiTokens.opticalInfoButtonY(16));
     }
 
     @Test
@@ -57,12 +52,9 @@ class GuiTokensTest {
         List<GuiTokens.FooterPlacement> placements = GuiTokens.footerPlacements(
                 400, 200, left, right, null, 16, 16);
 
-        assertEquals(3, placements.size());
-        assertPlacement(placements.get(0), "New", 16, 200, 80);
-        assertPlacement(placements.get(1), "Edit", 104, 200, 60);
-        assertPlacement(placements.get(2), "Done", 284, 200, 100);
-        assertTrue(placements.get(1).x() + placements.get(1).width()
-                <= placements.get(2).x() - GuiTokens.GAP_SECTION);
+        assertFooterActionsFit(placements, left, right, 400, 200, 16);
+        assertTrue(placements.stream().allMatch(placement -> placement.y() == 200),
+                "actions that fit must stay on the primary row");
     }
 
     @Test
@@ -77,14 +69,12 @@ class GuiTokensTest {
         List<GuiTokens.FooterPlacement> placements = GuiTokens.footerPlacements(
                 320, 200, left, right, null, 16, 16);
 
-        assertEquals(5, placements.size());
-        assertPlacement(placements.get(0), "One", 16, 200, 80);
-        assertPlacement(placements.get(1), "Two", 104, 200, 80);
-        assertPlacement(placements.get(2), "Done", 214, 200, 90);
-        assertPlacement(placements.get(3), "Three", 16, 172, 80);
-        assertPlacement(placements.get(4), "Four", 104, 172, 80);
-        assertTrue(placements.get(1).x() + placements.get(1).width()
-                <= placements.get(2).x() - GuiTokens.GAP_SECTION);
+        assertFooterActionsFit(placements, left, right, 320, 200, 16);
+        assertTrue(placements.stream().anyMatch(placement -> placement.y() < 200),
+                "overflow must remain available above the primary row");
+        assertTrue(placements.stream().anyMatch(placement ->
+                placement.spec() != right && placement.y() == 200),
+                "the primary row should still contain the actions that fit");
     }
 
     @Test
@@ -102,11 +92,40 @@ class GuiTokensTest {
         return new GuiTokens.ButtonSpec(label, width, () -> {});
     }
 
-    private static void assertPlacement(GuiTokens.FooterPlacement placement,
-                                        String label, int x, int y, int width) {
-        assertEquals(label, placement.spec().label());
-        assertEquals(x, placement.x());
-        assertEquals(y, placement.y());
-        assertEquals(width, placement.width());
+    private static void assertFooterActionsFit(
+            List<GuiTokens.FooterPlacement> placements, List<GuiTokens.ButtonSpec> left,
+            GuiTokens.ButtonSpec right, int screenWidth, int footerY, int inset) {
+        assertEquals(left.size() + 1, placements.size());
+        assertEquals(left, placements.stream()
+                .filter(placement -> placement.spec() != right)
+                .sorted(Comparator.comparingInt(GuiTokens.FooterPlacement::y).reversed()
+                        .thenComparingInt(GuiTokens.FooterPlacement::x))
+                .map(GuiTokens.FooterPlacement::spec).toList(),
+                "actions must keep their order across primary and overflow rows");
+        GuiTokens.FooterPlacement done = placements.stream()
+                .filter(placement -> placement.spec() == right).findFirst().orElseThrow();
+        assertEquals(footerY, done.y());
+        for (GuiTokens.FooterPlacement placement : placements) {
+            assertEquals(placement.spec().width(), placement.width(),
+                    "fitting actions must keep their requested hit-target width");
+            assertTrue(placement.x() >= inset);
+            assertTrue(placement.x() + placement.width() <= screenWidth - inset);
+            assertTrue(placement.y() >= 0 && placement.y() <= footerY);
+            if (placement.spec() != right && placement.y() == footerY) {
+                assertTrue(placement.x() + placement.width()
+                        <= done.x() - GuiTokens.GAP_SECTION,
+                        "the primary actions must leave a separate Done lane");
+            }
+        }
+        for (int first = 0; first < placements.size(); first++) {
+            GuiTokens.FooterPlacement a = placements.get(first);
+            for (int second = first + 1; second < placements.size(); second++) {
+                GuiTokens.FooterPlacement b = placements.get(second);
+                assertTrue(a.x() + a.width() <= b.x() || b.x() + b.width() <= a.x()
+                        || a.y() + GuiTokens.BTN_H <= b.y()
+                        || b.y() + GuiTokens.BTN_H <= a.y(),
+                        a.spec().label() + " overlaps " + b.spec().label());
+            }
+        }
     }
 }

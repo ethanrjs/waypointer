@@ -3,6 +3,7 @@ package com.babbur.waypointer.render.gpu;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
 import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
@@ -183,6 +184,27 @@ class SceneKeyTest {
     @Test
     void runtimePaintOverrideChangesInvalidateTheKey() {
         assertNotEquals(keyWithRuntimePaint(null), keyWithRuntimePaint(WaypointPaint.solid(0x123456)));
+    }
+
+    @Test
+    void changingRoutePaintUnderOutlineModeInvalidatesRetainedGeometry() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setBoxStyle(WaypointerConfig.BoxStyle.OUTLINED);
+        WaypointGroup group = WaypointGroup.create("Painted", "hub");
+        group.add(new Waypoint(0, 64, 0, "", 0xFFFFFF, 0, 0.0));
+        SceneKeyFactory factory = new SceneKeyFactory(OverlayRendererOptions.defaults());
+        java.util.function.Supplier<SceneKey> currentKey = () -> factory.build(
+                List.of(group), config, new Vec3(0, 64, 0), null, -64, 320,
+                0L, 0L, 0L, null);
+        SceneKey unpainted = currentKey.get();
+        group.setPaint(WaypointPaint.solid(0x123456));
+        SceneKey painted = currentKey.get();
+        assertNotEquals(unpainted, painted);
+        group.setPaint(WaypointPaint.solid(0x654321));
+        SceneKey repainted = currentKey.get();
+        assertNotEquals(painted, repainted);
+        group.setPaintEnabled(false);
+        assertNotEquals(repainted, currentKey.get());
     }
 
     @Test

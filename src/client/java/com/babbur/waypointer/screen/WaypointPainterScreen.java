@@ -40,7 +40,6 @@ public final class WaypointPainterScreen extends Screen {
     private static final int PREVIEW_MAX = 176;
     private static final int SWATCH_H = 16;
     private static final int SWATCH_GAP = 2;
-    static final String IMPORT_FILE_LABEL = "Import from file";
 
     private final Screen parent;
     private final WaypointerConfig config;
@@ -57,6 +56,7 @@ public final class WaypointPainterScreen extends Screen {
     private int lastPaintOffset = -1;
     private WaypointPaint snapshot;
     private WaypointPaintPreviewTexture preview;
+    private final long previewStartedNanos = System.nanoTime();
     private String status = "";
     private Button faceViewButton;
     private final PaletteButton[] paletteButtons = new PaletteButton[WaypointPaint.PALETTE_SIZE];
@@ -223,7 +223,8 @@ public final class WaypointPainterScreen extends Screen {
         g.fill(layout.previewX(), layout.previewY(),
                 layout.previewX() + layout.previewSize(),
                 layout.previewY() + layout.previewSize(), SURFACE_SUBTLE);
-        preview.update(snapshot(), (System.currentTimeMillis() % 12_000L) * 0.03f);
+        long elapsed = System.nanoTime() - previewStartedNanos;
+        preview.update(snapshot(), (elapsed % 12_000_000_000L) * 0.00000003f);
         g.blit(RenderPipelines.GUI_TEXTURED, preview.id(),
                 layout.previewX(), layout.previewY(), 0f, 0f,
                 layout.previewSize(), layout.previewSize(),

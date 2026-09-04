@@ -51,14 +51,9 @@ public final class RoutePreviewPassPlan {
     private static RenderType surfaceType(RoutePreviewRenderState state) {
         RoutePreviewScene scene = state.scene();
         return scene.paint() != null && !scene.simplified()
-                ? RoutePreviewPipelines.painted(scene,
-                        paintedSurfaceUsesDepthTest(state.selfOcclusion()))
+                ? RoutePreviewPipelines.painted(scene, state.selfOcclusion())
                 : state.selfOcclusion()
                         ? RoutePreviewPipelines.surfaces()
                         : RoutePreviewPipelines.surfacesNoDepth();
-    }
-
-    static boolean paintedSurfaceUsesDepthTest(boolean selfOcclusion) {
-        return selfOcclusion;
     }
 }

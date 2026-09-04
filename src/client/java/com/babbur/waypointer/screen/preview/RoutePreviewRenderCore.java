@@ -241,9 +241,7 @@ public final class RoutePreviewRenderCore {
                                    int color, float alpha, float widthPixels,
                                    double scale, int guiScale) {
         double safeScale = Math.max(1.0e-9, scale);
-        double halfWidth = physicalLineWidth(
-                widthPixels, MIN_CONNECTOR_WIDTH_PHYSICAL_PIXELS)
-                / (2.0 * safeScale * Math.max(1, guiScale));
+        double halfWidth = widthPixels / (2.0 * safeScale * Math.max(1, guiScale));
         double dx = x2 - x1;
         double dy = y2 - y1;
         double dz = z2 - z1;

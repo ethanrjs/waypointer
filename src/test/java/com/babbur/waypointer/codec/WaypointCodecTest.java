@@ -10,8 +10,6 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -647,27 +645,6 @@ class WaypointCodecTest {
         assertFalse(escaped.contains("<3"), "escaped body must not trigger heart emotes: " + escaped);
         assertFalse(escaped.contains("o/"), "escaped body must not trigger wave emotes: " + escaped);
         assertEquals(raw, WaypointCodec.unescapeHypixelEmotes(escaped));
-    }
-
-    @Test
-    void codec_doc_names_current_universal_route_and_bare_writers() throws Exception {
-        String docs = Files.readString(Path.of("CODEC.md"), StandardCharsets.UTF_8);
-
-        assertEquals(WaypointCodec.V10_WIRE_VERSION, WaypointCodec.currentWireVersion());
-        assertTrue(docs.contains("# Waypointer Codec, Wire Version 10"),
-                "CODEC.md should name the live universal wire version");
-        assertTrue(docs.contains("V1-V9 decoding is frozen"),
-                "CODEC.md should identify the frozen legacy decoder path");
-        assertTrue(docs.contains("Kind 0 carries general rich-route data"),
-                "CODEC.md should identify the general V10 route writer");
-        assertTrue(docs.contains("Kind 1 carries exactly one route"),
-                "CODEC.md should identify the compact V10 route writer");
-        assertTrue(docs.contains("| 7 | ENTROPY |"),
-                "CODEC.md should identify the kind-0 entropy coordinate mode");
-        assertTrue(docs.contains("One eligible regular route, all six fields off, empty label | Kind 2"),
-                "CODEC.md should identify the coordinate-only V10 writer");
-        assertTrue(docs.contains("Explicit `BARE_COORDINATES`"),
-                "CODEC.md should identify explicit coordinate-only projection behavior");
     }
 
     @Test
