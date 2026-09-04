@@ -41,6 +41,7 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.IntPredicate;
@@ -104,11 +105,13 @@ class WaypointWorldRenderer {
 
     protected final WaypointVisibilityCache depthVisibility = new WaypointVisibilityCache();
     protected final double[] waypointBoxBoundsScratch = new double[6];
+    private final LinkedHashSet<WaypointPaint> activePaintScratch = new LinkedHashSet<>();
     private float beamRotationAnimationTime = Float.NaN;
     private float beamRotationCos;
     private float beamRotationSin;
     private final DungeonEntryPathController dungeonEntryPathController =
             new DungeonEntryPathController();
+    boolean trustGpuDepthTest;
 
     public WaypointWorldRenderer(ActiveGroupManager manager, WaypointerConfig config) {
         this(manager, config, null);
@@ -159,15 +162,33 @@ class WaypointWorldRenderer {
         RenderDiagnostics.beginFrame(groups, config, irisHudFallbackActive);
 
         if (groups.isEmpty()) return;
+        // Retained mode emits through its own sink and stable origin.
+        if (com.babbur.waypointer.render.gpu.OverlayRenderer.ownsWorldGeometry()) return;
+
+        PoseStack ps = ctx.poseStack();
+        if (ps == null) return;
+        Minecraft mc = Minecraft.getInstance();
+        Camera camera = MinecraftCompat.mainCamera(mc.gameRenderer);
+        if (!camera.isInitialized()) return;
+        emitWorldGeometry(ctx, ps, GeometrySink.legacy(ctx, ps), camera.position(),
+                irisHudFallbackActive);
+    }
+
+    /** Emits world geometry relative to the supplied origin. */
+    boolean emitWorldGeometry(LevelRenderContext ctx, PoseStack ps, GeometrySink sink,
+                              Vec3 origin, boolean irisHudFallbackActive) {
+        var groups = manager.activeGroups();
+        if (groups.isEmpty()) return false;
 
         WaypointerConfig.BoxStyle style = config.boxStyle();
         boolean drawLines = worldBoxOutlinesEnabled(style, irisHudFallbackActive);
         boolean drawGlobalFill = boxStyleDrawsRgbFill(style);
-        boolean drawFill = drawGlobalFill
-                || style == WaypointerConfig.BoxStyle.PAINT
-                || hasFilledSubwaypoint(groups);
         WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
         boolean drawPaint = hasPaintedGroup(groups, defaultPaint);
+        boolean drawFill = drawGlobalFill
+                || style == WaypointerConfig.BoxStyle.PAINT
+                || hasFilledSubwaypoint(groups)
+                || drawPaint;
         boolean drawBeams = config.beaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF;
         boolean drawTexturedBeams = drawBeams && config.useBeaconBeamTextures();
         boolean drawFlatBeams = drawBeams && !drawTexturedBeams;
@@ -175,21 +196,20 @@ class WaypointWorldRenderer {
                 || dungeonConfig != null && dungeonConfig.showDungeonRouteLines();
         boolean drawDungeonEntryPaths = config.showDungeonEntryPathToFirstWaypoint();
         if (!drawLines && !drawFill && !drawPaint && !drawBeams && !drawRouteLines
-                && !drawDungeonEntryPaths) return;
+                && !drawDungeonEntryPaths) return false;
         if (!worldRenderOpacityAllowsAnything(
                 config.beaconOpacity(), config.waypointOutlineOpacity(), drawLines,
-                drawRouteLines, drawDungeonEntryPaths)) return;
+                drawRouteLines, drawDungeonEntryPaths)) return false;
         boolean hasDepthCheckedWaypoints = hasDepthCheckedWaypoint(groups);
         boolean hasThroughWallWaypoints = hasThroughWallWaypoint(groups) || drawDungeonEntryPaths;
-        if (!hasDepthCheckedWaypoints && !hasThroughWallWaypoints) return;
+        if (!hasDepthCheckedWaypoints && !hasThroughWallWaypoints) return false;
 
-        PoseStack ps = ctx.poseStack();
-        if (ps == null) return;
+        if (ps == null || sink == null || origin == null) return false;
         Minecraft mc = Minecraft.getInstance();
         ClientLevel level = mc.level;
         GameRenderer renderer = mc.gameRenderer;
         Camera camera = MinecraftCompat.mainCamera(renderer);
-        if (!camera.isInitialized()) return;
+        if (!camera.isInitialized()) return false;
         Vec3 camPos = camera.position();
         prepareDepthVisibilityCache(level, camPos);
         Vec3 playerPos = mc.player == null ? null : mc.player.position();
@@ -198,64 +218,72 @@ class WaypointWorldRenderer {
 
         ps.pushPose();
         try {
-            ps.translate(-camPos.x, -camPos.y, -camPos.z);
+            ps.translate(-origin.x, -origin.y, -origin.z);
 
         // Starting a fill batch invalidates the shared line consumer, so flush fills first.
         if (drawTexturedBeams && hasThroughWallWaypoints) {
             RenderType beamType = WaypointerRenderPipelines.beaconBeamThroughWalls();
             int minY = beamMinY(mc);
             int maxY = beamMaxY(mc);
-            RenderSubmission.submit(ctx, ps, beamType, (texturedBeams, submittedPose) -> {
+            sink.submit(beamType, (texturedBeams, submittedPose) -> sink.dynamic(() -> {
                 for (WaypointGroup g : groups) {
                     emitBeaconBeams(submittedPose, texturedBeams, g, camPos, playerPos,
                             maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
                             false, mc, level, true);
                 }
-            });
+            }));
         }
         if (drawTexturedBeams && hasDepthCheckedWaypoints) {
             RenderType beamType = WaypointerRenderPipelines.beaconBeamDepthTested();
             int minY = beamMinY(mc);
             int maxY = beamMaxY(mc);
-            RenderSubmission.submit(ctx, ps, beamType, (texturedBeams, submittedPose) -> {
+            sink.submit(beamType, (texturedBeams, submittedPose) -> sink.dynamic(() -> {
                 for (WaypointGroup g : groups) {
                     emitBeaconBeams(submittedPose, texturedBeams, g, camPos, playerPos,
                             maxStaticDistanceSq, nearHideDistanceSq, minY, maxY,
                             true, mc, level, true);
                 }
-            });
+            }));
         }
-        if (drawPaint && hasThroughWallWaypoints) {
+        boolean emitStatic = sink.staticGeometryNeeded();
+        boolean retainCameraIndependentGeometry = sink.retainsStaticGeometry();
+        if (emitStatic && drawPaint && hasThroughWallWaypoints) {
             for (WaypointGroup g : groups) {
                 WaypointPaint paint = effectivePaint(g, defaultPaint);
                 if (paint == null) continue;
                 WaypointPaintTextureCache.Entry paintTexture =
-                        WaypointPaintTextureCache.get(paint);
-                RenderSubmission.submit(ctx, ps, paintTexture.throughWalls(),
+                        retainCameraIndependentGeometry
+                                ? WaypointPaintTextureCache.getRetained(paint)
+                                : WaypointPaintTextureCache.get(paint);
+                if (paintTexture == null) continue;
+                sink.submit(paintTexture.throughWalls(),
                         (quads, submittedPose) -> emitPaintedBoxes(
                                 submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
-                                false, mc));
+                                false, mc, retainCameraIndependentGeometry));
             }
         }
-        if (drawPaint && hasDepthCheckedWaypoints) {
+        if (emitStatic && drawPaint && hasDepthCheckedWaypoints) {
             for (WaypointGroup g : groups) {
                 WaypointPaint paint = effectivePaint(g, defaultPaint);
                 if (paint == null) continue;
                 WaypointPaintTextureCache.Entry paintTexture =
-                        WaypointPaintTextureCache.get(paint);
-                RenderSubmission.submit(ctx, ps, paintTexture.depthTested(),
+                        retainCameraIndependentGeometry
+                                ? WaypointPaintTextureCache.getRetained(paint)
+                                : WaypointPaintTextureCache.get(paint);
+                if (paintTexture == null) continue;
+                sink.submit(paintTexture.depthTested(),
                         (quads, submittedPose) -> emitPaintedBoxes(
                                 submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
-                                true, mc));
+                                true, mc, retainCameraIndependentGeometry));
             }
         }
-        if ((drawFlatBeams || drawFill) && hasThroughWallWaypoints) {
+        if (emitStatic && (drawFlatBeams || drawFill) && hasThroughWallWaypoints) {
             RenderType quadType = WaypointerRenderPipelines.quadsThroughWalls();
             int minY = beamMinY(mc);
             int maxY = beamMaxY(mc);
-            RenderSubmission.submit(ctx, ps, quadType, (quads, submittedPose) -> {
+            sink.submit(quadType, (quads, submittedPose) -> {
                 if (drawFlatBeams) {
                     for (WaypointGroup g : groups) {
                         emitBeaconBeams(submittedPose, quads, g, camPos, playerPos,
@@ -265,7 +293,8 @@ class WaypointWorldRenderer {
                 }
                 if (drawFill) {
                     for (WaypointGroup g : groups) {
-                        if (!shouldEmitRgbFill(g, defaultPaint)) continue;
+                        if (!shouldEmitRgbFill(
+                                g, defaultPaint, retainCameraIndependentGeometry)) continue;
                         emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
                                 drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT,
@@ -274,11 +303,11 @@ class WaypointWorldRenderer {
                 }
             });
         }
-        if ((drawFlatBeams || drawFill) && hasDepthCheckedWaypoints) {
+        if (emitStatic && (drawFlatBeams || drawFill) && hasDepthCheckedWaypoints) {
             RenderType quadType = WaypointerRenderPipelines.quadsDepthTested();
             int minY = beamMinY(mc);
             int maxY = beamMaxY(mc);
-            RenderSubmission.submit(ctx, ps, quadType, (quads, submittedPose) -> {
+            sink.submit(quadType, (quads, submittedPose) -> {
                 if (drawFlatBeams) {
                     for (WaypointGroup g : groups) {
                         emitBeaconBeams(submittedPose, quads, g, camPos, playerPos,
@@ -288,7 +317,8 @@ class WaypointWorldRenderer {
                 }
                 if (drawFill) {
                     for (WaypointGroup g : groups) {
-                        if (!shouldEmitRgbFill(g, defaultPaint)) continue;
+                        if (!shouldEmitRgbFill(
+                                g, defaultPaint, retainCameraIndependentGeometry)) continue;
                         emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
                                 drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT,
@@ -297,25 +327,27 @@ class WaypointWorldRenderer {
                 }
             });
         }
-        if ((drawLines || drawRouteLines || drawDungeonEntryPaths)
+        if ((emitStatic && drawLines || drawRouteLines || drawDungeonEntryPaths)
                 && hasThroughWallWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
             List<DungeonEntryPathController.Submission> dungeonEntryPaths = drawDungeonEntryPaths
                     ? prepareDungeonEntryPaths(groups, playerPos, level)
                     : List.of();
-            boolean submitted = RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
+            boolean submitted = sink.submit(lineType, (lines, submittedPose) -> {
                 if (drawDungeonEntryPaths) {
-                    emitDungeonEntryPaths(submittedPose, lines, dungeonEntryPaths);
+                    sink.dynamic(() -> emitDungeonEntryPaths(submittedPose, lines, dungeonEntryPaths));
                 }
                 if (drawRouteLines) {
-                    for (WaypointGroup g : groups) {
-                        if (!routeLinesEnabled(g, config, dungeonConfig)) continue;
-                        emitRouteLines(submittedPose, lines, g, camPos, playerPos,
-                                maxStaticDistanceSq, nearHideDistanceSq,
-                                false, mc, level);
-                    }
+                    sink.dynamic(() -> {
+                        for (WaypointGroup g : groups) {
+                            if (!routeLinesEnabled(g, config, dungeonConfig)) continue;
+                            emitRouteLines(submittedPose, lines, g, camPos, playerPos,
+                                    maxStaticDistanceSq, nearHideDistanceSq,
+                                    false, mc, level);
+                        }
+                    });
                 }
-                if (drawLines) {
+                if (emitStatic && drawLines) {
                     for (WaypointGroup g : groups) {
                         emitLineBoxes(submittedPose, lines, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
@@ -328,18 +360,20 @@ class WaypointWorldRenderer {
                         path.group(), submitted && isDrawableDungeonEntryPath(path.points()));
             }
         }
-        if ((drawLines || drawRouteLines) && hasDepthCheckedWaypoints) {
+        if ((emitStatic && drawLines || drawRouteLines) && hasDepthCheckedWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesDepthTested();
-            RenderSubmission.submit(ctx, ps, lineType, (lines, submittedPose) -> {
+            sink.submit(lineType, (lines, submittedPose) -> {
                 if (drawRouteLines) {
-                    for (WaypointGroup g : groups) {
-                        if (!routeLinesEnabled(g, config, dungeonConfig)) continue;
-                        emitRouteLines(submittedPose, lines, g, camPos, playerPos,
-                                maxStaticDistanceSq, nearHideDistanceSq,
-                                true, mc, level);
-                    }
+                    sink.dynamic(() -> {
+                        for (WaypointGroup g : groups) {
+                            if (!routeLinesEnabled(g, config, dungeonConfig)) continue;
+                            emitRouteLines(submittedPose, lines, g, camPos, playerPos,
+                                    maxStaticDistanceSq, nearHideDistanceSq,
+                                    true, mc, level);
+                        }
+                    });
                 }
-                if (drawLines) {
+                if (emitStatic && drawLines) {
                     for (WaypointGroup g : groups) {
                         emitLineBoxes(submittedPose, lines, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
@@ -352,6 +386,7 @@ class WaypointWorldRenderer {
         } finally {
             ps.popPose();
         }
+        return true;
     }
 
     private void emitDungeonEntryPaths(PoseStack ps, VertexConsumer lines,
@@ -672,6 +707,7 @@ class WaypointWorldRenderer {
         if (mc == null || level == null || waypoint == null) {
             return false;
         }
+        if (trustGpuDepthTest) return true;
         return depthVisibility.getOrCompute(waypoint,
                 () -> hasLineOfSightToWaypointBox(mc, level, waypoint));
     }
@@ -686,6 +722,162 @@ class WaypointWorldRenderer {
         if (mc == null || level == null || waypoint == null) return false;
         if (!isOnScreen(sx, sy, screenW, screenH)) return false;
         return shouldRenderDepthCheckedWaypoint(mc, level, waypoint);
+    }
+
+    /** Hashes the cached line-of-sight results that affect retained geometry. */
+    long depthVisibilityFingerprint(Iterable<WaypointGroup> groups, Minecraft mc,
+                                    ClientLevel level, Vec3 camPos) {
+        if (mc == null || level == null || camPos == null
+                || !staticGeometryEnabledFor(groups)) return 0L;
+        prepareDepthVisibilityCache(level, camPos);
+        double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
+        double nearHideDistanceSq = nearHideDistanceSq();
+        Vec3 playerPos = mc.player == null ? null : mc.player.position();
+        long[] hash = {0x9E3779B97F4A7C15L};
+        boolean allVisibleCandidates = staticBoxGeometryEnabledFor(groups)
+                || config.beaconBeamMode() == WaypointerConfig.BeaconBeamMode.ALL_VISIBLE;
+        for (WaypointGroup g : groups) {
+            int currentIdx = g.currentIndex();
+            boolean showCompleted = config.showCompleted();
+            if (allVisibleCandidates) {
+                g.forEachVisibleIndex(config.sequenceVisibility(),
+                        config.keepSubwaypointsVisibleUntilNextWaypoint(), i ->
+                                mixDepthVisibilityCandidate(hash, g, i, currentIdx,
+                                        showCompleted, mc, level, camPos, playerPos,
+                                        maxStaticDistanceSq, nearHideDistanceSq));
+            } else if (config.beaconBeamMode() == WaypointerConfig.BeaconBeamMode.CURRENT) {
+                mixDepthVisibilityCandidate(hash, g, currentBeamIndex(g), currentIdx,
+                        showCompleted, mc, level, camPos, playerPos,
+                        maxStaticDistanceSq, nearHideDistanceSq);
+            }
+        }
+        return hash[0];
+    }
+
+    private void mixDepthVisibilityCandidate(
+            long[] hash, WaypointGroup group, int index, int currentIdx,
+            boolean showCompleted, Minecraft mc, ClientLevel level, Vec3 camPos, Vec3 playerPos,
+            double maxStaticDistanceSq, double nearHideDistanceSq) {
+        if (index < 0 || index >= group.size()) return;
+        Waypoint waypoint = group.get(index);
+        if (!waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED)) return;
+        if (!shouldRenderRouteLineEndpoint(group, index, currentIdx, showCompleted,
+                camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq)) return;
+        boolean visible = shouldRenderDepthCheckedWaypoint(mc, level, waypoint);
+        long mixed = hash[0] ^ (index * 0x9E3779B97F4A7C15L) ^ (visible ? 0x1L : 0x2L);
+        mixed = (mixed ^ (mixed >>> 30)) * 0xBF58476D1CE4E5B9L;
+        hash[0] = mixed ^ (mixed >>> 27);
+    }
+
+    /** Hashes distance and near-hide decisions that affect retained geometry. */
+    long worldVisibilityFingerprint(Iterable<WaypointGroup> groups, Vec3 camPos, Vec3 playerPos) {
+        if (camPos == null || !staticGeometryEnabledFor(groups)) return 0L;
+        double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
+        double nearHideDistanceSq = nearHideDistanceSq();
+        long[] hash = {0xA0761D6478BD642FL};
+        boolean allVisibleCandidates = staticBoxGeometryEnabledFor(groups)
+                || config.beaconBeamMode() == WaypointerConfig.BeaconBeamMode.ALL_VISIBLE;
+        for (WaypointGroup group : groups) {
+            int currentIdx = group.currentIndex();
+            boolean showCompleted = config.showCompleted();
+            if (allVisibleCandidates) {
+                group.forEachVisibleIndex(config.sequenceVisibility(),
+                        config.keepSubwaypointsVisibleUntilNextWaypoint(), i ->
+                                mixWorldVisibilityCandidate(hash, group, i, currentIdx,
+                                        showCompleted, camPos, playerPos,
+                                        maxStaticDistanceSq, nearHideDistanceSq));
+            } else if (config.beaconBeamMode() == WaypointerConfig.BeaconBeamMode.CURRENT) {
+                mixWorldVisibilityCandidate(hash, group, currentBeamIndex(group), currentIdx,
+                        showCompleted, camPos, playerPos,
+                        maxStaticDistanceSq, nearHideDistanceSq);
+            }
+        }
+        return hash[0];
+    }
+
+    private void mixWorldVisibilityCandidate(
+            long[] hash, WaypointGroup group, int index, int currentIdx,
+            boolean showCompleted, Vec3 camPos, Vec3 playerPos,
+            double maxStaticDistanceSq, double nearHideDistanceSq) {
+        if (index < 0 || index >= group.size()) return;
+        boolean visible = shouldRenderRouteLineEndpoint(
+                group, index, currentIdx, showCompleted, camPos, playerPos,
+                maxStaticDistanceSq, nearHideDistanceSq);
+        hash[0] = mixFingerprint(hash[0], index * 2L + (visible ? 1L : 0L));
+    }
+
+    int reserveActivePaints(Iterable<WaypointGroup> groups) {
+        if (groups == null || config.beaconOpacity() <= 0.0) {
+            WaypointPaintTextureCache.resetRetainedReservation();
+            return 0;
+        }
+        WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
+        activePaintScratch.clear();
+        for (WaypointGroup group : groups) {
+            if (group == null || group.isEmpty()) continue;
+            WaypointPaint paint = effectivePaint(group, defaultPaint);
+            if (paint != null) activePaintScratch.add(paint);
+        }
+        return WaypointPaintTextureCache.reserveForActivePaints(activePaintScratch);
+    }
+
+    /** Hashes level-dependent marker bounds. */
+    long blockShapeFingerprint(Iterable<WaypointGroup> groups, ClientLevel level,
+                               Vec3 camPos, Vec3 playerPos) {
+        if (groups == null || level == null || camPos == null
+                || !staticBoxGeometryEnabledFor(groups)) return 0L;
+        long[] hash = {0xD6E8FEB86659FD93L};
+        int[] shapedWaypoints = {0};
+        double[] bounds = waypointBoxBoundsScratch;
+        for (WaypointGroup group : groups) {
+            int currentIdx = group.currentIndex();
+            boolean showCompleted = config.showCompleted();
+            double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
+            double nearHideDistanceSq = nearHideDistanceSq();
+            group.forEachVisibleIndex(config.sequenceVisibility(),
+                    config.keepSubwaypointsVisibleUntilNextWaypoint(), i -> {
+                Waypoint waypoint = group.get(i);
+                if (!usesBlockShapeBounds(waypoint)
+                        || !shouldRenderRouteLineEndpoint(
+                                group, i, currentIdx, showCompleted, camPos, playerPos,
+                                maxStaticDistanceSq, nearHideDistanceSq)) return;
+                populateWaypointBoxBounds(level, waypoint, bounds);
+                hash[0] = mixFingerprint(hash[0], i);
+                for (double bound : bounds) {
+                    hash[0] = mixFingerprint(hash[0], Double.doubleToLongBits(bound));
+                }
+                shapedWaypoints[0]++;
+            });
+        }
+        return mixFingerprint(hash[0], shapedWaypoints[0]);
+    }
+
+    private boolean staticGeometryEnabledFor(Iterable<WaypointGroup> groups) {
+        if (groups == null) return false;
+        boolean visibleBoxes = staticBoxGeometryEnabledFor(groups);
+        boolean visibleFlatBeams = config.beaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF
+                && !config.useBeaconBeamTextures()
+                && config.beaconOpacity() > 0.0;
+        return visibleBoxes || visibleFlatBeams;
+    }
+
+    private boolean staticBoxGeometryEnabledFor(Iterable<WaypointGroup> groups) {
+        if (groups == null) return false;
+        WaypointerConfig.BoxStyle style = config.boxStyle();
+        boolean visibleOutlines = boxStyleDrawsOutline(style)
+                && config.waypointOutlineOpacity() > 0.0;
+        boolean visibleBoxes = (boxStyleDrawsRgbFill(style)
+                || style == WaypointerConfig.BoxStyle.PAINT
+                || hasFilledSubwaypoint(groups))
+                && config.beaconOpacity() > 0.0;
+        return visibleOutlines || visibleBoxes;
+    }
+
+    private static long mixFingerprint(long hash, long value) {
+        long mixed = hash ^ value;
+        mixed = (mixed ^ (mixed >>> 30)) * 0xBF58476D1CE4E5B9L;
+        mixed = (mixed ^ (mixed >>> 27)) * 0x94D049BB133111EBL;
+        return mixed ^ (mixed >>> 31);
     }
 
     void prepareDepthVisibilityCache(ClientLevel level, Vec3 cameraPosition) {
@@ -787,6 +979,13 @@ class WaypointWorldRenderer {
 
     static boolean shouldEmitRgbFill(WaypointGroup group, WaypointPaint defaultPaint) {
         return effectivePaint(group, defaultPaint) == null;
+    }
+
+    static boolean shouldEmitRgbFill(WaypointGroup group, WaypointPaint defaultPaint,
+                                     boolean retainCameraIndependentGeometry) {
+        WaypointPaint paint = effectivePaint(group, defaultPaint);
+        return paint == null || retainCameraIndependentGeometry
+                && !WaypointPaintTextureCache.isRetained(paint);
     }
 
     private static boolean isSmallSubwaypoint(Waypoint waypoint) {
@@ -996,8 +1195,9 @@ class WaypointWorldRenderer {
     private void emitPaintedBoxes(PoseStack ps, VertexConsumer quads,
                                   ClientLevel level, WaypointGroup group,
                                    Vec3 camPos, Vec3 playerPos,
-                                   double maxStaticDistanceSq, double nearHideDistanceSq,
-                                   boolean depthCheckedPass, Minecraft mc) {
+                                    double maxStaticDistanceSq, double nearHideDistanceSq,
+                                    boolean depthCheckedPass, Minecraft mc,
+                                    boolean retainCameraIndependentGeometry) {
         int currentIndex = group.currentIndex();
         boolean showCompleted = config.showCompleted();
         float beaconOpacity = (float) config.beaconOpacity();
@@ -1014,14 +1214,20 @@ class WaypointWorldRenderer {
             State state = stateFor(group, i, currentIndex);
             float alpha = alphaFor(group, state) * beaconOpacity * PAINTED_ALPHA_SCALE;
             populateVisualWaypointBoxBounds(level, waypoint, waypointBoxBoundsScratch);
-            RenderHelpers.emitTexturedBox(quads, ps,
-                    (float) waypointBoxBoundsScratch[BOX_MIN_X],
-                    (float) waypointBoxBoundsScratch[BOX_MIN_Y],
-                    (float) waypointBoxBoundsScratch[BOX_MIN_Z],
-                    (float) waypointBoxBoundsScratch[BOX_MAX_X],
-                    (float) waypointBoxBoundsScratch[BOX_MAX_Y],
-                    (float) waypointBoxBoundsScratch[BOX_MAX_Z],
-                    alpha, camPos.x, camPos.y, camPos.z);
+            float x1 = (float) waypointBoxBoundsScratch[BOX_MIN_X];
+            float y1 = (float) waypointBoxBoundsScratch[BOX_MIN_Y];
+            float z1 = (float) waypointBoxBoundsScratch[BOX_MIN_Z];
+            float x2 = (float) waypointBoxBoundsScratch[BOX_MAX_X];
+            float y2 = (float) waypointBoxBoundsScratch[BOX_MAX_Y];
+            float z2 = (float) waypointBoxBoundsScratch[BOX_MAX_Z];
+            if (retainCameraIndependentGeometry) {
+                RenderHelpers.emitTexturedBoxAllFaces(
+                        quads, ps, x1, y1, z1, x2, y2, z2, alpha);
+            } else {
+                RenderHelpers.emitTexturedBox(
+                        quads, ps, x1, y1, z1, x2, y2, z2,
+                        alpha, camPos.x, camPos.y, camPos.z);
+            }
         });
     }
 
