@@ -112,7 +112,7 @@ bits 6..4  content kind
 bits 3..0  wire version = 10
 ```
 
-Implemented kinds are 0 (general route), 2 (bare route), 3 (configuration), 4 (dungeon collection), 5 (sparse route), 6 subtype 0 (bare route pack), 6 subtype 1 (route library), and 7 (general route with a share label). Kind 1 is reserved. Other kind-4 and kind-6 subtypes are reserved.
+Implemented kinds are 0 (general route), 1 (compact single route), 2 (bare route), 3 (configuration), 4 (dungeon collection), 5 (sparse route), 6 subtype 0 (bare route pack), 6 subtype 1 (route library), and 7 (general route with a share label). Every kind value is assigned; future extension uses the subtype fields of kinds 4 and 6, whose other subtype values are reserved.
 
 Import order for a `WP:` string:
 
@@ -679,7 +679,7 @@ The reference exporter compares direct A, default-strategy B, and filtered-strat
 
 ## 10. Kind 0: general route
 
-Kind 0 carries general rich-route data. It reuses the V9 general-body grammar. V10 changes the version nibble and the outer transport. V10 does not use the V9 DEFLATE dictionary.
+Kind 0 carries general rich-route data. It extends the V9 general-body grammar with coordinate mode 7. V10 also changes the version nibble and outer transport and does not use the V9 DEFLATE dictionary.
 
 The header is `0x0A` without a label. A labeled export is kind 7 with header `0x7A` and the same grammar; the label field is present only for kind 7.
 
@@ -835,6 +835,7 @@ The packed coordinate streams for modes 2, 3, and 5 are most-significant-bit fir
 | 4 | VECTOR_AXIS_SEPARATED | First point, then all X deltas, all Y deltas, and all Z deltas. |
 | 5 | DELTA_FIT_AXIS_SEPARATED | First point, a width word, then fixed-width zigzag X, Y, and Z delta streams. |
 | 6 | RANGE_DELTA | First point, a width word, payload length, then adaptive range-coded delta bits. |
+| 7 | ENTROPY | A length-delimited, headerless kind-2 direct coordinate body. |
 
 Mode 2 requires X and Z in `[-2048,2047]` and Y in `[-64,447]`.
 
@@ -913,13 +914,22 @@ Finish the range payload as follows:
 
 The decoder mirrors these operations. It initializes `code` from four bytes and uses zero beyond the declared payload. It decodes zero when `((code-low)&MASK)<bound`.
 
-The current decoder does not require minimal origins, widths, or unique range-coder output. It does require valid coordinates, reserved-bit rules, packed zero padding, declared limits, and exact semantic EOF.
+Mode 7 writes:
+
+```text
+entropyLength : uvarint
+directBody[entropyLength]
+```
+
+`directBody` is the kind-2 mode-A body from sections 5.1 and 5.2 with only its `0x2A` header removed. It retains the kind-2 count and first point. The embedded count MUST equal this group's `waypointCount`. `entropyLength` MUST be positive and MUST NOT exceed the remaining semantic body. Rice and quotient bodies inherit the kind-2 descriptor, canonical-varint, zero-padding, coordinate, unary, quotient-cardinality, and work-budget rules. The reserved Golomb descriptor remains invalid.
+
+The current decoder does not require minimal origins, widths, or unique range-coder output for modes 0-6. It does require valid coordinates, reserved-bit rules, packed zero padding, declared limits, and exact semantic EOF. For mode 7, it additionally requires the selected Rice or quotient grammar's local byte-for-byte canonical re-encode.
 
 ### 10.5 Coordinate-mode selection
 
-The reference writer tests every eligible mode in numeric order. Mode 2 requires its coordinate bounds. Modes 5 and 6 require widths of at most 31 bits. For each mode, the writer scores the semantic prefix through the current group. The prefix includes earlier groups but not later groups. It scores the shortest complete V10 A/B text form of that partial body.
+The reference writer tests every eligible mode in numeric order. Mode 2 requires its coordinate bounds. Modes 5 and 6 require widths of at most 31 bits. Mode 7 tests Rice first and quotient second; quotient is eligible only for 2-1,024 points. Each Rice and quotient spelling is scored independently. For each candidate, the writer scores the semantic prefix through the current group. The prefix includes earlier groups but not later groups. It scores the shortest complete V10 direct/DEFLATE text form of that partial body; mode 7 is independent of the outer transport mode.
 
-The writer replaces a mode only when the new text is strictly shorter. Numeric order is therefore the tie order. A decoder MUST accept any valid mode. It MUST NOT require the sender's mode to match its local writer.
+The writer replaces a candidate only when the new text is strictly shorter. Numeric mode order is therefore the outer tie order, and Rice wins an internal mode-7 tie. A decoder MUST accept either locally canonical mode-7 spelling and any valid lower mode. It MUST NOT require the sender's mode to match its local writer.
 
 ### 10.6 Waypoint record
 
@@ -985,12 +995,106 @@ The body does not store group enabled state, current progress, temporary mode, e
 | Group or point display name | 256 UTF-8 bytes |
 | Label | 64 UTF-16 units and 256 UTF-8 bytes |
 | Range payload | 1,048,576 bytes, with the tighter count-derived limit |
+| Entropy payload | Positive; bounded by the remaining semantic body and the 2 MiB frame profile |
 
 The reference writer builds direct A and two B candidates. Both B candidates use Java `Deflater.BEST_COMPRESSION`. They use the DEFAULT and FILTERED strategies. The writer applies section 5.4 ordering. An oversized optional B candidate is ignored when A fits.
 
 The dungeon writer uses the same rule. It ignores an oversized optional B candidate when its direct A candidate fits.
 
-For one eligible route, kind 5 replaces kind 0 only when kind 5 is strictly shorter. Kind 0 wins a tie. The normal writer falls back to V9 only after `V10ProfileLimitException`. It does not downgrade after another encode error. The catalog writer deliberately stays full-fidelity V9.
+For one eligible route, the writer compares kind 0 with eligible kind 1 and kind 5 forms by complete final text length. A later candidate replaces the current result only when strictly shorter. Kind 0 wins a tie with either compact kind; kind 1 wins its tie with kind 5. The normal writer falls back to V9 only after `V10ProfileLimitException`. It does not downgrade after another encode error. The catalog writer deliberately stays full-fidelity V9.
+
+## 10A. Kind 1: compact single route
+
+Kind 1 carries exactly one route and an empty share label. It has two subtypes: 0 is full fidelity and 1 is the exact `NO_NAMES` projection. Other option combinations MUST use another kind. The body is canonical: after bounded decode, the decoder MUST re-encode the decoded projection and require byte-for-byte semantic equality.
+
+### 10A.1 Control and common fields
+
+`header` is `0x1A` under the current transport. It is followed by:
+
+| Control bit | Meaning |
+|---:|---|
+| Bit 0 | Subtype: 0 full, 1 no-names |
+| Bit 1 | Skip-ahead disabled |
+| Bit 2 | Waypoint-flag palette follows |
+| Bit 3 | Load mode is STATIC; clear means SEQUENCE |
+| Bit 4 | Exact default radius follows |
+| Bits 5-6 | Gradient: 0 STATIC, 1 AUTO, 2 MANUAL; 3 is invalid |
+| Bit 7 | Three group palette colors follow |
+
+Subtype 1 MUST encode gradient ID 2 and MUST clear bit 7. The default radius is 3.0. A transmitted radius is `f64be` and obeys section 10.3. Group colors, when present, are `staticRgb:u24be`, `gradientStartRgb:u24be`, and `gradientEndRgb:u24be`. They are omitted only when equal `0x4FE05A`, `0x00BFFF`, and `0xFF3040`.
+
+A zone starts with one byte:
+
+- `1..N` means section 10.2 dictionary index `token-1`.
+- `0` means `characterCount:uvarint` followed by five-bit symbols, most-significant-bit first. Symbols 0-25 are `a-z`, 26 is `-`, and 27 is `_`; 28-31 and nonzero final padding are invalid.
+- `255` means `byteLength:uvarint` plus strict UTF-8.
+
+Subtype 0 MUST use a dictionary token when possible and otherwise token 255. Subtype 1 MUST use a dictionary token when possible, token 0 for a nonempty string matching `[a-z_-]+`, and token 255 otherwise. Inline text is limited to 1,048,576 bytes.
+
+When bit 2 is set, the flag stream is:
+
+`paletteCount:uvarint, flags[paletteCount]:unsigned-uvarint, packedIndex[waypointCount]`.
+
+The palette is first-use ordered. Its size is 1 through `waypointCount`. Index width is `ceil(log2(paletteCount))`; indexes are most-significant-bit first with zero final padding. Every index MUST be in range. Bit 2 MUST be clear exactly when every projected flag is zero.
+
+### 10A.2 Full subtype
+
+`full := header, control, zone, groupName, compactWaypointPayload, [flagStream], [radius], [groupColors], [precisionStream]`.
+
+A group-name token is:
+
+| Token | Value |
+|---:|---|
+| 0 | `byteLength:uvarint` plus strict UTF-8 |
+| 1 | Empty |
+| 2 | `Secret Route` |
+| 3 | `zoneTitle + " secrets"` |
+| 4 | `"Secret Route — " + zoneTitle` |
+| 5 | `Route 1` |
+| 6 | `New group` |
+| 7 | `Imported Route` |
+| 8 | `"Route -- " + zoneWords` |
+
+`zoneTitle` replaces each `-` or `_` with a space and uppercases the first following character with Java `Character.toUpperCase`. `zoneWords` only replaces those delimiters with spaces. The writer MUST use the first matching token in numeric order; token 0 is the fallback.
+
+`compactWaypointPayload` is:
+
+`waypointCount:uvarint, nameStream, colorStream, rangeCoordinates`.
+
+The maximum count is 20,000. Name strings are strict UTF-8 display names of at most 256 bytes. Name-stream modes are:
+
+0. all names empty;
+1. one constant name followed by that string;
+2. canonical signed-decimal arithmetic sequence followed by `start:svarint, step:svarint`;
+3. canonical signed-decimal sequence followed by one `svarint` delta per name;
+4. common nonempty prefix plus canonical signed-decimal arithmetic suffix, followed by `prefix, start, step`;
+5. first-use string palette followed by least-significant-bit-first packed indexes with zero padding.
+
+The writer tests those cases in that order. Color-stream mode 0 is one constant `u24be`; mode 1 is a first-use palette plus least-significant-bit-first packed indexes; mode 2 is one raw `u24be` per point. An empty route uses mode 2. Otherwise the writer uses constant when possible, then palette only when its raw byte count is strictly smaller than mode 2.
+
+Range coordinates write the first point as three `svarint` values, then `reserved:1|xWidth:5|yWidth:5|zWidth:5`, `payloadLength:uvarint`, and an adaptive range payload. Widths are the minimum widths for zigzag deltas and MUST be at most 31. Bits are processed axis-major X/Y/Z, point order, most-significant first. The range coder and update rule are section 10.4 mode 6. Its initial zero probabilities are:
+
+- X bits 0-11: `2145,2212,2034,2177,3087,3683,3946,3983,4058,4053,4001,3810`; the other 19 are 2048.
+- Y bits 0-7: `2336,2341,2312,2554,3471,3885,4015,3734`; the other 23 are 2048.
+- Z bits 0-9: `2163,2131,1986,2119,3053,3701,3949,3992,4057,4087`; the other 21 are 2048.
+
+Contexts are `axis*31+bit`. The payload is limited to 2,097,152 bytes and to `max(16,(count-1)*(xWidth+yWidth+zWidth)+16)`. The decoder MUST require minimum widths and the unique reference range payload.
+
+The optional final precision stream has no separate presence bit; it is present exactly when bytes remain after all preceding fields. It is `count:uvarint` followed by increasing entries `indexGap:uvarint, xOffset:svarint, yOffset:svarint, zOffset:svarint`. `indexGap` counts unlisted points after the previous index, starting before index zero. Each offset is from that point's block-center sixteenth. Count MUST be positive, at most the route count, and all reconstructed sixteenths MUST fit signed 32-bit.
+
+### 10A.3 No-names subtype
+
+`noNames := header, control, zone, coordinateLength:uvarint, directBody[coordinateLength], [flagStream], [radius], [precisionStream]`.
+
+`directBody` is the headerless kind-2 direct Rice or quotient body described by sections 5.1 and 5.2. Its repeated count is authoritative for the route and all kind-2 canonical, coordinate, unary, quotient, and work limits apply. `coordinateLength` MUST be positive and within the remaining semantic body.
+
+The writer scores Rice and, for 2-1,024 points, quotient as complete direct/DEFLATE texts. Rice wins a tie. The projection removes group and waypoint names, waypoint colors and radii, and optional flags according to section 10.7. It keeps projected persistent flags, group load mode, skip-ahead, radius, zone, and required precise subwaypoint placement.
+
+### 10A.4 Eligibility and selection
+
+Kind 1 requires one route, an empty label, a valid zone, at most 20,000 points, valid display names, representable compact deltas, and no temporary waypoint state. Full subtype requires all six visible fields enabled. No-names subtype requires the exact `NO_NAMES` field set.
+
+The writer independently builds the canonical kind-1 semantic body and its direct and two dictionaryless DEFLATE candidates. It compares the best kind 1 form with kind 0 by complete final text length and replaces kind 0 only when strictly shorter. Kind 0 wins a tie. Kind 5 is tested afterward and replaces the current result only when strictly shorter.
 
 ## 11. Encoder product policy
 
@@ -1002,7 +1106,7 @@ The six visible route fields are names, colors, radii, waypoint flags, group met
 | Two or more eligible regular routes, all six fields off, empty label | Kind 6 subtype 0 |
 | Explicit `BARE_COORDINATES` with a nonempty ineligible input | Reject; do not fall through to kind 0 |
 | Ordinary all-off request with a nonregular route | Kind 0 |
-| One eligible anonymous route with sparse exceptions | Compare kind 0 and kind 5 |
+| One eligible full or no-names route | Compare kind 0, kind 1, and eligible kind 5 |
 | Dungeon collection through the typed dungeon exporter | Kind 4 |
 | Configuration through the typed configuration exporter | Kind 3 |
 | Library with folders, paints, or manual-color metadata after projection | Kind 6 subtype 1 |
@@ -1028,7 +1132,7 @@ The bare selection applies to generic and public API exports. It is a projection
 | Semantic body, header included | 2,097,150 bytes |
 | Mode-1 compressed part | 2,097,149 bytes |
 | Transport characters | 3,145,728 |
-| Kind 2/5 waypoints | 20,000 |
+| Kind 1/2/5 waypoints | 20,000 |
 | Quotient body waypoints | 1,024, checked after descriptor dispatch |
 | Quotient combinatorial ops / bit work | 200,000 / 256,000,000 |
 | Plain Rice unary budget | `90×(count−1)` zero bits |
@@ -1064,6 +1168,8 @@ Repository fixtures:
 - `src/test/resources/fixtures/waypointer-native-golden-vectors.json` has V1-V9 compatibility vectors and dictionary hashes.
 - `src/test/java/com/babbur/waypointer/codec/V10SparseRouteCodecTest.java` has the kind-5 reference strings.
 - `src/test/java/com/babbur/waypointer/codec/V10DungeonCodecTest.java` has the kind-4 reference checks.
+- `src/test/java/com/babbur/waypointer/codec/V10CompactRouteCodecTest.java` checks kind-1 projection, bounds, and canonical spellings.
+- `src/test/java/com/babbur/waypointer/codec/WaypointCodecV10EntropyTest.java` checks kind-0 mode-7 selection and round-trip.
 - `src/test/java/com/babbur/waypointer/codec/V10GoldenRegeneration.java` rebuilds the two V10 fixture files after a deliberate wire change (`-Pv10.regen=<repo root>`).
 
 The digest input for `selectedWireSha256` is the fixture-order sequence of complete ASCII wire strings. Prefix each string with its four-byte big-endian byte length before hashing. The 302-route external corpus (`V10LockedCorpusTest`, `v10.corpus`) predates the header-mode envelope; its recorded totals are not comparable to current output.
@@ -1074,10 +1180,12 @@ The digest input for `selectedWireSha256` is the fixture-order sequence of compl
 |---|---|
 | `src/main/java/com/babbur/waypointer/codec/UniversalShareCodec.java` | Universal route, config, and dungeon entry point |
 | `src/main/java/com/babbur/waypointer/codec/V10Transport.java` | Frame, CRC, DEFLATE bounds, contextual text |
-| `src/main/java/com/babbur/waypointer/codec/V10RouteCodec.java` | Route selection and kinds 0, 2, 5, and 6 dispatch |
+| `src/main/java/com/babbur/waypointer/codec/V10RouteCodec.java` | Route selection and kinds 0, 1, 2, 5, and 6 dispatch |
 | `src/main/java/com/babbur/waypointer/codec/V10GeneralRouteCodec.java` | Kind-0 A/B candidate selection |
+| `src/main/java/com/babbur/waypointer/codec/V10CompactRouteCodec.java` | Kind-1 compact single-route body |
+| `src/main/java/com/babbur/waypointer/codec/V9CompactCodec.java` | Frozen V9 compact codec and shared kind-1 waypoint streams |
 | `src/main/java/com/babbur/waypointer/codec/V10BareRouteCodec.java` | Kind 2, Rice descriptor, coordinate primitive |
-| `src/main/java/com/babbur/waypointer/codec/V10BareEntropyCodec.java` | Quotient descriptor and work budgets |
+| `src/main/java/com/babbur/waypointer/codec/V10BareEntropyCodec.java` | Shared kind-0/kind-2 quotient descriptor and work budgets |
 | `src/main/java/com/babbur/waypointer/codec/V10BareRoutePackCodec.java` | Kind 6 subtype 0 |
 | `src/main/java/com/babbur/waypointer/codec/V10RouteLibraryCodec.java` | Kind 6 subtype 1 |
 | `src/main/java/com/babbur/waypointer/codec/RouteLibraryCodec.java` | Library entry point; frozen `WPL:1:` reader and fallback writer |

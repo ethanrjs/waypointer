@@ -122,7 +122,8 @@ public final class UniversalShareCodec {
                             decoded.routes(), decoded.waypointCount(), List.of(), 0,
                             DungeonRouteImporter.Format.WAYPOINTER));
                 }
-                case V10GeneralRouteCodec.CONTENT_KIND, 2, 5,
+                case V10GeneralRouteCodec.CONTENT_KIND,
+                     V10CompactRouteCodec.CONTENT_KIND, 2, 5,
                      V10BareRoutePackCodec.CONTENT_KIND,
                      V10GeneralRouteCodec.LABELED_CONTENT_KIND ->
                         new Waypoints(WaypointImporter.importAny(normalized));

@@ -193,7 +193,10 @@ class WaypointCodecTest {
         route.add(Waypoint.at(5, 70, 0));
         route.add(Waypoint.at(10, 70, 0));
 
-        String encoded = WaypointCodec.encode(List.of(route), WaypointCodec.Options.NO_NAMES);
+        WaypointCodec.Options generalNoNames = WaypointCodec.Options.NO_NAMES.toBuilder()
+                .label("bodyless test")
+                .build();
+        String encoded = WaypointCodec.encode(List.of(route), generalNoNames);
         DecodeDebug.GroupDebug debug = WaypointCodec.debugDecode(encoded).groups().get(0);
 
         assertEquals(0, debug.bodyBlockBytes(),
@@ -657,6 +660,10 @@ class WaypointCodecTest {
                 "CODEC.md should identify the frozen legacy decoder path");
         assertTrue(docs.contains("Kind 0 carries general rich-route data"),
                 "CODEC.md should identify the general V10 route writer");
+        assertTrue(docs.contains("Kind 1 carries exactly one route"),
+                "CODEC.md should identify the compact V10 route writer");
+        assertTrue(docs.contains("| 7 | ENTROPY |"),
+                "CODEC.md should identify the kind-0 entropy coordinate mode");
         assertTrue(docs.contains("One eligible regular route, all six fields off, empty label | Kind 2"),
                 "CODEC.md should identify the coordinate-only V10 writer");
         assertTrue(docs.contains("Explicit `BARE_COORDINATES`"),
@@ -1005,7 +1012,9 @@ class WaypointCodecTest {
         }
 
         DecodeDebug.GroupDebug debug = WaypointCodec.debugDecode(
-                WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES)).groups().get(0);
+                WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES.toBuilder()
+                        .label("bodyless test")
+                        .build())).groups().get(0);
 
         assertEquals(0, debug.bodyBlockBytes(),
                 "a route with no optional waypoint fields should not spend one zero flag byte per point");

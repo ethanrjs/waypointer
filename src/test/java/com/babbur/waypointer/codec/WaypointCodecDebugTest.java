@@ -65,7 +65,7 @@ class WaypointCodecDebugTest {
 
     @Test
     void header_byte_marks_v10_general_body_when_waypoint_names_are_excluded() {
-        String encoded = WaypointCodec.encode(List.of(sampleGroup()), WaypointCodec.Options.NO_NAMES);
+        String encoded = encodeGeneral(sampleGroup(), WaypointCodec.Options.NO_NAMES);
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
         // Group metadata remains requested, so the lossless V10 general body is
@@ -113,7 +113,7 @@ class WaypointCodecDebugTest {
         WaypointCodec.Options opts = WaypointCodec.Options.builder()
                 .includeColors(true)
                 .build();
-        String encoded = WaypointCodec.encode(List.of(g), opts);
+        String encoded = encodeGeneral(g, opts);
         DecodeDebug.GroupDebug gd = WaypointCodec.debugDecode(encoded).groups().get(0);
 
         assertTrue(gd.enabled());
@@ -146,7 +146,7 @@ class WaypointCodecDebugTest {
         String encoded = WaypointCodec.encode(List.of(g));
         DecodeDebug.GroupDebug gd = WaypointCodec.debugDecode(encoded).groups().get(0);
 
-        assertTrue(gd.coordModeOrdinal() >= 0 && gd.coordModeOrdinal() <= 5,
+        assertTrue(gd.coordModeOrdinal() >= 0 && gd.coordModeOrdinal() <= 7,
                 "coord-mode ordinal must be a valid wire value, got " + gd.coordModeOrdinal());
         assertEquals(20, gd.pointCount(), "debug view must report the correct point count");
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
@@ -163,8 +163,8 @@ class WaypointCodecDebugTest {
         g.add(Waypoint.at(0, 70, 0));
         g.add(Waypoint.at(1_000_000, 70, 1_000_000));
 
-        DecodeDebug.GroupDebug gd = WaypointCodec.debugDecode(WaypointCodec.encode(List.of(g)))
-                .groups().get(0);
+        DecodeDebug.GroupDebug gd = WaypointCodec.debugDecode(
+                encodeGeneral(g, WaypointCodec.Options.FULL_FIDELITY)).groups().get(0);
 
         assertNotEquals("FIXED_COMPACT", gd.coordMode(),
                 "FIXED_COMPACT must be ineligible when x,z exceed [-2048,+2047]");
@@ -177,13 +177,14 @@ class WaypointCodecDebugTest {
             g.add(new Waypoint(i * 3, 70, i * 2, "pt" + i,
                     Waypoint.DEFAULT_COLOR, 0, 0.0));
         }
-        DecodeDebug.GroupDebug gd = WaypointCodec.debugDecode(WaypointCodec.encode(List.of(g)))
-                .groups().get(0);
+        DecodeDebug.GroupDebug gd = WaypointCodec.debugDecode(
+                encodeGeneral(g, WaypointCodec.Options.FULL_FIDELITY)).groups().get(0);
 
         assertTrue(gd.coordBlockBytes() > 0, "coord block must be non-empty");
         assertTrue(gd.bodyBlockBytes()  > 0, "body block must be non-empty");
         // Sum can't exceed the whole raw body.
-        DecodeDebug full = WaypointCodec.debugDecode(WaypointCodec.encode(List.of(g)));
+        DecodeDebug full = WaypointCodec.debugDecode(
+                encodeGeneral(g, WaypointCodec.Options.FULL_FIDELITY));
         assertTrue(gd.coordBlockBytes() + gd.bodyBlockBytes() < full.rawBodyBytes());
     }
 
@@ -286,4 +287,15 @@ class WaypointCodecDebugTest {
                 Waypoint.FLAG_HIDE_BEACON,  0.0));
         return g;
     }
+
+    private static String encodeGeneral(
+            WaypointGroup group, WaypointCodec.Options options) {
+        try {
+            return WaypointCodec.MAGIC
+                    + V10GeneralRouteCodec.encodeCandidate(List.of(group), options).transport();
+        } catch (java.io.IOException failure) {
+            throw new AssertionError(failure);
+        }
+    }
+
 }
