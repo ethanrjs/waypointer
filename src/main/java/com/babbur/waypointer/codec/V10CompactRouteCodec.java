@@ -38,11 +38,38 @@ final class V10CompactRouteCodec {
 
     private static boolean canEncodeFull(WaypointGroup group, WaypointCodec.Options options) {
         if (group == null || options == null || !options.includeNames || !options.includeColors
-                || !options.includeRadii || !options.includeWaypointFlags
-                || !options.includeGroupMeta || !options.includeZone || !options.label.isEmpty()) {
+                || !options.includeZone || !options.label.isEmpty()) {
             return false;
         }
-        return V9CompactCodec.canEncode(normalizedFull(group), options);
+        boolean full = options.includeRadii && options.includeWaypointFlags && options.includeGroupMeta;
+        if (!full && !hasUnchangedCommonProjection(group, options)) return false;
+        return V9CompactCodec.canEncode(normalizedFull(group), WaypointCodec.Options.FULL_FIDELITY);
+    }
+
+    /** The full body also represents this partial export when every omitted field is unchanged. */
+    private static boolean hasUnchangedCommonProjection(
+            WaypointGroup group, WaypointCodec.Options options) {
+        if (options.includeRadii || options.includeWaypointFlags || options.includeGroupMeta
+                || group.routeKind() != WaypointGroup.RouteKind.REGULAR
+                || group.gradientMode() != WaypointGroup.GradientMode.MANUAL
+                || group.loadMode() != WaypointGroup.LoadMode.SEQUENCE
+                || Double.compare(group.defaultRadius(), Waypoint.DEFAULT_REACH_RADIUS) != 0
+                || !group.skipAheadEnabled()
+                || group.staticColor() != Waypoint.DEFAULT_COLOR
+                || group.gradientStartColor() != 0x00BFFF
+                || group.gradientEndColor() != 0xFF3040) {
+            return false;
+        }
+        for (Waypoint waypoint : group.waypoints()) {
+            if (waypoint.customRadius() != 0.0
+                    || (waypoint.color() & 0xFF000000) != 0
+                    || waypoint.flags() != WaypointCodec.exportedWaypointFlags(waypoint, options)
+                    || waypoint.hasCustomPrecisePosition()
+                            != WaypointCodec.shouldExportPrecisePosition(waypoint, options)) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static boolean canEncodeNoNames(WaypointGroup group, WaypointCodec.Options options) {

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -14,6 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class V10CompactRouteCodecTest {
+
+    private static final WaypointCodec.Options COMMON = WaypointCodec.Options.builder()
+            .includeNames(true).includeColors(true).includeZone(true)
+            .includeRadii(false).includeWaypointFlags(false).includeGroupMeta(false).build();
 
     @Test
     void fullRoundTripPreservesCompactPersistentMetadata() throws Exception {
@@ -115,6 +120,82 @@ class V10CompactRouteCodecTest {
     }
 
     @Test
+    void commonProjectionUsesShorterExistingFullBodyWithoutChangingDecodedFields() throws Exception {
+        WaypointGroup route = commonRoute();
+        WaypointGroup snapshot = route.exportSnapshot();
+        String general = V10GeneralRouteCodec.encodeCandidate(List.of(route), COMMON).transport();
+        String selected = V10RouteCodec.encode(List.of(route), COMMON);
+        V10Transport.CheckedFrame frame = V10Transport.probe(selected);
+
+        assertTrue(selected.length() < general.length());
+        assertEquals(V10CompactRouteCodec.CONTENT_KIND, frame.contentKind());
+        assertEquals(V10CompactRouteCodec.SUBTYPE_FULL, frame.semantic()[1] & 1);
+        WaypointGroup expected = V10GeneralRouteCodec.decode(V10Transport.probe(general)).groups().getFirst();
+        WaypointGroup decoded = V10CompactRouteCodec.decode(frame);
+        assertGroupMetadata(expected, decoded);
+        assertEquals(expected.waypoints(), decoded.waypoints());
+        assertGroupMetadata(snapshot, route);
+        assertEquals(snapshot.waypoints(), route.waypoints());
+    }
+
+    @Test
+    void commonProjectionKeepsRequiredFlagsAndSubwaypointPrecision() throws Exception {
+        WaypointGroup route = commonRoute();
+        Waypoint subway = route.get(3).withFlags(Waypoint.FLAG_SUBWAYPOINT
+                | Waypoint.FLAG_SMALL_SUBWAYPOINT | Waypoint.FLAG_LOCKED_COLOR);
+        route.set(3, subway.withPreciseSixteenths(
+                subway.preciseX() + 1, subway.preciseY() + 2, subway.preciseZ() + 3));
+        route.set(5, route.get(5).withFlags(Waypoint.FLAG_DISABLED));
+
+        assertTrue(V10CompactRouteCodec.canEncode(route, COMMON));
+        String general = V10GeneralRouteCodec.encodeCandidate(List.of(route), COMMON).transport();
+        WaypointGroup expected = V10GeneralRouteCodec.decode(V10Transport.probe(general)).groups().getFirst();
+        WaypointGroup decoded = V10CompactRouteCodec.decode(V10Transport.probe(
+                V10CompactRouteCodec.encode(route, COMMON)));
+        assertGroupMetadata(expected, decoded);
+        assertEquals(expected.waypoints(), decoded.waypoints());
+        assertTrue(V10RouteCodec.encode(List.of(route), COMMON).length() <= general.length());
+    }
+
+    @Test
+    void commonProjectionCannotCarryFieldsThatTheRequestWouldDiscard() {
+        List<ProjectionChange> changes = List.of(
+                new ProjectionChange("auto gradient", route -> route.setGradientMode(WaypointGroup.GradientMode.AUTO)),
+                new ProjectionChange("static gradient", route -> route.setGradientMode(WaypointGroup.GradientMode.STATIC)),
+                new ProjectionChange("static load", route -> route.setLoadMode(WaypointGroup.LoadMode.STATIC)),
+                new ProjectionChange("group radius", route -> route.setDefaultRadius(2.5)),
+                new ProjectionChange("skip ahead", route -> route.setSkipAheadEnabled(false)),
+                new ProjectionChange("static color", route -> route.setStaticColor(0x112233)),
+                new ProjectionChange("gradient start", route -> route.setGradientStartColor(0x112233)),
+                new ProjectionChange("gradient end", route -> route.setGradientEndColor(0x112233)),
+                new ProjectionChange("point radius", route -> route.set(0, route.get(0).withRadius(2.5))),
+                new ProjectionChange("visual flag", route -> route.set(0, route.get(0).withFlags(Waypoint.FLAG_HIDE_BEACON))),
+                new ProjectionChange("ordinary precision", route -> {
+                    Waypoint point = route.get(0);
+                    route.set(0, point.withPreciseSixteenths(point.preciseX() + 1, point.preciseY(), point.preciseZ()));
+                }),
+                new ProjectionChange("dungeon", route -> route.setRouteKind(WaypointGroup.RouteKind.DUNGEON)),
+                new ProjectionChange("non-RGB color", route -> route.set(0, route.get(0).withColor(0xAA112233))),
+                new ProjectionChange("temporary point", route -> route.set(0, route.get(0).withTemp(Waypoint.TEMP_UNTIL_LEAVE, 0))));
+        for (ProjectionChange change : changes) {
+            WaypointGroup route = commonRoute();
+            change.apply().accept(route);
+            assertFalse(V10CompactRouteCodec.canEncode(route, COMMON), change.name());
+        }
+        WaypointGroup route = commonRoute();
+        for (WaypointCodec.Options options : List.of(
+                COMMON.toBuilder().label("label").build(),
+                COMMON.toBuilder().includeNames(false).build(),
+                COMMON.toBuilder().includeColors(false).build(),
+                COMMON.toBuilder().includeZone(false).build(),
+                COMMON.toBuilder().includeRadii(true).build(),
+                COMMON.toBuilder().includeWaypointFlags(true).build(),
+                COMMON.toBuilder().includeGroupMeta(true).build())) {
+            assertFalse(V10CompactRouteCodec.canEncode(route, options));
+        }
+    }
+
+    @Test
     void decoderRejectsNonCanonicalGroupNameSpelling() throws Exception {
         V10Transport.CheckedFrame frame = V10Transport.probe(
                 V10CompactRouteCodec.encode(fullRoute(), WaypointCodec.Options.FULL_FIDELITY));
@@ -166,9 +247,22 @@ class V10CompactRouteCodecTest {
         return route;
     }
 
+    private static WaypointGroup commonRoute() {
+        WaypointGroup route = WaypointGroup.create("Route 1", "mining_3");
+        route.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        for (int index = 0; index < 16; index++) {
+            route.add(new Waypoint(index * 3, 70 + index % 3, -index * 2,
+                    Integer.toString(index + 1), 0x336699, 0, 0.0));
+        }
+        return route;
+    }
+
+    private record ProjectionChange(String name, Consumer<WaypointGroup> apply) {}
+
     private static void assertGroupMetadata(WaypointGroup expected, WaypointGroup actual) {
         assertEquals(expected.name(), actual.name());
         assertEquals(expected.zoneId(), actual.zoneId());
+        assertEquals(expected.routeKind(), actual.routeKind());
         assertEquals(expected.gradientMode(), actual.gradientMode());
         assertEquals(expected.staticColor(), actual.staticColor());
         assertEquals(expected.gradientStartColor(), actual.gradientStartColor());
