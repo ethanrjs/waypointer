@@ -426,7 +426,7 @@ public final class ActiveGroupManager {
 
     private static void validateFolderMember(
             RouteFolder folder, WaypointGroup group, String groupId) {
-        if (!isFolderEligible(group)) {
+        if (!isFolderEligible(group, folder)) {
             throw new IllegalArgumentException("Route folder member is not a saved regular route " + groupId);
         }
         if (!folder.zoneId().equals(group.zoneId())) {
@@ -434,11 +434,11 @@ public final class ActiveGroupManager {
         }
     }
 
-    private static boolean isFolderEligible(WaypointGroup group) {
+    private static boolean isFolderEligible(WaypointGroup group, RouteFolder folder) {
         return group != null
                 && !group.temp()
-                && !group.runtimeOnly()
-                && group.routeKind() == WaypointGroup.RouteKind.REGULAR;
+                && group.routeKind() == WaypointGroup.RouteKind.REGULAR
+                && (!group.runtimeOnly() || folder.runtimeOnly());
     }
 
     private static boolean isReorderEligible(WaypointGroup group) {
@@ -926,7 +926,7 @@ public final class ActiveGroupManager {
         folderIdByGroupId.entrySet().removeIf(entry -> {
             RouteFolder folder = foldersById.get(entry.getValue());
             WaypointGroup group = byId.get(entry.getKey());
-            return folder == null || !isFolderEligible(group)
+            return folder == null || !isFolderEligible(group, folder)
                     || !folder.zoneId().equals(group.zoneId());
         });
     }

@@ -215,6 +215,7 @@ public final class Storage {
         root.add("groups", groups);
         JsonArray folders = new JsonArray();
         for (RouteFolder folder : manager.folders()) {
+            if (folder.runtimeOnly()) continue;
             JsonObject encoded = new JsonObject();
             encoded.addProperty("id", folder.id());
             encoded.addProperty("name", folder.name());

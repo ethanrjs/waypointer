@@ -12,6 +12,7 @@ import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsProjection;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
@@ -620,6 +621,7 @@ public final class WaypointerScreen extends Screen {
     }
 
     void openGroupEditor(WaypointGroup group) {
+        if (group == null || group.temp() || group.runtimeOnly()) return;
         MinecraftCompat.setScreen(minecraft, new GroupEditScreen(this, manager, config, group));
     }
 
@@ -976,6 +978,21 @@ public final class WaypointerScreen extends Screen {
         islandDropdownOpen = false;
         importExportMenuOpen = false;
         List<ContextMenuOverlay.Item> items = new ArrayList<>();
+        if (group.runtimeOnly()) {
+            items.add(ContextMenuOverlay.Item.of(
+                    Component.translatable(group.enabled()
+                            ? "waypointer.screen.main.menu.hide"
+                            : "waypointer.screen.main.menu.show"),
+                    "Space", () -> toggleRouteEnabled(group)));
+            String structureId = CrystalHollowsProjection.structureIdForGroup(group.id());
+            if (structureId != null) {
+                items.add(ContextMenuOverlay.Item.of(
+                        Component.translatable("waypointer.crystal.action.share"),
+                        null, () -> runClientCommand("wpch share " + structureId)));
+            }
+            openContextMenuAt(items, anchorX, anchorY);
+            return;
+        }
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.main.menu.edit"),
                 "double-click", () -> openGroupEditor(group)));
@@ -1009,9 +1026,11 @@ public final class WaypointerScreen extends Screen {
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.main.folder.select"),
                 null, () -> selectFolderRoutes(folder)));
-        items.add(ContextMenuOverlay.Item.of(
-                Component.translatable("waypointer.screen.main.folder.edit"),
-                null, () -> openFolderEditor(folder, List.of())));
+        if (!folder.runtimeOnly()) {
+            items.add(ContextMenuOverlay.Item.of(
+                    Component.translatable("waypointer.screen.main.folder.edit"),
+                    null, () -> openFolderEditor(folder, List.of())));
+        }
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable(folder.collapsed()
                         ? "waypointer.screen.main.menu.expand"
@@ -1025,6 +1044,10 @@ public final class WaypointerScreen extends Screen {
         Layout layout = layout();
         contextMenu.openAt(font, items, anchorX, anchorY,
                 PAD_OUTER, PAD_OUTER, width - PAD_OUTER, layout.bottom());
+    }
+
+    private void runClientCommand(String command) {
+        if (minecraft.getConnection() != null) minecraft.getConnection().sendCommand(command);
     }
 
     private void renderImportExportMenu(GuiGraphicsExtractor g, int mouseX, int mouseY) {
@@ -1242,7 +1265,8 @@ public final class WaypointerScreen extends Screen {
         LinkedHashSet<String> folderRoutes = new LinkedHashSet<>();
         for (String groupId : manager.groupIdsInFolder(folder.id())) {
             WaypointGroup group = manager.get(groupId);
-            if (group != null && !group.temp() && !group.runtimeOnly()) {
+            if (group != null && !group.temp()
+                    && (!group.runtimeOnly() || folder.runtimeOnly())) {
                 folderRoutes.add(groupId);
             }
         }
@@ -1524,6 +1548,7 @@ public final class WaypointerScreen extends Screen {
     }
 
     void openFolderEditor(RouteFolder folder, List<String> selectedIds) {
+        if (folder != null && folder.runtimeOnly()) return;
         String zoneId = folder == null ? selectedZoneId : folder.zoneId();
         MinecraftCompat.setScreen(minecraft, new RouteFolderEditScreen(
                 this, manager, zoneId, folder, selectedIds));
@@ -1791,8 +1816,11 @@ public final class WaypointerScreen extends Screen {
 
     static List<WaypointGroup> exportGroupsForSelection(List<WaypointGroup> selectedGroups,
                                                         List<WaypointGroup> visibleGroups) {
-        if (selectedGroups != null && !selectedGroups.isEmpty()) return selectedGroups;
-        return visibleGroups == null ? List.of() : visibleGroups;
+        List<WaypointGroup> source = selectedGroups != null && !selectedGroups.isEmpty()
+                ? selectedGroups
+                : visibleGroups;
+        if (source == null) return List.of();
+        return source.stream().filter(group -> group != null && !group.runtimeOnly()).toList();
     }
 
     static String emptyExportNotice(String selectedZoneId) {

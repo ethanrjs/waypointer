@@ -789,6 +789,27 @@ class StorageJsonTest {
     }
 
     @Test
+    void runtimeFoldersAndTheirRuntimeRoutesAreNeverPersisted() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup runtime = new WaypointGroup("runtime", "Odawa", "crystal_hollows");
+        runtime.setRuntimeOnly(true);
+        manager.add(runtime);
+        manager.addFolder(new RouteFolder("runtime-folder", "Structures", "crystal_hollows",
+                false, 0x55FFFF, true), List.of(runtime.id()));
+        Path file = tempDir.resolve("runtime-folder.json");
+
+        new Storage(file).save(manager);
+        JsonObject saved = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertTrue(saved.getAsJsonArray("groups").isEmpty());
+        assertTrue(saved.getAsJsonArray("folders").isEmpty());
+
+        ActiveGroupManager loaded = new ActiveGroupManager();
+        new Storage(file).load(loaded);
+        assertTrue(loaded.allGroups().isEmpty());
+        assertTrue(loaded.folders().isEmpty());
+    }
+
+    @Test
     void schemaTwoFolderWithoutColorUsesTheCyanDefault() throws Exception {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup route = new WaypointGroup("route", "Route", "hub");

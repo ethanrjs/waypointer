@@ -15,6 +15,8 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsStore;
+import com.babbur.waypointer.crystal.CrystalHollowsTracker;
 import com.babbur.waypointer.dungeon.DungeonChestInteractionGuard;
 import com.babbur.waypointer.dungeon.EtherwarpAlignmentCue;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
@@ -57,6 +59,8 @@ public final class WaypointerClient implements ClientModInitializer {
     private static WaypointerApi api;
     private static DungeonConfig dungeonConfig;
     private static DungeonStateTracker dungeonTracker;
+    private static CrystalHollowsStore crystalHollowsStore;
+    private static CrystalHollowsTracker crystalHollowsTracker;
     private static WaypointerKeybinds keybinds;
     private static boolean dungeonRouteInDungeonContext;
     private static Screen suspendedWaypointerGuiScreen;
@@ -85,6 +89,10 @@ public final class WaypointerClient implements ClientModInitializer {
         return dungeonTracker;
     }
 
+    public static CrystalHollowsTracker crystalHollowsTracker() {
+        return crystalHollowsTracker;
+    }
+
     public static WaypointerKeybinds keybinds() {
         return keybinds;
     }
@@ -102,6 +110,7 @@ public final class WaypointerClient implements ClientModInitializer {
         api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft);
 
         new LocationTracker(manager, config).install();
+        installCrystalHollowsSubsystem();
         HypixelPlayerRankSource.install();
         DungeonChestInteractionGuard chestInteractionGuard = new DungeonChestInteractionGuard();
         chestInteractionGuard.install();
@@ -144,6 +153,9 @@ public final class WaypointerClient implements ClientModInitializer {
         runShutdownStep("configuration", config::flush);
         if (dungeonConfig != null) {
             runShutdownStep("dungeon configuration", dungeonConfig::flush);
+        }
+        if (crystalHollowsTracker != null) {
+            runShutdownStep("Crystal Hollows storage", crystalHollowsTracker::flush);
         }
     }
 
@@ -218,6 +230,12 @@ public final class WaypointerClient implements ClientModInitializer {
         new DungeonRoomRouteSync(manager, dungeonTracker, dungeonConfig).install();
         new DungeonTriggerDetector(dungeonTracker, dungeonConfig, manager).install();
         new DungeonCommands(dungeonTracker, dungeonConfig, manager).install();
+    }
+
+    private static void installCrystalHollowsSubsystem() {
+        crystalHollowsStore = CrystalHollowsStore.loadDefault();
+        crystalHollowsTracker = new CrystalHollowsTracker(manager, config, crystalHollowsStore);
+        crystalHollowsTracker.install();
     }
 
     private static void onDungeonRouteContextChanged(Zone zone) {

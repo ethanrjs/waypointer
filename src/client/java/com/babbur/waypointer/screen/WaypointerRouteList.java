@@ -102,6 +102,7 @@ final class WaypointerRouteList {
     void selectGroupById(String id) {
         if (id == null) return;
         WaypointGroup storedGroup = screen.manager.get(id);
+        boolean selectable = storedGroup == null || !storedGroup.runtimeOnly();
         if (storedGroup != null && !storedGroup.temp()
                 && storedGroup.routeKind() == WaypointGroup.RouteKind.DUNGEON) {
             screen.selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
@@ -116,7 +117,7 @@ final class WaypointerRouteList {
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
             if (!row.roomHeader && row.group != null && row.group.id().equals(id)) {
-                screen.selectOnlyGroupId(id);
+                if (selectable) screen.selectOnlyGroupId(id);
                 scrollRowIndexIntoView(i);
                 return;
             }
@@ -191,7 +192,8 @@ final class WaypointerRouteList {
         List<WaypointGroup> selectedGroups = new ArrayList<>();
         if (screen.selectedGroupIds.isEmpty()) return selectedGroups;
         for (Row row : rows()) {
-            if (row.group != null && screen.selectedGroupIds.contains(row.group.id())) {
+            if (row.group != null && !row.group.runtimeOnly()
+                    && screen.selectedGroupIds.contains(row.group.id())) {
                 selectedGroups.add(row.group);
             }
         }
@@ -220,6 +222,9 @@ final class WaypointerRouteList {
                 rows.add(Row.folder(section.folder(), section.groups().size(),
                         section.searchReveal()));
                 if (!section.folder().collapsed() || section.searchReveal()) {
+                    if (section.folder().runtimeOnly() && section.groups().isEmpty()) {
+                        rows.add(Row.emptyFolderRow());
+                    }
                     for (WaypointGroup group : section.groups()) {
                         rows.add(Row.group(null, group, true, true));
                     }
@@ -289,6 +294,8 @@ final class WaypointerRouteList {
             } else if (row.folder != null) {
                 renderFolderHeader(graphics, row, x1 + 2, rowTop, rowRight - 2,
                         mouseX, hovered);
+            } else if (row.emptyFolder) {
+                renderEmptyFolderRow(graphics, x1 + 2, rowTop, rowRight - 2);
             } else if (row.group != null) {
                 boolean selected = screen.selectedGroupIds.contains(row.group.id());
                 int routeIndex = routeIndices.getOrDefault(row.group.id(), -1);
@@ -328,6 +335,7 @@ final class WaypointerRouteList {
         Row row = rows.get(index);
         if (navigation != null) navigation.setCursor(index);
         int rowRight = contentRight(left, right) - 2;
+        if (row.emptyFolder) return true;
         if (row.roomHeader) {
             String selectedBefore = screen.selectedGroupId == null
                     ? "(none)" : screen.selectedGroupId;
@@ -352,7 +360,9 @@ final class WaypointerRouteList {
             switch (RouteListPresentation.folderHeaderAction(
                     mouseX, rowRight, doubleClick)) {
                 case SELECT -> screen.selectFolderRoutes(row.folder);
-                case EDIT -> screen.openFolderEditor(row.folder, List.of());
+                case EDIT -> {
+                    if (!row.folder.runtimeOnly()) screen.openFolderEditor(row.folder, List.of());
+                }
                 case TOGGLE -> {
                     toggleFolderCollapsed(row.folder);
                     screen.scrollOffset = MathUtil.clamp(screen.scrollOffset, 0,
@@ -367,7 +377,7 @@ final class WaypointerRouteList {
         WaypointGroup group = row.group;
         if (group == null) return false;
         if (plainRightClick) {
-            if (!screen.selectedGroupIds.contains(group.id())) {
+            if (!group.runtimeOnly() && !screen.selectedGroupIds.contains(group.id())) {
                 screen.selectOnlyGroupId(group.id());
                 screen.refreshActionButtons();
             }
@@ -376,7 +386,14 @@ final class WaypointerRouteList {
             return true;
         }
         if (shiftRightClick) {
+            if (group.runtimeOnly()) return true;
             screen.startZoneMove(group);
+            return true;
+        }
+        if (group.runtimeOnly()) {
+            if (mouseX >= RouteListPresentation.routeToggleHitLeft(rowRight) && mouseX <= rowRight) {
+                screen.toggleRouteEnabled(group);
+            }
             return true;
         }
         if (row.roomZoneId != null) screen.selectedDungeonRoomZoneId = row.roomZoneId;
@@ -582,6 +599,9 @@ final class WaypointerRouteList {
                     RouteListPresentation.folderSubtitle(row.folderRouteCount,
                             row.searchReveal));
         }
+        if (row.emptyFolder) {
+            return Component.translatable("waypointer.crystal.folder.empty");
+        }
         if (row.group == null) return Component.empty();
         return Component.literal(RouteListPresentation.routeRowName(row.group, -1, false) + ". "
                 + routeRowSubtitle(row.group) + ". "
@@ -604,7 +624,7 @@ final class WaypointerRouteList {
         int nameX = x1 + GAP + FOLDER_ICON_SIZE + GAP;
         int editX = RouteListPresentation.folderEditControlX(x2);
         int selectX = RouteListPresentation.folderSelectControlX(x2);
-        int maxWidth = Math.max(16, selectX - nameX - GAP);
+        int maxWidth = Math.max(16, (row.folder.runtimeOnly() ? selectX : editX) - nameX - GAP);
         graphics.text(font(), font().plainSubstrByWidth(row.folder.name(), maxWidth),
                 nameX, y1 + 4, TEXT, false);
         Component subtitle = RouteListPresentation.folderSubtitle(row.folderRouteCount,
@@ -618,10 +638,20 @@ final class WaypointerRouteList {
                 selectX, chipY,
                 !folderMembers.isEmpty() && screen.selectedGroupIds.containsAll(folderMembers),
                 hovered && RouteListPresentation.isFolderSelectControlHit(mouseX, x2));
-        renderCompactChip(graphics,
-                Component.translatable("waypointer.screen.main.folder.edit").getString(),
-                editX, chipY, false,
-                hovered && RouteListPresentation.isFolderEditControlHit(mouseX, x2));
+        if (!row.folder.runtimeOnly()) {
+            renderCompactChip(graphics,
+                    Component.translatable("waypointer.screen.main.folder.edit").getString(),
+                    editX, chipY, false,
+                    hovered && RouteListPresentation.isFolderEditControlHit(mouseX, x2));
+        }
+    }
+
+    private void renderEmptyFolderRow(
+            GuiGraphicsExtractor graphics, int x1, int y1, int x2) {
+        String text = Component.translatable("waypointer.crystal.folder.empty").getString();
+        int textX = RouteListPresentation.routeRowTextX(x1, true, true);
+        graphics.text(font(), font().plainSubstrByWidth(text, Math.max(16, x2 - textX - GAP)),
+                textX, y1 + 9, TEXT_MUTED, false);
     }
 
     /** Space on the focused row: the keyboard twin of the Shown/Hidden chip. */
@@ -680,6 +710,7 @@ final class WaypointerRouteList {
         }
         WaypointGroup group = row.group;
         if (group == null) return;
+        if (group.runtimeOnly()) return;
         if (row.roomZoneId != null) screen.selectedDungeonRoomZoneId = row.roomZoneId;
         boolean alreadySelected = group.id().equals(screen.selectedGroupId)
                 && screen.selectedGroupIds.contains(group.id());
@@ -943,24 +974,30 @@ final class WaypointerRouteList {
                        String roomZoneId, WaypointGroup group,
                        RouteFolder folder, int roomRouteCount, int roomSecretCount,
                        int folderRouteCount, boolean expanded, boolean currentRoom,
-                       boolean searchReveal, boolean indented, boolean folderChild) {
+                       boolean searchReveal, boolean indented, boolean folderChild,
+                       boolean emptyFolder) {
         static Row group(
                 String roomZoneId, WaypointGroup group,
                 boolean indented, boolean folderChild) {
             return new Row(false, roomZoneId, group, null, 0, 0, 0,
-                    false, false, false, indented, folderChild);
+                    false, false, false, indented, folderChild, false);
         }
 
         static Row room(String roomZoneId, int routeCount, int secretCount,
                         boolean expanded, boolean currentRoom, boolean searchReveal) {
             return new Row(true, roomZoneId, null, null,
                     routeCount, secretCount, 0,
-                    expanded, currentRoom, searchReveal, false, false);
+                    expanded, currentRoom, searchReveal, false, false, false);
         }
 
         static Row folder(RouteFolder folder, int routeCount, boolean searchReveal) {
             return new Row(false, null, null, folder, 0, 0, routeCount,
-                    !folder.collapsed(), false, searchReveal, false, false);
+                    !folder.collapsed(), false, searchReveal, false, false, false);
+        }
+
+        static Row emptyFolderRow() {
+            return new Row(false, null, null, null, 0, 0, 0,
+                    false, false, false, true, true, true);
         }
     }
 }

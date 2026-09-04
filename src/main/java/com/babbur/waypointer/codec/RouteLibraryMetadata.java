@@ -96,6 +96,7 @@ public record RouteLibraryMetadata(
         List<FolderDefinition> folders = new ArrayList<>();
         if (manager != null) {
             for (RouteFolder folder : manager.folders()) {
+                if (folder.runtimeOnly()) continue;
                 List<Integer> members = new ArrayList<>();
                 for (String groupId : manager.groupIdsInFolder(folder.id())) {
                     Integer ordinal = ordinalById.get(groupId);
