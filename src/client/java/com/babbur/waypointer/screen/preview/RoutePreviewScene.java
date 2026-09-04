@@ -5,7 +5,6 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.render.WaypointRenderer;
 import com.babbur.waypointer.render.HappySnowmanSession;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -145,8 +144,17 @@ public final class RoutePreviewScene {
         }
 
         List<Marker> markers = new ArrayList<>(group.size());
+        int mainCount = group.mainWaypointCount();
+        int mainOrdinal = 0;
+        int childOrdinal = 0;
         for (int i = 0; i < group.size(); i++) {
             Waypoint waypoint = group.get(i);
+            if (waypoint.isSubwaypoint()) {
+                if (mainOrdinal > 0) childOrdinal++;
+            } else {
+                mainOrdinal++;
+                childOrdinal = 0;
+            }
             AABB worldBox = worldBoxes.get(i);
             Box localBox = new Box(
                     worldBox.minX - pivotX, worldBox.minY - pivotY, worldBox.minZ - pivotZ,
@@ -159,8 +167,10 @@ public final class RoutePreviewScene {
             markers.add(new Marker(
                     i,
                     waypoint.name(),
-                    group.displayIndexLabel(i),
-                    sequenceText(group, i),
+                    mainOrdinal == 0 ? "#" + (i + 1)
+                            : "#" + mainOrdinal + (waypoint.isSubwaypoint() ? "." + childOrdinal : ""),
+                    sequenceText(group.loadMode(), waypoint.isSubwaypoint(),
+                            mainOrdinal, childOrdinal, mainCount),
                     coordinateText(waypoint, roomLocal),
                     waypoint.color() & 0xFFFFFF,
                     waypoint.flags(),
@@ -207,7 +217,7 @@ public final class RoutePreviewScene {
 
     RoutePreviewScene preparePaintResource(RoutePreviewPaintResource resources) {
         if (resources == null) return this;
-        if (paint == null) {
+        if (paint == null || markers.isEmpty() || simplified()) {
             resources.activate(routeId, null);
             return this;
         }
@@ -236,16 +246,15 @@ public final class RoutePreviewScene {
         return name.isEmpty() ? group.zoneId() : name;
     }
 
-    private static String sequenceText(WaypointGroup group, int index) {
-        if (group.loadMode() != WaypointGroup.LoadMode.SEQUENCE) return "";
-        if (!group.isSubwaypoint(index)) {
-            return "Step " + group.mainOrdinal(index) + " of " + group.mainWaypointCount();
+    private static String sequenceText(WaypointGroup.LoadMode loadMode, boolean subwaypoint,
+                                       int mainOrdinal, int childOrdinal, int mainCount) {
+        if (loadMode != WaypointGroup.LoadMode.SEQUENCE) return "";
+        if (!subwaypoint) {
+            return "Step " + mainOrdinal + " of " + mainCount;
         }
-        int parent = group.parentMainIndex(index);
-        int parentOrdinal = parent >= 0 ? group.mainOrdinal(parent) : 0;
-        return parentOrdinal > 0
-                ? "Substep " + group.childOrdinal(index) + " of step " + parentOrdinal
-                : "Substep " + group.childOrdinal(index);
+        return mainOrdinal > 0
+                ? "Substep " + childOrdinal + " of step " + mainOrdinal
+                : "Substep " + childOrdinal;
     }
 
     private static String coordinateText(Waypoint waypoint, boolean roomLocal) {

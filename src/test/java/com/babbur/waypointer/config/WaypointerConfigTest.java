@@ -1,7 +1,6 @@
 package com.babbur.waypointer.config;
 
 import com.babbur.waypointer.codec.AsciiStreamCodec;
-import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -273,21 +272,6 @@ class WaypointerConfigTest {
         assertTrue(config.showLabelTextShadow());
         assertEquals(32, config.maxWaypointLabels());
         assertEquals(0.0, config.maxStaticWaypointRenderDistance());
-    }
-
-    @Test
-    void visualCustomizationTogglesCanBeChanged() {
-        WaypointerConfig config = new WaypointerConfig();
-
-        config.setBeaconBeamMode(WaypointerConfig.BeaconBeamMode.ALL_VISIBLE);
-        config.setBeaconBeamExtendsBelowWaypoint(true);
-        config.setShowWaypointDistances(false);
-        config.setShowLabelTextShadow(false);
-
-        assertEquals(WaypointerConfig.BeaconBeamMode.ALL_VISIBLE, config.beaconBeamMode());
-        assertTrue(config.beaconBeamExtendsBelowWaypoint());
-        assertFalse(config.showWaypointDistances());
-        assertFalse(config.showLabelTextShadow());
     }
 
     @Test

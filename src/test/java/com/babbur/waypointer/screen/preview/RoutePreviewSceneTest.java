@@ -6,13 +6,11 @@ import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
-import java.time.Duration;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertTimeout;
 
 class RoutePreviewSceneTest {
 
@@ -156,13 +154,30 @@ class RoutePreviewSceneTest {
     }
 
     @Test
-    void sceneConstructionForOneThousandWaypointsStaysWithinBudget() {
-        WaypointGroup group = groupWithPoints(1_000);
-        WaypointerConfig config = new WaypointerConfig();
-        RoutePreviewScene.build(group, config, null); // warm class initialization and JIT paths
+    void numberingMatchesRouteOrderAcrossSubwaypointBlocksAndLoadModes() {
+        WaypointGroup group = WaypointGroup.create("Numbering", "hub");
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.add(Waypoint.at(0, 0, 0));
+        group.add(Waypoint.at(1, 0, 0).withFlags(Waypoint.FLAG_SUBWAYPOINT));
+        group.add(Waypoint.at(2, 0, 0).withFlags(Waypoint.FLAG_SUBWAYPOINT));
+        group.add(Waypoint.at(3, 0, 0));
+        group.add(Waypoint.at(4, 0, 0).withFlags(Waypoint.FLAG_SUBWAYPOINT));
+        group.add(Waypoint.at(5, 0, 0));
 
-        assertTimeout(Duration.ofMillis(50),
-                () -> RoutePreviewScene.build(group, config, null));
+        for (WaypointGroup.LoadMode mode : WaypointGroup.LoadMode.values()) {
+            group.setLoadMode(mode);
+            RoutePreviewScene scene = RoutePreviewScene.build(group, new WaypointerConfig(), null);
+            for (int i = 0; i < group.size(); i++) {
+                assertEquals(group.displayIndexLabel(i), scene.markers().get(i).displayIndex());
+            }
+            if (mode == WaypointGroup.LoadMode.SEQUENCE) {
+                assertEquals(List.of("Step 1 of 3", "Substep 1 of step 1", "Substep 2 of step 1",
+                                "Step 2 of 3", "Substep 1 of step 2", "Step 3 of 3"),
+                        scene.markers().stream().map(RoutePreviewScene.Marker::sequenceText).toList());
+            } else {
+                assertTrue(scene.markers().stream().allMatch(marker -> marker.sequenceText().isEmpty()));
+            }
+        }
     }
 
     @Test

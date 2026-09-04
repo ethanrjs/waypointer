@@ -306,8 +306,10 @@ public final class RenderHelpers {
         int stride = WaypointPaint.SIZE + padding * 2;
         int faceX = (face.atlasX() / WaypointPaint.SIZE) * stride + padding;
         int faceY = (face.atlasY() / WaypointPaint.SIZE) * stride + padding;
-        float halfTexelU = 0.5f / atlasWidth;
-        float halfTexelV = 0.5f / atlasHeight;
+        // Padded atlases duplicate border pixels, so the whole face can be sampled
+        // without squeezing the outer painted pixels to half their intended width.
+        float halfTexelU = padding > 0 ? 0.0f : 0.5f / atlasWidth;
+        float halfTexelV = padding > 0 ? 0.0f : 0.5f / atlasHeight;
         float u0 = faceX / (float) atlasWidth + halfTexelU;
         float v0 = faceY / (float) atlasHeight + halfTexelV;
         float u1 = (faceX + WaypointPaint.SIZE) / (float) atlasWidth - halfTexelU;

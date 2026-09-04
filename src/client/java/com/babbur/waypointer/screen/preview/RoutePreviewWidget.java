@@ -41,7 +41,9 @@ public final class RoutePreviewWidget extends AbstractWidget {
     private final RoutePreviewZoom zoom;
     private final RoutePreviewPaintResource paintResources = new RoutePreviewPaintResource();
     private final RoutePreviewAvailability availability = new RoutePreviewAvailability();
+    private RoutePreviewScene sourceScene;
     private RoutePreviewScene scene;
+    private boolean paintPrepared;
     private String routeName;
     private String routeCounter;
     private boolean navigationVisible;
@@ -63,7 +65,8 @@ public final class RoutePreviewWidget extends AbstractWidget {
                               RoutePreviewOrbit orbit, RoutePreviewZoom zoom) {
         super(x, y, width, height, Component.empty());
         availability.beginScene(scene.routeId());
-        this.scene = scene.preparePaintResource(paintResources);
+        this.sourceScene = scene;
+        this.scene = scene;
         this.routeName = this.scene.routeName();
         this.routeCounter = routeCounter;
         this.orbit = orbit;
@@ -74,7 +77,9 @@ public final class RoutePreviewWidget extends AbstractWidget {
 
     public void setScene(RoutePreviewScene nextScene, String nextCounter) {
         availability.beginScene(nextScene.routeId());
-        this.scene = nextScene.preparePaintResource(paintResources);
+        this.sourceScene = nextScene;
+        this.scene = nextScene;
+        this.paintPrepared = false;
         this.routeName = this.scene.routeName();
         this.routeCounter = nextCounter;
         this.hoveredIndex = -1;
@@ -121,13 +126,21 @@ public final class RoutePreviewWidget extends AbstractWidget {
     }
 
     public void setPreviewVisible(boolean shown) {
-        if (!shown) orbit.update(System.nanoTime(), false);
+        if (!shown) {
+            orbit.update(System.nanoTime(), false);
+            paintResources.activate(scene.routeId(), null);
+            scene = sourceScene;
+            paintPrepared = false;
+            hoveredIndex = -1;
+        }
         this.visible = shown;
         this.active = false;
     }
 
     public void releaseResources() {
         paintResources.close();
+        scene = sourceScene;
+        paintPrepared = false;
         availability.reset();
     }
 
@@ -174,6 +187,10 @@ public final class RoutePreviewWidget extends AbstractWidget {
     @Override
     protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY,
                                             float partial) {
+        if (!paintPrepared) {
+            scene = sourceScene.preparePaintResource(paintResources);
+            paintPrepared = true;
+        }
         lastMouseX = mouseX;
         lastMouseY = mouseY;
         int x1 = getX();

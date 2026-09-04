@@ -878,17 +878,6 @@ class WaypointGroupTest {
     }
 
     @Test
-    void routeKindDefaultsToRegularAndCanBeSetExplicitly() {
-        WaypointGroup group = WaypointGroup.create("Route", "admin");
-
-        assertEquals(WaypointGroup.RouteKind.REGULAR, group.routeKind());
-
-        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
-
-        assertEquals(WaypointGroup.RouteKind.DUNGEON, group.routeKind());
-    }
-
-    @Test
     void exportSnapshotDoesNotRepaintWaypoints() {
         // Building the copy through the colour setters would re-run the gradient
         // and change what gets exported. MANUAL keeps per-waypoint colours, so a

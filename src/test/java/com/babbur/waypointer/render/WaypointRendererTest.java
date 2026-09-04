@@ -80,7 +80,7 @@ class WaypointRendererTest {
     }
 
     @Test
-    void paintedRouteSuppressesRgbFillRegardlessOfGlobalStyle() {
+    void disablingRoutePaintRestoresRgbFill() {
         WaypointGroup painted = groupWith(waypoint(0));
         painted.setPaint(WaypointPaint.solid(0x123456));
 
@@ -151,13 +151,23 @@ class WaypointRendererTest {
     @Test
     void perRoutePaintParticipatesInRetainedVisibilityInvalidation() {
         WaypointerConfig config = new WaypointerConfig();
-        config.setBoxStyle(WaypointerConfig.BoxStyle.OUTLINED);
         config.setWaypointOutlineOpacity(0.0);
         WaypointRenderer renderer = new WaypointRenderer(new ActiveGroupManager(), config);
         WaypointGroup painted = groupWith(waypoint(0));
         painted.setPaint(WaypointPaint.solid(0x123456));
-
-        assertTrue(renderer.staticBoxGeometryEnabledFor(List.of(painted)));
+        for (WaypointerConfig.BoxStyle style : WaypointerConfig.BoxStyle.values()) {
+            config.setBoxStyle(style);
+            assertTrue(renderer.staticBoxGeometryEnabledFor(List.of(painted)), style.name());
+            assertFalse(WaypointRenderer.shouldEmitRgbFill(painted, null), style.name());
+            WaypointPaintTextureCache.resetRetainedReservation();
+            try {
+                renderer.reserveActivePaints(List.of(painted));
+                assertTrue(WaypointPaintTextureCache.isRetained(painted.paint()), style.name());
+            } finally {
+                WaypointPaintTextureCache.resetRetainedReservation();
+            }
+        }
+        config.setBoxStyle(WaypointerConfig.BoxStyle.OUTLINED);
         painted.setPaintEnabled(false);
         assertFalse(renderer.staticBoxGeometryEnabledFor(List.of(painted)));
     }

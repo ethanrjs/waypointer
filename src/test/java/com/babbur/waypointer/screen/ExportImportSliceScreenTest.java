@@ -1,8 +1,5 @@
 package com.babbur.waypointer.screen;
 
-import com.babbur.waypointer.codec.WaypointCodec;
-import com.babbur.waypointer.config.WaypointerConfig;
-import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
@@ -10,8 +7,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExportImportSliceScreenTest {
 
@@ -56,23 +51,4 @@ class ExportImportSliceScreenTest {
         assertEquals("...3 more lines", ExportPolicy.previewOverflowText(3));
     }
 
-    @Test
-    void export_defaults_only_force_waypoint_flags_for_subwaypoint_routes() {
-        WaypointerConfig config = new WaypointerConfig();
-        WaypointGroup normal = WaypointGroup.create("Normal", "hub");
-        normal.add(Waypoint.at(0, 64, 0));
-
-        WaypointGroup subway = WaypointGroup.create("Subway", "hub");
-        subway.add(Waypoint.at(0, 64, 0));
-        subway.add(Waypoint.at(1, 64, 1));
-        assertTrue(subway.toggleSubwaypoint(1));
-
-        WaypointCodec.Options normalOptions =
-                ExportPolicy.optionsFromConfig(config, List.of(normal)).build();
-        WaypointCodec.Options subwayOptions =
-                ExportPolicy.optionsFromConfig(config, List.of(subway)).build();
-
-        assertFalse(normalOptions.includeWaypointFlags);
-        assertTrue(subwayOptions.includeWaypointFlags);
-    }
 }

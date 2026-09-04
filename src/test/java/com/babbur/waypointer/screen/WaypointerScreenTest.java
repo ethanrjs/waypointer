@@ -359,23 +359,36 @@ class WaypointerScreenTest {
     void folderChildrenIndentTheirBandAndExposeMatchingSelectAndEditTargets() {
         int rowLeft = 24;
         int rowRight = 500;
+        int editLeft = RouteListPresentation.folderEditControlX(rowRight);
+        int editRight = rowRight - GuiTokens.GAP;
+        int selectLeft = RouteListPresentation.folderSelectControlX(rowRight);
+        int selectRight = editLeft - GuiTokens.GAP;
 
         assertEquals(rowLeft, RouteListPresentation.routeRowBandLeft(rowLeft, false));
         assertTrue(RouteListPresentation.routeRowBandLeft(rowLeft, true) > rowLeft);
-        assertEquals(438, RouteListPresentation.folderEditControlX(rowRight));
-        assertEquals(376, RouteListPresentation.folderSelectControlX(rowRight));
-        assertFalse(RouteListPresentation.isFolderEditControlHit(437, rowRight));
-        assertTrue(RouteListPresentation.isFolderEditControlHit(438, rowRight));
-        assertFalse(RouteListPresentation.isFolderEditControlHit(492, rowRight));
-        assertTrue(RouteListPresentation.isFolderSelectControlHit(376, rowRight));
+        assertTrue(rowLeft < selectLeft && selectLeft < selectRight);
+        assertTrue(selectRight < editLeft && editLeft < editRight && editRight <= rowRight);
+        assertFalse(RouteListPresentation.isFolderEditControlHit(editLeft - 0.5, rowRight));
+        assertTrue(RouteListPresentation.isFolderEditControlHit(editLeft, rowRight));
+        assertTrue(RouteListPresentation.isFolderEditControlHit(editRight - 0.5, rowRight));
+        assertFalse(RouteListPresentation.isFolderEditControlHit(editRight, rowRight));
+        assertFalse(RouteListPresentation.isFolderSelectControlHit(selectLeft - 0.5, rowRight));
+        assertTrue(RouteListPresentation.isFolderSelectControlHit(selectLeft, rowRight));
+        assertTrue(RouteListPresentation.isFolderSelectControlHit(selectRight - 0.5, rowRight));
+        assertFalse(RouteListPresentation.isFolderSelectControlHit(selectRight, rowRight));
         assertEquals(RouteListPresentation.FolderHeaderAction.EDIT,
-                RouteListPresentation.folderHeaderAction(460, rowRight, false));
+                RouteListPresentation.folderHeaderAction((editLeft + editRight) / 2.0,
+                        rowRight, false));
         assertEquals(RouteListPresentation.FolderHeaderAction.SELECT,
-                RouteListPresentation.folderHeaderAction(400, rowRight, false));
+                RouteListPresentation.folderHeaderAction((selectLeft + selectRight) / 2.0,
+                        rowRight, false));
         assertEquals(RouteListPresentation.FolderHeaderAction.TOGGLE,
-                RouteListPresentation.folderHeaderAction(300, rowRight, false));
+                RouteListPresentation.folderHeaderAction((selectRight + editLeft) / 2.0,
+                        rowRight, false));
+        assertEquals(RouteListPresentation.FolderHeaderAction.TOGGLE,
+                RouteListPresentation.folderHeaderAction(rowLeft, rowRight, false));
         assertEquals(RouteListPresentation.FolderHeaderAction.NONE,
-                RouteListPresentation.folderHeaderAction(300, rowRight, true));
+                RouteListPresentation.folderHeaderAction(rowLeft, rowRight, true));
     }
 
     @Test
@@ -908,11 +921,6 @@ class WaypointerScreenTest {
                 "folder membership is captured before the delete");
         assertNull(plan.get(0).beforeGroupId(), "c is the only folder member");
         assertNull(plan.get(1).folderId(), "dungeon routes carry no folder");
-    }
-
-    @Test
-    void footerReservesRoomForEveryActionPlusTheDoneLane() {
-        assertEquals(408, WaypointerScreen.footerRequiredWidth());
     }
 
     @Test

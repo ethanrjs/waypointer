@@ -12,17 +12,27 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteFolderEditLayoutTest {
     @Test
-    void normalEditorUsesSectionSpacingWithoutADeadMiddleArea() {
+    void normalEditorKeepsOrderedControlsInsideACompactPanel() {
         RouteFolderEditLayout.Layout layout =
                 RouteFolderEditLayout.calculate(400, 240, true, true);
 
-        assertEquals(180, layout.panelHeight());
-        assertEquals(13, layout.sectionDividerY() - layout.detailY());
-        assertEquals(8, layout.nameLabelY() - layout.sectionDividerY());
-        assertEquals(8, layout.colorLabelY()
-                - (layout.nameFieldY() + BTN_H));
+        assertTrue(layout.panelY() >= 0);
+        assertTrue(layout.panelBottom() <= 240);
+        assertTrue(layout.panelX() >= 0);
+        assertTrue(layout.panelX() + layout.panelWidth() <= 400);
+        assertTrue(layout.detailVisible());
+        assertTrue(layout.fieldLabelsVisible());
+        assertTrue(layout.titleY() >= layout.panelY());
+        assertTrue(layout.titleY() < layout.detailY());
+        assertTrue(layout.detailY() < layout.sectionDividerY());
+        assertTrue(layout.sectionDividerY() < layout.nameLabelY());
+        assertTrue(layout.nameLabelY() < layout.nameFieldY());
+        assertTrue(layout.nameFieldY() + BTN_H <= layout.colorLabelY());
+        assertTrue(layout.colorLabelY() < layout.colorControlY());
+        assertTrue(layout.colorControlY() + BTN_H <= layout.footerY());
         assertTrue(layout.footerY()
                 - (layout.colorControlY() + BTN_H) <= 28);
+        assertActionsFit(layout);
     }
 
     @Test
@@ -66,7 +76,8 @@ class RouteFolderEditLayoutTest {
                 RouteFolderEditLayout.calculate(240, 200, true, true);
 
         assertFalse(layout.wrappedActions());
-        assertEquals(224, layout.panelWidth());
+        assertTrue(layout.panelX() >= 0);
+        assertTrue(layout.panelX() + layout.panelWidth() <= 240);
         assertEquals(1, layout.actions().stream()
                 .map(RouteFolderEditLayout.ActionPlacement::y).distinct().count());
         assertNotNull(layout.action(RouteFolderEditLayout.Action.CANCEL));

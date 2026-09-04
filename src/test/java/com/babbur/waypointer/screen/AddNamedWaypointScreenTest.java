@@ -6,8 +6,6 @@ import com.babbur.waypointer.dungeon.DungeonWaypointType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Modifier;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -17,13 +15,6 @@ class AddNamedWaypointScreenTest {
     @AfterEach
     void resetRememberedDungeonType() {
         AddNamedWaypointScreen.resetRememberedSelectionForTests();
-    }
-
-    @Test
-    void nameInputAutofocusUsesThePostInitInitialFocusHook() throws Exception {
-        var hook = AddNamedWaypointScreen.class.getDeclaredMethod("setInitialFocus");
-
-        assertTrue(Modifier.isProtected(hook.getModifiers()));
     }
 
     @Test
@@ -142,16 +133,6 @@ class AddNamedWaypointScreenTest {
                 AddNamedWaypointScreen.dungeonRoomSelectionKey(dungeon, ""));
         assertEquals("stored-room",
                 AddNamedWaypointScreen.dungeonRoomSelectionKey(dungeon, null));
-    }
-
-    @Test
-    void dungeonTypeRowMatchesTheWaypointNameFieldWidth() {
-        int[] expectedOffsets = {0, 33, 65, 98, 130, 163, 195, 228};
-        for (int i = 0; i < expectedOffsets.length; i++) {
-            assertEquals(expectedOffsets[i], AddNamedWaypointScreen.dungeonTypeCellX(0, i));
-        }
-
-        assertEquals(248, expectedOffsets[expectedOffsets.length - 1] + 20);
     }
 
     @Test

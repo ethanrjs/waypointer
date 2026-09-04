@@ -9,14 +9,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RoutePreviewZoomTest {
 
     @Test
-    void startsSlightlyCloserAndWheelStepsAreReversible() {
+    void startsAtTheFittedScaleAndWheelStepsAreReversible() {
         RoutePreviewZoom zoom = new RoutePreviewZoom();
 
-        assertEquals(1.10, zoom.factor(), 1.0e-12);
+        assertEquals(1.0, zoom.factor(), 1.0e-12);
         assertTrue(zoom.scroll(1.0));
-        assertEquals(1.265, zoom.factor(), 1.0e-12);
+        assertEquals(1.15, zoom.factor(), 1.0e-12);
         assertTrue(zoom.scroll(-1.0));
-        assertEquals(1.10, zoom.factor(), 1.0e-12);
+        assertEquals(1.0, zoom.factor(), 1.0e-12);
     }
 
     @Test

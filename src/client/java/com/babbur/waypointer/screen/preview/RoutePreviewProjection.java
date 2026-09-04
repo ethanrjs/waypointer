@@ -125,7 +125,8 @@ public final class RoutePreviewProjection {
     public static int pick(RoutePreviewScene scene, double mouseX, double mouseY,
                            int x, int y, int width, int height,
                            double yawRadians, double scale, int guiScale) {
-        if (scene == null || scene.markers().isEmpty() || scale <= 0.0) return -1;
+        if (scene == null || scene.markers().isEmpty()
+                || !Double.isFinite(scale) || scale <= 0.0) return -1;
         double screenRight = (mouseX - (x + width * 0.5)) / scale;
         double screenUp = -(mouseY - (y + height * 0.5)) / scale;
         Basis basis = basis(yawRadians);
@@ -192,6 +193,9 @@ public final class RoutePreviewProjection {
                     (MIN_HOVER_TARGET_PIXELS - (maxScreenX - minScreenX)) * 0.5);
             double expandY = Math.max(0.0,
                     (MIN_HOVER_TARGET_PIXELS - (maxScreenY - minScreenY)) * 0.5);
+            // Larger cubes already had an exact ray test. Their rectangular envelope includes
+            // empty corners, while simplified markers actually render as rectangular billboards.
+            if (!scene.simplified() && expandX == 0.0 && expandY == 0.0) continue;
             if (mouseX >= minScreenX - expandX && mouseX <= maxScreenX + expandX
                     && mouseY >= minScreenY - expandY && mouseY <= maxScreenY + expandY
                     && frontDepth > nearestDepth) {

@@ -67,7 +67,7 @@ class RoutePreviewWidgetTest {
         assertFalse(widget.zoomed());
         assertTrue(widget.scrollZoom(120, 80, 2.0));
         assertTrue(widget.zoomed());
-        assertEquals("1.5", widget.zoomLabel());
+        assertEquals("1.3", widget.zoomLabel());
 
         widget.resetZoom();
         assertFalse(widget.zoomed());

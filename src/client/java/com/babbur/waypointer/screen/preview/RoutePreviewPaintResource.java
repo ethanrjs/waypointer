@@ -37,7 +37,7 @@ final class RoutePreviewPaintResource {
             retireActive();
             return null;
         }
-        if (active != null && active.routeId().equals(routeId) && active.paint().equals(paint)) {
+        if (active != null && active.paint().equals(paint)) {
             return active;
         }
         retireActive();

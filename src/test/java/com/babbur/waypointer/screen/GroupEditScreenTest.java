@@ -373,13 +373,18 @@ class GroupEditScreenTest {
     }
 
     @Test
-    void waypointControlButtonsUseOneConsistentPitch() {
-        int rightmostX = GroupEditScreen.waypointControlButtonX(500, 0);
-        for (int indexFromRight = 1; indexFromRight < 7; indexFromRight++) {
-            assertEquals(24, GroupEditScreen.waypointControlButtonX(500, indexFromRight - 1)
-                    - GroupEditScreen.waypointControlButtonX(500, indexFromRight));
+    void waypointControlButtonsFitWithoutOverlapAndKeepTheirOrder() {
+        int rowLeft = 16;
+        for (int rowRight : new int[]{300, 500}) {
+            int nextButtonLeft = rowRight;
+            for (int indexFromRight = 0; indexFromRight < 7; indexFromRight++) {
+                int buttonLeft = GroupEditScreen.waypointControlButtonX(rowRight, indexFromRight);
+                assertTrue(buttonLeft >= rowLeft, "controls must stay inside the row");
+                assertTrue(buttonLeft + GuiTokens.BTN_H < nextButtonLeft,
+                        "each button needs a full hit target and separation from its neighbor");
+                nextButtonLeft = buttonLeft;
+            }
         }
-        assertEquals(472, rightmostX, "the right edge keeps its existing 8px row inset");
     }
 
     @Test

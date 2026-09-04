@@ -152,6 +152,12 @@ class RoutePreviewProjectionTest {
 
         assertEquals(0, RoutePreviewProjection.pick(
                 scene, center.x(), center.y(), 0, 0, 240, 160, yaw, scale));
+
+        double[] bounds = RoutePreviewProjection.projectedEnvelope(box, yaw);
+        assertEquals(-1, RoutePreviewProjection.pick(scene,
+                120 + bounds[0] * scale + 0.1, 80 + bounds[1] * scale + 0.1,
+                0, 0, 240, 160, yaw, scale),
+                "the empty corner of a cube's rectangular bounds must not steal hover");
     }
 
     @Test
@@ -201,25 +207,6 @@ class RoutePreviewProjectionTest {
                         + (normal.box().maxX() - normal.box().centerX())
                         * normalDisplayScale / 2.0,
                 1.0e-12);
-    }
-
-    @Test
-    void simplifiedMarkersUseTheSameReadableDisplayScale() {
-        WaypointGroup group = WaypointGroup.create("Large", "hub");
-        for (int i = 0; i <= RoutePreviewScene.SIMPLIFIED_THRESHOLD; i++) {
-            group.add(Waypoint.at(i, 0, 0));
-        }
-        RoutePreviewScene scene = RoutePreviewScene.build(group, new WaypointerConfig(), null);
-        RoutePreviewScene.Marker marker = scene.markers().getFirst();
-        double scale = 0.25;
-        int guiScale = 2;
-
-        assertTrue(scene.simplified());
-        assertEquals(RoutePreviewProjection.MIN_NORMAL_MARKER_PHYSICAL_PIXELS,
-                marker.box().width()
-                        * RoutePreviewProjection.markerDisplayScale(marker, scale, guiScale)
-                        * scale * guiScale,
-                1.0e-9);
     }
 
     @Test

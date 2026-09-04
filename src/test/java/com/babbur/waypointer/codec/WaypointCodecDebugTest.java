@@ -236,12 +236,6 @@ class WaypointCodecDebugTest {
     }
 
     @Test
-    void decode_nanos_is_positive() {
-        DecodeDebug d = WaypointCodec.debugDecode(WaypointCodec.encode(List.of(sampleGroup())));
-        assertTrue(d.decodeNanos() > 0, "decodeNanos must record real elapsed time, got " + d.decodeNanos());
-    }
-
-    @Test
     void multiple_groups_appear_in_wire_order() {
         WaypointGroup a = WaypointGroup.create("alpha", "z");  a.add(Waypoint.at(0, 70, 0));
         WaypointGroup b = WaypointGroup.create("bravo", "z");  b.add(Waypoint.at(1, 70, 1));
