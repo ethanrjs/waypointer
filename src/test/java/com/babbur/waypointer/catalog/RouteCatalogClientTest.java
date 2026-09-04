@@ -15,6 +15,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -83,12 +85,18 @@ class RouteCatalogClientTest {
     }
 
     @Test
-    void detailsRejectUnsafeIdsBeforeNetworkAccess() {
+    void invalidDetailsReturnFailedFuturesBeforeNetworkAccess() {
         RecordingTransport transport = new RecordingTransport(null);
         RouteCatalogClient client = client(transport);
 
-        assertThrows(IllegalArgumentException.class, () -> client.getRoute("../admin"));
-        assertEquals(null, transport.request);
+        for (String invalidId : new String[] {"a", "../admin", null}) {
+            CompletableFuture<CatalogRouteDetails> failure = assertDoesNotThrow(
+                    () -> client.getRoute(invalidId));
+            CompletionException joined = assertThrows(
+                    CompletionException.class, failure::join);
+            assertInstanceOf(IllegalArgumentException.class, joined.getCause());
+        }
+        assertNull(transport.request);
     }
 
     @Test

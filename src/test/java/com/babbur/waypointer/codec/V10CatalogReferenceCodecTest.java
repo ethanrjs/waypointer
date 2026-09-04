@@ -119,6 +119,35 @@ class V10CatalogReferenceCodecTest {
     }
 
     @Test
+    void catalog_install_probe_is_bounded_and_uses_current_client_ids() {
+        String code = UniversalShareCodec.encodeCatalogReference(PACKABLE_ID);
+
+        assertEquals(PACKABLE_ID,
+                com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(code));
+        assertEquals(PACKABLE_ID,
+                com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+                        "```text\n" + code + "\n```"));
+        assertEquals(PACKABLE_ID,
+                com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+                        "```text\nhttps://waypointermod.com/r/"
+                                + PACKABLE_ID + "\n```"));
+
+        // The wire codec accepts this inline spelling, but the catalog detail
+        // endpoint currently only addresses its 22-character IDs.
+        assertNull(com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+                "waypointermod.com/r/short-route_id7"));
+        assertNull(com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+                UniversalShareCodec.encodeCatalogReference("short-route_id7")));
+
+        // An unrelated clipboard document is rejected before universal import
+        // can parse JSON or inflate any payload.
+        assertNull(com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+                "{\"waypoints\":[]}"));
+        assertNull(com.babbur.waypointer.screen.CatalogRouteInstallScreen.referenceRouteId(
+                "{\"waypoints\":[\"" + "x".repeat(4_096) + "\"]}"));
+    }
+
+    @Test
     void chat_scanner_finds_codes_and_links_as_catalog_pills() {
         String code = UniversalShareCodec.encodeCatalogReference(PACKABLE_ID);
         List<CodecScanner.Match> codeMatches = CodecScanner.scan("try this: " + code + "!");

@@ -3,12 +3,14 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.api.ImportSummary;
 import com.babbur.waypointer.catalog.CatalogInstallState;
+import com.babbur.waypointer.catalog.CatalogRouteDetails;
 import com.babbur.waypointer.catalog.CatalogRouteInstaller;
 import com.babbur.waypointer.catalog.CatalogRouteSummary;
 import com.babbur.waypointer.catalog.InstallTokenStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
 import com.babbur.waypointer.codec.CatalogShareLink;
 import com.babbur.waypointer.codec.UniversalShareCodec;
+import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -22,6 +24,8 @@ import net.minecraft.util.FormattedCharSequence;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 
 import static com.babbur.waypointer.screen.GuiTokens.ACCENT;
 import static com.babbur.waypointer.screen.GuiTokens.BORDER;
@@ -51,6 +55,7 @@ public final class CatalogRouteInstallScreen extends Screen {
     private static final int DESCRIPTION_LINES = 5;
     private static final int STATUS_OK = GuiTokens.SUCCESS;
     private static final int STATUS_ERROR = GuiTokens.DANGER;
+    private static final int MAX_REFERENCE_PROBE_CHARS = 256;
 
     private enum Phase { LOADING, READY, INSTALLING, INSTALLED, FAILED }
 
@@ -62,6 +67,7 @@ public final class CatalogRouteInstallScreen extends Screen {
     private Phase phase = Phase.LOADING;
     private boolean requested;
     private boolean screenActive;
+    private long fetchGeneration;
     private CatalogRouteInstaller.PreparedRoute prepared;
     private boolean alreadyInstalled;
     private Component status = Component.translatable("waypointer.screen.catalog_install.loading");
@@ -98,14 +104,43 @@ public final class CatalogRouteInstallScreen extends Screen {
 
     /** Route id when {@code text} is a catalog reference code or share link, else null. */
     public static String referenceRouteId(String text) {
-        if (text == null || text.isBlank()) return null;
+        if (text == null) return null;
+        String trimmed = text.trim();
+        if (trimmed.isEmpty()) return null;
+        String candidate = stripMarkdownCodeFence(trimmed);
+        if (candidate.length() > MAX_REFERENCE_PROBE_CHARS) return null;
+
+        // Links have a tiny, bounded grammar and can be classified without
+        // sending arbitrary clipboard text through a route decoder.
+        Optional<String> linkedRoute = CatalogShareLink.routeIdFromLink(candidate);
+        if (linkedRoute.isPresent()) {
+            String routeId = linkedRoute.get();
+            return RouteCatalogClient.isValidRouteId(routeId) ? routeId : null;
+        }
+
+        // The universal decoder also understands JSON and third-party imports.
+        // A catalog paste only needs a short WP: reference probe, so reject
+        // everything else before any decompression or JSON parsing can start.
+        if (!WaypointCodec.isCodecString(candidate)) return null;
         try {
-            UniversalShareCodec.Decoded decoded = UniversalShareCodec.decode(text);
-            return decoded instanceof UniversalShareCodec.CatalogReference reference
+            UniversalShareCodec.Decoded decoded = UniversalShareCodec.decode(candidate);
+            if (!(decoded instanceof UniversalShareCodec.CatalogReference reference)) return null;
+            return RouteCatalogClient.isValidRouteId(reference.routeId())
                     ? reference.routeId() : null;
         } catch (RuntimeException notAShare) {
             return null;
         }
+    }
+
+    private static String stripMarkdownCodeFence(String text) {
+        if (!text.startsWith("```") || !text.endsWith("```") || text.length() < 6) {
+            return text;
+        }
+        int bodyStart = 3;
+        int newline = text.indexOf('\n', bodyStart);
+        if (newline >= 0) bodyStart = newline + 1;
+        String body = text.substring(bodyStart, text.length() - 3).strip();
+        return body.isEmpty() ? text : body;
     }
 
     @Override
@@ -148,18 +183,32 @@ public final class CatalogRouteInstallScreen extends Screen {
 
     private void fetch() {
         requested = true;
-        catalogClient.getRoute(routeId)
-                .thenApplyAsync(CatalogRouteInstaller::prepare)
-                .whenComplete((result, failure) -> runOnClient(() -> onLoaded(result, failure)));
+        long generation = ++fetchGeneration;
+        try {
+            CompletableFuture<CatalogRouteDetails> route = catalogClient.getRoute(routeId);
+            route.thenApplyAsync(CatalogRouteInstaller::prepare)
+                    .whenComplete((result, failure) -> runOnClient(() -> onLoaded(
+                            generation, result, failure)));
+        } catch (RuntimeException failure) {
+            // A client-side validation or request-construction failure must
+            // still become a visible failed state rather than escaping init().
+            onLoaded(generation, null, failure);
+        }
     }
 
-    private void onLoaded(CatalogRouteInstaller.PreparedRoute result, Throwable failure) {
-        if (!screenActive) return;
+    private void onLoaded(long generation,
+                          CatalogRouteInstaller.PreparedRoute result, Throwable failure) {
+        if (!screenActive || generation != fetchGeneration) return;
         if (failure != null || result == null) {
             phase = Phase.FAILED;
-            status = failure == null
-                    ? Component.translatable("waypointer.screen.route_catalog.error.request_failed")
-                    : RouteCatalogScreen.friendlyFailure(failure);
+            if (!RouteCatalogClient.isValidRouteId(routeId)) {
+                status = Component.translatable(
+                        "waypointer.screen.catalog_install.error.unsupported_reference");
+            } else {
+                status = failure == null
+                        ? Component.translatable("waypointer.screen.route_catalog.error.request_failed")
+                        : RouteCatalogScreen.friendlyFailure(failure);
+            }
             statusColor = STATUS_ERROR;
         } else {
             prepared = result;
@@ -305,6 +354,13 @@ public final class CatalogRouteInstallScreen extends Screen {
     @Override
     public void removed() {
         screenActive = false;
+        if (phase == Phase.LOADING) {
+            // A completion ignored while this screen is away must be fetched
+            // again when the parent returns. The generation also rejects a
+            // late completion from the abandoned request after re-entry.
+            requested = false;
+            fetchGeneration++;
+        }
         super.removed();
     }
 
