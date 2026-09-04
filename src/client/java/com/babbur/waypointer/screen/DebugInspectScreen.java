@@ -1143,15 +1143,17 @@ public final class DebugInspectScreen extends Screen {
                 DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
         rows.add(new Row.KV("Byte",    formatByteFull(d.headerByte())));
         rows.add(new Row.KV("Version", "v" + d.version() + " (bits 0..3)"));
-        if (d.version() == 9) {
+        if (d.version() == 9 || d.version() == 10) {
             int contentKind = (d.headerByte() >>> 4) & 0b111;
             String contentKindName = switch (contentKind) {
                 case 0 -> "general route";
                 case 1 -> "compact full route";
                 case 2 -> "coordinate-only route";
-                case 3 -> "config (reserved)";
-                case 4 -> "dungeon route (reserved)";
+                case 3 -> d.version() == 10 ? "configuration" : "config (reserved)";
+                case 4 -> d.version() == 10 ? "dungeon route collection" : "dungeon route (reserved)";
                 case 5 -> "coordinate route with metadata";
+                case 6 -> d.version() == 10 ? "route/library pack" : "reserved";
+                case 7 -> d.version() == 10 ? "extended object" : "reserved";
                 default -> "reserved";
             };
             rows.add(new Row.BitNote("bits 4-6  content kind = " + contentKind
@@ -1186,7 +1188,7 @@ public final class DebugInspectScreen extends Screen {
 
             rows.add(new Row.KV("Zone",          gd.zoneId().isEmpty() ? "(none)" : gd.zoneId()));
             if (gd.groupFlagsByte() < 0) {
-                rows.add(new Row.KV("Group flags", "n/a (compact v9 layout)"));
+                rows.add(new Row.KV("Group flags", "n/a (compact layout)"));
                 rows.add(new Row.KV("Coordinate model", gd.coordMode()));
             } else {
                 rows.add(new Row.KV("Group flags", formatByteFull(gd.groupFlagsByte())));

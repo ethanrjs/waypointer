@@ -205,6 +205,7 @@ public final class PerfScenarios {
         c.setShowRouteLines(false);
         c.setShowDungeonEntryPathToFirstWaypoint(false);
         c.setShowDungeonEntryPathToFollowingWaypoints(false);
+        c.setIrisShaderHudFallback(false);
         c.setBoxStyle(WaypointerConfig.BoxStyle.OUTLINED);
         c.setHideWaypointsNearPlayer(false);
         c.setShowCompleted(true);

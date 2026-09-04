@@ -6,7 +6,8 @@ public enum ExportTarget {
     WAYPOINTER(WaypointExportCodec.Target.WAYPOINTER),
     SKYBLOCKER(WaypointExportCodec.Target.SKYBLOCKER),
     SKYTILS(WaypointExportCodec.Target.SKYTILS),
-    SKYHANNI(WaypointExportCodec.Target.SKYHANNI);
+    SKYHANNI(WaypointExportCodec.Target.SKYHANNI),
+    CHUNKLOGGER(WaypointExportCodec.Target.CHUNKLOGGER);
 
     private final WaypointExportCodec.Target codecTarget;
 

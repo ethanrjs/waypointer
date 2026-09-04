@@ -1,15 +1,8 @@
 {
-  "waypointer.settings.setting.action.presets.label": "Predefini",
   "waypointer.screen.group_edit.remove": "Efacar",
   "waypointer.screen.group_edit.color.end": "Fino",
   "waypointer.dungeon.waypoint_type.item": "Objekto",
   "waypointer.dungeon.waypoint_type.bat": "Vespertilio",
   "waypointer.screen.painter.colors": "Kolori",
-  "waypointer.screen.debug.refresh": "Rifreshigar",
-  "waypointer.screen.main.delete.select": "Selektar",
-  "waypointer.screen.export.preview.options": "Selekti",
-  "waypointer.screen.route_catalog.refresh.tooltip": "Reload the route catalog (F5).",
-  "waypointer.screen.route_catalog.install.tooltip": "Add this route to Waypointer.",
-  "waypointer.screen.route_catalog.status.search_wait": "Waiting for you to finish typing...",
-  "waypointer.screen.route_catalog.status.selection_help": "Choose Preview or Install to load this route."
+  "waypointer.screen.main.delete.select": "Selektar"
 }

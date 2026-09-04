@@ -48,6 +48,21 @@ public final class ImportFeedback {
                         roomCount, waypointCount));
     }
 
+    public static void successConfig(int changedSettings, String source) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc == null) return;
+
+        SystemToast.addOrUpdate(
+                MinecraftCompat.toastManager(mc),
+                SystemToast.SystemToastId.PERIODIC_NOTIFICATION,
+                source == null
+                        ? Component.translatable("waypointer.import.config.title")
+                        : Component.translatable("waypointer.import.config.title.source", source),
+                Component.translatable(changedSettings == 1
+                        ? "waypointer.import.config.body.one"
+                        : "waypointer.import.config.body.many", changedSettings));
+    }
+
     public static void failure(String reason) {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null) return;

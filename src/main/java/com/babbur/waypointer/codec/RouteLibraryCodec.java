@@ -58,6 +58,33 @@ public final class RouteLibraryCodec {
         safeMetadata = metadataForOptions(safeMetadata, options);
         if (safeMetadata.isEmpty()) return WaypointCodec.encode(groups, options);
         safeMetadata.validateForGroups(groups);
+        try {
+            String library = WaypointCodec.MAGIC + V10RouteLibraryCodec
+                    .encodeCandidate(groups, options, safeMetadata).transport();
+            WaypointImporter.enforceTextPayloadLimit(library);
+            return library;
+        } catch (V10ProfileLimitException profileLimit) {
+            // The only outbound WPL escape: the library exceeds the bounded V10
+            // frame profile, mirroring the route writer's V9 fallback.
+        } catch (IOException failure) {
+            throw new IllegalStateException("route library export failed", failure);
+        }
+        return encodeLegacyWrapper(groups, options, safeMetadata);
+    }
+
+    /**
+     * The frozen {@code WPL:1:} JSON wrapper. Written only when a library exceeds
+     * the V10 frame profile; kept callable so conformance tests can produce
+     * legacy inputs.
+     */
+    static String encodeLegacyWrapper(
+            List<WaypointGroup> groups,
+            WaypointCodec.Options options,
+            RouteLibraryMetadata metadata) {
+        RouteLibraryMetadata safeMetadata = metadataForOptions(
+                metadata == null ? RouteLibraryMetadata.empty() : metadata, options);
+        if (safeMetadata.isEmpty()) return WaypointCodec.encode(groups, options);
+        safeMetadata.validateForGroups(groups);
         String payload = WaypointCodec.encode(groups, options);
 
         JsonObject root = new JsonObject();
@@ -98,6 +125,9 @@ public final class RouteLibraryCodec {
     }
 
     public static Decoded decode(String payload) {
+        if (payload != null && payload.trim().startsWith(WaypointCodec.MAGIC)) {
+            return decodeUniversal(payload.trim());
+        }
         Envelope envelope = readEnvelope(payload);
         JsonObject root = envelope.root();
         String inner = envelope.nativePayload();
@@ -114,13 +144,39 @@ public final class RouteLibraryCodec {
                 new RouteLibraryMetadata(manualColors, folders, paints);
 
         DecodeDebug nativePayload = WaypointCodec.debugDecode(inner);
-        if (nativePayload.version() != WaypointCodec.currentWireVersion()) {
+        if (nativePayload.version() != WaypointCodec.WIRE_VERSION
+                && nativePayload.version() != WaypointCodec.V10_WIRE_VERSION) {
             throw new IllegalArgumentException(
-                    "route library payload must contain a wire-v9 native route");
+                    "route library payload must contain a wire-v9 or wire-v10 native route");
         }
         List<WaypointGroup> groups = nativePayload.decodedGroups();
         metadata.validateForGroups(groups);
         return new Decoded(groups, nativePayload.label(), metadata);
+    }
+
+    /** A {@code WP:} share is a library only when it commits to V10 kind 6 subtype 1. */
+    private static Decoded decodeUniversal(String payload) {
+        WaypointImporter.enforceTextPayloadLimit(payload);
+        String transport = payload.substring(WaypointCodec.MAGIC.length());
+        V10Transport.CheckedFrame frame;
+        try {
+            if (!V10Transport.hasModeSelector(transport)) {
+                throw new IllegalArgumentException("not a route library payload");
+            }
+            frame = V10Transport.probe(transport);
+        } catch (IOException failure) {
+            throw new IllegalArgumentException("not a route library payload: "
+                    + failure.getMessage(), failure);
+        }
+        if (!V10RouteLibraryCodec.isLibrarySemantic(frame.semantic())) {
+            throw new IllegalArgumentException("not a route library payload");
+        }
+        try {
+            return V10RouteLibraryCodec.decode(frame);
+        } catch (IOException failure) {
+            throw new IllegalArgumentException("route library decode failed: "
+                    + failure.getMessage(), failure);
+        }
     }
 
     public static String unwrapNativePayload(String payload) {

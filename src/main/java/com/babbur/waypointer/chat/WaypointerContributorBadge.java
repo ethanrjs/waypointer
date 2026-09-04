@@ -13,8 +13,11 @@ import java.util.List;
 import java.util.UUID;
 
 public final class WaypointerContributorBadge {
-    private static final String CONTRIBUTOR = "Babbur";
-    private static final UUID CONTRIBUTOR_ID = UUID.fromString("d0d70e3d-2475-4001-b27e-16b5118e5534");
+    private static final List<Contributor> CONTRIBUTORS = List.of(
+            new Contributor("Babbur", UUID.fromString("d0d70e3d-2475-4001-b27e-16b5118e5534"),
+                    0xAA0000),
+            new Contributor("acidangels", UUID.fromString("83ccd327-6c5c-49df-a826-a59b4b2e384b"),
+                    0x850C5A));
     private static final String HOVER_TEXT = "This user is a contributor of Waypointer";
 
     private WaypointerContributorBadge() {
@@ -23,31 +26,36 @@ public final class WaypointerContributorBadge {
     public static Component apply(Component component, WaypointerConfig config) {
         if (component == null || config == null || !config.showContributorBadges()) return component;
         PlainMessage message = plainMessage(component.getString());
+        Contributor contributor = contributorChatSender(message.text());
+        if (contributor == null) return component;
         int levelStart = contributorChatLevelStart(message.text());
         if (levelStart < 0) return component;
 
         int levelEnd = message.text().indexOf(']', levelStart) + 1;
         return replaceLevelSpan(component,
                 message.sourceIndex(levelStart),
-                message.sourceIndex(levelEnd - 1) + 1);
+                message.sourceIndex(levelEnd - 1) + 1,
+                contributor.color());
     }
 
     public static Component applyPlayerName(Component component, String profileName, UUID profileId,
                                              WaypointerConfig config) {
+        Contributor contributor = contributor(profileName, profileId);
         if (component == null || config == null || !config.showContributorBadges()
-                || !isContributor(profileName, profileId)) {
+                || contributor == null) {
             return component;
         }
         if (hasBadge(component)) return component;
         return contributorLevelStart(component.getString()) >= 0
-                ? replace(component)
-                : prependBadge(component);
+                ? replace(component, contributor.color())
+                : prependBadge(component, contributor.color());
     }
     public static Component applyTabName(Component component, WaypointerConfig config) {
         if (component == null || config == null || !config.showContributorBadges()) return component;
-        return hasContributorTabLevel(plainMessage(component.getString()).text())
-                ? badge().append(Component.literal(" "))
-                        .append(Component.literal(CONTRIBUTOR).withStyle(ChatFormatting.AQUA))
+        Contributor contributor = contributorTabName(plainMessage(component.getString()).text());
+        return contributor != null
+                ? badge(contributor.color()).append(Component.literal(" "))
+                        .append(Component.literal(contributor.name()).withStyle(ChatFormatting.AQUA))
                 : component;
     }
 
@@ -83,33 +91,43 @@ public final class WaypointerContributorBadge {
         return text == null ? null : plainMessage(text).text();
     }
 
-    static Component replace(Component component) {
+    private static Component replace(Component component, int color) {
         String fullText = component.getString();
         int levelStart = contributorLevelStart(fullText);
-        if (levelStart >= 0) return replaceLevelSpan(component, levelStart, fullText.indexOf(']', levelStart) + 1);
+        if (levelStart >= 0) {
+            return replaceLevelSpan(component, levelStart,
+                    fullText.indexOf(']', levelStart) + 1, color);
+        }
 
-        MutableComponent out = replaceOwnText(component);
+        MutableComponent out = replaceOwnText(component, color);
         for (Component sibling : component.getSiblings()) {
-            out.append(replace(sibling));
+            out.append(replace(sibling, color));
         }
         return out;
     }
 
-    private static boolean isContributor(String username, UUID profileId) {
-        return CONTRIBUTOR_ID.equals(profileId)
-                || username != null && CONTRIBUTOR.equalsIgnoreCase(username);
+    private static Contributor contributor(String username, UUID profileId) {
+        for (Contributor contributor : CONTRIBUTORS) {
+            if (contributor.id().equals(profileId)
+                    || username != null && contributor.name().equalsIgnoreCase(username)) {
+                return contributor;
+            }
+        }
+        return null;
     }
 
     private static int contributorDisplayNameStart(String raw) {
-        int nameStart = raw.indexOf(CONTRIBUTOR);
-        while (nameStart >= 0) {
-            int nameEnd = nameStart + CONTRIBUTOR.length();
-            if (isUsernameToken(raw, nameStart)
-                    && hasOnlyDisplayDecorations(raw, 0, nameStart)
-                    && hasOnlyTabSuffix(raw, nameEnd)) {
-                return nameStart;
+        for (Contributor contributor : CONTRIBUTORS) {
+            int nameStart = raw.indexOf(contributor.name());
+            while (nameStart >= 0) {
+                int nameEnd = nameStart + contributor.name().length();
+                if (isUsernameToken(raw, nameStart, contributor.name().length())
+                        && hasOnlyDisplayDecorations(raw, 0, nameStart)
+                        && hasOnlyTabSuffix(raw, nameEnd)) {
+                    return nameStart;
+                }
+                nameStart = raw.indexOf(contributor.name(), nameEnd);
             }
-            nameStart = raw.indexOf(CONTRIBUTOR, nameEnd);
         }
         return -1;
     }
@@ -186,30 +204,47 @@ public final class WaypointerContributorBadge {
 
     private static int contributorChatLevelStart(String raw) {
         int firstColon = raw.indexOf(':');
-        String sender = " " + CONTRIBUTOR + ":";
-        if (firstColon < 0 || !raw.substring(0, firstColon + 1).endsWith(sender)) {
-            return -1;
+        if (firstColon < 0) return -1;
+        for (Contributor contributor : CONTRIBUTORS) {
+            String sender = " " + contributor.name() + ":";
+            if (raw.substring(0, firstColon + 1).endsWith(sender)) {
+                return numericLevelStart(raw, 0, firstColon - contributor.name().length());
+            }
         }
-        return numericLevelStart(raw, 0, firstColon - CONTRIBUTOR.length());
+        return -1;
     }
 
-    private static boolean hasContributorTabLevel(String raw) {
+    private static Contributor contributorChatSender(String raw) {
+        int firstColon = raw.indexOf(':');
+        if (firstColon < 0) return null;
+        for (Contributor contributor : CONTRIBUTORS) {
+            if (raw.substring(0, firstColon + 1)
+                    .endsWith(" " + contributor.name() + ":")) {
+                return contributor;
+            }
+        }
+        return null;
+    }
+
+    private static Contributor contributorTabName(String raw) {
         int searchStart = 0;
         while (searchStart < raw.length()) {
             int levelStart = numericLevelStart(raw, searchStart, raw.length());
-            if (levelStart < 0) return false;
+            if (levelStart < 0) return null;
             int levelEnd = raw.indexOf(']', levelStart);
             int nameStart = levelEnd + 2;
-            int nameEnd = nameStart + CONTRIBUTOR.length();
-            if (levelEnd + 1 < raw.length()
-                    && raw.charAt(levelEnd + 1) == ' '
-                    && raw.startsWith(CONTRIBUTOR, nameStart)
-                    && (nameEnd >= raw.length() || !isUsernameCharacter(raw.charAt(nameEnd)))) {
-                return true;
+            if (levelEnd + 1 < raw.length() && raw.charAt(levelEnd + 1) == ' ') {
+                for (Contributor contributor : CONTRIBUTORS) {
+                    int nameEnd = nameStart + contributor.name().length();
+                    if (raw.startsWith(contributor.name(), nameStart)
+                            && (nameEnd >= raw.length() || !isUsernameCharacter(raw.charAt(nameEnd)))) {
+                        return contributor;
+                    }
+                }
             }
             searchStart = levelEnd + 1;
         }
-        return false;
+        return null;
     }
 
     private static int numericLevelStart(String raw, int startInclusive, int endExclusive) {
@@ -223,43 +258,14 @@ public final class WaypointerContributorBadge {
         return -1;
     }
 
-    private static boolean isContributorChatSender(String raw) {
-        int nameStart = raw.indexOf(CONTRIBUTOR);
-        while (nameStart >= 0) {
-            if (isUsernameToken(raw, nameStart)
-                    && isChatSenderPrefix(raw, nameStart)
-                    && isChatSenderSuffix(raw, nameStart + CONTRIBUTOR.length())) {
-                return true;
-            }
-            nameStart = raw.indexOf(CONTRIBUTOR, nameStart + CONTRIBUTOR.length());
-        }
-        return false;
-    }
-
-    private static boolean isChatSenderPrefix(String raw, int nameStart) {
-        int cursor = 0;
-        while (cursor < nameStart && Character.isWhitespace(raw.charAt(cursor))) cursor++;
-        if (cursor == nameStart) return true;
-        if (cursor + 1 == nameStart && raw.charAt(cursor) == '<') return true;
-        return hasOnlyDisplayDecorations(raw, cursor, nameStart);
-    }
-
-    private static boolean isChatSenderSuffix(String raw, int nameEnd) {
-        if (nameEnd >= raw.length()) return false;
-        if (raw.charAt(nameEnd) == '>') return true;
-        int cursor = nameEnd;
-        while (cursor < raw.length() && Character.isWhitespace(raw.charAt(cursor))) cursor++;
-        return cursor < raw.length() && raw.charAt(cursor) == ':';
-    }
-
-    private static MutableComponent prependBadge(Component component) {
+    private static MutableComponent prependBadge(Component component, int color) {
         return Component.empty()
-                .append(badge())
+                .append(badge(color))
                 .append(Component.literal(" "))
                 .append(component.copy());
     }
 
-    private static MutableComponent replaceOwnText(Component component) {
+    private static MutableComponent replaceOwnText(Component component, int color) {
         if (!(component.getContents() instanceof PlainTextContents text)) {
             return component.plainCopy().withStyle(component.getStyle());
         }
@@ -273,26 +279,28 @@ public final class WaypointerContributorBadge {
         int levelEnd = raw.indexOf(']', levelStart);
         MutableComponent out = Component.empty().withStyle(component.getStyle());
         out.append(Component.literal(raw.substring(0, levelStart)).withStyle(component.getStyle()));
-        out.append(badge());
+        out.append(badge(color));
         out.append(Component.literal(raw.substring(levelEnd + 1)).withStyle(component.getStyle()));
         return out;
     }
 
     private static int contributorLevelStart(String raw) {
-        int nameStart = raw.indexOf(CONTRIBUTOR);
-        while (nameStart >= 0) {
-            if (isUsernameToken(raw, nameStart)) {
-                int levelStart = levelPrefixStart(raw, nameStart);
-                if (levelStart >= 0) return levelStart;
+        for (Contributor contributor : CONTRIBUTORS) {
+            int nameStart = raw.indexOf(contributor.name());
+            while (nameStart >= 0) {
+                if (isUsernameToken(raw, nameStart, contributor.name().length())) {
+                    int levelStart = levelPrefixStart(raw, nameStart);
+                    if (levelStart >= 0) return levelStart;
+                }
+                nameStart = raw.indexOf(contributor.name(), nameStart + contributor.name().length());
             }
-            nameStart = raw.indexOf(CONTRIBUTOR, nameStart + CONTRIBUTOR.length());
         }
         return -1;
     }
 
-    private static boolean isUsernameToken(String raw, int start) {
+    private static boolean isUsernameToken(String raw, int start, int nameLength) {
         int before = start - 1;
-        int after = start + CONTRIBUTOR.length();
+        int after = start + nameLength;
         return (before < 0 || !isUsernameCharacter(raw.charAt(before)))
                 && (after >= raw.length() || !isUsernameCharacter(raw.charAt(after)));
     }
@@ -333,7 +341,8 @@ public final class WaypointerContributorBadge {
         return true;
     }
 
-    private static MutableComponent replaceLevelSpan(Component component, int levelStart, int levelEnd) {
+    private static MutableComponent replaceLevelSpan(Component component, int levelStart,
+                                                     int levelEnd, int color) {
         List<Segment> segments = new ArrayList<>();
         collectSegments(component, segments);
 
@@ -345,7 +354,7 @@ public final class WaypointerContributorBadge {
             int segmentEnd = cursor + segment.text.length();
             appendRange(out, segment, segmentStart, Math.min(levelStart, segmentEnd), segmentStart);
             if (!badgeAdded && segmentEnd >= levelStart) {
-                out.append(badge());
+                out.append(badge(color));
                 badgeAdded = true;
             }
             appendRange(out, segment, Math.max(levelEnd, segmentStart), segmentEnd, segmentStart);
@@ -409,13 +418,12 @@ public final class WaypointerContributorBadge {
                 || code == 'x';
     }
 
-    private static MutableComponent badge() {
+    private static MutableComponent badge(int color) {
         return Component.literal("[")
                 .withStyle(ChatFormatting.DARK_GRAY)
                 .withStyle(style -> style.withHoverEvent(hover()))
                 .append(Component.literal("WP")
-                        .withStyle(ChatFormatting.DARK_RED)
-                        .withStyle(style -> style.withHoverEvent(hover())))
+                        .withStyle(style -> style.withColor(color).withHoverEvent(hover())))
                 .append(Component.literal("]")
                         .withStyle(ChatFormatting.DARK_GRAY)
                         .withStyle(style -> style.withHoverEvent(hover())));
@@ -426,6 +434,9 @@ public final class WaypointerContributorBadge {
     }
 
     private record Segment(String text, Style style) {
+    }
+
+    private record Contributor(String name, UUID id, int color) {
     }
 
     private record PlainMessage(String text, int[] sourceIndexes) {

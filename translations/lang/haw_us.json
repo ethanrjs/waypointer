@@ -3,21 +3,15 @@
   "waypointer.temp_mode.none": "ʻAʻohe",
   "waypointer.screen.add_named.none": "ʻAʻohe",
   "waypointer.screen.color_picker.save": "Mālama",
-  "waypointer.settings.setting.action.presets.label": "Kahua Mākaukau",
   "waypointer.screen.main.delete": "Holoi",
-  "waypointer.screen.main.settings": "Hoʻokuene",
   "waypointer.screen.group_edit.name": "Inoa",
   "waypointer.screen.group_edit.remove": "Wehe",
   "waypointer.screen.group_edit.color.start": "Hoʻomaka",
-  "waypointer.screen.group_edit.color.end": "Hopea",
+  "waypointer.screen.group_edit.color.end": "Hope",
   "waypointer.dungeon.waypoint_type.item": "ʻIkamu",
   "waypointer.dungeon.waypoint_type.bat": "ʻŌpeʻapeʻa",
   "waypointer.screen.painter.colors": "Waihoʻoluʻu",
   "waypointer.screen.debug.refresh": "Hōʻano Hou",
   "waypointer.screen.main.delete.select": "Koho",
-  "waypointer.screen.export.preview.options": "Koho",
-  "waypointer.screen.route_catalog.refresh.tooltip": "Reload the route catalog (F5).",
-  "waypointer.screen.route_catalog.install.tooltip": "Add this route to Waypointer.",
-  "waypointer.screen.route_catalog.status.search_wait": "Waiting for you to finish typing...",
-  "waypointer.screen.route_catalog.status.selection_help": "Choose Preview or Install to load this route."
+  "waypointer.screen.export.preview.options": "Koho"
 }

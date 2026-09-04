@@ -2,15 +2,18 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.codec.RouteLibraryCodec;
 import com.babbur.waypointer.codec.RouteLibraryMetadata;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.config.WaypointerConfigCodec;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
+import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import org.junit.jupiter.api.Test;
 
 import javax.imageio.ImageIO;
@@ -25,6 +28,70 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerScreenTest {
+
+    @Test
+    void clipboardImportRoutesUniversalAndLegacyDungeonSharesToTypedDungeonPath() {
+        WaypointGroup route = WaypointGroup.create("Crypt Route", "crypt-a");
+        route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        route.setSkipAheadEnabled(false);
+        route.add(new Waypoint(1, 70, -2, "Chest", 0x123456,
+                Waypoint.FLAG_DUNGEON_SECRET | Waypoint.FLAG_SKIP_ON_INTERACT, 2.5)
+                .withPreciseSixteenths(23, 1128, -25));
+
+        for (String payload : List.of(
+                "```text\n" + UniversalShareCodec.encodeDungeon(List.of(route)) + "\n```",
+                DungeonRoomShareCodec.encode(List.of(route)))) {
+            WaypointerScreen.ClipboardImportOutcome outcome =
+                    WaypointerScreen.decodeClipboardImport(payload, "Localized Import");
+
+            assertNull(outcome.error());
+            assertNull(outcome.waypoints());
+            assertNotNull(outcome.dungeonRoutes());
+            assertEquals(1, outcome.dungeonRoutes().groups().size());
+            WaypointGroup decoded = outcome.dungeonRoutes().groups().getFirst();
+            assertEquals(WaypointGroup.RouteKind.DUNGEON, decoded.routeKind());
+            assertEquals(route.zoneId(), decoded.zoneId());
+            assertEquals(route.name(), decoded.name());
+            assertEquals(route.waypoints(), decoded.waypoints());
+        }
+    }
+
+    @Test
+    void clipboardImportKeepsWaypointPathAndHandsConfigToTheReviewGate() {
+        WaypointGroup route = WaypointGroup.create("Mining Route", "hub");
+        route.add(Waypoint.at(1, 2, 3));
+        WaypointerScreen.ClipboardImportOutcome waypoint =
+                WaypointerScreen.decodeClipboardImport(
+                        WaypointCodec.encode(List.of(route)), "Localized Import");
+
+        assertNull(waypoint.error());
+        assertNull(waypoint.dungeonRoutes());
+        assertNotNull(waypoint.waypoints());
+        assertEquals("Mining Route", waypoint.waypoints().groups().getFirst().name());
+
+        WaypointerScreen.ClipboardImportOutcome unnamed =
+                WaypointerScreen.decodeClipboardImport(
+                        "[{\"x\":1,\"y\":2,\"z\":3}]",
+                        "Localized Import");
+        assertNull(unnamed.error());
+        assertNotNull(unnamed.waypoints());
+        assertEquals("Localized Import", unnamed.waypoints().groups().getFirst().name());
+
+        WaypointerConfig sourceConfig = new WaypointerConfig();
+        sourceConfig.setDefaultReachRadius(7.5);
+        for (String configPayload : List.of(
+                UniversalShareCodec.encodeConfig(sourceConfig),
+                WaypointerConfigCodec.encode(sourceConfig))) {
+            WaypointerScreen.ClipboardImportOutcome config =
+                    WaypointerScreen.decodeClipboardImport(configPayload, "Localized Import");
+            assertNull(config.waypoints());
+            assertNull(config.dungeonRoutes());
+            assertNull(config.error());
+            // Decoding never mutates settings; the confirmation screen applies them.
+            assertNotNull(config.config());
+            assertEquals(7.5, config.config().defaultReachRadius());
+        }
+    }
 
     @Test
     void folderSpriteContainsTwoSixteenPixelFrames() throws IOException {

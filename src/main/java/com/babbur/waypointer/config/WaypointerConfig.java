@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.annotations.SerializedName;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -30,9 +31,11 @@ public final class WaypointerConfig {
 
     public enum BeaconBeamMode { OFF, CURRENT, ALL_VISIBLE }
 
+    public enum EtherwarpAlignmentSound { OFF, EXPERIENCE, PLING, BELL }
+
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int CONFIG_SCHEMA_VERSION = 6;
+    private static final int CONFIG_SCHEMA_VERSION = 7;
     private static final int TEMP_DURATION_MIN_SECONDS = 1;
     private static final int TEMP_DURATION_MAX_SECONDS = 24 * 60 * 60;
     private static final int SECONDS_PER_MINUTE = 60;
@@ -82,7 +85,8 @@ public final class WaypointerConfig {
     private boolean showDungeonEntryPathToFirstWaypoint = false;
     private boolean showDungeonEntryPathToFollowingWaypoints = false;
     private int dungeonEntryPathColor = 0x00FF00;
-    private boolean etherwarpAlignmentSound = false;
+    @SerializedName("etherwarpAlignmentSoundType")
+    private EtherwarpAlignmentSound etherwarpAlignmentSound = EtherwarpAlignmentSound.OFF;
     private int routeLineColor = 0x00FF00;
     private boolean showLabelBackdrop = true;
     private boolean showLabelTextShadow = true;
@@ -106,12 +110,12 @@ public final class WaypointerConfig {
     private boolean showContributorBadges = true;
     private WaypointGroup.GradientMode importedRouteColorMode = WaypointGroup.GradientMode.STATIC;
     private int importedRouteDefaultColor = 0x00FF00;
-    private boolean exportIncludeNames = true;
-    private boolean exportIncludeColors = true;
-    private boolean exportIncludeRadii = true;
-    private boolean exportIncludeWaypointFlags = true;
-    private boolean exportIncludeGroupMeta = true;
-    private boolean exportIncludeZone = true;
+    private boolean exportIncludeNames = false;
+    private boolean exportIncludeColors = false;
+    private boolean exportIncludeRadii = false;
+    private boolean exportIncludeWaypointFlags = false;
+    private boolean exportIncludeGroupMeta = false;
+    private boolean exportIncludeZone = false;
     private boolean showExportRoutePreview = false;
     private boolean dungeonWaypointsFeatureEnabled = false;
     private boolean skipAheadMechanicEnabled = true;
@@ -127,6 +131,22 @@ public final class WaypointerConfig {
     private transient boolean migratedDuringLoad;
     private transient volatile String pendingSnapshotJson;
     private transient IOException writeBlockCause;
+
+    /**
+     * Builds the default state used by WPC versions 1-4. Those versions were
+     * written when an omitted export toggle meant {@code true}; setting the
+     * values directly keeps config-code decoding detached from persistence.
+     */
+    static WaypointerConfig legacyConfigCodeDefaults() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.exportIncludeNames = true;
+        config.exportIncludeColors = true;
+        config.exportIncludeRadii = true;
+        config.exportIncludeWaypointFlags = true;
+        config.exportIncludeGroupMeta = true;
+        config.exportIncludeZone = true;
+        return config;
+    }
 
     public static WaypointerConfig load() {
         Path dir = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
@@ -165,6 +185,7 @@ public final class WaypointerConfig {
         int loadedSchemaVersion = schemaVersion(raw);
         config.migrateLegacyTempDurationMinutes(raw, loadedSchemaVersion);
         config.migrateSequenceVisibility(raw, loadedSchemaVersion);
+        config.migrateEtherwarpAlignmentSound(raw, loadedSchemaVersion);
         config.applyMigrations(loadedSchemaVersion);
         return config;
     }
@@ -214,6 +235,30 @@ public final class WaypointerConfig {
         showCurrentSequenceWaypoint = true;
         sequenceNextWaypointCount = SequenceVisibility.DEFAULT.next();
         migratedDuringLoad = true;
+    }
+
+    private void migrateEtherwarpAlignmentSound(String raw, int schemaVersion) {
+        EtherwarpAlignmentSound previous = etherwarpAlignmentSound;
+        if (schemaVersion < 7) {
+            boolean legacyEnabled = false;
+            try {
+                JsonElement parsed = JsonParser.parseString(raw);
+                if (parsed != null && parsed.isJsonObject()) {
+                    JsonObject root = parsed.getAsJsonObject();
+                    if (root.has("etherwarpAlignmentSound")) {
+                        legacyEnabled = root.get("etherwarpAlignmentSound").getAsBoolean();
+                    }
+                }
+            } catch (Exception ignored) {
+                legacyEnabled = false;
+            }
+            etherwarpAlignmentSound = legacyEnabled
+                    ? EtherwarpAlignmentSound.EXPERIENCE : EtherwarpAlignmentSound.OFF;
+        }
+        if (etherwarpAlignmentSound == null) {
+            etherwarpAlignmentSound = EtherwarpAlignmentSound.OFF;
+        }
+        if (etherwarpAlignmentSound != previous) migratedDuringLoad = true;
     }
     private void migrateLegacyTempDurationMinutes(String raw, int schemaVersion) {
         int originalDurationSec = tempDefaultDurationSec;
@@ -398,7 +443,10 @@ public final class WaypointerConfig {
     public boolean showDungeonEntryPathToFirstWaypoint() { return showDungeonEntryPathToFirstWaypoint; }
     public boolean showDungeonEntryPathToFollowingWaypoints() { return showDungeonEntryPathToFollowingWaypoints; }
     public int dungeonEntryPathColor()        { return dungeonEntryPathColor & 0xFFFFFF; }
-    public boolean etherwarpAlignmentSound() { return etherwarpAlignmentSound; }
+    public EtherwarpAlignmentSound etherwarpAlignmentSound() {
+        return etherwarpAlignmentSound == null
+                ? EtherwarpAlignmentSound.OFF : etherwarpAlignmentSound;
+    }
     public int routeLineColor()               { return routeLineColor & 0xFFFFFF; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
     public boolean showLabelTextShadow()      { return showLabelTextShadow; }
@@ -612,8 +660,8 @@ public final class WaypointerConfig {
         this.dungeonEntryPathColor = v & 0xFFFFFF;
         save();
     }
-    public void setEtherwarpAlignmentSound(boolean v) {
-        this.etherwarpAlignmentSound = v;
+    public void setEtherwarpAlignmentSound(EtherwarpAlignmentSound v) {
+        this.etherwarpAlignmentSound = v == null ? EtherwarpAlignmentSound.OFF : v;
         save();
     }
     public void setRouteLineColor(int v) {
@@ -840,7 +888,7 @@ public final class WaypointerConfig {
         useEtherwarpHeight = false;
         showDungeonEntryPathToFirstWaypoint = false;
         showDungeonEntryPathToFollowingWaypoints = false;
-        etherwarpAlignmentSound = false;
+        etherwarpAlignmentSound = EtherwarpAlignmentSound.OFF;
         showLabelBackdrop = false;
         showLabelTextShadow = false;
         beaconBeamExtendsBelowWaypoint = false;

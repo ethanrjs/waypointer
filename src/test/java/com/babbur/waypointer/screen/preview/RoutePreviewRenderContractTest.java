@@ -61,4 +61,10 @@ class RoutePreviewRenderContractTest {
         assertEquals(54, RoutePreviewPaintResource.ATLAS_HEIGHT);
         assertEquals(1, RoutePreviewPaintResource.PADDING);
     }
+
+    @Test
+    void paintedSurfaceUsesACompatibleNoDepthPipelineWhenSelfOcclusionIsDisabled() {
+        assertTrue(RoutePreviewPassPlan.paintedSurfaceUsesDepthTest(true));
+        assertFalse(RoutePreviewPassPlan.paintedSurfaceUsesDepthTest(false));
+    }
 }

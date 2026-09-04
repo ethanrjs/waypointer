@@ -428,7 +428,8 @@ class WaypointCodecTest {
 
     @Test
     void current_payload_rejects_binary_mutation_without_a_matching_checksum() throws Exception {
-        String encoded = WaypointCodec.encode(List.of(sampleGroup("checksum", "hub")), FULL_FIDELITY);
+        String encoded = WaypointCodec.encodeV9ForTest(
+                List.of(sampleGroup("checksum", "hub")), FULL_FIDELITY);
         byte[] framed = currentFramedBody(encoded);
         framed[1] ^= 1;
 
@@ -451,7 +452,8 @@ class WaypointCodecTest {
 
     @Test
     void current_payload_rejects_trailing_compressed_bytes() throws Exception {
-        String encoded = WaypointCodec.encode(List.of(sampleGroup("compressed-tail", "hub")), FULL_FIDELITY);
+        String encoded = WaypointCodec.encodeV9ForTest(
+                List.of(sampleGroup("compressed-tail", "hub")), FULL_FIDELITY);
         byte[] compressed = currentCompressedBody(encoded);
         byte[] withTail = Arrays.copyOf(compressed, compressed.length + 1);
 
@@ -463,7 +465,8 @@ class WaypointCodecTest {
 
     @Test
     void current_payload_rejects_trailing_binary_body_bytes_even_with_a_valid_checksum() throws Exception {
-        String encoded = WaypointCodec.encode(List.of(sampleGroup("binary-tail", "hub")), FULL_FIDELITY);
+        String encoded = WaypointCodec.encodeV9ForTest(
+                List.of(sampleGroup("binary-tail", "hub")), FULL_FIDELITY);
         byte[] body = stripCurrentChecksum(currentFramedBody(encoded));
         byte[] withTail = Arrays.copyOf(body, body.length + 1);
         withTail[body.length] = 42;
@@ -565,7 +568,7 @@ class WaypointCodecTest {
         // several kilobytes; the codec should stay well under a quarter of
         // that on structured data. Threshold is 400 chars (= 400 wire
         // bytes); real output on this fixture is well below that, so this
-        // has ~20% slack for dictionary / DEFLATE fluctuations.
+        // has ~20% slack for DEFLATE fluctuations.
         assertTrue(s.length() < 400, "expected packed export < 400 chars, got " + s.length() + ": " + s);
     }
 
@@ -632,7 +635,7 @@ class WaypointCodecTest {
 
     @Test
     void current_wire_version_keeps_hypixel_emote_escape() {
-        // v9 keeps the v4+ chat escape and v8 integrity checks.
+        // Legacy V9 keeps the v4+ chat escape and v8 integrity checks.
         assertEquals(9, WaypointCodec.WIRE_VERSION);
 
         String raw = "abc<3defo/ghi~~jkl<~3mno~/pqr";
@@ -644,16 +647,20 @@ class WaypointCodecTest {
     }
 
     @Test
-    void codec_doc_names_current_wire_version_and_writer() throws Exception {
+    void codec_doc_names_current_universal_route_and_bare_writers() throws Exception {
         String docs = Files.readString(Path.of("CODEC.md"), StandardCharsets.UTF_8);
-        String currentVersion = "v" + WaypointCodec.WIRE_VERSION;
 
-        assertTrue(docs.contains("Current wire version: **" + WaypointCodec.WIRE_VERSION + "**."),
-                "CODEC.md should name the live wire version");
-        assertTrue(docs.contains("- " + currentVersion + ": current writer"),
-                "CODEC.md decoder list should identify the live writer");
-        assertTrue(docs.contains("The encoder only writes " + currentVersion + "."),
-                "CODEC.md should not describe an older writer as current");
+        assertEquals(WaypointCodec.V10_WIRE_VERSION, WaypointCodec.currentWireVersion());
+        assertTrue(docs.contains("# Waypointer Codec, Wire Version 10"),
+                "CODEC.md should name the live universal wire version");
+        assertTrue(docs.contains("V1-V9 decoding is frozen"),
+                "CODEC.md should identify the frozen legacy decoder path");
+        assertTrue(docs.contains("Kind 0 carries general rich-route data"),
+                "CODEC.md should identify the general V10 route writer");
+        assertTrue(docs.contains("One eligible regular route, all six fields off, empty label | Kind 2"),
+                "CODEC.md should identify the coordinate-only V10 writer");
+        assertTrue(docs.contains("Explicit `BARE_COORDINATES`"),
+                "CODEC.md should identify explicit coordinate-only projection behavior");
     }
 
     @Test
@@ -1104,7 +1111,8 @@ class WaypointCodecTest {
         int fit      = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIT);
         int vectorAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR_AXIS_SEPARATED);
         int deltaFitAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_DELTA_FIT_AXIS_SEPARATED);
-        int auto     = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES).length();
+        int auto     = WaypointCodec.encodeV9ForTest(
+                List.of(g), WaypointCodec.Options.WITH_NAMES).length();
 
         assertTrue(auto <= vector && auto <= absolute && auto <= fixed && auto <= fit
                         && auto <= vectorAxis && auto <= deltaFitAxis,
@@ -1129,7 +1137,8 @@ class WaypointCodecTest {
         int fit      = forcedLen(g, WaypointCodec.PackingMode.FORCE_FIT);
         int vectorAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_VECTOR_AXIS_SEPARATED);
         int deltaFitAxis = forcedLen(g, WaypointCodec.PackingMode.FORCE_DELTA_FIT_AXIS_SEPARATED);
-        int auto     = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES).length();
+        int auto     = WaypointCodec.encodeV9ForTest(
+                List.of(g), WaypointCodec.Options.WITH_NAMES).length();
 
         assertTrue(auto <= vector && auto <= absolute && auto <= fit
                         && auto <= vectorAxis && auto <= deltaFitAxis,
@@ -1272,7 +1281,8 @@ class WaypointCodecTest {
             g.add(Waypoint.at(100 + i * 2, 64 + (i % 3), -50 - i));
         }
 
-        String encoded = WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES);
+        String encoded = WaypointCodec.encodeV9ForTest(
+                List.of(g), WaypointCodec.Options.NO_NAMES);
         DecodeDebug debug = WaypointCodec.debugDecode(encoded);
         WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
 
