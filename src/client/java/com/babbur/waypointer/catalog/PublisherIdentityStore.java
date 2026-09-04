@@ -28,6 +28,7 @@ import java.time.format.DateTimeParseException;
 import java.util.Base64;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 
 public final class PublisherIdentityStore {
@@ -40,9 +41,15 @@ public final class PublisherIdentityStore {
     private static final Object CREATION_LOCK = new Object();
 
     private final Path file;
+    private final Path sharedFile;
 
     public PublisherIdentityStore(Path file) {
+        this(file, null);
+    }
+
+    private PublisherIdentityStore(Path file, Path sharedFile) {
         this.file = file.toAbsolutePath().normalize();
+        this.sharedFile = sharedFile == null ? null : sharedFile.toAbsolutePath().normalize();
     }
 
     public static PublisherIdentityStore defaultLocation() {
@@ -50,7 +57,31 @@ public final class PublisherIdentityStore {
                 .resolve(Waypointer.MOD_ID)
                 .resolve("publisher")
                 .resolve("identity.json");
-        return new PublisherIdentityStore(file);
+        return forProfile(file, sharedIdentityFile(
+                System.getProperty("os.name", ""), Path.of(System.getProperty("user.home")),
+                System.getenv("APPDATA"), System.getenv("XDG_CONFIG_HOME")));
+    }
+
+    static PublisherIdentityStore forProfile(Path profileFile, Path sharedFile) {
+        if (profileFile.toAbsolutePath().normalize().equals(sharedFile.toAbsolutePath().normalize())) {
+            return new PublisherIdentityStore(profileFile);
+        }
+        return new PublisherIdentityStore(profileFile, sharedFile);
+    }
+
+    static Path sharedIdentityFile(String osName, Path home, String appData, String xdgConfig) {
+        String os = osName.toLowerCase(Locale.ROOT);
+        Path base;
+        if (os.contains("mac")) base = home.resolve("Library/Application Support");
+        else if (os.contains("win")) base = absoluteOrDefault(appData, home.resolve("AppData/Roaming"));
+        else base = absoluteOrDefault(xdgConfig, home.resolve(".config"));
+        return base.resolve("waypointer/publisher/identity.json");
+    }
+
+    private static Path absoluteOrDefault(String value, Path fallback) {
+        if (value == null || value.isBlank()) return fallback;
+        Path path = Path.of(value);
+        return path.isAbsolute() ? path : fallback;
     }
 
     public Path file() {
@@ -59,6 +90,13 @@ public final class PublisherIdentityStore {
 
     public PublisherIdentity loadOrCreate() {
         if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return load();
+        PublisherIdentity inherited = sharedFile == null ? null
+                : new PublisherIdentityStore(sharedFile).loadOrCreate();
+        loadOrCreate(inherited);
+        return load();
+    }
+
+    private PublisherIdentity loadOrCreate(PublisherIdentity inherited) {
         synchronized (CREATION_LOCK) {
             if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return load();
             Path parent = file.getParent();
@@ -73,9 +111,10 @@ public final class PublisherIdentityStore {
                         LinkOption.NOFOLLOW_LINKS);
                      FileLock ignored = channel.lock()) {
                     if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS)) {
-                        writeNew(PublisherIdentity.generate(Instant.now()));
+                        writeNew(inherited == null
+                                ? PublisherIdentity.generate(Instant.now()) : inherited);
                     }
-                    return load();
+                    return readIdentity();
                 }
             } catch (IOException failure) {
                 throw new CatalogStorageException(
@@ -85,6 +124,39 @@ public final class PublisherIdentityStore {
     }
 
     public PublisherIdentity load() {
+        PublisherIdentity local = readIdentity();
+        PublisherIdentity shared = sharedIdentity(local);
+        if (shared == null || !shared.publisherId().equals(local.publisherId())
+                || shared.publisherName() == null) return local;
+        if (local.publisherName() != null) {
+            requireMatchingName(local, shared);
+            return local;
+        }
+        synchronized (CREATION_LOCK) {
+            try (FileChannel channel = FileChannel.open(file.getParent().resolve("identity.lock"),
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
+                 FileLock ignored = channel.lock()) {
+                PublisherIdentity current = readIdentity();
+                if (!current.publisherId().equals(shared.publisherId())) {
+                    throw new CatalogStorageException("Publisher identity changed while synchronizing its name");
+                }
+                requireMatchingName(current, shared);
+                if (current.publisherName() == null) writeReplacement(shared);
+                return readIdentity();
+            } catch (IOException failure) {
+                throw new CatalogStorageException("Could not synchronize the publisher name", failure);
+            }
+        }
+    }
+
+    private static void requireMatchingName(PublisherIdentity local, PublisherIdentity shared) {
+        if (local.publisherName() != null && !local.publisherName().equals(shared.publisherName())) {
+            throw new CatalogStorageException("Publisher names disagree for the same identity. "
+                    + "Restore a matching identity.json backup.");
+        }
+    }
+
+    private PublisherIdentity readIdentity() {
         rejectUnsafeFile();
         try {
             long size = Files.size(file);
@@ -132,26 +204,45 @@ public final class PublisherIdentityStore {
                         StandardOpenOption.CREATE, StandardOpenOption.WRITE,
                         LinkOption.NOFOLLOW_LINKS);
                      FileLock ignored = channel.lock()) {
-                    PublisherIdentity stored = load();
+                    PublisherIdentity stored = readIdentity();
                     if (!stored.publisherId().equals(identity.publisherId())) {
                         throw new IllegalStateException(
                                 "Publisher identity changed before its name was saved");
                     }
-                    if (stored.publisherName() != null) {
-                        if (!stored.publisherName().equals(validName)) {
-                            throw new IllegalStateException(
-                                    "The publisher name is permanent and cannot be changed");
-                        }
-                        return stored;
+                    if (stored.publisherName() != null && !stored.publisherName().equals(validName)) {
+                        throw new IllegalStateException(
+                                "The publisher name is permanent and cannot be changed");
                     }
                     PublisherIdentity named = stored.withPublisherName(validName);
-                    writeReplacement(named);
-                    return load();
+                    if (sharedFile != null) {
+                        PublisherIdentityStore shared = new PublisherIdentityStore(sharedFile);
+                        PublisherIdentity sharedIdentity = sharedIdentity(stored);
+                        if (sharedIdentity != null
+                                && sharedIdentity.publisherId().equals(named.publisherId())) {
+                            // Claim the shared name before touching the profile copy. Its
+                            // file lock serializes claims across separate game processes.
+                            shared.savePublisherName(sharedIdentity, validName);
+                        }
+                    }
+                    if (stored.publisherName() == null) writeReplacement(named);
+                    return readIdentity();
                 }
             } catch (IOException failure) {
                 throw new CatalogStorageException(
                         "Could not save the publisher name", failure);
             }
+        }
+    }
+
+    private PublisherIdentity sharedIdentity(PublisherIdentity local) {
+        if (sharedFile == null) return null;
+        try {
+            return new PublisherIdentityStore(sharedFile).loadOrCreate(local);
+        } catch (CatalogStorageException failure) {
+            // A damaged backup must not lock a player out of a valid profile key.
+            Waypointer.LOGGER.warn("Could not synchronize the shared publisher identity; "
+                    + "the current profile identity is still available", failure);
+            return null;
         }
     }
 
