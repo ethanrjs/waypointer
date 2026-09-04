@@ -20,11 +20,13 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
-import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -45,6 +47,10 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.SURFACE;
 import static com.babbur.waypointer.screen.GuiTokens.SURFACE_SUBTLE;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_END;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_HOME;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_DOWN;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_PAGE_UP;
 
 public final class ExportScreen extends Screen {
 
@@ -92,6 +98,9 @@ public final class ExportScreen extends Screen {
     private static final int ROUTE_SCROLLBAR_W = 3;
 
     private static final int PREVIEW_LINES = 3;
+
+    private static final int OPTIONS_SCROLL_STEP = INCLUDE_ROW_PITCH;
+    private static final int OPTIONS_SCROLLBAR_W = 3;
 
     private final Screen parent;
     private final WaypointerConfig config;
@@ -145,6 +154,13 @@ public final class ExportScreen extends Screen {
     private int previewY;
     private int previewH;
     private int footerY;
+    private int footerTop;
+    private int optionsViewportTop;
+    private int optionsViewportBottom;
+    private int optionsContentBottom;
+    private int optionsScrollOffset;
+    private boolean compactLayout;
+    private boolean stackedFooter;
     private boolean widePreviewLayout;
     private int routePreviewX;
     private int routePreviewY;
@@ -277,8 +293,10 @@ public final class ExportScreen extends Screen {
 
         Component copyLabel = Component.translatable("waypointer.export.copy_clipboard");
         Component codeBlockLabel = Component.translatable("waypointer.export.copy_code_block");
-        int copyW = footerButtonWidth(copyLabel);
-        int codeBlockCopyW = footerButtonWidth(codeBlockLabel);
+        int copyW = stackedFooter ? Math.max(1, (contentW - GAP) / 2)
+                : footerButtonWidth(copyLabel);
+        int codeBlockCopyW = stackedFooter ? Math.max(1, contentW - GAP - copyW)
+                : footerButtonWidth(codeBlockLabel);
         int rightClusterW = codeBlockCopyW + GAP + copyW;
         int contentRight = contentX + contentW;
         Tooltip codeBlockTooltip = Tooltip.create(Component.translatable(
@@ -290,10 +308,20 @@ public final class ExportScreen extends Screen {
                 contentRight - copyW, footerY, copyW, BTN_H,
                 copyLabel, this::copyToClipboard, null);
 
-        GuiTokens.layoutFooter(panelX + controlPanelW, footerY, left, null, this::addRenderableWidget,
-                font, contentX, PAD_OUTER + rightClusterW + GAP);
+        if (stackedFooter) {
+            addRenderableWidget(GuiTokens.styledButton(
+                    contentX, footerTop, codeBlockCopyW, BTN_H,
+                    Component.translatable("gui.back"), button -> goBackToParent(), null));
+            addRenderableWidget(GuiTokens.styledButton(
+                    contentRight - copyW, footerTop, copyW, BTN_H,
+                    Component.translatable("controls.reset"), button -> resetToConfigDefaults(), null));
+        } else {
+            GuiTokens.layoutFooter(panelX + controlPanelW, footerY, left, null,
+                    this::addRenderableWidget, font, contentX, PAD_OUTER + rightClusterW + GAP);
+        }
         addRenderableWidget(copyCodeBlockButton);
         addRenderableWidget(copyButton);
+        updateCopyButtons();
 
         applyPreviewPageVisibility();
         setInitialFocus(previewPageButton != null && compactPreviewPage
@@ -339,57 +367,47 @@ public final class ExportScreen extends Screen {
         return Math.max(60, font.width(label) + 16);
     }
 
+    private int minimumFooterWidth() {
+        return footerButtonWidth(Component.translatable("gui.back"))
+                + footerButtonWidth(Component.translatable("controls.reset"))
+                + footerButtonWidth(Component.translatable("waypointer.export.copy_clipboard"))
+                + footerButtonWidth(Component.translatable("waypointer.export.copy_code_block"))
+                + GAP * 3;
+    }
+
     private void computeLayout() {
-        reencode();
+        if (encodeGeneration == 0) reencode();
 
-        widePreviewLayout = isWidePreviewLayout(previewEnabled, width);
-        if (widePreviewLayout) {
-            int available = Math.max(PANEL_MIN_W, width - PANEL_MARGIN * 2);
-            controlPanelW = PANEL_MAX_W;
-            int previewSectionW = MathUtil.clamp(
-                    available - controlPanelW - PREVIEW_SPLIT_GAP,
-                    PREVIEW_PANE_MIN_W + PAD_OUTER, PREVIEW_PANE_MAX_W + PAD_OUTER);
-            panelW = Math.min(available,
-                    controlPanelW + PREVIEW_SPLIT_GAP + previewSectionW);
-            controlPanelW = panelW - PREVIEW_SPLIT_GAP - previewSectionW;
-        } else {
-            controlPanelW = MathUtil.clamp(
-                    width - PANEL_MARGIN * 2, PANEL_MIN_W, PANEL_MAX_W);
-            controlPanelW = Math.min(controlPanelW, Math.max(PANEL_MIN_W, width));
-            panelW = controlPanelW;
-        }
-        contentW = controlPanelW - PAD_OUTER * 2;
-
-        int includeH = includeRowsHeight();
-        int routeH = isZoneExport() ? BLOCK_GAP + routePickerBlockHeight() : 0;
-        int fixedH = panelFixedHeight(includeH, routeH);
-        previewH = previewHeight(height, fixedH, previewLineHeight());
-
-        panelH = fixedH + previewH;
-        panelX = (width - panelW) / 2;
-        panelY = Math.max(0, (height - panelH) / 2);
-        contentX = panelX + PAD_OUTER;
-
-        int top = panelY + PAD_OUTER;
-        labelRowY = top + HEADER_H;
-        includeHeadY = labelRowY + BTN_H + BLOCK_GAP;
-        includeRowsY = includeHeadY + EXPORT_SETTINGS_HEADER_H;
-        routeBlockY = includeRowsY + includeH + BLOCK_GAP;
-        sizeY = includeRowsY + includeH + routeH + BLOCK_GAP;
-        previewY = sizeY + LINE_H + GAP_TIGHT;
-        footerY = previewY + previewH + BLOCK_GAP;
-
-        if (widePreviewLayout) {
-            routePreviewX = panelX + controlPanelW + PREVIEW_SPLIT_GAP;
-            routePreviewY = panelY + PAD_OUTER;
-            routePreviewW = widePreviewWidth(panelW, controlPanelW);
-            routePreviewH = Math.max(48, panelH - PAD_OUTER * 2);
-        } else {
-            routePreviewX = contentX;
-            routePreviewY = labelRowY;
-            routePreviewW = contentW;
-            routePreviewH = Math.max(48, footerY - routePreviewY - BLOCK_GAP);
-        }
+        LayoutPolicy layout = layoutPolicy(width, height, previewEnabled,
+                isZoneExport(), routePickerExpanded, groups.size(), previewLineHeight(),
+                minimumFooterWidth());
+        compactLayout = layout.compactLayout();
+        stackedFooter = layout.stackedFooter();
+        widePreviewLayout = layout.widePreviewLayout();
+        panelX = layout.panelX();
+        panelY = layout.panelY();
+        panelW = layout.panelWidth();
+        panelH = layout.panelHeight();
+        controlPanelW = layout.controlPanelWidth();
+        contentX = layout.contentX();
+        contentW = layout.contentWidth();
+        labelRowY = layout.labelRowY();
+        includeHeadY = layout.includeHeadY();
+        includeRowsY = layout.includeRowsY();
+        routeBlockY = layout.routeBlockY();
+        sizeY = layout.sizeY();
+        previewY = layout.previewY();
+        previewH = layout.previewHeight();
+        footerY = layout.footerY();
+        footerTop = layout.footerTop();
+        optionsViewportTop = layout.optionsViewportTop();
+        optionsViewportBottom = layout.optionsViewportBottom();
+        optionsContentBottom = layout.optionsContentBottom();
+        routePreviewX = layout.routePreviewX();
+        routePreviewY = layout.routePreviewY();
+        routePreviewW = layout.routePreviewWidth();
+        routePreviewH = layout.routePreviewHeight();
+        clampOptionsScrollOffset();
     }
 
     static boolean isWidePreviewLayout(int screenWidth) {
@@ -403,6 +421,173 @@ public final class ExportScreen extends Screen {
     static int widePreviewWidth(int resolvedPanelWidth, int resolvedControlWidth) {
         return Math.max(1, resolvedPanelWidth - resolvedControlWidth
                 - PREVIEW_SPLIT_GAP - PAD_OUTER);
+    }
+
+    static boolean shouldUseCompactLayout(int screenHeight, int fixedHeight,
+                                          boolean previewEnabled, int previewLineH) {
+        int oneLinePreview = Math.max(1, previewLineH) + PREVIEW_INSET * 2;
+        int preferredPreview = previewEnabled
+                ? PREVIEW_LINES * Math.max(1, previewLineH) + PREVIEW_INSET * 2
+                : oneLinePreview;
+        return fixedHeight + preferredPreview > Math.max(1, screenHeight);
+    }
+
+    static LayoutPolicy layoutPolicy(int screenWidth, int screenHeight,
+                                     boolean previewEnabled, boolean zoneExport,
+                                     boolean routePickerExpanded, int groupCount,
+                                     int previewLineH, int minimumFooterWidth) {
+        int safeWidth = Math.max(1, screenWidth);
+        int safeHeight = Math.max(1, screenHeight);
+        int lineH = Math.max(1, previewLineH);
+        boolean wide = isWidePreviewLayout(previewEnabled, safeWidth);
+
+        int available = Math.max(PANEL_MIN_W, safeWidth - PANEL_MARGIN * 2);
+        int resolvedControlWidth;
+        int resolvedPanelWidth;
+        if (wide) {
+            resolvedControlWidth = PANEL_MAX_W;
+            int previewSectionW = MathUtil.clamp(
+                    available - resolvedControlWidth - PREVIEW_SPLIT_GAP,
+                    PREVIEW_PANE_MIN_W + PAD_OUTER, PREVIEW_PANE_MAX_W + PAD_OUTER);
+            resolvedPanelWidth = Math.min(available,
+                    resolvedControlWidth + PREVIEW_SPLIT_GAP + previewSectionW);
+            resolvedControlWidth = resolvedPanelWidth - PREVIEW_SPLIT_GAP - previewSectionW;
+        } else {
+            resolvedControlWidth = MathUtil.clamp(
+                    safeWidth - PANEL_MARGIN * 2, PANEL_MIN_W, PANEL_MAX_W);
+            resolvedControlWidth = Math.min(resolvedControlWidth, safeWidth);
+            resolvedPanelWidth = resolvedControlWidth;
+        }
+        resolvedPanelWidth = Math.max(1, Math.min(safeWidth, resolvedPanelWidth));
+        int resolvedContentWidth = Math.max(1, resolvedControlWidth - PAD_OUTER * 2);
+
+        IncludeGrid grid = includeGrid(resolvedContentWidth, 6);
+        int includeH = grid.rowsPerColumn() * INCLUDE_ROW_PITCH - GAP_TIGHT;
+        int routeBlockH = zoneExport
+                ? routePickerBlockHeight(routePickerExpanded, groupCount, safeHeight,
+                includeH, lineH) : 0;
+        int routeH = zoneExport ? BLOCK_GAP + routeBlockH : 0;
+        boolean stackFooter = minimumFooterWidth > resolvedContentWidth;
+        int fixedH = panelFixedHeight(includeH, routeH)
+                + (stackFooter ? BTN_H + GAP : 0);
+        boolean compact = shouldUseCompactLayout(safeHeight, fixedH, previewEnabled, lineH);
+        stackFooter |= compact;
+        int resolvedPreviewH = previewHeight(safeHeight, fixedH, lineH);
+        int resolvedPanelH = fixedH + resolvedPreviewH;
+        int resolvedPanelX = Math.max(0, (safeWidth - resolvedPanelWidth) / 2);
+        int resolvedPanelY = Math.max(0, (safeHeight - resolvedPanelH) / 2);
+
+        int top = resolvedPanelY + PAD_OUTER;
+        int resolvedLabelRowY = top + HEADER_H;
+        int resolvedIncludeHeadY = resolvedLabelRowY + BTN_H + BLOCK_GAP;
+        int resolvedIncludeRowsY = resolvedIncludeHeadY + EXPORT_SETTINGS_HEADER_H;
+        int resolvedRouteBlockY = resolvedIncludeRowsY + includeH + BLOCK_GAP;
+        int resolvedSizeY = resolvedIncludeRowsY + includeH + routeH + BLOCK_GAP;
+        int resolvedPreviewY = resolvedSizeY + LINE_H + GAP_TIGHT;
+        int resolvedFooterTop = resolvedPreviewY + resolvedPreviewH + BLOCK_GAP;
+        int resolvedFooterY = resolvedFooterTop + (stackFooter ? BTN_H + GAP : 0);
+        int resolvedViewportTop = resolvedIncludeRowsY;
+        int resolvedViewportBottom = resolvedIncludeRowsY;
+        int resolvedContentBottom = zoneExport
+                ? Math.max(resolvedIncludeRowsY + includeH,
+                resolvedRouteBlockY + routeBlockH)
+                : resolvedIncludeRowsY + includeH;
+
+        if (compact) {
+            resolvedPanelH = safeHeight;
+            resolvedPanelY = 0;
+            top = resolvedPanelY + PAD_OUTER;
+            resolvedLabelRowY = top + HEADER_H;
+            resolvedIncludeHeadY = resolvedLabelRowY + BTN_H + BLOCK_GAP;
+            resolvedIncludeRowsY = resolvedIncludeHeadY + EXPORT_SETTINGS_HEADER_H;
+            resolvedRouteBlockY = resolvedIncludeRowsY + includeH + BLOCK_GAP;
+
+            resolvedFooterY = Math.max(resolvedPanelY,
+                    safeHeight - PAD_OUTER - BTN_H);
+            resolvedFooterTop = Math.max(resolvedPanelY,
+                    resolvedFooterY - BTN_H - GAP);
+            resolvedSizeY = Math.max(resolvedIncludeHeadY,
+                    resolvedFooterTop - GAP - LINE_H);
+            resolvedPreviewY = resolvedLabelRowY;
+            resolvedPreviewH = Math.max(48,
+                    resolvedFooterTop - resolvedPreviewY - BLOCK_GAP);
+            resolvedViewportTop = resolvedIncludeRowsY;
+            resolvedViewportBottom = Math.max(resolvedViewportTop,
+                    resolvedSizeY - GAP);
+            resolvedContentBottom = zoneExport
+                    ? Math.max(resolvedIncludeRowsY + includeH,
+                    resolvedRouteBlockY + routeBlockH)
+                    : resolvedIncludeRowsY + includeH;
+        }
+
+        int previewWidgetX;
+        int previewWidgetY;
+        int previewWidgetW;
+        int previewWidgetH;
+        int resolvedContentX = resolvedPanelX + PAD_OUTER;
+        if (wide) {
+            previewWidgetX = resolvedPanelX + resolvedControlWidth + PREVIEW_SPLIT_GAP;
+            previewWidgetY = resolvedPanelY + PAD_OUTER;
+            previewWidgetW = widePreviewWidth(resolvedPanelWidth, resolvedControlWidth);
+            previewWidgetH = Math.max(48, resolvedPanelH - PAD_OUTER * 2);
+        } else {
+            previewWidgetX = resolvedContentX;
+            previewWidgetY = resolvedLabelRowY;
+            previewWidgetW = resolvedContentWidth;
+            previewWidgetH = Math.max(48,
+                    resolvedFooterTop - previewWidgetY - BLOCK_GAP);
+        }
+
+        return new LayoutPolicy(
+                resolvedPanelX, resolvedPanelY, resolvedPanelWidth, resolvedPanelH,
+                resolvedControlWidth, resolvedContentX, resolvedContentWidth,
+                resolvedLabelRowY, resolvedIncludeHeadY, resolvedIncludeRowsY,
+                resolvedRouteBlockY, resolvedSizeY, resolvedPreviewY, resolvedPreviewH,
+                resolvedFooterY, resolvedFooterTop,
+                resolvedViewportTop, resolvedViewportBottom, resolvedContentBottom,
+                wide, compact, stackFooter,
+                previewWidgetX, previewWidgetY, previewWidgetW, previewWidgetH);
+    }
+
+    record LayoutPolicy(
+            int panelX, int panelY, int panelWidth, int panelHeight,
+            int controlPanelWidth, int contentX, int contentWidth,
+            int labelRowY, int includeHeadY, int includeRowsY,
+            int routeBlockY, int sizeY, int previewY, int previewHeight,
+            int footerY, int footerTop,
+            int optionsViewportTop, int optionsViewportBottom, int optionsContentBottom,
+            boolean widePreviewLayout, boolean compactLayout, boolean stackedFooter,
+            int routePreviewX, int routePreviewY, int routePreviewWidth, int routePreviewHeight) {
+
+        int panelBottom() {
+            return panelY + panelHeight;
+        }
+
+        int optionsMaxScrollOffset() {
+            return Math.max(0, optionsContentBottom - optionsViewportBottom);
+        }
+    }
+
+    static int routePickerBlockHeight(boolean expanded, int groupCount, int screenHeight,
+                                      int includeRowsH, int previewLineH) {
+        int headerH = routePickerHeaderHeight();
+        if (!expanded) return headerH;
+        int rows = routeVisibleRowCount(screenHeight, includeRowsH, previewLineH, groupCount);
+        int listH = rows * ROUTE_ROW_PITCH + ROUTE_PICKER_INSET * 2;
+        return headerH + GAP + listH;
+    }
+
+    static int routeVisibleRowCount(int screenHeight, int includeRowsH,
+                                    int previewLineH, int groupCount) {
+        int byCount = Math.min(MAX_EXPANDED_ROUTE_ROWS, Math.max(1, groupCount));
+        int fixed = PAD_OUTER * 2 + HEADER_H + BTN_H + BLOCK_GAP + EXPORT_SETTINGS_HEADER_H
+                + includeRowsH + BLOCK_GAP + routePickerHeaderHeight() + GAP
+                + ROUTE_PICKER_INSET * 2
+                + BLOCK_GAP + LINE_H + GAP_TIGHT
+                + Math.max(1, previewLineH) + PREVIEW_INSET * 2
+                + BLOCK_GAP + BTN_H;
+        int bySpace = Math.max(1, (Math.max(1, screenHeight) - fixed) / ROUTE_ROW_PITCH);
+        return Math.max(1, Math.min(byCount, bySpace));
     }
 
     static int panelFixedHeight(int includeRowsH, int routeBlockH) {
@@ -453,6 +638,94 @@ public final class ExportScreen extends Screen {
         int colW = Math.min(INCLUDE_COL_MAX_W, (availableWidth - GAP) / 2);
         if (colW < INCLUDE_COL_MIN_W) return new IncludeGrid(Math.max(1, availableWidth), rows);
         return new IncludeGrid(colW, Math.min(rows, INCLUDE_ROWS_PER_COL));
+    }
+
+    private int optionScrollOffset() {
+        return compactLayout ? optionsScrollOffset : 0;
+    }
+
+    private boolean optionsPageVisible() {
+        return !previewEnabled || widePreviewLayout || !compactPreviewPage;
+    }
+
+    static boolean routeListInputEnabled(boolean optionsVisible, boolean zoneExport,
+                                         boolean routePickerExpanded) {
+        return optionsVisible && zoneExport && routePickerExpanded;
+    }
+
+    static int optionsScrollTarget(int currentOffset, int maxOffset, int delta) {
+        return MathUtil.clamp(currentOffset + delta, 0, Math.max(0, maxOffset));
+    }
+
+    static int optionsScrollPage(int viewportHeight) {
+        return Math.max(OPTIONS_SCROLL_STEP, viewportHeight - OPTIONS_SCROLL_STEP);
+    }
+
+    private boolean isOptionWidgetVisible(int y, int widgetHeight) {
+        if (!compactLayout) return true;
+        return y >= optionsViewportTop && y + widgetHeight <= optionsViewportBottom;
+    }
+
+    private void applyOptionScroll() {
+        clampOptionsScrollOffset();
+        int offset = optionScrollOffset();
+        boolean optionsVisible = optionsPageVisible();
+
+        IncludeGrid grid = includeGrid(contentW, toggleSpecs.size());
+        for (int i = 0; i < toggleButtons.size(); i++) {
+            Button button = toggleButtons.get(i);
+            int y = includeRowsY + (i % grid.rowsPerColumn()) * INCLUDE_ROW_PITCH - offset;
+            button.setY(y);
+            button.visible = optionsVisible && isOptionWidgetVisible(y, BTN_H);
+            button.active = button.visible && toggleSupported(toggleSpecs.get(i));
+            clearFocusIfHidden(button);
+        }
+
+        if (routePickerToggleButton != null) {
+            int y = routeBlockY - offset;
+            routePickerToggleButton.setY(y);
+            routePickerToggleButton.visible = optionsVisible
+                    && isOptionWidgetVisible(y, BTN_H);
+            routePickerToggleButton.active = routePickerToggleButton.visible;
+            clearFocusIfHidden(routePickerToggleButton);
+        }
+        if (routeSelectAllButton != null) {
+            int y = routeBlockY - offset;
+            routeSelectAllButton.setY(y);
+            routeSelectAllButton.visible = optionsVisible
+                    && isOptionWidgetVisible(y, BTN_H);
+            routeSelectAllButton.active = routeSelectAllButton.visible && hasExcludedRoutes();
+            clearFocusIfHidden(routeSelectAllButton);
+        }
+        if (routeListNavigation != null) {
+            int y = routeListHomeTop() - offset;
+            routeListNavigation.setY(y);
+            routeListNavigation.visible = optionsVisible && routePickerExpanded
+                    && isOptionWidgetVisible(y, routeListNavigation.getHeight());
+            routeListNavigation.active = routeListNavigation.visible;
+            clearFocusIfHidden(routeListNavigation);
+        }
+    }
+
+    private void clearFocusIfHidden(AbstractWidget button) {
+        if (getFocused() != button || button.visible) return;
+        button.setFocused(false);
+        setFocused(null);
+    }
+
+    private int maxOptionsScrollOffset() {
+        return compactLayout
+                ? Math.max(0, optionsContentBottom - optionsViewportBottom) : 0;
+    }
+
+    private void clampOptionsScrollOffset() {
+        optionsScrollOffset = MathUtil.clamp(optionsScrollOffset, 0, maxOptionsScrollOffset());
+    }
+
+    private boolean isInsideOptionsViewport(double mouseX, double mouseY) {
+        return compactLayout && optionsPageVisible()
+                && mouseX >= contentX && mouseX <= contentX + contentW
+                && mouseY >= optionsViewportTop && mouseY <= optionsViewportBottom;
     }
 
     private void layoutRoutePickerControls() {
@@ -657,6 +930,7 @@ public final class ExportScreen extends Screen {
             button.active = toggleSupported(spec);
             button.setTooltip(toggleTooltip(spec));
         }
+        applyOptionScroll();
     }
 
     private void refreshRoutePickerButtons() {
@@ -666,6 +940,7 @@ public final class ExportScreen extends Screen {
         if (routeSelectAllButton != null) {
             routeSelectAllButton.active = hasExcludedRoutes();
         }
+        applyOptionScroll();
     }
 
     private Component routePickerToggleLabel() {
@@ -718,17 +993,11 @@ public final class ExportScreen extends Screen {
     }
 
     private void applyPreviewPageVisibility() {
-        boolean optionsVisible = !previewEnabled || widePreviewLayout || !compactPreviewPage;
+        boolean optionsVisible = optionsPageVisible();
         boolean previewVisible = previewEnabled && (widePreviewLayout || compactPreviewPage);
         labelInput.visible = optionsVisible;
         exportForButton.visible = optionsVisible;
-        for (Button toggle : toggleButtons) toggle.visible = optionsVisible;
-        if (routePickerToggleButton != null) routePickerToggleButton.visible = optionsVisible;
-        if (routeSelectAllButton != null) routeSelectAllButton.visible = optionsVisible;
-        if (routeListNavigation != null) {
-            routeListNavigation.visible = optionsVisible && routePickerExpanded;
-            routeListNavigation.active = routeListNavigation.visible;
-        }
+        applyOptionScroll();
         if (routePreviewWidget == null) return;
 
         routePreviewWidget.setPreviewVisible(previewVisible);
@@ -916,18 +1185,22 @@ public final class ExportScreen extends Screen {
         g.text(font, font.plainSubstrByWidth(subtitle, headerWidth),
                 contentX, top + LINE_H, TEXT_DIM, false);
 
-        if (widePreviewLayout || !compactPreviewPage) {
+        if (optionsPageVisible()) {
             drawClipped(g, Component.translatable("waypointer.screen.export.settings").getString(),
                     includeHeadY, TEXT_DIM);
             SettingsHelp help = settingsHelp();
             drawClipped(g, help.text(), includeHeadY + LINE_H, help.color());
 
             if (isZoneExport()) renderRoutePicker(g, mouseX, mouseY);
+            if (compactLayout) drawOptionsScrollbar(g);
 
             drawSizeSummary(g, contentX, sizeY);
-            drawPreview(g, contentX, previewY, contentX + contentW, previewY + previewH);
+            if (!compactLayout) {
+                drawPreview(g, contentX, previewY, contentX + contentW, previewY + previewH);
+            }
         }
 
+        if (routePreviewWidget != null) routePreviewWidget.advancePaintResourceFrame();
         super.extractRenderState(g, mouseX, mouseY, partial);
     }
 
@@ -951,31 +1224,56 @@ public final class ExportScreen extends Screen {
     private void renderRoutePicker(GuiGraphicsExtractor g, int mouseX, int mouseY) {
         clampRouteScrollOffset();
 
+        boolean clipOptions = compactLayout;
+        if (clipOptions) {
+            g.enableScissor(contentX, optionsViewportTop,
+                    contentX + contentW, optionsViewportBottom);
+        }
+        int headerY = routeBlockY - optionScrollOffset();
         drawClipped(g, Component.translatable("waypointer.screen.export.routes").getString(),
-                routeBlockY, TEXT_DIM);
+                headerY, TEXT_DIM);
         drawClipped(g, Component.translatable(
                 "waypointer.screen.export.routes.summary",
                 selectedGroupCount(), groups.size(), selectedWaypointCount()).getString(),
-                routeBlockY + LINE_H, TEXT_MUTED);
+                headerY + LINE_H, TEXT_MUTED);
 
-        if (!routePickerExpanded) return;
+        if (routePickerExpanded) {
+            int x1 = contentX;
+            int y1 = routeListTop();
+            int x2 = contentX + contentW;
+            int y2 = y1 + routeListHeight();
+            g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
+            g.enableScissor(x1, y1, x2, y2);
 
-        int x1 = contentX;
-        int y1 = routeListTop();
-        int x2 = contentX + contentW;
-        int y2 = y1 + routeListHeight();
-        g.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
-        g.enableScissor(x1, y1, x2, y2);
-
-        int rowY = y1 + ROUTE_PICKER_INSET - routeScrollOffset;
-        for (int i = 0; i < groups.size(); i++, rowY += ROUTE_ROW_PITCH) {
-            if (rowY + ROUTE_ROW_H < y1 || rowY > y2) continue;
-            boolean hovered = mouseX >= x1 && mouseX <= x2
-                    && mouseY >= rowY && mouseY <= rowY + ROUTE_ROW_H;
-            renderRouteRow(g, groups.get(i), i, x1 + 2, rowY, x2 - 2, hovered);
+            int rowY = y1 + ROUTE_PICKER_INSET - routeScrollOffset;
+            for (int i = 0; i < groups.size(); i++, rowY += ROUTE_ROW_PITCH) {
+                if (rowY + ROUTE_ROW_H < y1 || rowY > y2) continue;
+                boolean hovered = mouseX >= x1 && mouseX <= x2
+                        && mouseY >= rowY && mouseY <= rowY + ROUTE_ROW_H;
+                renderRouteRow(g, groups.get(i), i, x1 + 2, rowY, x2 - 2, hovered);
+            }
+            g.disableScissor();
+            drawRouteScrollbar(g, x1, y1, x2, y2);
         }
-        g.disableScissor();
-        drawRouteScrollbar(g, x1, y1, x2, y2);
+        if (clipOptions) g.disableScissor();
+    }
+
+    private void drawOptionsScrollbar(GuiGraphicsExtractor g) {
+        int maxScroll = maxOptionsScrollOffset();
+        int viewportHeight = optionsViewportBottom - optionsViewportTop;
+        if (maxScroll <= 0 || viewportHeight <= 0) return;
+
+        int trackX = panelX + controlPanelW - OPTIONS_SCROLLBAR_W - 4;
+        int trackY = optionsViewportTop + 3;
+        int trackH = Math.max(1, viewportHeight - 6);
+        int contentHeight = Math.max(viewportHeight, optionsContentBottom - optionsViewportTop);
+        int thumbH = Math.max(10, trackH * viewportHeight / contentHeight);
+        int travel = Math.max(0, trackH - thumbH);
+        int thumbY = trackY + travel * optionsScrollOffset / maxScroll;
+        g.fill(trackX, trackY, trackX + OPTIONS_SCROLLBAR_W, trackY + trackH,
+                GuiTokens.BORDER);
+        g.fill(trackX, thumbY, trackX + OPTIONS_SCROLLBAR_W, thumbY + thumbH,
+                TEXT_MUTED);
     }
 
     private static final int ROW_SELECTED_TINT = 0x1C4FB3C4;
@@ -1125,12 +1423,34 @@ public final class ExportScreen extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         if (super.mouseClicked(event, doubleClick)) return true;
         if (event.button() != 0) return false;
-        if (!isZoneExport() || !routePickerExpanded) return false;
+        if (!routeListInputEnabled(optionsPageVisible(), isZoneExport(), routePickerExpanded)) {
+            return false;
+        }
 
         int idx = routeIndexAt(event.x(), event.y());
         if (idx < 0) return false;
         if (routeListNavigation != null) routeListNavigation.setCursor(idx);
         toggleRouteSelection(idx);
+        return true;
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        if (super.keyPressed(event)) return true;
+        if (!compactLayout || !optionsPageVisible()) return false;
+
+        int maxScroll = maxOptionsScrollOffset();
+        int page = optionsScrollPage(optionsViewportBottom - optionsViewportTop);
+        int target = switch (event.key()) {
+            case GLFW_KEY_PAGE_UP -> optionsScrollTarget(optionsScrollOffset, maxScroll, -page);
+            case GLFW_KEY_PAGE_DOWN -> optionsScrollTarget(optionsScrollOffset, maxScroll, page);
+            case GLFW_KEY_HOME -> 0;
+            case GLFW_KEY_END -> maxScroll;
+            default -> -1;
+        };
+        if (target < 0) return false;
+        optionsScrollOffset = target;
+        applyOptionScroll();
         return true;
     }
 
@@ -1141,14 +1461,28 @@ public final class ExportScreen extends Screen {
             refreshPreviewZoomButton();
             return true;
         }
-        if (!isZoneExport() || !routePickerExpanded || !isInsideRouteList(mouseX, mouseY)) {
-            return super.mouseScrolled(mouseX, mouseY, horiz, vert);
+        if (optionsPageVisible() && isInsideRouteList(mouseX, mouseY)) {
+            int maxScroll = maxRouteScrollOffset();
+            if (maxScroll > 0 && Double.isFinite(vert) && vert != 0.0) {
+                int target = MathUtil.clamp(
+                        routeScrollOffset - (int) (vert * ROUTE_ROW_PITCH), 0, maxScroll);
+                if (target != routeScrollOffset) {
+                    routeScrollOffset = target;
+                    return true;
+                }
+            }
         }
-        int maxScroll = maxRouteScrollOffset();
-        if (maxScroll <= 0) return super.mouseScrolled(mouseX, mouseY, horiz, vert);
-        routeScrollOffset = MathUtil.clamp(
-                routeScrollOffset - (int) (vert * ROUTE_ROW_PITCH), 0, maxScroll);
-        return true;
+        if (isInsideOptionsViewport(mouseX, mouseY)) {
+            int maxScroll = maxOptionsScrollOffset();
+            if (maxScroll > 0 && Double.isFinite(vert) && vert != 0.0) {
+                optionsScrollOffset = MathUtil.clamp(
+                        optionsScrollOffset - (int) (vert * OPTIONS_SCROLL_STEP),
+                        0, maxScroll);
+                applyOptionScroll();
+                return true;
+            }
+        }
+        return super.mouseScrolled(mouseX, mouseY, horiz, vert);
     }
 
     private int routeIndexAt(double mouseX, double mouseY) {
@@ -1156,17 +1490,24 @@ public final class ExportScreen extends Screen {
         int localY = (int) (mouseY - routeListTop() - ROUTE_PICKER_INSET + routeScrollOffset);
         if (localY < 0) return -1;
         int withinRow = localY % ROUTE_ROW_PITCH;
-        if (withinRow > ROUTE_ROW_H) return -1;
+        if (withinRow >= ROUTE_ROW_H) return -1;
         int idx = localY / ROUTE_ROW_PITCH;
         return idx >= 0 && idx < groups.size() ? idx : -1;
     }
 
     private boolean isInsideRouteList(double mouseX, double mouseY) {
-        if (!isZoneExport() || !routePickerExpanded) return false;
+        if (!routeListInputEnabled(optionsPageVisible(), isZoneExport(), routePickerExpanded)) {
+            return false;
+        }
         int x1 = contentX;
         int y1 = routeListTop();
         int x2 = contentX + contentW;
         int y2 = y1 + routeListHeight();
+        if (compactLayout) {
+            y1 = Math.max(y1, optionsViewportTop);
+            y2 = Math.min(y2, optionsViewportBottom);
+        }
+        if (y2 <= y1) return false;
         return mouseX >= x1 && mouseX <= x2 && mouseY >= y1 && mouseY <= y2;
     }
 
@@ -1175,12 +1516,11 @@ public final class ExportScreen extends Screen {
     }
 
     private int routeListTop() {
-        return routeBlockY + routePickerHeaderHeight() + GAP;
+        return routeListHomeTop() - optionScrollOffset();
     }
 
-    private int routePickerBlockHeight() {
-        return routePickerHeaderHeight()
-                + (routePickerExpanded ? GAP + routeListHeight() : 0);
+    private int routeListHomeTop() {
+        return routeBlockY + routePickerHeaderHeight() + GAP;
     }
 
     private int routeListHeight() {
@@ -1188,15 +1528,7 @@ public final class ExportScreen extends Screen {
     }
 
     private int routeVisibleRowCount() {
-        int byCount = Math.min(MAX_EXPANDED_ROUTE_ROWS, Math.max(1, groups.size()));
-        int fixed = PAD_OUTER * 2 + HEADER_H + BTN_H + BLOCK_GAP + EXPORT_SETTINGS_HEADER_H
-                + includeRowsHeight() + BLOCK_GAP + routePickerHeaderHeight() + GAP
-                + ROUTE_PICKER_INSET * 2
-                + BLOCK_GAP + LINE_H + GAP_TIGHT
-                + previewLineHeight() + PREVIEW_INSET * 2
-                + BLOCK_GAP + BTN_H;
-        int bySpace = Math.max(1, (height - fixed) / ROUTE_ROW_PITCH);
-        return Math.max(1, Math.min(byCount, bySpace));
+        return routeVisibleRowCount(height, includeRowsHeight(), previewLineHeight(), groups.size());
     }
 
     private int routeViewportHeight() {
