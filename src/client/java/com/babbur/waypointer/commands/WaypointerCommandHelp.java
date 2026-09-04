@@ -127,7 +127,26 @@ final class WaypointerCommandHelp {
                             new HelpRow(" blacklist remove <name>", "waypointer.command.help.blacklist_remove",
                                     "blacklist remove Babbur"))),
             new HelpSection("debug", "waypointer.command.help.section.debug",
-                    List.of(new HelpRow(" debug", "waypointer.command.help.debug", "debug")))
+                    List.of(new HelpRow(" debug", "waypointer.command.help.debug", "debug"))),
+            new HelpSection("crystal", "waypointer.command.help.section.crystal",
+                    List.of(
+                            new HelpRow("/wpch [info]", "waypointer.command.help.crystal.info",
+                                    "/wpch", "/wpch info"),
+                            new HelpRow("/wpch share <structure>",
+                                    "waypointer.command.help.crystal.share",
+                                    "/wpch share jungle_temple"),
+                            new HelpRow("/wpch add <structure> [x y z]",
+                                    "waypointer.command.help.crystal.add",
+                                    "/wpch add odawa", "/wpch add odawa 349 110 390"),
+                            new HelpRow("/wpch remove <structure> | clear",
+                                    "waypointer.command.help.crystal.remove",
+                                    "/wpch remove odawa", "/wpch clear"),
+                            new HelpRow("/wpch compass [reset]",
+                                    "waypointer.command.help.crystal.compass",
+                                    "/wpch compass", "/wpch compass reset"),
+                            new HelpRow("/wpch toggle <enabled|compass|chat|entities|rough>",
+                                    "waypointer.command.help.crystal.toggle",
+                                    "/wpch toggle rough")))
     );
 
     private WaypointerCommandHelp() {}
@@ -174,6 +193,7 @@ final class WaypointerCommandHelp {
         if ("editing".equals(normalized) || "edit".equals(normalized)) return 1;
         if ("flags".equals(normalized)) return 2;
         if ("areas".equals(normalized)) return 4;
+        if ("wpch".equals(normalized) || "waypointer-crystal".equals(normalized)) return 8;
 
         if (normalized.chars().allMatch(Character::isDigit)) {
             int page = Integer.parseInt(normalized) - 1;
@@ -280,6 +300,9 @@ final class WaypointerCommandHelp {
     }
 
     private static MutableComponent highlightedCommand(String prefix, String usage) {
+        if (usage != null && usage.trim().startsWith("/")) {
+            prefix = "";
+        }
         MutableComponent result = Component.literal(prefix)
                 .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA));
         String trimmed = usage == null ? "" : usage.trim();

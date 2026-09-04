@@ -23,7 +23,11 @@ final class RouteFolderListModel {
         String query = searchQuery == null ? "" : searchQuery.trim().toLowerCase(Locale.ROOT);
         List<WaypointGroup> zoneGroups = new ArrayList<>();
         for (WaypointGroup group : manager.groupsForZone(zoneId)) {
-            if (!group.temp() && !group.runtimeOnly()
+            RouteFolder memberFolder = manager.folderForGroup(group.id());
+            boolean listedRuntime = group.runtimeOnly()
+                    && memberFolder != null
+                    && memberFolder.runtimeOnly();
+            if (!group.temp() && (!group.runtimeOnly() || listedRuntime)
                     && group.routeKind() == WaypointGroup.RouteKind.REGULAR) {
                 zoneGroups.add(group);
             }

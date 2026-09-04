@@ -3,6 +3,7 @@ package com.babbur.waypointer.location;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Zone;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.hypixel.modapi.HypixelModAPI;
 import net.hypixel.modapi.packet.impl.clientbound.event.ClientboundLocationPacket;
 import net.minecraft.client.Minecraft;
@@ -15,6 +16,7 @@ public final class HypixelApiZoneSource implements ZoneSource {
 
     private static final int REFINE_POLL_TICKS = 2;
     private static volatile DebugSnapshot lastDebugSnapshot;
+    private static volatile String lastServerName;
 
     private Zone lastEmitted;
     private Zone lastRawPacketZone;
@@ -29,12 +31,15 @@ public final class HypixelApiZoneSource implements ZoneSource {
         api.createHandler(ClientboundLocationPacket.class, this::handleLocationPacket);
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> lastServerName = null);
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> resetLocation());
     }
 
     private void handleLocationPacket(ClientboundLocationPacket packet) {
         String serverType = packet.getServerType().map(s -> s.name()).orElse(null);
         String map  = packet.getMap().orElse(null);
         String mode = packet.getMode().orElse(null);
+        lastServerName = packet.getServerName();
 
         lastRawPacketZone = Zone.resolve(serverType, map, mode);
         emitRefined(serverType, map, mode);
@@ -54,6 +59,7 @@ public final class HypixelApiZoneSource implements ZoneSource {
 
     private void resetLocation() {
         lastRawPacketZone = null;
+        lastServerName = null;
         tickCounter = 0;
         lastDebugSnapshot = null;
         if (lastEmitted == null) return;
@@ -74,7 +80,8 @@ public final class HypixelApiZoneSource implements ZoneSource {
         String sidebarText = blob != null ? blob : "";
         Zone refined = Zone.refineIfDwarvenMinesContext(lastRawPacketZone, sidebarText);
         refined = CatacombsFloorRefiner.refine(refined, sidebarText);
-        lastDebugSnapshot = new DebugSnapshot(serverType, map, mode, lastRawPacketZone, refined, Instant.now());
+        lastDebugSnapshot = new DebugSnapshot(
+                serverType, map, mode, lastServerName, lastRawPacketZone, refined, Instant.now());
 
         if (!Objects.equals(refined, lastEmitted)) {
             lastEmitted = refined;
@@ -92,10 +99,15 @@ public final class HypixelApiZoneSource implements ZoneSource {
         return lastDebugSnapshot;
     }
 
+    public static String lastServerName() {
+        return lastServerName;
+    }
+
     public record DebugSnapshot(
             String serverType,
             String map,
             String mode,
+            String serverName,
             Zone rawZone,
             Zone refinedZone,
             Instant capturedAt) {}

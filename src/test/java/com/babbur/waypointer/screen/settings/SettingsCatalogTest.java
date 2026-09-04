@@ -43,6 +43,28 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void crystalHollowsCategoryUsesMainStoreAndMasterSwitch() {
+        SettingsCatalog.Category category = SettingsCatalog.categories().stream()
+                .filter(candidate -> candidate.id().equals("crystal_hollows"))
+                .findFirst().orElseThrow();
+
+        assertEquals("crystalHollowsEnabled", category.masterSettingId());
+        assertEquals(9, category.groups().stream()
+                .flatMap(group -> group.settings().stream()).count());
+        assertTrue(category.groups().stream()
+                .flatMap(group -> group.settings().stream())
+                .allMatch(setting -> setting.store() == Setting.Store.MAIN));
+        Setting master = SettingsCatalog.byId("crystalHollowsEnabled");
+        assertNotNull(master);
+        assertTrue(master.aliases().containsAll(
+                List.of("mining", "compass", "hollows", "divan", "temple")));
+        WaypointerConfig config = new WaypointerConfig();
+        assertTrue(category.bodyVisibleWhen().test(config, null));
+        config.setCrystalHollowsEnabled(false);
+        assertFalse(category.bodyVisibleWhen().test(config, null));
+    }
+
+    @Test
     void dungeonEntriesCoverEveryPlayerFacingDungeonConfigField() {
         Set<String> fields = persistedFieldNames(DungeonConfig.class, DUNGEON_EXEMPT);
         Set<String> catalogIds = idsByStore(Setting.Store.DUNGEON);

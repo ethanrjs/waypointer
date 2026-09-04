@@ -7,6 +7,8 @@ import com.babbur.waypointer.dungeon.DungeonDetectionConfidence;
 import com.babbur.waypointer.dungeon.DungeonRoom;
 import com.babbur.waypointer.dungeon.DungeonRoomZoneBridge;
 import com.babbur.waypointer.dungeon.DungeonStateTracker;
+import com.babbur.waypointer.crystal.CrystalHollowsTracker;
+import com.babbur.waypointer.crystal.WishingCompassController;
 import com.babbur.waypointer.location.HypixelApiZoneSource;
 import com.babbur.waypointer.location.SidebarTexts;
 import net.minecraft.client.Minecraft;
@@ -106,11 +108,39 @@ public final class DebugSignals {
         if (snapshot == null) return "no packet/refine snapshot yet";
 
         return "serverType=" + valueOrMissing(snapshot.serverType())
+                + ", serverName=" + valueOrMissing(snapshot.serverName())
                 + ", map=" + valueOrMissing(snapshot.map())
                 + ", mode=" + valueOrMissing(snapshot.mode())
                 + ", raw=" + describeZone(snapshot.rawZone())
                 + ", refined=" + describeZone(snapshot.refinedZone())
                 + ", at=" + snapshot.capturedAt();
+    }
+
+    public static String crystalHollowsLine() {
+        CrystalHollowsTracker tracker = WaypointerClient.crystalHollowsTracker();
+        WishingCompassController compass = WaypointerClient.crystalHollowsCompass();
+        CrystalHollowsTracker.DebugSnapshot snapshot = tracker == null
+                ? null
+                : tracker.debugSnapshot();
+        return crystalHollowsLine(
+                snapshot != null && snapshot.active(),
+                snapshot == null ? null : snapshot.serverId(),
+                snapshot == null ? -1 : snapshot.day(),
+                snapshot == null ? 0 : snapshot.sightings(),
+                compass == null ? "not installed" : compass.solver().state().name(),
+                compass == null ? 0 : compass.solver().completedRays().size(),
+                compass == null ? "none" : compass.lastEvent());
+    }
+
+    static String crystalHollowsLine(boolean active, String serverId, int day, int sightings,
+                                     String compassState, int rays, String lastEvent) {
+        return "active=" + active
+                + ", serverId=" + valueOrMissing(serverId)
+                + ", day=" + (day < 0 ? "unknown" : day)
+                + ", sightings=" + sightings
+                + ", compass=" + valueOrMissing(compassState)
+                + ", rays=" + rays
+                + ", lastEvent=" + valueOrMissing(lastEvent);
     }
 
     public static String scoreboardLine() {

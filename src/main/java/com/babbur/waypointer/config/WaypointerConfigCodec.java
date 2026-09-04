@@ -110,6 +110,15 @@ public final class WaypointerConfigCodec {
     private static final int SEQUENCE_NEXT_WAYPOINT_COUNT = 78;
     private static final int ETHERWARP_ALIGNMENT_SOUND = 79;
     private static final int ETHERWARP_ALIGNMENT_SOUND_TYPE = 80;
+    private static final int CRYSTAL_HOLLOWS_ENABLED = 81;
+    private static final int CRYSTAL_HOLLOWS_STRUCTURE_WAYPOINTS = 82;
+    private static final int CRYSTAL_HOLLOWS_SHOW_ROUGH_MARKERS = 83;
+    private static final int CRYSTAL_HOLLOWS_ENTITY_DETECTION = 84;
+    private static final int CRYSTAL_HOLLOWS_CHAT_DETECTION = 85;
+    private static final int CRYSTAL_HOLLOWS_WISHING_COMPASS_SOLVER = 86;
+    private static final int CRYSTAL_HOLLOWS_COMPASS_RAYS = 87;
+    private static final int CRYSTAL_HOLLOWS_ANNOUNCE_DETECTIONS = 88;
+    private static final int CRYSTAL_HOLLOWS_NUCLEUS_WAYPOINTS = 89;
 
     private WaypointerConfigCodec() {
     }
@@ -257,6 +266,30 @@ public final class WaypointerConfigCodec {
         writeInt(out, TEMP_DEFAULT_DURATION_SEC, config.tempDefaultDurationSec(), defaults.tempDefaultDurationSec());
         writeEnum(out, ETHERWARP_ALIGNMENT_SOUND_TYPE,
                 config.etherwarpAlignmentSound(), defaults.etherwarpAlignmentSound());
+        writeBoolean(out, CRYSTAL_HOLLOWS_ENABLED,
+                config.crystalHollowsEnabled(), defaults.crystalHollowsEnabled());
+        writeBoolean(out, CRYSTAL_HOLLOWS_STRUCTURE_WAYPOINTS,
+                config.crystalHollowsStructureWaypoints(),
+                defaults.crystalHollowsStructureWaypoints());
+        writeBoolean(out, CRYSTAL_HOLLOWS_SHOW_ROUGH_MARKERS,
+                config.crystalHollowsShowRoughMarkers(),
+                defaults.crystalHollowsShowRoughMarkers());
+        writeBoolean(out, CRYSTAL_HOLLOWS_ENTITY_DETECTION,
+                config.crystalHollowsEntityDetection(),
+                defaults.crystalHollowsEntityDetection());
+        writeBoolean(out, CRYSTAL_HOLLOWS_CHAT_DETECTION,
+                config.crystalHollowsChatDetection(), defaults.crystalHollowsChatDetection());
+        writeBoolean(out, CRYSTAL_HOLLOWS_WISHING_COMPASS_SOLVER,
+                config.crystalHollowsWishingCompassSolver(),
+                defaults.crystalHollowsWishingCompassSolver());
+        writeBoolean(out, CRYSTAL_HOLLOWS_COMPASS_RAYS,
+                config.crystalHollowsCompassRays(), defaults.crystalHollowsCompassRays());
+        writeBoolean(out, CRYSTAL_HOLLOWS_ANNOUNCE_DETECTIONS,
+                config.crystalHollowsAnnounceDetections(),
+                defaults.crystalHollowsAnnounceDetections());
+        writeBoolean(out, CRYSTAL_HOLLOWS_NUCLEUS_WAYPOINTS,
+                config.crystalHollowsNucleusWaypoints(),
+                defaults.crystalHollowsNucleusWaypoints());
     }
     private static void readFields(DataInputStream in, WaypointerConfig config) throws IOException {
         while (true) {
@@ -356,6 +389,23 @@ public final class WaypointerConfigCodec {
                 case ETHERWARP_ALIGNMENT_SOUND_TYPE -> config.setEtherwarpAlignmentSound(readEnum(in,
                         WaypointerConfig.EtherwarpAlignmentSound.values(),
                         WaypointerConfig.EtherwarpAlignmentSound.OFF));
+                case CRYSTAL_HOLLOWS_ENABLED -> config.setCrystalHollowsEnabled(in.readBoolean());
+                case CRYSTAL_HOLLOWS_STRUCTURE_WAYPOINTS ->
+                        config.setCrystalHollowsStructureWaypoints(in.readBoolean());
+                case CRYSTAL_HOLLOWS_SHOW_ROUGH_MARKERS ->
+                        config.setCrystalHollowsShowRoughMarkers(in.readBoolean());
+                case CRYSTAL_HOLLOWS_ENTITY_DETECTION ->
+                        config.setCrystalHollowsEntityDetection(in.readBoolean());
+                case CRYSTAL_HOLLOWS_CHAT_DETECTION ->
+                        config.setCrystalHollowsChatDetection(in.readBoolean());
+                case CRYSTAL_HOLLOWS_WISHING_COMPASS_SOLVER ->
+                        config.setCrystalHollowsWishingCompassSolver(in.readBoolean());
+                case CRYSTAL_HOLLOWS_COMPASS_RAYS ->
+                        config.setCrystalHollowsCompassRays(in.readBoolean());
+                case CRYSTAL_HOLLOWS_ANNOUNCE_DETECTIONS ->
+                        config.setCrystalHollowsAnnounceDetections(in.readBoolean());
+                case CRYSTAL_HOLLOWS_NUCLEUS_WAYPOINTS ->
+                        config.setCrystalHollowsNucleusWaypoints(in.readBoolean());
                 default -> throw new IllegalArgumentException("Unknown config field tag: " + tag);
             }
         }
@@ -457,7 +507,7 @@ public final class WaypointerConfigCodec {
     }
 
     static boolean isActiveFieldTag(int tag) {
-        return tag >= DEFAULT_REACH_RADIUS && tag <= ETHERWARP_ALIGNMENT_SOUND_TYPE
+        return tag >= DEFAULT_REACH_RADIUS && tag <= CRYSTAL_HOLLOWS_NUCLEUS_WAYPOINTS
                 && tag != SHOW_COMPLETED
                 && tag != LEGACY_CHECK_FOR_UPDATES
                 && tag != TEMP_DEFAULT_DURATION_MIN

@@ -54,7 +54,7 @@ public final class DungeonItemIdentity {
         return SUPERBOOM_TNT_ID.equals(id) || INFINITE_SUPERBOOM_TNT_ID.equals(id);
     }
 
-    static boolean hasSkyBlockId(ItemStack stack, String expectedId) {
+    public static boolean hasSkyBlockId(ItemStack stack, String expectedId) {
         CompoundTag data = customData(stack);
         return data != null && hasSkyBlockId(data, expectedId);
     }
