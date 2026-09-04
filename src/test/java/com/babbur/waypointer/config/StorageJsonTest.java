@@ -16,6 +16,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -854,6 +855,148 @@ class StorageJsonTest {
         new Storage(file).load(loaded);
         assertTrue(loaded.allGroups().isEmpty());
         assertTrue(loaded.folders().isEmpty());
+    }
+
+    @Test
+    void runtimeFolderLifecycleNotifiesDataWithoutCapturingOrWriting() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup runtime = new WaypointGroup("runtime", "Odawa", "crystal_hollows");
+        runtime.setRuntimeOnly(true);
+        manager.add(runtime);
+
+        Storage storage = new Storage(tempDir.resolve("runtime-folder-lifecycle.json"));
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        RouteFolder folder = new RouteFolder("runtime-folder", "Structures",
+                "crystal_hollows", false, 0x55FFFF, true);
+        manager.addFolder(folder, List.of());
+        assertTrue(manager.renameFolder(folder.id(), "Generated structures"));
+        assertTrue(manager.setFolderCollapsed(folder.id(), true));
+        assertTrue(manager.setFolderColor(folder.id(), 0xC46DFF));
+        assertTrue(manager.assignGroupToFolder(runtime.id(), folder.id()));
+        assertTrue(manager.removeGroupFromFolder(runtime.id()));
+        assertTrue(manager.deleteFolder(folder.id()));
+
+        storage.flush();
+
+        assertEquals(7, allChanges.get());
+        assertEquals(0, persistentChanges.get());
+        assertEquals(snapshotsAfterAttach, storage.snapshotCount());
+        assertEquals(0, storage.writeCount());
+        assertFalse(Files.exists(storage.file()));
+    }
+
+    @Test
+    void savedFolderLifecycleCapturesAndWritesOnceForAChangeBurst() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup saved = new WaypointGroup("saved", "Saved", "hub");
+        manager.add(saved);
+
+        Path file = tempDir.resolve("saved-folder-lifecycle.json");
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        RouteFolder folder = new RouteFolder("folder", "Saved routes", "hub", false);
+        manager.addFolder(folder, List.of(saved.id()));
+        assertTrue(manager.renameFolder(folder.id(), "Renamed routes"));
+        assertTrue(manager.setFolderCollapsed(folder.id(), true));
+        assertTrue(manager.setFolderColor(folder.id(), 0xC46DFF));
+        assertTrue(manager.removeGroupFromFolder(saved.id()));
+        assertTrue(manager.assignGroupToFolder(saved.id(), folder.id()));
+        assertTrue(manager.deleteFolder(folder.id()));
+
+        assertEquals(7, allChanges.get());
+        assertEquals(7, persistentChanges.get());
+        assertEquals(snapshotsAfterAttach, storage.snapshotCount());
+
+        storage.pumpPendingSnapshot();
+        assertEquals(snapshotsAfterAttach + 1, storage.snapshotCount());
+        storage.flush();
+
+        assertEquals(1, storage.writeCount());
+        JsonObject savedJson = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertTrue(savedJson.getAsJsonArray("folders").isEmpty());
+        assertEquals("saved", savedJson.getAsJsonArray("groups").get(0)
+                .getAsJsonObject().get("id").getAsString());
+    }
+
+    @Test
+    void clearPersistsRemovalOfAnOtherwiseEmptySavedFolder() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.addFolder(new RouteFolder("empty", "Empty", "hub", false), List.of());
+
+        Path file = tempDir.resolve("clear-empty-folder.json");
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+
+        manager.clear();
+        storage.flush();
+
+        assertEquals(snapshotsAfterAttach + 1, storage.snapshotCount());
+        assertEquals(1, storage.writeCount());
+        assertTrue(JsonParser.parseString(Files.readString(file)).getAsJsonObject()
+                .getAsJsonArray("folders").isEmpty());
+    }
+
+    @Test
+    void replaceAllPersistsReplacementOfAnOtherwiseEmptySavedFolder() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.addFolder(new RouteFolder("empty", "Empty", "hub", false), List.of());
+
+        Path file = tempDir.resolve("replace-all-empty-folder.json");
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+
+        manager.replaceAll(List.of(), List.of(), java.util.Map.of());
+        storage.flush();
+
+        assertEquals(snapshotsAfterAttach + 1, storage.snapshotCount());
+        assertEquals(1, storage.writeCount());
+        assertTrue(JsonParser.parseString(Files.readString(file)).getAsJsonObject()
+                .getAsJsonArray("folders").isEmpty());
+    }
+
+    @Test
+    void duplicateRuntimeFolderCannotReplaceSavedFolderOrDirtyStorage() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup saved = new WaypointGroup("saved", "Saved", "hub");
+        manager.add(saved);
+        manager.addFolder(new RouteFolder("shared", "Saved routes", "hub", false),
+                List.of(saved.id()));
+
+        Path file = tempDir.resolve("duplicate-folder-lifetime.json");
+        Storage storage = new Storage(file);
+        storage.attach(manager);
+        int snapshotsAfterAttach = storage.snapshotCount();
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        assertThrows(IllegalArgumentException.class, () -> manager.addFolder(
+                new RouteFolder("shared", "Generated routes", "hub", false,
+                        RouteFolder.DEFAULT_COLOR, true), List.of()));
+        storage.flush();
+
+        assertEquals("shared", manager.folderForGroup(saved.id()).id());
+        assertFalse(manager.folderForGroup(saved.id()).runtimeOnly());
+        assertEquals(0, allChanges.get());
+        assertEquals(0, persistentChanges.get());
+        assertEquals(snapshotsAfterAttach, storage.snapshotCount());
+        assertEquals(0, storage.writeCount());
+        assertFalse(Files.exists(file));
     }
 
     @Test

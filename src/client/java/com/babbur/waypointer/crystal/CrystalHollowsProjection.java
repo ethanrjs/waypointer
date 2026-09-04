@@ -42,12 +42,12 @@ public final class CrystalHollowsProjection {
     public void rebuild(CrystalHollowsLobbyState lobby) {
         rememberVisibility();
         ensureFolder();
+        boolean structureWaypoints = config.crystalHollowsStructureWaypoints();
         List<CrystalHollowsStructureFolder.PlannedGroup> plans =
-                config.crystalHollowsStructureWaypoints()
-                        ? CrystalHollowsStructureFolder.plan(lobby == null ? List.of() : lobby.sightings(),
-                                config.crystalHollowsShowRoughMarkers(),
-                                config.crystalHollowsNucleusWaypoints())
-                        : List.of();
+                CrystalHollowsStructureFolder.plan(
+                        structureWaypoints && lobby != null ? lobby.sightings() : List.of(),
+                        structureWaypoints && config.crystalHollowsShowRoughMarkers(),
+                        config.crystalHollowsNucleusWaypoints());
         List<String> removals = generatedGroupIds();
         List<WaypointGroup> replacements = new ArrayList<>(plans.size());
         Map<String, String> folders = new LinkedHashMap<>();

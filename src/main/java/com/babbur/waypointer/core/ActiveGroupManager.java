@@ -199,7 +199,7 @@ public final class ActiveGroupManager {
         for (String groupId : members) validateFolderMember(folder, groupId);
         foldersById.put(folder.id(), folder);
         for (String groupId : members) folderIdByGroupId.put(groupId, folder.id());
-        fireDataChanged(true);
+        fireDataChanged(isPersistent(folder));
     }
 
     public boolean renameFolder(String folderId, String name) {
@@ -208,7 +208,7 @@ public final class ActiveGroupManager {
         RouteFolder replacement = current.withName(name);
         if (replacement.equals(current)) return false;
         foldersById.put(folderId, replacement);
-        fireDataChanged(true);
+        fireDataChanged(isPersistent(current));
         return true;
     }
 
@@ -216,7 +216,7 @@ public final class ActiveGroupManager {
         RouteFolder current = foldersById.get(folderId);
         if (current == null || current.collapsed() == collapsed) return false;
         foldersById.put(folderId, current.withCollapsed(collapsed));
-        fireDataChanged(true);
+        fireDataChanged(isPersistent(current));
         return true;
     }
 
@@ -226,7 +226,7 @@ public final class ActiveGroupManager {
         RouteFolder replacement = current.withColor(color);
         if (replacement.equals(current)) return false;
         foldersById.put(folderId, replacement);
-        fireDataChanged(true);
+        fireDataChanged(isPersistent(current));
         return true;
     }
 
@@ -237,25 +237,31 @@ public final class ActiveGroupManager {
 
     /** Routes remain saved when their folder is deleted. */
     public boolean deleteFolder(String folderId) {
-        if (foldersById.remove(folderId) == null) return false;
+        RouteFolder removed = foldersById.remove(folderId);
+        if (removed == null) return false;
         folderIdByGroupId.values().removeIf(folderId::equals);
-        fireDataChanged(true);
+        fireDataChanged(isPersistent(removed));
         return true;
     }
 
     public boolean assignGroupToFolder(String groupId, String folderId) {
         RouteFolder folder = foldersById.get(folderId);
         if (folder == null) throw new IllegalArgumentException("Unknown route folder " + folderId);
-        validateFolderMember(folder, groupId);
+        WaypointGroup group = byId.get(groupId);
+        validateFolderMember(folder, group, groupId);
         if (folderId.equals(folderIdByGroupId.get(groupId))) return false;
         folderIdByGroupId.put(groupId, folderId);
-        fireDataChanged(true);
+        fireDataChanged(isPersistent(folder) || isPersistent(group));
         return true;
     }
 
     public boolean removeGroupFromFolder(String groupId) {
-        if (folderIdByGroupId.remove(groupId) == null) return false;
-        fireDataChanged(true);
+        String folderId = folderIdByGroupId.get(groupId);
+        if (folderId == null) return false;
+        RouteFolder folder = foldersById.get(folderId);
+        WaypointGroup group = byId.get(groupId);
+        folderIdByGroupId.remove(groupId);
+        fireDataChanged(isPersistent(folder) || isPersistent(group));
         return true;
     }
 
@@ -312,7 +318,9 @@ public final class ActiveGroupManager {
         if (source.routeKind() == WaypointGroup.RouteKind.REGULAR) {
             if (destinationFolderId != null) {
                 RouteFolder folder = foldersById.get(destinationFolderId);
-                if (folder == null || !folder.zoneId().equals(source.zoneId())) return null;
+                if (folder == null
+                        || !folder.zoneId().equals(source.zoneId())
+                        || folder.runtimeOnly() != source.runtimeOnly()) return null;
             }
         } else if (destinationFolderId != null) {
             return null;
@@ -427,7 +435,8 @@ public final class ActiveGroupManager {
     private static void validateFolderMember(
             RouteFolder folder, WaypointGroup group, String groupId) {
         if (!isFolderEligible(group, folder)) {
-            throw new IllegalArgumentException("Route folder member is not a saved regular route " + groupId);
+            throw new IllegalArgumentException(
+                    "Route folder member is not a matching regular route " + groupId);
         }
         if (!folder.zoneId().equals(group.zoneId())) {
             throw new IllegalArgumentException("Route folder member belongs to another zone " + groupId);
@@ -438,7 +447,7 @@ public final class ActiveGroupManager {
         return group != null
                 && !group.temp()
                 && group.routeKind() == WaypointGroup.RouteKind.REGULAR
-                && (!group.runtimeOnly() || folder.runtimeOnly());
+                && group.runtimeOnly() == folder.runtimeOnly();
     }
 
     private static boolean isReorderEligible(WaypointGroup group) {
@@ -852,6 +861,7 @@ public final class ActiveGroupManager {
         Objects.requireNonNull(folderMemberships, "folderMemberships");
         boolean persistent = false;
         for (WaypointGroup group : byId.values()) persistent |= isPersistent(group);
+        for (RouteFolder folder : foldersById.values()) persistent |= isPersistent(folder);
         byId.clear();
         for (WaypointGroup group : groups) {
             byId.put(group.id(), group);
@@ -863,6 +873,7 @@ public final class ActiveGroupManager {
             if (foldersById.putIfAbsent(folder.id(), folder) != null) {
                 throw new IllegalArgumentException("Duplicate route folder ID " + folder.id());
             }
+            persistent |= isPersistent(folder);
         }
         for (Map.Entry<String, String> entry : folderMemberships.entrySet()) {
             RouteFolder folder = foldersById.get(entry.getValue());
@@ -895,6 +906,7 @@ public final class ActiveGroupManager {
     public void clear() {
         boolean persistent = false;
         for (WaypointGroup group : byId.values()) persistent |= isPersistent(group);
+        for (RouteFolder folder : foldersById.values()) persistent |= isPersistent(folder);
         byId.clear();
         foldersById.clear();
         folderIdByGroupId.clear();
@@ -907,6 +919,14 @@ public final class ActiveGroupManager {
 
     public void fireDataChangedFor(WaypointGroup group) {
         fireDataChanged(isPersistent(group));
+    }
+
+    /** Publishes one change for a batch, persisting it when any group is saved. */
+    public void fireDataChangedFor(Collection<? extends WaypointGroup> groups) {
+        Objects.requireNonNull(groups, "groups");
+        boolean persistent = false;
+        for (WaypointGroup group : groups) persistent |= isPersistent(group);
+        fireDataChanged(persistent);
     }
 
     public void fireTransientDataChanged() {
@@ -933,6 +953,10 @@ public final class ActiveGroupManager {
 
     private static boolean isPersistent(WaypointGroup group) {
         return group != null && !group.temp() && !group.runtimeOnly();
+    }
+
+    private static boolean isPersistent(RouteFolder folder) {
+        return folder != null && !folder.runtimeOnly();
     }
 
     private WaypointGroup focusedTempGroupForZone(String zoneId) {

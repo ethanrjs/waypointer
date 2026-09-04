@@ -67,6 +67,25 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void batchChangesPersistOnlyWhenTheyIncludeASavedGroup() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup runtime = new WaypointGroup("runtime", "Runtime", "hub");
+        runtime.setRuntimeOnly(true);
+        WaypointGroup saved = new WaypointGroup("saved", "Saved", "hub");
+        manager.addAll(List.of(runtime, saved));
+        AtomicInteger allChanges = new AtomicInteger();
+        AtomicInteger persistentChanges = new AtomicInteger();
+        manager.addDataListener(allChanges::incrementAndGet);
+        manager.addPersistentDataListener(persistentChanges::incrementAndGet);
+
+        manager.fireDataChangedFor(List.of(runtime));
+        manager.fireDataChangedFor(List.of(runtime, saved));
+
+        assertEquals(2, allChanges.get());
+        assertEquals(1, persistentChanges.get());
+    }
+
+    @Test
     void dataListenersCanAddAndRemoveListenersDuringCallback() {
         ActiveGroupManager manager = new ActiveGroupManager();
         List<String> calls = new ArrayList<>();
@@ -371,12 +390,19 @@ class ActiveGroupManagerTest {
         runtime.setRuntimeOnly(true);
         manager.addAll(List.of(source, otherZone, runtime));
         RouteFolder hubFolder = new RouteFolder("hub-folder", "Hub", "hub", false);
+        RouteFolder runtimeFolder = new RouteFolder(
+                "runtime-folder", "Runtime", "hub", false, RouteFolder.DEFAULT_COLOR, true);
         RouteFolder parkFolder = new RouteFolder("park-folder", "Park", "the_park", false);
         manager.addFolder(hubFolder, List.of());
+        manager.addFolder(runtimeFolder, List.of());
         manager.addFolder(parkFolder, List.of(otherZone.id()));
 
         assertFalse(manager.canMoveGroupToContainer(
                 source.id(), parkFolder.id(), null));
+        assertFalse(manager.canMoveGroupToContainer(
+                source.id(), runtimeFolder.id(), null));
+        assertFalse(manager.moveGroupToContainer(
+                source.id(), runtimeFolder.id(), null));
         assertFalse(manager.moveGroupToContainer(
                 source.id(), parkFolder.id(), null));
         assertFalse(manager.moveGroupToContainer(
@@ -390,18 +416,42 @@ class ActiveGroupManagerTest {
     @Test
     void runtimeRoutesCanOnlyBelongToRuntimeFolders() {
         ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup saved = new WaypointGroup("saved", "Saved", "crystal_hollows");
         WaypointGroup runtime = new WaypointGroup("runtime", "Runtime", "crystal_hollows");
         runtime.setRuntimeOnly(true);
-        manager.add(runtime);
+        manager.addAll(List.of(saved, runtime));
         RouteFolder persisted = new RouteFolder(
                 "persisted", "Saved", "crystal_hollows", false);
         RouteFolder runtimeFolder = new RouteFolder(
                 "runtime-folder", "Structures", "crystal_hollows", false, 0x55FFFF, true);
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.addFolder(new RouteFolder(
+                        "runtime-with-saved", "Runtime", "crystal_hollows", false,
+                        RouteFolder.DEFAULT_COLOR, true), List.of(saved.id())));
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.addFolder(new RouteFolder(
+                        "saved-with-runtime", "Saved", "crystal_hollows", false),
+                        List.of(runtime.id())));
         manager.addFolder(persisted, List.of());
         manager.addFolder(runtimeFolder, List.of());
 
         assertThrows(IllegalArgumentException.class,
+                () -> manager.assignGroupToFolder(saved.id(), runtimeFolder.id()));
+        assertThrows(IllegalArgumentException.class,
                 () -> manager.assignGroupToFolder(runtime.id(), persisted.id()));
+        WaypointGroup runtimeReplacement = new WaypointGroup(
+                "runtime-replacement", "Runtime replacement", "crystal_hollows");
+        runtimeReplacement.setRuntimeOnly(true);
+        WaypointGroup savedReplacement = new WaypointGroup(
+                "saved-replacement", "Saved replacement", "crystal_hollows");
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.replaceGroupsAtomically(List.of(saved.id()),
+                        List.of(runtimeReplacement),
+                        Map.of(runtimeReplacement.id(), persisted.id())));
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.replaceGroupsAtomically(List.of(runtime.id()),
+                        List.of(savedReplacement),
+                        Map.of(savedReplacement.id(), runtimeFolder.id())));
         assertTrue(manager.assignGroupToFolder(runtime.id(), runtimeFolder.id()));
         assertEquals(runtimeFolder, manager.folderForGroup(runtime.id()));
 
