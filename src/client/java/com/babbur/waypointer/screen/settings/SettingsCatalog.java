@@ -134,6 +134,7 @@ public final class SettingsCatalog {
         out.add(appearance());
         out.add(routes());
         out.add(dungeons());
+        out.add(crystalHollows());
         out.add(chat());
         out.add(sharing());
         out.add(system());
@@ -539,6 +540,59 @@ public final class SettingsCatalog {
                                         "Dungeon Entry Path Color", null,
                                         (c, d) -> c.dungeonEntryPathColor(),
                                         (c, d, v) -> c.setDungeonEntryPathColor(rgb(v))))));
+    }
+
+    private static Category crystalHollows() {
+        return new Category("crystal_hollows", "Crystal Hollows", "crystalHollowsEnabled",
+                (c, d) -> c.crystalHollowsEnabled(),
+                List.of(Group.plain(
+                        Setting.bool("crystalHollowsEnabled", MAIN, "Crystal Hollows features",
+                                "Detect lobby structures using only information already shown to you.",
+                                (c, d) -> c.crystalHollowsEnabled(),
+                                (c, d, v) -> c.setCrystalHollowsEnabled((Boolean) v))
+                                .impact(Setting.Impact.LOW)
+                                .aliases("mining", "compass", "hollows", "divan", "temple"),
+                        Setting.bool("crystalHollowsStructureWaypoints", MAIN,
+                                "Structure waypoints",
+                                "Show detected structures in the runtime Structures folder.",
+                                (c, d) -> c.crystalHollowsStructureWaypoints(),
+                                (c, d, v) -> c.setCrystalHollowsStructureWaypoints((Boolean) v)),
+                        Setting.bool("crystalHollowsShowRoughMarkers", MAIN,
+                                "Approximate markers",
+                                "Show lower-confidence locations estimated from sidebar areas.",
+                                (c, d) -> c.crystalHollowsShowRoughMarkers(),
+                                (c, d, v) -> c.setCrystalHollowsShowRoughMarkers((Boolean) v)),
+                        Setting.bool("crystalHollowsEntityDetection", MAIN,
+                                "Visible NPC detection",
+                                "Use nearby NPCs that are visible or named by your current sidebar area.",
+                                (c, d) -> c.crystalHollowsEntityDetection(),
+                                (c, d, v) -> c.setCrystalHollowsEntityDetection((Boolean) v)),
+                        Setting.bool("crystalHollowsChatDetection", MAIN,
+                                "Shared-coordinate detection",
+                                "Read structure coordinates shared by players in chat.",
+                                (c, d) -> c.crystalHollowsChatDetection(),
+                                (c, d, v) -> c.setCrystalHollowsChatDetection((Boolean) v)),
+                        Setting.bool("crystalHollowsWishingCompassSolver", MAIN,
+                                "Wishing Compass solver",
+                                "Capture your compass particles and triangulate their destination.",
+                                (c, d) -> c.crystalHollowsWishingCompassSolver(),
+                                (c, d, v) -> c.setCrystalHollowsWishingCompassSolver((Boolean) v)),
+                        Setting.bool("crystalHollowsCompassRays", MAIN,
+                                "Compass rays",
+                                "Render captured Wishing Compass directions while solving.",
+                                (c, d) -> c.crystalHollowsCompassRays(),
+                                (c, d, v) -> c.setCrystalHollowsCompassRays((Boolean) v))
+                                .enabledWhen((c, d) -> c.crystalHollowsWishingCompassSolver()),
+                        Setting.bool("crystalHollowsAnnounceDetections", MAIN,
+                                "Detection messages",
+                                "Announce new and improved structure locations in chat.",
+                                (c, d) -> c.crystalHollowsAnnounceDetections(),
+                                (c, d, v) -> c.setCrystalHollowsAnnounceDetections((Boolean) v)),
+                        Setting.bool("crystalHollowsNucleusWaypoints", MAIN,
+                                "Crystal Nucleus entrances",
+                                "Add the nine fixed Nucleus centre and entrance waypoints.",
+                                (c, d) -> c.crystalHollowsNucleusWaypoints(),
+                                (c, d, v) -> c.setCrystalHollowsNucleusWaypoints((Boolean) v)))));
     }
 
     private static Category chat() {

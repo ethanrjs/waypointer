@@ -218,6 +218,8 @@ public final class DebugInspectScreen extends Screen {
         } else {
             buildSafely("Server, Player, and Location", DebugReportExport.Category.SERVER_CONTEXT,
                     this::buildServerContextReport);
+            buildSafely("Crystal Hollows Diagnostics", DebugReportExport.Category.SERVER_CONTEXT,
+                    this::buildCrystalHollowsDiagnosticsReport);
             buildSafely("Storage Health", this::buildStorageHealthReport);
             buildSafely("Performance Snapshot", this::buildLivePerformanceReport);
             buildSafely("Settings and Recent Changes", DebugReportExport.Category.SETTINGS_AND_CHANGES,
@@ -410,6 +412,16 @@ public final class DebugInspectScreen extends Screen {
                     player.getYRot(), player.getXRot())));
         }
         rows.add(new Row.KVDim("Hypixel Mod API", DebugSignals.hypixelApiLine()));
+    }
+
+    private void buildCrystalHollowsDiagnosticsReport() {
+        addSection(rows, sections,
+                Component.translatable("waypointer.crystal.debug.section").getString(),
+                Component.translatable("waypointer.crystal.debug.subtitle").getString(),
+                DebugReportExport.Category.SERVER_CONTEXT);
+        rows.add(new Row.KVDim(
+                Component.translatable("waypointer.crystal.debug.state").getString(),
+                DebugSignals.crystalHollowsLine()));
     }
 
     private void buildLivePerformanceReport() {

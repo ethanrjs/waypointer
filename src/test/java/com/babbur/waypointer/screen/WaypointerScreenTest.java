@@ -12,6 +12,7 @@ import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.crystal.CrystalHollowsProjection;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import org.junit.jupiter.api.Test;
@@ -167,6 +168,32 @@ class WaypointerScreenTest {
                 RouteListPresentation.folderRouteCountKey(2));
         assertEquals("waypointer.screen.main.folder.search_suffix",
                 RouteListPresentation.folderSearchSuffixKey());
+    }
+
+    @Test
+    void routeFolderModelListsRuntimeRoutesOnlyInsideRuntimeFolders() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup runtime = new WaypointGroup(
+                "crystal_hollows:structure:odawa", "Odawa", "crystal_hollows");
+        runtime.setRuntimeOnly(true);
+        manager.add(runtime);
+        RouteFolder folder = new RouteFolder("crystal_hollows:structures", "Structures",
+                "crystal_hollows", false, 0x55FFFF, true);
+        manager.addFolder(folder, List.of(runtime.id()));
+
+        RouteFolderListModel.Snapshot snapshot = RouteFolderListModel.build(
+                manager, "crystal_hollows", "");
+        assertEquals(List.of(runtime), snapshot.folders().getFirst().groups());
+        assertTrue(snapshot.unfiled().isEmpty());
+
+        manager.removeGroupFromFolder(runtime.id());
+        snapshot = RouteFolderListModel.build(manager, "crystal_hollows", "");
+        assertTrue(snapshot.folders().getFirst().groups().isEmpty());
+        assertTrue(snapshot.unfiled().isEmpty());
+        assertEquals("fairy_grotto:2", CrystalHollowsProjection.structureReferenceForGroup(
+                "crystal_hollows:structure:fairy_grotto:2"));
+        assertEquals("crystal_nucleus", CrystalHollowsProjection.structureReferenceForGroup(
+                "crystal_hollows:structure:nucleus"));
     }
 
     @Test

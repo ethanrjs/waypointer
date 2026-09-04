@@ -1167,6 +1167,56 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void crystalHollowsDefaultsDisableResetAndRoundTrip() {
+        WaypointerConfig config = new WaypointerConfig();
+        assertTrue(config.crystalHollowsEnabled());
+        assertTrue(config.crystalHollowsStructureWaypoints());
+        assertTrue(config.crystalHollowsShowRoughMarkers());
+        assertTrue(config.crystalHollowsEntityDetection());
+        assertTrue(config.crystalHollowsChatDetection());
+        assertTrue(config.crystalHollowsWishingCompassSolver());
+        assertTrue(config.crystalHollowsCompassRays());
+        assertTrue(config.crystalHollowsAnnounceDetections());
+        assertFalse(config.crystalHollowsNucleusWaypoints());
+
+        config.setCrystalHollowsNucleusWaypoints(true);
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(config));
+        assertTrue(decoded.crystalHollowsNucleusWaypoints());
+
+        config.disableAllSettings();
+        assertFalse(config.crystalHollowsEnabled());
+        assertFalse(config.crystalHollowsCompassRays());
+        config.resetToDefaults();
+        assertTrue(config.crystalHollowsEnabled());
+        assertTrue(config.crystalHollowsCompassRays());
+        assertFalse(config.crystalHollowsNucleusWaypoints());
+    }
+
+    @Test
+    void crystalHollowsFieldsUseDistinctTagsAndRoundTripThroughV10() throws IOException {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setCrystalHollowsEnabled(false);
+        config.setCrystalHollowsStructureWaypoints(false);
+        config.setCrystalHollowsShowRoughMarkers(false);
+        config.setCrystalHollowsEntityDetection(false);
+        config.setCrystalHollowsChatDetection(false);
+        config.setCrystalHollowsWishingCompassSolver(false);
+        config.setCrystalHollowsCompassRays(false);
+        config.setCrystalHollowsAnnounceDetections(false);
+        config.setCrystalHollowsNucleusWaypoints(true);
+
+        List<Integer> crystalTags = WaypointerConfigCodec.encodeTaggedFields(config).stream()
+                .map(WaypointerConfigCodec.TaggedField::tag)
+                .filter(tag -> tag >= 81)
+                .toList();
+        assertEquals(List.of(81, 82, 83, 84, 85, 86, 87, 88, 89), crystalTags);
+
+        WaypointerConfig decoded = V10ConfigBodyCodec.decode(V10ConfigBodyCodec.encode(config));
+        assertEquals(WaypointerConfigCodec.encode(config), WaypointerConfigCodec.encode(decoded));
+    }
+
+    @Test
     void configCodecConsumesLegacyRouteTimesField() throws IOException {
         WaypointerConfig decoded = WaypointerConfigCodec.decode(configCodeForRawPayload(
                 (byte) 3, (byte) 66, (byte) 1, (byte) 67, (byte) 1, (byte) 0));

@@ -254,6 +254,16 @@ class V10ConfigCodecTest {
     private static WaypointerConfig heavyConfig() {
         WaypointerConfig config = new WaypointerConfig();
         config.disableAllSettings();
+        // Keep the pre-Crystal-Hollows golden fixture stable; those fields have a dedicated
+        // all-nine-tags round-trip test in WaypointerConfigTest.
+        config.setCrystalHollowsEnabled(true);
+        config.setCrystalHollowsStructureWaypoints(true);
+        config.setCrystalHollowsShowRoughMarkers(true);
+        config.setCrystalHollowsEntityDetection(true);
+        config.setCrystalHollowsChatDetection(true);
+        config.setCrystalHollowsWishingCompassSolver(true);
+        config.setCrystalHollowsCompassRays(true);
+        config.setCrystalHollowsAnnounceDetections(true);
         config.setDefaultReachRadius(8.75);
         config.setDefaultWaypointColor(0x123456);
         config.setTracerColor(0xFEDCBA);
