@@ -131,6 +131,10 @@ public final class RoutePreviewWidget extends AbstractWidget {
         availability.reset();
     }
 
+    public void advancePaintResourceFrame() {
+        paintResources.advanceFrame();
+    }
+
     public void pauseOrbit() {
         orbit.update(System.nanoTime(), false);
     }
@@ -170,7 +174,6 @@ public final class RoutePreviewWidget extends AbstractWidget {
     @Override
     protected void extractWidgetRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY,
                                             float partial) {
-        paintResources.advanceFrame();
         lastMouseX = mouseX;
         lastMouseY = mouseY;
         int x1 = getX();

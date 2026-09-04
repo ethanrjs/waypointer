@@ -13,6 +13,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static com.babbur.waypointer.screen.GuiTokens.BTN_H;
+import static com.babbur.waypointer.screen.GuiTokens.GAP;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -71,6 +73,100 @@ class ExportScreenTest {
         assertFalse(ExportScreen.isWidePreviewLayout(false, 736));
         assertFalse(ExportScreen.isWidePreviewLayout(false, 2560));
     }
+
+    @Test
+    void shortExportLayoutsKeepOptionsRouteSelectionAndFooterReachable() {
+        List<LayoutCase> cases = List.of(
+                new LayoutCase(320, 240, false, false),
+                new LayoutCase(320, 240, false, true),
+                new LayoutCase(320, 240, true, false),
+                new LayoutCase(320, 240, true, true),
+                new LayoutCase(320, 480, false, false),
+                new LayoutCase(320, 480, true, true),
+                new LayoutCase(360, 270, false, false),
+                new LayoutCase(360, 270, false, true),
+                new LayoutCase(360, 270, true, false),
+                new LayoutCase(360, 270, true, true),
+                new LayoutCase(480, 240, false, false),
+                new LayoutCase(480, 270, false, false),
+                new LayoutCase(480, 270, false, true),
+                new LayoutCase(480, 270, true, false),
+                new LayoutCase(480, 270, true, true));
+
+        for (LayoutCase testCase : cases) {
+            int groupCount = testCase.multiRoute() ? 4 : 1;
+            ExportScreen.LayoutPolicy layout = ExportScreen.layoutPolicy(
+                    testCase.width(), testCase.height(), testCase.preview(),
+                    testCase.multiRoute(), testCase.multiRoute(), groupCount, 10, 380);
+
+            assertTrue(layout.panelX() >= 0);
+            assertTrue(layout.panelY() >= 0);
+            assertTrue(layout.panelX() + layout.panelWidth() <= testCase.width());
+            assertTrue(layout.panelBottom() <= testCase.height(), testCase.toString());
+            assertTrue(layout.footerY() >= layout.panelY());
+            assertTrue(layout.footerY() + BTN_H <= layout.panelBottom(), testCase.toString());
+
+            int includeRowsH = ExportScreen.includeGrid(layout.contentWidth(), 6)
+                    .rowsPerColumn() * 24 - 4;
+            int routeBlockH = testCase.multiRoute()
+                    ? ExportScreen.routePickerBlockHeight(
+                    true, groupCount, testCase.height(), includeRowsH, 10) : 0;
+            if (layout.stackedFooter()) {
+                assertEquals(BTN_H + GAP, layout.footerY() - layout.footerTop());
+            }
+            if (!layout.compactLayout()) continue;
+
+            assertTrue(layout.optionsViewportBottom() > layout.optionsViewportTop(),
+                    testCase.toString());
+            assertTrue(layout.optionsMaxScrollOffset() >= 0, testCase.toString());
+
+            assertTrue(layout.optionsContentBottom() >= layout.includeRowsY() + includeRowsH,
+                    testCase.toString());
+            if (testCase.multiRoute()) {
+                assertTrue(layout.optionsContentBottom() >= layout.routeBlockY() + routeBlockH,
+                        testCase.toString());
+                assertTrue(layout.optionsMaxScrollOffset() >= layout.routeBlockY()
+                        + routeBlockH - layout.optionsViewportBottom(),
+                        testCase.toString());
+            }
+        }
+    }
+
+    @Test
+    void footerReservesAnotherRowWhenTranslatedLabelsExceedAvailableWidth() {
+        ExportScreen.LayoutPolicy narrow = ExportScreen.layoutPolicy(
+                320, 480, false, false, false, 1, 10, 380);
+        ExportScreen.LayoutPolicy normal = ExportScreen.layoutPolicy(
+                736, 480, true, false, false, 1, 10, 380);
+        ExportScreen.LayoutPolicy translated = ExportScreen.layoutPolicy(
+                736, 480, true, false, false, 1, 10, 700);
+
+        assertFalse(narrow.compactLayout());
+        assertTrue(narrow.stackedFooter());
+        assertFalse(normal.stackedFooter());
+        assertTrue(translated.stackedFooter());
+        assertEquals(BTN_H + GAP, translated.panelHeight() - normal.panelHeight());
+        assertTrue(narrow.footerY() + BTN_H <= narrow.panelBottom());
+        assertTrue(translated.footerY() + BTN_H <= translated.panelBottom());
+    }
+
+    @Test
+    void compactPreviewPageDisablesHiddenRouteListInput() {
+        assertTrue(ExportScreen.routeListInputEnabled(true, true, true));
+        assertFalse(ExportScreen.routeListInputEnabled(false, true, true));
+        assertFalse(ExportScreen.routeListInputEnabled(true, false, true));
+        assertFalse(ExportScreen.routeListInputEnabled(true, true, false));
+    }
+
+    @Test
+    void compactOptionsScrollPolicyClampsKeyboardPaging() {
+        assertEquals(24, ExportScreen.optionsScrollPage(48));
+        assertEquals(0, ExportScreen.optionsScrollTarget(24, 120, -48));
+        assertEquals(120, ExportScreen.optionsScrollTarget(96, 120, 48));
+        assertEquals(120, ExportScreen.optionsScrollTarget(0, 120, Integer.MAX_VALUE));
+    }
+
+    private record LayoutCase(int width, int height, boolean preview, boolean multiRoute) {}
 
     @Test
     void previewNavigationDoesNotChangeExportSelection() {
