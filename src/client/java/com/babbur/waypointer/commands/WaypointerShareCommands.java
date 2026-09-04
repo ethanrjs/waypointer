@@ -17,6 +17,7 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
+import com.babbur.waypointer.screen.CatalogRouteInstallScreen;
 import com.babbur.waypointer.screen.CodecWorker;
 import com.babbur.waypointer.screen.ConfigImportConfirmation;
 import com.babbur.waypointer.screen.ImportFeedback;
@@ -309,6 +310,23 @@ final class WaypointerShareCommands {
                      Consumer<ConfigImportConfirmation.Outcome> completion);
     }
 
+    @FunctionalInterface
+    interface CatalogReferencePresenter {
+        void present(String routeId);
+    }
+
+    private CatalogReferencePresenter catalogReferencePresenter =
+            WaypointerShareCommands::openCatalogReference;
+
+    void setCatalogReferencePresenter(CatalogReferencePresenter presenter) {
+        this.catalogReferencePresenter = Objects.requireNonNull(presenter, "presenter");
+    }
+
+    private static void openCatalogReference(String routeId) {
+        Minecraft minecraft = Minecraft.getInstance();
+        CatalogRouteInstallScreen.open(MinecraftCompat.screen(minecraft), routeId);
+    }
+
     int runImportFromClipboard(FabricClientCommandSource src) {
         String text = getClipboard();
         if (text == null || text.isBlank()) {
@@ -423,6 +441,19 @@ final class WaypointerShareCommands {
             error(src, Component.translatable("waypointer.command.import.wrong_type",
                     expectedType.name().toLowerCase(Locale.ROOT),
                     decoded.type().name().toLowerCase(Locale.ROOT)));
+            return;
+        }
+        if (decoded instanceof UniversalShareCodec.CatalogReference reference) {
+            // Nothing is installed yet: the preview screen fetches the route
+            // from the catalog and asks before adding it.
+            info(src, Component.translatable("waypointer.command.import.catalog.opening",
+                    reference.routeId()));
+            try {
+                catalogReferencePresenter.present(reference.routeId());
+            } catch (RuntimeException failure) {
+                error(src, Component.translatable(
+                        "waypointer.command.import.catalog.open_failed"));
+            }
             return;
         }
         if (decoded instanceof UniversalShareCodec.Configuration configuration) {

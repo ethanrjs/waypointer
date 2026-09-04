@@ -13,10 +13,32 @@ import java.util.List;
 
 public final class UniversalShareCodec {
 
-    public enum Type { WAYPOINTS, CONFIG, DUNGEON }
+    public enum Type { WAYPOINTS, CONFIG, DUNGEON, CATALOG }
 
-    public sealed interface Decoded permits Waypoints, Configuration, DungeonRoutes {
+    public sealed interface Decoded permits Waypoints, Configuration, DungeonRoutes, CatalogReference {
         Type type();
+    }
+
+    /**
+     * A reference to a route published in the public catalog, from a
+     * {@code WP:} kind-6 subtype-2 code or a {@code waypointermod.com/r/<id>} link.
+     * Resolving it needs the network, so the decoder returns the id only.
+     */
+    public record CatalogReference(String routeId) implements Decoded {
+        public CatalogReference {
+            if (!V10CatalogReferenceCodec.isValidRouteId(routeId)) {
+                throw new IllegalArgumentException("invalid catalog route id");
+            }
+        }
+
+        @Override
+        public Type type() {
+            return Type.CATALOG;
+        }
+
+        public String shareUrl() {
+            return CatalogShareLink.forRouteId(routeId);
+        }
     }
 
     public record Waypoints(WaypointImporter.ImportResult result) implements Decoded {
@@ -70,10 +92,23 @@ public final class UniversalShareCodec {
         }
     }
 
+    /** The short {@code WP:} code that stands for a published catalog route. */
+    public static String encodeCatalogReference(String routeId) {
+        try {
+            return WaypointCodec.MAGIC + V10CatalogReferenceCodec.encode(routeId);
+        } catch (IOException failure) {
+            throw new IllegalStateException("v10 catalog reference encode failed", failure);
+        }
+    }
+
     public static Decoded decode(String payload) {
         if (payload == null) throw new IllegalArgumentException("null payload");
         WaypointImporter.enforceTextPayloadLimit(payload);
         String normalized = WaypointImporter.stripMarkdownCodeFence(payload);
+        java.util.Optional<String> linkedRoute = CatalogShareLink.routeIdFromLink(normalized);
+        if (linkedRoute.isPresent()) {
+            return new CatalogReference(linkedRoute.get());
+        }
         if (normalized.startsWith(WaypointerConfigCodec.MAGIC)) {
             return new Configuration(WaypointerConfigCodec.decode(normalized));
         }
@@ -113,6 +148,10 @@ public final class UniversalShareCodec {
     private static Decoded decodeCommittedV10(String normalized,
                                               V10Transport.CheckedFrame frame) {
         try {
+            if (frame.contentKind() == V10BareRoutePackCodec.CONTENT_KIND
+                    && V10CatalogReferenceCodec.isReferenceSemantic(frame.semantic())) {
+                return new CatalogReference(V10CatalogReferenceCodec.decode(frame));
+            }
             return switch (frame.contentKind()) {
                 case com.babbur.waypointer.config.V10ConfigBodyCodec.CONTENT_KIND ->
                         new Configuration(V10ConfigCodec.decode(frame));

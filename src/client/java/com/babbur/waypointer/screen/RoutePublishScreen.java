@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.catalog.CatalogPublishRequest;
 import com.babbur.waypointer.catalog.CatalogApiException;
 import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
@@ -442,9 +443,17 @@ public final class RoutePublishScreen extends Screen {
                 : defaultPublisherName();
     }
 
+    /**
+     * Copies the short catalog-reference code rather than the full payload: it
+     * installs the published route from the catalog on any size of route and
+     * works for unlisted publications too.
+     */
     private void copyPublishedCode() {
         if (publishState.publishedPayload() == null || minecraft == null) return;
-        minecraft.keyboardHandler.setClipboard(publishState.publishedPayload());
+        String code = publishState.result() != null && publishState.result().route() != null
+                ? UniversalShareCodec.encodeCatalogReference(publishState.result().route().id())
+                : publishState.publishedPayload();
+        minecraft.keyboardHandler.setClipboard(code);
         session.markCopied();
     }
 

@@ -77,9 +77,16 @@ final class V10RouteCodec {
         };
     }
 
-    /** Kind 6 subtypes: 0 is the bare route pack, 1 is the route library. */
+    /** Kind 6 subtypes: 0 is the bare route pack, 1 the route library, 2 a catalog reference. */
     private static WaypointCodec.Decoded decodeKind6(V10Transport.CheckedFrame frame)
             throws IOException {
+        if (V10CatalogReferenceCodec.isReferenceSemantic(frame.semantic())) {
+            // Valid share, but it points at the catalog rather than carrying a
+            // route. Only the universal importer can resolve it.
+            String routeId = V10CatalogReferenceCodec.decode(frame);
+            throw new IOException("catalog reference to route " + routeId
+                    + "; install it through the route catalog");
+        }
         if (!V10RouteLibraryCodec.isLibrarySemantic(frame.semantic())) {
             return new WaypointCodec.Decoded(V10BareRoutePackCodec.decode(frame), "");
         }

@@ -243,7 +243,7 @@ class V10DungeonCodecTest {
 
         // Every kind value is assigned; the reserved space lives in kind-4 and
         // kind-6 subtypes. A reserved kind-6 subtype must fail as a V10 error.
-        String reservedSubtype = codeForSemantic(new byte[] {(byte) 0x6A, 0x02, 0x02});
+        String reservedSubtype = codeForSemantic(new byte[] {(byte) 0x6A, 0x03});
         IllegalArgumentException kindFailure = assertThrows(IllegalArgumentException.class,
                 () -> UniversalShareCodec.decode(reservedSubtype));
         assertTrue(kindFailure.getMessage().contains("committed v10 kind 6"), kindFailure.getMessage());

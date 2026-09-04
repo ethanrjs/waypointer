@@ -7,6 +7,7 @@ import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
 import com.babbur.waypointer.catalog.PublisherIdentity;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -60,6 +61,7 @@ public final class PublishedRoutesScreen extends Screen {
     private Button previousButton;
     private Button nextButton;
     private Button copyButton;
+    private Button copyCodeButton;
     private Button deleteButton;
     private int panelX;
     private int panelY;
@@ -109,7 +111,8 @@ public final class PublishedRoutesScreen extends Screen {
         addRenderableWidget(styledButton(contentX, footerY, 64, BTN_H,
                 Component.translatable("gui.back"), button -> onClose(), null));
 
-        int actionW = Math.min(88, Math.max(68, contentW / 4));
+        // Back (64 wide) on the left, then three equal actions right-aligned.
+        int actionW = Math.min(88, Math.max(56, (contentW - 64 - GAP * 3) / 3));
         deleteButton = styledButton(contentX + contentW - actionW, footerY,
                 actionW, BTN_H,
                 Component.translatable(deleting
@@ -126,6 +129,13 @@ public final class PublishedRoutesScreen extends Screen {
                 Tooltip.create(Component.translatable(
                         "waypointer.screen.published_routes.action.copy.tooltip")));
         addRenderableWidget(copyButton);
+        copyCodeButton = styledButton(contentX + contentW - actionW * 3 - GAP * 2,
+                footerY, actionW, BTN_H,
+                Component.translatable("waypointer.screen.published_routes.action.copy_code"),
+                button -> copyCode(),
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.published_routes.action.copy_code.tooltip")));
+        addRenderableWidget(copyCodeButton);
 
         int pageW = 28;
         previousButton = styledButton(contentX, pagerY,
@@ -279,6 +289,17 @@ public final class PublishedRoutesScreen extends Screen {
         statusColor = STATUS_OK;
     }
 
+    /** A ~30-character WP: code that installs this route from the catalog, unlisted or not. */
+    private void copyCode() {
+        CatalogPublication selected = selected();
+        if (selected == null || minecraft == null) return;
+        minecraft.keyboardHandler.setClipboard(
+                UniversalShareCodec.encodeCatalogReference(selected.routeId()));
+        status = Component.translatable(
+                "waypointer.screen.published_routes.status.copied_code");
+        statusColor = STATUS_OK;
+    }
+
     private void confirmDelete() {
         CatalogPublication selected = selected();
         if (selected == null || identity == null || deleting) return;
@@ -335,6 +356,10 @@ public final class PublishedRoutesScreen extends Screen {
         if (copyButton != null) {
             copyButton.visible = hasRoutes;
             copyButton.active = controls.copyEnabled();
+        }
+        if (copyCodeButton != null) {
+            copyCodeButton.visible = hasRoutes;
+            copyCodeButton.active = controls.copyEnabled();
         }
         if (previousButton != null) {
             previousButton.visible = hasRoutes;
