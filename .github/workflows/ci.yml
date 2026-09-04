@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - 'release/**'
 
 permissions:
   contents: read
@@ -39,7 +40,7 @@ jobs:
           source_commit="$(git rev-parse HEAD)"
           ./gradlew --no-daemon --max-workers=1 clean buildAllTargets \
             "-PtranslationCommit=${source_commit}" \
-            -PallowStaleDocumentation=true --stacktrace --console=plain
+            --stacktrace --console=plain
 
       - name: Upload final-target test and coverage reports
         if: always()
