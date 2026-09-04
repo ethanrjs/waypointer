@@ -31,6 +31,13 @@ class RouteFolderEditLayoutTest {
                 RouteFolderEditLayout.calculate(400, 240, false, false);
 
         assertFalse(layout.detailVisible());
+        RouteFolderEditLayout.Layout selected =
+                RouteFolderEditLayout.calculate(400, 240, false, true);
+        assertTrue(layout.panelHeight() < selected.panelHeight());
+        assertTrue(layout.nameFieldY() - layout.titleY()
+                < selected.nameFieldY() - selected.titleY());
+        assertTrue(layout.colorControlY() + BTN_H < layout.footerY());
+        assertActionsFit(layout);
     }
 
     @Test

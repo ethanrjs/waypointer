@@ -6,6 +6,7 @@ import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.SequenceRoleColor;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointVisibility;
@@ -122,7 +123,7 @@ public final class TracerRenderer implements HudElement {
                             (float) waypointBoxBoundsScratch[0],
                             (float) waypointBoxBoundsScratch[1],
                             (float) waypointBoxBoundsScratch[2],
-                            target.color()));
+                            resolvedTargetColor(group, target)));
                 }
             }
 
@@ -282,7 +283,7 @@ public final class TracerRenderer implements HudElement {
                         screenW, screenH, screenScratch);
             }
 
-            int color = matchWaypoint ? target.color() : overrideColor;
+            int color = matchWaypoint ? resolvedTargetColor(group, target) : overrideColor;
             int argb = RenderHelpers.withAlpha(0xFF000000 | (color & 0xFFFFFF), alpha);
         RenderHelpers.drawScreenLine(g, fromX, fromY,
                     screenScratch[0], screenScratch[1], argb, thickness);
@@ -299,6 +300,17 @@ public final class TracerRenderer implements HudElement {
             return dungeonConfig.showDungeonTracers();
         }
         return config != null && config.showTracer();
+    }
+
+    private int resolvedTargetColor(WaypointGroup group, Waypoint target) {
+        return SequenceRoleColor.resolve(
+                group,
+                group == null ? -1 : group.currentIndex(),
+                config.colorSequenceWaypointsByRole(),
+                config.sequencePreviousWaypointColor(),
+                config.sequenceCurrentWaypointColor(),
+                config.sequenceNextWaypointColor(),
+                target == null ? 0 : target.color());
     }
 
     private static void projectOffscreenTarget(Camera camera,

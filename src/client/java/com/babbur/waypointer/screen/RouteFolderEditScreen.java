@@ -187,12 +187,9 @@ final class RouteFolderEditScreen extends Screen {
             int routeCount = folder == null
                     ? selectedGroupIds.size()
                     : manager.groupIdsInFolder(folder.id()).size();
-            String detail = folder == null && routeCount == 0
-                    ? Component.translatable(
-                            "waypointer.screen.route_folder.empty_selection").getString()
-                    : Component.translatable(
-                            RouteListPresentation.folderRouteCountKey(routeCount),
-                            routeCount).getString();
+            String detail = Component.translatable(
+                    RouteListPresentation.folderRouteCountKey(routeCount),
+                    routeCount).getString();
             graphics.text(font, font.plainSubstrByWidth(
                             detail, layout.contentWidth()),
                     layout.contentX(), layout.detailY(), TEXT_DIM, false);

@@ -120,6 +120,10 @@ public final class WaypointerConfigCodec {
     private static final int CRYSTAL_HOLLOWS_ANNOUNCE_DETECTIONS = 88;
     private static final int CRYSTAL_HOLLOWS_NUCLEUS_WAYPOINTS = 89;
     private static final int ALLOW_BACKWARD_PROGRESS = 90;
+    private static final int COLOR_SEQUENCE_WAYPOINTS_BY_ROLE = 91;
+    private static final int SEQUENCE_PREVIOUS_WAYPOINT_COLOR = 92;
+    private static final int SEQUENCE_CURRENT_WAYPOINT_COLOR = 93;
+    private static final int SEQUENCE_NEXT_WAYPOINT_COLOR = 94;
 
     private WaypointerConfigCodec() {
     }
@@ -293,6 +297,14 @@ public final class WaypointerConfigCodec {
                 defaults.crystalHollowsNucleusWaypoints());
         writeBoolean(out, ALLOW_BACKWARD_PROGRESS,
                 config.allowBackwardProgress(), defaults.allowBackwardProgress());
+        writeBoolean(out, COLOR_SEQUENCE_WAYPOINTS_BY_ROLE,
+                config.colorSequenceWaypointsByRole(), defaults.colorSequenceWaypointsByRole());
+        writeInt(out, SEQUENCE_PREVIOUS_WAYPOINT_COLOR,
+                config.sequencePreviousWaypointColor(), defaults.sequencePreviousWaypointColor());
+        writeInt(out, SEQUENCE_CURRENT_WAYPOINT_COLOR,
+                config.sequenceCurrentWaypointColor(), defaults.sequenceCurrentWaypointColor());
+        writeInt(out, SEQUENCE_NEXT_WAYPOINT_COLOR,
+                config.sequenceNextWaypointColor(), defaults.sequenceNextWaypointColor());
     }
     private static void readFields(DataInputStream in, WaypointerConfig config) throws IOException {
         while (true) {
@@ -411,6 +423,14 @@ public final class WaypointerConfigCodec {
                         config.setCrystalHollowsNucleusWaypoints(in.readBoolean());
                 case ALLOW_BACKWARD_PROGRESS ->
                         config.setAllowBackwardProgress(in.readBoolean());
+                case COLOR_SEQUENCE_WAYPOINTS_BY_ROLE ->
+                        config.setColorSequenceWaypointsByRole(in.readBoolean());
+                case SEQUENCE_PREVIOUS_WAYPOINT_COLOR ->
+                        config.setSequencePreviousWaypointColor(in.readInt());
+                case SEQUENCE_CURRENT_WAYPOINT_COLOR ->
+                        config.setSequenceCurrentWaypointColor(in.readInt());
+                case SEQUENCE_NEXT_WAYPOINT_COLOR ->
+                        config.setSequenceNextWaypointColor(in.readInt());
                 default -> throw new IllegalArgumentException("Unknown config field tag: " + tag);
             }
         }
@@ -512,7 +532,7 @@ public final class WaypointerConfigCodec {
     }
 
     static boolean isActiveFieldTag(int tag) {
-        return tag >= DEFAULT_REACH_RADIUS && tag <= ALLOW_BACKWARD_PROGRESS
+        return tag >= DEFAULT_REACH_RADIUS && tag <= SEQUENCE_NEXT_WAYPOINT_COLOR
                 && tag != SHOW_COMPLETED
                 && tag != LEGACY_CHECK_FOR_UPDATES
                 && tag != TEMP_DEFAULT_DURATION_MIN
@@ -523,7 +543,10 @@ public final class WaypointerConfigCodec {
     static boolean isRgbFieldTag(int tag) {
         return tag == DEFAULT_WAYPOINT_COLOR || tag == TRACER_COLOR
                 || tag == ROUTE_LINE_COLOR || tag == IMPORTED_ROUTE_DEFAULT_COLOR
-                || tag == DUNGEON_ENTRY_PATH_COLOR || tag == WAYPOINT_OUTLINE_COLOR;
+                || tag == DUNGEON_ENTRY_PATH_COLOR || tag == WAYPOINT_OUTLINE_COLOR
+                || tag == SEQUENCE_PREVIOUS_WAYPOINT_COLOR
+                || tag == SEQUENCE_CURRENT_WAYPOINT_COLOR
+                || tag == SEQUENCE_NEXT_WAYPOINT_COLOR;
     }
 
     static boolean isUnsignedIntegerFieldTag(int tag) {
@@ -590,7 +613,9 @@ public final class WaypointerConfigCodec {
                     MAX_WAYPOINT_LABELS, IMPORTED_ROUTE_DEFAULT_COLOR,
                     TEMP_DEFAULT_MODE, TEMP_DEFAULT_DURATION_SEC,
                     DUNGEON_ENTRY_PATH_COLOR, WAYPOINT_OUTLINE_COLOR,
-                    SEQUENCE_PREVIOUS_WAYPOINT_COUNT, SEQUENCE_NEXT_WAYPOINT_COUNT -> Integer.BYTES;
+                    SEQUENCE_PREVIOUS_WAYPOINT_COUNT, SEQUENCE_NEXT_WAYPOINT_COUNT,
+                    SEQUENCE_PREVIOUS_WAYPOINT_COLOR, SEQUENCE_CURRENT_WAYPOINT_COLOR,
+                    SEQUENCE_NEXT_WAYPOINT_COLOR -> Integer.BYTES;
             case BOX_STYLE, BEACON_BEAM_MODE, IMPORTED_ROUTE_COLOR_MODE,
                     ETHERWARP_ALIGNMENT_SOUND_TYPE -> 1;
             case CHAT_COORD_SENDER_BLACKLIST -> -1;

@@ -1,5 +1,7 @@
 package com.babbur.waypointer.render;
 
+import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
+
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.babbur.waypointer.Waypointer;
@@ -228,7 +230,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             }
             State state = stateFor(group, i, currentIdx);
             float alpha = alphaFor(group, state) * outlineOpacity;
-            int outlineColor = config.resolvedWaypointOutlineColor(waypoint.color());
+            int outlineColor = config.resolvedWaypointOutlineColor(
+                    resolvedWaypointColor(group, i, waypoint.color()));
             int argb = RenderHelpers.withAlpha(0xFF000000 | outlineColor, alpha);
             if (!projectBoxCorners(level, waypoint, screenW, screenH)) return;
 
@@ -349,7 +352,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                     configuredLabelScale);
             float alpha = alphaFor(group, state);
             int nameColor = colorizeNames && showNames
-                    ? 0xFF000000 | (w.color() & 0xFFFFFF)
+                    ? 0xFF000000 | resolvedWaypointColor(group, i, w.color())
                     : NAME_ARGB;
             boolean showWaypointName = showNames
                     && (!dungeonRoomRoute || shouldShowDungeonWaypointName(w));

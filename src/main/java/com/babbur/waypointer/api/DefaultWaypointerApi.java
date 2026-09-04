@@ -354,7 +354,9 @@ public final class DefaultWaypointerApi implements WaypointerApi {
     private void retargetUnknownZone(WaypointGroup group, ImportOptions options) {
         Zone zone = manager.currentZone();
         if (!options.targetCurrentZoneWhenUnknown() || zone == null) return;
-        if (Zone.UNKNOWN.id().equals(group.zoneId())) group.setZoneId(zone.id());
+        if (Zone.shouldRetargetImportedZone(group.zoneId(), zone.id())) {
+            group.setZoneId(zone.id());
+        }
     }
 
     private List<WaypointGroup> exportGroups(List<String> groupIds) {

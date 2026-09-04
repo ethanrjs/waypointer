@@ -1,6 +1,7 @@
 package com.babbur.waypointer.render;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
@@ -86,6 +87,81 @@ class WaypointRendererTest {
         assertFalse(WaypointRenderer.shouldEmitRgbFill(painted, null));
         painted.setPaintEnabled(false);
         assertTrue(WaypointRenderer.shouldEmitRgbFill(painted, null));
+    }
+
+    @Test
+    void sequenceRoleColorsReplaceOnlySequentialPaintedRoutesWithRgbFill() {
+        WaypointPaint paint = WaypointPaint.solid(0x123456);
+        WaypointGroup sequential = groupWith(waypoint(0));
+        sequential.setPaint(paint);
+        WaypointGroup staticGroup = groupWith(waypoint(0));
+        staticGroup.setPaint(paint);
+        staticGroup.setLoadMode(WaypointGroup.LoadMode.STATIC);
+
+        assertFalse(WaypointRenderer.usesSequenceRoleColorPaintFallback(
+                sequential, null, false));
+        assertTrue(WaypointRenderer.usesSequenceRoleColorPaintFallback(
+                sequential, null, true));
+        assertFalse(WaypointRenderer.usesSequenceRoleColorPaintFallback(
+                staticGroup, null, true));
+        assertFalse(WaypointRenderer.usesSequenceRoleColorPaintFallback(
+                groupWith(waypoint(0)), null, true));
+    }
+
+    @Test
+    void roleColorsReserveStaticPaintButNotReplacedSequentialPaint() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setColorSequenceWaypointsByRole(true);
+        WaypointPaint sequentialPaint = WaypointPaint.solid(0x123456);
+        WaypointGroup sequential = groupWith(waypoint(0));
+        sequential.setPaint(sequentialPaint);
+        WaypointPaint staticPaint = WaypointPaint.solid(0x654321);
+        WaypointGroup staticGroup = groupWith(waypoint(0));
+        staticGroup.setPaint(staticPaint);
+        staticGroup.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        WaypointRenderer renderer = new WaypointRenderer(new ActiveGroupManager(), config);
+
+        WaypointPaintTextureCache.resetRetainedReservation();
+        try {
+            assertEquals(0, renderer.reserveActivePaints(List.of(sequential, staticGroup)));
+            assertFalse(WaypointPaintTextureCache.isRetained(sequentialPaint));
+            assertTrue(WaypointPaintTextureCache.isRetained(staticPaint));
+        } finally {
+            WaypointPaintTextureCache.resetRetainedReservation();
+        }
+    }
+
+    @Test
+    void retainedPaintOverflowFallsBackToRgbForNormalWaypoints() {
+        WaypointPaint paint = WaypointPaint.solid(0x123456);
+        WaypointGroup painted = groupWith(waypoint(0));
+        painted.setPaint(paint);
+        WaypointPaintTextureCache.resetRetainedReservation();
+        try {
+            assertFalse(WaypointRenderer.shouldEmitRgbFill(painted, null));
+            assertTrue(WaypointRenderer.shouldEmitRgbFill(painted, null, true));
+            assertTrue(WaypointRenderer.usesRgbPaintFallback(painted, null, true));
+
+            WaypointPaintTextureCache.reserveForActivePaints(List.of(paint));
+            assertFalse(WaypointRenderer.shouldEmitRgbFill(painted, null, true));
+            assertFalse(WaypointRenderer.usesRgbPaintFallback(painted, null, true));
+        } finally {
+            WaypointPaintTextureCache.resetRetainedReservation();
+        }
+    }
+
+    @Test
+    void perRoutePaintParticipatesInRetainedVisibilityInvalidation() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setBoxStyle(WaypointerConfig.BoxStyle.OUTLINED);
+        config.setWaypointOutlineOpacity(0.0);
+        WaypointRenderer renderer = new WaypointRenderer(new ActiveGroupManager(), config);
+        WaypointGroup painted = groupWith(waypoint(0));
+        painted.setPaint(WaypointPaint.solid(0x123456));
+
+        assertTrue(renderer.staticBoxGeometryEnabledFor(List.of(painted)));
+        painted.setPaintEnabled(false);
+        assertFalse(renderer.staticBoxGeometryEnabledFor(List.of(painted)));
     }
 
     @Test

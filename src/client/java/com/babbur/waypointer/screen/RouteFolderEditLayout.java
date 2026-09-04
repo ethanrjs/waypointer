@@ -23,7 +23,9 @@ final class RouteFolderEditLayout {
             int screenWidth, int screenHeight,
             boolean existingFolder, boolean hasSelection) {
         int panelWidth = Math.min(PANEL_WIDTH, Math.max(1, screenWidth - GAP * 2));
-        int panelHeight = Math.min(PANEL_HEIGHT, Math.max(1, screenHeight - GAP * 2));
+        boolean detailVisible = existingFolder || hasSelection;
+        int detailSpace = detailVisible ? 0 : 17;
+        int panelHeight = Math.min(PANEL_HEIGHT - detailSpace, Math.max(1, screenHeight - GAP * 2));
         int panelX = Math.max(0, (screenWidth - panelWidth) / 2);
         int panelY = Math.max(0, (screenHeight - panelHeight) / 2);
         int horizontalPadding = panelWidth < 300 ? GAP : PAD_OUTER;
@@ -67,12 +69,11 @@ final class RouteFolderEditLayout {
                 .orElse(footerY);
         int titleY = panelY + verticalPadding;
         int detailY = titleY + 14;
-        int sectionDividerY = detailY + 13;
+        int sectionDividerY = detailY + 13 - detailSpace;
         int nameLabelY = sectionDividerY + GAP;
         int nameFieldY = nameLabelY + 11;
         int colorLabelY = nameFieldY + BTN_H + GAP;
         int colorControlY = colorLabelY + 11;
-        boolean detailVisible = existingFolder || hasSelection;
         boolean fieldLabelsVisible = true;
         if (colorControlY + BTN_H + 2 > firstActionY) {
             detailVisible = false;

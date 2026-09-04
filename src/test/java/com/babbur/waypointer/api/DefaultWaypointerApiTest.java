@@ -371,6 +371,22 @@ class DefaultWaypointerApiTest {
     }
 
     @Test
+    void publicImportRetargetsUnknownMineshaftToTheResolvedCurrentLayout() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("mineshaft_ruby_1"));
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        String skyblocker = "[Skyblocker-Waypoint-Data-V1]"
+                + "H4sIAAAAAAAC/4uuVspLzE1VslIKzkhMK1Eoyi8tSVXSUcoszknMSwEK52bmpRaD"
+                + "pICC5YmVBfmZeSXFSlbR1UoF+SDa0EDHzETHyCBWB2aQo1JtbG0sAA/1L6tZAAAA";
+
+        ImportSummary summary = api.importRoutes(skyblocker,
+                ImportOptions.builder().targetCurrentZoneWhenUnknown(true).build());
+
+        assertEquals(ImportSource.SKYBLOCKER, summary.source());
+        assertEquals("mineshaft_ruby_1", api.allGroups().getFirst().zoneId());
+    }
+
+    @Test
     void importRoutesBatchesDataChangeForMultipleGroups() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerApi api = new DefaultWaypointerApi(manager);

@@ -43,12 +43,14 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void crystalHollowsCategoryUsesMainStoreAndMasterSwitch() {
+    void miningCategoryGroupsCrystalHollowsSettingsUnderItsRealMasterSwitch() {
         SettingsCatalog.Category category = SettingsCatalog.categories().stream()
-                .filter(candidate -> candidate.id().equals("crystal_hollows"))
+                .filter(candidate -> candidate.id().equals("mining"))
                 .findFirst().orElseThrow();
 
         assertEquals("crystalHollowsEnabled", category.masterSettingId());
+        assertEquals(List.of("crystal_hollows_structures", "wishing_compass"),
+                category.groups().stream().map(SettingsCatalog.Group::id).toList());
         assertEquals(9, category.groups().stream()
                 .flatMap(group -> group.settings().stream()).count());
         assertTrue(category.groups().stream()
@@ -62,6 +64,46 @@ class SettingsCatalogTest {
         assertTrue(category.bodyVisibleWhen().test(config, null));
         config.setCrystalHollowsEnabled(false);
         assertFalse(category.bodyVisibleWhen().test(config, null));
+    }
+
+    @Test
+    void categoryOrderIncludesFunctionalMiningWithoutAnEmptyForagingPage() {
+        assertEquals(List.of("waypoints", "appearance", "routes", "dungeons", "mining",
+                        "chat", "sharing", "system"),
+                SettingsCatalog.categories().stream()
+                        .map(SettingsCatalog.Category::id)
+                        .toList());
+    }
+
+    @Test
+    void sequenceRoleColorsAreOptInAppearanceSettingsUnderSequenced() {
+        WaypointerConfig config = new WaypointerConfig();
+        SettingsCatalog.Category appearance = SettingsCatalog.categories().stream()
+                .filter(category -> category.id().equals("appearance"))
+                .findFirst().orElseThrow();
+        SettingsCatalog.Group sequenced = appearance.groups().stream()
+                .filter(group -> "sequenced".equals(group.id()))
+                .findFirst().orElseThrow();
+
+        assertTrue(sequenced.settings().stream()
+                .map(Setting::id)
+                .toList()
+                .containsAll(List.of("sequencePreviousWaypointCount",
+                        "showCurrentSequenceWaypoint", "sequenceNextWaypointCount",
+                        "dimSequenceContextWaypoints", "colorSequenceWaypointsByRole",
+                        "sequencePreviousWaypointColor", "sequenceCurrentWaypointColor",
+                        "sequenceNextWaypointColor")));
+        Setting toggle = SettingsCatalog.byId("colorSequenceWaypointsByRole");
+        assertEquals(false, toggle.get(config, null));
+        for (String id : List.of("sequencePreviousWaypointColor",
+                "sequenceCurrentWaypointColor", "sequenceNextWaypointColor")) {
+            Setting color = SettingsCatalog.byId(id);
+            assertNotNull(color);
+            assertFalse(color.isEnabled(config, null));
+            config.setColorSequenceWaypointsByRole(true);
+            assertTrue(color.isEnabled(config, null));
+            config.setColorSequenceWaypointsByRole(false);
+        }
     }
 
     @Test
@@ -386,7 +428,7 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void etherwarpAlignmentSoundSelectorIsOffUnderWaypointVisibility() {
+    void etherwarpAlignmentSoundSelectorIsOffUnderEtherwarp() {
         Setting setting = SettingsCatalog.byId("etherwarpAlignmentSound");
 
         assertNotNull(setting);
@@ -400,7 +442,7 @@ class SettingsCatalogTest {
                 setting.get(new WaypointerConfig(), new DungeonConfig()));
         assertEquals(Setting.Store.MAIN, setting.store());
         assertEquals("appearance", categoryContaining(setting.id()));
-        assertEquals("waypoint_visibility", groupContaining(setting.id()));
+        assertEquals("etherwarp", groupContaining(setting.id()));
     }
 
     @Test
@@ -423,7 +465,7 @@ class SettingsCatalogTest {
                 "showCurrentSequenceWaypoint",
                 "sequenceNextWaypointCount")) {
             assertEquals("appearance", categoryContaining(id), id);
-            assertEquals("waypoint_visibility", groupContaining(id), id);
+            assertEquals("sequenced", groupContaining(id), id);
         }
     }
 

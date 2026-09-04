@@ -436,9 +436,15 @@ class WaypointerConfigTest {
 
         config.setTracerColor(0xAA112233);
         config.setWaypointOutlineColor(0xBB445566);
+        config.setSequencePreviousWaypointColor(0xCC778899);
+        config.setSequenceCurrentWaypointColor(0xDDAABBCC);
+        config.setSequenceNextWaypointColor(0xEE102030);
 
         assertEquals(0x112233, config.tracerColor());
         assertEquals(0x445566, config.waypointOutlineColor());
+        assertEquals(0x778899, config.sequencePreviousWaypointColor());
+        assertEquals(0xAABBCC, config.sequenceCurrentWaypointColor());
+        assertEquals(0x102030, config.sequenceNextWaypointColor());
     }
 
     @Test
@@ -1240,6 +1246,46 @@ class WaypointerConfigTest {
         replacement.setAllowBackwardProgress(true);
         replacement.resetToDefaults();
         assertFalse(replacement.allowBackwardProgress());
+    }
+
+    @Test
+    void sequenceRoleColorsUseTagsNinetyOneThroughNinetyFourAndFollowConfigLifecycle()
+            throws IOException {
+        WaypointerConfig config = new WaypointerConfig();
+        assertFalse(config.colorSequenceWaypointsByRole());
+
+        config.setColorSequenceWaypointsByRole(true);
+        config.setSequencePreviousWaypointColor(0x112233);
+        config.setSequenceCurrentWaypointColor(0x445566);
+        config.setSequenceNextWaypointColor(0x778899);
+
+        assertEquals(List.of(91, 92, 93, 94),
+                WaypointerConfigCodec.encodeTaggedFields(config).stream()
+                        .map(WaypointerConfigCodec.TaggedField::tag)
+                        .filter(tag -> tag >= 91)
+                        .toList());
+        WaypointerConfig legacyDecoded = WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(config));
+        WaypointerConfig v10Decoded = V10ConfigBodyCodec.decode(
+                V10ConfigBodyCodec.encode(config));
+        for (WaypointerConfig decoded : List.of(legacyDecoded, v10Decoded)) {
+            assertTrue(decoded.colorSequenceWaypointsByRole());
+            assertEquals(0x112233, decoded.sequencePreviousWaypointColor());
+            assertEquals(0x445566, decoded.sequenceCurrentWaypointColor());
+            assertEquals(0x778899, decoded.sequenceNextWaypointColor());
+        }
+
+        WaypointerConfig replacement = new WaypointerConfig();
+        replacement.replaceShareableSettingsWith(config);
+        assertTrue(replacement.colorSequenceWaypointsByRole());
+        replacement.disableAllSettings();
+        assertFalse(replacement.colorSequenceWaypointsByRole());
+        replacement.setColorSequenceWaypointsByRole(true);
+        replacement.resetToDefaults();
+        assertFalse(replacement.colorSequenceWaypointsByRole());
+        assertEquals(0x808080, replacement.sequencePreviousWaypointColor());
+        assertEquals(Waypoint.DEFAULT_COLOR, replacement.sequenceCurrentWaypointColor());
+        assertEquals(0x00BFFF, replacement.sequenceNextWaypointColor());
     }
 
     @Test
