@@ -1,5 +1,6 @@
 package com.babbur.waypointer.commands;
 
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.chat.ChatImportCache;
@@ -473,9 +474,11 @@ final class WaypointerShareCommands {
 
         manager.addAll(imported.groups());
         imported.libraryMetadata().installFolders(manager, imported.groups());
+        String focusGroupId = imported.groups().isEmpty()
+                ? null : imported.groups().getFirst().id();
         success(src, importSuccessMessage(
                 imported.groups().size(), origin, imported.source(),
-                retargeted, targetZone, imported.label()));
+                retargeted, targetZone, imported.label(), focusGroupId));
 
         ImportFeedback.success(imported.groups(), origin);
     }
@@ -514,6 +517,12 @@ final class WaypointerShareCommands {
 
     static MutableComponent importSuccessMessage(int routeCount, String origin, Object source,
                                                  int retargeted, Zone targetZone, String label) {
+        return importSuccessMessage(routeCount, origin, source, retargeted, targetZone, label, null);
+    }
+
+    static MutableComponent importSuccessMessage(int routeCount, String origin, Object source,
+                                                 int retargeted, Zone targetZone, String label,
+                                                 String focusGroupId) {
         MutableComponent line = Component.translatable(
                         "waypointer.command.import.success", routeCount, origin, source)
                 .withStyle(ChatFormatting.GREEN);
@@ -535,7 +544,7 @@ final class WaypointerShareCommands {
         }
         if (routeCount > 0) {
             line.append(Component.literal(" \u00B7 ").withStyle(ChatFormatting.DARK_GRAY))
-                    .append(importEditorOpenComponent(false));
+                    .append(importEditorOpenComponent(false, focusGroupId));
         }
         return line;
     }
@@ -570,7 +579,18 @@ final class WaypointerShareCommands {
     }
 
     static Component importEditorOpenComponent(boolean dungeonRoutes) {
-        String command = dungeonRoutes ? "/waypointer gui dungeon" : "/waypointer gui";
+        return importEditorOpenComponent(dungeonRoutes, null);
+    }
+
+    static Component importEditorOpenComponent(boolean dungeonRoutes, String focusGroupId) {
+        String command;
+        if (dungeonRoutes) {
+            command = "/waypointer gui dungeon";
+        } else if (focusGroupId == null || focusGroupId.isBlank()) {
+            command = "/waypointer gui";
+        } else {
+            command = "/waypointer gui " + StringArgumentType.escapeIfRequired(focusGroupId);
+        }
         return Component.translatable("waypointer.command.import.open_editor")
                 .withStyle(Style.EMPTY
                         .withColor(ChatFormatting.AQUA)
