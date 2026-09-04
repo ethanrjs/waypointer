@@ -8,10 +8,9 @@ import net.minecraft.client.renderer.rendertype.RenderType;
 import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
 
-import java.util.Iterator;
-import java.util.List;
-import java.util.LinkedHashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
@@ -132,12 +131,23 @@ public final class WaypointPaintTextureCache {
         return 0xFF000000 | (b << 16) | (g << 8) | r;
     }
 
+    /** Selects the oldest unreserved entry, or null when every entry is reserved. */
+    static <K, V> Map.Entry<K, V> selectEvictionEntry(
+            Map<K, V> entries, Set<K> reserved) {
+        for (Map.Entry<K, V> entry : entries.entrySet()) {
+            if (!reserved.contains(entry.getKey())) return entry;
+        }
+        return null;
+    }
+
     private static void evictOldTextures() {
-        Iterator<Entry> entries = CACHE.values().iterator();
-        while (CACHE.size() > activeCapacity && entries.hasNext()) {
-            Entry oldest = entries.next();
-            entries.remove();
-            releaseEntry(oldest);
+        while (CACHE.size() > activeCapacity) {
+            Map.Entry<WaypointPaint, Entry> eviction =
+                    selectEvictionEntry(CACHE, RETAINED_PAINTS);
+            if (eviction == null) return;
+            Entry entry = eviction.getValue();
+            CACHE.remove(eviction.getKey());
+            releaseEntry(entry);
         }
     }
 

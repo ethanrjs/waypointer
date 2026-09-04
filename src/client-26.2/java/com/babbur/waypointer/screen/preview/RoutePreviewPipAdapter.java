@@ -13,6 +13,8 @@ import net.minecraft.client.renderer.state.gui.GuiRenderState;
 public final class RoutePreviewPipAdapter
         extends PictureInPictureRenderer<RoutePreviewRenderState> {
 
+    private boolean modelViewStackPushed;
+
     private RoutePreviewPipAdapter() {
         super();
     }
@@ -29,13 +31,23 @@ public final class RoutePreviewPipAdapter
     @Override
     public void prepare(RoutePreviewRenderState state, GuiRenderState guiState,
                         FeatureRenderDispatcher features, int guiScale) {
+        var previousColorTextureOverride = RenderSystem.outputColorTextureOverride;
+        var previousDepthTextureOverride = RenderSystem.outputDepthTextureOverride;
+        modelViewStackPushed = false;
         try {
             super.prepare(state, guiState, features, guiScale);
-        } catch (RuntimeException allocationFailure) {
-            RenderSystem.outputColorTextureOverride = null;
-            RenderSystem.outputDepthTextureOverride = null;
+        } catch (RuntimeException preparationFailure) {
+            if (modelViewStackPushed
+                    && (RenderSystem.outputColorTextureOverride != null
+                    || RenderSystem.outputDepthTextureOverride != null)) {
+                RenderSystem.getModelViewStack().popMatrix();
+            }
+            RenderSystem.outputColorTextureOverride = previousColorTextureOverride;
+            RenderSystem.outputDepthTextureOverride = previousDepthTextureOverride;
             state.availability().markUnavailable();
-            Waypointer.LOGGER.error("Could not allocate route preview target", allocationFailure);
+            Waypointer.LOGGER.error("Could not prepare route preview", preparationFailure);
+        } finally {
+            modelViewStackPushed = false;
         }
     }
 
@@ -52,6 +64,7 @@ public final class RoutePreviewPipAdapter
     @Override
     protected void renderToTexture(RoutePreviewRenderState state, PoseStack poseStack,
                                    SubmitNodeCollector collector) {
+        modelViewStackPushed = true;
         poseStack.pushPose();
         try {
             RoutePreviewRenderCore.applyView(state, poseStack);

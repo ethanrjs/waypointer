@@ -18,7 +18,11 @@ import java.util.Set;
 public final class RenderDiagnostics {
 
     private static final String PENDING_OUTCOME = "pending renderer decision";
+    private static final String PREPARED_OUTCOME =
+            "dungeon path prepared; straight tracer suppressed";
     private static final Map<String, MutableGroupSnapshot> GROUPS = new LinkedHashMap<>();
+    private static final Set<WaypointGroup> PREPARED_DUNGEON_PATHS =
+            Collections.newSetFromMap(new IdentityHashMap<>());
     private static final Set<WaypointGroup> SUBMITTED_DUNGEON_PATHS =
             Collections.newSetFromMap(new IdentityHashMap<>());
 
@@ -27,6 +31,7 @@ public final class RenderDiagnostics {
     private static DungeonPathSettings dungeonPathSettings = new DungeonPathSettings(false, false);
     private static volatile boolean detailedCaptureEnabled;
     private static volatile boolean irisHudFallbackActive;
+    private static volatile long frameToken;
     private static volatile long updatedAtEpochMillis;
 
     private RenderDiagnostics() {
@@ -36,9 +41,12 @@ public final class RenderDiagnostics {
         if (detailedCaptureEnabled == enabled) return;
         detailedCaptureEnabled = enabled;
         GROUPS.clear();
+        PREPARED_DUNGEON_PATHS.clear();
+        SUBMITTED_DUNGEON_PATHS.clear();
         tracerSettings = new TracerSettings(
                 false, 0.0, 0.0, false, false, 0.0, false, false, false);
         dungeonPathSettings = new DungeonPathSettings(false, false);
+        frameToken++;
         updatedAtEpochMillis = 0L;
     }
 
@@ -58,38 +66,55 @@ public final class RenderDiagnostics {
                 List.copyOf(groups));
     }
 
-    static void beginFrame(Iterable<WaypointGroup> groups,
-                           WaypointerConfig config,
-                           boolean irisHudFallbackActiveNow) {
+    static synchronized long beginFrame(Iterable<WaypointGroup> groups,
+                                        WaypointerConfig config,
+                                        boolean irisHudFallbackActiveNow) {
+        frameToken++;
+        PREPARED_DUNGEON_PATHS.clear();
         SUBMITTED_DUNGEON_PATHS.clear();
         irisHudFallbackActive = irisHudFallbackActiveNow;
-        if (!detailedCaptureEnabled) return;
+        if (!detailedCaptureEnabled) return frameToken;
 
-        synchronized (RenderDiagnostics.class) {
-            if (!detailedCaptureEnabled) return;
-            updatedAtEpochMillis = System.currentTimeMillis();
-            tracerSettings = new TracerSettings(
-                    config.showTracer(),
-                    config.tracerOpacity(),
-                    config.tracerThickness(),
-                    config.matchTracerToWaypointColor(),
-                    config.hideWaypointsNearPlayer(),
-                    config.hideWaypointsNearRadius(),
-                    config.hideTracerOnStaticRoutes(),
-                    config.irisShaderHudFallback(),
-                    irisHudFallbackActiveNow);
-            dungeonPathSettings = new DungeonPathSettings(
-                    config.showDungeonEntryPathToFirstWaypoint(),
-                    config.showDungeonEntryPathToFollowingWaypoints());
+        updatedAtEpochMillis = System.currentTimeMillis();
+        tracerSettings = new TracerSettings(
+                config.showTracer(),
+                config.tracerOpacity(),
+                config.tracerThickness(),
+                config.matchTracerToWaypointColor(),
+                config.hideWaypointsNearPlayer(),
+                config.hideWaypointsNearRadius(),
+                config.hideTracerOnStaticRoutes(),
+                config.irisShaderHudFallback(),
+                irisHudFallbackActiveNow);
+        dungeonPathSettings = new DungeonPathSettings(
+                config.showDungeonEntryPathToFirstWaypoint(),
+                config.showDungeonEntryPathToFollowingWaypoints());
 
-            GROUPS.clear();
-            if (groups == null) return;
-            for (WaypointGroup group : groups) {
-                if (group == null || group.routeKind() != WaypointGroup.RouteKind.DUNGEON) continue;
-                boolean eligible = DungeonEntryPathController.shouldPrepare(
-                        group, config.showDungeonEntryPathToFollowingWaypoints());
-                GROUPS.put(group.id(), MutableGroupSnapshot.from(group, eligible));
-            }
+        GROUPS.clear();
+        if (groups == null) return frameToken;
+        for (WaypointGroup group : groups) {
+            if (group == null || group.routeKind() != WaypointGroup.RouteKind.DUNGEON) continue;
+            boolean eligible = DungeonEntryPathController.shouldPrepare(
+                    group, config.showDungeonEntryPathToFollowingWaypoints());
+            GROUPS.put(group.id(), MutableGroupSnapshot.from(group, eligible));
+        }
+        return frameToken;
+    }
+
+    static long currentFrameToken() {
+        return frameToken;
+    }
+
+    static void clearPreparedDungeonPaths() {
+        PREPARED_DUNGEON_PATHS.clear();
+    }
+
+    static void recordPreparedDungeonPath(WaypointGroup group, boolean drawable) {
+        if (group == null) return;
+        if (drawable) {
+            PREPARED_DUNGEON_PATHS.add(group);
+        } else {
+            PREPARED_DUNGEON_PATHS.remove(group);
         }
     }
 
@@ -135,6 +160,7 @@ public final class RenderDiagnostics {
         } else {
             SUBMITTED_DUNGEON_PATHS.remove(group);
         }
+        PREPARED_DUNGEON_PATHS.remove(group);
         if (!detailedCaptureEnabled) return;
         synchronized (RenderDiagnostics.class) {
             MutableGroupSnapshot state = state(group);
@@ -144,13 +170,17 @@ public final class RenderDiagnostics {
                 state.finalOutcome = "replaced by dungeon path";
             } else if ("empty".equals(state.path.result())) {
                 state.finalOutcome = "nothing submitted: dungeon path empty";
+            } else {
+                state.finalOutcome = "nothing submitted: dungeon path submission failed";
             }
         }
     }
 
     static boolean shouldSuppressStraightTracer(WaypointGroup group) {
         return group != null && shouldSuppressStraightTracer(
-                irisHudFallbackActive, SUBMITTED_DUNGEON_PATHS.contains(group));
+                irisHudFallbackActive,
+                PREPARED_DUNGEON_PATHS.contains(group)
+                        || SUBMITTED_DUNGEON_PATHS.contains(group));
     }
 
     static boolean shouldSuppressStraightTracer(boolean irisHudFallbackActive,
@@ -164,7 +194,8 @@ public final class RenderDiagnostics {
             MutableGroupSnapshot state = state(group);
             if (state == null) return;
             state.straightTracerSuppressed = true;
-            state.finalOutcome = "replaced by dungeon path";
+            state.finalOutcome = state.dungeonPathSubmitted
+                    ? "replaced by dungeon path" : PREPARED_OUTCOME;
         }
     }
 

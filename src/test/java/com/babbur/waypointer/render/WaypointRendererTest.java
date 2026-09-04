@@ -132,19 +132,17 @@ class WaypointRendererTest {
     }
 
     @Test
-    void retainedPaintOverflowFallsBackToRgbForNormalWaypoints() {
+    void unreservedPaintUsesSharedRgbFallbackPolicy() {
         WaypointPaint paint = WaypointPaint.solid(0x123456);
         WaypointGroup painted = groupWith(waypoint(0));
         painted.setPaint(paint);
         WaypointPaintTextureCache.resetRetainedReservation();
         try {
             assertFalse(WaypointRenderer.shouldEmitRgbFill(painted, null));
-            assertTrue(WaypointRenderer.shouldEmitRgbFill(painted, null, true));
-            assertTrue(WaypointRenderer.usesRgbPaintFallback(painted, null, true));
+            assertTrue(WaypointRenderer.usesRgbPaintFallback(painted, null));
 
             WaypointPaintTextureCache.reserveForActivePaints(List.of(paint));
-            assertFalse(WaypointRenderer.shouldEmitRgbFill(painted, null, true));
-            assertFalse(WaypointRenderer.usesRgbPaintFallback(painted, null, true));
+            assertFalse(WaypointRenderer.usesRgbPaintFallback(painted, null));
         } finally {
             WaypointPaintTextureCache.resetRetainedReservation();
         }

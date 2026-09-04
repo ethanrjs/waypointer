@@ -112,7 +112,21 @@ class WaypointWorldRenderer {
     private float beamRotationSin;
     private final DungeonEntryPathController dungeonEntryPathController =
             new DungeonEntryPathController();
+    private PreparedDungeonEntryPaths preparedDungeonEntryPaths;
     boolean trustGpuDepthTest;
+
+    private record PreparedDungeonEntryPaths(
+            long frameToken,
+            LevelRenderContext context,
+            List<DungeonEntryPathController.Submission> submissions) {
+        private PreparedDungeonEntryPaths {
+            submissions = submissions == null ? List.of() : List.copyOf(submissions);
+        }
+
+        private boolean belongsTo(long token, LevelRenderContext expectedContext) {
+            return frameToken == token && context == expectedContext;
+        }
+    }
 
     public WaypointWorldRenderer(ActiveGroupManager manager, WaypointerConfig config) {
         this(manager, config, null);
@@ -160,11 +174,19 @@ class WaypointWorldRenderer {
     void onWorldRender(LevelRenderContext ctx) {
         var groups = manager.activeGroups();
         boolean irisHudFallbackActive = IrisShaderFallback.shouldUse(config);
-        RenderDiagnostics.beginFrame(groups, config, irisHudFallbackActive);
+        long frameToken = RenderDiagnostics.beginFrame(groups, config, irisHudFallbackActive);
+        clearPreparedDungeonEntryPaths();
 
-        if (groups.isEmpty()) return;
         // Retained mode emits through its own sink and stable origin.
-        if (com.babbur.waypointer.render.gpu.OverlayRenderer.ownsWorldGeometry()) return;
+        if (com.babbur.waypointer.render.gpu.OverlayRenderer.ownsWorldGeometry()) {
+            prepareDungeonEntryPathsForRetained(
+                    ctx, frameToken, groups, irisHudFallbackActive);
+            return;
+        }
+        // 26.2 queues legacy submissions for later in this frame. Keep every
+        // selected texture alive until the next frame, just as retained mode does.
+        reserveActivePaints(groups);
+        if (groups.isEmpty()) return;
 
         PoseStack ps = ctx.poseStack();
         if (ps == null) return;
@@ -179,7 +201,10 @@ class WaypointWorldRenderer {
     boolean emitWorldGeometry(LevelRenderContext ctx, PoseStack ps, GeometrySink sink,
                               Vec3 origin, boolean irisHudFallbackActive) {
         var groups = manager.activeGroups();
-        if (groups.isEmpty()) return false;
+        if (groups.isEmpty()) {
+            clearPreparedDungeonEntryPaths();
+            return false;
+        }
 
         WaypointerConfig.BoxStyle style = config.boxStyle();
         boolean drawLines = worldBoxOutlinesEnabled(style, irisHudFallbackActive);
@@ -196,6 +221,7 @@ class WaypointWorldRenderer {
         boolean drawRouteLines = config.showRouteLines()
                 || dungeonConfig != null && dungeonConfig.showDungeonRouteLines();
         boolean drawDungeonEntryPaths = config.showDungeonEntryPathToFirstWaypoint();
+        if (!drawDungeonEntryPaths) clearPreparedDungeonEntryPaths();
         if (!drawLines && !drawFill && !drawPaint && !drawBeams && !drawRouteLines
                 && !drawDungeonEntryPaths) return false;
         if (!worldRenderOpacityAllowsAnything(
@@ -254,9 +280,7 @@ class WaypointWorldRenderer {
                 if (paint == null || usesSequenceRoleColorPaintFallback(
                         g, defaultPaint, config.colorSequenceWaypointsByRole())) continue;
                 WaypointPaintTextureCache.Entry paintTexture =
-                        retainCameraIndependentGeometry
-                                ? WaypointPaintTextureCache.getRetained(paint)
-                                : WaypointPaintTextureCache.get(paint);
+                        WaypointPaintTextureCache.getRetained(paint);
                 if (paintTexture == null) continue;
                 sink.submit(paintTexture.throughWalls(),
                         (quads, submittedPose) -> emitPaintedBoxes(
@@ -271,9 +295,7 @@ class WaypointWorldRenderer {
                 if (paint == null || usesSequenceRoleColorPaintFallback(
                         g, defaultPaint, config.colorSequenceWaypointsByRole())) continue;
                 WaypointPaintTextureCache.Entry paintTexture =
-                        retainCameraIndependentGeometry
-                                ? WaypointPaintTextureCache.getRetained(paint)
-                                : WaypointPaintTextureCache.get(paint);
+                        WaypointPaintTextureCache.getRetained(paint);
                 if (paintTexture == null) continue;
                 sink.submit(paintTexture.depthTested(),
                         (quads, submittedPose) -> emitPaintedBoxes(
@@ -298,10 +320,8 @@ class WaypointWorldRenderer {
                     for (WaypointGroup g : groups) {
                         boolean paintFallback = usesSequenceRoleColorPaintFallback(
                                 g, defaultPaint, config.colorSequenceWaypointsByRole())
-                                || usesRgbPaintFallback(
-                                        g, defaultPaint, retainCameraIndependentGeometry);
-                        if (!paintFallback && !shouldEmitRgbFill(
-                                g, defaultPaint, retainCameraIndependentGeometry)) continue;
+                                || usesRgbPaintFallback(g, defaultPaint);
+                        if (!paintFallback && !shouldEmitRgbFill(g, defaultPaint)) continue;
                         emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
                                 drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT
@@ -327,10 +347,8 @@ class WaypointWorldRenderer {
                     for (WaypointGroup g : groups) {
                         boolean paintFallback = usesSequenceRoleColorPaintFallback(
                                 g, defaultPaint, config.colorSequenceWaypointsByRole())
-                                || usesRgbPaintFallback(
-                                        g, defaultPaint, retainCameraIndependentGeometry);
-                        if (!paintFallback && !shouldEmitRgbFill(
-                                g, defaultPaint, retainCameraIndependentGeometry)) continue;
+                                || usesRgbPaintFallback(g, defaultPaint);
+                        if (!paintFallback && !shouldEmitRgbFill(g, defaultPaint)) continue;
                         emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
                                 drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT
@@ -344,7 +362,7 @@ class WaypointWorldRenderer {
                 && hasThroughWallWaypoints) {
             RenderType lineType = WaypointerRenderPipelines.linesThroughWalls();
             List<DungeonEntryPathController.Submission> dungeonEntryPaths = drawDungeonEntryPaths
-                    ? prepareDungeonEntryPaths(groups, playerPos, level)
+                    ? dungeonEntryPathsForEmission(ctx, groups, playerPos, level)
                     : List.of();
             boolean submitted = sink.submit(lineType, (lines, submittedPose) -> {
                 if (drawDungeonEntryPaths) {
@@ -432,6 +450,61 @@ class WaypointWorldRenderer {
                     lookup.cacheHit(), lookup.cacheAgeNanos());
         }
         return prepared.submissions();
+    }
+
+    private void prepareDungeonEntryPathsForRetained(
+            LevelRenderContext ctx, long frameToken, List<WaypointGroup> groups,
+            boolean irisHudFallbackActive) {
+        // Keep an explicit empty pending value for this frame. If a retained
+        // capture is skipped or arrives with a stale owner, it must fall back
+        // to the straight tracer instead of re-running the pathfinder later.
+        preparedDungeonEntryPaths = new PreparedDungeonEntryPaths(
+                frameToken, ctx, List.of());
+        if (ctx == null || groups == null || groups.isEmpty()
+                || !config.showDungeonEntryPathToFirstWaypoint()) return;
+
+        boolean drawLines = worldBoxOutlinesEnabled(config.boxStyle(), irisHudFallbackActive);
+        boolean drawRouteLines = config.showRouteLines()
+                || dungeonConfig != null && dungeonConfig.showDungeonRouteLines();
+        if (!worldRenderOpacityAllowsAnything(
+                config.beaconOpacity(), config.waypointOutlineOpacity(), drawLines,
+                drawRouteLines, true)) return;
+
+        Minecraft mc = Minecraft.getInstance();
+        ClientLevel level = mc.level;
+        if (level == null) return;
+        Camera camera = MinecraftCompat.mainCamera(mc.gameRenderer);
+        if (camera == null || !camera.isInitialized()) return;
+
+        Vec3 playerPos = mc.player == null ? null : mc.player.position();
+        List<DungeonEntryPathController.Submission> submissions =
+                prepareDungeonEntryPaths(groups, playerPos, level);
+        preparedDungeonEntryPaths = new PreparedDungeonEntryPaths(
+                frameToken, ctx, submissions);
+        for (DungeonEntryPathController.Submission path : submissions) {
+            RenderDiagnostics.recordPreparedDungeonPath(
+                    path.group(), isDrawableDungeonEntryPath(path.points()));
+        }
+    }
+
+    private List<DungeonEntryPathController.Submission> dungeonEntryPathsForEmission(
+            LevelRenderContext ctx, Iterable<WaypointGroup> groups,
+            Vec3 playerPos, ClientLevel level) {
+        PreparedDungeonEntryPaths pending = preparedDungeonEntryPaths;
+        clearPreparedDungeonEntryPaths();
+        if (com.babbur.waypointer.render.gpu.OverlayRenderer.ownsWorldGeometry()) {
+            if (pending == null
+                    || !pending.belongsTo(RenderDiagnostics.currentFrameToken(), ctx)) {
+                return List.of();
+            }
+            return pending.submissions();
+        }
+        return prepareDungeonEntryPaths(groups, playerPos, level);
+    }
+
+    private void clearPreparedDungeonEntryPaths() {
+        preparedDungeonEntryPaths = null;
+        RenderDiagnostics.clearPreparedDungeonPaths();
     }
 
     static boolean isDrawableDungeonEntryPath(List<Vec3> points) {
@@ -997,17 +1070,9 @@ class WaypointWorldRenderer {
         return effectivePaint(group, defaultPaint) == null;
     }
 
-    static boolean shouldEmitRgbFill(WaypointGroup group, WaypointPaint defaultPaint,
-                                     boolean retainCameraIndependentGeometry) {
-        return effectivePaint(group, defaultPaint) == null
-                || usesRgbPaintFallback(group, defaultPaint, retainCameraIndependentGeometry);
-    }
-
-    static boolean usesRgbPaintFallback(WaypointGroup group, WaypointPaint defaultPaint,
-                                        boolean retainCameraIndependentGeometry) {
+    static boolean usesRgbPaintFallback(WaypointGroup group, WaypointPaint defaultPaint) {
         WaypointPaint paint = effectivePaint(group, defaultPaint);
-        return retainCameraIndependentGeometry && paint != null
-                && !WaypointPaintTextureCache.isRetained(paint);
+        return paint != null && !WaypointPaintTextureCache.isRetained(paint);
     }
 
     static boolean usesSequenceRoleColorPaintFallback(
