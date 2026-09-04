@@ -108,6 +108,9 @@ class WaypointerCommandTreeTest {
                 Map.entry("wp help debug", "debug help lookup"),
                 Map.entry("wptr help", "short alias redirect"),
                 Map.entry("waypointer list", "long alias redirect"),
+                Map.entry("wp gui 123e4567-e89b-12d3-a456-426614174000", "focused route editor"),
+                Map.entry("waypointer gui \"route:id with spaces\"", "focused route editor through alias"),
+                Map.entry("wp gui dungeon", "dungeon route editor"),
                 Map.entry("wp routes", "in-game public route catalog"),
                 Map.entry("wp skip", "advance active routes by one waypoint"),
                 Map.entry("wp unskip", "move routes back one waypoint"),
@@ -461,6 +464,37 @@ class WaypointerCommandTreeTest {
 
         ClickEvent.RunCommand runCommand = assertInstanceOf(ClickEvent.RunCommand.class, clickEvent);
         assertEquals("/waypointer gui", runCommand.command());
+    }
+
+    @Test
+    void focusedGuiResolutionFindsOnlyCurrentManagerGroups() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = new WaypointGroup("route:id with spaces", "Route", "hub");
+        manager.add(route);
+
+        assertSame(route, WaypointerCommands.resolveGuiFocus(manager, route.id()));
+        assertNull(WaypointerCommands.resolveGuiFocus(manager, "stale"));
+        assertNull(WaypointerCommands.resolveGuiFocus(null, route.id()));
+        assertNull(WaypointerCommands.resolveGuiFocus(manager, ""));
+    }
+
+    @Test
+    void guiParsesFocusedIdsWithoutShadowingTheDungeonLiteral() throws Exception {
+        CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
+        CommandNode<FabricClientCommandSource> gui = dispatcher.getRoot()
+                .getChild("wp").getChild("gui");
+
+        assertNotNull(gui.getChild("dungeon"));
+        assertNotNull(gui.getChild("groupId"));
+        for (String command : List.of(
+                "wp gui 123e4567-e89b-12d3-a456-426614174000",
+                "waypointer gui \"route:id with spaces\"",
+                "wp gui dungeon")) {
+            ParseResults<FabricClientCommandSource> parsed = dispatcher.parse(command, null);
+            assertTrue(parsed.getExceptions().isEmpty(), parsed.getExceptions().toString());
+            assertTrue(parsed.getReader().getRemaining().isEmpty(),
+                    () -> "unparsed command suffix: " + parsed.getReader().getRemaining());
+        }
     }
 
     @Test

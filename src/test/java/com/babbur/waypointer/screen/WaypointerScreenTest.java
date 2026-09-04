@@ -171,6 +171,22 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void focusedRouteFolderExpansionRevealsSiblingRoutes() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup first = new WaypointGroup("first", "First", "hub");
+        WaypointGroup second = new WaypointGroup("second", "Second", "hub");
+        manager.addAll(List.of(first, second));
+        manager.addFolder(new RouteFolder("folder", "Imported", "hub", true),
+                List.of(first.id(), second.id()));
+
+        WaypointerRouteList.revealContainingFolder(manager, first.id());
+
+        assertFalse(manager.folder("folder").collapsed());
+        assertEquals(List.of(first, second),
+                RouteFolderListModel.build(manager, "hub", "").folders().getFirst().groups());
+    }
+
+    @Test
     void routeFolderModelListsRuntimeRoutesOnlyInsideRuntimeFolders() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup runtime = new WaypointGroup(

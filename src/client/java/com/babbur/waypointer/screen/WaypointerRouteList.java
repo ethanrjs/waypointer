@@ -3,6 +3,7 @@ package com.babbur.waypointer.screen;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -109,10 +110,7 @@ final class WaypointerRouteList {
             screen.selectedDungeonRoomZoneId = storedGroup.zoneId();
             screen.expandDungeonRoom(storedGroup.zoneId());
         }
-        RouteFolder folder = screen.manager.folderForGroup(id);
-        if (folder != null && folder.collapsed()) {
-            screen.manager.setFolderCollapsed(folder.id(), false);
-        }
+        revealContainingFolder(screen.manager, id);
         List<Row> rows = rows();
         for (int i = 0; i < rows.size(); i++) {
             Row row = rows.get(i);
@@ -121,6 +119,14 @@ final class WaypointerRouteList {
                 scrollRowIndexIntoView(i);
                 return;
             }
+        }
+    }
+
+    static void revealContainingFolder(ActiveGroupManager manager, String groupId) {
+        if (manager == null || groupId == null) return;
+        RouteFolder folder = manager.folderForGroup(groupId);
+        if (folder != null && folder.collapsed()) {
+            manager.setFolderCollapsed(folder.id(), false);
         }
     }
 

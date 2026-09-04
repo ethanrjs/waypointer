@@ -92,7 +92,10 @@ public final class WaypointerCommands {
                 .then(literal("gui")
                         .executes(ctx -> { scheduleOpenGui(); return 1; })
                         .then(literal("dungeon")
-                                .executes(ctx -> { scheduleOpenDungeonGui(); return 1; })))
+                                .executes(ctx -> { scheduleOpenDungeonGui(); return 1; }))
+                        .then(argument("groupId", StringArgumentType.string())
+                                .executes(ctx -> runOpenFocusedGui(
+                                        StringArgumentType.getString(ctx, "groupId")))))
                 .then(literal("help")
                         .executes(ctx -> WaypointerCommandHelp.run(ctx.getSource(), root, null))
                         .then(argument("target", StringArgumentType.word())
@@ -285,6 +288,23 @@ public final class WaypointerCommands {
     private void scheduleOpenDungeonGui() {
         Minecraft.getInstance().execute(
                 () -> WaypointerScreen.openDungeonRooms(manager, config));
+    }
+
+    private int runOpenFocusedGui(String groupId) {
+        Minecraft.getInstance().execute(() -> {
+            WaypointGroup focus = resolveGuiFocus(manager, groupId);
+            if (focus == null) {
+                openGui.run();
+            } else {
+                WaypointerScreen.openFocused(manager, config, focus);
+            }
+        });
+        return 1;
+    }
+
+    static WaypointGroup resolveGuiFocus(ActiveGroupManager manager, String groupId) {
+        return manager == null || groupId == null || groupId.isBlank()
+                ? null : manager.get(groupId);
     }
 
     private void scheduleOpenRouteCatalog() {

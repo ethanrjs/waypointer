@@ -14,6 +14,7 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.screen.ConfigImportConfirmation;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
 import org.junit.jupiter.api.Test;
@@ -365,6 +366,38 @@ class WaypointerShareCommandsTest {
         assertEquals(0x13579B, folder.color());
         assertTrue(folder.collapsed());
         assertNotEquals("source-folder", folder.id());
+    }
+
+    @Test
+    void routeImportOpenActionTargetsTheFirstImportedGroupWithSafeQuoting() {
+        WaypointGroup first = new WaypointGroup("route:id with spaces", "First", "hub");
+        first.add(Waypoint.at(1, 2, 3));
+        WaypointGroup second = new WaypointGroup("second", "Second", "hub");
+        second.add(Waypoint.at(4, 5, 6));
+        String payload = UniversalShareCodec.encodeWaypoints(
+                List.of(first, second), WaypointCodec.Options.FULL_FIDELITY,
+                RouteLibraryMetadata.empty());
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerShareCommands commands = commands(manager, new CapturingScheduler());
+        CommandMessages messages = new CommandMessages();
+
+        commands.finishImport(messages.source(), WaypointCommandImport.decode(payload),
+                "argument", Zone.fromId("hub"));
+
+        Component success = messages.feedback.getLast();
+        Component open = success.getSiblings().getLast();
+        ClickEvent.RunCommand runCommand = assertInstanceOf(
+                ClickEvent.RunCommand.class, open.getStyle().getClickEvent());
+        assertEquals("/waypointer gui " + manager.allGroupsList().getFirst().id(),
+                runCommand.command());
+        assertEquals(List.of("First", "Second"),
+                manager.allGroupsList().stream().map(WaypointGroup::name).toList());
+
+        Component quotedOpen = WaypointerShareCommands.importEditorOpenComponent(
+                false, "route:id with spaces");
+        ClickEvent.RunCommand quotedCommand = assertInstanceOf(
+                ClickEvent.RunCommand.class, quotedOpen.getStyle().getClickEvent());
+        assertEquals("/waypointer gui \"route:id with spaces\"", quotedCommand.command());
     }
 
     @Test
