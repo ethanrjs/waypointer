@@ -46,6 +46,58 @@ class RenderDiagnosticsTest {
     }
 
     @Test
+    void retainedPathPreparationSuppressesTracerBeforeActualSubmission() {
+        WaypointGroup group = WaypointGroup.create("Prepared", "altar");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        RenderDiagnostics.beginFrame(List.of(group), new WaypointerConfig(), false);
+
+        RenderDiagnostics.recordPreparedDungeonPath(group, true);
+
+        assertTrue(RenderDiagnostics.shouldSuppressStraightTracer(group));
+        RenderDiagnostics.recordStraightTracerSuppressed(group);
+        assertFalse(RenderDiagnostics.snapshot().groups().getFirst().dungeonPathSubmitted());
+        assertEquals("dungeon path prepared; straight tracer suppressed",
+                RenderDiagnostics.snapshot().groups().getFirst().finalOutcome());
+
+        RenderDiagnostics.recordDungeonPathSubmission(group, true);
+
+        assertTrue(RenderDiagnostics.shouldSuppressStraightTracer(group));
+        assertTrue(RenderDiagnostics.snapshot().groups().getFirst().dungeonPathSubmitted());
+    }
+
+    @Test
+    void failedRetainedPathSubmissionReleasesPreparedTracerSuppression() {
+        WaypointGroup group = WaypointGroup.create("Failed", "altar");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        RenderDiagnostics.beginFrame(List.of(group), new WaypointerConfig(), false);
+
+        RenderDiagnostics.recordPreparedDungeonPath(group, true);
+        assertTrue(RenderDiagnostics.shouldSuppressStraightTracer(group));
+
+        RenderDiagnostics.recordDungeonPathSubmission(group, false);
+
+        assertFalse(RenderDiagnostics.shouldSuppressStraightTracer(group));
+        assertFalse(RenderDiagnostics.snapshot().groups().getFirst().dungeonPathSubmitted());
+        assertEquals("nothing submitted: dungeon path submission failed",
+                RenderDiagnostics.snapshot().groups().getFirst().finalOutcome());
+    }
+
+    @Test
+    void preparedPathDoesNotSurviveTheNextFrame() {
+        WaypointGroup group = WaypointGroup.create("Stale", "altar");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        WaypointerConfig config = new WaypointerConfig();
+        RenderDiagnostics.beginFrame(List.of(group), config, false);
+        RenderDiagnostics.recordPreparedDungeonPath(group, true);
+        assertTrue(RenderDiagnostics.shouldSuppressStraightTracer(group));
+
+        RenderDiagnostics.beginFrame(List.of(group), config, false);
+
+        assertFalse(RenderDiagnostics.shouldSuppressStraightTracer(group));
+        assertFalse(RenderDiagnostics.snapshot().groups().getFirst().dungeonPathSubmitted());
+    }
+
+    @Test
     void fallbackStateWorksWithDetailedCaptureDisabled() {
         WaypointGroup group = WaypointGroup.create("Minimal", "altar");
         RenderDiagnostics.setDetailedCaptureEnabled(false);
@@ -81,6 +133,7 @@ class RenderDiagnosticsTest {
                 new GroundPathfinder.PathResult(List.of(), diagnostics),
                 true,
                 125_000_000L);
+        RenderDiagnostics.recordPreparedDungeonPath(group, false);
         RenderDiagnostics.recordDungeonPathSubmission(group, false);
 
         assertFalse(RenderDiagnostics.shouldSuppressStraightTracer(group));
