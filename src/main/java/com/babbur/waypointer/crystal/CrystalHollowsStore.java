@@ -39,6 +39,8 @@ public final class CrystalHollowsStore {
     private final Map<String, CrystalHollowsLobbyState> lobbies = new LinkedHashMap<>();
     private final AsyncSaver saver;
     private volatile String pendingSnapshot;
+    private volatile boolean writesBlockedForFutureSchema;
+    private volatile IOException writeBlockCause;
 
     public static CrystalHollowsStore loadDefault() {
         Path directory = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
@@ -68,9 +70,15 @@ public final class CrystalHollowsStore {
         try {
             parse(Files.readString(file));
             pruneExpired(clock.getAsLong());
+        } catch (UnsupportedFutureSchemaException future) {
+            lobbies.clear();
+            writesBlockedForFutureSchema = true;
+            Waypointer.LOGGER.error(
+                    "Crystal Hollows data at {} uses newer schema version {} (current {}); using empty state for this session and blocking writes to preserve the original file",
+                    file, future.schemaVersion, SCHEMA_VERSION);
         } catch (Exception failure) {
             lobbies.clear();
-            quarantine(failure);
+            writeBlockCause = quarantine(failure);
         }
     }
 
@@ -108,12 +116,14 @@ public final class CrystalHollowsStore {
     }
 
     public void save() {
+        if (writesBlockedForFutureSchema) return;
         pruneExpired(clock.getAsLong());
         pendingSnapshot = encode();
         saver.markDirty();
     }
 
     public void flush() {
+        if (writesBlockedForFutureSchema) return;
         pruneExpired(clock.getAsLong());
         pendingSnapshot = encode();
         saver.markDirty();
@@ -140,7 +150,11 @@ public final class CrystalHollowsStore {
             throw new IllegalArgumentException("Crystal Hollows root must be an object");
         }
         JsonObject root = parsed.getAsJsonObject();
-        if (!root.has("schema") || root.get("schema").getAsInt() != SCHEMA_VERSION) {
+        int schemaVersion = root.has("schema") ? root.get("schema").getAsInt() : 0;
+        if (schemaVersion > SCHEMA_VERSION) {
+            throw new UnsupportedFutureSchemaException(schemaVersion);
+        }
+        if (schemaVersion != SCHEMA_VERSION) {
             throw new IllegalArgumentException("unsupported Crystal Hollows schema");
         }
         JsonElement lobbyElement = root.get("lobbies");
@@ -247,6 +261,18 @@ public final class CrystalHollowsStore {
     }
 
     private void writePendingSnapshot() {
+        if (writesBlockedForFutureSchema) return;
+        if (writeBlockCause != null) {
+            IOException retryFailure = quarantine(writeBlockCause);
+            if (retryFailure != null) {
+                writeBlockCause = retryFailure;
+                throw new UncheckedIOException(
+                        "Cannot save Crystal Hollows data until the invalid file is preserved: "
+                                + file,
+                        retryFailure);
+            }
+            writeBlockCause = null;
+        }
         String json = pendingSnapshot;
         if (json == null) return;
         try {
@@ -264,7 +290,17 @@ public final class CrystalHollowsStore {
         }
     }
 
-    private void quarantine(Exception cause) {
+    private static final class UnsupportedFutureSchemaException extends IllegalArgumentException {
+        private final int schemaVersion;
+
+        private UnsupportedFutureSchemaException(int schemaVersion) {
+            super("Crystal Hollows schema version " + schemaVersion
+                    + " is newer than supported version " + SCHEMA_VERSION);
+            this.schemaVersion = schemaVersion;
+        }
+    }
+
+    private IOException quarantine(Exception cause) {
         Path invalid = file.resolveSibling(file.getFileName() + ".invalid");
         int suffix = 1;
         while (Files.exists(invalid)) {
@@ -273,9 +309,13 @@ public final class CrystalHollowsStore {
         try {
             Files.move(file, invalid);
             Waypointer.LOGGER.error("Invalid Crystal Hollows data moved from {} to {}", file, invalid, cause);
+            return null;
         } catch (IOException moveFailure) {
-            cause.addSuppressed(moveFailure);
-            Waypointer.LOGGER.error("Invalid Crystal Hollows data at {} could not be quarantined", file, cause);
+            if (Files.notExists(file)) return null;
+            Waypointer.LOGGER.error(
+                    "Invalid Crystal Hollows data at {} could not be preserved; saves are blocked to prevent data loss",
+                    file, moveFailure);
+            return moveFailure;
         }
     }
 }

@@ -146,6 +146,7 @@ public final class WaypointerConfig {
     private transient boolean migratedDuringLoad;
     private transient volatile String pendingSnapshotJson;
     private transient IOException writeBlockCause;
+    private transient volatile boolean writesBlockedForFutureSchema;
 
     /**
      * Builds the default state used by WPC versions 1-4. Those versions were
@@ -178,6 +179,12 @@ public final class WaypointerConfig {
             } else {
                 config = new WaypointerConfig();
             }
+        } catch (UnsupportedFutureSchemaException future) {
+            Waypointer.LOGGER.error(
+                    "Config at {} uses newer schema version {} (current {}); using defaults for this session and blocking writes to preserve the original file",
+                    file, future.schemaVersion, CONFIG_SCHEMA_VERSION);
+            config = new WaypointerConfig();
+            config.writesBlockedForFutureSchema = true;
         } catch (Exception e) {
             Waypointer.LOGGER.error("Failed to read config, using defaults", e);
             config = new WaypointerConfig();
@@ -193,16 +200,29 @@ public final class WaypointerConfig {
         if (raw == null || raw.isBlank()) {
             throw new IllegalArgumentException("config JSON is empty");
         }
+        int loadedSchemaVersion = schemaVersion(raw);
+        if (loadedSchemaVersion > CONFIG_SCHEMA_VERSION) {
+            throw new UnsupportedFutureSchemaException(loadedSchemaVersion);
+        }
         WaypointerConfig config = GSON.fromJson(raw, WaypointerConfig.class);
         if (config == null) {
             throw new IllegalArgumentException("config JSON is null");
         }
-        int loadedSchemaVersion = schemaVersion(raw);
         config.migrateLegacyTempDurationMinutes(raw, loadedSchemaVersion);
         config.migrateSequenceVisibility(raw, loadedSchemaVersion);
         config.migrateEtherwarpAlignmentSound(raw, loadedSchemaVersion);
         config.applyMigrations(loadedSchemaVersion);
         return config;
+    }
+
+    private static final class UnsupportedFutureSchemaException extends IllegalArgumentException {
+        private final int schemaVersion;
+
+        private UnsupportedFutureSchemaException(int schemaVersion) {
+            super("config schema version " + schemaVersion
+                    + " is newer than supported version " + CONFIG_SCHEMA_VERSION);
+            this.schemaVersion = schemaVersion;
+        }
     }
 
     private static int schemaVersion(String raw) {
@@ -319,7 +339,7 @@ public final class WaypointerConfig {
     }
 
     public void save() {
-        if (saver == null) return;
+        if (saver == null || writesBlockedForFutureSchema) return;
         pendingSnapshotJson = GSON.toJson(this);
         saver.markDirty();
     }
@@ -329,7 +349,7 @@ public final class WaypointerConfig {
     }
 
     private void writeToDisk() {
-        if (file == null) return;
+        if (file == null || writesBlockedForFutureSchema) return;
         if (writeBlockCause != null) {
             IOException retryFailure = quarantineInvalidFile(file, writeBlockCause);
             if (retryFailure != null) {
@@ -370,7 +390,6 @@ public final class WaypointerConfig {
             return null;
         } catch (IOException quarantineFailure) {
             if (Files.notExists(file)) return null;
-            quarantineFailure.addSuppressed(cause);
             Waypointer.LOGGER.error(
                     "Invalid config at {} could not be preserved; saves are blocked to prevent data loss",
                     file, quarantineFailure);

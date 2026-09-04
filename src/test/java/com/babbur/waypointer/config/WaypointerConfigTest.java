@@ -14,6 +14,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -49,6 +50,55 @@ class WaypointerConfigTest {
         assertTrue(Files.exists(file));
         assertFalse(WaypointerConfig.load(file).showTracer());
         assertEquals(corrupt, Files.readString(quarantine));
+    }
+
+    @Test
+    void futureSchemaIsRejectedBeforeDeserialization() {
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> WaypointerConfig.fromJson(
+                        "{\"configSchemaVersion\":8,\"unknownFutureSetting\":{}}"));
+
+        assertTrue(failure.getMessage().contains("schema version 8"));
+        assertTrue(failure.getMessage().contains("supported version 7"));
+    }
+
+    @Test
+    void futureSchemaConfigIsPreservedAndAllWritesStayBlocked(@TempDir Path dir)
+            throws IOException {
+        Path file = dir.resolve("config.json");
+        String future = "{\n  \"configSchemaVersion\": 8,\n"
+                + "  \"unknownFutureSetting\": {\"sentinel\": true}\n}\n";
+        byte[] futureBytes = future.getBytes(StandardCharsets.UTF_8);
+        Files.write(file, futureBytes);
+
+        WaypointerConfig config = WaypointerConfig.load(file);
+
+        assertEquals(7, config.configSchemaVersion());
+        assertTrue(config.showTracer());
+        config.setShowTracer(false);
+        config.save();
+        config.flush();
+        config.resetToDefaults();
+        config.disableAllSettings();
+        config.replaceShareableSettingsWith(new WaypointerConfig());
+        config.flush();
+
+        assertTrue(Files.exists(file));
+        assertArrayEquals(futureBytes, Files.readAllBytes(file));
+        assertFalse(Files.exists(dir.resolve("config.json.invalid")));
+    }
+
+    @Test
+    void legacyMigrationIsPersistedWithCurrentSchema(@TempDir Path dir) throws IOException {
+        Path file = dir.resolve("config.json");
+        Files.writeString(file, "{\"configSchemaVersion\":4,\"irisShaderHudFallback\":false}");
+
+        WaypointerConfig config = WaypointerConfig.load(file);
+        config.flush();
+
+        String persisted = Files.readString(file);
+        assertTrue(persisted.contains("\"configSchemaVersion\": 7"));
+        assertTrue(persisted.contains("\"irisShaderHudFallback\": true"));
     }
 
     @Test
