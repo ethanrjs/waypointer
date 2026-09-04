@@ -7,6 +7,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
+import com.babbur.waypointer.core.SequenceRoleColor;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.SequenceVisibility;
@@ -250,7 +251,8 @@ class WaypointWorldRenderer {
         if (emitStatic && drawPaint && hasThroughWallWaypoints) {
             for (WaypointGroup g : groups) {
                 WaypointPaint paint = effectivePaint(g, defaultPaint);
-                if (paint == null) continue;
+                if (paint == null || usesSequenceRoleColorPaintFallback(
+                        g, defaultPaint, config.colorSequenceWaypointsByRole())) continue;
                 WaypointPaintTextureCache.Entry paintTexture =
                         retainCameraIndependentGeometry
                                 ? WaypointPaintTextureCache.getRetained(paint)
@@ -266,7 +268,8 @@ class WaypointWorldRenderer {
         if (emitStatic && drawPaint && hasDepthCheckedWaypoints) {
             for (WaypointGroup g : groups) {
                 WaypointPaint paint = effectivePaint(g, defaultPaint);
-                if (paint == null) continue;
+                if (paint == null || usesSequenceRoleColorPaintFallback(
+                        g, defaultPaint, config.colorSequenceWaypointsByRole())) continue;
                 WaypointPaintTextureCache.Entry paintTexture =
                         retainCameraIndependentGeometry
                                 ? WaypointPaintTextureCache.getRetained(paint)
@@ -293,11 +296,16 @@ class WaypointWorldRenderer {
                 }
                 if (drawFill) {
                     for (WaypointGroup g : groups) {
-                        if (!shouldEmitRgbFill(
+                        boolean paintFallback = usesSequenceRoleColorPaintFallback(
+                                g, defaultPaint, config.colorSequenceWaypointsByRole())
+                                || usesRgbPaintFallback(
+                                        g, defaultPaint, retainCameraIndependentGeometry);
+                        if (!paintFallback && !shouldEmitRgbFill(
                                 g, defaultPaint, retainCameraIndependentGeometry)) continue;
                         emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
-                                drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT,
+                                drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT
+                                        || paintFallback,
                                 false, mc);
                     }
                 }
@@ -317,11 +325,16 @@ class WaypointWorldRenderer {
                 }
                 if (drawFill) {
                     for (WaypointGroup g : groups) {
-                        if (!shouldEmitRgbFill(
+                        boolean paintFallback = usesSequenceRoleColorPaintFallback(
+                                g, defaultPaint, config.colorSequenceWaypointsByRole())
+                                || usesRgbPaintFallback(
+                                        g, defaultPaint, retainCameraIndependentGeometry);
+                        if (!paintFallback && !shouldEmitRgbFill(
                                 g, defaultPaint, retainCameraIndependentGeometry)) continue;
                         emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
-                                drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT,
+                                drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT
+                                        || paintFallback,
                                 true, mc);
                     }
                 }
@@ -815,6 +828,8 @@ class WaypointWorldRenderer {
         activePaintScratch.clear();
         for (WaypointGroup group : groups) {
             if (group == null || group.isEmpty()) continue;
+            if (usesSequenceRoleColorPaintFallback(
+                    group, defaultPaint, config.colorSequenceWaypointsByRole())) continue;
             WaypointPaint paint = effectivePaint(group, defaultPaint);
             if (paint != null) activePaintScratch.add(paint);
         }
@@ -861,13 +876,14 @@ class WaypointWorldRenderer {
         return visibleBoxes || visibleFlatBeams;
     }
 
-    private boolean staticBoxGeometryEnabledFor(Iterable<WaypointGroup> groups) {
+    boolean staticBoxGeometryEnabledFor(Iterable<WaypointGroup> groups) {
         if (groups == null) return false;
         WaypointerConfig.BoxStyle style = config.boxStyle();
         boolean visibleOutlines = boxStyleDrawsOutline(style)
                 && config.waypointOutlineOpacity() > 0.0;
         boolean visibleBoxes = (boxStyleDrawsRgbFill(style)
                 || style == WaypointerConfig.BoxStyle.PAINT
+                || hasPaintedGroup(groups, config.waypointPainterDefaultPaint())
                 || hasFilledSubwaypoint(groups))
                 && config.beaconOpacity() > 0.0;
         return visibleOutlines || visibleBoxes;
@@ -983,9 +999,23 @@ class WaypointWorldRenderer {
 
     static boolean shouldEmitRgbFill(WaypointGroup group, WaypointPaint defaultPaint,
                                      boolean retainCameraIndependentGeometry) {
+        return effectivePaint(group, defaultPaint) == null
+                || usesRgbPaintFallback(group, defaultPaint, retainCameraIndependentGeometry);
+    }
+
+    static boolean usesRgbPaintFallback(WaypointGroup group, WaypointPaint defaultPaint,
+                                        boolean retainCameraIndependentGeometry) {
         WaypointPaint paint = effectivePaint(group, defaultPaint);
-        return paint == null || retainCameraIndependentGeometry
+        return retainCameraIndependentGeometry && paint != null
                 && !WaypointPaintTextureCache.isRetained(paint);
+    }
+
+    static boolean usesSequenceRoleColorPaintFallback(
+            WaypointGroup group, WaypointPaint defaultPaint, boolean roleColorsEnabled) {
+        return roleColorsEnabled
+                && group != null
+                && group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
+                && effectivePaint(group, defaultPaint) != null;
     }
 
     private static boolean isSmallSubwaypoint(Waypoint waypoint) {
@@ -1153,7 +1183,8 @@ class WaypointWorldRenderer {
             float y2 = (float) waypointBoxBoundsScratch[BOX_MAX_Y];
             float z2 = (float) waypointBoxBoundsScratch[BOX_MAX_Z];
             RenderHelpers.emitLineBox(lines, ps, x1, y1, z1, x2, y2, z2,
-                    config.resolvedWaypointOutlineColor(w.color()), alpha, outlineThickness);
+                    config.resolvedWaypointOutlineColor(
+                            resolvedWaypointColor(g, i, w.color())), alpha, outlineThickness);
         });
     }
 
@@ -1188,7 +1219,7 @@ class WaypointWorldRenderer {
             float y2 = (float) waypointBoxBoundsScratch[BOX_MAX_Y];
             float z2 = (float) waypointBoxBoundsScratch[BOX_MAX_Z];
             RenderHelpers.emitFilledBox(quads, ps, x1, y1, z1, x2, y2, z2,
-                    w.color(), alpha * FILLED_ALPHA_SCALE);
+                    resolvedWaypointColor(g, i, w.color()), alpha * FILLED_ALPHA_SCALE);
         });
     }
 
@@ -1284,17 +1315,19 @@ class WaypointWorldRenderer {
 
         float y1 = config.beaconBeamExtendsBelowWaypoint() ? minY : w.y();
         float y2 = beaconBeamTop(w.y(), y1, maxY);
+        int waypointColor = resolvedWaypointColor(g, i, w.color());
         if (texturedBeams) {
-            emitTexturedBeaconBeam(quads, ps, w, y1, y2, alpha, mc, camPos);
+            emitTexturedBeaconBeam(
+                    quads, ps, w, waypointColor, y1, y2, alpha, mc, camPos);
         } else {
             RenderHelpers.emitVerticalColumn(quads, ps,
                     (float) w.centerX(), y1, (float) w.centerZ(),
-                    y2, BEAM_HALF_WIDTH, w.color(), alpha);
+                    y2, BEAM_HALF_WIDTH, waypointColor, alpha);
         }
     }
 
     private void emitTexturedBeaconBeam(VertexConsumer consumer, PoseStack ps,
-                                        Waypoint waypoint, float y1, float y2,
+                                        Waypoint waypoint, int waypointColor, float y1, float y2,
                                         float alpha, Minecraft mc, Vec3 camPos) {
         float height = y2 - y1;
         if (height <= 0.0f) return;
@@ -1306,8 +1339,8 @@ class WaypointWorldRenderer {
         updateBeamRotation(animationTime);
         float radiusScale = beaconTextureRadiusScale(
                 waypoint, camPos, mc.player != null && mc.player.isScoping());
-        int coreColor = RenderHelpers.withAlpha(0xFF000000 | (waypoint.color() & 0xFFFFFF), alpha);
-        int glowColor = RenderHelpers.withAlpha(BEACON_GLOW_BASE_ALPHA_ARGB | (waypoint.color() & 0xFFFFFF), alpha);
+        int coreColor = RenderHelpers.withAlpha(0xFF000000 | waypointColor, alpha);
+        int glowColor = RenderHelpers.withAlpha(BEACON_GLOW_BASE_ALPHA_ARGB | waypointColor, alpha);
 
         PoseStack.Pose pose = ps.last();
         float cx = (float) waypoint.centerX();
@@ -1463,6 +1496,18 @@ class WaypointWorldRenderer {
     static boolean worldBoxOutlinesEnabled(WaypointerConfig.BoxStyle style,
                                            boolean irisHudFallbackActive) {
         return boxStyleDrawsOutline(style) && !irisHudFallbackActive;
+    }
+
+    protected int resolvedWaypointColor(
+            WaypointGroup group, int waypointIndex, int fallbackColor) {
+        return SequenceRoleColor.resolve(
+                group,
+                waypointIndex,
+                config.colorSequenceWaypointsByRole(),
+                config.sequencePreviousWaypointColor(),
+                config.sequenceCurrentWaypointColor(),
+                config.sequenceNextWaypointColor(),
+                fallbackColor);
     }
 
 

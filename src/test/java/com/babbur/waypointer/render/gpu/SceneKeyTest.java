@@ -48,6 +48,12 @@ class SceneKeyTest {
                 0L, fingerprint, 0L, null);
     }
 
+    private static SceneKey retainedKey(SceneKeyFactory factory, Object level, double cameraX) {
+        return factory.build(List.of(), new WaypointerConfig(),
+                new Vec3(cameraX, 64.0, 0.0), level, -64, 320,
+                0L, 0L, 0L, null);
+    }
+
     @Test
     void identicalInputsProduceEqualKeys() {
         assertEquals(key(10.4, 64.0, -3.2, 42L), key(10.4, 64.0, -3.2, 42L));
@@ -74,6 +80,76 @@ class SceneKeyTest {
     }
 
     @Test
+    void retainedOriginDoesNotRebuildWhenPacingAcrossCellBoundary() {
+        SceneKeyFactory factory = new SceneKeyFactory(OverlayRendererOptions.defaults());
+        Object level = new Object();
+        SceneKey previous = SceneKey.NONE;
+        int rebuilds = 0;
+        int cellSnappedRebuilds = 0;
+        int previousCell = Integer.MIN_VALUE;
+
+        for (int crossing = 0; crossing < 64; crossing++) {
+            double cameraX = crossing % 2 == 0 ? 15.75 : 16.25;
+            SceneKey next = retainedKey(factory, level, cameraX);
+            if (!next.equals(previous)) rebuilds++;
+            previous = next;
+            int cell = SceneKey.originFor(cameraX);
+            if (cell != previousCell) cellSnappedRebuilds++;
+            previousCell = cell;
+        }
+
+        assertEquals(1, rebuilds);
+        assertEquals(64, cellSnappedRebuilds);
+        assertEquals(0, previous.originX());
+    }
+
+    @Test
+    void retainedOriginRebasesAtSafeDistance() {
+        SceneKeyFactory factory = new SceneKeyFactory(OverlayRendererOptions.defaults());
+        Object level = new Object();
+        SceneKey initial = retainedKey(factory, level, 0.25);
+        SceneKey inside = retainedKey(factory, level,
+                SceneKeyFactory.REBASE_DISTANCE_BLOCKS - 0.01);
+        SceneKey rebased = retainedKey(factory, level,
+                SceneKeyFactory.REBASE_DISTANCE_BLOCKS);
+
+        assertEquals(initial, inside);
+        assertNotEquals(inside, rebased);
+        assertEquals(128, rebased.originX());
+    }
+
+    @Test
+    void retainedOriginHandlesNegativeBoundaryWithoutChurn() {
+        SceneKeyFactory factory = new SceneKeyFactory(OverlayRendererOptions.defaults());
+        Object level = new Object();
+        SceneKey negative = retainedKey(factory, level, -0.25);
+        SceneKey positive = retainedKey(factory, level, 0.25);
+        SceneKey rebased = retainedKey(factory, level, -144.0);
+
+        assertEquals(negative, positive);
+        assertEquals(-16, positive.originX());
+        assertNotEquals(positive, rebased);
+        assertEquals(-144, rebased.originX());
+    }
+
+    @Test
+    void levelChangeAndResetChooseFreshSnappedOrigin() {
+        SceneKeyFactory factory = new SceneKeyFactory(OverlayRendererOptions.defaults());
+        SceneKey firstLevel = retainedKey(factory, new Object(), 15.75);
+        Object secondLevel = new Object();
+        SceneKey changedLevel = retainedKey(factory, secondLevel, 16.25);
+
+        assertNotEquals(firstLevel, changedLevel);
+        assertEquals(16, changedLevel.originX());
+
+        SceneKey beforeReset = retainedKey(factory, secondLevel, 80.25);
+        assertEquals(16, beforeReset.originX());
+        factory.reset();
+        SceneKey afterReset = retainedKey(factory, secondLevel, 80.25);
+        assertEquals(80, afterReset.originX());
+    }
+
+    @Test
     void mixerIsSensitiveToSingleBitChanges() {
         long a = SceneKey.builder().mix(0x1L).finish().hash();
         long b = SceneKey.builder().mix(0x3L).finish().hash();
@@ -90,10 +166,13 @@ class SceneKeyTest {
         scale.setWaypointMarkerScale(2.0);
         WaypointerConfig outline = new WaypointerConfig();
         outline.setMatchWaypointOutlineToWaypointColor(false);
+        WaypointerConfig roleColors = new WaypointerConfig();
+        roleColors.setColorSequenceWaypointsByRole(true);
         assertAll(
                 () -> assertNotEquals(defaults, configKey(dimming)),
                 () -> assertNotEquals(defaults, configKey(scale)),
-                () -> assertNotEquals(defaults, configKey(outline)));
+                () -> assertNotEquals(defaults, configKey(outline)),
+                () -> assertNotEquals(defaults, configKey(roleColors)));
     }
 
     @Test

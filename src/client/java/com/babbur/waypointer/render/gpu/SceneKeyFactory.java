@@ -12,7 +12,15 @@ import java.util.Objects;
 /** Builds the static-geometry key from renderer inputs. */
 public final class SceneKeyFactory {
 
+    /** Maximum camera offset from the retained origin before geometry is rebased. */
+    static final double REBASE_DISTANCE_BLOCKS = 128.0;
+
     private final OverlayRendererOptions options;
+    private Object originLevelIdentity;
+    private int originX;
+    private int originY;
+    private int originZ;
+    private boolean hasOrigin;
 
     public SceneKeyFactory(OverlayRendererOptions options) {
         this.options = Objects.requireNonNull(options, "options");
@@ -25,9 +33,9 @@ public final class SceneKeyFactory {
         Objects.requireNonNull(groups, "groups");
         Objects.requireNonNull(config, "config");
         Objects.requireNonNull(camera, "camera");
+        updateOrigin(camera, levelIdentity);
         SceneKey.Builder key = SceneKey.builder()
-                .origin(SceneKey.originFor(camera.x), SceneKey.originFor(camera.y),
-                        SceneKey.originFor(camera.z))
+                .origin(originX, originY, originZ)
                 .levelIdentity(levelIdentity)
                 .mix(levelMinY)
                 .mix(levelMaxY)
@@ -45,6 +53,33 @@ public final class SceneKeyFactory {
         return key.finish();
     }
 
+    /** Forgets the retained origin after a world/session reset. */
+    public void reset() {
+        hasOrigin = false;
+        originLevelIdentity = null;
+        originX = 0;
+        originY = 0;
+        originZ = 0;
+    }
+
+    private void updateOrigin(Vec3 camera, Object levelIdentity) {
+        if (!hasOrigin
+                || levelIdentity != originLevelIdentity
+                || outsideRebaseDistance(camera.x, originX)
+                || outsideRebaseDistance(camera.y, originY)
+                || outsideRebaseDistance(camera.z, originZ)) {
+            originX = SceneKey.originFor(camera.x);
+            originY = SceneKey.originFor(camera.y);
+            originZ = SceneKey.originFor(camera.z);
+            originLevelIdentity = levelIdentity;
+            hasOrigin = true;
+        }
+    }
+
+    private static boolean outsideRebaseDistance(double cameraCoordinate, int originCoordinate) {
+        return Math.abs(cameraCoordinate - originCoordinate) >= REBASE_DISTANCE_BLOCKS;
+    }
+
     static void mixConfig(SceneKey.Builder key, WaypointerConfig config) {
         key.mixEnum(config.boxStyle());
         mixPaint(key, config.waypointPainterDefaultPaint());
@@ -60,6 +95,10 @@ public final class SceneKeyFactory {
         key.mix(config.sequenceVisibility().previous())
                 .mix(config.sequenceVisibility().current())
                 .mix(config.sequenceVisibility().next())
+                .mix(config.colorSequenceWaypointsByRole())
+                .mix(config.sequencePreviousWaypointColor())
+                .mix(config.sequenceCurrentWaypointColor())
+                .mix(config.sequenceNextWaypointColor())
                 .mix(config.dimSequenceContextWaypoints())
                 .mix(config.keepSubwaypointsVisibleUntilNextWaypoint())
                 .mix(config.hideWaypointsNearPlayer())

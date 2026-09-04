@@ -544,8 +544,22 @@ The writer omits a field when it equals its normalized default.
 | 78 | `sequenceNextWaypointCount` | U | `1` |
 | 79 | `etherwarpAlignmentSound` (legacy, decode-only) | B | `false` |
 | 80 | `etherwarpAlignmentSound` | E | `OFF` (0) |
+| 81 | `crystalHollowsEnabled` | B | `true` |
+| 82 | `crystalHollowsStructureWaypoints` | B | `true` |
+| 83 | `crystalHollowsShowRoughMarkers` | B | `true` |
+| 84 | `crystalHollowsEntityDetection` | B | `true` |
+| 85 | `crystalHollowsChatDetection` | B | `true` |
+| 86 | `crystalHollowsWishingCompassSolver` | B | `true` |
+| 87 | `crystalHollowsCompassRays` | B | `true` |
+| 88 | `crystalHollowsAnnounceDetections` | B | `true` |
+| 89 | `crystalHollowsNucleusWaypoints` | B | `false` |
+| 90 | `allowBackwardProgress` | B | `false` |
+| 91 | `colorSequenceWaypointsByRole` | B | `false` |
+| 92 | `sequencePreviousWaypointColor` | C | `808080` |
+| 93 | `sequenceCurrentWaypointColor` | C | `4FE05A` |
+| 94 | `sequenceNextWaypointColor` | C | `00BFFF` |
 
-Inactive legacy holes are tags 17, 51, 54, 55, and 66. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tag 80 is active. Tags 81-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
+Inactive legacy holes are tags 17, 51, 54, 55, and 66. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-94 are active. Tags 95-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
 
 ### 8.3 Enum and normalized value domains
 

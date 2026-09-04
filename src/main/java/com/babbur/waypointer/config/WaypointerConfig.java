@@ -72,6 +72,10 @@ public final class WaypointerConfig {
     private int sequencePreviousWaypointCount = SequenceVisibility.DEFAULT.previous();
     private boolean showCurrentSequenceWaypoint = SequenceVisibility.DEFAULT.current();
     private int sequenceNextWaypointCount = SequenceVisibility.DEFAULT.next();
+    private boolean colorSequenceWaypointsByRole = false;
+    private int sequencePreviousWaypointColor = 0x808080;
+    private int sequenceCurrentWaypointColor = Waypoint.DEFAULT_COLOR;
+    private int sequenceNextWaypointColor = 0x00BFFF;
     private boolean showTracer = true;
     private boolean dimSequenceContextWaypoints = true;
     private boolean hideTracerOnStaticRoutes = true;
@@ -437,6 +441,10 @@ public final class WaypointerConfig {
     public int sequencePreviousWaypointCount() { return sequenceVisibility().previous(); }
     public boolean showCurrentSequenceWaypoint() { return showCurrentSequenceWaypoint; }
     public int sequenceNextWaypointCount() { return sequenceVisibility().next(); }
+    public boolean colorSequenceWaypointsByRole() { return colorSequenceWaypointsByRole; }
+    public int sequencePreviousWaypointColor() { return sequencePreviousWaypointColor & 0xFFFFFF; }
+    public int sequenceCurrentWaypointColor() { return sequenceCurrentWaypointColor & 0xFFFFFF; }
+    public int sequenceNextWaypointColor() { return sequenceNextWaypointColor & 0xFFFFFF; }
     public SequenceVisibility sequenceVisibility() {
         return new SequenceVisibility(sequencePreviousWaypointCount,
                 showCurrentSequenceWaypoint, sequenceNextWaypointCount);
@@ -627,6 +635,22 @@ public final class WaypointerConfig {
     }
     public void setSequenceNextWaypointCount(int v) {
         this.sequenceNextWaypointCount = new SequenceVisibility(0, true, v).next();
+        save();
+    }
+    public void setColorSequenceWaypointsByRole(boolean v) {
+        this.colorSequenceWaypointsByRole = v;
+        save();
+    }
+    public void setSequencePreviousWaypointColor(int v) {
+        this.sequencePreviousWaypointColor = v & 0xFFFFFF;
+        save();
+    }
+    public void setSequenceCurrentWaypointColor(int v) {
+        this.sequenceCurrentWaypointColor = v & 0xFFFFFF;
+        save();
+    }
+    public void setSequenceNextWaypointColor(int v) {
+        this.sequenceNextWaypointColor = v & 0xFFFFFF;
         save();
     }
     public void setSequenceVisibility(SequenceVisibility visibility) {
@@ -839,6 +863,10 @@ public final class WaypointerConfig {
         sequencePreviousWaypointCount = replacement.sequencePreviousWaypointCount;
         showCurrentSequenceWaypoint = replacement.showCurrentSequenceWaypoint;
         sequenceNextWaypointCount = replacement.sequenceNextWaypointCount;
+        colorSequenceWaypointsByRole = replacement.colorSequenceWaypointsByRole;
+        sequencePreviousWaypointColor = replacement.sequencePreviousWaypointColor;
+        sequenceCurrentWaypointColor = replacement.sequenceCurrentWaypointColor;
+        sequenceNextWaypointColor = replacement.sequenceNextWaypointColor;
         showTracer = replacement.showTracer;
         dimSequenceContextWaypoints = replacement.dimSequenceContextWaypoints;
         hideTracerOnStaticRoutes = replacement.hideTracerOnStaticRoutes;
@@ -919,6 +947,7 @@ public final class WaypointerConfig {
         sequencePreviousWaypointCount = 0;
         showCurrentSequenceWaypoint = false;
         sequenceNextWaypointCount = 0;
+        colorSequenceWaypointsByRole = false;
         showTracer = false;
         dimSequenceContextWaypoints = false;
         hideTracerOnStaticRoutes = false;
@@ -1007,6 +1036,10 @@ public final class WaypointerConfig {
         sequencePreviousWaypointCount = defaults.sequencePreviousWaypointCount;
         showCurrentSequenceWaypoint = defaults.showCurrentSequenceWaypoint;
         sequenceNextWaypointCount = defaults.sequenceNextWaypointCount;
+        colorSequenceWaypointsByRole = defaults.colorSequenceWaypointsByRole;
+        sequencePreviousWaypointColor = defaults.sequencePreviousWaypointColor;
+        sequenceCurrentWaypointColor = defaults.sequenceCurrentWaypointColor;
+        sequenceNextWaypointColor = defaults.sequenceNextWaypointColor;
         showTracer = defaults.showTracer;
         dimSequenceContextWaypoints = defaults.dimSequenceContextWaypoints;
         hideTracerOnStaticRoutes = defaults.hideTracerOnStaticRoutes;

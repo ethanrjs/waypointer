@@ -312,6 +312,7 @@ public final class OverlayRenderer implements AutoCloseable {
         closeStep("overlay pass", pass::close);
         closeStep("depth snapshot", depthSnapshot::close);
         lastKey = SceneKey.NONE;
+        keyFactory.reset();
         pendingView = null;
         pendingKey = null;
         pendingPostDraw = false;

@@ -134,7 +134,7 @@ public final class SettingsCatalog {
         out.add(appearance());
         out.add(routes());
         out.add(dungeons());
-        out.add(crystalHollows());
+        out.add(mining());
         out.add(chat());
         out.add(sharing());
         out.add(system());
@@ -249,7 +249,7 @@ public final class SettingsCatalog {
                                 "Add pictures or paint your own waypoints.")
                                 .enabledWhen((c, d) -> c.boxStyle() == WaypointerConfig.BoxStyle.PAINT)
                                 .aliases("painter", "texture", "pixel")),
-                Group.plain("waypoint_visibility", "Waypoint visibility",
+                Group.plain("sequenced", "Sequenced",
                         Setting.number("sequencePreviousWaypointCount", MAIN,
                                 "Previous waypoints", "Enter 0-32 reached route steps, or enter All.",
                                 (c, d) -> (double) c.sequencePreviousWaypointCount(),
@@ -272,6 +272,30 @@ public final class SettingsCatalog {
                                 null,
                                 (c, d) -> c.dimSequenceContextWaypoints(),
                                 (c, d, v) -> c.setDimSequenceContextWaypoints((Boolean) v)),
+                        Setting.bool("colorSequenceWaypointsByRole", MAIN,
+                                "Color waypoints by sequence role",
+                                "Use separate colors for previous, current, and next route steps.",
+                                (c, d) -> c.colorSequenceWaypointsByRole(),
+                                (c, d, v) -> c.setColorSequenceWaypointsByRole((Boolean) v)),
+                        Setting.color("sequencePreviousWaypointColor", MAIN,
+                                "Previous waypoint color", null,
+                                "Previous Waypoint Color", null,
+                                (c, d) -> c.sequencePreviousWaypointColor(),
+                                (c, d, v) -> c.setSequencePreviousWaypointColor(rgb(v)))
+                                .enabledWhen((c, d) -> c.colorSequenceWaypointsByRole()),
+                        Setting.color("sequenceCurrentWaypointColor", MAIN,
+                                "Current waypoint color", null,
+                                "Current Waypoint Color", null,
+                                (c, d) -> c.sequenceCurrentWaypointColor(),
+                                (c, d, v) -> c.setSequenceCurrentWaypointColor(rgb(v)))
+                                .enabledWhen((c, d) -> c.colorSequenceWaypointsByRole()),
+                        Setting.color("sequenceNextWaypointColor", MAIN,
+                                "Next waypoint color", null,
+                                "Next Waypoint Color", null,
+                                (c, d) -> c.sequenceNextWaypointColor(),
+                                (c, d, v) -> c.setSequenceNextWaypointColor(rgb(v)))
+                                .enabledWhen((c, d) -> c.colorSequenceWaypointsByRole())),
+                Group.plain("etherwarp", "Etherwarp",
                         Setting.enumCycle("etherwarpAlignmentSound", MAIN,
                                 "Etherwarp alignment sound",
                                 "Choose a sound to play when you can etherwarp to a waypoint.",
@@ -547,10 +571,10 @@ public final class SettingsCatalog {
                                         (c, d, v) -> c.setDungeonEntryPathColor(rgb(v))))));
     }
 
-    private static Category crystalHollows() {
-        return new Category("crystal_hollows", "Crystal Hollows", "crystalHollowsEnabled",
+    private static Category mining() {
+        return new Category("mining", "Mining", "crystalHollowsEnabled",
                 (c, d) -> c.crystalHollowsEnabled(),
-                List.of(Group.plain(
+                List.of(Group.plain("crystal_hollows_structures", "Crystal Hollows structures",
                         Setting.bool("crystalHollowsEnabled", MAIN, "Crystal Hollows features",
                                 "Detect lobby structures using only information already shown to you.",
                                 (c, d) -> c.crystalHollowsEnabled(),
@@ -577,17 +601,6 @@ public final class SettingsCatalog {
                                 "Read structure coordinates shared by players in chat.",
                                 (c, d) -> c.crystalHollowsChatDetection(),
                                 (c, d, v) -> c.setCrystalHollowsChatDetection((Boolean) v)),
-                        Setting.bool("crystalHollowsWishingCompassSolver", MAIN,
-                                "Wishing Compass solver",
-                                "Capture your compass particles and triangulate their destination.",
-                                (c, d) -> c.crystalHollowsWishingCompassSolver(),
-                                (c, d, v) -> c.setCrystalHollowsWishingCompassSolver((Boolean) v)),
-                        Setting.bool("crystalHollowsCompassRays", MAIN,
-                                "Compass rays",
-                                "Render captured Wishing Compass directions while solving.",
-                                (c, d) -> c.crystalHollowsCompassRays(),
-                                (c, d, v) -> c.setCrystalHollowsCompassRays((Boolean) v))
-                                .enabledWhen((c, d) -> c.crystalHollowsWishingCompassSolver()),
                         Setting.bool("crystalHollowsAnnounceDetections", MAIN,
                                 "Detection messages",
                                 "Announce new and improved structure locations in chat.",
@@ -597,7 +610,19 @@ public final class SettingsCatalog {
                                 "Crystal Nucleus entrances",
                                 "Add the nine fixed Nucleus centre and entrance waypoints.",
                                 (c, d) -> c.crystalHollowsNucleusWaypoints(),
-                                (c, d, v) -> c.setCrystalHollowsNucleusWaypoints((Boolean) v)))));
+                                (c, d, v) -> c.setCrystalHollowsNucleusWaypoints((Boolean) v))),
+                        Group.parented("wishing_compass", "Wishing Compass",
+                                (c, d) -> c.crystalHollowsWishingCompassSolver(),
+                                Setting.bool("crystalHollowsWishingCompassSolver", MAIN,
+                                        "Wishing Compass solver",
+                                        "Capture your compass particles and triangulate their destination.",
+                                        (c, d) -> c.crystalHollowsWishingCompassSolver(),
+                                        (c, d, v) -> c.setCrystalHollowsWishingCompassSolver((Boolean) v)),
+                                Setting.bool("crystalHollowsCompassRays", MAIN,
+                                        "Compass rays",
+                                        "Render captured Wishing Compass directions while solving.",
+                                        (c, d) -> c.crystalHollowsCompassRays(),
+                                        (c, d, v) -> c.setCrystalHollowsCompassRays((Boolean) v)))));
     }
 
     private static Category chat() {
