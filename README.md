@@ -26,12 +26,13 @@ Waypoint Import/Export Compatibility
 - Coleweight/SkyHanni (I/E)
 - Skytils 1.x V1 (I/E) and V2 (I)
 - Skyblocker V1 (I/E)
+- ChunkLogger RouteSkipper (I/E)
 - Soopy V1 (I)
 - Firmament (I)
 - Generic JSON-based (I)
 
 Waypointer route-library codes preserve folder membership and folder colors.
-Config import/export uses separate `WPC:` codes.
+Config export uses universal `WP:` V10 kind-3 codes. Legacy `WPC:` versions 1-6 remain importable.
 
 Dungeon route import
 
@@ -60,7 +61,7 @@ it does not produce one universal jar:
 - `build/libs/waypointer-<mod-version>-mc26.2.jar`
 
 Matching `-sources.jar` files are also generated. The current mod version is
-`1.9.2`.
+`1.10.0`.
 
 CODEC Specification
 See [CODEC.md](CODEC.md) for the full specification.

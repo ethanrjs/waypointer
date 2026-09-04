@@ -116,12 +116,12 @@ public final class WaypointCodecGoldenVectorGenerator {
         WaypointCodec.Options richOptions = WaypointCodec.Options.FULL_FIDELITY.toBuilder()
                 .label("Rich v9 route")
                 .build();
-        String v9General = WaypointCodec.encode(List.of(richV9Route()), richOptions);
-        String v9Compact = WaypointCodec.encode(List.of(compactV9Route()),
+        String v9General = WaypointCodec.encodeV9ForTest(List.of(richV9Route()), richOptions);
+        String v9Compact = WaypointCodec.encodeV9ForTest(List.of(compactV9Route()),
                 WaypointCodec.Options.FULL_FIDELITY.toBuilder().label("Compact v9 route").build());
-        String v9Coordinates = WaypointCodec.encode(List.of(coordinateV9Route()),
+        String v9Coordinates = WaypointCodec.encodeV9ForTest(List.of(coordinateV9Route()),
                 WaypointCodec.Options.NO_NAMES.toBuilder().label("Coordinate v9 route").build());
-        String v9MetadataCoordinates = WaypointCodec.encode(List.of(metadataCoordinateV9Route()),
+        String v9MetadataCoordinates = WaypointCodec.encodeV9ForTest(List.of(metadataCoordinateV9Route()),
                 WaypointCodec.Options.NO_NAMES.toBuilder().label("Metadata v9 route").build());
 
         return List.of(

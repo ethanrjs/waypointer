@@ -423,6 +423,43 @@ class DefaultWaypointerApiTest {
     }
 
     @Test
+    void publicAllOffMultiRegularExportUsesTheBareRoutePack() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        String firstId = api.createRoute(RouteSpec.builder()
+                .name("Discarded First")
+                .zoneId("hub")
+                .waypoint(WaypointSpec.at(1, 2, 3).name("Discarded point"))
+                .build());
+        String secondId = api.createRoute(RouteSpec.builder()
+                .name("Discarded Second")
+                .zoneId("dwarven_mines")
+                .waypoint(WaypointSpec.at(4, 5, 6).name("Discarded point"))
+                .build());
+        ExportOptions allOff = ExportOptions.builder()
+                .includeNames(false)
+                .includeColors(false)
+                .includeRadii(false)
+                .includeWaypointFlags(false)
+                .includeGroupMeta(false)
+                .includeZone(false)
+                .build();
+
+        String payload = api.exportRoutes(List.of(firstId, secondId), allOff);
+        var debug = WaypointCodec.debugDecode(payload);
+        List<WaypointGroup> decoded = WaypointCodec.decode(payload);
+
+        assertEquals(10, debug.version());
+        assertTrue(debug.groups().stream().allMatch(group ->
+                group.coordMode().startsWith("V10_BARE_PACK_")));
+        assertEquals(2, decoded.size());
+        assertEquals("", decoded.get(0).name());
+        assertEquals("", decoded.get(1).name());
+        assertEquals(Waypoint.at(1, 2, 3), decoded.get(0).get(0));
+        assertEquals(Waypoint.at(4, 5, 6), decoded.get(1).get(0));
+    }
+
+    @Test
     void exportRoutesCanUseSkytilsTarget() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerApi api = new DefaultWaypointerApi(manager);
@@ -444,6 +481,36 @@ class DefaultWaypointerApiTest {
         assertEquals("Route", imported.groups().get(0).name());
         assertEquals("Start", imported.groups().get(0).get(0).name());
         assertFalse(payload.startsWith(WaypointCodec.MAGIC));
+    }
+
+    @Test
+    void chunkLoggerExportRoundTripsThroughSecondPublicApiWithSubwaypointStructure() {
+        ActiveGroupManager sourceManager = new ActiveGroupManager();
+        WaypointerApi sourceApi = new DefaultWaypointerApi(sourceManager);
+        String groupId = sourceApi.createRoute(RouteSpec.builder()
+                .name("Route")
+                .waypoint(WaypointSpec.at(10, 64, -2))
+                .waypoint(WaypointSpec.at(11, 62, 1).flags(WaypointFlags.SUBWAYPOINT))
+                .build());
+
+        String payload = sourceApi.exportRoutes(List.of(groupId),
+                ExportOptions.builder().target(ExportTarget.CHUNKLOGGER).build());
+        ActiveGroupManager targetManager = new ActiveGroupManager();
+        WaypointerApi targetApi = new DefaultWaypointerApi(targetManager);
+        ImportSummary summary = targetApi.importRoutes(payload);
+
+        assertTrue(payload.contains("\"coal\""));
+        assertEquals(ImportSource.CHUNKLOGGER, summary.source());
+        assertEquals(1, summary.groupCount());
+        assertEquals(2, summary.waypointCount());
+
+        List<WaypointSnapshot> imported = targetApi.savedRoutes().getFirst().waypoints();
+        assertEquals(List.of(10, 64, -2),
+                List.of(imported.get(0).x(), imported.get(0).y(), imported.get(0).z()));
+        assertEquals(0, imported.get(0).flags());
+        assertEquals(List.of(11, 62, 1),
+                List.of(imported.get(1).x(), imported.get(1).y(), imported.get(1).z()));
+        assertEquals(WaypointFlags.SUBWAYPOINT, imported.get(1).flags());
     }
 
     @Test
@@ -469,7 +536,9 @@ class DefaultWaypointerApiTest {
         WaypointerApi targetApi = new DefaultWaypointerApi(targetManager);
         ImportSummary summary = targetApi.importRoutes(payload, ImportOptions.defaults());
 
-        assertTrue(payload.startsWith(RouteLibraryCodec.MAGIC));
+        assertTrue(payload.startsWith(WaypointCodec.MAGIC),
+                "library metadata rides inside the universal WP: share");
+        assertFalse(payload.startsWith(RouteLibraryCodec.MAGIC));
         assertEquals(1, summary.groupIds().size());
         String importedId = summary.groupIds().getFirst();
         WaypointGroup imported = targetManager.get(importedId);

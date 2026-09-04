@@ -351,14 +351,18 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void etherwarpAlignmentSoundIsOffUnderWaypointVisibility() {
+    void etherwarpAlignmentSoundSelectorIsOffUnderWaypointVisibility() {
         Setting setting = SettingsCatalog.byId("etherwarpAlignmentSound");
 
         assertNotNull(setting);
         assertEquals("Etherwarp alignment sound", setting.label());
-        assertEquals("Play a sound when you can etherwarp to a waypoint",
+        assertEquals("Choose a sound to play when you can etherwarp to a waypoint.",
                 setting.tooltip());
-        assertEquals(false, setting.get(new WaypointerConfig(), new DungeonConfig()));
+        assertEquals(Setting.Kind.ENUM, setting.kind());
+        assertEquals(List.of("off", "experience", "pling", "bell"),
+                setting.enumOptions().stream().map(Setting.EnumOption::id).toList());
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
+                setting.get(new WaypointerConfig(), new DungeonConfig()));
         assertEquals(Setting.Store.MAIN, setting.store());
         assertEquals("appearance", categoryContaining(setting.id()));
         assertEquals("waypoint_visibility", groupContaining(setting.id()));

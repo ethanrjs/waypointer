@@ -88,22 +88,27 @@ class RoutePreviewSceneTest {
     }
 
     @Test
-    void paintStyleUsesConfiguredPaintAndOtherStylesUseRgbSurfaces() {
+    void enabledRoutePaintOverridesTheGlobalFallbackBoxStyle() {
         WaypointGroup group = WaypointGroup.create("Paint", "hub");
         group.add(Waypoint.at(0, 0, 0));
         WaypointerConfig config = new WaypointerConfig();
-        config.setWaypointPainterDefaultPaint(
-                com.babbur.waypointer.core.WaypointPaint.solid(0x123456));
+        var routePaint = com.babbur.waypointer.core.WaypointPaint.solid(0x123456);
+        var defaultPaint = com.babbur.waypointer.core.WaypointPaint.solid(0x654321);
+        group.setPaint(routePaint);
+        config.setWaypointPainterDefaultPaint(defaultPaint);
 
-        config.setBoxStyle(WaypointerConfig.BoxStyle.PAINT);
-        assertEquals(config.waypointPainterDefaultPaint(),
-                RoutePreviewScene.effectivePaint(group, config));
-        RoutePreviewScene paintScene = RoutePreviewScene.build(group, config, null);
-        assertEquals(config.waypointPainterDefaultPaint(), paintScene.paint());
-        assertEquals(null, paintScene.paintResource(),
-                "scene construction must stay CPU-only until a widget owns the texture");
+        for (WaypointerConfig.BoxStyle style : WaypointerConfig.BoxStyle.values()) {
+            config.setBoxStyle(style);
+            assertEquals(routePaint, RoutePreviewScene.effectivePaint(group, config));
+            RoutePreviewScene paintScene = RoutePreviewScene.build(group, config, null);
+            assertEquals(routePaint, paintScene.paint());
+            assertEquals(null, paintScene.paintResource(),
+                    "scene construction must stay CPU-only until a widget owns the texture");
+        }
 
-        config.setBoxStyle(WaypointerConfig.BoxStyle.FILLED);
+        group.setPaint(null);
+        assertEquals(defaultPaint, RoutePreviewScene.effectivePaint(group, config));
+        group.setPaintEnabled(false);
         assertEquals(null, RoutePreviewScene.effectivePaint(group, config));
     }
 

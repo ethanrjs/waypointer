@@ -54,13 +54,16 @@ import static com.babbur.waypointer.util.MathUtil.clampByte;
  *     legacy flat array) where each entry carries {@code x/y/z}, float
  *     {@code r/g/b} in [0,1], and an {@code options} object holding the step
  *     number as {@code name}.
+ *   - ChunkLogger RouteSkipper: a bare waypoint array or a
+ *     {@code {"waypoints": [...]}} object. Each {@code x/y/z} object may carry
+ *     a standard-base64 {@code coal} sequence of signed relative-byte triples.
  *
  * Unknown fields are ignored. Missing fields fall back to defaults so a partially
  * malformed payload from a third-party tool still imports the coordinates cleanly.
  */
 public final class WaypointImporter {
 
-    public enum Source { WAYPOINTER, SKYBLOCKER, SKYTILS, SKYHANNI, SOOPY, FIRMAMENT, COLEWEIGHT, ODIN, JSON }
+    public enum Source { WAYPOINTER, SKYBLOCKER, SKYTILS, SKYHANNI, SOOPY, FIRMAMENT, COLEWEIGHT, ODIN, JSON, CHUNKLOGGER }
 
     /** Skyblocker's current (V1) share-string prefix. Payload after it is base64(gzip(json)). */
     static final String SKYBLOCKER_V1_PREFIX = "[Skyblocker-Waypoint-Data-V1]";
@@ -220,7 +223,11 @@ public final class WaypointImporter {
             if (!d.label().isBlank() && groups.size() == 1) {
                 groups.getFirst().setName(d.label());
             }
-            return checkedImport(new ImportResult(Source.WAYPOINTER, groups, d.label()));
+            // V10 route-library shares carry folders/colors/paints inside WP:.
+            ImportResult checked = checkedImport(new ImportResult(
+                    Source.WAYPOINTER, groups, d.label(), d.metadata()));
+            checked.libraryMetadata().applyTo(checked.groups());
+            return checked;
         }
 
         // Skyblocker's prefixed exports must be handled before the raw-base64 path
@@ -863,6 +870,14 @@ public final class WaypointImporter {
 
     private static ImportResult importJson(String json, String defaultImportedRouteName) {
         JsonElement root = parseBoundedJson(json);
+        if (ChunkLoggerRouteCodec.looksLikeRoute(root)) {
+            WaypointGroup group = ChunkLoggerRouteCodec.decode(root, defaultImportedRouteName);
+            if (group.isEmpty()) {
+                throw new IllegalArgumentException("ChunkLogger route contained no valid waypoints");
+            }
+            return new ImportResult(Source.CHUNKLOGGER, List.of(group), "");
+        }
+
         List<WaypointGroup> groups = new ArrayList<>();
         Source source = Source.JSON;
 

@@ -263,9 +263,7 @@ public final class RoutePreviewScene {
     }
 
     static WaypointPaint effectivePaint(WaypointGroup group, WaypointerConfig config) {
-        if (group == null || config == null
-                || config.boxStyle() != WaypointerConfig.BoxStyle.PAINT
-                || !group.paintEnabled()) return null;
+        if (group == null || config == null || !group.paintEnabled()) return null;
         WaypointPaint seasonalPaint = HappySnowmanSession.facePaint();
         return seasonalPaint != null
                 ? seasonalPaint

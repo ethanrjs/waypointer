@@ -4,6 +4,7 @@ import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.color.RouteColorPolicy;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -12,11 +13,13 @@ import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
+import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
 import com.babbur.waypointer.util.MathUtil;
@@ -1816,34 +1819,19 @@ public final class WaypointerScreen extends Screen {
         importInFlight = true;
         String targetZoneId = importTargetZoneId();
 
-        if (DungeonRoomShareCodec.isPayload(text)) {
-            if (!CodecWorker.run(() -> DungeonRoomShareCodec.decode(text), decoded -> {
-                importInFlight = false;
-                if (decoded == null) {
-                    ImportFeedback.failure(Component.translatable(
-                            "waypointer.import.error.damaged").getString());
-                    return;
-                }
-                installDecodedDungeonRooms(decoded);
-            })) {
-                importInFlight = false;
-                ImportFeedback.failure(Component.translatable("waypointer.codec.busy").getString());
-            }
-            return;
-        }
-
         String defaultImportedRouteName = Component.translatable(
                 "waypointer.import.default_route_name").getString();
-        if (!CodecWorker.run(() -> {
-            try {
-                return new ImportOutcome(
-                        WaypointImporter.importAny(text, defaultImportedRouteName), null);
-            } catch (RuntimeException e) {
-                return new ImportOutcome(null, importFailureText(e));
-            }
-        }, outcome -> {
+        if (!CodecWorker.run(() -> decodeClipboardImport(text, defaultImportedRouteName), outcome -> {
             importInFlight = false;
-            WaypointImporter.ImportResult result = outcome == null ? null : outcome.result();
+            if (outcome != null && outcome.dungeonRoutes() != null) {
+                installDecodedDungeonRooms(outcome.dungeonRoutes());
+                return;
+            }
+            if (outcome != null && outcome.config() != null) {
+                reviewConfigImport(outcome.config());
+                return;
+            }
+            WaypointImporter.ImportResult result = outcome == null ? null : outcome.waypoints();
             if (result == null) {
                 ImportFeedback.failure(outcome == null || outcome.error() == null
                         ? Component.translatable(
@@ -1868,7 +1856,41 @@ public final class WaypointerScreen extends Screen {
         }
     }
 
-    private record ImportOutcome(WaypointImporter.ImportResult result, String error) {}
+    static ClipboardImportOutcome decodeClipboardImport(
+            String text, String defaultImportedRouteName) {
+        try {
+            UniversalShareCodec.Decoded decoded = UniversalShareCodec.decode(text);
+            if (decoded instanceof UniversalShareCodec.DungeonRoutes dungeonRoutes) {
+                return new ClipboardImportOutcome(null, dungeonRoutes.result(), null, null);
+            }
+            if (decoded instanceof UniversalShareCodec.Configuration configuration) {
+                // Settings never change here; the confirmation screen is the gate.
+                return new ClipboardImportOutcome(null, null, configuration.config(), null);
+            }
+
+            // Keep the route editor's localized fallback-name behavior instead of
+            // installing the generic name used by the universal command path.
+            return new ClipboardImportOutcome(
+                    WaypointImporter.importAny(text, defaultImportedRouteName), null, null, null);
+        } catch (RuntimeException failure) {
+            return new ClipboardImportOutcome(null, null, null, importFailureText(failure));
+        }
+    }
+
+    record ClipboardImportOutcome(WaypointImporter.ImportResult waypoints,
+                                  DungeonRouteImporter.Result dungeonRoutes,
+                                  WaypointerConfig config,
+                                  String error) {}
+
+    /** Configuration shares pasted into the route editor go through the same review gate as Settings. */
+    private void reviewConfigImport(WaypointerConfig imported) {
+        ConfigImportConfirmation.open(this, config, imported, outcome -> {
+            if (!outcome.confirmed()) return;
+            ConfigChangeHistory.recordBulk("Imported config code ("
+                    + outcome.changedSettings() + " changed)");
+            ImportFeedback.successConfig(outcome.changedSettings(), "clipboard");
+        });
+    }
 
     /** Codec failures carry specific, user-readable reasons; keep them instead of a generic line. */
     static String importFailureText(RuntimeException failure) {
@@ -1893,8 +1915,8 @@ public final class WaypointerScreen extends Screen {
         result.libraryMetadata().installFolders(manager, result.groups());
     }
 
-    private void installDecodedDungeonRooms(DungeonRoomShareCodec.Decoded decoded) {
-        List<WaypointGroup> routes = DungeonRoomRouteLibrary.installRoutes(manager, decoded.routes());
+    private void installDecodedDungeonRooms(DungeonRouteImporter.Result decoded) {
+        List<WaypointGroup> routes = DungeonRoomRouteLibrary.installRoutes(manager, decoded.groups());
         if (routes.isEmpty()) {
             ImportFeedback.failure(Component.translatable(
                     "waypointer.import.error.damaged").getString());

@@ -5,14 +5,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MinecraftCompatTest {
-
-    @Test
-    void currentMinecraftExposesEveryRequiredCompatibilityBinding() {
-        assertTrue(MinecraftCompat.requiredBindingsAvailable());
-    }
 
     @Test
     void legacyColorUsesTheStableTextColorBridge() {

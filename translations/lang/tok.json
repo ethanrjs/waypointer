@@ -17,9 +17,5 @@
   "waypointer.screen.painter.face_view.all": "ale",
   "waypointer.screen.debug.refresh": "o sin",
   "waypointer.screen.main.delete.select": "o wile",
-  "waypointer.screen.export.preview.options": "ante",
-  "waypointer.screen.route_catalog.refresh.tooltip": "Reload the route catalog (F5).",
-  "waypointer.screen.route_catalog.install.tooltip": "Add this route to Waypointer.",
-  "waypointer.screen.route_catalog.status.search_wait": "Waiting for you to finish typing...",
-  "waypointer.screen.route_catalog.status.selection_help": "Choose Preview or Install to load this route."
+  "waypointer.screen.export.preview.options": "ante"
 }

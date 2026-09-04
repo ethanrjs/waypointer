@@ -604,11 +604,34 @@ class WaypointerConfigTest {
         assertTrue(config.placeNewWaypointsBelowPlayer());
         assertTrue(config.chatCodecDetection());
         assertTrue(config.dimSequenceContextWaypoints());
+        assertFalse(config.exportIncludeNames());
+        assertFalse(config.exportIncludeColors());
+        assertFalse(config.exportIncludeRadii());
+        assertFalse(config.exportIncludeWaypointFlags());
+        assertFalse(config.exportIncludeGroupMeta());
+        assertFalse(config.exportIncludeZone());
+    }
+
+    @Test
+    void persistedExportPreferencesRemainAuthoritativeAfterDefaultChange() {
+        WaypointerConfig config = WaypointerConfig.fromJson("""
+                {
+                  "configSchemaVersion": 6,
+                  "exportIncludeNames": true,
+                  "exportIncludeColors": true,
+                  "exportIncludeRadii": true,
+                  "exportIncludeWaypointFlags": true,
+                  "exportIncludeGroupMeta": true,
+                  "exportIncludeZone": true
+                }
+                """);
+
         assertTrue(config.exportIncludeNames());
         assertTrue(config.exportIncludeColors());
         assertTrue(config.exportIncludeRadii());
         assertTrue(config.exportIncludeWaypointFlags());
         assertTrue(config.exportIncludeGroupMeta());
+        assertTrue(config.exportIncludeZone());
     }
 
     @Test
@@ -807,8 +830,8 @@ class WaypointerConfigTest {
     }
 
     @Test
-    void configCodecUsesVersionFourAndStillReadsVersionTwo() throws IOException {
-        assertEquals(4, WaypointerConfigCodec.VERSION);
+    void configCodecUsesVersionSixAndStillReadsVersionTwo() throws IOException {
+        assertEquals(6, WaypointerConfigCodec.VERSION);
 
         ByteArrayOutputStream raw = new ByteArrayOutputStream();
         try (DataOutputStream out = new DataOutputStream(raw)) {
@@ -820,6 +843,68 @@ class WaypointerConfigTest {
         String versionTwoCode = configCodeForRawPayload(raw.toByteArray());
 
         assertEquals(1.75, WaypointerConfigCodec.decode(versionTwoCode).waypointMarkerScale());
+    }
+
+    @Test
+    void legacyConfigCodesKeepHistoricalExportDefaultsWhenFieldsAreOmitted() throws IOException {
+        for (int version = 1; version <= 4; version++) {
+            WaypointerConfig decoded = WaypointerConfigCodec.decode(
+                    configCodeForRawPayload((byte) version, (byte) 0));
+
+            assertTrue(decoded.exportIncludeNames(), "WPC v" + version + " names");
+            assertTrue(decoded.exportIncludeColors(), "WPC v" + version + " colors");
+            assertTrue(decoded.exportIncludeRadii(), "WPC v" + version + " radii");
+            assertTrue(decoded.exportIncludeWaypointFlags(), "WPC v" + version + " flags");
+            assertTrue(decoded.exportIncludeGroupMeta(), "WPC v" + version + " group metadata");
+            assertTrue(decoded.exportIncludeZone(), "WPC v" + version + " zone");
+        }
+
+        WaypointerConfig explicit = WaypointerConfigCodec.decode(configCodeForRawPayload(
+                (byte) 4,
+                (byte) 44, (byte) 0,
+                (byte) 45, (byte) 0,
+                (byte) 46, (byte) 0,
+                (byte) 47, (byte) 0,
+                (byte) 48, (byte) 0,
+                (byte) 69, (byte) 0,
+                (byte) 0));
+
+        assertFalse(explicit.exportIncludeNames());
+        assertFalse(explicit.exportIncludeColors());
+        assertFalse(explicit.exportIncludeRadii());
+        assertFalse(explicit.exportIncludeWaypointFlags());
+        assertFalse(explicit.exportIncludeGroupMeta());
+        assertFalse(explicit.exportIncludeZone());
+    }
+
+    @Test
+    void versionFiveConfigCodesUseBareExportDefaultsAndHonorExplicitFields() throws IOException {
+        WaypointerConfig omitted = WaypointerConfigCodec.decode(
+                configCodeForRawPayload((byte) 5, (byte) 0));
+
+        assertFalse(omitted.exportIncludeNames());
+        assertFalse(omitted.exportIncludeColors());
+        assertFalse(omitted.exportIncludeRadii());
+        assertFalse(omitted.exportIncludeWaypointFlags());
+        assertFalse(omitted.exportIncludeGroupMeta());
+        assertFalse(omitted.exportIncludeZone());
+
+        WaypointerConfig explicit = WaypointerConfigCodec.decode(configCodeForRawPayload(
+                (byte) 5,
+                (byte) 44, (byte) 1,
+                (byte) 45, (byte) 1,
+                (byte) 46, (byte) 1,
+                (byte) 47, (byte) 1,
+                (byte) 48, (byte) 1,
+                (byte) 69, (byte) 1,
+                (byte) 0));
+
+        assertTrue(explicit.exportIncludeNames());
+        assertTrue(explicit.exportIncludeColors());
+        assertTrue(explicit.exportIncludeRadii());
+        assertTrue(explicit.exportIncludeWaypointFlags());
+        assertTrue(explicit.exportIncludeGroupMeta());
+        assertTrue(explicit.exportIncludeZone());
     }
 
     @Test
@@ -1035,29 +1120,50 @@ class WaypointerConfigTest {
     @Test
     void etherwarpAlignmentPreferencePersistsDisablesResetsAndReplaces() {
         WaypointerConfig config = new WaypointerConfig();
-        assertFalse(config.etherwarpAlignmentSound());
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
+                config.etherwarpAlignmentSound());
 
-        config.setEtherwarpAlignmentSound(true);
+        config.setEtherwarpAlignmentSound(WaypointerConfig.EtherwarpAlignmentSound.BELL);
         WaypointerConfig decoded = WaypointerConfigCodec.decode(
                 WaypointerConfigCodec.encode(config));
-        assertTrue(decoded.etherwarpAlignmentSound());
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.BELL,
+                decoded.etherwarpAlignmentSound());
 
         config.resetToDefaults();
-        assertFalse(config.etherwarpAlignmentSound());
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
+                config.etherwarpAlignmentSound());
         config.disableAllSettings();
-        assertFalse(config.etherwarpAlignmentSound());
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
+                config.etherwarpAlignmentSound());
 
-        config.setEtherwarpAlignmentSound(true);
+        config.setEtherwarpAlignmentSound(WaypointerConfig.EtherwarpAlignmentSound.PLING);
         config.replaceShareableSettingsWith(new WaypointerConfig());
-        assertFalse(config.etherwarpAlignmentSound());
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
+                config.etherwarpAlignmentSound());
     }
 
     @Test
-    void legacyConfigMigrationLeavesEtherwarpAlignmentSoundOff() {
-        assertFalse(WaypointerConfig.fromJson(
+    void legacyEtherwarpAlignmentSoundMigrationsPreserveTheExperienceCue() {
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF, WaypointerConfig.fromJson(
                 "{\"configSchemaVersion\":5}").etherwarpAlignmentSound());
-        assertFalse(WaypointerConfig.fromJson(
-                "{\"configSchemaVersion\":6}").etherwarpAlignmentSound());
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE, WaypointerConfig.fromJson(
+                "{\"configSchemaVersion\":6,\"etherwarpAlignmentSound\":true}")
+                .etherwarpAlignmentSound());
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF, WaypointerConfig.fromJson(
+                "{\"configSchemaVersion\":6,\"etherwarpAlignmentSound\":false}")
+                .etherwarpAlignmentSound());
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.PLING, WaypointerConfig.fromJson(
+                "{\"configSchemaVersion\":7,\"etherwarpAlignmentSoundType\":\"PLING\"}")
+                .etherwarpAlignmentSound());
+    }
+
+    @Test
+    void legacyConfigCodeBooleanEtherwarpCueDecodesAsExperience() throws IOException {
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(configCodeForRawPayload(
+                (byte) 4, (byte) 79, (byte) 1, (byte) 0));
+
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE,
+                decoded.etherwarpAlignmentSound());
     }
 
     @Test

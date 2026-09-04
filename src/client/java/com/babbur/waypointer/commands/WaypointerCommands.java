@@ -9,6 +9,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.babbur.waypointer.chat.ChatImportCache;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -222,6 +223,9 @@ public final class WaypointerCommands {
                                 .executes(ctx -> shareCommands.runExportConfig(ctx.getSource())))
                         .then(literal("dungeon")
                                 .executes(ctx -> shareCommands.runExportDungeon(ctx.getSource())))
+                        .then(literal("bare")
+                                .executes(ctx -> shareCommands.runExport(
+                                        ctx.getSource(), WaypointCodec.Options.BARE_COORDINATES)))
                         .then(literal("names")
                                 .executes(ctx -> shareCommands.runExport(ctx.getSource(), WaypointCodec.Options.WITH_NAMES)))
                         .then(literal("nonames")
@@ -245,7 +249,21 @@ public final class WaypointerCommands {
                         .then(argument("handle", StringArgumentType.word())
                                 .suggests(suggestions.suggestChatHandles())
                                 .executes(ctx -> shareCommands.runImportChat(ctx.getSource(),
-                                        StringArgumentType.getString(ctx, "handle")))))
+                                        StringArgumentType.getString(ctx, "handle"))))
+                        .then(literal("config")
+                                .then(argument("handle", StringArgumentType.word())
+                                        .suggests(suggestions.suggestChatHandles())
+                                        .executes(ctx -> shareCommands.runImportChatTyped(
+                                                ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "handle"),
+                                                UniversalShareCodec.Type.CONFIG))))
+                        .then(literal("dungeon")
+                                .then(argument("handle", StringArgumentType.word())
+                                        .suggests(suggestions.suggestChatHandles())
+                                        .executes(ctx -> shareCommands.runImportChatTyped(
+                                                ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "handle"),
+                                                UniversalShareCodec.Type.DUNGEON)))))
                 .then(routeCommands.waypointCommand())
                 .then(groupCommands.areaCommand())
                 .then(groupCommands.groupCommand("route"))

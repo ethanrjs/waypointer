@@ -167,8 +167,7 @@ class WaypointWorldRenderer {
                 || style == WaypointerConfig.BoxStyle.PAINT
                 || hasFilledSubwaypoint(groups);
         WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
-        boolean drawPaint = style == WaypointerConfig.BoxStyle.PAINT
-                && hasPaintedGroup(groups, defaultPaint);
+        boolean drawPaint = hasPaintedGroup(groups, defaultPaint);
         boolean drawBeams = config.beaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF;
         boolean drawTexturedBeams = drawBeams && config.useBeaconBeamTextures();
         boolean drawFlatBeams = drawBeams && !drawTexturedBeams;
@@ -266,8 +265,7 @@ class WaypointWorldRenderer {
                 }
                 if (drawFill) {
                     for (WaypointGroup g : groups) {
-                        if (style == WaypointerConfig.BoxStyle.PAINT
-                                && effectivePaint(g, defaultPaint) != null) continue;
+                        if (!shouldEmitRgbFill(g, defaultPaint)) continue;
                         emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
                                 drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT,
@@ -290,8 +288,7 @@ class WaypointWorldRenderer {
                 }
                 if (drawFill) {
                     for (WaypointGroup g : groups) {
-                        if (style == WaypointerConfig.BoxStyle.PAINT
-                                && effectivePaint(g, defaultPaint) != null) continue;
+                        if (!shouldEmitRgbFill(g, defaultPaint)) continue;
                         emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
                                 drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT,
@@ -786,6 +783,10 @@ class WaypointWorldRenderer {
         if (happySnowmanPaint != null) return happySnowmanPaint;
         if (group == null || !group.paintEnabled()) return null;
         return group.paint() != null ? group.paint() : defaultPaint;
+    }
+
+    static boolean shouldEmitRgbFill(WaypointGroup group, WaypointPaint defaultPaint) {
+        return effectivePaint(group, defaultPaint) == null;
     }
 
     private static boolean isSmallSubwaypoint(Waypoint waypoint) {
