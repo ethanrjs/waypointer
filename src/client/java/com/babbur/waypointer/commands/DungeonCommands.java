@@ -8,6 +8,7 @@ import com.mojang.brigadier.tree.LiteralCommandNode;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.Direction;
@@ -197,12 +198,53 @@ public final class DungeonCommands {
                 throw new IOException("route data is too large (max " + maxBytes + " bytes)");
             }
             String payload = new String(bytes, StandardCharsets.UTF_8);
-            return new ImportReadResult(DungeonRouteImporter.parse(payload), null, false);
+            return new ImportReadResult(decodeImportPayload(payload), null, false);
         } catch (IOException readFailure) {
             return new ImportReadResult(null, errorMessage(readFailure, "could not read route data"), true);
         } catch (IllegalArgumentException invalidPayload) {
             return new ImportReadResult(null, errorMessage(invalidPayload, "invalid route data"), false);
         }
+    }
+
+    static DungeonRouteImporter.Result decodeImportPayload(String payload) {
+        IllegalArgumentException legacyFailure;
+        try {
+            // Preserve the established WPD/JSON/Odin/SecretRoutes precedence and
+            // reporting. Universal decoding is the typed fallback for new WP shares.
+            return DungeonRouteImporter.parse(payload);
+        } catch (IllegalArgumentException failure) {
+            legacyFailure = failure;
+        }
+
+        UniversalShareCodec.Decoded decoded;
+        try {
+            decoded = UniversalShareCodec.decode(payload);
+        } catch (IllegalArgumentException universalFailure) {
+            if (looksLikeTypedWaypointerShare(payload)) throw universalFailure;
+            throw legacyFailure;
+        }
+        if (decoded instanceof UniversalShareCodec.DungeonRoutes dungeonRoutes) {
+            return dungeonRoutes.result();
+        }
+        if (decoded instanceof UniversalShareCodec.Configuration) {
+            throw new IllegalArgumentException(
+                    "expected a dungeon route share, got a configuration share");
+        }
+        throw new IllegalArgumentException(
+                "expected a dungeon route share, got a waypoint route share");
+    }
+
+    private static boolean looksLikeTypedWaypointerShare(String payload) {
+        if (payload == null) return false;
+        String text = payload.trim();
+        if (text.startsWith("```") && text.endsWith("```") && text.length() >= 6) {
+            int bodyStart = 3;
+            int newline = text.indexOf('\n', bodyStart);
+            if (newline >= 0) bodyStart = newline + 1;
+            String body = text.substring(bodyStart, text.length() - 3).strip();
+            if (!body.isEmpty()) text = body;
+        }
+        return text.startsWith("WP:") || text.startsWith("WPC:");
     }
 
     private static String errorMessage(Exception failure, String fallback) {

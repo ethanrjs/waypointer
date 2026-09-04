@@ -17,6 +17,7 @@ public abstract class ChatComponentMixin {
 
     @ModifyVariable(method = "addPlayerMessage", at = @At("HEAD"), argsOnly = true)
     private Component waypointer$badgePlayerMessage(Component message) {
-        return WaypointerContributorBadge.apply(message, WaypointerClient.config());
+        Component badged = WaypointerContributorBadge.apply(message, WaypointerClient.config());
+        return WaypointerClient.decorateChatImport(badged);
     }
 }

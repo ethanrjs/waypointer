@@ -1,15 +1,18 @@
 package com.babbur.waypointer.commands;
 
 import com.babbur.waypointer.chat.ChatImportCache;
+import com.babbur.waypointer.codec.RouteLibraryCodec;
 import com.babbur.waypointer.codec.RouteLibraryMetadata;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.config.WaypointerConfigCodec;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.screen.ConfigImportConfirmation;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
@@ -29,6 +32,132 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerShareCommandsTest {
+
+    @Test
+    void typedChatConfigWaitsForConfirmationAndCancelDoesNotMutateAnything() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        WaypointerConfig current = new WaypointerConfig();
+        WaypointerConfig imported = new WaypointerConfig();
+        imported.setShowTracer(false);
+        CapturingConfirmation confirmation = new CapturingConfirmation();
+        WaypointerShareCommands commands = new WaypointerShareCommands(
+                manager, current, new ChatImportCache(), new CapturingScheduler(), confirmation);
+        CommandMessages messages = new CommandMessages();
+
+        commands.finishImport(messages.source(), WaypointCommandImport.decode(
+                        UniversalShareCodec.encodeConfig(imported)),
+                "chat", manager.currentZone(), UniversalShareCodec.Type.CONFIG);
+
+        assertEquals(1, confirmation.calls);
+        assertTrue(current.showTracer(), "opening confirmation must not apply settings");
+        assertTrue(manager.allGroupsList().isEmpty(),
+                "config imports must never create current-zone routes");
+        assertEquals(List.of("waypointer.command.import.config.review"),
+                messages.feedbackKeys());
+
+        confirmation.resolve(false);
+        assertTrue(current.showTracer(), "cancel must leave live settings untouched");
+        assertTrue(manager.allGroupsList().isEmpty());
+        assertEquals(List.of(
+                        "waypointer.command.import.config.review",
+                        "waypointer.command.import.config.cancelled"),
+                messages.feedbackKeys());
+    }
+
+    @Test
+    void typedChatConfigAppliesOnlyAfterAffirmativeConfirmation() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerConfig current = new WaypointerConfig();
+        WaypointerConfig imported = new WaypointerConfig();
+        imported.setShowTracer(false);
+        CapturingConfirmation confirmation = new CapturingConfirmation();
+        WaypointerShareCommands commands = new WaypointerShareCommands(
+                manager, current, new ChatImportCache(), new CapturingScheduler(), confirmation);
+        CommandMessages messages = new CommandMessages();
+
+        commands.finishImport(messages.source(), WaypointCommandImport.decode(
+                        UniversalShareCodec.encodeConfig(imported)),
+                "chat", Zone.UNKNOWN, UniversalShareCodec.Type.CONFIG);
+        assertTrue(current.showTracer());
+
+        confirmation.resolve(true);
+        assertFalse(current.showTracer());
+        assertEquals("waypointer.command.import.config.imported.one",
+                messages.feedbackKeys().getLast());
+        assertTrue(manager.allGroupsList().isEmpty());
+    }
+
+    @Test
+    void legacyWpcInteractiveImportUsesTheSameConfirmationGate() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerConfig current = new WaypointerConfig();
+        WaypointerConfig imported = new WaypointerConfig();
+        imported.setShowTracer(false);
+        CapturingConfirmation confirmation = new CapturingConfirmation();
+        WaypointerShareCommands commands = new WaypointerShareCommands(
+                manager, current, new ChatImportCache(), new CapturingScheduler(), confirmation);
+
+        commands.finishImport(new CommandMessages().source(), WaypointCommandImport.decode(
+                        WaypointerConfigCodec.encode(imported)),
+                "clipboard", Zone.UNKNOWN);
+
+        assertEquals(1, confirmation.calls);
+        assertTrue(current.showTracer());
+    }
+
+    @Test
+    void typedChatClickRejectsWrongShareTypeWithoutFallingThrough() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerConfig current = new WaypointerConfig();
+        CapturingConfirmation confirmation = new CapturingConfirmation();
+        WaypointerShareCommands commands = new WaypointerShareCommands(
+                manager, current, new ChatImportCache(), new CapturingScheduler(), confirmation);
+        WaypointGroup route = WaypointGroup.create("Route", "hub");
+        route.add(Waypoint.at(1, 2, 3));
+        CommandMessages messages = new CommandMessages();
+
+        commands.finishImport(messages.source(), WaypointCommandImport.decode(
+                        WaypointCodec.encode(List.of(route), WaypointCodec.Options.WITH_NAMES)),
+                "chat", Zone.fromId("hub"), UniversalShareCodec.Type.CONFIG);
+
+        assertEquals(0, confirmation.calls);
+        assertTrue(manager.allGroupsList().isEmpty());
+        assertEquals(List.of("waypointer.command.import.wrong_type"), messages.errorKeys());
+    }
+
+    @Test
+    void typedRouteClickStillImportsRouteWithoutConfigConfirmation() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        CapturingConfirmation confirmation = new CapturingConfirmation();
+        WaypointerShareCommands commands = new WaypointerShareCommands(
+                manager, new WaypointerConfig(), new ChatImportCache(),
+                new CapturingScheduler(), confirmation);
+        WaypointGroup route = WaypointGroup.create("Route", Zone.UNKNOWN.id());
+        route.add(Waypoint.at(1, 2, 3));
+
+        commands.finishImport(new CommandMessages().source(), WaypointCommandImport.decode(
+                        WaypointCodec.encode(List.of(route), WaypointCodec.Options.WITH_NAMES)),
+                "chat", manager.currentZone(), UniversalShareCodec.Type.WAYPOINTS);
+
+        assertEquals(0, confirmation.calls);
+        assertEquals(1, manager.allGroupsList().size());
+        assertEquals("hub", manager.allGroupsList().getFirst().zoneId());
+    }
+
+    @Test
+    void dungeonCommandEncoderUsesUniversalKind4Payload() {
+        WaypointGroup route = WaypointGroup.create("Crypt", "crypt-a");
+        route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        route.add(Waypoint.at(1, 70, 2));
+
+        String payload = UniversalShareCodec.encodeDungeon(List.of(route));
+
+        assertTrue(payload.startsWith("WP:A") || payload.startsWith("WP:B"));
+        assertInstanceOf(UniversalShareCodec.DungeonRoutes.class,
+                UniversalShareCodec.decode(payload));
+    }
 
     @Test
     void defaultExportDoesNotSelectTheWholeLibraryWithoutAnActiveZone() {
@@ -75,6 +204,106 @@ class WaypointerShareCommandsTest {
     }
 
     @Test
+    void freshConfigDefaultExportUsesTheV10BareCoordinatePath() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        WaypointGroup active = WaypointGroup.create("Decorated route", "hub");
+        active.add(Waypoint.at(1, 70, 2).withColor(0x112233));
+        active.add(Waypoint.at(9, 71, -4).withColor(0xAABBCC));
+        manager.add(active);
+        CapturingScheduler scheduler = new CapturingScheduler();
+        WaypointerShareCommands commands = commands(manager, scheduler);
+
+        WaypointCodec.Options defaults = commands.exportOptionsFromConfig();
+        assertFalse(defaults.isBareCoordinateProjection());
+        assertEquals(1, commands.runExport(new CommandMessages().source(), defaults));
+        assertTrue(scheduler.options.isBareCoordinateProjection());
+
+        String payload = UniversalShareCodec.encodeWaypoints(
+                scheduler.groups, scheduler.options, scheduler.metadata);
+        assertTrue(payload.startsWith("WP:A") || payload.startsWith("WP:B"));
+        List<WaypointGroup> decoded = WaypointCodec.decode(payload);
+        assertEquals(1, decoded.size());
+        assertEquals(List.of(
+                        Waypoint.at(1, 70, 2),
+                        Waypoint.at(9, 71, -4)),
+                decoded.getFirst().waypoints());
+    }
+
+    @Test
+    void freshConfigBulkCommandExportUsesKind6ThroughTheProductFacade() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        WaypointGroup first = WaypointGroup.create("Discarded first", "hub");
+        first.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        first.add(Waypoint.at(1, 70, 2).withColor(0x112233));
+        WaypointGroup second = WaypointGroup.create("Discarded second", "hub");
+        second.add(Waypoint.at(9, 71, -4).withColor(0xAABBCC));
+        manager.addAll(List.of(first, second));
+        CapturingScheduler scheduler = new CapturingScheduler();
+        WaypointerShareCommands commands = commands(manager, scheduler);
+        WaypointCodec.Options defaults = commands.exportOptionsFromConfig();
+
+        assertFalse(defaults.isBareCoordinateProjection());
+        assertEquals(2, commands.runExportRoutes(new CommandMessages().source(), defaults));
+        assertTrue(scheduler.options.isBareCoordinateProjection());
+        String payload = UniversalShareCodec.encodeWaypoints(
+                scheduler.groups, scheduler.options, scheduler.metadata);
+        var debug = WaypointCodec.debugDecode(payload);
+
+        assertEquals(10, debug.version());
+        assertTrue(debug.groups().stream().allMatch(group ->
+                group.coordMode().startsWith("V10_BARE_PACK_")));
+        assertFalse(payload.startsWith(RouteLibraryCodec.MAGIC),
+                "all-off options must filter captured metadata before kind6 selection");
+    }
+
+    @Test
+    void freshConfigActiveDungeonExportRemainsOnTheNonBareGeneralPath() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup stored = new WaypointGroup("stored", "Stored", "room-a");
+        stored.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        stored.add(Waypoint.at(1, 2, 3));
+        WaypointGroup generated = new WaypointGroup(
+                "dungeon:auto:room-a", "Generated", "room-a");
+        generated.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        generated.setRuntimeOnly(true);
+        generated.setRuntimeSourceGroupId(stored.id());
+        generated.add(Waypoint.at(10, 20, 30));
+        manager.addAll(List.of(stored, generated));
+        manager.onZoneChanged(new Zone("room-a", "Room A"));
+        CapturingScheduler scheduler = new CapturingScheduler();
+        WaypointerShareCommands commands = commands(manager, scheduler);
+
+        WaypointCodec.Options defaults = commands.exportOptionsFromConfig();
+        assertFalse(defaults.isBareCoordinateProjection());
+        assertEquals(1, commands.runExport(new CommandMessages().source(), defaults));
+        assertFalse(scheduler.options.isBareCoordinateProjection());
+
+        String payload = UniversalShareCodec.encodeWaypoints(
+                scheduler.groups, scheduler.options, scheduler.metadata);
+        assertTrue(WaypointCodec.debugDecode(payload).groups().stream().noneMatch(group ->
+                group.coordMode().startsWith("V10_BARE")));
+        assertInstanceOf(UniversalShareCodec.Waypoints.class,
+                UniversalShareCodec.decode(payload));
+    }
+
+    @Test
+    void bareExportFeedbackExplainsTheCoordinateOnlyProjection() {
+        Component message = WaypointerShareCommands.exportSuccessMessage(
+                1, "WP:Apayload", WaypointCodec.Options.BARE_COORDINATES, true);
+
+        assertTrue(message.getSiblings().stream()
+                .anyMatch(component -> component.getContents() instanceof TranslatableContents translated
+                        && translated.getKey().equals(
+                        "waypointer.command.export.coordinates_only")));
+        assertFalse(message.getSiblings().stream()
+                .anyMatch(component -> component.getContents() instanceof TranslatableContents translated
+                        && translated.getKey().equals(
+                        "waypointer.command.export.without_names")));
+    }
+
+    @Test
     void exportCapturesLibraryMetadataBeforeCreatingCodecSnapshots() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(Zone.fromId("hub"));
@@ -97,8 +326,12 @@ class WaypointerShareCommandsTest {
 
         String payload = UniversalShareCodec.encodeWaypoints(
                 scheduler.groups, scheduler.options, scheduler.metadata);
-        assertTrue(payload.startsWith("WPL:1:"));
-        assertFalse(UniversalShareCodec.decode(payload) == null);
+        assertTrue(payload.startsWith("WP:"));
+        assertFalse(payload.startsWith("WPL:"));
+        UniversalShareCodec.Decoded decoded = UniversalShareCodec.decode(payload);
+        assertEquals(UniversalShareCodec.Type.WAYPOINTS, decoded.type());
+        assertEquals(1, ((UniversalShareCodec.Waypoints) decoded).result()
+                .libraryMetadata().folders().size());
     }
 
     @Test
@@ -267,6 +500,29 @@ class WaypointerShareCommandsTest {
         }
     }
 
+    private static final class CapturingConfirmation
+            implements WaypointerShareCommands.ConfigImportConfirmationPresenter {
+        private int calls;
+        private WaypointerConfig current;
+        private WaypointerConfig imported;
+        private Consumer<ConfigImportConfirmation.Outcome> completion;
+
+        @Override
+        public void present(WaypointerConfig current, WaypointerConfig imported,
+                            Consumer<ConfigImportConfirmation.Outcome> completion) {
+            calls++;
+            this.current = current;
+            this.imported = imported;
+            this.completion = completion;
+        }
+
+        private void resolve(boolean confirmed) {
+            Consumer<ConfigImportConfirmation.Outcome> pending = completion;
+            completion = null;
+            pending.accept(ConfigImportConfirmation.complete(current, imported, confirmed));
+        }
+    }
+
     private static final class CommandMessages {
         private final List<Component> feedback = new ArrayList<>();
         private final List<Component> errors = new ArrayList<>();
@@ -305,6 +561,12 @@ class WaypointerShareCommandsTest {
 
         private List<String> feedbackKeys() {
             return feedback.stream()
+                    .map(WaypointerShareCommandsTest::translationKey)
+                    .toList();
+        }
+
+        private List<String> errorKeys() {
+            return errors.stream()
                     .map(WaypointerShareCommandsTest::translationKey)
                     .toList();
         }

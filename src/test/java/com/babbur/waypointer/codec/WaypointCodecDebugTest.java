@@ -42,7 +42,7 @@ class WaypointCodecDebugTest {
         assertEquals(encoded.length(), d.inputChars());
         assertEquals(WaypointCodec.MAGIC, d.magic());
         assertEquals(encoded.length() - WaypointCodec.MAGIC.length(), d.payloadChars());
-        assertEquals("ASCII base-91 stream + v9 dictionary + CRC-32", d.textEncoding());
+        assertTrue(d.textEncoding().contains("V10 general"));
         assertTrue(d.rawBodyBytes() > 0, "raw body must be non-empty");
         assertTrue(d.compressedBytes() > 0, "compressed must be non-empty");
     }
@@ -52,8 +52,8 @@ class WaypointCodecDebugTest {
         String encoded = WaypointCodec.encode(List.of(sampleGroup()), WaypointCodec.Options.WITH_NAMES);
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
-        // Low nibble carries v9 and bits 4..6 identify the general-route kind.
-        assertEquals(WaypointCodec.WIRE_VERSION, d.version(),
+        // Low nibble carries v10 and bits 4..6 identify the general-route kind.
+        assertEquals(WaypointCodec.V10_WIRE_VERSION, d.version(),
                 "encoder must stamp the current wire version");
         assertEquals(0, d.headerByte() & 0b1100_0000,
                 "reserved high bits must stay 0");
@@ -64,18 +64,18 @@ class WaypointCodecDebugTest {
     }
 
     @Test
-    void header_byte_marks_anonymous_body_when_coordinate_only_names_excluded() {
+    void header_byte_marks_v10_general_body_when_waypoint_names_are_excluded() {
         String encoded = WaypointCodec.encode(List.of(sampleGroup()), WaypointCodec.Options.NO_NAMES);
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
-        // This source has stripped optional metadata, so it takes the distinct
-        // anonymous-with-metadata fallback kind rather than compact kind 2.
-        assertEquals(WaypointCodec.WIRE_VERSION, d.version());
-        assertEquals(WaypointCodec.V9_CONTENT_KIND_COORDINATE_ROUTE_WITH_META,
+        // Group metadata remains requested, so the lossless V10 general body is
+        // the only body equivalent to this projection.
+        assertEquals(WaypointCodec.V10_WIRE_VERSION, d.version());
+        assertEquals(V10GeneralRouteCodec.CONTENT_KIND,
                 WaypointCodec.v9ContentKind(d.headerByte()));
         assertFalse(d.includesNames());
         assertFalse(d.hasLabel());
-        assertTrue(d.reservedBit6(), "v6+ bit 6 marks the anonymous coordinate-only body");
+        assertFalse(d.reservedBit6());
         assertFalse(d.reservedBit7());
     }
 
@@ -85,7 +85,7 @@ class WaypointCodecDebugTest {
                 WaypointCodec.Options.builder().label("Boss path -- F7").build());
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
 
-        assertTrue(d.hasLabel(), "label-bearing export must set v9 header bit 7");
+        assertTrue(d.hasLabel(), "label-bearing export must set V10 header bit 7");
         assertEquals("Boss path -- F7", d.label(), "decoded label must match input verbatim");
         assertEquals("Boss path -- F7", WaypointCodec.peekLabel(encoded).orElse(null),
                 "peekLabel must return the same string without a full decode");
@@ -96,7 +96,7 @@ class WaypointCodecDebugTest {
         String encoded = WaypointCodec.encode(List.of(sampleGroup()),
                 WaypointCodec.Options.builder().label("").build());
         DecodeDebug d = WaypointCodec.debugDecode(encoded);
-        assertFalse(d.hasLabel(), "empty label must not flip v9 label bit");
+        assertFalse(d.hasLabel(), "empty label must not flip V10 label bit");
         assertEquals("", d.label());
         assertTrue(WaypointCodec.peekLabel(encoded).isEmpty());
     }
@@ -132,8 +132,8 @@ class WaypointCodecDebugTest {
         // Yo-yo pattern inside the FIXED_COMPACT bit range. The coord-mode
         // contest ranks candidates by post-DEFLATE size, and on a 2-value
         // alternating pattern all three bit-packed candidates deflate to
-        // essentially the same size as ABSOLUTE_VARINT (the dictionary + RLE
-        // kills the difference). So AUTO may legitimately pick any of them
+        // essentially the same size as ABSOLUTE_VARINT (RLE kills the
+        // difference). So AUTO may legitimately pick any of them
         // -- what the debug layer must guarantee is that whichever it picks
         // round-trips the exact coord stream and surfaces a valid coord-mode
         // name.

@@ -11,7 +11,8 @@ public enum ImportSource {
     FIRMAMENT,
     COLEWEIGHT,
     ODIN,
-    JSON;
+    JSON,
+    CHUNKLOGGER;
 
     static ImportSource from(WaypointImporter.Source source) {
         return valueOf(source.name());

@@ -26,7 +26,8 @@ final class RoutePreviewPaintResource {
     private Entry active;
     private long frame;
 
-    record Entry(String routeId, WaypointPaint paint, Identifier id, RenderType renderType) {}
+    record Entry(String routeId, WaypointPaint paint, Identifier id,
+                 RenderType throughWalls, RenderType depthTested) {}
     private record Retired(Identifier id, long releaseFrame) {}
 
     RoutePreviewPaintResource() {}
@@ -55,6 +56,7 @@ final class RoutePreviewPaintResource {
             registered = true;
             bake(texture, paint);
             active = new Entry(routeId, paint, id,
+                    WaypointerRenderPipelines.paintedQuads(id, false),
                     WaypointerRenderPipelines.paintedQuads(id, true));
             complete = true;
             return active;

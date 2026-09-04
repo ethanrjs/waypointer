@@ -152,24 +152,6 @@ public final class MinecraftCompat {
                 implementation);
     }
 
-    static boolean requiredBindingsAvailable() {
-        boolean screen = MINECRAFT_SCREEN != null || GUI_SCREEN != null;
-        boolean setScreen = MINECRAFT_SET_SCREEN != null || GUI_SET_SCREEN != null;
-        boolean chat = GUI_GET_CHAT != null || GUI_HUD != null && HUD_GET_CHAT != null;
-        boolean overlay = GUI_SET_OVERLAY_MESSAGE != null
-                || GUI_HUD != null && HUD_SET_OVERLAY_MESSAGE != null;
-        boolean toast = MINECRAFT_GET_TOAST_MANAGER != null || GUI_TOAST_MANAGER != null;
-        boolean camera = GAME_RENDERER_GET_MAIN_CAMERA != null || GAME_RENDERER_MAIN_CAMERA != null;
-        boolean renderState = GAME_RENDERER_GET_GAME_RENDER_STATE != null
-                || GAME_RENDERER_GAME_RENDER_STATE != null;
-        boolean gpu = GPU_GET_DEVICE_INFO != null
-                ? DEVICE_INFO_VENDOR_NAME != null && DEVICE_INFO_BACKEND_NAME != null
-                    && DEVICE_INFO_NAME != null && DEVICE_INFO_DRIVER_INFO != null
-                : GPU_GET_VENDOR != null && GPU_GET_BACKEND_NAME != null
-                    && GPU_GET_IMPLEMENTATION_INFORMATION != null;
-        return screen && setScreen && chat && overlay && toast && camera && renderState && gpu;
-    }
-
     public record GpuInfo(String vendor, String backend, String implementation) {}
 
     private static Object hud(Gui gui) {

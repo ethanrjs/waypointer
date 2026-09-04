@@ -30,7 +30,4 @@ public final class WorldOverlayCompat {
         return true;
     }
 
-    public static boolean requiredBindingsAvailable() {
-        return true;
-    }
 }

@@ -112,6 +112,14 @@ class SettingsScreenTest {
                 SettingsValuePolicy.nextEnumValue(boxStyle, WaypointerConfig.BoxStyle.PAINT));
         assertEquals(WaypointerConfig.BoxStyle.OUTLINED,
                 SettingsValuePolicy.nextEnumValue(boxStyle, "garbage"));
+
+        Setting etherwarpSound = SettingsCatalog.byId("etherwarpAlignmentSound");
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE,
+                SettingsValuePolicy.nextEnumValue(etherwarpSound,
+                        WaypointerConfig.EtherwarpAlignmentSound.OFF));
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
+                SettingsValuePolicy.nextEnumValue(etherwarpSound,
+                        WaypointerConfig.EtherwarpAlignmentSound.BELL));
     }
 
     @Test

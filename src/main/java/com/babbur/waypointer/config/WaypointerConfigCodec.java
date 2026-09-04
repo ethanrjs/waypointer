@@ -8,7 +8,11 @@ import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.Inflater;
@@ -17,7 +21,9 @@ import java.util.zip.InflaterInputStream;
 public final class WaypointerConfigCodec {
 
     public static final String MAGIC = "WPC:";
-    static final int VERSION = 4;
+    static final int VERSION = 6;
+    private static final int LEGACY_VERSION_5 = 5;
+    private static final int LEGACY_VERSION_4 = 4;
     private static final int LEGACY_VERSION_3 = 3;
     private static final int LEGACY_VERSION_2 = 2;
     private static final int LEGACY_VERSION_1 = 1;
@@ -103,6 +109,7 @@ public final class WaypointerConfigCodec {
     private static final int SHOW_CURRENT_SEQUENCE_WAYPOINT = 77;
     private static final int SEQUENCE_NEXT_WAYPOINT_COUNT = 78;
     private static final int ETHERWARP_ALIGNMENT_SOUND = 79;
+    private static final int ETHERWARP_ALIGNMENT_SOUND_TYPE = 80;
 
     private WaypointerConfigCodec() {
     }
@@ -139,10 +146,14 @@ public final class WaypointerConfigCodec {
             if (version != LEGACY_VERSION_1
                     && version != LEGACY_VERSION_2
                     && version != LEGACY_VERSION_3
+                    && version != LEGACY_VERSION_4
+                    && version != LEGACY_VERSION_5
                     && version != VERSION) {
                 throw new IllegalArgumentException("Unsupported config code version: " + version);
             }
-            WaypointerConfig config = new WaypointerConfig();
+            WaypointerConfig config = version <= LEGACY_VERSION_4
+                    ? WaypointerConfig.legacyConfigCodeDefaults()
+                    : new WaypointerConfig();
             if (version == LEGACY_VERSION_1) {
                 config.setBeaconOpacity(0.8);
             }
@@ -244,7 +255,7 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, IRIS_SHADER_HUD_FALLBACK, config.irisShaderHudFallback(), defaults.irisShaderHudFallback());
         writeInt(out, TEMP_DEFAULT_MODE, config.tempDefaultMode(), defaults.tempDefaultMode());
         writeInt(out, TEMP_DEFAULT_DURATION_SEC, config.tempDefaultDurationSec(), defaults.tempDefaultDurationSec());
-        writeBoolean(out, ETHERWARP_ALIGNMENT_SOUND,
+        writeEnum(out, ETHERWARP_ALIGNMENT_SOUND_TYPE,
                 config.etherwarpAlignmentSound(), defaults.etherwarpAlignmentSound());
     }
     private static void readFields(DataInputStream in, WaypointerConfig config) throws IOException {
@@ -338,7 +349,13 @@ public final class WaypointerConfigCodec {
                 case TEMP_DEFAULT_MODE -> config.setTempDefaultMode(in.readInt());
                 case TEMP_DEFAULT_DURATION_MIN -> config.setTempDefaultDurationMin(in.readInt());
                 case TEMP_DEFAULT_DURATION_SEC -> config.setTempDefaultDurationSec(in.readInt());
-                case ETHERWARP_ALIGNMENT_SOUND -> config.setEtherwarpAlignmentSound(in.readBoolean());
+                // Tag 79 was a boolean in WPC v4 and v5; retain legacy decoding.
+                case ETHERWARP_ALIGNMENT_SOUND -> config.setEtherwarpAlignmentSound(
+                        in.readBoolean() ? WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE
+                                : WaypointerConfig.EtherwarpAlignmentSound.OFF);
+                case ETHERWARP_ALIGNMENT_SOUND_TYPE -> config.setEtherwarpAlignmentSound(readEnum(in,
+                        WaypointerConfig.EtherwarpAlignmentSound.values(),
+                        WaypointerConfig.EtherwarpAlignmentSound.OFF));
                 default -> throw new IllegalArgumentException("Unknown config field tag: " + tag);
             }
         }
@@ -395,6 +412,165 @@ public final class WaypointerConfigCodec {
                                                   E fallback) throws IOException {
         int ordinal = in.readUnsignedByte();
         return ordinal >= 0 && ordinal < values.length ? values[ordinal] : fallback;
+    }
+
+    static List<TaggedField> encodeTaggedFields(WaypointerConfig config) throws IOException {
+        if (config == null) throw new IllegalArgumentException("config is required");
+        ByteArrayOutputStream raw = new ByteArrayOutputStream();
+        writeFields(new DataOutputStream(raw), config, new WaypointerConfig());
+        byte[] bytes = raw.toByteArray();
+        TreeMap<Integer, byte[]> sorted = new TreeMap<>();
+        int offset = 0;
+        while (offset < bytes.length) {
+            int tag = bytes[offset++] & 0xFF;
+            int length = taggedFieldPayloadLength(tag, bytes, offset);
+            if (sorted.put(tag, Arrays.copyOfRange(bytes, offset, offset + length)) != null) {
+                throw new IOException("duplicate config field tag " + tag);
+            }
+            offset += length;
+        }
+        List<TaggedField> fields = new ArrayList<>(sorted.size());
+        for (Map.Entry<Integer, byte[]> entry : sorted.entrySet()) {
+            fields.add(new TaggedField(entry.getKey(), entry.getValue()));
+        }
+        return List.copyOf(fields);
+    }
+
+    static WaypointerConfig decodeTaggedFields(List<TaggedField> fields) throws IOException {
+        ByteArrayOutputStream raw = new ByteArrayOutputStream();
+        int previous = 0;
+        for (TaggedField field : fields) {
+            if (field.tag() <= previous || !isActiveFieldTag(field.tag())) {
+                throw new IOException("invalid config field ordering or tag " + field.tag());
+            }
+            validateTaggedFieldPayload(field.tag(), field.value());
+            raw.write(field.tag());
+            raw.write(field.value());
+            previous = field.tag();
+        }
+        raw.write(END);
+        DataInputStream input = new DataInputStream(new ByteArrayInputStream(raw.toByteArray()));
+        WaypointerConfig config = new WaypointerConfig();
+        readFields(input, config);
+        if (input.available() != 0) throw new IOException("trailing config field bytes");
+        return config;
+    }
+
+    static boolean isActiveFieldTag(int tag) {
+        return tag >= DEFAULT_REACH_RADIUS && tag <= ETHERWARP_ALIGNMENT_SOUND_TYPE
+                && tag != SHOW_COMPLETED
+                && tag != LEGACY_CHECK_FOR_UPDATES
+                && tag != TEMP_DEFAULT_DURATION_MIN
+                && tag != LEGACY_SHARP_WAYPOINT_EDGES
+                && tag != LEGACY_ROUTE_TIMES_ENABLED;
+    }
+
+    static boolean isRgbFieldTag(int tag) {
+        return tag == DEFAULT_WAYPOINT_COLOR || tag == TRACER_COLOR
+                || tag == ROUTE_LINE_COLOR || tag == IMPORTED_ROUTE_DEFAULT_COLOR
+                || tag == DUNGEON_ENTRY_PATH_COLOR || tag == WAYPOINT_OUTLINE_COLOR;
+    }
+
+    static boolean isUnsignedIntegerFieldTag(int tag) {
+        return tag == MAX_WAYPOINT_LABELS || tag == TEMP_DEFAULT_MODE
+                || tag == TEMP_DEFAULT_DURATION_SEC
+                || tag == SEQUENCE_PREVIOUS_WAYPOINT_COUNT
+                || tag == SEQUENCE_NEXT_WAYPOINT_COUNT;
+    }
+
+    static boolean isStringListFieldTag(int tag) {
+        return tag == CHAT_COORD_SENDER_BLACKLIST;
+    }
+
+    static void validateTaggedFieldPayload(int tag, byte[] value) throws IOException {
+        if (!isActiveFieldTag(tag)) throw new IOException("unknown current config field tag " + tag);
+        int fixedLength = taggedFieldFixedLength(tag);
+        if (fixedLength >= 0) {
+            if (value.length != fixedLength) {
+                throw new IOException("config field " + tag + " has length " + value.length
+                        + ", expected " + fixedLength);
+            }
+            if (fixedLength == 1 && isBooleanFieldTag(tag)
+                    && value[0] != 0 && value[0] != 1) {
+                throw new IOException("config field " + tag + " has non-canonical boolean");
+            }
+            return;
+        }
+        if (tag != CHAT_COORD_SENDER_BLACKLIST
+                || taggedFieldPayloadLength(tag, value, 0) != value.length) {
+            throw new IOException("malformed variable-length config field " + tag);
+        }
+    }
+
+    private static int taggedFieldPayloadLength(int tag, byte[] bytes, int offset)
+            throws IOException {
+        int fixedLength = taggedFieldFixedLength(tag);
+        if (fixedLength >= 0) {
+            requireAvailable(bytes, offset, fixedLength);
+            return fixedLength;
+        }
+        if (tag != CHAT_COORD_SENDER_BLACKLIST) {
+            throw new IOException("unsupported config field tag " + tag);
+        }
+        int cursor = offset;
+        int count = readUnsignedShort(bytes, cursor);
+        cursor += Short.BYTES;
+        for (int index = 0; index < count; index++) {
+            int length = readUnsignedShort(bytes, cursor);
+            cursor += Short.BYTES;
+            requireAvailable(bytes, cursor, length);
+            cursor += length;
+        }
+        return cursor - offset;
+    }
+
+    private static int taggedFieldFixedLength(int tag) {
+        return switch (tag) {
+            case DEFAULT_REACH_RADIUS, TRACER_OPACITY, TRACER_THICKNESS,
+                    WAYPOINT_OUTLINE_THICKNESS, BEACON_OPACITY, LABEL_SCALE,
+                    HIDE_WAYPOINTS_NEAR_RADIUS, HIDE_WAYPOINT_LABELS_NEAR_RADIUS,
+                    MAX_STATIC_RENDER_DISTANCE, LABEL_HEIGHT_OFFSET,
+                    WAYPOINT_MARKER_SCALE, WAYPOINT_OUTLINE_OPACITY -> Double.BYTES;
+            case DEFAULT_WAYPOINT_COLOR, TRACER_COLOR, ROUTE_LINE_COLOR,
+                    MAX_WAYPOINT_LABELS, IMPORTED_ROUTE_DEFAULT_COLOR,
+                    TEMP_DEFAULT_MODE, TEMP_DEFAULT_DURATION_SEC,
+                    DUNGEON_ENTRY_PATH_COLOR, WAYPOINT_OUTLINE_COLOR,
+                    SEQUENCE_PREVIOUS_WAYPOINT_COUNT, SEQUENCE_NEXT_WAYPOINT_COUNT -> Integer.BYTES;
+            case BOX_STYLE, BEACON_BEAM_MODE, IMPORTED_ROUTE_COLOR_MODE,
+                    ETHERWARP_ALIGNMENT_SOUND_TYPE -> 1;
+            case CHAT_COORD_SENDER_BLACKLIST -> -1;
+            default -> isActiveFieldTag(tag) ? 1 : -2;
+        };
+    }
+
+    private static boolean isBooleanFieldTag(int tag) {
+        return isActiveFieldTag(tag) && taggedFieldFixedLength(tag) == 1
+                && tag != BOX_STYLE && tag != BEACON_BEAM_MODE
+                && tag != IMPORTED_ROUTE_COLOR_MODE
+                && tag != ETHERWARP_ALIGNMENT_SOUND_TYPE;
+    }
+
+    private static int readUnsignedShort(byte[] bytes, int offset) throws IOException {
+        requireAvailable(bytes, offset, Short.BYTES);
+        return ((bytes[offset] & 0xFF) << 8) | (bytes[offset + 1] & 0xFF);
+    }
+
+    private static void requireAvailable(byte[] bytes, int offset, int length) throws IOException {
+        if (offset < 0 || length < 0 || offset > bytes.length - length) {
+            throw new IOException("truncated config field payload");
+        }
+    }
+
+    static record TaggedField(int tag, byte[] value) {
+        TaggedField {
+            if (value == null) throw new IllegalArgumentException("null config field value");
+            value = value.clone();
+        }
+
+        @Override
+        public byte[] value() {
+            return value.clone();
+        }
     }
 
     private static byte[] deflate(byte[] input) throws IOException {

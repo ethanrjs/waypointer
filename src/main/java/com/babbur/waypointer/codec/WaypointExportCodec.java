@@ -30,7 +30,14 @@ public final class WaypointExportCodec {
         WAYPOINTER("Waypointer", true, true, true, true, true, true, true),
         SKYBLOCKER("Skyblocker", true, true, false, false, false, false, false),
         SKYTILS("Skytils", true, true, false, false, false, false, false),
-        SKYHANNI("SkyHanni", false, false, false, false, false, false, false);
+        SKYHANNI("SkyHanni", false, false, false, false, false, false, false),
+        /**
+         * ChunkLogger RouteSkipper's coordinate route JSON. Its {@code coal}
+         * shape maps to Waypointer child subwaypoints; its scalar
+         * statistics have no persisted equivalent. The source format has no
+         * equivalents for Waypointer names, styles, or route data.
+         */
+        CHUNKLOGGER("ChunkLogger", false, false, false, false, false, false, false);
 
         private final String displayName;
         private final boolean supportsNames;
@@ -153,6 +160,7 @@ public final class WaypointExportCodec {
             case SKYTILS -> WaypointImporter.SKYTILS_V1_PREFIX
                     + Base64.getEncoder().encodeToString(gzip(skytilsJson(groups, safeOpts)));
             case SKYHANNI -> skyhanniJson(groups);
+            case CHUNKLOGGER -> chunkLoggerJson(groups);
         };
     }
 
@@ -240,6 +248,10 @@ public final class WaypointExportCodec {
             }
         }
         return waypoints.toString();
+    }
+
+    private static String chunkLoggerJson(List<WaypointGroup> groups) {
+        return ChunkLoggerRouteCodec.encode(groups);
     }
 
     private static String groupName(WaypointGroup group) {

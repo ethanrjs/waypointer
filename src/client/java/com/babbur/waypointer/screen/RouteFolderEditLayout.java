@@ -72,7 +72,7 @@ final class RouteFolderEditLayout {
         int nameFieldY = nameLabelY + 11;
         int colorLabelY = nameFieldY + BTN_H + GAP;
         int colorControlY = colorLabelY + 11;
-        boolean detailVisible = true;
+        boolean detailVisible = existingFolder || hasSelection;
         boolean fieldLabelsVisible = true;
         if (colorControlY + BTN_H + 2 > firstActionY) {
             detailVisible = false;

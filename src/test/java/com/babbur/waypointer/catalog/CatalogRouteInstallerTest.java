@@ -22,11 +22,10 @@ class CatalogRouteInstallerTest {
     private static final String HASH_B = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 
     @Test
-    void decodesCurrentWpPayloadWithoutMutatingLocalRoutes() {
+    void decodesPinnedCatalogV9PayloadWithoutMutatingLocalRoutes() {
         WaypointGroup group = WaypointGroup.create("Museum route", "hub");
         group.add(new Waypoint(12, 70, -4, "Start", 0x44AA66, 0, 0.0));
-        String payload = WaypointCodec.encode(
-                List.of(group), WaypointCodec.Options.FULL_FIDELITY);
+        String payload = WaypointCodec.encodeCatalog(List.of(group));
         CatalogRouteDetails details = new CatalogRouteDetails(summary(1, 1), payload);
 
         List<WaypointGroup> decoded = CatalogRouteInstaller.decodeForPreview(details);
@@ -41,8 +40,7 @@ class CatalogRouteInstallerTest {
     void rejectsPayloadWhenCatalogCountsDoNotMatch() {
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         group.add(new Waypoint(0, 64, 0, "Point", 0xFFFFFF, 0, 0.0));
-        String payload = WaypointCodec.encode(
-                List.of(group), WaypointCodec.Options.FULL_FIDELITY);
+        String payload = WaypointCodec.encodeCatalog(List.of(group));
 
         assertThrows(IllegalArgumentException.class, () ->
                 CatalogRouteInstaller.decodeForPreview(

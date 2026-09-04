@@ -64,9 +64,13 @@ public final class RoutePreviewPipelines {
         return surfacesNoDepth;
     }
 
-    public static RenderType painted(RoutePreviewScene scene) {
-        if (scene.paintResource() == null) return surfaces();
-        return scene.paintResource().renderType();
+    public static RenderType painted(RoutePreviewScene scene, boolean depthTested) {
+        if (scene.paintResource() == null) {
+            return depthTested ? surfaces() : surfacesNoDepth();
+        }
+        return depthTested
+                ? scene.paintResource().depthTested()
+                : scene.paintResource().throughWalls();
     }
 
     public static RenderType connectors() {

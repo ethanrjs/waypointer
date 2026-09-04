@@ -9,13 +9,16 @@ import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.color.RouteColorPolicy;
+import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.screen.CodecWorker;
+import com.babbur.waypointer.screen.ConfigImportConfirmation;
 import com.babbur.waypointer.screen.ImportFeedback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
@@ -44,20 +47,32 @@ final class WaypointerShareCommands {
     private final WaypointerConfig config;
     private final ChatImportCache chatImportCache;
     private final RouteExportScheduler routeExportScheduler;
+    private final ConfigImportConfirmationPresenter configImportConfirmationPresenter;
 
     WaypointerShareCommands(ActiveGroupManager manager, WaypointerConfig config,
                             ChatImportCache chatImportCache) {
-        this(manager, config, chatImportCache, WaypointerShareCommands::scheduleRouteExport);
+        this(manager, config, chatImportCache, WaypointerShareCommands::scheduleRouteExport,
+                WaypointerShareCommands::showConfigImportConfirmation);
     }
 
     WaypointerShareCommands(ActiveGroupManager manager, WaypointerConfig config,
                             ChatImportCache chatImportCache,
                             RouteExportScheduler routeExportScheduler) {
+        this(manager, config, chatImportCache, routeExportScheduler,
+                WaypointerShareCommands::showConfigImportConfirmation);
+    }
+
+    WaypointerShareCommands(ActiveGroupManager manager, WaypointerConfig config,
+                            ChatImportCache chatImportCache,
+                            RouteExportScheduler routeExportScheduler,
+                            ConfigImportConfirmationPresenter configImportConfirmationPresenter) {
         this.manager = manager;
         this.config = config;
         this.chatImportCache = chatImportCache;
         this.routeExportScheduler = Objects.requireNonNull(
                 routeExportScheduler, "routeExportScheduler");
+        this.configImportConfirmationPresenter = Objects.requireNonNull(
+                configImportConfirmationPresenter, "configImportConfirmationPresenter");
     }
 
     int runExport(FabricClientCommandSource src, WaypointCodec.Options opts) {
@@ -83,17 +98,37 @@ final class WaypointerShareCommands {
     private int scheduleExport(FabricClientCommandSource src,
                                List<WaypointGroup> toExport,
                                WaypointCodec.Options opts) {
+        WaypointCodec.Options effectiveOptions = productOptionsForGroups(toExport, opts);
         RouteLibraryMetadata metadata = RouteLibraryMetadata.capture(manager, toExport);
         List<WaypointGroup> snapshot = toExport.stream()
                 .map(WaypointGroup::exportSnapshot)
                 .toList();
         info(src, Component.translatable("waypointer.command.export.exporting"));
-        if (!routeExportScheduler.schedule(snapshot, opts, metadata,
-                payload -> finishExport(src, snapshot.size(), payload, opts))) {
+        if (!routeExportScheduler.schedule(snapshot, effectiveOptions, metadata,
+                payload -> finishExport(src, snapshot.size(), payload, effectiveOptions))) {
             codecBusy(src);
             return 0;
         }
         return snapshot.size();
+    }
+
+    private static WaypointCodec.Options productOptionsForGroups(
+            List<WaypointGroup> groups, WaypointCodec.Options options) {
+        if (options.isBareCoordinateProjection()
+                || options.includeNames
+                || options.includeColors
+                || options.includeRadii
+                || options.includeWaypointFlags
+                || options.includeGroupMeta
+                || options.includeZone
+                || !options.label.isEmpty()
+                || groups == null
+                || groups.isEmpty()
+                || groups.stream().anyMatch(group -> group == null
+                        || group.routeKind() != WaypointGroup.RouteKind.REGULAR)) {
+            return options;
+        }
+        return WaypointCodec.Options.BARE_COORDINATES;
     }
 
     private static boolean scheduleRouteExport(
@@ -195,7 +230,11 @@ final class WaypointerShareCommands {
                         "waypointer.command.export.success",
                         routeCount, payload.length())
                 .withStyle(ChatFormatting.GREEN);
-        if (!options.includeNames) {
+        if (options.isBareCoordinateProjection()) {
+            line.append(Component.translatable(
+                    "waypointer.command.export.coordinates_only")
+                    .withStyle(ChatFormatting.GRAY));
+        } else if (!options.includeNames) {
             line.append(Component.translatable(
                     "waypointer.command.export.without_names")
                     .withStyle(ChatFormatting.GRAY));
@@ -264,6 +303,12 @@ final class WaypointerShareCommands {
                          Consumer<String> completion);
     }
 
+    @FunctionalInterface
+    interface ConfigImportConfirmationPresenter {
+        void present(WaypointerConfig current, WaypointerConfig imported,
+                     Consumer<ConfigImportConfirmation.Outcome> completion);
+    }
+
     int runImportFromClipboard(FabricClientCommandSource src) {
         String text = getClipboard();
         if (text == null || text.isBlank()) {
@@ -310,13 +355,18 @@ final class WaypointerShareCommands {
     }
 
     int runImportChat(FabricClientCommandSource src, String handle) {
+        return runImportChatTyped(src, handle, null);
+    }
+
+    int runImportChatTyped(FabricClientCommandSource src, String handle,
+                           UniversalShareCodec.Type expectedType) {
         String codec = chatImportCache.get(handle);
         if (codec == null) {
             error(src, Component.translatable(
                     "waypointer.command.import.expired"));
             return 0;
         }
-        return scheduleImport(src, codec, "chat");
+        return scheduleImport(src, codec, "chat", expectedType);
     }
 
     int runImportArgument(FabricClientCommandSource src, String payload) {
@@ -328,9 +378,14 @@ final class WaypointerShareCommands {
     }
 
     int scheduleImport(FabricClientCommandSource src, String payload, String origin) {
+        return scheduleImport(src, payload, origin, null);
+    }
+
+    int scheduleImport(FabricClientCommandSource src, String payload, String origin,
+                       UniversalShareCodec.Type expectedType) {
         Zone targetZone = manager.currentZone();
         if (!CodecWorker.run(() -> WaypointCommandImport.decode(payload),
-                result -> finishImport(src, result, origin, targetZone))) {
+                result -> finishImport(src, result, origin, targetZone, expectedType))) {
             codecBusy(src);
             return 0;
         }
@@ -345,6 +400,12 @@ final class WaypointerShareCommands {
     void finishImport(FabricClientCommandSource src, WaypointCommandImport.Result result,
                               String origin,
                               Zone targetZone) {
+        finishImport(src, result, origin, targetZone, null);
+    }
+
+    void finishImport(FabricClientCommandSource src, WaypointCommandImport.Result result,
+                      String origin, Zone targetZone,
+                      UniversalShareCodec.Type expectedType) {
         if (result == null) {
             error(src, Component.translatable(
                     "waypointer.command.import.failed", "unexpected import failure"));
@@ -358,9 +419,14 @@ final class WaypointerShareCommands {
         }
 
         UniversalShareCodec.Decoded decoded = result.decoded();
+        if (expectedType != null && decoded.type() != expectedType) {
+            error(src, Component.translatable("waypointer.command.import.wrong_type",
+                    expectedType.name().toLowerCase(Locale.ROOT),
+                    decoded.type().name().toLowerCase(Locale.ROOT)));
+            return;
+        }
         if (decoded instanceof UniversalShareCodec.Configuration configuration) {
-            config.replaceShareableSettingsWith(configuration.config());
-            success(src, Component.literal("Imported config code from " + origin + "."));
+            requestConfigImportConfirmation(src, configuration.config(), origin);
             return;
         }
         if (decoded instanceof UniversalShareCodec.DungeonRoutes dungeonRoutes) {
@@ -381,6 +447,38 @@ final class WaypointerShareCommands {
                 retargeted, targetZone, imported.label()));
 
         ImportFeedback.success(imported.groups(), origin);
+    }
+
+    private void requestConfigImportConfirmation(FabricClientCommandSource src,
+                                                  WaypointerConfig imported,
+                                                  String origin) {
+        info(src, Component.translatable("waypointer.command.import.config.review", origin));
+        try {
+            configImportConfirmationPresenter.present(config, imported, outcome -> {
+                if (!outcome.confirmed()) {
+                    info(src, Component.translatable(
+                            "waypointer.command.import.config.cancelled", origin));
+                    return;
+                }
+                ConfigChangeHistory.recordBulk("Imported config code ("
+                        + outcome.changedSettings() + " changed)");
+                success(src, Component.translatable(outcome.changedSettings() == 1
+                                ? "waypointer.command.import.config.imported.one"
+                                : "waypointer.command.import.config.imported.many",
+                        origin, outcome.changedSettings()));
+            });
+        } catch (RuntimeException failure) {
+            error(src, Component.translatable(
+                    "waypointer.command.import.config.confirm_failed"));
+        }
+    }
+
+    private static void showConfigImportConfirmation(
+            WaypointerConfig current, WaypointerConfig imported,
+            Consumer<ConfigImportConfirmation.Outcome> completion) {
+        Minecraft minecraft = Minecraft.getInstance();
+        ConfigImportConfirmation.open(MinecraftCompat.screen(minecraft),
+                current, imported, completion);
     }
 
     static MutableComponent importSuccessMessage(int routeCount, String origin, Object source,
