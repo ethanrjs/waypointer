@@ -347,7 +347,10 @@ try {
 
 Supported input families are Waypointer `WP:` and `WPL:` payloads, Skyblocker,
 Skytils, SkyHanni/Coleweight, ChunkLogger RouteSkipper, Soopy V1, Firmament,
-Odin, and recognized JSON shapes.
+Odin, and recognized JSON shapes. A `WP:` catalog reference (kind 6 subtype 2)
+or a `waypointermod.com/r/` link is rejected here with a message naming the
+route id, because resolving it needs the network; the in-game importers open
+the catalog preview for those.
 `ImportSummary.source()` returns the API-owned `ImportSource` enum.
 
 Malformed, unsupported, or oversized input throws `IllegalArgumentException`
