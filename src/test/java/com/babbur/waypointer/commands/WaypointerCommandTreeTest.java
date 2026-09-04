@@ -503,6 +503,8 @@ class WaypointerCommandTreeTest {
         assertEquals(6, WaypointerCommandHelp.resolvePage("chattemp"), "chattemp command should resolve to chat/temp help");
         assertEquals(6, WaypointerCommandHelp.resolvePage("blacklist"), "blacklist command should resolve to chat/temp help");
         assertEquals(7, WaypointerCommandHelp.resolvePage("debug"), "debug command should resolve to debug");
+        assertEquals(8, WaypointerCommandHelp.resolvePage("crystal"), "crystal should resolve directly");
+        assertEquals(8, WaypointerCommandHelp.resolvePage("wpch"), "wpch should resolve to crystal help");
         assertEquals(-1, WaypointerCommandHelp.resolvePage("all"), "all is handled before page resolution");
         assertEquals(-1, WaypointerCommandHelp.resolvePage("missing"), "unknown target should still be rejected");
     }

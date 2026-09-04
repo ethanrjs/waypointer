@@ -122,7 +122,7 @@ public final class WaypointerConfig {
     private boolean crystalHollowsEntityDetection = true;
     private boolean crystalHollowsChatDetection = true;
     private boolean crystalHollowsWishingCompassSolver = true;
-    private boolean crystalHollowsShowCompassRays = true;
+    private boolean crystalHollowsCompassRays = true;
     private boolean crystalHollowsAnnounceDetections = true;
     private boolean crystalHollowsNucleusWaypoints = false;
 
@@ -466,7 +466,7 @@ public final class WaypointerConfig {
     public boolean crystalHollowsEntityDetection() { return crystalHollowsEntityDetection; }
     public boolean crystalHollowsChatDetection() { return crystalHollowsChatDetection; }
     public boolean crystalHollowsWishingCompassSolver() { return crystalHollowsWishingCompassSolver; }
-    public boolean crystalHollowsShowCompassRays() { return crystalHollowsShowCompassRays; }
+    public boolean crystalHollowsCompassRays() { return crystalHollowsCompassRays; }
     public boolean crystalHollowsAnnounceDetections() { return crystalHollowsAnnounceDetections; }
     public boolean crystalHollowsNucleusWaypoints() { return crystalHollowsNucleusWaypoints; }
     public boolean irisShaderHudFallback()      { return irisShaderHudFallback; }
@@ -694,7 +694,7 @@ public final class WaypointerConfig {
     public void setCrystalHollowsEntityDetection(boolean v) { crystalHollowsEntityDetection = v; save(); }
     public void setCrystalHollowsChatDetection(boolean v) { crystalHollowsChatDetection = v; save(); }
     public void setCrystalHollowsWishingCompassSolver(boolean v) { crystalHollowsWishingCompassSolver = v; save(); }
-    public void setCrystalHollowsShowCompassRays(boolean v) { crystalHollowsShowCompassRays = v; save(); }
+    public void setCrystalHollowsCompassRays(boolean v) { crystalHollowsCompassRays = v; save(); }
     public void setCrystalHollowsAnnounceDetections(boolean v) { crystalHollowsAnnounceDetections = v; save(); }
     public void setCrystalHollowsNucleusWaypoints(boolean v) { crystalHollowsNucleusWaypoints = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
@@ -839,7 +839,7 @@ public final class WaypointerConfig {
         crystalHollowsEntityDetection = replacement.crystalHollowsEntityDetection;
         crystalHollowsChatDetection = replacement.crystalHollowsChatDetection;
         crystalHollowsWishingCompassSolver = replacement.crystalHollowsWishingCompassSolver;
-        crystalHollowsShowCompassRays = replacement.crystalHollowsShowCompassRays;
+        crystalHollowsCompassRays = replacement.crystalHollowsCompassRays;
         crystalHollowsAnnounceDetections = replacement.crystalHollowsAnnounceDetections;
         crystalHollowsNucleusWaypoints = replacement.crystalHollowsNucleusWaypoints;
         irisShaderHudFallback = replacement.irisShaderHudFallback;
@@ -907,7 +907,7 @@ public final class WaypointerConfig {
         crystalHollowsEntityDetection = false;
         crystalHollowsChatDetection = false;
         crystalHollowsWishingCompassSolver = false;
-        crystalHollowsShowCompassRays = false;
+        crystalHollowsCompassRays = false;
         crystalHollowsAnnounceDetections = false;
         crystalHollowsNucleusWaypoints = false;
         irisShaderHudFallback = false;
@@ -1005,7 +1005,7 @@ public final class WaypointerConfig {
         crystalHollowsEntityDetection = defaults.crystalHollowsEntityDetection;
         crystalHollowsChatDetection = defaults.crystalHollowsChatDetection;
         crystalHollowsWishingCompassSolver = defaults.crystalHollowsWishingCompassSolver;
-        crystalHollowsShowCompassRays = defaults.crystalHollowsShowCompassRays;
+        crystalHollowsCompassRays = defaults.crystalHollowsCompassRays;
         crystalHollowsAnnounceDetections = defaults.crystalHollowsAnnounceDetections;
         crystalHollowsNucleusWaypoints = defaults.crystalHollowsNucleusWaypoints;
         irisShaderHudFallback = defaults.irisShaderHudFallback;

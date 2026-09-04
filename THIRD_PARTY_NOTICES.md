@@ -88,3 +88,21 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+## Crystal Hollows detection and Wishing Compass solver
+
+The wishing compass particle heuristics, target-filter constants, and zone
+boxes are adapted from NotEnoughUpdates.
+
+- Project: https://github.com/NotEnoughUpdates/NotEnoughUpdates
+- Source file: `src/main/java/io/github/moulberry/notenoughupdates/miscfeatures/CrystalWishingCompassSolver.java`
+- License: GNU Lesser General Public License v3.0
+
+The Keeper offsets for the Mines of Divan centre and the sidebar/lobby approach
+follow Skytils 1.x.
+
+- Project: https://github.com/Skytils/SkytilsMod
+- Source file: `features/impl/mining/CHWaypoints.kt`
+- License: GNU Affero General Public License v3.0
+
+Waypointer is GPL-3.0-only.

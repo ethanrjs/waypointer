@@ -4,6 +4,8 @@ Features
 
 - Per-zone waypoints
 - Dungeon rooms support (Odin-compatible room detection, all 140 Catacombs rooms)
+- Crystal Hollows structure detection (Jungle Temple, Mines of Divan, Goblin Queen's Den, Lost Precursor City, Khazad-dûm, Fairy Grotto, King Yolkar, Odawa, Corleone, Key Guardians, Dragon's Lair) with per-lobby memory; uses only information the game already shows you
+- Wishing Compass solver
 - Ordered routes
 - World rendering
 - Subwaypoints
