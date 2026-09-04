@@ -60,6 +60,7 @@ public final class CrystalHollowsTracker {
     private boolean lastShowRough;
     private boolean lastNucleusWaypoints;
     private DebugSnapshot lastDebugSnapshot = DebugSnapshot.inactive();
+    private WishingCompassController compassController;
 
     public CrystalHollowsTracker(
             ActiveGroupManager manager, WaypointerConfig config, CrystalHollowsStore store) {
@@ -84,6 +85,10 @@ public final class CrystalHollowsTracker {
     public boolean hasKingsScent() { return hasKingsScent; }
     public CrystalHollowsStructure sidebarStructure() { return sidebarStructure; }
     public DebugSnapshot debugSnapshot() { return lastDebugSnapshot; }
+
+    public void attachCompassController(WishingCompassController controller) {
+        compassController = controller;
+    }
 
     public CrystalHollowsLobbyState.MergeResult merge(StructureSighting sighting) {
         if (!active || lobby == null) return CrystalHollowsLobbyState.MergeResult.IGNORED;
@@ -159,6 +164,7 @@ public final class CrystalHollowsTracker {
         processedEntityIds.clear();
         tabCrystalStates.clear();
         hasKingsScent = false;
+        if (compassController != null) compassController.reset();
         lastDebugSnapshot = DebugSnapshot.inactive();
     }
 
@@ -180,6 +186,7 @@ public final class CrystalHollowsTracker {
         }
         if (ticks % 20 == 0) updateTabList(client.getConnection());
         if (ticks % 100 == 0) resolveIdentity(client);
+        if (compassController != null) compassController.tick(System.currentTimeMillis());
         lastDebugSnapshot = new DebugSnapshot(true, serverId, lobby == null ? 0 : lobby.sightings().size(),
                 sidebarStructure, delayTicks, processedEntityIds.size(), hasKingsScent,
                 tabCrystalStates.size());
@@ -260,6 +267,9 @@ public final class CrystalHollowsTracker {
         if (WaypointerChatFeedback.consumeIfSuppressed(message)) return;
         String text = message.getString();
         if (CrystalHollowsChatParser.isDelayTrigger(text)) delayTicks = TELEPORT_DELAY_TICKS;
+        CrystalHollowsChatParser.parseCompassServerMessage(text).ifPresent(compassMessage -> {
+            if (compassController != null) compassController.onServerMessage(compassMessage);
+        });
 
         Optional<CrystalUpdate> crystalUpdate = CrystalHollowsChatParser.parseCrystalState(text);
         if (crystalUpdate.isPresent()) {
