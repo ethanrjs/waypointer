@@ -388,6 +388,31 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void runtimeRoutesCanOnlyBelongToRuntimeFolders() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup runtime = new WaypointGroup("runtime", "Runtime", "crystal_hollows");
+        runtime.setRuntimeOnly(true);
+        manager.add(runtime);
+        RouteFolder persisted = new RouteFolder(
+                "persisted", "Saved", "crystal_hollows", false);
+        RouteFolder runtimeFolder = new RouteFolder(
+                "runtime-folder", "Structures", "crystal_hollows", false, 0x55FFFF, true);
+        manager.addFolder(persisted, List.of());
+        manager.addFolder(runtimeFolder, List.of());
+
+        assertThrows(IllegalArgumentException.class,
+                () -> manager.assignGroupToFolder(runtime.id(), persisted.id()));
+        assertTrue(manager.assignGroupToFolder(runtime.id(), runtimeFolder.id()));
+        assertEquals(runtimeFolder, manager.folderForGroup(runtime.id()));
+
+        WaypointGroup replacement = new WaypointGroup("runtime", "Updated", "crystal_hollows");
+        replacement.setRuntimeOnly(true);
+        manager.replaceGroupsAtomically(List.of(runtime.id()), List.of(replacement),
+                Map.of(replacement.id(), runtimeFolder.id()));
+        assertEquals(runtimeFolder, manager.folderForGroup(replacement.id()));
+    }
+
+    @Test
     void dungeonReorderUsesOnlyPersistedPeersInTheSameRoom() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup regularFirst = new WaypointGroup("regular-first", "First", "hub");

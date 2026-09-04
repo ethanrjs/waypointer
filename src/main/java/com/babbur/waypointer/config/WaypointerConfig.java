@@ -116,6 +116,16 @@ public final class WaypointerConfig {
     private boolean dungeonWaypointsFeatureEnabled = false;
     private boolean skipAheadMechanicEnabled = true;
 
+    private boolean crystalHollowsEnabled = true;
+    private boolean crystalHollowsStructureWaypoints = true;
+    private boolean crystalHollowsShowRoughMarkers = true;
+    private boolean crystalHollowsEntityDetection = true;
+    private boolean crystalHollowsChatDetection = true;
+    private boolean crystalHollowsWishingCompassSolver = true;
+    private boolean crystalHollowsShowCompassRays = true;
+    private boolean crystalHollowsAnnounceDetections = true;
+    private boolean crystalHollowsNucleusWaypoints = false;
+
     private boolean irisShaderHudFallback = true;
     private int tempDefaultMode = Waypoint.TEMP_TIME;
     private int tempDefaultDurationSec = SECONDS_PER_MINUTE;
@@ -450,6 +460,15 @@ public final class WaypointerConfig {
     public boolean showExportRoutePreview()    { return showExportRoutePreview; }
     public boolean dungeonWaypointsFeatureEnabled() { return dungeonWaypointsFeatureEnabled; }
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
+    public boolean crystalHollowsEnabled() { return crystalHollowsEnabled; }
+    public boolean crystalHollowsStructureWaypoints() { return crystalHollowsStructureWaypoints; }
+    public boolean crystalHollowsShowRoughMarkers() { return crystalHollowsShowRoughMarkers; }
+    public boolean crystalHollowsEntityDetection() { return crystalHollowsEntityDetection; }
+    public boolean crystalHollowsChatDetection() { return crystalHollowsChatDetection; }
+    public boolean crystalHollowsWishingCompassSolver() { return crystalHollowsWishingCompassSolver; }
+    public boolean crystalHollowsShowCompassRays() { return crystalHollowsShowCompassRays; }
+    public boolean crystalHollowsAnnounceDetections() { return crystalHollowsAnnounceDetections; }
+    public boolean crystalHollowsNucleusWaypoints() { return crystalHollowsNucleusWaypoints; }
     public boolean irisShaderHudFallback()      { return irisShaderHudFallback; }
     public int tempDefaultMode() {
         return tempDefaultMode < Waypoint.TEMP_TIME || tempDefaultMode > Waypoint.TEMP_UNTIL_LEAVE
@@ -669,6 +688,15 @@ public final class WaypointerConfig {
     public void setExportIncludeZone(boolean v)         { this.exportIncludeZone = v; save(); }
     public void setShowExportRoutePreview(boolean v)    { this.showExportRoutePreview = v; save(); }
     public void setDungeonWaypointsFeatureEnabled(boolean v) { this.dungeonWaypointsFeatureEnabled = v; save(); }
+    public void setCrystalHollowsEnabled(boolean v) { crystalHollowsEnabled = v; save(); }
+    public void setCrystalHollowsStructureWaypoints(boolean v) { crystalHollowsStructureWaypoints = v; save(); }
+    public void setCrystalHollowsShowRoughMarkers(boolean v) { crystalHollowsShowRoughMarkers = v; save(); }
+    public void setCrystalHollowsEntityDetection(boolean v) { crystalHollowsEntityDetection = v; save(); }
+    public void setCrystalHollowsChatDetection(boolean v) { crystalHollowsChatDetection = v; save(); }
+    public void setCrystalHollowsWishingCompassSolver(boolean v) { crystalHollowsWishingCompassSolver = v; save(); }
+    public void setCrystalHollowsShowCompassRays(boolean v) { crystalHollowsShowCompassRays = v; save(); }
+    public void setCrystalHollowsAnnounceDetections(boolean v) { crystalHollowsAnnounceDetections = v; save(); }
+    public void setCrystalHollowsNucleusWaypoints(boolean v) { crystalHollowsNucleusWaypoints = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
     public void setShowLabelTextShadow(boolean v)      { this.showLabelTextShadow = v; save(); }
     public void setMaxWaypointLabels(int v) {
@@ -805,6 +833,15 @@ public final class WaypointerConfig {
         showExportRoutePreview = replacement.showExportRoutePreview;
         dungeonWaypointsFeatureEnabled = replacement.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = replacement.skipAheadMechanicEnabled;
+        crystalHollowsEnabled = replacement.crystalHollowsEnabled;
+        crystalHollowsStructureWaypoints = replacement.crystalHollowsStructureWaypoints;
+        crystalHollowsShowRoughMarkers = replacement.crystalHollowsShowRoughMarkers;
+        crystalHollowsEntityDetection = replacement.crystalHollowsEntityDetection;
+        crystalHollowsChatDetection = replacement.crystalHollowsChatDetection;
+        crystalHollowsWishingCompassSolver = replacement.crystalHollowsWishingCompassSolver;
+        crystalHollowsShowCompassRays = replacement.crystalHollowsShowCompassRays;
+        crystalHollowsAnnounceDetections = replacement.crystalHollowsAnnounceDetections;
+        crystalHollowsNucleusWaypoints = replacement.crystalHollowsNucleusWaypoints;
         irisShaderHudFallback = replacement.irisShaderHudFallback;
         tempDefaultMode = replacement.tempDefaultMode;
         tempDefaultDurationSec = replacement.tempDefaultDurationSec;
@@ -864,6 +901,15 @@ public final class WaypointerConfig {
         showExportRoutePreview = false;
         dungeonWaypointsFeatureEnabled = false;
         skipAheadMechanicEnabled = false;
+        crystalHollowsEnabled = false;
+        crystalHollowsStructureWaypoints = false;
+        crystalHollowsShowRoughMarkers = false;
+        crystalHollowsEntityDetection = false;
+        crystalHollowsChatDetection = false;
+        crystalHollowsWishingCompassSolver = false;
+        crystalHollowsShowCompassRays = false;
+        crystalHollowsAnnounceDetections = false;
+        crystalHollowsNucleusWaypoints = false;
         irisShaderHudFallback = false;
         beaconBeamMode = BeaconBeamMode.OFF;
         tempDefaultMode = Waypoint.TEMP_UNTIL_LEAVE;
@@ -953,6 +999,15 @@ public final class WaypointerConfig {
         showExportRoutePreview = defaults.showExportRoutePreview;
         dungeonWaypointsFeatureEnabled = defaults.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = defaults.skipAheadMechanicEnabled;
+        crystalHollowsEnabled = defaults.crystalHollowsEnabled;
+        crystalHollowsStructureWaypoints = defaults.crystalHollowsStructureWaypoints;
+        crystalHollowsShowRoughMarkers = defaults.crystalHollowsShowRoughMarkers;
+        crystalHollowsEntityDetection = defaults.crystalHollowsEntityDetection;
+        crystalHollowsChatDetection = defaults.crystalHollowsChatDetection;
+        crystalHollowsWishingCompassSolver = defaults.crystalHollowsWishingCompassSolver;
+        crystalHollowsShowCompassRays = defaults.crystalHollowsShowCompassRays;
+        crystalHollowsAnnounceDetections = defaults.crystalHollowsAnnounceDetections;
+        crystalHollowsNucleusWaypoints = defaults.crystalHollowsNucleusWaypoints;
         irisShaderHudFallback = defaults.irisShaderHudFallback;
         tempDefaultMode = defaults.tempDefaultMode;
         tempDefaultDurationSec = defaults.tempDefaultDurationSec;

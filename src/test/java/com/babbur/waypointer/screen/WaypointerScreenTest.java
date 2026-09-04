@@ -103,6 +103,28 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void routeFolderModelListsRuntimeRoutesOnlyInsideRuntimeFolders() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup runtime = new WaypointGroup(
+                "crystal_hollows:structure:odawa", "Odawa", "crystal_hollows");
+        runtime.setRuntimeOnly(true);
+        manager.add(runtime);
+        RouteFolder folder = new RouteFolder("crystal_hollows:structures", "Structures",
+                "crystal_hollows", false, 0x55FFFF, true);
+        manager.addFolder(folder, List.of(runtime.id()));
+
+        RouteFolderListModel.Snapshot snapshot = RouteFolderListModel.build(
+                manager, "crystal_hollows", "");
+        assertEquals(List.of(runtime), snapshot.folders().getFirst().groups());
+        assertTrue(snapshot.unfiled().isEmpty());
+
+        manager.removeGroupFromFolder(runtime.id());
+        snapshot = RouteFolderListModel.build(manager, "crystal_hollows", "");
+        assertTrue(snapshot.folders().getFirst().groups().isEmpty());
+        assertTrue(snapshot.unfiled().isEmpty());
+    }
+
+    @Test
     void reorderArrowPolicySupportsStoredDungeonRoutesButNotRuntimeRows() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup first = dungeonGroup("first", "room-a");
