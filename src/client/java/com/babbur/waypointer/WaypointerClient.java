@@ -9,6 +9,7 @@ import com.babbur.waypointer.chat.ChatImportDetector;
 import com.babbur.waypointer.chat.HypixelPlayerRankSource;
 import com.babbur.waypointer.commands.WaypointerCommands;
 import com.babbur.waypointer.commands.DungeonCommands;
+import com.babbur.waypointer.commands.CrystalHollowsCommands;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -62,6 +63,7 @@ public final class WaypointerClient implements ClientModInitializer {
     private static DungeonStateTracker dungeonTracker;
     private static CrystalHollowsStore crystalHollowsStore;
     private static CrystalHollowsTracker crystalHollowsTracker;
+    private static WishingCompassController crystalHollowsCompass;
     private static WaypointerKeybinds keybinds;
     private static boolean dungeonRouteInDungeonContext;
     private static Screen suspendedWaypointerGuiScreen;
@@ -92,6 +94,10 @@ public final class WaypointerClient implements ClientModInitializer {
 
     public static CrystalHollowsTracker crystalHollowsTracker() {
         return crystalHollowsTracker;
+    }
+
+    public static WishingCompassController crystalHollowsCompass() {
+        return crystalHollowsCompass;
     }
 
     public static WaypointerKeybinds keybinds() {
@@ -237,7 +243,9 @@ public final class WaypointerClient implements ClientModInitializer {
         crystalHollowsStore = CrystalHollowsStore.loadDefault();
         crystalHollowsTracker = new CrystalHollowsTracker(manager, config, crystalHollowsStore);
         crystalHollowsTracker.install();
-        new WishingCompassController(crystalHollowsTracker, config).install();
+        crystalHollowsCompass = new WishingCompassController(crystalHollowsTracker, config);
+        crystalHollowsCompass.install();
+        new CrystalHollowsCommands(crystalHollowsTracker, crystalHollowsCompass, config).install();
     }
 
     private static void onDungeonRouteContextChanged(Zone zone) {

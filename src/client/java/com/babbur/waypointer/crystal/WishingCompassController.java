@@ -1,5 +1,6 @@
 package com.babbur.waypointer.crystal;
 
+import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.crystal.CrystalHollowsChatParser.CompassServerMessage;
@@ -10,7 +11,6 @@ import com.babbur.waypointer.crystal.compass.WishingCompassSolver;
 import com.babbur.waypointer.crystal.compass.WishingCompassTarget;
 import com.babbur.waypointer.dungeon.DungeonItemIdentity;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -35,6 +35,7 @@ public final class WishingCompassController {
     private final WaypointerConfig config;
     private final WishingCompassSolver solver = new WishingCompassSolver(System::currentTimeMillis);
     private final WishingCompassRayRenderer renderer;
+    private String lastEvent = "none";
 
     public WishingCompassController(CrystalHollowsTracker tracker, WaypointerConfig config) {
         this.tracker = tracker;
@@ -65,6 +66,7 @@ public final class WishingCompassController {
     }
 
     public WishingCompassSolver solver() { return solver; }
+    public String lastEvent() { return lastEvent; }
 
     public void tick(long nowMillis) {
         solver.tick(nowMillis);
@@ -81,6 +83,7 @@ public final class WishingCompassController {
     public void reset() {
         solver.reset();
         renderer.clear();
+        lastEvent = "reset";
     }
 
     private void onParticle(double x, double y, double z, int count) {
@@ -115,6 +118,8 @@ public final class WishingCompassController {
 
     private void handleOutcomes() {
         for (WishingCompassSolver.Outcome outcome : solver.drainOutcomes()) {
+            lastEvent = outcome.event().name().toLowerCase(java.util.Locale.ROOT);
+            Waypointer.LOGGER.debug("Wishing Compass solver event: {}", outcome.event());
             switch (outcome.event()) {
                 case USE_RECORDED, RAY_CAPTURED -> {
                     if (outcome.event() == WishingCompassSolver.SolverEvent.RAY_CAPTURED) {
@@ -140,6 +145,9 @@ public final class WishingCompassController {
     private void handleSolved(WishingCompassSolver.SolveResult result) {
         if (result == null) return;
         renderer.update(solver.completedRays(), result.solution(), System.currentTimeMillis());
+        Waypointer.LOGGER.info("Wishing Compass solved at {}, {}, {} with gap {} and targets {}",
+                result.solution().x(), result.solution().y(), result.solution().z(),
+                result.gap(), result.targets());
         Set<WishingCompassTarget> targets = result.targets();
         if (targets.size() == 1 && targets.contains(WishingCompassTarget.CRYSTAL_NUCLEUS)) {
             send("waypointer.crystal.compass.solved_nucleus");
@@ -147,10 +155,7 @@ public final class WishingCompassController {
         }
         StructureSighting sighting = toSighting(result);
         tracker.merge(sighting);
-        String names = targets.isEmpty()
-                ? Component.translatable("waypointer.crystal.compass.unknown").getString()
-                : String.join(" / ", targets.stream()
-                        .map(target -> target.structure().displayName()).toList());
+        Component names = targetNames(targets);
         MutableComponent message = Component.translatable("waypointer.crystal.compass.solved",
                 names, sighting.x(), sighting.y(), sighting.z(),
                 String.format(java.util.Locale.ROOT, "%.1f", result.gap()))
@@ -160,8 +165,32 @@ public final class WishingCompassController {
                         .withStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)
                                 .withUnderlined(true)
                                 .withClickEvent(new ClickEvent.RunCommand(
-                                        "/wpch share " + sighting.structure().id()))));
+                                        "/wpch share " + sighting.structure().id()))))
+                .append(Component.literal(" "))
+                .append(Component.translatable("waypointer.crystal.action.add_waypoint")
+                        .withStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)
+                                .withUnderlined(true)
+                                .withClickEvent(new ClickEvent.RunCommand(
+                                        "/wpch add " + sighting.structure().id()
+                                                + " " + sighting.x()
+                                                + " " + sighting.y()
+                                                + " " + sighting.z()))));
         send(message);
+    }
+
+    private static Component targetNames(Set<WishingCompassTarget> targets) {
+        if (targets.isEmpty()) {
+            return Component.translatable("waypointer.crystal.compass.unknown");
+        }
+        MutableComponent names = Component.empty();
+        boolean first = true;
+        for (WishingCompassTarget target : targets) {
+            if (!first) names.append(Component.literal(" / "));
+            names.append(Component.translatable(
+                    "waypointer.crystal.structure." + target.structure().id()));
+            first = false;
+        }
+        return names;
     }
 
     private static StructureSighting toSighting(WishingCompassSolver.SolveResult result) {

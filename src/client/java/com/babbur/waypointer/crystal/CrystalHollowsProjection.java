@@ -88,7 +88,15 @@ public final class CrystalHollowsProjection {
         List<Waypoint> waypoints = new ArrayList<>(plan.waypoints().size());
         for (CrystalHollowsStructureFolder.PlannedWaypoint planned : plan.waypoints()) {
             CrystalHollowsPosition position = planned.position();
-            waypoints.add(Waypoint.at(position.x(), position.y(), position.z())
+            Waypoint waypoint = Waypoint.at(position.x(), position.y(), position.z());
+            if (plan.id().equals(CrystalHollowsStructureFolder.GROUP_PREFIX + "nucleus")
+                    && position.equals(new CrystalHollowsPosition(513, 107, 513))) {
+                waypoint = waypoint.withPreciseSixteenths(
+                        Waypoint.snapToPreciseSixteenths(513.5),
+                        Waypoint.snapToPreciseSixteenths(107.0),
+                        Waypoint.snapToPreciseSixteenths(513.5));
+            }
+            waypoints.add(waypoint
                     .withName(planned.name())
                     .withColor(planned.color())
                     .withFlags(WAYPOINT_FLAGS));
