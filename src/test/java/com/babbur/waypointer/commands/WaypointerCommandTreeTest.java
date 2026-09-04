@@ -555,6 +555,35 @@ class WaypointerCommandTreeTest {
                 List.of(WaypointGroup.create("Unknown Target", Zone.UNKNOWN.id())), Zone.UNKNOWN) == 0);
     }
 
+    @Test
+    void importRetargetingAssignsUnknownMineshaftOnlyToCurrentLayout() throws Exception {
+        WaypointGroup firstInside = WaypointGroup.create("Inside A", "mineshaft_unknown");
+        WaypointGroup secondInside = WaypointGroup.create("Inside B", "mineshaft");
+        WaypointGroup genericUnknown = WaypointGroup.create("No zone", Zone.UNKNOWN.id());
+        WaypointGroup explicitHub = WaypointGroup.create("Hub", "hub");
+        WaypointGroup otherLayout = WaypointGroup.create("Other layout", "mineshaft_topaz_1");
+        Zone layout = Zone.fromId("mineshaft_ruby_1");
+
+        assertEquals(3, invokeRetargetUnknownGroups(List.of(firstInside, secondInside,
+                genericUnknown, explicitHub, otherLayout), layout));
+        assertEquals("mineshaft_ruby_1", firstInside.zoneId());
+        assertEquals("mineshaft_ruby_1", secondInside.zoneId());
+        assertEquals("mineshaft_ruby_1", genericUnknown.zoneId());
+        assertEquals("hub", explicitHub.zoneId());
+        assertEquals("mineshaft_topaz_1", otherLayout.zoneId());
+
+        Component feedback = WaypointerCommands.importSuccessMessage(
+                3, "clipboard", "SKYBLOCKER", 3, layout, "");
+        assertTrue(feedback.toString().contains("Mineshaft: Ruby 1"));
+
+        for (Zone outside : List.of(Zone.fromId("hub"), Zone.fromId("dwarven_mines"),
+                Zone.fromId("mineshaft_unknown"))) {
+            WaypointGroup route = WaypointGroup.create("Outside", "mineshaft_unknown");
+            assertEquals(0, invokeRetargetUnknownGroups(List.of(route), outside));
+            assertEquals("mineshaft_unknown", route.zoneId());
+        }
+    }
+
     private static int invokeRetargetUnknownGroups(List<WaypointGroup> groups, Zone target) throws Exception {
         Method retarget = WaypointerCommands.class.getDeclaredMethod(
                 "retargetUnknownGroups", List.class, Zone.class);

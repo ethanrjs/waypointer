@@ -753,6 +753,22 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void retargetUnknownImportedGroupsResolvesMineshaftOnlyInsideExactLayout() {
+        WaypointGroup inside = WaypointGroup.create("Inside", "mineshaft_unknown");
+        WaypointGroup explicit = WaypointGroup.create("Explicit", "hub");
+
+        WaypointerZoneCatalog.retargetUnknownImportedGroups(
+                List.of(inside, explicit), "mineshaft_ruby_1");
+
+        assertEquals("mineshaft_ruby_1", inside.zoneId());
+        assertEquals("hub", explicit.zoneId());
+
+        WaypointGroup outside = WaypointGroup.create("Outside", "mineshaft_unknown");
+        WaypointerZoneCatalog.retargetUnknownImportedGroups(List.of(outside), "dwarven_mines");
+        assertEquals("mineshaft_unknown", outside.zoneId());
+    }
+
+    @Test
     void importedGroupSelectorEntryCollapsesDungeonRoomsToVisibleParent() {
         assertEquals("hub", WaypointerZoneCatalog.selectorEntryForZoneId("hub"));
         assertEquals(WaypointerZoneCatalog.TEMPORARY_ZONE_ID,

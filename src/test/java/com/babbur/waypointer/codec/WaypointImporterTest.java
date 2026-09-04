@@ -630,6 +630,19 @@ class WaypointImporterTest {
     }
 
     @Test
+    void skyblockerMineshaftImportsUseTheSafeUnknownLayout() throws Exception {
+        String json = "[{\"name\":\"Shaft route\",\"island\":\"mineshaft\","
+                + "\"waypoints\":[{\"pos\":[10,64,20],\"name\":\"A\"}]}]";
+        String packed = WaypointImporter.SKYBLOCKER_V1_PREFIX
+                + Base64.getEncoder().encodeToString(gzip(json));
+
+        WaypointImporter.ImportResult result = WaypointImporter.importAny(packed);
+
+        assertEquals(WaypointImporter.Source.SKYBLOCKER, result.source());
+        assertEquals("mineshaft_unknown", result.groups().getFirst().zoneId());
+    }
+
+    @Test
     void skyblocker_ordered_groups_preserve_explicit_colors() throws Exception {
         // The upstream codec carries both order and per-point colors. Sequence mode
         // represents the order without overwriting the sender's colors.

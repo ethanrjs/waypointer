@@ -763,6 +763,53 @@ class StorageJsonTest {
     }
 
     @Test
+    void loadAndAttachRewritesLegacyMineshaftRouteAndFolderOnce() throws Exception {
+        Path file = tempDir.resolve("legacy-mineshaft.json");
+        Files.writeString(file, """
+                {
+                  "schema": 2,
+                  "groups": [{
+                    "id": "shaft-route",
+                    "name": "Shaft Route",
+                    "zone": "mineshaft",
+                    "waypoints": [{"x": 1, "y": 2, "z": 3}]
+                  }],
+                  "folders": [{
+                    "id": "shaft-folder",
+                    "name": "Shafts",
+                    "zone": "mineshaft",
+                    "groupIds": ["shaft-route"]
+                  }]
+                }
+                """);
+        ActiveGroupManager manager = new ActiveGroupManager();
+        Storage storage = new Storage(file);
+
+        storage.load(manager);
+
+        assertEquals("mineshaft_unknown", manager.get("shaft-route").zoneId());
+        assertEquals("mineshaft_unknown", manager.folder("shaft-folder").zoneId());
+        assertEquals(List.of("shaft-route"), manager.groupIdsInFolder("shaft-folder"));
+
+        storage.attach(manager);
+        storage.flush();
+
+        assertEquals(1, storage.writeCount());
+        JsonObject saved = JsonParser.parseString(Files.readString(file)).getAsJsonObject();
+        assertEquals("mineshaft_unknown", saved.getAsJsonArray("groups").get(0)
+                .getAsJsonObject().get("zone").getAsString());
+        assertEquals("mineshaft_unknown", saved.getAsJsonArray("folders").get(0)
+                .getAsJsonObject().get("zone").getAsString());
+
+        ActiveGroupManager reloadedManager = new ActiveGroupManager();
+        Storage reloadedStorage = new Storage(file);
+        reloadedStorage.load(reloadedManager);
+        reloadedStorage.attach(reloadedManager);
+        reloadedStorage.flush();
+        assertEquals(0, reloadedStorage.writeCount());
+    }
+
+    @Test
     void foldersRoundTripWithOrderCollapseAndMembership() throws Exception {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup first = new WaypointGroup("first", "First", "hub");
