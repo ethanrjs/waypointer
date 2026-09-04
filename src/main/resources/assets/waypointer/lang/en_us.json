@@ -283,6 +283,8 @@
   "waypointer.settings.setting.hideReachedStaticWaypointsUntilCycleComplete.tooltip": "Waypoints on static routes disappear as you reach them, like a checklist, and all come back once you've reached every one.",
   "waypointer.settings.setting.skipAheadMechanicEnabled.label": "Enable waypoint skipping",
   "waypointer.settings.setting.skipAheadMechanicEnabled.tooltip": "Reaching a later waypoint skips earlier route steps.",
+  "waypointer.settings.setting.allowBackwardProgress.label": "Allow stepping back",
+  "waypointer.settings.setting.allowBackwardProgress.tooltip": "Reaching an earlier waypoint moves the route back to it",
   "waypointer.settings.setting.skipAheadOnlyVisibleWaypoints.label": "Only skip to visible waypoints",
   "waypointer.settings.setting.hideWaypointsNearPlayer.label": "Hide waypoints when near",
   "waypointer.settings.setting.hideWaypointsNearRadius.label": "Near hide radius (blocks)",

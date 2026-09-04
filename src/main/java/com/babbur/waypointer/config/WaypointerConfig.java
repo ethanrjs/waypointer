@@ -46,6 +46,7 @@ public final class WaypointerConfig {
     private boolean restartRouteWhenComplete = true;
     private boolean showRouteIndicesInGui = false;
     private boolean keepSubwaypointsVisibleUntilNextWaypoint = true;
+    private boolean allowBackwardProgress = false;
 
     private int defaultWaypointColor = Waypoint.DEFAULT_COLOR;
     private int[] waypointPainterPalette;
@@ -382,6 +383,7 @@ public final class WaypointerConfig {
     public boolean keepSubwaypointsVisibleUntilNextWaypoint() {
         return keepSubwaypointsVisibleUntilNextWaypoint;
     }
+    public boolean allowBackwardProgress() { return allowBackwardProgress; }
     public int defaultWaypointColor()         { return defaultWaypointColor & 0xFFFFFF; }
     public int[] waypointPainterPalette() {
         int[] source = waypointPainterPalette;
@@ -545,6 +547,7 @@ public final class WaypointerConfig {
         this.keepSubwaypointsVisibleUntilNextWaypoint = v;
         save();
     }
+    public void setAllowBackwardProgress(boolean v) { this.allowBackwardProgress = v; save(); }
     public void setDefaultWaypointColor(int v)         { this.defaultWaypointColor = v & 0xFFFFFF; save(); }
     public void setWaypointPainterPalette(int[] palette) {
         if (palette == null || palette.length != WaypointPaint.PALETTE_SIZE) {
@@ -815,6 +818,7 @@ public final class WaypointerConfig {
         showRouteIndicesInGui = replacement.showRouteIndicesInGui;
         keepSubwaypointsVisibleUntilNextWaypoint =
                 replacement.keepSubwaypointsVisibleUntilNextWaypoint;
+        allowBackwardProgress = replacement.allowBackwardProgress;
         defaultWaypointColor = replacement.defaultWaypointColor;
         tracerColor = replacement.tracerColor;
         matchTracerToWaypointColor = replacement.matchTracerToWaypointColor;
@@ -902,6 +906,7 @@ public final class WaypointerConfig {
         restartRouteWhenComplete = false;
         showRouteIndicesInGui = false;
         keepSubwaypointsVisibleUntilNextWaypoint = false;
+        allowBackwardProgress = false;
         matchTracerToWaypointColor = false;
         matchWaypointOutlineToWaypointColor = false;
         showWaypointNames = false;
@@ -977,6 +982,7 @@ public final class WaypointerConfig {
         showRouteIndicesInGui = defaults.showRouteIndicesInGui;
         keepSubwaypointsVisibleUntilNextWaypoint =
                 defaults.keepSubwaypointsVisibleUntilNextWaypoint;
+        allowBackwardProgress = defaults.allowBackwardProgress;
         defaultWaypointColor = defaults.defaultWaypointColor;
         waypointPainterPalette = null;
         waypointPainterDefaultPalette = null;

@@ -1217,6 +1217,32 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void backwardProgressionUsesTagNinetyAndFollowsTheFullConfigLifecycle()
+            throws IOException {
+        WaypointerConfig config = new WaypointerConfig();
+        assertFalse(config.allowBackwardProgress());
+
+        config.setAllowBackwardProgress(true);
+        assertEquals(List.of(90), WaypointerConfigCodec.encodeTaggedFields(config).stream()
+                .map(WaypointerConfigCodec.TaggedField::tag)
+                .filter(tag -> tag >= 90)
+                .toList());
+        assertTrue(WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(config)).allowBackwardProgress());
+        assertTrue(V10ConfigBodyCodec.decode(
+                V10ConfigBodyCodec.encode(config)).allowBackwardProgress());
+
+        WaypointerConfig replacement = new WaypointerConfig();
+        replacement.replaceShareableSettingsWith(config);
+        assertTrue(replacement.allowBackwardProgress());
+        replacement.disableAllSettings();
+        assertFalse(replacement.allowBackwardProgress());
+        replacement.setAllowBackwardProgress(true);
+        replacement.resetToDefaults();
+        assertFalse(replacement.allowBackwardProgress());
+    }
+
+    @Test
     void configCodecConsumesLegacyRouteTimesField() throws IOException {
         WaypointerConfig decoded = WaypointerConfigCodec.decode(configCodeForRawPayload(
                 (byte) 3, (byte) 66, (byte) 1, (byte) 67, (byte) 1, (byte) 0));

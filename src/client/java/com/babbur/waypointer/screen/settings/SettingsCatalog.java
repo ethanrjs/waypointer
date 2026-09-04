@@ -455,6 +455,11 @@ public final class SettingsCatalog {
                                 (c, d) -> c.restartRouteWhenComplete(),
                                 (c, d, v) -> c.setRestartRouteWhenComplete((Boolean) v))
                                 .aliases("loop"),
+                        Setting.bool("allowBackwardProgress", MAIN, "Allow stepping back",
+                                "Reaching an earlier waypoint moves the route back to it",
+                                (c, d) -> c.allowBackwardProgress(),
+                                (c, d, v) -> c.setAllowBackwardProgress((Boolean) v))
+                                .impact(Setting.Impact.LOW),
                         Setting.bool("showRouteIndicesInGui", MAIN, "Show route indices",
                                 "In the route list, show each route's index number for commands.",
                                 (c, d) -> c.showRouteIndicesInGui(),

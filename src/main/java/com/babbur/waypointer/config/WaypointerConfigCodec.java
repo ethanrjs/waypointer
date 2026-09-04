@@ -119,6 +119,7 @@ public final class WaypointerConfigCodec {
     private static final int CRYSTAL_HOLLOWS_COMPASS_RAYS = 87;
     private static final int CRYSTAL_HOLLOWS_ANNOUNCE_DETECTIONS = 88;
     private static final int CRYSTAL_HOLLOWS_NUCLEUS_WAYPOINTS = 89;
+    private static final int ALLOW_BACKWARD_PROGRESS = 90;
 
     private WaypointerConfigCodec() {
     }
@@ -290,6 +291,8 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, CRYSTAL_HOLLOWS_NUCLEUS_WAYPOINTS,
                 config.crystalHollowsNucleusWaypoints(),
                 defaults.crystalHollowsNucleusWaypoints());
+        writeBoolean(out, ALLOW_BACKWARD_PROGRESS,
+                config.allowBackwardProgress(), defaults.allowBackwardProgress());
     }
     private static void readFields(DataInputStream in, WaypointerConfig config) throws IOException {
         while (true) {
@@ -406,6 +409,8 @@ public final class WaypointerConfigCodec {
                         config.setCrystalHollowsAnnounceDetections(in.readBoolean());
                 case CRYSTAL_HOLLOWS_NUCLEUS_WAYPOINTS ->
                         config.setCrystalHollowsNucleusWaypoints(in.readBoolean());
+                case ALLOW_BACKWARD_PROGRESS ->
+                        config.setAllowBackwardProgress(in.readBoolean());
                 default -> throw new IllegalArgumentException("Unknown config field tag: " + tag);
             }
         }
@@ -507,7 +512,7 @@ public final class WaypointerConfigCodec {
     }
 
     static boolean isActiveFieldTag(int tag) {
-        return tag >= DEFAULT_REACH_RADIUS && tag <= CRYSTAL_HOLLOWS_NUCLEUS_WAYPOINTS
+        return tag >= DEFAULT_REACH_RADIUS && tag <= ALLOW_BACKWARD_PROGRESS
                 && tag != SHOW_COMPLETED
                 && tag != LEGACY_CHECK_FOR_UPDATES
                 && tag != TEMP_DEFAULT_DURATION_MIN
