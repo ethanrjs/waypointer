@@ -15,12 +15,49 @@ import java.util.List;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RouteLibraryCodecTest {
+
+    @Test
+    void folderAndColorExportsUseCompactUniversalCodesForEveryColorMode() {
+        for (WaypointGroup.GradientMode mode : WaypointGroup.GradientMode.values()) {
+            ActiveGroupManager source = new ActiveGroupManager();
+            WaypointGroup first = coloredGroup("first-" + mode, "First", 1, mode);
+            WaypointGroup second = coloredGroup("second-" + mode, "Second", 7, mode);
+            source.addAll(List.of(first, second));
+            source.addFolder(new RouteFolder(
+                    "folder-" + mode, "Mining", "hub", true, 0x2468AC),
+                    List.of(first.id(), second.id()));
+            List<WaypointGroup> live = List.of(first, second);
+            RouteLibraryMetadata metadata = RouteLibraryMetadata.capture(source, live);
+            List<WaypointGroup> snapshots = live.stream()
+                    .map(WaypointGroup::exportSnapshot).toList();
+            WaypointCodec.Options options = WaypointCodec.Options.FULL_FIDELITY
+                    .toBuilder().label("Colored folder").build();
+
+            String encoded = RouteLibraryCodec.encode(snapshots, options, metadata);
+            String legacy = RouteLibraryCodec.encodeLegacyWrapper(
+                    snapshots, options, metadata);
+            WaypointImporter.ImportResult imported = WaypointImporter.importAny(encoded);
+
+            assertTrue(encoded.startsWith(WaypointCodec.MAGIC), mode.name());
+            assertFalse(encoded.startsWith(RouteLibraryCodec.MAGIC), mode.name());
+            assertEquals(10, WaypointCodec.debugDecode(encoded).version(), mode.name());
+            assertTrue(encoded.length() < legacy.length(),
+                    mode + ": compact=" + encoded.length() + " legacy=" + legacy.length());
+            assertEquals(mode, imported.groups().getFirst().gradientMode(), mode.name());
+            assertEquals(first.manualColorSnapshot(),
+                    imported.groups().getFirst().manualColorSnapshot(), mode.name());
+            assertEquals(1, imported.libraryMetadata().folders().size(), mode.name());
+            assertEquals(List.of(0, 1), imported.libraryMetadata()
+                    .folders().getFirst().memberOrdinals(), mode.name());
+        }
+    }
 
     @Test
     void roundTripRestoresHiddenManualColorsAndFolders() {
@@ -346,6 +383,20 @@ class RouteLibraryCodecTest {
     private static WaypointGroup group(String id, String name, int x) {
         WaypointGroup group = new WaypointGroup(id, name, "hub");
         group.add(Waypoint.at(x, 70, x).withColor(0x102030));
+        return group;
+    }
+
+    private static WaypointGroup coloredGroup(
+            String id, String name, int x, WaypointGroup.GradientMode mode) {
+        WaypointGroup group = group(id, name, x);
+        group.add(Waypoint.at(x + 1, 71, x + 2).withColor(0x405060));
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        group.set(0, group.get(0).withColor(0x123456));
+        group.set(1, group.get(1).withColor(0xABCDEF));
+        group.setStaticColor(0x2468AC);
+        group.setGradientStartColor(0x112233);
+        group.setGradientEndColor(0xDDEEFF);
+        group.setGradientMode(mode);
         return group;
     }
 }

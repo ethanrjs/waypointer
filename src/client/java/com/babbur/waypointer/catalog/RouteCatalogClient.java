@@ -95,14 +95,25 @@ public final class RouteCatalogClient {
 
     CompletableFuture<CatalogPublishReceipt> publishRoute(
             CatalogPublishRequest publish, PublisherIdentity identity) {
-        if (publish == null) {
-            throw new IllegalArgumentException("Publish request is required");
-        }
-        if (identity == null) {
-            throw new IllegalArgumentException("Publisher identity is required");
-        }
-        CatalogProtocol.PublishExpectation expectation =
-                CatalogProtocol.validatePublishRequest(publish, identity);
+        requirePublishArguments(publish, identity);
+        return publishValidated(publish, identity,
+                CatalogProtocol.validatePublishRequest(publish, identity));
+    }
+
+    CompletableFuture<CatalogPublishReceipt> publishPreparedRoute(
+            CatalogPublishRequest publish,
+            PublisherIdentity identity,
+            CatalogProtocol.PreparedCatalogPayload prepared) {
+        requirePublishArguments(publish, identity);
+        return publishValidated(publish, identity,
+                CatalogProtocol.validatePreparedPublishRequest(
+                        publish, identity, prepared));
+    }
+
+    private CompletableFuture<CatalogPublishReceipt> publishValidated(
+            CatalogPublishRequest publish,
+            PublisherIdentity identity,
+            CatalogProtocol.PublishExpectation expectation) {
         String json = CatalogJson.publishBody(publish);
         byte[] body = json.getBytes(StandardCharsets.UTF_8);
         HttpRequest.Builder builder = request("routes")
@@ -116,6 +127,16 @@ public final class RouteCatalogClient {
                 .thenApply(CatalogJson::parsePublishResult)
                 .thenApply(result -> CatalogProtocol.validatePublishResponse(
                         result, publish, identity, expectation));
+    }
+
+    private static void requirePublishArguments(
+            CatalogPublishRequest publish, PublisherIdentity identity) {
+        if (publish == null) {
+            throw new IllegalArgumentException("Publish request is required");
+        }
+        if (identity == null) {
+            throw new IllegalArgumentException("Publisher identity is required");
+        }
     }
 
     public String apiRoot() {

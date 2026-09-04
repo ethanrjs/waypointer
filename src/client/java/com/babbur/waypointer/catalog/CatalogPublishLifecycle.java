@@ -22,6 +22,23 @@ public final class CatalogPublishLifecycle {
                 client.apiRoot(), Instant.now()));
     }
 
+    public static CompletableFuture<Completion> publishPreparedAndPersist(
+            RouteCatalogClient client,
+            CatalogPublishRequest request,
+            PublisherIdentity identity,
+            CatalogProtocol.PreparedCatalogPayload prepared,
+            PublisherIdentityStore identityStore,
+            CatalogPublicationRegistry publicationRegistry) {
+        if (client == null || request == null || identity == null || prepared == null
+                || identityStore == null || publicationRegistry == null) {
+            throw new IllegalArgumentException("Publish lifecycle dependencies are required");
+        }
+        return client.publishPreparedRoute(request, identity, prepared)
+                .thenApply(receipt -> persist(
+                        receipt, identityStore, publicationRegistry,
+                        client.apiRoot(), Instant.now()));
+    }
+
     static Completion persist(
             CatalogPublishReceipt receipt,
             PublisherIdentityStore identityStore,

@@ -36,8 +36,9 @@ class CatalogPublishSessionTest {
                 new CompletableFuture<>();
         AtomicReference<CatalogPublishRequest> sent = new AtomicReference<>();
         CatalogPublishSession session = new CatalogPublishSession(
-                route(), () -> anonymous, (request, ignoredIdentity) -> {
+                route(), () -> anonymous, (request, ignoredIdentity, prepared) -> {
                     sent.set(request);
+                    assertEquals(request.payload(), prepared.payload());
                     return network;
                 }, Runnable::run);
         completeForm(session.form());
@@ -71,7 +72,7 @@ class CatalogPublishSessionTest {
         PublisherIdentity named = namedIdentity("existing", "Tester_1");
         CatalogPublishSession session = new CatalogPublishSession(
                 route(), () -> named,
-                (request, identity) -> CompletableFuture.completedFuture(
+                (request, identity, prepared) -> CompletableFuture.completedFuture(
                         completion(identity)), Runnable::run);
         completeForm(session.form());
 
@@ -92,7 +93,7 @@ class CatalogPublishSessionTest {
         PublisherIdentity named = namedIdentity("named", "Tester_1");
         AtomicReference<CatalogPublishRequest> sent = new AtomicReference<>();
         CatalogPublishSession session = new CatalogPublishSession(
-                route(), () -> named, (request, identity) -> {
+                route(), () -> named, (request, identity, prepared) -> {
                     sent.set(request);
                     return CompletableFuture.completedFuture(completion(identity));
                 }, Runnable::run);
@@ -119,7 +120,7 @@ class CatalogPublishSessionTest {
         AtomicReference<CatalogPublishRequest> sent = new AtomicReference<>();
         AtomicInteger publishes = new AtomicInteger();
         CatalogPublishSession session = new CatalogPublishSession(
-                route(), () -> named, (request, identity) -> {
+                route(), () -> named, (request, identity, prepared) -> {
                     sent.set(request);
                     if (publishes.incrementAndGet() == 1) {
                         return CompletableFuture.failedFuture(
@@ -176,7 +177,7 @@ class CatalogPublishSessionTest {
     void loadFailureBecomesAStableTerminalState() {
         CatalogPublishSession session = new CatalogPublishSession(
                 route(), () -> { throw new IllegalStateException("identity unavailable"); },
-                (request, identity) -> {
+                (request, identity, prepared) -> {
                     throw new AssertionError("publish must not run");
                 }, Runnable::run);
         completeForm(session.form());

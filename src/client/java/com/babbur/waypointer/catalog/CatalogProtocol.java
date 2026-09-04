@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.Base64;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -55,20 +56,59 @@ public final class CatalogProtocol {
         WaypointCodec.Decoded decoded = WaypointCodec.decodeCanonicalV9(payload);
         WaypointImporter.validateCatalogEmbeddedZones(decoded.groups());
         List<WaypointGroup> groups = List.copyOf(decoded.groups());
-        int waypointCount = groups.stream().mapToInt(WaypointGroup::size).sum();
-        Set<String> zones = new LinkedHashSet<>();
-        for (WaypointGroup group : groups) zones.add(group.zoneId());
-        String zoneId = zones.size() == 1 ? zones.iterator().next() : "multiple";
+        PublishManifest publishManifest = publishManifest(groups, payload);
         return new PayloadManifest(
-                groups, decoded.label(), groups.size(), waypointCount, zoneId,
-                currentCodecVersion(), payloadHash(payload));
+                groups, decoded.label(), publishManifest.groupCount(),
+                publishManifest.waypointCount(), publishManifest.zoneId(),
+                publishManifest.codecVersion(), publishManifest.payloadSha256());
+    }
+
+    /**
+     * Encodes immutable route snapshots with the existing catalog V9 feature set
+     * and records the resulting manifest in the same operation. The returned
+     * capability can only be constructed here, so the publish client may skip
+     * decoding bytes it just encoded itself.
+     */
+    public static PreparedCatalogPayload prepareCatalogPayload(
+            List<WaypointGroup> groups) {
+        Objects.requireNonNull(groups, "groups");
+        List<WaypointGroup> snapshots = new ArrayList<>(groups.size());
+        for (WaypointGroup group : groups) {
+            snapshots.add(Objects.requireNonNull(group, "group").exportSnapshot());
+        }
+        List<WaypointGroup> immutableSnapshots = List.copyOf(snapshots);
+        WaypointImporter.validateCatalogEmbeddedZones(immutableSnapshots);
+        String payload = WaypointCodec.encodeCatalog(immutableSnapshots);
+        return new PreparedCatalogPayload(
+                payload, publishManifest(immutableSnapshots, payload));
     }
 
     static PublishExpectation validatePublishRequest(
             CatalogPublishRequest request, PublisherIdentity identity) {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(identity, "identity");
-        PayloadManifest manifest = inspectPayload(request.payload());
+        return publishExpectation(
+                request, identity, inspectPayload(request.payload()).publishManifest());
+    }
+
+    static PublishExpectation validatePreparedPublishRequest(
+            CatalogPublishRequest request,
+            PublisherIdentity identity,
+            PreparedCatalogPayload prepared) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(prepared, "prepared");
+        if (!prepared.payload.equals(request.payload())) {
+            throw new IllegalArgumentException(
+                    "Prepared catalog payload does not match the publish request");
+        }
+        return publishExpectation(request, identity, prepared.manifest);
+    }
+
+    private static PublishExpectation publishExpectation(
+            CatalogPublishRequest request,
+            PublisherIdentity identity,
+            PublishManifest manifest) {
         if (request.zoneId() != null && !request.zoneId().isBlank()
                 && !manifest.zoneId().equals(request.zoneId())) {
             throw new IllegalArgumentException(
@@ -103,7 +143,7 @@ public final class CatalogProtocol {
         if (!expected.visibility().wireName().equals(route.visibility())) {
             throw invalidPublishResponse("The catalog returned a different route visibility.");
         }
-        PayloadManifest manifest = expected.manifest();
+        PublishManifest manifest = expected.manifest();
         if (!expected.zoneId().equals(route.zoneId())
                 || manifest.groupCount() != route.groupCount()
                 || manifest.waypointCount() != route.waypointCount()
@@ -153,6 +193,17 @@ public final class CatalogProtocol {
         }
     }
 
+    private static PublishManifest publishManifest(
+            List<WaypointGroup> groups, String payload) {
+        int waypointCount = groups.stream().mapToInt(WaypointGroup::size).sum();
+        Set<String> zones = new LinkedHashSet<>();
+        for (WaypointGroup group : groups) zones.add(group.zoneId());
+        String zoneId = zones.size() == 1 ? zones.iterator().next() : "multiple";
+        return new PublishManifest(
+                groups.size(), waypointCount, zoneId,
+                currentCodecVersion(), payloadHash(payload));
+    }
+
     private static String expectedPublisherName(
             CatalogPublishRequest request, PublisherIdentity identity) {
         if (identity.publisherName() == null) {
@@ -187,15 +238,41 @@ public final class CatalogProtocol {
             String zoneId,
             int codecVersion,
             String payloadSha256) {
+        PublishManifest publishManifest() {
+            return new PublishManifest(
+                    groupCount, waypointCount, zoneId, codecVersion, payloadSha256);
+        }
+    }
+
+    record PublishManifest(
+            int groupCount,
+            int waypointCount,
+            String zoneId,
+            int codecVersion,
+            String payloadSha256) {
     }
 
     record PublishExpectation(
-            PayloadManifest manifest,
+            PublishManifest manifest,
             String publisherName,
             String title,
             String description,
             CatalogPublishRequest.Visibility visibility,
             String zoneId) {
+    }
+
+    public static final class PreparedCatalogPayload {
+        private final String payload;
+        private final PublishManifest manifest;
+
+        private PreparedCatalogPayload(String payload, PublishManifest manifest) {
+            this.payload = payload;
+            this.manifest = manifest;
+        }
+
+        public String payload() {
+            return payload;
+        }
     }
 
     private record SelectedRouteMetadata(

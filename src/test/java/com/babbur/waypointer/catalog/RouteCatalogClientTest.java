@@ -147,6 +147,48 @@ class RouteCatalogClientTest {
     }
 
     @Test
+    void preparedPublishUsesTheSameValidatedRequestPath() {
+        PublisherIdentity identity = PublisherIdentity.generate(Instant.EPOCH);
+        RecordingTransport transport = publishTransport(identity, "Tester");
+        RouteCatalogClient client = client(transport);
+        CatalogProtocol.PreparedCatalogPayload prepared =
+                CatalogProtocol.prepareCatalogPayload(List.of(catalogRoute()));
+        CatalogPublishRequest request = new CatalogPublishRequest(
+                prepared.payload(), "Route", "Description",
+                CatalogPublishRequest.Visibility.UNLISTED, "hub", "Tester");
+
+        CatalogPublishReceipt receipt = client.publishPreparedRoute(
+                request, identity, prepared).join();
+
+        assertEquals(ID, receipt.result().route().id());
+        assertEquals(CatalogProtocol.payloadHash(prepared.payload()),
+                receipt.payloadSha256());
+        assertEquals("POST", transport.request.method());
+        assertNotNull(transport.request.headers()
+                .firstValue("X-Waypointer-Signature").orElse(null));
+    }
+
+    @Test
+    void preparedAndUntrustedPublishRejectChangedBytesBeforeNetworkAccess() {
+        PublisherIdentity identity = PublisherIdentity.generate(Instant.EPOCH);
+        CatalogProtocol.PreparedCatalogPayload prepared =
+                CatalogProtocol.prepareCatalogPayload(List.of(catalogRoute()));
+        CatalogPublishRequest changed = new CatalogPublishRequest(
+                prepared.payload() + " ", "Route", "Description",
+                CatalogPublishRequest.Visibility.UNLISTED, "hub", "Tester");
+        RecordingTransport preparedTransport = new RecordingTransport(null);
+        RecordingTransport untrustedTransport = new RecordingTransport(null);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> client(preparedTransport).publishPreparedRoute(
+                        changed, identity, prepared));
+        assertThrows(IllegalArgumentException.class,
+                () -> client(untrustedTransport).publishRoute(changed, identity));
+        assertNull(preparedTransport.request);
+        assertNull(untrustedTransport.request);
+    }
+
+    @Test
     void deleteSignsTheExactRoutePath() {
         RecordingTransport transport = emptyTransport();
         RouteCatalogClient client = client(transport);
@@ -313,9 +355,13 @@ class RouteCatalogClientTest {
     }
 
     private static String catalogPayload() {
+        return WaypointCodec.encodeCatalog(List.of(catalogRoute()));
+    }
+
+    private static WaypointGroup catalogRoute() {
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         group.add(new Waypoint(1, 64, 2, "Start", 0x44AA66, 0, 0.0));
-        return WaypointCodec.encodeCatalog(List.of(group));
+        return group;
     }
 
     private static final class RecordingTransport implements RouteCatalogClient.Transport {

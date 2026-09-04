@@ -1,5 +1,7 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointPaint;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -42,5 +44,18 @@ class RoutePublishScreenTest {
                 CatalogPublishSession.Phase.NEEDS_PUBLISHER_NAME));
         assertTrue(RoutePublishScreen.canNavigateBack(CatalogPublishSession.Phase.SUCCEEDED));
         assertTrue(RoutePublishScreen.canNavigateBack(CatalogPublishSession.Phase.FAILED));
+    }
+
+    @Test
+    void warnsOnlyWhenAnEffectiveCustomPaintWouldBeOmitted() {
+        WaypointGroup route = WaypointGroup.create("Painted", "hub");
+        assertFalse(RoutePublishScreen.customPaintOmitted(route));
+
+        route.setPaint(WaypointPaint.solid(0x123456));
+        assertTrue(RoutePublishScreen.customPaintOmitted(route));
+
+        route.setPaintEnabled(false);
+        assertFalse(RoutePublishScreen.customPaintOmitted(route));
+        assertFalse(RoutePublishScreen.customPaintOmitted(null));
     }
 }
