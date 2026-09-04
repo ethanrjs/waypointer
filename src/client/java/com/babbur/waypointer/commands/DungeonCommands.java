@@ -272,17 +272,23 @@ public final class DungeonCommands {
 
         DungeonRouteImporter.Result result = loaded.result();
         List<WaypointGroup> routes = DungeonRoomRouteLibrary.installRoutes(manager, result.groups());
+        reportImportedRoutes(src, result, routes);
+    }
+
+    static void reportImportedRoutes(FabricClientCommandSource src,
+                                     DungeonRouteImporter.Result result,
+                                     List<WaypointGroup> routes) {
         if (routes.isEmpty()) {
             error(src, Component.translatable(
                     "waypointer.dungeon.command.import.no_usable_routes"));
-            return;
+        } else {
+            success(src, Component.translatable(
+                    "waypointer.dungeon.command.import.success",
+                    DungeonRoomShareCodec.waypointCount(routes), routes.size(),
+                    importFormatLabel(result.format())));
+            info(src, Component.translatable(
+                    "waypointer.dungeon.routes.existing_disabled"));
         }
-        success(src, Component.translatable(
-                "waypointer.dungeon.command.import.success",
-                DungeonRoomShareCodec.waypointCount(routes), routes.size(),
-                importFormatLabel(result.format())));
-        info(src, Component.translatable(
-                "waypointer.dungeon.routes.existing_disabled"));
         if (result.skippedVariants() > 0) {
             info(src, Component.translatable(
                     "waypointer.dungeon.command.import.skipped_variants",

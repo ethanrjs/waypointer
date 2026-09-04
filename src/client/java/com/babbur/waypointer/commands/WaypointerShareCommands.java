@@ -560,10 +560,13 @@ final class WaypointerShareCommands {
         int imported = routes.size();
         int waypoints = com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec
                 .waypointCount(routes);
-        if (imported == 0) return 0;
-        success(src, Component.literal("Imported " + imported + " dungeon room route"
-                + (imported == 1 ? "" : "s") + " with " + waypoints + " waypoint"
-                + (waypoints == 1 ? "" : "s") + " from " + origin + "."));
+        DungeonCommands.reportImportedRoutes(src, result, routes);
+        if (imported == 0) {
+            ImportFeedback.failure(Component.translatable(
+                    "waypointer.dungeon.command.import.no_usable_routes").getString());
+            return 0;
+        }
+        ImportFeedback.successDungeonRoutes(imported, waypoints, origin);
         info(src, importEditorHintComponent(true));
         return imported;
     }

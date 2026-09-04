@@ -12,6 +12,7 @@ import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
 import com.babbur.waypointer.screen.ConfigImportConfirmation;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.network.chat.ClickEvent;
@@ -33,6 +34,49 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerShareCommandsTest {
+
+    @Test
+    void unmatchedDungeonChatImportExplainsWhyNothingWasInstalled() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerShareCommands commands = new WaypointerShareCommands(
+                manager, new WaypointerConfig(), new ChatImportCache());
+        CommandMessages messages = new CommandMessages();
+        DungeonRouteImporter.Result result = new DungeonRouteImporter.Result(
+                List.of(), 0, List.of("Unmatched room"), 0,
+                DungeonRouteImporter.Format.SECRET_ROUTES);
+
+        assertEquals(0, commands.importDungeonRoutes(messages.source(), result, "chat"));
+
+        assertEquals(List.of("waypointer.dungeon.command.import.no_usable_routes"),
+                messages.errorKeys());
+        assertEquals(List.of("waypointer.dungeon.command.import.unmatched_rooms"),
+                messages.feedbackKeys());
+        assertTrue(manager.allGroupsList().isEmpty());
+    }
+
+    @Test
+    void partialDungeonChatImportReportsInstalledAndUnmatchedRooms() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerShareCommands commands = new WaypointerShareCommands(
+                manager, new WaypointerConfig(), new ChatImportCache());
+        WaypointGroup route = WaypointGroup.create("Crypt", "crypt-a");
+        route.add(Waypoint.at(1, 70, 2));
+        CommandMessages messages = new CommandMessages();
+        DungeonRouteImporter.Result result = new DungeonRouteImporter.Result(
+                List.of(route), 1, List.of("Unmatched room"), 2,
+                DungeonRouteImporter.Format.SECRET_ROUTES);
+
+        assertEquals(1, commands.importDungeonRoutes(messages.source(), result, "chat"));
+
+        assertTrue(messages.errorKeys().isEmpty());
+        assertEquals(List.of(
+                "waypointer.dungeon.command.import.success",
+                "waypointer.dungeon.routes.existing_disabled",
+                "waypointer.dungeon.command.import.skipped_variants",
+                "waypointer.dungeon.command.import.unmatched_rooms",
+                "waypointer.command.import.open_editor_hint"), messages.feedbackKeys());
+        assertEquals(List.of(route), manager.allGroupsList());
+    }
 
     @Test
     void typedChatConfigWaitsForConfirmationAndCancelDoesNotMutateAnything() {

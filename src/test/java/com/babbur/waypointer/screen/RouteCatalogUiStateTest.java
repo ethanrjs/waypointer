@@ -25,6 +25,9 @@ class RouteCatalogUiStateTest {
         assertFalse(requests.acceptsList(searched));
         requests.activate();
         assertFalse(requests.acceptsList(searched));
+        int restarted = requests.beginList(true);
+        assertFalse(requests.acceptsList(searched));
+        assertTrue(requests.acceptsList(restarted));
     }
 
     @Test

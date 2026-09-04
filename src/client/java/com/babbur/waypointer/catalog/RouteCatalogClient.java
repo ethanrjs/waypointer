@@ -81,7 +81,10 @@ public final class RouteCatalogClient {
     }
 
     public CompletableFuture<CatalogRouteDetails> getRoute(String routeId) {
-        requireRouteId(routeId);
+        if (!isValidRouteId(routeId)) {
+            return CompletableFuture.failedFuture(
+                    new IllegalArgumentException("Invalid catalog route ID"));
+        }
         HttpRequest request = request("routes/" + routeId).GET().build();
         return sendJson(request, MAX_ROUTE_BYTES, 200).thenApply(json -> {
             CatalogRouteDetails details = CatalogJson.parseDetails(json);
@@ -293,8 +296,13 @@ public final class RouteCatalogClient {
         return audience;
     }
 
+    /** True for route IDs accepted by the catalog detail/install API. */
+    public static boolean isValidRouteId(String routeId) {
+        return routeId != null && ROUTE_ID.matcher(routeId).matches();
+    }
+
     private static void requireRouteId(String routeId) {
-        if (routeId == null || !ROUTE_ID.matcher(routeId).matches()) {
+        if (!isValidRouteId(routeId)) {
             throw new IllegalArgumentException("Invalid catalog route ID");
         }
     }

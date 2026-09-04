@@ -92,6 +92,7 @@ public final class RouteCatalogScreen extends Screen {
     private boolean listRequested;
     private boolean listLoading;
     private boolean appending;
+    private boolean restartAppendOnReentry;
     private boolean detailLoading;
     private boolean initializing;
     private boolean lastLoadFailed;
@@ -269,7 +270,16 @@ public final class RouteCatalogScreen extends Screen {
         addRenderableWidget(installButton);
 
         initializing = false;
-        if (!listRequested) refreshCatalog();
+        if (!listRequested) {
+            boolean restartAppend = restartAppendOnReentry
+                    && browser.nextCursor() != null;
+            restartAppendOnReentry = false;
+            if (restartAppend) {
+                requestPage(browser.nextCursor(), true);
+            } else {
+                refreshCatalog();
+            }
+        }
     }
 
     // rebuildWidgets clears focus, so remember the search caret before it runs
@@ -1182,6 +1192,21 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public void removed() {
         requests.deactivate();
+        if (listLoading || appending) {
+            // The request tracker intentionally drops completions while this
+            // screen is away. Clear only transient state so init() starts the
+            // abandoned request again without discarding settled rows/cache.
+            restartAppendOnReentry = appending && browser.nextCursor() != null;
+            listRequested = false;
+            listLoading = false;
+            appending = false;
+        }
+        if (detailLoading) {
+            detailLoading = false;
+            statusText = Component.translatable(
+                    "waypointer.screen.route_catalog.status.selection_help");
+            statusColor = TEXT_DIM;
+        }
         super.removed();
     }
 
