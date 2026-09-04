@@ -54,7 +54,7 @@ Odin-compatible dungeon room grid/core detection behavior for named dungeon
 room detection.
 
 - Project: https://github.com/odtheking/Odin
-- Room data source commit: `2f96b4481d223287567c8e38efa5bc1ae0a5787d`
+- Room data source commit: `cb333da402dfbea10cc0f06422646f334dace5bb`
 - Room data source file: `src/main/resources/assets/odin/rooms.json`
 - Algorithm source commit: `57c4fa5d7d92a67bda440aedcb45010dafae89c7`
 - Algorithm source file: `src/main/kotlin/com/odtheking/odin/utils/skyblock/dungeon/ScanUtils.kt`
@@ -88,6 +88,18 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+## SecretRoutes room-name/core mapping data
+
+Waypointer bundles a reduced table of SecretRoutes room names and core hashes
+to match SecretRoutes imports to the Odin-lineage room catalog without relying
+on room-name guesses. No SecretRoutes route packs are bundled.
+
+- Project: https://github.com/yourboykyle/SecretRoutes
+- Source commit: `a6a88c831206df5c16ec49d416c9d7e6b5a533e0`
+- Source file: `src/main/resources/assets/secretroutesmod/rooms.json`
+- License: GNU General Public License v3.0
+- License text: https://github.com/yourboykyle/SecretRoutes/blob/a6a88c831206df5c16ec49d416c9d7e6b5a533e0/LICENSE
 
 ## Crystal Hollows detection and Wishing Compass solver
 

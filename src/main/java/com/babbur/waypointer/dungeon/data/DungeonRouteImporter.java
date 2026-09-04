@@ -15,9 +15,12 @@ import com.babbur.waypointer.dungeon.DungeonWaypointTrigger;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -72,6 +75,12 @@ public final class DungeonRouteImporter {
     private static final int MAX_DECOMPRESSED_BYTES = 32 * 1024 * 1024;
     /** Room-local coordinates live in [0, 4*32); anything far outside is world data. */
     private static final int MAX_ROOM_LOCAL_ABS = 512;
+    private static final String SECRET_ROUTES_ROOM_CORES_RESOURCE =
+            "/assets/waypointer/dungeons/catacombs/secret-routes-room-cores.json";
+    private static final Map<String, List<Integer>> SECRET_ROUTES_ROOM_CORES =
+            loadSecretRoutesRoomCores();
+    private static final Map<String, List<Integer>> SECRET_ROUTES_SUFFIX_FREE_CORES =
+            buildSecretRoutesSuffixFreeCores(SECRET_ROUTES_ROOM_CORES);
 
     private DungeonRouteImporter() {}
 
@@ -195,13 +204,7 @@ public final class DungeonRouteImporter {
 
     // ---- room-name matching --------------------------------------------------
 
-    /**
-     * DungeonRoomsMod-lineage names that differ from the Odin-lineage catalog
-     * names. Every alias was cross-checked against the catalog's room shape
-     * and upstream core hashes before being added. The less-obvious aliases at
-     * the end use exact core-hash matches between SecretRoutes' room catalog and
-     * Waypointer's bundled catalog, rather than spelling guesses.
-     */
+    /** Established external name aliases retained for Odin waypoint packs. */
     private static final Map<String, String> DRM_NAME_ALIASES = Map.ofEntries(
             Map.entry("silvers-sword", "silver-sword"),
             Map.entry("lava-skulls", "lava-pit"),
@@ -241,10 +244,92 @@ public final class DungeonRouteImporter {
         return alias == null ? null : index.get(alias);
     }
 
+    private static Map<String, List<Integer>> loadSecretRoutesRoomCores() {
+        try (InputStream stream = DungeonRouteImporter.class
+                .getResourceAsStream(SECRET_ROUTES_ROOM_CORES_RESOURCE)) {
+            if (stream == null) return Map.of();
+            try (InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
+                JsonObject root = JsonParser.parseReader(reader).getAsJsonObject();
+                JsonObject rooms = root.getAsJsonObject("rooms");
+                if (rooms == null) return Map.of();
+
+                Map<String, List<Integer>> loaded = new LinkedHashMap<>();
+                for (Map.Entry<String, JsonElement> entry : rooms.entrySet()) {
+                    if (!entry.getValue().isJsonArray()) continue;
+                    List<Integer> coreHashes = new ArrayList<>();
+                    for (JsonElement core : entry.getValue().getAsJsonArray()) {
+                        if (core.isJsonPrimitive() && core.getAsJsonPrimitive().isNumber()) {
+                            coreHashes.add(core.getAsInt());
+                        }
+                    }
+                    String normalizedName = DungeonRoomCatalogEntry.normalizeId(entry.getKey());
+                    if (loaded.putIfAbsent(normalizedName, List.copyOf(coreHashes)) != null) {
+                        // A normalized source-name collision is not safe to guess through.
+                        loaded.put(normalizedName, List.of());
+                    }
+                }
+                return Map.copyOf(loaded);
+            }
+        } catch (RuntimeException | IOException invalidResource) {
+            return Map.of();
+        }
+    }
+
+    private static DungeonRoomCatalogEntry matchSecretRoutesRoom(String rawName) {
+        String normalizedName = DungeonRoomCatalogEntry.normalizeId(rawName);
+        List<Integer> coreHashes = SECRET_ROUTES_ROOM_CORES.get(normalizedName);
+        if (coreHashes == null) {
+            coreHashes = SECRET_ROUTES_SUFFIX_FREE_CORES.get(normalizedName);
+        }
+        return matchUniqueCoreRoom(DungeonRoomData.allEntries(), coreHashes);
+    }
+
+    /**
+     * Preserves the importer's established suffix-free input compatibility using
+     * identities derived from the pinned source table. If multiple source rooms
+     * reduce to the same name, their hashes remain combined so the unique-match
+     * guard rejects aliases such as the two distinct Waterfall rooms.
+     */
+    private static Map<String, List<Integer>> buildSecretRoutesSuffixFreeCores(
+            Map<String, List<Integer>> sourceRooms) {
+        Map<String, List<Integer>> aliases = new LinkedHashMap<>();
+        for (Map.Entry<String, List<Integer>> entry : sourceRooms.entrySet()) {
+            String alias = entry.getKey().replaceFirst("-\\d+$", "");
+            if (alias.equals(entry.getKey())) continue;
+            aliases.merge(alias, entry.getValue(), (existing, additional) -> {
+                List<Integer> combined = new ArrayList<>(existing);
+                for (Integer coreHash : additional) {
+                    if (!combined.contains(coreHash)) combined.add(coreHash);
+                }
+                return List.copyOf(combined);
+            });
+        }
+        return Map.copyOf(aliases);
+    }
+
+    /** Returns a room only when the supplied core hashes identify one catalog entry. */
+    static DungeonRoomCatalogEntry matchUniqueCoreRoom(
+            Collection<DungeonRoomCatalogEntry> entries, List<Integer> coreHashes) {
+        if (entries == null || coreHashes == null || coreHashes.isEmpty()) return null;
+        DungeonRoomCatalogEntry matched = null;
+        for (DungeonRoomCatalogEntry entry : entries) {
+            boolean sharesCore = false;
+            for (Integer coreHash : coreHashes) {
+                if (entry.coreHashes().contains(coreHash)) {
+                    sharesCore = true;
+                    break;
+                }
+            }
+            if (!sharesCore) continue;
+            if (matched != null) return null;
+            matched = entry;
+        }
+        return matched;
+    }
+
     // ---- SecretRoutes -----------------------------------------------------------
 
     private static Result parseSecretRoutes(JsonObject root) {
-        Map<String, DungeonRoomCatalogEntry> index = catalogIndex();
         List<WaypointGroup> imported = new ArrayList<>();
         List<String> unmatched = new ArrayList<>();
         int waypointCount = 0;
@@ -260,7 +345,7 @@ public final class DungeonRouteImporter {
             String roomKey = variant ? key.substring(0, variantSeparator) : key;
             int routeNumber = variant ? routeNumber(key.substring(variantSeparator + 1)) : 1;
 
-            DungeonRoomCatalogEntry target = matchRoom(index, roomKey);
+            DungeonRoomCatalogEntry target = matchSecretRoutesRoom(roomKey);
             if (target == null) {
                 unmatched.add(key);
                 continue;
