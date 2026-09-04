@@ -1061,6 +1061,33 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void crystalHollowsDefaultsDisableResetAndRoundTrip() {
+        WaypointerConfig config = new WaypointerConfig();
+        assertTrue(config.crystalHollowsEnabled());
+        assertTrue(config.crystalHollowsStructureWaypoints());
+        assertTrue(config.crystalHollowsShowRoughMarkers());
+        assertTrue(config.crystalHollowsEntityDetection());
+        assertTrue(config.crystalHollowsChatDetection());
+        assertTrue(config.crystalHollowsWishingCompassSolver());
+        assertTrue(config.crystalHollowsCompassRays());
+        assertTrue(config.crystalHollowsAnnounceDetections());
+        assertFalse(config.crystalHollowsNucleusWaypoints());
+
+        config.setCrystalHollowsNucleusWaypoints(true);
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(config));
+        assertTrue(decoded.crystalHollowsNucleusWaypoints());
+
+        config.disableAllSettings();
+        assertFalse(config.crystalHollowsEnabled());
+        assertFalse(config.crystalHollowsCompassRays());
+        config.resetToDefaults();
+        assertTrue(config.crystalHollowsEnabled());
+        assertTrue(config.crystalHollowsCompassRays());
+        assertFalse(config.crystalHollowsNucleusWaypoints());
+    }
+
+    @Test
     void configCodecConsumesLegacyRouteTimesField() throws IOException {
         WaypointerConfig decoded = WaypointerConfigCodec.decode(configCodeForRawPayload(
                 (byte) 3, (byte) 66, (byte) 1, (byte) 67, (byte) 1, (byte) 0));

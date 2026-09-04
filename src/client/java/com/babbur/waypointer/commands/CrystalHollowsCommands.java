@@ -3,7 +3,9 @@ package com.babbur.waypointer.commands;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.crystal.CrystalHollowsChatParser;
+import com.babbur.waypointer.crystal.CrystalHollowsGeometry;
 import com.babbur.waypointer.crystal.CrystalHollowsLobbyState;
+import com.babbur.waypointer.crystal.CrystalHollowsSightingSelector;
 import com.babbur.waypointer.crystal.CrystalHollowsStore;
 import com.babbur.waypointer.crystal.CrystalHollowsStructure;
 import com.babbur.waypointer.crystal.CrystalHollowsTracker;
@@ -108,7 +110,9 @@ public final class CrystalHollowsCommands {
             CrystalHollowsLobbyState lobby = tracker == null ? null : tracker.lobby();
             if (lobby == null) return builder.buildFuture();
             Set<String> ids = new LinkedHashSet<>();
-            for (StructureSighting sighting : lobby.sightings()) ids.add(sighting.structure().id());
+            for (int index = 0; index < lobby.sightings().size(); index++) {
+                ids.add(CrystalHollowsSightingSelector.referenceAt(lobby.sightings(), index));
+            }
             String remaining = builder.getRemainingLowerCase();
             for (String id : ids) {
                 if (id.startsWith(remaining)) builder.suggest(id);
@@ -134,21 +138,26 @@ public final class CrystalHollowsCommands {
         double playerX = source.getPosition().x;
         double playerY = source.getPosition().y;
         double playerZ = source.getPosition().z;
-        for (StructureSighting sighting : lobby.sightings()) {
+        for (int index = 0; index < lobby.sightings().size(); index++) {
+            StructureSighting sighting = lobby.sightings().get(index);
+            String reference = CrystalHollowsSightingSelector.referenceAt(
+                    lobby.sightings(), index);
+            CrystalHollowsSightingSelector.Selection selection =
+                    CrystalHollowsSightingSelector.parse(reference);
             double dx = sighting.x() + 0.5 - playerX;
             double dy = sighting.y() + 0.5 - playerY;
             double dz = sighting.z() + 0.5 - playerZ;
             String distance = String.format(Locale.ROOT, "%.1f", Math.sqrt(dx * dx + dy * dy + dz * dz));
             MutableComponent line = Component.translatable(
                             "waypointer.crystal.command.info.sighting",
-                            displayName(sighting.structure()), sighting.x(), sighting.y(), sighting.z(),
+                            displayName(selection), sighting.x(), sighting.y(), sighting.z(),
                             confidence(sighting.confidence()), distance)
                     .append(Component.literal(" "))
                     .append(action("waypointer.crystal.action.share",
-                            "/wpch share " + sighting.structure().id(), ChatFormatting.GREEN))
+                            "/wpch share " + reference, ChatFormatting.GREEN))
                     .append(Component.literal(" "))
                     .append(action("waypointer.crystal.action.remove",
-                            "/wpch remove " + sighting.structure().id(), ChatFormatting.RED));
+                            "/wpch remove " + reference, ChatFormatting.RED));
             info(source, line);
         }
         return 1;
@@ -157,14 +166,18 @@ public final class CrystalHollowsCommands {
     private int runShare(FabricClientCommandSource source, String rawStructure) {
         CrystalHollowsLobbyState lobby = availableLobby(source);
         if (lobby == null) return 0;
-        CrystalHollowsStructure structure = resolveStructure(rawStructure);
-        if (structure == null) return unknownStructure(source, rawStructure);
-        StructureSighting sighting = lobby.sightings().stream()
-                .filter(candidate -> candidate.structure() == structure)
-                .findFirst().orElse(null);
+        CrystalHollowsSightingSelector.Selection selection =
+                CrystalHollowsSightingSelector.parse(rawStructure);
+        if (selection == null) return unknownStructure(source, rawStructure);
+        CrystalHollowsStructure structure = selection.structure();
+        StructureSighting sighting = CrystalHollowsSightingSelector.find(
+                lobby.sightings(), selection);
+        if (sighting == null && structure == CrystalHollowsStructure.CRYSTAL_NUCLEUS) {
+            sighting = fixedNucleusSighting();
+        }
         if (sighting == null) {
             error(source, Component.translatable(
-                    "waypointer.crystal.command.error.not_found", displayName(structure)));
+                    "waypointer.crystal.command.error.not_found", displayName(selection)));
             return 0;
         }
         if (source.getClient().getConnection() == null) {
@@ -173,7 +186,8 @@ public final class CrystalHollowsCommands {
         }
         String message = CrystalHollowsChatParser.formatShare(
                 structure, sighting.x(), sighting.y(), sighting.z());
-        WaypointerChatFeedback.suppress(Component.literal(message));
+        WaypointerChatFeedback.suppressOutgoing(
+                Component.literal(message), source.getPlayer().getGameProfile().name());
         source.getClient().getConnection().sendChat(message);
         return 1;
     }
@@ -199,16 +213,17 @@ public final class CrystalHollowsCommands {
     private int runRemove(FabricClientCommandSource source, String rawStructure) {
         CrystalHollowsLobbyState lobby = availableLobby(source);
         if (lobby == null) return 0;
-        CrystalHollowsStructure structure = resolveStructure(rawStructure);
-        if (structure == null) return unknownStructure(source, rawStructure);
-        if (lobby.sightings().stream().noneMatch(sighting -> sighting.structure() == structure)) {
+        CrystalHollowsSightingSelector.Selection selection =
+                CrystalHollowsSightingSelector.parse(rawStructure);
+        if (selection == null) return unknownStructure(source, rawStructure);
+        if (CrystalHollowsSightingSelector.find(lobby.sightings(), selection) == null) {
             error(source, Component.translatable(
-                    "waypointer.crystal.command.error.not_found", displayName(structure)));
+                    "waypointer.crystal.command.error.not_found", displayName(selection)));
             return 0;
         }
-        tracker.remove(structure);
+        tracker.remove(selection);
         success(source, Component.translatable(
-                "waypointer.crystal.command.removed", displayName(structure)));
+                "waypointer.crystal.command.removed", displayName(selection)));
         return 1;
     }
 
@@ -225,7 +240,8 @@ public final class CrystalHollowsCommands {
             return 0;
         }
         info(source, Component.translatable("waypointer.crystal.command.compass.status",
-                compass.solver().state().name().toLowerCase(Locale.ROOT),
+                Component.translatable("waypointer.crystal.compass.state."
+                        + compass.solver().state().name().toLowerCase(Locale.ROOT)),
                 compass.solver().completedRays().size()));
         return 1;
     }
@@ -291,15 +307,28 @@ public final class CrystalHollowsCommands {
     }
 
     static CrystalHollowsStructure resolveStructure(String raw) {
-        if (raw == null || raw.isBlank()) return null;
-        for (CrystalHollowsStructure structure : CrystalHollowsStructure.values()) {
-            if (structure.id().equalsIgnoreCase(raw)) return structure;
-        }
-        return CrystalHollowsChatParser.structureFromText(raw);
+        return CrystalHollowsSightingSelector.resolveStructure(raw);
     }
 
     private static Component displayName(CrystalHollowsStructure structure) {
         return Component.translatable("waypointer.crystal.structure." + structure.id());
+    }
+
+    private static Component displayName(CrystalHollowsSightingSelector.Selection selection) {
+        Component base = displayName(selection.structure());
+        return selection.instance() == 1
+                ? base
+                : Component.translatable(
+                        "waypointer.crystal.label.instance", base, selection.instance());
+    }
+
+    private static StructureSighting fixedNucleusSighting() {
+        return new StructureSighting(
+                CrystalHollowsStructure.CRYSTAL_NUCLEUS,
+                (int) Math.floor(CrystalHollowsGeometry.NUCLEUS_CENTRE_X),
+                (int) Math.floor(CrystalHollowsGeometry.NUCLEUS_CENTRE_Y),
+                (int) Math.floor(CrystalHollowsGeometry.NUCLEUS_CENTRE_Z),
+                SightingConfidence.MANUAL, "fixed:nucleus", 0L);
     }
 
     private static Component confidence(SightingConfidence confidence) {

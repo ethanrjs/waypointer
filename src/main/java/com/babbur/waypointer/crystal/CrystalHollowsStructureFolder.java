@@ -15,9 +15,13 @@ public final class CrystalHollowsStructureFolder {
 
     public record PlannedWaypoint(String name, CrystalHollowsPosition position, int color) {}
     public record PlannedGroup(String id, String structureId, String name,
-                               List<PlannedWaypoint> waypoints) {
+                               List<PlannedWaypoint> waypoints, int instance,
+                               boolean approximate,
+                               List<CrystalHollowsStructure> candidates,
+                               boolean nucleus) {
         public PlannedGroup {
             waypoints = List.copyOf(waypoints);
+            candidates = List.copyOf(candidates);
         }
     }
 
@@ -29,15 +33,17 @@ public final class CrystalHollowsStructureFolder {
                 new EnumMap<>(CrystalHollowsStructure.class);
         List<PlannedGroup> groups = new ArrayList<>();
         for (StructureSighting sighting : sightings) {
-            if (!showRough && sighting.confidence() == SightingConfidence.ROUGH_AREA) continue;
             CrystalHollowsStructure structure = sighting.structure();
             int instance = instances.merge(structure, 1, Integer::sum);
+            if (!showRough && sighting.confidence() == SightingConfidence.ROUGH_AREA) continue;
             String suffix = structure.multiInstance() && instance > 1 ? ":" + instance : "";
             String number = structure.multiInstance() && instance > 1 ? " #" + instance : "";
             String label = label(sighting) + number;
             groups.add(new PlannedGroup(GROUP_PREFIX + structure.id() + suffix,
                     structure.id(), label,
-                    List.of(new PlannedWaypoint(label, sighting.position(), structure.rgb()))));
+                    List.of(new PlannedWaypoint(label, sighting.position(), structure.rgb())),
+                    instance, sighting.confidence() == SightingConfidence.ROUGH_AREA,
+                    sighting.candidates(), false));
         }
         if (includeNucleus) groups.add(nucleusGroup());
         return List.copyOf(groups);
@@ -53,7 +59,7 @@ public final class CrystalHollowsStructureFolder {
                     CrystalHollowsStructure.CRYSTAL_NUCLEUS.rgb()));
         }
         return new PlannedGroup(GROUP_PREFIX + "nucleus", CrystalHollowsStructure.CRYSTAL_NUCLEUS.id(),
-                "Crystal Nucleus", waypoints);
+                "Crystal Nucleus", waypoints, 1, false, List.of(), true);
     }
 
     private static String label(StructureSighting sighting) {
