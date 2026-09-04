@@ -31,7 +31,7 @@ public final class HypixelApiZoneSource implements ZoneSource {
         api.createHandler(ClientboundLocationPacket.class, this::handleLocationPacket);
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> resetLocation());
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> lastServerName = null);
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> resetLocation());
     }
 

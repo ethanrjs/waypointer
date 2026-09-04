@@ -57,7 +57,24 @@ class CompassTrailTest {
         CompassTrail late = new CompassTrail(new Vec3d(500, 100, 500), 1_000,
                 CrystalHollowsZone.JUNGLE);
         late.onParticle(new Vec3d(500, 101.5, 500), 6_001);
-        assertEquals(CompassTrail.Failure.TIMEOUT, late.failure());
+        assertEquals(CompassTrail.Failure.NO_PARTICLES, late.failure());
+
+        CompassTrail latePartial = chain(2, 0.49);
+        latePartial.onParticle(new Vec3d(501, 101.5, 500), 6_001);
+        assertEquals(CompassTrail.Failure.TIMEOUT, latePartial.failure());
+    }
+
+    @Test
+    void timeoutCompletesLongEnoughChainsWithoutARepeatParticle() {
+        CompassTrail ticked = chain(20, 0.49);
+        ticked.tick(6_000);
+        assertEquals(CompassTrail.State.COMPLETE, ticked.state());
+        assertEquals(20, ticked.ray().orElseThrow().pointCount());
+
+        CompassTrail lateParticle = chain(20, 0.49);
+        lateParticle.onParticle(new Vec3d(600, 100, 600), 6_001);
+        assertEquals(CompassTrail.State.COMPLETE, lateParticle.state());
+        assertEquals(20, lateParticle.ray().orElseThrow().pointCount());
     }
 
     @Test

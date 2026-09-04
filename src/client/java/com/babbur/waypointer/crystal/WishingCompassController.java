@@ -191,7 +191,7 @@ public final class WishingCompassController {
                                 .withClickEvent(new ClickEvent.RunCommand(
                                         "/wpch share " + shareReference))))
                 .append(Component.literal(" "))
-                .append(Component.translatable("waypointer.crystal.action.add_waypoint")
+                .append(Component.translatable("waypointer.crystal.action.pin")
                         .withStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)
                                 .withUnderlined(true)
                                 .withClickEvent(new ClickEvent.RunCommand(

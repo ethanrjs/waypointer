@@ -1220,7 +1220,7 @@
   "waypointer.crystal.message.detected": "Detected %1$s at %2$s %3$s %4$s.",
   "waypointer.crystal.action.share": "[Share]",
   "waypointer.crystal.action.remove": "[Remove]",
-  "waypointer.crystal.action.add_waypoint": "[Add waypoint]",
+  "waypointer.crystal.action.pin": "[Pin]",
   "waypointer.crystal.compass.nucleus_warning": "Wishing Compass results inside the Crystal Nucleus are unreliable. Move outside before solving.",
   "waypointer.crystal.compass.too_close": "Move at least 8 blocks away before the next Wishing Compass use.",
   "waypointer.crystal.compass.need_second": "Wishing Compass ray captured. Use another compass at least 8 blocks away (ideally off to the side) to triangulate.",

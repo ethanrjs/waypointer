@@ -54,8 +54,8 @@ public final class CompassTrail {
 
     public void onParticle(Vec3d particle, long nowMillis) {
         if (state == State.COMPLETE || state == State.FAILED) return;
-        if (nowMillis - useMillis > TIMEOUT_MILLIS) {
-            fail(Failure.TIMEOUT);
+        if (nowMillis - useMillis >= TIMEOUT_MILLIS) {
+            finishAfterTimeout();
             return;
         }
         if (state == State.WAITING_FIRST) {
@@ -81,7 +81,7 @@ public final class CompassTrail {
     public void tick(long nowMillis) {
         if (state == State.COMPLETE || state == State.FAILED) return;
         if (nowMillis - useMillis >= TIMEOUT_MILLIS) {
-            fail(points.isEmpty() ? Failure.NO_PARTICLES : Failure.TIMEOUT);
+            finishAfterTimeout();
             return;
         }
         if (state != State.CHAINING) return;
@@ -89,6 +89,14 @@ public final class CompassTrail {
         if (points.size() >= WATCHDOG_MIN_POINTS && ticksSinceParticle >= WATCHDOG_TICKS) {
             complete();
         }
+    }
+
+    private void finishAfterTimeout() {
+        if (state == State.CHAINING && points.size() >= WATCHDOG_MIN_POINTS) {
+            complete();
+            return;
+        }
+        fail(points.isEmpty() ? Failure.NO_PARTICLES : Failure.TIMEOUT);
     }
 
     private void complete() {
