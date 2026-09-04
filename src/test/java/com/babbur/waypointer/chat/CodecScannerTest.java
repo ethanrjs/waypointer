@@ -8,8 +8,14 @@ import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.CRC32;
 
@@ -273,6 +279,89 @@ class CodecScannerTest {
         assertTrue(matches.get(0).valid());
         assertEquals(4, validations.get(),
                 "validation should be capped at the greedy candidate plus three suffix trims");
+    }
+
+    @Test
+    void classificationCacheReusesValidAndInvalidResultsForExactPayloads() {
+        AtomicInteger loads = new AtomicInteger();
+        CodecScanner.ClassificationCache cache = new CodecScanner.ClassificationCache(
+                4, 256, payload -> {
+                    loads.incrementAndGet();
+                    return payload.equals("valid") ? UniversalShareCodec.Type.CONFIG : null;
+                });
+
+        CodecScanner.Classification valid = cache.classify(new String("valid"));
+        CodecScanner.Classification validAgain = cache.classify(new String("valid"));
+        CodecScanner.Classification invalid = cache.classify("invalid");
+        CodecScanner.Classification invalidAgain = cache.classify(new String("invalid"));
+
+        assertTrue(valid.valid());
+        assertEquals(UniversalShareCodec.Type.CONFIG, valid.type());
+        assertSame(valid, validAgain);
+        assertFalse(invalid.valid());
+        assertNull(invalid.type());
+        assertSame(invalid, invalidAgain);
+        assertEquals(2, loads.get(), "valid and negative results should each load once");
+    }
+
+    @Test
+    void classificationCacheIsLruBoundedAndSkipsOversizedPayloads() {
+        AtomicInteger loads = new AtomicInteger();
+        CodecScanner.ClassificationCache cache = new CodecScanner.ClassificationCache(
+                2, 4, payload -> {
+                    loads.incrementAndGet();
+                    return UniversalShareCodec.Type.WAYPOINTS;
+                });
+
+        cache.classify("A");
+        cache.classify("B");
+        cache.classify("A");
+        cache.classify("C");
+        cache.classify("A");
+        cache.classify("B");
+        cache.classify("12345");
+        cache.classify("12345");
+
+        assertEquals(2, cache.size());
+        assertEquals(6, loads.get(),
+                "A survives the first eviction, B is reloaded, and oversized keys do not cache");
+    }
+
+    @Test
+    void classificationCacheSerializesConcurrentMissesForOnePayload() throws Exception {
+        AtomicInteger loads = new AtomicInteger();
+        CountDownLatch loaderStarted = new CountDownLatch(1);
+        CountDownLatch releaseLoader = new CountDownLatch(1);
+        CodecScanner.ClassificationCache cache = new CodecScanner.ClassificationCache(
+                8, 256, payload -> {
+                    loads.incrementAndGet();
+                    loaderStarted.countDown();
+                    try {
+                        assertTrue(releaseLoader.await(5, TimeUnit.SECONDS));
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new AssertionError(interrupted);
+                    }
+                    return UniversalShareCodec.Type.DUNGEON;
+                });
+
+        ExecutorService workers = Executors.newFixedThreadPool(8);
+        try {
+            List<Future<CodecScanner.Classification>> futures = new ArrayList<>();
+            for (int i = 0; i < 16; i++) {
+                futures.add(workers.submit(() -> cache.classify("same")));
+            }
+            assertTrue(loaderStarted.await(5, TimeUnit.SECONDS));
+            releaseLoader.countDown();
+            for (Future<CodecScanner.Classification> future : futures) {
+                CodecScanner.Classification result = future.get(5, TimeUnit.SECONDS);
+                assertEquals(UniversalShareCodec.Type.DUNGEON, result.type());
+            }
+        } finally {
+            releaseLoader.countDown();
+            workers.shutdownNow();
+        }
+        assertEquals(1, loads.get(), "concurrent callers should share the in-flight classification");
     }
 
     private static String sampleExport() {

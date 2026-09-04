@@ -7,6 +7,7 @@ import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -22,6 +23,11 @@ public final class CodecScanner {
     private static final int MAX_MATCHES_PER_MESSAGE = 3;
     private static final int MAX_CODEC_CHARS = 256;
     private static final int MAX_SUFFIX_TRIMS = 3;
+    private static final int CLASSIFICATION_CACHE_ENTRIES = 128;
+    private static final int CLASSIFICATION_CACHE_MAX_CHARS = MAX_CODEC_CHARS;
+    private static final ClassificationCache CLASSIFICATION_CACHE =
+            new ClassificationCache(CLASSIFICATION_CACHE_ENTRIES,
+                    CLASSIFICATION_CACHE_MAX_CHARS, CodecScanner::classifyShare);
 
     private CodecScanner() {}
 
@@ -39,8 +45,51 @@ public final class CodecScanner {
         public int length() { return end - start; }
     }
 
+    record Classification(UniversalShareCodec.Type type) {
+        boolean valid() { return type != null; }
+    }
+
+    static final class ClassificationCache {
+        private final int maxEntries;
+        private final int maxPayloadChars;
+        private final Function<String, UniversalShareCodec.Type> loader;
+        private final LinkedHashMap<String, Classification> entries =
+                new LinkedHashMap<>(16, 0.75f, true);
+
+        ClassificationCache(int maxEntries, int maxPayloadChars,
+                            Function<String, UniversalShareCodec.Type> loader) {
+            if (maxEntries <= 0) {
+                throw new IllegalArgumentException("cache capacity must be positive");
+            }
+            if (maxPayloadChars <= 0) {
+                throw new IllegalArgumentException("cache key limit must be positive");
+            }
+            this.maxEntries = maxEntries;
+            this.maxPayloadChars = maxPayloadChars;
+            this.loader = loader;
+        }
+
+        synchronized Classification classify(String payload) {
+            Classification cached = entries.get(payload);
+            if (cached != null) return cached;
+
+            Classification result = new Classification(loader.apply(payload));
+            if (payload.length() <= maxPayloadChars) {
+                entries.put(payload, result);
+                if (entries.size() > maxEntries) {
+                    entries.remove(entries.keySet().iterator().next());
+                }
+            }
+            return result;
+        }
+
+        synchronized int size() {
+            return entries.size();
+        }
+    }
+
     public static List<Match> scan(String message) {
-        List<Match> codes = scanClassified(message, CodecScanner::classifyShare);
+        List<Match> codes = scanClassified(message, CodecScanner::classifyShareCached);
         List<Match> links = scanCatalogLinks(message);
         if (links.isEmpty()) return codes;
         return merge(codes, links);
@@ -139,6 +188,10 @@ public final class CodecScanner {
         } catch (RuntimeException invalid) {
             return null;
         }
+    }
+
+    private static UniversalShareCodec.Type classifyShareCached(String payload) {
+        return CLASSIFICATION_CACHE.classify(payload).type();
     }
 
     private static boolean matchMagicAt(String s, int i) {
