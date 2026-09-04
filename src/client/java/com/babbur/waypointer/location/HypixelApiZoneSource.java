@@ -70,7 +70,7 @@ public final class HypixelApiZoneSource implements ZoneSource {
     private static boolean shouldPollSidebarRefinement(Zone zone) {
         if (zone == null || zone.id() == null) return false;
         String id = zone.id();
-        if ("dwarven_mines".equals(id) || "mineshaft".equals(id)) return true;
+        if ("dwarven_mines".equals(id) || "mineshaft_unknown".equals(id)) return true;
         return CatacombsFloorRefiner.shouldPoll(zone);
     }
 

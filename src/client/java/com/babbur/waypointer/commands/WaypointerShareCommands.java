@@ -579,10 +579,10 @@ final class WaypointerShareCommands {
     }
 
     static int retargetUnknownGroups(List<WaypointGroup> groups, Zone target) {
-        if (target == null || target.id().equals(Zone.UNKNOWN.id())) return 0;
+        if (target == null) return 0;
         int count = 0;
         for (WaypointGroup g : groups) {
-            if (Zone.UNKNOWN.id().equals(g.zoneId())) {
+            if (Zone.shouldRetargetImportedZone(g.zoneId(), target.id())) {
                 g.setZoneId(target.id());
                 count++;
             }

@@ -364,13 +364,13 @@ public record Zone(String id, String displayName) {
     public static Zone refineIfDwarvenMinesContext(Zone packetZone, String colorStrippedSidebarText) {
         if (packetZone == null) return null;
         String id = packetZone.id();
-        if (!"dwarven_mines".equals(id) && !"mineshaft".equals(id)) return packetZone;
+        if (!"dwarven_mines".equals(id) && !"mineshaft_unknown".equals(id)) return packetZone;
         Zone mineshaftType = tryResolveMineshaftTypeFromSidebarBlob(colorStrippedSidebarText);
         if (mineshaftType != null) return mineshaftType;
         Zone sub = tryResolveDwarvenSubAreaFromSidebarBlob(colorStrippedSidebarText);
         if (sub != null) return sub.equals(packetZone) ? packetZone : sub;
         // Unknown prevents a route for the wrong Mineshaft layout from activating.
-        if ("mineshaft".equals(id)) return fromId("mineshaft_unknown");
+        if ("mineshaft_unknown".equals(id)) return fromId("mineshaft_unknown");
         return packetZone;
     }
 
@@ -380,6 +380,9 @@ public record Zone(String id, String displayName) {
         if (isLegacyDwarvenSurfaceZoneId(normalized)) {
             return DWARVEN_MINES_ZONE_ID;
         }
+        if ("mineshaft".equals(normalized)) {
+            return "mineshaft_unknown";
+        }
         if (normalized.startsWith("mineshaft_") && normalized.endsWith("_crystal")) {
             return MINESHAFT_CRYSTAL_ZONE_ID;
         }
@@ -387,6 +390,20 @@ public record Zone(String id, String displayName) {
             return "torrhus_canyon";
         }
         return normalized;
+    }
+
+    /** Whether an imported route with this source zone can safely use the current zone. */
+    public static boolean shouldRetargetImportedZone(String sourceZoneId, String currentZoneId) {
+        String source = canonicalId(sourceZoneId);
+        String current = canonicalId(currentZoneId);
+        if (UNKNOWN.id().equals(current)) return false;
+        if (UNKNOWN.id().equals(source)) return true;
+        return "mineshaft_unknown".equals(source)
+                && isSpecificMineshaftZoneId(current);
+    }
+
+    private static boolean isSpecificMineshaftZoneId(String id) {
+        return MINESHAFT_CRYSTAL_ZONE_ID.equals(id) || mineshaftTypeById(id) != null;
     }
 
     private static boolean isLegacyDwarvenSurfaceZoneId(String normalizedId) {

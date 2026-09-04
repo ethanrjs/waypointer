@@ -237,9 +237,10 @@ final class WaypointerZoneCatalog {
     }
 
     static void retargetUnknownImportedGroups(List<WaypointGroup> groups, String targetZoneId) {
-        if (groups == null || Zone.UNKNOWN.id().equals(targetZoneId)) return;
+        if (groups == null) return;
         for (WaypointGroup group : groups) {
-            if (group != null && Zone.UNKNOWN.id().equals(group.zoneId())) {
+            if (group != null
+                    && Zone.shouldRetargetImportedZone(group.zoneId(), targetZoneId)) {
                 group.setZoneId(targetZoneId);
             }
         }

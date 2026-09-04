@@ -131,7 +131,7 @@ public final class WaypointImporter {
             Map.entry("rift",            "rift"),
             Map.entry("crystal_hollows", "crystal_hollows"),
             Map.entry("kuudra",          "kuudra"),
-            Map.entry("mineshaft",       "mineshaft"),
+            Map.entry("mineshaft",       "mineshaft_unknown"),
             Map.entry("garden",          "garden"),
             Map.entry("winter",          "winter"),
             Map.entry("crimson_isle",    "crimson_isle"),

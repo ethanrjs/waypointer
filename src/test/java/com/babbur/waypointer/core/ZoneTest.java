@@ -152,7 +152,7 @@ class ZoneTest {
         assertEquals("dark_auction",    Zone.resolve("SKYBLOCK", "Dark Auction",    null).id());
         assertEquals("winter",          Zone.resolve("SKYBLOCK", null, "winter").id());
         assertEquals("winter",          Zone.resolve("SKYBLOCK", "Jerry's Workshop", null).id());
-        assertEquals("mineshaft",       Zone.resolve("SKYBLOCK", null, "mineshaft").id());
+        assertEquals("mineshaft_unknown", Zone.resolve("SKYBLOCK", null, "mineshaft").id());
         assertEquals("lotus_atoll",     Zone.resolve("SKYBLOCK", null, "lotus_atoll").id());
         assertEquals("lotus_atoll",     Zone.resolve("SKYBLOCK", "Lotus Atoll", null).id());
         assertEquals("torrhus_canyon",  Zone.resolve("SKYBLOCK", null, "foraging_3").id());
@@ -209,6 +209,25 @@ class ZoneTest {
                     Zone.resolveFromDisplayName(legacyName));
             assertEquals("dwarven_mines", Zone.resolve("SKYBLOCK", legacyName, null).id());
         }
+    }
+
+    @Test
+    void legacyMineshaftBucketCanonicalizesToUnknownLayout() {
+        assertEquals("mineshaft_unknown", Zone.canonicalId("mineshaft"));
+        assertEquals("mineshaft_unknown", Zone.fromId("mineshaft").id());
+        assertEquals("Unknown Mineshaft", Zone.fromId("mineshaft").displayName());
+    }
+
+    @Test
+    void importedUnknownMineshaftOnlyRetargetsInsideASpecificLayout() {
+        assertTrue(Zone.shouldRetargetImportedZone("mineshaft_unknown", "mineshaft_ruby_1"));
+        assertTrue(Zone.shouldRetargetImportedZone("mineshaft", "mineshaft_crystal"));
+        assertFalse(Zone.shouldRetargetImportedZone("mineshaft_unknown", "mineshaft_unknown"));
+        assertFalse(Zone.shouldRetargetImportedZone("mineshaft_unknown", "dwarven_mines"));
+        assertFalse(Zone.shouldRetargetImportedZone("mineshaft_unknown", "hub"));
+        assertFalse(Zone.shouldRetargetImportedZone("mineshaft_unknown", "mineshaft_fake"));
+        assertTrue(Zone.shouldRetargetImportedZone("unknown", "hub"));
+        assertFalse(Zone.shouldRetargetImportedZone("unknown", "unknown"));
     }
 
     @Test
@@ -303,7 +322,7 @@ class ZoneTest {
         // rather than leaving the generic bucket active so variant-scoped
         // waypoint groups don't accidentally flash on.
         Zone raw = Zone.resolve("SKYBLOCK", null, "mineshaft");
-        assertEquals("mineshaft", raw.id());
+        assertEquals("mineshaft_unknown", raw.id());
         Zone refined = Zone.refineIfDwarvenMinesContext(raw, "");
         assertEquals("mineshaft_unknown", refined.id());
     }
@@ -324,7 +343,7 @@ class ZoneTest {
         // Legacy id still resolves for stored groups so imported data doesn't
         // crash; those groups simply never activate because the runtime path
         // upgrades past them.
-        assertEquals("Glacite Mineshafts", Zone.fromId("mineshaft").displayName());
+        assertEquals("Unknown Mineshaft", Zone.fromId("mineshaft").displayName());
     }
 
     @Test
