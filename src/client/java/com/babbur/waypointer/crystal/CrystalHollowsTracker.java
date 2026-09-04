@@ -259,7 +259,8 @@ public final class CrystalHollowsTracker {
     }
 
     private void scanEntities(Minecraft client) {
-        if (!config.crystalHollowsEntityDetection()) return;
+        if (!CrystalHollowsDetectionPolicy.shouldScanEntities(
+                config.crystalHollowsEntityDetection(), delayTicks)) return;
         for (CrystalHollowsEntityScanner.Detection detection :
                 CrystalHollowsEntityScanner.scan(client, sidebarStructure, processedEntityIds)) {
             processedEntityIds.add(detection.entityId());

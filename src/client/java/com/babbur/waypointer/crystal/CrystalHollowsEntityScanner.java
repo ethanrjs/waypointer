@@ -33,22 +33,30 @@ public final class CrystalHollowsEntityScanner {
             Vec3 target = entity.getEyePosition();
             double distance = playerEye.distanceTo(target);
             if (distance > EntityVisibility.MAX_DISTANCE) continue;
-            boolean lineOfSight = hasLineOfSight(client, target);
             if (MagmaCubeCompat.isLargeMagmaCube(entity)) {
-                if (sidebarStructure == CrystalHollowsStructure.KHAZAD_DUM && lineOfSight
-                        && CrystalHollowsGeometry.insideHollows(
-                                entity.getX(), entity.getY(), entity.getZ())) {
+                boolean matchesBal = sidebarStructure == CrystalHollowsStructure.KHAZAD_DUM;
+                if (CrystalHollowsGeometry.insideHollows(
+                                entity.getX(), entity.getY(), entity.getZ())
+                        && EntityVisibility.shouldAccept(
+                                distance, matchesBal, false,
+                                () -> hasLineOfSight(client, target))) {
                     detections.add(detection(entity, CrystalHollowsStructure.KHAZAD_DUM,
                             0, 0, 0, false, "Bal"));
                 }
                 continue;
             }
             Optional<NamedAnchor> anchor = namedAnchor(entity, playerNames);
-            if (anchor.isEmpty()) continue;
+            boolean sidebarSame = anchor.isPresent()
+                    && sidebarStructure == anchor.orElseThrow().match().structure();
+            if (anchor.isEmpty()
+                    || !CrystalHollowsGeometry.insideHollows(
+                            entity.getX(), entity.getY(), entity.getZ())) continue;
+            if (!EntityVisibility.shouldAccept(
+                    distance,
+                    anchor.isPresent(),
+                    sidebarSame,
+                    () -> hasLineOfSight(client, target))) continue;
             CrystalHollowsEntityAnchor.Match match = anchor.orElseThrow().match();
-            boolean sidebarSame = sidebarStructure == match.structure();
-            if (!EntityVisibility.shouldAccept(distance, lineOfSight, sidebarSame)) continue;
-            if (!CrystalHollowsGeometry.insideHollows(entity.getX(), entity.getY(), entity.getZ())) continue;
             detections.add(detection(entity, match.structure(), match.offsetX(), match.offsetY(),
                     match.offsetZ(), match.divanKeeper(), anchor.orElseThrow().name()));
         }
