@@ -339,6 +339,19 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void backwardProgressionIsAnOptInLowImpactRouteSetting() {
+        Setting setting = SettingsCatalog.byId("allowBackwardProgress");
+
+        assertNotNull(setting);
+        assertEquals("Allow stepping back", setting.label());
+        assertEquals("Reaching an earlier waypoint moves the route back to it",
+                setting.tooltip());
+        assertEquals(false, setting.get(new WaypointerConfig(), null));
+        assertEquals(Setting.Impact.LOW, setting.impact());
+        assertEquals("routes", categoryContaining(setting.id()));
+    }
+
+    @Test
     void reachedSubwaypointHoldIsOnByDefaultUnderRoutesAndSurvivesCodecRoundTrip() {
         String id = "keepSubwaypointsVisibleUntilNextWaypoint";
         Setting setting = SettingsCatalog.byId(id);

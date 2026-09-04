@@ -39,6 +39,44 @@ class ProximityAdvanceTest {
     }
 
     @Test
+    void backwardProgressionIsOptInAndStableUntilTheReachedWaypointIsExited() {
+        WaypointGroup forwardOnly = line();
+        forwardOnly.setCurrentTargetIndex(2);
+        assertFalse(ProximityTracker.updateGroupProgress(
+                forwardOnly, 10.5, 0.5, 0.5,
+                false, false, false, false,
+                SequenceVisibility.DEFAULT));
+        assertEquals(2, forwardOnly.currentIndex());
+
+        WaypointGroup reversible = line();
+        reversible.setDefaultRadius(12.0);
+        reversible.setCurrentTargetIndex(2);
+        assertTrue(ProximityTracker.updateGroupProgress(
+                reversible, 5.5, 0.5, 0.5,
+                false, false, false, false,
+                SequenceVisibility.DEFAULT, true));
+        assertEquals(1, reversible.currentIndex());
+
+        assertFalse(ProximityTracker.updateGroupProgress(
+                reversible, 5.5, 0.5, 0.5,
+                false, false, false, false,
+                SequenceVisibility.DEFAULT, true));
+        assertEquals(1, reversible.currentIndex());
+
+        assertFalse(ProximityTracker.updateGroupProgress(
+                reversible, 100.0, 0.5, 0.5,
+                false, false, false, false,
+                SequenceVisibility.DEFAULT, true));
+        assertEquals(-1, reversible.proximitySuppressedIndex());
+
+        assertTrue(ProximityTracker.updateGroupProgress(
+                reversible, 10.5, 0.5, 0.5,
+                false, false, false, false,
+                SequenceVisibility.DEFAULT, true));
+        assertEquals(2, reversible.currentIndex());
+    }
+
+    @Test
     void standSkipFlagRequiresHalfSecondOnDungeonWaypointBlock() {
         WaypointGroup group = dungeonTriggerGroup();
         group.add(Waypoint.at(0, 0, 0).withFlags(Waypoint.FLAG_SKIP_ON_STAND));
