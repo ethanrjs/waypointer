@@ -611,13 +611,10 @@ public final class ExportScreen extends Screen {
         encodingError = "";
         updateCopyButtons();
 
-        if (!CodecWorker.run(
+        CodecWorker.runLatestPreview(
                 () -> new EncodeResult(WaypointExportCodec.encode(
                         snapshot, options, target, metadata), ""),
-                encoded -> applyEncodeResult(generation, encoded))) {
-            applyEncodeResult(generation, new EncodeResult("",
-                    Component.translatable("waypointer.codec.busy").getString()));
-        }
+                encoded -> applyEncodeResult(generation, encoded));
     }
 
     static RouteLibraryMetadata captureLibraryMetadata(

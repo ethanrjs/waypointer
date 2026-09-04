@@ -66,10 +66,19 @@ class V10ProductionTimingTest {
         }
 
         long[] hostile = new long[20_000];
+        int checksumOffset = hostileSeed.length - V10Transport.CHECKSUM_BYTES;
+        int validChecksum = (hostileSeed[checksumOffset] & 0xFF) << 8
+                | (hostileSeed[checksumOffset + 1] & 0xFF);
         for (int index = 0; index < hostile.length; index++) {
             byte[] mutation = hostileSeed.clone();
-            int position = Math.floorMod(index * 2_654_435_761L + 17, mutation.length);
-            mutation[position] ^= (byte) (1 << (index & 7));
+            // Raw DEFLATE permits unused padding bits and alternate physical
+            // streams for the same semantic body, so arbitrary compressed-bit
+            // flips are not guaranteed corruptions. Use 20,000 distinct wrong
+            // checksums instead: every frame must fully inflate, then fail the
+            // semantic CRC gate at the latest possible validation stage.
+            int invalidChecksum = (validChecksum + index + 1) & 0xFFFF;
+            mutation[checksumOffset] = (byte) (invalidChecksum >>> 8);
+            mutation[checksumOffset + 1] = (byte) invalidChecksum;
             String transport = V10Transport.encode(mutation);
             long start = System.nanoTime();
             assertThrows(IOException.class, () -> V10Transport.probe(transport));

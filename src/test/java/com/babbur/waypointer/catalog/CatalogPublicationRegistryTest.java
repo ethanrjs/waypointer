@@ -94,15 +94,19 @@ class CatalogPublicationRegistryTest {
         PublisherIdentity identity = identityStore.loadOrCreate();
         CatalogPublicationRegistry registry = CatalogPublicationRegistry
                 .nextToIdentity(identityStore);
-        CatalogPublishRequest request = request("Tester_1");
+        CatalogProtocol.PreparedCatalogPayload prepared =
+                CatalogProtocol.prepareCatalogPayload(List.of(catalogRoute()));
+        CatalogPublishRequest request = new CatalogPublishRequest(
+                prepared.payload(), "Route", "A useful route description.",
+                CatalogPublishRequest.Visibility.UNLISTED, "hub", "Tester_1");
         CompletableFuture<RouteCatalogClient.Response> network = new CompletableFuture<>();
         RouteCatalogClient client = new RouteCatalogClient(
                 URI.create(API_ROOT), (ignored, maximum) -> network,
                 "Waypointer/Test", CatalogRequestSigner.PRODUCTION_AUDIENCE);
 
         CompletableFuture<CatalogPublishLifecycle.Completion> completion =
-                CatalogPublishLifecycle.publishAndPersist(
-                        client, request, identity, identityStore, registry);
+                CatalogPublishLifecycle.publishPreparedAndPersist(
+                        client, request, identity, prepared, identityStore, registry);
         network.complete(new RouteCatalogClient.Response(
                 201, "application/json", responseJson(identity, "Tester_1")
                         .getBytes(StandardCharsets.UTF_8)));
@@ -263,9 +267,13 @@ class CatalogPublicationRegistryTest {
     }
 
     private static String catalogPayload() {
+        return WaypointCodec.encodeCatalog(List.of(catalogRoute()));
+    }
+
+    private static WaypointGroup catalogRoute() {
         WaypointGroup group = WaypointGroup.create("Route", "hub");
         group.add(new Waypoint(1, 64, 2, "Start", 0x44AA66, 0, 0.0));
-        return WaypointCodec.encodeCatalog(List.of(group));
+        return group;
     }
 
     private static final class RecordingTransport implements RouteCatalogClient.Transport {

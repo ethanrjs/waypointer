@@ -2,13 +2,13 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.catalog.CatalogApiException;
 import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
+import com.babbur.waypointer.catalog.CatalogProtocol;
 import com.babbur.waypointer.catalog.CatalogPublishLifecycle;
 import com.babbur.waypointer.catalog.CatalogPublishRequest;
 import com.babbur.waypointer.catalog.CatalogPublishResult;
 import com.babbur.waypointer.catalog.PublisherIdentity;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
-import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.core.WaypointGroup;
 
 import java.nio.file.Files;
@@ -57,8 +57,10 @@ final class CatalogPublishSession {
             Executor worker) {
         this(group, identityStore::loadOrCreate,
                 () -> Files.isRegularFile(identityStore.file()) ? identityStore.load() : null,
-                (request, identity) -> CatalogPublishLifecycle.publishAndPersist(
-                        client, request, identity, identityStore, publicationRegistry),
+                (request, identity, prepared) ->
+                        CatalogPublishLifecycle.publishPreparedAndPersist(
+                                client, request, identity, prepared,
+                                identityStore, publicationRegistry),
                 worker);
         Objects.requireNonNull(client, "client");
         Objects.requireNonNull(identityStore, "identityStore");
@@ -184,13 +186,15 @@ final class CatalogPublishSession {
         // stored claim automatically instead of failing with name_required.
         String claimedName = requestedName != null
                 ? requestedName : signer.publisherName();
-        CompletableFuture.supplyAsync(() -> WaypointCodec.encodeCatalog(List.of(route)), worker)
-                .thenCompose(payload -> {
+        CompletableFuture.supplyAsync(
+                        () -> CatalogProtocol.prepareCatalogPayload(List.of(route)), worker)
+                .thenCompose(prepared -> {
                     CatalogPublishRequest request = new CatalogPublishRequest(
-                            payload, title, description, visibility,
+                            prepared.payload(), title, description, visibility,
                             route.zoneId(), claimedName);
-                    return publisher.publish(request, signer)
-                            .thenApply(completion -> new Published(completion, payload));
+                    return publisher.publish(request, signer, prepared)
+                            .thenApply(completion -> new Published(
+                                    completion, prepared.payload()));
                 })
                 .whenComplete((published, publishFailure) -> finishPublish(
                         token, published, publishFailure));
@@ -308,6 +312,8 @@ final class CatalogPublishSession {
     @FunctionalInterface
     interface PublishOperation {
         CompletableFuture<CatalogPublishLifecycle.Completion> publish(
-                CatalogPublishRequest request, PublisherIdentity identity);
+                CatalogPublishRequest request,
+                PublisherIdentity identity,
+                CatalogProtocol.PreparedCatalogPayload prepared);
     }
 }

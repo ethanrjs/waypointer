@@ -105,6 +105,7 @@ public final class RoutePublishScreen extends Screen {
     private int formY;
     private int formW;
     private int visibilityHelpY;
+    private int paintNoticeY;
     private int statusX;
     private int statusY;
     private int statusMaxW;
@@ -116,6 +117,7 @@ public final class RoutePublishScreen extends Screen {
     private int manageW;
     private int publishW;
     private boolean showDetail;
+    private boolean showPaintNotice;
 
     public RoutePublishScreen(
             Screen parent, WaypointerConfig config, WaypointGroup group,
@@ -210,6 +212,7 @@ public final class RoutePublishScreen extends Screen {
         int margin = tight ? GAP : PANEL_MARGIN;
         int pad = tight ? GAP : PAD_OUTER;
         showDetail = !tight;
+        showPaintNotice = customPaintOmitted(group);
         statusLines = tight ? 1 : STATUS_LINES;
 
         int availableW = Math.max(FORM_W_MIN, width - (margin + pad) * 2);
@@ -244,11 +247,14 @@ public final class RoutePublishScreen extends Screen {
         int bodyBottom = statusY - GAP;
 
         if (formY + formHeight() > bodyBottom) showDetail = false;
+        if (formY + formHeight() > bodyBottom) showPaintNotice = false;
         visibilityHelpY = formY + FORM_FIELDS_H;
+        paintNoticeY = visibilityHelpY + (showDetail ? LINE_H : 0);
     }
 
     private int formHeight() {
-        return FORM_FIELDS_H + (showDetail ? LINE_H : 0);
+        return FORM_FIELDS_H + (showDetail ? LINE_H : 0)
+                + (showPaintNotice ? LINE_H : 0);
     }
 
     private void measureFooter() {
@@ -309,10 +315,15 @@ public final class RoutePublishScreen extends Screen {
                         "waypointer.screen.route_publish.action.copy.tooltip")));
         addRenderableWidget(copyButton);
 
+        Component publishTooltip = Component.translatable(
+                "waypointer.screen.route_publish.action.publish.tooltip");
+        if (customPaintOmitted(group)) {
+            publishTooltip = Component.empty().append(publishTooltip)
+                    .append("\n").append(paintOmittedNotice());
+        }
         publishButton = styledButton(manageX + manageW + GAP, footerY, publishW, BTN_H,
                 publishButtonLabel(), button -> publish(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_publish.action.publish.tooltip")));
+                Tooltip.create(publishTooltip));
         addRenderableWidget(publishButton);
     }
 
@@ -533,6 +544,11 @@ public final class RoutePublishScreen extends Screen {
                             visibilityHelp().getString(), formW),
                     formX, visibilityHelpY, TEXT_MUTED, false);
         }
+        if (showPaintNotice) {
+            graphics.text(font, font.plainSubstrByWidth(
+                            paintOmittedNotice().getString(), formW),
+                    formX, paintNoticeY, GuiTokens.WARNING, false);
+        }
         renderStatus(graphics);
         super.extractRenderState(graphics, mouseX, mouseY, partial);
         renderVisibilitySelection(graphics);
@@ -692,6 +708,14 @@ public final class RoutePublishScreen extends Screen {
                 : name;
     }
 
+    static boolean customPaintOmitted(WaypointGroup group) {
+        return group != null && group.paint() != null && group.paintEnabled();
+    }
+
+    private static Component paintOmittedNotice() {
+        return Component.translatable("waypointer.screen.route_publish.paint_omitted");
+    }
+
     private static String defaultPublisherName() {
         try {
             String name = Minecraft.getInstance().getUser().getName();
@@ -711,6 +735,9 @@ public final class RoutePublishScreen extends Screen {
         if (outcome == null) {
             outcome = Component.translatable(
                     "waypointer.screen.route_publish.narration.ready");
+        }
+        if (customPaintOmitted(group)) {
+            outcome = Component.empty().append(paintOmittedNotice()).append(" ").append(outcome);
         }
         return Component.translatable(
                 "waypointer.screen.route_publish.narration",
