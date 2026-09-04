@@ -10,6 +10,7 @@ import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.crystal.CrystalHollowsProjection;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
 import org.junit.jupiter.api.Test;
 
@@ -122,6 +123,10 @@ class WaypointerScreenTest {
         snapshot = RouteFolderListModel.build(manager, "crystal_hollows", "");
         assertTrue(snapshot.folders().getFirst().groups().isEmpty());
         assertTrue(snapshot.unfiled().isEmpty());
+        assertEquals("fairy_grotto:2", CrystalHollowsProjection.structureReferenceForGroup(
+                "crystal_hollows:structure:fairy_grotto:2"));
+        assertEquals("crystal_nucleus", CrystalHollowsProjection.structureReferenceForGroup(
+                "crystal_hollows:structure:nucleus"));
     }
 
     @Test

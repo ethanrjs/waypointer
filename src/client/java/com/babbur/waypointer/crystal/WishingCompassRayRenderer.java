@@ -49,7 +49,11 @@ public final class WishingCompassRayRenderer {
     }
 
     private void render(LevelRenderContext context) {
-        if (!config.crystalHollowsCompassRays() || rays.isEmpty()) return;
+        if (!config.crystalHollowsWishingCompassSolver()
+                || !config.crystalHollowsCompassRays()
+                || rays.isEmpty()) {
+            return;
+        }
         long now = System.currentTimeMillis();
         float alpha = 0.8f;
         if (solution != null && solvedAtMillis > 0L) {

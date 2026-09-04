@@ -120,11 +120,25 @@ class CrystalHollowsChatParserTest {
     }
 
     @Test
+    void emittedAmbiguousAndFixedSharesRoundTrip() {
+        for (CrystalHollowsStructure structure : List.of(
+                CrystalHollowsStructure.WISHING_TARGET,
+                CrystalHollowsStructure.CRYSTAL_NUCLEUS)) {
+            String share = CrystalHollowsChatParser.formatShare(structure, 513, 107, 513);
+            assertEquals(structure, CrystalHollowsChatParser.parseSharedCoordinates(share)
+                    .getFirst().structure());
+        }
+    }
+
+    @Test
     void recognizesOnlyPlayerPrefixedChatForShares() {
         CrystalHollowsChatParser.PlayerChat chat = CrystalHollowsChatParser.playerChat(
                 "[MVP+] Some_Player: Jungle Temple: 512 100 512").orElseThrow();
         assertEquals("Some_Player", chat.sender());
         assertEquals("Jungle Temple: 512 100 512", chat.body());
+        assertEquals("Some_Player", CrystalHollowsChatParser.playerChat(
+                "Party > [MVP+] Some_Player: Odawa: 349 110 390")
+                .orElseThrow().sender());
         assertTrue(CrystalHollowsChatParser.playerChat(
                 "Jungle Temple: 512 100 512").isEmpty());
     }

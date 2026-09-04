@@ -43,4 +43,12 @@ public final class CrystalHollowsTabList {
         }
         return false;
     }
+
+    /** Tab widget state is authoritative while present; chat history is the fallback. */
+    public static Map<Crystal, CrystalState> preferredStates(
+            Map<Crystal, CrystalState> tabStates,
+            Map<Crystal, CrystalState> chatStates) {
+        if (tabStates != null && !tabStates.isEmpty()) return Map.copyOf(tabStates);
+        return chatStates == null || chatStates.isEmpty() ? Map.of() : Map.copyOf(chatStates);
+    }
 }

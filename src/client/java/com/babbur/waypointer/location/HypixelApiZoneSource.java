@@ -3,6 +3,7 @@ package com.babbur.waypointer.location;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Zone;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.hypixel.modapi.HypixelModAPI;
 import net.hypixel.modapi.packet.impl.clientbound.event.ClientboundLocationPacket;
 import net.minecraft.client.Minecraft;
@@ -30,6 +31,8 @@ public final class HypixelApiZoneSource implements ZoneSource {
         api.createHandler(ClientboundLocationPacket.class, this::handleLocationPacket);
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> resetLocation());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> resetLocation());
     }
 
     private void handleLocationPacket(ClientboundLocationPacket packet) {

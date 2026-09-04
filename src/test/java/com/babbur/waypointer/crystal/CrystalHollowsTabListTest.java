@@ -29,4 +29,17 @@ class CrystalHollowsTabListTest {
         assertFalse(CrystalHollowsTabList.hasKingsScent(List.of("§7No active effects")));
         assertFalse(CrystalHollowsTabList.hasKingsScent(null));
     }
+
+    @Test
+    void tabWidgetOverridesChatOnlyWhileItIsPresent() {
+        Map<Crystal, CrystalState> chat = Map.of(
+                Crystal.JADE, CrystalState.COLLECTED,
+                Crystal.AMBER, CrystalState.MISSING);
+        Map<Crystal, CrystalState> tab = Map.of(
+                Crystal.JADE, CrystalState.PLACED);
+
+        assertEquals(tab, CrystalHollowsTabList.preferredStates(tab, chat));
+        assertEquals(chat, CrystalHollowsTabList.preferredStates(Map.of(), chat));
+        assertTrue(CrystalHollowsTabList.preferredStates(null, null).isEmpty());
+    }
 }

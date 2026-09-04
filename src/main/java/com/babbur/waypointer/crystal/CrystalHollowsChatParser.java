@@ -44,7 +44,9 @@ public final class CrystalHollowsChatParser {
     private static final Pattern LOOT_CRYSTAL = Pattern.compile(
             "^\\s{2,}(Amber|Amethyst|Jade|Sapphire|Topaz) Crystal$", Pattern.CASE_INSENSITIVE);
     private static final Pattern PLAYER_CHAT = Pattern.compile(
-            "^(?:\\[[^]]+]\\s*)*([A-Za-z0-9_]{3,16}):\\s*(.+)$", Pattern.DOTALL);
+            "^(?:(?:Party|Guild|Officer|Co-op|From|To)\\s*>?\\s*)?"
+                    + "(?:\\[[^]]+]\\s*)*([A-Za-z0-9_]{3,16}):\\s*(.+)$",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final String LOOT_BUNDLE = "  CRYSTAL NUCLEUS LOOT BUNDLE";
     private static final String JADE_KEEPER = "You found all of the items! Behold... the Jade Crystal!";
     private static final String SHATTERED = "Your Wishing Compass shattered into pieces!";

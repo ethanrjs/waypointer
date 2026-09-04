@@ -984,11 +984,11 @@ public final class WaypointerScreen extends Screen {
                             ? "waypointer.screen.main.menu.hide"
                             : "waypointer.screen.main.menu.show"),
                     "Space", () -> toggleRouteEnabled(group)));
-            String structureId = CrystalHollowsProjection.structureIdForGroup(group.id());
-            if (structureId != null) {
+            String structureReference = CrystalHollowsProjection.structureReferenceForGroup(group.id());
+            if (structureReference != null) {
                 items.add(ContextMenuOverlay.Item.of(
                         Component.translatable("waypointer.crystal.action.share"),
-                        null, () -> runClientCommand("wpch share " + structureId)));
+                        null, () -> runClientCommand("wpch share " + structureReference)));
             }
             openContextMenuAt(items, anchorX, anchorY);
             return;

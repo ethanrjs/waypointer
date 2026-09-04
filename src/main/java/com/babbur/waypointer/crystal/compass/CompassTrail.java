@@ -55,7 +55,7 @@ public final class CompassTrail {
     public void onParticle(Vec3d particle, long nowMillis) {
         if (state == State.COMPLETE || state == State.FAILED) return;
         if (nowMillis - useMillis > TIMEOUT_MILLIS) {
-            fail(points.isEmpty() ? Failure.NO_PARTICLES : Failure.TIMEOUT);
+            fail(Failure.TIMEOUT);
             return;
         }
         if (state == State.WAITING_FIRST) {

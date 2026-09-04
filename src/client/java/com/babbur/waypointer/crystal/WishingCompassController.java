@@ -36,11 +36,13 @@ public final class WishingCompassController {
     private final WishingCompassSolver solver = new WishingCompassSolver(System::currentTimeMillis);
     private final WishingCompassRayRenderer renderer;
     private String lastEvent = "none";
+    private boolean enabledLastTick;
 
     public WishingCompassController(CrystalHollowsTracker tracker, WaypointerConfig config) {
         this.tracker = tracker;
         this.config = config;
         this.renderer = new WishingCompassRayRenderer(config);
+        this.enabledLastTick = config.crystalHollowsWishingCompassSolver();
     }
 
     public void install() {
@@ -69,11 +71,20 @@ public final class WishingCompassController {
     public String lastEvent() { return lastEvent; }
 
     public void tick(long nowMillis) {
+        if (!config.crystalHollowsWishingCompassSolver()) {
+            disableIfNeeded();
+            return;
+        }
+        enabledLastTick = true;
         solver.tick(nowMillis);
         handleOutcomes();
     }
 
     public void onServerMessage(CompassServerMessage message) {
+        if (!config.crystalHollowsWishingCompassSolver()) {
+            disableIfNeeded();
+            return;
+        }
         if (message == CompassServerMessage.NO_TARGET) {
             solver.serverNoTarget();
             handleOutcomes();
@@ -86,6 +97,15 @@ public final class WishingCompassController {
         lastEvent = "reset";
     }
 
+    private void disableIfNeeded() {
+        if (enabledLastTick
+                || solver.state() != WishingCompassSolver.State.IDLE
+                || !solver.completedRays().isEmpty()) {
+            reset();
+        }
+        enabledLastTick = false;
+    }
+
     private void onParticle(double x, double y, double z, int count) {
         if (!tracker.active() || !config.crystalHollowsWishingCompassSolver()) return;
         solver.onParticle(x, y, z, System.currentTimeMillis());
@@ -93,8 +113,7 @@ public final class WishingCompassController {
     }
 
     private void prepareTargetContext(Inventory inventory) {
-        CrystalHollowsLobbyState lobby = tracker.lobby();
-        Map<Crystal, CrystalState> crystals = lobby == null ? Map.of() : lobby.crystals();
+        Map<Crystal, CrystalState> crystals = tracker.crystalStatesForCompass();
         solver.setTargetContext(crystals, containsItem(inventory, JUNGLE_KEY_ID, "Jungle Key"),
                 tracker.hasKingsScent());
     }
@@ -155,6 +174,11 @@ public final class WishingCompassController {
         }
         StructureSighting sighting = toSighting(result);
         tracker.merge(sighting);
+        String shareReference = tracker.lobby() == null
+                ? sighting.structure().id()
+                : CrystalHollowsSightingSelector.referenceFor(
+                        tracker.lobby().sightings(), sighting);
+        if (shareReference == null) shareReference = sighting.structure().id();
         Component names = targetNames(targets);
         MutableComponent message = Component.translatable("waypointer.crystal.compass.solved",
                 names, sighting.x(), sighting.y(), sighting.z(),
@@ -165,7 +189,7 @@ public final class WishingCompassController {
                         .withStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)
                                 .withUnderlined(true)
                                 .withClickEvent(new ClickEvent.RunCommand(
-                                        "/wpch share " + sighting.structure().id()))))
+                                        "/wpch share " + shareReference))))
                 .append(Component.literal(" "))
                 .append(Component.translatable("waypointer.crystal.action.add_waypoint")
                         .withStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)

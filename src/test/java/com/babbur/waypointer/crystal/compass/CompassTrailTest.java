@@ -53,6 +53,11 @@ class CompassTrailTest {
         partial.tick(6_001);
         assertEquals(CompassTrail.State.FAILED, partial.state());
         assertEquals(CompassTrail.Failure.TIMEOUT, partial.failure());
+
+        CompassTrail late = new CompassTrail(new Vec3d(500, 100, 500), 1_000,
+                CrystalHollowsZone.JUNGLE);
+        late.onParticle(new Vec3d(500, 101.5, 500), 6_001);
+        assertEquals(CompassTrail.Failure.TIMEOUT, late.failure());
     }
 
     @Test

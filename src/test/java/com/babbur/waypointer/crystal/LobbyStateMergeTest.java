@@ -1,7 +1,10 @@
 package com.babbur.waypointer.crystal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 
+import com.babbur.waypointer.crystal.compass.Crystal;
+import com.babbur.waypointer.crystal.compass.CrystalState;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -108,6 +111,67 @@ class LobbyStateMergeTest {
         assertEquals(CrystalHollowsLobbyState.MergeResult.UPGRADED,
                 lobby.merge(sighting(CrystalHollowsStructure.XALX, 302, 100, 300,
                         SightingConfidence.NPC_CHAT, 102)));
+    }
+
+    @Test
+    void removesOnlyTheSelectedMultiInstance() {
+        CrystalHollowsLobbyState lobby = lobby();
+        lobby.merge(sighting(CrystalHollowsStructure.KEY_GUARDIAN, 300, 100, 300,
+                SightingConfidence.ENTITY, 100));
+        lobby.merge(sighting(CrystalHollowsStructure.KEY_GUARDIAN, 500, 100, 500,
+                SightingConfidence.ENTITY, 101));
+
+        lobby.removeSighting(new CrystalHollowsSightingSelector.Selection(
+                CrystalHollowsStructure.KEY_GUARDIAN, 2));
+
+        assertEquals(1, lobby.sightings().size());
+        assertEquals(300, lobby.sightings().getFirst().x());
+    }
+
+    @Test
+    void instanceRemovalIsExactEvenWhenSightingsCompareEqual() {
+        CrystalHollowsLobbyState lobby = lobby();
+        StructureSighting first = sighting(
+                CrystalHollowsStructure.WISHING_TARGET, 400, 100, 400,
+                SightingConfidence.COMPASS, 100);
+        StructureSighting second = sighting(
+                CrystalHollowsStructure.WISHING_TARGET, 400, 100, 400,
+                SightingConfidence.COMPASS, 100);
+        lobby.merge(first);
+        lobby.merge(second);
+
+        lobby.removeSighting(new CrystalHollowsSightingSelector.Selection(
+                CrystalHollowsStructure.WISHING_TARGET, 2));
+
+        assertEquals(1, lobby.sightings().size());
+        assertSame(first, lobby.sightings().getFirst());
+    }
+
+    @Test
+    void retainsSessionObservationsWhenLobbyIdentityArrives() {
+        CrystalHollowsLobbyState restored = new CrystalHollowsLobbyState("m7A", 100, 6);
+        restored.merge(sighting(CrystalHollowsStructure.ODAWA, 300, 100, 300,
+                SightingConfidence.SHARED_CHAT, 110));
+        restored.setCrystal(Crystal.JADE, CrystalState.MISSING);
+        CrystalHollowsLobbyState session = new CrystalHollowsLobbyState("session-only", 50, -1);
+        session.merge(sighting(CrystalHollowsStructure.ODAWA, 301, 100, 301,
+                SightingConfidence.ENTITY, 120));
+        session.merge(sighting(CrystalHollowsStructure.FAIRY_GROTTO, 500, 100, 500,
+                SightingConfidence.SHARED_CHAT, 121));
+        session.setCrystal(Crystal.JADE, CrystalState.COLLECTED);
+        session.setDivanCentre(new CrystalHollowsPosition(501, 101, 501));
+
+        CrystalHollowsLobbyState identified = CrystalHollowsLobbyState.identify(
+                "m7A", 7, 200, restored, session);
+
+        assertEquals("m7A", identified.serverId());
+        assertEquals(50, identified.firstSeenMillis());
+        assertEquals(200, identified.lastSeenMillis());
+        assertEquals(7, identified.lastKnownDay());
+        assertEquals(2, identified.sightings().size());
+        assertEquals(SightingConfidence.ENTITY, identified.sightings().getFirst().confidence());
+        assertEquals(CrystalState.COLLECTED, identified.crystals().get(Crystal.JADE));
+        assertEquals(new CrystalHollowsPosition(501, 101, 501), identified.divanCentre());
     }
 
     private static CrystalHollowsLobbyState lobby() {

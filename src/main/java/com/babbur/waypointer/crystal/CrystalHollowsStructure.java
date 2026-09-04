@@ -42,7 +42,7 @@ public enum CrystalHollowsStructure {
     CRYSTAL_NUCLEUS("crystal_nucleus", "Crystal Nucleus", 0x55FFFF, Kind.FIXED, false,
             null, List.of(), List.of("crystal nucleus", "nucleus"), WishingCompassTarget.CRYSTAL_NUCLEUS),
     WISHING_TARGET("wishing_target", "Wishing Compass Target", 0xF5F5DC, Kind.POI, true,
-            null, List.of(), List.of(), null);
+            null, List.of(), List.of("wishing compass target", "compass target"), null);
 
     public enum Kind {
         MAIN_STRUCTURE,

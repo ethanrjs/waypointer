@@ -106,6 +106,55 @@ public final class CrystalHollowsLobbyState {
         return sightings.removeIf(sighting -> sighting.structure() == structure);
     }
 
+    public boolean removeSighting(CrystalHollowsSightingSelector.Selection selection) {
+        int index = CrystalHollowsSightingSelector.indexOf(sightings, selection);
+        if (index < 0) return false;
+        sightings.remove(index);
+        return true;
+    }
+
+    /** Reconciles observations collected before the Hypixel server id became available. */
+    public static CrystalHollowsLobbyState identify(
+            String serverId,
+            int currentDay,
+            long nowMillis,
+            CrystalHollowsLobbyState restored,
+            CrystalHollowsLobbyState session) {
+        Objects.requireNonNull(serverId, "serverId");
+        long firstSeen = nowMillis;
+        long lastSeen = nowMillis;
+        int knownDay = currentDay;
+        List<StructureSighting> restoredSightings = List.of();
+        Map<Crystal, CrystalState> restoredCrystals = Map.of();
+        CrystalHollowsPosition restoredDivan = null;
+        if (restored != null) {
+            if (!serverId.equals(restored.serverId())) {
+                throw new IllegalArgumentException("restored lobby id differs");
+            }
+            firstSeen = Math.min(firstSeen, restored.firstSeenMillis());
+            lastSeen = Math.max(lastSeen, restored.lastSeenMillis());
+            if (knownDay < 0) knownDay = restored.lastKnownDay();
+            restoredSightings = restored.sightings();
+            restoredCrystals = restored.crystals();
+            restoredDivan = restored.divanCentre();
+        }
+        if (session != null) {
+            firstSeen = Math.min(firstSeen, session.firstSeenMillis());
+            lastSeen = Math.max(lastSeen, session.lastSeenMillis());
+            if (knownDay < 0) knownDay = session.lastKnownDay();
+        }
+        CrystalHollowsLobbyState identified = new CrystalHollowsLobbyState(
+                serverId, firstSeen, lastSeen, knownDay,
+                restoredSightings, restoredCrystals, restoredDivan);
+        if (session != null) {
+            for (StructureSighting sighting : session.sightings()) identified.merge(sighting);
+            identified.crystals.putAll(session.crystals());
+            if (session.divanCentre() != null) identified.divanCentre = session.divanCentre();
+        }
+        identified.touch(nowMillis, currentDay);
+        return identified;
+    }
+
     public void clearSightings() {
         sightings.clear();
         divanCentre = null;
