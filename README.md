@@ -36,6 +36,18 @@ Waypoint Import/Export Compatibility
 Waypointer route-library codes preserve folder membership and folder colors.
 Config export uses universal `WP:` V10 kind-3 codes. Legacy `WPC:` versions 1-6 remain importable.
 
+Publisher identity across launcher profiles
+
+New launcher profiles reuse the first Waypointer publishing identity saved on
+this computer. A protected copy is kept in your user settings outside the
+launcher profile, so replacing a profile preserves your publishing name.
+Existing profiles with a different publishing identity keep that identity.
+Publication history remains local to each profile.
+
+The shared identity is stored under `waypointer/publisher/identity.json` in
+macOS Application Support, Windows AppData/Roaming, or Linux XDG_CONFIG_HOME
+(default `~/.config`). Keep this file private; it contains your publishing key.
+
 Dungeon route import
 
 - SecretRoutes `routes.json`: `/wpd import <file>`
