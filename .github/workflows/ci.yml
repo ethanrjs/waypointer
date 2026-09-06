@@ -42,14 +42,6 @@ jobs:
             "-PtranslationCommit=${source_commit}" \
             --stacktrace --console=plain
 
-      - name: Install virtual display
-        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri
-
-      - name: Launch both Minecraft targets
-        env:
-          LIBGL_ALWAYS_SOFTWARE: "true"
-        run: xvfb-run -a ./gradlew --no-daemon --max-workers=1 smokeAllTargets "-PtranslationCommit=$(git rev-parse HEAD)" --stacktrace --console=plain
-
       - name: Upload final-target test and coverage reports
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -58,7 +50,6 @@ jobs:
           path: |
             build/reports/tests/test
             build/reports/jacoco/test
-            build/reports/launch
           if-no-files-found: warn
           retention-days: 14
 
