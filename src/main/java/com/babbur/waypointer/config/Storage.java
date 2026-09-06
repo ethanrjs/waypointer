@@ -541,6 +541,11 @@ public final class Storage {
     }
 
     static WaypointPaint paintFromJson(JsonObject o) {
+        if (o != null && o.has("frames")) {
+            JsonArray frames = o.getAsJsonArray("frames");
+            if (frames.isEmpty()) throw new IllegalArgumentException("waypoint paint has no frames");
+            o = frames.get(0).getAsJsonObject();
+        }
         if (o == null || !o.has("palette") || !o.get("palette").isJsonArray()) {
             throw new IllegalArgumentException("waypoint paint palette is missing");
         }

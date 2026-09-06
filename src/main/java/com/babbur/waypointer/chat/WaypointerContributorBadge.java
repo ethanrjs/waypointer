@@ -3,6 +3,7 @@ package com.babbur.waypointer.chat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
@@ -10,6 +11,7 @@ import net.minecraft.network.chat.contents.PlainTextContents;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public final class WaypointerContributorBadge {
@@ -364,12 +366,10 @@ public final class WaypointerContributorBadge {
     }
 
     private static void collectSegments(Component component, List<Segment> segments) {
-        if (component.getContents() instanceof PlainTextContents text && !text.text().isEmpty()) {
-            segments.add(new Segment(text.text(), component.getStyle()));
-        }
-        for (Component sibling : component.getSiblings()) {
-            collectSegments(sibling, segments);
-        }
+        component.visit((FormattedText.StyledContentConsumer<Void>) (style, text) -> {
+            if (!text.isEmpty()) segments.add(new Segment(text, style));
+            return Optional.empty();
+        }, Style.EMPTY);
     }
 
     private static void appendRange(MutableComponent out, Segment segment, int start, int end, int segmentStart) {

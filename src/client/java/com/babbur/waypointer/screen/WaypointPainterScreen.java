@@ -20,14 +20,11 @@ import org.lwjgl.PointerBuffer;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.util.tinyfd.TinyFileDialogs;
 
-import javax.imageio.ImageIO;
-import javax.imageio.ImageReader;
-import javax.imageio.stream.ImageInputStream;
-import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Iterator;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 import static org.lwjgl.glfw.GLFW.*;
@@ -55,10 +52,14 @@ public final class WaypointPainterScreen extends Screen {
     private boolean painting;
     private int lastPaintOffset = -1;
     private WaypointPaint snapshot;
+    private boolean importing;
     private WaypointPaintPreviewTexture preview;
     private final long previewStartedNanos = System.nanoTime();
     private String status = "";
     private Button faceViewButton;
+    private Button colorButton;
+    private Button importButton;
+    private Button applyButton;
     private final PaletteButton[] paletteButtons = new PaletteButton[WaypointPaint.PALETTE_SIZE];
     private CanvasButton canvasButton;
 
@@ -101,7 +102,7 @@ public final class WaypointPainterScreen extends Screen {
             addRenderableWidget(button);
         }
 
-        addRenderableWidget(styledButton(layout.paletteX(), layout.editColorY(),
+        colorButton = addRenderableWidget(styledButton(layout.paletteX(), layout.editColorY(),
                 PALETTE_W, BTN_H, Component.translatable("waypointer.screen.painter.colors"),
                 b -> editSelectedColor(),
                 Tooltip.create(Component.translatable(
@@ -121,15 +122,16 @@ public final class WaypointPainterScreen extends Screen {
 
         addRenderableWidget(styledButton(PAD_OUTER, height - FOOTER_H,
                 64, BTN_H, Component.translatable("gui.back"), b -> onClose(), null));
-        addRenderableWidget(styledButton((width - 112) / 2, height - FOOTER_H,
+        importButton = addRenderableWidget(styledButton((width - 112) / 2, height - FOOTER_H,
                 112, BTN_H, Component.translatable("waypointer.screen.painter.import"),
                 b -> importFromFiles(), null));
-        addRenderableWidget(styledButton(width - PAD_OUTER - 72, height - FOOTER_H,
+        applyButton = addRenderableWidget(styledButton(width - PAD_OUTER - 72, height - FOOTER_H,
                 72, BTN_H, Component.translatable("waypointer.screen.painter.apply"),
                 b -> openApplyTargets(), Tooltip.create(Component.translatable(
                         targetGroup == null
                                 ? "waypointer.screen.painter.apply.choose.tooltip"
                                 : "waypointer.screen.painter.apply.current.tooltip"))));
+        refreshEditingState();
     }
 
     @Override
@@ -237,6 +239,7 @@ public final class WaypointPainterScreen extends Screen {
     }
 
     private void editSelectedColor() {
+        if (importing) return;
         ColorPickerScreen.open(this,
                 Component.translatable("waypointer.screen.painter.picker.swatch"),
                 palette[selectedPalette], picked -> {
@@ -264,11 +267,10 @@ public final class WaypointPainterScreen extends Screen {
         String path;
         try {
             try (MemoryStack stack = MemoryStack.stackPush()) {
-                PointerBuffer filters = stack.mallocPointer(5);
+                PointerBuffer filters = stack.mallocPointer(4);
                 filters.put(stack.UTF8("*.png"));
                 filters.put(stack.UTF8("*.jpg"));
                 filters.put(stack.UTF8("*.jpeg"));
-                filters.put(stack.UTF8("*.gif"));
                 filters.put(stack.UTF8("*.bmp"));
                 filters.flip();
                 path = TinyFileDialogs.tinyfd_openFileDialog(
@@ -286,16 +288,27 @@ public final class WaypointPainterScreen extends Screen {
         }
         if (path == null) return;
 
-        importImage(() -> readImage(new File(path)), Component.translatable(
-                "waypointer.screen.painter.status.import_failed").getString());
-    }
-
-    private void importImage(WaypointPaintImageImporter.ImageSource source,
-                             String failureStatus) {
-        try {
-            WaypointPaint current = new WaypointPaint(palette, pixels);
-            WaypointPaint imported = WaypointPaintImageImporter.importFrom(
-                    source, current, faceView == FaceView.ALL);
+        WaypointPaint current = new WaypointPaint(palette, pixels);
+        boolean atlas = faceView == FaceView.ALL;
+        importing = true;
+        status = Component.translatable("waypointer.screen.painter.status.importing").getString();
+        refreshEditingState();
+        CompletableFuture.supplyAsync(() -> {
+            try {
+                return WaypointPaintImageImporter.importFile(new File(path), current, atlas);
+            } catch (IOException failure) {
+                throw new CompletionException(failure);
+            }
+        }).whenComplete((imported, failure) -> minecraft.execute(() -> {
+            importing = false;
+            if (MinecraftCompat.screen(minecraft) != this) return;
+            if (failure != null) {
+                Throwable cause = failure.getCause() == null ? failure : failure.getCause();
+                status = Component.translatable("waypointer.screen.painter.status.import_failed_reason",
+                        cause.getMessage()).getString();
+                refreshEditingState();
+                return;
+            }
             System.arraycopy(imported.paletteCopy(), 0, palette, 0, palette.length);
             System.arraycopy(imported.pixelsCopy(), 0, pixels, 0, pixels.length);
             config.setWaypointPainterPalette(palette);
@@ -304,31 +317,17 @@ public final class WaypointPainterScreen extends Screen {
             status = Component.translatable(faceView == FaceView.ONE
                     ? "waypointer.screen.painter.status.imported_face"
                     : "waypointer.screen.painter.status.imported_uv").getString();
-        } catch (IOException | RuntimeException e) {
-            status = failureStatus;
-        }
+            refreshEditingState();
+        }));
     }
 
-    private static BufferedImage readImage(File file) throws IOException {
-        try (ImageInputStream input = ImageIO.createImageInputStream(file)) {
-            if (input == null) throw new IOException("image could not be opened");
-            Iterator<ImageReader> readers = ImageIO.getImageReaders(input);
-            if (!readers.hasNext()) throw new IOException("unsupported image format");
-            ImageReader reader = readers.next();
-            try {
-                reader.setInput(input, true, true);
-                int width = reader.getWidth(0);
-                int height = reader.getHeight(0);
-                if (!WaypointPaintImageImporter.acceptsImageDimensions(width, height)) {
-                    throw new IOException("image dimensions are outside the supported range");
-                }
-                BufferedImage image = reader.read(0);
-                if (image == null) throw new IOException("image could not be decoded");
-                return image;
-            } finally {
-                reader.dispose();
-            }
-        }
+    private void refreshEditingState() {
+        boolean editable = !importing;
+        if (colorButton != null) colorButton.active = editable;
+        if (canvasButton != null) canvasButton.active = editable;
+        if (faceViewButton != null) faceViewButton.active = editable;
+        if (importButton != null) importButton.active = !importing;
+        if (applyButton != null) applyButton.active = !importing;
     }
 
     static boolean acceptsImageDimensions(int width, int height) {
@@ -435,6 +434,7 @@ public final class WaypointPainterScreen extends Screen {
     }
 
     private void paint(PaintCell cell) {
+        if (importing) return;
         int offset = WaypointPaint.pixelOffset(cell.face(), cell.x(), cell.y());
         if (offset == lastPaintOffset) return;
         lastPaintOffset = offset;

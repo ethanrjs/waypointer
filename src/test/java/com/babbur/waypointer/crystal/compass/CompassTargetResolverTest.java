@@ -11,6 +11,21 @@ import org.junit.jupiter.api.Test;
 class CompassTargetResolverTest {
 
     @Test
+    void precursorCityIncludesReportedLowerBoundaryWithoutIgnoringOtherConstraints() {
+        var candidates = EnumSet.allOf(WishingCompassTarget.class);
+        assertEquals(EnumSet.of(WishingCompassTarget.PRECURSOR_CITY),
+                CompassTargetResolver.resolve(new Vec3d(735, 120, 780),
+                        CrystalHollowsZone.PRECURSOR_REMNANTS, Map.of(), candidates));
+        assertEquals(EnumSet.noneOf(WishingCompassTarget.class),
+                CompassTargetResolver.resolve(new Vec3d(735, 119, 780),
+                        CrystalHollowsZone.PRECURSOR_REMNANTS, Map.of(), candidates));
+        assertEquals(EnumSet.noneOf(WishingCompassTarget.class),
+                CompassTargetResolver.resolve(new Vec3d(735, 120, 780),
+                        CrystalHollowsZone.PRECURSOR_REMNANTS, Map.of(),
+                        EnumSet.of(WishingCompassTarget.CRYSTAL_NUCLEUS)));
+    }
+
+    @Test
     void candidateSetUsesCrystalStateAndInventoryEffects() {
         EnumMap<Crystal, CrystalState> crystals = collectedCrystals();
         crystals.put(Crystal.AMBER, CrystalState.MISSING);

@@ -4,12 +4,7 @@ import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/**
- * The public route catalog's share links, {@code https://waypointermod.com/r/<routeId>}.
- *
- * <p>A pasted or chatted link is treated as the same share as the kind-6
- * subtype-2 {@code WP:} reference code, so both install the same way.
- */
+/** Catalog links resolve like kind-6 subtype-2 {@code WP:} references. */
 public final class CatalogShareLink {
 
     public static final String HOST = "waypointermod.com";
@@ -28,7 +23,6 @@ public final class CatalogShareLink {
         return SHARE_PREFIX + routeId;
     }
 
-    /** The route id when the whole (trimmed) text is one share link, else empty. */
     public static Optional<String> routeIdFromLink(String text) {
         if (text == null) return Optional.empty();
         String trimmed = text.trim();
@@ -42,7 +36,6 @@ public final class CatalogShareLink {
         return Optional.of(matcher.group(1));
     }
 
-    /** Matcher over arbitrary chat text; group 1 is the route id. */
     public static Matcher find(String text) {
         return LINK.matcher(text);
     }

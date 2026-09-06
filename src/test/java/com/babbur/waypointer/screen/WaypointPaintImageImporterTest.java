@@ -3,18 +3,43 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.core.WaypointPaint;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import javax.imageio.ImageIO;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointPaintImageImporterTest {
+
+    @TempDir Path temporary;
+
+    @Test
+    void gifImportIsRejectedEvenWhenRenamed() throws IOException {
+        File file = temporary.resolve("paint.png").toFile();
+        ImageIO.write(new BufferedImage(1, 1, BufferedImage.TYPE_INT_RGB), "gif", file);
+        IOException error = assertThrows(IOException.class,
+                () -> WaypointPaintImageImporter.importFile(file, WaypointPaint.solid(0), false));
+        assertTrue(error.getMessage().contains("GIF images are not supported"));
+    }
+
+    @Test
+    void fileImportStillReadsStaticImages() throws IOException {
+        File png = temporary.resolve("paint.png").toFile();
+        BufferedImage source = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB);
+        source.setRGB(0, 0, 0xFF123456);
+        ImageIO.write(source, "png", png);
+        WaypointPaint paint = WaypointPaintImageImporter.importFile(png, WaypointPaint.solid(0), false);
+        assertEquals(0x123456, paint.color(WaypointPaint.Face.NORTH, 0, 0));
+    }
 
     @Test
     void faceImportFitsToSixteenPixelsAndRepeatsEveryFace() {

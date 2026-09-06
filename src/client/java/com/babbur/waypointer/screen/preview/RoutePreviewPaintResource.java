@@ -46,15 +46,15 @@ final class RoutePreviewPaintResource {
         Identifier id = Identifier.fromNamespaceAndPath(
                 Waypointer.MOD_ID, "route_preview_paint_" + sequence);
         DynamicTexture texture = new DynamicTexture(
-                () -> "waypointer_route_preview_paint_" + sequence,
-                ATLAS_WIDTH, ATLAS_HEIGHT, false);
+                () -> "waypointer_route_preview_paint_" + sequence, ATLAS_WIDTH, ATLAS_HEIGHT, false);
         var textureManager = Minecraft.getInstance().getTextureManager();
         boolean registered = false;
         boolean complete = false;
         try {
+            bake(texture, paint);
+            texture.getPixels().close();
             textureManager.register(id, texture);
             registered = true;
-            bake(texture, paint);
             active = new Entry(routeId, paint, id,
                     WaypointerRenderPipelines.paintedQuads(id, false),
                     WaypointerRenderPipelines.paintedQuads(id, true));

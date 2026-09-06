@@ -45,7 +45,8 @@ public final class SettingsSearch {
                     String tooltip = setting.tooltip().isEmpty() ? "" : resolve(resolver,
                             setting.tooltipTranslationKey(), setting.tooltip());
                     int tier = entryTier(tokens, label, setting.aliases(), tooltip,
-                            categoryLabel, groupLabel);
+                            categoryLabel, groupLabel, buttonLabels(setting, resolver));
+                    if (tier == 0 && setting.kind() == Setting.Kind.ACTION) tier = 1;
                     if (tier >= 0) {
                         out.add(new Match(setting, category.id(), categoryLabel, groupLabel, tier));
                     }
@@ -58,11 +59,12 @@ public final class SettingsSearch {
 
     static int entryTier(String[] tokens, Setting setting, String categoryLabel, String groupLabel) {
         return entryTier(tokens, setting.label(), setting.aliases(), setting.tooltip(),
-                categoryLabel, groupLabel);
+                categoryLabel, groupLabel, List.of());
     }
 
     private static int entryTier(String[] tokens, String settingLabel, List<String> aliases,
-                                 String settingTooltip, String categoryLabel, String groupLabel) {
+                                 String settingTooltip, String categoryLabel, String groupLabel,
+                                 List<String> buttons) {
         String label = settingLabel.toLowerCase(Locale.ROOT);
         String tooltip = settingTooltip.toLowerCase(Locale.ROOT);
         String category = categoryLabel == null ? "" : categoryLabel.toLowerCase(Locale.ROOT);
@@ -72,10 +74,25 @@ public final class SettingsSearch {
         for (String token : tokens) {
             if (token.isEmpty()) continue;
             int tier = tierFor(token, label, aliases, tooltip, category, group);
+            if (tier != 0 && buttons.stream().anyMatch(button -> button.contains(token))) tier = 1;
             if (tier < 0) return -1;
             worst = Math.max(worst, tier);
         }
         return worst;
+    }
+
+    private static List<String> buttonLabels(Setting setting, TranslationResolver resolver) {
+        List<String> labels = new ArrayList<>();
+        setting.buttonLabels().forEach((key, fallback) -> labels.add(resolve(resolver, key, fallback)));
+        for (int i = 0; i < setting.enumOptions().size(); i++) {
+            String fallback = resolve(resolver, setting.legacyEnumOptionTranslationKey(i),
+                    setting.enumOptions().get(i).label());
+            labels.add(resolve(resolver, setting.enumOptionTranslationKey(i), fallback));
+        }
+        if (setting.kind() == Setting.Kind.COLOR) {
+            labels.add(resolve(resolver, "waypointer.screen.settings.color.pick", "Pick color"));
+        }
+        return labels.stream().map(label -> label.toLowerCase(Locale.ROOT)).toList();
     }
 
     private static String resolve(TranslationResolver resolver, String key, String fallback) {

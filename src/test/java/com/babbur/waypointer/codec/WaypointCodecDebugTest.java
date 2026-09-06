@@ -129,14 +129,7 @@ class WaypointCodecDebugTest {
 
     @Test
     void coord_mode_debug_round_trips_in_bounds_yoyo_routes() {
-        // Yo-yo pattern inside the FIXED_COMPACT bit range. The coord-mode
-        // contest ranks candidates by post-DEFLATE size, and on a 2-value
-        // alternating pattern all three bit-packed candidates deflate to
-        // essentially the same size as ABSOLUTE_VARINT (RLE kills the
-        // difference). So AUTO may legitimately pick any of them
-        // -- what the debug layer must guarantee is that whichever it picks
-        // round-trips the exact coord stream and surfaces a valid coord-mode
-        // name.
+        // Repetitive coordinates compress similarly in several modes; any valid, lossless choice is acceptable.
         WaypointGroup g = WaypointGroup.create("yoyo", "zone");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL); // keep colors clean for flag tests elsewhere
         for (int i = 0; i < 20; i++) {

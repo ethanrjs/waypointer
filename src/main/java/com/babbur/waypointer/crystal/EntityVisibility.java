@@ -2,12 +2,7 @@ package com.babbur.waypointer.crystal;
 
 import java.util.function.BooleanSupplier;
 
-/**
- * Fair-play acceptance rule for entity-derived Crystal Hollows structure sightings.
- *
- * <p>This deliberately contains no Minecraft types so that the client-side scanner can supply its
- * measured distance and line-of-sight result without putting decision logic in the Minecraft hook.
- */
+/** Visibility rules for entity-derived structure sightings. */
 public final class EntityVisibility {
     public static final double MAX_DISTANCE = 48.0;
 
@@ -25,13 +20,7 @@ public final class EntityVisibility {
         return distance <= MAX_DISTANCE && (hasLineOfSight || sidebarNamesSameStructure);
     }
 
-    /**
-     * Evaluates a possible entity anchor while deferring the Minecraft clip until it is necessary.
-     *
-     * <p>Unsupported entities never run the clip. A matching sidebar is already server-visible
-     * confirmation, so it also avoids the clip. All accepted candidates still flow through
-     * {@link #shouldAccept(double, boolean, boolean)}.
-     */
+    /** Defers line-of-sight checks until needed; unsupported entities and sidebar-confirmed sightings skip them. */
     public static boolean shouldAccept(
             double distance,
             boolean matchesSupportedEntity,

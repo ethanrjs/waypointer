@@ -5,14 +5,25 @@ final class QuadSorter {
 
     private QuadSorter() {}
 
-    static void sortBackToFront(float[] centers, int[] order, double[] distances,
-                                int[] scratch, int count,
+    /** Returns false when the previous order is still exact and needs no index upload. */
+    static boolean sortBackToFront(float[] centers, int[] order, double[] distances,
+                                int[] scratch, int count, boolean reuseOrder,
                                 double cameraX, double cameraY, double cameraZ) {
         for (int i = 0; i < count; i++) {
-            order[i] = i;
+            if (!reuseOrder) order[i] = i;
             distances[i] = squaredDistance(centers, i * 3, cameraX, cameraY, cameraZ);
         }
-        if (count < 2) return;
+        if (reuseOrder) {
+            boolean ordered = true;
+            for (int i = 1; i < count; i++) {
+                if (compare(order[i - 1], order[i], distances) > 0) {
+                    ordered = false;
+                    break;
+                }
+            }
+            if (ordered) return false;
+        }
+        if (count < 2) return true;
 
         int[] source = order;
         int[] target = scratch;
@@ -36,6 +47,7 @@ final class QuadSorter {
             target = swap;
         }
         if (source != order) System.arraycopy(source, 0, order, 0, count);
+        return true;
     }
 
     private static int nextWidth(int width, int count) {

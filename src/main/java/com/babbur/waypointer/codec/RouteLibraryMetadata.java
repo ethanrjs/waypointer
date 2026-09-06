@@ -115,6 +115,12 @@ public record RouteLibraryMetadata(
         return metadata;
     }
 
+    /** Captures route colors and paint, plus folder membership when requested. */
+    public static RouteLibraryMetadata captureForExport(
+            ActiveGroupManager manager, List<WaypointGroup> groups, boolean preserveFolders) {
+        return capture(preserveFolders ? manager : null, groups);
+    }
+
     public void validateForGroups(List<WaypointGroup> groups) {
         Objects.requireNonNull(groups, "groups");
         if (groups.size() > MAX_GROUPS) {

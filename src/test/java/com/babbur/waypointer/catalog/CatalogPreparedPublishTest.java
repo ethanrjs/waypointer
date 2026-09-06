@@ -76,9 +76,7 @@ class CatalogPreparedPublishTest {
         route.add(new Waypoint(8, 70, 12, "Finish", 0xCC8844, 0, 0.0));
         route.setDefaultRadius(4.25);
         route.setSkipAheadEnabled(false);
-        // Catalog V9 intentionally omits V10-only paint metadata. Keeping a
-        // painted source here proves preparation remains byte-for-byte equal to
-        // the existing catalog encoder rather than introducing another projection.
+        // Paint must not change the prepared V9 catalog payload.
         route.setPaint(new WaypointPaint(
                 WaypointPaint.defaultPalette(0x44AA66),
                 new byte[WaypointPaint.PIXEL_COUNT]));

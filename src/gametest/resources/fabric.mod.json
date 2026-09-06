@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "waypointer-smoke",
+  "version": "1.0.0",
+  "name": "Waypointer Launch Test",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-client-gametest": ["com.babbur.waypointer.LaunchSmokeTest"]
+  },
+  "depends": {
+    "waypointer": "*"
+  }
+}

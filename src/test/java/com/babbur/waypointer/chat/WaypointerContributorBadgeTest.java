@@ -1,21 +1,65 @@
 package com.babbur.waypointer.chat;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.codec.UniversalShareCodec;
 import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FormattedText;
+import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextColor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerContributorBadgeTest {
     private static final UUID BABBUR_ID = UUID.fromString("d0d70e3d-2475-4001-b27e-16b5118e5534");
     private static final UUID ACIDANGELS_ID = UUID.fromString("83ccd327-6c5c-49df-a826-a59b4b2e384b");
     private static final UUID SOMEONE_ELSE_ID = UUID.fromString("68b3d8a2-0f62-48a5-a958-4fb0ab1899a2");
+
+    @Test
+    void preservesPublishedRouteLabelAndClickAfterChatDecoration() {
+        String code = "WP:l'!!I19Ip(qmQ9$a+A@c:zgt&V8";
+        assertEquals(UniversalShareCodec.Type.CATALOG, UniversalShareCodec.decode(code).type());
+        WaypointerConfig config = new WaypointerConfig();
+        ChatImportCache cache = new ChatImportCache();
+        Component decorated = new ChatImportDetector(config, cache).decorate(
+                Component.literal("[130] [MVP+] Babbur: " + code));
+
+        Component result = WaypointerContributorBadge.apply(decorated, config);
+
+        assertEquals(decorated.getString().replace("[130]", "[WP]"), result.getString());
+        assertTrue(result.getString().contains("waypointer.chat.import.click.catalog"));
+        boolean[] clickableLabel = {false};
+        result.visit((FormattedText.StyledContentConsumer<Void>) (style, text) -> {
+            if (text.contains("waypointer.chat.import.click.catalog")
+                    && style.getClickEvent() instanceof ClickEvent.RunCommand click) {
+                assertEquals(code, cache.get(click.command().substring(
+                        "/waypointer importchat catalog ".length())));
+                clickableLabel[0] = true;
+            }
+            return Optional.empty();
+        }, Style.EMPTY);
+        assertTrue(clickableLabel[0]);
+    }
+
+    @Test
+    void preservesMalformedCodeWarningAfterChatDecoration() {
+        WaypointerConfig config = new WaypointerConfig();
+        Component decorated = new ChatImportDetector(config, new ChatImportCache()).decorate(
+                Component.literal("[130] Babbur: WP:broken"));
+
+        Component result = WaypointerContributorBadge.apply(decorated, config);
+
+        assertEquals(decorated.getString().replace("[130]", "[WP]"), result.getString());
+        assertTrue(result.getString().contains("waypointer.chat.import.invalid"));
+    }
 
     @Test
     void replacesOnlyBabbursNumericChatLevelBadge() {

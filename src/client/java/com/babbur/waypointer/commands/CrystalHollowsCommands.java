@@ -37,7 +37,6 @@ import static com.babbur.waypointer.commands.CommandHelpers.success;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
-/** Client commands for the lobby-scoped Crystal Hollows feature. */
 public final class CrystalHollowsCommands {
 
     private final CrystalHollowsTracker tracker;
@@ -62,7 +61,7 @@ public final class CrystalHollowsCommands {
                 .executes(context -> runInfo(context.getSource()))
                 .then(literal("info").executes(context -> runInfo(context.getSource())))
                 .then(literal("share")
-                        .then(argument("structure", StringArgumentType.word())
+                        .then(argument("structure", StringArgumentType.greedyString())
                                 .suggests(sightingSuggestions())
                                 .executes(context -> runShare(context.getSource(),
                                         StringArgumentType.getString(context, "structure")))))
@@ -81,7 +80,7 @@ public final class CrystalHollowsCommands {
                                                                 IntegerArgumentType.getInteger(context, "y"),
                                                                 IntegerArgumentType.getInteger(context, "z"))))))))
                 .then(literal("remove")
-                        .then(argument("structure", StringArgumentType.word())
+                        .then(argument("structure", StringArgumentType.greedyString())
                                 .suggests(sightingSuggestions())
                                 .executes(context -> runRemove(context.getSource(),
                                         StringArgumentType.getString(context, "structure")))))
@@ -167,11 +166,18 @@ public final class CrystalHollowsCommands {
         CrystalHollowsLobbyState lobby = availableLobby(source);
         if (lobby == null) return 0;
         CrystalHollowsSightingSelector.Selection selection =
-                CrystalHollowsSightingSelector.parse(rawStructure);
+                CrystalHollowsSightingSelector.parse(rawStructure.startsWith("compass:")
+                        ? "wishing_target" : rawStructure);
         if (selection == null) return unknownStructure(source, rawStructure);
         CrystalHollowsStructure structure = selection.structure();
-        StructureSighting sighting = CrystalHollowsSightingSelector.find(
-                lobby.sightings(), selection);
+        StructureSighting sighting = rawStructure.startsWith("compass:")
+                ? tracker.compassShare(rawStructure)
+                : CrystalHollowsSightingSelector.find(lobby.sightings(), selection);
+        if (sighting == null && !rawStructure.startsWith("compass:")
+                && structure == CrystalHollowsStructure.WISHING_TARGET) {
+            sighting = tracker.compassTargetSighting();
+        }
+        if (sighting != null) structure = sighting.structure();
         if (sighting == null && structure == CrystalHollowsStructure.CRYSTAL_NUCLEUS) {
             sighting = fixedNucleusSighting();
         }
@@ -204,7 +210,7 @@ public final class CrystalHollowsCommands {
         CrystalHollowsStructure structure = resolveStructure(rawStructure);
         if (structure == null) return unknownStructure(source, rawStructure);
         tracker.merge(new StructureSighting(structure, x, y, z, SightingConfidence.MANUAL,
-                "manual:player", System.currentTimeMillis()));
+                "manual:player", System.currentTimeMillis()), false);
         success(source, Component.translatable("waypointer.crystal.command.added",
                 displayName(structure), x, y, z));
         return 1;

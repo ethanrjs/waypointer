@@ -171,12 +171,14 @@ public final class WaypointGroup {
     }
 
     public int currentMainIndex() {
-        if (waypoints.isEmpty() || currentIndex >= waypoints.size()) return -1;
-        if (!isSubwaypoint(currentIndex)) return currentIndex;
+        return mainIndexAt(currentIndex);
+    }
 
-        int parent = parentMainIndex(currentIndex);
-        if (parent >= 0) return parent;
-        return nextMainIndexAtOrAfter(currentIndex);
+    private int mainIndexAt(int index) {
+        if (waypoints.isEmpty() || index < 0 || index >= waypoints.size()) return -1;
+        if (!isSubwaypoint(index)) return index;
+        int parent = parentMainIndex(index);
+        return parent >= 0 ? parent : nextMainIndexAtOrAfter(index);
     }
 
     public int currentMainOrdinal() {
@@ -368,6 +370,14 @@ public final class WaypointGroup {
     public void forEachVisibleIndex(SequenceVisibility visibility,
                                     boolean keepSubwaypointsVisibleUntilNextWaypoint,
                                     IntConsumer action) {
+        forEachVisibleIndexAt(visibility, keepSubwaypointsVisibleUntilNextWaypoint,
+                currentIndex, activeSubwaypointParentIndex(), action);
+    }
+
+    /** Queries a render cursor without changing route progress. */
+    public void forEachVisibleIndexAt(SequenceVisibility visibility,
+                                      boolean keepSubwaypointsVisibleUntilNextWaypoint,
+                                      int cursor, int activeParent, IntConsumer action) {
         Objects.requireNonNull(visibility, "visibility");
         Objects.requireNonNull(action, "action");
         int n = waypoints.size();
@@ -386,27 +396,25 @@ public final class WaypointGroup {
             return;
         }
 
-        if (isComplete()) {
-            int activeParent = activeSubwaypointParentIndex();
+        if (cursor >= n) {
             int lastMain = activeParent >= 0 ? activeParent : lastMainIndex();
             emitPreviousMainContext(lastMain, visibility.previousLimit(n), activeParent,
                     keepSubwaypointsVisibleUntilNextWaypoint, action, true);
             return;
         }
 
-        int cur = currentMainIndex();
+        int cur = mainIndexAt(cursor);
         if (cur < 0) return;
 
-        int activeParent = activeSubwaypointParentIndex();
         if (isDungeonRoomRoute()) {
             if (visibleMainSteps > 0) {
-                int exactCurrent = currentIndex;
+                int exactCurrent = cursor;
                 if (exactCurrent >= 0 && exactCurrent < n
                         && !waypoints.get(exactCurrent).hasFlag(
                         Waypoint.FLAG_DUNGEON_PEARL_TARGET)) {
                     if (isWaypointEnabled(exactCurrent)) action.accept(exactCurrent);
                 }
-                int stage = currentMainIndex();
+                int stage = mainIndexAt(cursor);
                 for (int remaining = visibleMainSteps - 1; remaining > 0 && stage >= 0; remaining--) {
                     stage = nextMainIndexAfter(stage);
                     if (stage >= 0 && isWaypointEnabled(stage)) action.accept(stage);

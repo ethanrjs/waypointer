@@ -25,20 +25,20 @@ public final class WorldScreenProjector {
     private float forwardZ;
     private float fovDegrees = 70.0f;
 
-    /**
-     * Reads the camera state Minecraft extracted for this frame (Camera.update, then
-     * GameRenderer.extract fills cameraRenderState right before the HUD is extracted).
-     * Do not replace this with matrices cached during the world pass: on 26.x the HUD
-     * is extracted before the level renders, so such a cache would be one frame stale
-     * and labels would visibly lag behind the world when the camera turns.
-     */
+    /** Uses this frame's camera state; world-pass matrices lag behind HUD extraction. */
     public void prepare(GameRenderer renderer, Camera camera) {
+        prepare(renderer, camera, true);
+    }
+
+    public void prepare(GameRenderer renderer, Camera camera, boolean followCameraEffects) {
         GameRenderState gameState = MinecraftCompat.gameRenderState(renderer);
         CameraRenderState cameraState = gameState.levelRenderState.cameraRenderState;
         PoseStack cameraEffects = new PoseStack();
-        renderer.bobHurt(cameraState, cameraEffects);
-        if (gameState.optionsRenderState.bobView) {
-            renderer.bobView(cameraState, cameraEffects);
+        if (followCameraEffects) {
+            renderer.bobHurt(cameraState, cameraEffects);
+            if (gameState.optionsRenderState.bobView) {
+                renderer.bobView(cameraState, cameraEffects);
+            }
         }
         composeViewProjection(
                 cameraState.projectionMatrix,

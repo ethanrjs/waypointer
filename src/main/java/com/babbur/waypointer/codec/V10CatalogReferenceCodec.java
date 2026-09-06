@@ -12,10 +12,7 @@ import java.util.Base64;
 import java.util.regex.Pattern;
 
 /**
- * Wire-v10 kind 6, subtype 2: a reference to a route published in the public
- * route catalog. The share carries only the route id; the recipient's client
- * fetches the route from the catalog, so a code of about thirty characters can
- * stand for a route of any size, listed or unlisted.
+ * V10 kind 6, subtype 2: catalog route id, resolved by the recipient.
  *
  * <pre>{@code
  * 0x6A              header
@@ -26,9 +23,7 @@ import java.util.regex.Pattern;
  *           inline: length:uvarint (1..64) + ASCII bytes matching [A-Za-z0-9_-]
  * }</pre>
  *
- * <p>The packed form is canonical whenever the id is exactly 22 base64url
- * characters that round-trip through 16 bytes; a decoder rejects the inline
- * spelling of such an id. Nothing follows the id.
+ * <p>Ids that round-trip through 16 bytes must use packed form. No trailing bytes.
  */
 final class V10CatalogReferenceCodec {
 
@@ -42,12 +37,10 @@ final class V10CatalogReferenceCodec {
     static final int PACKED_ID_CHARS = 22;
     static final int MAX_INLINE_ID_CHARS = 64;
 
-    /** Route ids the catalog issues today; the inline form accepts the same alphabet up to 64 chars. */
     static final Pattern ROUTE_ID = Pattern.compile("[A-Za-z0-9_-]{1,64}");
 
     private V10CatalogReferenceCodec() {}
 
-    /** True when a committed kind-6 semantic body declares the catalog-reference subtype. */
     static boolean isReferenceSemantic(byte[] semantic) {
         return semantic != null && semantic.length >= 2
                 && (semantic[0] & 0xFF) == SEMANTIC_HEADER
@@ -58,7 +51,6 @@ final class V10CatalogReferenceCodec {
         return routeId != null && ROUTE_ID.matcher(routeId).matches();
     }
 
-    /** Complete transport text (without the {@code WP:} prefix) for a route id. */
     static String encode(String routeId) throws IOException {
         return V10Transport.direct(encodeSemantic(routeId)).transport();
     }
@@ -143,7 +135,6 @@ final class V10CatalogReferenceCodec {
         return routeId;
     }
 
-    /** The 16 packed bytes of a canonical 22-character base64url id, or null when not packable. */
     static byte[] packedId(String routeId) {
         if (routeId == null || routeId.length() != PACKED_ID_CHARS
                 || !isValidRouteId(routeId)) {

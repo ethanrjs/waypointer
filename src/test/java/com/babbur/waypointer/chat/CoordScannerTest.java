@@ -76,7 +76,7 @@ class CoordScannerTest {
 
     @Test
     void does_not_match_inside_decimals_or_versions() {
-        assertTrue(CoordScanner.scan("Server v1.21.11 running").isEmpty());
+        assertTrue(CoordScanner.scan("Server v26.1.2 running").isEmpty());
         assertTrue(CoordScanner.scan("Latency 12.5 14.3 11.1 ms").isEmpty());
     }
 

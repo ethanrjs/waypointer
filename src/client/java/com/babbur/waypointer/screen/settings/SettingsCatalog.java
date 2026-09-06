@@ -8,6 +8,7 @@ import com.babbur.waypointer.dungeon.config.DungeonConfig;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import static com.babbur.waypointer.screen.settings.Setting.Store.DUNGEON;
@@ -48,7 +49,6 @@ public final class SettingsCatalog {
     public static final String ACTION_PRESETS = "action.presets";
     public static final String ACTION_DISABLE_ALL = "action.disableAll";
     public static final String ACTION_RESET_DEFAULTS = "action.resetDefaults";
-    public static final String ACTION_PERF_TEST = "action.perfTest";
     public static final String ACTION_WAYPOINT_PAINT = "action.waypointPaint";
 
     private static final Setting.EnabledWhen ANY_LABEL_TEXT = (c, d) ->
@@ -137,6 +137,7 @@ public final class SettingsCatalog {
         out.add(mining());
         out.add(chat());
         out.add(sharing());
+        out.add(featureBloat());
         out.add(system());
         return List.copyOf(out);
     }
@@ -187,6 +188,10 @@ public final class SettingsCatalog {
     private static Category appearance() {
         return Category.of("appearance", "Appearance",
                 Group.plain("waypoint_marker", "Waypoint",
+                        Setting.bool("renderAntialiasing", MAIN, "Antialiasing",
+                                "Smooth waypoint outlines, route lines and tracers.",
+                                (c, d) -> c.renderAntialiasing(),
+                                (c, d, v) -> c.setRenderAntialiasing((Boolean) v)),
                         Setting.enumCycle("boxStyle", MAIN, "Box style",
                                 null,
                                 List.of(new Setting.EnumOption("outlined", "Outlined", WaypointerConfig.BoxStyle.OUTLINED),
@@ -244,12 +249,13 @@ public final class SettingsCatalog {
                                 .range(1.0, 12.0)
                                 .enabledWhen((c, d) -> c.boxStyle() == WaypointerConfig.BoxStyle.OUTLINED
                                         || c.boxStyle() == WaypointerConfig.BoxStyle.FILLED_OUTLINED)
-                                .aliases("width"),
-                        Setting.action(ACTION_WAYPOINT_PAINT, "Paint",
-                                "Add pictures or paint your own waypoints.")
-                                .enabledWhen((c, d) -> c.boxStyle() == WaypointerConfig.BoxStyle.PAINT)
-                                .aliases("painter", "texture", "pixel")),
+                                .aliases("width")),
                 Group.plain("sequenced", "Sequenced",
+                        Setting.number("waypointSkipFadeMs", MAIN, "Skip fade time (ms)",
+                                "Fade between route steps after a skip or reach. 0 disables fading.",
+                                (c, d) -> (double) c.waypointSkipFadeMs(),
+                                (c, d, v) -> c.setWaypointSkipFadeMs(((Number) v).intValue()))
+                                .range(0, 5000).wholeNumber(),
                         Setting.number("sequencePreviousWaypointCount", MAIN,
                                 "Previous waypoints", "Enter 0-32 reached route steps, or enter All.",
                                 (c, d) -> (double) c.sequencePreviousWaypointCount(),
@@ -296,20 +302,12 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setSequenceNextWaypointColor(rgb(v)))
                                 .enabledWhen((c, d) -> c.colorSequenceWaypointsByRole())),
                 Group.plain("etherwarp", "Etherwarp",
-                        Setting.enumCycle("etherwarpAlignmentSound", MAIN,
+                        Setting.text("etherwarpAlignmentSound", MAIN,
                                 "Etherwarp alignment sound",
-                                "Choose a sound to play when you can etherwarp to a waypoint.",
-                                List.of(new Setting.EnumOption("off", "Off",
-                                                WaypointerConfig.EtherwarpAlignmentSound.OFF),
-                                        new Setting.EnumOption("experience", "Experience",
-                                                WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE),
-                                        new Setting.EnumOption("pling", "Pling",
-                                                WaypointerConfig.EtherwarpAlignmentSound.PLING),
-                                        new Setting.EnumOption("bell", "Bell",
-                                                WaypointerConfig.EtherwarpAlignmentSound.BELL)),
+                                "Minecraft sound ID, e.g. block.note_block.pling. Leave blank to disable.",
+                                WaypointerConfig::isValidSoundId,
                                 (c, d) -> c.etherwarpAlignmentSound(),
-                                (c, d, v) -> c.setEtherwarpAlignmentSound(
-                                        (WaypointerConfig.EtherwarpAlignmentSound) v))),
+                                (c, d, v) -> c.setEtherwarpAlignmentSound((String) v))),
                 Group.plain("labels", "Labels",
                         Setting.bool("showWaypointNames", MAIN, "Show waypoint names",
                                 null,
@@ -348,6 +346,17 @@ public final class SettingsCatalog {
                                 null,
                                 (c, d) -> c.scaleWaypointTextWithDistance(),
                                 (c, d, v) -> c.setScaleWaypointTextWithDistance((Boolean) v))
+                                .enabledWhen(ANY_LABEL_TEXT),
+                        Setting.bool("labelFollowCameraEffects", MAIN, "Follow camera effects",
+                                "Move labels with view bobbing and camera shake.",
+                                (c, d) -> c.labelFollowCameraEffects(),
+                                (c, d, v) -> c.setLabelFollowCameraEffects((Boolean) v))
+                                .enabledWhen(ANY_LABEL_TEXT),
+                        Setting.number("labelOpacity", MAIN, "Label opacity",
+                                "Set label text and background opacity.",
+                                (c, d) -> c.labelOpacity(),
+                                (c, d, v) -> c.setLabelOpacity(dbl(v)))
+                                .range(0.0, 1.0)
                                 .enabledWhen(ANY_LABEL_TEXT),
                         Setting.number("labelScale", MAIN, "Label scale (0.25-4)",
                                 null,
@@ -576,16 +585,31 @@ public final class SettingsCatalog {
                 (c, d) -> c.crystalHollowsEnabled(),
                 List.of(Group.plain("crystal_hollows_structures", "Crystal Hollows structures",
                         Setting.bool("crystalHollowsEnabled", MAIN, "Crystal Hollows features",
-                                "Detect lobby structures using only information already shown to you.",
+                                "Enable structure detection, sharing, and mining solvers in the Crystal Hollows.",
                                 (c, d) -> c.crystalHollowsEnabled(),
                                 (c, d, v) -> c.setCrystalHollowsEnabled((Boolean) v))
                                 .impact(Setting.Impact.LOW)
                                 .aliases("mining", "compass", "hollows", "divan", "temple"),
+                        Setting.bool("crystalHollowsRemoteSharing", MAIN,
+                                "Share Structures",
+                                "Automatically send and receive structure locations in your Crystal Hollows lobby. Turning this off stops both.",
+                                (c, d) -> c.crystalHollowsRemoteSharing(),
+                                (c, d, v) -> c.setCrystalHollowsRemoteSharing((Boolean) v)),
+                        Setting.bool("crystalHollowsMetalDetector", MAIN,
+                                "Metal Detector Waypoints",
+                                "Show treasure waypoints while using a Metal Detector.",
+                                (c, d) -> c.crystalHollowsMetalDetector(),
+                                (c, d, v) -> c.setCrystalHollowsMetalDetector((Boolean) v)),
                         Setting.bool("crystalHollowsStructureWaypoints", MAIN,
                                 "Structure waypoints",
                                 "Show detected structures in the runtime Structures folder.",
                                 (c, d) -> c.crystalHollowsStructureWaypoints(),
                                 (c, d, v) -> c.setCrystalHollowsStructureWaypoints((Boolean) v)),
+                        Setting.bool("crystalHollowsHideStructuresFolder", MAIN,
+                                "Hide Structures folder",
+                                "Hide the Structures folder and its generated waypoints.",
+                                (c, d) -> c.crystalHollowsHideStructuresFolder(),
+                                (c, d, v) -> c.setCrystalHollowsHideStructuresFolder((Boolean) v)),
                         Setting.bool("crystalHollowsShowRoughMarkers", MAIN,
                                 "Approximate markers",
                                 "Show lower-confidence locations estimated from sidebar areas.",
@@ -617,12 +641,7 @@ public final class SettingsCatalog {
                                         "Wishing Compass solver",
                                         "Capture your compass particles and triangulate their destination.",
                                         (c, d) -> c.crystalHollowsWishingCompassSolver(),
-                                        (c, d, v) -> c.setCrystalHollowsWishingCompassSolver((Boolean) v)),
-                                Setting.bool("crystalHollowsCompassRays", MAIN,
-                                        "Compass rays",
-                                        "Render captured Wishing Compass directions while solving.",
-                                        (c, d) -> c.crystalHollowsCompassRays(),
-                                        (c, d, v) -> c.setCrystalHollowsCompassRays((Boolean) v)))));
+                                        (c, d, v) -> c.setCrystalHollowsWishingCompassSolver((Boolean) v)))));
     }
 
     private static Category chat() {
@@ -670,12 +689,6 @@ public final class SettingsCatalog {
                                 "Imported Route Color", null,
                                 (c, d) -> c.importedRouteDefaultColor(),
                                 (c, d, v) -> c.setImportedRouteDefaultColor(rgb(v)))),
-                Group.plain("export_screen", "Export screen",
-                        Setting.bool("showExportRoutePreview", MAIN, "3D route preview",
-                                "Show a rotating 3D preview of the route on the export screen.",
-                                (c, d) -> c.showExportRoutePreview(),
-                                (c, d, v) -> c.setShowExportRoutePreview((Boolean) v))
-                                .aliases("preview", "3d", "isometric")),
                 Group.plain("export_defaults", "Export defaults",
                         Setting.bool("exportIncludeNames", MAIN, "Include names in default export",
                                 null,
@@ -703,9 +716,30 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setExportIncludeZone((Boolean) v))));
     }
 
+    private static Category featureBloat() {
+        return Category.of("feature_bloat", "Extras",
+                Group.plain(
+                        Setting.action(ACTION_WAYPOINT_PAINT, "Waypoint Painter",
+                                "Add pictures or paint your own waypoints.")
+                                .buttons(Map.of("waypointer.screen.settings.action.open_painter", "Open painter"))
+                                .enabledWhen((c, d) -> c.enableFeatureBloat())
+                                .aliases("painter", "texture", "pixel")),
+                Group.plain("export_screen", "Export screen",
+                        Setting.bool("showExportRoutePreview", MAIN, "3D route preview",
+                                "Show a rotating 3D preview of the route on the export screen.",
+                                (c, d) -> c.showExportRoutePreview(),
+                                (c, d, v) -> c.setShowExportRoutePreview((Boolean) v))
+                                .enabledWhen((c, d) -> c.enableFeatureBloat())
+                                .aliases("preview", "3d", "isometric")));
+    }
+
     private static Category system() {
         return Category.of("system", "System",
                 Group.plain(
+                        Setting.bool("enableFeatureBloat", MAIN, "Enable Extras",
+                                "Enable the Waypoint Painter and 3D route preview.",
+                                (c, d) -> c.enableFeatureBloat(),
+                                (c, d, v) -> c.setEnableFeatureBloat((Boolean) v)),
                         Setting.bool("irisShaderHudFallback", MAIN, "Iris shader compatibility",
                                 null,
                                 (c, d) -> c.irisShaderHudFallback(),
@@ -723,13 +757,17 @@ public final class SettingsCatalog {
                 Group.plain("config_presets", "Config & presets",
                         Setting.action(ACTION_CONFIG_CODE, "Config code",
                                 null)
+                                .buttons(Map.of(
+                                        "waypointer.screen.settings.config.copy", "Copy config code",
+                                        "waypointer.screen.settings.config.import", "Import config code"))
                                 .aliases("share", "wpc", "import", "export"),
                         Setting.action(ACTION_PRESETS, "Presets",
                                 null)
+                                .buttons(Map.of(
+                                        "waypointer.screen.settings.preset.minimal", "Minimal",
+                                        "waypointer.screen.settings.preset.default", "Default",
+                                        "waypointer.screen.settings.preset.nothing", "Disable All"))
                                 .aliases("profile", "minimal", "default")),
-                Group.plain("diagnostics", "Diagnostics",
-                        Setting.action(ACTION_PERF_TEST, "Performance stress test", "")
-                                .aliases("benchmark", "profiler", "fps", "stress", "lag")),
                 new Group(null, null, null, null, List.of(
                         Setting.hidden("dungeonWaypointsFeatureEnabled",
                                 (c, d) -> c.dungeonWaypointsFeatureEnabled(),

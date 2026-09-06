@@ -249,7 +249,10 @@ String routeId = waypointer.createRoute(
                 .build());
 ```
 
-Use `dwarven_mines` for routes in Dwarven Mines, Glacite Tunnels, Dwarven Base Camp, and Great Glacite Lake. The retired zone IDs `glacite_tunnels`, `dwarven_base_camp`, and `great_glacite_lake` are accepted as input aliases and canonicalize to `dwarven_mines`.
+Use `dwarven_mines` for routes in Dwarven Mines, Glacite Tunnels, Dwarven Base
+Camp, and Great Glacite Lake. The retired zone IDs `glacite_tunnels`,
+`dwarven_base_camp`, and `great_glacite_lake` are accepted as input aliases and
+canonicalize to `dwarven_mines`.
 
 The returned id identifies persisted user data. The user may edit or delete the
 route at any time. `removeRoute(routeId)` is destructive: call it only for a
@@ -372,8 +375,7 @@ String shareText = waypointer.exportRoutes(
 Exports are read-only. Ids are processed in supplied order; missing and `null`
 ids are skipped. `exportRoutes(ids)` uses full-fidelity Waypointer defaults.
 
-Supported targets are Waypointer, Skyblocker, Skytils, SkyHanni, and
-ChunkLogger RouteSkipper.
+Supported targets are Waypointer, Skyblocker, Skytils, and SkyHanni.
 Third-party formats cannot represent every Waypointer field, so use
 `WAYPOINTER` for lossless round trips. When selected routes have route-library
 metadata, the Waypointer target writes a V10 route-library `WP:` share

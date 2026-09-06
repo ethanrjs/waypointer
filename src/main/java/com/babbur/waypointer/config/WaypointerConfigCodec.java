@@ -124,6 +124,15 @@ public final class WaypointerConfigCodec {
     private static final int SEQUENCE_PREVIOUS_WAYPOINT_COLOR = 92;
     private static final int SEQUENCE_CURRENT_WAYPOINT_COLOR = 93;
     private static final int SEQUENCE_NEXT_WAYPOINT_COLOR = 94;
+    private static final int CRYSTAL_HOLLOWS_HIDE_STRUCTURES_FOLDER = 95;
+    private static final int ETHERWARP_ALIGNMENT_SOUND_ID = 96;
+    private static final int WAYPOINT_SKIP_FADE_MS = 97;
+    private static final int RENDER_ANTIALIASING = 98;
+    private static final int ENABLE_FEATURE_BLOAT = 99;
+    private static final int LABEL_FOLLOW_CAMERA_EFFECTS = 100;
+    private static final int LABEL_OPACITY = 101;
+    private static final int CRYSTAL_HOLLOWS_METAL_DETECTOR = 102;
+    private static final int CRYSTAL_HOLLOWS_REMOTE_SHARING = 103;
 
     private WaypointerConfigCodec() {
     }
@@ -193,6 +202,8 @@ public final class WaypointerConfigCodec {
         writeDouble(out, TRACER_OPACITY, config.tracerOpacity(), defaults.tracerOpacity());
         writeDouble(out, TRACER_THICKNESS, config.tracerThickness(), defaults.tracerThickness());
         writeDouble(out, WAYPOINT_OUTLINE_THICKNESS, config.waypointOutlineThickness(), defaults.waypointOutlineThickness());
+        writeBoolean(out, ENABLE_FEATURE_BLOAT, config.enableFeatureBloat(), defaults.enableFeatureBloat());
+        writeBoolean(out, RENDER_ANTIALIASING, config.renderAntialiasing(), defaults.renderAntialiasing());
         writeDouble(out, WAYPOINT_MARKER_SCALE, config.waypointMarkerScale(), defaults.waypointMarkerScale());
         writeDouble(out, WAYPOINT_OUTLINE_OPACITY, config.waypointOutlineOpacity(), defaults.waypointOutlineOpacity());
         writeBoolean(out, MATCH_WAYPOINT_OUTLINE_TO_WAYPOINT_COLOR,
@@ -204,7 +215,10 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, SHOW_WAYPOINT_NAMES, config.showWaypointNames(), defaults.showWaypointNames());
         writeBoolean(out, SHOW_WAYPOINT_DISTANCES, config.showWaypointDistances(), defaults.showWaypointDistances());
         writeBoolean(out, SHOW_ROUTE_PROGRESS, config.showRouteProgress(), defaults.showRouteProgress());
+        writeInt(out, WAYPOINT_SKIP_FADE_MS, config.waypointSkipFadeMs(), defaults.waypointSkipFadeMs());
         writeDouble(out, LABEL_SCALE, config.labelScale(), defaults.labelScale());
+        writeBoolean(out, LABEL_FOLLOW_CAMERA_EFFECTS, config.labelFollowCameraEffects(), defaults.labelFollowCameraEffects());
+        writeDouble(out, LABEL_OPACITY, config.labelOpacity(), defaults.labelOpacity());
         writeBoolean(out, SCALE_WAYPOINT_TEXT_WITH_DISTANCE, config.scaleWaypointTextWithDistance(), defaults.scaleWaypointTextWithDistance());
         writeBoolean(out, MATCH_WAYPOINT_TEXT_TO_WAYPOINT_COLOR, config.matchWaypointTextToWaypointColor(), defaults.matchWaypointTextToWaypointColor());
         writeInt(out, SEQUENCE_PREVIOUS_WAYPOINT_COUNT,
@@ -269,8 +283,19 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, IRIS_SHADER_HUD_FALLBACK, config.irisShaderHudFallback(), defaults.irisShaderHudFallback());
         writeInt(out, TEMP_DEFAULT_MODE, config.tempDefaultMode(), defaults.tempDefaultMode());
         writeInt(out, TEMP_DEFAULT_DURATION_SEC, config.tempDefaultDurationSec(), defaults.tempDefaultDurationSec());
-        writeEnum(out, ETHERWARP_ALIGNMENT_SOUND_TYPE,
-                config.etherwarpAlignmentSound(), defaults.etherwarpAlignmentSound());
+        String soundId = config.etherwarpAlignmentSound();
+        if (!soundId.isEmpty()) {
+            WaypointerConfig.EtherwarpAlignmentSound preset = Arrays.stream(
+                    WaypointerConfig.EtherwarpAlignmentSound.values())
+                    .filter(sound -> sound.id().equals(soundId)).findFirst().orElse(null);
+            if (preset != null) {
+                writeEnum(out, ETHERWARP_ALIGNMENT_SOUND_TYPE,
+                        preset, WaypointerConfig.EtherwarpAlignmentSound.OFF);
+            } else {
+                out.writeByte(ETHERWARP_ALIGNMENT_SOUND_ID);
+                out.writeUTF(soundId);
+            }
+        }
         writeBoolean(out, CRYSTAL_HOLLOWS_ENABLED,
                 config.crystalHollowsEnabled(), defaults.crystalHollowsEnabled());
         writeBoolean(out, CRYSTAL_HOLLOWS_STRUCTURE_WAYPOINTS,
@@ -284,6 +309,10 @@ public final class WaypointerConfigCodec {
                 defaults.crystalHollowsEntityDetection());
         writeBoolean(out, CRYSTAL_HOLLOWS_CHAT_DETECTION,
                 config.crystalHollowsChatDetection(), defaults.crystalHollowsChatDetection());
+        writeBoolean(out, CRYSTAL_HOLLOWS_METAL_DETECTOR,
+                config.crystalHollowsMetalDetector(), defaults.crystalHollowsMetalDetector());
+        writeBoolean(out, CRYSTAL_HOLLOWS_REMOTE_SHARING,
+                config.crystalHollowsRemoteSharing(), defaults.crystalHollowsRemoteSharing());
         writeBoolean(out, CRYSTAL_HOLLOWS_WISHING_COMPASS_SOLVER,
                 config.crystalHollowsWishingCompassSolver(),
                 defaults.crystalHollowsWishingCompassSolver());
@@ -305,6 +334,9 @@ public final class WaypointerConfigCodec {
                 config.sequenceCurrentWaypointColor(), defaults.sequenceCurrentWaypointColor());
         writeInt(out, SEQUENCE_NEXT_WAYPOINT_COLOR,
                 config.sequenceNextWaypointColor(), defaults.sequenceNextWaypointColor());
+        writeBoolean(out, CRYSTAL_HOLLOWS_HIDE_STRUCTURES_FOLDER,
+                config.crystalHollowsHideStructuresFolder(),
+                defaults.crystalHollowsHideStructuresFolder());
     }
     private static void readFields(DataInputStream in, WaypointerConfig config) throws IOException {
         while (true) {
@@ -324,6 +356,8 @@ public final class WaypointerConfigCodec {
                 case TRACER_OPACITY -> config.setTracerOpacity(in.readDouble());
                 case TRACER_THICKNESS -> config.setTracerThickness(in.readDouble());
                 case WAYPOINT_OUTLINE_THICKNESS -> config.setWaypointOutlineThickness(in.readDouble());
+                case ENABLE_FEATURE_BLOAT -> config.setEnableFeatureBloat(in.readBoolean());
+                case RENDER_ANTIALIASING -> config.setRenderAntialiasing(in.readBoolean());
                 case WAYPOINT_MARKER_SCALE -> config.setWaypointMarkerScale(in.readDouble());
                 case WAYPOINT_OUTLINE_OPACITY -> config.setWaypointOutlineOpacity(in.readDouble());
                 case MATCH_WAYPOINT_OUTLINE_TO_WAYPOINT_COLOR ->
@@ -334,7 +368,10 @@ public final class WaypointerConfigCodec {
                 case SHOW_WAYPOINT_NAMES -> config.setShowWaypointNames(in.readBoolean());
                 case SHOW_WAYPOINT_DISTANCES -> config.setShowWaypointDistances(in.readBoolean());
                 case SHOW_ROUTE_PROGRESS -> config.setShowRouteProgress(in.readBoolean());
+                case WAYPOINT_SKIP_FADE_MS -> config.setWaypointSkipFadeMs(in.readInt());
                 case LABEL_SCALE -> config.setLabelScale(in.readDouble());
+                case LABEL_FOLLOW_CAMERA_EFFECTS -> config.setLabelFollowCameraEffects(in.readBoolean());
+                case LABEL_OPACITY -> config.setLabelOpacity(in.readDouble());
                 case SCALE_WAYPOINT_TEXT_WITH_DISTANCE -> config.setScaleWaypointTextWithDistance(in.readBoolean());
                 case MATCH_WAYPOINT_TEXT_TO_WAYPOINT_COLOR -> config.setMatchWaypointTextToWaypointColor(in.readBoolean());
                 case SHOW_COMPLETED -> config.setShowCompleted(in.readBoolean());
@@ -404,6 +441,7 @@ public final class WaypointerConfigCodec {
                 case ETHERWARP_ALIGNMENT_SOUND_TYPE -> config.setEtherwarpAlignmentSound(readEnum(in,
                         WaypointerConfig.EtherwarpAlignmentSound.values(),
                         WaypointerConfig.EtherwarpAlignmentSound.OFF));
+                case ETHERWARP_ALIGNMENT_SOUND_ID -> config.setEtherwarpAlignmentSound(in.readUTF());
                 case CRYSTAL_HOLLOWS_ENABLED -> config.setCrystalHollowsEnabled(in.readBoolean());
                 case CRYSTAL_HOLLOWS_STRUCTURE_WAYPOINTS ->
                         config.setCrystalHollowsStructureWaypoints(in.readBoolean());
@@ -413,6 +451,8 @@ public final class WaypointerConfigCodec {
                         config.setCrystalHollowsEntityDetection(in.readBoolean());
                 case CRYSTAL_HOLLOWS_CHAT_DETECTION ->
                         config.setCrystalHollowsChatDetection(in.readBoolean());
+                case CRYSTAL_HOLLOWS_METAL_DETECTOR -> config.setCrystalHollowsMetalDetector(in.readBoolean());
+                case CRYSTAL_HOLLOWS_REMOTE_SHARING -> config.setCrystalHollowsRemoteSharing(in.readBoolean());
                 case CRYSTAL_HOLLOWS_WISHING_COMPASS_SOLVER ->
                         config.setCrystalHollowsWishingCompassSolver(in.readBoolean());
                 case CRYSTAL_HOLLOWS_COMPASS_RAYS ->
@@ -421,6 +461,8 @@ public final class WaypointerConfigCodec {
                         config.setCrystalHollowsAnnounceDetections(in.readBoolean());
                 case CRYSTAL_HOLLOWS_NUCLEUS_WAYPOINTS ->
                         config.setCrystalHollowsNucleusWaypoints(in.readBoolean());
+                case CRYSTAL_HOLLOWS_HIDE_STRUCTURES_FOLDER ->
+                        config.setCrystalHollowsHideStructuresFolder(in.readBoolean());
                 case ALLOW_BACKWARD_PROGRESS ->
                         config.setAllowBackwardProgress(in.readBoolean());
                 case COLOR_SEQUENCE_WAYPOINTS_BY_ROLE ->
@@ -532,7 +574,7 @@ public final class WaypointerConfigCodec {
     }
 
     static boolean isActiveFieldTag(int tag) {
-        return tag >= DEFAULT_REACH_RADIUS && tag <= SEQUENCE_NEXT_WAYPOINT_COLOR
+        return tag >= DEFAULT_REACH_RADIUS && tag <= CRYSTAL_HOLLOWS_REMOTE_SHARING
                 && tag != SHOW_COMPLETED
                 && tag != LEGACY_CHECK_FOR_UPDATES
                 && tag != TEMP_DEFAULT_DURATION_MIN
@@ -553,7 +595,8 @@ public final class WaypointerConfigCodec {
         return tag == MAX_WAYPOINT_LABELS || tag == TEMP_DEFAULT_MODE
                 || tag == TEMP_DEFAULT_DURATION_SEC
                 || tag == SEQUENCE_PREVIOUS_WAYPOINT_COUNT
-                || tag == SEQUENCE_NEXT_WAYPOINT_COUNT;
+                || tag == SEQUENCE_NEXT_WAYPOINT_COUNT
+                || tag == WAYPOINT_SKIP_FADE_MS;
     }
 
     static boolean isStringListFieldTag(int tag) {
@@ -574,7 +617,7 @@ public final class WaypointerConfigCodec {
             }
             return;
         }
-        if (tag != CHAT_COORD_SENDER_BLACKLIST
+        if ((tag != CHAT_COORD_SENDER_BLACKLIST && tag != ETHERWARP_ALIGNMENT_SOUND_ID)
                 || taggedFieldPayloadLength(tag, value, 0) != value.length) {
             throw new IOException("malformed variable-length config field " + tag);
         }
@@ -586,6 +629,11 @@ public final class WaypointerConfigCodec {
         if (fixedLength >= 0) {
             requireAvailable(bytes, offset, fixedLength);
             return fixedLength;
+        }
+        if (tag == ETHERWARP_ALIGNMENT_SOUND_ID) {
+            int length = readUnsignedShort(bytes, offset);
+            requireAvailable(bytes, offset + Short.BYTES, length);
+            return Short.BYTES + length;
         }
         if (tag != CHAT_COORD_SENDER_BLACKLIST) {
             throw new IOException("unsupported config field tag " + tag);
@@ -605,7 +653,7 @@ public final class WaypointerConfigCodec {
     private static int taggedFieldFixedLength(int tag) {
         return switch (tag) {
             case DEFAULT_REACH_RADIUS, TRACER_OPACITY, TRACER_THICKNESS,
-                    WAYPOINT_OUTLINE_THICKNESS, BEACON_OPACITY, LABEL_SCALE,
+                    WAYPOINT_OUTLINE_THICKNESS, BEACON_OPACITY, LABEL_SCALE, LABEL_OPACITY,
                     HIDE_WAYPOINTS_NEAR_RADIUS, HIDE_WAYPOINT_LABELS_NEAR_RADIUS,
                     MAX_STATIC_RENDER_DISTANCE, LABEL_HEIGHT_OFFSET,
                     WAYPOINT_MARKER_SCALE, WAYPOINT_OUTLINE_OPACITY -> Double.BYTES;
@@ -615,10 +663,10 @@ public final class WaypointerConfigCodec {
                     DUNGEON_ENTRY_PATH_COLOR, WAYPOINT_OUTLINE_COLOR,
                     SEQUENCE_PREVIOUS_WAYPOINT_COUNT, SEQUENCE_NEXT_WAYPOINT_COUNT,
                     SEQUENCE_PREVIOUS_WAYPOINT_COLOR, SEQUENCE_CURRENT_WAYPOINT_COLOR,
-                    SEQUENCE_NEXT_WAYPOINT_COLOR -> Integer.BYTES;
+                    SEQUENCE_NEXT_WAYPOINT_COLOR, WAYPOINT_SKIP_FADE_MS -> Integer.BYTES;
             case BOX_STYLE, BEACON_BEAM_MODE, IMPORTED_ROUTE_COLOR_MODE,
                     ETHERWARP_ALIGNMENT_SOUND_TYPE -> 1;
-            case CHAT_COORD_SENDER_BLACKLIST -> -1;
+            case CHAT_COORD_SENDER_BLACKLIST, ETHERWARP_ALIGNMENT_SOUND_ID -> -1;
             default -> isActiveFieldTag(tag) ? 1 : -2;
         };
     }

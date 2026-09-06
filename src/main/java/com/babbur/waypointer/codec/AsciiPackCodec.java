@@ -8,11 +8,7 @@ package com.babbur.waypointer.codec;
  */
 public final class AsciiPackCodec {
 
-    /**
-     * Base-85 alphabet, indexed by digit value (0..84). Ordering preserves
-     * the Z85 scheme except digit 62 is {@code ';'} instead of {@code '.'}
-     * so the mapping is easy to audit against the reference spec.
-     */
+    /** Z85 alphabet with {@code ";"} replacing {@code "."} at digit 62. */
     private static final char[] ALPHABET = {
             '0','1','2','3','4','5','6','7','8','9',
             'a','b','c','d','e','f','g','h','i','j',
@@ -77,7 +73,6 @@ public final class AsciiPackCodec {
                 int b = idx < input.length ? (input[idx] & 0xFF) : 0;
                 v = (v << 8) | b;
             }
-            // This hot loop is unrolled to avoid repeated division setup.
             int d0 = (int) (v / P4);
             long r  = v - d0 * P4;
             int d1 = (int) (r / P3);

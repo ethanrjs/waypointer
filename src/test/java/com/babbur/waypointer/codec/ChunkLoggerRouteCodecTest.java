@@ -51,8 +51,6 @@ class ChunkLoggerRouteCodecTest {
         assertEquals(List.of(
                 new ChunkLoggerRouteCodec.RelativeOffset(1, -2, 3),
                 new ChunkLoggerRouteCodec.RelativeOffset(-128, 127, 0)), decoded);
-        assertEquals("Af4DgH8A", ChunkLoggerRouteCodec.encodeCoal(decoded));
-
         source.addProperty("coal", "%%%");
         assertTrue(ChunkLoggerRouteCodec.decodeCoal(source).isEmpty());
         source.addProperty("coal", "");
@@ -82,42 +80,6 @@ class ChunkLoggerRouteCodecTest {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                 () -> WaypointImporter.importAny("[{\"x\":134217727,\"y\":0,\"z\":0,\"coal\":\"AQAA\"}]"));
         assertTrue(failure.getMessage().contains("outside Waypointer's coordinate range"));
-    }
-
-    @Test
-    void exportUsesCoordinateShapeAndDropsWaypointerMetadata() {
-        WaypointGroup group = WaypointGroup.create("Ignored", "hub");
-        group.add(new Waypoint(10, 64, -2, "named", 0x112233, 0, 5.0));
-        group.add(new Waypoint(11, 62, 1, "child", 0x445566,
-                Waypoint.FLAG_SUBWAYPOINT, 7.0));
-        group.add(new Waypoint(-118, 191, -2, "child", 0x445566,
-                Waypoint.FLAG_SUBWAYPOINT, 7.0));
-        group.add(new Waypoint(138, 64, -2, "too far", 0x445566,
-                Waypoint.FLAG_SUBWAYPOINT, 7.0));
-        group.add(new Waypoint(-4, 70, 8, "next", 0x445566, 0, 0.0));
-
-        String encoded = WaypointExportCodec.encode(List.of(group),
-                WaypointCodec.Options.FULL_FIDELITY, WaypointExportCodec.Target.CHUNKLOGGER);
-        assertEquals("[{\"x\":10,\"y\":64,\"z\":-2,\"coal\":\"Af4DgH8A\"},{\"x\":-4,\"y\":70,\"z\":8,\"coal\":\"\"}]", encoded);
-        assertTrue(encoded.contains("coal"));
-        assertFalse(encoded.contains("blocks"));
-
-        WaypointImporter.ImportResult reimported = WaypointImporter.importAny(encoded);
-        assertEquals(WaypointImporter.Source.CHUNKLOGGER, reimported.source());
-        assertEquals(List.of("10,64,-2", "11,62,1", "-118,191,-2", "-4,70,8"),
-                coordinates(reimported.groups().getFirst()));
-    }
-
-    @Test
-    void targetAdvertisesOnlyCoordinateCompatibility() {
-        WaypointExportCodec.Target target = WaypointExportCodec.Target.CHUNKLOGGER;
-        assertFalse(target.supportsNames());
-        assertFalse(target.supportsColors());
-        assertFalse(target.supportsRadii());
-        assertFalse(target.supportsWaypointFlags());
-        assertFalse(target.supportsGroupMeta());
-        assertFalse(target.supportsLabel());
-        assertFalse(target.supportsIslandChoice());
     }
 
     private static String fixture() throws IOException {

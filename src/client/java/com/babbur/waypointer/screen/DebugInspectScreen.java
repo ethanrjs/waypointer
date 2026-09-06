@@ -155,11 +155,6 @@ public final class DebugInspectScreen extends Screen {
         left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.debug.refresh").getString(),
                 this::loadCombinedReport));
-        if (config != null) {
-            left.add(new GuiTokens.ButtonSpec(
-                    Component.translatable("waypointer.screen.debug.perf_test").getString(),
-                    88, this::openPerfStressTest));
-        }
         String copyLabel = Component.translatable(
                 copyFeedbackUntil > System.currentTimeMillis()
                         ? "waypointer.screen.debug.copied"
@@ -185,11 +180,6 @@ public final class DebugInspectScreen extends Screen {
         }
     }
 
-
-    private void openPerfStressTest() {
-        MinecraftCompat.setScreen(minecraft, SettingsScreen.atSetting(this, config,
-                WaypointerClient.dungeonConfig(), SettingsCatalog.ACTION_PERF_TEST));
-    }
 
     private void resetReportState() {
         this.debug = null;
@@ -486,21 +476,25 @@ public final class DebugInspectScreen extends Screen {
             rows.add(new Row.BitNote("[" + category.label() + "]"));
             for (SettingsCatalog.Group group : category.groups()) {
                 for (Setting setting : group.settings()) {
-                    if (setting.store() == Setting.Store.NONE) continue;
+                    if (setting.store() == Setting.Store.NONE
+                            || !SettingsScreen.featureAvailable(setting, config)) continue;
                     if (setting.store() == Setting.Store.DUNGEON && dungeonConfig == null) {
                         rows.add(new Row.KVWarn(setting.id(), "Unavailable"));
                         continue;
                     }
-                    Object value = setting.get(config, dungeonConfig);
+                    Object value = setting.id().equals("boxStyle")
+                            ? config.effectiveBoxStyle() : setting.get(config, dungeonConfig);
                     rows.add(new Row.KV(setting.id(), oneLine(setting.formatValue(value))));
                 }
             }
         }
         rows.add(new Row.BitNote("[Internal troubleshooting state]"));
         rows.add(new Row.KV("configSchemaVersion", String.valueOf(config.configSchemaVersion())));
-        rows.add(new Row.KV("painterPalette", formatPalette(config.waypointPainterPalette())));
-        rows.add(new Row.KV("painterDefault", config.waypointPainterDefaultPaint() == null
-                ? "(none)" : "configured (hash " + config.waypointPainterDefaultPaint().hashCode() + ")"));
+        if (config.enableFeatureBloat()) {
+            rows.add(new Row.KV("painterPalette", formatPalette(config.waypointPainterPalette())));
+            rows.add(new Row.KV("painterDefault", config.waypointPainterDefaultPaint() == null
+                    ? "(none)" : "configured (hash " + config.waypointPainterDefaultPaint().hashCode() + ")"));
+        }
         if (dungeonConfig != null) {
             rows.add(new Row.KV("debugLogRoomChanges", String.valueOf(dungeonConfig.debugLogRoomChanges())));
             rows.add(new Row.KV("defaultDirection", dungeonConfig.defaultDirection()));

@@ -8,12 +8,13 @@ import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
-/** Collects only nearby, player-visible entity anchors from the loaded client level. */
+/** Finds structures using nearby visible entities. */
 public final class CrystalHollowsEntityScanner {
 
     public record Detection(int entityId, CrystalHollowsStructure structure,
@@ -63,7 +64,7 @@ public final class CrystalHollowsEntityScanner {
         return java.util.List.copyOf(detections);
     }
 
-    /** Dialogue itself proves proximity; this refinement intentionally performs no clip test. */
+    /** Dialogue confirms proximity, so skip the visibility test. */
     public static Optional<CrystalHollowsPosition> nearestDialogueAnchor(
             Minecraft client, CrystalHollowsStructure structure) {
         if (client.level == null || client.player == null) return Optional.empty();
@@ -71,10 +72,10 @@ public final class CrystalHollowsEntityScanner {
         double nearestDistanceSquared = 16.0 * 16.0;
         CrystalHollowsPosition nearest = null;
         for (Entity entity : client.level.entitiesForRendering()) {
-            Optional<NamedAnchor> anchor = namedAnchor(entity, playerNames);
-            if (anchor.isEmpty() || anchor.orElseThrow().match().structure() != structure) continue;
             double distanceSquared = client.player.position().distanceToSqr(entity.position());
             if (distanceSquared > nearestDistanceSquared) continue;
+            Optional<NamedAnchor> anchor = namedAnchor(entity, playerNames);
+            if (anchor.isEmpty() || anchor.orElseThrow().match().structure() != structure) continue;
             CrystalHollowsEntityAnchor.Match match = anchor.orElseThrow().match();
             nearestDistanceSquared = distanceSquared;
             nearest = position(entity, match.offsetX(), match.offsetY(), match.offsetZ());
@@ -99,6 +100,13 @@ public final class CrystalHollowsEntityScanner {
             }
         }
         if (!(entity instanceof Player)) return Optional.empty();
+        Player player = (Player) entity;
+        if (!playerNames.contains(cleanName(player.getName().getString()))
+                && CrystalHollowsEntityAnchor.isCorleoneProfile(player.getName().getString(),
+                        player.getAttributeBaseValue(Attributes.MAX_HEALTH))) {
+            return Optional.of(new NamedAnchor("Boss Corleone",
+                    CrystalHollowsEntityAnchor.match("Boss Corleone").orElseThrow()));
+        }
         String[] names = {entity.getName().getString(), entity.getDisplayName().getString()};
         for (String name : names) {
             Optional<CrystalHollowsEntityAnchor.Match> match = CrystalHollowsEntityAnchor.match(name);

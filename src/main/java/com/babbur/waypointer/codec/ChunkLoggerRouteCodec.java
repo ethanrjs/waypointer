@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 
-import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -73,26 +72,6 @@ final class ChunkLoggerRouteCodec {
         return group;
     }
 
-    static String encode(List<WaypointGroup> groups) {
-        JsonArray route = new JsonArray();
-        for (WaypointGroup group : groups) {
-            List<Waypoint> points = group.waypoints();
-            for (int index = 0; index < points.size(); index++) {
-                Waypoint waypoint = points.get(index);
-                if (waypoint.isSubwaypoint()) continue;
-                JsonObject encoded = new JsonObject();
-                encoded.addProperty("x", waypoint.x());
-                encoded.addProperty("y", waypoint.y());
-                encoded.addProperty("z", waypoint.z());
-                // The coal marker distinguishes this from generic coordinate JSON on re-import.
-                encoded.addProperty("coal", encodeCoal(childrenAsCoal(
-                        points, index, group.childEndExclusive(index))));
-                route.add(encoded);
-            }
-        }
-        return route.toString();
-    }
-
     /** Standard Base64 signed-byte triples; malformed/empty fields are empty shapes. */
     static List<RelativeOffset> decodeCoal(JsonObject source) {
         if (!source.has("coal") || !source.get("coal").isJsonPrimitive()
@@ -115,18 +94,6 @@ final class ChunkLoggerRouteCodec {
         return offsets;
     }
 
-    static String encodeCoal(List<RelativeOffset> offsets) {
-        if (offsets == null || offsets.isEmpty()) return "";
-        ByteArrayOutputStream bytes = new ByteArrayOutputStream(offsets.size() * 3);
-        for (RelativeOffset offset : offsets) {
-            if (offset == null) throw new IllegalArgumentException("ChunkLogger coal offset is missing");
-            bytes.write((byte) offset.x());
-            bytes.write((byte) offset.y());
-            bytes.write((byte) offset.z());
-        }
-        return Base64.getEncoder().encodeToString(bytes.toByteArray());
-    }
-
     private static Waypoint coalChild(Waypoint parent, RelativeOffset offset) {
         long x = (long) parent.x() + offset.x();
         long y = (long) parent.y() + offset.y();
@@ -138,21 +105,6 @@ final class ChunkLoggerRouteCodec {
         }
         return new Waypoint((int) x, (int) y, (int) z, "", Waypoint.DEFAULT_COLOR,
                 Waypoint.FLAG_SUBWAYPOINT, 0.0);
-    }
-
-    private static List<RelativeOffset> childrenAsCoal(
-            List<Waypoint> points, int parentIndex, int childEndExclusive) {
-        Waypoint parent = points.get(parentIndex);
-        List<RelativeOffset> offsets = new ArrayList<>(childEndExclusive - parentIndex - 1);
-        for (int index = parentIndex + 1; index < childEndExclusive; index++) {
-            Waypoint child = points.get(index);
-            long x = (long) child.x() - parent.x();
-            long y = (long) child.y() - parent.y();
-            long z = (long) child.z() - parent.z();
-            if (!isSignedByte(x) || !isSignedByte(y) || !isSignedByte(z)) continue;
-            offsets.add(new RelativeOffset((int) x, (int) y, (int) z));
-        }
-        return offsets;
     }
 
     private static JsonArray routeArray(JsonElement root) {

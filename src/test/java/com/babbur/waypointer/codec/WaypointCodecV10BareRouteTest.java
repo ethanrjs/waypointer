@@ -258,9 +258,7 @@ class WaypointCodecV10BareRouteTest {
                 (byte) 0xFF, (byte) 0xFF, (byte) 0xFF, 0x03, 0x00
         }, "redundant v10 Rice padding byte");
 
-        // count=2, first=(0,0,0), extended k=(0,0,0), then more than
-        // 90*(count-1) unary zeros. The count-derived work budget must fire
-        // before a broad frame-length scan can consume the body.
+        // Exceed 90*(count-1) unary zeros; the work budget must stop parsing.
         byte[] unaryAttack = new byte[5 + 13];
         unaryAttack[0] = 0x2A;
         unaryAttack[1] = 0x02;

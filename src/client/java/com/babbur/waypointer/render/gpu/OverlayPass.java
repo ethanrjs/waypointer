@@ -5,11 +5,15 @@ import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.systems.CommandEncoder;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.textures.GpuTextureView;
+import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.resources.Identifier;
+import org.joml.Matrix4fc;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -54,21 +58,23 @@ public final class OverlayPass implements AutoCloseable {
     private final Matrix4f scratchView = new Matrix4f();
     private final Vector3f scratchOffset = new Vector3f();
     private final List<Map.Entry<MeshBucket, MeshSet>> ordered = new ArrayList<>();
+    private final Map<Identifier, AbstractTexture> textures = new HashMap<>();
 
-    public int draw(OverlayCompositing compositing, FrameView view, SceneKey key,
+    public void draw(OverlayCompositing compositing, FrameView view, SceneKey key,
                     Map<MeshBucket, MeshSet> meshes, OverlayPipelines pipelines,
-                    GpuTextureView depthOverride, OverlayFrameStats stats) {
+                    GpuTextureView depthOverride) {
         Objects.requireNonNull(compositing, "compositing");
         Objects.requireNonNull(view, "view");
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(meshes, "meshes");
         Objects.requireNonNull(pipelines, "pipelines");
 
+        textures.clear();
         ordered.clear();
         for (Map.Entry<MeshBucket, MeshSet> entry : meshes.entrySet()) {
             if (!entry.getValue().isEmpty()) ordered.add(entry);
         }
-        if (ordered.isEmpty()) return 0;
+        if (ordered.isEmpty()) return;
         ordered.sort(Comparator
                 .comparingInt((Map.Entry<MeshBucket, MeshSet> entry) -> entry.getKey().drawOrder())
                 .thenComparing(entry -> entry.getKey().texture() == null
@@ -77,35 +83,35 @@ public final class OverlayPass implements AutoCloseable {
         double localCameraX = view.cameraX() - key.originX();
         double localCameraY = view.cameraY() - key.originY();
         double localCameraZ = view.cameraZ() - key.originZ();
-        long prepareStarted = System.nanoTime();
-        int indexBytes = 0;
         CommandEncoder encoder = GpuMeshCompat.createCommandEncoder();
         for (Map.Entry<MeshBucket, MeshSet> entry : ordered) {
             MeshSet set = entry.getValue();
-            indexBytes += set.dynamics.prepareIndices(
+            set.dynamics.prepareIndices(
                     encoder, localCameraX, localCameraY, localCameraZ);
-            indexBytes += set.statics.prepareIndices(
+            set.statics.prepareIndices(
                     encoder, localCameraX, localCameraY, localCameraZ);
         }
-        if (stats != null) {
-            stats.recordUpload(System.nanoTime() - prepareStarted, indexBytes, 0, 0);
+
+        // Resolve texture uploads before opening the pass.
+        for (Map.Entry<MeshBucket, MeshSet> entry : ordered) {
+            Identifier textureId = entry.getKey().texture();
+            if (textureId != null) {
+                textures.computeIfAbsent(textureId, RenderPassTextureBinder::resolve);
+            }
         }
 
         GpuBufferSlice projection = view.projection();
         GpuBufferSlice fog = compositing == OverlayCompositing.POST_WORLD
                 ? noFog()
                 : OverlayPassCompat.currentFog();
-        scratchView.set(view.view());
-        scratchOffset.set(
-                (float) (key.originX() - view.cameraX()),
-                (float) (key.originY() - view.cameraY()),
-                (float) (key.originZ() - view.cameraZ()));
+        // Position shaders ignore ModelOffset; use ModelView for the origin.
+        modelViewFor(scratchView, view.view(), key,
+                view.cameraX(), view.cameraY(), view.cameraZ());
+        scratchOffset.zero();
         GpuBufferSlice transforms = OverlayPassCompat.writeTransform(scratchView, scratchOffset);
 
         GpuTextureView color = OverlayPassCompat.mainColorView();
         GpuTextureView depth = depthOverride != null ? depthOverride : OverlayPassCompat.mainDepthView();
-        int drawCalls = 0;
-        long started = System.nanoTime();
         try (RenderPass pass = OverlayPassCompat.beginPass(() -> "Waypointer overlay", color, depth)) {
             for (Map.Entry<MeshBucket, MeshSet> entry : ordered) {
                 MeshBucket bucket = entry.getKey();
@@ -113,21 +119,26 @@ public final class OverlayPass implements AutoCloseable {
                 pass.setPipeline(slot.forCompositing(compositing));
                 OverlayPassCompat.bindUniforms(pass, transforms, projection, fog);
                 if (bucket.texture() != null) {
-                    if (!OverlayPassCompat.bindTexture(pass, "Sampler0", bucket.texture())) continue;
+                    if (!OverlayPassCompat.bindTexture(
+                            pass, "Sampler0", textures.get(bucket.texture()))) continue;
                 }
                 MeshSet set = entry.getValue();
                 if (!set.dynamics.isEmpty()) {
                     set.dynamics.draw(pass);
-                    drawCalls++;
                 }
                 if (!set.statics.isEmpty()) {
                     set.statics.draw(pass);
-                    drawCalls++;
                 }
             }
         }
-        if (stats != null) stats.recordDraw(System.nanoTime() - started, ordered.size(), drawCalls);
-        return drawCalls;
+    }
+
+    static Matrix4f modelViewFor(Matrix4f target, Matrix4fc view, SceneKey key,
+                                 double cameraX, double cameraY, double cameraZ) {
+        return target.set(view).translate(
+                (float) (key.originX() - cameraX),
+                (float) (key.originY() - cameraY),
+                (float) (key.originZ() - cameraZ));
     }
 
     private GpuBufferSlice noFog() {
@@ -144,5 +155,6 @@ public final class OverlayPass implements AutoCloseable {
             noFogBuffer = null;
         }
         ordered.clear();
+        textures.clear();
     }
 }

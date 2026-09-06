@@ -13,15 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Wire-v10 kind 6, subtype 1: one general route body plus route-library
- * metadata (manual color snapshots, folders, and waypoint paints).
- *
- * <p>The route body is a complete kind-0 semantic body carried by length so a
- * decoder can hand it to the general-route reader unchanged. The metadata that
- * follows refers to routes by their ordinal inside that body. This subtype
- * replaces the legacy {@code WPL:1:} JSON wrapper for outbound shares; the
- * wrapper remains importable and is still written when a library exceeds the
- * bounded V10 frame profile.
+ * V10 kind 6, subtype 1: length-prefixed kind-0 body and metadata indexed by
+ * route ordinal. Replaces WPL exports within V10 frame limits.
  *
  * <pre>{@code
  * 0x6A                          header
@@ -45,8 +38,7 @@ import java.util.List;
  *   pixels     : 768 bytes      two 4-bit palette slots per byte, low nibble first
  * }</pre>
  *
- * <p>At least one metadata entry MUST be present; a library without metadata is
- * a plain kind-0 route and MUST be written as one.
+ * <p>Requires metadata; otherwise write kind 0.
  */
 final class V10RouteLibraryCodec {
 

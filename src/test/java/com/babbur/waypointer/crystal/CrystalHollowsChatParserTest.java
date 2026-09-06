@@ -143,6 +143,41 @@ class CrystalHollowsChatParserTest {
                 "Jungle Temple: 512 100 512").isEmpty());
     }
 
+    @Test
+    void parsesStructureSharesWithLevelProfileBadgeAndBlockButton() {
+        for (String prefix : List.of("[45] ♟ ", "[45] ♲ ", "[45] [MVP+] ♲ ",
+                "Party > [45] ♲ [MVP+] ")) {
+            CrystalHollowsChatParser.PlayerChat chat = CrystalHollowsChatParser.playerChat(
+                    prefix + "HumainPerdu: Key Guardian: 223 104 277 [Block]").orElseThrow();
+            assertEquals("HumainPerdu", chat.sender());
+            assertEquals("Key Guardian: 223 104 277 [Block]", chat.body());
+            assertEquals(List.of(new SharedCoordinate(CrystalHollowsStructure.KEY_GUARDIAN,
+                    223, 104, 277, "generic")),
+                    CrystalHollowsChatParser.parseSharedCoordinates(chat.body()));
+        }
+        assertTrue(CrystalHollowsChatParser.parseSharedCoordinates(
+                "Key Guardian: 200 104 277 [Block]").isEmpty());
+        assertTrue(CrystalHollowsChatParser.playerChat(
+                "[NPC] Odawa: Key Guardian: 223 104 277").isEmpty());
+        assertTrue(CrystalHollowsChatParser.playerChat(
+                "[WP] Detected Mines of Divan at 686 88 265. [Share]").isEmpty());
+    }
+
+    @Test
+    void parsesLoggedRuneBadgeWithoutTreatingItAsPartOfTheSender() {
+        CrystalHollowsChatParser.PlayerChat chat = CrystalHollowsChatParser.playerChat(
+                "[45] ᛝ §7HumainPerdu§7: Key Guardian: 223 104 279 [Block]").orElseThrow();
+        assertEquals("HumainPerdu", chat.sender());
+        assertEquals(List.of(new SharedCoordinate(CrystalHollowsStructure.KEY_GUARDIAN,
+                223, 104, 279, "generic")),
+                CrystalHollowsChatParser.parseSharedCoordinates(chat.body()));
+        assertEquals("Babbur", CrystalHollowsChatParser.playerChat(
+                "[WP] ᛝ [MVP+] Babbur: Key Guardian: 223 104 279 [Block]")
+                .orElseThrow().sender());
+        assertTrue(CrystalHollowsChatParser.playerChat(
+                "[45] arbitrary HumainPerdu: Key Guardian: 223 104 279 [Block]").isEmpty());
+    }
+
     private static void assertSingle(String text, CrystalHollowsStructure expected) {
         List<SharedCoordinate> parsed = CrystalHollowsChatParser.parseSharedCoordinates(text);
         assertEquals(1, parsed.size(), text);

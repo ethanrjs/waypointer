@@ -19,8 +19,15 @@ class GuiTokensTest {
                 "/assets/waypointer/textures/gui/checkmark.png")) {
             assertNotNull(stream);
             var image = ImageIO.read(stream);
-            assertEquals(16, image.getWidth());
-            assertEquals(16, image.getHeight());
+            assertEquals(24, image.getWidth());
+            assertEquals(24, image.getHeight());
+            assertEquals(0, image.getRGB(0, 0) >>> 24);
+            for (int y = 0; y < image.getHeight(); y++) {
+                for (int x = 0; x < image.getWidth(); x++) {
+                    int pixel = image.getRGB(x, y);
+                    if ((pixel >>> 24) != 0) assertEquals(GuiTokens.ACCENT, pixel);
+                }
+            }
         }
     }
 

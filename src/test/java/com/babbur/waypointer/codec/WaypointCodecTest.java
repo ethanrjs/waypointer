@@ -565,11 +565,7 @@ class WaypointCodecTest {
         WaypointGroup g = WaypointGroup.create("Gold Run", "dungeon_f7");
         for (int i = 0; i < 40; i++) g.add(Waypoint.at(i * 3, 70, i * 2));
         String s = WaypointCodec.encode(List.of(g));
-        // Density regression guard. JSON for the same 40-point route weighs
-        // several kilobytes; the codec should stay well under a quarter of
-        // that on structured data. Threshold is 400 chars (= 400 wire
-        // bytes); real output on this fixture is well below that, so this
-        // has ~20% slack for DEFLATE fluctuations.
+        // Keep this structured 40-point route under 400 characters, allowing DEFLATE variation.
         assertTrue(s.length() < 400, "expected packed export < 400 chars, got " + s.length() + ": " + s);
     }
 
@@ -1015,13 +1011,14 @@ class WaypointCodecTest {
     }
 
     @Test
-    void repeated_waypoint_names_still_use_the_string_pool() {
+    void general_codec_pools_repeated_waypoint_names() throws Exception {
         WaypointGroup g = WaypointGroup.create("route", "dungeon_f7");
         g.add(new Waypoint(0, 70, 0, "Terminal", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint(1, 70, 1, "Terminal", Waypoint.DEFAULT_COLOR, 0, 0));
 
         DecodeDebug debug = WaypointCodec.debugDecode(
-                WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES));
+                WaypointCodec.MAGIC + V10GeneralRouteCodec.encodeCandidate(
+                        List.of(g), WaypointCodec.Options.WITH_NAMES).transport());
 
         assertTrue(debug.stringPool().contains("Terminal"),
                 "repeated names should still be pooled so they are stored once");

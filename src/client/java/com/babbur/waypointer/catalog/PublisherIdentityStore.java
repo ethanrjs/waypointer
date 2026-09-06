@@ -219,8 +219,7 @@ public final class PublisherIdentityStore {
                         PublisherIdentity sharedIdentity = sharedIdentity(stored);
                         if (sharedIdentity != null
                                 && sharedIdentity.publisherId().equals(named.publisherId())) {
-                            // Claim the shared name before touching the profile copy. Its
-                            // file lock serializes claims across separate game processes.
+                            // Claim the shared name under its cross-process lock before updating the profile.
                             shared.savePublisherName(sharedIdentity, validName);
                         }
                     }

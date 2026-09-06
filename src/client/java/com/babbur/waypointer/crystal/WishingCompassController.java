@@ -25,7 +25,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 
-/** Connects visible compass use/particle signals to the Minecraft-free solver. */
+/** Feeds compass uses and particles to the solver. */
 public final class WishingCompassController {
 
     private static final String COMPASS_ID = "WISHING_COMPASS";
@@ -34,14 +34,12 @@ public final class WishingCompassController {
     private final CrystalHollowsTracker tracker;
     private final WaypointerConfig config;
     private final WishingCompassSolver solver = new WishingCompassSolver(System::currentTimeMillis);
-    private final WishingCompassRayRenderer renderer;
     private String lastEvent = "none";
     private boolean enabledLastTick;
 
     public WishingCompassController(CrystalHollowsTracker tracker, WaypointerConfig config) {
         this.tracker = tracker;
         this.config = config;
-        this.renderer = new WishingCompassRayRenderer(config);
         this.enabledLastTick = config.crystalHollowsWishingCompassSolver();
     }
 
@@ -64,7 +62,6 @@ public final class WishingCompassController {
         });
         CrystalHollowsParticleHook.setListener(this::onParticle);
         tracker.attachCompassController(this);
-        renderer.install();
     }
 
     public WishingCompassSolver solver() { return solver; }
@@ -93,7 +90,7 @@ public final class WishingCompassController {
 
     public void reset() {
         solver.reset();
-        renderer.clear();
+        if (tracker != null) tracker.clearCompassTarget();
         lastEvent = "reset";
     }
 
@@ -140,12 +137,7 @@ public final class WishingCompassController {
             lastEvent = outcome.event().name().toLowerCase(java.util.Locale.ROOT);
             Waypointer.LOGGER.debug("Wishing Compass solver event: {}", outcome.event());
             switch (outcome.event()) {
-                case USE_RECORDED, RAY_CAPTURED -> {
-                    if (outcome.event() == WishingCompassSolver.SolverEvent.RAY_CAPTURED) {
-                        renderer.update(solver.completedRays(), null, 0L);
-                    }
-                }
-                case NUCLEUS_WARNING -> send("waypointer.crystal.compass.nucleus_warning");
+                case USE_RECORDED, RAY_CAPTURED, NUCLEUS_WARNING -> {}
                 case TOO_CLOSE -> send("waypointer.crystal.compass.too_close");
                 case NEED_SECOND_USE -> send("waypointer.crystal.compass.need_second");
                 case NEARLY_PARALLEL -> send("waypointer.crystal.compass.parallel");
@@ -163,42 +155,33 @@ public final class WishingCompassController {
 
     private void handleSolved(WishingCompassSolver.SolveResult result) {
         if (result == null) return;
-        renderer.update(solver.completedRays(), result.solution(), System.currentTimeMillis());
         Waypointer.LOGGER.info("Wishing Compass solved at {}, {}, {} with gap {} and targets {}",
                 result.solution().x(), result.solution().y(), result.solution().z(),
                 result.gap(), result.targets());
         Set<WishingCompassTarget> targets = result.targets();
+        StructureSighting sighting = toSighting(result);
         if (targets.size() == 1 && targets.contains(WishingCompassTarget.CRYSTAL_NUCLEUS)) {
+            tracker.focusCompassTarget(sighting);
             send("waypointer.crystal.compass.solved_nucleus");
             return;
         }
-        StructureSighting sighting = toSighting(result);
-        tracker.merge(sighting);
-        String shareReference = tracker.lobby() == null
-                ? sighting.structure().id()
-                : CrystalHollowsSightingSelector.referenceFor(
-                        tracker.lobby().sightings(), sighting);
-        if (shareReference == null) shareReference = sighting.structure().id();
-        Component names = targetNames(targets);
+        tracker.merge(sighting, false);
+        tracker.focusCompassTarget(sighting);
+        sighting = tracker.compassTargetSighting();
+        Component names = sighting.structure() == CrystalHollowsStructure.WISHING_TARGET
+                ? targetNames(targets)
+                : Component.translatable("waypointer.crystal.structure." + sighting.structure().id())
+                    .withStyle(Style.EMPTY.withColor(sighting.structure().rgb()));
         MutableComponent message = Component.translatable("waypointer.crystal.compass.solved",
-                names, sighting.x(), sighting.y(), sighting.z(),
-                String.format(java.util.Locale.ROOT, "%.1f", result.gap()))
-                .withStyle(ChatFormatting.AQUA)
+                names,
+                coordinate(sighting.x()), coordinate(sighting.y()), coordinate(sighting.z()))
+                .withStyle(ChatFormatting.GRAY)
                 .append(Component.literal(" "))
                 .append(Component.translatable("waypointer.crystal.action.share")
-                        .withStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)
+                        .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)
                                 .withUnderlined(true)
                                 .withClickEvent(new ClickEvent.RunCommand(
-                                        "/wpch share " + shareReference))))
-                .append(Component.literal(" "))
-                .append(Component.translatable("waypointer.crystal.action.pin")
-                        .withStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)
-                                .withUnderlined(true)
-                                .withClickEvent(new ClickEvent.RunCommand(
-                                        "/wpch add " + sighting.structure().id()
-                                                + " " + sighting.x()
-                                                + " " + sighting.y()
-                                                + " " + sighting.z()))));
+                                        "/wpch share " + tracker.compassShareReference()))));
         send(message);
     }
 
@@ -211,7 +194,8 @@ public final class WishingCompassController {
         for (WishingCompassTarget target : targets) {
             if (!first) names.append(Component.literal(" / "));
             names.append(Component.translatable(
-                    "waypointer.crystal.structure." + target.structure().id()));
+                    "waypointer.crystal.structure." + target.structure().id())
+                    .withStyle(Style.EMPTY.withColor(target.structure().rgb())));
             first = false;
         }
         return names;
@@ -239,13 +223,18 @@ public final class WishingCompassController {
     }
 
     private static void send(String translationKey) {
-        send(Component.translatable(translationKey).withStyle(ChatFormatting.YELLOW));
+        send(Component.translatable(translationKey).withStyle(ChatFormatting.GRAY));
+    }
+
+    private static Component coordinate(int value) {
+        return Component.literal(Integer.toString(value)).withStyle(ChatFormatting.WHITE);
     }
 
     private static void send(Component message) {
         Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
-            client.player.sendSystemMessage(WaypointerChatFeedback.suppress(message));
+            client.player.sendSystemMessage(WaypointerChatFeedback.suppress(Component.literal("[WP] ")
+                    .withStyle(ChatFormatting.GREEN).append(message)));
         }
     }
 }

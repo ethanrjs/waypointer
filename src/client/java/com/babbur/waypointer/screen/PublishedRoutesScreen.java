@@ -111,7 +111,6 @@ public final class PublishedRoutesScreen extends Screen {
         addRenderableWidget(styledButton(contentX, footerY, 64, BTN_H,
                 Component.translatable("gui.back"), button -> onClose(), null));
 
-        // Back (64 wide) on the left, then three equal actions right-aligned.
         int actionW = Math.min(88, Math.max(56, (contentW - 64 - GAP * 3) / 3));
         deleteButton = styledButton(contentX + contentW - actionW, footerY,
                 actionW, BTN_H,
@@ -289,7 +288,7 @@ public final class PublishedRoutesScreen extends Screen {
         statusColor = STATUS_OK;
     }
 
-    /** A ~30-character WP: code that installs this route from the catalog, unlisted or not. */
+    /** Returns a catalog reference code, including for unlisted routes. */
     private void copyCode() {
         CatalogPublication selected = selected();
         if (selected == null || minecraft == null) return;

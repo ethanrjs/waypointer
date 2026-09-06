@@ -118,3 +118,12 @@ follow Skytils 1.x.
 - License: GNU Affero General Public License v3.0
 
 Waypointer is GPL-3.0-only.
+
+## Metal Detector chest positions
+
+The Mines of Divan chest coordinates were cross-checked against Skyblocker's
+MetalDetector.java. The distance filter is independently implemented.
+
+- Project: https://github.com/SkyblockerMod/Skyblocker
+- Source file: `src/main/java/de/hysky/skyblocker/skyblock/dwarven/MetalDetector.java`
+- License: GNU Lesser General Public License v3.0

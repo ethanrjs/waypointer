@@ -10,12 +10,7 @@ final class V10FrameBoundary {
 
     private V10FrameBoundary() {}
 
-    /**
-     * A random body whose raw DEFLATE stream plus the header byte fits the frame,
-     * but not once the checksum is appended. Random bytes deflate to stored
-     * blocks, so the compressed size moves one byte per input byte; a few
-     * corrective probes land on the two-byte window.
-     */
+    /** Builds a random DEFLATE frame that fits before its two-byte checksum is appended. */
     static byte[] semanticWhoseDeflateOnlyFitsWithoutChecksum(byte header, long seed)
             throws IOException {
         int target = V10Transport.MAX_FRAME_BYTES - 1 - 1; // compressed length wanted: MAX - 2

@@ -72,11 +72,7 @@ public final class RouteLibraryCodec {
         return encodeLegacyWrapper(groups, options, safeMetadata);
     }
 
-    /**
-     * The frozen {@code WPL:1:} JSON wrapper. Written only when a library exceeds
-     * the V10 frame profile; kept callable so conformance tests can produce
-     * legacy inputs.
-     */
+    /** Legacy {@code WPL:1:} wrapper for libraries exceeding V10 limits and compatibility tests. */
     static String encodeLegacyWrapper(
             List<WaypointGroup> groups,
             WaypointCodec.Options options,
@@ -154,7 +150,7 @@ public final class RouteLibraryCodec {
         return new Decoded(groups, nativePayload.label(), metadata);
     }
 
-    /** A {@code WP:} share is a library only when it commits to V10 kind 6 subtype 1. */
+    /** Decode a V10 route-library share. */
     private static Decoded decodeUniversal(String payload) {
         WaypointImporter.enforceTextPayloadLimit(payload);
         String transport = payload.substring(WaypointCodec.MAGIC.length());
@@ -218,10 +214,14 @@ public final class RouteLibraryCodec {
 
     static String encodeBody(String json) {
         Objects.requireNonNull(json, "json");
+        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > MAX_JSON_BYTES) {
+            throw new IllegalArgumentException("route library metadata is too large");
+        }
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         Deflater deflater = new Deflater(Deflater.BEST_COMPRESSION);
         try (DeflaterOutputStream compressed = new DeflaterOutputStream(out, deflater)) {
-            compressed.write(json.getBytes(StandardCharsets.UTF_8));
+            compressed.write(bytes);
         } catch (IOException failure) {
             throw new IllegalStateException("route library export failed", failure);
         } finally {

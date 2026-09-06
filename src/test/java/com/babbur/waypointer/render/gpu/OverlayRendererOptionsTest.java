@@ -21,6 +21,14 @@ class OverlayRendererOptionsTest {
     }
 
     @Test
+    void explicitInWorldCompositingEnablesRetainedRenderer() {
+        OverlayRendererOptions options = OverlayRendererOptions.fromProperties(
+                Map.of(OverlayRendererOptions.PROPERTY_COMPOSITING, "in_world")::get);
+        assertEquals(OverlayCompositing.IN_WORLD, options.compositing());
+        assertTrue(options.compositing().usesGpuRenderer());
+    }
+
+    @Test
     void legacySwitchWinsOverCompositingMode() {
         Map<String, String> props = Map.of(
                 OverlayRendererOptions.PROPERTY_RENDERER, "legacy",

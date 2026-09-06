@@ -3,12 +3,17 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.core.WaypointPaint;
 
 import java.awt.image.BufferedImage;
+import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.TreeMap;
+import javax.imageio.ImageIO;
+import javax.imageio.ImageReader;
+import javax.imageio.stream.ImageInputStream;
+import javax.imageio.stream.FileImageInputStream;
 
 /** Converts ordinary images into the painter's fixed 16-color format. */
 final class WaypointPaintImageImporter {
@@ -20,6 +25,29 @@ final class WaypointPaintImageImporter {
     private static final int K_MEANS_ITERATIONS = 16;
 
     private WaypointPaintImageImporter() {}
+
+    static WaypointPaint importFile(File file, WaypointPaint existing, boolean atlas)
+            throws IOException {
+        if (file == null || existing == null) throw new IllegalArgumentException("file and paint are required");
+        try (ImageInputStream input = new FileImageInputStream(file)) {
+            if (input.length() > 64L * 1024 * 1024) throw new IOException("image file exceeds 64 MiB");
+            var readers = ImageIO.getImageReaders(input);
+            if (!readers.hasNext()) throw new IOException("unsupported image format");
+            ImageReader reader = readers.next();
+            try {
+                reader.setInput(input);
+                if ("gif".equalsIgnoreCase(reader.getFormatName())) {
+                    throw new IOException("GIF images are not supported. Use PNG, JPEG or BMP.");
+                }
+                if (!acceptsImageDimensions(reader.getWidth(0), reader.getHeight(0))) {
+                    throw new IOException("image dimensions are outside the supported range");
+                }
+                return importFrom(() -> reader.read(0), existing, atlas);
+            } finally {
+                reader.dispose();
+            }
+        }
+    }
 
     @FunctionalInterface
     interface ImageSource {

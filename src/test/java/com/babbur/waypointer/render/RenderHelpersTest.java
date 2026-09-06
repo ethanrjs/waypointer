@@ -3,6 +3,7 @@ package com.babbur.waypointer.render;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import org.junit.jupiter.api.Test;
+import org.joml.Matrix3x2f;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -10,8 +11,45 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNull;
 
 class RenderHelpersTest {
+
+    @Test
+    void hudLineUsesOneSubpixelQuadAtEveryGuiScale() {
+        for (int scale : new int[]{1, 2, 4}) {
+            var line = ScreenLineRenderState.create(new Matrix3x2f(),
+                    10.25, 20.5, 1010.25, 320.5, 0xA0FF00FF, 2.5, scale, true);
+            RecordingConsumer consumer = new RecordingConsumer();
+            line.buildVertices(consumer);
+            assertEquals(4, consumer.vertices);
+            assertEquals(4, consumer.colors);
+            assertEquals(4, consumer.uvs);
+            assertEquals(10.25f, line.x1());
+            assertEquals(1.25f, line.halfWidth());
+            assertEquals(1.75, Math.hypot(line.offsetX(), line.offsetY()) * scale, 1e-6);
+            assertEquals(List.of(-1.75f, 1.75f, 1.75f, -1.75f), consumer.textureUs);
+            assertTrue(line.bounds().left() <= 10);
+            assertTrue(line.bounds().right() >= 1011);
+        }
+        var crisp = ScreenLineRenderState.create(new Matrix3x2f(),
+                10.25, 20.5, 10.25, 120.5, 0xFFFFFFFF, 2.5, 2, false);
+        assertEquals(crisp.halfWidth(), crisp.outerWidth());
+        assertEquals(-0.625f, crisp.offsetX());
+        assertEquals(0, crisp.offsetY());
+    }
+
+    @Test
+    void hudLineRejectsInvalidOrInvisibleGeometry() {
+        assertNull(ScreenLineRenderState.create(new Matrix3x2f(),
+                0, 0, Double.NaN, 1, 0xFFFFFFFF, 1, 1, true));
+        assertNull(ScreenLineRenderState.create(new Matrix3x2f(),
+                1, 1, 1, 1, 0xFFFFFFFF, 1, 1, true));
+        assertNull(ScreenLineRenderState.create(new Matrix3x2f(),
+                0, 0, 1, 1, 0x00FFFFFF, 1, 1, true));
+        assertNull(ScreenLineRenderState.create(new Matrix3x2f(),
+                0, 0, 1, 1, 0xFFFFFFFF, 1, 0, true));
+    }
 
     @Test
     void paintedBoxWritesTheCompleteBeaconVertexContract() {

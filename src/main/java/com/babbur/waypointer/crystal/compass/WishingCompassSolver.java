@@ -111,6 +111,7 @@ public final class WishingCompassSolver {
     }
 
     public Outcome onUse(double x, double y, double z, CrystalHollowsZone zone, long nowMillis) {
+        if (lastResult != null) reset();
         Vec3d use = new Vec3d(x, y, z);
         pending = new CompassTrail(use, nowMillis, zone);
         pendingCountsForSolving = zone != CrystalHollowsZone.CRYSTAL_NUCLEUS;
@@ -150,7 +151,7 @@ public final class WishingCompassSolver {
     }
 
     public Outcome serverNoTarget() {
-        pending = null;
+        reset();
         state = State.FAILED;
         return emit(SolverEvent.NO_TARGET, null, null);
     }
@@ -223,9 +224,7 @@ public final class WishingCompassSolver {
             return;
         }
         CompassMath.ClosestPoints points = closest.orElseThrow();
-        // Two captured regression pairs are below three degrees despite intersecting with
-        // essentially zero spread. Preserve those stable, high-confidence intersections while
-        // still rejecting low-angle pairs whose closest points disagree.
+        // Accept low-angle intersections only when their closest points agree.
         if (best.angle() < MIN_PAIR_ANGLE_DEGREES && points.gap() > HIGH_CONFIDENCE_GAP) {
             state = State.NEED_SECOND_USE;
             emit(SolverEvent.NEARLY_PARALLEL, rays.getLast().ray(), null);

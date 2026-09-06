@@ -44,6 +44,22 @@ class WishingCompassSolverTest {
     }
 
     @Test
+    void nextSearchNeverPairsWithThePreviousSolvedRays() {
+        WishingCompassSolver solver = solverWithAllMissing();
+        Vec3d oldTarget = new Vec3d(343, 72, 424);
+        capture(solver, new Vec3d(400, 100, 400), oldTarget, CrystalHollowsZone.JUNGLE, 1_000);
+        capture(solver, new Vec3d(420, 100, 400), oldTarget, CrystalHollowsZone.JUNGLE, 2_000);
+        assertTrue(solver.lastResult().isPresent());
+        Vec3d nextTarget = new Vec3d(300, 100, 300);
+        capture(solver, new Vec3d(400, 100, 400), nextTarget, CrystalHollowsZone.JUNGLE, 3_000);
+        assertEquals(1, solver.completedRays().size());
+        assertTrue(solver.lastResult().isEmpty());
+        assertEquals(WishingCompassSolver.State.NEED_SECOND_USE, solver.state());
+        capture(solver, new Vec3d(420, 100, 400), nextTarget, CrystalHollowsZone.JUNGLE, 4_000);
+        assertTrue(solver.lastResult().orElseThrow().solution().distanceTo(nextTarget) < 2);
+    }
+
+    @Test
     void tooCloseUsesDoNotFormPair() {
         WishingCompassSolver solver = solverWithAllMissing();
         Vec3d target = new Vec3d(343, 72, 424);

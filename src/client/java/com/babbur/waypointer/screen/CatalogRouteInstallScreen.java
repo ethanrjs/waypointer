@@ -39,13 +39,7 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 
-/**
- * Preview-and-install screen for one catalog route reached by reference: a
- * {@code WP:} catalog code or a {@code waypointermod.com/r/} link from chat,
- * the clipboard, or {@code /wp import}. Nothing is added until Install is
- * pressed, and unlisted routes work exactly like listed ones because the
- * catalog is asked for the route by id.
- */
+/** Previews catalog codes and links, including unlisted routes. Install requires confirmation. */
 public final class CatalogRouteInstallScreen extends Screen {
 
     private static final int PANEL_W = 400;
@@ -110,17 +104,14 @@ public final class CatalogRouteInstallScreen extends Screen {
         String candidate = stripMarkdownCodeFence(trimmed);
         if (candidate.length() > MAX_REFERENCE_PROBE_CHARS) return null;
 
-        // Links have a tiny, bounded grammar and can be classified without
-        // sending arbitrary clipboard text through a route decoder.
+        // Recognize links without decoding arbitrary clipboard text.
         Optional<String> linkedRoute = CatalogShareLink.routeIdFromLink(candidate);
         if (linkedRoute.isPresent()) {
             String routeId = linkedRoute.get();
             return RouteCatalogClient.isValidRouteId(routeId) ? routeId : null;
         }
 
-        // The universal decoder also understands JSON and third-party imports.
-        // A catalog paste only needs a short WP: reference probe, so reject
-        // everything else before any decompression or JSON parsing can start.
+        // Reject non-reference codes before decompression or JSON parsing.
         if (!WaypointCodec.isCodecString(candidate)) return null;
         try {
             UniversalShareCodec.Decoded decoded = UniversalShareCodec.decode(candidate);
@@ -190,8 +181,7 @@ public final class CatalogRouteInstallScreen extends Screen {
                     .whenComplete((result, failure) -> runOnClient(() -> onLoaded(
                             generation, result, failure)));
         } catch (RuntimeException failure) {
-            // A client-side validation or request-construction failure must
-            // still become a visible failed state rather than escaping init().
+            // Show validation and request errors without failing init().
             onLoaded(generation, null, failure);
         }
     }
@@ -355,9 +345,7 @@ public final class CatalogRouteInstallScreen extends Screen {
     public void removed() {
         screenActive = false;
         if (phase == Phase.LOADING) {
-            // A completion ignored while this screen is away must be fetched
-            // again when the parent returns. The generation also rejects a
-            // late completion from the abandoned request after re-entry.
+            // Retry on return; reject late responses from the abandoned request.
             requested = false;
             fetchGeneration++;
         }

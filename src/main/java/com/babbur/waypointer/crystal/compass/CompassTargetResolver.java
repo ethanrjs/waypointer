@@ -67,7 +67,7 @@ public final class CompassTargetResolver {
             case GOBLIN_QUEEN -> y < 125 || y > 140 || x > 621 || z < 404;
             case JUNGLE_TEMPLE -> y < 72 || y > 81 || x > 621 || z > 621;
             case ODAWA -> y < 73 || y > 155 || x > 566 || z > 567;
-            case PRECURSOR_CITY -> y < 121 || y > 130 || x < 405 || z < 405;
+            case PRECURSOR_CITY -> y < 120 || y > 130 || x < 405 || z < 405;
             case MINES_OF_DIVAN -> y < 97 || y > 102 || x < 404 || z > 621;
             case CRYSTAL_NUCLEUS -> true;
         };

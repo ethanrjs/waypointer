@@ -118,8 +118,19 @@ class V10ConfigCodecTest {
     }
 
     @Test
+    void roundTripsLabelCameraEffectsAndOpacity() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setLabelFollowCameraEffects(false);
+        config.setLabelOpacity(0.4);
+        WaypointerConfig decoded = decodedConfig(UniversalShareCodec.encodeConfig(config));
+        assertSameShareableConfig(config, decoded);
+        assertFalse(decoded.labelFollowCameraEffects());
+        assertEquals(0.4, decoded.labelOpacity());
+    }
+
+    @Test
     void skipsBoundedUnknownFieldsButRejectsNoncanonicalKnownFields() throws Exception {
-        byte[] unknown = semanticWithField(100, new byte[] {1, 2, 3});
+        byte[] unknown = semanticWithField(V10ConfigBodyCodec.MAX_TAG, new byte[] {1, 2, 3});
         assertSameShareableConfig(new WaypointerConfig(), decodedConfig(directCode(unknown)));
 
         // Tag 2 defaults to true and therefore must be omitted.
@@ -254,8 +265,12 @@ class V10ConfigCodecTest {
     private static WaypointerConfig heavyConfig() {
         WaypointerConfig config = new WaypointerConfig();
         config.disableAllSettings();
-        // Keep the pre-Crystal-Hollows golden fixture stable; those fields have a dedicated
-        // all-nine-tags round-trip test in WaypointerConfigTest.
+        // Keep this cross-language fixture unchanged as new settings are added.
+        config.setLabelFollowCameraEffects(true);
+        config.setCrystalHollowsMetalDetector(true);
+        config.setCrystalHollowsRemoteSharing(true);
+        config.setRenderAntialiasing(true);
+        // Crystal Hollows fields have a separate round-trip test.
         config.setCrystalHollowsEnabled(true);
         config.setCrystalHollowsStructureWaypoints(true);
         config.setCrystalHollowsShowRoughMarkers(true);

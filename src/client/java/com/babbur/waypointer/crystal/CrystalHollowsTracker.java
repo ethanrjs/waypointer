@@ -4,6 +4,8 @@ import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.crystal.CrystalHollowsChatParser.CrystalUpdate;
 import com.babbur.waypointer.crystal.CrystalHollowsChatParser.NpcDialogue;
@@ -30,13 +32,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
 
-/**
- * Lobby-scoped Crystal Hollows detection orchestrator.
- *
- * <p>The fair-play boundary is deliberate: this tracker uses only information the game already
- * shows the player (sidebar, nearby visible entities, received chat, tab widgets, and personal
- * Wishing Compass particles). It never scans chunks or blocks for hidden structures.
- */
+/** Tracks lobby structures from visible game signals; never scans blocks or chunks. */
 public final class CrystalHollowsTracker {
 
     private static final String SESSION_SERVER_ID = "session-only";
@@ -59,10 +55,20 @@ public final class CrystalHollowsTracker {
     private CrystalHollowsAreaSession areaSession;
     private CrystalHollowsPosition lastRoughPosition;
     private boolean lastStructureWaypoints;
+    private boolean lastHideStructuresFolder;
     private boolean lastShowRough;
     private boolean lastNucleusWaypoints;
     private DebugSnapshot lastDebugSnapshot = DebugSnapshot.inactive();
     private WishingCompassController compassController;
+    private WaypointGroup compassTargetGroup;
+    private Waypoint compassTarget;
+    private StructureSighting compassTargetSighting;
+    private StructureSighting compassLocalTargetSighting;
+    private final Map<String, StructureSighting> compassShares = new java.util.HashMap<>();
+    private long nextCompassShareId;
+    private String compassShareReference;
+    private boolean batchingDetections;
+    private boolean detectionsChanged;
 
     public CrystalHollowsTracker(
             ActiveGroupManager manager, WaypointerConfig config, CrystalHollowsStore store) {
@@ -98,22 +104,194 @@ public final class CrystalHollowsTracker {
     }
 
     public CrystalHollowsLobbyState.MergeResult merge(StructureSighting sighting) {
+        return merge(sighting, true);
+    }
+
+    public CrystalHollowsLobbyState.MergeResult merge(StructureSighting sighting, boolean announce) {
         if (!active || lobby == null) {
             Waypointer.LOGGER.debug("Crystal Hollows merge ignored while inactive: {}", sighting);
             return CrystalHollowsLobbyState.MergeResult.IGNORED;
         }
         CrystalHollowsLobbyState.MergeResult result = lobby.merge(sighting);
         Waypointer.LOGGER.debug("Crystal Hollows merge {}: {}", result, sighting);
+        boolean localArrival = sighting.confidence() == SightingConfidence.ENTITY
+                || sighting.confidence() == SightingConfidence.NPC_CHAT
+                || sighting.confidence() == SightingConfidence.ROUGH_AREA;
+        if (localArrival) {
+            detectionsChanged |= projection.markArrived(lobby, sighting);
+            refineCompassTarget(sighting);
+            if (compassTargetSighting != null && compassTargetSighting.structure() == sighting.structure()
+                    && (!sighting.structure().multiInstance()
+                        || compassTargetSighting.position().distanceSquared(sighting.position()) <= 60.0 * 60.0)) {
+                finishCompassNavigation();
+            }
+        }
         if (result != CrystalHollowsLobbyState.MergeResult.IGNORED) {
-            projection.rebuild(lobby);
-            persist();
-            if (config.crystalHollowsAnnounceDetections()
+            if (compassTargetSighting != null) {
+                refineCompassTarget(resolveCompassTarget(compassTargetSighting));
+            }
+            detectionsChanged = true;
+            if (!batchingDetections) flushDetections();
+            if (announce && config.crystalHollowsAnnounceDetections()
+                    && sighting.confidence() != SightingConfidence.ROUGH_AREA
                     && (result == CrystalHollowsLobbyState.MergeResult.ADDED
                             || result == CrystalHollowsLobbyState.MergeResult.UPGRADED)) {
                 announceDetection(sighting);
             }
         }
+        if (!batchingDetections) flushDetections();
         return result;
+    }
+
+    void batchDetections(Runnable detections) {
+        boolean wasBatching = batchingDetections;
+        batchingDetections = true;
+        try {
+            detections.run();
+        } finally {
+            batchingDetections = wasBatching;
+            if (!batchingDetections) flushDetections();
+        }
+    }
+
+    private void flushDetections() {
+        if (!detectionsChanged) return;
+        detectionsChanged = false;
+        projection.rebuild(lobby);
+        persist();
+    }
+
+    void focusCompassTarget(StructureSighting sighting) {
+        compassLocalTargetSighting = sighting.confidence() == SightingConfidence.SHARED_REMOTE ? null : sighting;
+        sighting = resolveCompassTarget(sighting);
+        finishCompassNavigation();
+        compassTargetGroup = manager.addTempWaypoint(sighting.x(), sighting.y(), sighting.z(),
+                Component.translatable("waypointer.crystal.structure." + sighting.structure().id())
+                        .getString(),
+                Waypoint.TEMP_UNTIL_LEAVE, 0L, sighting.structure().rgb());
+        int index = compassTargetGroup.size() - 1;
+        compassTarget = compassTargetGroup.get(index)
+                .withFlags(Waypoint.FLAG_THROUGH_WALL | Waypoint.FLAG_LOCKED_COLOR);
+        compassTargetGroup.set(index, compassTarget);
+        compassTarget = compassTargetGroup.get(index);
+        compassTargetSighting = sighting;
+        compassShareReference = "compass:" + (++nextCompassShareId);
+        compassShares.put(compassShareReference, sighting);
+        compassTargetGroup.setEnabled(true);
+        manager.focusTempWaypoint(compassTargetGroup, index);
+        manager.fireTransientDataChanged();
+    }
+
+    public StructureSighting compassTargetSighting() { return compassTargetSighting; }
+    public String compassShareReference() { return compassShareReference; }
+    public StructureSighting compassShare(String reference) { return compassShares.get(reference); }
+
+    private StructureSighting resolveCompassTarget(StructureSighting target) {
+        if (lobby == null) return target;
+        StructureSighting resolved = target;
+        for (StructureSighting candidate : lobby.sightings()) {
+            if (!refinesCompassTarget(target, candidate)) continue;
+            // Do not choose arbitrarily between nearby structures or separate instances.
+            if (resolved != target) {
+                return target;
+            }
+            resolved = candidate;
+        }
+        return resolved;
+    }
+
+    private static boolean refinesCompassTarget(StructureSighting target, StructureSighting sighting) {
+        double distance = target.position().distanceSquared(sighting.position());
+        boolean ambiguous = target.structure() == CrystalHollowsStructure.WISHING_TARGET
+                && (target.candidates().isEmpty() || target.candidates().contains(sighting.structure()))
+                && sighting.structure() != CrystalHollowsStructure.WISHING_TARGET
+                && distance <= 80 * 80;
+        if (!ambiguous && (target.structure() != sighting.structure()
+                || sighting.structure().multiInstance() && distance > 60 * 60)) return false;
+        int incomingStrength = (sighting.remoteEvidence() == null ? sighting.confidence()
+                : sighting.remoteEvidence()).ordinal();
+        int currentStrength = (target.remoteEvidence() == null ? target.confidence()
+                : target.remoteEvidence()).ordinal();
+        return ambiguous && sighting.confidence() != SightingConfidence.SHARED_REMOTE
+                || incomingStrength > currentStrength
+                || incomingStrength == currentStrength && (ambiguous
+                    || target.confidence() == SightingConfidence.SHARED_REMOTE
+                        && sighting.confidence() != SightingConfidence.SHARED_REMOTE);
+    }
+
+    void refineCompassTarget(StructureSighting sighting) {
+        if (compassTargetSighting == null || compassTargetGroup == null
+                || manager.get(compassTargetGroup.id()) != compassTargetGroup) return;
+        if (!refinesCompassTarget(compassTargetSighting, sighting)) return;
+        updateCompassMarker(sighting);
+    }
+
+    private void updateCompassMarker(StructureSighting sighting) {
+        for (int index = 0; index < compassTargetGroup.size(); index++) {
+            if (compassTargetGroup.get(index) != compassTarget) continue;
+            boolean arrived = CompassMarkerState.arrived(compassTarget);
+            compassTargetGroup.set(index, compassTarget.withPos(sighting.x(), sighting.y(), sighting.z())
+                    .withName(Component.translatable("waypointer.crystal.structure."
+                            + sighting.structure().id()).getString())
+                    .withColor(sighting.structure().rgb()));
+            compassTarget = compassTargetGroup.get(index);
+            if (arrived) CompassMarkerState.markArrived(compassTarget);
+            compassTargetSighting = sighting;
+            if (sighting.confidence() != SightingConfidence.SHARED_REMOTE) compassLocalTargetSighting = sighting;
+            compassShares.put(compassShareReference, sighting);
+            manager.fireTransientDataChanged();
+            return;
+        }
+    }
+
+    void checkCompassArrival(CrystalHollowsStructure area, double x, double y, double z) {
+        if (compassTargetSighting == null || compassTarget == null) return;
+        CrystalHollowsStructure target = compassTargetSighting.structure();
+        boolean zoneArrival = area != null && (area == target
+                || target == CrystalHollowsStructure.WISHING_TARGET
+                    && (compassTargetSighting.candidates().isEmpty()
+                        || compassTargetSighting.candidates().contains(area)));
+        if (zoneArrival && target == CrystalHollowsStructure.WISHING_TARGET) {
+            StructureSighting resolved = new StructureSighting(area, compassTargetSighting.x(),
+                    compassTargetSighting.y(), compassTargetSighting.z(), SightingConfidence.COMPASS,
+                    "compass:sidebar", System.currentTimeMillis());
+            updateCompassMarker(resolved);
+            merge(resolved, false);
+        }
+        double dx = x - compassTarget.x(), dy = y - compassTarget.y(), dz = z - compassTarget.z();
+        if (zoneArrival || target.sidebarName() == null && dx * dx + dy * dy + dz * dz <= 100) {
+            finishCompassNavigation();
+        }
+    }
+
+    private void finishCompassNavigation() {
+        if (compassTargetGroup == null || compassTarget == null) return;
+        for (int index = 0; index < compassTargetGroup.size(); index++) {
+            if (compassTargetGroup.get(index) != compassTarget) continue;
+            if (CompassMarkerState.arrived(compassTarget)) return;
+            if (compassTargetGroup.focusedVisibleIndex() == index) manager.clearTempWaypointFocus();
+            CompassMarkerState.markArrived(compassTarget);
+            manager.fireTransientDataChanged();
+            return;
+        }
+    }
+
+    void clearCompassTarget() {
+        compassShares.clear();
+        compassShareReference = null;
+        if (compassTargetGroup != null && manager.get(compassTargetGroup.id()) == compassTargetGroup) {
+            for (int index = 0; index < compassTargetGroup.size(); index++) {
+                if (compassTargetGroup.get(index) == compassTarget) {
+                    compassTargetGroup.remove(index);
+                    manager.fireTransientDataChanged();
+                    break;
+                }
+            }
+        }
+        compassTargetGroup = null;
+        compassTarget = null;
+        compassTargetSighting = null;
+        compassLocalTargetSighting = null;
     }
 
     public void remove(CrystalHollowsSightingSelector.Selection selection) {
@@ -131,7 +309,18 @@ public final class CrystalHollowsTracker {
     }
 
     public void rebuildProjection() {
-        if (active) projection.rebuild(lobby);
+        if (!active) return;
+        if (compassTargetSighting != null
+                && compassTargetSighting.confidence() == SightingConfidence.SHARED_REMOTE
+                && (lobby == null || lobby.sightings().stream().noneMatch(sighting ->
+                    sighting.confidence() == SightingConfidence.SHARED_REMOTE
+                            && sighting.structure() == compassTargetSighting.structure()
+                            && sighting.position().equals(compassTargetSighting.position())
+                            && sighting.remoteEvidence() == compassTargetSighting.remoteEvidence()))) {
+            if (compassLocalTargetSighting == null) clearCompassTarget();
+            else updateCompassMarker(resolveCompassTarget(compassLocalTargetSighting));
+        }
+        projection.rebuild(lobby);
     }
 
     public void configurationChanged() {
@@ -174,7 +363,7 @@ public final class CrystalHollowsTracker {
 
     private void leaveLobby() {
         if (lobby != null && isPersistable()) store.put(lobby);
-        projection.clear();
+        projection.endSession();
         active = false;
         lobby = null;
         serverId = null;
@@ -186,6 +375,7 @@ public final class CrystalHollowsTracker {
         hasKingsScent = false;
         currentDay = -1;
         if (compassController != null) compassController.reset();
+        else clearCompassTarget();
         lastDebugSnapshot = DebugSnapshot.inactive();
     }
 
@@ -196,20 +386,24 @@ public final class CrystalHollowsTracker {
         }
         if (!active) onZoneChanged(manager.currentZone());
         if (!active || client.level == null || client.player == null) return;
-        projection.ensureFolder();
+        if (projection.ensureFolder()) projection.rebuild(lobby);
         refreshProjectionSettings();
         ticks++;
         if (delayTicks > 0) delayTicks--;
-        if (ticks % 2 == 0) updateSidebar(client);
-        if (ticks % 10 == 0) {
-            sampleRoughArea(client);
-            scanEntities(client);
-        }
-        if (ticks % 20 == 0) {
-            updateTabList(client.getConnection());
-            resolveIdentity(client);
-        }
-        if (compassController != null) compassController.tick(System.currentTimeMillis());
+        batchDetections(() -> {
+            if (ticks % 2 == 0) updateSidebar(client);
+            if (ticks % 10 == 0) {
+                sampleRoughArea(client);
+                scanEntities(client);
+            }
+            if (ticks % 20 == 0) {
+                updateTabList(client.getConnection());
+                resolveIdentity(client);
+            }
+            if (delayTicks == 0) checkCompassArrival(sidebarStructure, client.player.getX(),
+                    client.player.getY(), client.player.getZ());
+            if (compassController != null) compassController.tick(System.currentTimeMillis());
+        });
         lastDebugSnapshot = new DebugSnapshot(true, serverId, currentDay,
                 lobby == null ? 0 : lobby.sightings().size(),
                 sidebarStructure, delayTicks, processedEntityIds.size(), hasKingsScent,
@@ -218,14 +412,17 @@ public final class CrystalHollowsTracker {
 
     private void refreshProjectionSettings() {
         boolean structureWaypoints = config.crystalHollowsStructureWaypoints();
+        boolean hideStructuresFolder = config.crystalHollowsHideStructuresFolder();
         boolean showRough = config.crystalHollowsShowRoughMarkers();
         boolean nucleusWaypoints = config.crystalHollowsNucleusWaypoints();
         if (structureWaypoints == lastStructureWaypoints
+                && hideStructuresFolder == lastHideStructuresFolder
                 && showRough == lastShowRough
                 && nucleusWaypoints == lastNucleusWaypoints) {
             return;
         }
         lastStructureWaypoints = structureWaypoints;
+        lastHideStructuresFolder = hideStructuresFolder;
         lastShowRough = showRough;
         lastNucleusWaypoints = nucleusWaypoints;
         projection.rebuild(lobby);
@@ -370,9 +567,11 @@ public final class CrystalHollowsTracker {
                 ? lobby
                 : null;
         if (lobby != null && isPersistable()) store.put(lobby);
-        projection.clear();
         if (transition == CrystalHollowsLobbyTransition.Kind.DIFFERENT_LOBBY) {
+            projection.endSession();
             resetLobbyTransients();
+        } else {
+            projection.clear();
         }
         serverId = resolved;
         Optional<CrystalHollowsLobbyState> restored = store.restore(resolved, day);
@@ -387,7 +586,7 @@ public final class CrystalHollowsTracker {
             Waypointer.LOGGER.info("Restored {} Crystal Hollows location(s) for lobby {}",
                     restoredSightings, resolved);
             send(Component.translatable("waypointer.crystal.message.restored",
-                    restoredSightings, resolved).withStyle(ChatFormatting.AQUA));
+                    restoredSightings, resolved).withStyle(ChatFormatting.GRAY));
         }
     }
 
@@ -412,16 +611,21 @@ public final class CrystalHollowsTracker {
         String reference = CrystalHollowsSightingSelector.referenceFor(lobby.sightings(), sighting);
         if (reference == null) reference = sighting.structure().id();
         MutableComponent message = Component.translatable("waypointer.crystal.message.detected",
-                Component.translatable("waypointer.crystal.structure." + sighting.structure().id()),
-                sighting.x(), sighting.y(), sighting.z())
-                .withStyle(ChatFormatting.AQUA)
+                Component.translatable("waypointer.crystal.structure." + sighting.structure().id())
+                        .withStyle(Style.EMPTY.withColor(sighting.structure().rgb())),
+                coordinate(sighting.x()), coordinate(sighting.y()), coordinate(sighting.z()))
+                .withStyle(ChatFormatting.GRAY)
                 .append(Component.literal(" "))
                 .append(Component.translatable("waypointer.crystal.action.share")
-                        .withStyle(Style.EMPTY.withColor(ChatFormatting.GREEN)
+                        .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)
                                 .withUnderlined(true)
                                 .withClickEvent(new ClickEvent.RunCommand(
                                         "/wpch share " + reference))));
         send(message);
+    }
+
+    private static Component coordinate(int value) {
+        return Component.literal(Integer.toString(value)).withStyle(ChatFormatting.WHITE);
     }
 
     private void persist() {
@@ -440,7 +644,8 @@ public final class CrystalHollowsTracker {
     private static void send(Component message) {
         Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
-            client.player.sendSystemMessage(WaypointerChatFeedback.suppress(message));
+            client.player.sendSystemMessage(WaypointerChatFeedback.suppress(Component.literal("[WP] ")
+                    .withStyle(ChatFormatting.GREEN).append(message)));
         }
     }
 

@@ -2,6 +2,7 @@ package com.babbur.waypointer.codec;
 
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -37,39 +38,49 @@ final class V10CompactRouteCodec {
     }
 
     private static boolean canEncodeFull(WaypointGroup group, WaypointCodec.Options options) {
-        if (group == null || options == null || !options.includeNames || !options.includeColors
-                || !options.includeZone || !options.label.isEmpty()) {
+        if (group == null || options == null || !options.label.isEmpty()
+                || group.routeKind() != WaypointGroup.RouteKind.REGULAR) {
             return false;
         }
-        boolean full = options.includeRadii && options.includeWaypointFlags && options.includeGroupMeta;
-        if (!full && !hasUnchangedCommonProjection(group, options)) return false;
-        return V9CompactCodec.canEncode(normalizedFull(group), WaypointCodec.Options.FULL_FIDELITY);
+        if (options.includeRadii && group.waypoints().stream()
+                .anyMatch(waypoint -> waypoint.customRadius() != 0.0)) {
+            return false;
+        }
+        return V9CompactCodec.canEncode(normalizedFull(projectFull(group, options)),
+                WaypointCodec.Options.FULL_FIDELITY);
     }
 
-    /** The full body also represents this partial export when every omitted field is unchanged. */
-    private static boolean hasUnchangedCommonProjection(
-            WaypointGroup group, WaypointCodec.Options options) {
-        if (options.includeRadii || options.includeWaypointFlags || options.includeGroupMeta
-                || group.routeKind() != WaypointGroup.RouteKind.REGULAR
-                || group.gradientMode() != WaypointGroup.GradientMode.MANUAL
-                || group.loadMode() != WaypointGroup.LoadMode.SEQUENCE
-                || Double.compare(group.defaultRadius(), Waypoint.DEFAULT_REACH_RADIUS) != 0
-                || !group.skipAheadEnabled()
-                || group.staticColor() != Waypoint.DEFAULT_COLOR
-                || group.gradientStartColor() != 0x00BFFF
-                || group.gradientEndColor() != 0xFF3040) {
-            return false;
+    /** Apply export toggles before choosing the compact representation. */
+    private static WaypointGroup projectFull(WaypointGroup group, WaypointCodec.Options options) {
+        if (options.includeNames && options.includeColors && options.includeZone
+                && options.includeRadii && options.includeWaypointFlags && options.includeGroupMeta) {
+            return group;
         }
-        for (Waypoint waypoint : group.waypoints()) {
-            if (waypoint.customRadius() != 0.0
-                    || (waypoint.color() & 0xFF000000) != 0
-                    || waypoint.flags() != WaypointCodec.exportedWaypointFlags(waypoint, options)
-                    || waypoint.hasCustomPrecisePosition()
-                            != WaypointCodec.shouldExportPrecisePosition(waypoint, options)) {
-                return false;
+        WaypointGroup projected = new WaypointGroup(group.id(), group.name(),
+                options.includeZone ? group.zoneId() : Zone.UNKNOWN.id());
+        projected.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        List<Waypoint> points = group.waypoints().stream().map(waypoint -> {
+            Waypoint point = waypoint.withName(options.includeNames ? waypoint.name() : "")
+                    .withColor(options.includeColors ? waypoint.color() : Waypoint.DEFAULT_COLOR)
+                    .withRadius(0.0).withFlags(WaypointCodec.exportedWaypointFlags(waypoint, options))
+                    .withTemp(Waypoint.TEMP_NONE, 0L);
+            return WaypointCodec.shouldExportPrecisePosition(waypoint, options) ? point
+                    : point.withPreciseSixteenths(Waypoint.preciseBlockCenter(point.x()),
+                            Waypoint.preciseBlockCenter(point.y()), Waypoint.preciseBlockCenter(point.z()));
+        }).toList();
+        projected.replaceWaypoints(points);
+        if (options.includeGroupMeta) {
+            projected.setLoadMode(group.loadMode());
+            projected.setDefaultRadius(group.defaultRadius());
+            projected.setSkipAheadEnabled(group.skipAheadEnabled());
+            if (options.includeColors) {
+                projected.setStaticColor(group.staticColor());
+                projected.setGradientStartColor(group.gradientStartColor());
+                projected.setGradientEndColor(group.gradientEndColor());
+                projected.setGradientMode(group.gradientMode());
             }
         }
-        return true;
+        return projected;
     }
 
     private static boolean canEncodeNoNames(WaypointGroup group, WaypointCodec.Options options) {
@@ -93,7 +104,8 @@ final class V10CompactRouteCodec {
         normalized.setDefaultRadius(Waypoint.DEFAULT_REACH_RADIUS);
         normalized.setSkipAheadEnabled(true);
         List<Waypoint> points = group.waypoints().stream()
-                .map(waypoint -> waypoint.withFlags(0).withPreciseSixteenths(
+                .map(waypoint -> waypoint.withRadius(0.0).withFlags(0)
+                        .withTemp(Waypoint.TEMP_NONE, 0L).withPreciseSixteenths(
                         Waypoint.preciseBlockCenter(waypoint.x()),
                         Waypoint.preciseBlockCenter(waypoint.y()),
                         Waypoint.preciseBlockCenter(waypoint.z())))
@@ -113,11 +125,11 @@ final class V10CompactRouteCodec {
 
     static V10Transport.Outbound encodeCandidate(
             WaypointGroup group, WaypointCodec.Options options) throws IOException {
+        if (canEncodeNoNames(group, options)) return selectNoNamesCandidate(group);
         if (canEncodeFull(group, options)) {
             return V10GeneralRouteCodec.selectCandidate(
-                    encodeFullSemantic(group, WaypointCodec.Options.FULL_FIDELITY));
+                    encodeFullSemantic(projectFull(group, options), WaypointCodec.Options.FULL_FIDELITY));
         }
-        if (canEncodeNoNames(group, options)) return selectNoNamesCandidate(group);
         throw new IllegalArgumentException("route is not an exact v10 kind-1 projection");
     }
 

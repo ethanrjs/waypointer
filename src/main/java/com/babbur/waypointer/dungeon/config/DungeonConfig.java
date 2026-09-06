@@ -15,24 +15,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 
-/**
- * User-tunable runtime settings for the dungeon-waypoints feature.
- *
- * <p>Lives in its own {@code dungeon.json} file rather than piggy-backing on
- * {@link com.babbur.waypointer.config.WaypointerConfig} for two reasons:
- *
- * <ol>
- *   <li>The dungeons feature lands as a self-contained subsystem -- breaking
- *       it out keeps the merge surface with sibling work on the main config
- *       narrow (zero overlap, just a new file).</li>
- *   <li>Dungeon settings have a different cadence: they're seldom touched
- *       once configured, so co-locating with the much-busier main config's
- *       schema would dilute that file's churn signal in commit history.</li>
- * </ol>
- *
- * <p>Mirrors the persistence pattern of {@code WaypointerConfig}: hand-written
- * Gson, debounced async saves through {@link AsyncSaver}.
- */
+/** User-tunable dungeon-waypoint settings stored in {@code dungeon.json}. */
 public final class DungeonConfig {
 
     private static final String FILE_NAME = "dungeon.json";
@@ -42,20 +25,12 @@ public final class DungeonConfig {
     /** Master switch. Off skips every dungeon tick + render path entirely. */
     private boolean enabled = true;
 
-    /**
-     * When {@code true}, log a one-line message to the in-game chat each time
-     * the detected current room changes. Off by default so it doesn't spam
-     * normal play -- but invaluable when diagnosing why a route isn't
-     * lighting up the way the user expects.
-     */
+    /** Logs a message whenever the detected room changes. */
     private boolean debugLogRoomChanges = false;
 
     /**
-     * Default direction to assume for newly-detected rooms. Room definitions
-     * can identify a room by block fingerprints, but those fingerprints do not
-     * infer the room's rotation; defaulting to NW gets the common case (rooms
-     * whose canonical frame already matches their world placement) right.
-     * Players in other rotations can rotate the guess via the dungeon command.
+     * Fallback direction for room definitions whose fingerprints do not encode
+     * rotation. Players can adjust it with the dungeon command.
      */
     private String defaultDirection = "NW";
 

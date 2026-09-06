@@ -10,6 +10,8 @@ import com.babbur.waypointer.crystal.compass.CrystalState;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -39,6 +41,28 @@ class CrystalHollowsStoreTest {
         assertEquals(CrystalState.COLLECTED, restored.crystals().get(Crystal.JADE));
         assertEquals(new CrystalHollowsPosition(735, 98, 451), restored.divanCentre());
         assertEquals(7, restored.lastKnownDay());
+    }
+
+    @Test
+    void discardsOnlyLegacyUnverifiedTreasuriteDetections() {
+        Path file = temporaryDirectory.resolve("crystal_hollows.json");
+        StructureSighting namedBoss = new StructureSighting(CrystalHollowsStructure.CORLEONE,
+                700, 100, 300, SightingConfidence.ENTITY, "entity:Boss Corleone", 1_000);
+        StructureSighting manual = new StructureSighting(CrystalHollowsStructure.CORLEONE,
+                700, 100, 400, SightingConfidence.MANUAL, "entity:Team Treasurite", 1_000);
+        CrystalHollowsStore writer = new CrystalHollowsStore(file, () -> 1_000L);
+        writer.put(new CrystalHollowsLobbyState("m10DH", 1_000, 1_000, 7,
+                List.of(
+                        new StructureSighting(CrystalHollowsStructure.CORLEONE,
+                                300, 100, 300, SightingConfidence.ENTITY, "entity:Team Treasurite", 1_000),
+                        new StructureSighting(CrystalHollowsStructure.CORLEONE,
+                                400, 100, 300, SightingConfidence.ENTITY, "entity:§cTeam Treasurite§r", 1_000),
+                        namedBoss, manual), Map.of(), null));
+        writer.flush();
+
+        CrystalHollowsStore reader = new CrystalHollowsStore(file, () -> 1_000L);
+        reader.load();
+        assertEquals(List.of(namedBoss, manual), reader.restore("m10DH", 7).orElseThrow().sightings());
     }
 
     @Test

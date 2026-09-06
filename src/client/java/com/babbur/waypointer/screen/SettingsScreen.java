@@ -9,7 +9,6 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.config.WaypointerConfigCodec;
 import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
-import com.babbur.waypointer.screen.settings.PerfStressTestController;
 import com.babbur.waypointer.screen.settings.RecentSettings;
 import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
@@ -28,6 +27,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.locale.Language;
 import net.minecraft.network.chat.MutableComponent;
 
 import java.util.ArrayList;
@@ -41,7 +41,6 @@ import java.util.function.Supplier;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_END;
-import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_F;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_HOME;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_CONTROL;
@@ -59,7 +58,7 @@ public final class SettingsScreen extends Screen {
     private static final int SETTING_ROW_PITCH = 24;
     static final int CHECKBOX_SIZE = 20;
     private static final int GROUP_CAPTION_H = 18;
-    private static final int CHILD_INDENT = 12;
+    private static final int CHILD_INDENT = 28;
     private static final int CONTROL_RIGHT_INSET = 10;
     private static final int MIN_CONTROL_W = 140;
     private static final int MIN_SETTING_LABEL_W = 40;
@@ -94,7 +93,6 @@ public final class SettingsScreen extends Screen {
     private EditBox searchBox;
     private Button searchClearButton;
     private ListNavigationWidget sidebarNavigation;
-    private Button perfCancelButton;
     private String searchQuery = "";
     private boolean refocusSearchAfterRebuild;
     private boolean refocusSidebarAfterRebuild;
@@ -118,18 +116,18 @@ public final class SettingsScreen extends Screen {
         this.config = config;
         this.dungeonConfig = dungeonConfig;
         boolean lastStillValid = categoryById(lastCategoryId) != null
+                && categoryAvailable(lastCategoryId, config)
                 || (RECENT_ID.equals(lastCategoryId) && !RecentSettings.isEmpty());
         this.activeCategoryId = lastStillValid
                 ? lastCategoryId
                 : SettingsCatalog.categories().get(0).id();
-        PerfStressTestController.recoverInterruptedTest(config);
     }
 
     public static SettingsScreen atSetting(Screen parent, WaypointerConfig config,
                                            DungeonConfig dungeonConfig, String settingId) {
         SettingsScreen screen = new SettingsScreen(parent, config, dungeonConfig);
         SettingsCatalog.Category home = categoryOf(settingId);
-        if (home != null) {
+        if (home != null && categoryAvailable(home.id(), config)) {
             screen.activeCategoryId = home.id();
             lastCategoryId = home.id();
             screen.pendingScrollToSettingId = settingId;
@@ -146,7 +144,6 @@ public final class SettingsScreen extends Screen {
         searchBox = null;
         searchClearButton = null;
         sidebarNavigation = null;
-        perfCancelButton = null;
         Layout layout = layout();
         controlWidth = measuredControlWidth(layout);
         actionClusterWidth = measuredActionClusterWidth(layout);
@@ -157,15 +154,6 @@ public final class SettingsScreen extends Screen {
         GuiTokens.ButtonSpec done = doneSpec();
         GuiTokens.layoutFooter(width, height - FOOTER_H, List.of(), done,
                 this::addRenderableWidget, font);
-        perfCancelButton = styledButton((width - 88) / 2,
-                PAD_OUTER + font.lineHeight * 2 + GAP, 88, BTN_H,
-                Component.translatable("waypointer.screen.settings.perf.cancel"), button -> {
-                    PerfStressTestController.cancelIfRunning();
-                    rebuildPending = true;
-                }, Tooltip.create(Component.translatable(
-                        "waypointer.screen.settings.perf.cancel.tooltip")));
-        perfCancelButton.visible = false;
-        addRenderableWidget(perfCancelButton);
     }
 
     @Override
@@ -257,13 +245,11 @@ public final class SettingsScreen extends Screen {
 
     @Override
     public void onClose() {
-        PerfStressTestController.cancelIfRunning();
         MinecraftCompat.setScreen(minecraft, parent);
     }
 
     @Override
     public void removed() {
-        PerfStressTestController.cancelIfRunning();
         super.removed();
     }
 
@@ -301,6 +287,7 @@ public final class SettingsScreen extends Screen {
         final boolean header;
         final boolean expanded;
         final boolean child;
+        boolean lastChild;
         final int y;
         final int height;
         final List<WidgetSlot> widgets = new ArrayList<>();
@@ -331,7 +318,8 @@ public final class SettingsScreen extends Screen {
 
     private void buildRows(Layout layout) {
         searchCategoryCounts = Map.of();
-        if (RECENT_ID.equals(activeCategoryId) && RecentSettings.isEmpty()) {
+        if (!categoryAvailable(activeCategoryId, config)
+                || RECENT_ID.equals(activeCategoryId) && RecentSettings.isEmpty()) {
             activeCategoryId = SettingsCatalog.categories().get(0).id();
         }
 
@@ -380,6 +368,7 @@ public final class SettingsScreen extends Screen {
                 boolean expanded = isHeader && headerExpanded(category, group, setting, bodyVisible, groupExpanded);
                 boolean isChild = !isHeader && group.parentSettingId() != null;
                 Row row = new Row(setting, null, isHeader, expanded, isChild, y, SETTING_ROW_PITCH);
+                row.lastChild = isChild && i == settings.size() - 1;
                 buildRowWidgets(row, layout);
                 buildResetDot(row, layout);
                 rows.add(row);
@@ -412,6 +401,7 @@ public final class SettingsScreen extends Screen {
         Map<String, Integer> counts = new HashMap<>();
         int y = 0;
         for (SettingsSearch.Match match : matches) {
+            if (!featureAvailable(match.setting(), config)) continue;
             counts.merge(match.categoryId(), 1, Integer::sum);
             SettingsCatalog.Category category = categoryById(match.categoryId());
             y = addChippedRow(match.setting(),
@@ -426,6 +416,7 @@ public final class SettingsScreen extends Screen {
         for (String id : RecentSettings.mostRecentFirst()) {
             Setting setting = SettingsCatalog.byId(id);
             if (setting == null) continue;
+            if (!featureAvailable(setting, config)) continue;
             if (setting.kind() == Setting.Kind.ACTION || setting.kind() == Setting.Kind.HIDDEN) continue;
             if (setting.store() == Setting.Store.DUNGEON && dungeonConfig == null) continue;
             SettingsCatalog.Category home = categoryOf(id);
@@ -501,6 +492,7 @@ public final class SettingsScreen extends Screen {
                 || group.childrenVisibleWhen().test(config, dungeonConfig);
         for (int i = 0; i < group.settings().size(); i++) {
             Setting setting = group.settings().get(i);
+            if (!featureAvailable(setting, config)) continue;
             if (setting.kind() == Setting.Kind.HIDDEN) continue;
             if (setting.store() == Setting.Store.DUNGEON && dungeonConfig == null) continue;
             boolean isMaster = setting.id().equals(category.masterSettingId());
@@ -534,6 +526,7 @@ public final class SettingsScreen extends Screen {
 
     private static Set<String> computeStructuralIds() {
         Set<String> out = new HashSet<>();
+        out.add("enableFeatureBloat");
         for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
             if (category.masterSettingId() != null) out.add(category.masterSettingId());
             for (SettingsCatalog.Group group : category.groups()) {
@@ -541,6 +534,20 @@ public final class SettingsScreen extends Screen {
             }
         }
         return out;
+    }
+
+    static boolean categoryAvailable(String categoryId, WaypointerConfig config) {
+        return !"feature_bloat".equals(categoryId) || config.enableFeatureBloat();
+    }
+
+    static int childGuideHeight(int rowHeight, boolean lastChild) {
+        return lastChild ? 13 : rowHeight;
+    }
+
+    static boolean featureAvailable(Setting setting, WaypointerConfig config) {
+        return config.enableFeatureBloat()
+                || (!setting.id().equals(SettingsCatalog.ACTION_WAYPOINT_PAINT)
+                && !setting.id().equals("showExportRoutePreview"));
     }
 
     private int measuredControlWidth(Layout layout) {
@@ -569,10 +576,7 @@ public final class SettingsScreen extends Screen {
         int twoColumnCell = 60;
         for (String key : List.of(
                 "waypointer.screen.settings.config.copy",
-                "waypointer.screen.settings.config.import",
-                "waypointer.screen.settings.perf.run",
-                "waypointer.screen.settings.perf.cancel",
-                "waypointer.screen.settings.perf.copy_report")) {
+                "waypointer.screen.settings.config.import")) {
             twoColumnCell = Math.max(twoColumnCell, buttonWidth(Component.translatable(key)));
         }
 
@@ -621,6 +625,7 @@ public final class SettingsScreen extends Screen {
         switch (setting.kind()) {
             case BOOL -> buildBoolControl(row, setting, controlRight, rowTop);
             case NUMBER -> buildNumberControl(row, setting, controlRight, rowTop);
+            case TEXT -> buildTextControl(row, setting, controlRight, rowTop);
             case ENUM -> buildEnumControl(row, setting, controlRight, rowTop);
             case COLOR -> buildColorControl(row, setting, controlRight, rowTop);
             case ACTION -> buildActionControls(row, setting, controlRight, rowTop);
@@ -640,7 +645,6 @@ public final class SettingsScreen extends Screen {
                     "waypointer.screen.settings.action.reset_defaults",
                     "waypointer.screen.settings.action.confirm_reset",
                     this::confirmedResetDefaults);
-            case SettingsCatalog.ACTION_PERF_TEST -> buildPerfTestControls(row, setting, controlRight, rowTop);
             case SettingsCatalog.ACTION_WAYPOINT_PAINT -> buildDialogActionControl(row, setting,
                     controlRight, rowTop, "waypointer.screen.settings.action.open_painter",
                     this::openWaypointPainter);
@@ -648,37 +652,8 @@ public final class SettingsScreen extends Screen {
         }
     }
 
-    private void buildPerfTestControls(Row row, Setting setting, int controlRight, int rowTop) {
-        int columns = 2;
-        int buttonW = actionGridButtonWidth(actionClusterWidth, columns);
-        Button run = styledButton(actionGridButtonX(
-                        controlRight, actionClusterWidth, columns, 0), 0, buttonW, BTN_H,
-                Component.translatable(PerfStressTestController.running()
-                        ? "waypointer.screen.settings.perf.cancel"
-                        : "waypointer.screen.settings.perf.run"), b -> {
-                    if (PerfStressTestController.running()) {
-                        PerfStressTestController.cancelIfRunning();
-                    } else {
-                        PerfStressTestController.start(config);
-                    }
-                    rebuildPending = true;
-                }, SettingsText.tooltipOrNull(setting));
-        Button copy = styledButton(actionGridButtonX(
-                        controlRight, actionClusterWidth, columns, 1), 0, buttonW, BTN_H,
-                Component.translatable("waypointer.screen.settings.perf.copy_report"), b -> {
-                    if (PerfStressTestController.hasReport()) {
-                        minecraft.keyboardHandler.setClipboard(PerfStressTestController.report());
-                        PerfStressTestController.noteReportCopied();
-                    }
-                }, SettingsText.tooltip(setting, Component.translatable(
-                        "waypointer.screen.settings.perf.copy_report.tooltip")));
-
-        registerRowWidget(row, run, rowTop + 2);
-        registerRowWidget(row, copy, rowTop + 2, PerfStressTestController::hasReport);
-    }
-
     private void openWaypointPainter() {
-        if (WaypointerClient.manager() == null) return;
+        if (!config.enableFeatureBloat() || WaypointerClient.manager() == null) return;
         MinecraftCompat.setScreen(minecraft,
                 new WaypointPainterScreen(this, config, WaypointerClient.manager()));
     }
@@ -778,14 +753,39 @@ public final class SettingsScreen extends Screen {
                 b -> {
                     Object next = SettingsValuePolicy.nextEnumValue(
                             setting, setting.get(config, dungeonConfig));
+                    if (!config.enableFeatureBloat() && next == WaypointerConfig.BoxStyle.PAINT) {
+                        next = SettingsValuePolicy.nextEnumValue(setting, next);
+                    }
                     applySetting(setting, next);
                     b.setMessage(enumLabelFor(setting));
                 }, SettingsText.tooltipOrNull(setting));
         registerRowWidget(row, button, rowTop + 2);
     }
 
+    private void buildTextControl(Row row, Setting setting, int controlRight, int rowTop) {
+        EditBox box = new EditBox(font, controlRight - controlWidth, 0, controlWidth, BTN_H,
+                SettingsText.label(setting)) {
+            @Override
+            public void setFocused(boolean focused) {
+                boolean wasFocused = isFocused();
+                super.setFocused(focused);
+                if (wasFocused && !focused) setValue(String.valueOf(setting.get(config, dungeonConfig)));
+            }
+        };
+        box.setMaxLength(256);
+        box.setValue(String.valueOf(setting.get(config, dungeonConfig)));
+        box.setResponder(value -> {
+            boolean valid = setting.acceptsText(value);
+            box.setTextColor(valid ? TEXT : 0xFF5555);
+            if (valid) applySetting(setting, value);
+        });
+        box.setTooltip(SettingsText.tooltipOrNull(setting));
+        registerRowWidget(row, box, rowTop + 2);
+    }
+
     private Component enumLabelFor(Setting setting) {
-        Object current = setting.get(config, dungeonConfig);
+        Object current = setting.id().equals("boxStyle")
+                ? config.effectiveBoxStyle() : setting.get(config, dungeonConfig);
         for (int i = 0; i < setting.enumOptions().size(); i++) {
             if (Objects.equals(setting.enumOptions().get(i).value(), current)) {
                 return SettingsText.enumOption(setting, i);
@@ -1085,25 +1085,6 @@ public final class SettingsScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
         Layout layout = layout();
-        if (PerfStressTestController.onFrame()) {
-            rebuildPending = true;
-        }
-        if (PerfStressTestController.running()) {
-            hideWidgetsDuringPerformanceTest();
-            String status = font.plainSubstrByWidth(
-                    PerfStressTestController.statusLine(),
-                    Math.max(0, width - PAD_OUTER * 2));
-            String hint = font.plainSubstrByWidth(Component.translatable(
-                    "waypointer.screen.settings.perf.restore_hint").getString(),
-                    Math.max(0, width - PAD_OUTER * 2));
-            g.text(font, status, Math.max(PAD_OUTER, (width - font.width(status)) / 2),
-                    PAD_OUTER, TEXT, true);
-            g.text(font, hint, Math.max(PAD_OUTER, (width - font.width(hint)) / 2),
-                    PAD_OUTER + font.lineHeight + 2, TEXT_DIM, true);
-            perfCancelButton.visible = true;
-            perfCancelButton.extractRenderState(g, mouseX, mouseY, partial);
-            return;
-        }
         refreshRowStates(layout);
 
         g.fill(0, 0, width, height, SURFACE);
@@ -1129,12 +1110,6 @@ public final class SettingsScreen extends Screen {
         g.disableScissor();
 
         renderScrollbar(g, layout.mainRight() - 4, layout.rowsTop(), layout.bottom());
-    }
-
-    private void hideWidgetsDuringPerformanceTest() {
-        for (var child : children()) {
-            if (child instanceof AbstractWidget widget) widget.visible = false;
-        }
     }
 
     private void refreshRowStates(Layout layout) {
@@ -1190,7 +1165,9 @@ public final class SettingsScreen extends Screen {
                     Component.translatable("waypointer.screen.settings.recent").getString()));
         }
         for (SettingsCatalog.Category category : SettingsCatalog.categories()) {
-            out.add(new SidebarEntry(category.id(), SettingsText.categoryLabel(category)));
+            if (categoryAvailable(category.id(), config)) {
+                out.add(new SidebarEntry(category.id(), SettingsText.categoryLabel(category)));
+            }
         }
         return out;
     }
@@ -1352,11 +1329,21 @@ public final class SettingsScreen extends Screen {
             labelX += 14;
         }
 
+        if (row.child) {
+            int guideX = layout.mainLeft() + GAP + 14;
+            g.fill(guideX, rowTop, guideX + 1,
+                    rowTop + childGuideHeight(row.height, row.lastChild), BORDER);
+            g.fill(guideX, rowTop + 12, labelX - 6, rowTop + 13, BORDER);
+        }
+
         int labelMaxW = labelLimit(row, layout) - labelX;
-        String clipped = font.plainSubstrByWidth(
-                SettingsText.label(setting).getString(), Math.max(12, labelMaxW));
-        int labelColor = row.header ? TEXT : enabled ? TEXT : TEXT_DIM;
-        g.text(font, clipped, labelX, rowTop + 8, labelColor, false);
+        Component label = row.header
+                ? SettingsText.label(setting).copy().withStyle(ChatFormatting.BOLD)
+                : SettingsText.label(setting);
+        var clipped = font.substrByWidth(label, Math.max(12, labelMaxW));
+        int labelColor = row.header ? TEXT : !enabled ? TEXT_MUTED : row.child ? TEXT_DIM : TEXT;
+        g.text(font, Language.getInstance().getVisualOrder(clipped),
+                labelX, rowTop + 8, labelColor, false);
 
         for (WidgetSlot slot : row.widgets) {
             slot.widget().extractRenderState(g, mouseX, mouseY, partial);
@@ -1395,11 +1382,6 @@ public final class SettingsScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        if (PerfStressTestController.running()) {
-            return perfCancelButton != null && perfCancelButton.isMouseOver(event.x(), event.y())
-                    ? perfCancelButton.mouseClicked(event, doubleClick)
-                    : true;
-        }
         double mx = event.x();
         double my = event.y();
         Layout layout = layout();
@@ -1459,7 +1441,7 @@ public final class SettingsScreen extends Screen {
 
     private void jumpToSetting(String settingId) {
         SettingsCatalog.Category home = categoryOf(settingId);
-        if (home == null) return;
+        if (home == null || !categoryAvailable(home.id(), config)) return;
         activeCategoryId = home.id();
         lastCategoryId = home.id();
         searchQuery = "";
@@ -1470,7 +1452,8 @@ public final class SettingsScreen extends Screen {
     }
 
     private void selectCategory(String categoryId) {
-        if (categoryId.equals(activeCategoryId) && !searchActive()) return;
+        if (!categoryAvailable(categoryId, config)
+                || categoryId.equals(activeCategoryId) && !searchActive()) return;
         activeCategoryId = categoryId;
         if (!RECENT_ID.equals(categoryId)) lastCategoryId = categoryId;
         searchQuery = "";
@@ -1480,14 +1463,6 @@ public final class SettingsScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
-        if (PerfStressTestController.running()) {
-            if (event.key() == GLFW_KEY_ESCAPE) {
-                PerfStressTestController.cancelIfRunning();
-                rebuildPending = true;
-                return true;
-            }
-            return super.keyPressed(event);
-        }
         if (event.key() == GLFW_KEY_F && controlDown() && searchBox != null) {
             setFocused(searchBox);
             searchBox.setFocused(true);
@@ -1530,7 +1505,6 @@ public final class SettingsScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
-        if (PerfStressTestController.running()) return true;
         Layout layout = layout();
         if (mouseX >= layout.sidebarLeft() && mouseX <= layout.sidebarRight()
                 && mouseY >= layout.top() && mouseY <= layout.bottom()) {

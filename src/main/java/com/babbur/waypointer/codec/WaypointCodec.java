@@ -29,13 +29,7 @@ import java.util.zip.Deflater;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.Inflater;
 
-/**
- * Encodes and decodes native {@code WP:} route shares.
- *
- * <p>Automatic exports use the V10 typed envelope and fall back to V9 only
- * when an otherwise supported route exceeds the V10 profile. Versions 1-9
- * remain importable. See {@code CODEC.md} for the wire contract.
- */
+/** Native {@code WP:} shares. Exports V10 with V9 fallback for oversized routes; imports versions 1-10. */
 public final class WaypointCodec {
 
     /** Prefix every encoded string starts with. Used by the chat scanner to find embedded exports. */
@@ -192,12 +186,7 @@ public final class WaypointCodec {
         }
     }
 
-    /**
-     * Coordinate packing mode driver. {@link #AUTO} tries every eligible mode per
-     * group and keeps the smallest; the forced modes exist mainly so tests can
-     * assert that AUTO actually picks the best option. Production code should
-     * stick with AUTO.
-     */
+    /** Coordinate packing mode; {@link #AUTO} selects the smallest eligible form. */
     enum PackingMode {
         AUTO,
         FORCE_VECTOR,
@@ -210,24 +199,17 @@ public final class WaypointCodec {
     }
 
     /**
-     * Export options. Six independent toggles control which payload fields are
-     * emitted, plus an optional {@code label} the sender can use to title the
-     * export. Progress and enabled state are never written -- shared routes
-     * always import fresh on the recipient's client (see the class doc).
+     * Controls which six route fields are exported and optionally supplies a label.
+     * Progress and enabled state are never written, so shared routes import fresh.
      *
-     * The {@link #WITH_NAMES} / {@link #NO_NAMES} constants stay around as
-     * shorthand for chat-typed shortcuts ({@code /wp export names}); GUI flows
-     * build options through the {@link Builder} for finer control.
-     *
-     * The no-options encode API uses {@link #FULL_FIDELITY}. The older
-     * {@link #WITH_NAMES} and {@link #NO_NAMES} presets remain explicit lossy
-     * chat-size choices.
+     * {@link #FULL_FIDELITY} is the default; {@link #WITH_NAMES} and {@link #NO_NAMES}
+     * are compact, lossy chat presets. Build custom options with {@link Builder}.
      */
     public static final class Options {
         /** Hard cap on label visible characters; the byte cap is tracked separately. */
         public static final int MAX_LABEL_CHARS = 64;
 
-        /** Explicit compact preset: names included, colors/radii/flags stripped. */
+        /** Compact, lossy preset: names included; colors, radii, and flags stripped. */
         public static final Options WITH_NAMES = builder()
                 .includeNames(true)
                 .includeColors(false)
@@ -235,7 +217,7 @@ public final class WaypointCodec {
                 .includeWaypointFlags(false)
                 .includeGroupMeta(true)
                 .build();
-        /** Names and colors stripped -- minimal-payload preset for chat sharing. */
+        /** Compact, lossy preset: names and colors stripped for chat sharing. */
         public static final Options NO_NAMES = builder()
                 .includeNames(false)
                 .includeColors(false)
@@ -314,7 +296,6 @@ public final class WaypointCodec {
             return bareCoordinatesOnly && hasAllExportFieldsOff();
         }
 
-        /** True when all visible export fields and the label are off. */
         boolean hasAllExportFieldsOff() {
             return !includeNames && !includeColors && !includeRadii
                     && !includeWaypointFlags && !includeGroupMeta && !includeZone
@@ -322,14 +303,10 @@ public final class WaypointCodec {
         }
 
         /**
-         * Strip Minecraft chat formatting escapes ({@code §}), control chars, and
-         * trailing whitespace, then truncate to {@link #MAX_LABEL_CHARS}.
-         *
-         * Sanitization runs at the encoder boundary so a raw user string (typed
-         * in the export GUI or sent in chat) can never inject color codes or
-         * click events into the recipient's hover tooltip. Returning a string
-         * that's safe to feed straight into {@code Component.literal} is the
-         * whole contract.
+         * Removes Minecraft formatting and control characters, strips whitespace,
+         * and truncates the label to {@link #MAX_LABEL_CHARS} UTF-16 code units.
+         * Sanitizing at the encoder boundary prevents color codes and click
+         * events from reaching the recipient's hover tooltip.
          */
         public static String sanitizeLabel(String raw) {
             if (raw == null || raw.isEmpty()) return "";
@@ -425,11 +402,7 @@ public final class WaypointCodec {
         return V10_WIRE_VERSION;
     }
 
-    /**
-     * Package-private: encode with an explicit packing mode. Only tests should pass
-     * anything other than {@link PackingMode#AUTO}; forcing a mode defeats the
-     * multi-pass selection and typically yields larger output.
-     */
+    /** Package-private hook used by tests to force a packing mode. */
     static String encode(List<WaypointGroup> groups, Options opts, PackingMode mode) {
         Options effectiveOptions = mode == PackingMode.AUTO
                 && V10RouteCodec.canEncodeBareSelection(groups, opts)
@@ -525,10 +498,7 @@ public final class WaypointCodec {
             try {
                 return decodePayloadV10(v10Frame);
             } catch (IOException | IllegalArgumentException bodyFailure) {
-                // A verified envelope with a bad body is almost certainly a
-                // damaged V10 share. The legacy readers still get one silent
-                // attempt so no pre-V10 code can ever be locked out by a
-                // checksum coincidence; if they also fail, the V10 error wins.
+                // Try legacy readers to rule out checksum collisions, then report the V10 error.
                 committedV10 = true;
                 v10Failure = bodyFailure;
             }
@@ -608,16 +578,7 @@ public final class WaypointCodec {
         }
     }
 
-    /**
-     * Best-effort partial decode that only returns the sender's label, or
-     * {@link Optional#empty()} if the payload has none / fails to decode.
-     *
-     * Used by chat-hover tooltips where we want to surface the label without
-     * paying for a full group parse on every received chat line. Only a bounded
-     * payload prefix and bounded inflated prefix are inspected. This preview is
-     * intentionally unchecked; the click-to-import path performs full current
-     * integrity validation and surfaces malformed input.
-     */
+    /** Reads an unchecked, bounded sender-label preview, or empty if unavailable. Import validates integrity. */
     public static Optional<String> peekLabel(String text) {
         if (text == null) return Optional.empty();
         String trimmed = text.trim();
@@ -651,11 +612,7 @@ public final class WaypointCodec {
         return v2.isPresent() ? v2 : peekLabel(payload, LEGACY_V1_WIRE_VERSION, true);
     }
 
-    /**
-     * Result of {@link #decodeFull(String)}: the groups, whatever label the sender
-     * stamped on, and any route-library metadata (folders, manual colors, paints)
-     * carried by a V10 route-library share. Plain route shares report empty metadata.
-     */
+    /** Decoded groups, sender label, and library metadata. Plain routes have empty metadata. */
     public record Decoded(List<WaypointGroup> groups, String label, RouteLibraryMetadata metadata) {
         public Decoded {
             metadata = metadata == null ? RouteLibraryMetadata.empty() : metadata;
@@ -1396,13 +1353,11 @@ public final class WaypointCodec {
         return writeGeneralBody(groups, opts, mode, WIRE_VERSION, true, true, header);
     }
 
-    /** True when a V10 semantic header names the general route body, with or without a label. */
     static boolean isV10GeneralHeader(int header) {
         return (header & HEADER_VERSION_MASK) == V10_WIRE_VERSION
                 && V10GeneralRouteCodec.isGeneralKind(v9ContentKind(header));
     }
 
-    /** Header byte of the V9-shaped body that mirrors a V10 kind 0/7 semantic. */
     static int v9ShapeHeaderForV10General(int header) {
         boolean labeled = v9ContentKind(header) == V10GeneralRouteCodec.LABELED_CONTENT_KIND;
         return WIRE_VERSION | (labeled ? V9_HEADER_FLAG_LABEL : 0);
@@ -1528,14 +1483,8 @@ public final class WaypointCodec {
     }
 
     /**
-     * Zone id actually written for {@code group}.
-     *
-     * With {@link Options#includeZone} off the sender's island is replaced by
-     * {@link Zone#UNKNOWN}, which the import paths already treat as "no island
-     * recorded" and snap to whatever island the recipient is standing on. Every
-     * writer -- pool building, group records, the anonymous single-group body,
-     * and the coord-mode scorer -- funnels through here so the string pool and
-     * the emitted refs can never disagree about which zone was exported.
+     * Returns the zone id written for {@code group}. Disabled zone export writes
+     * {@link Zone#UNKNOWN}; all writers use this value so the pool and references agree.
      */
     private static String exportedZoneId(WaypointGroup group, Options opts) {
         return opts.includeZone ? group.zoneId() : Zone.UNKNOWN.id();
@@ -1923,12 +1872,10 @@ public final class WaypointCodec {
                         ? encodeEntropy(g.waypoints(), pool, opts, bodyless, wireVersion, true)
                         : null;
 
-                // Rank by final text size, not raw bytes. Raw-byte size mis-ranks
-                // candidates whose contents compress differently, and the v3
-                // stream text layer can make equal compressed byte counts differ
-                // by a character. This remains a per-group approximation (later
-                // groups can still affect cross-group compression context), but
-                // it is close to the actual share-string length users care about.
+                // Rank by estimated final text size. Raw-byte size can mis-rank
+                // candidates with different compression, and the v3 stream text
+                // layer can make equal compressed byte counts differ by a character.
+                // Scores are per-group; later groups still affect compression context.
                 int vScore = encodedGroupScore(bodyPrefix, g, pool, CoordMode.VECTOR, v,
                         baseGroupFlags, customRadius, wireVersion, opts, extendedCoordModes);
                 int aScore = encodedGroupScore(bodyPrefix, g, pool, CoordMode.ABSOLUTE_VARINT, a,
@@ -3579,18 +3526,9 @@ public final class WaypointCodec {
     }
 
     /**
-     * Approximate final text size of a single coord-mode candidate, used to
-     * rank AUTO candidates. Lower = better.
-     *
-     * Uses the legacy writer's dictionary and text codec so both
-     * dictionary hits and variable text-packing tails get counted. Doesn't
-     * include cross-group compression context, so the score is a heuristic
-     * rather than a true final size -- but it's dramatically more accurate than
-     * raw-byte comparisons for streams that differ in entropy characteristics.
-     *
-     * Returns {@link Integer#MAX_VALUE} on I/O failure so the caller simply
-     * never picks the affected candidate; in practice {@link Deflater} on an
-     * in-memory buffer cannot actually fail.
+     * Scores one coordinate candidate for AUTO selection. Cross-group compression
+     * context is omitted, so this is a per-group ranking rather than final output size.
+     * Returns {@link Integer#MAX_VALUE} when encoding the candidate fails.
      */
     private static int encodedGroupScore(byte[] bodyPrefix, WaypointGroup g, StringPool pool, CoordMode mode,
                                          byte[] coordAndBody, int baseGroupFlags, boolean customRadius,

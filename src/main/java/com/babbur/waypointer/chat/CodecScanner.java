@@ -12,11 +12,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-/**
- * Finds route, configuration, and dungeon share strings in chat. Matches start
- * at a word or punctuation boundary, stay within the chat limit, and trim
- * trailing punctuation when needed.
- */
+/** Finds bounded route, config, and dungeon shares in chat, trimming trailing punctuation. */
 public final class CodecScanner {
 
     private static final int MIN_BODY = 3;
@@ -95,7 +91,6 @@ public final class CodecScanner {
         return merge(codes, links);
     }
 
-    /** {@code waypointermod.com/r/<id>} links are the same share as a kind-6 reference code. */
     private static List<Match> scanCatalogLinks(String message) {
         if (message == null || message.isEmpty()) return List.of();
         List<Match> out = new ArrayList<>();
@@ -114,7 +109,6 @@ public final class CodecScanner {
         return !Character.isLetterOrDigit(prev) && prev != '/' && prev != '.';
     }
 
-    /** Earliest-start order, dropping overlaps and keeping the message-wide cap. */
     private static List<Match> merge(List<Match> first, List<Match> second) {
         List<Match> all = new ArrayList<>(first);
         all.addAll(second);

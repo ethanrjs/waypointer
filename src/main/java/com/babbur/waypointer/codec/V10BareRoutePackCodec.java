@@ -11,16 +11,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.zip.Deflater;
 
-/**
- * Wire-v10 kind 6, subtype 0: one ordered collection of bare regular routes.
- *
- * <p>Each child is the canonical semantic body of kind 2 for the enclosing
- * transport mode with its redundant {@code 0x2A} kind/version header removed;
- * subtype 0 already fixes that child type. Children deliberately have no nested
- * {@code WP:} prefix, compression selector, base-91 layer, checksum, schema
- * byte, or terminator. The route count and shortest-form child lengths provide
- * every boundary.
- */
+/** V10 kind 6, subtype 0: ordered bare routes. Children use headerless kind-2 bodies
+ * in the enclosing transport mode, without nested framing. Route count and
+ * shortest-form child lengths delimit the bodies. */
 final class V10BareRoutePackCodec {
 
     static final int CONTENT_KIND = 6;
@@ -159,11 +152,7 @@ final class V10BareRoutePackCodec {
         return semantic;
     }
 
-    /**
-     * Encode the deterministic headerless kind-2 child fixed by subtype 0.
-     * Direct children choose the shorter raw Rice/quotient semantic, with Rice
-     * winning ties; B children use the canonical delta semantic.
-     */
+    /** Headerless kind-2 child: direct uses shorter Rice/quotient (Rice wins ties); B uses delta. */
     private static byte[] encodeCanonicalChild(WaypointGroup group, int mode)
             throws IOException {
         int[][] coordinates = V10BareRouteCodec.coordinatesOf(group);

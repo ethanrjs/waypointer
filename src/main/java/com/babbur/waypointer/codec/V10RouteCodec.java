@@ -26,11 +26,8 @@ final class V10RouteCodec {
 
     static String encode(List<WaypointGroup> groups, WaypointCodec.Options options)
             throws IOException {
-        // Exact all-off regular routes use the coordinate-only wire kinds even
-        // when the caller built those six visible fields manually. The hidden
-        // BARE_COORDINATES marker controls fail-closed behavior: an ordinary
-        // all-off request may still fall back to kind 0 when its route type or
-        // bounds are ineligible, but an explicit destructive projection may not.
+        // All-off options prefer coordinate-only kinds. Only implicit requests may
+        // fall back to kind 0; explicit BARE_COORDINATES must fail if ineligible.
         boolean exactAllOff = options.hasAllExportFieldsOff();
         if (canEncodeBareSelection(groups, options)) {
             if (groups.size() == 1
@@ -77,7 +74,6 @@ final class V10RouteCodec {
         };
     }
 
-    /** Kind 6 subtypes: 0 is the bare route pack, 1 the route library, 2 a catalog reference. */
     private static WaypointCodec.Decoded decodeKind6(V10Transport.CheckedFrame frame)
             throws IOException {
         if (V10CatalogReferenceCodec.isReferenceSemantic(frame.semantic())) {
@@ -91,9 +87,7 @@ final class V10RouteCodec {
             return new WaypointCodec.Decoded(V10BareRoutePackCodec.decode(frame), "");
         }
         RouteLibraryCodec.Decoded library = V10RouteLibraryCodec.decode(frame);
-        // The route-only entry point still gets faithful groups: manual color
-        // snapshots and paints are applied here, folders ride along as metadata
-        // for importers that own a route manager.
+        // Apply colors and paint here; leave folder metadata for the route manager.
         try {
             library.metadata().applyTo(library.groups());
         } catch (IllegalArgumentException failure) {

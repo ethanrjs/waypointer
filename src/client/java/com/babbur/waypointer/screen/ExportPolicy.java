@@ -63,7 +63,6 @@ final class ExportPolicy {
     static boolean showSubwaypointWarning(
             WaypointExportCodec.Target target, List<WaypointGroup> selectedGroups) {
         return target != WaypointExportCodec.Target.WAYPOINTER
-                && target != WaypointExportCodec.Target.CHUNKLOGGER
                 && containsSubwaypoints(selectedGroups);
     }
 

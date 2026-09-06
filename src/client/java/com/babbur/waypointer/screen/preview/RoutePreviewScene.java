@@ -200,7 +200,7 @@ public final class RoutePreviewScene {
         float opacity = (float) Math.clamp(config.beaconOpacity(), 0.0, 1.0);
         return new RoutePreviewScene(
                 group.id(), routeName(group), roomLocal, markers, connectors,
-                paint, null, false, config.boxStyle(), opacity,
+                paint, null, false, config.effectiveBoxStyle(), opacity,
                 (float) config.waypointOutlineOpacity(),
                 (float) config.waypointOutlineThickness(),
                 config.matchWaypointOutlineToWaypointColor(), config.waypointOutlineColor(),
@@ -272,7 +272,7 @@ public final class RoutePreviewScene {
     }
 
     static WaypointPaint effectivePaint(WaypointGroup group, WaypointerConfig config) {
-        if (group == null || config == null || !group.paintEnabled()) return null;
+        if (group == null || config == null || !config.enableFeatureBloat() || !group.paintEnabled()) return null;
         WaypointPaint seasonalPaint = HappySnowmanSession.facePaint();
         return seasonalPaint != null
                 ? seasonalPaint

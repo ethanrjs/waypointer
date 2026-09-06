@@ -13,7 +13,7 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderEvents;
 import net.minecraft.client.Minecraft;
-import net.minecraft.resources.Identifier;
+import net.minecraft.client.renderer.texture.AbstractTexture;
 import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3fc;
@@ -44,11 +44,7 @@ final class OverlayPassCompat {
         return RenderSystem.getProjectionMatrixBuffer();
     }
 
-    /**
-     * The level view matrix vanilla hands to LevelRenderer. Nothing in 26.x writes
-     * RenderSystem's model-view stack during level rendering, so reading it there
-     * yields identity and the overlay would ignore camera rotation.
-     */
+    /** Uses the level view matrix; RenderSystem's model-view stack stays at identity. */
     static Matrix4f positionMatrix(LevelRenderContext ctx) {
         return new Matrix4f(ctx.levelState().cameraRenderState.viewRotationMatrix);
     }
@@ -100,7 +96,7 @@ final class OverlayPassCompat {
         return RenderSystem.getShaderFog();
     }
 
-    static boolean bindTexture(RenderPass pass, String sampler, Identifier texture) {
+    static boolean bindTexture(RenderPass pass, String sampler, AbstractTexture texture) {
         return RenderPassTextureBinder.bind(pass, sampler, texture);
     }
 

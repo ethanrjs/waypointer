@@ -32,6 +32,21 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointerScreenTest {
 
     @Test
+    void generatedStructuresFolderHasADistinctTintWithoutChangingSavedFolders() {
+        String id = com.babbur.waypointer.crystal.CrystalHollowsStructureFolder.FOLDER_ID;
+        int color = com.babbur.waypointer.crystal.CrystalHollowsStructureFolder.FOLDER_COLOR;
+        var generated = new com.babbur.waypointer.core.RouteFolder(
+                id, "Structures", "crystal_hollows", false, color, true);
+        var saved = new com.babbur.waypointer.core.RouteFolder(
+                id, "Structures", "crystal_hollows", false, color, false);
+        var otherRuntime = new com.babbur.waypointer.core.RouteFolder(
+                "other", "Structures", "crystal_hollows", false, color, true);
+        assertEquals(0x5055FFFF, RouteListPresentation.folderBackgroundTint(generated));
+        assertEquals(0x2455FFFF, RouteListPresentation.folderBackgroundTint(saved));
+        assertEquals(0x2455FFFF, RouteListPresentation.folderBackgroundTint(otherRuntime));
+    }
+
+    @Test
     void clipboardImportRoutesUniversalAndLegacyDungeonSharesToTypedDungeonPath() {
         WaypointGroup route = WaypointGroup.create("Crypt Route", "crypt-a");
         route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
@@ -921,18 +936,6 @@ class WaypointerScreenTest {
                 "folder membership is captured before the delete");
         assertNull(plan.get(0).beforeGroupId(), "c is the only folder member");
         assertNull(plan.get(1).folderId(), "dungeon routes carry no folder");
-    }
-
-    @Test
-    void collapsedFolderRoutesLeaveTheSelectionSoDeleteOnlyHitsVisibleRows() {
-        var visible = List.of("a", "c");
-        var selected = new java.util.LinkedHashSet<>(List.of("a", "b", "c"));
-        assertEquals(new java.util.LinkedHashSet<>(List.of("a", "c")),
-                RouteSelectionPolicy.retainVisible(visible, selected),
-                "ids hidden by a collapsed folder must drop out of the selection");
-        assertTrue(RouteSelectionPolicy.retainVisible(List.of(), selected).isEmpty());
-        assertTrue(RouteSelectionPolicy.retainVisible(null, selected).isEmpty());
-        assertTrue(RouteSelectionPolicy.retainVisible(visible, null).isEmpty());
     }
 
     @Test

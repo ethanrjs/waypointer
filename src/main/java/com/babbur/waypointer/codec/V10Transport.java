@@ -23,11 +23,8 @@ import java.util.zip.Inflater;
  *         | rawDeflate(body) (mode 1)
  * }</pre>
  *
- * <p>The mode therefore costs no characters, the checksum is bound to the
- * mode and the header, and a kind codec never sees the mode bit: the
- * {@link CheckedFrame#semantic()} handed to it always starts with the plain
- * semantic header. This class does not interpret the body. Every kind shares
- * this envelope and performs its own bounded parse after unsealing.
+ * <p>{@link CheckedFrame#semantic()} strips the mode bit. Kind codecs parse
+ * their own bodies after envelope validation.
  */
 final class V10Transport {
 
@@ -48,12 +45,7 @@ final class V10Transport {
 
     private V10Transport() {}
 
-    /**
-     * Cheap exact peek at the first payload byte: true when its version nibble
-     * is 10. About one legacy V1-V9 code in sixteen also passes; the full probe
-     * then rejects it through the checksum, so callers must treat this as a
-     * filter, never as a commitment.
-     */
+    /** Peeks at the version nibble; the full probe still validates the frame. */
     static boolean looksLikeV10(String transport) {
         if (transport == null || transport.length() < 2) return false;
         String raw = unescapeContextual(transport.substring(0, Math.min(transport.length(), 4)));
@@ -113,11 +105,7 @@ final class V10Transport {
         return new Frame(modeOf(payload[0]), payload);
     }
 
-    /**
-     * Complete the V10 probe shared by every kind: canonical text, version
-     * nibble, optional inflate, and the header-bound checksum. A returned frame
-     * is a validated V10 envelope; the kind body has not been parsed yet.
-     */
+    /** Validates canonical text, version, inflation, and checksum; leaves the body unparsed. */
     static CheckedFrame probe(String transport) throws IOException {
         Frame frame = decode(transport);
         byte[] payload = frame.payload();
@@ -170,11 +158,7 @@ final class V10Transport {
         return sealCompressed(semanticBody, compressed);
     }
 
-    /**
-     * Assemble a DEFLATE payload from an already compressed body. Any standards-valid
-     * raw DEFLATE stream of the body is acceptable to the decoder; this lets tests and
-     * alternate encoders frame their own stream with the correct header and checksum.
-     */
+    /** Frames an already compressed raw DEFLATE body with its header and checksum. */
     static byte[] sealCompressed(byte[] semanticBody, byte[] compressed) throws IOException {
         validateSemantic(semanticBody);
         if (compressed == null || compressed.length == 0) {
@@ -403,11 +387,7 @@ final class V10Transport {
         }
     }
 
-    /**
-     * One deterministic outbound representation. Comparing these values applies
-     * the envelope-wide selection contract: shortest final contextual text,
-     * direct before DEFLATE, shorter binary payload, then unsigned lexical bytes.
-     */
+    /** Ranks by final text length, direct before DEFLATE, payload length, then unsigned bytes. */
     static final class Outbound implements Comparable<Outbound> {
         private final int mode;
         private final byte[] payload;

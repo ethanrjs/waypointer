@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 /** Parsing helpers for the colour-stripped Crystal Hollows sidebar. */
 public final class CrystalHollowsSidebar {
 
-    private static final Pattern AREA = Pattern.compile("(?m)^\\s*⏣\\s*(.+?)\\s*$");
+    private static final Pattern AREA = Pattern.compile("(?m)[⏣\uE067][\\t ]*([^\\r\\n]+)");
     private static final Pattern COORDINATE_SUFFIX = Pattern.compile(
             "\\s*(?:\\(|\\[)?-?\\d+\\s*[, ]\\s*-?\\d+\\s*[, ]\\s*-?\\d+(?:\\)|\\])?\\s*$");
     private static final Pattern DATE_SERVER = Pattern.compile(

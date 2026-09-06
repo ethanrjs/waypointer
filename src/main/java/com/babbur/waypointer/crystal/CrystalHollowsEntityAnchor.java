@@ -10,7 +10,9 @@ public final class CrystalHollowsEntityAnchor {
     public record Match(CrystalHollowsStructure structure, int offsetX, int offsetY, int offsetZ,
                         boolean divanKeeper) {}
 
-    private static final Pattern KEEPER = Pattern.compile("^Keeper of (Diamond|Lapis|Emerald|Gold)\\b");
+    private static final Pattern KEEPER = Pattern.compile("^(?:\\[NPC]\\s+)?Keeper of (Diamond|Lapis|Emerald|Gold)\\b");
+    private static final Pattern CORLEONE = Pattern.compile(
+            "^(?:\\[Lv\\d+]\\s+)?Boss Corleone(?:\\s+[\\d,.kKmMbB/]+❤)?$");
 
     private CrystalHollowsEntityAnchor() {}
 
@@ -34,7 +36,7 @@ public final class CrystalHollowsEntityAnchor {
         if (name.contains("Professor Robot")) {
             return Optional.of(anchor(CrystalHollowsStructure.LOST_PRECURSOR_CITY));
         }
-        if (name.contains("Boss Corleone") || name.equals("Team Treasurite")) {
+        if (CORLEONE.matcher(name).matches()) {
             return Optional.of(anchor(CrystalHollowsStructure.CORLEONE));
         }
         if (name.contains("Key Guardian")) {
@@ -53,6 +55,13 @@ public final class CrystalHollowsEntityAnchor {
             return Optional.of(anchor(CrystalHollowsStructure.GOBLIN_QUEENS_DEN));
         }
         return Optional.empty();
+    }
+
+    /** The NPC profile name is shared by grunts; only Corleone has this base maximum health. */
+    public static boolean isCorleoneProfile(String rawName, double baseMaxHealth) {
+        return "Team Treasurite".equals(
+                CrystalHollowsSidebar.stripFormatting(rawName == null ? "" : rawName).trim())
+                && (baseMaxHealth == 1_000_000.0 || baseMaxHealth == 2_000_000.0);
     }
 
     private static Match anchor(CrystalHollowsStructure structure) {

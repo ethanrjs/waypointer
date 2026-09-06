@@ -6,13 +6,15 @@ import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
+import java.util.function.Predicate;
 
 public final class Setting {
 
     public enum Store { MAIN, DUNGEON, NONE }
 
-    public enum Kind { BOOL, NUMBER, COLOR, ENUM, ACTION, HIDDEN }
+    public enum Kind { BOOL, NUMBER, TEXT, COLOR, ENUM, ACTION, HIDDEN }
 
     public enum Impact {
         HIGH("HIGH", "HIGH"),
@@ -73,6 +75,7 @@ public final class Setting {
     private Impact impact;
     private List<String> aliases = new ArrayList<>();
     private List<EnumOption> enumOptions = List.of();
+    private Map<String, String> buttonLabels = Map.of();
     private EnabledWhen enabledWhen;
     private String colorPickerTitle = "";
     private String colorSwatchTooltip = "";
@@ -80,6 +83,7 @@ public final class Setting {
     private double maximum = Double.POSITIVE_INFINITY;
     private boolean wholeNumber;
     private NumberDisplay numberDisplay;
+    private Predicate<String> textValidator;
 
     private record NumberDisplay(
             double value, String translationKey, String fallback) {
@@ -104,6 +108,17 @@ public final class Setting {
     public static Setting number(String id, Store store, String label, String tooltip,
                                  Getter getter, Setter setter) {
         return new Setting(id, store, Kind.NUMBER, label, tooltip, getter, setter);
+    }
+
+    public static Setting text(String id, Store store, String label, String tooltip,
+                               Predicate<String> validator, Getter getter, Setter setter) {
+        Setting setting = new Setting(id, store, Kind.TEXT, label, tooltip, getter, setter);
+        setting.textValidator = validator;
+        return setting;
+    }
+
+    public boolean acceptsText(String value) {
+        return kind == Kind.TEXT && textValidator.test(value);
     }
 
     public static Setting color(String id, Store store, String label, String tooltip,
@@ -148,6 +163,11 @@ public final class Setting {
         return this;
     }
 
+    public Setting buttons(Map<String, String> labels) {
+        buttonLabels = Map.copyOf(labels);
+        return this;
+    }
+
     public Setting range(double minimum, double maximum) {
         if (kind != Kind.NUMBER || !Double.isFinite(minimum) || Double.isNaN(maximum)
                 || maximum < minimum) {
@@ -184,6 +204,7 @@ public final class Setting {
     public Impact impact() { return impact; }
     public List<String> aliases() { return List.copyOf(aliases); }
     public List<EnumOption> enumOptions() { return enumOptions; }
+    public Map<String, String> buttonLabels() { return buttonLabels; }
     public String colorPickerTitle() { return colorPickerTitle; }
     public String colorSwatchTooltip() { return colorSwatchTooltip; }
     public double minimum() { return minimum; }
@@ -278,7 +299,7 @@ public final class Setting {
                 }
                 yield String.valueOf(value);
             }
-            case ACTION, HIDDEN -> String.valueOf(value);
+            case TEXT, ACTION, HIDDEN -> String.valueOf(value);
         };
     }
 

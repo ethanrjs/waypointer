@@ -13,7 +13,7 @@ import java.util.Map;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 
-/** Applies pure structure-folder plans to runtime-only Waypointer groups. */
+/** Builds runtime-only groups for the Structures folder. */
 public final class CrystalHollowsProjection {
 
     private static final int WAYPOINT_FLAGS =
@@ -22,14 +22,17 @@ public final class CrystalHollowsProjection {
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
     private final Map<String, Boolean> enabledByGroupId = new HashMap<>();
+    private final List<StructureSighting> arrivals = new ArrayList<>();
+    private CrystalHollowsLobbyState arrivalLobby;
 
     public CrystalHollowsProjection(ActiveGroupManager manager, WaypointerConfig config) {
         this.manager = manager;
         this.config = config;
     }
 
-    public void ensureFolder() {
-        if (manager.folder(CrystalHollowsStructureFolder.FOLDER_ID) != null) return;
+    public boolean ensureFolder() {
+        if (config.crystalHollowsHideStructuresFolder()) return false;
+        if (manager.folder(CrystalHollowsStructureFolder.FOLDER_ID) != null) return false;
         manager.addFolder(new RouteFolder(
                 CrystalHollowsStructureFolder.FOLDER_ID,
                 Component.translatable("waypointer.crystal.folder.structures").getString(),
@@ -37,9 +40,16 @@ public final class CrystalHollowsProjection {
                 false,
                 CrystalHollowsStructureFolder.FOLDER_COLOR,
                 true), List.of());
+        return true;
     }
 
     public void rebuild(CrystalHollowsLobbyState lobby) {
+        arrivalSession(lobby);
+        if (config.crystalHollowsHideStructuresFolder()) {
+            clear();
+            enabledByGroupId.clear();
+            return;
+        }
         rememberVisibility();
         ensureFolder();
         boolean structureWaypoints = config.crystalHollowsStructureWaypoints();
@@ -63,7 +73,16 @@ public final class CrystalHollowsProjection {
         rememberVisibility();
         List<String> generated = generatedGroupIds();
         if (!generated.isEmpty()) manager.replaceGroupsAtomically(generated, List.of());
-        manager.deleteFolder(CrystalHollowsStructureFolder.FOLDER_ID);
+        deleteRuntimeFolder();
+    }
+
+    public void endSession() {
+        clear();
+        arrivalSession(null);
+        enabledByGroupId.clear();
+        if (config.crystalHollowsHideStructuresFolder()) {
+            config.setCrystalHollowsHideStructuresFolder(false);
+        }
     }
 
     public boolean ownsGroup(String groupId) {
@@ -97,14 +116,43 @@ public final class CrystalHollowsProjection {
                         Waypoint.snapToPreciseSixteenths(CrystalHollowsGeometry.NUCLEUS_CENTRE_Y),
                         Waypoint.snapToPreciseSixteenths(CrystalHollowsGeometry.NUCLEUS_CENTRE_Z));
             }
-            waypoints.add(waypoint
+            waypoint = waypoint
                     .withName(localizedWaypointName(plan, index, localizedName))
                     .withColor(planned.color())
-                    .withFlags(WAYPOINT_FLAGS));
+                    .withFlags(WAYPOINT_FLAGS);
+            waypoints.add(waypoint);
         }
         group.addAll(waypoints);
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        for (int index = 0; index < group.size(); index++) {
+            CrystalHollowsPosition position = plan.waypoints().get(index).position();
+            for (StructureSighting arrival : arrivals) {
+                if (arrival.structure().id().equals(plan.structureId())
+                        && (!arrival.structure().multiInstance()
+                            || arrival.position().distanceSquared(position) <= 60.0 * 60.0)) {
+                    CompassMarkerState.markArrived(group.get(index));
+                    break;
+                }
+            }
+        }
         return group;
+    }
+
+    boolean markArrived(CrystalHollowsLobbyState lobby, StructureSighting sighting) {
+        arrivalSession(lobby);
+        for (StructureSighting arrival : arrivals) {
+            if (arrival.structure() == sighting.structure()
+                    && (!arrival.structure().multiInstance()
+                        || arrival.position().distanceSquared(sighting.position()) <= 60.0 * 60.0)) return false;
+        }
+        arrivals.add(sighting);
+        return true;
+    }
+
+    private void arrivalSession(CrystalHollowsLobbyState lobby) {
+        if (arrivalLobby == lobby) return;
+        arrivalLobby = lobby;
+        arrivals.clear();
     }
 
     private static Component localizedGroupName(
@@ -164,8 +212,15 @@ public final class CrystalHollowsProjection {
     private List<String> generatedGroupIds() {
         List<String> ids = new ArrayList<>();
         for (WaypointGroup group : manager.allGroups()) {
-            if (ownsGroup(group.id())) ids.add(group.id());
+            if (group.runtimeOnly() && ownsGroup(group.id())) ids.add(group.id());
         }
         return List.copyOf(ids);
+    }
+
+    private void deleteRuntimeFolder() {
+        RouteFolder folder = manager.folder(CrystalHollowsStructureFolder.FOLDER_ID);
+        if (folder != null && folder.runtimeOnly()) {
+            manager.deleteFolder(folder.id());
+        }
     }
 }

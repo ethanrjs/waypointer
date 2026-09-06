@@ -284,12 +284,7 @@ public final class DungeonRouteImporter {
         return matchUniqueCoreRoom(DungeonRoomData.allEntries(), coreHashes);
     }
 
-    /**
-     * Preserves the importer's established suffix-free input compatibility using
-     * identities derived from the pinned source table. If multiple source rooms
-     * reduce to the same name, their hashes remain combined so the unique-match
-     * guard rejects aliases such as the two distinct Waterfall rooms.
-     */
+    /** Keeps suffix-free aliases from the pinned table. Combined hashes reject ambiguous names such as Waterfall. */
     private static Map<String, List<Integer>> buildSecretRoutesSuffixFreeCores(
             Map<String, List<Integer>> sourceRooms) {
         Map<String, List<Integer>> aliases = new LinkedHashMap<>();

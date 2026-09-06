@@ -13,7 +13,8 @@ public record StructureSighting(
         String source,
         long atMillis,
         List<CrystalHollowsStructure> candidates,
-        String note) {
+        String note,
+        SightingConfidence remoteEvidence) {
 
     public StructureSighting {
         Objects.requireNonNull(structure, "structure");
@@ -21,6 +22,18 @@ public record StructureSighting(
         source = source == null ? "" : source;
         candidates = candidates == null ? List.of() : List.copyOf(candidates);
         note = note == null ? "" : note;
+        if (remoteEvidence != null && (confidence != SightingConfidence.SHARED_REMOTE
+                || remoteEvidence != SightingConfidence.ENTITY
+                && remoteEvidence != SightingConfidence.COMPASS
+                && remoteEvidence != SightingConfidence.NPC_CHAT)) {
+            throw new IllegalArgumentException("Invalid remote evidence");
+        }
+    }
+
+    public StructureSighting(CrystalHollowsStructure structure, int x, int y, int z,
+                             SightingConfidence confidence, String source, long atMillis,
+                             List<CrystalHollowsStructure> candidates, String note) {
+        this(structure, x, y, z, confidence, source, atMillis, candidates, note, null);
     }
 
     public StructureSighting(CrystalHollowsStructure structure, int x, int y, int z,
@@ -34,6 +47,6 @@ public record StructureSighting(
 
     public StructureSighting withNote(String nextNote) {
         return new StructureSighting(structure, x, y, z, confidence, source, atMillis,
-                candidates, nextNote);
+                candidates, nextNote, remoteEvidence);
     }
 }

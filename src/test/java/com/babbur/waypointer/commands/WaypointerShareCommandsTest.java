@@ -367,7 +367,8 @@ class WaypointerShareCommandsTest {
                 new CommandMessages().source(), WaypointCodec.Options.FULL_FIDELITY));
 
         assertEquals(1, scheduler.metadata.manualColors().size());
-        assertEquals(List.of(0), scheduler.metadata.folders().getFirst().memberOrdinals());
+        assertTrue(scheduler.metadata.folders().isEmpty(),
+                "a single-route command export must not carry the source folder");
 
         String payload = UniversalShareCodec.encodeWaypoints(
                 scheduler.groups, scheduler.options, scheduler.metadata);
@@ -375,8 +376,28 @@ class WaypointerShareCommandsTest {
         assertFalse(payload.startsWith("WPL:"));
         UniversalShareCodec.Decoded decoded = UniversalShareCodec.decode(payload);
         assertEquals(UniversalShareCodec.Type.WAYPOINTS, decoded.type());
-        assertEquals(1, ((UniversalShareCodec.Waypoints) decoded).result()
+        assertEquals(0, ((UniversalShareCodec.Waypoints) decoded).result()
                 .libraryMetadata().folders().size());
+        assertEquals(1, ((UniversalShareCodec.Waypoints) decoded).result()
+                .libraryMetadata().manualColors().size());
+    }
+
+    @Test
+    void explicitBulkCommandKeepsFolderScopeEvenWhenOnlyOneRouteExists() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        WaypointGroup route = WaypointGroup.create("Route", "hub");
+        route.add(Waypoint.at(1, 70, 2));
+        manager.add(route);
+        manager.addFolder(new RouteFolder(
+                "source-folder", "Mining", "hub", false, 0x2468AC),
+                List.of(route.id()));
+        CapturingScheduler scheduler = new CapturingScheduler();
+
+        assertEquals(1, commands(manager, scheduler).runExportRoutes(
+                new CommandMessages().source(), WaypointCodec.Options.FULL_FIDELITY));
+
+        assertEquals(List.of(0), scheduler.metadata.folders().getFirst().memberOrdinals());
     }
 
     @Test

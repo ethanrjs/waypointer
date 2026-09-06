@@ -84,7 +84,7 @@ final class WaypointerShareCommands {
                     "waypointer.command.export.no_active_route"));
             return 0;
         }
-        return scheduleExport(src, toExport, opts);
+        return scheduleExport(src, toExport, opts, false);
     }
 
     int runExportRoutes(FabricClientCommandSource src, WaypointCodec.Options opts) {
@@ -94,14 +94,16 @@ final class WaypointerShareCommands {
                     "waypointer.command.export.no_bulk_routes"));
             return 0;
         }
-        return scheduleExport(src, toExport, opts);
+        return scheduleExport(src, toExport, opts, true);
     }
 
     private int scheduleExport(FabricClientCommandSource src,
                                List<WaypointGroup> toExport,
-                               WaypointCodec.Options opts) {
+                               WaypointCodec.Options opts,
+                               boolean preserveFolderMetadata) {
         WaypointCodec.Options effectiveOptions = productOptionsForGroups(toExport, opts);
-        RouteLibraryMetadata metadata = RouteLibraryMetadata.capture(manager, toExport);
+        RouteLibraryMetadata metadata = RouteLibraryMetadata.captureForExport(
+                manager, toExport, preserveFolderMetadata);
         List<WaypointGroup> snapshot = toExport.stream()
                 .map(WaypointGroup::exportSnapshot)
                 .toList();
@@ -445,8 +447,7 @@ final class WaypointerShareCommands {
             return;
         }
         if (decoded instanceof UniversalShareCodec.CatalogReference reference) {
-            // Nothing is installed yet: the preview screen fetches the route
-            // from the catalog and asks before adding it.
+            // The preview fetches the route; installation requires confirmation.
             info(src, Component.translatable("waypointer.command.import.catalog.opening",
                     reference.routeId()));
             try {

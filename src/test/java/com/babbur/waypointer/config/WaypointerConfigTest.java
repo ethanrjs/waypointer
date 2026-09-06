@@ -1,6 +1,7 @@
 package com.babbur.waypointer.config;
 
 import com.babbur.waypointer.codec.AsciiStreamCodec;
+import com.google.gson.JsonObject;
 import com.babbur.waypointer.placement.PlayerWaypointPlacement;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -31,6 +32,68 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointerConfigTest {
 
     @Test
+    void featureBloatIsOptInAndPreservesStoredChoices() throws IOException {
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointPaint paint = WaypointPaint.solid(0x123456);
+        config.setWaypointPainterDefaultPaint(paint);
+        config.setBoxStyle(WaypointerConfig.BoxStyle.PAINT);
+        config.setShowExportRoutePreview(true);
+        assertFalse(config.enableFeatureBloat());
+        assertFalse(WaypointerConfig.fromJson("{}").enableFeatureBloat());
+        assertFalse(config.exportRoutePreviewEnabled());
+        assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED, config.effectiveBoxStyle());
+        assertEquals(WaypointerConfig.BoxStyle.PAINT, config.boxStyle());
+        assertEquals(paint, config.waypointPainterDefaultPaint());
+        config.setEnableFeatureBloat(true);
+        assertTrue(config.exportRoutePreviewEnabled());
+        assertEquals(WaypointerConfig.BoxStyle.PAINT, config.effectiveBoxStyle());
+        assertTrue(WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config)).enableFeatureBloat());
+        assertTrue(V10ConfigBodyCodec.decode(V10ConfigBodyCodec.encode(config)).enableFeatureBloat());
+        WaypointerConfig replacement = new WaypointerConfig();
+        replacement.replaceShareableSettingsWith(config);
+        assertTrue(replacement.enableFeatureBloat());
+        replacement.resetToDefaults();
+        assertFalse(replacement.enableFeatureBloat());
+        config.disableAllSettings();
+        assertFalse(config.enableFeatureBloat());
+    }
+
+    @Test
+    void antialiasingDefaultsOnAndSurvivesConfigSharing() throws IOException {
+        WaypointerConfig config = new WaypointerConfig();
+        assertTrue(config.renderAntialiasing());
+        assertTrue(WaypointerConfig.fromJson("{\"configSchemaVersion\":7}").renderAntialiasing());
+        config.setRenderAntialiasing(false);
+        assertFalse(WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config)).renderAntialiasing());
+        assertFalse(V10ConfigBodyCodec.decode(V10ConfigBodyCodec.encode(config)).renderAntialiasing());
+        WaypointerConfig replacement = new WaypointerConfig();
+        replacement.replaceShareableSettingsWith(config);
+        assertFalse(replacement.renderAntialiasing());
+        replacement.resetToDefaults();
+        assertTrue(replacement.renderAntialiasing());
+        replacement.disableAllSettings();
+        assertFalse(replacement.renderAntialiasing());
+    }
+
+    @Test
+    void skipFadeDurationSurvivesSharingAndResetsToInstant() throws IOException {
+        WaypointerConfig config = new WaypointerConfig();
+        assertEquals(0, config.waypointSkipFadeMs());
+        config.setWaypointSkipFadeMs(200);
+        assertEquals(200, WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config)).waypointSkipFadeMs());
+        assertEquals(200, V10ConfigBodyCodec.decode(V10ConfigBodyCodec.encode(config)).waypointSkipFadeMs());
+        WaypointerConfig replacement = new WaypointerConfig();
+        replacement.replaceShareableSettingsWith(config);
+        assertEquals(200, replacement.waypointSkipFadeMs());
+        replacement.resetToDefaults();
+        assertEquals(0, replacement.waypointSkipFadeMs());
+        config.setWaypointSkipFadeMs(-1);
+        assertEquals(0, config.waypointSkipFadeMs());
+        config.setWaypointSkipFadeMs(Integer.MAX_VALUE);
+        assertEquals(5000, config.waypointSkipFadeMs());
+    }
+
+    @Test
     void corruptConfigIsQuarantinedBeforeDefaultsCanBeSaved(@TempDir Path dir)
             throws IOException {
         Path file = dir.resolve("config.json");
@@ -55,24 +118,24 @@ class WaypointerConfigTest {
     void futureSchemaIsRejectedBeforeDeserialization() {
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                 () -> WaypointerConfig.fromJson(
-                        "{\"configSchemaVersion\":8,\"unknownFutureSetting\":{}}"));
+                        "{\"configSchemaVersion\":9,\"unknownFutureSetting\":{}}"));
 
-        assertTrue(failure.getMessage().contains("schema version 8"));
-        assertTrue(failure.getMessage().contains("supported version 7"));
+        assertTrue(failure.getMessage().contains("schema version 9"));
+        assertTrue(failure.getMessage().contains("supported version 8"));
     }
 
     @Test
     void futureSchemaConfigIsPreservedAndAllWritesStayBlocked(@TempDir Path dir)
             throws IOException {
         Path file = dir.resolve("config.json");
-        String future = "{\n  \"configSchemaVersion\": 8,\n"
+        String future = "{\n  \"configSchemaVersion\": 9,\n"
                 + "  \"unknownFutureSetting\": {\"sentinel\": true}\n}\n";
         byte[] futureBytes = future.getBytes(StandardCharsets.UTF_8);
         Files.write(file, futureBytes);
 
         WaypointerConfig config = WaypointerConfig.load(file);
 
-        assertEquals(7, config.configSchemaVersion());
+        assertEquals(8, config.configSchemaVersion());
         assertTrue(config.showTracer());
         config.setShowTracer(false);
         config.save();
@@ -96,7 +159,7 @@ class WaypointerConfigTest {
         config.flush();
 
         String persisted = Files.readString(file);
-        assertTrue(persisted.contains("\"configSchemaVersion\": 7"));
+        assertTrue(persisted.contains("\"configSchemaVersion\": 8"));
         assertTrue(persisted.contains("\"irisShaderHudFallback\": true"));
     }
 
@@ -158,6 +221,18 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void formerAnimatedDefaultPaintLoadsItsStoredFirstFrame() {
+        WaypointPaint first = WaypointPaint.solid(0x123456);
+        JsonObject json = new JsonObject();
+        json.add("waypointPainterDefaultPalette", new com.google.gson.Gson().toJsonTree(first.paletteCopy()));
+        json.addProperty("waypointPainterDefaultPixels", first.pixelsBase64());
+        json.add("waypointPainterDefaultAnimation", new JsonObject());
+        WaypointerConfig restarted = WaypointerConfig.fromJson(json.toString());
+        assertEquals(first, restarted.waypointPainterDefaultPaint());
+        assertFalse(new com.google.gson.Gson().toJson(restarted).contains("waypointPainterDefaultAnimation"));
+    }
+
+    @Test
     void defaultReachRadiusIsAlwaysFiniteAndBounded() {
         WaypointerConfig config = new WaypointerConfig();
 
@@ -202,6 +277,35 @@ class WaypointerConfigTest {
     }
 
         @Test
+    void labelAppearanceDefaultsBoundsPersistenceAndReset() {
+        WaypointerConfig config = WaypointerConfig.fromJson("{}");
+        assertTrue(config.labelFollowCameraEffects());
+        assertEquals(1.0, config.labelOpacity());
+        config.setLabelOpacity(-1);
+        assertEquals(0.0, config.labelOpacity());
+        config.setLabelOpacity(2);
+        assertEquals(1.0, config.labelOpacity());
+        config.setLabelOpacity(0.4);
+        config.setLabelOpacity(Double.NaN);
+        config.setLabelOpacity(Double.POSITIVE_INFINITY);
+        assertEquals(0.4, config.labelOpacity());
+        config.setLabelFollowCameraEffects(false);
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config));
+        assertFalse(decoded.labelFollowCameraEffects());
+        assertEquals(0.4, decoded.labelOpacity());
+        WaypointerConfig copied = new WaypointerConfig();
+        copied.replaceWith(decoded);
+        assertFalse(copied.labelFollowCameraEffects());
+        assertEquals(0.4, copied.labelOpacity());
+        WaypointerConfig loaded = WaypointerConfig.fromJson("{\"labelFollowCameraEffects\":false,\"labelOpacity\":0.4}");
+        assertFalse(loaded.labelFollowCameraEffects());
+        assertEquals(0.4, loaded.labelOpacity());
+        copied.resetToDefaults();
+        assertTrue(copied.labelFollowCameraEffects());
+        assertEquals(1.0, copied.labelOpacity());
+    }
+
+    @Test
     void labelScaleDefaultsToOneAndClampsSafeBounds() {
         WaypointerConfig config = new WaypointerConfig();
 
@@ -1160,39 +1264,39 @@ class WaypointerConfigTest {
     @Test
     void etherwarpAlignmentPreferencePersistsDisablesResetsAndReplaces() {
         WaypointerConfig config = new WaypointerConfig();
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF.id(),
                 config.etherwarpAlignmentSound());
 
-        config.setEtherwarpAlignmentSound(WaypointerConfig.EtherwarpAlignmentSound.BELL);
+        config.setEtherwarpAlignmentSound(WaypointerConfig.EtherwarpAlignmentSound.BELL.id());
         WaypointerConfig decoded = WaypointerConfigCodec.decode(
                 WaypointerConfigCodec.encode(config));
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.BELL,
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.BELL.id(),
                 decoded.etherwarpAlignmentSound());
 
         config.resetToDefaults();
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF.id(),
                 config.etherwarpAlignmentSound());
         config.disableAllSettings();
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF.id(),
                 config.etherwarpAlignmentSound());
 
-        config.setEtherwarpAlignmentSound(WaypointerConfig.EtherwarpAlignmentSound.PLING);
+        config.setEtherwarpAlignmentSound(WaypointerConfig.EtherwarpAlignmentSound.PLING.id());
         config.replaceShareableSettingsWith(new WaypointerConfig());
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF.id(),
                 config.etherwarpAlignmentSound());
     }
 
     @Test
     void legacyEtherwarpAlignmentSoundMigrationsPreserveTheExperienceCue() {
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF, WaypointerConfig.fromJson(
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF.id(), WaypointerConfig.fromJson(
                 "{\"configSchemaVersion\":5}").etherwarpAlignmentSound());
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE, WaypointerConfig.fromJson(
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE.id(), WaypointerConfig.fromJson(
                 "{\"configSchemaVersion\":6,\"etherwarpAlignmentSound\":true}")
                 .etherwarpAlignmentSound());
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF, WaypointerConfig.fromJson(
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF.id(), WaypointerConfig.fromJson(
                 "{\"configSchemaVersion\":6,\"etherwarpAlignmentSound\":false}")
                 .etherwarpAlignmentSound());
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.PLING, WaypointerConfig.fromJson(
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.PLING.id(), WaypointerConfig.fromJson(
                 "{\"configSchemaVersion\":7,\"etherwarpAlignmentSoundType\":\"PLING\"}")
                 .etherwarpAlignmentSound());
     }
@@ -1202,8 +1306,27 @@ class WaypointerConfigTest {
         WaypointerConfig decoded = WaypointerConfigCodec.decode(configCodeForRawPayload(
                 (byte) 4, (byte) 79, (byte) 1, (byte) 0));
 
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE,
+        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE.id(),
                 decoded.etherwarpAlignmentSound());
+    }
+
+    @Test
+    void soundIdsRoundTripAndRejectInvalidInput() {
+        WaypointerConfig config = new WaypointerConfig();
+        for (String id : List.of("block.note_block.pling", "custom:cue/ready")) {
+            config.setEtherwarpAlignmentSound(id);
+            assertEquals(id, WaypointerConfigCodec.decode(
+                    WaypointerConfigCodec.encode(config)).etherwarpAlignmentSound());
+            assertEquals(id, WaypointerConfig.fromJson(
+                    new com.google.gson.Gson().toJson(config)).etherwarpAlignmentSound());
+        }
+        config.setEtherwarpAlignmentSound(" minecraft:block.note_block.pling ");
+        assertEquals("block.note_block.pling", config.etherwarpAlignmentSound());
+        assertThrows(IllegalArgumentException.class,
+                () -> config.setEtherwarpAlignmentSound("not a sound"));
+        assertEquals("block.note_block.pling", config.etherwarpAlignmentSound());
+        config.setEtherwarpAlignmentSound("");
+        assertEquals("", config.etherwarpAlignmentSound());
     }
 
     @Test
@@ -1211,25 +1334,47 @@ class WaypointerConfigTest {
         WaypointerConfig config = new WaypointerConfig();
         assertTrue(config.crystalHollowsEnabled());
         assertTrue(config.crystalHollowsStructureWaypoints());
+        assertFalse(config.crystalHollowsHideStructuresFolder());
         assertTrue(config.crystalHollowsShowRoughMarkers());
         assertTrue(config.crystalHollowsEntityDetection());
         assertTrue(config.crystalHollowsChatDetection());
         assertTrue(config.crystalHollowsWishingCompassSolver());
         assertTrue(config.crystalHollowsCompassRays());
+        assertTrue(config.crystalHollowsMetalDetector());
+        assertTrue(config.crystalHollowsRemoteSharing());
         assertTrue(config.crystalHollowsAnnounceDetections());
         assertFalse(config.crystalHollowsNucleusWaypoints());
 
         config.setCrystalHollowsNucleusWaypoints(true);
+        config.setCrystalHollowsMetalDetector(false);
+        config.setCrystalHollowsRemoteSharing(false);
+        config.setCrystalHollowsHideStructuresFolder(true);
         WaypointerConfig decoded = WaypointerConfigCodec.decode(
                 WaypointerConfigCodec.encode(config));
         assertTrue(decoded.crystalHollowsNucleusWaypoints());
+        assertFalse(decoded.crystalHollowsMetalDetector());
+        assertFalse(decoded.crystalHollowsRemoteSharing());
+        assertTrue(decoded.crystalHollowsHideStructuresFolder());
+        WaypointerConfig copied = new WaypointerConfig();
+        copied.replaceWith(decoded);
+        assertFalse(copied.crystalHollowsMetalDetector());
+        assertFalse(copied.crystalHollowsRemoteSharing());
+        assertFalse(WaypointerConfig.fromJson("{\"crystalHollowsMetalDetector\":false}")
+                .crystalHollowsMetalDetector());
+        assertFalse(WaypointerConfig.fromJson("{\"crystalHollowsRemoteSharing\":false}")
+                .crystalHollowsRemoteSharing());
 
         config.disableAllSettings();
         assertFalse(config.crystalHollowsEnabled());
         assertFalse(config.crystalHollowsCompassRays());
+        assertFalse(config.crystalHollowsMetalDetector());
+        assertFalse(config.crystalHollowsRemoteSharing());
         config.resetToDefaults();
         assertTrue(config.crystalHollowsEnabled());
         assertTrue(config.crystalHollowsCompassRays());
+        assertTrue(config.crystalHollowsMetalDetector());
+        assertTrue(config.crystalHollowsRemoteSharing());
+        assertFalse(config.crystalHollowsHideStructuresFolder());
         assertFalse(config.crystalHollowsNucleusWaypoints());
     }
 
@@ -1245,12 +1390,15 @@ class WaypointerConfigTest {
         config.setCrystalHollowsCompassRays(false);
         config.setCrystalHollowsAnnounceDetections(false);
         config.setCrystalHollowsNucleusWaypoints(true);
+        config.setCrystalHollowsMetalDetector(false);
+        config.setCrystalHollowsRemoteSharing(false);
+        config.setCrystalHollowsHideStructuresFolder(true);
 
         List<Integer> crystalTags = WaypointerConfigCodec.encodeTaggedFields(config).stream()
                 .map(WaypointerConfigCodec.TaggedField::tag)
                 .filter(tag -> tag >= 81)
                 .toList();
-        assertEquals(List.of(81, 82, 83, 84, 85, 86, 87, 88, 89), crystalTags);
+        assertEquals(List.of(81, 82, 83, 84, 85, 86, 87, 88, 89, 95, 102, 103), crystalTags);
 
         WaypointerConfig decoded = V10ConfigBodyCodec.decode(V10ConfigBodyCodec.encode(config));
         assertEquals(WaypointerConfigCodec.encode(config), WaypointerConfigCodec.encode(decoded));

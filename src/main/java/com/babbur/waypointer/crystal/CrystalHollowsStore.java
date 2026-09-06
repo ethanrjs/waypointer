@@ -190,6 +190,10 @@ public final class CrystalHollowsStore {
                     sighting.get("source").getAsString(), sighting.get("atMillis").getAsLong(),
                     candidates, sighting.get("note").getAsString()));
         }
+        // Older builds mistook the shared grunt profile name for a confirmed boss sighting.
+        sightings.removeIf(sighting -> sighting.structure() == CrystalHollowsStructure.CORLEONE
+                && sighting.confidence() == SightingConfidence.ENTITY
+                && "entity:team treasurite".equals(CrystalHollowsSidebar.normalizeName(sighting.source())));
         EnumMap<Crystal, CrystalState> crystals = new EnumMap<>(Crystal.class);
         JsonObject crystalJson = json.getAsJsonObject("crystals");
         for (Map.Entry<String, JsonElement> entry : crystalJson.entrySet()) {
@@ -225,7 +229,7 @@ public final class CrystalHollowsStore {
         json.addProperty("lastKnownDay", state.lastKnownDay());
         json.addProperty("expiresAtMillis", expiresAtMillis(state));
         JsonArray sightings = new JsonArray();
-        for (StructureSighting sighting : state.sightings()) {
+        for (StructureSighting sighting : state.localSightings()) {
             JsonObject encoded = new JsonObject();
             encoded.addProperty("structure", sighting.structure().name());
             encoded.addProperty("x", sighting.x());

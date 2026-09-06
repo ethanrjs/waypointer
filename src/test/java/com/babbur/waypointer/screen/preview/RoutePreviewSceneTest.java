@@ -90,6 +90,7 @@ class RoutePreviewSceneTest {
         WaypointGroup group = WaypointGroup.create("Paint", "hub");
         group.add(Waypoint.at(0, 0, 0));
         WaypointerConfig config = new WaypointerConfig();
+        config.setEnableFeatureBloat(true);
         var routePaint = com.babbur.waypointer.core.WaypointPaint.solid(0x123456);
         var defaultPaint = com.babbur.waypointer.core.WaypointPaint.solid(0x654321);
         group.setPaint(routePaint);
@@ -104,6 +105,12 @@ class RoutePreviewSceneTest {
                     "scene construction must stay CPU-only until a widget owns the texture");
         }
 
+        config.setEnableFeatureBloat(false);
+        RoutePreviewScene disabled = RoutePreviewScene.build(group, config, null);
+        assertEquals(null, disabled.paint());
+        assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED, disabled.boxStyle());
+        assertEquals(routePaint, group.paint());
+        config.setEnableFeatureBloat(true);
         group.setPaint(null);
         assertEquals(defaultPaint, RoutePreviewScene.effectivePaint(group, config));
         group.setPaintEnabled(false);
