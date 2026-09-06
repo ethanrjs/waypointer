@@ -50,6 +50,21 @@ tasks.register('buildAllTargets') {
 	dependsOn buildMinecraft26_2
 }
 
+def previousSmokeTask = null
+minecraftTargets.keySet().each { minecraftTarget ->
+	def prerequisite = previousSmokeTask
+	previousSmokeTask = tasks.register("smokeMinecraft${minecraftTarget.replace('.', '_')}", Exec) {
+		if (prerequisite != null) dependsOn prerequisite
+		commandLine(wrapperCommand + ['runClientGameTest', "-Pminecraft_version=${minecraftTarget}",
+				'--no-daemon', '--console=plain'] + forwardedBuildArguments)
+	}
+}
+tasks.register('smokeAllTargets') {
+	group = 'verification'
+	description = 'Launches Minecraft and loads a world on every supported target.'
+	dependsOn previousSmokeTask
+}
+
 version = project.mod_version
 group = project.maven_group
 
@@ -63,6 +78,11 @@ tasks.named('jar', Jar) {
 }
 
 repositories {
+	maven {
+		name = 'Modrinth'
+		url = 'https://api.modrinth.com/maven'
+		content { includeGroup 'maven.modrinth' }
+	}
 	maven {
 		name = 'Hypixel'
 		url = 'https://repo.hypixel.net/repository/Hypixel/'
@@ -81,6 +101,28 @@ loom {
 			sourceSet sourceSets.client
 		}
 	}
+}
+
+fabricApi {
+	configureTests {
+		createSourceSet = true
+		modId = 'waypointer-smoke'
+		enableGameTests = false
+		enableClientGameTests = true
+		clearRunDirectory = true
+		username = 'WaypointerTest'
+	}
+}
+
+def retainLaunchLogs = tasks.register('retainLaunchLogs', Sync) {
+	from(layout.buildDirectory.dir('run/clientGameTest')) {
+		include 'logs/**', 'crash-reports/**', 'screenshots/**'
+	}
+	into layout.buildDirectory.dir("reports/launch/${targetMinecraft}")
+}
+tasks.named('runClientGameTest') {
+	timeout = java.time.Duration.ofMinutes(5)
+	finalizedBy retainLaunchLogs
 }
 
 // The picture-in-picture renderer changed its constructor and render callback
@@ -167,6 +209,7 @@ dependencies {
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${target.fabricApi}"
 	implementation "net.hypixel:mod-api:${project.hypixel_mod_api_version}"
+	gametestRuntimeOnly 'maven.modrinth:1A2mKfBx:SlqCF6Or'
 
 	include implementation('org.brotli:dec:0.1.2')
 
@@ -175,9 +218,9 @@ dependencies {
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
-def optInTestProperties = ['coleweight.file', 'catalog.publish.timing', 'renderer.timing', 'v10.corpus', 'v10.timing', 'v10.routes', 'v10.report', 'v10.regen', 'codec.routes', 'codec.report']
+def optInTestProperties = ['coleweight.file', 'v10.corpus', 'v10.regen']
 tasks.withType(Test).configureEach {
-	// Let opt-in tests receive only their explicit fixture/benchmark inputs.
+	// Forward only explicit fixture inputs to opt-in tests.
 	optInTestProperties.each { prop ->
 		def value = providers.gradleProperty(prop)
 		if (System.getProperty(prop) != null) systemProperty prop, System.getProperty(prop)
@@ -190,26 +233,15 @@ test {
 	finalizedBy tasks.named('jacocoTestReport')
 }
 
-tasks.register('writeCodecExperimentClasspath') {
-	group = 'verification'
-	description = 'Writes the test runtime classpath for the standalone codec experiments.'
-	dependsOn tasks.named('testClasses')
-	doLast {
-		def output = layout.buildDirectory.file('reports/codec-experiment-classpath.txt').get().asFile
-		output.parentFile.mkdirs()
-		output.text = sourceSets.test.runtimeClasspath.asPath
-	}
-}
-
 tasks.register('validateV10Corpus', Test) {
 	group = 'verification'
-	description = 'Validates the V10 codec against the locked external corpus.'
+	description = 'Validates V10 semantic round trips against an external corpus.'
 	dependsOn tasks.named('testClasses')
 	testClassesDirs = sourceSets.test.output.classesDirs
 	classpath = sourceSets.test.runtimeClasspath
 	useJUnitPlatform()
 	filter {
-		includeTestsMatching 'com.babbur.waypointer.codec.V10LockedCorpusTest'
+		includeTestsMatching 'com.babbur.waypointer.codec.V10ExternalCorpusRoundTripTest'
 	}
 	testLogging.showStandardStreams = true
 	doFirst {

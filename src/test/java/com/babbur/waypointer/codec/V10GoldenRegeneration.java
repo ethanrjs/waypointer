@@ -21,14 +21,8 @@ import java.util.HexFormat;
 import java.util.Locale;
 import java.util.zip.Deflater;
 
-/**
- * Opt-in regeneration of the V10 golden fixtures after a deliberate wire change.
- *
- * <p>Run with {@code -Pv10.regen=<repo root>}. The kind-2 vectors are rebuilt
- * from their recorded semantic bodies (coordinates are the invariant), the
- * kind-3 vectors from {@link V10ConfigCodecTest#fixtures()}. Review the diff
- * before committing: every change here is a wire-format change.
- */
+/** Regenerates wire fixtures with {@code -Pv10.regen=<repo root>}. Kind 2 preserves recorded
+ * coordinates; kind 3 uses {@link V10ConfigCodecTest#fixtures()}. Review every wire change. */
 class V10GoldenRegeneration {
 
     static final String KIND2_PROFILE =

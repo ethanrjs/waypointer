@@ -27,7 +27,6 @@
   "waypointer.settings.setting.secretCompletionSound.label": "Codka dhammaystirka qarsoodiga ah",
   "waypointer.settings.setting.importedRouteColorMode.label": "Midabada wadada laga soo dhoofiyo",
   "waypointer.settings.setting.showExportRoutePreview.label": "Muuqaalka hore ee 3D ee wadada",
-  "waypointer.settings.setting.action.perfTest.label": "Imtixaanka cadaadiska waxqabadka",
   "waypointer.progression.new_best": "  (Natiijo cusub oo ugu fiican!)",
   "waypointer.command.export.failed": "Dhoofinta ayaa guuldareysatay: %1$s",
   "waypointer.command.import.label": "Calaamadda: \"%1$s\"",

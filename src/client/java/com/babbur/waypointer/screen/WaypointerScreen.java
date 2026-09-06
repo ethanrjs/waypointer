@@ -15,6 +15,7 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.crystal.CrystalHollowsProjection;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
@@ -65,6 +66,7 @@ public final class WaypointerScreen extends Screen {
     final LinkedHashSet<String> selectedGroupIds = new LinkedHashSet<>();
     private final WaypointerRouteList routeList;
     private String selectionAnchorGroupId;
+    private String selectedFolderId;
     private String pendingFocusGroupId;
     private String pendingFocusRoomZoneId;
     private String lastObservedCurrentRoomZoneId;
@@ -1029,6 +1031,21 @@ public final class WaypointerScreen extends Screen {
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.main.folder.select"),
                 null, () -> selectFolderRoutes(folder)));
+        if (folder.runtimeOnly()
+                && CrystalHollowsStructureFolder.FOLDER_ID.equals(folder.id())) {
+            items.add(ContextMenuOverlay.Item.of(
+                    Component.translatable(config.crystalHollowsHideStructuresFolder()
+                            ? "waypointer.screen.main.menu.show"
+                            : "waypointer.screen.main.menu.hide"),
+                    null, () -> {
+                        config.setCrystalHollowsHideStructuresFolder(
+                                !config.crystalHollowsHideStructuresFolder());
+                        if (WaypointerClient.crystalHollowsTracker() != null) {
+                            WaypointerClient.crystalHollowsTracker().rebuildProjection();
+                        }
+                        clearRouteSelection();
+                    }));
+        }
         if (!folder.runtimeOnly()) {
             items.add(ContextMenuOverlay.Item.of(
                     Component.translatable("waypointer.screen.main.folder.edit"),
@@ -1240,12 +1257,17 @@ public final class WaypointerScreen extends Screen {
     }
 
     private void replaceRouteSelection(Set<String> nextSelectionIds) {
+        replaceRouteSelection(nextSelectionIds, null);
+    }
+
+    private void replaceRouteSelection(Set<String> nextSelectionIds, String folderId) {
         selectedGroupIds.clear();
         if (nextSelectionIds != null) {
             for (String id : nextSelectionIds) {
                 if (id != null) selectedGroupIds.add(id);
             }
         }
+        selectedFolderId = folderId;
         selectedGroupId = selectedGroupIds.isEmpty() ? null : selectedGroupIds.iterator().next();
         clearHideAllConfirmation();
         clearDeleteConfirmation();
@@ -1273,7 +1295,7 @@ public final class WaypointerScreen extends Screen {
                 folderRoutes.add(groupId);
             }
         }
-        replaceRouteSelection(folderRoutes);
+        replaceRouteSelection(folderRoutes, folder.id());
         selectionAnchorGroupId = folderRoutes.isEmpty() ? null : folderRoutes.iterator().next();
         syncAuthoringRouteFocus();
         refreshActionButtons();
@@ -1283,6 +1305,7 @@ public final class WaypointerScreen extends Screen {
         selectedGroupIds.clear();
         selectedGroupId = null;
         selectionAnchorGroupId = null;
+        selectedFolderId = null;
         syncAuthoringRouteFocus();
         clearHideAllConfirmation();
         clearDeleteConfirmation();
@@ -1290,16 +1313,6 @@ public final class WaypointerScreen extends Screen {
 
     private void syncAuthoringRouteFocus() {
         manager.focusRouteForAuthoring(selectedGroupId == null ? null : manager.get(selectedGroupId));
-    }
-
-    /** Drops selected ids that are no longer on screen (e.g. inside a collapsed folder). */
-    void pruneSelectionToVisible(List<String> visibleIds) {
-        LinkedHashSet<String> kept = RouteSelectionPolicy.retainVisible(
-                visibleIds, selectedGroupIds);
-        if (kept.size() == selectedGroupIds.size()) return;
-        replaceRouteSelection(kept);
-        syncAuthoringRouteFocus();
-        refreshActionButtons();
     }
 
     private void clearHideAllConfirmation() {
@@ -1792,14 +1805,30 @@ public final class WaypointerScreen extends Screen {
             return;
         }
 
-        List<WaypointGroup> selectedGroups = selectedVisibleGroups();
+        if (selectedFolderId != null) {
+            RouteFolder folder = manager.folder(selectedFolderId);
+            List<WaypointGroup> folderGroups = exportFolderGroups(folder);
+            if (folder == null || folderGroups.isEmpty()) {
+                flashMainNotice(emptyExportNotice(selectedZoneId));
+                return;
+            }
+            ExportScreen.openForFolder(
+                    this, config, manager, folder.name(), folderGroups);
+            return;
+        }
+
+        List<WaypointGroup> selectedGroups = logicalSelectedGroups(
+                manager, selectedZoneId, selectedGroupIds);
+        if (!selectedGroupIds.isEmpty() && selectedGroups.isEmpty()) {
+            flashMainNotice(emptyExportNotice(selectedZoneId));
+            return;
+        }
         if (selectedGroups.size() == 1) {
             ExportScreen.openForGroup(this, config, manager, selectedGroups.get(0));
             return;
         }
         if (selectedGroups.size() > 1) {
-            ExportScreen.openForGroups(
-                    this, config, manager, selectedGroups, "Selected routes");
+            ExportScreen.openForSelectedGroups(this, config, manager, selectedGroups);
             return;
         }
 
@@ -1809,12 +1838,51 @@ public final class WaypointerScreen extends Screen {
             flashMainNotice(emptyExportNotice(selectedZoneId));
             return;
         }
+        if (groups.size() == 1) {
+            ExportScreen.openForGroup(this, config, manager, groups.getFirst());
+            return;
+        }
         String label = displayZoneLabel(selectedZoneId);
         ExportScreen.openForGroups(this, config, manager, groups, label);
     }
 
+    private List<WaypointGroup> exportFolderGroups(RouteFolder folder) {
+        return exportFolderGroups(manager, folder);
+    }
+
+    static List<WaypointGroup> exportFolderGroups(
+            ActiveGroupManager manager, RouteFolder folder) {
+        if (manager == null || folder == null) return List.of();
+        List<WaypointGroup> groups = new ArrayList<>();
+        for (String groupId : manager.groupIdsInFolder(folder.id())) {
+            WaypointGroup group = manager.get(groupId);
+            if (group != null && !group.temp() && !group.runtimeOnly()) groups.add(group);
+        }
+        return List.copyOf(groups);
+    }
+
+    static List<WaypointGroup> logicalSelectedGroups(
+            ActiveGroupManager manager, String selectedZoneId, Set<String> selectedIds) {
+        if (manager == null || selectedIds == null || selectedIds.isEmpty()) return List.of();
+        List<WaypointGroup> groups = new ArrayList<>();
+        for (WaypointGroup group : manager.allGroups()) {
+            if (group == null || group.temp() || group.runtimeOnly()
+                    || !selectedIds.contains(group.id())) continue;
+            boolean inZone = isDungeonRoomsZone(selectedZoneId)
+                    ? group.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                    : selectedZoneId != null && selectedZoneId.equals(group.zoneId());
+            if (inZone) groups.add(group);
+        }
+        return List.copyOf(groups);
+    }
+
     private void exportDungeonRooms() {
-        List<WaypointGroup> selectedGroups = selectedVisibleGroups();
+        List<WaypointGroup> selectedGroups = logicalSelectedGroups(
+                manager, selectedZoneId, selectedGroupIds);
+        if (!selectedGroupIds.isEmpty() && selectedGroups.isEmpty()) {
+            flashMainNotice(emptyExportNotice(selectedZoneId));
+            return;
+        }
         List<WaypointGroup> routeGroups =
                 dungeonRouteGroupsForExport(selectedGroups, manager.allGroups());
         if (!routeGroups.isEmpty()) {
@@ -1911,16 +1979,15 @@ public final class WaypointerScreen extends Screen {
                 return new ClipboardImportOutcome(null, dungeonRoutes.result(), null, null, null);
             }
             if (decoded instanceof UniversalShareCodec.Configuration configuration) {
-                // Settings never change here; the confirmation screen is the gate.
+                // Apply settings only after confirmation.
                 return new ClipboardImportOutcome(null, null, configuration.config(), null, null);
             }
             if (decoded instanceof UniversalShareCodec.CatalogReference reference) {
-                // Resolved by the catalog preview screen, which needs the network.
+                // The catalog preview fetches this route.
                 return new ClipboardImportOutcome(null, null, null, reference.routeId(), null);
             }
 
-            // Keep the route editor's localized fallback-name behavior instead of
-            // installing the generic name used by the universal command path.
+            // Preserve the editor's localized fallback names.
             return new ClipboardImportOutcome(
                     WaypointImporter.importAny(text, defaultImportedRouteName),
                     null, null, null, null);
@@ -1935,7 +2002,7 @@ public final class WaypointerScreen extends Screen {
                                   String catalogRouteId,
                                   String error) {}
 
-    /** Configuration shares pasted into the route editor go through the same review gate as Settings. */
+    /** Confirms pasted configuration imports, as in Settings. */
     private void reviewConfigImport(WaypointerConfig imported) {
         ConfigImportConfirmation.open(this, config, imported, outcome -> {
             if (!outcome.confirmed()) return;

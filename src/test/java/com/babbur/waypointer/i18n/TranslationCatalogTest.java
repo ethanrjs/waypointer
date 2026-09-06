@@ -1,6 +1,5 @@
 package com.babbur.waypointer.i18n;
 
-import com.babbur.waypointer.screen.settings.PerfScenarios;
 import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
 import com.google.gson.stream.JsonReader;
@@ -172,11 +171,6 @@ class TranslationCatalogTest {
             required.add(impact.wordTranslationKey());
             required.add(impact.chipTranslationKey());
         }
-        for (PerfScenarios.Scenario scenario : PerfScenarios.all()) {
-            required.add(PerfScenarios.labelTranslationKey(scenario));
-            required.add(PerfScenarios.descriptionTranslationKey(scenario));
-        }
-
         Set<String> missing = new TreeSet<>(required);
         missing.removeAll(englishKeys);
         assertTrue(missing.isEmpty(), () -> "visible settings translations missing from en_us.json: " + missing);

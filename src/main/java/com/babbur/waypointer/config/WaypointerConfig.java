@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import net.minecraft.resources.Identifier;
 import com.google.gson.annotations.SerializedName;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Waypoint;
@@ -31,11 +32,17 @@ public final class WaypointerConfig {
 
     public enum BeaconBeamMode { OFF, CURRENT, ALL_VISIBLE }
 
-    public enum EtherwarpAlignmentSound { OFF, EXPERIENCE, PLING, BELL }
+    public enum EtherwarpAlignmentSound {
+        OFF(""), EXPERIENCE("entity.experience_orb.pickup"), PLING("block.note_block.pling"), BELL("block.bell.use");
+
+        private final String id;
+        EtherwarpAlignmentSound(String id) { this.id = id; }
+        public String id() { return id; }
+    }
 
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int CONFIG_SCHEMA_VERSION = 7;
+    private static final int CONFIG_SCHEMA_VERSION = 8;
     private static final int TEMP_DURATION_MIN_SECONDS = 1;
     private static final int TEMP_DURATION_MAX_SECONDS = 24 * 60 * 60;
     private static final int SECONDS_PER_MINUTE = 60;
@@ -58,6 +65,8 @@ public final class WaypointerConfig {
     private double tracerOpacity = 0.95;
     private double tracerThickness = 3.0;
     private double waypointOutlineThickness = 5.0;
+    private boolean renderAntialiasing = true;
+    private boolean enableFeatureBloat = false;
     private double waypointMarkerScale = 1.0;
     private double waypointOutlineOpacity = 1.0;
     private boolean matchWaypointOutlineToWaypointColor = true;
@@ -67,6 +76,9 @@ public final class WaypointerConfig {
     private boolean showWaypointDistances = true;
     private boolean showRouteProgress = false;
     private double labelScale = 1.0;
+    private boolean labelFollowCameraEffects = true;
+    private double labelOpacity = 1.0;
+    private int waypointSkipFadeMs;
     private boolean scaleWaypointTextWithDistance = false;
     private boolean matchWaypointTextToWaypointColor = true;
     private int sequencePreviousWaypointCount = SequenceVisibility.DEFAULT.previous();
@@ -90,8 +102,8 @@ public final class WaypointerConfig {
     private boolean showDungeonEntryPathToFirstWaypoint = false;
     private boolean showDungeonEntryPathToFollowingWaypoints = false;
     private int dungeonEntryPathColor = 0x00FF00;
-    @SerializedName("etherwarpAlignmentSoundType")
-    private EtherwarpAlignmentSound etherwarpAlignmentSound = EtherwarpAlignmentSound.OFF;
+    @SerializedName("etherwarpAlignmentSoundId")
+    private String etherwarpAlignmentSound = "";
     private int routeLineColor = 0x00FF00;
     private boolean showLabelBackdrop = true;
     private boolean showLabelTextShadow = true;
@@ -127,9 +139,12 @@ public final class WaypointerConfig {
 
     private boolean crystalHollowsEnabled = true;
     private boolean crystalHollowsStructureWaypoints = true;
+    private boolean crystalHollowsHideStructuresFolder = false;
     private boolean crystalHollowsShowRoughMarkers = true;
     private boolean crystalHollowsEntityDetection = true;
     private boolean crystalHollowsChatDetection = true;
+    private boolean crystalHollowsMetalDetector = true;
+    private boolean crystalHollowsRemoteSharing = true;
     private boolean crystalHollowsWishingCompassSolver = true;
     private boolean crystalHollowsCompassRays = true;
     private boolean crystalHollowsAnnounceDetections = true;
@@ -148,11 +163,7 @@ public final class WaypointerConfig {
     private transient IOException writeBlockCause;
     private transient volatile boolean writesBlockedForFutureSchema;
 
-    /**
-     * Builds the default state used by WPC versions 1-4. Those versions were
-     * written when an omitted export toggle meant {@code true}; setting the
-     * values directly keeps config-code decoding detached from persistence.
-     */
+    /** WPC 1-4 defaults: omitted export toggles meant true. Set directly to avoid saving during decode. */
     static WaypointerConfig legacyConfigCodeDefaults() {
         WaypointerConfig config = new WaypointerConfig();
         config.exportIncludeNames = true;
@@ -273,27 +284,22 @@ public final class WaypointerConfig {
     }
 
     private void migrateEtherwarpAlignmentSound(String raw, int schemaVersion) {
-        EtherwarpAlignmentSound previous = etherwarpAlignmentSound;
-        if (schemaVersion < 7) {
-            boolean legacyEnabled = false;
-            try {
-                JsonElement parsed = JsonParser.parseString(raw);
-                if (parsed != null && parsed.isJsonObject()) {
-                    JsonObject root = parsed.getAsJsonObject();
-                    if (root.has("etherwarpAlignmentSound")) {
-                        legacyEnabled = root.get("etherwarpAlignmentSound").getAsBoolean();
-                    }
+        JsonObject root = JsonParser.parseString(raw).getAsJsonObject();
+        if (!root.has("etherwarpAlignmentSoundId") && schemaVersion < 8) {
+            if (schemaVersion >= 7 && root.has("etherwarpAlignmentSoundType")) {
+                try {
+                    etherwarpAlignmentSound = EtherwarpAlignmentSound.valueOf(
+                            root.get("etherwarpAlignmentSoundType").getAsString()).id();
+                } catch (IllegalArgumentException | UnsupportedOperationException ignored) {
+                    etherwarpAlignmentSound = "";
                 }
-            } catch (Exception ignored) {
-                legacyEnabled = false;
+            } else if (root.has("etherwarpAlignmentSound")
+                    && root.get("etherwarpAlignmentSound").getAsBoolean()) {
+                etherwarpAlignmentSound = EtherwarpAlignmentSound.EXPERIENCE.id();
             }
-            etherwarpAlignmentSound = legacyEnabled
-                    ? EtherwarpAlignmentSound.EXPERIENCE : EtherwarpAlignmentSound.OFF;
+            migratedDuringLoad = true;
         }
-        if (etherwarpAlignmentSound == null) {
-            etherwarpAlignmentSound = EtherwarpAlignmentSound.OFF;
-        }
-        if (etherwarpAlignmentSound != previous) migratedDuringLoad = true;
+        etherwarpAlignmentSound = normalizeSoundId(etherwarpAlignmentSound);
     }
     private void migrateLegacyTempDurationMinutes(String raw, int schemaVersion) {
         int originalDurationSec = tempDefaultDurationSec;
@@ -439,6 +445,19 @@ public final class WaypointerConfig {
     public double tracerOpacity()             { return tracerOpacity; }
     public double tracerThickness()           { return clamp(tracerThickness, 1.0, 12.0); }
     public double waypointOutlineThickness()  { return clamp(waypointOutlineThickness, 1.0, 12.0); }
+    public boolean enableFeatureBloat() { return enableFeatureBloat; }
+    public void setEnableFeatureBloat(boolean value) { enableFeatureBloat = value; save(); }
+    public BoxStyle effectiveBoxStyle() {
+        return !enableFeatureBloat && boxStyle() == BoxStyle.PAINT
+                ? BoxStyle.FILLED_OUTLINED : boxStyle();
+    }
+    public boolean exportRoutePreviewEnabled() { return enableFeatureBloat && showExportRoutePreview; }
+
+    public boolean renderAntialiasing() { return renderAntialiasing; }
+    public void setRenderAntialiasing(boolean value) {
+        renderAntialiasing = value;
+        save();
+    }
     public double waypointMarkerScale()       { return clamp(waypointMarkerScale, 0.25, 3.0); }
     public double waypointOutlineOpacity()    { return clamp(waypointOutlineOpacity, 0.0, 1.0); }
     public boolean matchWaypointOutlineToWaypointColor() { return matchWaypointOutlineToWaypointColor; }
@@ -452,10 +471,18 @@ public final class WaypointerConfig {
     public boolean showWaypointNames()        { return showWaypointNames; }
     public boolean showWaypointDistances()    { return showWaypointDistances; }
     public boolean showRouteProgress()        { return showRouteProgress; }
+    public boolean labelFollowCameraEffects() { return labelFollowCameraEffects; }
+    public double labelOpacity() { return Double.isFinite(labelOpacity) ? clamp(labelOpacity, 0, 1) : 1.0; }
         public double labelScale()                { return clamp(labelScale, 0.25, 4.0); }
     public boolean scaleWaypointTextWithDistance() { return scaleWaypointTextWithDistance; }
     public boolean matchWaypointTextToWaypointColor() { return matchWaypointTextToWaypointColor; }
     /** Maps the old boolean API to previous-step visibility. */
+    public int waypointSkipFadeMs() { return Math.max(0, Math.min(5000, waypointSkipFadeMs)); }
+    public void setWaypointSkipFadeMs(int value) {
+        waypointSkipFadeMs = Math.max(0, Math.min(5000, value));
+        save();
+    }
+
     public boolean showCompleted()            { return sequenceVisibility().previous() > 0; }
     public int sequencePreviousWaypointCount() { return sequenceVisibility().previous(); }
     public boolean showCurrentSequenceWaypoint() { return showCurrentSequenceWaypoint; }
@@ -482,9 +509,8 @@ public final class WaypointerConfig {
     public boolean showDungeonEntryPathToFirstWaypoint() { return showDungeonEntryPathToFirstWaypoint; }
     public boolean showDungeonEntryPathToFollowingWaypoints() { return showDungeonEntryPathToFollowingWaypoints; }
     public int dungeonEntryPathColor()        { return dungeonEntryPathColor & 0xFFFFFF; }
-    public EtherwarpAlignmentSound etherwarpAlignmentSound() {
-        return etherwarpAlignmentSound == null
-                ? EtherwarpAlignmentSound.OFF : etherwarpAlignmentSound;
+    public String etherwarpAlignmentSound() {
+        return etherwarpAlignmentSound == null ? "" : etherwarpAlignmentSound;
     }
     public int routeLineColor()               { return routeLineColor & 0xFFFFFF; }
     public boolean showLabelBackdrop()        { return showLabelBackdrop; }
@@ -539,9 +565,12 @@ public final class WaypointerConfig {
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
     public boolean crystalHollowsEnabled() { return crystalHollowsEnabled; }
     public boolean crystalHollowsStructureWaypoints() { return crystalHollowsStructureWaypoints; }
+    public boolean crystalHollowsHideStructuresFolder() { return crystalHollowsHideStructuresFolder; }
     public boolean crystalHollowsShowRoughMarkers() { return crystalHollowsShowRoughMarkers; }
     public boolean crystalHollowsEntityDetection() { return crystalHollowsEntityDetection; }
     public boolean crystalHollowsChatDetection() { return crystalHollowsChatDetection; }
+    public boolean crystalHollowsMetalDetector() { return crystalHollowsMetalDetector; }
+    public boolean crystalHollowsRemoteSharing() { return crystalHollowsRemoteSharing; }
     public boolean crystalHollowsWishingCompassSolver() { return crystalHollowsWishingCompassSolver; }
     public boolean crystalHollowsCompassRays() { return crystalHollowsCompassRays; }
     public boolean crystalHollowsAnnounceDetections() { return crystalHollowsAnnounceDetections; }
@@ -632,6 +661,12 @@ public final class WaypointerConfig {
     public void setShowWaypointNames(boolean v)        { this.showWaypointNames = v; save(); }
     public void setShowWaypointDistances(boolean v)    { this.showWaypointDistances = v; save(); }
     public void setShowRouteProgress(boolean v)        { this.showRouteProgress = v; save(); }
+    public void setLabelFollowCameraEffects(boolean v) { this.labelFollowCameraEffects = v; save(); }
+    public void setLabelOpacity(double v) {
+        if (!Double.isFinite(v)) return;
+        this.labelOpacity = clamp(v, 0, 1);
+        save();
+    }
         public void setLabelScale(double v) {
         if (!Double.isFinite(v)) return;
         this.labelScale = clamp(v, 0.25, 4.0);
@@ -726,8 +761,24 @@ public final class WaypointerConfig {
         save();
     }
     public void setEtherwarpAlignmentSound(EtherwarpAlignmentSound v) {
-        this.etherwarpAlignmentSound = v == null ? EtherwarpAlignmentSound.OFF : v;
+        setEtherwarpAlignmentSound(v == null ? "" : v.id());
+    }
+
+    public void setEtherwarpAlignmentSound(String value) {
+        this.etherwarpAlignmentSound = normalizeSoundId(value);
         save();
+    }
+
+    public static boolean isValidSoundId(String value) {
+        return value != null && value.length() <= 256
+                && (value.isBlank() || Identifier.tryParse(value.trim()) != null);
+    }
+
+    private static String normalizeSoundId(String value) {
+        if (value == null || value.isBlank()) return "";
+        if (!isValidSoundId(value)) throw new IllegalArgumentException("Invalid Minecraft sound ID");
+        Identifier id = Identifier.parse(value.trim());
+        return id.getNamespace().equals("minecraft") ? id.getPath() : id.toString();
     }
     public void setRouteLineColor(int v) {
         this.routeLineColor = v & 0xFFFFFF;
@@ -784,9 +835,12 @@ public final class WaypointerConfig {
     public void setDungeonWaypointsFeatureEnabled(boolean v) { this.dungeonWaypointsFeatureEnabled = v; save(); }
     public void setCrystalHollowsEnabled(boolean v) { crystalHollowsEnabled = v; save(); }
     public void setCrystalHollowsStructureWaypoints(boolean v) { crystalHollowsStructureWaypoints = v; save(); }
+    public void setCrystalHollowsHideStructuresFolder(boolean v) { crystalHollowsHideStructuresFolder = v; save(); }
     public void setCrystalHollowsShowRoughMarkers(boolean v) { crystalHollowsShowRoughMarkers = v; save(); }
     public void setCrystalHollowsEntityDetection(boolean v) { crystalHollowsEntityDetection = v; save(); }
     public void setCrystalHollowsChatDetection(boolean v) { crystalHollowsChatDetection = v; save(); }
+    public void setCrystalHollowsMetalDetector(boolean v) { crystalHollowsMetalDetector = v; save(); }
+    public void setCrystalHollowsRemoteSharing(boolean v) { crystalHollowsRemoteSharing = v; save(); }
     public void setCrystalHollowsWishingCompassSolver(boolean v) { crystalHollowsWishingCompassSolver = v; save(); }
     public void setCrystalHollowsCompassRays(boolean v) { crystalHollowsCompassRays = v; save(); }
     public void setCrystalHollowsAnnounceDetections(boolean v) { crystalHollowsAnnounceDetections = v; save(); }
@@ -868,6 +922,8 @@ public final class WaypointerConfig {
         tracerOpacity = replacement.tracerOpacity;
         tracerThickness = replacement.tracerThickness;
         waypointOutlineThickness = replacement.waypointOutlineThickness;
+        renderAntialiasing = replacement.renderAntialiasing;
+        enableFeatureBloat = replacement.enableFeatureBloat;
         waypointMarkerScale = replacement.waypointMarkerScale;
         waypointOutlineOpacity = replacement.waypointOutlineOpacity;
         matchWaypointOutlineToWaypointColor = replacement.matchWaypointOutlineToWaypointColor;
@@ -877,6 +933,9 @@ public final class WaypointerConfig {
         showWaypointDistances = replacement.showWaypointDistances;
         showRouteProgress = replacement.showRouteProgress;
         labelScale = replacement.labelScale;
+        labelFollowCameraEffects = replacement.labelFollowCameraEffects;
+        labelOpacity = replacement.labelOpacity;
+        waypointSkipFadeMs = replacement.waypointSkipFadeMs;
         scaleWaypointTextWithDistance = replacement.scaleWaypointTextWithDistance;
         matchWaypointTextToWaypointColor = replacement.matchWaypointTextToWaypointColor;
         sequencePreviousWaypointCount = replacement.sequencePreviousWaypointCount;
@@ -934,9 +993,12 @@ public final class WaypointerConfig {
         skipAheadMechanicEnabled = replacement.skipAheadMechanicEnabled;
         crystalHollowsEnabled = replacement.crystalHollowsEnabled;
         crystalHollowsStructureWaypoints = replacement.crystalHollowsStructureWaypoints;
+        crystalHollowsHideStructuresFolder = replacement.crystalHollowsHideStructuresFolder;
         crystalHollowsShowRoughMarkers = replacement.crystalHollowsShowRoughMarkers;
         crystalHollowsEntityDetection = replacement.crystalHollowsEntityDetection;
         crystalHollowsChatDetection = replacement.crystalHollowsChatDetection;
+        crystalHollowsMetalDetector = replacement.crystalHollowsMetalDetector;
+        crystalHollowsRemoteSharing = replacement.crystalHollowsRemoteSharing;
         crystalHollowsWishingCompassSolver = replacement.crystalHollowsWishingCompassSolver;
         crystalHollowsCompassRays = replacement.crystalHollowsCompassRays;
         crystalHollowsAnnounceDetections = replacement.crystalHollowsAnnounceDetections;
@@ -949,6 +1011,9 @@ public final class WaypointerConfig {
     }
 
     public void disableAllSettings() {
+        renderAntialiasing = false;
+        enableFeatureBloat = false;
+        waypointSkipFadeMs = 0;
         resetProgressOnWorldJoin = false;
         restartRouteWhenComplete = false;
         showRouteIndicesInGui = false;
@@ -978,9 +1043,10 @@ public final class WaypointerConfig {
         useEtherwarpHeight = false;
         showDungeonEntryPathToFirstWaypoint = false;
         showDungeonEntryPathToFollowingWaypoints = false;
-        etherwarpAlignmentSound = EtherwarpAlignmentSound.OFF;
+        etherwarpAlignmentSound = "";
         showLabelBackdrop = false;
         showLabelTextShadow = false;
+        labelFollowCameraEffects = false;
         beaconBeamExtendsBelowWaypoint = false;
         useBeaconBeamTextures = false;
         editSounds = false;
@@ -1004,9 +1070,12 @@ public final class WaypointerConfig {
         skipAheadMechanicEnabled = false;
         crystalHollowsEnabled = false;
         crystalHollowsStructureWaypoints = false;
+        crystalHollowsHideStructuresFolder = false;
         crystalHollowsShowRoughMarkers = false;
         crystalHollowsEntityDetection = false;
         crystalHollowsChatDetection = false;
+        crystalHollowsMetalDetector = false;
+        crystalHollowsRemoteSharing = false;
         crystalHollowsWishingCompassSolver = false;
         crystalHollowsCompassRays = false;
         crystalHollowsAnnounceDetections = false;
@@ -1041,6 +1110,8 @@ public final class WaypointerConfig {
         tracerOpacity = defaults.tracerOpacity;
         tracerThickness = defaults.tracerThickness;
         waypointOutlineThickness = defaults.waypointOutlineThickness;
+        renderAntialiasing = defaults.renderAntialiasing;
+        enableFeatureBloat = defaults.enableFeatureBloat;
         waypointMarkerScale = defaults.waypointMarkerScale;
         waypointOutlineOpacity = defaults.waypointOutlineOpacity;
         matchWaypointOutlineToWaypointColor = defaults.matchWaypointOutlineToWaypointColor;
@@ -1050,6 +1121,9 @@ public final class WaypointerConfig {
         showWaypointDistances = defaults.showWaypointDistances;
         showRouteProgress = defaults.showRouteProgress;
         labelScale = defaults.labelScale;
+        labelFollowCameraEffects = defaults.labelFollowCameraEffects;
+        labelOpacity = defaults.labelOpacity;
+        waypointSkipFadeMs = defaults.waypointSkipFadeMs;
         scaleWaypointTextWithDistance = defaults.scaleWaypointTextWithDistance;
         matchWaypointTextToWaypointColor = defaults.matchWaypointTextToWaypointColor;
         sequencePreviousWaypointCount = defaults.sequencePreviousWaypointCount;
@@ -1107,9 +1181,12 @@ public final class WaypointerConfig {
         skipAheadMechanicEnabled = defaults.skipAheadMechanicEnabled;
         crystalHollowsEnabled = defaults.crystalHollowsEnabled;
         crystalHollowsStructureWaypoints = defaults.crystalHollowsStructureWaypoints;
+        crystalHollowsHideStructuresFolder = defaults.crystalHollowsHideStructuresFolder;
         crystalHollowsShowRoughMarkers = defaults.crystalHollowsShowRoughMarkers;
         crystalHollowsEntityDetection = defaults.crystalHollowsEntityDetection;
         crystalHollowsChatDetection = defaults.crystalHollowsChatDetection;
+        crystalHollowsMetalDetector = defaults.crystalHollowsMetalDetector;
+        crystalHollowsRemoteSharing = defaults.crystalHollowsRemoteSharing;
         crystalHollowsWishingCompassSolver = defaults.crystalHollowsWishingCompassSolver;
         crystalHollowsCompassRays = defaults.crystalHollowsCompassRays;
         crystalHollowsAnnounceDetections = defaults.crystalHollowsAnnounceDetections;

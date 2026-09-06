@@ -13,11 +13,14 @@ import com.babbur.waypointer.commands.CrystalHollowsCommands;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.config.WaypointerConfigCodec;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.crystal.CrystalHollowsStore;
 import com.babbur.waypointer.crystal.CrystalHollowsTracker;
+import com.babbur.waypointer.crystal.MetalDetectorController;
+import com.babbur.waypointer.crystal.StructureRelayController;
 import com.babbur.waypointer.crystal.WishingCompassController;
 import com.babbur.waypointer.dungeon.DungeonChestInteractionGuard;
 import com.babbur.waypointer.dungeon.EtherwarpAlignmentCue;
@@ -55,8 +58,12 @@ import net.fabricmc.loader.api.FabricLoader;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.UUID;
 
 public final class WaypointerClient implements ClientModInitializer {
+
+    private static final String LEGACY_PERF_BACKUP = "perf-test-backup.wpc";
 
     private static ActiveGroupManager manager;
     private static Storage storage;
@@ -83,6 +90,10 @@ public final class WaypointerClient implements ClientModInitializer {
 
     public static WaypointerConfig config() {
         return config;
+    }
+
+    static boolean shouldResetAfterDisconnect(Object disconnected, Object current) {
+        return current == null || current == disconnected;
     }
 
     public static WaypointerApi api() {
@@ -118,6 +129,7 @@ public final class WaypointerClient implements ClientModInitializer {
     @Override
     public void onInitializeClient() {
         config = WaypointerConfig.load();
+        recoverLegacyPerfTestBackup(config, legacyPerfBackupPath());
         dungeonConfig = DungeonConfig.load();
         manager = new ActiveGroupManager();
         storage = Storage.defaultLocation();
@@ -141,7 +153,13 @@ public final class WaypointerClient implements ClientModInitializer {
         waypointRenderer.install();
         overlayRenderer = OverlayRenderer.install(waypointRenderer, manager, config);
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
-            if (overlayRenderer != null) overlayRenderer.resetScene();
+            OverlayRenderer renderer = overlayRenderer;
+            client.execute(() -> {
+                if (renderer != null && renderer == overlayRenderer
+                        && shouldResetAfterDisconnect(handler, client.getConnection())) {
+                    renderer.resetScene();
+                }
+            });
         });
         new TracerRenderer(manager, config, dungeonConfig).install();
         new EtherwarpAlignmentCue(manager, config::etherwarpAlignmentSound).install();
@@ -170,6 +188,39 @@ public final class WaypointerClient implements ClientModInitializer {
         ClientLifecycleEvents.CLIENT_STOPPING.register(WaypointerClient::onClientStopping);
 
         Waypointer.LOGGER.info("Waypointer client ready -- {} route(s) loaded", manager.allGroups().size());
+    }
+
+    private static Path legacyPerfBackupPath() {
+        return FabricLoader.getInstance().getConfigDir()
+                .resolve(Waypointer.MOD_ID).resolve(LEGACY_PERF_BACKUP);
+    }
+
+    static void recoverLegacyPerfTestBackup(WaypointerConfig config, Path backup) {
+        if (config == null || backup == null) return;
+        Path recovery = backup.resolveSibling(backup.getFileName() + ".recovery");
+        try {
+            if (Files.exists(backup)) {
+                Files.move(backup, recovery,
+                        StandardCopyOption.ATOMIC_MOVE,
+                        StandardCopyOption.REPLACE_EXISTING);
+            } else if (!Files.exists(recovery)) {
+                return;
+            }
+
+            WaypointerConfig recovered = WaypointerConfigCodec.decode(
+                    Files.readString(recovery).trim());
+            config.replaceWith(recovered);
+            Path archived = recovery.resolveSibling(
+                    recovery.getFileName() + ".recovered-" + UUID.randomUUID());
+            Files.move(recovery, archived, StandardCopyOption.ATOMIC_MOVE);
+            Waypointer.LOGGER.info(
+                    "Recovered settings from an interrupted performance test; archived snapshot at {}",
+                    archived);
+        } catch (Exception failure) {
+            Waypointer.LOGGER.warn(
+                    "Could not recover legacy perf-test settings backup; retained it at {}",
+                    recovery, failure);
+        }
     }
 
     private static void onClientStopping(Minecraft client) {
@@ -266,6 +317,8 @@ public final class WaypointerClient implements ClientModInitializer {
         crystalHollowsTracker.install();
         crystalHollowsCompass = new WishingCompassController(crystalHollowsTracker, config);
         crystalHollowsCompass.install();
+        new MetalDetectorController(manager, crystalHollowsTracker, config).install();
+        new StructureRelayController(crystalHollowsTracker, config).install();
         new CrystalHollowsCommands(crystalHollowsTracker, crystalHollowsCompass, config).install();
     }
 

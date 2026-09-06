@@ -10,6 +10,7 @@ import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
+import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.core.BlockPos;
 
@@ -24,11 +25,11 @@ public final class EtherwarpAlignmentCue {
     private static final long JITTER_GUARD_MILLIS = 350L;
 
     private final ActiveGroupManager manager;
-    private final Supplier<WaypointerConfig.EtherwarpAlignmentSound> soundSelection;
+    private final Supplier<String> soundSelection;
     private final AlignmentState state = new AlignmentState(JITTER_GUARD_MILLIS);
 
     public EtherwarpAlignmentCue(ActiveGroupManager manager,
-                                 Supplier<WaypointerConfig.EtherwarpAlignmentSound> soundSelection) {
+                                 Supplier<String> soundSelection) {
         this.manager = Objects.requireNonNull(manager, "manager");
         this.soundSelection = Objects.requireNonNull(soundSelection, "soundSelection");
     }
@@ -38,8 +39,8 @@ public final class EtherwarpAlignmentCue {
     }
 
     private void onTick(Minecraft minecraft) {
-        WaypointerConfig.EtherwarpAlignmentSound sound = soundSelection.get();
-        if (sound == null || sound == WaypointerConfig.EtherwarpAlignmentSound.OFF
+        String sound = soundSelection.get();
+        if (sound == null || sound.isBlank()
                 || minecraft == null
                 || minecraft.level == null || minecraft.player == null) {
             state.update(null, false, System.currentTimeMillis());
@@ -63,6 +64,7 @@ public final class EtherwarpAlignmentCue {
         }
         if (!state.update(aligned.key(), true, System.currentTimeMillis())) return;
         CueSound cueSound = cueSound(sound);
+        if (cueSound == null) return;
         minecraft.getSoundManager().play(SimpleSoundInstance.forUI(
                 cueSound.event(), cueSound.volume(), cueSound.pitch()));
     }
@@ -104,14 +106,14 @@ public final class EtherwarpAlignmentCue {
         return null;
     }
 
-    static CueSound cueSound(WaypointerConfig.EtherwarpAlignmentSound sound) {
-        if (sound == null || sound == WaypointerConfig.EtherwarpAlignmentSound.OFF) return null;
-        return switch (sound) {
-            // Preserve the established cue exactly for existing enabled configurations.
-            case EXPERIENCE -> new CueSound(SoundEvents.EXPERIENCE_ORB_PICKUP, 1.65F, 0.30F);
-            case PLING -> new CueSound(SoundEvents.NOTE_BLOCK_PLING.value(), 0.85F, 1.80F);
-            case BELL -> new CueSound(SoundEvents.BELL_BLOCK, 0.70F, 1.30F);
-            case OFF -> throw new IllegalStateException("Off has no cue sound");
+    static CueSound cueSound(String sound) {
+        if (!WaypointerConfig.isValidSoundId(sound) || sound.isBlank()) return null;
+        Identifier id = Identifier.parse(sound.trim());
+        return switch (id.toString()) {
+            case "minecraft:entity.experience_orb.pickup" -> new CueSound(SoundEvents.EXPERIENCE_ORB_PICKUP, 1.65F, 0.30F);
+            case "minecraft:block.note_block.pling" -> new CueSound(SoundEvents.NOTE_BLOCK_PLING.value(), 0.85F, 1.80F);
+            case "minecraft:block.bell.use" -> new CueSound(SoundEvents.BELL_BLOCK, 0.70F, 1.30F);
+            default -> new CueSound(SoundEvent.createVariableRangeEvent(id), 1.0F, 1.0F);
         };
     }
 

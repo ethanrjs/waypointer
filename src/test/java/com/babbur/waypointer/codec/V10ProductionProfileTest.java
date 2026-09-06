@@ -169,10 +169,7 @@ class V10ProductionProfileTest {
         assertTrue(oversized.getMessage().contains("inflated payload exceeds"),
                 oversized.getMessage());
 
-        // Deterministic 20k hostile variants across the header/DEFLATE/trailer
-        // boundary. The guarantee is that no single-bit flip yields a different
-        // accepted body. A flip inside DEFLATE padding bits leaves the body
-        // unchanged and is legitimately accepted; anything else must be refused.
+        // Single-bit flips must reject or preserve the body (DEFLATE padding can change).
         List<String> silentlyChanged = new ArrayList<>();
         List<String> acceptedOutsidePadding = new ArrayList<>();
         int lastCompressedByte = payload.length - 1 - V10Transport.CHECKSUM_BYTES;

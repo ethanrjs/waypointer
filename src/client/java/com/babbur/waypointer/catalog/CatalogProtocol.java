@@ -18,10 +18,7 @@ import java.util.Set;
 
 /** Validates catalog data before it reaches local route state. */
 public final class CatalogProtocol {
-    /**
-     * The public catalog remains pinned to its deployed canonical V9 contract.
-     * Product clipboard/chat exports may advance independently.
-     */
+    /** Catalog publishing uses V9; clipboard and chat exports may use newer versions. */
     private static final int CATALOG_CODEC_VERSION = 9;
 
     private CatalogProtocol() {
@@ -63,12 +60,7 @@ public final class CatalogProtocol {
                 publishManifest.codecVersion(), publishManifest.payloadSha256());
     }
 
-    /**
-     * Encodes immutable route snapshots with the existing catalog V9 feature set
-     * and records the resulting manifest in the same operation. The returned
-     * capability can only be constructed here, so the publish client may skip
-     * decoding bytes it just encoded itself.
-     */
+    /** Encodes V9 snapshots and their manifest together, avoiding a second decode before publishing. */
     public static PreparedCatalogPayload prepareCatalogPayload(
             List<WaypointGroup> groups) {
         Objects.requireNonNull(groups, "groups");

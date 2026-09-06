@@ -9,6 +9,8 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.contents.TranslatableContents;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -16,8 +18,11 @@ import java.util.List;
 import static com.babbur.waypointer.screen.GuiTokens.BTN_H;
 import static com.babbur.waypointer.screen.GuiTokens.GAP;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ExportScreenTest {
@@ -58,6 +63,94 @@ class ExportScreenTest {
         assertTrue(single.folders().isEmpty(),
                 "sharing one route must not export the sender's folder layout");
         assertTrue(thirdParty.isEmpty());
+    }
+
+    @Test
+    void individualCaptureSkipsFoldersBeforeValidationButKeepsRouteMetadata() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = WaypointGroup.create("Route", "hub");
+        route.add(Waypoint.at(1, 2, 3).withColor(0x112233));
+        route.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        route.set(0, route.get(0).withColor(0xAABBCC));
+        route.setGradientMode(WaypointGroup.GradientMode.STATIC);
+        manager.add(route);
+        manager.addFolder(new RouteFolder(
+                "folder", "A folder with metadata", "hub", true, 0x123456),
+                List.of(route.id()));
+
+        RouteLibraryMetadata individual = RouteLibraryMetadata.captureForExport(
+                manager, List.of(route), false);
+        RouteLibraryMetadata folderShare = RouteLibraryMetadata.captureForExport(
+                manager, List.of(route), true);
+
+        assertEquals(1, individual.manualColors().size());
+        assertTrue(individual.folders().isEmpty());
+        assertEquals(List.of(0), folderShare.folders().getFirst().memberOrdinals());
+    }
+
+    @Test
+    void plainIndividualCaptureUsesTheDirectRouteWireShape() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = WaypointGroup.create("Route", "hub");
+        route.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        route.add(Waypoint.at(1, 2, 3));
+        manager.add(route);
+        manager.addFolder(new RouteFolder(
+                "folder", "Source folder", "hub", false, 0x123456),
+                List.of(route.id()));
+
+        RouteLibraryMetadata metadata = RouteLibraryMetadata.captureForExport(
+                manager, List.of(route), false);
+        String payload = WaypointExportCodec.encode(
+                List.of(route), WaypointCodec.Options.FULL_FIDELITY,
+                WaypointExportCodec.Target.WAYPOINTER, metadata);
+
+        assertTrue(WaypointCodec.debugDecode(payload).groups().stream()
+                .noneMatch(group -> group.coordMode().startsWith("V10_LIBRARY_")));
+    }
+
+    @Test
+    void individualCaptureDoesNotValidateAnUnsharedOversizedFolderName() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup route = WaypointGroup.create("Route", "hub");
+        route.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        route.add(Waypoint.at(1, 2, 3));
+        manager.add(route);
+        manager.addFolder(new RouteFolder(
+                "folder", "x".repeat(RouteLibraryMetadata.MAX_FOLDER_NAME_CHARS + 1),
+                "hub", false, 0x123456), List.of(route.id()));
+
+        RouteLibraryMetadata metadata = assertDoesNotThrow(() ->
+                RouteLibraryMetadata.captureForExport(manager, List.of(route), false));
+
+        assertTrue(metadata.isEmpty());
+        assertThrows(IllegalArgumentException.class, () ->
+                RouteLibraryMetadata.captureForExport(manager, List.of(route), true));
+    }
+
+    @Test
+    void exportScopeSubtitleFollowsRouteCountAndScopeIntent() {
+        assertEquals("waypointer.screen.export.subtitle.route.many",
+                ExportScreen.subtitleKey(ExportScreen.ScopeKind.SELECTION, 1, 2));
+        assertEquals("waypointer.screen.export.subtitle.folder.one",
+                ExportScreen.subtitleKey(ExportScreen.ScopeKind.FOLDER, 1, 4));
+        assertEquals("waypointer.screen.export.subtitle.selection.many",
+                ExportScreen.subtitleKey(ExportScreen.ScopeKind.SELECTION, 2, 4));
+        assertEquals("waypointer.screen.export.subtitle.zone.many",
+                ExportScreen.subtitleKey(ExportScreen.ScopeKind.ZONE, 3, 4));
+    }
+
+    @Test
+    void selectedRoutesSubtitleUsesOnlyItsTwoCountArguments() {
+        Component subtitle = ExportScreen.subtitleComponent(
+                ExportScreen.ScopeKind.SELECTION, "", "ignored", 2, 4);
+        TranslatableContents contents = assertInstanceOf(
+                TranslatableContents.class, subtitle.getContents());
+
+        assertEquals("waypointer.screen.export.subtitle.selection.many", contents.getKey());
+        assertEquals(2, contents.getArgs().length);
+        assertEquals(2, contents.getArgs()[0]);
+        assertEquals(4, contents.getArgs()[1]);
     }
 
     @Test
@@ -473,8 +566,6 @@ class ExportScreenTest {
 
         assertFalse(ExportPolicy.showSubwaypointWarning(
                 WaypointExportCodec.Target.WAYPOINTER, List.of(withSubwaypoint)));
-        assertFalse(ExportPolicy.showSubwaypointWarning(
-                WaypointExportCodec.Target.CHUNKLOGGER, List.of(withSubwaypoint)));
         assertFalse(ExportPolicy.showSubwaypointWarning(
                 WaypointExportCodec.Target.SKYHANNI, List.of(normal)));
         assertFalse(ExportPolicy.showSubwaypointWarning(

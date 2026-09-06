@@ -19,11 +19,7 @@ public final class UniversalShareCodec {
         Type type();
     }
 
-    /**
-     * A reference to a route published in the public catalog, from a
-     * {@code WP:} kind-6 subtype-2 code or a {@code waypointermod.com/r/<id>} link.
-     * Resolving it needs the network, so the decoder returns the id only.
-     */
+    /** Catalog route reference from a {@code WP:} code or link. Decoding returns the id; fetching requires network access. */
     public record CatalogReference(String routeId) implements Decoded {
         public CatalogReference {
             if (!V10CatalogReferenceCodec.isValidRouteId(routeId)) {
@@ -92,7 +88,7 @@ public final class UniversalShareCodec {
         }
     }
 
-    /** The short {@code WP:} code that stands for a published catalog route. */
+    /** Encodes a catalog route id as a {@code WP:} reference code. */
     public static String encodeCatalogReference(String routeId) {
         try {
             return WaypointCodec.MAGIC + V10CatalogReferenceCodec.encode(routeId);
@@ -139,8 +135,8 @@ public final class UniversalShareCodec {
         try {
             return V10Transport.probe(transport);
         } catch (IOException | IllegalArgumentException uncommitted) {
-            // About one legacy code in sixteen shares the version nibble; only
-            // canonical text plus the header-bound checksum commits this dispatch.
+            // The nibble is only a cheap filter; canonical text and the checksum
+            // commit the dispatch.
             return null;
         }
     }

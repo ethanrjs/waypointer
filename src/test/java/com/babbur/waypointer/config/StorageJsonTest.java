@@ -27,6 +27,25 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class StorageJsonTest {
 
+    @Test
+    void formerAnimatedPaintKeepsItsFirstFrameWhenLoadingAndSaving() {
+        WaypointPaint first = WaypointPaint.solid(0x123456);
+        com.google.gson.JsonArray frames = new com.google.gson.JsonArray();
+        frames.add(Storage.paintToJson(first));
+        frames.add(Storage.paintToJson(WaypointPaint.solid(0xABCDEF)));
+        JsonObject paint = new JsonObject();
+        paint.add("frames", frames);
+        WaypointGroup group = WaypointGroup.create("Paint", "hub");
+        JsonObject encoded = Storage.groupToJson(group);
+        encoded.add("paint", paint);
+        WaypointGroup loaded = Storage.groupFromJson(encoded);
+        assertEquals(first, loaded.paint());
+        assertFalse(Storage.groupToJson(loaded).getAsJsonObject("paint").has("frames"));
+        frames.remove(1);
+        frames.remove(0);
+        assertThrows(IllegalArgumentException.class, () -> Storage.paintFromJson(paint));
+    }
+
     @TempDir
     Path tempDir;
 

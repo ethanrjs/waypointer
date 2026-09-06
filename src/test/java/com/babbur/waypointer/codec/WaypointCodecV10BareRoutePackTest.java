@@ -191,6 +191,8 @@ class WaypointCodecV10BareRoutePackTest {
                 "truncated v10 catalog reference");
         assertTerminalFailure(new byte[] {0x6A, 0x03},
                 "unsupported v10 bare-pack subtype");
+        assertTerminalFailure(new byte[] {0x6A, 0x04},
+                "unsupported v10 bare-pack subtype");
         assertTerminalFailure(new byte[] {0x6A, 0x00, (byte) 0x82, 0x00},
                 "non-canonical v10 bare-pack uvarint");
         assertTerminalFailure(new byte[] {0x6A, 0x00, 0x01},

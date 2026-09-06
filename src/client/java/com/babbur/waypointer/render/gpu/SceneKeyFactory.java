@@ -1,6 +1,7 @@
 package com.babbur.waypointer.render.gpu;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.render.WaypointSkipFade;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
@@ -48,6 +49,8 @@ public final class SceneKeyFactory {
 
         key.mix(groups.size());
         for (WaypointGroup group : groups) {
+            WaypointSkipFade fade = WaypointSkipFade.observe(group, config);
+            key.mix(fade != null && fade.active());
             mixGroup(key, group);
         }
         return key.finish();
@@ -81,7 +84,7 @@ public final class SceneKeyFactory {
     }
 
     static void mixConfig(SceneKey.Builder key, WaypointerConfig config) {
-        key.mixEnum(config.boxStyle());
+        key.mix(config.enableFeatureBloat()).mixEnum(config.effectiveBoxStyle());
         mixPaint(key, config.waypointPainterDefaultPaint());
         key.mixEnum(config.beaconBeamMode())
                 .mix(config.useBeaconBeamTextures())
@@ -92,6 +95,7 @@ public final class SceneKeyFactory {
                 .mix(config.waypointOutlineColor())
                 .mix(config.matchWaypointOutlineToWaypointColor())
                 .mix(config.waypointMarkerScale());
+        key.mix(config.waypointSkipFadeMs());
         key.mix(config.sequenceVisibility().previous())
                 .mix(config.sequenceVisibility().current())
                 .mix(config.sequenceVisibility().next())

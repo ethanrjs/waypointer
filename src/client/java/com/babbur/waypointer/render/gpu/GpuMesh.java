@@ -19,7 +19,6 @@ public final class GpuMesh implements AutoCloseable {
     private int capacityBytes;
     private int indexCapacityBytes;
     private int storedVertices;
-    private int uploadedBytes;
     private float[] quadCenters = new float[0];
     private int[] quadOrder = new int[0];
     private int[] sortScratch = new int[0];
@@ -43,16 +42,8 @@ public final class GpuMesh implements AutoCloseable {
         return storedVertices == 0;
     }
 
-    public int storedVertexCount() {
-        return storedVertices;
-    }
-
     public int indexCount() {
         return topology.indexCountFor(storedVertices);
-    }
-
-    public int uploadedBytes() {
-        return uploadedBytes;
     }
 
     /** Uploads the mesh and returns the byte count. */
@@ -61,7 +52,6 @@ public final class GpuMesh implements AutoCloseable {
         Objects.requireNonNull(encoder, "encoder");
         storedVertices = builder.storedVertexCount();
         int bytes = builder.byteSize();
-        uploadedBytes = bytes;
         if (bytes == 0) return 0;
         if (vertexBuffer == null || capacityBytes < bytes) {
             int previousCapacity = capacityBytes;
@@ -85,8 +75,12 @@ public final class GpuMesh implements AutoCloseable {
         int quads = storedVertices / 4;
         if (quads == 0) return 0;
         ensureSortCapacity(quads);
-        QuadSorter.sortBackToFront(quadCenters, quadOrder, quadDistances, sortScratch,
-                quads, cameraX, cameraY, cameraZ);
+        boolean changed = QuadSorter.sortBackToFront(quadCenters, quadOrder, quadDistances, sortScratch,
+                quads, !sortDirty, cameraX, cameraY, cameraZ);
+        sortedCameraX = cameraX;
+        sortedCameraY = cameraY;
+        sortedCameraZ = cameraZ;
+        if (!changed) return 0;
 
         int bytes = quads * 6 * Integer.BYTES;
         ensureIndexCapacity(bytes);
@@ -98,9 +92,6 @@ public final class GpuMesh implements AutoCloseable {
         }
         indexBytes.flip();
         GpuMeshCompat.upload(encoder, indexBuffer, indexBytes);
-        sortedCameraX = cameraX;
-        sortedCameraY = cameraY;
-        sortedCameraZ = cameraZ;
         sortDirty = false;
         return bytes;
     }
@@ -189,7 +180,6 @@ public final class GpuMesh implements AutoCloseable {
     public void close() {
         release();
         storedVertices = 0;
-        uploadedBytes = 0;
         quadCenters = new float[0];
         quadOrder = new int[0];
         sortScratch = new int[0];

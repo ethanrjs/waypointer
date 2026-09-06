@@ -10,8 +10,12 @@ final class RenderPassTextureBinder {
 
     private RenderPassTextureBinder() {}
 
-    static boolean bind(RenderPass pass, String samplerName, Identifier textureId) {
-        AbstractTexture texture = Minecraft.getInstance().getTextureManager().getTexture(textureId);
+    static AbstractTexture resolve(Identifier textureId) {
+        if (textureId == null) return null;
+        return Minecraft.getInstance().getTextureManager().getTexture(textureId);
+    }
+
+    static boolean bind(RenderPass pass, String samplerName, AbstractTexture texture) {
         if (texture == null) return false;
         pass.bindTexture(samplerName, texture.getTextureView(), texture.getSampler());
         return true;

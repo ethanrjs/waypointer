@@ -5,7 +5,7 @@ import java.util.List;
 
 /** Structures and points of interest detected in a Crystal Hollows lobby. */
 public enum CrystalHollowsStructure {
-    JUNGLE_TEMPLE("jungle_temple", "Jungle Temple", 0x9B59B6, Kind.MAIN_STRUCTURE, false,
+    JUNGLE_TEMPLE("jungle_temple", "Jungle Temple", 0x228B22, Kind.MAIN_STRUCTURE, false,
             "Jungle Temple", List.of("[NPC] Kalhuiki Door Guardian:"),
             List.of("jungle temple", "temple", "jt"), WishingCompassTarget.JUNGLE_TEMPLE),
     MINES_OF_DIVAN("mines_of_divan", "Mines of Divan", 0x2ECC71, Kind.MAIN_STRUCTURE, false,
@@ -30,10 +30,10 @@ public enum CrystalHollowsStructure {
             List.of("dragon's lair", "dragons lair", "dragon", "lair"), null),
     CORLEONE("corleone", "Boss Corleone", 0xFFFFFF, Kind.POI, true, null, List.of(),
             List.of("boss corleone", "corleone", "boss"), null),
-    KING_YOLKAR("king_yolkar", "King Yolkar", 0xE74C3C, Kind.POI, false, null,
+    KING_YOLKAR("king_yolkar", "King Yolkar", 0xE67E22, Kind.POI, false, null,
             List.of("[NPC] King Yolkar:"), List.of("king yolkar", "yolkar", "king"),
             WishingCompassTarget.GOBLIN_KING),
-    ODAWA("odawa", "Odawa", 0xFF00FF, Kind.POI, false, null,
+    ODAWA("odawa", "Odawa", 0x228B22, Kind.POI, false, null,
             List.of("[NPC] Odawa:"), List.of("odawa", "village"), WishingCompassTarget.ODAWA),
     KEY_GUARDIAN("key_guardian", "Key Guardian", 0xBDC3C7, Kind.POI, true, null, List.of(),
             List.of("key guardian", "guardian"), null),

@@ -14,9 +14,10 @@ import net.minecraft.resources.Identifier;
 
 public final class WaypointerRenderPipelines {
 
-    private static RenderType linesThroughWalls;
+    private static final RenderType[] linesThroughWalls = new RenderType[2];
     private static RenderType quadsThroughWalls;
-    private static RenderType linesDepthTested;
+    private static final RenderType[] linesDepthTested = new RenderType[2];
+    private static boolean antialiasing = true;
     private static RenderType quadsDepthTested;
     private static RenderType beaconBeamThroughWalls;
     private static RenderType beaconBeamDepthTested;
@@ -30,8 +31,7 @@ public final class WaypointerRenderPipelines {
     private WaypointerRenderPipelines() {}
 
     public static RenderType linesThroughWalls() {
-        if (linesThroughWalls == null) linesThroughWalls = buildLinesType();
-        return linesThroughWalls;
+        return linesThroughWalls(antialiasing);
     }
 
     public static RenderType quadsThroughWalls() {
@@ -40,8 +40,7 @@ public final class WaypointerRenderPipelines {
     }
 
     public static RenderType linesDepthTested() {
-        if (linesDepthTested == null) linesDepthTested = buildDepthTestedLinesType();
-        return linesDepthTested;
+        return linesDepthTested(antialiasing);
     }
 
     public static RenderType quadsDepthTested() {
@@ -82,13 +81,49 @@ public final class WaypointerRenderPipelines {
                 + Integer.toUnsignedString(texture.hashCode()), setup);
     }
 
-    private static RenderType buildLinesType() {
-        RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
-                .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "lines_through_walls"))
-                .withDepthStencilState(NO_DEPTH_TEST)
-                .build();
-        return RenderType.create("waypointer_lines_through_walls",
+    public static void setAntialiasing(boolean enabled) {
+        antialiasing = enabled;
+    }
+
+    public static boolean antialiasing() {
+        return antialiasing;
+    }
+
+    public static RenderType linesThroughWalls(boolean smooth) {
+        int index = smooth ? 1 : 0;
+        if (linesThroughWalls[index] == null) {
+            linesThroughWalls[index] = buildLinesType("lines_through_walls", NO_DEPTH_TEST, smooth);
+        }
+        return linesThroughWalls[index];
+    }
+
+    public static RenderType linesDepthTested(boolean smooth) {
+        int index = smooth ? 1 : 0;
+        if (linesDepthTested[index] == null) {
+            linesDepthTested[index] = buildLinesType("lines_depth_tested", DEPTH_TESTED, smooth);
+        }
+        return linesDepthTested[index];
+    }
+
+    private static RenderType buildLinesType(String path, DepthStencilState depth, boolean smooth) {
+        String name = path + (smooth ? "_smooth" : "");
+        RenderPipeline pipeline = buildLinesPipeline(
+                Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, name), depth, smooth);
+        return RenderType.create("waypointer_" + name,
                 RenderSetup.builder(pipeline).createRenderSetup());
+    }
+
+    public static RenderPipeline buildLinesPipeline(Identifier location, DepthStencilState depth,
+                                                   boolean smooth) {
+        var builder = RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
+                .withLocation(location)
+                .withDepthStencilState(depth);
+        if (smooth) {
+            Identifier shader = Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "core/antialiased_lines");
+            builder.withVertexShader(shader).withFragmentShader(shader)
+                    .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT));
+        }
+        return builder.build();
     }
 
     private static RenderPipeline paintedQuadsThroughWallsPipeline() {
@@ -125,15 +160,6 @@ public final class WaypointerRenderPipelines {
                 .withCull(false)
                 .build();
         return RenderType.create("waypointer_quads_through_walls",
-                RenderSetup.builder(pipeline).createRenderSetup());
-    }
-
-    private static RenderType buildDepthTestedLinesType() {
-        RenderPipeline pipeline = RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
-                .withLocation(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "lines_depth_tested"))
-                .withDepthStencilState(DEPTH_TESTED)
-                .build();
-        return RenderType.create("waypointer_lines_depth_tested",
                 RenderSetup.builder(pipeline).createRenderSetup());
     }
 

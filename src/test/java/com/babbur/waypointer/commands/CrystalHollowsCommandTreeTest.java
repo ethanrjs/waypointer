@@ -8,6 +8,8 @@ import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CrystalHollowsCommandTreeTest {
 
@@ -29,5 +31,17 @@ class CrystalHollowsCommandTreeTest {
                 CrystalHollowsCommands.resolveStructure("jungle_temple"));
         assertEquals(CrystalHollowsStructure.MINES_OF_DIVAN,
                 CrystalHollowsCommands.resolveStructure("divan"));
+    }
+
+    @Test
+    void shareAndRemoveAcceptNumberedSightings() {
+        CommandDispatcher<FabricClientCommandSource> dispatcher = new CommandDispatcher<>();
+        new CrystalHollowsCommands(null, null, null).register(dispatcher);
+        for (String action : new String[]{"share", "remove"}) {
+            var parsed = dispatcher.parse("wpch " + action + " wishing_target:2", null);
+            assertFalse(parsed.getReader().canRead());
+            assertTrue(parsed.getExceptions().isEmpty());
+            assertNotNull(parsed.getContext().getCommand());
+        }
     }
 }

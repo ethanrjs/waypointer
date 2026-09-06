@@ -764,10 +764,7 @@ public final class RouteCatalogScreen extends Screen {
         rebuildWidgets();
     }
 
-    /**
-     * A pasted share link or catalog-reference code opens the route's preview,
-     * which is how unlisted routes (never in this list) are reached in game.
-     */
+    /** Opens pasted links or reference codes, including unlisted routes. */
     private void openClipboardReference() {
         String text = minecraft == null ? null : minecraft.keyboardHandler.getClipboard();
         String routeId = CatalogRouteInstallScreen.referenceRouteId(text);
@@ -1193,9 +1190,7 @@ public final class RouteCatalogScreen extends Screen {
     public void removed() {
         requests.deactivate();
         if (listLoading || appending) {
-            // The request tracker intentionally drops completions while this
-            // screen is away. Clear only transient state so init() starts the
-            // abandoned request again without discarding settled rows/cache.
+            // Retry interrupted requests on return, keeping loaded rows and cache.
             restartAppendOnReentry = appending && browser.nextCursor() != null;
             listRequested = false;
             listLoading = false;

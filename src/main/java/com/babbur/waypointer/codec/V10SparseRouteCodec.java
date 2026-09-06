@@ -77,44 +77,62 @@ final class V10SparseRouteCodec {
             throw new IllegalArgumentException("route is not an exact v10 kind-5 projection");
         }
         ProjectedRoute route = project(group, options);
+        int[][] coordinates = V10BareRouteCodec.coordinatesOf(group);
         V10Transport.Outbound best = null;
         for (int coordinateMode : new int[]{V10Transport.MODE_DIRECT, V10Transport.MODE_DEFLATE}) {
-            byte[] coordinateBody = V10BareRouteCodec.encodeCoordinateBody(
-                    V10BareRouteCodec.coordinatesOf(group), coordinateMode);
-
-            boolean subway = route.points.stream().anyMatch(ProjectedPoint::isSubwaypoint);
-            boolean precision = route.points.stream().anyMatch(ProjectedPoint::hasCustomPrecision);
-            boolean other = route.points.stream().anyMatch(point -> otherFlags(point.flags) != 0);
-            for (int subwayMode : sideChoices(subway)) {
-                for (int precisionMode : sideChoices(precision)) {
-                    for (int otherMode : sideChoices(other)) {
-                        best = choose(best, frame(
-                                encodeSplit(route, coordinateBody,
-                                        subwayMode, precisionMode, otherMode),
-                                coordinateMode, Deflater.DEFAULT_STRATEGY));
-                        if (coordinateMode == V10Transport.MODE_DEFLATE) {
-                            best = choose(best, frame(
-                                    encodeSplit(route, coordinateBody,
-                                            subwayMode, precisionMode, otherMode),
-                                    coordinateMode, Deflater.FILTERED));
-                        }
-                    }
+            byte[] coordinateBody = V10BareRouteCodec.encodeCoordinateBody(coordinates, coordinateMode);
+            best = considerCoordinateBody(best, route, coordinateBody, coordinateMode);
+            if (coordinateMode == V10Transport.MODE_DIRECT
+                    && group.size() > 1
+                    && group.size() <= V10BareEntropyCodec.MAX_QUOTIENT_WAYPOINTS) {
+                try {
+                    byte[] quotient = V10BareEntropyCodec.encodeQuotient(coordinates);
+                    best = considerCoordinateBody(best, route,
+                            Arrays.copyOfRange(quotient, 1, quotient.length), coordinateMode);
+                } catch (IOException ignored) {
+                    // Rice and DEFLATE remain valid fallbacks when quotient's
+                    // bounded search cannot produce a candidate.
                 }
-            }
-
-            byte[] unified = encodeUnified(route, coordinateBody, false);
-            best = choose(best, frame(unified, coordinateMode, Deflater.DEFAULT_STRATEGY));
-            if (coordinateMode == V10Transport.MODE_DEFLATE) {
-                best = choose(best, frame(unified, coordinateMode, Deflater.FILTERED));
-            }
-
-            byte[] controlled = encodeUnified(route, coordinateBody, true);
-            best = choose(best, frame(controlled, coordinateMode, Deflater.DEFAULT_STRATEGY));
-            if (coordinateMode == V10Transport.MODE_DEFLATE) {
-                best = choose(best, frame(controlled, coordinateMode, Deflater.FILTERED));
             }
         }
         if (best == null) throw new IllegalStateException("v10 kind-5 produced no candidates");
+        return best;
+    }
+
+    private static V10Transport.Outbound considerCoordinateBody(
+            V10Transport.Outbound best, ProjectedRoute route,
+            byte[] coordinateBody, int coordinateMode) throws IOException {
+        boolean subway = route.points.stream().anyMatch(ProjectedPoint::isSubwaypoint);
+        boolean precision = route.points.stream().anyMatch(ProjectedPoint::hasCustomPrecision);
+        boolean other = route.points.stream().anyMatch(point -> otherFlags(point.flags) != 0);
+        for (int subwayMode : sideChoices(subway)) {
+            for (int precisionMode : sideChoices(precision)) {
+                for (int otherMode : sideChoices(other)) {
+                    best = choose(best, frame(
+                            encodeSplit(route, coordinateBody,
+                                    subwayMode, precisionMode, otherMode),
+                            coordinateMode, Deflater.DEFAULT_STRATEGY));
+                    if (coordinateMode == V10Transport.MODE_DEFLATE) {
+                        best = choose(best, frame(
+                                encodeSplit(route, coordinateBody,
+                                        subwayMode, precisionMode, otherMode),
+                                coordinateMode, Deflater.FILTERED));
+                    }
+                }
+            }
+        }
+
+        byte[] unified = encodeUnified(route, coordinateBody, false);
+        best = choose(best, frame(unified, coordinateMode, Deflater.DEFAULT_STRATEGY));
+        if (coordinateMode == V10Transport.MODE_DEFLATE) {
+            best = choose(best, frame(unified, coordinateMode, Deflater.FILTERED));
+        }
+
+        byte[] controlled = encodeUnified(route, coordinateBody, true);
+        best = choose(best, frame(controlled, coordinateMode, Deflater.DEFAULT_STRATEGY));
+        if (coordinateMode == V10Transport.MODE_DEFLATE) {
+            best = choose(best, frame(controlled, coordinateMode, Deflater.FILTERED));
+        }
         return best;
     }
 

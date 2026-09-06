@@ -1,6 +1,5 @@
 {
   "waypointer.screen.settings.color.pick": "Pick colour",
-  "waypointer.screen.settings.perf.status.description": "Runs a 60-second active-frame sweep across 3D waypoints, dungeon secrets, and an adaptive subwaypoint ramp. The settings overlay hides whilst it runs.",
   "waypointer.settings.setting.defaultWaypointColor.label": "Default waypoint colour",
   "waypointer.settings.setting.defaultWaypointColor.tooltip": "Used for newly created waypoints. Existing waypoints keep their colour.",
   "waypointer.settings.setting.defaultWaypointColor.color_swatch_tooltip": "Pick default waypoint colour.",

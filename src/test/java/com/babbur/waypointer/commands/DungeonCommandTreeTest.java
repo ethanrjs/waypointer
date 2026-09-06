@@ -161,14 +161,14 @@ class DungeonCommandTreeTest {
         List<WrongDungeonPayload> payloads = List.of(
                 new WrongDungeonPayload(
                         UniversalShareCodec.encodeConfig(new WaypointerConfig()),
-                        "got a configuration share"),
+                        "got a configuration code"),
                 new WrongDungeonPayload(
                         UniversalShareCodec.encodeWaypoints(
                                 List.of(regularRoute), WaypointCodec.Options.BARE_COORDINATES),
-                        "got a waypoint route share"),
+                        "got a waypoint route code"),
                 new WrongDungeonPayload(
                         WaypointCodec.encode(List.of(dungeonRoute)),
-                        "got a waypoint route share"));
+                        "got a waypoint route code"));
 
         Path file = dir.resolve("wrong-kind.wp");
         for (WrongDungeonPayload fixture : payloads) {

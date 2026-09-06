@@ -113,7 +113,8 @@ public final class GuiTokens {
     }
 
     public static final class StyledCheckbox extends Checkbox {
-        private static final int CHECKMARK_TEXTURE_SIZE = 16;
+        private static final int CHECKMARK_TEXTURE_SIZE = 24;
+        private static final int CHECKMARK_SIZE = 16;
         private static final Identifier CHECKMARK = Identifier.fromNamespaceAndPath(
                 Waypointer.MOD_ID, "textures/gui/checkmark.png");
 
@@ -133,16 +134,17 @@ public final class GuiTokens {
             drawControlFrame(g, x, y, getWidth(), getHeight(), active, highlighted, isFocused());
             if (!selected()) return;
 
-            int checkX = x + (getWidth() - CHECKMARK_TEXTURE_SIZE) / 2;
-            int checkY = y + (getHeight() - CHECKMARK_TEXTURE_SIZE) / 2;
+            int checkX = x + (getWidth() - CHECKMARK_SIZE) / 2;
+            int checkY = y + (getHeight() - CHECKMARK_SIZE) / 2;
             g.blit(RenderPipelines.GUI_TEXTURED, CHECKMARK,
                     checkX, checkY, 0.0f, 0.0f,
+                    CHECKMARK_SIZE, CHECKMARK_SIZE,
                     CHECKMARK_TEXTURE_SIZE, CHECKMARK_TEXTURE_SIZE,
                     CHECKMARK_TEXTURE_SIZE, CHECKMARK_TEXTURE_SIZE);
             if (!active) {
                 g.fill(checkX, checkY,
-                        checkX + CHECKMARK_TEXTURE_SIZE,
-                        checkY + CHECKMARK_TEXTURE_SIZE, 0x80000000);
+                        checkX + CHECKMARK_SIZE,
+                        checkY + CHECKMARK_SIZE, 0x80000000);
             }
         }
     }

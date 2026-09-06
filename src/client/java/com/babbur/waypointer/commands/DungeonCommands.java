@@ -209,8 +209,7 @@ public final class DungeonCommands {
     static DungeonRouteImporter.Result decodeImportPayload(String payload) {
         IllegalArgumentException legacyFailure;
         try {
-            // Preserve the established WPD/JSON/Odin/SecretRoutes precedence and
-            // reporting. Universal decoding is the typed fallback for new WP shares.
+            // Try legacy dungeon formats before universal WP shares.
             return DungeonRouteImporter.parse(payload);
         } catch (IllegalArgumentException failure) {
             legacyFailure = failure;
@@ -228,14 +227,14 @@ public final class DungeonCommands {
         }
         if (decoded instanceof UniversalShareCodec.Configuration) {
             throw new IllegalArgumentException(
-                    "expected a dungeon route share, got a configuration share");
+                    "expected a dungeon route code, got a configuration code");
         }
         if (decoded instanceof UniversalShareCodec.CatalogReference) {
             throw new IllegalArgumentException(
-                    "expected a dungeon route share, got a catalog route link; use /wp import");
+                    "expected a dungeon route code, got a catalog route link; use /wp import");
         }
         throw new IllegalArgumentException(
-                "expected a dungeon route share, got a waypoint route share");
+                "expected a dungeon route code, got a waypoint route code");
     }
 
     private static boolean looksLikeTypedWaypointerShare(String payload) {

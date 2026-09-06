@@ -339,7 +339,7 @@ Semantic prefix:
 selector : uvarint
 ```
 
-The coordinate body is a kind-2 body without its `0x2A` header. A mode-A body is direct entropy data. A mode-B body is interleaved delta data. The reference kind-5 writer uses Rice for mode A. It does not test quotient. The decoder accepts a canonical Rice or quotient direct body.
+The coordinate body is a kind-2 body without its `0x2A` header. A mode-A body is direct entropy data. A mode-B body is interleaved delta data. The reference kind-5 writer compares Rice with quotient for mode A when there are 2-1,024 waypoints, choosing the shortest complete share text. The decoder accepts a canonical Rice or quotient direct body.
 
 ### 7.1 Index encodings
 
@@ -558,8 +558,19 @@ The writer omits a field when it equals its normalized default.
 | 92 | `sequencePreviousWaypointColor` | C | `808080` |
 | 93 | `sequenceCurrentWaypointColor` | C | `4FE05A` |
 | 94 | `sequenceNextWaypointColor` | C | `00BFFF` |
+| 95 | `crystalHollowsHideStructuresFolder` | B | `false` |
+| 96 | `etherwarpAlignmentSound` custom ID | S | empty |
+| 97 | `waypointSkipFadeMs` | U | `0` |
+| 98 | `renderAntialiasing` | B | `true` |
+| 99 | `enableFeatureBloat` | B | `false` |
+| 100 | `labelFollowCameraEffects` | B | `true` |
+| 101 | `labelOpacity` | D | `1.0` |
+| 102 | `crystalHollowsMetalDetector` | B | `true` |
+| 103 | `crystalHollowsRemoteSharing` | B | `true` |
 
-Inactive legacy holes are tags 17, 51, 54, 55, and 66. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-94 are active. Tags 95-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
+Inactive legacy holes are tags 17, 51, 54, 55, and 66. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-103 are active. Tag 87 remains readable for older settings but no longer renders compass rays. Tags 104-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
+
+Tag 96 is a two-byte unsigned big-endian byte length followed by the ASCII sound identifier (at most 256 characters). Known legacy sound IDs keep tag 80; blank disables sound. Tag 97 is a duration in milliseconds, bounded to 0-5,000. Painter defaults remain local settings and are not included in configuration shares.
 
 ### 8.3 Enum and normalized value domains
 
@@ -1039,7 +1050,7 @@ For one eligible route, the writer compares kind 0 with eligible kind 1 and kind
 
 ## 10A. Kind 1: compact single route
 
-Kind 1 carries exactly one route and an empty share label. It has two subtypes: 0 is full fidelity and 1 is the exact `NO_NAMES` projection. Subtype 0 can also carry the equivalent names/colors/zone projection under the strict eligibility rules in section 10A.4. Other option combinations MUST use another kind. The body is canonical: after bounded decode, the decoder MUST re-encode the decoded projection and require byte-for-byte semantic equality.
+Kind 1 carries exactly one route and an empty share label. It has two subtypes: 0 is full fidelity and 1 is the exact `NO_NAMES` projection. Subtype 0 can also carry partial exports after the requested fields are projected to their defaults, subject to section 10A.4. The body is canonical: after bounded decode, the decoder MUST re-encode the decoded projection and require byte-for-byte semantic equality.
 
 ### 10A.1 Control and common fields
 
@@ -1126,7 +1137,7 @@ The writer scores Rice and, for 2-1,024 points, quotient as complete direct/DEFL
 
 ### 10A.4 Eligibility and selection
 
-Kind 1 requires one route, an empty label, a valid zone, at most 20,000 points, valid display names, representable compact deltas, and no temporary waypoint state. Full subtype is eligible with all six visible fields enabled. It is also eligible for the exact field set names/colors/zone enabled and radii/waypoint-flags/group-metadata disabled, when the regular source route already equals that projection: MANUAL gradient, SEQUENCE load, default radius and palette colors, skip-ahead enabled, no custom waypoint radii, 24-bit waypoint colors, and no waypoint flags or precision that the requested projection would remove. This additional writer choice uses the unchanged canonical full body; it does not change decoder rules or retain omitted nondefault values. No-names subtype requires the exact `NO_NAMES` field set.
+Kind 1 requires one regular route, an empty label, a valid zone, at most 20,000 points, valid display names, and representable compact deltas. The writer applies export toggles before testing subtype 0: omitted names, colors, zone, flags, precision, and group settings become their normal exported defaults; temporary state is discarded. Included custom waypoint radii cannot use subtype 0 and retain the general-codec fallback. The canonical full body and decoder are unchanged. Subtype 1 remains the exact `NO_NAMES` field set.
 
 The writer independently builds the canonical kind-1 semantic body and its direct and two dictionaryless DEFLATE candidates. It compares the best kind 1 form with kind 0 by complete final text length and replaces kind 0 only when strictly shorter. Kind 0 wins a tie. Kind 5 is tested afterward and replaces the current result only when strictly shorter.
 
@@ -1208,7 +1219,7 @@ Repository fixtures:
 - `src/test/java/com/babbur/waypointer/codec/WaypointCodecV10EntropyTest.java` checks kind-0 mode-7 selection and round-trip.
 - `src/test/java/com/babbur/waypointer/codec/V10GoldenRegeneration.java` rebuilds the two V10 fixture files after a deliberate wire change (`-Pv10.regen=<repo root>`).
 
-The digest input for `selectedWireSha256` is the fixture-order sequence of complete ASCII wire strings. Prefix each string with its four-byte big-endian byte length before hashing. The 302-route external corpus (`V10LockedCorpusTest`, `v10.corpus`) predates the header-mode envelope; its recorded totals are not comparable to current output.
+The digest input for `selectedWireSha256` is the fixture-order sequence of complete ASCII wire strings. Prefix each string with its four-byte big-endian byte length before hashing.
 
 ## 15. File map and interoperability checklist
 

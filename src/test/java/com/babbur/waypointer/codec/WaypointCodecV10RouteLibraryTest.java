@@ -23,6 +23,16 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointCodecV10RouteLibraryTest {
 
     @Test
+    void publishedCatalogReferenceKeepsItsExistingSubtype() throws IOException {
+        String published = "WP:l'!!I19Ip(qmQ9$a+A@c:zgt&V8";
+        V10Transport.CheckedFrame frame = V10Transport.probe(published.substring(WaypointCodec.MAGIC.length()));
+        assertEquals(2, frame.semantic()[1]);
+        assertFalse(V10RouteLibraryCodec.isLibrarySemantic(frame.semantic()));
+        assertTrue(UniversalShareCodec.decode(published) instanceof UniversalShareCodec.CatalogReference);
+        assertThrows(IllegalArgumentException.class, () -> RouteLibraryCodec.decode(published));
+    }
+
+    @Test
     void libraryShareUsesUniversalPrefixAndRoundTripsEveryMetadataFamily() throws IOException {
         Fixture fixture = fixture();
         String encoded = RouteLibraryCodec.encode(
@@ -88,8 +98,8 @@ class WaypointCodecV10RouteLibraryTest {
         assertEquals(fixture.metadata(),
                 V10RouteLibraryCodec.decode(direct(semantic)).metadata());
 
-        // Subtype 2 is reserved.
-        assertRejected(semantic, body -> { body[1] = 2; return body; });
+        // Subtype 4 is reserved.
+        assertRejected(semantic, body -> { body[1] = 4; return body; });
         // Trailing bytes.
         assertRejected(semantic, body -> Arrays.copyOf(body, body.length + 1));
         // Truncation.
@@ -103,7 +113,7 @@ class WaypointCodecV10RouteLibraryTest {
         assertRejected(semantic, body -> { body[folderFlagOffset] = 0x03; return body; });
         // A committed V10 frame with a bad body must not fall back to legacy decoding.
         byte[] reserved = semantic.clone();
-        reserved[1] = 2;
+        reserved[1] = 4;
         String tampered = WaypointCodec.MAGIC + V10Transport.direct(reserved).transport();
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
                 () -> WaypointCodec.decode(tampered));

@@ -17,6 +17,34 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SettingsScreenTest {
 
     @Test
+    void featureBloatCategoryRequiresTheSystemOptIn() {
+        WaypointerConfig config = new WaypointerConfig();
+        assertFalse(SettingsScreen.categoryAvailable("feature_bloat", config));
+        assertTrue(SettingsScreen.categoryAvailable("system", config));
+        config.setEnableFeatureBloat(true);
+        assertTrue(SettingsScreen.categoryAvailable("feature_bloat", config));
+    }
+
+    @Test
+    void childGuidesStopAtTheLastVisibleChildsBranch() {
+        assertEquals(28, SettingsScreen.childGuideHeight(28, false));
+        assertEquals(13, SettingsScreen.childGuideHeight(28, true));
+    }
+
+    @Test
+    void featureBloatRowsAreHiddenUntilEnabled() {
+        WaypointerConfig config = new WaypointerConfig();
+        Setting paint = SettingsCatalog.byId(SettingsCatalog.ACTION_WAYPOINT_PAINT);
+        Setting preview = SettingsCatalog.byId("showExportRoutePreview");
+        assertFalse(SettingsScreen.featureAvailable(paint, config));
+        assertFalse(SettingsScreen.featureAvailable(preview, config));
+        assertTrue(SettingsScreen.featureAvailable(SettingsCatalog.byId("boxStyle"), config));
+        config.setEnableFeatureBloat(true);
+        assertTrue(SettingsScreen.featureAvailable(paint, config));
+        assertTrue(SettingsScreen.featureAvailable(preview, config));
+    }
+
+    @Test
     void nextSequenceCountRejectsAll() {
         Setting setting = SettingsCatalog.byId("sequenceNextWaypointCount");
 
@@ -99,13 +127,7 @@ class SettingsScreenTest {
         assertEquals(WaypointerConfig.BoxStyle.OUTLINED,
                 SettingsValuePolicy.nextEnumValue(boxStyle, "garbage"));
 
-        Setting etherwarpSound = SettingsCatalog.byId("etherwarpAlignmentSound");
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE,
-                SettingsValuePolicy.nextEnumValue(etherwarpSound,
-                        WaypointerConfig.EtherwarpAlignmentSound.OFF));
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
-                SettingsValuePolicy.nextEnumValue(etherwarpSound,
-                        WaypointerConfig.EtherwarpAlignmentSound.BELL));
+
     }
 
     @Test

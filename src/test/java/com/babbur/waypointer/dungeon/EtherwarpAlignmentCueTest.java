@@ -68,7 +68,7 @@ class EtherwarpAlignmentCueTest {
         manager.add(route);
 
         EtherwarpAlignmentCue cue = new EtherwarpAlignmentCue(manager,
-                () -> WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE);
+                () -> WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE.id());
 
         assertEquals(List.of(new EtherwarpAlignmentCue.Target("regular:0", route.get(0))),
                 cue.activeTargets());
@@ -87,7 +87,7 @@ class EtherwarpAlignmentCueTest {
         manager.add(route);
 
         EtherwarpAlignmentCue cue = new EtherwarpAlignmentCue(manager,
-                () -> WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE);
+                () -> WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE.id());
 
         assertEquals(List.of(
                         new EtherwarpAlignmentCue.Target("regular:0", route.get(0)),
@@ -110,7 +110,7 @@ class EtherwarpAlignmentCueTest {
         secondRoute.add(second);
         manager.addAll(List.of(firstRoute, secondRoute));
         EtherwarpAlignmentCue cue = new EtherwarpAlignmentCue(manager,
-                () -> WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE);
+                () -> WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE.id());
 
         List<EtherwarpAlignmentCue.Target> targets = cue.activeTargets();
         EtherwarpAlignmentCue.Target matched = EtherwarpAlignmentCue.matchedTarget(
@@ -137,16 +137,21 @@ class EtherwarpAlignmentCueTest {
     }
 
     @Test
-    void selectorMapsToDistinctBuiltInCueSounds() {
+    void soundIdsPreserveExistingCuesAndAcceptCustomSounds() {
         SharedConstants.tryDetectVersion();
         Bootstrap.bootStrap();
         assertSame(SoundEvents.EXPERIENCE_ORB_PICKUP, EtherwarpAlignmentCue.cueSound(
-                WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE).event());
+                WaypointerConfig.EtherwarpAlignmentSound.EXPERIENCE.id()).event());
         assertSame(SoundEvents.NOTE_BLOCK_PLING.value(), EtherwarpAlignmentCue.cueSound(
-                WaypointerConfig.EtherwarpAlignmentSound.PLING).event());
+                WaypointerConfig.EtherwarpAlignmentSound.PLING.id()).event());
         assertSame(SoundEvents.BELL_BLOCK, EtherwarpAlignmentCue.cueSound(
-                WaypointerConfig.EtherwarpAlignmentSound.BELL).event());
+                WaypointerConfig.EtherwarpAlignmentSound.BELL.id()).event());
         assertNull(EtherwarpAlignmentCue.cueSound(
-                WaypointerConfig.EtherwarpAlignmentSound.OFF));
+                WaypointerConfig.EtherwarpAlignmentSound.OFF.id()));
+        assertEquals("custom:cue/ready",
+                EtherwarpAlignmentCue.cueSound("custom:cue/ready").event().location().toString());
+        assertSame(SoundEvents.NOTE_BLOCK_PLING.value(),
+                EtherwarpAlignmentCue.cueSound("minecraft:block.note_block.pling").event());
+        assertNull(EtherwarpAlignmentCue.cueSound("not a sound"));
     }
 }

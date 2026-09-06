@@ -3,7 +3,7 @@ package com.babbur.waypointer.crystal;
 import net.minecraft.core.particles.ParticleType;
 import net.minecraft.core.particles.ParticleTypes;
 
-/** Allocation-free filter between the particle packet mixin and the active compass controller. */
+/** Filters compass particles without allocations. */
 public final class CrystalHollowsParticleHook {
 
     @FunctionalInterface

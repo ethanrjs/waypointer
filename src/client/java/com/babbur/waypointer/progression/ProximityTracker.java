@@ -1,6 +1,7 @@
 package com.babbur.waypointer.progression;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.crystal.MetalDetectorController;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -209,8 +210,8 @@ public final class ProximityTracker {
                                        boolean hideReachedStatic,
                                        SequenceVisibility visibility,
                                        boolean allowBackwardProgress) {
-        // Temporary bucket groups are unordered and use their own expiry rules.
-        if (group.temp()) return false;
+        // Temporary markers and detector results have their own expiry rules.
+        if (group.temp() || MetalDetectorController.isDetectorGroup(group)) return false;
         boolean releasedSubwaypointParentHold =
                 releaseCompletionWrappedSubwaypointParentHoldIfOutsideReach(group, px, py, pz);
 

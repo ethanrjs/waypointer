@@ -8,6 +8,16 @@ import org.junit.jupiter.api.Test;
 class CrystalHollowsSidebarTest {
 
     @Test
+    void recognizesResourcePackLocationGlyphFromLiveReport() {
+        String blob = "09/06/26 m12DR\nEarly Winter 10th\n\uE067 Mines of Divan\nBits: 703";
+        assertEquals("Mines of Divan", CrystalHollowsSidebar.areaName(blob));
+        assertEquals(CrystalHollowsStructure.MINES_OF_DIVAN,
+                CrystalHollowsSidebar.structureForArea(CrystalHollowsSidebar.areaName(blob)));
+        assertEquals(CrystalHollowsStructure.LOST_PRECURSOR_CITY,
+                CrystalHollowsSidebar.structureForArea(CrystalHollowsSidebar.areaName("\uE067 Lost Precursor City")));
+    }
+
+    @Test
     void extractsAreaWithFormattingAndCoordinateSuffix() {
         String blob = "§7Early Autumn 1st\n §b⏣ §5Jungle Temple §7(343, 72, 424)\n§ePurse";
         assertEquals("Jungle Temple", CrystalHollowsSidebar.areaName(blob));

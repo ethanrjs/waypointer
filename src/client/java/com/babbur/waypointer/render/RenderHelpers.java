@@ -8,7 +8,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 public final class RenderHelpers {
 
-    // Line vertices require an explicit width on Minecraft 1.21.11 and newer.
+    // Line vertices require an explicit width.
     private static final float DEFAULT_LINE_WIDTH = 3.0f;
     /** Small world-space overlap removes butt-cap pinholes where box edges meet. */
     static final float LINE_BOX_JOIN_OVERLAP = 1.0f / 512.0f;
@@ -203,10 +203,12 @@ public final class RenderHelpers {
     }
 
     static void drawScreenLine(GuiGraphicsExtractor graphics, double x1, double y1,
-                               double x2, double y2, int argb, double thickness) {
+                               double x2, double y2, int argb, double thickness,
+                               boolean antialiasing) {
+        if (!Double.isFinite(x1) || !Double.isFinite(y1)
+                || !Double.isFinite(x2) || !Double.isFinite(y2)
+                || !Double.isFinite(thickness) || (argb >>> 24) == 0) return;
         double guiScale = Minecraft.getInstance().getWindow().getGuiScale();
-        double scaledThickness = Math.max(1.0 / guiScale,
-                crispHudLineThickness(thickness) / guiScale);
         double margin = HUD_LINE_CULL_MARGIN / guiScale;
         double minX = -margin;
         double minY = -margin;
@@ -245,31 +247,9 @@ public final class RenderHelpers {
             }
         }
 
-        double dx = x2 - x1;
-        double dy = y2 - y1;
-        if (Math.sqrt(dx * dx + dy * dy) < 0.5) return;
-
-        int samples = screenLineSampleCount(dx, dy);
-        int radius = Math.max(0, (int) Math.floor(scaledThickness * 0.5));
-        int lastX = Integer.MIN_VALUE;
-        int lastY = Integer.MIN_VALUE;
-        for (int i = 0; i <= samples; i++) {
-            double t = i / (double) samples;
-            int x = (int) Math.round(x1 + dx * t);
-            int y = (int) Math.round(y1 + dy * t);
-            if (x == lastX && y == lastY) continue;
-            graphics.fill(x - radius, y - radius, x + radius + 1, y + radius + 1, argb);
-            lastX = x;
-            lastY = y;
-        }
-    }
-
-    static double crispHudLineThickness(double thickness) {
-        return Math.max(1.0, Math.floor(thickness));
-    }
-
-    static int screenLineSampleCount(double dx, double dy) {
-        return Math.max(1, (int) Math.ceil(Math.max(Math.abs(dx), Math.abs(dy))));
+        ScreenLineRenderState state = ScreenLineRenderState.create(graphics.pose(),
+                x1, y1, x2, y2, argb, thickness, guiScale, antialiasing);
+        if (state != null) graphics.guiRenderState.addGuiElement(state);
     }
 
     private static int outCode(double x, double y, double minX, double minY,
@@ -306,8 +286,7 @@ public final class RenderHelpers {
         int stride = WaypointPaint.SIZE + padding * 2;
         int faceX = (face.atlasX() / WaypointPaint.SIZE) * stride + padding;
         int faceY = (face.atlasY() / WaypointPaint.SIZE) * stride + padding;
-        // Padded atlases duplicate border pixels, so the whole face can be sampled
-        // without squeezing the outer painted pixels to half their intended width.
+        // Padded borders need no half-texel inset.
         float halfTexelU = padding > 0 ? 0.0f : 0.5f / atlasWidth;
         float halfTexelV = padding > 0 ? 0.0f : 0.5f / atlasHeight;
         float u0 = faceX / (float) atlasWidth + halfTexelU;
@@ -349,10 +328,7 @@ public final class RenderHelpers {
                             float x2, float y2, float z2,
                             int r, int g, int b, int a,
                             float nx, float ny, float nz, float width) {
-        // Call order must match the vertex format declaration: POSITION, COLOR, NORMAL,
-        // LINE_WIDTH. setLineWidth is new in 1.21.11; writing it in the wrong slot causes
-        // BufferBuilder's endLastVertex to throw "Not building!" on the next addVertex
-        // because the previous vertex was detected as incomplete and it closed the buffer.
+        // Match vertex order: POSITION, COLOR, NORMAL, LINE_WIDTH to avoid incomplete vertices.
         c.addVertex(pose, x1, y1, z1).setColor(r, g, b, a)
                 .setNormal(pose, nx, ny, nz).setLineWidth(width);
         c.addVertex(pose, x2, y2, z2).setColor(r, g, b, a)

@@ -45,7 +45,8 @@ public final class CrystalHollowsChatParser {
             "^\\s{2,}(Amber|Amethyst|Jade|Sapphire|Topaz) Crystal$", Pattern.CASE_INSENSITIVE);
     private static final Pattern PLAYER_CHAT = Pattern.compile(
             "^(?:(?:Party|Guild|Officer|Co-op|From|To)\\s*>?\\s*)?"
-                    + "(?:\\[[^]]+]\\s*)*([A-Za-z0-9_]{3,16}):\\s*(.+)$",
+                    + "(?:\\[(?!NPC\\])[^]]+]\\s*|[\\p{So}ᛝ]\\uFE0F?\\s*)*"
+                    + "([A-Za-z0-9_]{3,16}):\\s*(.+)$",
             Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
     private static final String LOOT_BUNDLE = "  CRYSTAL NUCLEUS LOOT BUNDLE";
     private static final String JADE_KEEPER = "You found all of the items! Behold... the Jade Crystal!";
@@ -106,7 +107,7 @@ public final class CrystalHollowsChatParser {
         return List.copyOf(results);
     }
 
-    /** Splits a normal player chat line from its rank prefixes; system messages return empty. */
+    /** Splits a player chat line from its rank and profile badges. */
     public static Optional<PlayerChat> playerChat(String text) {
         Matcher matcher = PLAYER_CHAT.matcher(clean(text));
         return matcher.matches()

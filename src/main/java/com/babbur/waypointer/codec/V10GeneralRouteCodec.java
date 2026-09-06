@@ -6,13 +6,8 @@ import java.io.IOException;
 import java.util.List;
 import java.util.zip.Deflater;
 
-/**
- * Wire-v10 kinds 0 and 7: lossless general route semantics under dictionaryless framing.
- *
- * <p>Kind 7 is kind 0 with a sender label: the same body, preceded by the
- * label right after the header. Splitting the label into its own kind keeps
- * header bit 7 free for the transport mode.
- */
+/** V10 kinds 0 and 7: lossless routes. Kind 7 adds a sender label after the header,
+ * leaving header bit 7 for transport mode. */
 final class V10GeneralRouteCodec {
 
     static final int CONTENT_KIND = 0;
@@ -33,7 +28,6 @@ final class V10GeneralRouteCodec {
         return selectCandidate(semantic);
     }
 
-    /** Score independent A/B candidates without letting an oversized optional B discard A. */
     static V10Transport.Outbound selectCandidate(byte[] semantic) throws IOException {
         if ((long) semantic.length + V10Transport.CHECKSUM_BYTES > V10Transport.MAX_FRAME_BYTES) {
             throw new V10ProfileLimitException(

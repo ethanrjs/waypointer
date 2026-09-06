@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.ByteBuffer;
 import java.util.List;
+import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -113,7 +114,7 @@ class MeshBuilderTest {
         int[] order = {0, 1, 2, 3};
 
         QuadSorter.sortBackToFront(centers, order, new double[order.length],
-                new int[order.length], order.length, 0.0, 0.0, 0.0);
+                new int[order.length], order.length, false, 0.0, 0.0, 0.0);
 
         assertArrayEquals(new int[]{1, 2, 3, 0}, order);
     }
@@ -126,9 +127,50 @@ class MeshBuilderTest {
         for (int i = 0; i < count; i++) centers[i * 3] = i;
 
         QuadSorter.sortBackToFront(centers, order, new double[count], new int[count],
-                count, -1.0, 0.0, 0.0);
+                count, false, -1.0, 0.0, 0.0);
 
         assertEquals(count - 1, order[0]);
         assertEquals(0, order[count - 1]);
+    }
+
+    @Test
+    void cameraMovementReusesOnlyTheExactBackToFrontOrder() {
+        float[] centers = {1, 0, 0, 4, 0, 0, -4, 0, 0, 2, 0, 0};
+        int[] order = new int[4];
+        double[] distances = new double[4];
+        int[] scratch = new int[4];
+        assertTrue(QuadSorter.sortBackToFront(centers, order, distances, scratch,
+                4, false, 0, 0, 0));
+        assertFalse(QuadSorter.sortBackToFront(centers, order, distances, scratch,
+                4, true, 0, 1, 0));
+        assertArrayEquals(new int[]{1, 2, 3, 0}, order);
+        assertTrue(QuadSorter.sortBackToFront(centers, order, distances, scratch,
+                4, true, 1, 1, 0));
+        assertArrayEquals(new int[]{2, 1, 3, 0}, order);
+        assertTrue(QuadSorter.sortBackToFront(centers, order, distances, scratch,
+                4, true, 0, 0, 0));
+        assertArrayEquals(new int[]{1, 2, 3, 0}, order);
+    }
+
+    @Test
+    void reusedOrderMatchesFullSortAcrossDenseClusterCameraMovement() {
+        int count = 256;
+        float[] centers = new float[count * 3];
+        Random random = new Random(1);
+        for (int i = 0; i < centers.length; i++) centers[i] = random.nextInt(8);
+        int[] order = new int[count];
+        int[] expected = new int[count];
+        double[] distances = new double[count];
+        int[] scratch = new int[count];
+        for (int frame = 0; frame < 100; frame++) {
+            double cameraX = Math.sin(frame * 0.1) * 12;
+            boolean geometryChanged = frame == 0 || frame == 50;
+            if (geometryChanged) centers[0] += 10;
+            QuadSorter.sortBackToFront(centers, order, distances, scratch,
+                    count, !geometryChanged, cameraX, 3, -4);
+            QuadSorter.sortBackToFront(centers, expected, distances, scratch,
+                    count, false, cameraX, 3, -4);
+            assertArrayEquals(expected, order, "frame " + frame);
+        }
     }
 }

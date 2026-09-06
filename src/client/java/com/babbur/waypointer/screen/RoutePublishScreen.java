@@ -454,11 +454,7 @@ public final class RoutePublishScreen extends Screen {
                 : defaultPublisherName();
     }
 
-    /**
-     * Copies the short catalog-reference code rather than the full payload: it
-     * installs the published route from the catalog on any size of route and
-     * works for unlisted publications too.
-     */
+    /** Copies the catalog reference code, including for unlisted routes. */
     private void copyPublishedCode() {
         if (publishState.publishedPayload() == null || minecraft == null) return;
         String code = publishState.result() != null && publishState.result().route() != null

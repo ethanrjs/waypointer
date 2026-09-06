@@ -1,5 +1,7 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
 import org.junit.jupiter.api.Test;
 
@@ -42,6 +44,23 @@ class ExportImportSliceScreenTest {
                 visible, new LinkedHashSet<>(List.of("b")), "b", "d", false, true)));
         assertEquals(List.of("c"), List.copyOf(RouteSelectionPolicy.afterClick(
                 visible, new LinkedHashSet<>(), null, "c", false, true)));
+    }
+
+    @Test
+    void collapsed_folder_selection_stays_scoped_to_the_selected_routes() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup first = WaypointGroup.create("First", "hub");
+        WaypointGroup second = WaypointGroup.create("Second", "hub");
+        WaypointGroup outside = WaypointGroup.create("Outside", "the_end");
+        manager.addAll(List.of(first, second, outside));
+        RouteFolder folder = new RouteFolder(
+                "folder", "Mining", "hub", false, 0x123456);
+        manager.addFolder(folder, List.of(first.id(), second.id()));
+        manager.toggleFolderCollapsed(folder.id());
+
+        assertEquals(List.of(second), WaypointerScreen.logicalSelectedGroups(
+                manager, "hub", new LinkedHashSet<>(List.of(second.id()))));
+        assertEquals(List.of(first, second), WaypointerScreen.exportFolderGroups(manager, folder));
     }
 
     @Test

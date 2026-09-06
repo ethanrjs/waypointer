@@ -54,7 +54,6 @@ final class WaypointPaintPreviewTexture {
         Minecraft.getInstance().getTextureManager().release(id);
     }
 
-    /** Reuses its frame and paint buffers without requiring a graphics device. */
     static final class Raster {
         private final int[] pixels = new int[SIZE * SIZE];
         private final float[] depth = new float[SIZE * SIZE];

@@ -118,6 +118,9 @@ public final class WaypointPaint {
 
     public static byte[] decodePixels(String encoded) {
         if (encoded == null) throw new IllegalArgumentException("waypoint paint pixels are missing");
+        if (encoded.length() != PIXEL_COUNT / 3 * 4) {
+            throw new IllegalArgumentException("waypoint paint must contain 1536 pixels");
+        }
         byte[] decoded = Base64.getDecoder().decode(encoded);
         if (decoded.length != PIXEL_COUNT) {
             throw new IllegalArgumentException("waypoint paint must contain 1536 pixels");

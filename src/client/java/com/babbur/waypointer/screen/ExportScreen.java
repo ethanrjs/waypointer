@@ -108,6 +108,9 @@ public final class ExportScreen extends Screen {
     private final List<WaypointGroup> groups;
     private final ExportRouteSelection routeSelection;
     private final String subtitle;
+    private final boolean preserveFolderMetadata;
+    private final ScopeKind scopeKind;
+    private final String scopeLabel;
 
     private WaypointCodec.Options.Builder optsBuilder;
     private WaypointExportCodec.Target exportTarget = WaypointExportCodec.Target.WAYPOINTER;
@@ -175,11 +178,18 @@ public final class ExportScreen extends Screen {
     private final boolean previewEnabled;
 
     public ExportScreen(Screen parent, WaypointerConfig config, List<WaypointGroup> groups, String subtitle) {
-        this(parent, config, null, groups, subtitle);
+        this(parent, config, null, groups, subtitle, false, ScopeKind.STATIC, "");
     }
 
     public ExportScreen(Screen parent, WaypointerConfig config, ActiveGroupManager manager,
                         List<WaypointGroup> groups, String subtitle) {
+        this(parent, config, manager, groups, subtitle, false, ScopeKind.STATIC, "");
+    }
+
+    private ExportScreen(Screen parent, WaypointerConfig config, ActiveGroupManager manager,
+                         List<WaypointGroup> groups, String subtitle,
+                         boolean preserveFolderMetadata, ScopeKind scopeKind,
+                         String scopeLabel) {
         super(Component.translatable("waypointer.screen.export.title"));
         this.parent = parent;
         this.config = config;
@@ -187,9 +197,12 @@ public final class ExportScreen extends Screen {
         this.groups = groups;
         this.routeSelection = new ExportRouteSelection(groups.size());
         this.subtitle = subtitle;
+        this.preserveFolderMetadata = preserveFolderMetadata;
+        this.scopeKind = scopeKind;
+        this.scopeLabel = scopeLabel;
         this.routePickerExpanded = shouldStartRoutePickerExpanded(groups.size());
         this.optsBuilder = ExportPolicy.optionsFromConfig(config, selectedGroupsForExport());
-        this.previewEnabled = config.showExportRoutePreview();
+        this.previewEnabled = config.exportRoutePreviewEnabled();
         this.previewGroupIndex = firstSelectedGroupIndex();
         this.previewScene = previewEnabled ? buildPreviewScene() : RoutePreviewScene.empty();
     }
@@ -216,13 +229,25 @@ public final class ExportScreen extends Screen {
     public static void openForGroups(Screen parent, WaypointerConfig config,
                                      ActiveGroupManager manager,
                                      List<WaypointGroup> groups, String zoneLabel) {
-        int totalPts = groups.stream().mapToInt(WaypointGroup::size).sum();
-        String title = Component.translatable(groups.size() == 1
-                ? "waypointer.screen.export.subtitle.zone.one"
-                : "waypointer.screen.export.subtitle.zone.many",
-                zoneLabel, groups.size(), totalPts).getString();
         MinecraftCompat.setScreen(Minecraft.getInstance(),
-                new ExportScreen(parent, config, manager, groups, title));
+                new ExportScreen(parent, config, manager, groups, "", false,
+                        ScopeKind.ZONE, zoneLabel));
+    }
+
+    public static void openForSelectedGroups(Screen parent, WaypointerConfig config,
+                                             ActiveGroupManager manager,
+                                             List<WaypointGroup> groups) {
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new ExportScreen(parent, config, manager, groups, "", false,
+                        ScopeKind.SELECTION, ""));
+    }
+
+    public static void openForFolder(Screen parent, WaypointerConfig config,
+                                     ActiveGroupManager manager, String folderName,
+                                     List<WaypointGroup> groups) {
+        MinecraftCompat.setScreen(Minecraft.getInstance(),
+                new ExportScreen(parent, config, manager, groups, "", true,
+                        ScopeKind.FOLDER, folderName));
     }
 
     @Override
@@ -871,7 +896,7 @@ public final class ExportScreen extends Screen {
     private void reencode() {
         List<WaypointGroup> selected = selectedGroupsForExport();
         RouteLibraryMetadata metadata = captureLibraryMetadata(
-                manager, selected, exportTarget);
+                manager, selected, exportTarget, preserveFolderMetadata);
         List<WaypointGroup> snapshot = new ArrayList<>();
         for (WaypointGroup group : selected) {
             if (group != null) snapshot.add(group.exportSnapshot());
@@ -894,20 +919,30 @@ public final class ExportScreen extends Screen {
             ActiveGroupManager manager,
             List<WaypointGroup> selected,
             WaypointExportCodec.Target target) {
+        return captureLibraryMetadata(manager, selected, target,
+                selected != null && selected.size() > 1);
+    }
+
+    static RouteLibraryMetadata captureLibraryMetadata(
+            ActiveGroupManager manager,
+            List<WaypointGroup> selected,
+            WaypointExportCodec.Target target,
+            boolean preserveFolders) {
         if (target != WaypointExportCodec.Target.WAYPOINTER) {
             return RouteLibraryMetadata.empty();
         }
-        RouteLibraryMetadata captured = RouteLibraryMetadata.capture(manager, selected);
-        // Folder membership is the sender's local organization. Sharing one
-        // route must not recreate it on the recipient's side, and dropping it
-        // keeps single-route codes out of the route-library share kind (issue #114). The
-        // public API keeps full metadata; this trim is a share-screen choice.
-        if (selected.size() > 1) return captured;
-        return new RouteLibraryMetadata(
-                captured.manualColors(), List.of(), captured.paints());
+        return RouteLibraryMetadata.captureForExport(
+                manager, selected, preserveFolders || selected.size() > 1);
     }
 
     private record EncodeResult(String code, String error) {}
+
+    enum ScopeKind {
+        STATIC,
+        ZONE,
+        SELECTION,
+        FOLDER
+    }
 
     private void applyEncodeResult(int generation, EncodeResult result) {
         if (generation != encodeGeneration) return;
@@ -1182,7 +1217,7 @@ public final class ExportScreen extends Screen {
                 : contentW;
         g.text(font, font.plainSubstrByWidth(getTitle().getString(), headerWidth),
                 contentX, top, TEXT, false);
-        g.text(font, font.plainSubstrByWidth(subtitle, headerWidth),
+        g.text(font, font.plainSubstrByWidth(subtitleText(), headerWidth),
                 contentX, top + LINE_H, TEXT_DIM, false);
 
         if (optionsPageVisible()) {
@@ -1206,6 +1241,48 @@ public final class ExportScreen extends Screen {
 
     private void drawClipped(GuiGraphicsExtractor g, String text, int y, int color) {
         g.text(font, font.plainSubstrByWidth(text, contentW), contentX, y, color, false);
+    }
+
+    private String subtitleText() {
+        if (scopeKind == ScopeKind.STATIC) return subtitle;
+
+        int routeCount = selectedGroupCount();
+        int waypointCount = selectedWaypointCount();
+        List<WaypointGroup> selected = selectedGroupsForExport();
+        String name = selected.isEmpty() ? "" : routeDisplayName(selected.getFirst());
+        return subtitleComponent(scopeKind, scopeLabel, name, routeCount, waypointCount).getString();
+    }
+
+    static Component subtitleComponent(ScopeKind scopeKind, String scopeLabel,
+                                       String routeName, int routeCount, int waypointCount) {
+        String key = subtitleKey(scopeKind, routeCount, waypointCount);
+        if (scopeKind == ScopeKind.FOLDER) {
+            return Component.translatable(key, scopeLabel, routeCount, waypointCount);
+        }
+        if (routeCount == 1) {
+            return Component.translatable(key, routeName, waypointCount);
+        }
+        if (scopeKind == ScopeKind.SELECTION) {
+            return Component.translatable(key, routeCount, waypointCount);
+        }
+        return Component.translatable(key, scopeLabel, routeCount, waypointCount);
+    }
+
+    static String subtitleKey(ScopeKind scopeKind, int routeCount, int waypointCount) {
+        if (scopeKind == ScopeKind.STATIC) return "";
+        if (scopeKind == ScopeKind.FOLDER) {
+            return routeCount == 1
+                    ? "waypointer.screen.export.subtitle.folder.one"
+                    : "waypointer.screen.export.subtitle.folder.many";
+        }
+        if (routeCount == 1) {
+            return waypointCount == 1
+                    ? "waypointer.screen.export.subtitle.route.one"
+                    : "waypointer.screen.export.subtitle.route.many";
+        }
+        return scopeKind == ScopeKind.SELECTION
+                ? "waypointer.screen.export.subtitle.selection.many"
+                : "waypointer.screen.export.subtitle.zone.many";
     }
 
     private void updateCopyFeedback() {
@@ -1645,7 +1722,6 @@ public final class ExportScreen extends Screen {
                 case SKYBLOCKER -> "waypointer.screen.export.target.skyblocker.tooltip";
                 case SKYTILS -> "waypointer.screen.export.target.skytils.tooltip";
                 case SKYHANNI -> "waypointer.screen.export.target.skyhanni.tooltip";
-                case CHUNKLOGGER -> "waypointer.screen.export.target.chunklogger.tooltip";
             };
         }
 

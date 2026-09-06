@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
 import com.babbur.waypointer.core.WaypointGroup;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
@@ -18,6 +19,12 @@ import static com.babbur.waypointer.screen.GuiTokens.HOVER;
 import static com.babbur.waypointer.screen.GuiTokens.SELECTED;
 
 final class RouteListPresentation {
+
+    static int folderBackgroundTint(RouteFolder folder) {
+        boolean structures = folder.runtimeOnly()
+                && CrystalHollowsStructureFolder.FOLDER_ID.equals(folder.id());
+        return (structures ? 0x50000000 : 0x24000000) | folder.color();
+    }
 
     static final int CURRENT_DUNGEON_ROOM_ACCENT = 0xFF58C878;
 

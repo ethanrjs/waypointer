@@ -5,6 +5,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
+import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import net.minecraft.core.BlockPos;
@@ -20,6 +21,36 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointRendererTest {
+
+    @Test
+    void nearlyTransparentFadeLabelsAreNotSubmittedToTheFontRenderer() {
+        assertFalse(WaypointRenderer.labelAlphaVisible(0));
+        assertFalse(WaypointRenderer.labelAlphaVisible(3.0f / 255.0f));
+        assertTrue(WaypointRenderer.labelAlphaVisible(4.0f / 255.0f));
+        assertTrue(WaypointRenderer.labelAlphaVisible(1));
+    }
+
+    @Test
+    void focusedTempWaypointGetsABeaconAndInvalidatesRetainedGeometry() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("crystal_hollows"));
+        WaypointerConfig config = new WaypointerConfig();
+        config.setBeaconBeamMode(WaypointerConfig.BeaconBeamMode.OFF);
+        WaypointRenderer renderer = new WaypointRenderer(manager, config);
+        WaypointGroup group = manager.addTempWaypoint(695, 87, 421, "Mines of Divan");
+        var position = net.minecraft.world.phys.Vec3.ZERO;
+        long unfocused = renderer.worldVisibilityFingerprint(List.of(group), position, position);
+        assertEquals(WaypointerConfig.BeaconBeamMode.OFF, renderer.effectiveBeaconBeamMode());
+
+        manager.focusTempWaypoint(group, 0);
+        assertEquals(WaypointerConfig.BeaconBeamMode.CURRENT, renderer.effectiveBeaconBeamMode());
+        assertTrue(unfocused != renderer.worldVisibilityFingerprint(List.of(group), position, position));
+        assertEquals(WaypointerConfig.BeaconBeamMode.OFF, config.beaconBeamMode());
+
+        manager.clearTempWaypointFocus();
+        assertEquals(WaypointerConfig.BeaconBeamMode.OFF, renderer.effectiveBeaconBeamMode());
+        assertEquals(unfocused, renderer.worldVisibilityFingerprint(List.of(group), position, position));
+    }
 
     @Test
     void outlineOpacityKeepsOutlinedWaypointsVisibleWhenFillIsTransparent() {
@@ -59,6 +90,28 @@ class WaypointRendererTest {
 
         assertTrue(WaypointRenderer.hasDepthCheckedWaypoint(List.of(mixed)));
         assertTrue(WaypointRenderer.hasThroughWallWaypoint(List.of(mixed)));
+    }
+
+    @Test
+    void featureBloatOffDoesNotReservePaintOrLoseStoredPaint() {
+        WaypointerConfig config = new WaypointerConfig();
+        config.setColorSequenceWaypointsByRole(false);
+        WaypointGroup painted = groupWith(waypoint(0));
+        painted.setPaint(WaypointPaint.solid(0x123456));
+        WaypointRenderer renderer = new WaypointRenderer(new ActiveGroupManager(), config);
+        try {
+            config.setEnableFeatureBloat(true);
+            renderer.reserveActivePaints(List.of(painted));
+            assertTrue(WaypointPaintTextureCache.isRetained(painted.paint()));
+            config.setEnableFeatureBloat(false);
+            renderer.reserveActivePaints(List.of(painted));
+            assertFalse(WaypointPaintTextureCache.isRetained(painted.paint()));
+            assertTrue(painted.paint() != null);
+            config.setBoxStyle(WaypointerConfig.BoxStyle.PAINT);
+            assertTrue(renderer.staticBoxGeometryEnabledFor(List.of(painted)));
+        } finally {
+            WaypointPaintTextureCache.resetRetainedReservation();
+        }
     }
 
     @Test
@@ -111,6 +164,7 @@ class WaypointRendererTest {
     @Test
     void roleColorsReserveStaticPaintButNotReplacedSequentialPaint() {
         WaypointerConfig config = new WaypointerConfig();
+        config.setEnableFeatureBloat(true);
         config.setColorSequenceWaypointsByRole(true);
         WaypointPaint sequentialPaint = WaypointPaint.solid(0x123456);
         WaypointGroup sequential = groupWith(waypoint(0));
@@ -151,6 +205,7 @@ class WaypointRendererTest {
     @Test
     void perRoutePaintParticipatesInRetainedVisibilityInvalidation() {
         WaypointerConfig config = new WaypointerConfig();
+        config.setEnableFeatureBloat(true);
         config.setWaypointOutlineOpacity(0.0);
         WaypointRenderer renderer = new WaypointRenderer(new ActiveGroupManager(), config);
         WaypointGroup painted = groupWith(waypoint(0));
@@ -586,13 +641,6 @@ class WaypointRendererTest {
 
         assertFalse(WaypointRenderer.boxStyleDrawsOutline(WaypointerConfig.BoxStyle.PAINT));
         assertFalse(WaypointRenderer.boxStyleDrawsRgbFill(WaypointerConfig.BoxStyle.PAINT));
-    }
-
-    @Test
-    void irisHudLinesUseIntegerWidthAndDenseSampling() {
-        assertEquals(3.0, WaypointRenderer.crispHudLineThickness(3.75));
-        assertEquals(100, WaypointRenderer.screenLineSampleCount(100.0, 0.0));
-        assertEquals(70, WaypointRenderer.screenLineSampleCount(70.0, 70.0));
     }
 
     @Test

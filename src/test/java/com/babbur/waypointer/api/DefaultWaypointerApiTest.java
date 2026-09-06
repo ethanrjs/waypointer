@@ -500,36 +500,6 @@ class DefaultWaypointerApiTest {
     }
 
     @Test
-    void chunkLoggerExportRoundTripsThroughSecondPublicApiWithSubwaypointStructure() {
-        ActiveGroupManager sourceManager = new ActiveGroupManager();
-        WaypointerApi sourceApi = new DefaultWaypointerApi(sourceManager);
-        String groupId = sourceApi.createRoute(RouteSpec.builder()
-                .name("Route")
-                .waypoint(WaypointSpec.at(10, 64, -2))
-                .waypoint(WaypointSpec.at(11, 62, 1).flags(WaypointFlags.SUBWAYPOINT))
-                .build());
-
-        String payload = sourceApi.exportRoutes(List.of(groupId),
-                ExportOptions.builder().target(ExportTarget.CHUNKLOGGER).build());
-        ActiveGroupManager targetManager = new ActiveGroupManager();
-        WaypointerApi targetApi = new DefaultWaypointerApi(targetManager);
-        ImportSummary summary = targetApi.importRoutes(payload);
-
-        assertTrue(payload.contains("\"coal\""));
-        assertEquals(ImportSource.CHUNKLOGGER, summary.source());
-        assertEquals(1, summary.groupCount());
-        assertEquals(2, summary.waypointCount());
-
-        List<WaypointSnapshot> imported = targetApi.savedRoutes().getFirst().waypoints();
-        assertEquals(List.of(10, 64, -2),
-                List.of(imported.get(0).x(), imported.get(0).y(), imported.get(0).z()));
-        assertEquals(0, imported.get(0).flags());
-        assertEquals(List.of(11, 62, 1),
-                List.of(imported.get(1).x(), imported.get(1).y(), imported.get(1).z()));
-        assertEquals(WaypointFlags.SUBWAYPOINT, imported.get(1).flags());
-    }
-
-    @Test
     void nativeApiExportAndImportPreserveRouteLibraryMetadata() {
         ActiveGroupManager sourceManager = new ActiveGroupManager();
         WaypointerApi sourceApi = new DefaultWaypointerApi(sourceManager);

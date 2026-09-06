@@ -25,6 +25,7 @@ class SettingsCatalogTest {
 
     private static final Set<String> MAIN_EXEMPT = Set.of(
             "configSchemaVersion",
+            "crystalHollowsCompassRays",
             "waypointPainterPalette",
             "waypointPainterDefaultPalette",
             "waypointPainterDefaultPixels");
@@ -43,6 +44,35 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void legacyFeaturesShareTheFeatureBloatTabAndRequireSystemOptIn() {
+        Setting toggle = SettingsCatalog.byId("enableFeatureBloat");
+        assertEquals("system", categoryContaining(toggle.id()));
+        assertEquals("Enable Extras", toggle.label());
+        assertEquals("Enable the Waypoint Painter and 3D route preview.", toggle.tooltip());
+        WaypointerConfig config = new WaypointerConfig();
+        Setting paint = SettingsCatalog.byId(SettingsCatalog.ACTION_WAYPOINT_PAINT);
+        Setting preview = SettingsCatalog.byId("showExportRoutePreview");
+        assertEquals("feature_bloat", categoryContaining(paint.id()));
+        assertEquals("feature_bloat", categoryContaining(preview.id()));
+        assertFalse(paint.isEnabled(config, null));
+        assertFalse(preview.isEnabled(config, null));
+        toggle.set(config, null, true);
+        assertTrue(paint.isEnabled(config, null));
+        assertTrue(preview.isEnabled(config, null));
+    }
+
+    @Test
+    void antialiasingIsAnEnabledAppearanceToggle() {
+        Setting setting = SettingsCatalog.byId("renderAntialiasing");
+        assertEquals(Setting.Kind.BOOL, setting.kind());
+        assertEquals("appearance", categoryContaining(setting.id()));
+        WaypointerConfig config = new WaypointerConfig();
+        assertEquals(true, setting.get(config, null));
+        setting.set(config, null, false);
+        assertFalse(config.renderAntialiasing());
+    }
+
+    @Test
     void miningCategoryGroupsCrystalHollowsSettingsUnderItsRealMasterSwitch() {
         SettingsCatalog.Category category = SettingsCatalog.categories().stream()
                 .filter(candidate -> candidate.id().equals("mining"))
@@ -51,7 +81,7 @@ class SettingsCatalogTest {
         assertEquals("crystalHollowsEnabled", category.masterSettingId());
         assertEquals(List.of("crystal_hollows_structures", "wishing_compass"),
                 category.groups().stream().map(SettingsCatalog.Group::id).toList());
-        assertEquals(9, category.groups().stream()
+        assertEquals(11, category.groups().stream()
                 .flatMap(group -> group.settings().stream()).count());
         assertTrue(category.groups().stream()
                 .flatMap(group -> group.settings().stream())
@@ -62,6 +92,20 @@ class SettingsCatalogTest {
                 List.of("mining", "compass", "hollows", "divan", "temple")));
         WaypointerConfig config = new WaypointerConfig();
         assertTrue(category.bodyVisibleWhen().test(config, null));
+        Setting sharing = SettingsCatalog.byId("crystalHollowsRemoteSharing");
+        assertNotNull(sharing);
+        assertEquals("mining", categoryContaining(sharing.id()));
+        assertEquals(true, sharing.get(config, null));
+        sharing.set(config, null, false);
+        assertFalse(config.crystalHollowsRemoteSharing());
+        Setting hideStructures = SettingsCatalog.byId("crystalHollowsHideStructuresFolder");
+        assertNotNull(hideStructures);
+        assertEquals("Hide Structures folder", hideStructures.label());
+        assertEquals("Hide the Structures folder and its generated waypoints.",
+                hideStructures.tooltip());
+        assertEquals(false, hideStructures.get(config, null));
+        hideStructures.set(config, null, true);
+        assertEquals(true, hideStructures.get(config, null));
         config.setCrystalHollowsEnabled(false);
         assertFalse(category.bodyVisibleWhen().test(config, null));
     }
@@ -69,7 +113,7 @@ class SettingsCatalogTest {
     @Test
     void categoryOrderIncludesFunctionalMiningWithoutAnEmptyForagingPage() {
         assertEquals(List.of("waypoints", "appearance", "routes", "dungeons", "mining",
-                        "chat", "sharing", "system"),
+                        "chat", "sharing", "feature_bloat", "system"),
                 SettingsCatalog.categories().stream()
                         .map(SettingsCatalog.Category::id)
                         .toList());
@@ -293,13 +337,13 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void waypointPainterIsAnActionInTheAppearanceCategory() {
+    void waypointPainterIsAnActionInTheFeatureBloatCategory() {
         Setting paint = SettingsCatalog.byId(SettingsCatalog.ACTION_WAYPOINT_PAINT);
 
         assertNotNull(paint);
-        assertEquals("Paint", paint.label());
+        assertEquals("Waypoint Painter", paint.label());
         assertEquals(Setting.Kind.ACTION, paint.kind());
-        assertEquals("appearance", SettingsCatalog.categories().stream()
+        assertEquals("feature_bloat", SettingsCatalog.categories().stream()
                 .filter(category -> category.groups().stream()
                         .flatMap(group -> group.settings().stream())
                         .anyMatch(setting -> setting.id().equals(SettingsCatalog.ACTION_WAYPOINT_PAINT)))
@@ -329,6 +373,7 @@ class SettingsCatalogTest {
                 .findFirst().orElseThrow();
 
         assertEquals(List.of(
+                        "renderAntialiasing",
                         "boxStyle",
                         "waypointMarkerScale",
                         "defaultWaypointColor",
@@ -336,8 +381,7 @@ class SettingsCatalogTest {
                         "matchWaypointOutlineToWaypointColor",
                         "waypointOutlineColor",
                         "waypointOutlineOpacity",
-                        "waypointOutlineThickness",
-                        SettingsCatalog.ACTION_WAYPOINT_PAINT),
+                        "waypointOutlineThickness"),
                 appearance.groups().getFirst().settings().stream().map(Setting::id).toList());
     }
 
@@ -350,6 +394,7 @@ class SettingsCatalogTest {
         assertRange("waypointMarkerScale", 0.25, 3.0, false);
         assertRange("waypointOutlineOpacity", 0.0, 1.0, false);
         assertRange("labelScale", 0.25, 4.0, false);
+        assertRange("labelOpacity", 0.0, 1.0, false);
         assertRange("maxWaypointLabels", 0.0, Integer.MAX_VALUE, true);
         assertRange("hideWaypointLabelsNearRadius", 0.5, 100.0, false);
         assertRange("tracerOpacity", 0.0, 1.0, false);
@@ -428,17 +473,19 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void etherwarpAlignmentSoundSelectorIsOffUnderEtherwarp() {
+    void etherwarpAlignmentSoundInputIsEmptyUnderEtherwarp() {
         Setting setting = SettingsCatalog.byId("etherwarpAlignmentSound");
 
         assertNotNull(setting);
         assertEquals("Etherwarp alignment sound", setting.label());
-        assertEquals("Choose a sound to play when you can etherwarp to a waypoint.",
+        assertEquals("Minecraft sound ID, e.g. block.note_block.pling. Leave blank to disable.",
                 setting.tooltip());
-        assertEquals(Setting.Kind.ENUM, setting.kind());
-        assertEquals(List.of("off", "experience", "pling", "bell"),
-                setting.enumOptions().stream().map(Setting.EnumOption::id).toList());
-        assertEquals(WaypointerConfig.EtherwarpAlignmentSound.OFF,
+        assertEquals(Setting.Kind.TEXT, setting.kind());
+        assertTrue(setting.acceptsText("block.note_block.pling"));
+        assertTrue(setting.acceptsText("custom:cue/ready"));
+        assertTrue(setting.acceptsText(""));
+        assertFalse(setting.acceptsText("not a sound"));
+        assertEquals("",
                 setting.get(new WaypointerConfig(), new DungeonConfig()));
         assertEquals(Setting.Store.MAIN, setting.store());
         assertEquals("appearance", categoryContaining(setting.id()));
@@ -486,7 +533,7 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void theExportRoutePreviewIsOffByDefaultUnderSharing() {
+    void theExportRoutePreviewIsOffByDefaultUnderFeatureBloat() {
         Setting preview = SettingsCatalog.byId("showExportRoutePreview");
 
         assertNotNull(preview);
@@ -494,7 +541,7 @@ class SettingsCatalogTest {
         assertEquals("Show a rotating 3D preview of the route on the export screen.",
                 preview.tooltip());
         assertEquals(false, preview.get(new WaypointerConfig(), null));
-        assertEquals("sharing", categoryContaining("showExportRoutePreview"));
+        assertEquals("feature_bloat", categoryContaining("showExportRoutePreview"));
 
         WaypointerConfig enabled = new WaypointerConfig();
         preview.set(enabled, null, true);
@@ -546,7 +593,7 @@ class SettingsCatalogTest {
                 "exportIncludeNames", "exportIncludeColors", "exportIncludeRadii",
                 "exportIncludeWaypointFlags", "exportIncludeGroupMeta", "exportIncludeZone",
                 "irisShaderHudFallback", SettingsCatalog.ACTION_CONFIG_CODE,
-                SettingsCatalog.ACTION_PRESETS, SettingsCatalog.ACTION_PERF_TEST)) {
+                SettingsCatalog.ACTION_PRESETS)) {
             assertEquals("", SettingsCatalog.byId(id).tooltip(), id);
         }
         assertEquals("Create Waypoints from Chat Messages",
@@ -584,8 +631,9 @@ class SettingsCatalogTest {
         if (setting.kind() == Setting.Kind.COLOR) {
             return ((Number) defaultValue).intValue() ^ 0x0F0F0F;
         }
+        if (setting.kind() == Setting.Kind.TEXT) return "block.note_block.pling";
         if (defaultValue instanceof Boolean b) return !b;
-        if ("waypointOutlineOpacity".equals(setting.id())) return 0.5;
+        if ("waypointOutlineOpacity".equals(setting.id()) || "labelOpacity".equals(setting.id())) return 0.5;
         if (defaultValue instanceof Double d) return d + 2.0;
         if (defaultValue instanceof List<?>) return List.of("ProbePlayer");
         throw new AssertionError(setting.id() + " has unprobeable default " + defaultValue);

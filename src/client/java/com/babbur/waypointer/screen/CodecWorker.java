@@ -61,11 +61,7 @@ public final class CodecWorker {
         }
     }
 
-    /**
-     * Runs one preview at a time and retains only the newest request while it runs.
-     * This keeps automatic recompression bounded without occupying the worker used
-     * by explicit import actions.
-     */
+    /** Runs previews separately from imports, keeping only the newest pending request. */
     static final class LatestRunner {
         private final Executor worker;
         private final Executor clientThread;
@@ -94,9 +90,7 @@ public final class CodecWorker {
         private <T> void start(Request<T> request) {
             if (!CodecWorker.submit(worker, clientThread, request.work(),
                     result -> complete(request, result))) {
-                // The runner submits at most one task at a time, so this can only
-                // happen if its executor is unavailable. Complete on the client
-                // thread and let a newer pending request advance.
+                // Report executor failure on the client thread, then try the pending request.
                 clientThread.execute(() -> complete(request, null));
             }
         }

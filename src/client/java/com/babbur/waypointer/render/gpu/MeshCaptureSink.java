@@ -28,7 +28,6 @@ public final class MeshCaptureSink implements GeometrySink {
     private final Map<MeshBucket, Pair> buckets = new LinkedHashMap<>();
     private boolean captureStatic = true;
     private boolean inDynamicScope;
-    private int unknownRenderTypes;
 
     public MeshCaptureSink(OverlayPipelines pipelines, PoseStack poseStack) {
         this.pipelines = Objects.requireNonNull(pipelines, "pipelines");
@@ -39,7 +38,6 @@ public final class MeshCaptureSink implements GeometrySink {
     public void beginCapture(boolean fullRebuild) {
         captureStatic = fullRebuild;
         inDynamicScope = false;
-        unknownRenderTypes = 0;
         for (Pair pair : buckets.values()) {
             pair.dynamics.reset();
             if (fullRebuild) pair.statics.reset();
@@ -48,10 +46,6 @@ public final class MeshCaptureSink implements GeometrySink {
 
     public Map<MeshBucket, Pair> buckets() {
         return buckets;
-    }
-
-    public int unknownRenderTypes() {
-        return unknownRenderTypes;
     }
 
     public void removeBucket(MeshBucket bucket) {
@@ -65,7 +59,6 @@ public final class MeshCaptureSink implements GeometrySink {
     public boolean submit(RenderType renderType, RenderSubmission.Geometry geometry) {
         MeshBucket bucket = pipelines.bucketFor(renderType);
         if (bucket == null || geometry == null) {
-            unknownRenderTypes++;
             return false;
         }
         Pair pair = buckets.computeIfAbsent(bucket, this::newPair);

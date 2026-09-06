@@ -480,7 +480,7 @@ public final class GroupEditScreen extends Screen {
     }
 
     private RouteColorMode routeColorMode() {
-        boolean paintActive = group.paintEnabled()
+        boolean paintActive = config.enableFeatureBloat() && group.paintEnabled()
                 && (group.paint() != null || config.waypointPainterDefaultPaint() != null);
         return GroupEditPolicy.routeColorMode(group.gradientMode(), paintActive);
     }
@@ -492,7 +492,8 @@ public final class GroupEditScreen extends Screen {
 
     private void toggleColorMode(Button b) {
         RouteColorMode next = nextColorMode(routeColorMode());
-        group.setPaintEnabled(next == RouteColorMode.PAINT);
+        if (!config.enableFeatureBloat() && next == RouteColorMode.PAINT) next = RouteColorMode.COLOR;
+        if (config.enableFeatureBloat()) group.setPaintEnabled(next == RouteColorMode.PAINT);
         switch (next) {
             case COLOR -> group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
             case GRADIENT -> group.setGradientMode(WaypointGroup.GradientMode.AUTO);
@@ -510,6 +511,7 @@ public final class GroupEditScreen extends Screen {
     }
 
     private void openWaypointPainter() {
+        if (!config.enableFeatureBloat()) return;
         WaypointGroup editTarget = durableEditTarget();
         if (editTarget == null) return;
         MinecraftCompat.setScreen(minecraft,

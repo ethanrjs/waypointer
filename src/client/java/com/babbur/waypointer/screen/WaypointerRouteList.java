@@ -206,11 +206,11 @@ final class WaypointerRouteList {
         return selectedGroups;
     }
 
-    /** Collapsing a folder hides rows; drop them from the selection so actions stay honest. */
+    /** Collapse rows without clearing the route selection. */
     void toggleFolderCollapsed(RouteFolder folder) {
         if (folder == null) return;
         screen.manager.toggleFolderCollapsed(folder.id());
-        screen.pruneSelectionToVisible(visibleGroupIds(rows()));
+        screen.refreshActionButtons();
     }
 
     List<Row> rows() {
@@ -617,7 +617,7 @@ final class WaypointerRouteList {
     private void renderFolderHeader(GuiGraphicsExtractor graphics, Row row,
                                     int x1, int y1, int x2, int mouseX, boolean hovered) {
         int rowBottom = y1 + ROW_H + 2;
-        int folderTint = 0x24000000 | row.folder.color();
+        int folderTint = RouteListPresentation.folderBackgroundTint(row.folder);
         graphics.fill(x1, y1, x2, rowBottom, folderTint);
         if (hovered) graphics.fill(x1, y1, x2, rowBottom, HOVER);
         graphics.fill(x1, rowBottom - 1, x2, rowBottom, BORDER);

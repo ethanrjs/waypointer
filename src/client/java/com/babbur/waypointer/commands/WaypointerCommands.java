@@ -68,8 +68,6 @@ public final class WaypointerCommands {
             registerAlias(dispatcher, "waypointer", root);
             dispatcher.register(literal("happysnowman").executes(ctx -> {
                 HappySnowmanSession.activate();
-                info(ctx.getSource(), Component.translatable(
-                        "waypointer.command.happy_snowman.enabled"));
                 return 1;
             }));
             suggestionOverride.setClientRoot(root);

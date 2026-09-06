@@ -316,7 +316,7 @@ class RouteLibraryCodecTest {
                 mutate(base, root -> root.getAsJsonArray("manualColors").get(0)
                         .getAsJsonObject().getAsJsonArray("colors").add(0x1000000))));
         assertThrows(IllegalArgumentException.class,
-                () -> RouteLibraryCodec.decode(base.replace("WPL:1:", "WPL:2:")));
+                () -> RouteLibraryCodec.decode(base.replace("WPL:1:", "WPL:3:")));
     }
 
     @Test

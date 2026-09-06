@@ -1,6 +1,7 @@
 package com.babbur.waypointer.render.gpu;
 
 import com.babbur.waypointer.Waypointer;
+import com.babbur.waypointer.render.WaypointerRenderPipelines;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.DepthStencilState;
@@ -20,9 +21,10 @@ import java.util.Objects;
 /** Pipelines and legacy RenderType mappings for retained geometry. */
 public final class OverlayPipelines {
 
-    private record PipelineKey(MeshBucket.Kind kind, boolean depthTested) {
+    private record PipelineKey(MeshBucket.Kind kind, boolean depthTested, boolean smooth) {
         static PipelineKey from(MeshBucket bucket) {
-            return new PipelineKey(bucket.kind(), bucket.depthTested());
+            return new PipelineKey(bucket.kind(), bucket.depthTested(),
+                    bucket.kind() == MeshBucket.Kind.LINES && WaypointerRenderPipelines.antialiasing());
         }
     }
 
@@ -44,10 +46,12 @@ public final class OverlayPipelines {
 
     public static OverlayPipelines create() {
         OverlayPipelines pipelines = new OverlayPipelines();
-        pipelines.map(com.babbur.waypointer.render.WaypointerRenderPipelines.linesThroughWalls(),
-                MeshBucket.untextured(MeshBucket.Kind.LINES, false));
-        pipelines.map(com.babbur.waypointer.render.WaypointerRenderPipelines.linesDepthTested(),
-                MeshBucket.untextured(MeshBucket.Kind.LINES, true));
+        for (boolean smooth : new boolean[]{false, true}) {
+            pipelines.map(WaypointerRenderPipelines.linesThroughWalls(smooth),
+                    MeshBucket.untextured(MeshBucket.Kind.LINES, false));
+            pipelines.map(WaypointerRenderPipelines.linesDepthTested(smooth),
+                    MeshBucket.untextured(MeshBucket.Kind.LINES, true));
+        }
         pipelines.map(com.babbur.waypointer.render.WaypointerRenderPipelines.quadsThroughWalls(),
                 MeshBucket.untextured(MeshBucket.Kind.QUADS, false));
         pipelines.map(com.babbur.waypointer.render.WaypointerRenderPipelines.quadsDepthTested(),
@@ -112,7 +116,7 @@ public final class OverlayPipelines {
     }
 
     private static Slot buildSlot(PipelineKey key) {
-        String suffix = key.depthTested() ? "depth" : "through";
+        String suffix = (key.depthTested() ? "depth" : "through") + (key.smooth() ? "_smooth" : "");
         RenderPipeline inWorld = build(key, "gpu/" + key.kind().name().toLowerCase(java.util.Locale.ROOT) + "_" + suffix);
         RenderPipeline postWorld = build(key, "gpu_post/" + key.kind().name().toLowerCase(java.util.Locale.ROOT) + "_" + suffix);
         MeshLayout layout = VertexLayoutCompat.describe(inWorld);
@@ -123,10 +127,7 @@ public final class OverlayPipelines {
         DepthStencilState depth = key.depthTested() ? DEPTH_TESTED : NO_DEPTH_TEST;
         Identifier location = Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, path);
         return switch (key.kind()) {
-            case LINES -> RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
-                    .withLocation(location)
-                    .withDepthStencilState(depth)
-                    .build();
+            case LINES -> WaypointerRenderPipelines.buildLinesPipeline(location, depth, key.smooth());
             case QUADS -> RenderPipeline.builder(RenderPipelines.DEBUG_FILLED_SNIPPET)
                     .withLocation(location)
                     .withDepthStencilState(depth)

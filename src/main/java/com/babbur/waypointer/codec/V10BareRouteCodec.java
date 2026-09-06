@@ -93,7 +93,6 @@ final class V10BareRouteCodec {
         return group;
     }
 
-    /** Read the bounded point count before a pack decoder allocates the child route. */
     static int waypointCount(byte[] semantic) throws IOException {
         if (semantic == null) throw new IOException("null v10 bare-route semantic body");
         ByteReader reader = new ByteReader(semantic);
@@ -118,7 +117,6 @@ final class V10BareRouteCodec {
         return coordinates;
     }
 
-    /** Return the selected kind-2 coordinate primitive without its 0x2A header. */
     static byte[] encodeCoordinateBody(int[][] coordinates, int mode) {
         byte[] semantic = switch (mode) {
             case V10Transport.MODE_DIRECT -> encodeRiceSemantic(coordinates);
@@ -128,7 +126,6 @@ final class V10BareRouteCodec {
         return Arrays.copyOfRange(semantic, 1, semantic.length);
     }
 
-    /** Decode the shared kind-2 coordinate primitive from a containing body. */
     static int[][] decodeCoordinateBody(byte[] body, int mode) throws IOException {
         if (body == null || body.length == 0) {
             throw new IOException("empty v10 coordinate body");

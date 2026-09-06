@@ -8,6 +8,8 @@ import com.babbur.waypointer.dungeon.DungeonRoom;
 import com.babbur.waypointer.dungeon.DungeonRoomZoneBridge;
 import com.babbur.waypointer.dungeon.DungeonStateTracker;
 import com.babbur.waypointer.crystal.CrystalHollowsTracker;
+import com.babbur.waypointer.crystal.CrystalHollowsPosition;
+import com.babbur.waypointer.crystal.CrystalHollowsStructure;
 import com.babbur.waypointer.crystal.WishingCompassController;
 import com.babbur.waypointer.location.HypixelApiZoneSource;
 import com.babbur.waypointer.location.SidebarTexts;
@@ -127,17 +129,22 @@ public final class DebugSignals {
                 snapshot == null ? null : snapshot.serverId(),
                 snapshot == null ? -1 : snapshot.day(),
                 snapshot == null ? 0 : snapshot.sightings(),
+                snapshot == null ? null : snapshot.sidebarStructure(),
+                tracker == null || tracker.lobby() == null ? null : tracker.lobby().divanCentre(),
                 compass == null ? "not installed" : compass.solver().state().name(),
                 compass == null ? 0 : compass.solver().completedRays().size(),
                 compass == null ? "none" : compass.lastEvent());
     }
 
     static String crystalHollowsLine(boolean active, String serverId, int day, int sightings,
+                                     CrystalHollowsStructure sidebarStructure, CrystalHollowsPosition divanCentre,
                                      String compassState, int rays, String lastEvent) {
         return "active=" + active
                 + ", serverId=" + valueOrMissing(serverId)
                 + ", day=" + (day < 0 ? "unknown" : day)
                 + ", sightings=" + sightings
+                + ", sidebarStructure=" + valueOrMissing(sidebarStructure)
+                + ", divanCentre=" + valueOrMissing(divanCentre)
                 + ", compass=" + valueOrMissing(compassState)
                 + ", rays=" + rays
                 + ", lastEvent=" + valueOrMissing(lastEvent);

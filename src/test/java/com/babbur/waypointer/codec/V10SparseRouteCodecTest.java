@@ -2,9 +2,15 @@ package com.babbur.waypointer.codec;
 
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.zip.Deflater;
 
@@ -65,7 +71,7 @@ class V10SparseRouteCodecTest {
     }
 
     @Test
-    void crc_outside_naive_unified_golden_is_byte_identical() throws Exception {
+    void legacy_unified_golden_remains_readable_and_new_selection_is_no_larger() throws Exception {
         WaypointGroup route = WaypointGroup.create("", "unknown");
         for (int index = 0; index < 11; index++) {
             int flags = index == 4
@@ -75,10 +81,12 @@ class V10SparseRouteCodecTest {
         }
 
         String code = WaypointCodec.MAGIC + V10SparseRouteCodec.encode(route, FULL_SPARSE);
-        assertEquals("WP:p+OXOhwFd5LPR%JE*\"^)a\"SE?A'!Wv%", code);
+        String legacy = "WP:p+OXOhwFd5LPR%JE*\"^)a\"SE?A'!Wv%";
+        assertTrue(code.length() <= legacy.length());
         V10Transport.CheckedFrame frame = V10Transport.probe(
-                code.substring(WaypointCodec.MAGIC.length()));
+                legacy.substring(WaypointCodec.MAGIC.length()));
         assertEquals(0, frame.semantic()[1]);
+        assertRouteFields(route, WaypointCodec.decode(legacy).getFirst(), true);
         assertRouteFields(route, WaypointCodec.decode(code).getFirst(), true);
     }
 
@@ -139,6 +147,38 @@ class V10SparseRouteCodecTest {
                 code.substring(WaypointCodec.MAGIC.length()));
         assertEquals(V10SparseRouteCodec.CONTENT_KIND, frame.contentKind());
         assertRouteFields(route, WaypointCodec.decode(code).getFirst(), true);
+    }
+
+    @Test
+    void quotient_direct_body_competes_for_sparse_route() throws Exception {
+        JsonArray fixture;
+        try (var stream = V10SparseRouteCodecTest.class.getResourceAsStream(
+                "/fixtures/v10-equal-text-tie-coordinates.json")) {
+            if (stream == null) throw new AssertionError("missing quotient fixture");
+            fixture = JsonParser.parseReader(new InputStreamReader(
+                    stream, StandardCharsets.UTF_8)).getAsJsonArray();
+        }
+        WaypointGroup route = WaypointGroup.create("", "unknown");
+        for (int index = 0; index < fixture.size(); index++) {
+            JsonArray point = fixture.get(index).getAsJsonArray();
+            Waypoint waypoint = Waypoint.at(
+                    point.get(0).getAsInt(), point.get(1).getAsInt(), point.get(2).getAsInt());
+            if (index == 1) waypoint = waypoint.withFlags(Waypoint.FLAG_DUNGEON_SECRET);
+            route.add(waypoint);
+        }
+
+        String code = WaypointCodec.MAGIC + V10SparseRouteCodec.encode(route, FULL_SPARSE);
+        V10Transport.CheckedFrame frame = V10Transport.probe(
+                code.substring(WaypointCodec.MAGIC.length()));
+        assertEquals(V10SparseRouteCodec.CONTENT_KIND, frame.contentKind());
+        assertEquals(V10Transport.MODE_DIRECT, frame.mode());
+        byte[] coordinateBody = directCoordinateBody(frame.semantic(), route.size());
+        byte[] coordinateSemantic = new byte[coordinateBody.length + 1];
+        coordinateSemantic[0] = (byte) V10BareRouteCodec.SEMANTIC_HEADER;
+        System.arraycopy(coordinateBody, 0, coordinateSemantic, 1, coordinateBody.length);
+        assertEquals(V10BareEntropyCodec.DirectDescriptor.QUOTIENT,
+                V10BareEntropyCodec.descriptor(coordinateSemantic));
+        assertRouteFields(route, WaypointCodec.decode(code).getFirst(), false);
     }
 
     @Test
@@ -203,6 +243,42 @@ class V10SparseRouteCodecTest {
         semantic.writeBytes(coordinateBody);
         semantic.write(sideHeader);
         return semantic;
+    }
+
+    private static byte[] directCoordinateBody(byte[] semantic, int pointCount) throws IOException {
+        int[] cursor = {1};
+        long selector = readUVarint(semantic, cursor);
+        if (selector > 1) {
+            int end = cursor[0] + Math.toIntExact(selector);
+            if (end > semantic.length) throw new IOException("truncated sparse coordinate body");
+            byte[] body = Arrays.copyOfRange(semantic, cursor[0], end);
+            if (V10BareRouteCodec.decodeCoordinateBody(body, V10Transport.MODE_DIRECT).length
+                    != pointCount) {
+                throw new IOException("sparse coordinate count mismatch");
+            }
+            return body;
+        }
+        for (int start = cursor[0]; start < semantic.length; start++) {
+            byte[] body = Arrays.copyOfRange(semantic, start, semantic.length);
+            try {
+                if (V10BareRouteCodec.decodeCoordinateBody(body, V10Transport.MODE_DIRECT).length
+                        == pointCount) return body;
+            } catch (IOException | IllegalArgumentException ignored) {
+                // Unified metadata occupies the prefix; try the next boundary.
+            }
+        }
+        throw new IOException("sparse coordinate body was not found");
+    }
+
+    private static long readUVarint(byte[] data, int[] cursor) throws IOException {
+        long result = 0;
+        for (int index = 0; index < 4; index++) {
+            if (cursor[0] >= data.length) throw new IOException("truncated sparse selector");
+            int next = data[cursor[0]++] & 0xFF;
+            result |= (long) (next & 0x7F) << (index * 7);
+            if ((next & 0x80) == 0) return result;
+        }
+        throw new IOException("sparse selector is too long");
     }
 
     private static void assertCommittedKind5Failure(byte[] semantic, String expectedMessage) {

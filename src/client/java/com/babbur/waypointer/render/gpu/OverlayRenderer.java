@@ -34,7 +34,6 @@ public final class OverlayRenderer implements AutoCloseable {
     private final SceneKeyFactory keyFactory;
     private final OverlayPass pass = new OverlayPass();
     private final DepthSnapshot depthSnapshot = new DepthSnapshot();
-    private final OverlayFrameStats stats = new OverlayFrameStats();
     private final Map<MeshBucket, OverlayPass.MeshSet> meshes = new LinkedHashMap<>();
 
     private MeshCaptureSink captureSink;
@@ -46,7 +45,6 @@ public final class OverlayRenderer implements AutoCloseable {
     private boolean pendingPostDraw;
     private boolean postHookObserved;
     private int postHookMissedFrames;
-    private long frameIndex;
 
     private OverlayRenderer(WaypointRenderer worldRenderer, ActiveGroupManager manager,
                             WaypointerConfig config,
@@ -80,10 +78,6 @@ public final class OverlayRenderer implements AutoCloseable {
 
     public static OverlayRenderer activeOrNull() {
         return active;
-    }
-
-    public OverlayFrameStats stats() {
-        return stats;
     }
 
     public OverlayRendererOptions options() {
@@ -138,11 +132,10 @@ public final class OverlayRenderer implements AutoCloseable {
             close();
         } catch (RuntimeException | LinkageError ignored) {
         }
-        active = this; // keep the instance reachable so stats/diagnostics still report
+        active = this; // Preserve diagnostics after failure.
     }
 
     private void renderFrame(LevelRenderContext ctx) {
-        frameIndex++;
         depthSnapshot.invalidate();
         pendingPostDraw = false;
         reconcilePostHook();
@@ -153,13 +146,11 @@ public final class OverlayRenderer implements AutoCloseable {
         if (inWorld && iris.apiFailed()) {
             throw new IllegalStateException("The installed Iris API could not be queried");
         }
-        stats.beginFrame(frameIndex, effectiveCompositing, shaderPack);
         boolean shadowPass = inWorld && iris.isRenderingShadowPass();
         if (inWorld && iris.apiFailed()) {
             throw new IllegalStateException("The installed Iris shadow-pass state could not be queried");
         }
         if (shadowPass) {
-            stats.recordShadowPassSkip();
             return;
         }
         Minecraft mc = Minecraft.getInstance();
@@ -195,12 +186,9 @@ public final class OverlayRenderer implements AutoCloseable {
                 worldVisibilityFingerprint, blockShapeFingerprint,
                 HappySnowmanSession.facePaint());
         boolean fullRebuild = !key.equals(lastKey);
-        if (fullRebuild) {
-            stats.recordRebuild(lastKey == SceneKey.NONE ? "first frame"
+        if (fullRebuild && options.debugLogging()) {
+            Waypointer.LOGGER.info("[overlay] rebuild: {}", lastKey == SceneKey.NONE ? "first frame"
                     : key.hash() != lastKey.hash() ? "scene or visibility changed" : "mesh origin changed");
-            if (options.debugLogging()) {
-                Waypointer.LOGGER.info("[overlay] rebuild: {}", stats.snapshot().rebuildReason());
-            }
         }
 
         capture(ctx, key, fullRebuild);
@@ -219,7 +207,7 @@ public final class OverlayRenderer implements AutoCloseable {
             pendingPostDraw = true;
             return;
         }
-        pass.draw(effectiveCompositing, view, key, meshes, pipelines, null, stats);
+        pass.draw(effectiveCompositing, view, key, meshes, pipelines, null);
     }
 
     public void onAfterLevelRendered() {
@@ -228,7 +216,7 @@ public final class OverlayRenderer implements AutoCloseable {
         pendingPostDraw = false;
         try {
             pass.draw(OverlayCompositing.POST_WORLD, pendingView, pendingKey, meshes, pipelines,
-                    depthSnapshot.isValid() ? depthSnapshot.view() : null, stats);
+                    depthSnapshot.isValid() ? depthSnapshot.view() : null);
         } catch (RuntimeException | LinkageError failure) {
             tripCircuitBreaker("post-world pass", failure);
         }
@@ -239,31 +227,22 @@ public final class OverlayRenderer implements AutoCloseable {
             capturePose = new PoseStack();
             captureSink = new MeshCaptureSink(pipelines, capturePose);
         }
-        long started = System.nanoTime();
         captureSink.beginCapture(fullRebuild);
         Vec3 origin = new Vec3(key.originX(), key.originY(), key.originZ());
         worldRenderer.emitWorldGeometryFor(ctx, capturePose, captureSink, origin,
                 !options.occlusion().usesRaycast());
-        stats.recordCapture(System.nanoTime() - started, captureSink.unknownRenderTypes());
     }
 
     private void upload(boolean fullRebuild) {
-        long started = System.nanoTime();
         CommandEncoder encoder = GpuMeshCompat.createCommandEncoder();
-        int bytes = 0;
-        int staticVerts = 0;
-        int dynamicVerts = 0;
         for (Map.Entry<MeshBucket, MeshCaptureSink.Pair> entry : captureSink.buckets().entrySet()) {
             OverlayPass.MeshSet set = meshes.computeIfAbsent(entry.getKey(), OverlayPass.MeshSet::create);
             MeshCaptureSink.Pair pair = entry.getValue();
             if (fullRebuild) {
-                bytes += set.statics.upload(pair.statics, encoder);
+                set.statics.upload(pair.statics, encoder);
             }
-            bytes += set.dynamics.upload(pair.dynamics, encoder);
-            staticVerts += set.statics.storedVertexCount();
-            dynamicVerts += set.dynamics.storedVertexCount();
+            set.dynamics.upload(pair.dynamics, encoder);
         }
-        stats.recordUpload(System.nanoTime() - started, bytes, staticVerts, dynamicVerts);
     }
 
     private void ensureIrisAssignment(boolean shaderPack) {
@@ -300,6 +279,11 @@ public final class OverlayRenderer implements AutoCloseable {
     }
 
     public void resetScene() {
+        Minecraft minecraft = Minecraft.getInstance();
+        if (!minecraft.isSameThread()) {
+            minecraft.execute(this::resetScene);
+            return;
+        }
         closeStep("paint reservation", WaypointPaintTextureCache::resetRetainedReservation);
         for (OverlayPass.MeshSet set : meshes.values()) {
             closeStep("static overlay mesh", set.statics::close);
