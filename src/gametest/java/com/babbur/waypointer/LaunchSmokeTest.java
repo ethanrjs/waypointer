@@ -30,7 +30,6 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
             context.computeOnClient(client -> {
                 checkMetalDetectorVisibility(client);
                 checkMetalDetectorMessage(client);
-                DianaPacketSmokeTest.run(client);
                 return true;
             });
             String routeId = context.computeOnClient(client -> {

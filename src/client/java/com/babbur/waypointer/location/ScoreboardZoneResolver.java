@@ -4,6 +4,7 @@ import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.crystal.CrystalHollowsSidebar;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents;
 import net.minecraft.client.Minecraft;
 
 import java.util.Objects;
@@ -17,18 +18,37 @@ public final class ScoreboardZoneResolver implements ZoneSource {
     private Consumer<Zone> listener;
     private Zone lastEmitted;
     private int tickCounter = 0;
+    private Object worldIdentity;
+    private boolean retainingZone;
+
+    public ScoreboardZoneResolver() {}
+
+    ScoreboardZoneResolver(Consumer<Zone> listener) {
+        this.listener = listener;
+    }
 
     @Override
     public void register(Consumer<Zone> listener) {
         this.listener = listener;
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> updateWorld(null));
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> updateWorld(null));
     }
 
     private void onTick(Minecraft mc) {
+        updateWorld(mc.level);
+        if (mc.level == null || mc.player == null) return;
         if (++tickCounter < POLL_INTERVAL_TICKS) return;
         tickCounter = 0;
+        acceptSidebar(SidebarTexts.collectColorStripped(mc));
+    }
 
-        Zone z = detect(mc);
+    void acceptSidebar(String sidebar) {
+        // A delayed/partial scoreboard is not a zone transition. Keep same-world evidence.
+        retainingZone = lastEmitted != null
+                && CrystalHollowsSidebar.areaName(sidebar == null ? "" : sidebar) == null;
+        if (retainingZone) return;
+        Zone z = resolveSidebarText(sidebar);
         if (!Objects.equals(z, lastEmitted)) {
             lastEmitted = z;
             Waypointer.LOGGER.debug("Scoreboard zone resolved to {}", z);
@@ -36,9 +56,19 @@ public final class ScoreboardZoneResolver implements ZoneSource {
         }
     }
 
-    private Zone detect(Minecraft mc) {
-        if (mc == null || mc.level == null || mc.player == null) return null;
-        return resolveSidebarText(SidebarTexts.collectColorStripped(mc));
+    void updateWorld(Object world) {
+        if (worldIdentity == world) return;
+        worldIdentity = world;
+        tickCounter = 0;
+        retainingZone = false;
+        if (lastEmitted != null) {
+            lastEmitted = null;
+            if (listener != null) listener.accept(null);
+        }
+    }
+
+    public String detectionState() {
+        return "sidebarFallback=true, retainingZoneDuringMissingSidebar=" + retainingZone;
     }
 
     static Zone resolveSidebarText(String blob) {

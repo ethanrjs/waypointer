@@ -10,6 +10,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ConfigImportConfirmationTest {
 
     @Test
+    void importDoesNotChangeOrCountLocalSkyblockerConsent() {
+        WaypointerConfig current = new WaypointerConfig();
+        WaypointerConfig imported = new WaypointerConfig();
+        imported.setCrystalHollowsSkyblockerSharing(true);
+        var outcome = ConfigImportConfirmation.complete(current, imported, true);
+        assertEquals(0, outcome.changedSettings());
+        assertFalse(current.crystalHollowsSkyblockerSharing());
+
+        current.setCrystalHollowsSkyblockerSharing(true);
+        imported.setCrystalHollowsSkyblockerSharing(false);
+        outcome = ConfigImportConfirmation.complete(current, imported, true);
+        assertEquals(0, outcome.changedSettings());
+        assertTrue(current.crystalHollowsSkyblockerSharing());
+    }
+
+    @Test
     void cancelIsANoOpAndConfirmIsTheOnlyMutationGate() {
         WaypointerConfig current = new WaypointerConfig();
         WaypointerConfig imported = new WaypointerConfig();

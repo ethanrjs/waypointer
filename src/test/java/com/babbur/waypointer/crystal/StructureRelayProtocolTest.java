@@ -6,6 +6,49 @@ import org.junit.jupiter.api.Test;
 class StructureRelayProtocolTest {
     private static final long NOW = 1_800_000_000_000L;
 
+    @Test
+    void reportsWorldDaySeparatelyFromGameAgeAndOmitsUnknownTiming() {
+        assertEquals("&protocol=2&day=17&dayTicks=410000&closingInSeconds=191",
+                StructureRelayProtocol.connectionTiming(17, 410_000, 191));
+        assertEquals("&protocol=2", StructureRelayProtocol.connectionTiming(-1, -1, -1));
+        assertEquals("&protocol=2", StructureRelayProtocol.connectionTiming(Integer.MAX_VALUE,
+                StructureRelayProtocol.MAX_AGE + 1, 3600));
+        var sync = com.google.gson.JsonParser.parseString(StructureRelayProtocol.sync(
+                60_000_000, 17, 410_000, 0)).getAsJsonObject();
+        assertEquals(60_000_000, sync.get("age").getAsLong());
+        assertEquals(17, sync.get("day").getAsInt());
+        assertEquals(410_000, sync.get("dayTicks").getAsLong());
+        assertEquals(0, sync.get("closingInSeconds").getAsInt());
+        assertFalse(sync.has("protocol"));
+    }
+
+    @Test
+    void retainedObservationsUseFreshDeliveryContextAndPreserveObservationTime() {
+        var json = com.google.gson.JsonParser.parseString(message("\"x\":600,\"y\":100,\"z\":300", 10_000))
+                .getAsJsonObject();
+        long old = NOW - 6 * 60 * 60_000L;
+        json.addProperty("observedAt", old);
+        assertEquals(old, StructureRelayProtocol.decode(json.toString(), 10_000, NOW).getFirst().atMillis());
+        assertTrue(StructureRelayProtocol.decode(json.toString(), 12_000, NOW).isEmpty());
+        json.addProperty("observedAt", NOW + 1);
+        assertTrue(StructureRelayProtocol.decode(json.toString(), 10_000, NOW).isEmpty());
+        json.addProperty("observedAt", NOW - 48 * 60 * 60_000L);
+        assertEquals(NOW - 48 * 60 * 60_000L,
+                StructureRelayProtocol.decode(json.toString(), 10_000, NOW).getFirst().atMillis());
+        json.addProperty("observedAt", -1);
+        assertTrue(StructureRelayProtocol.decode(json.toString(), 10_000, NOW).isEmpty());
+        json.addProperty("observedAt", "old");
+        assertTrue(StructureRelayProtocol.decode(json.toString(), 10_000, NOW).isEmpty());
+    }
+
+    @Test
+    void malformedSnapshotCannotBeMistakenForAnEmptyReplacement() {
+        assertNotNull(StructureRelayProtocol.decodeUpdate("{\"type\":\"snapshot\",\"sightings\":[]}", 1, NOW));
+        assertNull(StructureRelayProtocol.decodeUpdate("{\"type\":\"snapshot\",\"sightings\":[{}]}", 1, NOW));
+        assertNull(StructureRelayProtocol.decodeUpdate("{\"type\":\"snapshot\"}", 1, NOW));
+        assertNull(StructureRelayProtocol.decodeUpdate("{\"type\":\"unknown\"}", 1, NOW));
+    }
+
     private static String message(String coordinates, long age) {
         return "{\"type\":\"sighting\",\"structure\":\"mines_of_divan\"," + coordinates
                 + ",\"age\":" + age + ",\"at\":" + NOW + "}";

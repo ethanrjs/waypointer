@@ -28,6 +28,30 @@ class StructureRelayControllerTest {
     @TempDir Path directory;
 
     @Test
+    void diagnosticsAreReadOnlyAndDoNotExposePublicationKeys() throws Exception {
+        var controller = new StructureRelayController(null, new WaypointerConfig());
+        set(controller, "nextConnect", 5000L);
+        set(controller, "failures", 3);
+        set(controller, "diagnosticGeneration", 7L);
+        var sent = new java.util.LinkedHashMap<String, Long>();
+        sent.put("private-publication-key", 1000L);
+        set(controller, "sent", sent);
+        set(controller, "publications", new java.util.ArrayDeque<>(java.util.List.of(1000L, 2000L)));
+        var first = controller.diagnostics(3000);
+        assertEquals(first, controller.diagnostics(3000));
+        assertEquals(2000, first.backoffRemainingMillis());
+        assertEquals(3, first.failures());
+        assertEquals(7, first.generation());
+        assertEquals(1, first.sentCacheCount());
+        assertEquals(2, first.publicationWindowCount());
+        assertEquals(-1, first.inboundQueueCount());
+        assertEquals("not_required", first.authentication());
+        assertFalse(first.toString().contains("private-publication-key"));
+        assertEquals(0, controller.diagnostics(6000).backoffRemainingMillis());
+        assertEquals(1, sent.size());
+    }
+
+    @Test
     void optOutCancelsPendingAndDiscardsQueuedPeerData() throws Exception {
         for (boolean opened : new boolean[]{false, true}) {
             var config = new WaypointerConfig();
@@ -86,6 +110,19 @@ class StructureRelayControllerTest {
         assertTrue(controller.syncDue(155_000, 10_000)); // Stalled game clock.
         assertFalse(controller.syncDue(279_000, 12_864)); // 16 TPS, less than 45 seconds drift.
         assertTrue(controller.syncDue(325_000, 13_600)); // 16 TPS, resync before 60 seconds drift.
+    }
+
+    @Test
+    void firstClosingCountdownBypassesSyncThrottleOnlyOnce() throws Exception {
+        var controller = new StructureRelayController(null, null);
+        set(controller, "lastSyncAt", 100_000L);
+        set(controller, "lastSyncAge", 10_000L);
+        set(controller, "nextSync", 400_000L);
+        assertTrue(controller.syncDue(101_000, 10_020, 60));
+        assertTrue(controller.syncDue(154_000, 11_080, 191));
+        assertTrue(controller.syncDue(155_000, 11_100, 190));
+        set(controller, "reportedClosing", true);
+        assertFalse(controller.syncDue(156_000, 11_120, 189));
     }
 
     private static void set(Object object, String name, Object value) throws Exception {

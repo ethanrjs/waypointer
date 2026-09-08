@@ -133,7 +133,6 @@
   "waypointer.dungeon.command.error.waypoint_index": "Жол чекитинин индекси аралыктан чыгып жатат.",
   "waypointer.dungeon.command.import.file_not_found": "Файл табылган жок: %1$s",
   "waypointer.dungeon.command.rotate.automatic": "Учурдагы бөлмө үчүн автоматтык айлануу калыбына келтирилген.",
-  "waypointer.dungeon.command.error.create_room_first": "Алгач бөлмөнүн аныктамасын түзүү /wpd room create <id> [name].",
   "waypointer.common.off": "өчүрүү",
   "waypointer.command.help.sections": "бөлүктөрү: ",
   "waypointer.command.help.all": "баары",

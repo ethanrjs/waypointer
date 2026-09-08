@@ -17,7 +17,6 @@ import java.util.Set;
 import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
@@ -50,6 +49,7 @@ public final class WishingCompassController {
                     && config.crystalHollowsWishingCompassSolver()) {
                 ItemStack stack = player.getItemInHand(hand);
                 if (isWishingCompass(stack)) {
+                    tracker.observeCompassPosition(player.getX(), player.getY(), player.getZ());
                     prepareTargetContext(player.getInventory());
                     solver.onUse(player.getX(), player.getY(), player.getZ(),
                             CrystalHollowsGeometry.zoneAt(
@@ -94,6 +94,13 @@ public final class WishingCompassController {
         lastEvent = "reset";
     }
 
+    /** Drop unfinished capture context on region changes without deleting a solved marker. */
+    void onRegionChanged() {
+        // Keep a completed result available to diagnostics; onUse starts its next search afresh.
+        if (solver.lastResult().isEmpty()) solver.reset();
+        lastEvent = "region_changed";
+    }
+
     private void disableIfNeeded() {
         if (enabledLastTick
                 || solver.state() != WishingCompassSolver.State.IDLE
@@ -105,6 +112,9 @@ public final class WishingCompassController {
 
     private void onParticle(double x, double y, double z, int count) {
         if (!tracker.active() || !config.crystalHollowsWishingCompassSolver()) return;
+        var player = Minecraft.getInstance().player;
+        if (player == null) return;
+        tracker.observeCompassPosition(player.getX(), player.getY(), player.getZ());
         solver.onParticle(x, y, z, System.currentTimeMillis());
         handleOutcomes();
     }
@@ -137,7 +147,7 @@ public final class WishingCompassController {
             lastEvent = outcome.event().name().toLowerCase(java.util.Locale.ROOT);
             Waypointer.LOGGER.debug("Wishing Compass solver event: {}", outcome.event());
             switch (outcome.event()) {
-                case USE_RECORDED, RAY_CAPTURED, NUCLEUS_WARNING -> {}
+                case USE_RECORDED, RAY_CAPTURED -> {}
                 case TOO_CLOSE -> send("waypointer.crystal.compass.too_close");
                 case NEED_SECOND_USE -> send("waypointer.crystal.compass.need_second");
                 case NEARLY_PARALLEL -> send("waypointer.crystal.compass.parallel");
@@ -161,12 +171,12 @@ public final class WishingCompassController {
         Set<WishingCompassTarget> targets = result.targets();
         StructureSighting sighting = toSighting(result);
         if (targets.size() == 1 && targets.contains(WishingCompassTarget.CRYSTAL_NUCLEUS)) {
-            tracker.focusCompassTarget(sighting);
+            tracker.focusCompassTarget(sighting, result.firstRay().zone());
             send("waypointer.crystal.compass.solved_nucleus");
             return;
         }
         tracker.merge(sighting, false);
-        tracker.focusCompassTarget(sighting);
+        tracker.focusCompassTarget(sighting, result.firstRay().zone());
         sighting = tracker.compassTargetSighting();
         Component names = sighting.structure() == CrystalHollowsStructure.WISHING_TARGET
                 ? targetNames(targets)
@@ -180,8 +190,7 @@ public final class WishingCompassController {
                 .append(Component.translatable("waypointer.crystal.action.share")
                         .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)
                                 .withUnderlined(true)
-                                .withClickEvent(new ClickEvent.RunCommand(
-                                        "/wpch share " + tracker.compassShareReference()))));
+                                .withClickEvent(CrystalHollowsShare.suggest(sighting))));
         send(message);
     }
 

@@ -1,6 +1,8 @@
 package com.babbur.waypointer.render.gpu;
 
 import com.babbur.waypointer.render.WaypointerRenderPipelines;
+import com.mojang.blaze3d.pipeline.DepthStencilState;
+import com.mojang.blaze3d.platform.CompareOp;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -14,6 +16,35 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OverlayPipelinesTest {
+    @Test
+    void fogFreeOutlinesKeepDepthAndAntialiasingContractsInEverySubmissionPath() {
+        boolean original = WaypointerRenderPipelines.antialiasing();
+        try {
+            OverlayPipelines pipelines = OverlayPipelines.create();
+            for (boolean smooth : new boolean[]{false, true}) {
+                WaypointerRenderPipelines.setAntialiasing(smooth);
+                for (boolean depth : new boolean[]{false, true}) {
+                    var legacy = (depth ? WaypointerRenderPipelines.linesDepthTested(smooth)
+                            : WaypointerRenderPipelines.linesThroughWalls(smooth)).pipeline();
+                    var retained = pipelines.slot(MeshBucket.untextured(MeshBucket.Kind.LINES, depth));
+                    var expectedDepth = new DepthStencilState(
+                            depth ? DepthStencilState.DEFAULT.depthTest() : CompareOp.ALWAYS_PASS, false);
+                    // #137 must stay fixed for legacy, retained world, and post-world drawing.
+                    // Removing fog must not remove occlusion or enable depth writes.
+                    for (var pipeline : new com.mojang.blaze3d.pipeline.RenderPipeline[]{
+                            legacy, retained.inWorld(), retained.postWorld()}) {
+                        assertEquals("waypointer:core/screen_line", pipeline.getFragmentShader().toString());
+                        assertEquals(expectedDepth, pipeline.getDepthStencilState());
+                        assertEquals(smooth, pipeline.getShaderDefines().flags().contains("ANTIALIASING"));
+                        assertEquals(legacy.getVertexShader(), pipeline.getVertexShader());
+                    }
+                }
+            }
+        } finally {
+            WaypointerRenderPipelines.setAntialiasing(original);
+        }
+    }
+
     @Test
     void antialiasingSwitchesShadersWithoutChangingRetainedMeshLayout() {
         boolean original = WaypointerRenderPipelines.antialiasing();

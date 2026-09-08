@@ -32,10 +32,12 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import net.minecraft.world.level.block.ButtonBlock;
 import net.minecraft.world.level.block.ChestBlock;
 import net.minecraft.world.level.block.EnderChestBlock;
@@ -661,11 +663,16 @@ public final class WaypointRepositionMode {
 
     private static BlockHitResult placementHit(Minecraft mc) {
         if (mc == null || mc.player == null || mc.level == null) return null;
-        Vec3 eye = mc.player.getEyePosition();
-        Vec3 end = eye.add(mc.player.getViewVector(1.0F).scale(mc.player.blockInteractionRange()));
+        return placementHit(mc.level, mc.player.getEyePosition(), mc.player.getViewVector(1.0F),
+                mc.player.blockInteractionRange(), CollisionContext.of(mc.player));
+    }
+
+    static BlockHitResult placementHit(BlockGetter level, Vec3 eye, Vec3 direction,
+                                       double reach, CollisionContext context) {
+        Vec3 end = eye.add(direction.scale(reach));
         // Outline shapes include non-solid blocks; ignore entities and keep the ray's air endpoint.
-        return mc.level.clip(new ClipContext(eye, end,
-                ClipContext.Block.OUTLINE, ClipContext.Fluid.ANY, mc.player));
+        return level.clip(new ClipContext(eye, end,
+                ClipContext.Block.OUTLINE, ClipContext.Fluid.ANY, context));
     }
 
     private enum Mode {

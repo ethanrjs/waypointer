@@ -32,7 +32,6 @@ public final class WishingCompassSolver {
 
     public enum SolverEvent {
         USE_RECORDED,
-        NUCLEUS_WARNING,
         TOO_CLOSE,
         RAY_CAPTURED,
         NEED_SECOND_USE,
@@ -84,7 +83,8 @@ public final class WishingCompassSolver {
     private EnumSet<WishingCompassTarget> targetCandidates =
             EnumSet.allOf(WishingCompassTarget.class);
     private CompassTrail pending;
-    private boolean pendingCountsForSolving;
+    private Set<WishingCompassTarget> pendingCandidates = Set.of();
+    private Map<Crystal, CrystalState> pendingCrystals = Map.of();
     private State state = State.IDLE;
     private SolveResult lastResult;
 
@@ -112,14 +112,19 @@ public final class WishingCompassSolver {
 
     public Outcome onUse(double x, double y, double z, CrystalHollowsZone zone, long nowMillis) {
         if (lastResult != null) reset();
+        if (!rays.isEmpty()) {
+            CapturedRay previous = rays.getLast();
+            if (previous.ray().zone() != zone || !previous.candidates().equals(targetCandidates)
+                    || !previous.crystals().equals(targetCrystals)) reset();
+        }
         Vec3d use = new Vec3d(x, y, z);
         pending = new CompassTrail(use, nowMillis, zone);
-        pendingCountsForSolving = zone != CrystalHollowsZone.CRYSTAL_NUCLEUS;
+        // Snapshot context at use time, including uses inside the nucleus.
+        pendingCandidates = Set.copyOf(targetCandidates);
+        pendingCrystals = Map.copyOf(targetCrystals);
         state = State.WAITING_PARTICLES;
         SolverEvent event;
-        if (!pendingCountsForSolving) {
-            event = SolverEvent.NUCLEUS_WARNING;
-        } else if (!rays.isEmpty()
+        if (!rays.isEmpty()
                 && rays.getLast().ray().usePosition().distanceTo(use) < MIN_USE_DISTANCE) {
             event = SolverEvent.TOO_CLOSE;
         } else {
@@ -164,6 +169,8 @@ public final class WishingCompassSolver {
 
     public void reset() {
         pending = null;
+        pendingCandidates = Set.of();
+        pendingCrystals = Map.of();
         rays.clear();
         outcomes.clear();
         lastResult = null;
@@ -189,12 +196,7 @@ public final class WishingCompassSolver {
         CompassRay ray = pending.ray().orElseThrow();
         pending = null;
         emit(SolverEvent.RAY_CAPTURED, ray, null);
-        if (!pendingCountsForSolving) {
-            state = State.IDLE;
-            return;
-        }
-        CapturedRay captured = new CapturedRay(ray, Set.copyOf(targetCandidates),
-                Map.copyOf(targetCrystals));
+        CapturedRay captured = new CapturedRay(ray, pendingCandidates, pendingCrystals);
         rays.add(captured);
         if (rays.size() > MAX_RAYS) rays.removeFirst();
         solveBestPair();
@@ -264,6 +266,7 @@ public final class WishingCompassSolver {
     private static boolean pairEligible(CapturedRay first, CapturedRay second) {
         return first.ray().zone() == second.ray().zone()
                 && first.candidates().equals(second.candidates())
+                && first.crystals().equals(second.crystals())
                 && first.ray().usePosition().distanceTo(second.ray().usePosition())
                         >= MIN_USE_DISTANCE;
     }

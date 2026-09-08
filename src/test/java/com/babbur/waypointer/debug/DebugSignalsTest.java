@@ -13,6 +13,21 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DebugSignalsTest {
+    @Test
+    void structureEvidenceKeepsGeometryAndProvenanceWithoutRawSourceOrNotes() {
+        var sighting = new com.babbur.waypointer.crystal.StructureSighting(
+                CrystalHollowsStructure.MINES_OF_DIVAN, 606, 88, 265,
+                com.babbur.waypointer.crystal.SightingConfidence.SHARED_REMOTE,
+                "PrivatePlayer token=private-token", 1L, List.of(CrystalHollowsStructure.MINES_OF_DIVAN),
+                "private note", com.babbur.waypointer.crystal.SightingConfidence.COMPASS);
+        String line = DebugSignals.structureEvidenceLine(sighting);
+        assertTrue(line.contains("x=606, y=88, z=265"));
+        assertTrue(line.contains("remoteEvidence=COMPASS"));
+        org.junit.jupiter.api.Assertions.assertFalse(line.contains("PrivatePlayer"));
+        org.junit.jupiter.api.Assertions.assertFalse(line.contains("private"));
+        assertTrue(DebugSignals.compassSolutionLine(null).contains("No solution"));
+    }
+
 
     @Test
     void dungeonRoomLineShowsMapFallbackAsLowerConfidence() {

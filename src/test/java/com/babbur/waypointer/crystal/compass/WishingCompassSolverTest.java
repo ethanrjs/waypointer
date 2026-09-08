@@ -28,6 +28,68 @@ class WishingCompassSolverTest {
                     CrystalHollowsZone.MAGMA_FIELDS));
 
     @Test
+    void nucleusUsesTriangulateAValidExternalTarget() {
+        var solver = new WishingCompassSolver(() -> 0L);
+        solver.setTargetContext(contextWithMissing(Crystal.JADE), false, false);
+        var target = new Vec3d(735, 100, 451);
+        capture(solver, new Vec3d(500, 107, 500), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 1_000);
+        assertEquals(WishingCompassSolver.State.NEED_SECOND_USE, solver.state());
+        assertEquals(1, solver.completedRays().size());
+        capture(solver, new Vec3d(500, 107, 530), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 2_000);
+        var result = solver.lastResult().orElseThrow();
+        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN), result.targets());
+        assertTrue(result.solution().distanceTo(target) < 2);
+        assertEquals(CrystalHollowsZone.CRYSTAL_NUCLEUS, result.firstRay().zone());
+    }
+
+    @Test
+    void regionChangeDiscardsOldRaysEvenWhenReturningToTheOldRegion() {
+        var solver = solverWithAllMissing();
+        var target = new Vec3d(735, 100, 451);
+        capture(solver, new Vec3d(500, 107, 500), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 1_000);
+        capture(solver, new Vec3d(600, 107, 500), target, CrystalHollowsZone.MITHRIL_DEPOSITS, 2_000);
+        capture(solver, new Vec3d(500, 107, 530), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 3_000);
+        assertEquals(1, solver.completedRays().size());
+        assertTrue(solver.lastResult().isEmpty());
+        capture(solver, new Vec3d(500, 107, 500), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 4_000);
+        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN),
+                solver.lastResult().orElseThrow().targets());
+    }
+
+    @Test
+    void nucleusSearchDoesNotReuseRaysFromAnOldTargetContext() {
+        var solver = new WishingCompassSolver(() -> 0L);
+        var target = new Vec3d(735, 100, 451);
+        solver.setTargetContext(contextWithMissing(Crystal.JADE), false, false);
+        capture(solver, new Vec3d(500, 107, 500), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 1_000);
+        solver.setTargetContext(contextWithMissing(Crystal.AMBER), false, false);
+        capture(solver, new Vec3d(500, 107, 530), new Vec3d(377, 87, 550),
+                CrystalHollowsZone.CRYSTAL_NUCLEUS, 2_000);
+        solver.setTargetContext(contextWithMissing(Crystal.JADE), false, false);
+        capture(solver, new Vec3d(500, 107, 530), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 3_000);
+        assertEquals(1, solver.completedRays().size());
+        assertTrue(solver.lastResult().isEmpty());
+        capture(solver, new Vec3d(500, 107, 500), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 4_000);
+        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN),
+                solver.lastResult().orElseThrow().targets());
+    }
+
+    @Test
+    void captureUsesContextFromItemUseInsteadOfParticleCompletion() {
+        var solver = new WishingCompassSolver(() -> 0L);
+        var target = new Vec3d(735, 100, 451);
+        solver.setTargetContext(contextWithMissing(Crystal.JADE), false, false);
+        solver.onUse(500, 107, 500, CrystalHollowsZone.CRYSTAL_NUCLEUS, 1_000);
+        solver.setTargetContext(contextWithMissing(Crystal.AMBER), false, false);
+        feedTrail(solver, new Vec3d(500, 107, 500),
+                target.subtract(new Vec3d(500.3, 108.5, 500.2)).normalize(), 1_000);
+        solver.setTargetContext(contextWithMissing(Crystal.JADE), false, false);
+        capture(solver, new Vec3d(500, 107, 530), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 2_000);
+        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN),
+                solver.lastResult().orElseThrow().targets());
+    }
+
+    @Test
     void triangulatesFiveCapturedFixturesWithinTwoBlocks() {
         for (Fixture fixture : FIXTURES) {
             WishingCompassSolver solver = new WishingCompassSolver(() -> 0L);
@@ -102,6 +164,10 @@ class WishingCompassSolverTest {
     private static void captureDirection(WishingCompassSolver solver, Vec3d use, Vec3d direction,
                                          CrystalHollowsZone zone, long start) {
         solver.onUse(use.x(), use.y(), use.z(), zone, start);
+        feedTrail(solver, use, direction, start);
+    }
+
+    private static void feedTrail(WishingCompassSolver solver, Vec3d use, Vec3d direction, long start) {
         Vec3d first = use.add(new Vec3d(0.3, 1.5, 0.2));
         for (int index = 0; index < 20; index++) {
             Vec3d point = first.add(direction.scale(index * 0.49));

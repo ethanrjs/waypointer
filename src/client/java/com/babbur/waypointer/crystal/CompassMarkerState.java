@@ -9,6 +9,7 @@ import java.util.List;
 public final class CompassMarkerState {
     private static final List<WeakReference<Waypoint>> arrived = new ArrayList<>();
     private static final List<WeakReference<Waypoint>> targets = new ArrayList<>();
+    private static final List<WeakReference<Waypoint>> regionExited = new ArrayList<>();
 
     private CompassMarkerState() {}
 
@@ -18,6 +19,19 @@ public final class CompassMarkerState {
 
     public static boolean isTarget(Waypoint waypoint) {
         return contains(targets, waypoint);
+    }
+
+    public static boolean regionExited(Waypoint waypoint) {
+        return contains(regionExited, waypoint);
+    }
+
+    /** A stopped marker stays visible, but cannot be selected by automatic tracer rendering. */
+    public static boolean navigationStopped(Waypoint waypoint) {
+        return arrived(waypoint) || regionExited(waypoint);
+    }
+
+    static void markRegionExited(Waypoint waypoint) {
+        if (!regionExited(waypoint)) regionExited.add(new WeakReference<>(waypoint));
     }
 
     static void markTarget(Waypoint waypoint) {

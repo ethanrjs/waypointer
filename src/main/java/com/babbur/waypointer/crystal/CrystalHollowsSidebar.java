@@ -15,6 +15,8 @@ public final class CrystalHollowsSidebar {
             "(?m)^\\s*\\d{2}/\\d{2}/\\d{2}\\s+(m(?:ini)?\\d{1,4}[A-Za-z]{0,3})\\b");
     private static final Pattern CLOSING_SERVER = Pattern.compile(
             "(?m)Server closing:\\s*\\d+:\\d+\\s+(\\S+)");
+    private static final Pattern CLOSING_COUNTDOWN = Pattern.compile(
+            "(?m)^\\s*Server closing:\\s*([0-5]?\\d):([0-5]\\d)(?=\\s|$)");
     private static final Pattern FORMATTING = Pattern.compile("§.");
     private static final Pattern COMBINING_MARK = Pattern.compile("\\p{M}+");
     private static final Pattern WHITESPACE = Pattern.compile("\\s+");
@@ -58,6 +60,13 @@ public final class CrystalHollowsSidebar {
         if (date.find()) return date.group(1);
         Matcher closing = CLOSING_SERVER.matcher(stripped);
         return closing.find() ? closing.group(1) : null;
+    }
+
+    public static int closingInSeconds(String blob) {
+        if (blob == null) return -1;
+        Matcher closing = CLOSING_COUNTDOWN.matcher(stripFormatting(blob));
+        return closing.find() ? Integer.parseInt(closing.group(1)) * 60
+                + Integer.parseInt(closing.group(2)) : -1;
     }
 
     public static String normalizeName(String value) {

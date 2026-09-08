@@ -1643,7 +1643,7 @@ class WaypointWorldRenderer {
     }
 
     boolean shouldHideStaticReached(WaypointGroup group, int index) {
-        return !CompassMarkerState.arrived(group.get(index))
+        return !CompassMarkerState.navigationStopped(group.get(index))
                 && config.hideReachedStaticWaypointsUntilCycleComplete()
                 && group.loadMode() == WaypointGroup.LoadMode.STATIC
                 && group.isStaticWaypointReached(index);

@@ -12,6 +12,7 @@ import java.util.function.BooleanSupplier;
 
 /** Prefers the Hypixel Mod API, with sidebar detection while location packets are unavailable. */
 public final class LocationTracker {
+    private static LocationTracker installed;
 
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
@@ -29,6 +30,7 @@ public final class LocationTracker {
     }
 
     public void install() {
+        installed = this;
         boolean hypixelApi = hypixelApiLoaded.getAsBoolean();
         source = createSource(hypixelApi);
         if (source instanceof HypixelApiZoneSource) {
@@ -58,5 +60,12 @@ public final class LocationTracker {
 
     public ZoneSource source() {
         return source;
+    }
+
+    public static String debugLine() {
+        if (installed == null || installed.source == null) return "not installed";
+        return installed.source instanceof HypixelApiZoneSource api ? api.detectionState()
+                : installed.source instanceof ScoreboardZoneResolver sidebar ? sidebar.detectionState()
+                : installed.source.getClass().getSimpleName();
     }
 }

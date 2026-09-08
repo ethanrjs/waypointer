@@ -77,6 +77,7 @@ public final class Setting {
     private List<EnumOption> enumOptions = List.of();
     private Map<String, String> buttonLabels = Map.of();
     private EnabledWhen enabledWhen;
+    private boolean localOnly;
     private String colorPickerTitle = "";
     private String colorSwatchTooltip = "";
     private double minimum = Double.NEGATIVE_INFINITY;
@@ -162,6 +163,14 @@ public final class Setting {
         this.enabledWhen = predicate;
         return this;
     }
+
+    /** Local consent must not be changed by a settings code from another player. */
+    public Setting localOnly() {
+        localOnly = true;
+        return this;
+    }
+
+    public boolean isLocalOnly() { return localOnly; }
 
     public Setting buttons(Map<String, String> labels) {
         buttonLabels = Map.copyOf(labels);

@@ -92,7 +92,7 @@ public final class TracerRenderer implements HudElement {
                     config.hideReachedStaticWaypointsUntilCycleComplete(),
                     maxDistance > 0.0 ? maxDistance * maxDistance : 0.0);
         }
-        if (target != null && (CompassMarkerState.arrived(target)
+        if (target != null && (CompassMarkerState.navigationStopped(target)
                 || !crystalHollowsTracerAllowed(group, target, config))) return null;
         if (target == null) {
             if (recordDecision) RenderDiagnostics.recordNoStraightTracer(group, "no current target");
@@ -126,7 +126,7 @@ public final class TracerRenderer implements HudElement {
             if (group.isWaypointDisabled(index)) continue;
             if (hideReached && group.isStaticWaypointReached(index)) continue;
             Waypoint waypoint = group.get(index);
-            if (CompassMarkerState.arrived(waypoint)) continue;
+            if (CompassMarkerState.navigationStopped(waypoint)) continue;
             double dx = waypoint.centerX() - playerX;
             double dy = waypoint.centerY() - playerY;
             double dz = waypoint.centerZ() - playerZ;
@@ -215,9 +215,10 @@ public final class TracerRenderer implements HudElement {
 
     static boolean crystalHollowsTracerAllowed(WaypointGroup group, Waypoint target,
                                                 WaypointerConfig config) {
-        return config == null || config.crystalHollowsTracers()
-                || !(CompassMarkerState.isTarget(target)
-                    || MetalDetectorController.isDetectorGroup(group)
+        if (config == null) return true;
+        if (CompassMarkerState.isTarget(target)) return config.crystalHollowsCompassTracers();
+        return config.crystalHollowsTracers()
+                || !(MetalDetectorController.isDetectorGroup(group)
                     || group != null && group.runtimeOnly()
                         && group.id().startsWith(CrystalHollowsStructureFolder.GROUP_PREFIX));
     }

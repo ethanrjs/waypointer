@@ -15,6 +15,7 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.crystal.CrystalHollowsProjection;
+import com.babbur.waypointer.crystal.CrystalHollowsShare;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
@@ -1045,7 +1046,8 @@ public final class WaypointerScreen extends Screen {
             if (structureReference != null) {
                 items.add(ContextMenuOverlay.Item.of(
                         Component.translatable("waypointer.crystal.action.share"),
-                        null, () -> runClientCommand("wpch share " + structureReference)));
+                        null, () -> CrystalHollowsShare.openDraft(
+                                WaypointerClient.crystalHollowsTracker(), structureReference)));
             }
             openContextMenuAt(items, anchorX, anchorY);
             return;

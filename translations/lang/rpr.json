@@ -1,7 +1,6 @@
 {
   "waypointer.settings.category.chat": "Бесѣда",
   "waypointer.settings.setting.showExportRoutePreview.tooltip": "Показываетъ вращающійся 3D-просмотръ маршрута на экранѣ экспорта.",
-  "waypointer.dungeon.command.reset.confirm": "Это удалитъ всѣ пользовательскія данныя комнатъ подземелья и путевыя точки. Для продолженія выполните /wpd reset confirm.",
   "waypointer.command.clear.confirm": "Это удалитъ %1$s маршрутовъ въ %2$s. Для продолженія выполните /waypointer clear confirm.",
   "waypointer.command.route.delete_confirm": "Это удалитъ маршрутъ [%1$s] \"%2$s\" съ %3$s путевыми точками. Для продолженія выполните /waypointer route delete %1$s confirm.",
   "waypointer.screen.painter.colors": "Цвѣта",

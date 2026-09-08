@@ -12,6 +12,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SettingsSearchTest {
 
     @Test
+    void feedbackCanBeFoundByItsLabelAndSupportAliases() {
+        for (String query : List.of("send feedback", "bug", "report", "support", "anonymous")) {
+            assertTrue(SettingsSearch.search(query, SettingsCatalog.categories()).stream()
+                    .anyMatch(match -> match.setting().id().equals(SettingsCatalog.ACTION_FEEDBACK)
+                            && match.categoryId().equals("feedback")), query);
+        }
+    }
+
+    @Test
     void blankQueryReturnsNothing() {
         assertTrue(SettingsSearch.search(null, SettingsCatalog.categories()).isEmpty());
         assertTrue(SettingsSearch.search("", SettingsCatalog.categories()).isEmpty());

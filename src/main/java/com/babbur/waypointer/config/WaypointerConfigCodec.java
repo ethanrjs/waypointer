@@ -138,9 +138,11 @@ public final class WaypointerConfigCodec {
     private static final int CRYSTAL_HOLLOWS_MINIMAP_SIZE = 105;
     private static final int CRYSTAL_HOLLOWS_MINIMAP_CORNER = 106;
     private static final int CRYSTAL_HOLLOWS_MINIMAP_LABELS = 107;
-    private static final int DIANA_WAYPOINTS_ENABLED = 108;
+    // Removed feature: reserve this tag permanently. Old WPC payloads still contain one boolean.
+    private static final int LEGACY_DIANA_WAYPOINTS_ENABLED = 108;
     private static final int CRYSTAL_HOLLOWS_TRACERS = 109;
     private static final int CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS = 110;
+    private static final int CRYSTAL_HOLLOWS_COMPASS_TRACERS = 111;
 
     private WaypointerConfigCodec() {
     }
@@ -308,8 +310,8 @@ public final class WaypointerConfigCodec {
         writeInt(out, CRYSTAL_HOLLOWS_MINIMAP_SIZE, config.crystalHollowsMinimapSize(), defaults.crystalHollowsMinimapSize());
         writeInt(out, CRYSTAL_HOLLOWS_MINIMAP_CORNER, config.crystalHollowsMinimapCorner(), defaults.crystalHollowsMinimapCorner());
         writeBoolean(out, CRYSTAL_HOLLOWS_MINIMAP_LABELS, config.crystalHollowsMinimapLabels(), defaults.crystalHollowsMinimapLabels());
-        writeBoolean(out, DIANA_WAYPOINTS_ENABLED, config.dianaWaypointsEnabled(), defaults.dianaWaypointsEnabled());
         writeBoolean(out, CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS, config.crystalHollowsCompassAutoFocus(), defaults.crystalHollowsCompassAutoFocus());
+        writeBoolean(out, CRYSTAL_HOLLOWS_COMPASS_TRACERS, config.crystalHollowsCompassTracers(), defaults.crystalHollowsCompassTracers());
         writeBoolean(out, CRYSTAL_HOLLOWS_TRACERS, config.crystalHollowsTracers(), defaults.crystalHollowsTracers());
         writeBoolean(out, CRYSTAL_HOLLOWS_ENABLED,
                 config.crystalHollowsEnabled(), defaults.crystalHollowsEnabled());
@@ -461,8 +463,9 @@ public final class WaypointerConfigCodec {
                 case CRYSTAL_HOLLOWS_MINIMAP_SIZE -> config.setCrystalHollowsMinimapSize(in.readInt());
                 case CRYSTAL_HOLLOWS_MINIMAP_CORNER -> config.setCrystalHollowsMinimapCorner(in.readInt());
                 case CRYSTAL_HOLLOWS_MINIMAP_LABELS -> config.setCrystalHollowsMinimapLabels(in.readBoolean());
-                case DIANA_WAYPOINTS_ENABLED -> config.setDianaWaypointsEnabled(in.readBoolean());
+                case LEGACY_DIANA_WAYPOINTS_ENABLED -> in.readBoolean();
                 case CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS -> config.setCrystalHollowsCompassAutoFocus(in.readBoolean());
+                case CRYSTAL_HOLLOWS_COMPASS_TRACERS -> config.setCrystalHollowsCompassTracers(in.readBoolean());
                 case CRYSTAL_HOLLOWS_TRACERS -> config.setCrystalHollowsTracers(in.readBoolean());
                 case CRYSTAL_HOLLOWS_ENABLED -> config.setCrystalHollowsEnabled(in.readBoolean());
                 case CRYSTAL_HOLLOWS_STRUCTURE_WAYPOINTS ->
@@ -596,12 +599,13 @@ public final class WaypointerConfigCodec {
     }
 
     static boolean isActiveFieldTag(int tag) {
-        return tag >= DEFAULT_REACH_RADIUS && tag <= CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS
+        return tag >= DEFAULT_REACH_RADIUS && tag <= CRYSTAL_HOLLOWS_COMPASS_TRACERS
                 && tag != SHOW_COMPLETED
                 && tag != LEGACY_CHECK_FOR_UPDATES
                 && tag != TEMP_DEFAULT_DURATION_MIN
                 && tag != LEGACY_SHARP_WAYPOINT_EDGES
-                && tag != LEGACY_ROUTE_TIMES_ENABLED;
+                && tag != LEGACY_ROUTE_TIMES_ENABLED
+                && tag != LEGACY_DIANA_WAYPOINTS_ENABLED;
     }
 
     static boolean isRgbFieldTag(int tag) {

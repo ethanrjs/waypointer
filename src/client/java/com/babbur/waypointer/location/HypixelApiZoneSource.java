@@ -21,6 +21,11 @@ public final class HypixelApiZoneSource implements ZoneSource {
     private Zone lastEmitted;
     private Zone lastRawPacketZone;
     private boolean receivedLocationPacket;
+    private boolean skyblockPacket;
+    private boolean retainingSidebarZone;
+    private String packetServerType;
+    private String packetMap;
+    private String packetMode;
     private Object worldIdentity;
     private Consumer<Zone> listener;
     private int tickCounter;
@@ -60,7 +65,8 @@ public final class HypixelApiZoneSource implements ZoneSource {
         updateWorld(mc.level);
         if (++tickCounter < REFINE_POLL_TICKS) return;
         tickCounter = 0;
-        if (receivedLocationPacket && !shouldPollSidebarRefinement(lastRawPacketZone)) return;
+        if (receivedLocationPacket && !usesSidebarFallback()
+                && !shouldPollSidebarRefinement(lastRawPacketZone)) return;
         acceptSidebar(SidebarTexts.collectColorStripped(mc));
     }
 
@@ -72,22 +78,51 @@ public final class HypixelApiZoneSource implements ZoneSource {
 
     void acceptLocation(String serverType, String map, String mode, String serverName, String sidebar) {
         lastServerName = serverName;
+        packetServerType = serverType;
+        packetMap = map;
+        packetMode = mode;
         receivedLocationPacket = true;
+        skyblockPacket = "SKYBLOCK".equalsIgnoreCase(serverType);
+        retainingSidebarZone = false;
         lastRawPacketZone = Zone.resolve(serverType, map, mode);
         emitRefined(serverType, map, mode, sidebar);
     }
 
     void acceptSidebar(String sidebar) {
-        // An empty update is not evidence that an API-confirmed island/layout changed.
+        String sidebarText = sidebar == null ? "" : sidebar;
+        boolean hasPacketRefinement = !usesSidebarFallback()
+                && hasSidebarRefinement(lastRawPacketZone, sidebarText);
+        // A missing area line is not evidence that a confirmed island/layout changed.
+        // Floor markers and mineshaft codes can refine a packet without an area line.
         // World changes and new location packets still clear this state immediately.
-        if (lastRawPacketZone != null && (sidebar == null || sidebar.isBlank())) return;
+        if ((lastRawPacketZone != null || lastEmitted != null)
+                && com.babbur.waypointer.crystal.CrystalHollowsSidebar.areaName(sidebarText) == null
+                && !hasPacketRefinement) {
+            retainingSidebarZone = true;
+            return;
+        }
+        retainingSidebarZone = false;
         emitRefined(null, null, null, sidebar);
+    }
+
+    private static boolean hasSidebarRefinement(Zone packetZone, String sidebar) {
+        if (packetZone == null) return false;
+        if (CatacombsFloorRefiner.shouldPoll(packetZone)) {
+            return CatacombsFloorRefiner.tryResolveFromSidebarBlob(sidebar) != null;
+        }
+        if (!"dwarven_mines".equals(packetZone.id())
+                && !"mineshaft_unknown".equals(packetZone.id())) return false;
+        return Zone.tryResolveMineshaftTypeFromSidebarBlob(sidebar) != null
+                || Zone.tryResolveDwarvenSubAreaFromSidebarBlob(sidebar) != null;
     }
 
     void resetLocation() {
         lastRawPacketZone = null;
         receivedLocationPacket = false;
+        skyblockPacket = false;
+        retainingSidebarZone = false;
         worldIdentity = null;
+        packetServerType = packetMap = packetMode = null;
         lastServerName = null;
         tickCounter = 0;
         lastDebugSnapshot = null;
@@ -105,12 +140,12 @@ public final class HypixelApiZoneSource implements ZoneSource {
 
     private void emitRefined(String serverType, String map, String mode, String sidebar) {
         String sidebarText = sidebar != null ? sidebar : "";
-        Zone refined = receivedLocationPacket
+        Zone refined = !usesSidebarFallback()
                 ? Zone.refineIfDwarvenMinesContext(lastRawPacketZone, sidebarText)
                 : ScoreboardZoneResolver.resolveSidebarText(sidebarText);
         refined = CatacombsFloorRefiner.refine(refined, sidebarText);
         lastDebugSnapshot = new DebugSnapshot(
-                serverType, map, mode, lastServerName, lastRawPacketZone, refined, Instant.now());
+                packetServerType, packetMap, packetMode, lastServerName, lastRawPacketZone, refined, Instant.now());
 
         if (!Objects.equals(refined, lastEmitted)) {
             lastEmitted = refined;
@@ -130,6 +165,17 @@ public final class HypixelApiZoneSource implements ZoneSource {
 
     public static String lastServerName() {
         return lastServerName;
+    }
+
+    public String detectionState() {
+        return "apiPacket=" + receivedLocationPacket + ", skyblockPacket=" + skyblockPacket
+                + ", sidebarFallback=" + usesSidebarFallback()
+                + ", retainingZoneDuringMissingSidebar=" + retainingSidebarZone;
+    }
+
+    private boolean usesSidebarFallback() {
+        return !receivedLocationPacket || skyblockPacket
+                && (lastRawPacketZone == null || Zone.UNKNOWN.equals(lastRawPacketZone));
     }
 
     public record DebugSnapshot(

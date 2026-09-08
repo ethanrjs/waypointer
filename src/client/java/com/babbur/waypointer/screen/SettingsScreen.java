@@ -635,6 +635,9 @@ public final class SettingsScreen extends Screen {
 
     private void buildActionControls(Row row, Setting setting, int controlRight, int rowTop) {
         switch (setting.id()) {
+            case SettingsCatalog.ACTION_FEEDBACK -> buildDialogActionControl(row, setting,
+                    controlRight, rowTop, "waypointer.screen.settings.action.feedback",
+                    () -> MinecraftCompat.setScreen(minecraft, new FeedbackScreen(this, config)));
             case SettingsCatalog.ACTION_CONFIG_CODE -> buildConfigCodeControls(row, setting, controlRight, rowTop);
             case SettingsCatalog.ACTION_PRESETS -> buildPresetControls(row, setting, controlRight, rowTop);
             case SettingsCatalog.ACTION_DISABLE_ALL -> buildDialogActionControl(row, setting,
@@ -1043,7 +1046,7 @@ public final class SettingsScreen extends Screen {
         if (!"minimal".equals(presetId)) return;
         WaypointerConfig preset = SettingsPresets.minimal(config);
         String nameKey = "waypointer.screen.settings.preset.minimal";
-        confirmPreset(nameKey, SettingsCatalog.countChangedSettings(config, preset), confirmed -> {
+        confirmPreset(nameKey, SettingsCatalog.countImportedSettings(config, preset), confirmed -> {
             if (confirmed) {
                 config.replaceWith(preset);
                 ConfigChangeHistory.recordBulk("Applied " + presetId + " preset");

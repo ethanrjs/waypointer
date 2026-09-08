@@ -17,6 +17,70 @@ class CrystalHollowsTrackerBatchTest {
     @TempDir Path directory;
 
     @Test
+    void caveInWarningsAreExactScopedAndDoNotExtendTheDeadline() throws Exception {
+        var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), new WaypointerConfig(), null);
+        String warning = "You can hear mighty rumbles and explosions in the distance...";
+        tracker.observeCaveInWarning(warning, 100_000);
+        assertEquals(-1, tracker.closingInSeconds(null, 100_000));
+        set(tracker, "active", true);
+        set(tracker, "lobby", new CrystalHollowsLobbyState("m14ap", 100_000, 17));
+        tracker.observeCaveInWarning("[MVP+] Player: " + warning, 100_000);
+        assertEquals(-1, tracker.closingInSeconds(null, 100_000));
+        tracker.observeCaveInWarning("§c" + warning, 100_000);
+        assertEquals(60, tracker.closingInSeconds(null, 100_000));
+        tracker.observeCaveInWarning("The ground around you starts to wobble and crack...", 120_000);
+        assertEquals(40, tracker.closingInSeconds(null, 120_000));
+        tracker.observeCaveInWarning("You notice the ceiling starting to give way...", 130_000);
+        assertEquals(30, tracker.closingInSeconds(null, 130_000));
+        assertEquals(5, tracker.closingInSeconds("Server closing: 00:05 m14ap", 130_000));
+        assertEquals(0, tracker.closingInSeconds(null, 161_000));
+        var reset = CrystalHollowsTracker.class.getDeclaredMethod("resetLobbyTransients");
+        reset.setAccessible(true);
+        reset.invoke(tracker);
+        assertEquals(-1, tracker.closingInSeconds(null, 161_000));
+    }
+
+    @Test
+    void relaySnapshotReplacesOnlyRelayDataAndClearsRemovedNavigation() throws Exception {
+        var manager = new ActiveGroupManager();
+        var store = new CrystalHollowsStore(directory.resolve("relay-snapshot.json"));
+        var tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), store);
+        long now = System.currentTimeMillis();
+        var lobby = new CrystalHollowsLobbyState("m14ap", now, 17);
+        set(tracker, "active", true);
+        set(tracker, "lobby", lobby);
+        var local = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN, 600, 100, 300,
+                SightingConfidence.COMPASS, "compass", now);
+        var relay = new StructureSighting(local.structure(), 610, 100, 300,
+                SightingConfidence.SHARED_REMOTE, "relay:45fdbbc1-e3dd-4a82-a898-1d43b48ebf07",
+                now - 6 * 60 * 60_000L, java.util.List.of(), "", SightingConfidence.ENTITY);
+        var otherProvider = new StructureSighting(CrystalHollowsStructure.ODAWA, 400, 100, 300,
+                SightingConfidence.SHARED_REMOTE, SkyblockerStructureProtocol.SOURCE, now);
+        var removed = new StructureSighting(CrystalHollowsStructure.KING_YOLKAR, 400, 100, 400,
+                SightingConfidence.SHARED_REMOTE, "relay", now);
+        try {
+            lobby.merge(local);
+            lobby.merge(relay);
+            lobby.merge(otherProvider);
+            lobby.merge(removed);
+            tracker.focusCompassTarget(removed);
+            assertFalse(lobby.expireRemoteSightings(now - 1_800_000, SkyblockerStructureProtocol.SOURCE));
+            assertTrue(lobby.sightings().contains(relay));
+            tracker.applyRelayUpdate(null);
+            assertTrue(lobby.sightings().contains(removed));
+            tracker.applyRelayUpdate(new StructureRelayProtocol.Update(true, java.util.List.of(relay)));
+            assertEquals(2, lobby.sightings().size());
+            assertTrue(lobby.sightings().contains(relay));
+            assertTrue(lobby.sightings().contains(otherProvider));
+            assertNull(tracker.compassTargetSighting());
+            tracker.applyRelayUpdate(new StructureRelayProtocol.Update(true, java.util.List.of()));
+            assertEquals(java.util.Set.of(local, otherProvider), java.util.Set.copyOf(lobby.sightings()));
+        } finally {
+            store.discardPendingSave();
+        }
+    }
+
+    @Test
     void removedCompassWaypointStopsMinimapNavigationEvenWhenTheGroupRemains() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new com.babbur.waypointer.core.Zone("crystal_hollows", "Crystal Hollows"));

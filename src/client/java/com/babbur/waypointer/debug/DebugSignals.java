@@ -11,6 +11,8 @@ import com.babbur.waypointer.crystal.CrystalHollowsTracker;
 import com.babbur.waypointer.crystal.CrystalHollowsPosition;
 import com.babbur.waypointer.crystal.CrystalHollowsStructure;
 import com.babbur.waypointer.crystal.WishingCompassController;
+import com.babbur.waypointer.crystal.StructureSighting;
+import com.babbur.waypointer.crystal.compass.WishingCompassSolver;
 import com.babbur.waypointer.location.HypixelApiZoneSource;
 import com.babbur.waypointer.location.SidebarTexts;
 import net.minecraft.client.Minecraft;
@@ -148,6 +150,26 @@ public final class DebugSignals {
                 + ", compass=" + valueOrMissing(compassState)
                 + ", rays=" + rays
                 + ", lastEvent=" + valueOrMissing(lastEvent);
+    }
+
+    public static String crystalDetectorLine(CrystalHollowsTracker.DebugSnapshot snapshot) {
+        if (snapshot == null) return "not installed";
+        return "delayTicks=" + snapshot.delayTicks() + ", processedEntities=" + snapshot.processedEntities()
+                + ", kingsScent=" + snapshot.kingsScent() + ", tabCrystalStates=" + snapshot.tabCrystalStates();
+    }
+
+    public static String compassSolutionLine(WishingCompassSolver.SolveResult result) {
+        if (result == null) return "No solution captured.";
+        return "position=" + result.solution() + ", rayGapBlocks=" + result.gap()
+                + ", confidence=" + result.confidence() + ", targets=" + result.targets();
+    }
+
+    /** Only technical fields: sighting notes and source text can contain personal data. */
+    public static String structureEvidenceLine(StructureSighting sighting) {
+        if (sighting == null) return "(none)";
+        return "structure=" + sighting.structure() + ", position=" + sighting.position()
+                + ", confidence=" + sighting.confidence() + ", remoteEvidence=" + sighting.remoteEvidence()
+                + ", candidates=" + sighting.candidates();
     }
 
     public static String scoreboardLine() {

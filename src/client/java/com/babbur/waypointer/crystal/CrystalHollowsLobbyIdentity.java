@@ -31,4 +31,15 @@ public final class CrystalHollowsLobbyIdentity {
             return -1;
         }
     }
+
+    public static long currentDayTicks(ClientLevel level) {
+        if (level == null) return -1;
+        try {
+            return level.registryAccess().lookupOrThrow(Registries.TIMELINE)
+                    .get(Timelines.OVERWORLD_DAY)
+                    .map(holder -> holder.value().getTotalTicks(level.clockManager())).orElse(-1L);
+        } catch (RuntimeException failure) {
+            return -1;
+        }
+    }
 }

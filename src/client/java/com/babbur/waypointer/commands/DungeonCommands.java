@@ -1,22 +1,17 @@
 package com.babbur.waypointer.commands;
 
 import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.tree.LiteralCommandNode;
-import com.mojang.brigadier.suggestion.SuggestionProvider;
-import com.babbur.waypointer.Waypointer;
+import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.screen.WaypointerScreen;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
-import com.babbur.waypointer.dungeon.Direction;
-import com.babbur.waypointer.dungeon.DungeonRoom;
 import com.babbur.waypointer.dungeon.DungeonStateTracker;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
-import com.babbur.waypointer.dungeon.data.DungeonRoomCatalogEntry;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
@@ -43,14 +38,10 @@ public final class DungeonCommands {
 
     private static final int IMPORT_FILE_MAX_BYTES = 8 * 1024 * 1024;
 
-    private final DungeonStateTracker tracker;
-    private final DungeonConfig config;
     private final ActiveGroupManager manager;
 
     public DungeonCommands(DungeonStateTracker tracker, DungeonConfig config,
                            ActiveGroupManager manager) {
-        this.tracker = tracker;
-        this.config = config;
         this.manager = manager;
     }
 
@@ -60,113 +51,23 @@ public final class DungeonCommands {
 
     private void register(CommandDispatcher<FabricClientCommandSource> d) {
         LiteralArgumentBuilder<FabricClientCommandSource> cmd = literal("wpd")
-                .executes(ctx -> runInfo(ctx.getSource()))
-                .then(literal("info").executes(ctx -> runInfo(ctx.getSource())))
-                .then(literal("room")
-                        .then(literal("list").executes(ctx -> runRoomList(ctx.getSource()))))
+                .executes(ctx -> openDungeonGui())
                 .then(literal("import")
                         .then(argument("file", StringArgumentType.greedyString())
                                 .executes(ctx -> runImport(ctx.getSource(),
-                                        StringArgumentType.getString(ctx, "file")))))
-                .then(literal("route")
-                        .then(literal("next").executes(ctx -> runRouteNext(ctx.getSource())))
-                        .then(literal("reset").executes(ctx -> runRouteReset(ctx.getSource())))
-                        .then(literal("found")
-                                .then(argument("secretIndex", IntegerArgumentType.integer(1))
-                                        .suggests(suggestSecretIndices())
-                                        .executes(ctx -> runRouteFound(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "secretIndex"))))))
-                .then(literal("rotate")
-                        .then(literal("nw").executes(ctx -> runRotate(ctx.getSource(), Direction.NW)))
-                        .then(literal("ne").executes(ctx -> runRotate(ctx.getSource(), Direction.NE)))
-                        .then(literal("sw").executes(ctx -> runRotate(ctx.getSource(), Direction.SW)))
-                        .then(literal("se").executes(ctx -> runRotate(ctx.getSource(), Direction.SE)))
-                        .then(literal("auto").executes(ctx -> runRotate(ctx.getSource(), null))))
-                .then(literal("toggle")
-                        .then(literal("enabled").executes(ctx -> runToggle(ctx.getSource(), "enabled")))
-                        .then(literal("debug").executes(ctx -> runToggle(ctx.getSource(), "debug")))
-                        .then(literal("hidecompleted").executes(ctx -> runToggle(ctx.getSource(), "hidecompleted"))));
+                                        StringArgumentType.getString(ctx, "file")))));
         LiteralCommandNode<FabricClientCommandSource> canonical = d.register(cmd);
-        d.register(literal("waypointer-dungeon").redirect(canonical));
+        d.register(literal("waypointer-dungeon")
+                .executes(ctx -> openDungeonGui())
+                .redirect(canonical));
     }
 
-
-    private SuggestionProvider<FabricClientCommandSource> suggestSecretIndices() {
-        return (ctx, builder) -> {
-            WaypointGroup route = currentRoute();
-            if (route == null) return builder.buildFuture();
-            String prefix = builder.getRemaining();
-            int ordinal = 0;
-            for (int i = 0; i < route.size(); i++) {
-                if (route.isSubwaypoint(i)) continue;
-                ordinal++;
-                String value = Integer.toString(ordinal);
-                if (value.startsWith(prefix)) {
-                    builder.suggest(ordinal,
-                            Component.translatable(
-                                    "waypointer.dungeon.command.suggestion.secret",
-                                    ordinal));
-                }
-            }
-            return builder.buildFuture();
-        };
-    }
-
-    private WaypointGroup currentRoute() {
-        DungeonRoom room = tracker.currentRoom();
-        if (manager == null || room == null || !room.hasRoomId()) return null;
-        return DungeonRoomRouteLibrary.storedRouteForRoom(manager, room.roomId());
-    }
-
-    private int runInfo(FabricClientCommandSource src) {
-        DungeonRoom room = tracker.currentRoom();
-        if (!tracker.inDungeon()) {
-            info(src, Component.translatable("waypointer.dungeon.command.info.not_in_catacombs"));
-            return 1;
-        }
-        if (room == null) {
-            info(src, Component.translatable("waypointer.dungeon.command.info.no_room"));
-            return 1;
-        }
-        info(src, Component.translatable(
-                "waypointer.dungeon.command.info.room",
-                room.displayName(), room.type(), room.shape(), room.direction(),
-                room.hasRoomId() ? room.roomId() : "<unmatched>",
-                room.physicalCornerX(), room.physicalCornerZ(),
-                room.segments().size(), roomCountsSuffix(room)));
+    private int openDungeonGui() {
+        Minecraft.getInstance().execute(
+                () -> WaypointerScreen.openDungeonRooms(manager, WaypointerClient.config()));
         return 1;
     }
 
-    private static String roomCountsSuffix(DungeonRoom room) {
-        if (!room.hasRoomId()) return "";
-        DungeonRoomCatalogEntry definition = DungeonRoomData.entry(room.roomId());
-        if (definition == null) return "";
-        StringBuilder counts = new StringBuilder();
-        if (definition.hasSecretCount()) counts.append(" secrets=").append(definition.secretCount());
-        if (definition.hasCryptCount()) counts.append(" crypts=").append(definition.cryptCount());
-        if (definition.hasTrappedChestCount()) {
-            counts.append(" trappedChests=").append(definition.trappedChestCount());
-        }
-        return counts.toString();
-    }
-
-    private int runRoomList(FabricClientCommandSource src) {
-        int count = 0;
-        if (manager == null) return 0;
-        for (WaypointGroup route : manager.allGroups()) {
-            if (route.temp() || route.runtimeOnly()
-                    || route.routeKind() != WaypointGroup.RouteKind.DUNGEON) continue;
-            info(src, Component.translatable(
-                    "waypointer.dungeon.command.room.list_entry",
-                    route.zoneId(), route.name(), "ROUTE", "RELATIVE",
-                    route.size(), 0));
-            count++;
-        }
-        if (count == 0) {
-            info(src, Component.translatable("waypointer.dungeon.command.room.list_empty"));
-        }
-        return count;
-    }
 
     private int runImport(FabricClientCommandSource src, String rawPath) {
         Path file;
@@ -341,133 +242,6 @@ public final class DungeonCommands {
         if (names.size() > shown) out.append(", +").append(names.size() - shown).append(" more");
         return out.toString();
     }
-
-    private int runRouteNext(FabricClientCommandSource src) {
-        DungeonRoom room = requireRoom(src);
-        if (room == null) return 0;
-        WaypointGroup route = currentRoute();
-        if (route == null) return 0;
-        route.advancePast(route.currentIndex());
-        manager.fireDataChanged();
-        if (route.isComplete()) {
-            success(src, Component.translatable(
-                    "waypointer.dungeon.command.route.completed", room.displayName()));
-        } else {
-            success(src, Component.translatable(
-                    "waypointer.dungeon.command.route.advanced", route.currentMainOrdinal()));
-        }
-        return 1;
-    }
-
-    private int runRouteReset(FabricClientCommandSource src) {
-        DungeonRoom room = requireRoom(src);
-        if (room == null) return 0;
-        WaypointGroup route = currentRoute();
-        if (route == null) return 0;
-        route.resetProgress();
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                "waypointer.dungeon.command.route.reset", room.displayName()));
-        return 1;
-    }
-
-    private int runRouteFound(FabricClientCommandSource src, int secretIndex) {
-        DungeonRoom room = requireRoom(src);
-        if (room == null) return 0;
-        WaypointGroup route = currentRoute();
-        int waypointIndex = mainIndexForOrdinal(route, secretIndex);
-        if (waypointIndex < 0) {
-            String available = availableAuthoredSecretIndexes(route);
-            error(src, available.isEmpty()
-                    ? Component.translatable(
-                            "waypointer.dungeon.command.route.secret_not_authored_empty",
-                            secretIndex, room.displayName())
-                    : Component.translatable(
-                            "waypointer.dungeon.command.route.secret_not_authored",
-                            secretIndex, room.displayName(), available));
-            return 0;
-        }
-        route.setCurrentTargetIndex(waypointIndex);
-        route.advancePast(waypointIndex);
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                "waypointer.dungeon.command.route.secret_found", secretIndex));
-        return 1;
-    }
-
-    static boolean isAuthoredSecretIndex(WaypointGroup route, int secretIndex) {
-        return mainIndexForOrdinal(route, secretIndex) >= 0;
-    }
-
-    static String availableAuthoredSecretIndexes(WaypointGroup route) {
-        StringBuilder available = new StringBuilder();
-        int count = route == null ? 0 : route.mainWaypointCount();
-        for (int index = 1; index <= count; index++) {
-            if (!available.isEmpty()) available.append(", ");
-            available.append("#").append(index);
-        }
-        return available.toString();
-    }
-
-    private static int mainIndexForOrdinal(WaypointGroup route, int ordinal) {
-        if (route == null || ordinal <= 0) return -1;
-        int seen = 0;
-        for (int i = 0; i < route.size(); i++) {
-            if (route.isSubwaypoint(i)) continue;
-            if (++seen == ordinal) return i;
-        }
-        return -1;
-    }
-
-    private int runRotate(FabricClientCommandSource src, Direction dir) {
-        if (!tracker.setDirectionOverride(dir)) {
-            error(src, Component.translatable(
-                    "waypointer.dungeon.command.rotate.no_room"));
-            return 0;
-        }
-        if (dir == null) {
-            success(src, Component.translatable(
-                    "waypointer.dungeon.command.rotate.automatic"));
-        } else {
-            success(src, Component.translatable(
-                    "waypointer.dungeon.command.rotate.set", dir));
-        }
-        return 1;
-    }
-
-    private int runToggle(FabricClientCommandSource src, String which) {
-        boolean newValue = switch (which) {
-            case "enabled" -> {
-                boolean v = !config.enabled();
-                config.setEnabled(v);
-                yield v;
-            }
-            case "debug" -> {
-                boolean v = !config.debugLogRoomChanges();
-                config.setDebugLogRoomChanges(v);
-                yield v;
-            }
-            case "hidecompleted" -> {
-                boolean v = !config.hideCompletedRooms();
-                config.setHideCompletedRooms(v);
-                yield v;
-            }
-            default -> false;
-        };
-        success(src, Component.translatable(
-                "waypointer.dungeon.command.toggle", which, newValue));
-        Waypointer.LOGGER.info("Dungeon toggle: {} -> {}", which, newValue);
-        return 1;
-    }
-
-    private DungeonRoom requireRoom(FabricClientCommandSource src) {
-        DungeonRoom room = tracker.currentRoom();
-        if (room == null) {
-            error(src, Component.translatable("waypointer.dungeon.command.error.no_room"));
-        }
-        return room;
-    }
-
 
     private static void info(FabricClientCommandSource src, Component msg) {
         src.sendFeedback(WaypointerChatFeedback.suppress(

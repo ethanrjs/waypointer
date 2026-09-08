@@ -8,6 +8,18 @@ import org.junit.jupiter.api.Test;
 class CrystalHollowsSidebarTest {
 
     @Test
+    void readsClosingCountdownWithoutInferringItFromLobbyDay() {
+        assertEquals(191, CrystalHollowsSidebar.closingInSeconds("§cServer closing: §e03:11 m77A"));
+        assertEquals(0, CrystalHollowsSidebar.closingInSeconds("Server closing: 00:00 m77A"));
+        assertEquals(3599, CrystalHollowsSidebar.closingInSeconds("Server closing: 59:59"));
+        for (String invalid : new String[] {"Day 35", "Server closing: 60:00", "Server closing: 03:99",
+                "Server closing: 3:5", "Server closing: -1:00", "Server closing: 003:11"}) {
+            assertEquals(-1, CrystalHollowsSidebar.closingInSeconds(invalid));
+        }
+        assertEquals(-1, CrystalHollowsSidebar.closingInSeconds(null));
+    }
+
+    @Test
     void recognizesResourcePackLocationGlyphFromLiveReport() {
         String blob = "09/06/26 m12DR\nEarly Winter 10th\n\uE067 Mines of Divan\nBits: 703";
         assertEquals("Mines of Divan", CrystalHollowsSidebar.areaName(blob));

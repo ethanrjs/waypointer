@@ -32,12 +32,35 @@ class TracerRendererTest {
                 .getDeclaredMethod("markTarget", Waypoint.class);
         markTarget.setAccessible(true);
         markTarget.invoke(null, marker);
+        assertTrue(TracerRenderer.crystalHollowsTracerAllowed(generated, marker, config));
+        config.setCrystalHollowsCompassTracers(false);
         assertFalse(TracerRenderer.crystalHollowsTracerAllowed(generated, marker, config));
         assertTrue(TracerRenderer.crystalHollowsTracerAllowed(generated, Waypoint.at(100, 80, 100), config));
         config.setCrystalHollowsTracers(true);
+        assertFalse(TracerRenderer.crystalHollowsTracerAllowed(generated, marker, config));
+        config.setCrystalHollowsCompassTracers(true);
         assertTrue(TracerRenderer.crystalHollowsTracerAllowed(generated, marker, config));
         config.setShowTracer(false);
         assertFalse(TracerRenderer.tracersEnabled(generated, config, null));
+    }
+
+    @Test
+    void regionExitedMarkerCannotTraceEvenWhenExplicitlyFocused() throws Exception {
+        var config = new WaypointerConfig();
+        config.setShowTracer(true);
+        var group = new WaypointGroup("temp", "Temporary", "crystal_hollows");
+        group.add(Waypoint.at(300, 100, 300));
+        var marker = group.get(0);
+        var markExited = com.babbur.waypointer.crystal.CompassMarkerState.class
+                .getDeclaredMethod("markRegionExited", Waypoint.class);
+        markExited.setAccessible(true);
+        markExited.invoke(null, marker);
+        var renderer = new TracerRenderer(new com.babbur.waypointer.core.ActiveGroupManager(), config);
+        var select = TracerRenderer.class.getDeclaredMethod("straightTracerTarget",
+                WaypointGroup.class, boolean.class, net.minecraft.client.player.LocalPlayer.class,
+                double.class, boolean.class, boolean.class);
+        select.setAccessible(true);
+        org.junit.jupiter.api.Assertions.assertNull(select.invoke(renderer, group, true, null, 0.0, false, false));
     }
 
     @Test

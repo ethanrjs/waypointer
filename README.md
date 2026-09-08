@@ -57,6 +57,48 @@ Dungeon route import
 - Odin dungeon waypoints: JSON file or import string
 - Waypointer `WPD:` share codes (I/E)
 
+Send feedback
+
+Open Settings and select **Send Feedback** to send a bug report or general
+feedback. Messages can contain up to 10,000 characters. You can attach PNG or
+JPEG images, shown as previews in one row. Selecting a bug report attaches a
+debug snapshot with **Anonymize Data** enabled. You can review the report,
+turn anonymization off, or remove the snapshot before sending.
+
+Feedback does not request or send contact details. **Anonymize Data** attempts
+to replace personal identifiers in the debug snapshot, including route and
+waypoint names, private server details, and raw scoreboard/tab text. It keeps
+coordinates, route geometry, hardware details, mod versions, settings, and
+technical error details needed to investigate a bug. These retained details
+can still identify a particular setup. Check your message and visible image
+content for personal information before sending. Image metadata and original
+file names are not uploaded. Feedback snapshots do not read the clipboard.
+
+The service allows 20 submissions per network per UTC day; users on a shared
+network share that limit. Feedback is stored in the private site admin view
+and queues an email notification to the maintainer. Sending requires the
+feedback service and email delivery to be configured. If the service is
+unavailable, the form keeps the draft open and reports the error.
+
+Skyblocker structure sharing
+
+Settings > Mining > **Skyblocker Sharing** adds an optional connection to
+Skyblocker's Crystal Hollows service at hysky.de. It is off by default and
+also requires **Crystal Hollows features** and **Share Structures**. Config
+imports cannot enable this option.
+
+When enabled, api.azureaaron.net receives your Minecraft UUID, public profile
+key and signed proof for authentication. ws.hysky.de receives the resulting
+service token and fresh structure locations that you observe. Your private
+key and Minecraft access token stay in Minecraft. The service token is kept in memory. Waypointer identifies itself
+as Waypointer; the service must accept that identity. An online Minecraft
+profile key is required.
+
+This connection supports Crystal Hollows structure messages. It does not
+implement Skyblocker's dungeon-secret or egg services. Received locations
+are not sent back to either sharing service. The existing Waypointer relay
+continues to operate independently.
+
 Requirements
 
 - Minecraft 26.1 to 26.2

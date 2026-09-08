@@ -3,6 +3,7 @@ package com.babbur.waypointer.commands;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.ParseResults;
 import com.mojang.brigadier.context.CommandContextBuilder;
+import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -18,60 +19,51 @@ import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DungeonCommandTreeTest {
 
     @Test
-    void dungeonAuthoringCommandsAreNotRegistered() throws Exception {
+    void registersOnlyDungeonNavigationAndFileImport() throws Exception {
         CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
         var canonical = dispatcher.getRoot().getChild("wpd");
-        assertSame(canonical, dispatcher.getRoot().getChild("waypointer-dungeon").getRedirect());
-        for (String root : List.of("wpd", "waypointer-dungeon")) {
-            var rootNode = dispatcher.getRoot().getChild(root);
-            assertNotNull(rootNode, "missing dungeon command root " + root);
-            if (rootNode.getRedirect() != null) rootNode = rootNode.getRedirect();
-            assertNull(rootNode.getChild("test"));
-            assertNull(rootNode.getChild("reset"));
-            assertNull(rootNode.getChild("highlight"));
-            assertNull(rootNode.getChild("breakbox"));
-            assertNull(rootNode.getChild("routes"));
-
-            var room = rootNode.getChild("room");
-            assertNotNull(room);
-            assertNull(room.getChild("create"));
-            assertNull(room.getChild("rename"));
-            assertNull(room.getChild("fingerprint"));
-
-            assertNull(rootNode.getChild("waypoint"));
-        }
+        var alias = dispatcher.getRoot().getChild("waypointer-dungeon");
+        assertNotNull(canonical.getCommand());
+        assertNotNull(alias.getCommand());
+        assertSame(canonical, alias.getRedirect());
+        assertEquals(Set.of("import"), canonical.getChildren().stream()
+                .map(node -> node.getName()).collect(Collectors.toSet()));
     }
 
     @Test
     void retainedDungeonCommandsParseWithoutSyntaxErrors() throws Exception {
         CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
-        List<String> commands = List.of(
-                "wpd info",
-                "wpd room list",
-                "wpd import routes.json",
-                "wpd route next",
-                "wpd route reset",
-                "wpd route found 1",
-                "wpd rotate sw",
-                "wpd rotate auto",
-                "wpd toggle enabled",
-                "wpd toggle hidecompleted",
-                "wpd toggle debug",
-                "waypointer-dungeon info");
-
-        for (String command : commands) {
+        for (String command : List.of("wpd", "wpd import routes.json",
+                "wpd import C:\\Dungeon Routes\\routes.json", "waypointer-dungeon",
+                "waypointer-dungeon import routes.json")) {
             assertParses(dispatcher, command);
+        }
+    }
+
+    @Test
+    void removedDungeonActionsAreRejectedThroughBothRoots() throws Exception {
+        CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
+        for (String root : List.of("wpd", "waypointer-dungeon")) {
+            for (String action : List.of("info", "room list", "route next", "route reset", "route found 1",
+                    "rotate sw", "rotate auto", "toggle enabled", "toggle hidecompleted", "toggle debug",
+                    "test", "reset", "highlight", "breakbox", "routes", "room create", "waypoint", "import")) {
+                String command = root + " " + action;
+                assertThrows(CommandSyntaxException.class, () -> dispatcher.execute(command, null), command);
+            }
         }
     }
 
@@ -181,21 +173,6 @@ class DungeonCommandTreeTest {
             assertNotNull(result.error());
             assertTrue(result.error().contains(fixture.errorFragment()), result.error());
         }
-    }
-
-    @Test
-    void authoredSecretCheckRejectsNonexistentRouteSecrets() {
-        WaypointGroup route = WaypointGroup.create("Command Route", "command-route-room");
-        route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
-        route.add(Waypoint.at(0, 70, 0));
-        route.add(Waypoint.at(1, 70, 0).withSubwaypoint(true));
-        route.add(Waypoint.at(2, 70, 0));
-
-        assertTrue(DungeonCommands.isAuthoredSecretIndex(route, 1));
-        assertTrue(DungeonCommands.isAuthoredSecretIndex(route, 2));
-        assertFalse(DungeonCommands.isAuthoredSecretIndex(route, 0));
-        assertFalse(DungeonCommands.isAuthoredSecretIndex(route, 3));
-        assertEquals("#1, #2", DungeonCommands.availableAuthoredSecretIndexes(route));
     }
 
     private static CommandDispatcher<FabricClientCommandSource> registeredDispatcher() throws Exception {

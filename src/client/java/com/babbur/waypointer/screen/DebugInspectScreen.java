@@ -16,6 +16,7 @@ import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.debug.DebugLogTail;
 import com.babbur.waypointer.debug.DebugReportExport;
+import com.babbur.waypointer.debug.DebugReportAnonymizer;
 import com.babbur.waypointer.debug.DebugSignals;
 import com.babbur.waypointer.debug.PerformanceStats;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
@@ -116,6 +117,7 @@ public final class DebugInspectScreen extends Screen {
     private long copyFeedbackUntil;
     private long rendererCaptureRequestedAt;
     private boolean awaitingFreshRendererCapture;
+    private boolean feedbackCapture;
 
     private int sidebarX1, sidebarX2, sidebarContentTop;
     private int mainX1, mainX2, mainTop, mainBottom;
@@ -141,6 +143,43 @@ public final class DebugInspectScreen extends Screen {
                             WaypointerConfig config) {
         MinecraftCompat.setScreen(Minecraft.getInstance(),
                 new DebugInspectScreen(parent, manager, config));
+    }
+
+    /** Captures on the client thread, without opening a screen or reading the clipboard. */
+    public static FeedbackSnapshot captureFeedbackSnapshot(ActiveGroupManager manager,
+                                                            WaypointerConfig config) {
+        Minecraft client = Minecraft.getInstance();
+        if (!client.isSameThread()) {
+            throw new IllegalStateException("Capture the debug snapshot on the client thread.");
+        }
+        DebugInspectScreen capture = new DebugInspectScreen(null, manager, config);
+        capture.loadCombinedReport(false);
+        List<String> sensitiveValues = new ArrayList<>();
+        sensitiveValues.add(client.getUser().getName());
+        sensitiveValues.add(System.getProperty("user.name", ""));
+        sensitiveValues.add(System.getProperty("user.home", ""));
+        if (client.level != null) {
+            for (var player : client.level.players()) {
+                sensitiveValues.add(player.getName().getString());
+            }
+        }
+        if (client.getConnection() != null) {
+            for (var player : client.getConnection().getListedOnlinePlayers()) {
+                sensitiveValues.add(player.getProfile().name());
+            }
+        }
+        List<DebugReportExport.Section> sections = capture.exportSections();
+        return new FeedbackSnapshot(
+                DebugReportAnonymizer.removeSecrets(
+                        DebugReportExport.format(sections, DebugReportExport.Options.allEnabled())),
+                DebugReportAnonymizer.anonymize(sections, sensitiveValues));
+    }
+
+    /** Both variants describe the same instant; a privacy toggle does not recapture live data. */
+    public record FeedbackSnapshot(String fullReport, String anonymizedReport) {
+        public String report(boolean anonymize) {
+            return anonymize ? anonymizedReport : fullReport;
+        }
     }
 
 
@@ -194,6 +233,11 @@ public final class DebugInspectScreen extends Screen {
     }
 
     private void loadCombinedReport() {
+        loadCombinedReport(true);
+    }
+
+    private void loadCombinedReport(boolean includeClipboard) {
+        feedbackCapture = !includeClipboard;
         resetReportState();
 
         buildSafely("Report Summary", this::buildReportSummary);
@@ -210,6 +254,8 @@ public final class DebugInspectScreen extends Screen {
                     this::buildServerContextReport);
             buildSafely("Crystal Hollows Diagnostics", DebugReportExport.Category.SERVER_CONTEXT,
                     this::buildCrystalHollowsDiagnosticsReport);
+            buildSafely("Structure Sharing Diagnostics", DebugReportExport.Category.SERVER_CONTEXT,
+                    this::buildStructureSharingDiagnosticsReport);
             buildSafely("Storage Health", this::buildStorageHealthReport);
             buildSafely("Performance Snapshot", this::buildLivePerformanceReport);
             buildSafely("Settings and Recent Changes", DebugReportExport.Category.SETTINGS_AND_CHANGES,
@@ -230,7 +276,7 @@ public final class DebugInspectScreen extends Screen {
                 this::buildRecentSettingsChangesReport);
         buildSafely("Recent Logs and Activity", DebugReportExport.Category.RECENT_LOGS_AND_ACTIVITY,
                 this::buildRecentLogsAndActivityReport);
-        loadClipboardReport();
+        if (includeClipboard) loadClipboardReport();
     }
 
     private void loadClipboardReport() {
@@ -299,14 +345,16 @@ public final class DebugInspectScreen extends Screen {
     }
 
     private void buildReportSummary() {
-        addSection(rows, sections, "Troubleshooting Report", "schema 1");
+        addSection(rows, sections, "Troubleshooting Report", "schema 2");
         rows.add(new Row.KV("Captured", java.time.Instant.now().toString()));
-        rows.add(new Row.KV("Report schema", "1"));
+        rows.add(new Row.KV("Report schema", "2"));
         rows.add(new Row.KV("Waypointer", loadedModVersion(Waypointer.MOD_ID)));
         rows.add(new Row.KV("Minecraft", loadedModVersion("minecraft")));
         rows.add(new Row.KV("Fabric Loader", loadedModVersion("fabricloader")));
-        rows.add(new Row.KVDim("Command", "/wp debug"));
-        rows.add(new Row.KVDim("Privacy", "Sensitive sections require confirmation before copying."));
+        rows.add(new Row.KVDim("Command", feedbackCapture ? "Settings > Send Feedback" : "/wp debug"));
+        rows.add(new Row.KVDim("Privacy", feedbackCapture
+                ? "Review this snapshot before sending. Clipboard contents are not collected."
+                : "Sensitive sections require confirmation before copying."));
     }
 
     private void buildPcSpecsReport() {
@@ -402,6 +450,7 @@ public final class DebugInspectScreen extends Screen {
                     player.getYRot(), player.getXRot())));
         }
         rows.add(new Row.KVDim("Hypixel Mod API", DebugSignals.hypixelApiLine()));
+        rows.add(new Row.KVDim("Location detection", com.babbur.waypointer.location.LocationTracker.debugLine()));
     }
 
     private void buildCrystalHollowsDiagnosticsReport() {
@@ -412,6 +461,40 @@ public final class DebugInspectScreen extends Screen {
         rows.add(new Row.KVDim(
                 Component.translatable("waypointer.crystal.debug.state").getString(),
                 DebugSignals.crystalHollowsLine()));
+        var tracker = WaypointerClient.crystalHollowsTracker();
+        rows.add(new Row.KVDim("Detection", DebugSignals.crystalDetectorLine(tracker == null ? null : tracker.debugSnapshot())));
+        if (tracker != null && tracker.lobby() != null) {
+            var lobby = tracker.lobby();
+            rows.add(new Row.KVDim("Lobby age", Math.max(0, System.currentTimeMillis() - lobby.firstSeenMillis()) + " ms"));
+            rows.add(new Row.KVDim("Crystal states", lobby.crystals().toString()));
+            for (var sighting : lobby.sightings()) {
+                rows.add(new Row.KVDim("Structure evidence", DebugSignals.structureEvidenceLine(sighting)));
+            }
+        }
+        addSection(rows, sections, "Wishing Compass Diagnostics", null, DebugReportExport.Category.SERVER_CONTEXT);
+        var compass = WaypointerClient.crystalHollowsCompass();
+        if (compass == null) {
+            rows.add(new Row.KVDim("Controller", "not installed"));
+        } else {
+            var solver = compass.solver();
+            rows.add(new Row.KVDim("Solver", "state=" + solver.state() + ", lastEvent=" + compass.lastEvent()));
+            rows.add(new Row.KVDim("Solution", DebugSignals.compassSolutionLine(solver.lastResult().orElse(null))));
+            for (var ray : solver.completedRays()) {
+                rows.add(new Row.KVDim("Captured ray", "zone=" + ray.zone() + ", use=" + ray.usePosition()
+                        + ", origin=" + ray.origin() + ", direction=" + ray.direction()
+                        + ", points=" + ray.pointCount() + ", lengthBlocks=" + ray.lengthBlocks()));
+            }
+            rows.add(new Row.KVDim("Retained target", DebugSignals.structureEvidenceLine(tracker == null ? null : tracker.compassTargetSighting())));
+            if (tracker != null) rows.add(new Row.KVDim("Navigation", tracker.compassNavigationSnapshot().toString()));
+        }
+    }
+
+    private void buildStructureSharingDiagnosticsReport() {
+        addSection(rows, sections, "Structure Sharing Diagnostics", null, DebugReportExport.Category.SERVER_CONTEXT);
+        rows.add(new Row.KVDim("Waypointer relay",
+                com.babbur.waypointer.crystal.StructureRelayController.debugSnapshot().toString()));
+        rows.add(new Row.KVDim("Skyblocker",
+                com.babbur.waypointer.crystal.SkyblockerStructureController.debugSnapshot().toString()));
     }
 
     private void buildLivePerformanceReport() {

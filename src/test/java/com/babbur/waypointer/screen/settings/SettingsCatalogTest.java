@@ -81,7 +81,7 @@ class SettingsCatalogTest {
         assertEquals("crystalHollowsEnabled", category.masterSettingId());
         assertEquals(List.of("crystal_hollows_structures", "minimap", "wishing_compass"),
                 category.groups().stream().map(SettingsCatalog.Group::id).toList());
-        assertEquals(17, category.groups().stream()
+        assertEquals(19, category.groups().stream()
                 .flatMap(group -> group.settings().stream()).count());
         assertTrue(category.groups().stream()
                 .flatMap(group -> group.settings().stream())
@@ -103,6 +103,13 @@ class SettingsCatalogTest {
         assertEquals(true, tracers.get(config, null));
         tracers.set(config, null, false);
         assertFalse(config.crystalHollowsTracers());
+        Setting compassTracers = SettingsCatalog.byId("crystalHollowsCompassTracers");
+        assertEquals(Setting.Kind.BOOL, compassTracers.kind());
+        assertEquals("mining", categoryContaining(compassTracers.id()));
+        assertTrue(config.crystalHollowsCompassTracers());
+        compassTracers.set(config, null, false);
+        assertFalse(config.crystalHollowsCompassTracers());
+        assertTrue(config.crystalHollowsCompassAutoFocus());
         Setting autoFocus = SettingsCatalog.byId("crystalHollowsCompassAutoFocus");
         assertNotNull(autoFocus);
         assertEquals(true, autoFocus.get(config, null));
@@ -121,7 +128,7 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void minimapControlsAndDianaToggleUseTheirConfigValues() {
+    void minimapControlsUseTheirConfigValues() {
         WaypointerConfig config = new WaypointerConfig();
         Setting corner = SettingsCatalog.byId("crystalHollowsMinimapCorner");
         assertEquals(Setting.Kind.ENUM, corner.kind());
@@ -132,19 +139,45 @@ class SettingsCatalogTest {
         Setting size = SettingsCatalog.byId("crystalHollowsMinimapSize");
         size.set(config, null, 200.0);
         assertEquals(200, config.crystalHollowsMinimapSize());
-        Setting diana = SettingsCatalog.byId("dianaWaypointsEnabled");
-        assertEquals("diana", categoryContaining(diana.id()));
-        diana.set(config, null, false);
-        assertFalse(config.dianaWaypointsEnabled());
     }
 
     @Test
     void categoryOrderIncludesFunctionalMiningWithoutAnEmptyForagingPage() {
         assertEquals(List.of("waypoints", "appearance", "routes", "dungeons", "mining",
-                        "diana", "chat", "sharing", "feature_bloat", "system"),
+                        "chat", "sharing", "feature_bloat", "system", "feedback"),
                 SettingsCatalog.categories().stream()
                         .map(SettingsCatalog.Category::id)
                         .toList());
+    }
+
+    @Test
+    void feedbackActionIsAvailableWithoutExtrasEnabled() {
+        Setting feedback = SettingsCatalog.byId(SettingsCatalog.ACTION_FEEDBACK);
+        assertNotNull(feedback);
+        assertEquals(Setting.Kind.ACTION, feedback.kind());
+        assertEquals("feedback", categoryContaining(feedback.id()));
+        assertTrue(feedback.isEnabled(new WaypointerConfig(), null));
+    }
+
+    @Test
+    void skyblockerSharingRequiresExplicitOptInAndMasterSharing() {
+        WaypointerConfig config = new WaypointerConfig();
+        Setting sharing = SettingsCatalog.byId("crystalHollowsSkyblockerSharing");
+        assertNotNull(sharing);
+        assertEquals("mining", categoryContaining(sharing.id()));
+        assertEquals(false, sharing.get(config, null));
+        sharing.set(config, null, true);
+        assertTrue(config.crystalHollowsSkyblockerSharing());
+        assertTrue(sharing.isLocalOnly());
+        assertEquals(1, SettingsCatalog.countChangedSettings(new WaypointerConfig(), config));
+        assertEquals(0, SettingsCatalog.countImportedSettings(new WaypointerConfig(), config));
+        config.setCrystalHollowsRemoteSharing(false);
+        assertFalse(sharing.isEnabled(config, null));
+        config.setCrystalHollowsRemoteSharing(true);
+        config.setCrystalHollowsEnabled(false);
+        assertFalse(sharing.isEnabled(config, null));
+        config.setCrystalHollowsEnabled(true);
+        assertTrue(sharing.isEnabled(config, null));
     }
 
     @Test
@@ -274,10 +307,10 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void everyMainEntrySurvivesTheCodecRoundTrip() {
+    void everyShareableMainEntrySurvivesTheCodecRoundTrip() {
         WaypointerConfig defaults = new WaypointerConfig();
         for (Setting setting : SettingsCatalog.allSettings()) {
-            if (setting.store() != Setting.Store.MAIN) continue;
+            if (setting.store() != Setting.Store.MAIN || setting.isLocalOnly()) continue;
 
             WaypointerConfig live = new WaypointerConfig();
             Object probe = probeValue(setting, defaults);
@@ -295,12 +328,12 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void probingEveryMainEntryCountsThemAllAndRoundTripsToZeroDiff() {
+    void probingEveryShareableMainEntryCountsThemAllAndRoundTripsToZeroDiff() {
         WaypointerConfig defaults = new WaypointerConfig();
         WaypointerConfig live = new WaypointerConfig();
         int mainEntries = 0;
         for (Setting setting : SettingsCatalog.allSettings()) {
-            if (setting.store() != Setting.Store.MAIN) continue;
+            if (setting.store() != Setting.Store.MAIN || setting.isLocalOnly()) continue;
             setting.set(live, null, probeValue(setting, defaults));
             mainEntries++;
         }

@@ -571,11 +571,14 @@ The writer omits a field when it equals its normalized default.
 | 105 | `crystalHollowsMinimapSize` | U | `144` |
 | 106 | `crystalHollowsMinimapCorner` | U | `0` |
 | 107 | `crystalHollowsMinimapLabels` | B | `true` |
-| 108 | `dianaWaypointsEnabled` | B | `true` |
+| 108 | Reserved: removed feature (decode only) | B | — |
 | 109 | `crystalHollowsTracers` | B | `true` |
 | 110 | `crystalHollowsCompassAutoFocus` | B | `true` |
+| 111 | `crystalHollowsCompassTracers` | B | `true` |
 
-Inactive legacy holes are tags 17, 51, 54, 55, and 66. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-110 are active. Tag 87 remains readable for older settings but no longer renders compass rays. Tags 111-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
+Inactive legacy holes are tags 17, 51, 54, 55, 66, and 108. Tag 108 is permanently reserved: the WPC decoder consumes its historical boolean without applying it; the v10 decoder skips it as a bounded unknown field. New writers never emit it. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-107 and 109-111 are active. Tag 87 remains readable for older settings but no longer renders compass rays. Tags 112-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
+
+Tag 109 controls structure and metal detector tracers. Tag 111 independently controls compass target tracers, including focused targets. Tag 110 controls automatic compass focus. All three default to true. Old codes that omit tag 111 use its true default.
 
 Tag 96 is a two-byte unsigned big-endian byte length followed by the ASCII sound identifier (at most 256 characters). Known legacy sound IDs keep tag 80; blank disables sound. Tag 97 is a duration in milliseconds, bounded to 0-5,000. Tag 105 is the minimap width, bounded to 96-224. Tag 106 is the minimap corner: 0 top left, 1 top right, 2 bottom left, or 3 bottom right. Painter defaults remain local settings and are not included in configuration shares.
 

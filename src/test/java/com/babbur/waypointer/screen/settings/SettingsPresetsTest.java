@@ -43,16 +43,30 @@ class SettingsPresetsTest {
     }
 
     @Test
+    void minimalPresetDoesNotCountOrChangeLocalSharingConsent() {
+        WaypointerConfig live = SettingsPresets.minimal(new WaypointerConfig());
+        live.setCrystalHollowsSkyblockerSharing(true);
+        WaypointerConfig preset = SettingsPresets.minimal(live);
+
+        assertEquals(0, SettingsCatalog.countImportedSettings(live, preset));
+        live.replaceWith(preset);
+        assertTrue(live.crystalHollowsSkyblockerSharing());
+        assertEquals(0, SettingsCatalog.countImportedSettings(live, preset));
+    }
+
+    @Test
     void disableAllPresetKeepsStoredValues() {
         WaypointerConfig config = new WaypointerConfig();
         DungeonConfig dungeon = new DungeonConfig();
         config.addChatCoordSenderBlacklist("Notch");
         config.setImportedRouteDefaultColor(0x123456);
+        config.setCrystalHollowsSkyblockerSharing(true);
 
         SettingsPresets.applyDisableAll(config, dungeon);
 
         assertFalse(config.showWaypointNames());
         assertFalse(config.chatCoordDetection());
+        assertFalse(config.crystalHollowsSkyblockerSharing());
         assertFalse(dungeon.enabled());
         assertFalse(dungeon.showDungeonRouteLines());
         assertTrue(config.isChatCoordSenderBlacklisted("Notch"));

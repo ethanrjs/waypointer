@@ -50,6 +50,7 @@ public final class SettingsCatalog {
     public static final String ACTION_DISABLE_ALL = "action.disableAll";
     public static final String ACTION_RESET_DEFAULTS = "action.resetDefaults";
     public static final String ACTION_WAYPOINT_PAINT = "action.waypointPaint";
+    public static final String ACTION_FEEDBACK = "action.feedback";
 
     private static final Setting.EnabledWhen ANY_LABEL_TEXT = (c, d) ->
             c.showWaypointNames() || c.showWaypointDistances() || c.showRouteProgress();
@@ -84,10 +85,18 @@ public final class SettingsCatalog {
     }
 
     public static int countChangedSettings(WaypointerConfig live, WaypointerConfig decoded) {
+        return countChangedSettings(live, decoded, false);
+    }
+
+    public static int countImportedSettings(WaypointerConfig live, WaypointerConfig decoded) {
+        return countChangedSettings(live, decoded, true);
+    }
+
+    private static int countChangedSettings(WaypointerConfig live, WaypointerConfig decoded, boolean importedOnly) {
         if (live == null || decoded == null) return 0;
         int changed = 0;
         for (Setting setting : ALL_SETTINGS) {
-            if (setting.store() != MAIN) continue;
+            if (setting.store() != MAIN || importedOnly && setting.isLocalOnly()) continue;
             if (!Objects.equals(setting.get(live, null), setting.get(decoded, null))) changed++;
         }
         return changed;
@@ -135,11 +144,15 @@ public final class SettingsCatalog {
         out.add(routes());
         out.add(dungeons());
         out.add(mining());
-        out.add(diana());
         out.add(chat());
         out.add(sharing());
         out.add(featureBloat());
         out.add(system());
+        out.add(Category.of("feedback", "Feedback", Group.plain(
+                Setting.action(ACTION_FEEDBACK, "Send Feedback",
+                        "Send a bug report or general feedback. Images and debug snapshots are optional.")
+                        .buttons(Map.of("waypointer.screen.settings.action.feedback", "Send Feedback"))
+                        .aliases("bug", "report", "support", "anonymous"))));
         return List.copyOf(out);
     }
 
@@ -596,6 +609,14 @@ public final class SettingsCatalog {
                                 "Automatically send and receive structure locations in your Crystal Hollows lobby. Turning this off stops both.",
                                 (c, d) -> c.crystalHollowsRemoteSharing(),
                                 (c, d, v) -> c.setCrystalHollowsRemoteSharing((Boolean) v)),
+                        Setting.bool("crystalHollowsSkyblockerSharing", MAIN,
+                                "Skyblocker Sharing",
+                                "Also share Crystal Hollows structures through ws.hysky.de. Off by default. api.azureaaron.net receives your Minecraft UUID and public profile-key proof to authenticate. ws.hysky.de receives the service token and observed structure positions. Requires Share Structures. Your private key and Minecraft access token stay on this computer.",
+                                (c, d) -> c.crystalHollowsSkyblockerSharing(),
+                                (c, d, v) -> c.setCrystalHollowsSkyblockerSharing((Boolean) v))
+                                .localOnly()
+                                .enabledWhen((c, d) -> c.crystalHollowsEnabled() && c.crystalHollowsRemoteSharing())
+                                .aliases("skyblocker", "hysky", "websocket"),
                         Setting.bool("crystalHollowsMetalDetector", MAIN,
                                 "Metal Detector Waypoints",
                                 "Show treasure waypoints while using a Metal Detector.",
@@ -606,8 +627,8 @@ public final class SettingsCatalog {
                                 "Show detected structures in the runtime Structures folder.",
                                 (c, d) -> c.crystalHollowsStructureWaypoints(),
                                 (c, d, v) -> c.setCrystalHollowsStructureWaypoints((Boolean) v)),
-                        Setting.bool("crystalHollowsTracers", MAIN, "Crystal Hollows tracers",
-                                "Allow tracers to detected structures, compass targets, and metal detector treasure. Uses your Tracer settings for styling.",
+                        Setting.bool("crystalHollowsTracers", MAIN, "Structure and treasure tracers",
+                                "Allow tracers to detected structures and metal detector treasure. Compass tracers have a separate setting. Uses your Tracer settings for styling.",
                                 (c, d) -> c.crystalHollowsTracers(),
                                 (c, d, v) -> c.setCrystalHollowsTracers((Boolean) v)),
                         Setting.bool("crystalHollowsHideStructuresFolder", MAIN,
@@ -671,19 +692,14 @@ public final class SettingsCatalog {
                                         "Capture your compass particles and triangulate their destination.",
                                         (c, d) -> c.crystalHollowsWishingCompassSolver(),
                                         (c, d, v) -> c.setCrystalHollowsWishingCompassSolver((Boolean) v)),
+                                Setting.bool("crystalHollowsCompassTracers", MAIN, "Compass target tracers",
+                                        "Allow tracers to solved compass targets, including focused targets. Turning this off keeps the marker and focus. Uses your Tracer settings for styling.",
+                                        (c, d) -> c.crystalHollowsCompassTracers(),
+                                        (c, d, v) -> c.setCrystalHollowsCompassTracers((Boolean) v)),
                                 Setting.bool("crystalHollowsCompassAutoFocus", MAIN, "Focus solved compass targets",
                                         "Automatically focus the solved target. Turning this off releases the current compass focus and keeps the waypoint visible.",
                                         (c, d) -> c.crystalHollowsCompassAutoFocus(),
                                         (c, d, v) -> c.setCrystalHollowsCompassAutoFocus((Boolean) v)))));
-    }
-
-    private static Category diana() {
-        return Category.of("diana", "Diana",
-                Group.plain(Setting.bool("dianaWaypointsEnabled", MAIN, "Diana waypoints",
-                        "Track Griffin Burrows and estimate your next burrow from Ancestral Spade clues. Estimates are marked until confirmed. Enable Dripping Lava particles and set /particlequality to Extreme for the best clues.",
-                        (c, d) -> c.dianaWaypointsEnabled(),
-                        (c, d, v) -> c.setDianaWaypointsEnabled((Boolean) v))
-                        .aliases("griffin", "burrow", "spade", "mythological")));
     }
 
     private static Category chat() {

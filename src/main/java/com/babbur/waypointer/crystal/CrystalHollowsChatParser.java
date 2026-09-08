@@ -56,6 +56,15 @@ public final class CrystalHollowsChatParser {
 
     private CrystalHollowsChatParser() {}
 
+    public static boolean isCaveInWarning(String text) {
+        return switch (clean(text).trim()) {
+            case "You can hear mighty rumbles and explosions in the distance...",
+                    "The ground around you starts to wobble and crack...",
+                    "You notice the ceiling starting to give way..." -> true;
+            default -> false;
+        };
+    }
+
     public static Optional<NpcDialogue> parseNpcDialogue(String text) {
         String stripped = clean(text);
         for (CrystalHollowsStructure structure : CrystalHollowsStructure.values()) {

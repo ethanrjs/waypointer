@@ -267,9 +267,9 @@ class V10ConfigCodecTest {
         config.disableAllSettings();
         // Keep this cross-language fixture unchanged as new settings are added.
         config.setCrystalHollowsMinimapLabels(true);
-        config.setDianaWaypointsEnabled(true);
         config.setCrystalHollowsTracers(true);
         config.setCrystalHollowsCompassAutoFocus(true);
+        config.setCrystalHollowsCompassTracers(true);
         config.setLabelFollowCameraEffects(true);
         config.setCrystalHollowsMetalDetector(true);
         config.setCrystalHollowsRemoteSharing(true);

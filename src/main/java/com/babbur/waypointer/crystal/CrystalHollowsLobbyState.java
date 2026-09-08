@@ -205,9 +205,20 @@ public final class CrystalHollowsLobbyState {
     }
 
     public boolean expireRemoteSightings(long before) {
+        return expireRemoteSightings(before, null);
+    }
+
+    /** Removes only the disconnected provider's observations, retaining local evidence. */
+    public boolean clearRemoteSightings(String source) {
+        return expireRemoteSightings(Long.MAX_VALUE, Objects.requireNonNull(source));
+    }
+
+    public boolean expireRemoteSightings(long before, String source) {
         boolean changed = false;
         for (int index = sightings.size() - 1; index >= 0; index--) {
             StructureSighting sighting = sightings.get(index);
+            if (source != null && !source.equals(sighting.source())
+                    && !(source.equals("relay") && sighting.source().startsWith("relay:"))) continue;
             if (sighting.confidence() != SightingConfidence.SHARED_REMOTE || sighting.atMillis() >= before) continue;
             StructureSighting local = localFallbacks.remove(sighting);
             if (local == null) sightings.remove(index);

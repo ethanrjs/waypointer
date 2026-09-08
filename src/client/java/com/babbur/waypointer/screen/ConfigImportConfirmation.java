@@ -24,7 +24,7 @@ public final class ConfigImportConfirmation {
         Objects.requireNonNull(imported, "imported");
         Objects.requireNonNull(completion, "completion");
 
-        int changedSettings = SettingsCatalog.countChangedSettings(current, imported);
+        int changedSettings = SettingsCatalog.countImportedSettings(current, imported);
         Minecraft minecraft = Minecraft.getInstance();
         ConfirmScreen confirmScreen = new ConfirmScreen(
                 confirmed -> {
@@ -45,7 +45,7 @@ public final class ConfigImportConfirmation {
                                    boolean confirmed) {
         Objects.requireNonNull(current, "current");
         Objects.requireNonNull(imported, "imported");
-        int changedSettings = SettingsCatalog.countChangedSettings(current, imported);
+        int changedSettings = SettingsCatalog.countImportedSettings(current, imported);
         if (confirmed) current.replaceShareableSettingsWith(imported);
         return new Outcome(confirmed, changedSettings);
     }

@@ -11,6 +11,32 @@ public final class StructureRelayProtocol {
 
     private StructureRelayProtocol() {}
 
+    public static String connectionTiming(int day, long dayTicks, int closingInSeconds) {
+        StringBuilder query = new StringBuilder("&protocol=2");
+        timing(day, dayTicks, closingInSeconds).entrySet().forEach(entry ->
+                query.append('&').append(entry.getKey()).append('=').append(entry.getValue().getAsLong()));
+        return query.toString();
+    }
+
+    public static String sync(long age, int day, long dayTicks, int closingInSeconds) {
+        JsonObject json = timing(day, dayTicks, closingInSeconds);
+        json.addProperty("type", "sync");
+        json.addProperty("age", age);
+        return json.toString();
+    }
+
+    private static JsonObject timing(int day, long dayTicks, int closingInSeconds) {
+        JsonObject json = new JsonObject();
+        if (day >= 0 && day <= 1_000_000_000) json.addProperty("day", day);
+        if (dayTicks >= 0 && dayTicks <= MAX_AGE) json.addProperty("dayTicks", dayTicks);
+        if (closingInSeconds >= 0 && closingInSeconds <= 3599) {
+            json.addProperty("closingInSeconds", closingInSeconds);
+        }
+        return json;
+    }
+
+    public record Update(boolean snapshot, List<StructureSighting> sightings) {}
+
     public static boolean validServer(String server) {
         return server != null && server.matches("m(?:ini)?[0-9]{1,6}[a-z]{0,3}");
     }
@@ -49,21 +75,27 @@ public final class StructureRelayProtocol {
     }
 
     public static List<StructureSighting> decode(String message, long age, long now) {
-        if (message == null || message.length() > MAX_MESSAGE || age < 0 || age > MAX_AGE) return List.of();
+        Update update = decodeUpdate(message, age, now);
+        return update == null ? List.of() : update.sightings();
+    }
+
+    /** A null result is invalid; a valid empty snapshot must still clear stale relay data. */
+    public static Update decodeUpdate(String message, long age, long now) {
+        if (message == null || message.length() > MAX_MESSAGE || age < 0 || age > MAX_AGE) return null;
         try {
             JsonObject json = JsonParser.parseString(message).getAsJsonObject();
             String type = json.get("type").getAsString();
             List<StructureSighting> result = new ArrayList<>();
             if (type.equals("snapshot")) {
                 var sightings = json.getAsJsonArray("sightings");
-                if (sightings.size() > 128) return List.of();
+                if (sightings.size() > 128) return null;
                 for (var value : sightings) result.add(decodeSighting(value.getAsJsonObject(), age, now));
             } else if (type.equals("sighting")) {
                 result.add(decodeSighting(json, age, now));
-            }
-            return List.copyOf(result);
+            } else return null;
+            return new Update(type.equals("snapshot"), List.copyOf(result));
         } catch (RuntimeException invalid) {
-            return List.of();
+            return null;
         }
     }
 
@@ -79,9 +111,11 @@ public final class StructureRelayProtocol {
         int z = Math.toIntExact(integer(json, "z"));
         long observedAge = integer(json, "age");
         long at = integer(json, "at");
+        long observedAt = json.has("observedAt") ? integer(json, "observedAt") : at;
         if (!CrystalHollowsGeometry.insideHollows(x, y, z)
                 || observedAge < 0 || observedAge > MAX_AGE
                 || at < now - 1_800_000 || at > now + 60_000
+                || observedAt < 0 || observedAt > at || observedAt > now + 60_000
                 || Math.abs(observedAge + Math.max(0, now - at) / 50 - age) > 1_200) {
             throw new IllegalArgumentException();
         }
@@ -106,7 +140,7 @@ public final class StructureRelayProtocol {
             source += ":" + reporter.getAsString();
         }
         return new StructureSighting(structure, x, y, z, SightingConfidence.SHARED_REMOTE,
-                source, at, List.of(), "", evidence);
+                source, observedAt, List.of(), "", evidence);
     }
 
     private static long integer(JsonObject json, String key) {

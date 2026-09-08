@@ -239,7 +239,6 @@
   "waypointer.dungeon.command.route.reset": "%1$s க்கான பாதை முன்னேற்றத்தை மீட்டமைக்கவும்.",
   "waypointer.dungeon.command.route.secret_found": "குறிக்கப்பட்ட ரகசியம் #%1$s கண்டுபிடிக்கப்பட்டது.",
   "waypointer.dungeon.command.rotate.automatic": "தற்போதைய அறைக்கான தானியங்கி சுழற்சி மீட்டெடுக்கப்பட்டது.",
-  "waypointer.dungeon.command.error.create_room_first": "/wpd room create <id> [name] உடன் முதலில் ஒரு அறை வரையறை உருவாக்கவும்.",
   "waypointer.common.none": "(எதுவும் இல்லை)",
   "waypointer.command.help.title": "Waypointer உதவி",
   "waypointer.command.help.sections": "பிரிவுகள்: ",
