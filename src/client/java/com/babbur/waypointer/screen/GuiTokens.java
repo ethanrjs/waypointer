@@ -172,7 +172,7 @@ public final class GuiTokens {
     }
 
     /** Minecraft's visible pixel glyphs are 8px tall even though the font line box is 9px. */
-    static int opticalTextY(int controlY, int controlHeight) {
+    public static int opticalTextY(int controlY, int controlHeight) {
         return controlY + (controlHeight - StyledButton.VISIBLE_GLYPH_HEIGHT) / 2;
     }
 

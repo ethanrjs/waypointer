@@ -34,6 +34,7 @@ public abstract class ClientPacketListenerMixin {
 
     @Inject(method = "handleParticleEvent", at = @At("TAIL"))
     private void waypointer$onParticleEvent(ClientboundLevelParticlesPacket packet, CallbackInfo ci) {
+        com.babbur.waypointer.diana.DianaController.onParticlePacket(packet);
         CrystalHollowsParticleHook.onParticlePacket(
                 packet.getParticle().getType(),
                 packet.getX(),

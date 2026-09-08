@@ -13,6 +13,42 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PublishedRoutesModelTest {
     @Test
+    void searchIncludesLaterPagesAndFriendlyZonesAndSurvivesReplacement() {
+        PublishedRoutesModel model = modelWithFiveRoutes();
+        model.setRowsPerPage(2);
+        model.changePage(1);
+        model.setQuery("TITLE 4");
+        assertEquals(0, model.page());
+        assertEquals(List.of(publication(4)), model.visiblePublications());
+        assertEquals("TITLE 4", model.query());
+
+        model.replace(List.of(publication(0), publication(4)));
+        assertEquals(List.of(publication(4)), model.publications());
+        model.setQuery(" Crystal Hollows ");
+        assertEquals(2, model.publications().size());
+        model.setQuery("missing");
+        assertTrue(model.publications().isEmpty());
+        model.setQuery("");
+        assertEquals(2, model.publications().size());
+    }
+
+    @Test
+    void searchKeepsUnlistedBundles() {
+        CatalogPublication route = publication(0);
+        CatalogPublication bundle = new CatalogPublication(
+                "unlisted-bundle", route.publisherId(), route.publisherName(),
+                "Mining bundle", route.description(),
+                com.babbur.waypointer.catalog.CatalogPublishRequest.Visibility.UNLISTED,
+                "multiple", route.version(), route.codecVersion(), route.serverCreatedAt(),
+                "/r/unlisted-bundle", route.apiRoot(), route.payloadSha256(), route.recordedAt());
+        PublishedRoutesModel model = new PublishedRoutesModel();
+        model.setRowsPerPage(1);
+        model.replace(List.of(route, bundle));
+        model.setQuery("bundle");
+        assertEquals(List.of(bundle), model.visiblePublications());
+    }
+
+    @Test
     void pageChangeClearsSelectionAndHiddenIdsCannotBeSelected() {
         PublishedRoutesModel model = modelWithFiveRoutes();
         model.setRowsPerPage(2);

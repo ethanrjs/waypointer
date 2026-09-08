@@ -79,9 +79,9 @@ class SettingsCatalogTest {
                 .findFirst().orElseThrow();
 
         assertEquals("crystalHollowsEnabled", category.masterSettingId());
-        assertEquals(List.of("crystal_hollows_structures", "wishing_compass"),
+        assertEquals(List.of("crystal_hollows_structures", "minimap", "wishing_compass"),
                 category.groups().stream().map(SettingsCatalog.Group::id).toList());
-        assertEquals(11, category.groups().stream()
+        assertEquals(17, category.groups().stream()
                 .flatMap(group -> group.settings().stream()).count());
         assertTrue(category.groups().stream()
                 .flatMap(group -> group.settings().stream())
@@ -98,6 +98,16 @@ class SettingsCatalogTest {
         assertEquals(true, sharing.get(config, null));
         sharing.set(config, null, false);
         assertFalse(config.crystalHollowsRemoteSharing());
+        Setting tracers = SettingsCatalog.byId("crystalHollowsTracers");
+        assertNotNull(tracers);
+        assertEquals(true, tracers.get(config, null));
+        tracers.set(config, null, false);
+        assertFalse(config.crystalHollowsTracers());
+        Setting autoFocus = SettingsCatalog.byId("crystalHollowsCompassAutoFocus");
+        assertNotNull(autoFocus);
+        assertEquals(true, autoFocus.get(config, null));
+        autoFocus.set(config, null, false);
+        assertFalse(config.crystalHollowsCompassAutoFocus());
         Setting hideStructures = SettingsCatalog.byId("crystalHollowsHideStructuresFolder");
         assertNotNull(hideStructures);
         assertEquals("Hide Structures folder", hideStructures.label());
@@ -111,9 +121,27 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void minimapControlsAndDianaToggleUseTheirConfigValues() {
+        WaypointerConfig config = new WaypointerConfig();
+        Setting corner = SettingsCatalog.byId("crystalHollowsMinimapCorner");
+        assertEquals(Setting.Kind.ENUM, corner.kind());
+        assertEquals(List.of(0, 1, 2, 3), corner.enumOptions().stream()
+                .map(Setting.EnumOption::value).toList());
+        corner.set(config, null, 3);
+        assertEquals(3, config.crystalHollowsMinimapCorner());
+        Setting size = SettingsCatalog.byId("crystalHollowsMinimapSize");
+        size.set(config, null, 200.0);
+        assertEquals(200, config.crystalHollowsMinimapSize());
+        Setting diana = SettingsCatalog.byId("dianaWaypointsEnabled");
+        assertEquals("diana", categoryContaining(diana.id()));
+        diana.set(config, null, false);
+        assertFalse(config.dianaWaypointsEnabled());
+    }
+
+    @Test
     void categoryOrderIncludesFunctionalMiningWithoutAnEmptyForagingPage() {
         assertEquals(List.of("waypoints", "appearance", "routes", "dungeons", "mining",
-                        "chat", "sharing", "feature_bloat", "system"),
+                        "diana", "chat", "sharing", "feature_bloat", "system"),
                 SettingsCatalog.categories().stream()
                         .map(SettingsCatalog.Category::id)
                         .toList());

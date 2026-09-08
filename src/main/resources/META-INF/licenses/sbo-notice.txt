@@ -1,0 +1,12 @@
+Waypointer Diana waypoint geometry and packet signatures reference Skyblock Overhaul:
+https://github.com/SkyblockOverhaul/SBO
+Reference revision: ad7f632998f824974ccc5c25c7e23dce97dc6a79 (2026-09-07).
+
+PreciseGuessBurrow.kt: cubic spade trajectory and initial control-point geometry.
+ParticleTypes.kt and BurrowDetector.kt: burrow particle signatures and removal signals.
+
+Copyright SkyblockOverhaul contributors.
+Licensed under the Apache License, Version 2.0 (see sbo-apache-2.0.txt).
+
+Waypointer changes: Java implementation, normalized QR fit, sample and convergence
+validation, cast ownership/window, temporary marker lifecycle, and native renderer integration.

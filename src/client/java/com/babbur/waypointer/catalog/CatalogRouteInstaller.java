@@ -6,17 +6,17 @@ import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.CatalogRouteProvenance;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public final class CatalogRouteInstaller {
-    private static final int MAX_CATALOG_GROUPS = 64;
-    private static final int MAX_CATALOG_WAYPOINTS = 10_000;
-
     private CatalogRouteInstaller() {
     }
 
@@ -28,12 +28,6 @@ public final class CatalogRouteInstaller {
         CatalogProtocol.PayloadManifest manifest = CatalogProtocol.inspectPayload(details.payload());
         WaypointImporter.ImportResult result = WaypointImporter.validatePreparedImport(
                 WaypointImporter.Source.WAYPOINTER, manifest.groups(), manifest.label());
-
-        int groupCount = result.groups().size();
-        int waypointCount = result.groups().stream().mapToInt(WaypointGroup::size).sum();
-        if (groupCount > MAX_CATALOG_GROUPS || waypointCount > MAX_CATALOG_WAYPOINTS) {
-            throw new IllegalArgumentException("Catalog route exceeds install limits");
-        }
 
         CatalogProtocol.validateSummaryAgainstPayload(expected, manifest);
         return new PreparedRoute(expected, result, manifest.payloadSha256());
@@ -65,10 +59,28 @@ public final class CatalogRouteInstaller {
                 prepared.payloadSha256);
         List<WaypointGroup> groups = prepared.detachedGroups(
                 normalizedApiRoot, priorGroups);
-        manager.replaceGroupsAtomically(
-                prior.matchingGroupIds(), groups,
-                transferredFolderMemberships(manager, priorGroups, groups),
-                replacementAnchors(priorGroups, groups));
+        Set<String> enabledRooms = groups.stream()
+                .filter(group -> group.routeKind() == WaypointGroup.RouteKind.DUNGEON && group.enabled())
+                .map(WaypointGroup::zoneId).collect(Collectors.toSet());
+        List<WaypointGroup> overlapping = manager.allGroups().stream()
+                .filter(group -> group.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                        && !group.temp() && !group.runtimeOnly() && group.enabled()
+                        && enabledRooms.contains(group.zoneId())
+                        && !prior.matchingGroupIds().contains(group.id()))
+                .toList();
+        DungeonRoomRouteSync.batched(() -> {
+            // Keep old room routes available, while making the newly installed pack active.
+            overlapping.forEach(group -> group.setEnabled(false));
+            try {
+                manager.replaceGroupsAtomically(
+                        prior.matchingGroupIds(), groups,
+                        transferredFolderMemberships(manager, priorGroups, groups),
+                        replacementAnchors(priorGroups, groups));
+            } catch (RuntimeException failure) {
+                overlapping.forEach(group -> group.setEnabled(true));
+                throw failure;
+            }
+        });
 
         int waypointCount = groups.stream().mapToInt(WaypointGroup::size).sum();
         return new ImportSummary(

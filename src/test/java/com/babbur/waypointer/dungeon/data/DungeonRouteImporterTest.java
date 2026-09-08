@@ -20,6 +20,7 @@ import java.util.Objects;
 import java.util.zip.GZIPOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -72,7 +73,7 @@ class DungeonRouteImporterTest {
 
         assertEquals(DungeonRouteImporter.Format.SECRET_ROUTES, result.format());
         assertEquals(2, result.groups().size());
-        assertEquals(5, result.waypointCount());
+        assertEquals(9, result.waypointCount());
         assertEquals(0, result.skippedVariants());
         assertEquals(List.of("Definitely-Not-A-Room-9"), result.unmatchedRooms());
 
@@ -95,11 +96,70 @@ class DungeonRouteImporterTest {
         assertEquals(77, bat.y());
         assertEquals(10, bat.z());
 
-        Waypoint item = room.waypoints().get(3);
+        Waypoint item = room.waypoints().get(5);
         assertTrue(item.hasFlag(Waypoint.FLAG_DUNGEON_ITEM));
         assertTrue(item.hasFlag(Waypoint.FLAG_DUNGEON_SECRET));
 
         assertEquals("Arrow Trap, route 2", result.groups().get(1).name());
+    }
+
+    @Test
+    void secretRoutesKeepEditablePathGuidesWithoutAddingCompletionSteps() {
+        WaypointGroup room = DungeonRouteImporter.parse(SECRET_ROUTES_JSON).groups().getFirst();
+        assertEquals(2, room.mainWaypointCount());
+        Waypoint guide = room.get(3);
+        assertEquals(14, guide.x());
+        assertEquals(19, room.get(4).x());
+        assertEquals(0, room.parentMainIndex(3));
+        assertEquals(5, room.parentMainIndex(6));
+        assertTrue(guide.isSubwaypoint());
+        assertTrue(guide.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT));
+        assertTrue(guide.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT));
+        assertEquals(0, guide.flags() & (Waypoint.DUNGEON_COMPLETION_FLAGS | Waypoint.FLAG_DUNGEON_SECRET));
+        room.advancePast(0);
+        room.advancePast(1);
+        room.advancePast(2);
+        assertEquals(5, room.currentIndex(), "passive guides must not block the next secret stage");
+        room.set(3, guide.withColor(0x123456));
+        WaypointGroup saved = DungeonRoomShareCodec.decode(
+                DungeonRoomShareCodec.encode(List.of(room))).routes().getFirst();
+        assertEquals(room.waypoints(), saved.waypoints());
+    }
+
+    @Test
+    void currentPackExitsAreWalkingStepsRatherThanSecrets() {
+        for (String type : List.of("exit", "exitroute")) {
+            Waypoint exit = DungeonRouteImporter.parse("{\"Arrow-Trap-1\":[{\"secret\":{\"type\":\""
+                    + type + "\",\"location\":[1,70,1]}}]}")
+                    .groups().getFirst().get(0);
+            assertEquals("Exit", exit.name());
+            assertTrue(exit.hasFlag(Waypoint.FLAG_SKIP_ON_STAND));
+            assertEquals(0, exit.flags() & (Waypoint.FLAG_SKIP_ON_INTERACT | Waypoint.FLAG_DUNGEON_SECRET));
+        }
+    }
+
+    @Test
+    void navigationStagesDoNotCreateCollectiblesOrDummyOriginTargets() {
+        WaypointGroup route = DungeonRouteImporter.parse("""
+                {"Arrow-Trap-1":[
+                  {"locations":[[25,80,9],[25,69,9]],"etherwarps":[[25,68,9]],
+                   "secret":{"type":"dummy","location":[0,0,0]}},
+                  {"locations":[[10,70,10]],"secret":{"type":"dummy","location":[0,0,0]}},
+                  {"secret":{"type":"prince","location":[12,70,12]}}
+                ]}
+                """).groups().getFirst();
+
+        assertEquals(3, route.mainWaypointCount());
+        assertEquals(6, route.size());
+        for (Waypoint point : route.waypoints()) {
+            assertFalse(point.hasFlag(Waypoint.FLAG_DUNGEON_SECRET));
+            assertFalse(point.x() == 0 && point.y() == 0 && point.z() == 0);
+        }
+        assertEquals("Move", route.get(3).name());
+        assertEquals(10, route.get(3).x());
+        assertEquals("Prince", route.get(5).name());
+        assertEquals(0xFFC0CB, route.get(5).color());
+        assertTrue(route.get(5).hasFlag(Waypoint.FLAG_SKIP_ON_STAND));
     }
 
     @Test
@@ -315,15 +375,81 @@ class DungeonRouteImporterTest {
 
         Waypoint ether = altar.waypoints().get(1);
         assertTrue(ether.hasFlag(Waypoint.FLAG_DUNGEON_ETHERWARP));
+        assertFalse(ether.hasFlag(Waypoint.FLAG_DEPTH_CHECKED),
+                "an explicit Odin depth setting must not be replaced by type defaults");
 
         Waypoint legacySecret = altar.waypoints().get(2);
         assertTrue(legacySecret.hasFlag(Waypoint.FLAG_DUNGEON_SECRET),
                 "legacy 'secret: true' waypoints with flat x/y/z should still import");
         assertEquals(0x112233, legacySecret.color());
+        assertTrue(legacySecret.hasFlag(Waypoint.FLAG_DEPTH_CHECKED));
 
         Waypoint marker = altar.waypoints().get(3);
         assertTrue(marker.isSubwaypoint(), "untyped waypoints import as persistent markers");
         assertEquals("watch the trap", marker.name());
+    }
+
+    @Test
+    void keepsOdinLeadingMarkerStylesAndLegacyCoordinatesInEditableRoutes() {
+        String json = """
+                {"Altar": [
+                  {"blockPos":{"field_11175":2,"field_11174":71,"field_11173":3},
+                   "title":"\\u00A7aUseful\\nmarker", "color":"#12AB3480", "filled":true, "depth":true},
+                  {"blockPos":{"x":4,"y":72,"z":5}, "type":"SECRET", "title":"Enter text"},
+                  {"blockPos":{"x":6,"y":73,"z":7}, "title":"Enter text", "filled":false}
+                ]}
+                """;
+
+        DungeonRouteImporter.Result result = DungeonRouteImporter.parse(json);
+        WaypointGroup route = result.groups().getFirst();
+        assertEquals(3, result.waypointCount());
+        assertEquals(WaypointGroup.RouteKind.DUNGEON, route.routeKind());
+        assertEquals(WaypointGroup.GradientMode.MANUAL, route.gradientMode());
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, route.loadMode());
+        assertFalse(route.runtimeOnly());
+        assertFalse(route.temp());
+        assertEquals("Secret 1", route.get(0).name());
+        Waypoint marker = route.get(1);
+        assertTrue(marker.isSubwaypoint());
+        assertTrue(marker.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT));
+        assertTrue(marker.hasFlag(Waypoint.FLAG_DEPTH_CHECKED));
+        assertEquals(2, marker.x());
+        assertEquals(71, marker.y());
+        assertEquals(3, marker.z());
+        assertEquals(0x12AB34, marker.color());
+        assertEquals(com.babbur.waypointer.codec.WaypointCodec.Options.sanitizeLabel(
+                "\u00A7aUseful\nmarker"), marker.name());
+        assertEquals("", route.get(2).name());
+
+        route.set(1, marker.withName("My marker").withColor(0xABCDE0));
+        WaypointGroup saved = DungeonRoomShareCodec.decode(
+                DungeonRoomShareCodec.encode(List.of(route))).routes().getFirst();
+        assertEquals(route.waypoints(), saved.waypoints());
+    }
+
+    @Test
+    void reportsOnlyWaypointsInReturnedGroupsIncludingPearlTargets() {
+        String secretRoutes = """
+                {"Arrow-Trap-1":[{
+                  "locations":[[1,70,1],[2,70,2]], "enderpearls":[[1,70,1]],
+                  "secret":{"type":"interact","location":[3,70,3]}
+                }]}
+                """;
+        DungeonRouteImporter.Result pearl = DungeonRouteImporter.parse(secretRoutes);
+        assertEquals(5, pearl.waypointCount());
+        assertEquals(5, pearl.groups().getFirst().size());
+        assertTrue(pearl.groups().getFirst().get(1).hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET));
+
+        String odinAliases = """
+                {
+                  "Altar":[{"blockPos":{"x":1,"y":70,"z":1},"type":"SECRET"}],
+                  "altar":[{"blockPos":{"x":2,"y":70,"z":2},"type":"SECRET"}]
+                }
+                """;
+        DungeonRouteImporter.Result aliases = DungeonRouteImporter.parse(odinAliases);
+        assertEquals(1, aliases.groups().size());
+        assertEquals(1, aliases.waypointCount());
+        assertEquals(2, aliases.groups().getFirst().get(0).x());
     }
 
     @Test

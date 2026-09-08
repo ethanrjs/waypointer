@@ -18,7 +18,7 @@ final class CatalogJson {
     private static final Pattern CATALOG_CURSOR = Pattern.compile("[A-Za-z0-9_-]{1,683}");
     private static final int MAX_ROUTES = 50;
     private static final int MAX_TEXT = 512;
-    private static final int MAX_PAYLOAD = 256 * 1024;
+    private static final int MAX_PAYLOAD = CatalogProtocol.MAX_PAYLOAD_CHARS;
 
     private CatalogJson() {
     }

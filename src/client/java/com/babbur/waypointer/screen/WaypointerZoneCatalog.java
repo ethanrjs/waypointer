@@ -3,6 +3,7 @@ package com.babbur.waypointer.screen;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.data.DungeonRoomCatalogEntry;
 
@@ -132,12 +133,8 @@ final class WaypointerZoneCatalog {
         return count;
     }
 
-    static int dungeonRoomGroupCount(ActiveGroupManager manager) {
-        int count = 0;
-        for (WaypointGroup group : manager.allGroups()) {
-            if (!group.temp() && group.routeKind() == WaypointGroup.RouteKind.DUNGEON) count++;
-        }
-        return count;
+    static int dungeonSecretRoomCount(ActiveGroupManager manager) {
+        return DungeonRoomRouteLibrary.secretRoomCount(manager.allGroups());
     }
 
     static boolean isTemporaryZone(String zoneId) {
@@ -254,7 +251,7 @@ final class WaypointerZoneCatalog {
             return false;
         }
         if (isDungeonRoomsZone(zoneId)) {
-            return dungeonRoomGroupCount(manager) > 0;
+            return dungeonSecretRoomCount(manager) > 0;
         }
         return normalGroupCountForZone(manager, zoneId) > 0;
     }

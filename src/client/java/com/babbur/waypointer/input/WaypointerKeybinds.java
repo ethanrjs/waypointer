@@ -324,8 +324,13 @@ public final class WaypointerKeybinds {
 
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         int flags = WaypointRepositionMode.defaultDungeonEditFlags(target);
-        target.add(DungeonRoomWaypointPlacement.toStoredWaypoint(target, new Waypoint(
-                pos.x(), pos.y(), pos.z(), "", config.defaultWaypointColor(), flags, 0.0)));
+        Waypoint stored = DungeonRoomWaypointPlacement.toStoredWaypoint(target, new Waypoint(
+                pos.x(), pos.y(), pos.z(), "", config.defaultWaypointColor(), flags, 0.0));
+        if (stored == null) {
+            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage());
+            return;
+        }
+        target.add(stored);
         addFlow.afterWaypointAdded(target, target.size() - 1,
                 config.showWaypointChatShareButtons());
         manager.fireDataChanged();

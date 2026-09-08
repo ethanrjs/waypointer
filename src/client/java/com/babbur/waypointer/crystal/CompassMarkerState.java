@@ -5,15 +5,29 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Client-thread-only arrival state; removed markers are not retained or exported. */
+/** Client-thread-only compass and arrival state; removed markers are not retained or exported. */
 public final class CompassMarkerState {
     private static final List<WeakReference<Waypoint>> arrived = new ArrayList<>();
+    private static final List<WeakReference<Waypoint>> targets = new ArrayList<>();
 
     private CompassMarkerState() {}
 
     public static boolean arrived(Waypoint waypoint) {
-        arrived.removeIf(reference -> reference.get() == null);
-        for (WeakReference<Waypoint> reference : arrived) {
+        return contains(arrived, waypoint);
+    }
+
+    public static boolean isTarget(Waypoint waypoint) {
+        return contains(targets, waypoint);
+    }
+
+    static void markTarget(Waypoint waypoint) {
+        if (!isTarget(waypoint)) targets.add(new WeakReference<>(waypoint));
+    }
+
+    private static boolean contains(List<WeakReference<Waypoint>> markers, Waypoint waypoint) {
+        if (waypoint == null) return false;
+        markers.removeIf(reference -> reference.get() == null);
+        for (WeakReference<Waypoint> reference : markers) {
             if (reference.get() == waypoint) return true;
         }
         return false;

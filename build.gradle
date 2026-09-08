@@ -122,6 +122,8 @@ def retainLaunchLogs = tasks.register('retainLaunchLogs', Sync) {
 }
 tasks.named('runClientGameTest') {
 	timeout = java.time.Duration.ofMinutes(5)
+	// GUI scale 4 requires at least 960 framebuffer rows; smaller windows silently clamp it.
+	args '--width', '1708', '--height', '960'
 	finalizedBy retainLaunchLogs
 }
 

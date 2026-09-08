@@ -117,10 +117,12 @@ public final class WaypointerRenderPipelines {
                                                    boolean smooth) {
         var builder = RenderPipeline.builder(RenderPipelines.LINES_SNIPPET)
                 .withLocation(location)
-                .withDepthStencilState(depth);
+                .withDepthStencilState(depth)
+                // Navigation markers keep their configured color beyond the world's fog distance.
+                .withFragmentShader(Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "core/screen_line"));
         if (smooth) {
             Identifier shader = Identifier.fromNamespaceAndPath(Waypointer.MOD_ID, "core/antialiased_lines");
-            builder.withVertexShader(shader).withFragmentShader(shader)
+            builder.withVertexShader(shader).withShaderDefine("ANTIALIASING")
                     .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT));
         }
         return builder.build();

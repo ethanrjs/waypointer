@@ -1,6 +1,7 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.codec.UniversalShareCodec;
+import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.catalog.CatalogPublishRequest;
 import com.babbur.waypointer.catalog.CatalogApiException;
 import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
@@ -10,7 +11,7 @@ import com.babbur.waypointer.catalog.RouteCatalogClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.WaypointGroup;
-import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -92,6 +93,7 @@ public final class RoutePublishScreen extends Screen {
     private Button backButton;
     private Button copyButton;
     private Button manageButton;
+    private Button addRoutesButton;
 
     private int panelX;
     private int panelY;
@@ -150,6 +152,15 @@ public final class RoutePublishScreen extends Screen {
                 parent, config, group, RouteCatalogClient.production(),
                 PublisherIdentityStore.defaultLocation(),
                 CatalogPublicationRegistry.defaultLocation()));
+    }
+
+    static void open(Screen parent, WaypointerConfig config, List<WaypointGroup> groups) {
+        if (!CatalogPublishFormModel.eligibleBundle(groups)) return;
+        RoutePublishScreen screen = new RoutePublishScreen(parent, config, groups.getFirst(),
+                RouteCatalogClient.production(), PublisherIdentityStore.defaultLocation(),
+                CatalogPublicationRegistry.defaultLocation());
+        screen.addRoutes(groups);
+        MinecraftCompat.setScreen(Minecraft.getInstance(), screen);
     }
 
     @Override
@@ -212,7 +223,7 @@ public final class RoutePublishScreen extends Screen {
         int margin = tight ? GAP : PANEL_MARGIN;
         int pad = tight ? GAP : PAD_OUTER;
         showDetail = !tight;
-        showPaintNotice = customPaintOmitted(group);
+        showPaintNotice = form.groups().stream().anyMatch(RoutePublishScreen::customPaintOmitted);
         statusLines = tight ? 1 : STATUS_LINES;
 
         int availableW = Math.max(FORM_W_MIN, width - (margin + pad) * 2);
@@ -222,7 +233,7 @@ public final class RoutePublishScreen extends Screen {
         measureFooter();
 
         int headerH = LINE_H * 2 + GAP;
-        int copyRowH = publishState.result() == null ? 0 : BTN_H + GAP;
+        int copyRowH = BTN_H + GAP;
         int footerH = BTN_H + copyRowH;
         int chromeH = pad * 2 + headerH + GAP + statusLines * LINE_H + GAP_TIGHT + footerH;
         int bodyH = formHeight();
@@ -309,7 +320,16 @@ public final class RoutePublishScreen extends Screen {
                         "waypointer.screen.route_publish.action.manage.tooltip")));
         addRenderableWidget(manageButton);
 
-        copyButton = styledButton(manageX, copyY, copyW, BTN_H,
+        int actionWidth = publishState.result() == null ? contentW : (contentW - GAP) / 2;
+        addRoutesButton = styledButton(gridX, copyY, actionWidth, BTN_H,
+                Component.translatable(form.group().routeKind() == WaypointGroup.RouteKind.DUNGEON
+                        ? "waypointer.screen.route_publish.action.add_room_routes"
+                        : "waypointer.screen.route_publish.action.add_routes"),
+                button -> addMoreRoutes(), Tooltip.create(selectedRoutesSummary()));
+        addRenderableWidget(addRoutesButton);
+
+        copyButton = styledButton(gridX + (contentW + GAP) / 2, copyY,
+                (contentW - GAP) / 2, BTN_H,
                 copyLabel(), button -> copyPublishedCode(),
                 Tooltip.create(Component.translatable(
                         "waypointer.screen.route_publish.action.copy.tooltip")));
@@ -317,7 +337,7 @@ public final class RoutePublishScreen extends Screen {
 
         Component publishTooltip = Component.translatable(
                 "waypointer.screen.route_publish.action.publish.tooltip");
-        if (customPaintOmitted(group)) {
+        if (form.groups().stream().anyMatch(RoutePublishScreen::customPaintOmitted)) {
             publishTooltip = Component.empty().append(publishTooltip)
                     .append("\n").append(paintOmittedNotice());
         }
@@ -329,6 +349,38 @@ public final class RoutePublishScreen extends Screen {
 
     private static Component copyLabel() {
         return Component.translatable("waypointer.screen.route_publish.action.copy");
+    }
+
+    private void addMoreRoutes() {
+        if (publishState.phase().busy()) return;
+        WaypointerScreen picker = new WaypointerScreen(WaypointerClient.manager(), config);
+        picker.publishDraft = this;
+        picker.selectedZoneId = form.group().routeKind() == WaypointGroup.RouteKind.DUNGEON
+                ? WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID : form.group().zoneId();
+        MinecraftCompat.setScreen(minecraft, picker);
+    }
+
+    CatalogPublishFormModel draftForm() {
+        return form;
+    }
+
+    void addRoutes(List<WaypointGroup> routes) {
+        if (!publishState.phase().busy()) form.addGroups(routes);
+    }
+
+    private Component selectedRoutesSummary() {
+        MutableComponent summary = Component.empty();
+        List<WaypointGroup> routes = form.groups();
+        for (WaypointGroup route : routes.subList(0, Math.min(8, routes.size()))) {
+            if (!summary.getString().isEmpty()) summary.append("\n");
+            summary.append(displayRouteName(route)).append(" · ")
+                    .append(WaypointerZoneCatalog.displayZoneLabel(route.zoneId()));
+        }
+        int remaining = routes.size() - 8;
+        if (remaining > 0) summary.append("\n").append(Component.translatable(remaining == 1
+                ? "waypointer.screen.export.preview.more.one"
+                : "waypointer.screen.export.preview.more.many", remaining));
+        return summary;
     }
 
     private void chooseVisibility(CatalogPublishRequest.Visibility next) {
@@ -474,6 +526,8 @@ public final class RoutePublishScreen extends Screen {
         return switch (validation) {
             case DUNGEON_ROUTE -> Component.translatable(
                     "waypointer.screen.route_publish.validation.dungeon");
+            case MIXED_ROUTES -> Component.translatable(
+                    "waypointer.screen.route_publish.validation.mixed_routes");
             case EMPTY_ROUTE -> Component.translatable(
                     "waypointer.screen.route_publish.validation.empty_route");
             case TEMPORARY_ROUTE -> Component.translatable(
@@ -502,6 +556,9 @@ public final class RoutePublishScreen extends Screen {
             backButton.active = controls.backEnabled();
         }
         if (manageButton != null) manageButton.active = controls.manageEnabled();
+        if (addRoutesButton != null) {
+            addRoutesButton.active = controls.editable();
+        }
         if (titleBox != null) titleBox.active = controls.editable();
         if (descriptionBox != null) descriptionBox.active = controls.editable();
         if (unlistedButton != null) unlistedButton.active = controls.editable();
@@ -644,8 +701,15 @@ public final class RoutePublishScreen extends Screen {
     }
 
     private void renderRouteSummary(GuiGraphicsExtractor graphics) {
-        String zone = Zone.fromId(group.zoneId()).displayName();
-        String count = waypointCount(group.size()).getString();
+        boolean dungeon = form.group().routeKind() == WaypointGroup.RouteKind.DUNGEON;
+        long zoneCount = dungeon ? DungeonRoomRouteLibrary.secretRoomCount(form.groups())
+                : form.groups().stream().map(WaypointGroup::zoneId).distinct().count();
+        String zone = Component.translatable(dungeon
+                        ? "waypointer.screen.route_publish.dungeon_bundle_summary"
+                        : "waypointer.screen.route_publish.bundle_summary",
+                form.groups().size(), zoneCount)
+                .getString();
+        String count = waypointCount(form.groups().stream().mapToLong(WaypointGroup::size).sum()).getString();
         String clippedZone = font.plainSubstrByWidth(zone,
                 Math.max(0, contentW - font.width(count) - GAP_SECTION));
         graphics.text(font, clippedZone, contentX, subtitleY, GuiTokens.ACCENT, false);
@@ -732,7 +796,7 @@ public final class RoutePublishScreen extends Screen {
             outcome = Component.translatable(
                     "waypointer.screen.route_publish.narration.ready");
         }
-        if (customPaintOmitted(group)) {
+        if (form.groups().stream().anyMatch(RoutePublishScreen::customPaintOmitted)) {
             outcome = Component.empty().append(paintOmittedNotice()).append(" ").append(outcome);
         }
         return Component.translatable(

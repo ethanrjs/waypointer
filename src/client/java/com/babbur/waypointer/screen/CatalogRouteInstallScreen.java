@@ -14,6 +14,7 @@ import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.Zone;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -26,6 +27,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 import static com.babbur.waypointer.screen.GuiTokens.ACCENT;
 import static com.babbur.waypointer.screen.GuiTokens.BORDER;
@@ -63,6 +65,7 @@ public final class CatalogRouteInstallScreen extends Screen {
     private boolean screenActive;
     private long fetchGeneration;
     private CatalogRouteInstaller.PreparedRoute prepared;
+    private String destinationZones = "";
     private boolean alreadyInstalled;
     private Component status = Component.translatable("waypointer.screen.catalog_install.loading");
     private int statusColor = TEXT_DIM;
@@ -202,6 +205,9 @@ public final class CatalogRouteInstallScreen extends Screen {
             statusColor = STATUS_ERROR;
         } else {
             prepared = result;
+            destinationZones = result.previewGroups().stream().map(WaypointGroup::zoneId)
+                    .distinct().map(id -> Zone.fromId(id).displayName())
+                    .collect(Collectors.joining(", "));
             CatalogInstallState installState = CatalogInstallState.inspect(
                     catalogClient.apiRoot(), result.summary(), manager.allGroups());
             alreadyInstalled = !installState.canInstall();
@@ -305,6 +311,15 @@ public final class CatalogRouteInstallScreen extends Screen {
                     groupCount(summary.groupCount()),
                     summary.zoneLabel()).getString(), contentW), contentX, y, TEXT_MUTED, false);
             y += LINE_H + GAP;
+            if ("multiple".equals(summary.zoneId())) {
+                List<FormattedCharSequence> zones = font.split(
+                        Component.literal(destinationZones), contentW);
+                for (int index = 0; index < Math.min(2, zones.size()); index++) {
+                    graphics.text(font, zones.get(index), contentX, y, ACCENT, false);
+                    y += LINE_H;
+                }
+                y += GAP_TIGHT;
+            }
             String description = summary.description() == null ? "" : summary.description().trim();
             Component body = description.isEmpty()
                     ? Component.translatable("waypointer.screen.catalog_install.no_description")

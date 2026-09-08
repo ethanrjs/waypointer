@@ -23,8 +23,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.event.client.player.ClientPreAttackCallback;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import com.babbur.waypointer.render.WorldOverlayCompat;
-import net.fabricmc.fabric.api.event.player.UseBlockCallback;
-import net.fabricmc.fabric.api.event.player.UseItemCallback;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -34,7 +32,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -97,17 +95,15 @@ public final class WaypointRepositionMode {
             if (!editModeEnabled) return false;
             return handleEditModeAttack(client, clickCount);
         });
-        UseItemCallback.EVENT.register((player, world, hand) ->
-                handleRightClick(world, player.getItemInHand(hand)));
-        UseBlockCallback.EVENT.register((player, world, hand, hitResult) ->
-                handleRightClick(world, player.getItemInHand(hand)));
         ClientTickEvents.END_CLIENT_TICK.register(WaypointRepositionMode::onTick);
         WorldOverlayCompat.register(WaypointRepositionMode::renderOutline);
     }
 
-    private static InteractionResult handleRightClick(Level world, ItemStack heldItem) {
-        if (!world.isClientSide() || (active == null && !editModeEnabled)) return InteractionResult.PASS;
-        return handleEditModeRightClick(Minecraft.getInstance(), heldItem);
+    public static boolean handleRightClick(Minecraft mc) {
+        if (mc == null || mc.player == null || mc.level == null
+                || (active == null && !editModeEnabled)) return false;
+        // Handle the click before vanilla routes it to a block, entity, or nonempty item.
+        return handleEditModeRightClick(mc, mc.player.getMainHandItem()) != InteractionResult.PASS;
     }
 
     public static boolean isEditModeEnabled() {
@@ -196,8 +192,13 @@ public final class WaypointRepositionMode {
 
         Minecraft mc = Minecraft.getInstance();
         // Reject edits that would disappear on the next room rebuild.
-        if (DungeonRoomRouteLibrary.durableEditTarget(manager, group) == null) {
+        WaypointGroup editTarget = DungeonRoomRouteLibrary.durableEditTarget(manager, group);
+        if (editTarget == null) {
             showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
+            return;
+        }
+        if (!DungeonRoomWaypointPlacement.canPlaceInCurrentRoom(editTarget)) {
+            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage());
             return;
         }
         Waypoint waypoint = group.get(waypointIndex);
@@ -358,8 +359,14 @@ public final class WaypointRepositionMode {
             return InteractionResult.FAIL;
         }
         int flags = defaultDungeonEditFlags(group, mc.level, pos);
-        addStored(group, new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
-                "", editConfig.defaultWaypointColor(), flags, 0.0));
+        Waypoint stored = DungeonRoomWaypointPlacement.toStoredWaypoint(group,
+                new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
+                        "", editConfig.defaultWaypointColor(), flags, 0.0));
+        if (stored == null) {
+            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage());
+            return InteractionResult.FAIL;
+        }
+        group.add(stored);
         int index = group.size() - 1;
         new WaypointAddFlow().afterWaypointAdded(group, index,
                 editConfig.showWaypointChatShareButtons());
@@ -479,8 +486,12 @@ public final class WaypointRepositionMode {
             showStatus(mc, HELP_CONVERT_SECRETS_FIRST);
             return;
         }
-        DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(
-                target, session.waypointIndex, pos.getX(), pos.getY(), pos.getZ());
+        if (!DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(
+                target, session.waypointIndex, pos.getX(), pos.getY(), pos.getZ())) {
+            active = null;
+            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage());
+            return;
+        }
         session.manager.fireDataChanged();
         active = null;
         finishMoveSession(mc, session);
@@ -500,6 +511,11 @@ public final class WaypointRepositionMode {
         }
         int[] stored = DungeonRoomWaypointPlacement.toStoredPrecisePosition(writeTarget,
                 target.preciseX(), target.preciseY(), target.preciseZ());
+        if (stored == null) {
+            active = null;
+            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage());
+            return;
+        }
         writeTarget.moveWaypointToPrecise(session.waypointIndex, stored[0], stored[1], stored[2]);
         session.manager.fireDataChanged();
         active = null;
@@ -518,10 +534,6 @@ public final class WaypointRepositionMode {
         if (session.reopenEditorAfterCommit()) {
             reopenEditor(mc, session);
         }
-    }
-
-    private static void addStored(WaypointGroup group, Waypoint actualWaypoint) {
-        group.add(DungeonRoomWaypointPlacement.toStoredWaypoint(group, actualWaypoint));
     }
 
     private static boolean addBlockedByInstalledSecrets(Minecraft mc, ActiveGroupManager manager) {
@@ -576,7 +588,7 @@ public final class WaypointRepositionMode {
     }
 
     private static void renderOutline(LevelRenderContext ctx) {
-        if (active == null) return;
+        if (active == null && !editModeEnabled) return;
 
         Minecraft mc = Minecraft.getInstance();
         PoseStack ps = ctx.poseStack();
@@ -590,7 +602,7 @@ public final class WaypointRepositionMode {
         double maxY;
         double maxZ;
 
-        if (active.preciseSmallPlacement) {
+        if (active != null && active.preciseSmallPlacement) {
             PreciseTarget target = targetedPrecise(mc);
             if (target == null) return;
             minX = target.x();
@@ -625,8 +637,11 @@ public final class WaypointRepositionMode {
     }
 
     private static PreciseTarget targetedPrecise(Minecraft mc) {
-        if (mc == null || !(mc.hitResult instanceof BlockHitResult hit)) return null;
-        if (hit.getType() != HitResult.Type.BLOCK) return null;
+        return placementPrecise(placementHit(mc));
+    }
+
+    static PreciseTarget placementPrecise(BlockHitResult hit) {
+        if (hit == null) return null;
         Vec3 location = hit.getLocation();
         return new PreciseTarget(
                 Waypoint.snapToPreciseSixteenths(location.x),
@@ -635,9 +650,22 @@ public final class WaypointRepositionMode {
     }
 
     private static BlockPos targetedBlock(Minecraft mc) {
-        if (mc == null || !(mc.hitResult instanceof BlockHitResult hit)) return null;
-        if (hit.getType() != HitResult.Type.BLOCK) return null;
-        return hit.getBlockPos();
+        return placementBlock(placementHit(mc));
+    }
+
+    static BlockPos placementBlock(BlockHitResult hit) {
+        if (hit == null) return null;
+        return hit.getType() == HitResult.Type.BLOCK
+                ? hit.getBlockPos() : BlockPos.containing(hit.getLocation());
+    }
+
+    private static BlockHitResult placementHit(Minecraft mc) {
+        if (mc == null || mc.player == null || mc.level == null) return null;
+        Vec3 eye = mc.player.getEyePosition();
+        Vec3 end = eye.add(mc.player.getViewVector(1.0F).scale(mc.player.blockInteractionRange()));
+        // Outline shapes include non-solid blocks; ignore entities and keep the ray's air endpoint.
+        return mc.level.clip(new ClipContext(eye, end,
+                ClipContext.Block.OUTLINE, ClipContext.Fluid.ANY, mc.player));
     }
 
     private enum Mode {
@@ -645,7 +673,7 @@ public final class WaypointRepositionMode {
         ADD_WHERE_LOOKING
     }
 
-    private record PreciseTarget(int preciseX, int preciseY, int preciseZ) {
+    record PreciseTarget(int preciseX, int preciseY, int preciseZ) {
         double x() {
             return preciseX / (double) Waypoint.PRECISE_SCALE;
         }

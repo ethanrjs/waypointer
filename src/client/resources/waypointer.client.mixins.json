@@ -8,6 +8,7 @@
         "ClientPacketListenerMixin",
         "ContributorNameTagMixin",
         "GameRendererMixin",
+        "MinecraftMixin",
         "PlayerInfoMixin",
         "PlayerTabOverlayMixin"
     ],

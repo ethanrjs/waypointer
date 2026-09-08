@@ -3,6 +3,7 @@ package com.babbur.waypointer.dungeon;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
+import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -13,6 +14,18 @@ import java.util.function.Consumer;
 public final class DungeonRoomRouteLibrary {
 
     private DungeonRoomRouteLibrary() {}
+
+    /** Counts rooms once, excluding known zero-secret rooms and temporary or empty routes. */
+    public static int secretRoomCount(Collection<WaypointGroup> routes) {
+        if (routes == null) return 0;
+        return (int) routes.stream()
+                .filter(route -> route != null && !route.temp() && !route.runtimeOnly()
+                        && !route.isEmpty() && route.routeKind() == WaypointGroup.RouteKind.DUNGEON)
+                .map(WaypointGroup::zoneId).distinct()
+                .map(DungeonRoomData::entry)
+                .filter(room -> room == null || room.secretCount() != 0)
+                .count();
+    }
 
     public static WaypointGroup storedRouteForRoom(ActiveGroupManager manager, String roomId) {
         if (manager == null || roomId == null) return null;
@@ -103,10 +116,13 @@ public final class DungeonRoomRouteLibrary {
             imported.add(route);
         }
         if (imported.isEmpty()) return List.of();
+        var importedRooms = imported.stream().map(WaypointGroup::zoneId)
+                .collect(java.util.stream.Collectors.toSet());
         DungeonRoomRouteSync.batched(() -> {
             for (WaypointGroup existing : manager.allGroups()) {
                 if (!existing.temp() && !existing.runtimeOnly()
-                        && existing.routeKind() == WaypointGroup.RouteKind.DUNGEON) {
+                        && existing.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                        && importedRooms.contains(existing.zoneId())) {
                     existing.setEnabled(false);
                 }
             }

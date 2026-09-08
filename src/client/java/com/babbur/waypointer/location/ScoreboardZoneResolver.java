@@ -2,20 +2,15 @@ package com.babbur.waypointer.location;
 
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsSidebar;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.Minecraft;
 
 import java.util.Objects;
 import java.util.function.Consumer;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /** Detects SkyBlock zones from the sidebar every two ticks. */
 public final class ScoreboardZoneResolver implements ZoneSource {
-
-    /** Captures the location name before an optional coordinate suffix. */
-    private static final Pattern LOCATION_LINE = Pattern.compile(
-            "(?m)⏣[\\t ]*([^,\\r\\n]+?)[\\t ]*(?:,|$)");
 
     private static final int POLL_INTERVAL_TICKS = 2;
 
@@ -48,9 +43,9 @@ public final class ScoreboardZoneResolver implements ZoneSource {
 
     static Zone resolveSidebarText(String blob) {
         if (blob == null || blob.isBlank()) return null;
-        Matcher location = LOCATION_LINE.matcher(blob);
-        if (!location.find()) return null;
-
+        String area = CrystalHollowsSidebar.areaName(blob);
+        if (area == null || area.isBlank()) return null;
+        area = area.replaceFirst(",\\s*$", "");
 
         Zone mineshaftType = Zone.tryResolveMineshaftTypeFromSidebarBlob(blob);
         if (mineshaftType != null) return mineshaftType;
@@ -59,6 +54,10 @@ public final class ScoreboardZoneResolver implements ZoneSource {
         Zone catacombsFloor = CatacombsFloorRefiner.tryResolveFromSidebarBlob(blob);
         if (catacombsFloor != null) return catacombsFloor;
 
-        return Zone.resolveFromDisplayName(location.group(1).trim());
+        if (CrystalHollowsSidebar.zoneForArea(area) != null
+                || CrystalHollowsSidebar.structureForArea(area) != null) {
+            return Zone.fromId("crystal_hollows");
+        }
+        return Zone.resolveFromDisplayName(area);
     }
 }

@@ -885,6 +885,45 @@ class WaypointerScreenTest {
     }
 
     @Test
+    void selectedDungeonRoomRoutesFormOnePublishablePackAcrossRooms() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup first = dungeonGroup("first", "room-a");
+        WaypointGroup second = dungeonGroup("second", "room-b");
+        WaypointGroup runtime = dungeonGroup("runtime", "room-c");
+        runtime.setRuntimeOnly(true);
+        first.add(Waypoint.at(1, 64, 2));
+        second.add(Waypoint.at(3, 65, 4));
+        manager.addAll(List.of(first, second, runtime));
+        List<WaypointGroup> selected = WaypointerScreen.logicalSelectedGroups(manager,
+                WaypointerZoneCatalog.DUNGEON_ROOMS_ZONE_ID, Set.of("first", "second", "runtime"));
+        assertEquals(List.of(first, second), selected);
+        assertTrue(CatalogPublishFormModel.eligibleBundle(selected));
+        CatalogPublishFormModel draft = new CatalogPublishFormModel(first, null);
+        assertTrue(draft.addGroups(selected));
+        assertEquals("dungeon", draft.zoneId());
+        assertEquals(2, draft.groups().size());
+    }
+
+    @Test
+    void selectAllUsesMatchingStoredRoutesInOrderWithoutRuntimeDuplicates() {
+        WaypointGroup first = dungeonGroup("stored-a", "room-a");
+        first.setName("Alpha route");
+        WaypointGroup other = dungeonGroup("stored-b", "room-b");
+        other.setName("Beta route");
+        WaypointGroup second = dungeonGroup("stored-c", "room-c");
+        second.setName("Alpha return");
+        WaypointGroup projection = dungeonGroup("runtime-a", "room-a");
+        projection.setName("Alpha route");
+        projection.setRuntimeOnly(true);
+        List<WaypointGroup> matching = List.of(first, other, projection, second, first).stream()
+                .filter(route -> RouteListPresentation.groupMatchesSearch(route, "alpha", route.zoneId()))
+                .toList();
+        assertEquals(List.of("stored-a", "stored-c"),
+                List.copyOf(WaypointerScreen.selectableRouteIds(matching)));
+        assertTrue(WaypointerScreen.selectableRouteIds(List.of()).isEmpty());
+    }
+
+    @Test
     void importFailuresKeepTheCodecReasonAndOnlyGenericOnesFallBack() {
         String unrecognized = net.minecraft.network.chat.Component.translatable(
                 "waypointer.import.error.unrecognized").getString();
@@ -943,16 +982,17 @@ class WaypointerScreenTest {
         ActiveGroupManager manager = new ActiveGroupManager();
         assertEquals(Zone.UNKNOWN.id(),
                 WaypointerZoneCatalog.initialSelectedZoneId(manager));
-        assertEquals(0, WaypointerZoneCatalog.dungeonRoomGroupCount(manager));
+        assertEquals(0, WaypointerZoneCatalog.dungeonSecretRoomCount(manager));
         assertNull(WaypointerZoneCatalog.currentDungeonRoomZoneId(null));
         assertNull(WaypointerZoneCatalog.currentDungeonRoomZoneId(manager));
 
-        WaypointGroup room = WaypointGroup.create("Room route", "admin");
+        WaypointGroup room = WaypointGroup.create("Room route", "arrow-trap");
         room.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        room.add(Waypoint.at(1, 70, 1));
         WaypointGroup temporary = WaypointGroup.create("Temp", "hub");
         temporary.setTemp(true);
         manager.addAll(List.of(room, temporary));
-        assertEquals(1, WaypointerZoneCatalog.dungeonRoomGroupCount(manager));
+        assertEquals(1, WaypointerZoneCatalog.dungeonSecretRoomCount(manager));
 
         manager.onZoneChanged(Zone.fromId("hub"));
         assertEquals("hub", WaypointerZoneCatalog.initialSelectedZoneId(manager));

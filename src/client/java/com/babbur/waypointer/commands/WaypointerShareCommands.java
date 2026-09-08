@@ -567,7 +567,7 @@ final class WaypointerShareCommands {
                     "waypointer.dungeon.command.import.no_usable_routes").getString());
             return 0;
         }
-        ImportFeedback.successDungeonRoutes(imported, waypoints, origin);
+        ImportFeedback.successDungeonRoutes(DungeonRoomRouteLibrary.secretRoomCount(routes), waypoints, origin);
         info(src, importEditorHintComponent(true));
         return imported;
     }

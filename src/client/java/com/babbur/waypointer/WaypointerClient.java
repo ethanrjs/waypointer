@@ -141,6 +141,7 @@ public final class WaypointerClient implements ClientModInitializer {
 
         new LocationTracker(manager, config).install();
         installCrystalHollowsSubsystem();
+        new com.babbur.waypointer.diana.DianaController(manager, config::dianaWaypointsEnabled).install();
         HypixelPlayerRankSource.install();
         DungeonChestInteractionGuard chestInteractionGuard = new DungeonChestInteractionGuard();
         chestInteractionGuard.install();
@@ -315,6 +316,7 @@ public final class WaypointerClient implements ClientModInitializer {
         crystalHollowsStore = CrystalHollowsStore.loadDefault();
         crystalHollowsTracker = new CrystalHollowsTracker(manager, config, crystalHollowsStore);
         crystalHollowsTracker.install();
+        new com.babbur.waypointer.crystal.CrystalHollowsMinimap(crystalHollowsTracker, config).install();
         crystalHollowsCompass = new WishingCompassController(crystalHollowsTracker, config);
         crystalHollowsCompass.install();
         new MetalDetectorController(manager, crystalHollowsTracker, config).install();

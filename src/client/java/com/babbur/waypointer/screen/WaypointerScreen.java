@@ -24,6 +24,7 @@ import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
+import com.babbur.waypointer.dungeon.DungeonRouteDownloader;
 import com.babbur.waypointer.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -47,6 +48,7 @@ import java.util.Set;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 import static com.babbur.waypointer.screen.WaypointerZoneCatalog.*;
+import static org.lwjgl.glfw.GLFW.GLFW_KEY_A;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_DELETE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_MENU;
@@ -59,6 +61,9 @@ public final class WaypointerScreen extends Screen {
 
     final ActiveGroupManager manager;
     final WaypointerConfig config;
+    RoutePublishScreen publishDraft;
+    private Button addToPublishButton;
+    private Button removeFromPublishButton;
     String selectedZoneId;
     String selectedDungeonRoomZoneId;
     int scrollOffset;
@@ -123,6 +128,21 @@ public final class WaypointerScreen extends Screen {
 
     private List<GuiTokens.ButtonSpec> footerActions() {
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
+        if (publishDraft != null) {
+            left.add(new GuiTokens.ButtonSpec(
+                    Component.translatable("waypointer.screen.route_publish.action.add_selected").getString(),
+                    104, () -> {
+                        publishDraft.addRoutes(selectedPublishGroups());
+                        refreshActionButtons();
+                    }));
+            left.add(new GuiTokens.ButtonSpec(
+                    Component.translatable("waypointer.screen.route_publish.action.remove_selected").getString(),
+                    112, () -> {
+                        publishDraft.draftForm().removeGroups(selectedPublishGroups());
+                        refreshActionButtons();
+                    }));
+            return left;
+        }
         left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.main.import_export").getString(),
                 IMPORT_EXPORT_BTN_W,
@@ -229,6 +249,8 @@ public final class WaypointerScreen extends Screen {
         moveZoneButton = null;
         settingsButton = null;
         undoButton = null;
+        addToPublishButton = null;
+        removeFromPublishButton = null;
         routeList.resetNavigation();
         islandDropdownOpen = false;
         zoneMoveGroupId = null;
@@ -238,11 +260,18 @@ public final class WaypointerScreen extends Screen {
         Layout layout = layout();
         List<GuiTokens.ButtonSpec> left = footerActions();
         GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec(
-                Component.translatable("gui.done").getString(),
-                DONE_BTN_W, this::onClose);
+                Component.translatable(publishDraft == null ? "gui.done"
+                        : "waypointer.screen.route_publish.action.review").getString(),
+                publishDraft == null ? DONE_BTN_W : 104, this::onClose);
 
         GuiTokens.layoutFooter(width, footerY, left, done,
                 b -> {
+            if (publishDraft != null) {
+                if (Component.translatable("waypointer.screen.route_publish.action.add_selected")
+                        .getString().equals(b.getMessage().getString())) addToPublishButton = b;
+                if (Component.translatable("waypointer.screen.route_publish.action.remove_selected")
+                        .getString().equals(b.getMessage().getString())) removeFromPublishButton = b;
+            }
             if (Component.translatable("waypointer.screen.main.import_export").getString()
                     .contentEquals(b.getMessage().getString())) {
                 importExportBtn = b;
@@ -465,7 +494,7 @@ public final class WaypointerScreen extends Screen {
     }
 
     private int normalGroupCountForZone(String zoneId) {
-        if (isDungeonRoomsZone(zoneId)) return dungeonRoomGroupCount(manager);
+        if (isDungeonRoomsZone(zoneId)) return dungeonSecretRoomCount(manager);
         return WaypointerZoneCatalog.normalGroupCountForZone(manager, zoneId);
     }
 
@@ -507,7 +536,9 @@ public final class WaypointerScreen extends Screen {
         }
 
         if (islandSelectorBtn != null) renderIslandSelectorDirection(g);
-        String headerTitle = getTitle().getString();
+        String headerTitle = publishDraft == null ? getTitle().getString()
+                : Component.translatable("waypointer.screen.route_publish.selection_title",
+                        publishDraft.draftForm().groups().size()).getString();
         int titleLeftLimit = PAD_OUTER + SETTINGS_BTN_W + GAP;
         int titleRightLimit = width - PAD_OUTER - ISLAND_SELECTOR_W - GAP;
         int infoSpan = GAP_TIGHT + 1 + WaypointerRouteList.INFO_BUTTON_SIZE;
@@ -599,8 +630,9 @@ public final class WaypointerScreen extends Screen {
         int mainLeft = PAD_OUTER;
         int mainRight = width - PAD_OUTER;
         GuiTokens.ButtonSpec done = new GuiTokens.ButtonSpec(
-                Component.translatable("gui.done").getString(),
-                DONE_BTN_W, this::onClose);
+                Component.translatable(publishDraft == null ? "gui.done"
+                        : "waypointer.screen.route_publish.action.review").getString(),
+                publishDraft == null ? DONE_BTN_W : 104, this::onClose);
         int footerSpace = GuiTokens.footerHeight(width, footerActions(), done, font,
                 mainLeft, width - mainRight);
         int top = HEADER_BTN_Y + BTN_H + GAP;
@@ -628,6 +660,24 @@ public final class WaypointerScreen extends Screen {
     void openGroupEditor(WaypointGroup group) {
         if (group == null || group.temp() || group.runtimeOnly()) return;
         MinecraftCompat.setScreen(minecraft, new GroupEditScreen(this, manager, config, group));
+    }
+
+    boolean addToPublishDraft(WaypointGroup group) {
+        if (publishDraft == null) return false;
+        if (!CatalogPublishFormModel.eligible(group) || !acceptsPublishDraft(group)) return false;
+        publishDraft.addRoutes(List.of(group));
+        MinecraftCompat.setScreen(minecraft, publishDraft);
+        return true;
+    }
+
+    boolean acceptsPublishDraft(WaypointGroup group) {
+        return publishDraft == null || group.routeKind() == publishDraft.draftForm().group().routeKind();
+    }
+
+    @Override
+    public void onClose() {
+        if (publishDraft != null) MinecraftCompat.setScreen(minecraft, publishDraft);
+        else super.onClose();
     }
 
     void expandDungeonRoom(String roomZoneId) {
@@ -934,11 +984,13 @@ public final class WaypointerScreen extends Screen {
                 "waypointer.screen.main.menu.export").getString();
         String browseLabel = Component.translatable(
                 "waypointer.screen.main.menu.browse").getString();
+        String packLabel = Component.translatable("waypointer.dungeon.routes.download").getString();
+        String publishLabel = Component.translatable("waypointer.screen.main.menu.publish_selected").getString();
         int w = Math.max(importExportBtn == null ? 0 : importExportBtn.getWidth(),
-                Math.max(font.width(browseLabel),
+                Math.max(Math.max(font.width(browseLabel), Math.max(font.width(packLabel), font.width(publishLabel))),
                         Math.max(font.width(importLabel), font.width(exportLabel)))
                         + GAP * 2) + 2;
-        int h = ROW_H * 3 + 2;
+        int h = ROW_H * 5 + 2;
         int x1 = importExportBtn == null ? PAD_OUTER : importExportBtn.getX();
         int y2 = importExportBtn == null ? height - FOOTER_H : importExportBtn.getY() - GAP_TIGHT;
         x1 = Math.max(PAD_OUTER, Math.min(x1, width - PAD_OUTER - w));
@@ -1076,17 +1128,21 @@ public final class WaypointerScreen extends Screen {
         String[] labels = {
                 Component.translatable("waypointer.screen.main.menu.import_clipboard").getString(),
                 Component.translatable("waypointer.screen.main.menu.export").getString(),
-                Component.translatable("waypointer.screen.main.menu.browse").getString()
+                Component.translatable("waypointer.screen.main.menu.browse").getString(),
+                Component.translatable("waypointer.dungeon.routes.download").getString(),
+                Component.translatable("waypointer.screen.main.menu.publish_selected").getString()
         };
         for (int i = 0; i < labels.length; i++) {
+            boolean enabled = i != 4 || CatalogPublishFormModel.eligibleBundle(selectedPublishGroups());
             int rowY = geo.y1() + 1 + i * ROW_H;
             boolean hovered = mouseX >= geo.x1() && mouseX < geo.x2()
                     && mouseY >= rowY && mouseY < rowY + ROW_H;
-            if (hovered) {
+            if (hovered && enabled) {
                 g.fill(geo.x1() + 1, rowY, geo.x2() - 1, rowY + ROW_H, HOVER);
                 g.requestCursor(CursorTypes.POINTING_HAND);
             }
-            g.text(font, labels[i], geo.x1() + GAP, rowY + 7, hovered ? TEXT : TEXT_DIM, false);
+            g.text(font, labels[i], geo.x1() + GAP, rowY + 7,
+                    !enabled ? TEXT_MUTED : hovered ? TEXT : TEXT_DIM, false);
         }
     }
 
@@ -1102,8 +1158,16 @@ public final class WaypointerScreen extends Screen {
             exportZone();
         } else if (idx == 2) {
             RouteCatalogScreen.open(this);
+        } else if (idx == 3) {
+            downloadDungeonRoutes();
+        } else if (idx == 4) {
+            RoutePublishScreen.open(this, config, selectedPublishGroups());
         }
         return true;
+    }
+
+    private List<WaypointGroup> selectedPublishGroups() {
+        return logicalSelectedGroups(manager, selectedZoneId, selectedGroupIds);
     }
 
     void fillOutlinedOverlay(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
@@ -1285,6 +1349,21 @@ public final class WaypointerScreen extends Screen {
         syncAuthoringRouteFocus();
     }
 
+    private void selectAllMatchingRoutes() {
+        replaceRouteSelection(selectableRouteIds(routeList.visibleGroups()));
+        selectionAnchorGroupId = selectedGroupId;
+        syncAuthoringRouteFocus();
+        refreshActionButtons();
+    }
+
+    static Set<String> selectableRouteIds(Iterable<WaypointGroup> matchingRoutes) {
+        Set<String> ids = new LinkedHashSet<>();
+        for (WaypointGroup route : matchingRoutes) {
+            if (route != null && !route.runtimeOnly()) ids.add(route.id());
+        }
+        return ids;
+    }
+
     void selectFolderRoutes(RouteFolder folder) {
         if (folder == null) return;
         LinkedHashSet<String> folderRoutes = new LinkedHashSet<>();
@@ -1359,6 +1438,11 @@ public final class WaypointerScreen extends Screen {
             return true;
         }
         if (super.keyPressed(event)) return true;
+        if (event.key() == GLFW_KEY_A && routeSelectionControlDown()
+                && !islandDropdownOpen && !importExportMenuOpen) {
+            selectAllMatchingRoutes();
+            return true;
+        }
         if (event.key() == GLFW_KEY_MENU && routeList.openContextMenuAtCursor()) return true;
         if (event.key() == GLFW_KEY_DELETE) {
             onDeleteClicked();
@@ -1519,6 +1603,24 @@ public final class WaypointerScreen extends Screen {
     }
 
     void refreshActionButtons() {
+        if (publishDraft != null) {
+            List<WaypointGroup> selectedForPublish = selectedPublishGroups();
+            CatalogPublishFormModel draft = publishDraft.draftForm();
+            if (addToPublishButton != null) {
+                boolean compatible = selectedForPublish.stream().allMatch(draft::accepts);
+                boolean mixed = selectedForPublish.stream()
+                        .anyMatch(group -> group.routeKind() != draft.group().routeKind());
+                addToPublishButton.active = compatible && selectedForPublish.stream()
+                        .anyMatch(group -> !draft.contains(group));
+                addToPublishButton.setTooltip(Tooltip.create(Component.translatable(
+                        mixed ? "waypointer.screen.route_publish.validation.mixed_routes"
+                                : "waypointer.screen.route_publish.selection_help", draft.groups().size())));
+            }
+            if (removeFromPublishButton != null) {
+                long selectedCount = selectedForPublish.stream().filter(draft::contains).count();
+                removeFromPublishButton.active = selectedCount > 0 && selectedCount < draft.groups().size();
+            }
+        }
         if (hideAllRoutesBtn != null) {
             boolean hasShownRoutes = !shownRoutesForSelectedZone().isEmpty();
             boolean hasHiddenRoutes = !hiddenRoutesForSelectedZone().isEmpty();
@@ -1886,7 +1988,7 @@ public final class WaypointerScreen extends Screen {
         List<WaypointGroup> routeGroups =
                 dungeonRouteGroupsForExport(selectedGroups, manager.allGroups());
         if (!routeGroups.isEmpty()) {
-            int roomCount = (int) routeGroups.stream().map(WaypointGroup::zoneId).distinct().count();
+            int roomCount = DungeonRoomRouteLibrary.secretRoomCount(routeGroups);
             DungeonRoomExportScreen.open(this, routeGroups, roomCount,
                     DungeonRoomShareCodec.waypointCount(routeGroups));
             return;
@@ -1935,7 +2037,7 @@ public final class WaypointerScreen extends Screen {
         if (!CodecWorker.run(() -> decodeClipboardImport(text, defaultImportedRouteName), outcome -> {
             importInFlight = false;
             if (outcome != null && outcome.dungeonRoutes() != null) {
-                installDecodedDungeonRooms(outcome.dungeonRoutes());
+                installDecodedDungeonRooms(outcome.dungeonRoutes(), "clipboard");
                 return;
             }
             if (outcome != null && outcome.config() != null) {
@@ -2035,7 +2137,38 @@ public final class WaypointerScreen extends Screen {
         result.libraryMetadata().installFolders(manager, result.groups());
     }
 
-    private void installDecodedDungeonRooms(DungeonRouteImporter.Result decoded) {
+    private void downloadDungeonRoutes() {
+        if (importInFlight) return;
+        importInFlight = true;
+        flashMainNotice(Component.translatable("waypointer.dungeon.routes.downloading").getString(), 30_000L);
+        if (!CodecWorker.run(() -> {
+            try {
+                return DungeonRouteDownloader.download();
+            } catch (java.io.IOException failure) {
+                throw new java.io.UncheckedIOException(failure);
+            }
+        }, downloaded -> {
+            importInFlight = false;
+            if (downloaded == null) {
+                ImportFeedback.failure(Component.translatable("waypointer.dungeon.routes.download_failed").getString());
+                flashMainNotice(Component.translatable("waypointer.dungeon.routes.download_failed"));
+                return;
+            }
+            for (WaypointGroup route : downloaded.groups()) {
+                route.setName(DungeonRouteDownloader.PACK_NAME + " · " + route.name());
+            }
+            installDecodedDungeonRooms(downloaded, DungeonRouteDownloader.PACK_NAME);
+            flashMainNotice(DungeonRouteDownloader.ATTRIBUTION, 15_000L);
+            MinecraftCompat.addClientSystemMessage(minecraft,
+                    Component.literal(DungeonRouteDownloader.ATTRIBUTION));
+        })) {
+            importInFlight = false;
+            ImportFeedback.failure(Component.translatable("waypointer.codec.busy").getString());
+            flashMainNotice(Component.translatable("waypointer.codec.busy"));
+        }
+    }
+
+    private void installDecodedDungeonRooms(DungeonRouteImporter.Result decoded, String source) {
         List<WaypointGroup> routes = DungeonRoomRouteLibrary.installRoutes(manager, decoded.groups());
         if (routes.isEmpty()) {
             ImportFeedback.failure(Component.translatable(
@@ -2043,8 +2176,12 @@ public final class WaypointerScreen extends Screen {
             return;
         }
 
-        ImportFeedback.successDungeonRoutes(routes.size(),
-                DungeonRoomShareCodec.waypointCount(routes), "clipboard");
+        ImportFeedback.successDungeonRoutes(DungeonRoomRouteLibrary.secretRoomCount(routes),
+                DungeonRoomShareCodec.waypointCount(routes), source);
+        if (!decoded.unmatchedRooms().isEmpty()) {
+            MinecraftCompat.addClientSystemMessage(minecraft, Component.translatable(
+                    "waypointer.dungeon.routes.unmatched_rooms", decoded.unmatchedRooms().size()));
+        }
         searchQuery = "";
         if (searchBox != null) searchBox.setValue("");
         selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
@@ -2052,6 +2189,8 @@ public final class WaypointerScreen extends Screen {
             expandedDungeonRoomZoneIds.add(routes.get(0).zoneId());
         }
         clearRouteSelection();
+        pendingFocusGroupId = routes.getFirst().id();
+        rebuildWidgets();
     }
 
     @Override

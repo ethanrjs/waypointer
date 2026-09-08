@@ -58,6 +58,7 @@ public final class CrystalHollowsTracker {
     private boolean lastHideStructuresFolder;
     private boolean lastShowRough;
     private boolean lastNucleusWaypoints;
+    private boolean lastCompassAutoFocus;
     private DebugSnapshot lastDebugSnapshot = DebugSnapshot.inactive();
     private WishingCompassController compassController;
     private WaypointGroup compassTargetGroup;
@@ -74,6 +75,7 @@ public final class CrystalHollowsTracker {
             ActiveGroupManager manager, WaypointerConfig config, CrystalHollowsStore store) {
         this.manager = manager;
         this.config = config;
+        this.lastCompassAutoFocus = config.crystalHollowsCompassAutoFocus();
         this.store = store;
         this.projection = new CrystalHollowsProjection(manager, config);
     }
@@ -178,11 +180,18 @@ public final class CrystalHollowsTracker {
         compassShareReference = "compass:" + (++nextCompassShareId);
         compassShares.put(compassShareReference, sighting);
         compassTargetGroup.setEnabled(true);
-        manager.focusTempWaypoint(compassTargetGroup, index);
+        CompassMarkerState.markTarget(compassTarget);
+        if (config.crystalHollowsCompassAutoFocus()) manager.focusTempWaypoint(compassTargetGroup, index);
         manager.fireTransientDataChanged();
     }
 
     public StructureSighting compassTargetSighting() { return compassTargetSighting; }
+    public StructureSighting compassNavigationTarget() {
+        return compassTargetGroup != null && manager.get(compassTargetGroup.id()) == compassTargetGroup
+                && compassTarget != null && !CompassMarkerState.arrived(compassTarget)
+                && compassTargetGroup.waypoints().stream().anyMatch(waypoint -> waypoint == compassTarget)
+                ? compassTargetSighting : null;
+    }
     public String compassShareReference() { return compassShareReference; }
     public StructureSighting compassShare(String reference) { return compassShares.get(reference); }
 
@@ -235,6 +244,7 @@ public final class CrystalHollowsTracker {
                             + sighting.structure().id()).getString())
                     .withColor(sighting.structure().rgb()));
             compassTarget = compassTargetGroup.get(index);
+            CompassMarkerState.markTarget(compassTarget);
             if (arrived) CompassMarkerState.markArrived(compassTarget);
             compassTargetSighting = sighting;
             if (sighting.confidence() != SightingConfidence.SHARED_REMOTE) compassLocalTargetSighting = sighting;
@@ -262,6 +272,20 @@ public final class CrystalHollowsTracker {
         if (zoneArrival || target.sidebarName() == null && dx * dx + dy * dy + dz * dz <= 100) {
             finishCompassNavigation();
         }
+    }
+
+    void refreshCompassFocusSetting() {
+        boolean autoFocus = config.crystalHollowsCompassAutoFocus();
+        if (lastCompassAutoFocus && !autoFocus && compassTargetGroup != null
+                && manager.get(compassTargetGroup.id()) == compassTargetGroup) {
+            int focusedIndex = compassTargetGroup.focusedVisibleIndex();
+            if (focusedIndex >= 0 && focusedIndex < compassTargetGroup.size()
+                    && compassTargetGroup.get(focusedIndex) == compassTarget) {
+                manager.clearTempWaypointFocus();
+                manager.fireTransientDataChanged();
+            }
+        }
+        lastCompassAutoFocus = autoFocus;
     }
 
     private void finishCompassNavigation() {
@@ -324,6 +348,7 @@ public final class CrystalHollowsTracker {
     }
 
     public void configurationChanged() {
+        refreshCompassFocusSetting();
         if (!config.crystalHollowsEnabled()) {
             if (active) leaveLobby();
             return;
@@ -411,6 +436,7 @@ public final class CrystalHollowsTracker {
     }
 
     private void refreshProjectionSettings() {
+        refreshCompassFocusSetting();
         boolean structureWaypoints = config.crystalHollowsStructureWaypoints();
         boolean hideStructuresFolder = config.crystalHollowsHideStructuresFolder();
         boolean showRough = config.crystalHollowsShowRoughMarkers();

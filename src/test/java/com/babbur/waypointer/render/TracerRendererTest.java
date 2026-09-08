@@ -14,6 +14,33 @@ import org.junit.jupiter.api.Test;
 class TracerRendererTest {
 
     @Test
+    void crystalHollowsTracerSwitchLeavesUserRoutesAndOtherTemporaryMarkersAlone() throws Exception {
+        var config = new WaypointerConfig();
+        config.setShowTracer(true);
+        var generated = new WaypointGroup(
+                com.babbur.waypointer.crystal.CrystalHollowsStructureFolder.GROUP_PREFIX + "mines_of_divan",
+                "Mines of Divan", "crystal_hollows");
+        generated.setRuntimeOnly(true);
+        generated.add(Waypoint.at(606, 88, 265));
+        assertTrue(TracerRenderer.tracersEnabled(generated, config, null));
+        config.setCrystalHollowsTracers(false);
+        assertFalse(TracerRenderer.tracersEnabled(generated, config, null));
+        generated.setRuntimeOnly(false);
+        assertTrue(TracerRenderer.tracersEnabled(generated, config, null));
+        var marker = Waypoint.at(100, 80, 100);
+        var markTarget = com.babbur.waypointer.crystal.CompassMarkerState.class
+                .getDeclaredMethod("markTarget", Waypoint.class);
+        markTarget.setAccessible(true);
+        markTarget.invoke(null, marker);
+        assertFalse(TracerRenderer.crystalHollowsTracerAllowed(generated, marker, config));
+        assertTrue(TracerRenderer.crystalHollowsTracerAllowed(generated, Waypoint.at(100, 80, 100), config));
+        config.setCrystalHollowsTracers(true);
+        assertTrue(TracerRenderer.crystalHollowsTracerAllowed(generated, marker, config));
+        config.setShowTracer(false);
+        assertFalse(TracerRenderer.tracersEnabled(generated, config, null));
+    }
+
+    @Test
     void metalDetectorTracesOnlyConfirmedTreasureAndKeepsItUntilCollected() {
         var config = new WaypointerConfig();
         config.setShowTracer(true);
@@ -31,6 +58,9 @@ class TracerRendererTest {
         config.setShowTracer(false);
         assertFalse(TracerRenderer.tracersEnabled(group, config, null));
         config.setShowTracer(true);
+        config.setCrystalHollowsTracers(false);
+        assertFalse(TracerRenderer.tracersEnabled(group, config, null));
+        config.setCrystalHollowsTracers(true);
         group.add(Waypoint.at(12, 80, 20));
         assertFalse(TracerRenderer.tracersEnabled(group, config, null));
     }

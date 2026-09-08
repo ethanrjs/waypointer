@@ -4,6 +4,7 @@ import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,9 +13,24 @@ public final class DungeonRoomWaypointPlacement {
 
     private DungeonRoomWaypointPlacement() {}
 
+    /** Returns null when a dungeon route cannot be placed in the current room. */
     public static Waypoint toStoredWaypoint(WaypointGroup group, Waypoint actualWaypoint) {
         DungeonRoom room = currentRoomFor(group);
+        if (!canPlaceInRoom(group, room)) return null;
         return toStoredWaypoint(room, actualWaypoint);
+    }
+
+    public static boolean canPlaceInCurrentRoom(WaypointGroup group) {
+        return canPlaceInRoom(group, currentRoomFor(group));
+    }
+
+    private static boolean canPlaceInRoom(WaypointGroup group, DungeonRoom room) {
+        return group != null && (group.routeKind() != WaypointGroup.RouteKind.DUNGEON || room != null);
+    }
+
+    public static Component unavailableMessage() {
+        return Component.translatableWithFallback("waypointer.dungeon.edit.requires_room",
+                "Enter this route's dungeon room to add or move waypoints.");
     }
 
     public static Waypoint toStoredWaypoint(DungeonRoom room, Waypoint actualWaypoint) {
@@ -50,11 +66,13 @@ public final class DungeonRoomWaypointPlacement {
                 actual[2]);
     }
 
+    /** Returns null when a dungeon route cannot be placed in the current room. */
     public static int[] toStoredPrecisePosition(WaypointGroup group,
                                                 int actualPreciseX,
                                                 int actualPreciseY,
                                                 int actualPreciseZ) {
         DungeonRoom room = currentRoomFor(group);
+        if (!canPlaceInRoom(group, room)) return null;
         if (room == null) {
             return new int[] { actualPreciseX, actualPreciseY, actualPreciseZ };
         }
@@ -67,14 +85,16 @@ public final class DungeonRoomWaypointPlacement {
                 actualPreciseZ);
     }
 
-    public static void moveWaypointToStoredPosition(WaypointGroup group, int index,
+    public static boolean moveWaypointToStoredPosition(WaypointGroup group, int index,
                                                      int actualX, int actualY, int actualZ) {
         Waypoint actualWaypoint = group.get(index).withPos(actualX, actualY, actualZ);
         Waypoint storedWaypoint = toStoredWaypoint(group, actualWaypoint);
+        if (storedWaypoint == null) return false;
         group.moveWaypointToPrecise(index,
                 storedWaypoint.preciseX(),
                 storedWaypoint.preciseY(),
                 storedWaypoint.preciseZ());
+        return true;
     }
 
     public static void normalizeActualWaypointsForCurrentRoom(WaypointGroup group) {

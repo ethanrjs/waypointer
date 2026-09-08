@@ -567,10 +567,17 @@ The writer omits a field when it equals its normalized default.
 | 101 | `labelOpacity` | D | `1.0` |
 | 102 | `crystalHollowsMetalDetector` | B | `true` |
 | 103 | `crystalHollowsRemoteSharing` | B | `true` |
+| 104 | `crystalHollowsMinimap` | B | `false` |
+| 105 | `crystalHollowsMinimapSize` | U | `144` |
+| 106 | `crystalHollowsMinimapCorner` | U | `0` |
+| 107 | `crystalHollowsMinimapLabels` | B | `true` |
+| 108 | `dianaWaypointsEnabled` | B | `true` |
+| 109 | `crystalHollowsTracers` | B | `true` |
+| 110 | `crystalHollowsCompassAutoFocus` | B | `true` |
 
-Inactive legacy holes are tags 17, 51, 54, 55, and 66. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-103 are active. Tag 87 remains readable for older settings but no longer renders compass rays. Tags 104-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
+Inactive legacy holes are tags 17, 51, 54, 55, and 66. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-110 are active. Tag 87 remains readable for older settings but no longer renders compass rays. Tags 111-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
 
-Tag 96 is a two-byte unsigned big-endian byte length followed by the ASCII sound identifier (at most 256 characters). Known legacy sound IDs keep tag 80; blank disables sound. Tag 97 is a duration in milliseconds, bounded to 0-5,000. Painter defaults remain local settings and are not included in configuration shares.
+Tag 96 is a two-byte unsigned big-endian byte length followed by the ASCII sound identifier (at most 256 characters). Known legacy sound IDs keep tag 80; blank disables sound. Tag 97 is a duration in milliseconds, bounded to 0-5,000. Tag 105 is the minimap width, bounded to 96-224. Tag 106 is the minimap corner: 0 top left, 1 top right, 2 bottom left, or 3 bottom right. Painter defaults remain local settings and are not included in configuration shares.
 
 ### 8.3 Enum and normalized value domains
 
@@ -1046,7 +1053,7 @@ The reference writer builds direct A and two B candidates. Both B candidates use
 
 The dungeon writer uses the same rule. It ignores an oversized optional B candidate when its direct A candidate fits.
 
-For one eligible route, the writer compares kind 0 with eligible kind 1 and kind 5 forms by complete final text length. A later candidate replaces the current result only when strictly shorter. Kind 0 wins a tie with either compact kind; kind 1 wins its tie with kind 5. The normal writer falls back to V9 only after `V10ProfileLimitException`. It does not downgrade after another encode error. The catalog writer deliberately stays full-fidelity V9.
+For one eligible route, the writer compares kind 0 with eligible kind 1 and kind 5 forms by complete final text length. A later candidate replaces the current result only when strictly shorter. Kind 0 wins a tie with either compact kind; kind 1 wins its tie with kind 5. The normal writer falls back to V9 only after `V10ProfileLimitException`. It does not downgrade after another encode error. The regular-route catalog writer deliberately stays full-fidelity V9; dungeon catalog packs use the strict WPD schema-2 profile described in section 12.
 
 ## 10A. Kind 1: compact single route
 
@@ -1165,11 +1172,13 @@ The bare selection applies to generic and public API exports. It is a projection
 
 - The exact `WP:` string identifies one transport spelling. Different valid mode-B DEFLATE streams can carry the same semantic body.
 - A semantic body is not a general route-content identifier. Kind 2 can encode the same coordinates with different canonical local bodies.
-- The current catalog remains V9. It hashes the exact canonical V9 payload text.
+- Regular catalog routes use canonical V9 and `codecVersion=9`. Dungeon packs use `WPD:.` schema 2 and `codecVersion=2`; older catalog clients reject that unsupported version. Both hash the exact validated payload text.
 - Anonymous install tokens use `HMAC(deviceSecret, routeId)`. They do not hash V10 semantic bytes.
 - The source does not define a V10 semantic content ID or a signed-share digest. Do not invent one from this document.
 - CRC-16 detects accidental corruption. It is not identity or authentication. Anyone can forge it.
 - A decoder MUST apply all limits. Some bounded buffers are allocated before their decoded-size check. The transport-character limit bounds that work.
+
+Dungeon catalog packs contain only room-local dungeon routes. Their listing uses `zoneId="dungeon"`; each route keeps its room ID in the payload and installs as a standard editable DUNGEON group. Regular and dungeon routes cannot share a payload. The catalog profile requires exact `WPD:.` framing, the current ASCII alphabet, bounded zlib inflation, strict UTF-8 and JSON, schema 2, and typed fields without coercion or unknown properties. Room IDs are canonical lowercase hyphenated IDs, up to 64 characters. Limits are 256 routes, 512 waypoints per room route, 10,000 waypoints total, 1,024 UTF-16 code units per route/waypoint name, 256 KiB of payload text, and 8 MiB of inflated JSON. Precise coordinates, colors, action/SubWP flags, and reach radii retain their native values. Catalog decoding does not accept legacy schema-1 room definitions or forgiving clipboard repairs, and the service stores validated WPD bytes verbatim.
 
 ## 13. Limits summary
 

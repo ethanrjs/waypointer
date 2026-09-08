@@ -3,8 +3,10 @@
 #moj_import <minecraft:dynamictransforms.glsl>
 
 in vec4 vertexColor;
+#ifdef ANTIALIASING
 noperspective in float edgeDistance;
 flat in float halfWidth;
+#endif
 
 out vec4 fragColor;
 

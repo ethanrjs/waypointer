@@ -26,9 +26,11 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
                     && WaypointerClient.api().currentZone() != null
                     && "private_world".equals(WaypointerClient.api().currentZone().id()), 600);
             context.waitForScreen(null);
+            CrystalHollowsMinimapSmokeTest.run(context);
             context.computeOnClient(client -> {
                 checkMetalDetectorVisibility(client);
                 checkMetalDetectorMessage(client);
+                DianaPacketSmokeTest.run(client);
                 return true;
             });
             String routeId = context.computeOnClient(client -> {

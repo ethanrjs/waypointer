@@ -344,6 +344,21 @@ class WaypointRendererTest {
     }
 
     @Test
+    void focusedDungeonConnectorsSkipGuidesBetweenActionsAndAfterTheSecret() {
+        int action = Waypoint.FLAG_SKIP_ON_MINE;
+        WaypointGroup group = groupWith(
+                waypointAt(0, 64, 0, action),
+                waypointAt(9, 70, 4, Waypoint.FLAG_SUBWAYPOINT),
+                waypointAt(1, 64, 0, action | Waypoint.FLAG_SUBWAYPOINT),
+                waypointAt(8, 70, 4, Waypoint.FLAG_SUBWAYPOINT),
+                waypointAt(2, 64, 0, action));
+        group.advancePast(0);
+        assertEquals(List.of("0-2"), focusedDungeonRouteLineSegments(group, false));
+        group.advancePast(2);
+        assertEquals(List.of("2-4"), focusedDungeonRouteLineSegments(group, false));
+    }
+
+    @Test
     void dungeonLabelsOnlySurfaceTheFocusedPairAndNeverInventNumericNames() {
         WaypointGroup group = groupWith(waypoint(0), waypoint(0), waypoint(0));
 

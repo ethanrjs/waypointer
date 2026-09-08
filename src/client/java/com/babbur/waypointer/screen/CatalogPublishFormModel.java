@@ -6,6 +6,8 @@ import com.babbur.waypointer.core.Zone;
 
 import java.text.Normalizer;
 import java.util.Objects;
+import java.util.ArrayList;
+import java.util.List;
 
 final class CatalogPublishFormModel {
     static final int TITLE_MAX = 80;
@@ -13,7 +15,7 @@ final class CatalogPublishFormModel {
     static final int DESCRIPTION_MAX = 500;
     static final int DESCRIPTION_COUNTER_START = 100;
 
-    private final WaypointGroup group;
+    private final List<WaypointGroup> groups = new ArrayList<>();
     private final Runnable edited;
     private String title;
     private String description = "";
@@ -21,13 +23,61 @@ final class CatalogPublishFormModel {
             CatalogPublishRequest.Visibility.UNLISTED;
 
     CatalogPublishFormModel(WaypointGroup group, Runnable edited) {
-        this.group = Objects.requireNonNull(group, "group");
+        groups.add(Objects.requireNonNull(group, "group"));
         this.edited = edited == null ? () -> { } : edited;
         this.title = group.name() == null ? "" : group.name().trim();
     }
 
     WaypointGroup group() {
-        return group;
+        return groups.getFirst();
+    }
+
+    List<WaypointGroup> groups() {
+        return List.copyOf(groups);
+    }
+
+    boolean contains(WaypointGroup group) {
+        return groups.stream().anyMatch(existing -> existing.id().equals(group.id()));
+    }
+
+    boolean addGroups(List<WaypointGroup> additions) {
+        if (!additions.stream().allMatch(this::accepts)) return false;
+        boolean changed = false;
+        for (WaypointGroup group : additions) {
+            if (contains(group)) continue;
+            groups.add(group);
+            changed = true;
+        }
+        if (changed) edited.run();
+        return changed;
+    }
+
+    boolean removeGroups(List<WaypointGroup> removals) {
+        var ids = removals.stream().map(WaypointGroup::id).toList();
+        if (groups.stream().allMatch(group -> ids.contains(group.id()))) return false;
+        boolean changed = groups.removeIf(group -> ids.contains(group.id()));
+        if (changed) edited.run();
+        return changed;
+    }
+
+    static boolean eligible(WaypointGroup group) {
+        return group != null && !group.isEmpty() && !group.temp() && !group.runtimeOnly()
+                && !unsafeDungeonRoute(group) && !unpublishableZone(group.zoneId());
+    }
+
+    boolean accepts(WaypointGroup candidate) {
+        return eligible(candidate) && candidate.routeKind() == group().routeKind();
+    }
+
+    static boolean eligibleBundle(List<WaypointGroup> groups) {
+        return !groups.isEmpty() && groups.stream().allMatch(CatalogPublishFormModel::eligible)
+                && groups.stream().map(WaypointGroup::routeKind).distinct().count() == 1;
+    }
+
+    String zoneId() {
+        if (group().routeKind() == WaypointGroup.RouteKind.DUNGEON) return "dungeon";
+        return groups.stream().map(WaypointGroup::zoneId).distinct().count() == 1
+                ? group().zoneId() : "multiple";
     }
 
     String title() {
@@ -64,10 +114,13 @@ final class CatalogPublishFormModel {
     }
 
     Validation validation() {
-        if (dungeonRoute(group)) return Validation.DUNGEON_ROUTE;
-        if (group.isEmpty()) return Validation.EMPTY_ROUTE;
-        if (group.temp() || group.runtimeOnly()) return Validation.TEMPORARY_ROUTE;
-        if (unpublishableZone(group.zoneId())) return Validation.UNPUBLISHABLE_ZONE;
+        for (WaypointGroup group : groups) {
+            if (group.routeKind() != group().routeKind()) return Validation.MIXED_ROUTES;
+            if (unsafeDungeonRoute(group)) return Validation.DUNGEON_ROUTE;
+            if (group.isEmpty()) return Validation.EMPTY_ROUTE;
+            if (group.temp() || group.runtimeOnly()) return Validation.TEMPORARY_ROUTE;
+            if (unpublishableZone(group.zoneId())) return Validation.UNPUBLISHABLE_ZONE;
+        }
         if (title.trim().isEmpty()) return Validation.TITLE_REQUIRED;
         int length = trimmedCodePointLength(description);
         if (length < DESCRIPTION_MIN) return Validation.DESCRIPTION_TOO_SHORT;
@@ -90,10 +143,14 @@ final class CatalogPublishFormModel {
     String previewName() {
         String normalized = normalizedTitle();
         if (!normalized.isEmpty()) return normalized;
-        return group.name() == null ? "" : group.name().trim();
+        return group().name() == null ? "" : group().name().trim();
     }
 
-    /** Dungeon room routes and Catacombs floor routes stay local until the catalog supports them. */
+    /** World-coordinate Catacombs routes cannot be reused across generated dungeon instances. */
+    static boolean unsafeDungeonRoute(WaypointGroup group) {
+        return group.routeKind() != WaypointGroup.RouteKind.DUNGEON && dungeonRoute(group);
+    }
+
     static boolean dungeonRoute(WaypointGroup group) {
         if (group.routeKind() == WaypointGroup.RouteKind.DUNGEON) return true;
         String zone = Zone.canonicalId(group.zoneId());
@@ -145,6 +202,7 @@ final class CatalogPublishFormModel {
 
     enum Validation {
         DUNGEON_ROUTE,
+        MIXED_ROUTES,
         EMPTY_ROUTE,
         TEMPORARY_ROUTE,
         UNPUBLISHABLE_ZONE,

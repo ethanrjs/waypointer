@@ -322,15 +322,18 @@ public final class GroupEditScreen extends Screen {
         }
         syncCoordinateEditors();
 
-        boolean dungeonRoute = CatalogPublishFormModel.dungeonRoute(group);
+        boolean dungeonRoute = CatalogPublishFormModel.unsafeDungeonRoute(group);
+        boolean incompatibleDraft = parent instanceof WaypointerScreen main
+                && !main.acceptsPublishDraft(group);
         Button publishButton = styledButton(width - PAD_OUTER - PUBLISH_BUTTON_W, PAD_OUTER - 6,
                 PUBLISH_BUTTON_W, BTN_H,
                 Component.translatable("waypointer.screen.group_edit.publish"),
                 b -> publish(),
                 Tooltip.create(Component.translatable(dungeonRoute
                         ? "waypointer.screen.route_publish.validation.dungeon"
+                        : incompatibleDraft ? "waypointer.screen.route_publish.validation.mixed_routes"
                         : "waypointer.screen.group_edit.publish.tooltip")));
-        publishButton.active = !dungeonRoute;
+        publishButton.active = !dungeonRoute && !incompatibleDraft;
         addRenderableWidget(publishButton);
 
         GuiTokens.layoutFooter(width, height - FOOTER_H, footerActionSpecs, footerDoneSpec,
@@ -749,14 +752,21 @@ public final class GroupEditScreen extends Screen {
 
         PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
                 p.getX(), p.getY(), p.getZ(), config);
-        DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(
-                editTarget, selectedIndex, pos.x(), pos.y(), pos.z());
+        if (!DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(
+                editTarget, selectedIndex, pos.x(), pos.y(), pos.z())) {
+            coordinateEditError = DungeonRoomWaypointPlacement.unavailableMessage().getString();
+            return;
+        }
         coordinateEditorIndex = -1;
         syncCoordinateEditors();
         manager.fireDataChanged();
     }
 
     private void addNamedHere() {
+        if (!DungeonRoomWaypointPlacement.canPlaceInCurrentRoom(group)) {
+            coordinateEditError = DungeonRoomWaypointPlacement.unavailableMessage().getString();
+            return;
+        }
         AddNamedWaypointScreen.open(this, manager, config, group);
     }
 
@@ -775,9 +785,14 @@ public final class GroupEditScreen extends Screen {
         PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
                 p.getX(), p.getY(), p.getZ(), config);
         int flags = defaultNewWaypointFlags(pos.x(), pos.y(), pos.z());
-        editTarget.add(DungeonRoomWaypointPlacement.toStoredWaypoint(editTarget, new Waypoint(
+        Waypoint stored = DungeonRoomWaypointPlacement.toStoredWaypoint(editTarget, new Waypoint(
                 pos.x(), pos.y(), pos.z(),
-                "", config.defaultWaypointColor(), flags, 0.0)));
+                "", config.defaultWaypointColor(), flags, 0.0));
+        if (stored == null) {
+            coordinateEditError = DungeonRoomWaypointPlacement.unavailableMessage().getString();
+            return;
+        }
+        editTarget.add(stored);
         int newIndex = editTarget.size() - 1;
         new WaypointAddFlow().afterWaypointAdded(editTarget, newIndex,
                 config.showWaypointChatShareButtons());
@@ -820,9 +835,11 @@ public final class GroupEditScreen extends Screen {
     }
 
     private void publish() {
-        if (CatalogPublishFormModel.dungeonRoute(group)) return;
+        if (CatalogPublishFormModel.unsafeDungeonRoute(group)) return;
         WaypointGroup editTarget = durableEditTarget();
         if (editTarget == null || editTarget.isEmpty()) return;
+        if (parent instanceof WaypointerScreen main && !main.acceptsPublishDraft(editTarget)) return;
+        if (parent instanceof WaypointerScreen main && main.addToPublishDraft(editTarget)) return;
         RoutePublishScreen.open(this, config, editTarget);
     }
 

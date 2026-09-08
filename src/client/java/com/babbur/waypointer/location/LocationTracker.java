@@ -10,7 +10,7 @@ import net.minecraft.client.Minecraft;
 
 import java.util.function.BooleanSupplier;
 
-/** Uses the Hypixel Mod API when available, otherwise the scoreboard fallback. */
+/** Prefers the Hypixel Mod API, with sidebar detection while location packets are unavailable. */
 public final class LocationTracker {
 
     private final ActiveGroupManager manager;
@@ -32,7 +32,7 @@ public final class LocationTracker {
         boolean hypixelApi = hypixelApiLoaded.getAsBoolean();
         source = createSource(hypixelApi);
         if (source instanceof HypixelApiZoneSource) {
-            Waypointer.LOGGER.info("Location: using Hypixel Mod API source");
+            Waypointer.LOGGER.info("Location: using Hypixel Mod API with scoreboard fallback");
         } else {
             Waypointer.LOGGER.info("Location: using scoreboard fallback (hypixel-mod-api missing)");
         }

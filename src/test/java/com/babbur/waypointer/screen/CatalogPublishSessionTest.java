@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -26,6 +27,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CatalogPublishSessionTest {
     @TempDir
     Path temporaryDirectory;
+
+    @Test
+    void onePublishRequestContainsEverySelectedRouteAndItsOriginalZone() {
+        PublisherIdentity named = namedIdentity("bundle", "Tester_1");
+        AtomicReference<CatalogPublishRequest> sent = new AtomicReference<>();
+        CatalogPublishSession session = new CatalogPublishSession(route(), () -> named,
+                (request, identity, prepared) -> {
+                    sent.set(request);
+                    return CompletableFuture.completedFuture(completion(identity));
+                }, Runnable::run);
+        completeForm(session.form());
+        WaypointGroup garden = WaypointGroup.create("Garden", "garden");
+        garden.add(Waypoint.at(3, 70, 4));
+        session.form().addGroups(List.of(garden));
+        session.beginPublish();
+
+        assertEquals(CatalogPublishSession.Phase.SUCCEEDED, session.snapshot().phase());
+        assertEquals("multiple", sent.get().zoneId());
+        var payload = com.babbur.waypointer.codec.WaypointCodec.decodeCanonicalV9(sent.get().payload());
+        assertEquals(List.of("hub", "garden"), payload.groups().stream()
+                .map(WaypointGroup::zoneId).toList());
+        assertEquals("Published route", sent.get().title());
+        assertEquals("A useful route description.", sent.get().description());
+    }
 
     @Test
     void firstPublishPausesForANameThenKeepsItsResultWithoutAView() {

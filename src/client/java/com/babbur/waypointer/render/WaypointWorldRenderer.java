@@ -686,7 +686,9 @@ class WaypointWorldRenderer {
             int previous = current - 1;
             while (previous >= 0
                     && (group.isWaypointDisabled(previous)
-                    || group.get(previous).hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET))) {
+                    || group.get(previous).hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)
+                    || group.isSubwaypoint(previous)
+                            && !group.get(previous).hasFlag(Waypoint.DUNGEON_COMPLETION_FLAGS))) {
                 previous--;
             }
             return previous;
@@ -695,7 +697,9 @@ class WaypointWorldRenderer {
         int previous = current - 1;
         while (previous >= 0
                 && (group.isWaypointDisabled(previous)
-                || group.get(previous).hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET))) {
+                || group.get(previous).hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)
+                || group.isSubwaypoint(previous)
+                        && !group.get(previous).hasFlag(Waypoint.DUNGEON_COMPLETION_FLAGS))) {
             previous--;
         }
         if (previous >= 0

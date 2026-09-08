@@ -168,14 +168,16 @@ final class CatalogPublishSession {
 
     private void startPublishing(
             long token, PublisherIdentity signer, String requestedName) {
-        WaypointGroup route;
+        List<WaypointGroup> routes;
+        String zoneId;
         String title;
         String description;
         CatalogPublishRequest.Visibility visibility;
         synchronized (this) {
             if (token != attempt || !form.valid()) return;
             phase = Phase.PUBLISHING;
-            route = form.group().exportSnapshot();
+            routes = form.groups().stream().map(WaypointGroup::exportSnapshot).toList();
+            zoneId = form.zoneId();
             title = form.normalizedTitle();
             description = form.normalizedDescription();
             visibility = form.visibility();
@@ -187,11 +189,11 @@ final class CatalogPublishSession {
         String claimedName = requestedName != null
                 ? requestedName : signer.publisherName();
         CompletableFuture.supplyAsync(
-                        () -> CatalogProtocol.prepareCatalogPayload(List.of(route)), worker)
+                        () -> CatalogProtocol.prepareCatalogPayload(routes), worker)
                 .thenCompose(prepared -> {
                     CatalogPublishRequest request = new CatalogPublishRequest(
                             prepared.payload(), title, description, visibility,
-                            route.zoneId(), claimedName);
+                            zoneId, claimedName);
                     return publisher.publish(request, signer, prepared)
                             .thenApply(completion -> new Published(
                                     completion, prepared.payload()));

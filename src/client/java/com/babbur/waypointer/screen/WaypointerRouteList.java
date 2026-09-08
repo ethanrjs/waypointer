@@ -44,12 +44,12 @@ final class WaypointerRouteList {
     private static final String INFO_TITLE = "Route list controls";
     private static final String[] INFO_LABELS = {
             "Right-click", "Double-click", "Space", "Shown/Hidden chip",
-            "Ctrl / Shift-click", "Delete key",
+            "Ctrl / Shift-click", "Ctrl+A", "Delete key",
     };
     private static final String[] INFO_DESCRIPTIONS = {
             "open the route menu", "open a route in the editor",
             "show or hide the focused route", "toggle a route in the world",
-            "select multiple routes", "delete the selection (confirm)",
+            "select multiple routes", "select all matching routes", "delete the selection (confirm)",
     };
 
     private final WaypointerScreen screen;
@@ -887,6 +887,10 @@ final class WaypointerRouteList {
         int textColor = group.enabled() ? TEXT : TEXT_MUTED;
         String name = RouteListPresentation.routeRowName(
                 group, index, screen.config.showRouteIndicesInGui());
+        if (screen.publishDraft != null && screen.publishDraft.draftForm().contains(group)) {
+            name = "✓ " + name;
+            textColor = ACCENT;
+        }
         graphics.text(font(), font().plainSubstrByWidth(name, textMaxWidth),
                 textX, y1 + 4, textColor, false);
 

@@ -487,7 +487,10 @@ final class WaypointerRouteCommands {
         index = waypointIndexFromNumber(index);
         WaypointGroup group = activeGroupOrError(src);
         if (group == null || !validateWaypointIndex(src, group, index)) return 0;
-        DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(group, index, x, y, z);
+        if (!DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(group, index, x, y, z)) {
+            error(src, DungeonRoomWaypointPlacement.unavailableMessage());
+            return 0;
+        }
         manager.fireDataChanged();
         success(src, Component.translatable(
                 "waypointer.command.waypoint.moved",
@@ -630,8 +633,9 @@ final class WaypointerRouteCommands {
     int runAddAt(FabricClientCommandSource src, int x, int y, int z, String name) {
         int index = addPersistentWaypointAt(manager, config, addFlow, x, y, z, name);
         if (index < 0) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.convert_first"));
+            error(src, definitionOnlyRouteRequiresConversion(manager)
+                    ? Component.translatable("waypointer.command.error.convert_first")
+                    : DungeonRoomWaypointPlacement.unavailableMessage());
             return 0;
         }
         return 1;
@@ -642,7 +646,9 @@ final class WaypointerRouteCommands {
                                        String name) {
         if (definitionOnlyRouteRequiresConversion(manager)) return -1;
         WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
-        target.add(storedCommandWaypoint(target, config, x, y, z, name));
+        Waypoint stored = storedCommandWaypoint(target, config, x, y, z, name);
+        if (stored == null) return -1;
+        target.add(stored);
         int index = target.size() - 1;
         addFlow.afterWaypointAdded(target, index, config.showWaypointChatShareButtons());
         manager.fireDataChanged();
@@ -653,7 +659,9 @@ final class WaypointerRouteCommands {
                                           WaypointAddFlow addFlow, int index,
                                           int x, int y, int z, String name) {
         if (target == null || index < 0 || index > target.size()) return -1;
-        target.insert(index, storedCommandWaypoint(target, config, x, y, z, name));
+        Waypoint stored = storedCommandWaypoint(target, config, x, y, z, name);
+        if (stored == null) return -1;
+        target.insert(index, stored);
         addFlow.afterWaypointAdded(target, index, config.showWaypointChatShareButtons());
         return index;
     }
@@ -696,7 +704,11 @@ final class WaypointerRouteCommands {
 
         PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
                 player.getX(), player.getY(), player.getZ(), config);
-        insertPersistentWaypointAt(target, config, addFlow, index, pos.x(), pos.y(), pos.z(), name);
+        if (insertPersistentWaypointAt(target, config, addFlow, index,
+                pos.x(), pos.y(), pos.z(), name) < 0) {
+            error(src, DungeonRoomWaypointPlacement.unavailableMessage());
+            return 0;
+        }
         manager.fireDataChanged();
 
         return 1;
@@ -718,7 +730,10 @@ final class WaypointerRouteCommands {
             return 0;
         }
 
-        insertPersistentWaypointAt(target, config, addFlow, index, x, y, z, name);
+        if (insertPersistentWaypointAt(target, config, addFlow, index, x, y, z, name) < 0) {
+            error(src, DungeonRoomWaypointPlacement.unavailableMessage());
+            return 0;
+        }
         manager.fireDataChanged();
         return 1;
     }

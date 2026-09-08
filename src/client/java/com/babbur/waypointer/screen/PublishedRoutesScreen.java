@@ -9,9 +9,11 @@ import com.babbur.waypointer.catalog.PublisherIdentityStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
+import com.babbur.waypointer.core.Zone;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
@@ -38,7 +40,7 @@ import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 public final class PublishedRoutesScreen extends Screen {
     private static final int PANEL_W = 440;
     private static final int PANEL_MARGIN = 12;
-    private static final int ROW_H = 24;
+    private static final int ROW_H = 34;
     private static final int ROW_GAP = 2;
     private static final int STATUS_ERROR = GuiTokens.DANGER;
     private static final int STATUS_OK = GuiTokens.SUCCESS;
@@ -63,6 +65,7 @@ public final class PublishedRoutesScreen extends Screen {
     private Button copyButton;
     private Button copyCodeButton;
     private Button deleteButton;
+    private EditBox searchBox;
     private int panelX;
     private int panelY;
     private int panelW;
@@ -96,17 +99,35 @@ public final class PublishedRoutesScreen extends Screen {
     protected void init() {
         screenActive = true;
         panelW = Math.min(PANEL_W, Math.max(240, width - PANEL_MARGIN * 2));
-        panelH = Math.min(270, Math.max(190, height - PANEL_MARGIN * 2));
+        panelH = Math.min(320, Math.max(190, height - PANEL_MARGIN * 2));
         panelX = Math.max(0, (width - panelW) / 2);
         panelY = Math.max(0, (height - panelH) / 2);
         contentX = panelX + PAD_OUTER;
         contentW = Math.max(1, panelW - PAD_OUTER * 2);
-        rowsY = panelY + 34;
+        int searchY = panelY + 34;
+        rowsY = searchY + BTN_H + GAP;
         int footerY = panelY + panelH - PAD_OUTER - BTN_H;
         statusY = footerY - 14;
         pagerY = statusY - BTN_H - GAP;
         model.setRowsPerPage(PublishedRoutesLayout.rowsPerPage(
                 rowsY, pagerY, ROW_H, ROW_GAP, GAP));
+
+        searchBox = new EditBox(font, contentX, searchY, contentW, BTN_H,
+                Component.translatable("waypointer.screen.published_routes.search"));
+        searchBox.setMaxLength(80);
+        searchBox.setHint(Component.translatable(
+                "waypointer.screen.published_routes.search"));
+        searchBox.setValue(model.query());
+        searchBox.setResponder(query -> {
+            int cursor = searchBox.getCursorPosition();
+            model.setQuery(query);
+            showEmptyState = model.publications().isEmpty();
+            rebuildWidgets();
+            setFocused(searchBox);
+            searchBox.setCursorPosition(cursor);
+        });
+        searchBox.active = !deleting;
+        addRenderableWidget(searchBox);
 
         addRenderableWidget(styledButton(contentX, footerY, 64, BTN_H,
                 Component.translatable("gui.back"), button -> onClose(), null));
@@ -235,16 +256,25 @@ public final class PublishedRoutesScreen extends Screen {
             }
 
             var font = Minecraft.getInstance().font;
-            int textY = y1 + (getHeight() - 8) / 2;
+            int textY = y1 + 6;
             String date = PublishedRoutesUiState.publishedDate(
                     publication.serverCreatedAt());
             int dateW = font.width(date);
             int dateX = x2 - GAP - dateW;
             int titleX = x1 + GAP + 2;
             String title = font.plainSubstrByWidth(
-                    publication.title(), Math.max(24, dateX - GAP - titleX));
+                    publication.title(), Math.max(24, x2 - GAP - titleX));
             graphics.text(font, title, titleX, textY, selected ? TEXT : TEXT_DIM, false);
-            graphics.text(font, date, dateX, textY, TEXT_MUTED, false);
+            String visibility = Component.translatable(publication.visibility()
+                    == com.babbur.waypointer.catalog.CatalogPublishRequest.Visibility.PUBLIC
+                    ? "waypointer.screen.route_publish.visibility.public"
+                    : "waypointer.screen.route_publish.visibility.unlisted").getString();
+            String metadata = Zone.fromId(publication.zoneId()).displayName()
+                    + " · " + visibility;
+            graphics.text(font, font.plainSubstrByWidth(metadata,
+                            Math.max(24, dateX - GAP - titleX)),
+                    titleX, textY + 13, TEXT_MUTED, false);
+            graphics.text(font, date, dateX, textY + 13, TEXT_MUTED, false);
         }
 
         @Override
@@ -368,6 +398,7 @@ public final class PublishedRoutesScreen extends Screen {
             nextButton.visible = hasRoutes;
             nextButton.active = controls.nextEnabled();
         }
+        if (searchBox != null) searchBox.active = !deleting;
     }
 
     private CatalogPublication selected() {
@@ -409,7 +440,9 @@ public final class PublishedRoutesScreen extends Screen {
         }
         if (showEmptyState) {
             String empty = Component.translatable(
-                    "waypointer.screen.published_routes.status.empty").getString();
+                    model.query().isBlank()
+                            ? "waypointer.screen.published_routes.status.empty"
+                            : "waypointer.screen.published_routes.status.no_matches").getString();
             int emptyY = rowsY + Math.max(0, pagerY - rowsY - font.lineHeight) / 2;
             graphics.text(font, empty,
                     contentX + (contentW - font.width(empty)) / 2,

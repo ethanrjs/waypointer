@@ -17,6 +17,60 @@ class CrystalHollowsTrackerBatchTest {
     @TempDir Path directory;
 
     @Test
+    void removedCompassWaypointStopsMinimapNavigationEvenWhenTheGroupRemains() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new com.babbur.waypointer.core.Zone("crystal_hollows", "Crystal Hollows"));
+        CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), null);
+        StructureSighting target = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
+                606, 88, 265, SightingConfidence.COMPASS, "compass", 1L);
+        tracker.focusCompassTarget(target);
+        var group = manager.getOrCreateTempGroup();
+        assertNotNull(tracker.compassNavigationTarget());
+        group.remove(0);
+        assertNotNull(manager.get(group.id()));
+        assertNull(tracker.compassNavigationTarget());
+
+        tracker.focusCompassTarget(target);
+        assertNotNull(tracker.compassNavigationTarget());
+        manager.clearTemporaryWaypoints();
+        assertNull(tracker.compassNavigationTarget());
+    }
+
+    @Test
+    void compassAutoFocusCanBeDisabledWithoutArrivalOrStealingManualFocus() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new com.babbur.waypointer.core.Zone("crystal_hollows", "Crystal Hollows"));
+        WaypointerConfig config = new WaypointerConfig();
+        CrystalHollowsTracker tracker = new CrystalHollowsTracker(manager, config, null);
+        StructureSighting target = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN,
+                606, 88, 265, SightingConfidence.COMPASS, "compass", 1L);
+        tracker.focusCompassTarget(target);
+        var group = manager.getOrCreateTempGroup();
+        var marker = group.get(0);
+        assertTrue(manager.tempWaypointFocusActive());
+        assertTrue(CompassMarkerState.isTarget(marker));
+        config.setCrystalHollowsCompassAutoFocus(false);
+        tracker.refreshCompassFocusSetting();
+        assertFalse(manager.tempWaypointFocusActive());
+        assertFalse(CompassMarkerState.arrived(marker));
+        assertEquals(target, tracker.compassTargetSighting());
+        tracker.focusCompassTarget(target);
+        assertFalse(manager.tempWaypointFocusActive());
+        assertFalse(CompassMarkerState.arrived(group.get(1)));
+        manager.focusTempWaypoint(group, 1);
+        tracker.refreshCompassFocusSetting();
+        assertTrue(manager.tempWaypointFocusActive());
+        config.setCrystalHollowsCompassAutoFocus(true);
+        tracker.refreshCompassFocusSetting();
+        tracker.focusCompassTarget(target);
+        manager.focusTempWaypoint(group, 0);
+        config.setCrystalHollowsCompassAutoFocus(false);
+        tracker.refreshCompassFocusSetting();
+        assertTrue(manager.tempWaypointFocusActive());
+        assertEquals(0, group.focusedVisibleIndex());
+    }
+
+    @Test
     void expiredRemoteNavigationWithoutLocalEvidenceIsRemoved() throws Exception {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new com.babbur.waypointer.core.Zone("crystal_hollows", "Crystal Hollows"));
@@ -96,10 +150,12 @@ class CrystalHollowsTrackerBatchTest {
             tracker.merge(new StructureSighting(target.structure(), 606, 88, 265,
                     SightingConfidence.SHARED_CHAT, "chat:player", 2L), false);
             assertFalse(CompassMarkerState.arrived(manager.getOrCreateTempGroup().get(0)));
+            assertNotNull(tracker.compassNavigationTarget());
             assertFalse(CompassMarkerState.arrived(manager.get(groupId).get(0)));
             tracker.merge(new StructureSighting(target.structure(), 606, 88, 265,
                     SightingConfidence.ENTITY, "entity:Keeper of Diamond", 3L), false);
             assertTrue(CompassMarkerState.arrived(manager.getOrCreateTempGroup().get(0)));
+            assertNull(tracker.compassNavigationTarget());
             assertFalse(manager.tempWaypointFocusActive());
             assertTrue(CompassMarkerState.arrived(manager.get(groupId).get(0)));
             tracker.rebuildProjection();

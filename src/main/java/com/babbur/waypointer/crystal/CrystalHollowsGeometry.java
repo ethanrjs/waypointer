@@ -5,6 +5,9 @@ import java.util.List;
 /** Authoritative Crystal Hollows bounds and fixed locations. */
 public final class CrystalHollowsGeometry {
 
+    public static final int MIN_XZ = 201;
+    public static final int MAX_XZ = 824;
+
     public static final CrystalHollowsPosition NUCLEUS_TARGET =
             new CrystalHollowsPosition(513, 106, 551);
     public static final double NUCLEUS_CENTRE_X = 513.5;
@@ -23,7 +26,7 @@ public final class CrystalHollowsGeometry {
             new Entrance("magma_sw", "Magma Fields SW", new CrystalHollowsPosition(469, 63, 541)),
             new Entrance("magma_nw", "Magma Fields NW", new CrystalHollowsPosition(471, 61, 499)));
 
-    private static final Box HOLLOWS = new Box(201, 30, 201, 824, 189, 824);
+    private static final Box HOLLOWS = new Box(MIN_XZ, 30, MIN_XZ, MAX_XZ, 189, MAX_XZ);
     private static final Box NUCLEUS = new Box(462, 63, 461, 564, 181, 565);
     private static final Box JUNGLE = new Box(201, 63, 201, 513, 189, 513);
     private static final Box MITHRIL = new Box(512, 63, 201, 824, 189, 513);

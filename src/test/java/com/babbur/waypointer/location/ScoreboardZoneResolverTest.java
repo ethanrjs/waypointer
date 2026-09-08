@@ -45,6 +45,17 @@ class ScoreboardZoneResolverTest {
                 """));
     }
 
+    @Test
+    void miningAreasAndResourcePackGlyphResolveToTheSavedIsland() {
+        for (String area : new String[]{"Crystal Nucleus", "Jungle", "Mithril Deposits",
+                "Goblin Holdout", "Precursor Remnants", "Magma Fields", "Mines of Divan",
+                "Jungle Temple", "Khazad-dûm", "Fairy Grotto"}) {
+            assertZone("crystal_hollows", "\uE067 " + area + " (400, 100, 500)");
+        }
+        assertZone("mineshaft_tungsten", "\uE067 Glacite Mineshafts\nTUNG_1");
+        assertZone("dwarven_mines", "\uE067 Glacite Tunnels");
+    }
+
     private static void assertZone(String expectedId, String sidebar) {
         Zone zone = ScoreboardZoneResolver.resolveSidebarText(sidebar);
         assertEquals(expectedId, zone == null ? null : zone.id());

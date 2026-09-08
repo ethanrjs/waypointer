@@ -137,6 +137,11 @@ public final class WaypointerConfig {
     private boolean dungeonWaypointsFeatureEnabled = false;
     private boolean skipAheadMechanicEnabled = true;
 
+    private boolean crystalHollowsMinimap = false;
+    private int crystalHollowsMinimapSize = 144;
+    private int crystalHollowsMinimapCorner = 0;
+    private boolean crystalHollowsMinimapLabels = true;
+    private boolean dianaWaypointsEnabled = true;
     private boolean crystalHollowsEnabled = true;
     private boolean crystalHollowsStructureWaypoints = true;
     private boolean crystalHollowsHideStructuresFolder = false;
@@ -149,6 +154,8 @@ public final class WaypointerConfig {
     private boolean crystalHollowsCompassRays = true;
     private boolean crystalHollowsAnnounceDetections = true;
     private boolean crystalHollowsNucleusWaypoints = false;
+    private boolean crystalHollowsCompassAutoFocus = true;
+    private boolean crystalHollowsTracers = true;
 
     private boolean irisShaderHudFallback = true;
     private int tempDefaultMode = Waypoint.TEMP_TIME;
@@ -563,6 +570,11 @@ public final class WaypointerConfig {
     public boolean showExportRoutePreview()    { return showExportRoutePreview; }
     public boolean dungeonWaypointsFeatureEnabled() { return dungeonWaypointsFeatureEnabled; }
     public boolean skipAheadMechanicEnabled() { return skipAheadMechanicEnabled; }
+    public boolean crystalHollowsMinimap() { return crystalHollowsMinimap; }
+    public int crystalHollowsMinimapSize() { return clamp(crystalHollowsMinimapSize, 96, 224); }
+    public int crystalHollowsMinimapCorner() { return clamp(crystalHollowsMinimapCorner, 0, 3); }
+    public boolean crystalHollowsMinimapLabels() { return crystalHollowsMinimapLabels; }
+    public boolean dianaWaypointsEnabled() { return dianaWaypointsEnabled; }
     public boolean crystalHollowsEnabled() { return crystalHollowsEnabled; }
     public boolean crystalHollowsStructureWaypoints() { return crystalHollowsStructureWaypoints; }
     public boolean crystalHollowsHideStructuresFolder() { return crystalHollowsHideStructuresFolder; }
@@ -575,6 +587,8 @@ public final class WaypointerConfig {
     public boolean crystalHollowsCompassRays() { return crystalHollowsCompassRays; }
     public boolean crystalHollowsAnnounceDetections() { return crystalHollowsAnnounceDetections; }
     public boolean crystalHollowsNucleusWaypoints() { return crystalHollowsNucleusWaypoints; }
+    public boolean crystalHollowsCompassAutoFocus() { return crystalHollowsCompassAutoFocus; }
+    public boolean crystalHollowsTracers() { return crystalHollowsTracers; }
     public boolean irisShaderHudFallback()      { return irisShaderHudFallback; }
     public int tempDefaultMode() {
         return tempDefaultMode < Waypoint.TEMP_TIME || tempDefaultMode > Waypoint.TEMP_UNTIL_LEAVE
@@ -833,6 +847,11 @@ public final class WaypointerConfig {
     public void setExportIncludeZone(boolean v)         { this.exportIncludeZone = v; save(); }
     public void setShowExportRoutePreview(boolean v)    { this.showExportRoutePreview = v; save(); }
     public void setDungeonWaypointsFeatureEnabled(boolean v) { this.dungeonWaypointsFeatureEnabled = v; save(); }
+    public void setCrystalHollowsMinimap(boolean v) { crystalHollowsMinimap = v; save(); }
+    public void setCrystalHollowsMinimapSize(int v) { crystalHollowsMinimapSize = clamp(v, 96, 224); save(); }
+    public void setCrystalHollowsMinimapCorner(int v) { crystalHollowsMinimapCorner = clamp(v, 0, 3); save(); }
+    public void setCrystalHollowsMinimapLabels(boolean v) { crystalHollowsMinimapLabels = v; save(); }
+    public void setDianaWaypointsEnabled(boolean v) { dianaWaypointsEnabled = v; save(); }
     public void setCrystalHollowsEnabled(boolean v) { crystalHollowsEnabled = v; save(); }
     public void setCrystalHollowsStructureWaypoints(boolean v) { crystalHollowsStructureWaypoints = v; save(); }
     public void setCrystalHollowsHideStructuresFolder(boolean v) { crystalHollowsHideStructuresFolder = v; save(); }
@@ -845,6 +864,8 @@ public final class WaypointerConfig {
     public void setCrystalHollowsCompassRays(boolean v) { crystalHollowsCompassRays = v; save(); }
     public void setCrystalHollowsAnnounceDetections(boolean v) { crystalHollowsAnnounceDetections = v; save(); }
     public void setCrystalHollowsNucleusWaypoints(boolean v) { crystalHollowsNucleusWaypoints = v; save(); }
+    public void setCrystalHollowsCompassAutoFocus(boolean v) { crystalHollowsCompassAutoFocus = v; save(); }
+    public void setCrystalHollowsTracers(boolean v) { crystalHollowsTracers = v; save(); }
     public void setShowLabelBackdrop(boolean v)        { this.showLabelBackdrop = v; save(); }
     public void setShowLabelTextShadow(boolean v)      { this.showLabelTextShadow = v; save(); }
     public void setMaxWaypointLabels(int v) {
@@ -991,6 +1012,11 @@ public final class WaypointerConfig {
         showExportRoutePreview = replacement.showExportRoutePreview;
         dungeonWaypointsFeatureEnabled = replacement.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = replacement.skipAheadMechanicEnabled;
+        crystalHollowsMinimap = replacement.crystalHollowsMinimap;
+        crystalHollowsMinimapSize = replacement.crystalHollowsMinimapSize;
+        crystalHollowsMinimapCorner = replacement.crystalHollowsMinimapCorner;
+        crystalHollowsMinimapLabels = replacement.crystalHollowsMinimapLabels;
+        dianaWaypointsEnabled = replacement.dianaWaypointsEnabled;
         crystalHollowsEnabled = replacement.crystalHollowsEnabled;
         crystalHollowsStructureWaypoints = replacement.crystalHollowsStructureWaypoints;
         crystalHollowsHideStructuresFolder = replacement.crystalHollowsHideStructuresFolder;
@@ -1003,6 +1029,8 @@ public final class WaypointerConfig {
         crystalHollowsCompassRays = replacement.crystalHollowsCompassRays;
         crystalHollowsAnnounceDetections = replacement.crystalHollowsAnnounceDetections;
         crystalHollowsNucleusWaypoints = replacement.crystalHollowsNucleusWaypoints;
+        crystalHollowsCompassAutoFocus = replacement.crystalHollowsCompassAutoFocus;
+        crystalHollowsTracers = replacement.crystalHollowsTracers;
         irisShaderHudFallback = replacement.irisShaderHudFallback;
         tempDefaultMode = replacement.tempDefaultMode;
         tempDefaultDurationSec = replacement.tempDefaultDurationSec;
@@ -1068,6 +1096,9 @@ public final class WaypointerConfig {
         showExportRoutePreview = false;
         dungeonWaypointsFeatureEnabled = false;
         skipAheadMechanicEnabled = false;
+        crystalHollowsMinimap = false;
+        crystalHollowsMinimapLabels = false;
+        dianaWaypointsEnabled = false;
         crystalHollowsEnabled = false;
         crystalHollowsStructureWaypoints = false;
         crystalHollowsHideStructuresFolder = false;
@@ -1080,6 +1111,8 @@ public final class WaypointerConfig {
         crystalHollowsCompassRays = false;
         crystalHollowsAnnounceDetections = false;
         crystalHollowsNucleusWaypoints = false;
+        crystalHollowsCompassAutoFocus = false;
+        crystalHollowsTracers = false;
         irisShaderHudFallback = false;
         beaconBeamMode = BeaconBeamMode.OFF;
         tempDefaultMode = Waypoint.TEMP_UNTIL_LEAVE;
@@ -1179,6 +1212,11 @@ public final class WaypointerConfig {
         showExportRoutePreview = defaults.showExportRoutePreview;
         dungeonWaypointsFeatureEnabled = defaults.dungeonWaypointsFeatureEnabled;
         skipAheadMechanicEnabled = defaults.skipAheadMechanicEnabled;
+        crystalHollowsMinimap = defaults.crystalHollowsMinimap;
+        crystalHollowsMinimapSize = defaults.crystalHollowsMinimapSize;
+        crystalHollowsMinimapCorner = defaults.crystalHollowsMinimapCorner;
+        crystalHollowsMinimapLabels = defaults.crystalHollowsMinimapLabels;
+        dianaWaypointsEnabled = defaults.dianaWaypointsEnabled;
         crystalHollowsEnabled = defaults.crystalHollowsEnabled;
         crystalHollowsStructureWaypoints = defaults.crystalHollowsStructureWaypoints;
         crystalHollowsHideStructuresFolder = defaults.crystalHollowsHideStructuresFolder;
@@ -1191,6 +1229,8 @@ public final class WaypointerConfig {
         crystalHollowsCompassRays = defaults.crystalHollowsCompassRays;
         crystalHollowsAnnounceDetections = defaults.crystalHollowsAnnounceDetections;
         crystalHollowsNucleusWaypoints = defaults.crystalHollowsNucleusWaypoints;
+        crystalHollowsCompassAutoFocus = defaults.crystalHollowsCompassAutoFocus;
+        crystalHollowsTracers = defaults.crystalHollowsTracers;
         irisShaderHudFallback = defaults.irisShaderHudFallback;
         tempDefaultMode = defaults.tempDefaultMode;
         tempDefaultDurationSec = defaults.tempDefaultDurationSec;

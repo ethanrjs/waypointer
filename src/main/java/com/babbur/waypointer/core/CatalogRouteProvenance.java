@@ -16,7 +16,7 @@ public record CatalogRouteProvenance(
 
     private static final Pattern ROUTE_ID = Pattern.compile("[A-Za-z0-9_-]{22}");
     private static final Pattern PAYLOAD_HASH = Pattern.compile("[A-Za-z0-9_-]{43}");
-    private static final int MAX_GROUPS = 64;
+    private static final int MAX_GROUPS = 256;
 
     public CatalogRouteProvenance {
         apiRoot = normalizeApiRoot(apiRoot);

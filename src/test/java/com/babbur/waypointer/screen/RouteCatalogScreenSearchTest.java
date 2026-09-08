@@ -16,8 +16,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class RouteCatalogScreenSearchTest {
 
     @Test
-    void initialZoneFilterFollowsTheCurrentZoneButNotDungeonsOrUnknowns() {
-        org.junit.jupiter.api.Assertions.assertEquals("hub",
+    void keyboardPagingAndBoundaryJumpsStayWithinLoadedResults() {
+        assertEquals(-1, RouteCatalogScreen.selectionIndex(-1, 1, 0));
+        assertEquals(0, RouteCatalogScreen.selectionIndex(-1, 4, 10));
+        assertEquals(9, RouteCatalogScreen.selectionIndex(-1, -4, 10));
+        assertEquals(6, RouteCatalogScreen.selectionIndex(2, 4, 10));
+        assertEquals(2, RouteCatalogScreen.selectionIndex(6, -4, 10));
+        assertEquals(0, RouteCatalogScreen.selectionIndex(6, -10, 10));
+        assertEquals(9, RouteCatalogScreen.selectionIndex(2, 10, 10));
+    }
+
+    @Test
+    void splitViewFitsNormalGuiScalesWithoutSqueezingRouteTitles() {
+        assertEquals(320, RouteCatalogScreen.catalogListWidth(320));
+        for (int contentWidth : new int[] {420, 424, 584, 744}) {
+            int listWidth = RouteCatalogScreen.catalogListWidth(contentWidth);
+            assertTrue(listWidth >= 224);
+            assertTrue(contentWidth - listWidth - GuiTokens.GAP_SECTION >= 180);
+        }
+    }
+
+    @Test
+    void initialZoneFilterAlwaysStartsOnAllZones() {
+        org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
                         com.babbur.waypointer.core.Zone.fromId("hub")));
         org.junit.jupiter.api.Assertions.assertNull(
@@ -34,7 +55,7 @@ class RouteCatalogScreenSearchTest {
         org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
                         com.babbur.waypointer.core.Zone.fromId("dungeon")));
-        org.junit.jupiter.api.Assertions.assertEquals("dungeon_hub",
+        org.junit.jupiter.api.Assertions.assertNull(
                 RouteCatalogScreen.initialZoneFilterId(
                         com.babbur.waypointer.core.Zone.fromId("dungeon_hub")));
     }
@@ -108,6 +129,7 @@ class RouteCatalogScreenSearchTest {
         assertEquals("", ids.get(0));
         assertTrue(ids.contains("hub"));
         assertTrue(ids.contains("crystal_hollows"));
+        assertTrue(ids.contains("dungeon"), "Catacombs route packs have one catalog zone");
         assertFalse(ids.contains("unknown"));
         assertFalse(ids.contains("private_world"));
         assertFalse(ids.contains("mineshaft"));

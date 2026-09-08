@@ -134,6 +134,14 @@ public final class WaypointerConfigCodec {
     private static final int CRYSTAL_HOLLOWS_METAL_DETECTOR = 102;
     private static final int CRYSTAL_HOLLOWS_REMOTE_SHARING = 103;
 
+    private static final int CRYSTAL_HOLLOWS_MINIMAP = 104;
+    private static final int CRYSTAL_HOLLOWS_MINIMAP_SIZE = 105;
+    private static final int CRYSTAL_HOLLOWS_MINIMAP_CORNER = 106;
+    private static final int CRYSTAL_HOLLOWS_MINIMAP_LABELS = 107;
+    private static final int DIANA_WAYPOINTS_ENABLED = 108;
+    private static final int CRYSTAL_HOLLOWS_TRACERS = 109;
+    private static final int CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS = 110;
+
     private WaypointerConfigCodec() {
     }
 
@@ -296,6 +304,13 @@ public final class WaypointerConfigCodec {
                 out.writeUTF(soundId);
             }
         }
+        writeBoolean(out, CRYSTAL_HOLLOWS_MINIMAP, config.crystalHollowsMinimap(), defaults.crystalHollowsMinimap());
+        writeInt(out, CRYSTAL_HOLLOWS_MINIMAP_SIZE, config.crystalHollowsMinimapSize(), defaults.crystalHollowsMinimapSize());
+        writeInt(out, CRYSTAL_HOLLOWS_MINIMAP_CORNER, config.crystalHollowsMinimapCorner(), defaults.crystalHollowsMinimapCorner());
+        writeBoolean(out, CRYSTAL_HOLLOWS_MINIMAP_LABELS, config.crystalHollowsMinimapLabels(), defaults.crystalHollowsMinimapLabels());
+        writeBoolean(out, DIANA_WAYPOINTS_ENABLED, config.dianaWaypointsEnabled(), defaults.dianaWaypointsEnabled());
+        writeBoolean(out, CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS, config.crystalHollowsCompassAutoFocus(), defaults.crystalHollowsCompassAutoFocus());
+        writeBoolean(out, CRYSTAL_HOLLOWS_TRACERS, config.crystalHollowsTracers(), defaults.crystalHollowsTracers());
         writeBoolean(out, CRYSTAL_HOLLOWS_ENABLED,
                 config.crystalHollowsEnabled(), defaults.crystalHollowsEnabled());
         writeBoolean(out, CRYSTAL_HOLLOWS_STRUCTURE_WAYPOINTS,
@@ -442,6 +457,13 @@ public final class WaypointerConfigCodec {
                         WaypointerConfig.EtherwarpAlignmentSound.values(),
                         WaypointerConfig.EtherwarpAlignmentSound.OFF));
                 case ETHERWARP_ALIGNMENT_SOUND_ID -> config.setEtherwarpAlignmentSound(in.readUTF());
+                case CRYSTAL_HOLLOWS_MINIMAP -> config.setCrystalHollowsMinimap(in.readBoolean());
+                case CRYSTAL_HOLLOWS_MINIMAP_SIZE -> config.setCrystalHollowsMinimapSize(in.readInt());
+                case CRYSTAL_HOLLOWS_MINIMAP_CORNER -> config.setCrystalHollowsMinimapCorner(in.readInt());
+                case CRYSTAL_HOLLOWS_MINIMAP_LABELS -> config.setCrystalHollowsMinimapLabels(in.readBoolean());
+                case DIANA_WAYPOINTS_ENABLED -> config.setDianaWaypointsEnabled(in.readBoolean());
+                case CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS -> config.setCrystalHollowsCompassAutoFocus(in.readBoolean());
+                case CRYSTAL_HOLLOWS_TRACERS -> config.setCrystalHollowsTracers(in.readBoolean());
                 case CRYSTAL_HOLLOWS_ENABLED -> config.setCrystalHollowsEnabled(in.readBoolean());
                 case CRYSTAL_HOLLOWS_STRUCTURE_WAYPOINTS ->
                         config.setCrystalHollowsStructureWaypoints(in.readBoolean());
@@ -574,7 +596,7 @@ public final class WaypointerConfigCodec {
     }
 
     static boolean isActiveFieldTag(int tag) {
-        return tag >= DEFAULT_REACH_RADIUS && tag <= CRYSTAL_HOLLOWS_REMOTE_SHARING
+        return tag >= DEFAULT_REACH_RADIUS && tag <= CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS
                 && tag != SHOW_COMPLETED
                 && tag != LEGACY_CHECK_FOR_UPDATES
                 && tag != TEMP_DEFAULT_DURATION_MIN
@@ -596,7 +618,9 @@ public final class WaypointerConfigCodec {
                 || tag == TEMP_DEFAULT_DURATION_SEC
                 || tag == SEQUENCE_PREVIOUS_WAYPOINT_COUNT
                 || tag == SEQUENCE_NEXT_WAYPOINT_COUNT
-                || tag == WAYPOINT_SKIP_FADE_MS;
+                || tag == WAYPOINT_SKIP_FADE_MS
+                || tag == CRYSTAL_HOLLOWS_MINIMAP_SIZE
+                || tag == CRYSTAL_HOLLOWS_MINIMAP_CORNER;
     }
 
     static boolean isStringListFieldTag(int tag) {
@@ -663,7 +687,8 @@ public final class WaypointerConfigCodec {
                     DUNGEON_ENTRY_PATH_COLOR, WAYPOINT_OUTLINE_COLOR,
                     SEQUENCE_PREVIOUS_WAYPOINT_COUNT, SEQUENCE_NEXT_WAYPOINT_COUNT,
                     SEQUENCE_PREVIOUS_WAYPOINT_COLOR, SEQUENCE_CURRENT_WAYPOINT_COLOR,
-                    SEQUENCE_NEXT_WAYPOINT_COLOR, WAYPOINT_SKIP_FADE_MS -> Integer.BYTES;
+                    SEQUENCE_NEXT_WAYPOINT_COLOR, WAYPOINT_SKIP_FADE_MS,
+                    CRYSTAL_HOLLOWS_MINIMAP_SIZE, CRYSTAL_HOLLOWS_MINIMAP_CORNER -> Integer.BYTES;
             case BOX_STYLE, BEACON_BEAM_MODE, IMPORTED_ROUTE_COLOR_MODE,
                     ETHERWARP_ALIGNMENT_SOUND_TYPE -> 1;
             case CHAT_COORD_SENDER_BLACKLIST, ETHERWARP_ALIGNMENT_SOUND_ID -> -1;

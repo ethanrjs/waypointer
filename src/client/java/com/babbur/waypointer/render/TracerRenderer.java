@@ -2,6 +2,7 @@ package com.babbur.waypointer.render;
 
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.crystal.CompassMarkerState;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
 import com.babbur.waypointer.crystal.MetalDetectorController;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.compat.MinecraftCompat;
@@ -91,7 +92,8 @@ public final class TracerRenderer implements HudElement {
                     config.hideReachedStaticWaypointsUntilCycleComplete(),
                     maxDistance > 0.0 ? maxDistance * maxDistance : 0.0);
         }
-        if (target != null && CompassMarkerState.arrived(target)) return null;
+        if (target != null && (CompassMarkerState.arrived(target)
+                || !crystalHollowsTracerAllowed(group, target, config))) return null;
         if (target == null) {
             if (recordDecision) RenderDiagnostics.recordNoStraightTracer(group, "no current target");
             return null;
@@ -211,8 +213,18 @@ public final class TracerRenderer implements HudElement {
         return fade == null ? 1 : fade.tracerAlpha(outgoing ? fade.outgoing() : group.currentIndex());
     }
 
+    static boolean crystalHollowsTracerAllowed(WaypointGroup group, Waypoint target,
+                                                WaypointerConfig config) {
+        return config == null || config.crystalHollowsTracers()
+                || !(CompassMarkerState.isTarget(target)
+                    || MetalDetectorController.isDetectorGroup(group)
+                    || group != null && group.runtimeOnly()
+                        && group.id().startsWith(CrystalHollowsStructureFolder.GROUP_PREFIX));
+    }
+
     static boolean tracersEnabled(WaypointGroup group, WaypointerConfig config,
                                   DungeonConfig dungeonConfig) {
+        if (!crystalHollowsTracerAllowed(group, group == null ? null : group.current(), config)) return false;
         if (MetalDetectorController.isDetectorGroup(group)
                 && (group.size() != 1 || group.loadMode() != WaypointGroup.LoadMode.SEQUENCE)) return false;
         if (group != null

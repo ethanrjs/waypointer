@@ -10,6 +10,7 @@ import com.babbur.waypointer.dungeon.DungeonWaypointTrigger;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /** Converts legacy dungeon room entries into standard Waypointer routes. */
 final class DungeonRouteGroupAdapter {
@@ -20,6 +21,12 @@ final class DungeonRouteGroupAdapter {
 
     static WaypointGroup fromWaypoints(String roomId, String name,
                                        List<DungeonWaypoint> dungeonWaypoints) {
+        return fromWaypoints(roomId, name, dungeonWaypoints, Map.of());
+    }
+
+    static WaypointGroup fromWaypoints(String roomId, String name,
+                                       List<DungeonWaypoint> dungeonWaypoints,
+                                       Map<Integer, List<int[]>> pathGuides) {
         String normalizedRoomId = DungeonRoomCatalogEntry.normalizeId(roomId);
         if (normalizedRoomId.isBlank()) {
             throw new IllegalArgumentException("dungeon route has no room id");
@@ -52,6 +59,7 @@ final class DungeonRouteGroupAdapter {
             }
 
             if (dungeonWaypoint.secretIndex() != currentStage) {
+                addPathGuides(waypoints, pathGuides.get(currentStage));
                 currentStage = dungeonWaypoint.secretIndex();
                 stageHasMain = false;
             }
@@ -89,12 +97,25 @@ final class DungeonRouteGroupAdapter {
             }
         }
 
+        addPathGuides(waypoints, pathGuides.get(currentStage));
+
         if (!hasProgressWaypoint) {
             group.setLoadMode(WaypointGroup.LoadMode.STATIC);
             for (Waypoint support : leadingSupport) waypoints.add(support.withSubwaypoint(false));
         }
         group.addAll(waypoints);
         return group;
+    }
+
+    private static void addPathGuides(List<Waypoint> waypoints, List<int[]> path) {
+        if (path == null) return;
+        for (int[] position : path) {
+            // Breadcrumbs guide the player without becoming required action steps.
+            waypoints.add(new Waypoint(position[0], position[1], position[2], "", 0x8AA7BA,
+                    Waypoint.FLAG_SUBWAYPOINT | Waypoint.FLAG_SMALL_SUBWAYPOINT
+                            | Waypoint.FLAG_FILLED_SUBWAYPOINT | Waypoint.FLAG_HIDE_NAME
+                            | Waypoint.FLAG_HIDE_BEACON, 0.0));
+        }
     }
 
     private static int actionColor(DungeonWaypoint waypoint) {

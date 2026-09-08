@@ -17,7 +17,10 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DungeonRoomWaypointPlacementTest {
 
@@ -83,6 +86,47 @@ class DungeonRoomWaypointPlacementTest {
         assertEquals(-96, editedActual.x());
         assertEquals(actual.y(), editedActual.y());
         assertEquals(actual.z(), editedActual.z());
+    }
+
+    @Test
+    void rejectsWorldPlacementOutsideTheStoredRoomWithoutChangingLocalWaypoints() throws Exception {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        DungeonStateTracker tracker = new DungeonStateTracker(manager, new DungeonConfig());
+        Field trackerField = WaypointerClient.class.getDeclaredField("dungeonTracker");
+        trackerField.setAccessible(true);
+        Object previousTracker = trackerField.get(null);
+        WaypointGroup route = new WaypointGroup("saved", "Saved route", "creeper-beams");
+        route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        route.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        Waypoint original = Waypoint.at(3, 70, 5).withName("keep me");
+        route.add(original);
+        Waypoint actual = Waypoint.at(-95, 68, -121);
+        try {
+            trackerField.set(null, tracker);
+            assertFalse(DungeonRoomWaypointPlacement.canPlaceInCurrentRoom(route));
+            assertNull(DungeonRoomWaypointPlacement.toStoredWaypoint(route, actual));
+            assertNull(DungeonRoomWaypointPlacement.toStoredPrecisePosition(route,
+                    actual.preciseX(), actual.preciseY(), actual.preciseZ()));
+            assertFalse(DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(
+                    route, 0, actual.x(), actual.y(), actual.z()));
+            assertEquals(List.of(original), route.waypoints());
+
+            tracker.setCurrentRoom(room(Direction.NW, -74, -138));
+            assertTrue(DungeonRoomWaypointPlacement.canPlaceInCurrentRoom(route));
+            WaypointGroup otherRoom = new WaypointGroup("other", "Altar", "altar");
+            otherRoom.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+            assertNull(DungeonRoomWaypointPlacement.toStoredWaypoint(otherRoom, actual));
+
+            tracker.setCurrentRoom(null);
+            assertFalse(DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(
+                    route, 0, actual.x(), actual.y(), actual.z()));
+            route.set(0, original.withPos(4, 71, 6));
+            assertEquals(4, route.get(0).x(), "manual room-local edits remain available");
+            WaypointGroup regular = WaypointGroup.create("Hub", "hub");
+            assertEquals(actual, DungeonRoomWaypointPlacement.toStoredWaypoint(regular, actual));
+        } finally {
+            trackerField.set(null, previousTracker);
+        }
     }
 
     @ParameterizedTest

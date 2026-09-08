@@ -16,6 +16,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DungeonRoomRouteLibraryTest {
 
     @Test
+    void secretRoomCountsIgnoreVariantsEmptyRoomsAndRuntimeCopies() {
+        WaypointGroup first = route("first", "arrow-trap", true, true);
+        WaypointGroup variant = route("variant", "arrow-trap", true, true);
+        WaypointGroup second = route("second", "altar", true, true);
+        WaypointGroup zeroSecrets = route("zero", "creeper-beams", true, true);
+        WaypointGroup temporary = route("temp", "andesite", true, true);
+        temporary.setTemp(true);
+        WaypointGroup runtime = route("runtime", "archway", true, true);
+        runtime.setRuntimeOnly(true);
+        WaypointGroup empty = dungeon("empty", "atlas");
+        WaypointGroup regular = route("regular", "banners", false, true);
+        WaypointGroup unknown = route("unknown", "custom-room", true, true);
+
+        assertEquals(0, DungeonRoomRouteLibrary.secretRoomCount(null));
+        assertEquals(3, DungeonRoomRouteLibrary.secretRoomCount(
+                List.of(first, variant, second, zeroSecrets, temporary, runtime, empty, regular, unknown)),
+                "unknown room metadata must not be treated as a known zero");
+    }
+
+    @Test
     void storedRouteSelectionIgnoresNonDurableAndPrefersEnabled() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup regular = route("regular", "room", false, true);
@@ -80,15 +100,16 @@ class DungeonRoomRouteLibraryTest {
     }
 
     @Test
-    void importDisablesOnlyExistingDurableDungeonRoutes() {
+    void importDisablesOnlyExistingDurableRoutesInImportedRooms() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup existing = route("existing", "old", true, true);
+        WaypointGroup sameRoom = route("same-room", "new", true, true);
         WaypointGroup regular = route("regular", "hub", false, true);
         WaypointGroup temp = route("temp", "old", true, true);
         temp.setTemp(true);
         WaypointGroup runtime = route("runtime", "old", true, true);
         runtime.setRuntimeOnly(true);
-        manager.addAll(List.of(existing, regular, temp, runtime));
+        manager.addAll(List.of(existing, sameRoom, regular, temp, runtime));
         WaypointGroup imported = route("imported", "new", false, true);
 
         assertTrue(DungeonRoomRouteLibrary.installRoutes(null, List.of(imported)).isEmpty());
@@ -96,7 +117,8 @@ class DungeonRoomRouteLibraryTest {
         assertEquals(List.of(imported), DungeonRoomRouteLibrary.installRoutes(
                 manager, java.util.Arrays.asList(null, dungeon("empty-import", "new"), imported)));
 
-        assertFalse(existing.enabled());
+        assertTrue(existing.enabled());
+        assertFalse(sameRoom.enabled());
         assertTrue(regular.enabled());
         assertTrue(temp.enabled());
         assertTrue(runtime.enabled());

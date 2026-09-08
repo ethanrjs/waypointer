@@ -20,8 +20,16 @@ public final class HypixelApiZoneSource implements ZoneSource {
 
     private Zone lastEmitted;
     private Zone lastRawPacketZone;
+    private boolean receivedLocationPacket;
+    private Object worldIdentity;
     private Consumer<Zone> listener;
     private int tickCounter;
+
+    public HypixelApiZoneSource() {}
+
+    HypixelApiZoneSource(Consumer<Zone> listener) {
+        this.listener = listener;
+    }
 
     @Override
     public void register(Consumer<Zone> listener) {
@@ -31,18 +39,17 @@ public final class HypixelApiZoneSource implements ZoneSource {
         api.createHandler(ClientboundLocationPacket.class, this::handleLocationPacket);
 
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
-        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> lastServerName = null);
+        ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> resetLocation());
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> resetLocation());
     }
 
     private void handleLocationPacket(ClientboundLocationPacket packet) {
+        Minecraft mc = Minecraft.getInstance();
+        updateWorld(mc.level);
         String serverType = packet.getServerType().map(s -> s.name()).orElse(null);
         String map  = packet.getMap().orElse(null);
         String mode = packet.getMode().orElse(null);
-        lastServerName = packet.getServerName();
-
-        lastRawPacketZone = Zone.resolve(serverType, map, mode);
-        emitRefined(serverType, map, mode);
+        acceptLocation(serverType, map, mode, packet.getServerName(), SidebarTexts.collectColorStripped(mc));
     }
 
     private void onTick(Minecraft mc) {
@@ -50,15 +57,37 @@ public final class HypixelApiZoneSource implements ZoneSource {
             resetLocation();
             return;
         }
+        updateWorld(mc.level);
         if (++tickCounter < REFINE_POLL_TICKS) return;
         tickCounter = 0;
-        if (lastRawPacketZone == null) return;
-        if (!shouldPollSidebarRefinement(lastRawPacketZone)) return;
-        emitRefined(null, null, null);
+        if (receivedLocationPacket && !shouldPollSidebarRefinement(lastRawPacketZone)) return;
+        acceptSidebar(SidebarTexts.collectColorStripped(mc));
     }
 
-    private void resetLocation() {
+    void updateWorld(Object world) {
+        if (worldIdentity == world) return;
+        resetLocation();
+        worldIdentity = world;
+    }
+
+    void acceptLocation(String serverType, String map, String mode, String serverName, String sidebar) {
+        lastServerName = serverName;
+        receivedLocationPacket = true;
+        lastRawPacketZone = Zone.resolve(serverType, map, mode);
+        emitRefined(serverType, map, mode, sidebar);
+    }
+
+    void acceptSidebar(String sidebar) {
+        // An empty update is not evidence that an API-confirmed island/layout changed.
+        // World changes and new location packets still clear this state immediately.
+        if (lastRawPacketZone != null && (sidebar == null || sidebar.isBlank())) return;
+        emitRefined(null, null, null, sidebar);
+    }
+
+    void resetLocation() {
         lastRawPacketZone = null;
+        receivedLocationPacket = false;
+        worldIdentity = null;
         lastServerName = null;
         tickCounter = 0;
         lastDebugSnapshot = null;
@@ -74,11 +103,11 @@ public final class HypixelApiZoneSource implements ZoneSource {
         return CatacombsFloorRefiner.shouldPoll(zone);
     }
 
-    private void emitRefined(String serverType, String map, String mode) {
-        Minecraft mc = Minecraft.getInstance();
-        String blob = SidebarTexts.collectColorStripped(mc);
-        String sidebarText = blob != null ? blob : "";
-        Zone refined = Zone.refineIfDwarvenMinesContext(lastRawPacketZone, sidebarText);
+    private void emitRefined(String serverType, String map, String mode, String sidebar) {
+        String sidebarText = sidebar != null ? sidebar : "";
+        Zone refined = receivedLocationPacket
+                ? Zone.refineIfDwarvenMinesContext(lastRawPacketZone, sidebarText)
+                : ScoreboardZoneResolver.resolveSidebarText(sidebarText);
         refined = CatacombsFloorRefiner.refine(refined, sidebarText);
         lastDebugSnapshot = new DebugSnapshot(
                 serverType, map, mode, lastServerName, lastRawPacketZone, refined, Instant.now());

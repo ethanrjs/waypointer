@@ -1330,6 +1330,91 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void minimapAndDianaPersistThroughBothCodecsAndRespectDisableReset() throws IOException {
+        WaypointerConfig config = new WaypointerConfig();
+        assertFalse(config.crystalHollowsMinimap());
+        assertFalse(WaypointerConfig.fromJson("{}").crystalHollowsMinimap());
+        assertTrue(config.crystalHollowsMinimapLabels());
+        assertTrue(config.dianaWaypointsEnabled());
+        assertEquals(144, config.crystalHollowsMinimapSize());
+        assertEquals(0, config.crystalHollowsMinimapCorner());
+        config.setCrystalHollowsMinimap(true);
+        config.setCrystalHollowsMinimapLabels(false);
+        config.setDianaWaypointsEnabled(false);
+        config.setCrystalHollowsMinimapSize(224);
+        config.setCrystalHollowsMinimapCorner(3);
+        assertEquals(List.of(104, 105, 106, 107, 108),
+                WaypointerConfigCodec.encodeTaggedFields(config).stream()
+                        .map(WaypointerConfigCodec.TaggedField::tag).toList());
+        for (WaypointerConfig decoded : List.of(
+                WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config)),
+                V10ConfigBodyCodec.decode(V10ConfigBodyCodec.encode(config)))) {
+            assertTrue(decoded.crystalHollowsMinimap());
+            assertFalse(decoded.crystalHollowsMinimapLabels());
+            assertFalse(decoded.dianaWaypointsEnabled());
+            assertEquals(224, decoded.crystalHollowsMinimapSize());
+            assertEquals(3, decoded.crystalHollowsMinimapCorner());
+            WaypointerConfig copied = new WaypointerConfig();
+            copied.replaceWith(decoded);
+            assertEquals(WaypointerConfigCodec.encode(decoded), WaypointerConfigCodec.encode(copied));
+        }
+        config.resetToDefaults();
+        assertFalse(config.crystalHollowsMinimap());
+        assertTrue(config.crystalHollowsMinimapLabels());
+        assertTrue(config.dianaWaypointsEnabled());
+        assertEquals(144, config.crystalHollowsMinimapSize());
+        assertEquals(0, config.crystalHollowsMinimapCorner());
+        config.setCrystalHollowsMinimapSize(180);
+        config.setCrystalHollowsMinimapCorner(2);
+        config.disableAllSettings();
+        assertFalse(config.crystalHollowsMinimap());
+        assertFalse(config.crystalHollowsMinimapLabels());
+        assertFalse(config.dianaWaypointsEnabled());
+        assertEquals(180, config.crystalHollowsMinimapSize());
+        assertEquals(2, config.crystalHollowsMinimapCorner());
+        config.setCrystalHollowsMinimapSize(-1);
+        assertEquals(96, config.crystalHollowsMinimapSize());
+        config.setCrystalHollowsMinimapSize(Integer.MAX_VALUE);
+        assertEquals(224, config.crystalHollowsMinimapSize());
+        WaypointerConfig loaded = WaypointerConfig.fromJson("""
+                {"crystalHollowsMinimap":true,"crystalHollowsMinimapLabels":false,
+                 "dianaWaypointsEnabled":false,"crystalHollowsMinimapSize":1,
+                 "crystalHollowsMinimapCorner":99}
+                """);
+        assertTrue(loaded.crystalHollowsMinimap());
+        assertFalse(loaded.crystalHollowsMinimapLabels());
+        assertFalse(loaded.dianaWaypointsEnabled());
+        assertEquals(96, loaded.crystalHollowsMinimapSize());
+        assertEquals(3, loaded.crystalHollowsMinimapCorner());
+    }
+
+    @Test
+    void crystalHollowsCustomizationSurvivesConfigCodesCopiesAndReset() {
+        WaypointerConfig config = new WaypointerConfig();
+        assertTrue(config.crystalHollowsTracers());
+        assertTrue(config.crystalHollowsCompassAutoFocus());
+        config.setCrystalHollowsTracers(false);
+        config.setCrystalHollowsCompassAutoFocus(false);
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config));
+        assertFalse(decoded.crystalHollowsTracers());
+        assertFalse(decoded.crystalHollowsCompassAutoFocus());
+        WaypointerConfig copied = new WaypointerConfig();
+        copied.replaceWith(decoded);
+        assertFalse(copied.crystalHollowsTracers());
+        assertFalse(copied.crystalHollowsCompassAutoFocus());
+        WaypointerConfig loaded = WaypointerConfig.fromJson(
+                "{\"crystalHollowsTracers\":false,\"crystalHollowsCompassAutoFocus\":false}");
+        assertFalse(loaded.crystalHollowsTracers());
+        assertFalse(loaded.crystalHollowsCompassAutoFocus());
+        copied.resetToDefaults();
+        assertTrue(copied.crystalHollowsTracers());
+        assertTrue(copied.crystalHollowsCompassAutoFocus());
+        copied.disableAllSettings();
+        assertFalse(copied.crystalHollowsTracers());
+        assertFalse(copied.crystalHollowsCompassAutoFocus());
+    }
+
+    @Test
     void crystalHollowsDefaultsDisableResetAndRoundTrip() {
         WaypointerConfig config = new WaypointerConfig();
         assertTrue(config.crystalHollowsEnabled());

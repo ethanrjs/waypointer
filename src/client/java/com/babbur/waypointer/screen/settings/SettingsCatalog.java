@@ -135,6 +135,7 @@ public final class SettingsCatalog {
         out.add(routes());
         out.add(dungeons());
         out.add(mining());
+        out.add(diana());
         out.add(chat());
         out.add(sharing());
         out.add(featureBloat());
@@ -605,6 +606,10 @@ public final class SettingsCatalog {
                                 "Show detected structures in the runtime Structures folder.",
                                 (c, d) -> c.crystalHollowsStructureWaypoints(),
                                 (c, d, v) -> c.setCrystalHollowsStructureWaypoints((Boolean) v)),
+                        Setting.bool("crystalHollowsTracers", MAIN, "Crystal Hollows tracers",
+                                "Allow tracers to detected structures, compass targets, and metal detector treasure. Uses your Tracer settings for styling.",
+                                (c, d) -> c.crystalHollowsTracers(),
+                                (c, d, v) -> c.setCrystalHollowsTracers((Boolean) v)),
                         Setting.bool("crystalHollowsHideStructuresFolder", MAIN,
                                 "Hide Structures folder",
                                 "Hide the Structures folder and its generated waypoints.",
@@ -635,13 +640,50 @@ public final class SettingsCatalog {
                                 "Add the nine fixed Nucleus centre and entrance waypoints.",
                                 (c, d) -> c.crystalHollowsNucleusWaypoints(),
                                 (c, d, v) -> c.setCrystalHollowsNucleusWaypoints((Boolean) v))),
+                        Group.parented("minimap", "Crystal Hollows minimap",
+                                (c, d) -> c.crystalHollowsMinimap(),
+                                Setting.bool("crystalHollowsMinimap", MAIN, "Minimap",
+                                        "Show a schematic region map with your heading and detected structure markers.",
+                                        (c, d) -> c.crystalHollowsMinimap(),
+                                        (c, d, v) -> c.setCrystalHollowsMinimap((Boolean) v))
+                                        .aliases("map", "radar", "hollows"),
+                                Setting.number("crystalHollowsMinimapSize", MAIN, "Minimap size",
+                                        "Map width in screen pixels, from 96 to 224.",
+                                        (c, d) -> (double) c.crystalHollowsMinimapSize(),
+                                        (c, d, v) -> c.setCrystalHollowsMinimapSize(((Number) v).intValue()))
+                                        .range(96, 224),
+                                Setting.enumCycle("crystalHollowsMinimapCorner", MAIN, "Minimap corner",
+                                        "Choose which corner of the screen holds the map.",
+                                        List.of(new Setting.EnumOption("top_left", "Top left", 0),
+                                                new Setting.EnumOption("top_right", "Top right", 1),
+                                                new Setting.EnumOption("bottom_left", "Bottom left", 2),
+                                                new Setting.EnumOption("bottom_right", "Bottom right", 3)),
+                                        (c, d) -> c.crystalHollowsMinimapCorner(),
+                                        (c, d, v) -> c.setCrystalHollowsMinimapCorner(((Number) v).intValue())),
+                                Setting.bool("crystalHollowsMinimapLabels", MAIN, "Map labels",
+                                        "Show region names and structure abbreviations on the minimap.",
+                                        (c, d) -> c.crystalHollowsMinimapLabels(),
+                                        (c, d, v) -> c.setCrystalHollowsMinimapLabels((Boolean) v))),
                         Group.parented("wishing_compass", "Wishing Compass",
                                 (c, d) -> c.crystalHollowsWishingCompassSolver(),
                                 Setting.bool("crystalHollowsWishingCompassSolver", MAIN,
                                         "Wishing Compass solver",
                                         "Capture your compass particles and triangulate their destination.",
                                         (c, d) -> c.crystalHollowsWishingCompassSolver(),
-                                        (c, d, v) -> c.setCrystalHollowsWishingCompassSolver((Boolean) v)))));
+                                        (c, d, v) -> c.setCrystalHollowsWishingCompassSolver((Boolean) v)),
+                                Setting.bool("crystalHollowsCompassAutoFocus", MAIN, "Focus solved compass targets",
+                                        "Automatically focus the solved target. Turning this off releases the current compass focus and keeps the waypoint visible.",
+                                        (c, d) -> c.crystalHollowsCompassAutoFocus(),
+                                        (c, d, v) -> c.setCrystalHollowsCompassAutoFocus((Boolean) v)))));
+    }
+
+    private static Category diana() {
+        return Category.of("diana", "Diana",
+                Group.plain(Setting.bool("dianaWaypointsEnabled", MAIN, "Diana waypoints",
+                        "Track Griffin Burrows and estimate your next burrow from Ancestral Spade clues. Estimates are marked until confirmed. Enable Dripping Lava particles and set /particlequality to Extreme for the best clues.",
+                        (c, d) -> c.dianaWaypointsEnabled(),
+                        (c, d, v) -> c.setDianaWaypointsEnabled((Boolean) v))
+                        .aliases("griffin", "burrow", "spade", "mythological")));
     }
 
     private static Category chat() {

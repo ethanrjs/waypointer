@@ -1,0 +1,74 @@
+package com.babbur.waypointer.crystal;
+
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+class CrystalHollowsMinimapLayoutTest {
+    @Test
+    void labelsMoveAwayFromTheEdgeAndYieldToOccupiedSpace() {
+        var map = new CrystalHollowsMinimapLayout(8, 8, 144);
+        int x = map.mapX() + map.marker(823), y = map.mapY() + map.marker(500);
+        assertEquals(138, map.marker(823));
+        assertEquals(5, map.marker(201));
+        var label = map.label(x, y, 12, java.util.List.of());
+        assertNotNull(label);
+        assertTrue(label.x() + label.width() < x);
+        var fullMap = new CrystalHollowsMinimapLayout.Rect(map.mapX(), map.mapY(), map.size(), map.size());
+        assertNull(map.label(x, y, 12, java.util.List.of(fullMap)));
+        assertNull(map.label(x, y, 500, java.util.List.of()));
+        int centerX = map.mapX() + 70, centerY = map.mapY() + 70;
+        var marker = new CrystalHollowsMinimapLayout.Rect(centerX - 5, centerY - 5, 11, 11);
+        assertEquals(centerX + 8, map.label(centerX, centerY, 12, java.util.List.of(marker)).x());
+    }
+
+    @Test
+    void projectsNorthWestToOriginAndClampsTheExclusiveSouthEastBoundary() {
+        var map = new CrystalHollowsMinimapLayout(8, 8, 144);
+        assertEquals(0, map.project(201));
+        assertEquals(143, map.project(823.999));
+        assertEquals(72, map.project(513.5));
+        assertEquals(0, map.project(-100));
+        assertEquals(143, map.project(900));
+        assertTrue(CrystalHollowsMinimapLayout.contains(201, 823.999));
+        assertFalse(CrystalHollowsMinimapLayout.contains(824, 201));
+        assertFalse(CrystalHollowsMinimapLayout.contains(Double.NaN, 201));
+        assertThrows(IllegalArgumentException.class, () -> map.project(Double.NaN));
+    }
+
+    @Test
+    void allCornersFitSmallAndLargeWindowsWithoutCoveringTheHotbar() {
+        for (int width : new int[]{320, 640, 1280}) {
+            for (int height : new int[]{178, 180, 360, 720}) {
+                for (boolean navigation : new boolean[]{false, true}) {
+                    for (int corner = 0; corner < 4; corner++) {
+                        var map = CrystalHollowsMinimapLayout.fit(width, height, 224, corner, navigation);
+                        assertNotNull(map);
+                        assertTrue(map.x() >= 8 && map.y() >= 8);
+                        assertTrue(map.x() + map.width() <= width - 8);
+                        assertTrue(map.y() + map.height() <= height - 36);
+                    }
+                }
+            }
+        }
+        assertEquals(96, CrystalHollowsMinimapLayout.fit(320, 178, 96, 0).size());
+        assertNull(CrystalHollowsMinimapLayout.fit(100, 100, 144, 0));
+    }
+
+    @Test
+    void nucleusSharesTheExactMapCenterAtOddAndEvenSizesAndFooterKeepsTheBottomAnchor() {
+        for (int size = 80; size <= 224; size++) {
+            var map = new CrystalHollowsMinimapLayout(8, 8, size);
+            var nucleus = map.nucleus();
+            assertEquals(map.mapX() + size / 2.0, nucleus.x() + nucleus.width() / 2.0);
+            assertEquals(map.mapY() + size / 2.0, nucleus.y() + nucleus.height() / 2.0);
+            assertEquals(nucleus.x() - map.mapX(), map.mapX() + size - nucleus.x() - nucleus.width());
+            assertEquals(nucleus.y() - map.mapY(), map.mapY() + size - nucleus.y() - nucleus.height());
+            assertEquals(nucleus.width(), nucleus.height());
+        }
+        var idle = CrystalHollowsMinimapLayout.fit(640, 360, 144, 3, false);
+        var navigation = CrystalHollowsMinimapLayout.fit(640, 360, 144, 3, true);
+        assertEquals(idle.y() + idle.height(), navigation.y() + navigation.height());
+        assertEquals(CrystalHollowsMinimapLayout.PADDING, idle.height() - idle.size() - CrystalHollowsMinimapLayout.HEADER);
+        assertTrue(idle.height() < navigation.height());
+    }
+}

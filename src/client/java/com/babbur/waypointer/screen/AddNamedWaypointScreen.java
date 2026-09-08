@@ -52,6 +52,7 @@ public final class AddNamedWaypointScreen extends Screen {
     private final WaypointerConfig config;
     private final WaypointGroup targetGroup;
     private final boolean useFixedPosition;
+    private final String fixedDungeonRoomIdentity;
     private final int fixedX;
     private final int fixedY;
     private final int fixedZ;
@@ -73,6 +74,7 @@ public final class AddNamedWaypointScreen extends Screen {
     private DungeonWaypointType selectedDungeonType;
     private boolean dungeonTypeIconsAvailable;
     private WaypointGroup previewGroup;
+    private Component placementError;
 
     public AddNamedWaypointScreen(Screen parent, ActiveGroupManager manager,
                                   WaypointerConfig config, WaypointGroup targetGroup) {
@@ -103,6 +105,9 @@ public final class AddNamedWaypointScreen extends Screen {
         this.config = config;
         this.targetGroup = targetGroup;
         this.useFixedPosition = useFixedPosition;
+        this.fixedDungeonRoomIdentity = useFixedPosition && targetGroup != null
+                && targetGroup.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                ? currentDungeonRoomIdentity() : null;
         this.fixedX = fixedX;
         this.fixedY = fixedY;
         this.fixedZ = fixedZ;
@@ -220,6 +225,13 @@ public final class AddNamedWaypointScreen extends Screen {
         int panelY = (height - panelH) / 2;
         g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, SURFACE);
         g.text(font, getTitle(), panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
+        if (placementError != null) {
+            int errorY = panelY + panelH + GAP;
+            for (var line : font.split(placementError, PANEL_W - PAD_OUTER * 2)) {
+                g.text(font, line, panelX + PAD_OUTER, errorY, DANGER, false);
+                errorY += font.lineHeight;
+            }
+        }
 
         if (showSubtypeOptions) {
             int optionsY = panelY + 66;
@@ -302,6 +314,11 @@ public final class AddNamedWaypointScreen extends Screen {
         WaypointGroup target = targetGroup == null
                 ? manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled())
                 : targetGroup;
+        if (useFixedPosition && target.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                && !java.util.Objects.equals(fixedDungeonRoomIdentity, currentDungeonRoomIdentity())) {
+            placementError = DungeonRoomWaypointPlacement.unavailableMessage();
+            return;
+        }
 
         Waypoint waypoint;
         if (useFixedPosition && options.small()) {
@@ -316,7 +333,12 @@ public final class AddNamedWaypointScreen extends Screen {
             waypoint = new Waypoint(x, y, z, name,
                     config.defaultWaypointColor(), flags, 0.0);
         }
-        target.add(DungeonRoomWaypointPlacement.toStoredWaypoint(target, waypoint));
+        Waypoint stored = DungeonRoomWaypointPlacement.toStoredWaypoint(target, waypoint);
+        if (stored == null) {
+            placementError = DungeonRoomWaypointPlacement.unavailableMessage();
+            return;
+        }
+        target.add(stored);
         new WaypointAddFlow().afterWaypointAdded(target, target.size() - 1,
                 config.showWaypointChatShareButtons());
         manager.fireDataChanged();
