@@ -17,6 +17,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SettingsScreenTest {
 
     @Test
+    void unnamedDependentGroupsStayWithThePreviousNamedSection() {
+        Setting first = SettingsCatalog.byId("showWaypointNames");
+        Setting dependent = SettingsCatalog.byId("hideWaypointLabelsNearPlayer");
+        Setting tracer = SettingsCatalog.byId("showTracer");
+        SettingsCatalog.Category category = SettingsCatalog.Category.of("test", "Test",
+                SettingsCatalog.Group.plain("labels", "Labels", first),
+                SettingsCatalog.Group.parented((c, d) -> false, dependent),
+                SettingsCatalog.Group.plain("tracers", "Tracers", tracer));
+        assertEquals(2, SettingsScreen.sections(category).size());
+        assertEquals(2, SettingsScreen.sections(category).getFirst().groups().size());
+        assertEquals("labels", SettingsScreen.sectionForSetting(category, dependent.id()));
+        assertEquals("tracers", SettingsScreen.sectionForSetting(category, tracer.id()));
+        assertNull(SettingsScreen.sectionForSetting(category, "missing"));
+    }
+
+    @Test
+    void leadingUnnamedSettingsKeepTheirGeneralHome() {
+        SettingsCatalog.Category category = SettingsCatalog.Category.of("test", "Test",
+                SettingsCatalog.Group.plain(SettingsCatalog.byId("boxStyle")),
+                SettingsCatalog.Group.plain("labels", "Labels", SettingsCatalog.byId("showWaypointNames")));
+        assertEquals("general", SettingsScreen.sectionForSetting(category, "boxStyle"));
+        assertEquals("labels", SettingsScreen.sectionForSetting(category, "showWaypointNames"));
+    }
+
+    @Test
     void featureBloatCategoryRequiresTheSystemOptIn() {
         WaypointerConfig config = new WaypointerConfig();
         assertFalse(SettingsScreen.categoryAvailable("feature_bloat", config));

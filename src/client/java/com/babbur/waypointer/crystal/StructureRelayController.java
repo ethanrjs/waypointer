@@ -135,12 +135,8 @@ public final class StructureRelayController {
             failures = 0;
             nextSync = now + SYNC_INTERVAL_MILLIS;
         }
-        tracker.batchDetections(() -> {
-            String message;
-            while ((message = connection.poll()) != null) {
-                tracker.applyRelayUpdate(StructureRelayProtocol.decodeUpdate(message, age, now));
-            }
-        });
+        tracker.batchDetections(() -> connection.drain(message ->
+                tracker.applyRelayUpdate(StructureRelayProtocol.decodeUpdate(message, age, now))));
         if (syncDue(now, age, closingInSeconds)) {
             if (!connection.send(StructureRelayProtocol.sync(age, day, dayTicks, closingInSeconds))) return;
             lastSyncAt = now;
@@ -151,6 +147,7 @@ public final class StructureRelayController {
         int published = 0;
         while (!publications.isEmpty() && now - publications.getFirst() >= 60_000) publications.removeFirst();
         for (var sighting : lobby.localSightings()) {
+            if (!tracker.detectionEnabled(sighting)) continue;
             if (publications.size() >= 24) break;
             if (!StructureRelayProtocol.local(sighting)
                     || sighting.atMillis() < sessionStarted && sighting.atMillis() < now - 1_800_000) continue;

@@ -30,7 +30,6 @@ public final class SkyblockerStructureController {
     private final WaypointerConfig config;
     private final String version = FabricLoader.getInstance().getModContainer("waypointer")
             .map(mod -> mod.getMetadata().getVersion().getFriendlyString()).orElse("unknown");
-    private final String userAgent = "Waypointer/" + version;
     private final StructureRelayConnection connection;
     private final EnumSet<CrystalHollowsStructure> published = EnumSet.noneOf(CrystalHollowsStructure.class);
     private final EnumSet<CrystalHollowsStructure> received = EnumSet.noneOf(CrystalHollowsStructure.class);
@@ -100,11 +99,19 @@ public final class SkyblockerStructureController {
         connection = new StructureRelayConnection((uri, listener) -> {
             long attempt = generation;
             return HTTP.newWebSocketBuilder().connectTimeout(Duration.ofSeconds(10))
-                    .header("User-Agent", userAgent).header("Authorization", token.authorization())
+                    .header("User-Agent", userAgent()).header("Authorization", token.authorization())
                     .buildAsync(uri, listener).whenComplete((socket, error) -> {
-                        if (error != null) handshakeFailure = new Failure(attempt, status(error), SkyblockerAuthentication.failureCause(error));
+                        if (error != null) recordHandshakeFailure(attempt, error);
                     });
         });
+    }
+
+    void recordHandshakeFailure(long attempt, Throwable error) {
+        synchronized (connection) {
+            if (attempt == generation) {
+                handshakeFailure = new Failure(attempt, status(error), SkyblockerAuthentication.failureCause(error));
+            }
+        }
     }
 
     public void install() {
@@ -112,6 +119,12 @@ public final class SkyblockerStructureController {
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> reset());
         ClientLifecycleEvents.CLIENT_STOPPING.register(client -> reset());
+    }
+
+    private String userAgent() {
+        // Resolve game metadata only for network use, after the sharing gate.
+        // Temporary compatibility trial: hysky selects bearer-token handling by User-Agent.
+        return "Skyblocker/" + version + " (" + SharedConstants.getCurrentVersion().name() + ")";
     }
 
     private void tick(Minecraft client) {
@@ -161,19 +174,14 @@ public final class SkyblockerStructureController {
             if (authentication == null && now >= nextAttempt) {
                 try {
                     authentication = new AuthAttempt(authenticationKeys(client), currentPlayer,
-                            SharedConstants.getCurrentVersion().name(), version, userAgent);
+                            SharedConstants.getCurrentVersion().name(), version, userAgent());
                 } catch (RuntimeException unavailable) {
                     failed(client, status(unavailable), SkyblockerAuthentication.failureCause(unavailable), "profile_keys", now);
                     return;
                 }
                 nextAttempt = now + 30_000;
             }
-            if (authentication != null && authentication.result.isDone()) {
-                try { token = authentication.result.join(); }
-                catch (RuntimeException error) { failed(client, status(error), SkyblockerAuthentication.failureCause(error), "authentication", now); }
-                authentication = null;
-            }
-            return;
+            if (!completeAuthentication(client, now)) return;
         }
         if (!connection.isOpen()) {
             if (subscribed) {
@@ -191,19 +199,18 @@ public final class SkyblockerStructureController {
             if (!connection.send(SkyblockerStructureProtocol.subscribe(server, day, now))) return;
             subscribed = true;
             failures = 0;
+            nextAttempt = 0;
             return;
         }
-        tracker.batchDetections(() -> {
-            String message;
-            while ((message = connection.poll()) != null) {
-                for (StructureSighting sighting : SkyblockerStructureProtocol.decode(message, server, now)) {
-                    received.add(sighting.structure());
-                    tracker.merge(sighting, false);
-                }
+        tracker.batchDetections(() -> connection.drain(message -> {
+            for (StructureSighting sighting : SkyblockerStructureProtocol.decode(message, server, now)) {
+                received.add(sighting.structure());
+                tracker.merge(sighting, false);
             }
-        });
+        }));
         // One send per second, once per category per lobby visit. Never bridge either relay.
         for (StructureSighting sighting : lobby.localSightings()) {
+            if (!tracker.detectionEnabled(sighting)) continue;
             if (published.contains(sighting.structure()) || received.contains(sighting.structure())) continue;
             final String message;
             try { message = SkyblockerStructureProtocol.publish(server, sighting, sessionStarted, now); }
@@ -211,6 +218,21 @@ public final class SkyblockerStructureController {
             if (connection.send(message)) published.add(sighting.structure());
             break;
         }
+    }
+
+    boolean completeAuthentication(Minecraft client, long now) {
+        if (authentication == null || !authentication.result.isDone()) return false;
+        try {
+            token = authentication.result.join();
+            // The authentication timeout must not delay a successful WebSocket handshake.
+            nextAttempt = now;
+            // An exchange may have completed while we spent a long time outside the Hollows.
+            if (token.needsRefresh(now)) token = null;
+        } catch (RuntimeException error) {
+            failed(client, status(error), SkyblockerAuthentication.failureCause(error), "authentication", now);
+        }
+        authentication = null;
+        return token != null;
     }
 
     /** Only called after the sharing consent gate. Does not enable chat signing or change any mod setting. */
@@ -258,16 +280,18 @@ public final class SkyblockerStructureController {
     }
 
     private void disconnect() {
-        generation++;
-        connection.close(); // Closing the connection also removes its server-side subscriptions.
-        subscribed = false;
-        handshakeFailure = null;
+        synchronized (connection) {
+            if (!connection.isOpen() && !connection.isConnecting() && !subscribed && handshakeFailure == null) return;
+            generation++;
+            connection.close(); // Closing the connection also removes its server-side subscriptions.
+            subscribed = false;
+            handshakeFailure = null;
+        }
     }
 
     private void leaveLobby() {
         disconnect();
-        if (authentication != null) { authentication.cancel(); authentication = null; }
-        token = null;
+        // Keep same-account authentication across lobby hops; reset cancels it, expiry refreshes tokens.
         if (lobby != null && lobby.clearRemoteSightings(SkyblockerStructureProtocol.SOURCE)
                 && lobby == tracker.lobby()) tracker.rebuildProjection();
         lobby = null;
@@ -280,6 +304,8 @@ public final class SkyblockerStructureController {
 
     private void reset() {
         leaveLobby();
+        if (authentication != null) { authentication.cancel(); authentication = null; }
+        token = null;
         player = null;
         denied = warned = false;
         failures = 0;

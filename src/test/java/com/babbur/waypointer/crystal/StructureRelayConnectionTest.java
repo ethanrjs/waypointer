@@ -32,6 +32,29 @@ class StructureRelayConnectionTest {
     }
 
     @Test
+    void drainingStopsAtOneQueueEvenWhenThePeerKeepsSendingAndPreservesTheRemainder() {
+        Stub stub = new Stub();
+        StructureRelayConnection connection = stub.connection();
+        connection.connect(ENDPOINT);
+        stub.listener.onOpen(stub.socket);
+        stub.listener.onText(stub.socket, "0", true);
+        var processed = new java.util.ArrayList<String>();
+        connection.drain(message -> {
+            processed.add(message);
+            assertTrue(processed.size() <= 32, "A continuously refilled queue must not stall the client tick");
+            stub.listener.onText(stub.socket, Integer.toString(processed.size()), true);
+        });
+        assertEquals(32, processed.size());
+        assertEquals("0", processed.getFirst());
+        assertEquals("31", processed.getLast());
+        assertTrue(connection.isOpen());
+        connection.drain(processed::add);
+        assertEquals(33, processed.size());
+        assertEquals("32", processed.getLast());
+        assertNull(connection.poll());
+    }
+
+    @Test
     void boundsFragmentsQueueAndOutstandingSends() {
         Stub stub = new Stub();
         StructureRelayConnection connection = stub.connection();

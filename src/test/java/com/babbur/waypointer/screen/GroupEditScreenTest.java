@@ -475,6 +475,33 @@ class GroupEditScreenTest {
     }
 
     @Test
+    void waypointDragPreservesBlocksAndRejectsReparenting() {
+        WaypointGroup group = WaypointGroup.create("Route", "hub");
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        for (int i = 0; i < 5; i++) group.add(Waypoint.at(i, 70, 0));
+        group.toggleSubwaypoint(1);
+        group.toggleSubwaypoint(2);
+        Waypoint parent = group.get(0);
+        Waypoint firstChild = group.get(1);
+        Waypoint secondChild = group.get(2);
+        assertEquals(-1, GroupEditPolicy.waypointDropSlot(group, 1, 0));
+        assertEquals(-1, GroupEditPolicy.waypointDropSlot(group, 1, 4));
+        assertEquals(2, GroupEditPolicy.dropWaypointSelection(group, 1, 3));
+        assertSame(firstChild, group.get(2));
+        assertSame(secondChild, group.get(1));
+        assertEquals(2, GroupEditPolicy.dropWaypointSelection(group, 0, 5));
+        assertSame(parent, group.get(2));
+        assertSame(secondChild, group.get(3));
+        assertSame(firstChild, group.get(4));
+        assertEquals(2, GroupEditPolicy.dropWaypointSelection(group, 2, 4));
+        assertEquals(0, GroupEditPolicy.dropWaypointSelection(group, 2, 0));
+        assertSame(parent, group.get(0));
+        assertEquals(0, GroupEditPolicy.waypointDropSlot(group, 4, 1));
+        assertEquals(3, GroupEditPolicy.waypointDropSlot(group, 4, 2));
+        assertEquals(0, GroupEditPolicy.dropWaypointSelection(group, 0, -1));
+    }
+
+    @Test
     void routeNameChangePublishesOnceWhenEditorIsRemoved() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup group = WaypointGroup.create("Original", "hub");

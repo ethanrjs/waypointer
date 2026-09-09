@@ -10,6 +10,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.CatalogRouteProvenance;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
@@ -388,6 +389,8 @@ public final class Storage {
         o.addProperty("gradientStartColor", g.gradientStartColor());
         o.addProperty("gradientEndColor",   g.gradientEndColor());
         o.addProperty("paintEnabled", g.paintEnabled());
+        if (!g.stylePresetId().isEmpty()) o.addProperty("stylePresetId", g.stylePresetId());
+        if (!g.styleOverride().isEmpty()) o.add("styleOverride", styleToJson(g.styleOverride()));
         if (g.catalogProvenance() != null) {
             o.add("catalogSource", catalogProvenanceToJson(g.catalogProvenance()));
         }
@@ -414,6 +417,9 @@ public final class Storage {
         String name = o.has("name") ? o.get("name").getAsString() : "";
         String zone = o.has("zone") ? o.get("zone").getAsString() : "unknown";
         WaypointGroup g = new WaypointGroup(id, name, zone);
+        if (o.has("stylePresetId") && o.get("stylePresetId").isJsonPrimitive())
+            g.setStylePresetId(o.get("stylePresetId").getAsString());
+        g.setStyleOverride(styleFromJson(o.get("styleOverride")));
         if (o.has("catalogSource") && !o.get("catalogSource").isJsonNull()) {
             try {
                 g.setCatalogProvenance(catalogProvenanceFromJson(
@@ -504,6 +510,7 @@ public final class Storage {
         o.addProperty("x", w.x());
         o.addProperty("y", w.y());
         o.addProperty("z", w.z());
+        if (!w.styleOverride().isEmpty()) o.add("styleOverride", styleToJson(w.styleOverride()));
         if (w.hasName())            o.addProperty("name", w.name());
         o.addProperty("color", w.color());
         if (w.flags() != 0)          o.addProperty("flags", w.flags());
@@ -528,7 +535,24 @@ public final class Storage {
         int preciseX = o.has("preciseX") ? o.get("preciseX").getAsInt() : base.preciseX();
         int preciseY = o.has("preciseY") ? o.get("preciseY").getAsInt() : base.preciseY();
         int preciseZ = o.has("preciseZ") ? o.get("preciseZ").getAsInt() : base.preciseZ();
-        return base.withPreciseSixteenths(preciseX, preciseY, preciseZ);
+        return base.withPreciseSixteenths(preciseX, preciseY, preciseZ)
+                .withStyleOverride(styleFromJson(o.get("styleOverride")));
+    }
+
+    private static JsonObject styleToJson(WaypointStyle style) {
+        JsonObject object = new JsonObject();
+        style.values().forEach(object::addProperty);
+        return object;
+    }
+
+    private static WaypointStyle styleFromJson(JsonElement value) {
+        if (value == null || !value.isJsonObject()) return WaypointStyle.EMPTY;
+        java.util.Map<String, String> values = new java.util.LinkedHashMap<>();
+        value.getAsJsonObject().entrySet().forEach(entry -> {
+            if (entry.getValue().isJsonPrimitive() && WaypointStyles.supportedProperties().contains(entry.getKey()))
+                values.put(entry.getKey(), entry.getValue().getAsString());
+        });
+        return WaypointStyles.normalize(new WaypointStyle(values));
     }
 
     static JsonObject paintToJson(WaypointPaint paint) {

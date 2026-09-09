@@ -33,7 +33,8 @@ public record Waypoint(
         long expiresAtMillis,
         int preciseX,
         int preciseY,
-        int preciseZ) {
+        int preciseZ,
+        WaypointStyle styleOverride) {
 
     public static final int FLAG_HIDE_BEACON  = 1;
     public static final int FLAG_HIDE_NAME    = 1 << 1;
@@ -112,6 +113,7 @@ public record Waypoint(
     public static final int MAX_BLOCK_COORDINATE = 134_217_727;
 
     public Waypoint {
+        styleOverride = styleOverride == null ? WaypointStyle.EMPTY : styleOverride;
         name = name == null ? "" : name;
         customRadius = normalizeCustomRadius(customRadius);
         x = blockCoordinateFromPrecise(preciseX);
@@ -131,6 +133,18 @@ public record Waypoint(
                     double customRadius, int tempMode, long expiresAtMillis) {
         this(x, y, z, name, color, flags, customRadius, tempMode, expiresAtMillis,
                 preciseBlockCenter(x), preciseBlockCenter(y), preciseBlockCenter(z));
+    }
+
+    public Waypoint(int x, int y, int z, String name, int color, int flags,
+                    double customRadius, int tempMode, long expiresAtMillis,
+                    int preciseX, int preciseY, int preciseZ) {
+        this(x, y, z, name, color, flags, customRadius, tempMode, expiresAtMillis,
+                preciseX, preciseY, preciseZ, WaypointStyle.EMPTY);
+    }
+
+    public Waypoint withStyleOverride(WaypointStyle style) {
+        return new Waypoint(x, y, z, name, color, flags, customRadius, tempMode,
+                expiresAtMillis, preciseX, preciseY, preciseZ, style);
     }
 
     public static Waypoint at(int x, int y, int z) {
@@ -192,32 +206,33 @@ public record Waypoint(
 
     public Waypoint withName(String newName) {
         return new Waypoint(x, y, z, newName, color, flags, customRadius,
-                tempMode, expiresAtMillis, preciseX, preciseY, preciseZ);
+                tempMode, expiresAtMillis, preciseX, preciseY, preciseZ, styleOverride);
     }
 
     public Waypoint withColor(int newColor) {
         return new Waypoint(x, y, z, name, newColor, flags, customRadius,
-                tempMode, expiresAtMillis, preciseX, preciseY, preciseZ);
+                tempMode, expiresAtMillis, preciseX, preciseY, preciseZ, styleOverride);
     }
 
     public Waypoint withFlags(int newFlags) {
         return new Waypoint(x, y, z, name, color, newFlags, customRadius,
-                tempMode, expiresAtMillis, preciseX, preciseY, preciseZ);
+                tempMode, expiresAtMillis, preciseX, preciseY, preciseZ, styleOverride);
     }
 
     public Waypoint withRadius(double newRadius) {
         return new Waypoint(x, y, z, name, color, flags, newRadius,
-                tempMode, expiresAtMillis, preciseX, preciseY, preciseZ);
+                tempMode, expiresAtMillis, preciseX, preciseY, preciseZ, styleOverride);
     }
 
     public Waypoint withPos(int nx, int ny, int nz) {
         return new Waypoint(nx, ny, nz, name, color, flags, customRadius,
-                tempMode, expiresAtMillis);
+                tempMode, expiresAtMillis, preciseBlockCenter(nx), preciseBlockCenter(ny),
+                preciseBlockCenter(nz), styleOverride);
     }
 
     public Waypoint withPreciseSixteenths(int nextPreciseX, int nextPreciseY, int nextPreciseZ) {
         return new Waypoint(x, y, z, name, color, flags, customRadius,
-                tempMode, expiresAtMillis, nextPreciseX, nextPreciseY, nextPreciseZ);
+                tempMode, expiresAtMillis, nextPreciseX, nextPreciseY, nextPreciseZ, styleOverride);
     }
 
     public double centerX() {
@@ -262,7 +277,7 @@ public record Waypoint(
     /** Flip a waypoint's temp mode. Typically used to build a brand-new temp waypoint from {@link #at}. */
     public Waypoint withTemp(int mode, long expiresAt) {
         return new Waypoint(x, y, z, name, color, flags, customRadius, mode, expiresAt,
-                preciseX, preciseY, preciseZ);
+                preciseX, preciseY, preciseZ, styleOverride);
     }
 
     /** Convert a block coordinate to its center in sixteenth-block units. */

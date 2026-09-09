@@ -4,6 +4,7 @@ import com.babbur.waypointer.catalog.CatalogApiException;
 import com.babbur.waypointer.catalog.CatalogPublication;
 import com.babbur.waypointer.catalog.CatalogPublicationManager;
 import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
+import com.babbur.waypointer.catalog.CatalogPublishRequest;
 import com.babbur.waypointer.catalog.PublisherIdentity;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
@@ -18,6 +19,7 @@ import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import net.minecraft.locale.Language;
 
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -44,6 +46,7 @@ public final class PublishedRoutesScreen extends Screen {
     private static final int ROW_GAP = 2;
     private static final int STATUS_ERROR = GuiTokens.DANGER;
     private static final int STATUS_OK = GuiTokens.SUCCESS;
+    private static final int PUBLIC_COLOR = 0xFF6AA9FF;
 
     private final Screen parent;
     private final RouteCatalogClient catalogClient;
@@ -62,7 +65,6 @@ public final class PublishedRoutesScreen extends Screen {
 
     private Button previousButton;
     private Button nextButton;
-    private Button copyButton;
     private Button copyCodeButton;
     private Button deleteButton;
     private EditBox searchBox;
@@ -132,7 +134,7 @@ public final class PublishedRoutesScreen extends Screen {
         addRenderableWidget(styledButton(contentX, footerY, 64, BTN_H,
                 Component.translatable("gui.back"), button -> onClose(), null));
 
-        int actionW = Math.min(88, Math.max(56, (contentW - 64 - GAP * 3) / 3));
+        int actionW = Math.min(88, Math.max(56, (contentW - 64 - GAP * 2) / 2));
         deleteButton = styledButton(contentX + contentW - actionW, footerY,
                 actionW, BTN_H,
                 Component.translatable(deleting
@@ -142,14 +144,7 @@ public final class PublishedRoutesScreen extends Screen {
                 Tooltip.create(Component.translatable(
                         "waypointer.screen.published_routes.action.delete.tooltip")));
         addRenderableWidget(deleteButton);
-        copyButton = styledButton(contentX + contentW - actionW * 2 - GAP,
-                footerY, actionW, BTN_H,
-                Component.translatable("waypointer.screen.published_routes.action.copy"),
-                button -> copyLink(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.published_routes.action.copy.tooltip")));
-        addRenderableWidget(copyButton);
-        copyCodeButton = styledButton(contentX + contentW - actionW * 3 - GAP * 2,
+        copyCodeButton = styledButton(contentX + contentW - actionW * 2 - GAP,
                 footerY, actionW, BTN_H,
                 Component.translatable("waypointer.screen.published_routes.action.copy_code"),
                 button -> copyCode(),
@@ -193,9 +188,7 @@ public final class PublishedRoutesScreen extends Screen {
                 identity = loaded.identity();
                 model.replace(loaded.publications());
                 showEmptyState = model.publications().isEmpty();
-                status = showEmptyState ? Component.empty() : Component.translatable(
-                        "waypointer.screen.published_routes.status.ready",
-                        model.publications().size());
+                status = Component.empty();
                 statusColor = TEXT_MUTED;
             }
             rebuildWidgets();
@@ -265,14 +258,15 @@ public final class PublishedRoutesScreen extends Screen {
             String title = font.plainSubstrByWidth(
                     publication.title(), Math.max(24, x2 - GAP - titleX));
             graphics.text(font, title, titleX, textY, selected ? TEXT : TEXT_DIM, false);
-            String visibility = Component.translatable(publication.visibility()
-                    == com.babbur.waypointer.catalog.CatalogPublishRequest.Visibility.PUBLIC
+            boolean isPublic = publication.visibility() == CatalogPublishRequest.Visibility.PUBLIC;
+            Component visibility = Component.translatable(isPublic
                     ? "waypointer.screen.route_publish.visibility.public"
-                    : "waypointer.screen.route_publish.visibility.unlisted").getString();
-            String metadata = Zone.fromId(publication.zoneId()).displayName()
-                    + " · " + visibility;
-            graphics.text(font, font.plainSubstrByWidth(metadata,
-                            Math.max(24, dateX - GAP - titleX)),
+                    : "waypointer.screen.published_routes.visibility.private");
+            Component metadata = Component.literal(
+                            Zone.fromId(publication.zoneId()).displayName() + " · ")
+                    .append(GuiTokens.colored(visibility, isPublic ? PUBLIC_COLOR : TEXT_MUTED));
+            graphics.text(font, Language.getInstance().getVisualOrder(font.substrByWidth(metadata,
+                            Math.max(24, dateX - GAP - titleX))),
                     titleX, textY + 13, TEXT_MUTED, false);
             graphics.text(font, date, dateX, textY + 13, TEXT_MUTED, false);
         }
@@ -307,15 +301,6 @@ public final class PublishedRoutesScreen extends Screen {
 
     private void changePage(int delta) {
         if (model.changePage(delta)) rebuildWidgets();
-    }
-
-    private void copyLink() {
-        CatalogPublication selected = selected();
-        if (selected == null || minecraft == null) return;
-        minecraft.keyboardHandler.setClipboard(selected.shareUrl());
-        status = Component.translatable(
-                "waypointer.screen.published_routes.status.copied");
-        statusColor = STATUS_OK;
     }
 
     /** Returns a catalog reference code, including for unlisted routes. */
@@ -381,10 +366,6 @@ public final class PublishedRoutesScreen extends Screen {
             deleteButton.setMessage(Component.translatable(deleting
                     ? "waypointer.screen.published_routes.action.deleting"
                     : "waypointer.screen.published_routes.action.delete"));
-        }
-        if (copyButton != null) {
-            copyButton.visible = hasRoutes;
-            copyButton.active = controls.copyEnabled();
         }
         if (copyCodeButton != null) {
             copyCodeButton.visible = hasRoutes;

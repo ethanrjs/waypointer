@@ -120,7 +120,8 @@ public final class DefaultWaypointerApi implements WaypointerApi {
             if (!isSavedRoute(group)) return false;
             if (waypointIndex < 0 || waypointIndex >= group.size()) return false;
 
-            group.set(waypointIndex, replacement.toWaypoint());
+            group.set(waypointIndex, replacement.toWaypoint()
+                    .withStyleOverride(group.get(waypointIndex).styleOverride()));
             manager.fireDataChangedFor(group);
             return true;
         });
@@ -133,7 +134,8 @@ public final class DefaultWaypointerApi implements WaypointerApi {
         return callOnClientThread(() -> {
             WaypointGroup group = matchingSavedRoute(reference);
             if (group == null) return false;
-            group.set(reference.index(), replacement.toWaypoint());
+            group.set(reference.index(), replacement.toWaypoint()
+                    .withStyleOverride(group.get(reference.index()).styleOverride()));
             manager.fireDataChangedFor(group);
             return true;
         });

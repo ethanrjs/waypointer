@@ -354,6 +354,29 @@ final class GroupEditPolicy {
         return group.moveBy(selectedIndex, delta);
     }
 
+    static int waypointDropSlot(WaypointGroup group, int from, int slot) {
+        if (group == null || from < 0 || from >= group.size() || slot < 0 || slot > group.size()) return -1;
+        if (group.isSubwaypoint(from)) {
+            int parent = group.parentMainIndex(from);
+            return slot > parent && slot <= group.childEndExclusive(parent) ? slot : -1;
+        }
+        if (slot < group.size() && group.isSubwaypoint(slot)) {
+            int parent = group.parentMainIndex(slot);
+            int end = group.childEndExclusive(parent);
+            return slot - parent < end - slot ? parent : end;
+        }
+        return slot;
+    }
+
+    static int dropWaypointSelection(WaypointGroup group, int from, int slot) {
+        slot = waypointDropSlot(group, from, slot);
+        if (slot < 0) return from;
+        int end = group.isSubwaypoint(from) ? from + 1 : group.childEndExclusive(from);
+        if (slot >= from && slot <= end) return from;
+        group.move(from, slot < from ? slot : slot - 1);
+        return slot < from ? slot : slot - (end - from);
+    }
+
     static String publishNameChangeIfNeeded(
             ActiveGroupManager manager, WaypointGroup group, String lastPublishedName) {
         String currentName = group.name();

@@ -1,10 +1,12 @@
 package com.babbur.waypointer.render;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 
 import java.util.WeakHashMap;
+import java.util.function.IntFunction;
 
 /** Transient rendering state; route progress is never delayed. */
 public final class WaypointSkipFade {
@@ -33,8 +35,20 @@ public final class WaypointSkipFade {
         return observe(group, config, System.nanoTime());
     }
 
+    public static WaypointSkipFade observe(WaypointGroup group, WaypointerConfig config,
+                                           IntFunction<WaypointerConfig> styleAt) {
+        return observe(group, config, System.nanoTime(), styleAt);
+    }
+
     static WaypointSkipFade observe(WaypointGroup group, WaypointerConfig config, long now) {
-        int durationMs = config.waypointSkipFadeMs();
+        return observe(group, config, now, index -> WaypointStyles.resolve(config, group,
+                index >= 0 && index < group.size() ? group.get(index) : null));
+    }
+
+    private static WaypointSkipFade observe(WaypointGroup group, WaypointerConfig config, long now,
+                                            IntFunction<WaypointerConfig> styleAt) {
+        WaypointerConfig currentStyle = styleAt.apply(group.currentIndex());
+        int durationMs = currentStyle.waypointSkipFadeMs();
         if (durationMs <= 0 || group.loadMode() != WaypointGroup.LoadMode.SEQUENCE
                 || group.focusedVisibleIndex() >= 0) {
             STATES.remove(group);
@@ -58,7 +72,7 @@ public final class WaypointSkipFade {
                 int leaving = fade.current >= fade.size
                         ? fade.active() ? fade.outgoing : group.lastMainIndex()
                         : fade.current;
-                float[] normal = fade.previousMarkerFactors(group, config, next, leaving);
+                float[] normal = fade.previousMarkerFactors(group, config, next, leaving, styleAt);
                 float incomingMarker = fade.alpha(next, normal[0], normal[0] > 0);
                 float outgoingMarker = fade.alpha(leaving, normal[1], normal[1] > 0);
                 float incomingTracer = fade.tracerAlpha(next);
@@ -66,8 +80,8 @@ public final class WaypointSkipFade {
                 int oldBeam = fade.current >= group.size() ? group.lastMainIndex()
                         : group.isSubwaypoint(fade.current)
                         ? group.parentMainIndex(fade.current) : fade.current;
-                float incomingBeam = fade.previousBeamFactor(group, config, next, oldBeam, incomingMarker);
-                float outgoingBeam = fade.previousBeamFactor(group, config, leaving, oldBeam, outgoingMarker);
+                float incomingBeam = fade.previousBeamFactor(group, next, oldBeam, incomingMarker, styleAt);
+                float outgoingBeam = fade.previousBeamFactor(group, leaving, oldBeam, outgoingMarker, styleAt);
                 fade.incomingMarkerStart = incomingMarker;
                 fade.outgoingMarkerStart = outgoingMarker;
                 fade.incomingBeamStart = incomingBeam;
@@ -85,7 +99,7 @@ public final class WaypointSkipFade {
         fade.currentWaypoint = waypoint;
         fade.size = group.size();
         fade.lastSeen = now;
-        fade.beamMode = config.beaconBeamMode();
+        fade.beamMode = currentStyle.beaconBeamMode();
         return fade;
     }
 
@@ -96,46 +110,48 @@ public final class WaypointSkipFade {
     }
 
     private float[] previousMarkerFactors(WaypointGroup group, WaypointerConfig config,
-                                          int incoming, int leaving) {
+                                          int incoming, int leaving, IntFunction<WaypointerConfig> styleAt) {
         float[] factors = new float[2];
-        group.forEachVisibleIndexAt(config.sequenceVisibility(),
-                config.keepSubwaypointsVisibleUntilNextWaypoint(), current, currentParent, index -> {
+        WaypointerConfig groupStyle = WaypointStyles.resolve(config, group, null);
+        group.forEachVisibleIndexAt(groupStyle.sequenceVisibility(),
+                groupStyle.keepSubwaypointsVisibleUntilNextWaypoint(), current, currentParent, index -> {
                     if (index != incoming && index != leaving) return;
                     if (WaypointWorldRenderer.shouldForceHideReachedWaypoint(index, current, group.get(index))) return;
-                    float alpha = WaypointWorldRenderer.roleAlpha(group,
-                            WaypointWorldRenderer.stateFor(group, index, current, currentParent),
-                            config.dimSequenceContextWaypoints());
+                    float alpha = WaypointWorldRenderer.styleStateAlpha(
+                            styleAt.apply(index), group,
+                            WaypointWorldRenderer.stateFor(group, index, current, currentParent));
                     if (index == incoming) factors[0] = alpha;
                     if (index == leaving) factors[1] = alpha;
                 });
         return factors;
     }
 
-    private float previousBeamFactor(WaypointGroup group, WaypointerConfig config,
-                                     int index, int oldBeam, float markerFactor) {
+    private float previousBeamFactor(WaypointGroup group,
+                                     int index, int oldBeam, float markerFactor, IntFunction<WaypointerConfig> styleAt) {
         if (beamMode == WaypointerConfig.BeaconBeamMode.ALL_VISIBLE) return markerFactor;
+        WaypointerConfig style = styleAt.apply(index);
         boolean visible = beamMode != WaypointerConfig.BeaconBeamMode.OFF && index == oldBeam
                 && index >= 0 && index < group.size()
-                && (current < group.size() || config.showCompleted())
+                && (current < group.size() || style.showCompleted())
                 && !WaypointWorldRenderer.shouldForceHideReachedWaypoint(index, current, group.get(index));
-        float normal = visible ? WaypointWorldRenderer.roleAlpha(group,
-                WaypointWorldRenderer.stateFor(group, index, current, currentParent),
-                config.dimSequenceContextWaypoints()) : 0;
+        float normal = visible ? WaypointWorldRenderer.styleStateAlpha(
+                style, group,
+                WaypointWorldRenderer.stateFor(group, index, current, currentParent)) : 0;
         return beamAlpha(index, normal, visible);
     }
 
-    static WaypointSkipFade get(WaypointGroup group) { return STATES.get(group); }
+    public static WaypointSkipFade get(WaypointGroup group) { return STATES.get(group); }
 
     public boolean active() { return outgoing >= 0 && outgoing < size && progress < 1; }
-    int outgoing() { return active() ? outgoing : -1; }
-    boolean isOutgoing(int index) { return active() && index == outgoing; }
+    public int outgoing() { return active() ? outgoing : -1; }
+    public boolean isOutgoing(int index) { return active() && index == outgoing; }
 
-    float alpha(int index, float normalAlpha, boolean normallyVisible) {
+    public float alpha(int index, float normalAlpha, boolean normallyVisible) {
         return interpolate(index, normallyVisible ? normalAlpha : 0,
                 incomingMarkerStart, outgoingMarkerStart);
     }
 
-    float beamAlpha(int index, float normalAlpha, boolean normallyVisible) {
+    public float beamAlpha(int index, float normalAlpha, boolean normallyVisible) {
         if (beamMode == WaypointerConfig.BeaconBeamMode.ALL_VISIBLE) {
             return alpha(index, normalAlpha, normallyVisible);
         }
@@ -143,7 +159,7 @@ public final class WaypointSkipFade {
                 incomingBeamStart, outgoingBeamStart);
     }
 
-    float tracerAlpha(int index) {
+    public float tracerAlpha(int index) {
         return interpolate(index, index == current ? 1 : 0, incomingTracerStart, outgoingTracerStart);
     }
 

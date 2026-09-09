@@ -27,6 +27,8 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
                     && "private_world".equals(WaypointerClient.api().currentZone().id()), 600);
             context.waitForScreen(null);
             CrystalHollowsMinimapSmokeTest.run(context);
+            ShaderCompatibilitySmokeTest.prepare(context);
+            AppearanceSmokeTest.run(context);
             context.computeOnClient(client -> {
                 checkMetalDetectorVisibility(client);
                 checkMetalDetectorMessage(client);
@@ -50,6 +52,7 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
             if (!context.computeOnClient(client -> OverlayRenderer.ownsWorldGeometry())) {
                 throw new AssertionError("Default retained renderer did not remain active");
             }
+            ShaderCompatibilitySmokeTest.check(context, "before-resource-reload");
             var reload = context.computeOnClient(client -> client.reloadResourcePacks());
             context.waitFor(client -> reload.isDone(), 600);
             reload.join();
@@ -60,6 +63,8 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
                 throw new AssertionError("Retained geometry did not survive resource reload");
             }
             context.takeScreenshot("waypoint-after-resource-reload");
+            ShaderCompatibilitySmokeTest.check(context, "after-resource-reload");
+            ShaderCompatibilitySmokeTest.checkToggle(context);
         }
     }
 

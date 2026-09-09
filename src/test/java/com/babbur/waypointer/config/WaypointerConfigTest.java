@@ -32,6 +32,68 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointerConfigTest {
 
     @Test
+    void minimapPlacementAndDetectionsPersistLocallyAndReset(@TempDir Path directory) throws IOException {
+        Path file = directory.resolve("config.json");
+        WaypointerConfig config = WaypointerConfig.load(file);
+        assertEquals(1.0, config.minimapScale());
+        assertFalse(config.minimapCustomPosition());
+        assertTrue(config.crystalHollowsDetectionEnabled("odawa"));
+        config.setMinimapScale(1.35);
+        config.setMinimapCustomPosition(true);
+        config.setMinimapPositionX(0.75);
+        config.setMinimapPositionY(0.4);
+        config.setCrystalHollowsDetectionEnabled("odawa", false);
+        config.setCrystalHollowsDetectionEnabled("king_yolkar", false);
+        config.flush();
+        WaypointerConfig restored = WaypointerConfig.load(file);
+        assertEquals(1.35, restored.minimapScale());
+        assertTrue(restored.minimapCustomPosition());
+        assertEquals(0.75, restored.minimapPositionX());
+        assertEquals(0.4, restored.minimapPositionY());
+        assertFalse(restored.crystalHollowsDetectionEnabled("odawa"));
+        assertFalse(restored.crystalHollowsDetectionEnabled("king_yolkar"));
+        restored.replaceShareableSettingsWith(new WaypointerConfig());
+        assertEquals(1.35, restored.minimapScale());
+        assertTrue(restored.minimapCustomPosition());
+        assertFalse(restored.crystalHollowsDetectionEnabled("odawa"));
+        restored.setCrystalHollowsDetectionEnabled("odawa", true);
+        restored.flush();
+        assertFalse(Files.readString(file).contains("\"odawa\""));
+        restored.resetToDefaults();
+        assertEquals(1.0, restored.minimapScale());
+        assertFalse(restored.minimapCustomPosition());
+        assertEquals(0.0, restored.minimapPositionX());
+        assertEquals(0.0, restored.minimapPositionY());
+        assertTrue(restored.crystalHollowsDetectionEnabled("king_yolkar"));
+    }
+
+    @Test
+    void minimapPlacementRejectsNonFiniteValuesAndNormalizesSavedSettings() {
+        WaypointerConfig config = WaypointerConfig.fromJson("""
+                {"minimapScale":"NaN","minimapPositionX":-1,"minimapPositionY":9,
+                 "crystalHollowsDetections":{"odawa":false,"king_yolkar":null,"xalx":"false"}}
+                """);
+        assertEquals(1.0, config.minimapScale());
+        assertEquals(0.0, config.minimapPositionX());
+        assertEquals(1.0, config.minimapPositionY());
+        assertFalse(config.crystalHollowsDetectionEnabled("odawa"));
+        assertTrue(config.crystalHollowsDetectionEnabled("king_yolkar"));
+        assertTrue(config.crystalHollowsDetectionEnabled("xalx"));
+        config.setMinimapScale(9);
+        assertEquals(2.0, config.minimapScale());
+        config.setMinimapScale(Double.NaN);
+        assertEquals(2.0, config.minimapScale());
+        config.setMinimapScale(-9);
+        assertEquals(0.5, config.minimapScale());
+        config.setMinimapPositionX(Double.POSITIVE_INFINITY);
+        assertEquals(0.0, config.minimapPositionX());
+        config.setMinimapCustomPosition(true);
+        config.setCrystalHollowsMinimapCorner(3);
+        assertFalse(config.minimapCustomPosition());
+        assertEquals(3, config.crystalHollowsMinimapCorner());
+    }
+
+    @Test
     void featureBloatIsOptInAndPreservesStoredChoices() throws IOException {
         WaypointerConfig config = new WaypointerConfig();
         WaypointPaint paint = WaypointPaint.solid(0x123456);

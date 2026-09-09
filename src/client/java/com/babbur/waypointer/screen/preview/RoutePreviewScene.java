@@ -73,6 +73,15 @@ public final class RoutePreviewScene {
     private final double centerX;
     private final double centerY;
     private final double centerZ;
+    private WaypointInspectorScene inspector;
+
+    static RoutePreviewScene inspector(WaypointInspectorScene sample) {
+        RoutePreviewScene scene = empty();
+        scene.inspector = sample;
+        return scene;
+    }
+
+    WaypointInspectorScene inspector() { return inspector; }
 
     private RoutePreviewScene(String routeId, String routeName, boolean roomLocal,
                               List<Marker> markers, List<Connector> connectors,

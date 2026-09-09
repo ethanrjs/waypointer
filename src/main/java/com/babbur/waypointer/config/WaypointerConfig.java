@@ -9,6 +9,9 @@ import net.minecraft.resources.Identifier;
 import com.google.gson.annotations.SerializedName;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointStyle;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.core.SequenceVisibility;
@@ -46,6 +49,33 @@ public final class WaypointerConfig {
     private static final int TEMP_DURATION_MIN_SECONDS = 1;
     private static final int TEMP_DURATION_MAX_SECONDS = 24 * 60 * 60;
     private static final int SECONDS_PER_MINUTE = 60;
+
+    private Map<String, WaypointStyle> namedStyles = new LinkedHashMap<>();
+    private String preferredStyleId = "";
+    private Map<String, WaypointStyle> crystalHollowsStyles = new LinkedHashMap<>();
+    transient boolean resolvedStyleSnapshot;
+    final transient Map<java.util.List<WaypointStyle>, WaypointerConfig> resolvedStyles = new LinkedHashMap<>();
+    private double routeMinRenderDistance = 0.0;
+    private double routeMaxRenderDistance = 0.0;
+    private double routeLineWidth = 0.0;
+    private double routeLineOpacity = 1.0;
+    private double beaconWidthScale = 1.0;
+    private double beaconMotionSpeed = 1.0;
+    private double tracerCenterGap = 0.0;
+    private double labelBackdropOpacity = 1.0;
+    private double labelDetailDistance = 16.0;
+    private double completedWaypointOpacity = 0.25;
+    private double currentWaypointOpacity = 1.0;
+    private double upcomingWaypointOpacity = 0.65;
+    private double sequenceContextOpacity = 0.35;
+    private boolean routeLineDashed;
+    private boolean tracerEdgeArrow;
+    private boolean labelShowRouteName;
+    private boolean labelShowCoordinates;
+    private boolean labelDetailOnDemand;
+    private boolean preventLabelOverlap;
+    private boolean showWaypointRoleBadge;
+    private String waypointIcon = "NONE";
 
     private int configSchemaVersion = CONFIG_SCHEMA_VERSION;
     private double defaultReachRadius = Waypoint.DEFAULT_REACH_RADIUS;
@@ -141,6 +171,11 @@ public final class WaypointerConfig {
     private int crystalHollowsMinimapSize = 144;
     private int crystalHollowsMinimapCorner = 0;
     private boolean crystalHollowsMinimapLabels = true;
+    private double minimapScale = 1.0;
+    private boolean minimapCustomPosition = false;
+    private double minimapPositionX = 0.0;
+    private double minimapPositionY = 0.0;
+    private Map<String, Boolean> crystalHollowsDetections = new LinkedHashMap<>();
     private boolean crystalHollowsEnabled = true;
     private boolean crystalHollowsStructureWaypoints = true;
     private boolean crystalHollowsHideStructuresFolder = false;
@@ -149,8 +184,8 @@ public final class WaypointerConfig {
     private boolean crystalHollowsChatDetection = true;
     private boolean crystalHollowsMetalDetector = true;
     private boolean crystalHollowsRemoteSharing = true;
-    // Local consent: never exported in the settings codec or copied from shared settings.
-    private boolean crystalHollowsSkyblockerSharing = false;
+    // Local preference: never exported in the settings codec or copied from shared settings.
+    private boolean crystalHollowsSkyblockerSharing = true;
     private boolean crystalHollowsWishingCompassSolver = true;
     private boolean crystalHollowsCompassRays = true;
     private boolean crystalHollowsAnnounceDetections = true;
@@ -224,7 +259,12 @@ public final class WaypointerConfig {
         if (loadedSchemaVersion > CONFIG_SCHEMA_VERSION) {
             throw new UnsupportedFutureSchemaException(loadedSchemaVersion);
         }
-        WaypointerConfig config = GSON.fromJson(raw, WaypointerConfig.class);
+        JsonObject root = JsonParser.parseString(raw).getAsJsonObject();
+        JsonElement savedNamedStyles = root.remove("namedStyles");
+        JsonElement savedStructureStyles = root.remove("crystalHollowsStyles");
+        JsonElement savedPreferredStyle = root.remove("preferredStyleId");
+        JsonElement savedDetections = root.remove("crystalHollowsDetections");
+        WaypointerConfig config = GSON.fromJson(root, WaypointerConfig.class);
         if (config == null) {
             throw new IllegalArgumentException("config JSON is null");
         }
@@ -232,6 +272,25 @@ public final class WaypointerConfig {
         config.migrateSequenceVisibility(raw, loadedSchemaVersion);
         config.migrateEtherwarpAlignmentSound(raw, loadedSchemaVersion);
         config.applyMigrations(loadedSchemaVersion);
+        // Preserve existing customized backdrops when separating text and background opacity.
+        if (!root.has("labelBackdropOpacity")) config.labelBackdropOpacity = config.labelOpacity();
+        config.namedStyles = readStyles(savedNamedStyles);
+        config.crystalHollowsStyles = readStyles(savedStructureStyles);
+        config.preferredStyleId = savedPreferredStyle != null && savedPreferredStyle.isJsonPrimitive()
+                ? savedPreferredStyle.getAsString() : "";
+        if (savedDetections != null && savedDetections.isJsonObject()) {
+            savedDetections.getAsJsonObject().entrySet().forEach(entry -> {
+                if (!entry.getKey().isBlank() && entry.getKey().length() <= 80
+                        && entry.getValue().isJsonPrimitive()
+                        && entry.getValue().getAsJsonPrimitive().isBoolean()
+                        && !entry.getValue().getAsBoolean())
+                    config.crystalHollowsDetections.put(entry.getKey(), false);
+            });
+        }
+        config.minimapScale = config.minimapScale();
+        config.minimapPositionX = config.minimapPositionX();
+        config.minimapPositionY = config.minimapPositionY();
+        config.normalizeStylePreferences();
         return config;
     }
 
@@ -354,9 +413,129 @@ public final class WaypointerConfig {
     }
 
     public void save() {
+        resolvedStyles.clear();
         if (saver == null || writesBlockedForFutureSchema) return;
         pendingSnapshotJson = GSON.toJson(this);
         saver.markDirty();
+    }
+
+    private static Map<String, WaypointStyle> readStyles(JsonElement encoded) {
+        Map<String, WaypointStyle> styles = new LinkedHashMap<>();
+        if (encoded == null || !encoded.isJsonObject()) return styles;
+        encoded.getAsJsonObject().entrySet().forEach(entry -> {
+            if (entry.getKey().isBlank() || entry.getKey().length() > 80
+                    || !entry.getValue().isJsonObject()) return;
+            JsonElement values = entry.getValue().getAsJsonObject().get("values");
+            if (values == null || !values.isJsonObject()) return;
+            Map<String, String> properties = new LinkedHashMap<>();
+            values.getAsJsonObject().entrySet().forEach(property -> {
+                if (property.getValue().isJsonPrimitive())
+                    properties.put(property.getKey(), property.getValue().getAsString());
+            });
+            styles.put(entry.getKey(), WaypointStyles.normalize(new WaypointStyle(properties)));
+        });
+        return styles;
+    }
+
+    private void normalizeStylePreferences() {
+        if (namedStyles == null) namedStyles = new LinkedHashMap<>();
+        if (crystalHollowsStyles == null) crystalHollowsStyles = new LinkedHashMap<>();
+        namedStyles.entrySet().removeIf(entry -> entry.getKey() == null || entry.getValue() == null);
+        crystalHollowsStyles.entrySet().removeIf(entry -> entry.getKey() == null || entry.getValue() == null);
+        preferredStyleId = preferredStyleId == null ? "" : preferredStyleId.strip();
+        routeMinRenderDistance = routeMinRenderDistance();
+        routeMaxRenderDistance = routeMaxRenderDistance();
+        routeLineWidth = routeLineWidth();
+        routeLineOpacity = routeLineOpacity();
+        beaconWidthScale = beaconWidthScale();
+        beaconMotionSpeed = beaconMotionSpeed();
+        tracerCenterGap = tracerCenterGap();
+        labelBackdropOpacity = labelBackdropOpacity();
+        labelDetailDistance = labelDetailDistance();
+        completedWaypointOpacity = completedWaypointOpacity();
+        currentWaypointOpacity = currentWaypointOpacity();
+        upcomingWaypointOpacity = upcomingWaypointOpacity();
+        sequenceContextOpacity = sequenceContextOpacity();
+        waypointIcon = waypointIcon();
+    }
+    public WaypointStyle namedStyle(String id) { return namedStyles.getOrDefault(id, WaypointStyle.EMPTY); }
+    public Map<String, WaypointStyle> namedStyles() { return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(namedStyles)); }
+    public String preferredStyleId() { return preferredStyleId; }
+    public void setPreferredStyleId(String id) { preferredStyleId = id == null ? "" : id.strip(); save(); }
+    public void putNamedStyle(String id, WaypointStyle style) {
+        if (id == null || id.isBlank() || id.length() > 80 || style == null) return;
+        namedStyles.put(id.strip(), style); save();
+    }
+    public void removeNamedStyle(String id) {
+        namedStyles.remove(id);
+        if (preferredStyleId.equals(id)) preferredStyleId = "";
+        save();
+    }
+    public WaypointStyle crystalHollowsStyle(String structureId) {
+        return crystalHollowsStyles.getOrDefault(structureId, WaypointStyle.EMPTY);
+    }
+    public void setCrystalHollowsStyle(String structureId, WaypointStyle style) {
+        if (structureId == null || structureId.isBlank() || structureId.length() > 80) return;
+        if (style == null || style.isEmpty()) crystalHollowsStyles.remove(structureId);
+        else crystalHollowsStyles.put(structureId, style);
+        save();
+    }
+    WaypointerConfig unsavedStyleCopy() {
+        WaypointerConfig copy = GSON.fromJson(GSON.toJson(this), WaypointerConfig.class);
+        copy.resolvedStyleSnapshot = true;
+        return copy;
+    }
+    private static double finiteStyleValue(double value, double fallback, double min, double max) {
+        return Double.isFinite(value) ? clamp(value, min, max) : fallback;
+    }
+    public double routeMinRenderDistance() { return finiteStyleValue(routeMinRenderDistance, 0.0, 0.0, 100000.0); }
+    public void setRouteMinRenderDistance(double value) { if (!Double.isFinite(value)) return; routeMinRenderDistance = clamp(value, 0.0, 100000.0); save(); }
+    public double routeMaxRenderDistance() { return finiteStyleValue(routeMaxRenderDistance, 0.0, 0.0, 100000.0); }
+    public void setRouteMaxRenderDistance(double value) { if (!Double.isFinite(value)) return; routeMaxRenderDistance = clamp(value, 0.0, 100000.0); save(); }
+    public double routeLineWidth() { return finiteStyleValue(routeLineWidth, 0.0, 0.0, 12.0); }
+    public void setRouteLineWidth(double value) { if (!Double.isFinite(value)) return; routeLineWidth = clamp(value, 0.0, 12.0); save(); }
+    public double routeLineOpacity() { return finiteStyleValue(routeLineOpacity, 1.0, 0.0, 1.0); }
+    public void setRouteLineOpacity(double value) { if (!Double.isFinite(value)) return; routeLineOpacity = clamp(value, 0.0, 1.0); save(); }
+    public double beaconWidthScale() { return finiteStyleValue(beaconWidthScale, 1.0, 0.1, 8.0); }
+    public void setBeaconWidthScale(double value) { if (!Double.isFinite(value)) return; beaconWidthScale = clamp(value, 0.1, 8.0); save(); }
+    public double beaconMotionSpeed() { return finiteStyleValue(beaconMotionSpeed, 1.0, 0.0, 5.0); }
+    public void setBeaconMotionSpeed(double value) { if (!Double.isFinite(value)) return; beaconMotionSpeed = clamp(value, 0.0, 5.0); save(); }
+    public double tracerCenterGap() { return finiteStyleValue(tracerCenterGap, 0.0, 0.0, 200.0); }
+    public void setTracerCenterGap(double value) { if (!Double.isFinite(value)) return; tracerCenterGap = clamp(value, 0.0, 200.0); save(); }
+    public double labelBackdropOpacity() { return finiteStyleValue(labelBackdropOpacity, 1.0, 0.0, 1.0); }
+    public void setLabelBackdropOpacity(double value) { if (!Double.isFinite(value)) return; labelBackdropOpacity = clamp(value, 0.0, 1.0); save(); }
+    public double labelDetailDistance() { return finiteStyleValue(labelDetailDistance, 16.0, 0.0, 10000.0); }
+    public void setLabelDetailDistance(double value) { if (!Double.isFinite(value)) return; labelDetailDistance = clamp(value, 0.0, 10000.0); save(); }
+    public double completedWaypointOpacity() { return finiteStyleValue(completedWaypointOpacity, 0.25, 0.0, 1.0); }
+    public void setCompletedWaypointOpacity(double value) { if (!Double.isFinite(value)) return; completedWaypointOpacity = clamp(value, 0.0, 1.0); save(); }
+    public double currentWaypointOpacity() { return finiteStyleValue(currentWaypointOpacity, 1.0, 0.0, 1.0); }
+    public void setCurrentWaypointOpacity(double value) { if (!Double.isFinite(value)) return; currentWaypointOpacity = clamp(value, 0.0, 1.0); save(); }
+    public double upcomingWaypointOpacity() { return finiteStyleValue(upcomingWaypointOpacity, 0.65, 0.0, 1.0); }
+    public void setUpcomingWaypointOpacity(double value) { if (!Double.isFinite(value)) return; upcomingWaypointOpacity = clamp(value, 0.0, 1.0); save(); }
+    public double sequenceContextOpacity() { return finiteStyleValue(sequenceContextOpacity, 0.35, 0.0, 1.0); }
+    public void setSequenceContextOpacity(double value) { if (!Double.isFinite(value)) return; sequenceContextOpacity = clamp(value, 0.0, 1.0); save(); }
+    public boolean routeLineDashed() { return routeLineDashed; }
+    public void setRouteLineDashed(boolean value) { routeLineDashed = value; save(); }
+    public boolean tracerEdgeArrow() { return tracerEdgeArrow; }
+    public void setTracerEdgeArrow(boolean value) { tracerEdgeArrow = value; save(); }
+    public boolean labelShowRouteName() { return labelShowRouteName; }
+    public void setLabelShowRouteName(boolean value) { labelShowRouteName = value; save(); }
+    public boolean labelShowCoordinates() { return labelShowCoordinates; }
+    public void setLabelShowCoordinates(boolean value) { labelShowCoordinates = value; save(); }
+    public boolean labelDetailOnDemand() { return labelDetailOnDemand; }
+    public void setLabelDetailOnDemand(boolean value) { labelDetailOnDemand = value; save(); }
+    public boolean preventLabelOverlap() { return preventLabelOverlap; }
+    public void setPreventLabelOverlap(boolean value) { preventLabelOverlap = value; save(); }
+    public boolean showWaypointRoleBadge() { return showWaypointRoleBadge; }
+    public void setShowWaypointRoleBadge(boolean value) { showWaypointRoleBadge = value; save(); }
+    public String waypointIcon() {
+        return waypointIcon != null && java.util.Set.of("NONE", "DIAMOND", "CIRCLE", "SQUARE", "STAR").contains(waypointIcon)
+                ? waypointIcon : "NONE";
+    }
+    public void setWaypointIcon(String value) {
+        waypointIcon = value == null ? "NONE" : value.toUpperCase(java.util.Locale.ROOT);
+        waypointIcon = waypointIcon();
+        save();
     }
 
     public void flush() {
@@ -576,6 +755,13 @@ public final class WaypointerConfig {
     public int crystalHollowsMinimapSize() { return clamp(crystalHollowsMinimapSize, 96, 224); }
     public int crystalHollowsMinimapCorner() { return clamp(crystalHollowsMinimapCorner, 0, 3); }
     public boolean crystalHollowsMinimapLabels() { return crystalHollowsMinimapLabels; }
+    public double minimapScale() { return finiteStyleValue(minimapScale, 1.0, 0.5, 2.0); }
+    public boolean minimapCustomPosition() { return minimapCustomPosition; }
+    public double minimapPositionX() { return finiteStyleValue(minimapPositionX, 0.0, 0.0, 1.0); }
+    public double minimapPositionY() { return finiteStyleValue(minimapPositionY, 0.0, 0.0, 1.0); }
+    public boolean crystalHollowsDetectionEnabled(String structureId) {
+        return !Boolean.FALSE.equals(crystalHollowsDetections.get(structureId));
+    }
     public boolean crystalHollowsEnabled() { return crystalHollowsEnabled; }
     public boolean crystalHollowsStructureWaypoints() { return crystalHollowsStructureWaypoints; }
     public boolean crystalHollowsHideStructuresFolder() { return crystalHollowsHideStructuresFolder; }
@@ -852,8 +1038,18 @@ public final class WaypointerConfig {
     public void setDungeonWaypointsFeatureEnabled(boolean v) { this.dungeonWaypointsFeatureEnabled = v; save(); }
     public void setCrystalHollowsMinimap(boolean v) { crystalHollowsMinimap = v; save(); }
     public void setCrystalHollowsMinimapSize(int v) { crystalHollowsMinimapSize = clamp(v, 96, 224); save(); }
-    public void setCrystalHollowsMinimapCorner(int v) { crystalHollowsMinimapCorner = clamp(v, 0, 3); save(); }
+    public void setCrystalHollowsMinimapCorner(int v) { crystalHollowsMinimapCorner = clamp(v, 0, 3); minimapCustomPosition = false; save(); }
     public void setCrystalHollowsMinimapLabels(boolean v) { crystalHollowsMinimapLabels = v; save(); }
+    public void setMinimapScale(double v) { if (!Double.isFinite(v)) return; minimapScale = clamp(v, 0.5, 2.0); save(); }
+    public void setMinimapCustomPosition(boolean v) { minimapCustomPosition = v; save(); }
+    public void setMinimapPositionX(double v) { if (!Double.isFinite(v)) return; minimapPositionX = clamp(v, 0.0, 1.0); save(); }
+    public void setMinimapPositionY(double v) { if (!Double.isFinite(v)) return; minimapPositionY = clamp(v, 0.0, 1.0); save(); }
+    public void setCrystalHollowsDetectionEnabled(String structureId, boolean enabled) {
+        if (structureId == null || structureId.isBlank() || structureId.length() > 80) return;
+        if (enabled) crystalHollowsDetections.remove(structureId);
+        else crystalHollowsDetections.put(structureId, false);
+        save();
+    }
     public void setCrystalHollowsEnabled(boolean v) { crystalHollowsEnabled = v; save(); }
     public void setCrystalHollowsStructureWaypoints(boolean v) { crystalHollowsStructureWaypoints = v; save(); }
     public void setCrystalHollowsHideStructuresFolder(boolean v) { crystalHollowsHideStructuresFolder = v; save(); }
@@ -931,6 +1127,7 @@ public final class WaypointerConfig {
     public void replaceWith(WaypointerConfig replacement) {
         replaceShareableSettingsWith(replacement);
     }
+    /** Shared codes intentionally leave local style libraries and advanced appearance preferences intact. */
     public void replaceShareableSettingsWith(WaypointerConfig replacement) {
         if (replacement == null) return;
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
@@ -1043,6 +1240,16 @@ public final class WaypointerConfig {
     }
 
     public void disableAllSettings() {
+        preferredStyleId = "";
+        waypointIcon = "NONE";
+        routeLineDashed = false;
+        tracerEdgeArrow = false;
+        labelShowRouteName = false;
+        labelShowCoordinates = false;
+        labelDetailOnDemand = false;
+        preventLabelOverlap = false;
+        showWaypointRoleBadge = false;
+
         renderAntialiasing = false;
         enableFeatureBloat = false;
         waypointSkipFadeMs = 0;
@@ -1130,6 +1337,31 @@ public final class WaypointerConfig {
     }
     public void resetToDefaults() {
         WaypointerConfig defaults = new WaypointerConfig();
+        // Reset active preferences without deleting the reusable styles the user created.
+        preferredStyleId = "";
+        crystalHollowsStyles.clear();
+        routeMinRenderDistance = defaults.routeMinRenderDistance;
+        routeMaxRenderDistance = defaults.routeMaxRenderDistance;
+        routeLineWidth = defaults.routeLineWidth;
+        routeLineOpacity = defaults.routeLineOpacity;
+        routeLineDashed = defaults.routeLineDashed;
+        beaconWidthScale = defaults.beaconWidthScale;
+        beaconMotionSpeed = defaults.beaconMotionSpeed;
+        tracerCenterGap = defaults.tracerCenterGap;
+        tracerEdgeArrow = defaults.tracerEdgeArrow;
+        labelBackdropOpacity = defaults.labelBackdropOpacity;
+        labelShowRouteName = defaults.labelShowRouteName;
+        labelShowCoordinates = defaults.labelShowCoordinates;
+        labelDetailOnDemand = defaults.labelDetailOnDemand;
+        labelDetailDistance = defaults.labelDetailDistance;
+        preventLabelOverlap = defaults.preventLabelOverlap;
+        waypointIcon = defaults.waypointIcon;
+        showWaypointRoleBadge = defaults.showWaypointRoleBadge;
+        completedWaypointOpacity = defaults.completedWaypointOpacity;
+        currentWaypointOpacity = defaults.currentWaypointOpacity;
+        upcomingWaypointOpacity = defaults.upcomingWaypointOpacity;
+        sequenceContextOpacity = defaults.sequenceContextOpacity;
+
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
         defaultReachRadius = defaults.defaultReachRadius;
         resetProgressOnWorldJoin = defaults.resetProgressOnWorldJoin;
@@ -1221,6 +1453,11 @@ public final class WaypointerConfig {
         crystalHollowsMinimapSize = defaults.crystalHollowsMinimapSize;
         crystalHollowsMinimapCorner = defaults.crystalHollowsMinimapCorner;
         crystalHollowsMinimapLabels = defaults.crystalHollowsMinimapLabels;
+        minimapScale = defaults.minimapScale;
+        minimapCustomPosition = defaults.minimapCustomPosition;
+        minimapPositionX = defaults.minimapPositionX;
+        minimapPositionY = defaults.minimapPositionY;
+        crystalHollowsDetections.clear();
         crystalHollowsEnabled = defaults.crystalHollowsEnabled;
         crystalHollowsStructureWaypoints = defaults.crystalHollowsStructureWaypoints;
         crystalHollowsHideStructuresFolder = defaults.crystalHollowsHideStructuresFolder;
@@ -1229,7 +1466,7 @@ public final class WaypointerConfig {
         crystalHollowsChatDetection = defaults.crystalHollowsChatDetection;
         crystalHollowsMetalDetector = defaults.crystalHollowsMetalDetector;
         crystalHollowsRemoteSharing = defaults.crystalHollowsRemoteSharing;
-        crystalHollowsSkyblockerSharing = false;
+        crystalHollowsSkyblockerSharing = defaults.crystalHollowsSkyblockerSharing;
         crystalHollowsWishingCompassSolver = defaults.crystalHollowsWishingCompassSolver;
         crystalHollowsCompassRays = defaults.crystalHollowsCompassRays;
         crystalHollowsAnnounceDetections = defaults.crystalHollowsAnnounceDetections;

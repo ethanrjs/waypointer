@@ -5,6 +5,7 @@ import com.babbur.waypointer.crystal.CompassMarkerState;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
 import com.babbur.waypointer.crystal.MetalDetectorController;
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.SequenceRoleColor;
@@ -39,6 +40,7 @@ public final class TracerRenderer implements HudElement {
     private final double[] waypointBoxBoundsScratch = new double[6];
     private final WorldScreenProjector projector = new WorldScreenProjector();
     private final double[] screenScratch = new double[2];
+    private final double[] lineStartScratch = new double[2];
 
     public TracerRenderer(ActiveGroupManager manager, WaypointerConfig config) {
         this(manager, config, null);
@@ -56,28 +58,15 @@ public final class TracerRenderer implements HudElement {
     }
 
     private Waypoint straightTracerTarget(WaypointGroup group, boolean tempFocus,
-                                          LocalPlayer player, double nearHideDistanceSq,
+                                          LocalPlayer player, Vec3 cameraPosition,
                                           boolean recordDecision, boolean outgoing) {
-        if (MetalDetectorController.isDetectorGroup(group) && !tracersEnabled(group, config, dungeonConfig)) return null;
         WaypointSkipFade fade = WaypointSkipFade.get(group);
         if (outgoing && (fade == null || !fade.active()
                 || group.isWaypointDisabled(fade.outgoing())
                 || WaypointWorldRenderer.shouldForceHideReachedWaypoint(
                         fade.outgoing(), group.currentIndex(), group.get(fade.outgoing())))) return null;
-        if (!tempFocus && !tracersEnabled(group, config, dungeonConfig)) {
-            if (recordDecision) RenderDiagnostics.recordNoStraightTracer(group, "tracer disabled");
-            return null;
-        }
         if (RenderDiagnostics.shouldSuppressStraightTracer(group)) {
             if (recordDecision) RenderDiagnostics.recordStraightTracerSuppressed(group);
-            return null;
-        }
-        if (!tempFocus
-                && config.hideTracerOnStaticRoutes()
-                && group.loadMode() == WaypointGroup.LoadMode.STATIC) {
-            if (recordDecision) {
-                RenderDiagnostics.recordNoStraightTracer(group, "static-route tracers hidden");
-            }
             return null;
         }
         Waypoint target = outgoing ? group.get(fade.outgoing()) : group.current();
@@ -86,19 +75,34 @@ public final class TracerRenderer implements HudElement {
                 && group.loadMode() == WaypointGroup.LoadMode.STATIC
                 && !isDungeonRoomRoute(group)
                 && player != null) {
-            double maxDistance = config.maxStaticWaypointRenderDistance();
             target = nearestStaticTracerTarget(
-                    group, player.getX(), player.getY(), player.getZ(), nearHideDistanceSq,
-                    config.hideReachedStaticWaypointsUntilCycleComplete(),
-                    maxDistance > 0.0 ? maxDistance * maxDistance : 0.0);
+                    group, player.getX(), player.getY(), player.getZ(), 0,
+                    config.hideReachedStaticWaypointsUntilCycleComplete(), 0,
+                    waypoint -> {
+                        WaypointerConfig style = WaypointStyles.resolve(config, group, waypoint);
+                        double dx = waypoint.centerX() - player.getX();
+                        double dy = waypoint.centerY() - player.getY();
+                        double dz = waypoint.centerZ() - player.getZ();
+                        double max = style.maxStaticWaypointRenderDistance();
+                        return tracersEnabled(group, style, dungeonConfig)
+                                && !style.hideTracerOnStaticRoutes()
+                                && !shouldHideNearPlayer(waypoint, player, nearHideDistanceSq(style))
+                                && WaypointWorldRenderer.withinRouteDistance(style, waypoint, cameraPosition)
+                                && withinRouteDistance(dx, dy, dz, 0, max);
+                    });
         }
+        WaypointerConfig options = WaypointStyles.resolve(config, group, target);
+        if (MetalDetectorController.isDetectorGroup(group) && !tracersEnabled(group, options, dungeonConfig)) return null;
+        if (!tempFocus && (!tracersEnabled(group, options, dungeonConfig)
+                || options.hideTracerOnStaticRoutes() && group.loadMode() == WaypointGroup.LoadMode.STATIC)) return null;
         if (target != null && (CompassMarkerState.navigationStopped(target)
-                || !crystalHollowsTracerAllowed(group, target, config))) return null;
+                || !crystalHollowsTracerAllowed(group, target, options))) return null;
         if (target == null) {
             if (recordDecision) RenderDiagnostics.recordNoStraightTracer(group, "no current target");
             return null;
         }
-        if (shouldHideNearPlayer(target, player, nearHideDistanceSq)) {
+        if (!WaypointWorldRenderer.withinRouteDistance(options, target, cameraPosition)) return null;
+        if (shouldHideNearPlayer(target, player, nearHideDistanceSq(options))) {
             if (recordDecision) {
                 RenderDiagnostics.recordNoStraightTracer(group, "straight tracer hidden near player");
             }
@@ -118,6 +122,15 @@ public final class TracerRenderer implements HudElement {
                                               double nearHideDistanceSq,
                                               boolean hideReached,
                                               double maxDistanceSq) {
+        return nearestStaticTracerTarget(group, playerX, playerY, playerZ,
+                nearHideDistanceSq, hideReached, maxDistanceSq, waypoint -> true);
+    }
+
+    private static Waypoint nearestStaticTracerTarget(WaypointGroup group,
+                                              double playerX, double playerY, double playerZ,
+                                              double nearHideDistanceSq, boolean hideReached,
+                                              double maxDistanceSq,
+                                              java.util.function.Predicate<Waypoint> eligible) {
         if (group == null || group.loadMode() != WaypointGroup.LoadMode.STATIC) return null;
 
         Waypoint nearest = null;
@@ -126,7 +139,7 @@ public final class TracerRenderer implements HudElement {
             if (group.isWaypointDisabled(index)) continue;
             if (hideReached && group.isStaticWaypointReached(index)) continue;
             Waypoint waypoint = group.get(index);
-            if (CompassMarkerState.navigationStopped(waypoint)) continue;
+            if (CompassMarkerState.navigationStopped(waypoint) || !eligible.test(waypoint)) continue;
             double dx = waypoint.centerX() - playerX;
             double dy = waypoint.centerY() - playerY;
             double dz = waypoint.centerZ() - playerZ;
@@ -147,12 +160,6 @@ public final class TracerRenderer implements HudElement {
         for (WaypointGroup group : groups) WaypointSkipFade.observe(group, config);
         if (groups.isEmpty()) return;
         boolean tempFocus = manager.tempWaypointFocusActive();
-        if (!tempFocus && groups.stream().noneMatch(
-                group -> tracersEnabled(group, config, dungeonConfig))) {
-            RenderDiagnostics.recordNoStraightTracer(groups, "tracer disabled");
-            return;
-        }
-
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         GameRenderer renderer = mc.gameRenderer;
@@ -164,24 +171,15 @@ public final class TracerRenderer implements HudElement {
         int screenH = g.guiHeight();
         double fromX = screenW / 2.0;
         double fromY = screenH / 2.0;
-        float alpha = (float) config.tracerOpacity();
-        if (tempFocus) {
-            alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
-        }
-        if (alpha <= 0.0f) {
-            RenderDiagnostics.recordNoStraightTracer(groups, "tracer opacity is zero");
-            return;
-        }
-        double nearHideDistanceSq = nearHideDistanceSq();
-        boolean matchWaypoint = config.matchTracerToWaypointColor();
-        int overrideColor = config.tracerColor();
-        double thickness = config.tracerThickness();
-
         for (WaypointGroup group : groups) {
             for (int pass = 0; pass < 2; pass++) {
                 Waypoint target = straightTracerTarget(
-                        group, tempFocus, player, nearHideDistanceSq, pass == 0, pass == 1);
+                        group, tempFocus, player, camera.position(), pass == 0, pass == 1);
                 if (target == null) continue;
+                WaypointerConfig options = WaypointStyles.resolve(config, group, target);
+                float alpha = (float) options.tracerOpacity();
+                if (tempFocus) alpha = Math.max(alpha, TEMP_FOCUS_TRACER_ALPHA_FLOOR);
+                if (alpha <= 0) continue;
                 WaypointWorldRenderer.populateWaypointRenderAnchor(
                         mc.level, target, waypointBoxBoundsScratch);
                 double targetX = waypointBoxBoundsScratch[0];
@@ -189,6 +187,7 @@ public final class TracerRenderer implements HudElement {
                 double targetZ = waypointBoxBoundsScratch[2];
                 boolean projected = projector.project(targetX, targetY, targetZ,
                         screenW, screenH, screenScratch);
+                boolean offscreen = !projected || !insideViewport(screenScratch[0], screenScratch[1], screenW, screenH);
                 if (projected && !insideViewport(screenScratch[0], screenScratch[1], screenW, screenH)) {
                     projectDirectionToEdge(screenScratch[0] - fromX, screenScratch[1] - fromY,
                             screenW, screenH, screenScratch);
@@ -198,13 +197,58 @@ public final class TracerRenderer implements HudElement {
                             screenW, screenH, screenScratch);
                 }
 
-                int color = matchWaypoint ? resolvedTargetColor(group, target) : overrideColor;
+                int color = options.matchTracerToWaypointColor() ? resolvedTargetColor(group, target, options) : options.tracerColor();
                 int argb = RenderHelpers.withAlpha(0xFF000000 | (color & 0xFFFFFF),
                         alpha * tracerFadeAlpha(group, pass == 1));
-                RenderHelpers.drawScreenLine(g, fromX, fromY,
-                        screenScratch[0], screenScratch[1], argb, thickness, config.renderAntialiasing());
+                drawStyledTracer(g, fromX, fromY, screenScratch[0], screenScratch[1], argb, options, offscreen, lineStartScratch);
                 RenderDiagnostics.recordStraightTracerSubmitted(group);
             }
+        }
+    }
+
+    /** Shared with the appearance inspector; scratch holds the two-coordinate line start. */
+    public static void drawStyledTracer(GuiGraphicsExtractor g, double fromX, double fromY,
+                                       double toX, double toY, int argb, WaypointerConfig options,
+                                       boolean offscreen, double[] scratch) {
+        if (lineStart(fromX, fromY, toX, toY, options.tracerCenterGap(), scratch)) {
+            RenderHelpers.drawScreenLine(g, scratch[0], scratch[1], toX, toY,
+                    argb, options.tracerThickness(), options.renderAntialiasing());
+        }
+        if (offscreen && options.tracerEdgeArrow()) drawEdgeArrow(g, fromX, fromY, toX, toY, argb, options);
+    }
+
+    static boolean withinRouteDistance(double dx, double dy, double dz, double min, double max) {
+        double distance = Math.hypot(Math.hypot(dx, dy), dz);
+        return Double.isFinite(distance) && distance >= min && (max <= 0 || distance <= max);
+    }
+
+    static boolean lineStart(double fromX, double fromY, double toX, double toY,
+                             double gap, double[] out) {
+        double dx = toX - fromX, dy = toY - fromY;
+        double length = Math.hypot(dx, dy);
+        if (!Double.isFinite(length) || !Double.isFinite(gap) || length <= Math.max(0, gap)) return false;
+        double fraction = Math.max(0, gap) / length;
+        out[0] = fromX + dx * fraction;
+        out[1] = fromY + dy * fraction;
+        return true;
+    }
+
+    private static void drawEdgeArrow(GuiGraphicsExtractor g, double centerX, double centerY,
+                                       double tipX, double tipY, int argb, WaypointerConfig options) {
+        double dx = tipX - centerX, dy = tipY - centerY;
+        double length = Math.hypot(dx, dy);
+        if (!Double.isFinite(length) || length <= 0) return;
+        dx /= length;
+        dy /= length;
+        double size = Math.min(7, length / 2);
+        // Inset the tip so both wings remain visible even at viewport corners.
+        tipX -= dx * size;
+        tipY -= dy * size;
+        for (int side = -1; side <= 1; side += 2) {
+            RenderHelpers.drawScreenLine(g, tipX, tipY,
+                    tipX - dx * size + side * dy * size * 0.5,
+                    tipY - dy * size - side * dx * size * 0.5,
+                    argb, options.tracerThickness(), options.renderAntialiasing());
         }
     }
 
@@ -223,7 +267,7 @@ public final class TracerRenderer implements HudElement {
                         && group.id().startsWith(CrystalHollowsStructureFolder.GROUP_PREFIX));
     }
 
-    static boolean tracersEnabled(WaypointGroup group, WaypointerConfig config,
+    public static boolean tracersEnabled(WaypointGroup group, WaypointerConfig config,
                                   DungeonConfig dungeonConfig) {
         if (!crystalHollowsTracerAllowed(group, group == null ? null : group.current(), config)) return false;
         if (MetalDetectorController.isDetectorGroup(group)
@@ -237,17 +281,17 @@ public final class TracerRenderer implements HudElement {
         return config != null && config.showTracer();
     }
 
-    private int resolvedTargetColor(WaypointGroup group, Waypoint target) {
+    private int resolvedTargetColor(WaypointGroup group, Waypoint target, WaypointerConfig options) {
         return SequenceRoleColor.resolve(
                 group,
                 group == null ? -1 : target == group.current() ? group.currentIndex()
                         : WaypointSkipFade.get(group) != null ? WaypointSkipFade.get(group).outgoing()
                         : group.currentIndex(),
-                config.colorSequenceWaypointsByRole(),
-                config.sequencePreviousWaypointColor(),
-                config.sequenceCurrentWaypointColor(),
-                config.sequenceNextWaypointColor(),
-                target == null ? 0 : target.color());
+                options.colorSequenceWaypointsByRole(),
+                options.sequencePreviousWaypointColor(),
+                options.sequenceCurrentWaypointColor(),
+                options.sequenceNextWaypointColor(),
+                target == null ? 0 : WaypointStyles.waypointColor(config, group, target));
     }
 
     private static void projectOffscreenTarget(Camera camera,
@@ -268,7 +312,7 @@ public final class TracerRenderer implements HudElement {
         projectOffscreenDirection(screenDirX, screenDirY, distance, screenW, screenH, out);
     }
 
-    static void projectOffscreenDirection(double screenDirX, double screenDirY, double distance,
+    public static void projectOffscreenDirection(double screenDirX, double screenDirY, double distance,
                                           int screenW, int screenH, double[] out) {
         if (Math.hypot(screenDirX, screenDirY) <= distance * 1.0e-5) {
             screenDirX = 0.0;
@@ -281,7 +325,7 @@ public final class TracerRenderer implements HudElement {
         return x >= 0.0 && x <= screenW && y >= 0.0 && y <= screenH;
     }
 
-    static void projectDirectionToEdge(double screenDirX, double screenDirY,
+    public static void projectDirectionToEdge(double screenDirX, double screenDirY,
                                        int screenW, int screenH, double[] out) {
         double centerX = screenW / 2.0;
         double centerY = screenH / 2.0;
@@ -298,7 +342,7 @@ public final class TracerRenderer implements HudElement {
         out[1] = Mth.clamp(centerY + screenDirY / scale, 0.0, screenH);
     }
 
-    private double nearHideDistanceSq() {
+    private static double nearHideDistanceSq(WaypointerConfig config) {
         return config.hideWaypointsNearPlayer()
                 ? WaypointVisibility.squaredRadius(config.hideWaypointsNearRadius())
                 : 0.0;

@@ -17,6 +17,63 @@ class CrystalHollowsTrackerBatchTest {
     @TempDir Path directory;
 
     @Test
+    void disabledStructureRejectsEveryAutomaticSourceButKeepsExplicitNavigation() throws Exception {
+        for (SightingConfidence confidence : SightingConfidence.values()) {
+            var config = new WaypointerConfig();
+            config.setCrystalHollowsDetectionEnabled("odawa", false);
+            var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), config, null);
+            var lobby = new CrystalHollowsLobbyState("test", 0, 0);
+            set(tracker, "active", true);
+            set(tracker, "lobby", lobby);
+            var sighting = new StructureSighting(CrystalHollowsStructure.ODAWA, 300, 100, 300,
+                    confidence, "test", 1);
+            boolean explicit = confidence == SightingConfidence.COMPASS || confidence == SightingConfidence.MANUAL;
+            assertEquals(explicit, tracker.detectionEnabled(sighting), confidence.name());
+            assertEquals(explicit ? CrystalHollowsLobbyState.MergeResult.ADDED
+                            : CrystalHollowsLobbyState.MergeResult.IGNORED,
+                    tracker.merge(sighting, false), confidence.name());
+            assertEquals(explicit ? 1 : 0, lobby.sightings().size(), confidence.name());
+            if (confidence == SightingConfidence.ENTITY || confidence == SightingConfidence.COMPASS
+                    || confidence == SightingConfidence.NPC_CHAT) {
+                var remote = new StructureSighting(CrystalHollowsStructure.ODAWA, 301, 100, 301,
+                        SightingConfidence.SHARED_REMOTE, "relay", 2, java.util.List.of(), "", confidence);
+                assertFalse(tracker.detectionEnabled(remote), "Remote evidence must not bypass preference: " + confidence);
+            }
+        }
+    }
+
+    @Test
+    void detectionToggleRebuildsExistingRoutesAndAllowsEntityRediscovery() throws Exception {
+        var manager = new ActiveGroupManager();
+        var config = new WaypointerConfig();
+        config.setCrystalHollowsNucleusWaypoints(false);
+        var tracker = new CrystalHollowsTracker(manager, config, null);
+        var lobby = new CrystalHollowsLobbyState("test", 0, 0);
+        lobby.merge(sighting(CrystalHollowsStructure.ODAWA));
+        set(tracker, "lobby", lobby);
+        var refresh = CrystalHollowsTracker.class.getDeclaredMethod("refreshProjectionSettings");
+        refresh.setAccessible(true);
+        refresh.invoke(tracker);
+        String generatedId = CrystalHollowsStructureFolder.GROUP_PREFIX + "odawa";
+        assertNotNull(manager.get(generatedId));
+        set(tracker, "lastRoughPosition", new CrystalHollowsPosition(300, 100, 300));
+        @SuppressWarnings("unchecked")
+        var processed = (java.util.Set<Integer>) get(tracker, "processedEntityIds");
+        processed.add(42);
+        config.setCrystalHollowsDetectionEnabled("odawa", false);
+        refresh.invoke(tracker);
+        assertNull(manager.get(generatedId));
+        assertEquals(1, lobby.sightings().size());
+        assertTrue(processed.isEmpty());
+        assertNull(get(tracker, "lastRoughPosition"));
+        processed.add(43);
+        config.setCrystalHollowsDetectionEnabled("odawa", true);
+        refresh.invoke(tracker);
+        assertNotNull(manager.get(generatedId));
+        assertTrue(processed.isEmpty());
+    }
+
+    @Test
     void caveInWarningsAreExactScopedAndDoNotExtendTheDeadline() throws Exception {
         var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), new WaypointerConfig(), null);
         String warning = "You can hear mighty rumbles and explosions in the distance...";

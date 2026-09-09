@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.crystal.CompassMarkerState;
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
@@ -48,6 +49,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.function.IntPredicate;
 import java.util.function.IntConsumer;
+import java.util.function.Predicate;
 
 class WaypointWorldRenderer {
 
@@ -109,9 +111,6 @@ class WaypointWorldRenderer {
     protected final WaypointVisibilityCache depthVisibility = new WaypointVisibilityCache();
     protected final double[] waypointBoxBoundsScratch = new double[6];
     private final LinkedHashSet<WaypointPaint> activePaintScratch = new LinkedHashSet<>();
-    private float beamRotationAnimationTime = Float.NaN;
-    private float beamRotationCos;
-    private float beamRotationSin;
     private final DungeonEntryPathController dungeonEntryPathController =
             new DungeonEntryPathController();
     private PreparedDungeonEntryPaths preparedDungeonEntryPaths;
@@ -209,27 +208,24 @@ class WaypointWorldRenderer {
             return false;
         }
 
-        WaypointerConfig.BoxStyle style = config.effectiveBoxStyle();
-        boolean drawLines = worldBoxOutlinesEnabled(style, irisHudFallbackActive);
-        boolean drawGlobalFill = boxStyleDrawsRgbFill(style);
         WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
         boolean drawPaint = config.enableFeatureBloat() && hasPaintedGroup(groups, defaultPaint);
-        boolean drawFill = drawGlobalFill
-                || style == WaypointerConfig.BoxStyle.PAINT
-                || hasFilledSubwaypoint(groups)
-                || drawPaint;
-        boolean drawBeams = effectiveBeaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF;
-        boolean drawTexturedBeams = drawBeams && config.useBeaconBeamTextures();
-        boolean drawFlatBeams = drawBeams && !drawTexturedBeams;
-        boolean drawRouteLines = config.showRouteLines()
+        boolean drawLines = anyStyle(groups, c -> worldBoxOutlinesEnabled(c.effectiveBoxStyle(), irisHudFallbackActive)
+                && c.waypointOutlineOpacity() > 0);
+        boolean drawFill = anyStyle(groups, c -> c.beaconOpacity() > 0
+                && (boxStyleDrawsRgbFill(c.effectiveBoxStyle()) || c.effectiveBoxStyle() == WaypointerConfig.BoxStyle.PAINT))
+                || hasFilledSubwaypoint(groups) || drawPaint;
+        boolean drawTexturedBeams = anyStyle(groups, c -> effectiveBeaconBeamMode(c) != WaypointerConfig.BeaconBeamMode.OFF
+                && c.useBeaconBeamTextures() && c.beaconOpacity() > 0);
+        boolean drawFlatBeams = anyStyle(groups, c -> effectiveBeaconBeamMode(c) != WaypointerConfig.BeaconBeamMode.OFF
+                && !c.useBeaconBeamTextures() && c.beaconOpacity() > 0);
+        boolean drawBeams = drawTexturedBeams || drawFlatBeams;
+        boolean drawRouteLines = anyStyle(groups, WaypointerConfig::showRouteLines)
                 || dungeonConfig != null && dungeonConfig.showDungeonRouteLines();
         boolean drawDungeonEntryPaths = config.showDungeonEntryPathToFirstWaypoint();
         if (!drawDungeonEntryPaths) clearPreparedDungeonEntryPaths();
         if (!drawLines && !drawFill && !drawPaint && !drawBeams && !drawRouteLines
                 && !drawDungeonEntryPaths) return false;
-        if (!worldRenderOpacityAllowsAnything(
-                config.beaconOpacity(), config.waypointOutlineOpacity(), drawLines,
-                drawRouteLines, drawDungeonEntryPaths)) return false;
         boolean hasDepthCheckedWaypoints = hasDepthCheckedWaypoint(groups);
         boolean hasThroughWallWaypoints = hasThroughWallWaypoint(groups) || drawDungeonEntryPaths;
         if (!hasDepthCheckedWaypoints && !hasThroughWallWaypoints) return false;
@@ -281,8 +277,7 @@ class WaypointWorldRenderer {
         if ((emitStatic || emitFading) && drawPaint && hasThroughWallWaypoints) {
             for (WaypointGroup g : groups) {
                 WaypointPaint paint = effectivePaint(g, defaultPaint);
-                if (paint == null || usesSequenceRoleColorPaintFallback(
-                        g, defaultPaint, config.colorSequenceWaypointsByRole())) continue;
+                if (paint == null) continue;
                 WaypointPaintTextureCache.Entry paintTexture =
                         WaypointPaintTextureCache.getRetained(paint);
                 if (paintTexture == null) continue;
@@ -296,8 +291,7 @@ class WaypointWorldRenderer {
         if ((emitStatic || emitFading) && drawPaint && hasDepthCheckedWaypoints) {
             for (WaypointGroup g : groups) {
                 WaypointPaint paint = effectivePaint(g, defaultPaint);
-                if (paint == null || usesSequenceRoleColorPaintFallback(
-                        g, defaultPaint, config.colorSequenceWaypointsByRole())) continue;
+                if (paint == null) continue;
                 WaypointPaintTextureCache.Entry paintTexture =
                         WaypointPaintTextureCache.getRetained(paint);
                 if (paintTexture == null) continue;
@@ -322,14 +316,8 @@ class WaypointWorldRenderer {
                 }
                 if (drawFill) {
                     for (WaypointGroup g : groups) {
-                        boolean paintFallback = config.enableFeatureBloat() && (usesSequenceRoleColorPaintFallback(
-                                g, defaultPaint, config.colorSequenceWaypointsByRole())
-                                || usesRgbPaintFallback(g, defaultPaint));
-                        if (config.enableFeatureBloat() && !paintFallback && !shouldEmitRgbFill(g, defaultPaint)) continue;
                         emitGroupGeometry(sink, g, () -> emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
-                                drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT
-                                        || paintFallback,
                                 false, mc));
                     }
                 }
@@ -349,14 +337,8 @@ class WaypointWorldRenderer {
                 }
                 if (drawFill) {
                     for (WaypointGroup g : groups) {
-                        boolean paintFallback = config.enableFeatureBloat() && (usesSequenceRoleColorPaintFallback(
-                                g, defaultPaint, config.colorSequenceWaypointsByRole())
-                                || usesRgbPaintFallback(g, defaultPaint));
-                        if (config.enableFeatureBloat() && !paintFallback && !shouldEmitRgbFill(g, defaultPaint)) continue;
                         emitGroupGeometry(sink, g, () -> emitFilledBoxes(submittedPose, quads, level, g, camPos, playerPos,
                                 maxStaticDistanceSq, nearHideDistanceSq,
-                                drawGlobalFill || style == WaypointerConfig.BoxStyle.PAINT
-                                        || paintFallback,
                                 true, mc));
                     }
                 }
@@ -375,7 +357,6 @@ class WaypointWorldRenderer {
                 if (drawRouteLines) {
                     sink.dynamic(() -> {
                         for (WaypointGroup g : groups) {
-                            if (!routeLinesEnabled(g, config, dungeonConfig)) continue;
                             emitRouteLines(submittedPose, lines, g, camPos, playerPos,
                                     maxStaticDistanceSq, nearHideDistanceSq,
                                     false, mc, level);
@@ -401,7 +382,6 @@ class WaypointWorldRenderer {
                 if (drawRouteLines) {
                     sink.dynamic(() -> {
                         for (WaypointGroup g : groups) {
-                            if (!routeLinesEnabled(g, config, dungeonConfig)) continue;
                             emitRouteLines(submittedPose, lines, g, camPos, playerPos,
                                     maxStaticDistanceSq, nearHideDistanceSq,
                                     true, mc, level);
@@ -515,10 +495,19 @@ class WaypointWorldRenderer {
 
     static boolean routeLinesEnabled(WaypointGroup group, WaypointerConfig config,
                                      DungeonConfig dungeonConfig) {
-        if (isDungeonRoomRoute(group) && dungeonConfig != null) {
+        return routeLinesEnabled(group, null, config, dungeonConfig);
+    }
+
+    static boolean routeLinesEnabled(WaypointGroup group, Waypoint point, WaypointerConfig config,
+                                      DungeonConfig dungeonConfig) {
+        boolean explicit = config != null && (config.namedStyle(config.preferredStyleId()).values().containsKey("showRouteLines")
+                || group != null && (config.namedStyle(group.stylePresetId()).values().containsKey("showRouteLines")
+                    || group.styleOverride().values().containsKey("showRouteLines"))
+                || point != null && point.styleOverride().values().containsKey("showRouteLines"));
+        if (!explicit && isDungeonRoomRoute(group) && dungeonConfig != null) {
             return dungeonConfig.showDungeonRouteLines();
         }
-        return config != null && config.showRouteLines();
+        return config != null && WaypointStyles.resolve(config, group, point).showRouteLines();
     }
 
     static boolean isDungeonRoomRoute(WaypointGroup group) {
@@ -532,11 +521,8 @@ class WaypointWorldRenderer {
                                 double maxStaticDistanceSq, double nearHideDistanceSq,
                                 boolean depthCheckedPass, Minecraft mc, ClientLevel level) {
         int currentIdx = g.currentIndex();
-        boolean showCompleted = config.showCompleted();
-        float alpha = 0.85f;
-        float width = effectiveOutlineThickness();
-        int color = config.routeLineColor();
-        boolean useEtherwarpHeight = config.useEtherwarpHeight();
+        WaypointerConfig routeStyle = styleFor(g, null);
+        boolean showCompleted = routeStyle.showCompleted();
         float crouchingEyeHeight = mc.player == null
                 ? 0.0f : mc.player.getEyeHeight(Pose.CROUCHING);
         var cameraUp = MinecraftCompat.mainCamera(mc.gameRenderer).upVector();
@@ -545,9 +531,11 @@ class WaypointWorldRenderer {
         RouteLineSegmentConsumer emitSegment = (fromIndex, toIndex) -> {
             Waypoint a = g.get(fromIndex);
             Waypoint b = g.get(toIndex);
+            WaypointerConfig style = styleFor(g, a);
+            if (!routeLinesEnabled(g, a, config, dungeonConfig)) return;
             if (!routeSegmentHasDepthVisibility(a, b, depthCheckedPass, mc, level)) return;
             Vec3 start = routeLineStart(
-                    level, a, useEtherwarpHeight, crouchingEyeHeight,
+                    level, a, style.useEtherwarpHeight(), crouchingEyeHeight,
                     waypointBoxBoundsScratch);
             populateWaypointRenderAnchor(level, b, waypointBoxBoundsScratch);
             Vec3 end = new Vec3(
@@ -557,33 +545,30 @@ class WaypointWorldRenderer {
             start = clipLineStartOutsideCamera(
                     start, end, camPos, screenDown,
                     ROUTE_LINE_CAMERA_CLEARANCE, ROUTE_LINE_CAMERA_SCREEN_OFFSET);
-            RenderHelpers.emitLine(lines, ps,
-                    (float) start.x, (float) start.y, (float) start.z,
-                    (float) end.x, (float) end.y, (float) end.z,
-                    color, alpha, width);
+            emitStyledConnector(lines, ps, start, end, style);
         };
         if (isDungeonRoomRoute(g)) {
             forEachFocusedDungeonRouteLineSegment(
-                    g, depthCheckedPass, i -> true, emitSegment);
+                    g, depthCheckedPass, i -> withinRouteDistance(styleFor(g, g.get(i)), g.get(i), camPos), emitSegment);
             return;
         }
         forEachRouteLineSegment(
                 g,
                 depthCheckedPass,
-                config.sequenceVisibility(),
-                config.keepSubwaypointsVisibleUntilNextWaypoint(),
+                routeStyle.sequenceVisibility(),
+                routeStyle.keepSubwaypointsVisibleUntilNextWaypoint(),
                 i -> shouldRenderRouteLineEndpoint(g, i, currentIdx, showCompleted,
                         camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq),
                 emitSegment);
     }
 
-    static Vec3 routeLineStart(Waypoint waypoint, boolean useEtherwarpHeight,
+    public static Vec3 routeLineStart(Waypoint waypoint, boolean useEtherwarpHeight,
                                float crouchingEyeHeight) {
         return routeLineStart(null, waypoint, useEtherwarpHeight, crouchingEyeHeight,
                 new double[6]);
     }
 
-    private static Vec3 routeLineStart(ClientLevel level, Waypoint waypoint,
+    public static Vec3 routeLineStart(ClientLevel level, Waypoint waypoint,
                                        boolean useEtherwarpHeight,
                                        float crouchingEyeHeight, double[] scratch) {
         populateWaypointRenderAnchor(level, waypoint, scratch);
@@ -592,7 +577,7 @@ class WaypointWorldRenderer {
         return new Vec3(scratch[0], y, scratch[2]);
     }
 
-    static Vec3 clipLineStartOutsideCamera(Vec3 start, Vec3 end, Vec3 camera,
+    public static Vec3 clipLineStartOutsideCamera(Vec3 start, Vec3 end, Vec3 camera,
                                            Vec3 screenDown, double clearance,
                                            double screenOffset) {
         if (clearance <= 0.0 || start.distanceToSqr(camera) >= clearance * clearance) {
@@ -630,7 +615,7 @@ class WaypointWorldRenderer {
                 screenOffset / Math.sqrt(perpendicularLengthSquared)));
     }
 
-    static void forEachRouteLineSegment(WaypointGroup group,
+    public static void forEachRouteLineSegment(WaypointGroup group,
                                         boolean depthCheckedPass,
                                         IntPredicate endpointVisible,
                                         RouteLineSegmentConsumer consumer) {
@@ -638,7 +623,7 @@ class WaypointWorldRenderer {
                 false, endpointVisible, consumer);
     }
 
-    static void forEachRouteLineSegment(WaypointGroup group,
+    public static void forEachRouteLineSegment(WaypointGroup group,
                                         boolean depthCheckedPass,
                                         SequenceVisibility visibility,
                                         boolean keepSubwaypointsVisibleUntilNextWaypoint,
@@ -727,7 +712,13 @@ class WaypointWorldRenderer {
         if (shouldHideStaticReached(group, index)) return false;
 
         Waypoint waypoint = group.get(index);
+        WaypointerConfig style = styleFor(group, waypoint);
+        maxStaticDistanceSq = squaredDistanceLimit(style.maxStaticWaypointRenderDistance());
+        nearHideDistanceSq = style.hideWaypointsNearPlayer()
+                ? WaypointVisibility.squaredRadius(style.hideWaypointsNearRadius()) : 0;
+        showCompleted = style.showCompleted();
         if (waypoint.hasFlag(Waypoint.FLAG_DUNGEON_PEARL_TARGET)) return false;
+        if (!withinRouteDistance(style, waypoint, camPos)) return false;
         if (shouldHideNearPlayer(waypoint, playerPos, nearHideDistanceSq)) return false;
         if (isStaticBeyondDistanceLimit(group, waypoint, camPos, maxStaticDistanceSq)) return false;
 
@@ -749,7 +740,7 @@ class WaypointWorldRenderer {
     }
 
     @FunctionalInterface
-    interface RouteLineSegmentConsumer {
+    public interface RouteLineSegmentConsumer {
         void accept(int fromIndex, int toIndex);
     }
 
@@ -826,17 +817,15 @@ class WaypointWorldRenderer {
         double nearHideDistanceSq = nearHideDistanceSq();
         Vec3 playerPos = mc.player == null ? null : mc.player.position();
         long[] hash = {0x9E3779B97F4A7C15L};
-        boolean allVisibleCandidates = staticBoxGeometryEnabledFor(groups)
-                || effectiveBeaconBeamMode() == WaypointerConfig.BeaconBeamMode.ALL_VISIBLE;
         for (WaypointGroup g : groups) {
             int currentIdx = g.currentIndex();
             boolean showCompleted = config.showCompleted();
-            if (allVisibleCandidates) {
-                forEachFadingVisibleIndex(g, i ->
-                                mixDepthVisibilityCandidate(hash, g, i, currentIdx,
-                                        showCompleted, mc, level, camPos, playerPos,
-                                        maxStaticDistanceSq, nearHideDistanceSq));
-            } else if (effectiveBeaconBeamMode() == WaypointerConfig.BeaconBeamMode.CURRENT) {
+            forEachFadingVisibleIndex(g, i ->
+                    mixDepthVisibilityCandidate(hash, g, i, currentIdx,
+                            showCompleted, mc, level, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq));
+            if (currentBeamIndex(g) >= 0 && currentBeamIndex(g) < g.size()
+                    && effectiveBeaconBeamMode(styleFor(g, g.get(currentBeamIndex(g)))) == WaypointerConfig.BeaconBeamMode.CURRENT) {
                 mixDepthVisibilityCandidate(hash, g, currentBeamIndex(g), currentIdx,
                         showCompleted, mc, level, camPos, playerPos,
                         maxStaticDistanceSq, nearHideDistanceSq);
@@ -866,17 +855,15 @@ class WaypointWorldRenderer {
         double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
         double nearHideDistanceSq = nearHideDistanceSq();
         long[] hash = {mixFingerprint(0xA0761D6478BD642FL, effectiveBeaconBeamMode().ordinal())};
-        boolean allVisibleCandidates = staticBoxGeometryEnabledFor(groups)
-                || effectiveBeaconBeamMode() == WaypointerConfig.BeaconBeamMode.ALL_VISIBLE;
         for (WaypointGroup group : groups) {
             int currentIdx = group.currentIndex();
             boolean showCompleted = config.showCompleted();
-            if (allVisibleCandidates) {
-                forEachFadingVisibleIndex(group, i ->
-                                mixWorldVisibilityCandidate(hash, group, i, currentIdx,
-                                        showCompleted, camPos, playerPos,
-                                        maxStaticDistanceSq, nearHideDistanceSq));
-            } else if (effectiveBeaconBeamMode() == WaypointerConfig.BeaconBeamMode.CURRENT) {
+            forEachFadingVisibleIndex(group, i ->
+                    mixWorldVisibilityCandidate(hash, group, i, currentIdx,
+                            showCompleted, camPos, playerPos,
+                            maxStaticDistanceSq, nearHideDistanceSq));
+            if (currentBeamIndex(group) >= 0 && currentBeamIndex(group) < group.size()
+                    && effectiveBeaconBeamMode(styleFor(group, group.get(currentBeamIndex(group)))) == WaypointerConfig.BeaconBeamMode.CURRENT) {
                 mixWorldVisibilityCandidate(hash, group, currentBeamIndex(group), currentIdx,
                         showCompleted, camPos, playerPos,
                         maxStaticDistanceSq, nearHideDistanceSq);
@@ -897,7 +884,7 @@ class WaypointWorldRenderer {
     }
 
     int reserveActivePaints(Iterable<WaypointGroup> groups) {
-        if (!config.enableFeatureBloat() || groups == null || config.beaconOpacity() <= 0.0) {
+        if (groups == null || !anyStyle(groups, c -> c.enableFeatureBloat() && c.beaconOpacity() > 0.0)) {
             WaypointPaintTextureCache.resetRetainedReservation();
             return 0;
         }
@@ -905,8 +892,16 @@ class WaypointWorldRenderer {
         activePaintScratch.clear();
         for (WaypointGroup group : groups) {
             if (group == null || group.isEmpty()) continue;
-            if (usesSequenceRoleColorPaintFallback(
-                    group, defaultPaint, config.colorSequenceWaypointsByRole())) continue;
+            boolean needsTexture = false;
+            for (Waypoint waypoint : group.waypoints()) {
+                WaypointerConfig style = styleFor(group, waypoint);
+                if (style.beaconOpacity() > 0 && !usesSequenceRoleColorPaintFallback(
+                        group, defaultPaint, style.colorSequenceWaypointsByRole())) {
+                    needsTexture = true;
+                    break;
+                }
+            }
+            if (!needsTexture) continue;
             WaypointPaint paint = effectivePaint(group, defaultPaint);
             if (paint != null) activePaintScratch.add(paint);
         }
@@ -946,22 +941,20 @@ class WaypointWorldRenderer {
     private boolean staticGeometryEnabledFor(Iterable<WaypointGroup> groups) {
         if (groups == null) return false;
         boolean visibleBoxes = staticBoxGeometryEnabledFor(groups);
-        boolean visibleFlatBeams = effectiveBeaconBeamMode() != WaypointerConfig.BeaconBeamMode.OFF
-                && !config.useBeaconBeamTextures()
-                && config.beaconOpacity() > 0.0;
+        boolean visibleFlatBeams = anyStyle(groups, c -> effectiveBeaconBeamMode(c) != WaypointerConfig.BeaconBeamMode.OFF
+                && !c.useBeaconBeamTextures() && c.beaconOpacity() > 0.0);
         return visibleBoxes || visibleFlatBeams;
     }
 
     boolean staticBoxGeometryEnabledFor(Iterable<WaypointGroup> groups) {
         if (groups == null) return false;
-        WaypointerConfig.BoxStyle style = config.effectiveBoxStyle();
-        boolean visibleOutlines = boxStyleDrawsOutline(style)
-                && config.waypointOutlineOpacity() > 0.0;
-        boolean visibleBoxes = (boxStyleDrawsRgbFill(style)
-                || style == WaypointerConfig.BoxStyle.PAINT
-                || config.enableFeatureBloat() && hasPaintedGroup(groups, config.waypointPainterDefaultPaint())
-                || hasFilledSubwaypoint(groups))
-                && config.beaconOpacity() > 0.0;
+        boolean visibleOutlines = anyStyle(groups, c -> boxStyleDrawsOutline(c.effectiveBoxStyle())
+                && c.waypointOutlineOpacity() > 0.0);
+        boolean hasPaint = config.enableFeatureBloat() && hasPaintedGroup(groups, config.waypointPainterDefaultPaint());
+        boolean hasFilledSub = hasFilledSubwaypoint(groups);
+        boolean visibleBoxes = anyStyle(groups, c -> (boxStyleDrawsRgbFill(c.effectiveBoxStyle())
+                || c.effectiveBoxStyle() == WaypointerConfig.BoxStyle.PAINT || hasPaint || hasFilledSub)
+                && c.beaconOpacity() > 0.0);
         return visibleOutlines || visibleBoxes;
     }
 
@@ -1092,7 +1085,7 @@ class WaypointWorldRenderer {
                 && waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT);
     }
 
-    private static boolean isFilledSubwaypoint(Waypoint waypoint) {
+    public static boolean isFilledSubwaypoint(Waypoint waypoint) {
         return waypoint != null
                 && waypoint.isSubwaypoint()
                 && waypoint.hasFlag(Waypoint.FLAG_FILLED_SUBWAYPOINT);
@@ -1206,6 +1199,12 @@ class WaypointWorldRenderer {
         scaleBoundsAroundCenter(bounds, config.waypointMarkerScale());
     }
 
+    protected void populateVisualWaypointBoxBounds(ClientLevel level, WaypointGroup group,
+                                                    Waypoint waypoint, double[] bounds) {
+        populateWaypointBoxBounds(level, waypoint, bounds);
+        scaleBoundsAroundCenter(bounds, styleFor(group, waypoint).waypointMarkerScale());
+    }
+
     static void scaleBoundsAroundCenter(double[] bounds, double scale) {
         if (bounds == null || bounds.length < 6 || !Double.isFinite(scale)) return;
         double safeScale = Math.clamp(scale, 0.25, 3.0);
@@ -1229,7 +1228,6 @@ class WaypointWorldRenderer {
                                boolean depthCheckedPass, Minecraft mc) {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
-        float outlineThickness = effectiveOutlineThickness();
 
         forEachFadingVisibleIndex(g,
                 i -> {
@@ -1240,29 +1238,24 @@ class WaypointWorldRenderer {
             }
 
             Waypoint w = g.get(i);
+            WaypointerConfig config = styleFor(g, w);
+            if (!boxStyleDrawsOutline(config.effectiveBoxStyle())) return;
             State state = stateFor(g, i, currentIdx);
-            float alpha = alphaFor(g, i, state) * (float) config.waypointOutlineOpacity();
-            populateVisualWaypointBoxBounds(level, w, waypointBoxBoundsScratch);
-            float x1 = (float) waypointBoxBoundsScratch[BOX_MIN_X];
-            float y1 = (float) waypointBoxBoundsScratch[BOX_MIN_Y];
-            float z1 = (float) waypointBoxBoundsScratch[BOX_MIN_Z];
-            float x2 = (float) waypointBoxBoundsScratch[BOX_MAX_X];
-            float y2 = (float) waypointBoxBoundsScratch[BOX_MAX_Y];
-            float z2 = (float) waypointBoxBoundsScratch[BOX_MAX_Z];
-            RenderHelpers.emitLineBox(lines, ps, x1, y1, z1, x2, y2, z2,
-                    config.resolvedWaypointOutlineColor(
-                            resolvedWaypointColor(g, i, w.color())), alpha, outlineThickness);
+            float alpha = alphaFor(g, i, state);
+            if (alpha * config.waypointOutlineOpacity() <= 0) return;
+            populateVisualWaypointBoxBounds(level, g, w, waypointBoxBoundsScratch);
+            emitStyledMarker(lines, ps, waypointBoxBoundsScratch,
+                    resolvedWaypointColor(g, i, w.color()), alpha, config, true);
         });
     }
 
     private void emitFilledBoxes(PoseStack ps, VertexConsumer quads, ClientLevel level, WaypointGroup g,
                                  Vec3 camPos, Vec3 playerPos,
                                  double maxStaticDistanceSq, double nearHideDistanceSq,
-                                 boolean fillAllWaypoints, boolean depthCheckedPass,
+                                 boolean depthCheckedPass,
                                  Minecraft mc) {
         int currentIdx = g.currentIndex();
         boolean showCompleted = config.showCompleted();
-        float beaconOpacity = (float) config.beaconOpacity();
 
         forEachFadingVisibleIndex(g,
                 i -> {
@@ -1273,19 +1266,21 @@ class WaypointWorldRenderer {
             }
 
             Waypoint w = g.get(i);
-            if (!fillAllWaypoints && !isFilledSubwaypoint(w)) return;
+            WaypointerConfig config = styleFor(g, w);
+            WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
+            boolean paintFallback = config.enableFeatureBloat() && (usesSequenceRoleColorPaintFallback(
+                    g, defaultPaint, config.colorSequenceWaypointsByRole()) || usesRgbPaintFallback(g, defaultPaint));
+            if (config.enableFeatureBloat() && !paintFallback && !shouldEmitRgbFill(g, defaultPaint)) return;
+            if (!paintFallback && !boxStyleDrawsRgbFill(config.effectiveBoxStyle())
+                    && config.effectiveBoxStyle() != WaypointerConfig.BoxStyle.PAINT
+                    && !isFilledSubwaypoint(w)) return;
 
             State state = stateFor(g, i, currentIdx);
-            float alpha = alphaFor(g, i, state) * beaconOpacity;
-            populateVisualWaypointBoxBounds(level, w, waypointBoxBoundsScratch);
-            float x1 = (float) waypointBoxBoundsScratch[BOX_MIN_X];
-            float y1 = (float) waypointBoxBoundsScratch[BOX_MIN_Y];
-            float z1 = (float) waypointBoxBoundsScratch[BOX_MIN_Z];
-            float x2 = (float) waypointBoxBoundsScratch[BOX_MAX_X];
-            float y2 = (float) waypointBoxBoundsScratch[BOX_MAX_Y];
-            float z2 = (float) waypointBoxBoundsScratch[BOX_MAX_Z];
-            RenderHelpers.emitFilledBox(quads, ps, x1, y1, z1, x2, y2, z2,
-                    resolvedWaypointColor(g, i, w.color()), alpha * FILLED_ALPHA_SCALE);
+            float alpha = alphaFor(g, i, state);
+            if (alpha * config.beaconOpacity() <= 0) return;
+            populateVisualWaypointBoxBounds(level, g, w, waypointBoxBoundsScratch);
+            emitStyledMarker(quads, ps, waypointBoxBoundsScratch,
+                    resolvedWaypointColor(g, i, w.color()), alpha, config, false);
         });
     }
 
@@ -1297,7 +1292,6 @@ class WaypointWorldRenderer {
                                     boolean retainCameraIndependentGeometry) {
         int currentIndex = group.currentIndex();
         boolean showCompleted = config.showCompleted();
-        float beaconOpacity = (float) config.beaconOpacity();
 
         forEachFadingVisibleIndex(group, i -> {
             if (!shouldRenderWaypointWorld(group, i, currentIndex, showCompleted,
@@ -1307,9 +1301,13 @@ class WaypointWorldRenderer {
             }
 
             Waypoint waypoint = group.get(i);
+            WaypointerConfig config = styleFor(group, waypoint);
+            if (usesSequenceRoleColorPaintFallback(group, config.waypointPainterDefaultPaint(),
+                    config.colorSequenceWaypointsByRole())) return;
             State state = stateFor(group, i, currentIndex);
-            float alpha = alphaFor(group, i, state) * beaconOpacity * PAINTED_ALPHA_SCALE;
-            populateVisualWaypointBoxBounds(level, waypoint, waypointBoxBoundsScratch);
+            float alpha = alphaFor(group, i, state) * (float) config.beaconOpacity() * PAINTED_ALPHA_SCALE;
+            if (alpha <= 0) return;
+            populateVisualWaypointBoxBounds(level, group, waypoint, waypointBoxBoundsScratch);
             float x1 = (float) waypointBoxBoundsScratch[BOX_MIN_X];
             float y1 = (float) waypointBoxBoundsScratch[BOX_MIN_Y];
             float z1 = (float) waypointBoxBoundsScratch[BOX_MIN_Z];
@@ -1328,6 +1326,10 @@ class WaypointWorldRenderer {
     }
 
     WaypointerConfig.BeaconBeamMode effectiveBeaconBeamMode() {
+        return effectiveBeaconBeamMode(config);
+    }
+
+    private WaypointerConfig.BeaconBeamMode effectiveBeaconBeamMode(WaypointerConfig config) {
         WaypointerConfig.BeaconBeamMode mode = config.beaconBeamMode();
         return mode == WaypointerConfig.BeaconBeamMode.OFF && manager.tempWaypointFocusActive()
                 ? WaypointerConfig.BeaconBeamMode.CURRENT : mode;
@@ -1339,38 +1341,23 @@ class WaypointWorldRenderer {
                                   int minY, int maxY, boolean depthCheckedPass,
                                   Minecraft mc, ClientLevel level,
                                   boolean texturedBeams) {
-        WaypointerConfig.BeaconBeamMode mode = effectiveBeaconBeamMode();
-        if (mode == WaypointerConfig.BeaconBeamMode.OFF || g.isEmpty()) return;
-
+        if (g.isEmpty()) return;
         int currentIdx = g.currentIndex();
-        boolean showCompleted = config.showCompleted();
-
-        if (mode == WaypointerConfig.BeaconBeamMode.CURRENT) {
-            int beamIndex = currentBeamIndex(g);
-            WaypointSkipFade fade = WaypointSkipFade.get(g);
-            if (fade != null && fade.active()) {
-                fade.outgoingNormallyVisible = beamIndex == fade.outgoing() && showCompleted;
-            }
-            emitBeaconBeamIfVisible(ps, quads, g, beamIndex, currentIdx,
-                    showCompleted, camPos, playerPos, maxStaticDistanceSq,
-                    nearHideDistanceSq, minY, maxY, depthCheckedPass, mc, level,
-                    texturedBeams);
-            if (fade != null && fade.active() && fade.outgoing() != beamIndex
-                    && config.showCurrentSequenceWaypoint()) {
-                fade.outgoingNormallyVisible = false;
-                emitBeaconBeamIfVisible(ps, quads, g, fade.outgoing(), currentIdx,
-                        showCompleted, camPos, playerPos, maxStaticDistanceSq,
-                        nearHideDistanceSq, minY, maxY, depthCheckedPass, mc, level,
-                        texturedBeams);
-            }
-            return;
+        boolean showCompleted = styleFor(g, null).showCompleted();
+        int beamIndex = currentBeamIndex(g);
+        boolean[] currentVisited = {false};
+        forEachFadingVisibleIndex(g, i -> {
+            if (i == beamIndex) currentVisited[0] = true;
+            emitBeaconBeamIfVisible(ps, quads, g, i,
+                    currentIdx, showCompleted, camPos, playerPos, maxStaticDistanceSq,
+                    nearHideDistanceSq, minY, maxY, depthCheckedPass, mc, level, texturedBeams);
+        });
+        if (!currentVisited[0] && beamIndex >= 0 && beamIndex < g.size()
+                && effectiveBeaconBeamMode(styleFor(g, g.get(beamIndex))) == WaypointerConfig.BeaconBeamMode.CURRENT) {
+            emitBeaconBeamIfVisible(ps, quads, g, beamIndex,
+                    currentIdx, showCompleted, camPos, playerPos, maxStaticDistanceSq,
+                    nearHideDistanceSq, minY, maxY, depthCheckedPass, mc, level, texturedBeams);
         }
-
-        forEachFadingVisibleIndex(g,
-                i -> emitBeaconBeamIfVisible(ps, quads, g, i,
-                        currentIdx, showCompleted, camPos, playerPos, maxStaticDistanceSq,
-                        nearHideDistanceSq, minY, maxY, depthCheckedPass, mc, level,
-                        texturedBeams));
     }
 
     private void emitBeaconBeamIfVisible(PoseStack ps, VertexConsumer quads,
@@ -1388,53 +1375,57 @@ class WaypointWorldRenderer {
         }
 
         Waypoint w = g.get(i);
+        WaypointerConfig config = styleFor(g, w);
+        WaypointerConfig.BeaconBeamMode mode = effectiveBeaconBeamMode(config);
+        if (mode == WaypointerConfig.BeaconBeamMode.OFF || config.useBeaconBeamTextures() != texturedBeams) return;
         State state = stateFor(g, i, currentIdx);
         WaypointSkipFade fade = WaypointSkipFade.get(g);
-        float factor = fade == null ? alphaFor(g, state)
-                : fade.beamAlpha(i, alphaFor(g, state),
-                        !fade.isOutgoing(i) || fade.outgoingNormallyVisible);
-        float alpha = factor * (float) config.beaconOpacity();
-        if (!texturedBeams) {
-            alpha *= BEAM_ALPHA_SCALE;
+        if (mode == WaypointerConfig.BeaconBeamMode.CURRENT && i != currentBeamIndex(g)
+                && (fade == null || !fade.isOutgoing(i) || !config.showCurrentSequenceWaypoint())) return;
+        boolean outgoingBeamNormallyVisible = fade != null && fade.outgoingNormallyVisible;
+        if (mode == WaypointerConfig.BeaconBeamMode.CURRENT && fade != null && fade.active()) {
+            outgoingBeamNormallyVisible = currentBeamIndex(g) == fade.outgoing() && config.showCompleted();
         }
+        float factor = fade == null ? styleStateAlpha(config, g, state)
+                : fade.beamAlpha(i, styleStateAlpha(config, g, state),
+                        !fade.isOutgoing(i) || outgoingBeamNormallyVisible);
+        float alpha = factor * (float) config.beaconOpacity();
         if (alpha <= 0.0f) return;
 
         float y1 = config.beaconBeamExtendsBelowWaypoint() ? minY : w.y();
         float y2 = beaconBeamTop(w.y(), y1, maxY);
         int waypointColor = resolvedWaypointColor(g, i, w.color());
-        if (texturedBeams) {
-            emitTexturedBeaconBeam(
-                    quads, ps, w, waypointColor, y1, y2, alpha, mc, camPos);
-        } else {
-            RenderHelpers.emitVerticalColumn(quads, ps,
-                    (float) w.centerX(), y1, (float) w.centerZ(),
-                    y2, BEAM_HALF_WIDTH, waypointColor, alpha);
-        }
-    }
-
-    private void emitTexturedBeaconBeam(VertexConsumer consumer, PoseStack ps,
-                                        Waypoint waypoint, int waypointColor, float y1, float y2,
-                                        float alpha, Minecraft mc, Vec3 camPos) {
-        float height = y2 - y1;
-        if (height <= 0.0f) return;
-
         float animationTime = mc.level == null
                 ? 0.0f
                 : beaconAnimationTime(mc.level.getGameTime(),
-                        mc.getDeltaTracker().getGameTimeDeltaPartialTick(false));
-        updateBeamRotation(animationTime);
+                        mc.getDeltaTracker().getGameTimeDeltaPartialTick(false), config.beaconMotionSpeed());
         float radiusScale = beaconTextureRadiusScale(
-                waypoint, camPos, mc.player != null && mc.player.isScoping());
+                w, camPos, mc.player != null && mc.player.isScoping());
+        emitStyledBeacon(quads, ps, (float) w.centerX(), (float) w.centerZ(),
+                y1, y2, waypointColor, alpha, animationTime, radiusScale, config);
+    }
+
+    /** Emits the same beam used in-world. animationTime is speed-adjusted with beaconAnimationTime. */
+    public static void emitStyledBeacon(VertexConsumer consumer, PoseStack ps,
+                                         float cx, float cz, float y1, float y2, int waypointColor,
+                                         float alpha, float animationTime, float radiusScale,
+                                         WaypointerConfig config) {
+        float height = y2 - y1;
+        if (height <= 0.0f || alpha <= 0) return;
+        if (!config.useBeaconBeamTextures()) {
+            RenderHelpers.emitVerticalColumn(consumer, ps, cx, y1, cz, y2,
+                    BEAM_HALF_WIDTH * (float) config.beaconWidthScale(), waypointColor, alpha * BEAM_ALPHA_SCALE);
+            return;
+        }
+        radiusScale *= (float) config.beaconWidthScale();
         int coreColor = RenderHelpers.withAlpha(0xFF000000 | waypointColor, alpha);
         int glowColor = RenderHelpers.withAlpha(BEACON_GLOW_BASE_ALPHA_ARGB | waypointColor, alpha);
 
         PoseStack.Pose pose = ps.last();
-        float cx = (float) waypoint.centerX();
-        float cz = (float) waypoint.centerZ();
-
         float r = BeaconRenderer.SOLID_BEAM_RADIUS * radiusScale;
-        float sr = beamRotationSin * r;
-        float cr = beamRotationCos * r;
+        double radians = Math.toRadians(beaconRotationDegrees(animationTime));
+        float sr = (float) Math.sin(radians) * r;
+        float cr = (float) Math.cos(radians) * r;
         emitBeaconTexturePart(pose, consumer, coreColor, cx, cz, y1, height, r,
                 sr, cr,
                 cr, -sr,
@@ -1451,28 +1442,25 @@ class WaypointWorldRenderer {
                 animationTime, false);
     }
 
-    private void updateBeamRotation(float animationTime) {
-        if (animationTime == beamRotationAnimationTime) return;
-        beamRotationAnimationTime = animationTime;
-        double radians = Math.toRadians(beaconRotationDegrees(animationTime));
-        beamRotationCos = (float) Math.cos(radians);
-        beamRotationSin = (float) Math.sin(radians);
+    public static float beaconAnimationTime(long gameTime, float partialTick) {
+        return Math.floorMod(gameTime, 40L) + partialTick;
     }
 
-    static float beaconAnimationTime(long gameTime, float partialTick) {
-        return Math.floorMod(gameTime, 40L) + partialTick;
+    public static float beaconAnimationTime(long gameTime, float partialTick, double speed) {
+        if (speed == 1) return beaconAnimationTime(gameTime, partialTick);
+        return (float) (((gameTime + (double) partialTick) * speed) % 40);
     }
 
     static float beaconRotationDegrees(float animationTime) {
         return animationTime * 2.25f - 45.0f;
     }
 
-    static float beaconBeamTop(float waypointY, float startY, int maxBuildY) {
+    public static float beaconBeamTop(float waypointY, float startY, int maxBuildY) {
         return Math.max(startY + 1.0f,
                 Math.max(maxBuildY, waypointY + BeaconRenderer.MAX_RENDER_Y));
     }
 
-    static float beaconTextureRadiusScale(Waypoint waypoint, Vec3 camPos,
+    public static float beaconTextureRadiusScale(Waypoint waypoint, Vec3 camPos,
                                           boolean playerScoping) {
         if (playerScoping || camPos == null) return 1.0f;
         double dx = waypoint.centerX() - camPos.x;
@@ -1537,7 +1525,7 @@ class WaypointWorldRenderer {
                 .setNormal(pose, 0.0F, 1.0F, 0.0F);
     }
 
-    private static int currentBeamIndex(WaypointGroup g) {
+    public static int currentBeamIndex(WaypointGroup g) {
         if (g.isEmpty()) return -1;
         if (g.isComplete()) return g.lastMainIndex();
         return g.currentMainIndex();
@@ -1586,6 +1574,10 @@ class WaypointWorldRenderer {
 
     protected int resolvedWaypointColor(
             WaypointGroup group, int waypointIndex, int fallbackColor) {
+        Waypoint waypoint = group == null || waypointIndex < 0 || waypointIndex >= group.size()
+                ? null : group.get(waypointIndex);
+        WaypointerConfig config = styleFor(group, waypoint);
+        if (waypoint != null) fallbackColor = WaypointStyles.waypointColor(this.config, group, waypoint);
         return SequenceRoleColor.resolve(
                 group,
                 waypointIndex,
@@ -1597,11 +1589,11 @@ class WaypointWorldRenderer {
     }
 
 
-    static State stateFor(WaypointGroup group, int i, int currentIdx) {
+    public static State stateFor(WaypointGroup group, int i, int currentIdx) {
         return stateFor(group, i, currentIdx, group.activeSubwaypointParentIndex());
     }
 
-    static State stateFor(WaypointGroup group, int i, int currentIdx, int activeSubwayParent) {
+    public static State stateFor(WaypointGroup group, int i, int currentIdx, int activeSubwayParent) {
         if (group.loadMode() == WaypointGroup.LoadMode.STATIC) return State.CURRENT;
         if (group.isSubwaypoint(i)) {
             if (i == currentIdx) return State.CURRENT;
@@ -1636,13 +1628,14 @@ class WaypointWorldRenderer {
         return !showCompleted;
     }
 
-    static boolean shouldForceHideReachedWaypoint(int index, int currentIdx, Waypoint waypoint) {
+    public static boolean shouldForceHideReachedWaypoint(int index, int currentIdx, Waypoint waypoint) {
         return waypoint != null
                 && waypoint.hasFlag(Waypoint.FLAG_HIDE_BEACON)
                 && index < currentIdx;
     }
 
     boolean shouldHideStaticReached(WaypointGroup group, int index) {
+        WaypointerConfig config = styleFor(group, group.get(index));
         return !CompassMarkerState.navigationStopped(group.get(index))
                 && config.hideReachedStaticWaypointsUntilCycleComplete()
                 && group.loadMode() == WaypointGroup.LoadMode.STATIC
@@ -1719,6 +1712,7 @@ class WaypointWorldRenderer {
     }
 
     protected void forEachFadingVisibleIndex(WaypointGroup group, IntConsumer action) {
+        WaypointerConfig config = styleFor(group, null);
         WaypointSkipFade fade = WaypointSkipFade.get(group);
         if (fade == null || !fade.active() || !config.showCurrentSequenceWaypoint()) {
             group.forEachVisibleIndex(config.sequenceVisibility(),
@@ -1737,14 +1731,101 @@ class WaypointWorldRenderer {
     }
 
     float alphaFor(WaypointGroup group, int index, State state) {
-        float normal = alphaFor(group, state);
+        float normal = styleStateAlpha(styleFor(group, group.get(index)), group, state);
         WaypointSkipFade fade = WaypointSkipFade.get(group);
         return fade == null ? normal : fade.alpha(index, normal,
                 !fade.isOutgoing(index) || fade.outgoingNormallyVisible);
     }
 
     float alphaFor(WaypointGroup group, State state) {
-        return roleAlpha(group, state, config.dimSequenceContextWaypoints());
+        return styleStateAlpha(styleFor(group, null), group, state);
+    }
+
+    public static float styleStateAlpha(WaypointerConfig config, WaypointGroup group, int index) {
+        return styleStateAlpha(config, group, stateFor(group, index, group.currentIndex()));
+    }
+
+    public static float styleStateAlpha(WaypointerConfig config, WaypointGroup group, State state) {
+        float alpha = (float) switch (state) {
+            case CURRENT -> config.currentWaypointOpacity();
+            case COMPLETED -> config.completedWaypointOpacity();
+            case UPCOMING -> config.upcomingWaypointOpacity();
+        };
+        if (config.dimSequenceContextWaypoints() && group != null
+                && group.loadMode() == WaypointGroup.LoadMode.SEQUENCE && state != State.CURRENT) {
+            alpha = Math.min(alpha, (float) config.sequenceContextOpacity());
+        }
+        return alpha;
+    }
+
+    protected WaypointerConfig styleFor(WaypointGroup group, Waypoint waypoint) {
+        return WaypointStyles.resolve(config, group, waypoint);
+    }
+
+    private boolean anyStyle(Iterable<WaypointGroup> groups, Predicate<WaypointerConfig> predicate) {
+        for (WaypointGroup group : groups) {
+            for (Waypoint waypoint : group.waypoints()) {
+                if (predicate.test(styleFor(group, waypoint))) return true;
+            }
+        }
+        return false;
+    }
+
+    public static boolean withinRouteDistance(WaypointerConfig config, Waypoint waypoint, Vec3 camera) {
+        if (camera == null) return true;
+        double min = config.routeMinRenderDistance();
+        double max = config.routeMaxRenderDistance();
+        if (min <= 0 && max <= 0) return true;
+        double dx = waypoint.centerX() - camera.x;
+        double dy = waypoint.centerY() - camera.y;
+        double dz = waypoint.centerZ() - camera.z;
+        double distanceSq = dx * dx + dy * dy + dz * dz;
+        return (min <= 0 || distanceSq >= min * min) && (max <= 0 || distanceSq <= max * max);
+    }
+
+    public static void emitStyledConnector(VertexConsumer vertices, PoseStack pose,
+                                            Vec3 start, Vec3 end, WaypointerConfig config) {
+        float width = (float) (config.routeLineWidth() > 0
+                ? config.routeLineWidth() : config.waypointOutlineThickness());
+        float alpha = 0.85f * (float) config.routeLineOpacity();
+        if (alpha <= 0) return;
+        double length = start.distanceTo(end);
+        if (!config.routeLineDashed() || length <= 0) {
+            RenderHelpers.emitLine(vertices, pose,
+                    (float) start.x, (float) start.y, (float) start.z,
+                    (float) end.x, (float) end.y, (float) end.z,
+                    config.routeLineColor(), alpha, width);
+            return;
+        }
+        // ponytail: cap very long connectors at 2048 dashes; use shader dashes if larger routes need finer detail.
+        int count = (int) Math.min(2048, Math.ceil(length));
+        double period = Math.max(1, length / count);
+        Vec3 direction = end.subtract(start).scale(1 / length);
+        for (int dash = 0; dash < count; dash++) {
+            double offset = dash * period;
+            Vec3 a = start.add(direction.scale(offset));
+            Vec3 b = start.add(direction.scale(Math.min(length, offset + period * 0.6)));
+            RenderHelpers.emitLine(vertices, pose,
+                    (float) a.x, (float) a.y, (float) a.z,
+                    (float) b.x, (float) b.y, (float) b.z,
+                    config.routeLineColor(), alpha, width);
+        }
+    }
+
+    /** Bounds are min XYZ / max XYZ with marker scale already applied; alpha is the state/fade alpha. */
+    public static void emitStyledMarker(VertexConsumer vertices, PoseStack pose, double[] bounds,
+                                         int color, float alpha, WaypointerConfig config, boolean outlinePass) {
+        if (alpha * (outlinePass ? config.waypointOutlineOpacity() : config.beaconOpacity()) <= 0) return;
+        float x1 = (float) bounds[BOX_MIN_X], y1 = (float) bounds[BOX_MIN_Y], z1 = (float) bounds[BOX_MIN_Z];
+        float x2 = (float) bounds[BOX_MAX_X], y2 = (float) bounds[BOX_MAX_Y], z2 = (float) bounds[BOX_MAX_Z];
+        if (outlinePass) {
+            RenderHelpers.emitLineBox(vertices, pose, x1, y1, z1, x2, y2, z2,
+                    config.resolvedWaypointOutlineColor(color), alpha * (float) config.waypointOutlineOpacity(),
+                    (float) config.waypointOutlineThickness());
+        } else {
+            RenderHelpers.emitFilledBox(vertices, pose, x1, y1, z1, x2, y2, z2,
+                    color, alpha * (float) config.beaconOpacity() * FILLED_ALPHA_SCALE);
+        }
     }
 
     static float roleAlpha(WaypointGroup group, State state, boolean dimContext) {
@@ -1762,7 +1843,7 @@ class WaypointWorldRenderer {
     }
 
 
-    enum State {
+    public enum State {
         COMPLETED(0.25f),
         CURRENT(1.0f),
         UPCOMING(0.65f);

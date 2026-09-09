@@ -21,6 +21,36 @@ class CatalogBrowserModelTest {
     private static final String HASH = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     @Test
+    void notInstalledCheckboxIncludesUpdatesAndRepairsAndPreservesLoadedPages() {
+        CatalogBrowserModel model = new CatalogBrowserModel();
+        ActiveGroupManager manager = new ActiveGroupManager();
+        CatalogRouteSummary installed = summary("AAAAAAAAAAAAAAAAAAAAAA", "Installed", 1);
+        CatalogRouteSummary missing = summary("BBBBBBBBBBBBBBBBBBBBBB", "Missing", 1);
+        CatalogRouteSummary update = summary("CCCCCCCCCCCCCCCCCCCCCC", "Update", 1);
+        CatalogRouteSummary repair = summary("DDDDDDDDDDDDDDDDDDDDDD", "Repair", 2);
+        manager.addAll(List.of(tagged(installed, 0), tagged(update, 0), tagged(repair, 0)));
+        update = copy(update, 2, update.codecVersion(), 1, 1, "hub");
+        model.applyPage(new CatalogPage(List.of(installed, missing, update, repair), true, "next"), false);
+        model.select(installed);
+        model.filterInstalled(API_ROOT, manager, true);
+        assertEquals(List.of(missing, update, repair), model.routes());
+        assertNull(model.selectedRoute());
+        assertEquals("next", model.nextCursor());
+        CatalogRouteSummary next = summary("EEEEEEEEEEEEEEEEEEEEEE", "Next", 1);
+        model.scrollBy(1, 1);
+        model.applyPage(new CatalogPage(List.of(next), false, null), true);
+        model.filterInstalled(API_ROOT, manager, true);
+        assertEquals(List.of(missing, update, repair, next), model.routes());
+        assertEquals(1, model.scrollOffset());
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(List.of(installed, missing, update, repair, next), model.routes());
+        model.filterInstalled(API_ROOT, manager, true);
+        model.beginRefresh();
+        model.filterInstalled(API_ROOT, manager, false);
+        assertTrue(model.routes().isEmpty());
+    }
+
+    @Test
     void pagesAppendByIdentityAndReconcileSelection() {
         CatalogBrowserModel model = new CatalogBrowserModel();
         CatalogRouteSummary first = summary("AAAAAAAAAAAAAAAAAAAAAA", "First", 1);

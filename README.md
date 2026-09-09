@@ -83,16 +83,19 @@ unavailable, the form keeps the draft open and reports the error.
 Skyblocker structure sharing
 
 Settings > Mining > **Skyblocker Sharing** adds an optional connection to
-Skyblocker's Crystal Hollows service at hysky.de. It is off by default and
+Skyblocker's Crystal Hollows service at hysky.de. It is on by default and
 also requires **Crystal Hollows features** and **Share Structures**. Config
-imports cannot enable this option.
+imports preserve your local choice. Existing saved opt-outs remain disabled.
 
 When enabled, api.azureaaron.net receives your Minecraft UUID, public profile
 key and signed proof for authentication. ws.hysky.de receives the resulting
 service token and fresh structure locations that you observe. Your private
-key and Minecraft access token stay in Minecraft. The service token is kept in memory. Waypointer identifies itself
-as Waypointer; the service must accept that identity. An online Minecraft
-profile key is required.
+key and Minecraft access token stay in Minecraft. The service token is kept in memory.
+This development build temporarily sends `skyblocker` as the authentication
+client ID and uses a Skyblocker-style User-Agent for compatibility testing,
+while retaining Waypointer's actual version. Restore Waypointer's client ID
+and User-Agent before publishing once the service accepts them. An online
+Minecraft profile key is required.
 
 This connection supports Crystal Hollows structure messages. It does not
 implement Skyblocker's dungeon-secret or egg services. Received locations
@@ -121,6 +124,27 @@ it does not produce one universal jar:
 
 Matching `-sources.jar` files are also generated. The current mod version is
 `1.10.0`.
+
+Native rendering tests
+
+```powershell
+.\gradlew.bat smokeAllTargets --no-daemon --max-workers=1
+.\gradlew.bat smokeAllTargets "-PshaderPack=C:/path/to/shader-pack.zip" --no-daemon --max-workers=1
+```
+
+The shader variant loads the supplied ZIP with pinned Iris and Sodium versions
+in the disposable test client. It requires an active shader pack and retained
+world geometry, exercises the appearance previews, reloads resources, and toggles
+shaders off and back on. Renderer fallback and logged preview/shader errors fail
+the run. Normal smoke tests keep their existing mod set; Iris and Sodium are
+test-only dependencies and are never bundled in Waypointer.
+
+Shader screenshots, logs, and a manifest identifying the pack's SHA-256 and mod
+version IDs are retained in `build/reports/shaders/<minecraft-version>/`.
+Ordinary smoke results remain in `build/reports/launch/<minecraft-version>/`.
+Use `runClientGameTest "-Pminecraft_version=26.2"` with the same shader property
+to test one target. A passing run covers that supplied pack and hardware, not all
+shader packs or visual effects; inspect the screenshots for visual correctness.
 
 CODEC Specification
 See [CODEC.md](CODEC.md) for the full specification.

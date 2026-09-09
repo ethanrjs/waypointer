@@ -1,6 +1,7 @@
 package com.babbur.waypointer.render.gpu;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.render.WaypointSkipFade;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -9,6 +10,8 @@ import net.minecraft.world.phys.Vec3;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.IdentityHashMap;
+import java.util.Map;
 
 /** Builds the static-geometry key from renderer inputs. */
 public final class SceneKeyFactory {
@@ -48,10 +51,16 @@ public final class SceneKeyFactory {
         mixConfig(key, config);
 
         key.mix(groups.size());
+        Map<WaypointerConfig, Long> styleHashes = new IdentityHashMap<>();
         for (WaypointGroup group : groups) {
             WaypointSkipFade fade = WaypointSkipFade.observe(group, config);
             key.mix(fade != null && fade.active());
             mixGroup(key, group);
+            key.mix(styleHash(styleHashes, WaypointStyles.resolve(config, group, null)));
+            for (Waypoint waypoint : group.waypoints()) {
+                key.mix(styleHash(styleHashes, WaypointStyles.resolve(config, group, waypoint)));
+                key.mix(WaypointStyles.waypointColor(config, group, waypoint));
+            }
         }
         return key.finish();
     }
@@ -109,6 +118,20 @@ public final class SceneKeyFactory {
                 .mix(config.hideWaypointsNearRadius())
                 .mix(config.hideReachedStaticWaypointsUntilCycleComplete())
                 .mix(config.maxStaticWaypointRenderDistance());
+        key.mix(config.routeMinRenderDistance()).mix(config.routeMaxRenderDistance())
+                .mix(config.showRouteLines()).mix(config.routeLineWidth()).mix(config.routeLineOpacity())
+                .mix(config.routeLineDashed()).mix(config.routeLineColor()).mix(config.useEtherwarpHeight())
+                .mix(config.beaconWidthScale()).mix(config.beaconMotionSpeed())
+                .mix(config.completedWaypointOpacity()).mix(config.currentWaypointOpacity())
+                .mix(config.upcomingWaypointOpacity()).mix(config.sequenceContextOpacity());
+    }
+
+    private static long styleHash(Map<WaypointerConfig, Long> hashes, WaypointerConfig config) {
+        return hashes.computeIfAbsent(config, c -> {
+            SceneKey.Builder key = SceneKey.builder();
+            mixConfig(key, c);
+            return key.finish().hash();
+        });
     }
 
     static void mixGroup(SceneKey.Builder key, WaypointGroup group) {

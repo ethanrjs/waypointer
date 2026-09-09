@@ -455,6 +455,8 @@ public final class AddNamedWaypointScreen extends Screen {
             previewGroup.setGradientMode(targetGroup.gradientMode());
             previewGroup.setPaint(targetGroup.paint());
             previewGroup.setPaintEnabled(targetGroup.paintEnabled());
+            previewGroup.setStylePresetId(targetGroup.stylePresetId());
+            previewGroup.setStyleOverride(targetGroup.styleOverride());
             manager.setWaypointPreview(previewGroup);
         }
 

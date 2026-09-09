@@ -43,14 +43,14 @@ class SettingsPresetsTest {
     }
 
     @Test
-    void minimalPresetDoesNotCountOrChangeLocalSharingConsent() {
+    void minimalPresetDoesNotCountOrChangeLocalSharingOptOut() {
         WaypointerConfig live = SettingsPresets.minimal(new WaypointerConfig());
-        live.setCrystalHollowsSkyblockerSharing(true);
+        live.setCrystalHollowsSkyblockerSharing(false);
         WaypointerConfig preset = SettingsPresets.minimal(live);
 
         assertEquals(0, SettingsCatalog.countImportedSettings(live, preset));
         live.replaceWith(preset);
-        assertTrue(live.crystalHollowsSkyblockerSharing());
+        assertFalse(live.crystalHollowsSkyblockerSharing());
         assertEquals(0, SettingsCatalog.countImportedSettings(live, preset));
     }
 

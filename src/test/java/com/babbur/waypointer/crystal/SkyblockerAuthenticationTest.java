@@ -13,7 +13,7 @@ import java.util.concurrent.Flow;
 import org.junit.jupiter.api.Test;
 
 class SkyblockerAuthenticationTest {
-    @Test void signsSyntheticProofWithHonestIdentityWithoutPrivateKeyBytes() throws Exception {
+    @Test void signsSyntheticProofWithTemporaryServiceIdentityWithoutPrivateKeyBytes() throws Exception {
         var generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(2048);
         var keys = generator.generateKeyPair();
@@ -21,7 +21,9 @@ class SkyblockerAuthenticationTest {
         String proof = SkyblockerAuthentication.proof(uuid, keys.getPublic(), new byte[]{1, 2, 3},
                 2000, keys.getPrivate(), "26.1.2", "1.10.0", 1000);
         var json = JsonParser.parseString(proof).getAsJsonObject();
-        assertEquals("waypointer", json.get("mod").getAsString());
+        assertEquals("skyblocker", json.get("mod").getAsString());
+        assertEquals("26.1.2", json.get("minecraftVersion").getAsString());
+        assertEquals("1.10.0", json.get("modVersion").getAsString());
         assertEquals(uuid.toString(), json.getAsJsonObject("keyPair").get("uuid").getAsString());
         assertFalse(proof.contains(Base64.getEncoder().encodeToString(keys.getPrivate().getEncoded())));
         assertEquals(java.util.Set.of("keyPair", "signedData", "mod", "minecraftVersion", "modVersion"), json.keySet());

@@ -14,6 +14,31 @@ import org.junit.jupiter.api.Test;
 class TracerRendererTest {
 
     @Test
+    void centerGapStartsAlongDirectionAndNeverReversesShortTracers() {
+        double[] start = new double[2];
+        assertTrue(TracerRenderer.lineStart(400, 300, 403, 304, 2, start));
+        assertEquals(401.2, start[0], 1e-9);
+        assertEquals(301.6, start[1], 1e-9);
+        assertFalse(TracerRenderer.lineStart(400, 300, 403, 304, 5, start));
+        assertFalse(TracerRenderer.lineStart(400, 300, 403, 304, 20, start));
+        assertFalse(TracerRenderer.lineStart(400, 300, 400, 300, 0, start));
+        assertFalse(TracerRenderer.lineStart(400, 300, Double.NaN, 0, 2, start));
+        assertFalse(TracerRenderer.lineStart(400, 300, 403, 304, Double.NaN, start));
+        assertTrue(TracerRenderer.lineStart(400, 300, 403, 304, 0, start));
+        assertEquals(400, start[0]);
+        assertEquals(300, start[1]);
+    }
+
+    @Test
+    void routeDistanceRulesKeepInclusiveBoundsAndUnlimitedDefault() {
+        assertTrue(TracerRenderer.withinRouteDistance(3, 4, 0, 5, 5));
+        assertFalse(TracerRenderer.withinRouteDistance(3, 4, 0, 6, 0));
+        assertFalse(TracerRenderer.withinRouteDistance(3, 4, 0, 0, 4));
+        assertTrue(TracerRenderer.withinRouteDistance(100000, 0, 0, 0, 0));
+        assertFalse(TracerRenderer.withinRouteDistance(Double.NaN, 0, 0, 0, 0));
+    }
+
+    @Test
     void crystalHollowsTracerSwitchLeavesUserRoutesAndOtherTemporaryMarkersAlone() throws Exception {
         var config = new WaypointerConfig();
         config.setShowTracer(true);
@@ -58,9 +83,32 @@ class TracerRendererTest {
         var renderer = new TracerRenderer(new com.babbur.waypointer.core.ActiveGroupManager(), config);
         var select = TracerRenderer.class.getDeclaredMethod("straightTracerTarget",
                 WaypointGroup.class, boolean.class, net.minecraft.client.player.LocalPlayer.class,
-                double.class, boolean.class, boolean.class);
+                net.minecraft.world.phys.Vec3.class, boolean.class, boolean.class);
         select.setAccessible(true);
-        org.junit.jupiter.api.Assertions.assertNull(select.invoke(renderer, group, true, null, 0.0, false, false));
+        org.junit.jupiter.api.Assertions.assertNull(select.invoke(renderer, group, true, null,
+                net.minecraft.world.phys.Vec3.ZERO, false, false));
+    }
+
+    @Test
+    void straightTracerUsesCameraForRouteDistanceEvenWithoutAPlayer() throws Exception {
+        var config = new WaypointerConfig();
+        config.setShowTracer(true);
+        config.setRouteMinRenderDistance(5);
+        config.setRouteMaxRenderDistance(10);
+        var group = new WaypointGroup("route", "Route", "crystal_hollows");
+        group.add(Waypoint.at(0, 0, 0));
+        var renderer = new TracerRenderer(new com.babbur.waypointer.core.ActiveGroupManager(), config);
+        var select = TracerRenderer.class.getDeclaredMethod("straightTracerTarget",
+                WaypointGroup.class, boolean.class, net.minecraft.client.player.LocalPlayer.class,
+                net.minecraft.world.phys.Vec3.class, boolean.class, boolean.class);
+        select.setAccessible(true);
+        var target = group.current();
+        for (double distance : new double[]{4, 5, 10, 11}) {
+            var camera = new net.minecraft.world.phys.Vec3(
+                    target.centerX() + distance, target.centerY(), target.centerZ());
+            assertEquals(distance >= 5 && distance <= 10 ? target : null,
+                    select.invoke(renderer, group, true, null, camera, false, false));
+        }
     }
 
     @Test

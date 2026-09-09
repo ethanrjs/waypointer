@@ -55,7 +55,9 @@ public final class CrystalHollowsProjection {
         boolean structureWaypoints = config.crystalHollowsStructureWaypoints();
         List<CrystalHollowsStructureFolder.PlannedGroup> plans =
                 CrystalHollowsStructureFolder.plan(
-                        structureWaypoints && lobby != null ? lobby.sightings() : List.of(),
+                        structureWaypoints && lobby != null ? lobby.sightings().stream()
+                                .filter(sighting -> CrystalHollowsDetectionPolicy.allows(config, sighting))
+                                .toList() : List.of(),
                         structureWaypoints && config.crystalHollowsShowRoughMarkers(),
                         config.crystalHollowsNucleusWaypoints());
         List<String> removals = generatedGroupIds();
@@ -97,11 +99,27 @@ public final class CrystalHollowsProjection {
         return "nucleus".equals(suffix) ? CrystalHollowsStructure.CRYSTAL_NUCLEUS.id() : suffix;
     }
 
+    public static void refreshStyles(ActiveGroupManager manager, WaypointerConfig config) {
+        if (manager == null) return;
+        boolean changed = false;
+        for (WaypointGroup group : manager.allGroups()) {
+            String reference = structureReferenceForGroup(group.id());
+            if (!group.runtimeOnly() || reference == null) continue;
+            var style = config.crystalHollowsStyle(reference.split(":", 2)[0]);
+            if (!style.equals(group.styleOverride())) {
+                group.setStyleOverride(style);
+                changed = true;
+            }
+        }
+        if (changed) manager.fireDataChanged();
+    }
+
     private WaypointGroup toGroup(CrystalHollowsStructureFolder.PlannedGroup plan) {
         String localizedName = localizedGroupName(plan).getString();
         WaypointGroup group = new WaypointGroup(
                 plan.id(), localizedName, CrystalHollowsStructureFolder.ZONE_ID);
         group.setRuntimeOnly(true);
+        group.setStyleOverride(config.crystalHollowsStyle(plan.structureId()));
         group.setRouteKind(WaypointGroup.RouteKind.REGULAR);
         group.setLoadMode(WaypointGroup.LoadMode.STATIC);
         group.setEnabled(enabledByGroupId.getOrDefault(group.id(), true));

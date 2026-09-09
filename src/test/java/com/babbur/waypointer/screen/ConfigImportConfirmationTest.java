@@ -13,6 +13,7 @@ class ConfigImportConfirmationTest {
     void importDoesNotChangeOrCountLocalSkyblockerConsent() {
         WaypointerConfig current = new WaypointerConfig();
         WaypointerConfig imported = new WaypointerConfig();
+        current.setCrystalHollowsSkyblockerSharing(false);
         imported.setCrystalHollowsSkyblockerSharing(true);
         var outcome = ConfigImportConfirmation.complete(current, imported, true);
         assertEquals(0, outcome.changedSettings());

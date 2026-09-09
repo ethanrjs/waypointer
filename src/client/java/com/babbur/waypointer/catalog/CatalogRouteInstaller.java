@@ -5,7 +5,9 @@ import com.babbur.waypointer.api.ImportSummary;
 import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.CatalogRouteProvenance;
+import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
 
 import java.util.ArrayList;
@@ -165,6 +167,27 @@ public final class CatalogRouteInstaller {
         return Map.copyOf(anchors);
     }
 
+    private static void preservePersonalStyles(WaypointGroup previous, WaypointGroup replacement) {
+        replacement.setStylePresetId(previous.stylePresetId());
+        replacement.setStyleOverride(previous.styleOverride());
+        if (!previous.zoneId().equals(replacement.zoneId())
+                || previous.routeKind() != replacement.routeKind()) return;
+        // Shared waypoints have no stable IDs: only transfer an otherwise identical,
+        // unique point, never an index that may now refer to a different route step.
+        Map<Waypoint, List<Waypoint>> oldPoints = previous.waypoints().stream().collect(
+                Collectors.groupingBy(point -> point.withStyleOverride(WaypointStyle.EMPTY)));
+        Map<Waypoint, Long> newCounts = replacement.waypoints().stream().collect(
+                Collectors.groupingBy(point -> point.withStyleOverride(WaypointStyle.EMPTY),
+                        Collectors.counting()));
+        for (int index = 0; index < replacement.size(); index++) {
+            Waypoint key = replacement.get(index).withStyleOverride(WaypointStyle.EMPTY);
+            List<Waypoint> matches = oldPoints.get(key);
+            if (matches != null && matches.size() == 1 && newCounts.get(key) == 1L) {
+                replacement.setWaypointStyle(index, matches.getFirst().styleOverride());
+            }
+        }
+    }
+
     public static final class PreparedRoute {
         private final CatalogRouteSummary summary;
         private final WaypointImporter.ImportResult importResult;
@@ -201,6 +224,7 @@ public final class CatalogRouteInstaller {
                 WaypointGroup previous = priorGroups.get(index);
                 if (previous != null) {
                     group.setEnabled(previous.enabled());
+                    preservePersonalStyles(previous, group);
                 }
                 detached.add(group);
             }

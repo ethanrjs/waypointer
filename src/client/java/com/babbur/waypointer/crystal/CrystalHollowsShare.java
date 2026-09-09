@@ -6,12 +6,13 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.network.chat.ClickEvent;
 
-/** Share actions prepare editable chat text. Only the user's Send action transmits it. */
+/** Chat share buttons send the captured sighting; route actions prepare editable text. */
 public final class CrystalHollowsShare {
     private CrystalHollowsShare() {}
 
-    public static ClickEvent.SuggestCommand suggest(StructureSighting sighting) {
-        return new ClickEvent.SuggestCommand(message(sighting));
+    public static ClickEvent.RunCommand share(StructureSighting sighting) {
+        return new ClickEvent.RunCommand("/wpch share " + sighting.structure().id()
+                + " " + sighting.x() + " " + sighting.y() + " " + sighting.z());
     }
 
     private static String message(StructureSighting sighting) {

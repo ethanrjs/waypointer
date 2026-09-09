@@ -5,6 +5,7 @@ import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,27 @@ class DungeonRoomWaypointPlacementTest {
 
     @TempDir
     Path tempDir;
+
+    @ParameterizedTest
+    @EnumSource(value = Direction.class, names = { "NW", "NE", "SE", "SW" })
+    void coordinateTransformsPreservePointAndRouteStyles(Direction direction) {
+        DungeonRoom room = room(direction, -74, -138);
+        WaypointStyle pointStyle = WaypointStyle.EMPTY.with("labelScale", 1.5);
+        Waypoint actual = Waypoint.at(-95, 68, -121).withStyleOverride(pointStyle);
+        Waypoint stored = DungeonRoomWaypointPlacement.toStoredWaypoint(room, actual);
+        assertEquals(pointStyle, stored.styleOverride());
+
+        WaypointGroup source = WaypointGroup.create("Styled", "creeper-beams");
+        source.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        source.setStylePresetId("preferred");
+        source.setStyleOverride(WaypointStyle.EMPTY.with("beamWidth", 0.8));
+        source.add(stored);
+        WaypointGroup projected = DungeonRoomRouteProjection.transformedRouteGroupForRoom(room, source);
+
+        assertEquals(actual, projected.get(0));
+        assertEquals(source.stylePresetId(), projected.stylePresetId());
+        assertEquals(source.styleOverride(), projected.styleOverride());
+    }
 
     @Test
     void actualRoomWaypointStoresLocalAndProjectsBackToSameRunPosition() {

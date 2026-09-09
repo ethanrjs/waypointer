@@ -25,7 +25,10 @@ class SettingsCatalogTest {
 
     private static final Set<String> MAIN_EXEMPT = Set.of(
             "configSchemaVersion",
+            "namedStyles", "preferredStyleId", "crystalHollowsStyles", // Managed by the style library actions.
             "crystalHollowsCompassRays",
+            "minimapScale", "minimapCustomPosition", "minimapPositionX", "minimapPositionY", // Edited on screen.
+            "crystalHollowsDetections", // One local map exposed as individual structure toggles.
             "waypointPainterPalette",
             "waypointPainterDefaultPalette",
             "waypointPainterDefaultPixels");
@@ -38,6 +41,7 @@ class SettingsCatalogTest {
     void mainEntriesCoverEveryWaypointerConfigField() {
         Set<String> fields = persistedFieldNames(WaypointerConfig.class, MAIN_EXEMPT);
         Set<String> catalogIds = idsByStore(Setting.Store.MAIN);
+        catalogIds.removeIf(id -> id.startsWith("crystalHollowsDetections."));
         assertEquals(fields, catalogIds,
                 "WaypointerConfig fields and catalog MAIN ids must match exactly; "
                         + "catalog new fields or add them to MAIN_EXEMPT deliberately");
@@ -79,13 +83,15 @@ class SettingsCatalogTest {
                 .findFirst().orElseThrow();
 
         assertEquals("crystalHollowsEnabled", category.masterSettingId());
-        assertEquals(List.of("crystal_hollows_structures", "minimap", "wishing_compass"),
+        assertEquals(List.of("crystal_hollows_structures", "detections", "minimap", "wishing_compass"),
                 category.groups().stream().map(SettingsCatalog.Group::id).toList());
-        assertEquals(19, category.groups().stream()
+        assertEquals(33, category.groups().stream()
                 .flatMap(group -> group.settings().stream()).count());
         assertTrue(category.groups().stream()
                 .flatMap(group -> group.settings().stream())
-                .allMatch(setting -> setting.store() == Setting.Store.MAIN));
+                .allMatch(setting -> setting.store() == Setting.Store.MAIN
+                        || setting.id().equals(SettingsCatalog.ACTION_STRUCTURE_STYLES)
+                        || setting.id().equals(SettingsCatalog.ACTION_MINIMAP_EDITOR)));
         Setting master = SettingsCatalog.byId("crystalHollowsEnabled");
         assertNotNull(master);
         assertTrue(master.aliases().containsAll(
@@ -128,6 +134,27 @@ class SettingsCatalogTest {
     }
 
     @Test
+    void automaticDetectionControlsAreCompleteAndLocalOnly() {
+        WaypointerConfig defaults = new WaypointerConfig();
+        WaypointerConfig config = new WaypointerConfig();
+        List<Setting> detections = SettingsCatalog.allSettings().stream()
+                .filter(setting -> setting.id().startsWith("crystalHollowsDetections.")).toList();
+        assertEquals(12, detections.size());
+        for (Setting setting : detections) {
+            assertEquals("detections", groupContaining(setting.id()));
+            assertTrue(setting.isLocalOnly());
+            assertEquals(true, setting.get(config, null));
+            setting.set(config, null, false);
+            assertFalse(config.crystalHollowsDetectionEnabled(
+                    setting.id().substring("crystalHollowsDetections.".length())));
+        }
+        assertEquals(12, SettingsCatalog.countChangedSettings(defaults, config));
+        assertEquals(0, SettingsCatalog.countImportedSettings(defaults, config));
+        assertEquals(Setting.Kind.ACTION, SettingsCatalog.byId(SettingsCatalog.ACTION_MINIMAP_EDITOR).kind());
+        assertEquals("minimap", groupContaining(SettingsCatalog.ACTION_MINIMAP_EDITOR));
+    }
+
+    @Test
     void minimapControlsUseTheirConfigValues() {
         WaypointerConfig config = new WaypointerConfig();
         Setting corner = SettingsCatalog.byId("crystalHollowsMinimapCorner");
@@ -160,14 +187,14 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void skyblockerSharingRequiresExplicitOptInAndMasterSharing() {
+    void skyblockerSharingDefaultsOnAndRequiresMasterSharing() {
         WaypointerConfig config = new WaypointerConfig();
         Setting sharing = SettingsCatalog.byId("crystalHollowsSkyblockerSharing");
         assertNotNull(sharing);
         assertEquals("mining", categoryContaining(sharing.id()));
-        assertEquals(false, sharing.get(config, null));
-        sharing.set(config, null, true);
-        assertTrue(config.crystalHollowsSkyblockerSharing());
+        assertEquals(true, sharing.get(config, null));
+        sharing.set(config, null, false);
+        assertFalse(config.crystalHollowsSkyblockerSharing());
         assertTrue(sharing.isLocalOnly());
         assertEquals(1, SettingsCatalog.countChangedSettings(new WaypointerConfig(), config));
         assertEquals(0, SettingsCatalog.countImportedSettings(new WaypointerConfig(), config));
@@ -436,6 +463,8 @@ class SettingsCatalogTest {
         assertEquals(List.of(
                         "renderAntialiasing",
                         "boxStyle",
+                        "waypointIcon",
+                        "showWaypointRoleBadge",
                         "waypointMarkerScale",
                         "defaultWaypointColor",
                         "beaconOpacity",
@@ -444,6 +473,43 @@ class SettingsCatalogTest {
                         "waypointOutlineOpacity",
                         "waypointOutlineThickness"),
                 appearance.groups().getFirst().settings().stream().map(Setting::id).toList());
+    }
+
+    @Test
+    void stylingPreferencesStayLocalUntilTheShareCodecSupportsThem() {
+        WaypointerConfig defaults = new WaypointerConfig();
+        WaypointerConfig edited = new WaypointerConfig();
+        for (String id : List.of("routeMinRenderDistance", "routeMaxRenderDistance", "routeLineWidth",
+                "routeLineOpacity", "routeLineDashed", "beaconWidthScale", "beaconMotionSpeed",
+                "tracerCenterGap", "tracerEdgeArrow", "labelBackdropOpacity", "labelShowRouteName",
+                "labelShowCoordinates", "labelDetailOnDemand", "labelDetailDistance", "preventLabelOverlap",
+                "waypointIcon", "showWaypointRoleBadge", "completedWaypointOpacity", "currentWaypointOpacity",
+                "upcomingWaypointOpacity", "sequenceContextOpacity")) {
+            Setting setting = SettingsCatalog.byId(id);
+            assertTrue(setting.isLocalOnly(), id);
+            setting.set(edited, null, probeValue(setting, defaults));
+        }
+        assertEquals(21, SettingsCatalog.countChangedSettings(defaults, edited));
+        assertEquals(0, SettingsCatalog.countImportedSettings(defaults, edited));
+    }
+
+    @Test
+    void optionalStylingControlsKeepTheirExistingHomesAndStartDisabled() {
+        WaypointerConfig config = new WaypointerConfig();
+        for (String id : List.of("showWaypointRoleBadge", "routeLineDashed", "tracerEdgeArrow",
+                "labelShowRouteName", "labelShowCoordinates", "labelDetailOnDemand", "preventLabelOverlap")) {
+            assertEquals("appearance", categoryContaining(id));
+            assertEquals(false, SettingsCatalog.byId(id).get(config, null), id);
+        }
+        assertEquals("NONE", SettingsCatalog.byId("waypointIcon").get(config, null));
+        assertEquals("routes", categoryContaining("routeMinRenderDistance"));
+        assertEquals("routes", categoryContaining("routeMaxRenderDistance"));
+        assertEquals("styles", groupContaining(SettingsCatalog.ACTION_ROUTE_STYLES));
+        assertEquals("styles", groupContaining(SettingsCatalog.ACTION_WAYPOINT_INSPECTOR));
+        assertEquals("crystal_hollows_structures", groupContaining(SettingsCatalog.ACTION_STRUCTURE_STYLES));
+        assertFalse(SettingsCatalog.byId("labelDetailDistance").isEnabled(config, null));
+        SettingsCatalog.byId("labelDetailOnDemand").set(config, null, true);
+        assertTrue(SettingsCatalog.byId("labelDetailDistance").isEnabled(config, null));
     }
 
     @Test
@@ -695,7 +761,10 @@ class SettingsCatalogTest {
         if (setting.kind() == Setting.Kind.TEXT) return "block.note_block.pling";
         if (defaultValue instanceof Boolean b) return !b;
         if ("waypointOutlineOpacity".equals(setting.id()) || "labelOpacity".equals(setting.id())) return 0.5;
-        if (defaultValue instanceof Double d) return d + 2.0;
+        if (defaultValue instanceof Double d) {
+            double candidate = Math.min(setting.maximum(), d + 2.0);
+            return candidate != d ? candidate : Math.max(setting.minimum(), d - 0.5);
+        }
         if (defaultValue instanceof List<?>) return List.of("ProbePlayer");
         throw new AssertionError(setting.id() + " has unprobeable default " + defaultValue);
     }

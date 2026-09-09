@@ -9,11 +9,13 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.BiFunction;
+import java.util.function.Consumer;
 
 /** Bounded socket transport; callers drain messages on the game thread. */
 public final class StructureRelayConnection {
     private static final int MAX_MESSAGE = 16 * 1024;
-    private final ArrayBlockingQueue<String> messages = new ArrayBlockingQueue<>(32);
+    private static final int MAX_QUEUED_MESSAGES = 32;
+    private final ArrayBlockingQueue<String> messages = new ArrayBlockingQueue<>(MAX_QUEUED_MESSAGES);
     private final BiFunction<URI, WebSocket.Listener, CompletableFuture<WebSocket>> connector;
     private CompletableFuture<WebSocket> pending;
     private WebSocket socket;
@@ -73,6 +75,15 @@ public final class StructureRelayConnection {
 
     public synchronized String poll() {
         return messages.poll();
+    }
+
+    /** Bound game-thread work even when socket callbacks refill the queue during processing. */
+    public void drain(Consumer<String> consumer) {
+        for (int i = 0; i < MAX_QUEUED_MESSAGES; i++) {
+            String message = poll();
+            if (message == null) return;
+            consumer.accept(message);
+        }
     }
 
     public synchronized boolean send(String message) {

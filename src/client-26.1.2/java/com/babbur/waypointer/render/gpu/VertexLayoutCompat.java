@@ -12,6 +12,8 @@ final class VertexLayoutCompat {
 
     private VertexLayoutCompat() {}
 
+    static Object formatIdentity(RenderPipeline pipeline) { return pipeline.getVertexFormat(); }
+
     static MeshLayout describe(RenderPipeline pipeline) {
         VertexFormat format = pipeline.getVertexFormat();
         Map<MeshLayout.Attribute, Integer> attributes = new EnumMap<>(MeshLayout.Attribute.class);

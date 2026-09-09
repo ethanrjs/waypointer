@@ -22,6 +22,7 @@ import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
@@ -115,6 +116,7 @@ public final class RouteCatalogScreen extends Screen {
     private int pendingSearchCursor = -1;
     private int pendingSearchHighlight = -1;
     private boolean zoneDropdownOpen;
+    private boolean onlyNotInstalled;
     private int zoneDropdownScroll;
     private List<String> zoneDropdownIds = List.of();
 
@@ -171,6 +173,7 @@ public final class RouteCatalogScreen extends Screen {
     protected void init() {
         requests.activate();
         initializing = true;
+        browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
 
         panelX = width > PANEL_MARGIN * 2 ? PANEL_MARGIN : 0;
         panelY = height > PANEL_MARGIN * 2 ? PANEL_MARGIN : 0;
@@ -182,10 +185,10 @@ public final class RouteCatalogScreen extends Screen {
         int contentRight = contentX + contentW;
 
         int titleY = panelY + panelPad;
-        int subtitleY = titleY + LINE_H;
-        int searchY = subtitleY + LINE_H + GAP;
+        int searchY = titleY + BTN_H + GAP;
         boolean toolbarStacked = contentW < TOOLBAR_STACK_BREAKPOINT;
-        int bodyY = searchY + BTN_H + (toolbarStacked ? BTN_H + GAP_TIGHT : 0) + GAP;
+        int checkboxY = searchY + BTN_H + (toolbarStacked ? BTN_H + GAP_TIGHT : 0) + GAP_TIGHT;
+        int bodyY = checkboxY + BTN_H + GAP;
         int footerY = panelY + panelH - panelPad - BTN_H;
         Component copyLabel = Component.translatable("waypointer.screen.published_routes.action.copy_code");
         int copyW = Math.max(72, font.width(copyLabel) + 16);
@@ -273,6 +276,20 @@ public final class RouteCatalogScreen extends Screen {
                         "waypointer.screen.route_catalog.refresh.tooltip")));
         refreshButton.active = refreshCooldownSeconds(System.nanoTime()) == 0 && !listLoading;
         addRenderableWidget(refreshButton);
+
+        addRenderableWidget(Checkbox.builder(Component.translatable(
+                        "waypointer.screen.route_catalog.not_installed"), font)
+                .pos(contentX, checkboxY).maxWidth(contentW).selected(onlyNotInstalled)
+                .tooltip(Tooltip.create(Component.translatable(
+                        "waypointer.screen.route_catalog.not_installed.tooltip")))
+                .onValueChange((checkbox, selected) -> {
+                    onlyNotInstalled = selected;
+                    browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
+                    requests.selectionChanged();
+                    descriptionScroll = 0;
+                    updateListStatus();
+                    rebuildWidgets();
+                }).build());
 
         loadMoreButton = null;
         addRouteRows();
@@ -482,6 +499,7 @@ public final class RouteCatalogScreen extends Screen {
     }
 
     private String emptyListKey() {
+        if (onlyNotInstalled) return "waypointer.screen.route_catalog.empty.not_installed";
         return emptyListKey(browser.query().isBlank(), browser.zoneFilter() != null);
     }
 
@@ -768,10 +786,15 @@ public final class RouteCatalogScreen extends Screen {
 
     private void applyPage(CatalogPage page, boolean append) {
         browser.applyPage(page, append);
+        browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
         if (browser.selectedRoute() == null && !browser.routes().isEmpty()) {
             browser.select(browser.routes().getFirst());
             descriptionScroll = 0;
         }
+        updateListStatus();
+    }
+
+    private void updateListStatus() {
         if (browser.routes().isEmpty()) {
             statusText = Component.translatable(emptyListKey());
             statusColor = TEXT_DIM;
@@ -966,10 +989,6 @@ public final class RouteCatalogScreen extends Screen {
         int titleY = panelY + panelPad;
         graphics.text(font, font.plainSubstrByWidth(getTitle().getString(), headerTextWidth),
                 contentX, titleY, TEXT, false);
-        graphics.text(font, font.plainSubstrByWidth(
-                        Component.translatable(
-                                "waypointer.screen.route_catalog.subtitle").getString(), headerTextWidth),
-                contentX, titleY + LINE_H, TEXT_MUTED, false);
 
         graphics.fill(listX, listY, listX + listW, listY + listH, SURFACE_SUBTLE);
         renderListState(graphics);

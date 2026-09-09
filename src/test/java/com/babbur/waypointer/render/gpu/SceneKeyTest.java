@@ -213,6 +213,27 @@ class SceneKeyTest {
     }
 
     @Test
+    void localPointAndRouteStylesInvalidateRetainedGeometry() {
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointGroup group = WaypointGroup.create("Styled", "hub");
+        group.add(new Waypoint(0, 64, 0, "", 0xFFFFFF, 0, 0));
+        SceneKeyFactory factory = new SceneKeyFactory(OverlayRendererOptions.defaults());
+        java.util.function.Supplier<SceneKey> current = () -> factory.build(List.of(group), config,
+                Vec3.ZERO, null, -64, 320, 0, 0, 0, null);
+        SceneKey plain = current.get();
+        group.setStyleOverride(com.babbur.waypointer.core.WaypointStyle.EMPTY.with("beaconWidthScale", 2));
+        SceneKey route = current.get();
+        assertNotEquals(plain, route);
+        group.set(0, group.get(0).withStyleOverride(com.babbur.waypointer.core.WaypointStyle.EMPTY
+                .with("currentWaypointOpacity", 0.2)));
+        assertNotEquals(route, current.get());
+        SceneKey faded = current.get();
+        group.set(0, group.get(0).withStyleOverride(com.babbur.waypointer.core.WaypointStyle.EMPTY
+                .with("currentWaypointOpacity", 0.2).with("defaultWaypointColor", 0x123456)));
+        assertNotEquals(faded, current.get());
+    }
+
+    @Test
     void waypointHashCollisionDoesNotReuseStaticGeometry() {
         Waypoint left = new Waypoint(0, 64, 0, "", 0, 31, 0.0);
         Waypoint right = new Waypoint(0, 64, 0, "", 1, 0, 0.0);

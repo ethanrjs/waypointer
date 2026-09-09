@@ -18,6 +18,16 @@ def target = minecraftTargets[targetMinecraft]
 if (target == null) {
 	throw new GradleException("Unsupported minecraft_version ${targetMinecraft}; use ${minecraftTargets.keySet().join(' or ')}")
 }
+// Opt-in native shader checks use the same disposable client as ordinary smoke tests.
+def shaderPack = providers.gradleProperty('shaderPack').map { file(it) }
+def shaderTestMods = [
+		'26.1.2': [iris: '5H9TsVy4', sodium: 'vf7UgZpC'],
+		'26.2'  : [iris: 'oaD6KQls', sodium: '2Yom1N68']
+]
+if (shaderPack.isPresent() && (!shaderPack.get().isFile()
+		|| !shaderPack.get().name.toLowerCase(Locale.ROOT).endsWith('.zip'))) {
+	throw new GradleException('-PshaderPack must name an existing shader-pack ZIP')
+}
 
 def wrapperCommand = System.getProperty('os.name').startsWith('Windows')
 		? ['cmd', '/d', '/c', file('gradlew.bat').absolutePath]
@@ -56,7 +66,8 @@ minecraftTargets.keySet().each { minecraftTarget ->
 	previousSmokeTask = tasks.register("smokeMinecraft${minecraftTarget.replace('.', '_')}", Exec) {
 		if (prerequisite != null) dependsOn prerequisite
 		commandLine(wrapperCommand + ['runClientGameTest', "-Pminecraft_version=${minecraftTarget}",
-				'--no-daemon', '--console=plain'] + forwardedBuildArguments)
+				'--no-daemon', '--console=plain'] + forwardedBuildArguments
+				+ (shaderPack.isPresent() ? ["-PshaderPack=${shaderPack.get().absolutePath}"] : []))
 	}
 }
 tasks.register('smokeAllTargets') {
@@ -116,15 +127,42 @@ fabricApi {
 
 def retainLaunchLogs = tasks.register('retainLaunchLogs', Sync) {
 	from(layout.buildDirectory.dir('run/clientGameTest')) {
-		include 'logs/**', 'crash-reports/**', 'screenshots/**'
+		include 'logs/**', 'crash-reports/**', 'screenshots/**', 'shader-test.json'
 	}
-	into layout.buildDirectory.dir("reports/launch/${targetMinecraft}")
+	into layout.buildDirectory.dir("reports/${shaderPack.isPresent() ? 'shaders' : 'launch'}/${targetMinecraft}")
 }
 tasks.named('runClientGameTest') {
-	timeout = java.time.Duration.ofMinutes(5)
+	timeout = java.time.Duration.ofMinutes(shaderPack.isPresent() ? 10 : 5)
 	// GUI scale 4 requires at least 960 framebuffer rows; smaller windows silently clamp it.
 	args '--width', '1708', '--height', '960'
 	finalizedBy retainLaunchLogs
+	if (shaderPack.isPresent()) {
+		systemProperty 'waypointer.test.shaders', 'true'
+		doFirst {
+			def runDir = layout.buildDirectory.dir('run/clientGameTest').get().asFile
+			def packs = new File(runDir, 'shaderpacks')
+			packs.mkdirs()
+			// A fixed safe filename also accepts input paths with spaces or Unicode.
+			def staged = new File(packs, 'waypointer-test.zip')
+			Files.copy(shaderPack.get().toPath(), staged.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+			def irisConfig = new File(runDir, 'config/iris.properties')
+			irisConfig.parentFile.mkdirs()
+			irisConfig.setText('enableShaders=true\nshaderPack=waypointer-test.zip\n', 'UTF-8')
+			new File(runDir, 'shader-test.json').setText(JsonOutput.prettyPrint(JsonOutput.toJson([
+					minecraft: targetMinecraft, iris: shaderTestMods[targetMinecraft].iris,
+					sodium: shaderTestMods[targetMinecraft].sodium, shaderPack: shaderPack.get().name,
+					sha256: MessageDigest.getInstance('SHA-256').digest(staged.bytes).encodeHex().toString()
+			])) + '\n', 'UTF-8')
+		}
+		doLast {
+			def log = layout.buildDirectory.file('run/clientGameTest/logs/latest.log').get().asFile
+			if (!log.isFile()) throw new GradleException('Shader smoke test did not produce a client log')
+			def failures = log.readLines('UTF-8').findAll {
+				it =~ /(?i)(Could not (allocate|prepare|render|submit).*(preview|inspector)|Waypointer GPU overlay failed|Iris rejected pipeline|Failed to (compile|link).*shader|Shader compilation failed|Failed to create shader rendering pipeline)/
+			}
+			if (!failures.isEmpty()) throw new GradleException('Shader rendering errors:\n' + failures.join('\n'))
+		}
+	}
 }
 
 // The picture-in-picture renderer changed its constructor and render callback
@@ -212,6 +250,10 @@ dependencies {
 	implementation "net.fabricmc.fabric-api:fabric-api:${target.fabricApi}"
 	implementation "net.hypixel:mod-api:${project.hypixel_mod_api_version}"
 	gametestRuntimeOnly 'maven.modrinth:1A2mKfBx:SlqCF6Or'
+	if (shaderPack.isPresent()) {
+		gametestRuntimeOnly "maven.modrinth:iris:${shaderTestMods[targetMinecraft].iris}"
+		gametestRuntimeOnly "maven.modrinth:sodium:${shaderTestMods[targetMinecraft].sodium}"
+	}
 
 	include implementation('org.brotli:dec:0.1.2')
 

@@ -6,6 +6,7 @@ import com.babbur.waypointer.core.CatalogRouteProvenance;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import org.junit.jupiter.api.Test;
 
@@ -214,6 +215,9 @@ class CatalogRouteInstallerTest {
                         manager.allGroups()).action());
         oldGroup.setCurrentTargetIndex(oldGroup.size());
         oldGroup.setEnabled(false);
+        oldGroup.setStylePresetId("personal-route");
+        oldGroup.setStyleOverride(WaypointStyle.EMPTY.with("labelOpacity", 0.4));
+        oldGroup.setWaypointStyle(0, WaypointStyle.EMPTY.with("labelOpacity", 0.7));
         RouteFolder folder = manager.createFolder(
                 "Catalog routes", "hub", List.of(oldGroup.id()));
         WaypointGroup localNeighbor = route("hub", 1);
@@ -233,11 +237,49 @@ class CatalogRouteInstallerTest {
         WaypointGroup updatedGroup = manager.get(updated.groupIds().getFirst());
         assertEquals(2, updatedGroup.catalogProvenance().routeVersion());
         assertEquals(false, updatedGroup.enabled());
+        assertEquals(oldGroup.stylePresetId(), updatedGroup.stylePresetId());
+        assertEquals(oldGroup.styleOverride(), updatedGroup.styleOverride());
+        assertEquals(oldGroup.get(0).styleOverride(), updatedGroup.get(0).styleOverride());
+        assertEquals(WaypointStyle.EMPTY, updatedGroup.get(1).styleOverride());
         assertEquals(0, updatedGroup.currentIndex(),
                 "a changed catalog route must restart progress from its new first step");
         assertEquals(folder, manager.folderForGroup(updatedGroup.id()));
         assertEquals(List.of(updatedGroup, localNeighbor), manager.allGroupsList(),
                 "catalog updates must keep the user's route order");
+    }
+
+    @Test
+    void pointStylesFollowUniqueUnchangedWaypointsInsteadOfIndexes() {
+        for (boolean duplicateNewPoint : List.of(false, true)) {
+            ActiveGroupManager manager = new ActiveGroupManager();
+            WaypointGroup original = route("hub", 4);
+            original.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+            original.set(2, original.get(1));
+            CatalogRouteInstaller.install(manager, API_ROOT, new CatalogRouteDetails(
+                    summary(4, 1), WaypointCodec.encodeCatalog(List.of(original))));
+            WaypointGroup previous = manager.allGroupsList().getFirst();
+            for (int index = 0; index < previous.size(); index++) {
+                previous.setWaypointStyle(index,
+                        WaypointStyle.EMPTY.with("labelOpacity", (index + 1) * 0.2));
+            }
+            WaypointGroup next = route("hub", 0);
+            next.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+            next.add(original.get(3));
+            next.add(original.get(0));
+            next.add(original.get(2).withName("Different step"));
+            next.add(original.get(1));
+            if (duplicateNewPoint) next.add(original.get(0));
+            CatalogRouteInstaller.install(manager, API_ROOT, new CatalogRouteDetails(
+                    summary(next.size(), 1, "hub", 9, 2),
+                    WaypointCodec.encodeCatalog(List.of(next))));
+            WaypointGroup updated = manager.allGroupsList().getFirst();
+            assertEquals(previous.get(3).styleOverride(), updated.get(0).styleOverride());
+            assertEquals(duplicateNewPoint ? WaypointStyle.EMPTY : previous.get(0).styleOverride(),
+                    updated.get(1).styleOverride());
+            assertEquals(WaypointStyle.EMPTY, updated.get(2).styleOverride());
+            assertEquals(WaypointStyle.EMPTY, updated.get(3).styleOverride());
+            if (duplicateNewPoint) assertEquals(WaypointStyle.EMPTY, updated.get(4).styleOverride());
+        }
     }
 
     @Test
@@ -251,6 +293,9 @@ class CatalogRouteInstallerTest {
 
         WaypointGroup retainedOrdinal = manager.get(installed.groupIds().get(1));
         retainedOrdinal.setEnabled(false);
+        retainedOrdinal.setStylePresetId("repair-style");
+        retainedOrdinal.setStyleOverride(WaypointStyle.EMPTY.with("labelOpacity", 0.3));
+        retainedOrdinal.setWaypointStyle(0, WaypointStyle.EMPTY.with("labelOpacity", 0.8));
         RouteFolder folder = manager.createFolder(
                 "Repair", "hub", List.of(retainedOrdinal.id()));
         manager.remove(installed.groupIds().getFirst());
@@ -265,6 +310,9 @@ class CatalogRouteInstallerTest {
                 .filter(group -> group.catalogProvenance().groupIndex() == 1)
                 .findFirst().orElseThrow();
         assertEquals(false, repairedOrdinal.enabled());
+        assertEquals(retainedOrdinal.stylePresetId(), repairedOrdinal.stylePresetId());
+        assertEquals(retainedOrdinal.styleOverride(), repairedOrdinal.styleOverride());
+        assertEquals(retainedOrdinal.get(0).styleOverride(), repairedOrdinal.get(0).styleOverride());
         assertEquals(folder, manager.folderForGroup(repairedOrdinal.id()));
     }
 

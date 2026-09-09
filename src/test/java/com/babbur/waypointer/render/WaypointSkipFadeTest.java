@@ -4,6 +4,12 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointStyle;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.phys.Vec3;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -12,6 +18,22 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class WaypointSkipFadeTest {
+    @Test
+    void customRoleOpacityIsPreservedWhenTransitionBegins() {
+        WaypointGroup group = route();
+        WaypointerConfig config = fadeConfig(2, 2);
+        config.setDimSequenceContextWaypoints(false);
+        config.setCurrentWaypointOpacity(.42);
+        config.setUpcomingWaypointOpacity(.18);
+        config.setCompletedWaypointOpacity(.07);
+        config.setBeaconBeamMode(WaypointerConfig.BeaconBeamMode.ALL_VISIBLE);
+        WaypointSkipFade.observe(group, config, 0);
+        group.setCurrentIndex(1);
+        var fade = WaypointSkipFade.observe(group, config, 10_000_000);
+        assertEquals(.18f, fade.alpha(1, .42f, true), .00001f);
+        assertEquals(.42f, fade.alpha(0, .07f, true), .00001f);
+        assertEquals(.18f, fade.beamAlpha(1, .42f, true), .00001f);
+    }
     @Test
     void resetAfterCompletionFadeHasEndedStillFadesTheFirstWaypointIn() {
         WaypointGroup group = route();
@@ -207,6 +229,49 @@ class WaypointSkipFadeTest {
         visible.clear();
         renderer.forEachFadingVisibleIndex(group, visible::add);
         assertTrue(visible.isEmpty());
+    }
+
+    @Test
+    void currentBeamFadeDoesNotSubmitAnAlreadyVisibleOutgoingWaypointTwice() throws Exception {
+        for (boolean mixedModes : new boolean[]{false, true}) {
+            WaypointGroup group = route();
+            WaypointerConfig config = fadeConfig(1, 0);
+            config.setBeaconBeamMode(WaypointerConfig.BeaconBeamMode.CURRENT);
+            config.setUseBeaconBeamTextures(false);
+            // Exercise actual beam selection/fade calculation without requiring a native client.
+            config.setBeaconOpacity(0);
+            if (mixedModes) group.setWaypointStyle(0,
+                    WaypointStyle.EMPTY.with("beaconBeamMode", "ALL_VISIBLE"));
+            List<Integer> visited = new ArrayList<>();
+            WaypointWorldRenderer renderer = new WaypointWorldRenderer(new ActiveGroupManager(), config) {
+                @Override
+                boolean shouldRenderWaypointWorld(WaypointGroup g, int index, int current,
+                        boolean completed, Vec3 camera,
+                        Vec3 player, double distance, double near,
+                        boolean depth, Minecraft client,
+                        ClientLevel level) {
+                    visited.add(index);
+                    return true;
+                }
+            };
+            WaypointSkipFade.observe(group, config, 0);
+            group.setCurrentIndex(1);
+            WaypointSkipFade.observe(group, config, 10_000_000);
+            WaypointSkipFade.observe(group, config, 110_000_000);
+            var emit = WaypointWorldRenderer.class.getDeclaredMethod("emitBeaconBeams",
+                    PoseStack.class,
+                    VertexConsumer.class, WaypointGroup.class,
+                    Vec3.class, Vec3.class,
+                    double.class, double.class, int.class, int.class, boolean.class,
+                    Minecraft.class,
+                    ClientLevel.class, boolean.class);
+            emit.setAccessible(true);
+            emit.invoke(renderer, null, null, group, null, null, 0.0, 0.0,
+                    -64, 320, false, null, null, false);
+            assertEquals(List.of(0, 1), visited, "outgoing beam must be submitted only once");
+            assertTrue(WaypointSkipFade.get(group).outgoingNormallyVisible,
+                    "beam mode must not overwrite marker visibility bookkeeping");
+        }
     }
 
     @Test

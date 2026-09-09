@@ -190,7 +190,7 @@ public final class WishingCompassController {
                 .append(Component.translatable("waypointer.crystal.action.share")
                         .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)
                                 .withUnderlined(true)
-                                .withClickEvent(CrystalHollowsShare.suggest(sighting))));
+                                .withClickEvent(CrystalHollowsShare.share(sighting))));
         send(message);
     }
 

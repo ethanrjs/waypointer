@@ -28,7 +28,7 @@ public final class OverlayPipelines {
         }
     }
 
-    public record Slot(RenderPipeline inWorld, RenderPipeline postWorld, MeshLayout layout) {
+    public record Slot(RenderPipeline inWorld, RenderPipeline postWorld, MeshLayout layout, Object formatIdentity) {
         public RenderPipeline forCompositing(OverlayCompositing compositing) {
             return compositing == OverlayCompositing.POST_WORLD ? postWorld : inWorld;
         }
@@ -92,6 +92,20 @@ public final class OverlayPipelines {
         return slots.computeIfAbsent(PipelineKey.from(bucket), OverlayPipelines::buildSlot);
     }
 
+    /** Iris changes native entity strides while toggling packs; call inside the world-render phase. */
+    boolean refreshVertexLayouts() {
+        boolean changed = false;
+        for (var entry : slots.entrySet()) {
+            Slot old = entry.getValue();
+            Object format = VertexLayoutCompat.formatIdentity(old.inWorld());
+            if (format == old.formatIdentity()) continue;
+            MeshLayout layout = VertexLayoutCompat.describe(old.inWorld());
+            entry.setValue(new Slot(old.inWorld(), old.postWorld(), layout, format));
+            changed |= !layout.equals(old.layout());
+        }
+        return changed;
+    }
+
     public boolean assignIrisPrograms(IrisBridge iris) {
         if (iris == null) return false;
         boolean assignedAll = true;
@@ -120,7 +134,7 @@ public final class OverlayPipelines {
         RenderPipeline inWorld = build(key, "gpu/" + key.kind().name().toLowerCase(java.util.Locale.ROOT) + "_" + suffix);
         RenderPipeline postWorld = build(key, "gpu_post/" + key.kind().name().toLowerCase(java.util.Locale.ROOT) + "_" + suffix);
         MeshLayout layout = VertexLayoutCompat.describe(inWorld);
-        return new Slot(inWorld, postWorld, layout);
+        return new Slot(inWorld, postWorld, layout, VertexLayoutCompat.formatIdentity(inWorld));
     }
 
     private static RenderPipeline build(PipelineKey key, String path) {

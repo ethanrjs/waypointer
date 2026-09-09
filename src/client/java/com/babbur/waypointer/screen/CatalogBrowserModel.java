@@ -12,6 +12,8 @@ import java.util.Objects;
 
 final class CatalogBrowserModel {
     private List<CatalogRouteSummary> routes = List.of();
+    private List<CatalogRouteSummary> loadedRoutes = List.of();
+    private boolean filteringInstalled;
     private String query = "";
     private String zoneFilter;
     private String nextCursor;
@@ -56,7 +58,7 @@ final class CatalogBrowserModel {
         String next = zoneId == null || zoneId.isBlank() ? null : zoneId;
         if (Objects.equals(next, zoneFilter)) return false;
         zoneFilter = next;
-        routes = List.of();
+        loadedRoutes = routes = List.of();
         nextCursor = null;
         selectedRouteId = null;
         scrollOffset = 0;
@@ -68,7 +70,7 @@ final class CatalogBrowserModel {
         if (next.equals(query)) return false;
         query = next;
         searchPending = true;
-        routes = List.of();
+        loadedRoutes = routes = List.of();
         nextCursor = null;
         selectedRouteId = null;
         scrollOffset = 0;
@@ -83,7 +85,7 @@ final class CatalogBrowserModel {
 
     void beginRefresh() {
         searchPending = false;
-        routes = List.of();
+        loadedRoutes = routes = List.of();
         nextCursor = null;
         selectedRouteId = null;
         scrollOffset = 0;
@@ -93,7 +95,7 @@ final class CatalogBrowserModel {
         Objects.requireNonNull(page, "page");
         if (append) {
             LinkedHashMap<String, CatalogRouteSummary> combined = new LinkedHashMap<>();
-            for (CatalogRouteSummary route : routes) combined.put(route.id(), route);
+            for (CatalogRouteSummary route : loadedRoutes) combined.put(route.id(), route);
             for (CatalogRouteSummary route : page.routes()) combined.put(route.id(), route);
             routes = List.copyOf(combined.values());
         } else {
@@ -101,11 +103,26 @@ final class CatalogBrowserModel {
         }
         nextCursor = page.hasMore() && page.nextCursor() != null
                 && !page.nextCursor().isBlank() ? page.nextCursor() : null;
+        loadedRoutes = routes;
+        reconcileSelection();
+    }
+
+    void filterInstalled(String apiRoot, ActiveGroupManager manager, boolean onlyNotInstalled) {
+        if (filteringInstalled != onlyNotInstalled) scrollOffset = 0;
+        filteringInstalled = onlyNotInstalled;
+        List<CatalogRouteSummary> visible = onlyNotInstalled ? loadedRoutes.stream()
+                .filter(route -> {
+                    CatalogInstallState.Action action = installState(apiRoot, manager, route).action();
+                    return action != CatalogInstallState.Action.INSTALLED
+                            && action != CatalogInstallState.Action.LOCAL_NEWER;
+                }).toList() : loadedRoutes;
+        if (routes.equals(visible)) return;
+        routes = visible;
         reconcileSelection();
     }
 
     void markLoadFailed(boolean append) {
-        if (!append) routes = List.of();
+        if (!append) loadedRoutes = routes = List.of();
         reconcileSelection();
     }
 

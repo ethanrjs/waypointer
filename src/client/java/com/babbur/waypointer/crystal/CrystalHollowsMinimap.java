@@ -13,6 +13,7 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
@@ -35,16 +36,19 @@ public final class CrystalHollowsMinimap implements HudElement {
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, DeltaTracker tick) {
         Minecraft client = Minecraft.getInstance();
+        var screen = MinecraftCompat.screen(client);
         if (!config.crystalHollowsEnabled() || !config.crystalHollowsMinimap() || !tracker.active()
                 || client.player == null || client.level == null
-                || MinecraftCompat.screen(client) != null) return;
+                || screen != null && !(screen instanceof ChatScreen)) return;
         var target = tracker.compassNavigationTarget();
         var layout = CrystalHollowsMinimapLayout.fit(g.guiWidth(), g.guiHeight(),
-                config.crystalHollowsMinimapSize(), config.crystalHollowsMinimapCorner(), target != null);
+                config.crystalHollowsMinimapSize(), config.crystalHollowsMinimapCorner(), target != null,
+                config.minimapScale(), config.minimapCustomPosition(), config.minimapPositionX(), config.minimapPositionY());
         if (layout == null) return;
         var player = client.player;
         draw(g, layout, player.getX(), player.getY(), player.getZ(), player.getYRot(),
-                tracker.lobby() == null ? List.of() : tracker.lobby().sightings(),
+                tracker.lobby() == null ? List.of()
+                        : tracker.lobby().sightings().stream().filter(tracker::detectionEnabled).toList(),
                 target, config.crystalHollowsMinimapLabels(),
                 config.crystalHollowsShowRoughMarkers());
     }
@@ -57,6 +61,7 @@ public final class CrystalHollowsMinimap implements HudElement {
         int x = layout.mapX(), y = layout.mapY(), size = layout.size();
         panel(g, layout.x(), layout.y(), layout.width(), layout.height(), 0xFF39454D);
         panel(g, layout.x() + 1, layout.y() + 1, layout.width() - 2, layout.height() - 2, 0xF213191F);
+        g.fill(layout.x() + 3, layout.y(), layout.x() + layout.width() - 3, layout.y() + 1, 0xFF52616A);
         gem(g, x + 3, layout.y() + CrystalHollowsMinimapLayout.HEADER / 2, GuiTokens.ACCENT);
         // The seven-pixel gem has five clear pixels to the frame and five to the title.
         int titleX = x + CrystalHollowsMinimapLayout.PADDING * 2;
@@ -64,8 +69,9 @@ public final class CrystalHollowsMinimap implements HudElement {
         String title = font.width(text("title")) <= titleWidth ? text("title") : text("short_title");
         title = font.plainSubstrByWidth(title, titleWidth);
         drawText(g, title, titleX,
-                layout.y() + 1 + (CrystalHollowsMinimapLayout.HEADER - 1 - inkHeight(title)) / 2f,
+                Math.round(layout.y() + 1 + (CrystalHollowsMinimapLayout.HEADER - 1 - inkHeight(title)) / 2f),
                 GuiTokens.TEXT);
+        g.fill(x, y - 2, x + size, y - 1, 0xFF2D3C44);
 
         boolean magma = playerY < 64;
         int half = size / 2;
@@ -77,80 +83,61 @@ public final class CrystalHollowsMinimap implements HudElement {
             region(g, x + half, y + half, size - half, size - half, 0xFF353D56, 0xFF252B40);
             g.pose().pushMatrix();
             g.pose().translate(x + size / 2f - 0.5f, y);
-            g.fill(0, 0, 1, size, 0x244FB3C4);
+            g.fill(0, 0, 1, size, 0x304FB3C4);
             g.pose().popMatrix();
             g.pose().pushMatrix();
             g.pose().translate(x, y + size / 2f - 0.5f);
-            g.fill(0, 0, size, 1, 0x244FB3C4);
+            g.fill(0, 0, size, 1, 0x304FB3C4);
             g.pose().popMatrix();
         }
         for (int coordinate = 256; coordinate < CrystalHollowsGeometry.MAX_XZ; coordinate += 128) {
             int offset = layout.project(coordinate);
-            g.fill(x + offset, y, x + offset + 1, y + 3, 0x408CA3AB);
-            g.fill(x, y + offset, x + 3, y + offset + 1, 0x408CA3AB);
-            g.fill(x + offset, y + size - 3, x + offset + 1, y + size, 0x408CA3AB);
-            g.fill(x + size - 3, y + offset, x + size, y + offset + 1, 0x408CA3AB);
+            int tickLength = coordinate % 256 == 0 ? 3 : 2;
+            g.fill(x + offset, y, x + offset + 1, y + tickLength, 0x608CA3AB);
+            g.fill(x, y + offset, x + tickLength, y + offset + 1, 0x608CA3AB);
+            g.fill(x + offset, y + size - tickLength, x + offset + 1, y + size, 0x608CA3AB);
+            g.fill(x + size - tickLength, y + offset, x + size, y + offset + 1, 0x608CA3AB);
             for (int coordinateZ = 256; coordinateZ < CrystalHollowsGeometry.MAX_XZ; coordinateZ += 128) {
                 int offsetZ = layout.project(coordinateZ);
                 g.fill(x + offset, y + offsetZ, x + offset + 1, y + offsetZ + 1, 0x248CA3AB);
             }
         }
+        List<StructureSighting> visible = sightings.stream().filter(sighting ->
+                CrystalHollowsMinimapLayout.contains(sighting.x(), sighting.z())
+                        && (showRough || sighting.confidence() != SightingConfidence.ROUGH_AREA)
+                        && sighting.structure() != CrystalHollowsStructure.CRYSTAL_NUCLEUS).toList();
         List<Rect> occupied = new ArrayList<>();
-        if (labels) {
-            if (magma) {
-                occupied.add(centered(g, text("magma"), x + size / 2f, y + 13, size - 12, 0xFFE6B493));
-            } else {
-                occupied.add(centered(g, text("jungle"), x + size / 4f, y + size / 4f, half - 8, 0xFFA3CBB0));
-                occupied.add(centered(g, text("mithril"), x + size * 3 / 4f, y + size / 4f, half - 8, 0xFFA5CED8));
-                occupied.add(centered(g, text("goblin"), x + size / 4f, y + size * 3 / 4f, half - 8, 0xFFD0BD99));
-                occupied.add(centered(g, text("precursor"), x + size * 3 / 4f, y + size * 3 / 4f, half - 8, 0xFFB6C0DF));
-            }
+        if (target != null && CrystalHollowsMinimapLayout.contains(target.x(), target.z())) {
+            occupied.add(new Rect(x + layout.marker(target.x()) - 8,
+                    y + layout.marker(target.z()) - 8, 17, 17));
         }
-        Rect nucleus = layout.nucleus();
-        int radius = nucleus.width() / 2;
-        octagon(g, nucleus.x(), nucleus.y(), nucleus.width(), 0xFF527C86);
-        octagon(g, nucleus.x() + 1, nucleus.y() + 1, nucleus.width() - 2, 0xFF172A33);
-        octagon(g, nucleus.x() + 3, nucleus.y() + 3, nucleus.width() - 6, 0xFF2B4651);
-        octagon(g, nucleus.x() + 4, nucleus.y() + 4, nucleus.width() - 8, 0xFF1C303A);
-        g.pose().pushMatrix();
-        // Odd-width symbols have their pixel center at +0.5; retain that half pixel at even map sizes.
-        g.pose().translate(x + size / 2f - 0.5f, y + size / 2f - 0.5f);
-        for (var entrance : CrystalHollowsGeometry.NUCLEUS_ENTRANCES) {
-            if (entrance.id().startsWith("magma") != magma) continue;
-            // The four quadrant gates are symmetric accents on the schematic platform.
-            int ex = magma ? layout.project(entrance.position().x()) - layout.project(CrystalHollowsGeometry.NUCLEUS_CENTRE_X)
-                    : (entrance.position().x() < CrystalHollowsGeometry.NUCLEUS_CENTRE_X ? -radius - 1 : radius + 1);
-            int ey = magma ? layout.project(entrance.position().z()) - layout.project(CrystalHollowsGeometry.NUCLEUS_CENTRE_Z)
-                    : (entrance.position().z() < CrystalHollowsGeometry.NUCLEUS_CENTRE_Z ? -radius - 1 : radius + 1);
-            diamond(g, ex, ey, 2, 0xFF172A33, true);
-            diamond(g, ex, ey, 1, 0xFFAACACC, true);
+        for (StructureSighting sighting : visible) {
+            occupied.add(new Rect(x + layout.marker(sighting.x()) - 5,
+                    y + layout.marker(sighting.z()) - 5, 11, 11));
         }
-        // A larger faceted crystal distinguishes the nucleus from ordinary point markers.
-        int crystalRadius = radius < 10 ? 3 : 4;
-        diamond(g, 0, 0, crystalRadius + 1, 0xFF101C25, true);
-        for (int row = -crystalRadius; row <= crystalRadius; row++) {
-            int span = crystalRadius - Math.abs(row);
-            g.fill(-span, row, 1, row + 1, 0xFF8DE5E2);
-            g.fill(1, row, span + 1, row + 1, 0xFF3C91AE);
-        }
-        g.fill(0, -crystalRadius, 1, 1, 0xFFD0FAEE);
-        g.pose().popMatrix();
-        occupied.add(new Rect(nucleus.x() - 3, nucleus.y() - 3, nucleus.width() + 6, nucleus.height() + 6));
         int px = x + layout.marker(playerX), py = y + layout.marker(playerZ);
         occupied.add(new Rect(px - 7, py - 7, 15, 15));
+        Rect nucleus = layout.nucleus();
+        occupied.add(new Rect(nucleus.x() - 3, nucleus.y() - 3, nucleus.width() + 6, nucleus.height() + 6));
+        if (labels) {
+            if (magma) {
+                occupied.add(centered(g, text("magma"), x + size / 2f, y + 13, size - 12, 0xFFE6B493, occupied));
+            } else {
+                occupied.add(centered(g, text("jungle"), x + size / 4f, y + size / 4f, half - 8, 0xFFA3CBB0, occupied));
+                occupied.add(centered(g, text("mithril"), x + size * 3 / 4f, y + size / 4f, half - 8, 0xFFA5CED8, occupied));
+                occupied.add(centered(g, text("goblin"), x + size / 4f, y + size * 3 / 4f, half - 8, 0xFFD0BD99, occupied));
+                occupied.add(centered(g, text("precursor"), x + size * 3 / 4f, y + size * 3 / 4f, half - 8, 0xFFB6C0DF, occupied));
+            }
+        }
 
         g.enableScissor(x, y, x + size, y + size);
         if (target != null && CrystalHollowsMinimapLayout.contains(target.x(), target.z())) {
             line(g, px, py, x + layout.marker(target.x()), y + layout.marker(target.z()), 0xC0F4D99F);
         }
-        List<StructureSighting> visible = sightings.stream().filter(sighting ->
-                CrystalHollowsMinimapLayout.contains(sighting.x(), sighting.z())
-                        && (showRough || sighting.confidence() != SightingConfidence.ROUGH_AREA)
-                        && sighting.structure() != CrystalHollowsStructure.CRYSTAL_NUCLEUS).toList();
-        for (StructureSighting sighting : visible) {
-            occupied.add(new Rect(x + layout.marker(sighting.x()) - 5,
-                    y + layout.marker(sighting.z()) - 5, 11, 11));
-        }
+        boolean playerOnHub = CrystalHollowsMinimapLayout.contains(playerX, playerZ)
+                && Math.abs(px + 0.5 - (nucleus.x() + nucleus.width() / 2.0)) < 5
+                && Math.abs(py + 0.5 - (nucleus.y() + nucleus.height() / 2.0)) < 5;
+        nucleus(g, nucleus, magma, playerOnHub);
         for (StructureSighting sighting : visible) {
             boolean rough = sighting.confidence() == SightingConfidence.ROUGH_AREA;
             int sx = x + layout.marker(sighting.x()), sy = y + layout.marker(sighting.z());
@@ -160,7 +147,9 @@ public final class CrystalHollowsMinimap implements HudElement {
             else gem(g, sx, sy, color);
             if (labels) {
                 String label = abbreviation(sighting.structure());
-                Rect placed = layout.label(sx, sy, inkWidth(label), occupied);
+                boolean navigating = target != null && sighting.structure() == target.structure()
+                        && sighting.position().equals(target.position());
+                Rect placed = layout.label(sx, sy, inkWidth(label), occupied, navigating ? 11 : 8);
                 if (placed != null) {
                     Rect plate = new Rect(placed.x() - 2, placed.y() - 1, placed.width() + 4, 11);
                     occupied.add(plate);
@@ -179,9 +168,10 @@ public final class CrystalHollowsMinimap implements HudElement {
         }
         if (CrystalHollowsMinimapLayout.contains(playerX, playerZ)) {
             g.pose().pushMatrix();
-            g.pose().translate(px, py);
+            g.pose().translate(x + layout.markerCenter(playerX), y + layout.markerCenter(playerZ));
             // Minecraft yaw zero is south; the arrow is drawn facing north before rotation.
             g.pose().rotate((float) Math.toRadians(yaw + 180));
+            g.pose().translate(-0.5f, -0.5f);
             arrow(g);
             g.pose().popMatrix();
         }
@@ -192,13 +182,55 @@ public final class CrystalHollowsMinimap implements HudElement {
         g.fill(x, y + size + 1, x + size, y + size + 2, 0xFF2B3B42);
         String distance = Math.round(Math.hypot(target.y() - playerY,
                 Math.hypot(target.x() - playerX, target.z() - playerZ))) + "m";
-        int reservedWidth = size < 120 ? 0 : font.width(distance) + 7;
+        int reservedWidth = font.width(distance) + 7;
         area = font.plainSubstrByWidth(area, size - reservedWidth);
         int footerTop = y + size + 2;
         int footerBottom = layout.y() + layout.height() - 1;
-        float footerY = footerTop + (footerBottom - footerTop - inkHeight(area)) / 2f;
+        int footerY = Math.round(footerTop + (footerBottom - footerTop - inkHeight(area)) / 2f);
         drawText(g, area, x, footerY, 0xFFFFE6A5);
-        if (reservedWidth > 0) drawText(g, distance, x + size - inkWidth(distance), footerY, GuiTokens.TEXT_DIM);
+        drawText(g, distance, x + size - inkWidth(distance),
+                Math.round(footerTop + (footerBottom - footerTop - inkHeight(distance)) / 2f), GuiTokens.TEXT_DIM);
+    }
+
+    private static void nucleus(GuiGraphicsExtractor g, Rect hub, boolean magma, boolean playerOnHub) {
+        int x = hub.x(), y = hub.y(), size = hub.width();
+        int bevel = Math.max(2, size / 6);
+        // One low stone platform: a lit top lip, shaded side, and a quiet recessed floor.
+        for (int row = 0; row < size; row++) {
+            int inset = Math.max(0, bevel - Math.min(row, size - 1 - row));
+            g.fill(x + inset, y + row, x + size - inset, y + row + 1, 0xFF536971);
+            if (row > 0 && row < size - 1) {
+                g.fill(x + inset + 1, y + row, x + size - inset - 1, y + row + 1,
+                        row < size / 2 ? 0xFF28383E : 0xFF223037);
+            }
+        }
+        g.fill(x + bevel, y, x + size - bevel, y + 1, 0xFF82979B);
+        g.fill(x + bevel, y + size - 1, x + size - bevel, y + size, 0xFF172329);
+        if (size >= 14) {
+            // Inset accents belong to their map quadrants, rather than floating outside the hub.
+            int[] colors = magma ? new int[]{0xFFA77858, 0xFFA77858, 0xFFCB9862, 0xFFCB9862}
+                    : new int[]{0xFF89AC8E, 0xFF8CB4BB, 0xFFBBA078, 0xFF929FBF};
+            for (int corner = 0; corner < 4; corner++) {
+                int sx = x + ((corner & 1) == 0 ? 3 : size - 5);
+                int sy = y + ((corner & 2) == 0 ? 3 : size - 5);
+                g.fill(sx, sy, sx + 2, sy + 2, colors[corner]);
+            }
+        }
+        if (playerOnHub) return;
+        // Paired center columns on even maps keep the facet centered without half-pixel blur.
+        int crystalHeight = Math.min(9, size - 4);
+        if ((crystalHeight & 1) != (size & 1)) crystalHeight--;
+        int top = y + (size - crystalHeight) / 2;
+        int middle = x + size / 2;
+        int leftCenter = middle - ((size & 1) == 0 ? 1 : 0);
+        for (int row = 0; row < crystalHeight; row++) {
+            int spread = row == 0 || row == crystalHeight - 1 ? 0 : 1;
+            g.fill(leftCenter - spread - 1, top + row, middle + spread + 2, top + row + 1, 0xFF13242B);
+            g.fill(leftCenter - spread, top + row, middle + 1, top + row + 1,
+                    row < crystalHeight / 2 ? 0xFFB5EFE5 : 0xFF69BFC5);
+            g.fill(middle + 1, top + row, middle + spread + 1, top + row + 1, 0xFF378FA5);
+        }
+        g.fill(leftCenter, top, middle + 1, top + 2, 0xFFE0FAEB);
     }
 
     private static String abbreviation(CrystalHollowsStructure structure) {
@@ -240,19 +272,26 @@ public final class CrystalHollowsMinimap implements HudElement {
         g.pose().popMatrix();
     }
 
-    private static Rect centered(GuiGraphicsExtractor g, String text, float x, float y, int width, int color) {
+    private static Rect centered(GuiGraphicsExtractor g, String text, float x, float y, int width, int color,
+                                 List<Rect> occupied) {
         var font = Minecraft.getInstance().font;
         float scale = Math.min(1.0f, (float) width / Math.max(1, inkWidth(text)));
         if (scale < 0.7f) return new Rect((int) x, (int) y, 0, 0);
         float actualWidth = inkWidth(text) * scale;
         float actualHeight = inkHeight(text) * scale;
-        g.pose().pushMatrix();
-        g.pose().translate(x - actualWidth / 2f, y - actualHeight / 2f);
-        g.pose().scale(scale, scale);
-        g.text(font, text, 0, 0, color, false);
-        g.pose().popMatrix();
-        return new Rect((int) Math.floor(x - actualWidth / 2f), (int) Math.floor(y - actualHeight / 2f),
-                (int) Math.ceil(actualWidth) + 1, (int) Math.ceil(actualHeight) + 1);
+        for (int offset : new int[]{0, 12}) {
+            int left = Math.round(x - actualWidth / 2f), top = Math.round(y - actualHeight / 2f) + offset;
+            Rect bounds = new Rect(left - 2, top - 1, (int) Math.ceil(actualWidth) + 4,
+                    (int) Math.ceil(actualHeight) + 2);
+            if (occupied.stream().anyMatch(bounds::overlaps)) continue;
+            g.pose().pushMatrix();
+            g.pose().translate(left, top);
+            g.pose().scale(scale, scale);
+            g.text(font, text, 0, 0, color, false);
+            g.pose().popMatrix();
+            return bounds;
+        }
+        return new Rect((int) x, (int) y, 0, 0);
     }
 
     private static void panel(GuiGraphicsExtractor g, int x, int y, int width, int height, int color) {
@@ -267,14 +306,6 @@ public final class CrystalHollowsMinimap implements HudElement {
         for (int row = 0; row < height; row += 4) {
             g.fill(x, y + row, x + width, y + Math.min(row + 4, height),
                     mix(top, bottom, (double) row / Math.max(1, height - 1)));
-        }
-    }
-
-    private static void octagon(GuiGraphicsExtractor g, int x, int y, int diameter, int color) {
-        int bevel = Math.max(1, diameter / 4);
-        for (int row = 0; row < diameter; row++) {
-            int inset = Math.max(0, bevel - Math.min(row, diameter - 1 - row));
-            g.fill(x + inset, y + row, x + diameter - inset, y + row + 1, color);
         }
     }
 

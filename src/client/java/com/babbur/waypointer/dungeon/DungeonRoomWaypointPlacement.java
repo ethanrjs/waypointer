@@ -63,7 +63,7 @@ public final class DungeonRoomWaypointPlacement {
                 storedWaypoint.expiresAtMillis(),
                 actual[0],
                 actual[1],
-                actual[2]);
+                actual[2]).withStyleOverride(storedWaypoint.styleOverride());
     }
 
     /** Returns null when a dungeon route cannot be placed in the current room. */
@@ -128,7 +128,7 @@ public final class DungeonRoomWaypointPlacement {
                 actualWaypoint.expiresAtMillis(),
                 relative[0],
                 relative[1],
-                relative[2]);
+                relative[2]).withStyleOverride(actualWaypoint.styleOverride());
     }
 
     private static DungeonRoom currentRoomFor(WaypointGroup group) {

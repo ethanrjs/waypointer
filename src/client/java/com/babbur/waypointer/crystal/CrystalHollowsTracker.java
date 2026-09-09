@@ -36,6 +36,7 @@ public final class CrystalHollowsTracker {
 
     private static final String SESSION_SERVER_ID = "session-only";
     private static final int TELEPORT_DELAY_TICKS = 50;
+    private static final CrystalHollowsStructure[] STRUCTURES = CrystalHollowsStructure.values();
 
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
@@ -58,6 +59,7 @@ public final class CrystalHollowsTracker {
     private boolean lastShowRough;
     private boolean lastNucleusWaypoints;
     private boolean lastCompassAutoFocus;
+    private int lastDetectionMask;
     private DebugSnapshot lastDebugSnapshot = DebugSnapshot.inactive();
     private WishingCompassController compassController;
     private WaypointGroup compassTargetGroup;
@@ -99,6 +101,10 @@ public final class CrystalHollowsTracker {
     public CrystalHollowsStructure sidebarStructure() { return sidebarStructure; }
     public DebugSnapshot debugSnapshot() { return lastDebugSnapshot; }
 
+    public boolean detectionEnabled(StructureSighting sighting) {
+        return CrystalHollowsDetectionPolicy.allows(config, sighting);
+    }
+
     int closingInSeconds(String sidebar, long now) {
         int countdown = CrystalHollowsSidebar.closingInSeconds(sidebar);
         if (countdown >= 0) return countdown;
@@ -130,6 +136,7 @@ public final class CrystalHollowsTracker {
             Waypointer.LOGGER.debug("Crystal Hollows merge ignored while inactive: {}", sighting);
             return CrystalHollowsLobbyState.MergeResult.IGNORED;
         }
+        if (!detectionEnabled(sighting)) return CrystalHollowsLobbyState.MergeResult.IGNORED;
         CrystalHollowsLobbyState.MergeResult result = lobby.merge(sighting);
         Waypointer.LOGGER.debug("Crystal Hollows merge {}: {}", result, sighting);
         boolean localArrival = sighting.confidence() == SightingConfidence.ENTITY
@@ -527,16 +534,28 @@ public final class CrystalHollowsTracker {
         boolean hideStructuresFolder = config.crystalHollowsHideStructuresFolder();
         boolean showRough = config.crystalHollowsShowRoughMarkers();
         boolean nucleusWaypoints = config.crystalHollowsNucleusWaypoints();
+        int detectionMask = 0;
+        for (CrystalHollowsStructure structure : STRUCTURES) {
+            if (config.crystalHollowsDetectionEnabled(structure.id())) {
+                detectionMask |= 1 << structure.ordinal();
+            }
+        }
         if (structureWaypoints == lastStructureWaypoints
                 && hideStructuresFolder == lastHideStructuresFolder
                 && showRough == lastShowRough
-                && nucleusWaypoints == lastNucleusWaypoints) {
+                && nucleusWaypoints == lastNucleusWaypoints
+                && detectionMask == lastDetectionMask) {
             return;
         }
         lastStructureWaypoints = structureWaypoints;
         lastHideStructuresFolder = hideStructuresFolder;
         lastShowRough = showRough;
         lastNucleusWaypoints = nucleusWaypoints;
+        if (detectionMask != lastDetectionMask) {
+            processedEntityIds.clear();
+            lastRoughPosition = null;
+            lastDetectionMask = detectionMask;
+        }
         projection.rebuild(lobby);
     }
 
@@ -558,7 +577,8 @@ public final class CrystalHollowsTracker {
     }
 
     private void sampleRoughArea(Minecraft client) {
-        if (delayTicks > 0 || areaSession == null) return;
+        if (delayTicks > 0 || areaSession == null
+                || !config.crystalHollowsDetectionEnabled(areaSession.structure().id())) return;
         CrystalHollowsPosition position = areaSession.sample(
                 client.player.getX(), client.player.getY(), client.player.getZ());
         if (lastRoughPosition != null && lastRoughPosition.distanceSquared(position) < 4.0) return;
@@ -573,6 +593,7 @@ public final class CrystalHollowsTracker {
         for (CrystalHollowsEntityScanner.Detection detection :
                 CrystalHollowsEntityScanner.scan(client, sidebarStructure, processedEntityIds)) {
             processedEntityIds.add(detection.entityId());
+            if (!config.crystalHollowsDetectionEnabled(detection.structure().id())) continue;
             CrystalHollowsPosition position = detection.position();
             if (detection.divanKeeper() && lobby != null) lobby.setDivanCentre(position);
             merge(new StructureSighting(detection.structure(),
@@ -637,6 +658,7 @@ public final class CrystalHollowsTracker {
     }
 
     private void mergeDialogue(NpcDialogue dialogue) {
+        if (!config.crystalHollowsDetectionEnabled(dialogue.structure().id())) return;
         Minecraft client = Minecraft.getInstance();
         Optional<CrystalHollowsPosition> entity = CrystalHollowsEntityScanner.nearestDialogueAnchor(
                 client, dialogue.structure());
@@ -731,7 +753,7 @@ public final class CrystalHollowsTracker {
                 .append(Component.translatable("waypointer.crystal.action.share")
                         .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)
                                 .withUnderlined(true)
-                                .withClickEvent(CrystalHollowsShare.suggest(sighting))));
+                                .withClickEvent(CrystalHollowsShare.share(sighting))));
         send(message);
     }
 

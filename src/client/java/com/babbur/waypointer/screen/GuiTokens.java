@@ -46,6 +46,21 @@ public final class GuiTokens {
     public static final int WARNING = 0xFFFFB060;
     public static final int DANGER  = 0xFFE47B7B;
 
+    static void drawDragOutline(GuiGraphicsExtractor graphics, int left, int top,
+                                int right, int bottom, int color, boolean dashed) {
+        int dash = dashed ? 4 : Math.max(right - left, bottom - top);
+        if (dash <= 0) return;
+        int step = dashed ? 7 : dash;
+        for (int x = left; x < right; x += step) {
+            graphics.fill(x, top, Math.min(x + dash, right), top + 1, color);
+            graphics.fill(x, bottom - 1, Math.min(x + dash, right), bottom, color);
+        }
+        for (int y = top; y < bottom; y += step) {
+            graphics.fill(left, y, left + 1, Math.min(y + dash, bottom), color);
+            graphics.fill(right - 1, y, right, Math.min(y + dash, bottom), color);
+        }
+    }
+
     /** Message tinted with a token color, e.g. {@code colored(label, ACCENT)}. */
     public static MutableComponent colored(Component message, int argb) {
         return message.copy().withStyle(

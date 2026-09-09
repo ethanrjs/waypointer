@@ -2,6 +2,7 @@ package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.crystal.CrystalHollowsProjection;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.codec.UniversalShareCodec;
@@ -82,6 +83,7 @@ public final class SettingsScreen extends Screen {
     private final DungeonConfig defaultsDungeon = new DungeonConfig();
 
     private String activeCategoryId;
+    private String activeSectionId;
     private int scrollOffset;
     private int sidebarScrollOffset;
     private boolean rebuildPending;
@@ -130,6 +132,7 @@ public final class SettingsScreen extends Screen {
         if (home != null && categoryAvailable(home.id(), config)) {
             screen.activeCategoryId = home.id();
             lastCategoryId = home.id();
+            screen.activeSectionId = sectionForSetting(home, settingId);
             screen.pendingScrollToSettingId = settingId;
             screen.highlightSettingId = settingId;
             screen.highlightUntilMillis = System.currentTimeMillis() + HIGHLIGHT_MS;
@@ -343,9 +346,43 @@ public final class SettingsScreen extends Screen {
         boolean bodyVisible = category.bodyVisibleWhen() == null
                 || category.bodyVisibleWhen().test(config, dungeonConfig);
 
+        List<Section> sections = sections(category);
+        boolean nested = sections.size() > 1;
+        Section active = sections.stream().filter(section -> section.id().equals(activeSectionId))
+                .findFirst().orElse(null);
         int y = 0;
+        if (nested && active == null && bodyVisible) {
+            Setting master = SettingsCatalog.byId(category.masterSettingId());
+            if (master != null) {
+                Row row = new Row(master, null, true, true, false, y, SETTING_ROW_PITCH);
+                buildRowWidgets(row, layout);
+                buildResetDot(row, layout);
+                rows.add(row);
+                y += SETTING_ROW_PITCH + GAP_SECTION;
+            }
+            for (Section section : sections) {
+                boolean available = section.groups().stream()
+                        .anyMatch(group -> !visibleSettings(category, group, true).isEmpty());
+                if (!available) continue;
+                y = addNavigationRow(layout, y, sectionLabel(category, section), () -> {
+                    activeSectionId = section.id();
+                    scrollOffset = 0;
+                    rebuildWidgets();
+                });
+            }
+            contentHeight = y;
+            return;
+        }
+        if (nested && active != null) {
+            y = addNavigationRow(layout, y, Component.translatableWithFallback(
+                    "waypointer.screen.settings.sections.back", "Back to %s", SettingsText.category(category)),
+                    this::backToSections);
+            y += GAP_SECTION;
+        }
         boolean first = true;
-        for (SettingsCatalog.Group group : category.groups()) {
+        List<SettingsCatalog.Group> shownGroups = nested && active != null && bodyVisible
+                ? active.groups() : category.groups();
+        for (SettingsCatalog.Group group : shownGroups) {
             List<Setting> settings = visibleSettings(category, group, bodyVisible);
             if (settings.isEmpty()) continue;
             if (!first) y += GAP_SECTION;
@@ -377,6 +414,55 @@ public final class SettingsScreen extends Screen {
             }
         }
         contentHeight = y;
+    }
+
+    record Section(String id, SettingsCatalog.Group heading, List<SettingsCatalog.Group> groups) {}
+
+    static List<Section> sections(SettingsCatalog.Category category) {
+        List<Section> sections = new ArrayList<>();
+        for (SettingsCatalog.Group group : category.groups()) {
+            if (group.id() != null || sections.isEmpty()) {
+                sections.add(new Section(group.id() == null ? "general" : group.id(),
+                        group, new ArrayList<>()));
+            }
+            sections.getLast().groups().add(group);
+        }
+        return sections;
+    }
+
+    static String sectionForSetting(SettingsCatalog.Category category, String settingId) {
+        for (Section section : sections(category)) {
+            for (SettingsCatalog.Group group : section.groups()) {
+                if (group.settings().stream().anyMatch(setting -> setting.id().equals(settingId))) {
+                    return section.id();
+                }
+            }
+        }
+        return null;
+    }
+
+    private static Component sectionLabel(SettingsCatalog.Category category, Section section) {
+        return section.heading().label() == null
+                ? Component.translatableWithFallback("waypointer.screen.settings.sections.general", "General")
+                : Component.translatableWithFallback(
+                        SettingsCatalog.groupTranslationKey(category, section.heading()), section.heading().label());
+    }
+
+    private int addNavigationRow(Layout layout, int y, Component label, Runnable action) {
+        Row row = new Row(null, null, false, false, false, y, SETTING_ROW_PITCH);
+        int homeY = layout.rowsTop() + y + 2;
+        Button button = styledButton(layout.mainLeft() + GAP, homeY,
+                layout.mainRight() - layout.mainLeft() - GAP - CONTROL_RIGHT_INSET, BTN_H,
+                label, ignored -> action.run(), null);
+        registerRowWidget(row, button, homeY);
+        rows.add(row);
+        return y + SETTING_ROW_PITCH;
+    }
+
+    private void backToSections() {
+        activeSectionId = null;
+        scrollOffset = 0;
+        rebuildWidgets();
     }
 
     private int addStatusRowFor(Setting setting, int y) {
@@ -635,6 +721,18 @@ public final class SettingsScreen extends Screen {
 
     private void buildActionControls(Row row, Setting setting, int controlRight, int rowTop) {
         switch (setting.id()) {
+            case SettingsCatalog.ACTION_MINIMAP_EDITOR -> buildDialogActionControl(row, setting,
+                    controlRight, rowTop, "waypointer.screen.settings.action.minimap_editor",
+                    () -> MinecraftCompat.setScreen(minecraft, new CrystalHollowsMinimapEditorScreen(this, config)));
+            case SettingsCatalog.ACTION_ROUTE_STYLES -> buildDialogActionControl(row, setting,
+                    controlRight, rowTop, "waypointer.screen.styles.open",
+                    () -> MinecraftCompat.setScreen(minecraft, new StyleLibraryScreen(this, config, false)));
+            case SettingsCatalog.ACTION_STRUCTURE_STYLES -> buildDialogActionControl(row, setting,
+                    controlRight, rowTop, "waypointer.screen.styles.open",
+                    () -> MinecraftCompat.setScreen(minecraft, new StyleLibraryScreen(this, config, true)));
+            case SettingsCatalog.ACTION_WAYPOINT_INSPECTOR -> buildDialogActionControl(row, setting,
+                    controlRight, rowTop, "waypointer.screen.styles.open",
+                    () -> WaypointAppearanceScreen.openGlobal(this, config));
             case SettingsCatalog.ACTION_FEEDBACK -> buildDialogActionControl(row, setting,
                     controlRight, rowTop, "waypointer.screen.settings.action.feedback",
                     () -> MinecraftCompat.setScreen(minecraft, new FeedbackScreen(this, config)));
@@ -870,6 +968,7 @@ public final class SettingsScreen extends Screen {
     }
 
     private void afterBulkConfigChange() {
+        CrystalHollowsProjection.refreshStyles(WaypointerClient.manager(), config);
         RecentSettings.clear();
         searchQuery = "";
         clearPendingConfirmation();
@@ -1148,6 +1247,14 @@ public final class SettingsScreen extends Screen {
         } else {
             SettingsCatalog.Category category = categoryById(activeCategoryId);
             info = category == null ? Component.empty() : SettingsText.category(category);
+            if (category != null && activeSectionId != null && sections(category).size() > 1) {
+                for (Section section : sections(category)) {
+                    if (section.id().equals(activeSectionId)) {
+                        info = info.copy().append(" / ").append(sectionLabel(category, section));
+                        break;
+                    }
+                }
+            }
         }
         g.text(font, info, layout.mainRight() - GAP - font.width(info),
                 layout.top() + 10, TEXT_DIM, false);
@@ -1305,6 +1412,10 @@ public final class SettingsScreen extends Screen {
         }
 
         Setting setting = row.setting;
+        if (setting == null) {
+            for (WidgetSlot slot : row.widgets) slot.widget().extractRenderState(g, mouseX, mouseY, partial);
+            return;
+        }
         boolean enabled = setting.isEnabled(config, dungeonConfig);
 
         if (isHighlighted(setting)) {
@@ -1446,6 +1557,7 @@ public final class SettingsScreen extends Screen {
         SettingsCatalog.Category home = categoryOf(settingId);
         if (home == null || !categoryAvailable(home.id(), config)) return;
         activeCategoryId = home.id();
+        activeSectionId = sectionForSetting(home, settingId);
         lastCategoryId = home.id();
         searchQuery = "";
         pendingScrollToSettingId = settingId;
@@ -1456,8 +1568,9 @@ public final class SettingsScreen extends Screen {
 
     private void selectCategory(String categoryId) {
         if (!categoryAvailable(categoryId, config)
-                || categoryId.equals(activeCategoryId) && !searchActive()) return;
+                || categoryId.equals(activeCategoryId) && activeSectionId == null && !searchActive()) return;
         activeCategoryId = categoryId;
+        activeSectionId = null;
         if (!RECENT_ID.equals(categoryId)) lastCategoryId = categoryId;
         searchQuery = "";
         scrollOffset = 0;
@@ -1469,6 +1582,12 @@ public final class SettingsScreen extends Screen {
         if (event.key() == GLFW_KEY_F && controlDown() && searchBox != null) {
             setFocused(searchBox);
             searchBox.setFocused(true);
+            return true;
+        }
+        if (event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && !searchActive()
+                && activeSectionId != null && categoryById(activeCategoryId) != null
+                && sections(categoryById(activeCategoryId)).size() > 1) {
+            backToSections();
             return true;
         }
         if (super.keyPressed(event)) return true; // focused EditBoxes keep Home/End

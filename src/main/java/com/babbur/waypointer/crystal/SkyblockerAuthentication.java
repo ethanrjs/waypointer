@@ -96,7 +96,8 @@ public final class SkyblockerAuthentication {
         JsonObject payload = new JsonObject();
         payload.add("keyPair", key);
         payload.add("signedData", signed);
-        payload.addProperty("mod", "waypointer");
+        // Temporary compatibility trial: restore waypointer once its service identity is accepted, before publishing.
+        payload.addProperty("mod", "skyblocker");
         payload.addProperty("minecraftVersion", minecraft);
         payload.addProperty("modVersion", version);
         return payload.toString();

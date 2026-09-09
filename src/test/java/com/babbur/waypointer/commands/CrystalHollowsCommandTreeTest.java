@@ -1,6 +1,9 @@
 package com.babbur.waypointer.commands;
 
 import com.babbur.waypointer.crystal.CrystalHollowsStructure;
+import com.babbur.waypointer.crystal.CrystalHollowsShare;
+import com.babbur.waypointer.crystal.SightingConfidence;
+import com.babbur.waypointer.crystal.StructureSighting;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import java.util.Set;
@@ -18,14 +21,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class CrystalHollowsCommandTreeTest {
 
     @Test
-    void registersOnlyManualAdditionWithRequiredCoordinates() {
+    void registersManualAdditionAndChatShareWithRequiredCoordinates() {
         CommandDispatcher<FabricClientCommandSource> dispatcher = new CommandDispatcher<>();
         new CrystalHollowsCommands(null, null, null).register(dispatcher);
 
         assertNotNull(dispatcher.getRoot().getChild("wpch"));
         assertNull(dispatcher.getRoot().getChild("waypointer-crystal"));
         assertNull(dispatcher.getRoot().getChild("wpch").getCommand());
-        assertEquals(Set.of("add"),
+        assertEquals(Set.of("add", "share"),
                 dispatcher.getRoot().getChild("wpch").getChildren().stream()
                         .map(node -> node.getName()).collect(java.util.stream.Collectors.toSet()));
     }
@@ -55,10 +58,33 @@ class CrystalHollowsCommandTreeTest {
     }
 
     @Test
+    void chatShareButtonCommandParsesItsCapturedSighting() {
+        CommandDispatcher<FabricClientCommandSource> dispatcher = new CommandDispatcher<>();
+        new CrystalHollowsCommands(null, null, null).register(dispatcher);
+        var sighting = new StructureSighting(
+                CrystalHollowsStructure.ODAWA, 349, 110, 390,
+                SightingConfidence.MANUAL, "test", 1L);
+        String command = CrystalHollowsShare.share(sighting)
+                .command().substring(1);
+        var parsed = dispatcher.parse(command, null);
+        assertFalse(parsed.getReader().canRead());
+        assertTrue(parsed.getExceptions().isEmpty());
+        assertNotNull(parsed.getContext().getCommand());
+        var context = parsed.getContext().build(command);
+        assertEquals("odawa", context.getArgument("structure", String.class));
+        assertEquals(349, (int) context.getArgument("x", Integer.class));
+        assertEquals(110, (int) context.getArgument("y", Integer.class));
+        assertEquals(390, (int) context.getArgument("z", Integer.class));
+    }
+
+    @Test
     void removedCommandsAndIncompleteCoordinatesAreRejected() {
         CommandDispatcher<FabricClientCommandSource> dispatcher = new CommandDispatcher<>();
         new CrystalHollowsCommands(null, null, null).register(dispatcher);
         for (String command : new String[]{"wpch", "wpch info", "wpch share wishing_target:2",
+                "wpch share odawa 349 110", "wpch share odawa 349 110 nope",
+                "wpch share odawa 349 110 390 extra", "wpch share odawa 200 110 390",
+                "wpch share odawa 349 189 390", "wpch share odawa 349 110 824",
                 "wpch remove odawa", "wpch clear", "wpch compass", "wpch compass reset",
                 "wpch toggle rough", "wpch add", "wpch add odawa", "wpch add odawa 1",
                 "wpch add odawa 1 2", "wpch add odawa 1 2 nope", "wpch add odawa 1 2 3 extra",

@@ -51,6 +51,8 @@ public final class WaypointGroup {
     private int staticColor = Waypoint.DEFAULT_COLOR;
     private int gradientStartColor = 0x00BFFF;
     private int gradientEndColor   = 0xFF3040;
+    private String stylePresetId = "";
+    private WaypointStyle styleOverride = WaypointStyle.EMPTY;
     private WaypointPaint paint;
     private boolean paintEnabled = true;
     private CatalogRouteProvenance catalogProvenance;
@@ -102,6 +104,13 @@ public final class WaypointGroup {
         copy.waypoints.addAll(waypoints);
         copy.manualColors.addAll(manualColors);
         return copy;
+    }
+
+    public String stylePresetId() { return stylePresetId; }
+    public void setStylePresetId(String id) { stylePresetId = id == null ? "" : id.strip(); }
+    public WaypointStyle styleOverride() { return styleOverride; }
+    public void setStyleOverride(WaypointStyle style) {
+        styleOverride = style == null ? WaypointStyle.EMPTY : style;
     }
 
     public String id()            { return id; }
@@ -554,7 +563,14 @@ public final class WaypointGroup {
                 && setWaypointDisabled(index, !isWaypointDisabled(index));
     }
 
+    /** Appearance changes do not alter geometry or route progress. */
+    public void setWaypointStyle(int index, WaypointStyle style) {
+        Waypoint current = waypoints.get(index);
+        if (!current.styleOverride().equals(style)) waypoints.set(index, current.withStyleOverride(style));
+    }
+
         public void set(int index, Waypoint replacement) {
+        Waypoint previous = waypoints.get(index);
         Waypoint normalized = normalizeWaypointForIndex(index, replacement);
         if (gradientMode == GradientMode.STATIC) {
             normalized = normalized.withColor(staticColor);
@@ -563,7 +579,9 @@ public final class WaypointGroup {
         if (gradientMode == GradientMode.MANUAL) {
             manualColors.set(index, normalized.color() & 0xFFFFFF);
         }
-        afterWaypointStructureChanged();
+        boolean onlyAppearanceChanged = previous.withName(normalized.name())
+                .withColor(normalized.color()).withStyleOverride(normalized.styleOverride()).equals(normalized);
+        if (!onlyAppearanceChanged) afterWaypointStructureChanged();
     }
 
     public void moveWaypointTo(int index, int x, int y, int z) {

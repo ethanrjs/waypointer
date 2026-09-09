@@ -6,6 +6,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
@@ -44,26 +45,18 @@ import net.minecraft.world.phys.shapes.VoxelShape;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.function.IntPredicate;
 
 public final class WaypointRenderer extends WaypointWorldRenderer implements HudElement {
 
     private static final Comparator<LabelCandidate> LABEL_NEAREST_FIRST =
-            Comparator.comparingDouble(candidate -> candidate.distanceSquared);
+            Comparator.comparingDouble((LabelCandidate candidate) -> candidate.distanceSquared)
+                    .thenComparingInt(candidate -> candidate.collectionOrder);
 
-    private final StringBuilder distanceScratch = new StringBuilder(8);
-    private final String[] indexLabelCache = new String[INDEX_LABEL_CACHE_MAX];
-    private final Map<String, String> nameTranslationCache =
-            new LinkedHashMap<>(64, 0.75f, true) {
-                @Override
-                protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
-                    return size() > NAME_TRANSLATION_CACHE_MAX;
-                }
-            };
+    private static final String[] INDEX_LABELS = new String[INDEX_LABEL_CACHE_MAX];
+
     private final WorldScreenProjector labelProjector = new WorldScreenProjector();
     private final double[] labelScreenScratch = new double[2];
     private final double[] boxScreenScratch = new double[16];
@@ -73,6 +66,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
     private double projectedBoxMaxX;
     private double projectedBoxMaxY;
     private final ArrayList<LabelCandidate> labelCandidates = new ArrayList<>();
+    private final ArrayList<LabelCandidate> drawnLabelCandidates = new ArrayList<>();
     private int labelCandidateCount;
 
     public WaypointRenderer(ActiveGroupManager manager, WaypointerConfig config) {
@@ -130,15 +124,11 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, DeltaTracker tick) {
-        boolean showNames = config.showWaypointNames();
-        boolean showRouteProgress = config.showRouteProgress();
-        boolean showDistances = config.showWaypointDistances();
         boolean drawIrisHudBoxes = IrisShaderFallback.shouldUse(config)
                 && !com.babbur.waypointer.render.gpu.OverlayRenderer.ownsWorldGeometry();
         boolean drawEditModeSubtitle = config.showEditModeSubtitle()
                 && WaypointRepositionMode.isEditModeEnabled();
-        if (!showNames && !showRouteProgress && !showDistances && !drawIrisHudBoxes
-                && !drawEditModeSubtitle) return;
+
 
         var groups = manager.activeGroups();
         prepareSkipFades(groups);
@@ -163,26 +153,22 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         int labelBudget = config.maxWaypointLabels();
         double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
         double nearHideDistanceSq = nearHideDistanceSq();
-        double labelNearHideDistanceSq = labelNearHideDistanceSq();
         clearLabelCandidates();
 
-        if (drawIrisHudBoxes && config.waypointOutlineOpacity() > 0.0) {
+        if (drawIrisHudBoxes) {
             drawIrisHudBoxes(g, mc, level, camPos, playerPos, screenW, screenH, groups,
                     maxStaticDistanceSq, nearHideDistanceSq);
         }
 
-        if (showNames || showRouteProgress || showDistances) {
+        {
             if (drawIrisHudBoxes && !config.labelFollowCameraEffects()) {
                 labelProjector.prepare(renderer, camera, false);
             }
             for (WaypointGroup group : groups) {
-                drawGroupLabels(g, font, mc, level, camPos, playerPos, screenW, screenH, group,
-                        showNames, showRouteProgress, showDistances, labelBudget,
-                        maxStaticDistanceSq, nearHideDistanceSq, labelNearHideDistanceSq);
+                drawGroupLabels(g, font, mc, level, camPos, playerPos, screenW, screenH, group);
             }
-            if (labelBudget > 0 && labelCandidateCount > 0) {
-                drawBudgetedLabels(g, font, Math.min(labelBudget, labelCandidateCount),
-                        showNames, showRouteProgress, showDistances);
+            if (labelCandidateCount > 0) {
+                drawBudgetedLabels(g, font, labelBudget > 0 ? Math.min(labelBudget, labelCandidateCount) : labelCandidateCount);
             }
         }
         clearLabelCandidates();
@@ -204,13 +190,9 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                                   Vec3 camPos, Vec3 playerPos, int screenW, int screenH,
                                   Iterable<WaypointGroup> groups,
                                   double maxStaticDistanceSq, double nearHideDistanceSq) {
-        WaypointerConfig.BoxStyle style = hudFallbackBoxStyle(config.effectiveBoxStyle());
-        if (style == WaypointerConfig.BoxStyle.OUTLINED
-                || style == WaypointerConfig.BoxStyle.FILLED_OUTLINED) {
-            for (WaypointGroup group : groups) {
-                drawIrisHudGroupBoxes(g, mc, level, camPos, playerPos, screenW, screenH,
-                        group, maxStaticDistanceSq, nearHideDistanceSq);
-            }
+        for (WaypointGroup group : groups) {
+            drawIrisHudGroupBoxes(g, mc, level, camPos, playerPos, screenW, screenH,
+                    group, maxStaticDistanceSq, nearHideDistanceSq);
         }
     }
 
@@ -219,26 +201,31 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                                        WaypointGroup group, double maxStaticDistanceSq,
                                        double nearHideDistanceSq) {
         int currentIdx = group.currentIndex();
-        boolean showCompleted = config.showCompleted();
-        float outlineOpacity = (float) config.waypointOutlineOpacity();
+
 
         forEachFadingVisibleIndex(group,
                 i -> {
             Waypoint waypoint = group.get(i);
+            WaypointerConfig appearance = WaypointStyles.resolve(config, group, waypoint);
+            WaypointerConfig.BoxStyle style = hudFallbackBoxStyle(appearance.effectiveBoxStyle());
+            if (style != WaypointerConfig.BoxStyle.OUTLINED && style != WaypointerConfig.BoxStyle.FILLED_OUTLINED) return;
+            float outlineOpacity = (float) appearance.waypointOutlineOpacity();
+            if (outlineOpacity <= 0) return;
+            if (!withinRouteDistance(appearance, waypoint, camPos)) return;
             boolean depthChecked = waypoint.hasFlag(Waypoint.FLAG_DEPTH_CHECKED);
-            if (!shouldRenderWaypointWorld(group, i, currentIdx, showCompleted,
+            if (!shouldRenderWaypointWorld(group, i, currentIdx, appearance.showCompleted(),
                     camPos, playerPos, maxStaticDistanceSq, nearHideDistanceSq,
                     depthChecked, mc, level)) {
                 return;
             }
             State state = stateFor(group, i, currentIdx);
             float alpha = alphaFor(group, i, state) * outlineOpacity;
-            int outlineColor = config.resolvedWaypointOutlineColor(
+            int outlineColor = appearance.resolvedWaypointOutlineColor(
                     resolvedWaypointColor(group, i, waypoint.color()));
             int argb = RenderHelpers.withAlpha(0xFF000000 | outlineColor, alpha);
-            if (!projectBoxCorners(level, waypoint, screenW, screenH)) return;
+            if (!projectBoxCorners(level, group, waypoint, screenW, screenH)) return;
 
-            double outlineThickness = config.waypointOutlineThickness();
+            double outlineThickness = appearance.waypointOutlineThickness();
             for (int edge = 0; edge < BOX_EDGE_A.length; edge++) {
                 int a = BOX_EDGE_A[edge];
                 int b = BOX_EDGE_B[edge];
@@ -246,18 +233,18 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                 RenderHelpers.drawScreenLine(g,
                         boxScreenScratch[a * 2], boxScreenScratch[a * 2 + 1],
                         boxScreenScratch[b * 2], boxScreenScratch[b * 2 + 1],
-                        argb, outlineThickness, config.renderAntialiasing());
+                        argb, outlineThickness, appearance.renderAntialiasing());
             }
         });
     }
 
-    private boolean projectBoxCorners(ClientLevel level, Waypoint waypoint, int screenW, int screenH) {
+    private boolean projectBoxCorners(ClientLevel level, WaypointGroup group, Waypoint waypoint, int screenW, int screenH) {
         projectedBoxMinX = Double.POSITIVE_INFINITY;
         projectedBoxMinY = Double.POSITIVE_INFINITY;
         projectedBoxMaxX = Double.NEGATIVE_INFINITY;
         projectedBoxMaxY = Double.NEGATIVE_INFINITY;
 
-        populateVisualWaypointBoxBounds(level, waypoint, waypointBoxBoundsScratch);
+        populateVisualWaypointBoxBounds(level, group, waypoint, waypointBoxBoundsScratch);
         double x1 = waypointBoxBoundsScratch[BOX_MIN_X];
         double y1 = waypointBoxBoundsScratch[BOX_MIN_Y];
         double z1 = waypointBoxBoundsScratch[BOX_MIN_Z];
@@ -298,19 +285,10 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
 
     private void drawGroupLabels(GuiGraphicsExtractor g, Font font, Minecraft mc, ClientLevel level,
                                  Vec3 camPos, Vec3 playerPos, int screenW, int screenH,
-                                 WaypointGroup group, boolean showNames,
-                                 boolean showRouteProgress, boolean showDistances,
-                                 int labelBudget, double maxStaticDistanceSq,
-                                 double nearHideDistanceSq, double labelNearHideDistanceSq) {
+                                 WaypointGroup group) {
         int currentIdx = group.currentIndex();
-        boolean showCompleted = config.showCompleted();
-        double labelLift = LABEL_ANCHOR_LIFT + config.labelHeightOffset();
-        boolean colorizeNames = config.matchWaypointTextToWaypointColor();
-        boolean scaleLabelsWithDistance = config.scaleWaypointTextWithDistance();
-        double configuredLabelScale = config.labelScale();
         boolean hasSubwaypoints = group.hasSubwaypoints();
-        boolean showRouteProgressForGroup = showRouteProgress && !group.temp();
-        String routeProgressText = showRouteProgressForGroup ? routeProgressText(group) : null;
+        String[] progressText = {null};
         boolean dungeonRoomRoute = isDungeonRoomRoute(group);
 
         forEachFadingVisibleIndex(group,
@@ -321,10 +299,21 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             if (shouldHideStaticReached(group, i)) return;
 
             Waypoint w = group.get(i);
-            if (shouldHideNearPlayer(w, playerPos, nearHideDistanceSq)) return;
-            if (shouldHideNearPlayer(w, playerPos, labelNearHideDistanceSq)) return;
+            WaypointerConfig appearance = WaypointStyles.resolve(config, group, w);
+            if (!appearance.showWaypointNames() && !appearance.showWaypointDistances()
+                    && !appearance.showRouteProgress() && !appearance.labelShowRouteName()
+                    && !appearance.labelShowCoordinates() && !appearance.showWaypointRoleBadge()
+                    && "NONE".equals(appearance.waypointIcon())) return;
+            double labelLift = LABEL_ANCHOR_LIFT + appearance.labelHeightOffset();
+            boolean colorizeNames = appearance.matchWaypointTextToWaypointColor();
+            boolean scaleLabelsWithDistance = appearance.scaleWaypointTextWithDistance();
+            double configuredLabelScale = appearance.labelScale();
+            if (shouldHideNearPlayer(w, playerPos, appearance.hideWaypointsNearPlayer()
+                    ? WaypointVisibility.squaredRadius(appearance.hideWaypointsNearRadius()) : 0)) return;
+            if (shouldHideNearPlayer(w, playerPos, appearance.hideWaypointLabelsNearPlayer()
+                    ? WaypointVisibility.squaredRadius(appearance.hideWaypointLabelsNearRadius()) : 0)) return;
             State state = stateFor(group, i, currentIdx);
-            if (shouldHideCompletedSequenceWaypoint(group, i, currentIdx, state, showCompleted, w)) return;
+            if (shouldHideCompletedSequenceWaypoint(group, i, currentIdx, state, appearance.showCompleted(), w)) return;
             if (w.hasFlag(Waypoint.FLAG_HIDE_NAME)) return;
 
             populateWaypointRenderAnchor(level, w, waypointBoxBoundsScratch);
@@ -333,7 +322,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
             double az = waypointBoxBoundsScratch[2];
             double rx = ax - camPos.x, ry = ay - camPos.y, rz = az - camPos.z;
             double distanceSq = rx * rx + ry * ry + rz * rz;
-            if (isStaticBeyondDistanceLimit(group, distanceSq, maxStaticDistanceSq)) {
+            if (!withinRouteDistance(appearance, w, camPos)) return;
+            if (isStaticBeyondDistanceLimit(group, distanceSq, squaredDistanceLimit(appearance.maxStaticWaypointRenderDistance()))) {
                 return;
             }
 
@@ -347,95 +337,104 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
                             mc, level, w, sx, sy, screenW, screenH)) {
                 return;
             }
-            if (!isNearScreen(sx, sy, screenW, screenH)) return;
+            if (!WaypointLabelAppearance.nearScreen(sx, sy, screenW, screenH)) return;
 
             float labelScale = labelScaleForDepth(
                     labelProjector.depth(ax, ay, az),
                     labelProjector.fovDegrees(),
                     scaleLabelsWithDistance,
                     configuredLabelScale);
-            float alpha = alphaFor(group, i, state) * (float) config.labelOpacity();
-            if (!labelAlphaVisible(alpha)) return;
-            int nameColor = colorizeNames && showNames
+            float stateAlpha = alphaFor(group, i, state);
+            float alpha = stateAlpha * (float) appearance.labelOpacity();
+            if (!labelAlphaVisible(alpha) && (!appearance.showLabelBackdrop()
+                    || !labelAlphaVisible(stateAlpha * (float) appearance.labelBackdropOpacity()))) return;
+            int nameColor = colorizeNames && appearance.showWaypointNames()
                     ? 0xFF000000 | resolvedWaypointColor(group, i, w.color())
                     : NAME_ARGB;
-            boolean showWaypointName = showNames
-                    && (!dungeonRoomRoute || shouldShowDungeonWaypointName(w));
-            if (!showWaypointName && !showRouteProgressForGroup && !showDistances) return;
-
-            if (labelBudget > 0) {
-                LabelCandidate candidate = nextLabelCandidate();
-                candidate.set(group, i, w, routeProgressText, hasSubwaypoints,
-                        sx, sy, distanceSq, nameColor, alpha, labelScale);
-                return;
-            }
-
-            double rowY = sy;
-            if (showWaypointName) {
-                String name = labelFor(group, i, w, hasSubwaypoints);
-                drawCenteredLabel(g, font, name, sx, rowY,
-                        RenderHelpers.withAlpha(nameColor, alpha), alpha, labelScale);
-                rowY += labelRowAdvance(font, labelScale);
-            }
-            if (showRouteProgressForGroup) {
-                drawCenteredLabel(g, font, routeProgressText, sx, rowY,
-                        RenderHelpers.withAlpha(DISTANCE_ARGB, alpha), alpha, labelScale);
-                rowY += labelRowAdvance(font, labelScale);
-            }
-            if (showDistances) {
-                double distance = Math.sqrt(distanceSq);
-                String distanceText = distanceString((int) distance);
-                drawCenteredLabel(g, font, distanceText, sx, rowY,
-                        RenderHelpers.withAlpha(DISTANCE_ARGB, alpha), alpha, labelScale);
+            LabelCandidate candidate = nextLabelCandidate();
+            candidate.collectionOrder = labelCandidateCount - 1;
+            if (appearance.showRouteProgress() && !group.temp() && progressText[0] == null) progressText[0] = routeProgressText(group);
+            candidate.set(group, i, w, appearance.showRouteProgress() && !group.temp() ? progressText[0] : null,
+                    hasSubwaypoints, sx, sy, distanceSq, nameColor, alpha, labelScale);
+            candidate.appearance = appearance;
+            candidate.backgroundAlpha = stateAlpha * (float) appearance.labelBackdropOpacity();
+            candidate.focused = WaypointLabelAppearance.focused(sx, sy, screenW * .5, screenH * .5);
+            candidate.current = state == State.CURRENT;
+            candidate.detail = WaypointLabelAppearance.showDetail(appearance, distanceSq, candidate.focused);
+            prepareCandidateRows(candidate);
+            if (candidate.rows.isEmpty() && ("NONE".equals(appearance.waypointIcon()) || !labelAlphaVisible(alpha))) {
+                candidate.clear();
+                labelCandidateCount--;
             }
         });
     }
 
-    private void drawBudgetedLabels(GuiGraphicsExtractor g, Font font, int count,
-                                    boolean showNames, boolean showRouteProgress,
-                                    boolean showDistances) {
+    private void drawBudgetedLabels(GuiGraphicsExtractor g, Font font, int count) {
         if (count <= 0) return;
-        if (count < labelCandidateCount) {
-            selectNearestLabels(count);
-            labelCandidates.subList(0, count).sort(LABEL_NEAREST_FIRST);
+        boolean overlap = false;
+        for (int i = 0; i < labelCandidateCount; i++) overlap |= labelCandidates.get(i).appearance.preventLabelOverlap();
+        if (overlap) {
+            for (int i = 0; i < labelCandidateCount; i++) prepareCandidateBounds(font, labelCandidates.get(i));
+            labelCandidates.subList(0, labelCandidateCount).sort(Comparator
+                    .comparingInt((LabelCandidate c) -> WaypointLabelAppearance.priority(c.current, c.focused))
+                    .thenComparingDouble(c -> c.distanceSquared));
         } else {
-            labelCandidates.subList(0, labelCandidateCount).sort(LABEL_NEAREST_FIRST);
+            if (count < labelCandidateCount) selectNearestLabels(count);
+            labelCandidates.subList(0, count).sort(LABEL_NEAREST_FIRST);
         }
-        for (int i = 0; i < count; i++) {
-            drawCandidateLabel(g, font, labelCandidates.get(i),
-                    showNames, showRouteProgress, showDistances);
+        int drawn = 0;
+        for (int i = 0; i < labelCandidateCount && drawn < count; i++) {
+            LabelCandidate candidate = labelCandidates.get(i);
+            if (overlap && !acceptLabel(candidate, drawnLabelCandidates)) continue;
+            drawCandidateLabel(g, font, candidate);
+            drawn++;
         }
     }
 
-    private void drawCandidateLabel(GuiGraphicsExtractor g, Font font, LabelCandidate candidate,
-                                    boolean showNames, boolean showRouteProgress,
-                                    boolean showDistances) {
-        double rowY = candidate.screenY;
-        if (showNames
-                && (!isDungeonRoomRoute(candidate.group)
-                || shouldShowDungeonWaypointName(candidate.waypoint))) {
-            String name = labelFor(candidate.group, candidate.index, candidate.waypoint,
-                    candidate.hasSubwaypoints);
-            drawCenteredLabel(g, font, name, candidate.screenX, rowY,
-                    RenderHelpers.withAlpha(candidate.nameColor, candidate.alpha),
-                    candidate.alpha, candidate.scale);
-            rowY += labelRowAdvance(font, candidate.scale);
+    static boolean acceptLabel(LabelCandidate candidate, List<LabelCandidate> drawn) {
+        // ponytail: scan accepted labels; use a screen grid if dense visible label sets become expensive.
+        if (candidate.appearance.preventLabelOverlap()) {
+            for (int i = 0; i < drawn.size(); i++) {
+                LabelCandidate other = drawn.get(i);
+                if (WaypointLabelAppearance.overlaps(candidate.left, candidate.top, candidate.right, candidate.bottom,
+                        other.left, other.top, other.right, other.bottom)) return false;
+            }
         }
-        if (showRouteProgress && candidate.routeProgressText != null) {
-            drawCenteredLabel(g, font, candidate.routeProgressText, candidate.screenX, rowY,
-                    RenderHelpers.withAlpha(DISTANCE_ARGB, candidate.alpha),
-                    candidate.alpha, candidate.scale);
-            rowY += labelRowAdvance(font, candidate.scale);
-        }
-        if (showDistances) {
-            String distance = distanceString((int) Math.sqrt(candidate.distanceSquared));
-            drawCenteredLabel(g, font, distance, candidate.screenX, rowY,
-                    RenderHelpers.withAlpha(DISTANCE_ARGB, candidate.alpha),
-                    candidate.alpha, candidate.scale);
+        drawn.add(candidate);
+        return true;
+    }
+
+    private void prepareCandidateRows(LabelCandidate c) {
+        WaypointerConfig a = c.appearance;
+        String role = labelRole(c.group, c.index, c.waypoint, stateFor(c.group, c.index, c.group.currentIndex()));
+        appendLabelRows(c.rows, a, c.group, c.index, c.waypoint, c.detail, role, Math.sqrt(c.distanceSquared), c.routeProgressText);
+    }
+
+    private void prepareCandidateBounds(Font font, LabelCandidate c) {
+        WaypointerConfig a = c.appearance;
+        int textWidth = 0;
+        for (String row : c.rows) textWidth = Math.max(textWidth, font.width(row));
+        double width = WaypointLabelAppearance.labelWidth(textWidth, !c.rows.isEmpty(), !"NONE".equals(a.waypointIcon()), c.scale);
+        c.left = c.screenX - width / 2 - 2;
+        c.right = c.screenX + width / 2 + 2;
+        c.top = c.screenY - ("NONE".equals(a.waypointIcon()) ? 0 : 12 * c.scale) - 2;
+        c.bottom = c.screenY + c.rows.size() * labelRowAdvance(font, c.scale) + 2;
+    }
+
+    private void drawCandidateLabel(GuiGraphicsExtractor g, Font font, LabelCandidate c) {
+        WaypointLabelAppearance.drawIcon(g, c.appearance.waypointIcon(), c.screenX, c.screenY - 8 * c.scale,
+                c.scale, RenderHelpers.withAlpha(c.nameColor, c.alpha));
+        double rowY = c.screenY;
+        for (int i = 0; i < c.rows.size(); i++) {
+            drawCenteredLabel(g, font, c.rows.get(i), c.screenX, rowY,
+                    RenderHelpers.withAlpha(i == 0 && hasNameRow(c.appearance, c.group, c.waypoint) ? c.nameColor : DISTANCE_ARGB, c.alpha),
+                    c.backgroundAlpha, c.scale, c.appearance);
+            rowY += labelRowAdvance(font, c.scale);
         }
     }
 
     private void clearLabelCandidates() {
+        drawnLabelCandidates.clear();
         for (int i = 0; i < labelCandidateCount; i++) {
             labelCandidates.get(i).clear();
         }
@@ -455,11 +454,11 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
     }
 
     private int partitionLabels(int left, int right, int pivotIndex) {
-        double pivotDistance = labelCandidates.get(pivotIndex).distanceSquared;
+        LabelCandidate pivot = labelCandidates.get(pivotIndex);
         swapLabelCandidates(pivotIndex, right);
         int store = left;
         for (int i = left; i < right; i++) {
-            if (labelCandidates.get(i).distanceSquared < pivotDistance) {
+            if (LABEL_NEAREST_FIRST.compare(labelCandidates.get(i), pivot) < 0) {
                 swapLabelCandidates(store++, i);
             }
         }
@@ -481,14 +480,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         return labelCandidates.get(labelCandidateCount++);
     }
 
-    private String distanceString(int distance) {
-        if (distance >= 0 && distance < DISTANCE_CACHE_MAX) return DISTANCE_CACHE[distance];
-        distanceScratch.setLength(0);
-        distanceScratch.append(distance).append('m');
-        return distanceScratch.toString();
-    }
-
-        static float labelScaleForDepth(double depth, float fovDegrees,
+    public static float labelScaleForDepth(double depth, float fovDegrees,
                                         boolean enabled, double userScale) {
         double baseScale = clampLabelScale(userScale);
         if (!enabled) return (float) baseScale;
@@ -507,7 +499,7 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         return Math.max(LABEL_SCALE_MIN, Math.min(LABEL_SCALE_MAX, safe));
     }
 
-    static boolean labelAlphaVisible(float alpha) {
+    public static boolean labelAlphaVisible(float alpha) {
         return alpha >= 4.0f / 255.0f;
     }
 
@@ -516,9 +508,9 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
     }
 
     // Fractional centering avoids one-pixel jumps during FOV animation.
-    private void drawCenteredLabel(GuiGraphicsExtractor g, Font font, String text,
+    public static void drawCenteredLabel(GuiGraphicsExtractor g, Font font, String text,
                                    double cx, double top, int argb, float alpha,
-                                   float scale) {
+                                   float scale, WaypointerConfig appearance) {
         int width = font.width(text);
         double left = cx - (width * scale) / 2.0;
         int drawX = (int) Math.floor(left);
@@ -531,16 +523,16 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         if (scale != 1.0f) {
             g.pose().scale(scale, scale);
         }
-        if (config.showLabelBackdrop()) {
+        if (appearance.showLabelBackdrop()) {
             g.fill(-BACKDROP_PAD_X, -BACKDROP_PAD_Y,
                     width + BACKDROP_PAD_X, font.lineHeight - 1 + BACKDROP_PAD_Y,
                     RenderHelpers.withAlpha(LABEL_BACKDROP_ARGB, alpha));
         }
-        g.text(font, text, 0, 0, argb, config.showLabelTextShadow());
+        if (labelAlphaVisible((argb >>> 24) / 255.0f)) g.text(font, text, 0, 0, argb, appearance.showLabelTextShadow());
         g.pose().popMatrix();
     }
 
-    private static String routeProgressText(WaypointGroup group) {
+    public static String routeProgressText(WaypointGroup group) {
         return formatProgressPercent(RouteProgress.snapshot(group).percentComplete);
     }
 
@@ -552,48 +544,75 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         return (tenths / 10) + "." + (tenths % 10) + "%";
     }
 
-    private String labelFor(WaypointGroup g, int i, Waypoint w,
-                            boolean hasSubwaypoints) {
-        if (w.hasName()) return translatedName(w.name());
+    public static String labelRole(WaypointGroup group, int index, Waypoint waypoint, State state) {
+        if (waypoint.isSubwaypoint()) return "sub";
+        if (state == State.CURRENT) return "current";
+        if (state == State.COMPLETED) return "completed";
+        return index == group.nextMainIndexAfter(group.currentIndex()) ? "next" : "upcoming";
+    }
+
+    public static List<String> labelRows(WaypointerConfig appearance, WaypointGroup group, int index,
+                                         Waypoint waypoint, boolean detail, String role, double distance,
+                                         String progressText) {
+        List<String> rows = new ArrayList<>(6);
+        appendLabelRows(rows, appearance, group, index, waypoint, detail, role, distance, progressText);
+        return rows;
+    }
+
+    private static void appendLabelRows(List<String> rows, WaypointerConfig appearance, WaypointGroup group,
+                                        int index, Waypoint waypoint, boolean detail, String role,
+                                        double distance, String progressText) {
+        if (hasNameRow(appearance, group, waypoint)) {
+            rows.add(labelFor(group, index, waypoint, group.hasSubwaypoints()));
+        }
+        if (appearance.showWaypointRoleBadge()) rows.add(net.minecraft.client.resources.language.I18n.get("waypointer.label.role." + role));
+        if (detail) {
+            if (appearance.labelShowRouteName()) rows.add(group.name());
+            if (appearance.showRouteProgress() && progressText != null) rows.add(progressText);
+            if (appearance.showWaypointDistances()) rows.add(distanceLabel((int) distance));
+            if (appearance.labelShowCoordinates()) rows.add(waypoint.x() + ", " + waypoint.y() + ", " + waypoint.z());
+        }
+    }
+
+    public static boolean hasNameRow(WaypointerConfig appearance, WaypointGroup group, Waypoint waypoint) {
+        return appearance.showWaypointNames() && (!isDungeonRoomRoute(group) || shouldShowDungeonWaypointName(waypoint));
+    }
+
+    public static String labelFor(WaypointGroup g, int i, Waypoint w, boolean hasSubwaypoints) {
+        if (w.hasName()) return AmpersandFormatting.translate(w.name());
         if (g.isSubwaypoint(i) || (hasSubwaypoints && g.loadMode() == WaypointGroup.LoadMode.STATIC)) {
             return g.displayIndexLabel(i);
         }
         if (g.loadMode() == WaypointGroup.LoadMode.STATIC) return indexLabel(i + 1);
+        return indexLabel(hasSubwaypoints ? g.mainOrdinal(i) : i + 1);
+    }
 
-        int mainOrdinal = hasSubwaypoints ? g.mainOrdinal(i) : i + 1;
-        return indexLabel(mainOrdinal);
+    static String distanceLabel(int distance) {
+        return distance >= 0 && distance < DISTANCE_CACHE_MAX ? DISTANCE_CACHE[distance] : distance + "m";
+    }
+
+    private static String indexLabel(int number) {
+        if (number < 0 || number >= INDEX_LABELS.length) return "#" + number;
+        String label = INDEX_LABELS[number];
+        if (label == null) INDEX_LABELS[number] = label = "#" + number;
+        return label;
     }
 
     static boolean shouldShowDungeonWaypointName(Waypoint waypoint) {
         return waypoint != null && waypoint.hasName();
     }
 
-    private String translatedName(String raw) {
-        if (raw.indexOf('&') < 0) return raw;
-        String cached = nameTranslationCache.get(raw);
-        if (cached == null) {
-            cached = AmpersandFormatting.translate(raw);
-            nameTranslationCache.put(raw, cached);
-        }
-        return cached;
-    }
-
-    private String indexLabel(int number) {
-        if (number <= 0 || number >= INDEX_LABEL_CACHE_MAX) return "#" + number;
-
-        String cached = indexLabelCache[number];
-        if (cached == null) {
-            cached = "#" + number;
-            indexLabelCache[number] = cached;
-        }
-        return cached;
-    }
-
-    private static final class LabelCandidate {
+    static final class LabelCandidate {
+        WaypointerConfig appearance;
+        final ArrayList<String> rows = new ArrayList<>(6);
+        boolean focused, current, detail;
+        double left, top, right, bottom;
+        float backgroundAlpha;
         WaypointGroup group;
         Waypoint waypoint;
         String routeProgressText;
         int index;
+        int collectionOrder;
         boolean hasSubwaypoints;
         double screenX;
         double screenY;
@@ -620,6 +639,8 @@ public final class WaypointRenderer extends WaypointWorldRenderer implements Hud
         }
 
         void clear() {
+            appearance = null;
+            rows.clear();
             group = null;
             waypoint = null;
             routeProgressText = null;

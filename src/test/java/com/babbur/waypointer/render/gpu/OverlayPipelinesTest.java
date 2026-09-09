@@ -17,6 +17,29 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OverlayPipelinesTest {
     @Test
+    @SuppressWarnings("unchecked")
+    void runtimeFormatChangeRefreshesCachedEntityStrideWithoutReplacingPipelines() throws ReflectiveOperationException {
+        OverlayPipelines pipelines = OverlayPipelines.create();
+        MeshBucket bucket = MeshBucket.textured(MeshBucket.Kind.BEAM, false,
+                net.minecraft.client.renderer.blockentity.BeaconRenderer.BEAM_LOCATION);
+        var original = pipelines.slot(bucket);
+        var field = OverlayPipelines.class.getDeclaredField("slots");
+        field.setAccessible(true);
+        var slots = (java.util.Map<Object, OverlayPipelines.Slot>) field.get(pipelines);
+        var entry = slots.entrySet().iterator().next();
+        // Reproduce the cached expanded Iris layout after the native pipeline returns to vanilla.
+        var expanded = new MeshLayout(original.layout().stride() + 16, original.layout().attributes());
+        entry.setValue(new OverlayPipelines.Slot(original.inWorld(), original.postWorld(), expanded, new Object()));
+        assertTrue(pipelines.refreshVertexLayouts());
+        var refreshed = pipelines.slot(bucket);
+        assertEquals(original.layout(), refreshed.layout());
+        assertSame(original.inWorld(), refreshed.inWorld());
+        assertSame(original.postWorld(), refreshed.postWorld());
+        assertFalse(pipelines.refreshVertexLayouts());
+        assertSame(refreshed, pipelines.slot(bucket), "stable frames must reuse the descriptor");
+    }
+
+    @Test
     void fogFreeOutlinesKeepDepthAndAntialiasingContractsInEverySubmissionPath() {
         boolean original = WaypointerRenderPipelines.antialiasing();
         try {

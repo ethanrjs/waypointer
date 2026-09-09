@@ -16,13 +16,47 @@ public record CrystalHollowsMinimapLayout(int x, int y, int size, boolean naviga
 
     public static CrystalHollowsMinimapLayout fit(int width, int height, int requestedSize, int corner,
                                                  boolean navigation) {
+        return fit(width, height, requestedSize, corner, navigation, 1, false, 0, 0);
+    }
+
+    public static CrystalHollowsMinimapLayout fit(int width, int height, int requestedSize, int corner,
+                                                 boolean navigation, double scale, boolean customPosition,
+                                                 double xNorm, double yNorm) {
+        scale = Double.isFinite(scale) ? Math.clamp(scale, 0.5, 2.0) : 1.0;
         int footer = navigation ? FOOTER : PADDING;
-        int size = Math.min(Math.clamp(requestedSize, 96, 224),
+        int size = Math.min((int) Math.round(Math.clamp(requestedSize, 96, 224) * scale),
                 Math.min(width - PADDING * 2 - 16, height - HEADER - footer - 44));
-        if (size < 80) return null;
-        int x = (corner & 1) == 0 ? 8 : width - size - PADDING * 2 - 8;
-        int y = (corner & 2) == 0 ? 8 : height - size - HEADER - footer - 36;
+        if (size < Math.round(80 * Math.min(scale, 1))) return null;
+        int panelWidth = size + PADDING * 2;
+        int panelHeight = size + HEADER + footer;
+        int x = placementX(width, panelWidth, customPosition ? xNorm : corner & 1);
+        int y = placementY(height, panelHeight, customPosition ? yNorm : (corner & 2) / 2);
         return new CrystalHollowsMinimapLayout(x, y, size, navigation);
+    }
+
+    public static int placementX(int width, int panelWidth, double normalized) {
+        return placement(width - panelWidth - 16, normalized);
+    }
+
+    public static int placementY(int height, int panelHeight, double normalized) {
+        return placement(height - panelHeight - 44, normalized);
+    }
+
+    public static double normalizeX(int width, int panelWidth, double x) {
+        return normalize(width - panelWidth - 16, x);
+    }
+
+    public static double normalizeY(int height, int panelHeight, double y) {
+        return normalize(height - panelHeight - 44, y);
+    }
+
+    private static int placement(int available, double normalized) {
+        return 8 + (int) Math.round(Math.max(0, available)
+                * (Double.isFinite(normalized) ? Math.clamp(normalized, 0, 1) : 0));
+    }
+
+    private static double normalize(int available, double position) {
+        return available > 0 && Double.isFinite(position) ? Math.clamp((position - 8) / available, 0, 1) : 0;
     }
 
     public int mapX() { return x + PADDING; }
@@ -48,15 +82,29 @@ public record CrystalHollowsMinimapLayout(int x, int y, int size, boolean naviga
         }
     }
 
-    public int marker(double coordinate) { return Math.clamp(project(coordinate), 5, size - 6); }
+    public int marker(double coordinate) { return Math.round(markerCenter(coordinate) - 0.5f); }
+
+    /** Schematic quadrants meet at the Nucleus; retain its exact center for moving markers. */
+    public float markerCenter(double coordinate) {
+        if (!Double.isFinite(coordinate)) throw new IllegalArgumentException("Non-finite map coordinate");
+        double center = CrystalHollowsGeometry.NUCLEUS_CENTRE_X;
+        double fraction = coordinate <= center
+                ? (coordinate - CrystalHollowsGeometry.MIN_XZ) / (center - CrystalHollowsGeometry.MIN_XZ)
+                : 1 + (coordinate - center) / (CrystalHollowsGeometry.MAX_XZ - center);
+        return (float) Math.clamp(0.5 + fraction * (size - 1) / 2.0, 5.5, size - 5.5);
+    }
 
     /** Try each side of a marker; crowded labels yield to the map's symbols. */
     public Rect label(int markerX, int markerY, int width, java.util.List<Rect> occupied) {
+        return label(markerX, markerY, width, occupied, 8);
+    }
+
+    public Rect label(int markerX, int markerY, int width, java.util.List<Rect> occupied, int clearance) {
         for (Rect candidate : new Rect[]{
-                new Rect(markerX + 8, markerY - 4, width, 9),
-                new Rect(markerX - 7 - width, markerY - 4, width, 9),
-                new Rect(markerX - width / 2, markerY + 7, width, 9),
-                new Rect(markerX - width / 2, markerY - 15, width, 9)}) {
+                new Rect(markerX + clearance, markerY - 4, width, 9),
+                new Rect(markerX - clearance + 1 - width, markerY - 4, width, 9),
+                new Rect(markerX - width / 2, markerY + clearance - 1, width, 9),
+                new Rect(markerX - width / 2, markerY - clearance - 7, width, 9)}) {
             if (candidate.x < mapX() + 2 || candidate.y < mapY() + 2
                     || candidate.x + width > mapX() + size - 2
                     || candidate.y + candidate.height > mapY() + size - 2) continue;

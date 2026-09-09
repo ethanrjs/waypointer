@@ -57,6 +57,9 @@ final class WaypointerRouteList {
     private String dragGroupId;
     private double dragStartX;
     private double dragStartY;
+    private double dragRowOffsetY;
+    private double dragMouseX;
+    private double dragMouseY;
     private boolean dragging;
     private DropTarget dropTarget;
 
@@ -85,7 +88,7 @@ final class WaypointerRouteList {
 
     void renderNavigationOverlay(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
                                  float partialTick) {
-        if (navigation != null) {
+        if (navigation != null && !dragging) {
             navigation.extractOverlay(graphics, mouseX, mouseY, partialTick);
         }
     }
@@ -271,7 +274,7 @@ final class WaypointerRouteList {
 
     void render(GuiGraphicsExtractor graphics, int x1, int y1, int x2, int y2,
                 int mouseX, int mouseY) {
-        List<Row> rows = rows();
+        List<Row> rows = dragPreviewRows();
         graphics.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
         int rowsTop = rowsTop(y1);
         screen.renderMainNotice(graphics, x1, y1, x2);
@@ -294,6 +297,14 @@ final class WaypointerRouteList {
             boolean hovered = mouseX >= x1 + 2 && mouseX <= rowRight - 2
                     && mouseY >= rowTop && mouseY <= rowBottom;
             Row row = rows.get(i);
+            if (row == null) {
+                int previewLeft = dropTarget.folderId != null
+                        ? RouteListPresentation.routeRowBandLeft(x1 + 2, true) : x1 + 2;
+                graphics.fill(previewLeft, rowTop, rowRight - 2, rowBottom, 0x304FB3C4);
+                drawDragOutline(graphics, previewLeft, rowTop, rowRight - 2, rowBottom,
+                        ACCENT, true);
+                continue;
+            }
             if (hovered) graphics.requestCursor(CursorTypes.POINTING_HAND);
             if (row.roomHeader) {
                 renderRoomHeader(graphics, row, x1 + 2, rowTop, rowRight - 2, hovered);
@@ -310,7 +321,7 @@ final class WaypointerRouteList {
                         hovered, selected, row.indented, row.folderChild);
             }
         }
-        renderDropTarget(graphics, x1 + 2, rowRight - 2);
+        renderDraggedRoute(graphics, x1 + 2, rowRight - 2, mouseX, mouseY, routeIndices);
         graphics.disableScissor();
         renderScrollbar(graphics, rowRight - 4, rowsTop, y2, rows.size(), screen.scrollOffset);
     }
@@ -433,6 +444,7 @@ final class WaypointerRouteList {
             if (leftClick && RouteListPresentation.canStartRouteDrag(
                     group, normalizedSearchQuery(), shiftDown, controlDown)) {
                 beginDragCandidate(group.id(), mouseX, mouseY);
+                dragRowOffsetY = mouseY - rowTop;
             }
             DebugEventLog.record("WaypointerScreen", "route", group.id(), index,
                     selectedBefore, selectedAfter, doubleClick, shiftDown, controlDown,
@@ -454,12 +466,19 @@ final class WaypointerRouteList {
         double dy = event.y() - dragStartY;
         if (!dragging && dx * dx + dy * dy < DRAG_THRESHOLD_SQUARED) return false;
         dragging = true;
+        dragMouseX = event.x();
+        dragMouseY = event.y();
         dropTarget = dropTargetAt(event.x(), event.y(), left, top, right, bottom);
         return true;
     }
 
     boolean mouseReleased(MouseButtonEvent event) {
         if (dragGroupId == null || event.button() != MOUSE_BUTTON_LEFT) return false;
+        if (dragging && (event.x() != dragMouseX || event.y() != dragMouseY)) {
+            WaypointerScreen.Layout layout = screen.layoutForRouteList();
+            dropTarget = dropTargetAt(event.x(), event.y(), layout.mainLeft(), layout.top(),
+                    layout.mainRight(), layout.bottom());
+        }
         boolean consumed = dragging;
         String movedGroupId = dragGroupId;
         DropTarget target = dropTarget;
@@ -490,53 +509,47 @@ final class WaypointerRouteList {
             double mouseX, double mouseY,
             int left, int top, int right, int bottom) {
         if (mouseX < left || mouseX > right || mouseY < top || mouseY > bottom) return null;
-        List<Row> rows = rows();
+        List<Row> rows = dragPreviewRows();
         int rowsTop = rowsTop(top);
         if (mouseY < rowsTop) return null;
         int index = (int) ((mouseY - rowsTop + screen.scrollOffset) / ROW_PITCH);
         if (index < 0) return null;
         if (index >= rows.size()) {
-            int lineY = Math.max(rowsTop, Math.min(bottom - 2,
-                    rowsTop - screen.scrollOffset + rows.size() * ROW_PITCH));
             if (!screen.manager.canMoveGroupToContainer(dragGroupId, null, null)) return null;
-            return new DropTarget(null, null, lineY, lineY, false);
+            return new DropTarget(null, null);
         }
         int rowTop = rowsTop - screen.scrollOffset + index * ROW_PITCH;
         int rowBottom = rowTop + ROW_H + 2;
         if (mouseY > rowBottom) return null;
 
         Row row = rows.get(index);
+        if (row == null) return dropTarget;
         String folderId;
         String beforeGroupId;
-        boolean band;
         if (row.folder != null) {
             folderId = row.folder.id();
             beforeGroupId = null;
-            band = true;
         } else if (row.group != null && !row.group.temp() && !row.group.runtimeOnly()) {
             folderId = row.group.routeKind() == WaypointGroup.RouteKind.REGULAR
                     ? screen.manager.folderIdForGroup(row.group.id()) : null;
             if (mouseY < rowTop + (ROW_H + 2) / 2.0) {
                 beforeGroupId = row.group.id();
-                band = false;
-                rowBottom = rowTop;
             } else {
                 beforeGroupId = nextGroupIdInContainer(rows, index, row.group, folderId);
-                band = false;
-                rowTop = rowBottom;
             }
         } else {
             return null;
         }
         if (!screen.manager.canMoveGroupToContainer(
                 dragGroupId, folderId, beforeGroupId)) return null;
-        return new DropTarget(folderId, beforeGroupId, rowTop, rowBottom, band);
+        return new DropTarget(folderId, beforeGroupId);
     }
 
     private String nextGroupIdInContainer(
             List<Row> rows, int index, WaypointGroup target, String folderId) {
         for (int next = index + 1; next < rows.size(); next++) {
             Row candidateRow = rows.get(next);
+            if (candidateRow == null) continue;
             WaypointGroup candidate = candidateRow.group;
             if (candidate == null || candidate.id().equals(dragGroupId)
                     || candidate.temp() || candidate.runtimeOnly()) continue;
@@ -550,16 +563,65 @@ final class WaypointerRouteList {
         return null;
     }
 
-    private void renderDropTarget(GuiGraphicsExtractor graphics, int left, int right) {
-        if (!dragging || dropTarget == null) return;
-        graphics.requestCursor(CursorTypes.POINTING_HAND);
-        if (dropTarget.band) {
-            graphics.fill(left, dropTarget.top, right, dropTarget.bottom, 0x304FB3C4);
-            graphics.fill(left, dropTarget.top, left + 3, dropTarget.bottom, ACCENT);
-            return;
+    private List<Row> dragPreviewRows() {
+        return previewRows(rows(), screen.manager, dragGroupId, dragging ? dropTarget : null);
+    }
+
+    static List<Row> previewRows(List<Row> rows, ActiveGroupManager manager,
+                                 String dragGroupId, DropTarget dropTarget) {
+        List<Row> preview = new ArrayList<>(rows);
+        if (dropTarget == null) return preview;
+        WaypointGroup source = manager.get(dragGroupId);
+        if (source == null) return preview;
+        int sourceIndex = 0;
+        for (int i = 0; i < preview.size(); i++) {
+            if (preview.get(i).group == source) {
+                sourceIndex = i;
+                preview.remove(i);
+                break;
+            }
         }
-        int y = dropTarget.top;
-        graphics.fill(left + GAP, y - 1, right - GAP, y + 2, ACCENT);
+        int insertion = -1;
+        for (int i = 0; i < preview.size(); i++) {
+            Row row = preview.get(i);
+            if (dropTarget.beforeGroupId != null) {
+                if (row.group != null && row.group.id().equals(dropTarget.beforeGroupId)) {
+                    insertion = i;
+                    break;
+                }
+            } else if (dropTarget.folderId != null && row.folder != null
+                    && row.folder.id().equals(dropTarget.folderId)) {
+                insertion = i + 1;
+            } else if (row.group != null && !row.group.temp() && !row.group.runtimeOnly()
+                    && row.group.routeKind() == source.routeKind()
+                    && row.group.zoneId().equals(source.zoneId())
+                    && java.util.Objects.equals(dropTarget.folderId,
+                    manager.folderIdForGroup(row.group.id()))) {
+                insertion = i + 1;
+            }
+        }
+        // A null row reserves the actual destination without changing saved order during a drag.
+        if (insertion < 0) {
+            insertion = source.routeKind() == WaypointGroup.RouteKind.REGULAR
+                    && dropTarget.folderId == null ? preview.size()
+                    : Math.min(sourceIndex, preview.size());
+        }
+        preview.add(insertion, null);
+        return preview;
+    }
+
+    private void renderDraggedRoute(GuiGraphicsExtractor graphics, int left, int right,
+                                    int mouseX, int mouseY, Map<String, Integer> routeIndices) {
+        if (!dragging) return;
+        WaypointGroup group = screen.manager.get(dragGroupId);
+        if (group == null) return;
+        graphics.requestCursor(CursorTypes.POINTING_HAND);
+        int x = (int) (mouseX - dragStartX);
+        int y = (int) (mouseY - dragRowOffsetY);
+        graphics.fill(left + x, y, right + x, y + ROW_H + 2, OVERLAY);
+        renderGroupRow(graphics, group, routeIndices.getOrDefault(group.id(), -1),
+                left + x, y, right + x, false, true, false, false);
+        drawDragOutline(graphics, left + x, y, right + x, y + ROW_H + 2, ACCENT, false);
     }
 
     void scroll(double wheelDelta, int panelTop, int bottom) {
@@ -567,6 +629,11 @@ final class WaypointerRouteList {
         int maxScroll = maxScroll(rows().size(), listHeight);
         screen.scrollOffset = MathUtil.clamp(
                 screen.scrollOffset - (int) (wheelDelta * ROW_PITCH), 0, maxScroll);
+        if (dragging) {
+            WaypointerScreen.Layout layout = screen.layoutForRouteList();
+            dropTarget = dropTargetAt(dragMouseX, dragMouseY,
+                    layout.mainLeft(), panelTop, layout.mainRight(), bottom);
+        }
     }
 
     static int contentRight(int mainLeft, int mainRight) {
@@ -975,12 +1042,10 @@ final class WaypointerRouteList {
         return ids;
     }
 
-    private record DropTarget(
-            String folderId, String beforeGroupId,
-            int top, int bottom, boolean band) {
+    record DropTarget(String folderId, String beforeGroupId) {
     }
 
-    private record Row(boolean roomHeader,
+    record Row(boolean roomHeader,
                        String roomZoneId, WaypointGroup group,
                        RouteFolder folder, int roomRouteCount, int roomSecretCount,
                        int folderRouteCount, boolean expanded, boolean currentRoom,

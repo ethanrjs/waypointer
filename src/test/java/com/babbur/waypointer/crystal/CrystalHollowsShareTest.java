@@ -7,20 +7,18 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class CrystalHollowsShareTest {
     @Test
-    void sharePreparesExactTextWithoutRunningACommand() {
+    void shareRunsClientCommandWithExactCapturedCoordinates() {
         StructureSighting sighting = sighting(CrystalHollowsStructure.ODAWA, 349, 110, 390);
-        ClickEvent click = CrystalHollowsShare.suggest(sighting);
-        assertInstanceOf(ClickEvent.SuggestCommand.class, click);
-        assertEquals(CrystalHollowsChatParser.formatShare(sighting.structure(), 349, 110, 390),
-                ((ClickEvent.SuggestCommand) click).command());
-        assertFalse(((ClickEvent.SuggestCommand) click).command().startsWith("/"));
+        ClickEvent click = CrystalHollowsShare.share(sighting);
+        assertInstanceOf(ClickEvent.RunCommand.class, click);
+        assertEquals("/wpch share odawa 349 110 390", ((ClickEvent.RunCommand) click).command());
     }
 
     @Test
     void oldCompassButtonKeepsItsCapturedCoordinates() {
-        ClickEvent.SuggestCommand first = CrystalHollowsShare.suggest(
+        ClickEvent.RunCommand first = CrystalHollowsShare.share(
                 sighting(CrystalHollowsStructure.WISHING_TARGET, 300, 70, 400));
-        ClickEvent.SuggestCommand second = CrystalHollowsShare.suggest(
+        ClickEvent.RunCommand second = CrystalHollowsShare.share(
                 sighting(CrystalHollowsStructure.WISHING_TARGET, 500, 80, 600));
         assertTrue(first.command().endsWith("300 70 400"));
         assertTrue(second.command().endsWith("500 80 600"));

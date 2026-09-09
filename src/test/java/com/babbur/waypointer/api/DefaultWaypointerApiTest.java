@@ -7,6 +7,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.core.WaypointStyle;
 import com.babbur.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +22,26 @@ import static org.junit.jupiter.api.Assertions.*;
 
 @SuppressWarnings("deprecation")
 class DefaultWaypointerApiTest {
+
+    @Test
+    void waypointUpdatesPreservePersonalStylesNotRepresentedByPublicSpecs() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerApi api = new DefaultWaypointerApi(manager);
+        String groupId = api.createRoute(RouteSpec.builder()
+                .waypoint(WaypointSpec.at(1, 2, 3)).build());
+        WaypointGroup group = manager.get(groupId);
+        WaypointStyle style = WaypointStyle.EMPTY.with("labelScale", 1.5);
+        group.set(0, group.get(0).withStyleOverride(style));
+
+        assertTrue(api.updateWaypoint(groupId, 0, WaypointSpec.at(4, 5, 6)));
+        assertEquals(style, group.get(0).styleOverride());
+        assertEquals(4, group.get(0).x());
+
+        WaypointReference reference = api.savedRoutes().get(0).waypointReferences().get(0);
+        assertTrue(api.updateWaypoint(reference, WaypointSpec.at(7, 8, 9)));
+        assertEquals(style, group.get(0).styleOverride());
+        assertEquals(7, group.get(0).x());
+    }
 
     @Test
     void public_export_defaults_are_full_fidelity() {

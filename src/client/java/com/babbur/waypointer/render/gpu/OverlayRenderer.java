@@ -161,6 +161,7 @@ public final class OverlayRenderer implements AutoCloseable {
         }
         Camera camera = MinecraftCompat.mainCamera(mc.gameRenderer);
         if (camera == null || !camera.isInitialized()) return;
+        if (pipelines.refreshVertexLayouts()) discardCapturedGeometry();
         List<WaypointGroup> groups = manager.activeGroups();
         int paintOverflow = worldRenderer.reserveActivePaintsFor(groups);
         if (paintOverflow > 0 && options.debugLogging()) {
@@ -245,6 +246,18 @@ public final class OverlayRenderer implements AutoCloseable {
         }
     }
 
+    private void discardCapturedGeometry() {
+        for (OverlayPass.MeshSet set : meshes.values()) {
+            closeStep("static overlay mesh", set.statics::close);
+            closeStep("dynamic overlay mesh", set.dynamics::close);
+        }
+        meshes.clear();
+        if (captureSink != null) closeStep("capture buffers", captureSink::close);
+        captureSink = null;
+        capturePose = null;
+        lastKey = SceneKey.NONE;
+    }
+
     private void ensureIrisAssignment(boolean shaderPack) {
         if (!shaderPack || effectiveCompositing != OverlayCompositing.IN_WORLD) return;
         IrisBridge iris = IrisBridge.get();
@@ -285,17 +298,9 @@ public final class OverlayRenderer implements AutoCloseable {
             return;
         }
         closeStep("paint reservation", WaypointPaintTextureCache::resetRetainedReservation);
-        for (OverlayPass.MeshSet set : meshes.values()) {
-            closeStep("static overlay mesh", set.statics::close);
-            closeStep("dynamic overlay mesh", set.dynamics::close);
-        }
-        meshes.clear();
-        if (captureSink != null) closeStep("capture buffers", captureSink::close);
-        captureSink = null;
-        capturePose = null;
+        discardCapturedGeometry();
         closeStep("overlay pass", pass::close);
         closeStep("depth snapshot", depthSnapshot::close);
-        lastKey = SceneKey.NONE;
         keyFactory.reset();
         pendingView = null;
         pendingKey = null;

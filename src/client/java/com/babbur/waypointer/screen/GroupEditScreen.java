@@ -11,6 +11,7 @@ import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointPaint;
+import com.babbur.waypointer.core.WaypointAppearanceUndo;
 import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import com.babbur.waypointer.dungeon.DungeonWaypointType;
@@ -78,6 +79,9 @@ public final class GroupEditScreen extends Screen {
     private List<GuiTokens.ButtonSpec> footerActionSpecs = List.of();
     private GuiTokens.ButtonSpec footerDoneSpec;
     private int selectedIndex = -1;
+    private boolean appearanceSelectionMode;
+    private final java.util.Set<Waypoint> appearanceSelection = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+    private WaypointAppearanceUndo appearanceUndo;
     private int coordinateEditorIndex = -1;
     private boolean syncingCoordinateEditors;
     private String coordinateEditError;
@@ -126,6 +130,11 @@ public final class GroupEditScreen extends Screen {
     private EditBox labelEditor;
     private int editingIndex = -1;
     private boolean draggingRouteScrollbar;
+    private int dragWaypointIndex = -1;
+    private double waypointDragStartX;
+    private double waypointDragStartY;
+    private boolean draggingWaypoint;
+    private int waypointDropSlot = -1;
     private int routeScrollbarDragOffset;
 
     private final GroupEditInputRouter.Geometry inputGeometry =
@@ -219,6 +228,7 @@ public final class GroupEditScreen extends Screen {
 
     @Override
     protected void init() {
+        clearWaypointDrag();
         dungeonTypePickerIndex = -1;
         contextMenu.close();
         dungeonTypeIconsAvailable = minecraft != null
@@ -289,6 +299,26 @@ public final class GroupEditScreen extends Screen {
                 b -> moveSelectedHere(), null);
         addSidebarWidget(moveSelectedHereBtn);
 
+        y += BTN_H + GAP;
+        addSidebarWidget(styledButton(sidebarInner, y, fieldW, BTN_H,
+                Component.translatableWithFallback("waypointer.screen.group_edit.route_appearance", "Route appearance"), b -> WaypointAppearanceScreen.openRoute(this, config, manager, group), null));
+        y += BTN_H + GAP;
+        addSidebarWidget(styledButton(sidebarInner, y, fieldW, BTN_H,
+                Component.translatableWithFallback(appearanceSelectionMode ? "waypointer.screen.group_edit.selection_on" : "waypointer.screen.group_edit.select_points", appearanceSelectionMode ? "Selection: On" : "Select points"), b -> {
+                    appearanceSelectionMode = !appearanceSelectionMode;
+                    if (!appearanceSelectionMode) appearanceSelection.clear();
+                    rebuildWidgets();
+                }, Tooltip.create(Component.translatableWithFallback("waypointer.screen.group_edit.select_points_tooltip", "Select multiple rows, then edit their appearance together."))));
+        y += BTN_H + GAP;
+        addSidebarWidget(styledButton(sidebarInner, y, fieldW, BTN_H,
+                Component.translatableWithFallback("waypointer.screen.group_edit.selected_appearance", "Selected appearance"), b -> editSelectedAppearance(), null));
+        y += BTN_H + GAP;
+        Button undoAppearance = addSidebarWidget(styledButton(sidebarInner, y, fieldW, BTN_H,
+                Component.translatableWithFallback("waypointer.screen.group_edit.undo_appearance", "Undo appearance"), b -> {
+                    if (appearanceUndo != null && appearanceUndo.undo(group) > 0) manager.fireDataChanged();
+                    appearanceUndo = null; rebuildWidgets();
+                }, null));
+        undoAppearance.active = appearanceUndo != null && !appearanceUndo.isEmpty();
         int naturalResetY = y + BTN_H + GAP;
         int viewportBottom = sidebarViewportBottom(layout);
         sidebarContentHeight = naturalResetY + BTN_H - sidebarViewportTop(layout);
@@ -1023,12 +1053,46 @@ public final class GroupEditScreen extends Screen {
         int y = y1 + ROUTE_LIST_INSET - scrollOffset;
         int pitch = waypointRowPitch();
         boolean hasSubwaypoints = group.hasSubwaypoints();
-        renderWaypointConnectors(g, x1 + ROUTE_LIST_INSET, y1, y2, y, pitch);
-        for (int i = 0; i < pts.size(); i++, y += pitch) {
-            if (y + ROW_H < y1 || y > y2) continue;
-            renderWaypointRow(g, pts.get(i), i, x1 + ROUTE_LIST_INSET, y,
+        boolean dragActive = draggingWaypoint && dragWaypointIndex >= 0 && dragWaypointIndex < group.size();
+        int blockSize = dragActive ? (group.isSubwaypoint(dragWaypointIndex) ? 1
+                : group.childEndExclusive(dragWaypointIndex) - dragWaypointIndex) : 0;
+        if (dragActive) updateWaypointDropSlot(mouseX, mouseY);
+        int landingIndex = dragWaypointIndex;
+        if (waypointDropSlot >= 0) {
+            landingIndex = waypointDropSlot > dragWaypointIndex
+                    ? Math.max(dragWaypointIndex, waypointDropSlot - blockSize) : waypointDropSlot;
+        }
+        if (!dragActive) renderWaypointConnectors(g, x1 + ROUTE_LIST_INSET, y1, y2, y, pitch);
+        for (int i = 0; i < pts.size(); i++) {
+            if (dragActive && i >= dragWaypointIndex && i < dragWaypointIndex + blockSize) continue;
+            int visualIndex = i;
+            if (dragActive) {
+                if (i > dragWaypointIndex) visualIndex -= blockSize;
+                if (visualIndex >= landingIndex) visualIndex += blockSize;
+            }
+            int rowTop = y1 + ROUTE_LIST_INSET - scrollOffset + visualIndex * pitch;
+            if (rowTop + ROW_H < y1 || rowTop > y2) continue;
+            renderWaypointRow(g, pts.get(i), i, x1 + ROUTE_LIST_INSET, rowTop,
                     x2 - ROUTE_LIST_INSET,
                     mouseX, mouseY, hasSubwaypoints);
+        }
+        if (dragActive) {
+            int sourceTop = (int) mouseY - ROW_H / 2;
+            int sourceBottom = sourceTop + (blockSize - 1) * pitch + ROW_H;
+            g.fill(x1 + ROUTE_LIST_INSET, sourceTop, x2 - ROUTE_LIST_INSET, sourceBottom, OVERLAY);
+            for (int i = 0; i < blockSize; i++) {
+                int index = dragWaypointIndex + i;
+                renderWaypointRow(g, pts.get(index), index, x1 + ROUTE_LIST_INSET,
+                        sourceTop + i * pitch, x2 - ROUTE_LIST_INSET, -1, -1, hasSubwaypoints);
+            }
+            drawDragOutline(g, x1 + ROUTE_LIST_INSET, sourceTop,
+                    x2 - ROUTE_LIST_INSET, sourceBottom, ACCENT, false);
+            if (waypointDropSlot >= 0) {
+                int targetTop = y1 + ROUTE_LIST_INSET - scrollOffset + landingIndex * pitch;
+                drawDragOutline(g, x1 + ROUTE_LIST_INSET, targetTop,
+                        x2 - ROUTE_LIST_INSET, targetTop + (blockSize - 1) * pitch + ROW_H, ACCENT, true);
+            }
+            g.requestCursor(CursorTypes.POINTING_HAND);
         }
         g.disableScissor();
         renderRouteScrollbar(g, layout(), mouseX, mouseY);
@@ -1138,7 +1202,7 @@ public final class GroupEditScreen extends Screen {
     private void renderWaypointRow(GuiGraphicsExtractor g, Waypoint w, int index,
                                    int x1, int y1, int x2, int mouseX, int mouseY,
                                    boolean hasSubwaypoints) {
-        boolean selected = index == selectedIndex;
+        boolean selected = appearanceSelectionMode ? appearanceSelection.contains(group.get(index)) : index == selectedIndex;
         boolean subwaypoint = group.isSubwaypoint(index);
         boolean isCurrent = index == group.currentIndex();
         boolean visuallyActive = isWaypointRowVisuallyActive(group, index);
@@ -1657,7 +1721,17 @@ public final class GroupEditScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        clearWaypointDrag();
         if (contextMenu.isOpen() && contextMenu.mouseClicked(event.x(), event.y())) return true;
+        if (appearanceSelectionMode && event.button() == MOUSE_BUTTON_LEFT) {
+            int row = rowIndexAt(event.x(), event.y());
+            if (row >= 0 && row < group.size()) {
+                Waypoint point = group.get(row);
+                if (!appearanceSelection.remove(point)) appearanceSelection.add(point);
+                selectWaypoint(row);
+                return true;
+            }
+        }
         int selectedBeforeClick = selectedIndex;
         if (editingIndex >= 0 && !isOverLabelEditor(event.x(), event.y())) {
             commitLabelEdit();
@@ -1773,6 +1847,10 @@ public final class GroupEditScreen extends Screen {
                 selectWaypoint(index);
                 if (action.type() == GroupEditInputRouter.ActionType.RENAME) {
                     beginLabelEdit(index);
+                } else if (!pointer.shiftDown()) {
+                    dragWaypointIndex = index;
+                    waypointDragStartX = pointer.x();
+                    waypointDragStartY = pointer.y();
                 }
                 recordRowClick(index, selectedBeforeClick, pointer.doubleClick(),
                         "waypoint-row",
@@ -1788,11 +1866,25 @@ public final class GroupEditScreen extends Screen {
 
     private final ContextMenuOverlay contextMenu = new ContextMenuOverlay();
 
+    private void editSelectedAppearance() {
+        List<Integer> indices = new ArrayList<>();
+        for (int i = 0; i < group.size(); i++) if (appearanceSelection.contains(group.get(i))) indices.add(i);
+        if (indices.isEmpty() && hasSelectedWaypoint()) indices.add(selectedIndex);
+        List<Waypoint> before = List.copyOf(group.waypoints());
+        WaypointAppearanceScreen.openPoints(this, config, manager, group, indices, () -> {
+            appearanceUndo = WaypointAppearanceUndo.between(before, group.waypoints());
+            appearanceSelection.clear();
+        });
+    }
+
     private void openWaypointMenu(int index, double anchorX, double anchorY) {
         if (index < 0 || index >= group.size()) return;
         Waypoint waypoint = group.get(index);
         boolean subwaypoint = group.isSubwaypoint(index);
         List<ContextMenuOverlay.Item> items = new ArrayList<>();
+        items.add(ContextMenuOverlay.Item.of(Component.translatableWithFallback("waypointer.screen.group_edit.appearance", "Appearance"), null, () -> {
+            appearanceSelection.clear(); selectWaypoint(index); editSelectedAppearance();
+        }));
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.group_edit.menu.goto"),
                 null, () -> setCurrentWaypoint(index)));
@@ -1889,16 +1981,55 @@ public final class GroupEditScreen extends Screen {
             updateRouteScrollbarDrag(event.y());
             return true;
         }
+        if (dragWaypointIndex >= 0 && event.button() == MOUSE_BUTTON_LEFT) {
+            double distanceX = event.x() - waypointDragStartX;
+            double distanceY = event.y() - waypointDragStartY;
+            if (!draggingWaypoint && distanceX * distanceX + distanceY * distanceY < 16) return false;
+            draggingWaypoint = true;
+            updateWaypointDropSlot(event.x(), event.y());
+            return true;
+        }
         return super.mouseDragged(event, dx, dy);
     }
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        if (dragWaypointIndex >= 0 && event.button() == MOUSE_BUTTON_LEFT) {
+            boolean consumed = draggingWaypoint;
+            if (consumed) {
+                updateWaypointDropSlot(event.x(), event.y());
+                int movedTo = dropWaypointSelection(group, dragWaypointIndex, waypointDropSlot);
+                if (movedTo != dragWaypointIndex) {
+                    coordinateEditorIndex = -1;
+                    selectWaypoint(movedTo);
+                    manager.fireDataChanged();
+                }
+            }
+            clearWaypointDrag();
+            if (consumed) return true;
+        }
         if (draggingRouteScrollbar && event.button() == MOUSE_BUTTON_LEFT) {
             draggingRouteScrollbar = false;
             return true;
         }
         return super.mouseReleased(event);
+    }
+
+    private void clearWaypointDrag() {
+        dragWaypointIndex = -1;
+        draggingWaypoint = false;
+        waypointDropSlot = -1;
+    }
+
+    private void updateWaypointDropSlot(double mouseX, double mouseY) {
+        Layout layout = layout();
+        waypointDropSlot = -1;
+        if (mouseX < layout.mainLeft() || mouseX >= layout.mainRight()
+                || mouseY < layout.top() || mouseY >= layout.bottom()) return;
+        int slot = (int) Math.floor((mouseY - layout.top() - ROUTE_LIST_INSET
+                + scrollOffset + waypointRowPitch() / 2.0) / waypointRowPitch());
+        waypointDropSlot = waypointDropSlot(group, dragWaypointIndex,
+                Math.max(0, Math.min(group.size(), slot)));
     }
 
     private void playUiClickSound() {

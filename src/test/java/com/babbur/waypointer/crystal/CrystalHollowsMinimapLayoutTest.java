@@ -22,6 +22,23 @@ class CrystalHollowsMinimapLayoutTest {
     }
 
     @Test
+    void targetLabelsKeepTheirEntirePlateOutsideNavigationBrackets() {
+        var map = new CrystalHollowsMinimapLayout(8, 8, 96);
+        int x = map.mapX() + 48, y = map.mapY() + 48;
+        var target = new CrystalHollowsMinimapLayout.Rect(x - 8, y - 8, 17, 17);
+        var occupied = new java.util.ArrayList<CrystalHollowsMinimapLayout.Rect>();
+        occupied.add(target);
+        for (int side = 0; side < 4; side++) {
+            var label = map.label(x, y, 12, occupied, 11);
+            assertNotNull(label, "Each side should leave room for the navigation brackets");
+            var plate = new CrystalHollowsMinimapLayout.Rect(label.x() - 2, label.y() - 1, 16, 11);
+            assertFalse(plate.overlaps(target));
+            occupied.add(plate);
+        }
+        assertNull(map.label(x, y, 12, occupied, 11));
+    }
+
+    @Test
     void projectsNorthWestToOriginAndClampsTheExclusiveSouthEastBoundary() {
         var map = new CrystalHollowsMinimapLayout(8, 8, 144);
         assertEquals(0, map.project(201));
@@ -46,6 +63,8 @@ class CrystalHollowsMinimapLayoutTest {
                         assertTrue(map.x() >= 8 && map.y() >= 8);
                         assertTrue(map.x() + map.width() <= width - 8);
                         assertTrue(map.y() + map.height() <= height - 36);
+                        assertEquals((corner & 1) == 0 ? 8 : width - map.width() - 8, map.x());
+                        assertEquals((corner & 2) == 0 ? 8 : height - map.height() - 36, map.y());
                     }
                 }
             }
@@ -64,11 +83,54 @@ class CrystalHollowsMinimapLayoutTest {
             assertEquals(nucleus.x() - map.mapX(), map.mapX() + size - nucleus.x() - nucleus.width());
             assertEquals(nucleus.y() - map.mapY(), map.mapY() + size - nucleus.y() - nucleus.height());
             assertEquals(nucleus.width(), nucleus.height());
+            assertEquals(size / 2.0f, map.markerCenter(CrystalHollowsGeometry.NUCLEUS_CENTRE_X));
+            assertEquals(size / 2.0f, map.markerCenter(CrystalHollowsGeometry.NUCLEUS_CENTRE_Z));
+            assertEquals(5.5f, map.markerCenter(CrystalHollowsGeometry.MIN_XZ));
+            assertEquals(size - 5.5f, map.markerCenter(CrystalHollowsGeometry.MAX_XZ));
         }
         var idle = CrystalHollowsMinimapLayout.fit(640, 360, 144, 3, false);
         var navigation = CrystalHollowsMinimapLayout.fit(640, 360, 144, 3, true);
         assertEquals(idle.y() + idle.height(), navigation.y() + navigation.height());
         assertEquals(CrystalHollowsMinimapLayout.PADDING, idle.height() - idle.size() - CrystalHollowsMinimapLayout.HEADER);
         assertTrue(idle.height() < navigation.height());
+    }
+
+    @Test
+    void defaultScaleKeepsExistingAnchorsAndCustomPlacementSurvivesWindowChanges() {
+        for (int width : new int[]{100, 320, 640, 1280}) {
+            for (int height : new int[]{100, 178, 360, 720}) {
+                for (boolean navigation : new boolean[]{false, true}) {
+                    for (int corner = 0; corner < 4; corner++) {
+                        assertEquals(CrystalHollowsMinimapLayout.fit(width, height, 224, corner, navigation),
+                                CrystalHollowsMinimapLayout.fit(width, height, 224, corner, navigation,
+                                        1, false, 0.3, 0.7));
+                    }
+                    for (double scale : new double[]{0.5, 0.55, 1, 1.95, 2}) {
+                        for (double position : new double[]{-1, 0, 0.3, 0.5, 1, 2, Double.NaN}) {
+                            var map = CrystalHollowsMinimapLayout.fit(width, height, 144, 0, navigation,
+                                    scale, true, position, position);
+                            if (map == null) continue;
+                            assertTrue(map.x() >= 8 && map.y() >= 8);
+                            assertTrue(map.x() + map.width() <= width - 8);
+                            assertTrue(map.y() + map.height() <= height - 36);
+                            assertEquals(map.x(), CrystalHollowsMinimapLayout.placementX(width, map.width(),
+                                    CrystalHollowsMinimapLayout.normalizeX(width, map.width(), map.x())));
+                            assertEquals(map.y(), CrystalHollowsMinimapLayout.placementY(height, map.height(),
+                                    CrystalHollowsMinimapLayout.normalizeY(height, map.height(), map.y())));
+                        }
+                    }
+                }
+            }
+        }
+        assertEquals(72, CrystalHollowsMinimapLayout.fit(1280, 720, 144, 0, false,
+                0.5, true, 0.5, 0.5).size());
+        assertEquals(288, CrystalHollowsMinimapLayout.fit(1280, 720, 144, 0, false,
+                2, true, 0.5, 0.5).size());
+        assertEquals(144, CrystalHollowsMinimapLayout.fit(1280, 720, 144, 0, false,
+                Double.NaN, false, 0, 0).size());
+        assertEquals(0, CrystalHollowsMinimapLayout.normalizeX(100, 100, 50));
+        assertEquals(0, CrystalHollowsMinimapLayout.normalizeY(100, 100, Double.NaN));
+        assertThrows(IllegalArgumentException.class,
+                () -> new CrystalHollowsMinimapLayout(8, 8, 144).markerCenter(Double.NaN));
     }
 }
