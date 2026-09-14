@@ -14,7 +14,6 @@ public final class RoutePreviewPipAdapter
         extends PictureInPictureRenderer<RoutePreviewRenderState> {
 
     private boolean modelViewStackPushed;
-    private final WaypointInspectorGpuProjection inspectorProjection = new WaypointInspectorGpuProjection();
 
     private RoutePreviewPipAdapter() {
         super();
@@ -34,11 +33,6 @@ public final class RoutePreviewPipAdapter
                         FeatureRenderDispatcher features, int guiScale) {
         var previousColorTextureOverride = RenderSystem.outputColorTextureOverride;
         var previousDepthTextureOverride = RenderSystem.outputDepthTextureOverride;
-        boolean inspector = state.scene().inspector() != null;
-        var previousProjection = RenderSystem.getProjectionMatrixBuffer();
-        var previousProjectionType = RenderSystem.getProjectionType();
-        var previousGlobals = RenderSystem.getGlobalSettingsUniform();
-        if (inspector) RenderSystem.getModelViewStack().pushMatrix().identity();
         modelViewStackPushed = false;
         try {
             super.prepare(state, guiState, features, guiScale);
@@ -54,14 +48,6 @@ public final class RoutePreviewPipAdapter
             Waypointer.LOGGER.error("Could not prepare route preview", preparationFailure);
         } finally {
             modelViewStackPushed = false;
-            // 26.2 flushes custom geometry after renderToTexture returns; restore only after prepare finishes.
-            if (inspector) {
-                RenderSystem.setProjectionMatrix(previousProjection, previousProjectionType);
-                RenderSystem.setGlobalSettingsUniform(previousGlobals);
-                RenderSystem.getModelViewStack().popMatrix();
-            }
-            RenderSystem.outputColorTextureOverride = previousColorTextureOverride;
-            RenderSystem.outputDepthTextureOverride = previousDepthTextureOverride;
         }
     }
 
@@ -79,19 +65,15 @@ public final class RoutePreviewPipAdapter
     protected void renderToTexture(RoutePreviewRenderState state, PoseStack poseStack,
                                    SubmitNodeCollector collector) {
         modelViewStackPushed = true;
-        if (state.scene().inspector() != null) {
-            inspectorProjection.install(state);
-            poseStack = new PoseStack();
-        }
         poseStack.pushPose();
         try {
             RoutePreviewRenderCore.applyView(state, poseStack);
             int order = 0;
             for (RoutePreviewPassPlan.Pass pass
-                    : RoutePreviewPassPlan.orderedPasses(state)) {
-                for (var submission : RoutePreviewPassPlan.submissions(pass, state)) {
-                    submitPass(collector, order++, state, poseStack, submission.type(), submission.emitter());
-                }
+                    : RoutePreviewPassPlan.orderedPasses(state.selfOcclusion())) {
+                submitPass(collector, order++, state, poseStack,
+                        RoutePreviewPassPlan.renderType(pass, state),
+                        RoutePreviewPassPlan.emitter(pass));
             }
         } catch (RuntimeException error) {
             state.availability().markUnavailable();
@@ -99,11 +81,6 @@ public final class RoutePreviewPipAdapter
         } finally {
             poseStack.popPose();
         }
-    }
-
-    @Override public void close() {
-        try { super.close(); }
-        finally { inspectorProjection.close(); }
     }
 
     private static void submitPass(SubmitNodeCollector collector, int order,

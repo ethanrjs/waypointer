@@ -37,8 +37,6 @@
   "waypointer.screen.group_edit.color_mode.tooltip": "Waypoint colour mode.\nColour: edit waypoint swatches.\nGradient: sweep between endpoints.\nOne: repaint the whole route.\nPaint: use painted waypoint faces.",
   "waypointer.screen.group_edit.info.color_swatch.label": "Colour swatch",
   "waypointer.screen.group_edit.info.color_swatch.description": "Edit colour; Shift-click unlocks",
-  "waypointer.screen.group_edit.control.color.edit": "Click to edit waypoint colour",
-  "waypointer.screen.group_edit.control.color.unlock": "Shift-click unlocks locked colour",
   "waypointer.screen.painter.colors": "Colours",
   "waypointer.screen.painter.palette.tooltip": "Select colour %1$s (#%2$s).",
   "waypointer.screen.painter.palette.narration": "Paint colour %1$s",

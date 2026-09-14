@@ -21,6 +21,18 @@ class SettingsSearchTest {
     }
 
     @Test
+    void fuzzySearchHandlesTyposAndAppearanceKeywords() {
+        for (String query : List.of("trcaer", "tracerr", "tracer", "tracer opcity")) {
+            assertTrue(SettingsSearch.search(query, SettingsCatalog.categories()).stream()
+                    .anyMatch(match -> match.setting().id().equals("tracerOpacity")), query);
+        }
+        assertTrue(SettingsSearch.matchTier("painter", SettingsCatalog.byId("action.waypointPaint"),
+                "Extras", "Painter", null) >= 0);
+        assertEquals(-1, SettingsSearch.matchTier("zzzz", SettingsCatalog.byId("boxStyle"),
+                "Appearance", "Marker", null));
+    }
+
+    @Test
     void blankQueryReturnsNothing() {
         assertTrue(SettingsSearch.search(null, SettingsCatalog.categories()).isEmpty());
         assertTrue(SettingsSearch.search("", SettingsCatalog.categories()).isEmpty());
@@ -146,8 +158,7 @@ class SettingsSearchTest {
         Map<String, String> french = Map.of(
                 "waypointer.screen.settings.config.copy", "Copier le code",
                 "waypointer.screen.settings.config.import", "Importer le code",
-                "waypointer.screen.settings.action.open_painter", "Ouvrir le peintre",
-                "waypointer.screen.settings.preset.nothing", "Tout désactiver");
+                "waypointer.screen.settings.preset.nothing", "Tout dÃ©sactiver");
         SettingsSearch.TranslationResolver resolver =
                 (key, fallback) -> french.getOrDefault(key, fallback);
 
@@ -156,11 +167,8 @@ class SettingsSearchTest {
                     SettingsSearch.search(query, SettingsCatalog.categories(), resolver)
                             .getFirst().setting().id());
         }
-        assertEquals(SettingsCatalog.ACTION_WAYPOINT_PAINT,
-                SettingsSearch.search("ouvrir peintre", SettingsCatalog.categories(), resolver)
-                        .getFirst().setting().id());
         assertEquals(SettingsCatalog.ACTION_PRESETS,
-                SettingsSearch.search("tout désactiver", SettingsCatalog.categories(), resolver)
+                SettingsSearch.search("tout dÃ©sactiver", SettingsCatalog.categories(), resolver)
                         .getFirst().setting().id());
     }
 

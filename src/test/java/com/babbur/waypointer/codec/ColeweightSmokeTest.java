@@ -14,11 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-/**
- * Smoke test against a real coleweight export. Disabled unless the user passes
- * {@code -Dcoleweight.file=<path>} on the Gradle command line so CI does not fail
- * when the fixture is missing; the path is an opaque local asset.
- */
+/** Optional real-export check enabled with {@code -Dcoleweight.file=<path>}. */
 class ColeweightSmokeTest {
 
     @Test

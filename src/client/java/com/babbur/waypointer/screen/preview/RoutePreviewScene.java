@@ -73,16 +73,6 @@ public final class RoutePreviewScene {
     private final double centerX;
     private final double centerY;
     private final double centerZ;
-    private WaypointInspectorScene inspector;
-
-    static RoutePreviewScene inspector(WaypointInspectorScene sample) {
-        RoutePreviewScene scene = empty();
-        scene.inspector = sample;
-        return scene;
-    }
-
-    WaypointInspectorScene inspector() { return inspector; }
-
     private RoutePreviewScene(String routeId, String routeName, boolean roomLocal,
                               List<Marker> markers, List<Connector> connectors,
                               WaypointPaint paint, RoutePreviewPaintResource.Entry paintResource,
@@ -281,11 +271,13 @@ public final class RoutePreviewScene {
     }
 
     static WaypointPaint effectivePaint(WaypointGroup group, WaypointerConfig config) {
-        if (group == null || config == null || !config.enableFeatureBloat() || !group.paintEnabled()) return null;
+        if (group == null || config == null) return null;
+        boolean paintStyle = config.effectiveBoxStyle() == WaypointerConfig.BoxStyle.PAINT;
+        if (!group.paintEnabled() && !paintStyle) return null;
         WaypointPaint seasonalPaint = HappySnowmanSession.facePaint();
-        return seasonalPaint != null
-                ? seasonalPaint
-                : group.paint() != null ? group.paint() : config.waypointPainterDefaultPaint();
+        if (seasonalPaint != null) return seasonalPaint;
+        WaypointPaint paint = group.paint() != null ? group.paint() : config.waypointPainterDefaultPaint();
+        return paint != null ? paint : paintStyle ? WaypointPaint.missing() : null;
     }
 
     public String routeId() { return routeId; }

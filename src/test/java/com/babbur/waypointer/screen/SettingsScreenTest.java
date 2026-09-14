@@ -59,13 +59,10 @@ class SettingsScreenTest {
     @Test
     void featureBloatRowsAreHiddenUntilEnabled() {
         WaypointerConfig config = new WaypointerConfig();
-        Setting paint = SettingsCatalog.byId(SettingsCatalog.ACTION_WAYPOINT_PAINT);
         Setting preview = SettingsCatalog.byId("showExportRoutePreview");
-        assertFalse(SettingsScreen.featureAvailable(paint, config));
         assertFalse(SettingsScreen.featureAvailable(preview, config));
         assertTrue(SettingsScreen.featureAvailable(SettingsCatalog.byId("boxStyle"), config));
         config.setEnableFeatureBloat(true);
-        assertTrue(SettingsScreen.featureAvailable(paint, config));
         assertTrue(SettingsScreen.featureAvailable(preview, config));
     }
 

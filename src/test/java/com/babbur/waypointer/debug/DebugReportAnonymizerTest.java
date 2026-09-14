@@ -17,6 +17,20 @@ class DebugReportAnonymizerTest {
     }
 
     @Test
+    void publisherDiagnosticsAnonymizeNamesAndIdsButKeepMismatchEvidence() {
+        String report = DebugReportAnonymizer.anonymize(List.of(section("Publishing Identity",
+                "  Minecraft account: ExamplePlayer", "  Profile publisher ID: wp_profile123",
+                "  Profile publisher name: ProfileAuthor", "  Shared publisher ID: wp_shared456",
+                "  Shared publisher name: SharedAuthor", "  Profile signing identity: readable; signing key verified",
+                "  Profile / shared: different signing identities")), List.of());
+        for (String identifier : List.of("ExamplePlayer", "wp_profile123", "ProfileAuthor", "wp_shared456", "SharedAuthor")) {
+            assertFalse(report.contains(identifier));
+        }
+        assertTrue(report.contains("readable; signing key verified"));
+        assertTrue(report.contains("different signing identities"));
+    }
+
+    @Test
     void newFeatureDiagnosticsRetainTechnicalEvidenceWhileScrubbingCredentials() {
         String report = DebugReportAnonymizer.anonymize(List.of(
                 section("Wishing Compass Diagnostics", "  Navigation: origin=JUNGLE, suspended=true",

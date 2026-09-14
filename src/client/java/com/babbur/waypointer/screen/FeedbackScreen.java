@@ -6,6 +6,7 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.feedback.FeedbackClient;
 import com.babbur.waypointer.feedback.FeedbackImage;
 import com.babbur.waypointer.feedback.FeedbackImagePreview;
+import com.babbur.waypointer.feedback.FeedbackQuota;
 import com.babbur.waypointer.feedback.FeedbackSubmission;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -41,7 +42,8 @@ public final class FeedbackScreen extends Screen {
     private final List<Caption> captions = new ArrayList<>();
     private final List<ImageTile> imageTiles = new ArrayList<>();
     private final Map<FeedbackImage, FeedbackImagePreview> imagePreviews = new IdentityHashMap<>();
-    private String type = "general";
+    private final FeedbackQuota quota = FeedbackQuota.shared();
+    private Category category = Category.COMMENT;
     private String message = "";
     private boolean anonymize = true;
     private boolean includeDebug;
@@ -59,6 +61,29 @@ public final class FeedbackScreen extends Screen {
     private int footerY;
     private Button sendButton;
     private static final int TOP = 30;
+
+    /** What the sender is telling us; the service only distinguishes bug reports from the rest. */
+    enum Category {
+        COMMENT("comment", "general", "[Comment] "),
+        BUG("bug", "bug", "");
+
+        final String key;
+        final String wireType;
+        final String prefix;
+
+        Category(String key, String wireType, String prefix) {
+            this.key = key;
+            this.wireType = wireType;
+            this.prefix = prefix;
+        }
+
+        String fallbackLabel() {
+            return switch (this) {
+                case COMMENT -> "Comment";
+                case BUG -> "Bug report";
+            };
+        }
+    }
 
     private record BodyWidget(AbstractWidget widget, int y) {}
     private record Caption(Component text, int x, int y, int color) {}
@@ -86,16 +111,31 @@ public final class FeedbackScreen extends Screen {
         bottom = footerY - statusHeight - 8;
         cursor = 0;
         int half = (formWidth - GAP) / 2;
-        button(left, cursor, half, tr("general", "General feedback"), () -> chooseType("general"));
-        button(left + half + GAP, cursor, half, tr("bug", "Bug report"), () -> chooseType("bug"));
-        bodyWidgets.get(type.equals("general") ? 0 : 1).widget().setMessage(
-                colored(tr(type, type.equals("bug") ? "Bug report" : "General feedback"), ACCENT));
+        Category[] categories = Category.values();
+        int column = (formWidth - GAP * (categories.length - 1)) / categories.length;
+        for (int i = 0; i < categories.length; i++) {
+            Category option = categories[i];
+            int x = left + i * (column + GAP);
+            int w = i == categories.length - 1 ? formWidth - i * (column + GAP) : column;
+            button(x, cursor, w, tr(option.key, option.fallbackLabel()), () -> chooseCategory(option));
+            if (option == category) {
+                bodyWidgets.getLast().widget().setMessage(
+                        colored(tr(option.key, option.fallbackLabel()), ACCENT));
+            }
+        }
         cursor += 28;
+        int remaining = quota.remainingToday();
+        if (remaining == 0) {
+            caption(tr("quota.exhausted", "You have used today's %s feedback sends. Try again tomorrow.",
+                    FeedbackQuota.DAILY_LIMIT), WARNING);
+        } else {
+            caption(tr("quota", "%s of %s sends left today.", remaining, FeedbackQuota.DAILY_LIMIT), TEXT_DIM);
+        }
         caption(tr("message", "Message (up to 10,000 characters)"), TEXT);
         MultiLineEditBox box = MultiLineEditBox.builder().setX(left).setY(TOP + cursor)
                 .setPlaceholder(tr("message.hint", "What happened, or what would you like to improve?"))
                 .build(font, formWidth, 80, tr("message", "Message (up to 10,000 characters)"));
-        box.setCharacterLimit(FeedbackSubmission.MAX_MESSAGE);
+        box.setCharacterLimit(messageLimit());
         box.setValue(message);
         box.setValueListener(value -> { message = value; updateSend(); });
         body(box, cursor);
@@ -114,8 +154,9 @@ public final class FeedbackScreen extends Screen {
             int tileX = left + i * (tileWidth + GAP);
             imageTiles.add(new ImageTile(image, tileX, cursor, tileWidth, tileHeight));
             button(tileX, cursor + tileHeight + 4, tileWidth, tr("remove", "Remove"), () -> {
-                FeedbackImage removed = images.remove(index);
-                FeedbackImagePreview preview = imagePreviews.remove(removed);
+                // Stale buttons survive until the next tick; a repeated press must not index past the end.
+                if (!images.remove(image)) return;
+                FeedbackImagePreview preview = imagePreviews.remove(image);
                 if (preview != null) preview.close();
                 rebuild = true;
             });
@@ -123,7 +164,7 @@ public final class FeedbackScreen extends Screen {
                     i + 1, (image.size() + 1023) / 1024)));
         }
         if (!images.isEmpty()) cursor += tileHeight + BTN_H + 12;
-        if (type.equals("bug")) {
+        if (category == Category.BUG) {
             checkbox(tr("debug", "Attach a debug snapshot"), includeDebug, value -> {
                 includeDebug = value;
                 if (value && snapshot == null) capture();
@@ -155,13 +196,19 @@ public final class FeedbackScreen extends Screen {
         updateSend();
     }
 
-    private void chooseType(String next) {
-        if (type.equals(next)) return;
-        type = next;
-        includeDebug = type.equals("bug");
+    private void chooseCategory(Category next) {
+        if (category == next) return;
+        category = next;
+        includeDebug = category == Category.BUG;
         snapshot = null;
         if (includeDebug) { anonymize = true; capture(); }
         rebuild = true;
+    }
+
+    private int messageLimit() {
+        int longestPrefix = 0;
+        for (Category option : Category.values()) longestPrefix = Math.max(longestPrefix, option.prefix.length());
+        return FeedbackSubmission.MAX_MESSAGE - longestPrefix;
     }
 
     private void caption(Component text, int color) {
@@ -243,8 +290,8 @@ public final class FeedbackScreen extends Screen {
 
     private void updateSend() {
         if (sendButton == null) return;
-        sendButton.active = !busy && !sent && !message.isBlank()
-                && message.length() <= FeedbackSubmission.MAX_MESSAGE && (!includeDebug || snapshot != null);
+        sendButton.active = !busy && !sent && !message.isBlank() && !quota.exhausted()
+                && message.length() <= messageLimit() && (!includeDebug || snapshot != null);
         sendButton.setMessage(busy ? tr("sending", "Please wait...") : sent
                 ? tr("sent", "Feedback sent") : tr("send", "Send Feedback"));
     }
@@ -253,7 +300,7 @@ public final class FeedbackScreen extends Screen {
         if (busy || sent || sendButton == null || !sendButton.active) return;
         FeedbackSubmission submission;
         try {
-            submission = new FeedbackSubmission(type, message, true, "",
+            submission = new FeedbackSubmission(category.wireType, category.prefix + message, true, "",
                     includeDebug && snapshot != null ? snapshot.report(anonymize) : "",
                     includeDebug && anonymize, images);
         } catch (IllegalArgumentException e) { status = e.getMessage(); rebuild = true; return; }
@@ -264,7 +311,10 @@ public final class FeedbackScreen extends Screen {
         client.send(submission).whenComplete((ignored, error) -> minecraft.execute(() -> {
             busy = false;
             sent = error == null;
-            if (sent) status = tr("success", "Thank you. Your feedback was received.").getString();
+            if (sent) {
+                quota.recordSend();
+                status = tr("success", "Thank you. Your feedback was received.").getString();
+            }
             else {
                 Throwable cause = error;
                 while (cause instanceof CompletionException && cause.getCause() != null) cause = cause.getCause();

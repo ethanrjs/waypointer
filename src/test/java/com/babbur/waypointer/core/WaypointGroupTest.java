@@ -879,9 +879,7 @@ class WaypointGroupTest {
 
     @Test
     void exportSnapshotDoesNotRepaintWaypoints() {
-        // Building the copy through the colour setters would re-run the gradient
-        // and change what gets exported. MANUAL keeps per-waypoint colours, so a
-        // repaint would be visible here.
+        // Using color setters while copying would repaint the MANUAL waypoint colors.
         WaypointGroup group = WaypointGroup.create("Manual colours", "hub");
         group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         group.add(wp(0, 70, 0).withColor(0xFF0000));
@@ -895,8 +893,7 @@ class WaypointGroupTest {
 
     @Test
     void exportSnapshotIsDetachedFromLaterEdits() {
-        // The encode runs on a worker thread, so the copy must not observe
-        // anything the client thread does to the live route afterwards.
+        // The export worker must not observe subsequent client-thread edits.
         WaypointGroup group = WaypointGroup.create("Live route", "hub");
         group.add(wp(0, 70, 0));
 

@@ -23,6 +23,37 @@ class PublisherIdentityStoreTest {
     Path temporaryDirectory;
 
     @Test
+    void diagnosticsInspectWithoutCreatingSynchronizingOrExposingKeys() throws Exception {
+        Path local = temporaryDirectory.resolve("profile/identity.json");
+        Path shared = temporaryDirectory.resolve("shared/identity.json");
+        PublisherIdentityStore store = PublisherIdentityStore.forProfile(local, shared);
+        assertEquals("missing", store.inspect().profile().status());
+        assertTrue(Files.notExists(local.getParent()));
+        assertTrue(Files.notExists(shared.getParent()));
+
+        PublisherIdentity identity = new PublisherIdentityStore(local).loadOrCreate();
+        byte[] original = Files.readAllBytes(local);
+        assertEquals(identity.publisherId(), store.inspect().profile().publisherId());
+        assertTrue(Files.notExists(shared.getParent()));
+        assertArrayEquals(original, Files.readAllBytes(local));
+        assertTrue(!store.inspect().toString().contains(identity.publicKeyBase64()));
+        assertTrue(!store.inspect().toString().contains(PublisherIdentity.base64Url(identity.privateKeyEncoded())));
+
+        Files.createDirectories(shared.getParent());
+        Files.copy(local, shared);
+        new PublisherIdentityStore(shared).savePublisherName(identity, "RouteAuthor");
+        var diagnostics = store.inspect();
+        assertEquals("same signing identity; saved names differ", diagnostics.comparison());
+        assertNull(diagnostics.profile().publisherName());
+        assertEquals("RouteAuthor", diagnostics.shared().publisherName());
+        assertArrayEquals(original, Files.readAllBytes(local));
+
+        Files.writeString(shared, "invalid");
+        assertEquals("unreadable or invalid", store.inspect().shared().status());
+        assertEquals("invalid", Files.readString(shared));
+    }
+
+    @Test
     void newLauncherProfilesReuseIdentityAndNameAfterOriginalProfileIsDeleted() throws Exception {
         Path shared = temporaryDirectory.resolve("computer/identity.json");
         Path first = temporaryDirectory.resolve("profile-a/identity.json");
@@ -65,6 +96,7 @@ class PublisherIdentityStoreTest {
         PublisherIdentity existing = new PublisherIdentityStore(local).loadOrCreate();
         PublisherIdentityStore profile = PublisherIdentityStore.forProfile(local, shared);
 
+        assertEquals("different signing identities", profile.inspect().comparison());
         assertEquals(existing.publisherId(), profile.loadOrCreate().publisherId());
         profile.savePublisherName(existing, "OtherAuthor");
 

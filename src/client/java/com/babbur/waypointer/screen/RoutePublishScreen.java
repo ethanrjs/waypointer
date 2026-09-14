@@ -43,7 +43,7 @@ import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
 
-public final class RoutePublishScreen extends Screen {
+public final class RoutePublishScreen extends Screen implements RoutePickerHost {
     private static final int PANEL_MARGIN = 16;
     private static final int LINE_H = 10;
     private static final int LABEL_H = 11;
@@ -325,7 +325,7 @@ public final class RoutePublishScreen extends Screen {
                 Component.translatable(form.group().routeKind() == WaypointGroup.RouteKind.DUNGEON
                         ? "waypointer.screen.route_publish.action.add_room_routes"
                         : "waypointer.screen.route_publish.action.add_routes"),
-                button -> addMoreRoutes(), Tooltip.create(selectedRoutesSummary()));
+                button -> addMoreRoutes(), null);
         addRenderableWidget(addRoutesButton);
 
         copyButton = styledButton(gridX + (contentW + GAP) / 2, copyY,
@@ -364,23 +364,39 @@ public final class RoutePublishScreen extends Screen {
         return form;
     }
 
-    void addRoutes(List<WaypointGroup> routes) {
+    @Override
+    public Screen screen() {
+        return this;
+    }
+
+    @Override
+    public boolean accepts(WaypointGroup group) {
+        return form.accepts(group);
+    }
+
+    @Override
+    public boolean contains(WaypointGroup group) {
+        return form.contains(group);
+    }
+
+    @Override
+    public WaypointGroup.RouteKind routeKind() {
+        return form.group().routeKind();
+    }
+
+    @Override
+    public int routeCount() {
+        return form.groups().size();
+    }
+
+    @Override
+    public void addRoutes(List<WaypointGroup> routes) {
         if (!publishState.phase().busy()) form.addGroups(routes);
     }
 
-    private Component selectedRoutesSummary() {
-        MutableComponent summary = Component.empty();
-        List<WaypointGroup> routes = form.groups();
-        for (WaypointGroup route : routes.subList(0, Math.min(8, routes.size()))) {
-            if (!summary.getString().isEmpty()) summary.append("\n");
-            summary.append(displayRouteName(route)).append(" · ")
-                    .append(WaypointerZoneCatalog.displayZoneLabel(route.zoneId()));
-        }
-        int remaining = routes.size() - 8;
-        if (remaining > 0) summary.append("\n").append(Component.translatable(remaining == 1
-                ? "waypointer.screen.export.preview.more.one"
-                : "waypointer.screen.export.preview.more.many", remaining));
-        return summary;
+    @Override
+    public void removeRoutes(List<WaypointGroup> routes) {
+        if (!publishState.phase().busy()) form.removeGroups(routes);
     }
 
     private void chooseVisibility(CatalogPublishRequest.Visibility next) {
@@ -438,9 +454,13 @@ public final class RoutePublishScreen extends Screen {
                 publishState, next);
         publishState = next;
         switch (next.phase()) {
-            case IDLE, NEEDS_PUBLISHER_NAME -> {
+            case IDLE -> {
                 statusText = Component.empty();
                 statusKind = StatusKind.INFO;
+            }
+            case NEEDS_PUBLISHER_NAME -> {
+                statusText = next.failure() == null ? Component.empty() : friendlyFailure(next.failure());
+                statusKind = next.failure() == null ? StatusKind.INFO : StatusKind.ERROR;
             }
             case LOADING_IDENTITY, PUBLISHING -> {
                 statusText = Component.translatable(
@@ -492,13 +512,11 @@ public final class RoutePublishScreen extends Screen {
                 publisherPromptAttempt, state)) return;
         publisherPromptAttempt = state.attempt();
         PublisherNameScreen.open(this, promptedPublisherName(state),
+                state.failure() == null ? null : friendlyFailure(state.failure()),
                 session::confirmPublisherName);
     }
 
-    /**
-     * A catalog reset can forget a name this identity already confirmed; suggest
-     * the stored claim first so re-registering it is a single confirmation.
-     */
+    /** Reuse the stored name if a catalog reset erased its registration. */
     private String promptedPublisherName(CatalogPublishSession.Snapshot state) {
         PublisherIdentity identity = state.identity();
         return identity != null && identity.publisherName() != null
@@ -804,7 +822,7 @@ public final class RoutePublishScreen extends Screen {
                 getTitle(), previewName(), outcome);
     }
 
-    private static Component friendlyFailure(Throwable failure) {
+    static Component friendlyFailure(Throwable failure) {
         Throwable cause = failure;
         while ((cause instanceof CompletionException
                 || cause instanceof java.util.concurrent.ExecutionException)
@@ -813,6 +831,8 @@ public final class RoutePublishScreen extends Screen {
         }
         if (cause instanceof CatalogApiException api) {
             String key = switch (api.code()) {
+                case "route_not_found" -> "waypointer.screen.route_catalog.error.not_found";
+                case "invalid_request", "invalid_response" -> "waypointer.screen.route_catalog.error.request_failed";
                 case "publishing_disabled" ->
                         "waypointer.screen.route_publish.error.publishing_disabled";
                 case "daily_limit" ->

@@ -266,6 +266,7 @@ class V10ConfigCodecTest {
         WaypointerConfig config = new WaypointerConfig();
         config.disableAllSettings();
         // Keep this cross-language fixture unchanged as new settings are added.
+        config.setCoordinateShareHelper(true);
         config.setCrystalHollowsMinimapLabels(true);
         config.setCrystalHollowsTracers(true);
         config.setCrystalHollowsCompassAutoFocus(true);

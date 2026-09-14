@@ -61,38 +61,6 @@ public final class WaypointerContributorBadge {
                 : component;
     }
 
-    static Component hypixelRankPrefix(String playerRank, String packageRank,
-                                        String monthlyPackageRank, String customPrefix) {
-        String custom = stripLegacyFormatting(customPrefix);
-        if (custom != null && !custom.isBlank()) return Component.literal(custom.trim());
-
-        if ("YOUTUBER".equals(playerRank)) return rank("YOUTUBE", ChatFormatting.RED);
-        if ("STAFF".equals(playerRank)) return rank("STAFF", ChatFormatting.DARK_GREEN);
-        if ("ADMIN".equals(playerRank)) return rank("ADMIN", ChatFormatting.RED);
-        if ("SUPERSTAR".equals(monthlyPackageRank)) return rank("MVP++", ChatFormatting.GOLD);
-        if ("MVP_PLUS".equals(packageRank)) {
-            return Component.literal("[MVP").withStyle(ChatFormatting.AQUA)
-                    .append(Component.literal("+").withStyle(ChatFormatting.RED))
-                    .append(Component.literal("]").withStyle(ChatFormatting.AQUA));
-        }
-        if ("MVP".equals(packageRank)) return rank("MVP", ChatFormatting.AQUA);
-        if ("VIP_PLUS".equals(packageRank)) {
-            return Component.literal("[VIP").withStyle(ChatFormatting.GREEN)
-                    .append(Component.literal("+").withStyle(ChatFormatting.GOLD))
-                    .append(Component.literal("]").withStyle(ChatFormatting.GREEN));
-        }
-        if ("VIP".equals(packageRank)) return rank("VIP", ChatFormatting.GREEN);
-        return null;
-    }
-
-    private static Component rank(String name, ChatFormatting color) {
-        return Component.literal("[" + name + "]").withStyle(color);
-    }
-
-    private static String stripLegacyFormatting(String text) {
-        return text == null ? null : plainMessage(text).text();
-    }
-
     private static Component replace(Component component, int color) {
         String fullText = component.getString();
         int levelStart = contributorLevelStart(fullText);
@@ -116,88 +84,6 @@ public final class WaypointerContributorBadge {
             }
         }
         return null;
-    }
-
-    private static int contributorDisplayNameStart(String raw) {
-        for (Contributor contributor : CONTRIBUTORS) {
-            int nameStart = raw.indexOf(contributor.name());
-            while (nameStart >= 0) {
-                int nameEnd = nameStart + contributor.name().length();
-                if (isUsernameToken(raw, nameStart, contributor.name().length())
-                        && hasOnlyDisplayDecorations(raw, 0, nameStart)
-                        && hasOnlyTabSuffix(raw, nameEnd)) {
-                    return nameStart;
-                }
-                nameStart = raw.indexOf(contributor.name(), nameEnd);
-            }
-        }
-        return -1;
-    }
-
-    private static boolean hasOnlyTabSuffix(String raw, int start) {
-        int cursor = start;
-        while (cursor < raw.length()) {
-            char character = raw.charAt(cursor);
-            if (character == '[') {
-                int bracketEnd = raw.indexOf(']', cursor + 1);
-                if (bracketEnd < 0) return false;
-                cursor = bracketEnd + 1;
-            } else {
-                if (isUsernameCharacter(character)) return false;
-                cursor++;
-            }
-        }
-        return true;
-    }
-
-    private static Component addMissingRank(Component component, Component rankPrefix, int nameStart) {
-        if (!isRankPrefix(rankPrefix)) return component;
-        String rank = rankPrefix.getString().trim();
-        if (component.getString().contains(rank)) return component;
-
-        MutableComponent insertion = Component.empty().append(rankPrefix.copy());
-        String prefixText = rankPrefix.getString();
-        if (prefixText.isEmpty() || !Character.isWhitespace(prefixText.charAt(prefixText.length() - 1))) {
-            insertion.append(Component.literal(" "));
-        }
-        return insertAt(component, nameStart, insertion);
-    }
-
-    private static boolean isRankPrefix(Component component) {
-        if (component == null) return false;
-        String text = component.getString().trim();
-        if (text.length() < 3 || text.length() > 32
-                || text.charAt(0) != '[' || text.charAt(text.length() - 1) != ']') {
-            return false;
-        }
-        for (int i = 1; i < text.length() - 1; i++) {
-            if (Character.isLetter(text.charAt(i))) return true;
-        }
-        return false;
-    }
-
-    private static Component insertAt(Component component, int offset, Component insertion) {
-        List<Segment> segments = new ArrayList<>();
-        collectSegments(component, segments);
-
-        MutableComponent out = Component.empty().withStyle(component.getStyle());
-        int cursor = 0;
-        boolean inserted = false;
-        for (Segment segment : segments) {
-            int segmentStart = cursor;
-            int segmentEnd = cursor + segment.text.length();
-            if (!inserted && offset <= segmentEnd) {
-                appendRange(out, segment, segmentStart, Math.max(segmentStart, offset), segmentStart);
-                out.append(insertion.copy());
-                appendRange(out, segment, Math.max(segmentStart, offset), segmentEnd, segmentStart);
-                inserted = true;
-            } else {
-                appendRange(out, segment, segmentStart, segmentEnd, segmentStart);
-            }
-            cursor = segmentEnd;
-        }
-        if (!inserted) out.append(insertion.copy());
-        return out;
     }
 
     private static boolean hasBadge(Component component) {

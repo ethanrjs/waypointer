@@ -126,9 +126,7 @@ class WaypointImporterTest {
         WaypointImporter.ImportResult result = WaypointImporter.importAny(native_);
         assertEquals(WaypointImporter.Source.WAYPOINTER, result.source());
         assertEquals(1, result.groups().size());
-        // Bare exports without a builder-supplied label produce an empty
-        // string, which lets the import success path skip the "Label:" line
-        // without having to special-case null.
+        // Missing labels use an empty string so the UI can omit the label line.
         assertEquals("", result.label());
     }
 
@@ -186,10 +184,7 @@ class WaypointImporterTest {
 
     @Test
     void non_waypointer_sources_default_label_to_empty_string() {
-        // JSON / Skyblocker / Skytils paths don't carry a Waypointer label, so
-        // ImportResult.label() must be an empty string (never null) for them
-        // -- the chat output uses isEmpty() to decide whether to render the
-        // "Label:" line and would NPE on a null fall-through.
+        // Third-party imports have an empty label, never null.
         String json = "{\"name\":\"x\",\"island\":\"hub\",\"waypoints\":[{\"x\":0,\"y\":0,\"z\":0}]}";
         WaypointImporter.ImportResult result = WaypointImporter.importAny(json);
         assertNotNull(result.label());
@@ -398,15 +393,10 @@ class WaypointImporterTest {
         assertEquals("1", g.get(0).name());
         assertEquals(100, g.get(0).x());
         assertEquals(220, g.get(2).z());
-        // SkyHanni payloads carry no zone info, so parse time must leave the
-        // group tagged UNKNOWN -- the command-layer retarget step is what
-        // snaps it to the player's current zone. If the parser ever picks
-        // a default zone on its own, the retarget step becomes a no-op and
-        // this test (plus the call-site retarget test below) would flag it.
+        // SkyHanni leaves the area UNKNOWN for the caller to assign the current area.
         assertEquals(com.babbur.waypointer.core.Zone.UNKNOWN.id(), g.zoneId());
         assertEquals(WaypointGroup.LoadMode.SEQUENCE, g.loadMode());
-        // AUTO gradient rewrites colors on insert; what matters is the group picked AUTO
-        // (so users can see route direction), not the specific post-gradient color.
+        // AUTO rewrites inserted colors, so assert the mode rather than its generated colors.
         assertEquals(WaypointGroup.GradientMode.AUTO, g.gradientMode());
     }
 
@@ -482,10 +472,7 @@ class WaypointImporterTest {
 
     @Test
     void retargeting_unknown_groups_to_current_zone_preserves_zoned_groups() {
-        // The retarget rule is "UNKNOWN becomes current, everything else is
-        // left alone". Exercising both halves in one test keeps the contract
-        // documented in a single place -- silent retargeting of a real zone
-        // would destroy sender intent on Waypointer codec imports.
+        // Assign the current area only to UNKNOWN; preserve explicit source areas.
         WaypointGroup fromColeweight = WaypointGroup.create("cw",
                 com.babbur.waypointer.core.Zone.UNKNOWN.id());
         WaypointGroup fromOtherZone  = WaypointGroup.create("zoned", "dungeon_f7");
@@ -583,14 +570,10 @@ class WaypointImporterTest {
 
         WaypointGroup g = result.groups().get(0);
         assertEquals("New Group", g.name());
-        // "dynamic" is Skyblocker's Private Island id -- we alias it so imports
-        // don't strand the user on an unrecognized zone.
+        // "dynamic" aliases Private Island.
         assertEquals("private_island", g.zoneId());
         assertEquals(4, g.size());
 
-        // Skyblocker V1 uses pos:[x,y,z] and every point in the sample carries a
-        // numbered name. Validate both so regressions in array-coord parsing or
-        // name handling fail loudly.
         assertEquals(11, g.get(0).x());
         assertEquals(104, g.get(0).y());
         assertEquals(26, g.get(0).z());
@@ -600,9 +583,7 @@ class WaypointImporterTest {
 
     @Test
     void parses_skyblocker_v1_synthetic_payload_with_pos_and_colorComponents() throws Exception {
-        // Synthetic payload with a known island alias + colorComponents so we can
-        // assert specific color bytes (the real sample paints everything [0,1,0]
-        // green, which is also the default, making that a weak test signal).
+        // Non-default colors catch channel conversion errors that the all-green upstream fixture misses.
         String json = "[{"
                 + "\"name\":\"Route\","
                 + "\"island\":\"foraging_1\","
@@ -683,9 +664,6 @@ class WaypointImporterTest {
 
     @Test
     void skyblocker_island_aliases_map_hypixel_ids_to_waypointer_zones() {
-        // Spot-check every alias that re-routes a Hypixel internal id onto a
-        // Waypointer display id. The full table lives in the importer; this
-        // test is the canary that catches accidental removals or renames.
         assertEquals("private_island",    WaypointImporter.normalizeZone("dynamic"));
         assertEquals("the_farming_isles", WaypointImporter.normalizeZone("farming_1"));
         assertEquals("the_park",          WaypointImporter.normalizeZone("foraging_1"));
@@ -695,22 +673,17 @@ class WaypointImporterTest {
         assertEquals("gold_mine",         WaypointImporter.normalizeZone("mining_1"));
         assertEquals("deep_caverns",      WaypointImporter.normalizeZone("mining_2"));
         assertEquals("dwarven_mines",     WaypointImporter.normalizeZone("mining_3"));
-        // "dungeon" has no safe one-to-one alias (Waypointer zones are per-floor),
-        // so we map it to UNKNOWN and let the import command's retarget step
-        // snap it to whatever floor the player is currently in.
+        // Generic dungeon imports use UNKNOWN because Waypointer areas are floor-specific.
         assertEquals(com.babbur.waypointer.core.Zone.UNKNOWN.id(),
                 WaypointImporter.normalizeZone("dungeon"));
-        // Unknown ids are passed through unchanged -- lowercasing/dash-to-underscore
-        // only, no invented aliases.
+        // Unrecognized IDs are normalized without inventing aliases.
         assertEquals("some_future_island",
                 WaypointImporter.normalizeZone("Some-Future-Island"));
     }
 
     @Test
     void skyblocker_v1_body_without_base64_errors_usefully() {
-        // Garbage body after a valid prefix should produce an error message that
-        // names the prefix we matched -- otherwise the user sees the generic
-        // "unrecognized waypoint payload" and has no idea which parser failed.
+        // A recognized prefix must produce a format-specific decode error.
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> WaypointImporter.importAny("[Skyblocker-Waypoint-Data-V1]!!!not-base64!!!"));
         assertTrue(ex.getMessage().contains("Skyblocker"),
@@ -719,9 +692,7 @@ class WaypointImporterTest {
 
     @Test
     void skyblocker_legacy_ordered_map_parses_as_per_route_groups() {
-        // Skyblocker's pre-V1 ordered format: {groupName: {name, enabled, waypoints}}
-        // Verify the map key becomes the group name, the per-point coords land
-        // correctly, and we pick AUTO gradient for the route-direction hint.
+        // Pre-V1 shape: {groupName: {name, enabled, waypoints}}.
         String json = "{"
                 + "\"Dragon Path\":{"
                 + "  \"name\":\"Dragon Path\","

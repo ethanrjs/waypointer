@@ -16,10 +16,7 @@ import java.util.Base64;
 import java.util.Objects;
 
 /**
- * Mints the anonymous install token the catalog uses to count one download per
- * device per route. The token is an HMAC of a random per-device secret over
- * the route ID, so the server can dedupe repeat installs without ever seeing
- * an identifier that links this device's installs across routes.
+ * HMACs each route ID with a device secret to deduplicate installs without linking different routes.
  */
 public final class InstallTokenStore {
 

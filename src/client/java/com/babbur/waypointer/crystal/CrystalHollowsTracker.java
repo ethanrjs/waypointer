@@ -14,6 +14,7 @@ import com.babbur.waypointer.crystal.CrystalHollowsChatParser.SharedCoordinate;
 import com.babbur.waypointer.crystal.compass.Crystal;
 import com.babbur.waypointer.crystal.compass.CrystalState;
 import com.babbur.waypointer.location.SidebarTexts;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
@@ -27,6 +28,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientPacketListener;
 import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.network.chat.Style;
@@ -42,6 +44,7 @@ public final class CrystalHollowsTracker {
     private final WaypointerConfig config;
     private final CrystalHollowsStore store;
     private final CrystalHollowsProjection projection;
+    private final List<Runnable> detectionListeners = new java.util.concurrent.CopyOnWriteArrayList<>();
     private final Set<Integer> processedEntityIds = new HashSet<>();
     private final EnumMap<Crystal, CrystalState> tabCrystalStates = new EnumMap<>(Crystal.class);
     private CrystalHollowsLobbyState lobby;
@@ -75,6 +78,8 @@ public final class CrystalHollowsTracker {
     private boolean batchingDetections;
     private boolean detectionsChanged;
     private long caveInDeadline;
+    private final Map<StructureSighting, Integer> incorrectStructureTicks = new java.util.HashMap<>();
+    private String verificationArea;
 
     public CrystalHollowsTracker(
             ActiveGroupManager manager, WaypointerConfig config, CrystalHollowsStore store) {
@@ -89,6 +94,7 @@ public final class CrystalHollowsTracker {
         manager.addZoneListener(this::onZoneChanged);
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> onJoin());
         ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> leaveLobby());
+        ClientReceiveMessageEvents.MODIFY_GAME.register(this::addCoordinateShareActions);
         ClientReceiveMessageEvents.GAME.register(this::onGameMessage);
         ClientTickEvents.END_CLIENT_TICK.register(this::onTick);
         onZoneChanged(manager.currentZone());
@@ -125,6 +131,15 @@ public final class CrystalHollowsTracker {
 
     public void attachCompassController(WishingCompassController controller) {
         compassController = controller;
+    }
+
+    /** Runs after sightings change, the projection rebuilds, or a lobby starts or ends. */
+    public void addDetectionListener(Runnable listener) {
+        if (listener != null) detectionListeners.add(listener);
+    }
+
+    private void notifyDetectionListeners() {
+        for (Runnable listener : detectionListeners) listener.run();
     }
 
     public CrystalHollowsLobbyState.MergeResult merge(StructureSighting sighting) {
@@ -192,6 +207,7 @@ public final class CrystalHollowsTracker {
         detectionsChanged = false;
         rebuildProjection();
         persist();
+        notifyDetectionListeners();
     }
 
     void focusCompassTarget(StructureSighting sighting) {
@@ -229,7 +245,7 @@ public final class CrystalHollowsTracker {
     void observeCompassPosition(double x, double y, double z) {
         CrystalHollowsZone nextRegion = CrystalHollowsGeometry.zoneAt(x, y, z);
         if (compassCurrentRegionKnown && nextRegion != compassCurrentRegion && compassController != null) {
-            compassController.onRegionChanged();
+            compassController.onRegionChanged(compassCurrentRegion, nextRegion);
         }
         compassCurrentRegion = nextRegion;
         compassCurrentRegionKnown = true;
@@ -252,7 +268,7 @@ public final class CrystalHollowsTracker {
         return index >= 0 && index < compassTargetGroup.size() && compassTargetGroup.get(index) == compassTarget;
     }
 
-    public enum CompassNavigationState { NONE, ACTIVE, ARRIVED, REGION_EXITED, MARKER_REMOVED }
+    public enum CompassNavigationState { NONE, ACTIVE, ARRIVED, REGION_EXITED, DEFOCUSED, MARKER_REMOVED }
 
     /** Region values are known enums; null currentRegion with currentRegionKnown means outside the bounds.
      * Navigation enabled is lifecycle state, independent of the user's tracer and auto-focus settings. */
@@ -267,6 +283,7 @@ public final class CrystalHollowsTracker {
                 : !retained ? CompassNavigationState.MARKER_REMOVED
                 : CompassMarkerState.regionExited(compassTarget) ? CompassNavigationState.REGION_EXITED
                 : CompassMarkerState.arrived(compassTarget) ? CompassNavigationState.ARRIVED
+                : CompassMarkerState.defocused(compassTarget) ? CompassNavigationState.DEFOCUSED
                 : CompassNavigationState.ACTIVE;
         return new CompassNavigationSnapshot(compassOriginRegion, compassCurrentRegion,
                 compassCurrentRegionKnown, state, state == CompassNavigationState.ACTIVE,
@@ -324,6 +341,7 @@ public final class CrystalHollowsTracker {
     private void updateCompassMarker(StructureSighting sighting) {
         for (int index = 0; index < compassTargetGroup.size(); index++) {
             if (compassTargetGroup.get(index) != compassTarget) continue;
+            boolean defocused = CompassMarkerState.defocused(compassTarget);
             boolean arrived = CompassMarkerState.arrived(compassTarget);
             boolean regionExited = CompassMarkerState.regionExited(compassTarget);
             compassTargetGroup.set(index, compassTarget.withPos(sighting.x(), sighting.y(), sighting.z())
@@ -332,6 +350,7 @@ public final class CrystalHollowsTracker {
                     .withColor(sighting.structure().rgb()));
             compassTarget = compassTargetGroup.get(index);
             CompassMarkerState.markTarget(compassTarget);
+            if (defocused) CompassMarkerState.markDefocused(compassTarget);
             if (arrived) CompassMarkerState.markArrived(compassTarget);
             if (regionExited) CompassMarkerState.markRegionExited(compassTarget);
             compassTargetSighting = sighting;
@@ -376,6 +395,18 @@ public final class CrystalHollowsTracker {
         lastCompassAutoFocus = autoFocus;
     }
 
+    public void defocus() {
+        for (WaypointGroup group : manager.activeGroups()) {
+            int index = group.focusedVisibleIndex();
+            if (group.temp() && index >= 0 && index < group.size()) {
+                CompassMarkerState.markDefocused(group.get(index));
+            }
+        }
+        CompassMarkerState.markDefocused(compassTarget);
+        manager.clearTempWaypointFocus();
+        manager.fireTransientDataChanged();
+    }
+
     private void finishCompassNavigation() {
         if (compassTargetGroup == null || compassTarget == null) return;
         for (int index = 0; index < compassTargetGroup.size(); index++) {
@@ -413,6 +444,7 @@ public final class CrystalHollowsTracker {
         if (lobby != null && lobby.removeSighting(selection)) {
             projection.rebuild(lobby);
             persist();
+            notifyDetectionListeners();
         }
     }
 
@@ -421,6 +453,7 @@ public final class CrystalHollowsTracker {
         lobby.clearSightings();
         projection.rebuild(lobby);
         persist();
+        notifyDetectionListeners();
     }
 
     public void rebuildProjection() {
@@ -468,6 +501,7 @@ public final class CrystalHollowsTracker {
         resolveIdentity(Minecraft.getInstance());
         if (lobby == null) createSessionLobby();
         projection.rebuild(lobby);
+        notifyDetectionListeners();
     }
 
     private void onJoin() {
@@ -478,6 +512,8 @@ public final class CrystalHollowsTracker {
     }
 
     private void leaveLobby() {
+        incorrectStructureTicks.clear();
+        verificationArea = null;
         if (lobby != null && isPersistable()) store.put(lobby);
         projection.endSession();
         active = false;
@@ -494,6 +530,7 @@ public final class CrystalHollowsTracker {
         if (compassController != null) compassController.reset();
         else clearCompassTarget();
         lastDebugSnapshot = DebugSnapshot.inactive();
+        notifyDetectionListeners();
     }
 
     private void onTick(Minecraft client) {
@@ -561,6 +598,19 @@ public final class CrystalHollowsTracker {
 
     private void updateSidebar(Minecraft client) {
         String area = CrystalHollowsSidebar.areaName(SidebarTexts.collectColorStripped(client));
+        BlockPos position = client.player.blockPosition();
+        int radius = CrystalHollowsDetectionPolicy.ARRIVAL_RADIUS;
+        boolean loaded = client.level.hasChunk((position.getX() - radius) >> 4, (position.getZ() - radius) >> 4)
+                && client.level.hasChunk((position.getX() - radius) >> 4, (position.getZ() + radius) >> 4)
+                && client.level.hasChunk((position.getX() + radius) >> 4, (position.getZ() - radius) >> 4)
+                && client.level.hasChunk((position.getX() + radius) >> 4, (position.getZ() + radius) >> 4);
+        for (CrystalHollowsStructure structure : checkIncorrectStructures(area, client.player.getX(),
+                client.player.getY(), client.player.getZ(), loaded && delayTicks == 0)) {
+            send(Component.translatableWithFallback("waypointer.crystal.message.incorrect_skyblocker",
+                    "Skyblocker websocket provided incorrect %s coordinates.",
+                    Component.translatable("waypointer.crystal.structure." + structure.id()))
+                    .withStyle(ChatFormatting.GRAY));
+        }
         CrystalHollowsStructure next = CrystalHollowsSidebar.structureForArea(area);
         sidebarStructure = next;
         if (delayTicks > 0 || next == null || !CrystalHollowsGeometry.insideHollows(
@@ -576,11 +626,44 @@ public final class CrystalHollowsTracker {
         }
     }
 
+    /** Called every two ticks; require three continuous seconds of contradictory arrival evidence. */
+    List<CrystalHollowsStructure> checkIncorrectStructures(String area, double x, double y, double z, boolean ready) {
+        if (!ready || !java.util.Objects.equals(verificationArea, area)) incorrectStructureTicks.clear();
+        verificationArea = area;
+        if (!ready || lobby == null) return List.of();
+        incorrectStructureTicks.keySet().removeIf(sighting -> !lobby.sightings().contains(sighting)
+                || !CrystalHollowsDetectionPolicy.contradictsSkyblocker(sighting, area, x, y, z));
+        List<CrystalHollowsStructure> rejected = new ArrayList<>();
+        for (StructureSighting sighting : List.copyOf(lobby.sightings())) {
+            if (!CrystalHollowsDetectionPolicy.contradictsSkyblocker(sighting, area, x, y, z)) continue;
+            if (incorrectStructureTicks.merge(sighting, 2, Integer::sum) < 60) continue;
+            if (lobby.rejectSkyblocker(sighting)) {
+                rejected.add(sighting.structure());
+                if (compassTargetSighting != null
+                        && SkyblockerStructureProtocol.SOURCE.equals(compassTargetSighting.source())
+                        && compassTargetSighting.structure() == sighting.structure()
+                        && compassTargetSighting.position().equals(sighting.position())) {
+                    if (compassLocalTargetSighting == null) clearCompassTarget();
+                    else updateCompassMarker(resolveCompassTarget(compassLocalTargetSighting));
+                }
+            }
+            incorrectStructureTicks.remove(sighting);
+        }
+        if (!rejected.isEmpty()) {
+            detectionsChanged = true;
+            if (!batchingDetections) flushDetections();
+        }
+        return rejected;
+    }
+
     private void sampleRoughArea(Minecraft client) {
+        sampleRoughArea(client.player.getX(), client.player.getY(), client.player.getZ());
+    }
+
+    void sampleRoughArea(double x, double y, double z) {
         if (delayTicks > 0 || areaSession == null
                 || !config.crystalHollowsDetectionEnabled(areaSession.structure().id())) return;
-        CrystalHollowsPosition position = areaSession.sample(
-                client.player.getX(), client.player.getY(), client.player.getZ());
+        CrystalHollowsPosition position = areaSession.sample(x, y, z);
         if (lastRoughPosition != null && lastRoughPosition.distanceSquared(position) < 4.0) return;
         lastRoughPosition = position;
         merge(new StructureSighting(areaSession.structure(), position.x(), position.y(), position.z(),
@@ -613,6 +696,30 @@ public final class CrystalHollowsTracker {
             tabCrystalStates.clear();
             tabCrystalStates.putAll(parsed);
         }
+    }
+
+    Component addCoordinateShareActions(Component message, boolean overlay) {
+        if (overlay || message == null || !active || lobby == null || !config.coordinateShareHelper()) return message;
+        var chat = CrystalHollowsChatParser.playerChat(message.getString());
+        if (chat.isEmpty() || isLocalPlayer(chat.get().sender())) return message;
+        MutableComponent result = null;
+        for (CrystalHollowsStructure structure : CrystalHollowsChatParser.requestedStructures(chat.get().body())) {
+            List<StructureSighting> known = lobby.sightings().stream()
+                    .filter(sighting -> sighting.structure() == structure).toList();
+            if (known.isEmpty() && structure == CrystalHollowsStructure.CRYSTAL_NUCLEUS) {
+                known = List.of(CrystalHollowsShare.resolve(List.of(), structure.id(), null));
+            }
+            for (int index = 0; index < known.size(); index++) {
+                if (result == null) result = message.copy();
+                Component name = Component.translatable("waypointer.crystal.structure." + structure.id())
+                        .append(known.size() > 1 ? " " + (index + 1) : "");
+                result.append(" ").append(Component.translatableWithFallback(
+                        "waypointer.crystal.action.share_location", "[Share %s]", name)
+                        .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
+                                .withClickEvent(CrystalHollowsShare.share(known.get(index)))));
+            }
+        }
+        return result == null ? message : result;
     }
 
     private void onGameMessage(Component message, boolean overlay) {
@@ -653,7 +760,7 @@ public final class CrystalHollowsTracker {
 
     private static boolean isLocalPlayer(String sender) {
         Minecraft client = Minecraft.getInstance();
-        return client.player != null
+        return client != null && client.player != null
                 && client.player.getGameProfile().name().equalsIgnoreCase(sender);
     }
 
@@ -684,8 +791,11 @@ public final class CrystalHollowsTracker {
     }
 
     private void resolveIdentity(Minecraft client) {
-        String resolved = CrystalHollowsLobbyIdentity.currentServerId(client);
-        int day = CrystalHollowsLobbyIdentity.currentDay(client.level);
+        resolveIdentity(CrystalHollowsLobbyIdentity.currentServerId(client),
+                CrystalHollowsLobbyIdentity.currentDay(client.level));
+    }
+
+    void resolveIdentity(String resolved, int day) {
         currentDay = day;
         if (resolved == null || resolved.isBlank()) {
             if (lobby == null) createSessionLobby();
@@ -716,6 +826,7 @@ public final class CrystalHollowsTracker {
         store.put(lobby);
         projection.ensureFolder();
         projection.rebuild(lobby);
+        notifyDetectionListeners();
         int restoredSightings = restored.map(state -> state.sightings().size()).orElse(0);
         if (restoredSightings > 0) {
             Waypointer.LOGGER.info("Restored {} Crystal Hollows location(s) for lobby {}",
@@ -726,6 +837,8 @@ public final class CrystalHollowsTracker {
     }
 
     private void resetLobbyTransients() {
+        incorrectStructureTicks.clear();
+        verificationArea = null;
         caveInDeadline = 0;
         processedEntityIds.clear();
         tabCrystalStates.clear();
@@ -753,7 +866,8 @@ public final class CrystalHollowsTracker {
                 .append(Component.translatable("waypointer.crystal.action.share")
                         .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)
                                 .withUnderlined(true)
-                                .withClickEvent(CrystalHollowsShare.share(sighting))));
+                                .withClickEvent(CrystalHollowsShare.share(sighting))))
+                .append(CrystalHollowsShare.defocus());
         send(message);
     }
 
@@ -778,7 +892,7 @@ public final class CrystalHollowsTracker {
         Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
             client.player.sendSystemMessage(WaypointerChatFeedback.suppress(Component.literal("[WP] ")
-                    .withStyle(ChatFormatting.GREEN).append(message)));
+                    .withStyle(ChatFormatting.AQUA).append(message)));
         }
     }
 

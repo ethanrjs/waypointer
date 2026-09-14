@@ -107,14 +107,22 @@ class RoutePreviewSceneTest {
 
         config.setEnableFeatureBloat(false);
         RoutePreviewScene disabled = RoutePreviewScene.build(group, config, null);
-        assertEquals(null, disabled.paint());
-        assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED, disabled.boxStyle());
+        assertEquals(routePaint, disabled.paint(), "the preview preference no longer disables waypoint paint");
+        assertEquals(config.effectiveBoxStyle(), disabled.boxStyle());
         assertEquals(routePaint, group.paint());
         config.setEnableFeatureBloat(true);
         group.setPaint(null);
         assertEquals(defaultPaint, RoutePreviewScene.effectivePaint(group, config));
         group.setPaintEnabled(false);
+        config.setBoxStyle(WaypointerConfig.BoxStyle.FILLED);
         assertEquals(null, RoutePreviewScene.effectivePaint(group, config));
+        config.setBoxStyle(WaypointerConfig.BoxStyle.PAINT);
+        assertEquals(defaultPaint, RoutePreviewScene.effectivePaint(group, config),
+                "the painted style borrows the default paint even when the route opts out");
+        config.setWaypointPainterDefaultPaint(null);
+        assertEquals(com.babbur.waypointer.core.WaypointPaint.missing(),
+                RoutePreviewScene.effectivePaint(group, config),
+                "a painted style without any paint shows the missing texture");
     }
 
     @Test

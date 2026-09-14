@@ -36,6 +36,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointerShareCommandsTest {
 
     @Test
+    void catalogChatImportOpensPreviewWithoutChatChatterOrInstalling() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerShareCommands commands = new WaypointerShareCommands(
+                manager, new WaypointerConfig(), new ChatImportCache());
+        CommandMessages messages = new CommandMessages();
+        List<String> opened = new ArrayList<>();
+        commands.setCatalogReferencePresenter(opened::add);
+        String routeId = "abcdefghijklmnopqrstuv";
+
+        commands.finishImport(messages.source(), WaypointCommandImport.decode(
+                        UniversalShareCodec.encodeCatalogReference(routeId)),
+                "chat", manager.currentZone(), UniversalShareCodec.Type.CATALOG);
+
+        assertEquals(List.of(routeId), opened);
+        assertTrue(messages.feedback.isEmpty());
+        assertTrue(messages.errors.isEmpty());
+        assertTrue(manager.allGroupsList().isEmpty());
+    }
+
+    @Test
     void unmatchedDungeonChatImportExplainsWhyNothingWasInstalled() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerShareCommands commands = new WaypointerShareCommands(

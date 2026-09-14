@@ -3,27 +3,18 @@ Fabric mod for Hypixel Skyblock that aims to be the best possible waypoint manag
 Features
 
 - Per-zone waypoints
-- Dungeon rooms support (Odin-compatible room detection, all 140 Catacombs rooms)
-- Crystal Hollows structure detection (Jungle Temple, Mines of Divan, Goblin
-  Queen's Den, Lost Precursor City, Khazad-dûm, Fairy Grotto, King Yolkar,
-  Odawa, Corleone, Key Guardians, Dragon's Lair) with per-lobby memory; uses
-  only information the game already shows you
-- Wishing Compass solver
+- Dungeon rooms support
+- Crystal Hollows structure detection
+- In-Game Route Browser
 - Ordered routes
-- World rendering
 - Subwaypoints
-- Extremely compact export format
-- Importable from chat messages
+- Waypoint Painting
 - Keybindings
-- Editor mode
-- Clean UI for editing and management
-- Waypoint skipping in sequence
-- Temporary Waypoints
-- Clickable chat coordinates
-- Auto-added temporary chat coordinate waypoints
+- Waypoint skipping
+- Wishing Compass solver
 - Customizable waypoint visuals
-- Public API for other Fabric client mods
 - Works with shaders
+- ...and so much more!
 
 Waypoint Import/Export Compatibility
 
@@ -34,73 +25,21 @@ Waypoint Import/Export Compatibility
 - ChunkLogger RouteSkipper (I)
 - Soopy V1 (I)
 - Firmament (I)
+- Skysoft (I/E) and JSON libraries (I)
 - Generic JSON-based (I)
 
 Waypointer route-library codes preserve folder membership and folder colors.
 Config export uses universal `WP:` V10 kind-3 codes. Legacy `WPC:` versions 1-6 remain importable.
 
-Publisher identity across launcher profiles
+Community routes
 
-New launcher profiles reuse the first Waypointer publishing identity saved on
-this computer. A protected copy is kept in your user settings outside the
-launcher profile, so replacing a profile preserves your publishing name.
-Existing profiles with a different publishing identity keep that identity.
-Publication history remains local to each profile.
-
-The shared identity is stored under `waypointer/publisher/identity.json` in
-macOS Application Support, Windows AppData/Roaming, or Linux XDG_CONFIG_HOME
-(default `~/.config`). Keep this file private; it contains your publishing key.
-
-Dungeon route import
-
-- SecretRoutes `routes.json`: `/wpd import <file>`
-- Odin dungeon waypoints: JSON file or import string
-- Waypointer `WPD:` share codes (I/E)
-
-Send feedback
-
-Open Settings and select **Send Feedback** to send a bug report or general
-feedback. Messages can contain up to 10,000 characters. You can attach PNG or
-JPEG images, shown as previews in one row. Selecting a bug report attaches a
-debug snapshot with **Anonymize Data** enabled. You can review the report,
-turn anonymization off, or remove the snapshot before sending.
-
-Feedback does not request or send contact details. **Anonymize Data** attempts
-to replace personal identifiers in the debug snapshot, including route and
-waypoint names, private server details, and raw scoreboard/tab text. It keeps
-coordinates, route geometry, hardware details, mod versions, settings, and
-technical error details needed to investigate a bug. These retained details
-can still identify a particular setup. Check your message and visible image
-content for personal information before sending. Image metadata and original
-file names are not uploaded. Feedback snapshots do not read the clipboard.
-
-The service allows 20 submissions per network per UTC day; users on a shared
-network share that limit. Feedback is stored in the private site admin view
-and queues an email notification to the maintainer. Sending requires the
-feedback service and email delivery to be configured. If the service is
-unavailable, the form keeps the draft open and reports the error.
+The 'Community' button next to the route search opens the catalog of routes
+other players published. Pick a route to preview and install it. Publish your
+own routes with the **Publish** button in the route editor.
 
 Skyblocker structure sharing
 
-Settings > Mining > **Skyblocker Sharing** adds an optional connection to
-Skyblocker's Crystal Hollows service at hysky.de. It is on by default and
-also requires **Crystal Hollows features** and **Share Structures**. Config
-imports preserve your local choice. Existing saved opt-outs remain disabled.
-
-When enabled, api.azureaaron.net receives your Minecraft UUID, public profile
-key and signed proof for authentication. ws.hysky.de receives the resulting
-service token and fresh structure locations that you observe. Your private
-key and Minecraft access token stay in Minecraft. The service token is kept in memory.
-This development build temporarily sends `skyblocker` as the authentication
-client ID and uses a Skyblocker-style User-Agent for compatibility testing,
-while retaining Waypointer's actual version. Restore Waypointer's client ID
-and User-Agent before publishing once the service accepts them. An online
-Minecraft profile key is required.
-
-This connection supports Crystal Hollows structure messages. It does not
-implement Skyblocker's dungeon-secret or egg services. Received locations
-are not sent back to either sharing service. The existing Waypointer relay
-continues to operate independently.
+This mod interoperates with the Skyblocker API and has safeguards to prevent abuse and spam. If you are on the Skyblocker team and want me to shut off access to the Skyblocker web socket for users, please create an issue. I can disable it immediately, remotely.
 
 Requirements
 
@@ -122,37 +61,12 @@ it does not produce one universal jar:
 - `build/libs/waypointer-<mod-version>-mc26.1.2.jar`
 - `build/libs/waypointer-<mod-version>-mc26.2.jar`
 
-Matching `-sources.jar` files are also generated. The current mod version is
-`1.10.0`.
-
-Native rendering tests
-
-```powershell
-.\gradlew.bat smokeAllTargets --no-daemon --max-workers=1
-.\gradlew.bat smokeAllTargets "-PshaderPack=C:/path/to/shader-pack.zip" --no-daemon --max-workers=1
-```
-
-The shader variant loads the supplied ZIP with pinned Iris and Sodium versions
-in the disposable test client. It requires an active shader pack and retained
-world geometry, exercises the appearance previews, reloads resources, and toggles
-shaders off and back on. Renderer fallback and logged preview/shader errors fail
-the run. Normal smoke tests keep their existing mod set; Iris and Sodium are
-test-only dependencies and are never bundled in Waypointer.
-
-Shader screenshots, logs, and a manifest identifying the pack's SHA-256 and mod
-version IDs are retained in `build/reports/shaders/<minecraft-version>/`.
-Ordinary smoke results remain in `build/reports/launch/<minecraft-version>/`.
-Use `runClientGameTest "-Pminecraft_version=26.2"` with the same shader property
-to test one target. A passing run covers that supplied pack and hardware, not all
-shader packs or visual effects; inspect the screenshots for visual correctness.
-
 CODEC Specification
 See [CODEC.md](CODEC.md) for the full specification.
 
 API for Other Mods
 
 Waypointer exposes a Fabric entrypoint API for other client mods:
-
 ```json
 {
   "entrypoints": {

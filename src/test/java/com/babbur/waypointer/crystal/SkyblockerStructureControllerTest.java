@@ -102,6 +102,21 @@ class SkyblockerStructureControllerTest {
         assertEquals("none", controller.diagnostics(2_000).authentication());
     }
 
+    @Test void skyblockerPresenceDefersTheSharedServiceToSkyblockersOwnClient() throws Exception {
+        var config = new WaypointerConfig();
+        var controller = new SkyblockerStructureController(null, config, true);
+        set(controller, "token", new SkyblockerAuthentication.Token("test", 9999999L));
+        assertEquals("deferred_to_skyblocker", controller.diagnostics(2_000).status());
+        var tick = SkyblockerStructureController.class.getDeclaredMethod("tick", Minecraft.class);
+        tick.setAccessible(true);
+        // The gate runs before any game, key, or network access, so a null client is safe here.
+        tick.invoke(controller, new Object[]{null});
+        assertEquals("none", controller.diagnostics(2_000).authentication());
+        assertFalse(controller.diagnostics(2_000).connected());
+        assertFalse(controller.diagnostics(2_000).connecting());
+        assertEquals("policy_unavailable", new SkyblockerStructureController(null, config, false).diagnostics(2_000).status());
+    }
+
     @Test void noChatReportsFallbackUsesOnlyTheAuthenticationManagerWithoutChangingTheGetter() {
         var shared = new CompletableFuture<Optional<ProfileKeyPair>>();
         ProfileKeyPairManager actual = new ProfileKeyPairManager() {
@@ -164,11 +179,21 @@ class SkyblockerStructureControllerTest {
     }
 
     @Test void optOutClosesPendingAndOpenSocketsWithoutReadingMinecraft() throws Exception {
+        assertSocketCleanup(false);
+    }
+
+    @Test void remoteRevocationClosesPendingAndOpenSocketsWithoutChangingUserSettings() throws Exception {
+        assertSocketCleanup(true);
+    }
+
+    private void assertSocketCleanup(boolean remotelyDisabled) throws Exception {
         for (boolean opened : new boolean[]{false, true}) {
             var config = new WaypointerConfig();
-            config.setCrystalHollowsSkyblockerSharing(false);
-            assertFalse(config.crystalHollowsSkyblockerSharing());
+            config.setCrystalHollowsSkyblockerSharing(remotelyDisabled);
             var controller = new SkyblockerStructureController(null, config);
+            var policy = new SkyblockerSocketPolicy(() -> CompletableFuture.completedFuture(false), () -> 0);
+            set(controller, "socketPolicy", policy);
+            policy.refresh();
             var future = new CompletableFuture<WebSocket>();
             var listener = new AtomicReference<WebSocket.Listener>();
             var connection = new StructureRelayConnection((uri, receiver) -> {
@@ -187,9 +212,15 @@ class SkyblockerStructureControllerTest {
                 listener.get().onOpen(socket);
                 listener.get().onText(socket, "queued peer payload", true);
             }
-            var tick = SkyblockerStructureController.class.getDeclaredMethod("tick", Minecraft.class);
-            tick.setAccessible(true);
-            tick.invoke(controller, new Object[]{null});
+            if (remotelyDisabled) {
+                assertFalse(controller.allowRemoteSharing());
+                assertEquals("remotely_disabled", controller.diagnostics(0).status());
+                assertTrue(config.crystalHollowsSkyblockerSharing());
+            } else {
+                var tick = SkyblockerStructureController.class.getDeclaredMethod("tick", Minecraft.class);
+                tick.setAccessible(true);
+                tick.invoke(controller, new Object[]{null});
+            }
             assertTrue(future.isCancelled());
             assertFalse(connection.isOpen());
             assertFalse(connection.isConnecting());
@@ -199,6 +230,37 @@ class SkyblockerStructureControllerTest {
             assertNull(connection.poll());
             assertEquals(0, sends.get());
         }
+    }
+
+    @Test void remoteRevocationCancelsAuthAndClearsOnlySkyblockerSightings() throws Exception {
+        var config = new WaypointerConfig();
+        var tracker = new CrystalHollowsTracker(new com.babbur.waypointer.core.ActiveGroupManager(), config, null);
+        var lobby = new CrystalHollowsLobbyState("test", 0, 0);
+        var local = new StructureSighting(CrystalHollowsStructure.ODAWA, 300, 100, 300,
+                SightingConfidence.ENTITY, "local", 1);
+        var relay = new StructureSighting(CrystalHollowsStructure.JUNGLE_TEMPLE, 300, 100, 300,
+                SightingConfidence.SHARED_REMOTE, "relay", 1);
+        var peer = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN, 300, 100, 300,
+                SightingConfidence.SHARED_REMOTE, SkyblockerStructureProtocol.SOURCE, 1);
+        lobby.merge(local);
+        lobby.merge(relay);
+        lobby.merge(peer);
+        set(tracker, "lobby", lobby);
+        var controller = new SkyblockerStructureController(tracker, config, false);
+        set(controller, "lobby", lobby);
+        var keys = new ProfileKeyPairManager() {
+            public CompletableFuture<Optional<ProfileKeyPair>> prepareKeyPair() { return new CompletableFuture<>(); }
+            public boolean shouldRefreshKeyPair() { return false; }
+        };
+        var attempt = new SkyblockerStructureController.AuthAttempt(keys, UUID.randomUUID(), "test", "test", "test");
+        set(controller, "authentication", attempt);
+        set(controller, "token", new SkyblockerAuthentication.Token("test", 9999999L));
+        set(controller, "socketPolicy", new SkyblockerSocketPolicy(() -> CompletableFuture.completedFuture(false), () -> 0));
+        assertFalse(controller.allowRemoteSharing());
+        assertTrue(attempt.result.isCancelled());
+        assertEquals("none", controller.diagnostics(0).authentication());
+        assertEquals(java.util.List.of(local, relay), lobby.sightings());
+        assertTrue(config.crystalHollowsSkyblockerSharing());
     }
 
     @Test void cancellationDoesNotCancelSharedMinecraftKeysOrStartAnAuthExchange() throws Exception {

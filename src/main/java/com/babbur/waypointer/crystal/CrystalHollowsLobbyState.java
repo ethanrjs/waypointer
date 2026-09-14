@@ -22,6 +22,7 @@ public final class CrystalHollowsLobbyState {
 
     private static final double MULTI_INSTANCE_DISTANCE_SQUARED = 60.0 * 60.0;
     private static final double EQUAL_REFINEMENT_DISTANCE_SQUARED = 2.0 * 2.0;
+    private static final int MAX_WISHING_TARGETS = 8;
     private static final double COMPASS_CONFIRM_DISTANCE_SQUARED = 80.0 * 80.0;
 
     private final String serverId;
@@ -31,6 +32,7 @@ public final class CrystalHollowsLobbyState {
     private final List<StructureSighting> sightings;
     // Keep local evidence while a more precise relay location is displayed.
     private final Map<StructureSighting, StructureSighting> localFallbacks = new IdentityHashMap<>();
+    private final List<StructureSighting> rejectedSkyblocker = new ArrayList<>();
     private final EnumMap<Crystal, CrystalState> crystals;
     private CrystalHollowsPosition divanCentre;
 
@@ -95,8 +97,20 @@ public final class CrystalHollowsLobbyState {
 
     public MergeResult merge(StructureSighting incoming) {
         Objects.requireNonNull(incoming, "incoming");
+        if (incoming.confidence() == SightingConfidence.SHARED_REMOTE
+                && SkyblockerStructureProtocol.SOURCE.equals(incoming.source())
+                && rejectedSkyblocker.stream().anyMatch(rejected ->
+                    rejected.structure() == incoming.structure() && samePosition(rejected, incoming))) {
+            return MergeResult.IGNORED;
+        }
         lastSeenMillis = Math.max(lastSeenMillis, incoming.atMillis());
         if (incoming.structure() == CrystalHollowsStructure.WISHING_TARGET) {
+            // Ambiguous results stay independent, but stale ones never pile up without bound.
+            int retained = 0;
+            for (int index = sightings.size() - 1; index >= 0; index--) {
+                if (sightings.get(index).structure() != CrystalHollowsStructure.WISHING_TARGET) continue;
+                if (++retained >= MAX_WISHING_TARGETS) localFallbacks.remove(sightings.remove(index));
+            }
             sightings.add(incoming);
             return MergeResult.ADDED;
         }
@@ -141,6 +155,19 @@ public final class CrystalHollowsLobbyState {
         return sightings.removeIf(sighting -> sighting.structure() == structure);
     }
 
+    /** Suppress a disproved provider coordinate for this lobby, preserving any local observation. */
+    public boolean rejectSkyblocker(StructureSighting sighting) {
+        if (sighting.confidence() != SightingConfidence.SHARED_REMOTE
+                || !SkyblockerStructureProtocol.SOURCE.equals(sighting.source())) return false;
+        int index = sightings.indexOf(sighting);
+        if (index < 0) return false;
+        rejectedSkyblocker.add(sighting);
+        StructureSighting local = localFallbacks.remove(sighting);
+        if (local == null) sightings.remove(index);
+        else sightings.set(index, local);
+        return true;
+    }
+
     public boolean removeSighting(CrystalHollowsSightingSelector.Selection selection) {
         int index = CrystalHollowsSightingSelector.indexOf(sightings, selection);
         if (index < 0) return false;
@@ -181,8 +208,12 @@ public final class CrystalHollowsLobbyState {
         CrystalHollowsLobbyState identified = new CrystalHollowsLobbyState(
                 serverId, firstSeen, lastSeen, knownDay,
                 restoredSightings, restoredCrystals, restoredDivan);
-        if (restored != null) identified.localFallbacks.putAll(restored.localFallbacks);
+        if (restored != null) {
+            identified.localFallbacks.putAll(restored.localFallbacks);
+            identified.rejectedSkyblocker.addAll(restored.rejectedSkyblocker);
+        }
         if (session != null) {
+            identified.rejectedSkyblocker.addAll(session.rejectedSkyblocker);
             for (StructureSighting sighting : session.localSightings()) identified.merge(sighting);
             for (StructureSighting sighting : session.sightings()) {
                 if (sighting.confidence() == SightingConfidence.SHARED_REMOTE) identified.merge(sighting);
@@ -237,6 +268,9 @@ public final class CrystalHollowsLobbyState {
         boolean incomingRemote = incoming.confidence() == SightingConfidence.SHARED_REMOTE;
         boolean existingRemote = existing.confidence() == SightingConfidence.SHARED_REMOTE;
         int confidence = Integer.compare(evidenceStrength(incoming), evidenceStrength(existing));
+        // A locally observed area is a real location, even though its centre is approximate.
+        if (localSidebar(incoming) && existingRemote && existing.remoteEvidence() == null) confidence = 1;
+        else if (localSidebar(existing) && incomingRemote && incoming.remoteEvidence() == null) confidence = -1;
         // A peer's claimed detection cannot displace our own direct observation.
         if (confidence == 0 && incomingRemote != existingRemote) {
             confidence = incomingRemote ? -1 : 1;
@@ -299,6 +333,11 @@ public final class CrystalHollowsLobbyState {
     private static int evidenceStrength(StructureSighting sighting) {
         return (sighting.remoteEvidence() == null ? sighting.confidence()
                 : sighting.remoteEvidence()).ordinal();
+    }
+
+    private static boolean localSidebar(StructureSighting sighting) {
+        return sighting.confidence() == SightingConfidence.ROUGH_AREA
+                && "sidebar".equals(sighting.source()) && sighting.structure().sidebarName() != null;
     }
 
     private boolean removeMatchingWishingTargets(StructureSighting incoming) {

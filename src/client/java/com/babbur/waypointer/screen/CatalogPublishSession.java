@@ -136,7 +136,7 @@ final class CatalogPublishSession {
             pending = identity;
             token = attempt;
         }
-        startPublishing(token, pending, publisherName);
+        startPublishing(token, pending.forNameClaim(), publisherName);
     }
 
     void markCopied() {
@@ -176,6 +176,7 @@ final class CatalogPublishSession {
         synchronized (this) {
             if (token != attempt || !form.valid()) return;
             phase = Phase.PUBLISHING;
+            failure = null;
             routes = form.groups().stream().map(WaypointGroup::exportSnapshot).toList();
             zoneId = form.zoneId();
             title = form.normalizedTitle();
@@ -184,8 +185,7 @@ final class CatalogPublishSession {
         }
         notifyListeners(snapshot());
 
-        // Always claim the name on the wire; a wiped catalog re-registers a
-        // stored claim automatically instead of failing with name_required.
+        // Resend the stored claim so a reset catalog can re-register it.
         String claimedName = requestedName != null
                 ? requestedName : signer.publisherName();
         CompletableFuture.supplyAsync(
@@ -207,12 +207,11 @@ final class CatalogPublishSession {
         synchronized (this) {
             if (token != attempt || phase != Phase.PUBLISHING) return;
             if (publishFailure != null) {
-                if (publisherNameRequired(publishFailure) && identity != null) {
-                    // The catalog does not know this publisher's name (for
-                    // example after a server reset). Ask for it again; a new
-                    // attempt number lets the view reopen its prompt.
+                if (publisherNameNeedsEntry(publishFailure) && identity != null) {
+                    // A new attempt lets the view reopen the name prompt after a rejected claim.
                     ++attempt;
                     phase = Phase.NEEDS_PUBLISHER_NAME;
+                    failure = publishFailure;
                     notifyListeners(snapshotLocked());
                     return;
                 }
@@ -231,7 +230,7 @@ final class CatalogPublishSession {
         notifyListeners(snapshot());
     }
 
-    static boolean publisherNameRequired(Throwable failure) {
+    static boolean publisherNameNeedsEntry(Throwable failure) {
         Throwable cause = failure;
         while ((cause instanceof java.util.concurrent.CompletionException
                 || cause instanceof java.util.concurrent.ExecutionException)
@@ -239,7 +238,9 @@ final class CatalogPublishSession {
             cause = cause.getCause();
         }
         return cause instanceof CatalogApiException api
-                && "publisher_name_required".equals(api.code());
+                && ("publisher_name_required".equals(api.code())
+                || "publisher_name_taken".equals(api.code())
+                || "invalid_publisher_name".equals(api.code()));
     }
 
     private void formEdited() {

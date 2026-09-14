@@ -43,17 +43,58 @@ class WishingCompassSolverTest {
     }
 
     @Test
-    void regionChangeDiscardsOldRaysEvenWhenReturningToTheOldRegion() {
+    void nucleusUsePairsWithAFollowUpUseInsideTheTargetZone() {
         var solver = solverWithAllMissing();
         var target = new Vec3d(735, 100, 451);
         capture(solver, new Vec3d(500, 107, 500), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 1_000);
+        assertEquals(WishingCompassSolver.State.NEED_SECOND_USE, solver.state());
         capture(solver, new Vec3d(600, 107, 500), target, CrystalHollowsZone.MITHRIL_DEPOSITS, 2_000);
-        capture(solver, new Vec3d(500, 107, 530), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 3_000);
+        var result = solver.lastResult().orElseThrow();
+        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN), result.targets());
+        assertTrue(result.solution().distanceTo(target) < 2);
+        assertEquals(CrystalHollowsZone.MITHRIL_DEPOSITS, result.searchZone());
+    }
+
+    @Test
+    void zoneUsePairsWithAFollowUpUseInsideTheNucleus() {
+        var solver = solverWithAllMissing();
+        var target = new Vec3d(735, 100, 451);
+        capture(solver, new Vec3d(600, 107, 500), target, CrystalHollowsZone.MITHRIL_DEPOSITS, 1_000);
+        capture(solver, new Vec3d(500, 107, 530), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 2_000);
+        var result = solver.lastResult().orElseThrow();
+        assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN), result.targets());
+        assertEquals(CrystalHollowsZone.MITHRIL_DEPOSITS, result.searchZone());
+    }
+
+    @Test
+    void outerZoneChangeStillDiscardsOldRaysEvenWhenReturningToTheOldRegion() {
+        var solver = solverWithAllMissing();
+        var target = new Vec3d(735, 100, 451);
+        capture(solver, new Vec3d(600, 107, 500), target, CrystalHollowsZone.MITHRIL_DEPOSITS, 1_000);
+        captureDirection(solver, new Vec3d(600, 107, 600), new Vec3d(1, 0, 0),
+                CrystalHollowsZone.PRECURSOR_REMNANTS, 2_000);
+        capture(solver, new Vec3d(600, 107, 520), target, CrystalHollowsZone.MITHRIL_DEPOSITS, 3_000);
         assertEquals(1, solver.completedRays().size());
         assertTrue(solver.lastResult().isEmpty());
-        capture(solver, new Vec3d(500, 107, 500), target, CrystalHollowsZone.CRYSTAL_NUCLEUS, 4_000);
+        capture(solver, new Vec3d(620, 107, 500), target, CrystalHollowsZone.MITHRIL_DEPOSITS, 4_000);
         assertEquals(java.util.Set.of(WishingCompassTarget.MINES_OF_DIVAN),
                 solver.lastResult().orElseThrow().targets());
+    }
+
+    @Test
+    void zoneCompatibilityTreatsTheNucleusAsSharedGround() {
+        assertTrue(WishingCompassSolver.zonesCompatible(
+                CrystalHollowsZone.CRYSTAL_NUCLEUS, CrystalHollowsZone.JUNGLE));
+        assertTrue(WishingCompassSolver.zonesCompatible(
+                CrystalHollowsZone.MAGMA_FIELDS, CrystalHollowsZone.CRYSTAL_NUCLEUS));
+        assertTrue(WishingCompassSolver.zonesCompatible(
+                CrystalHollowsZone.JUNGLE, CrystalHollowsZone.JUNGLE));
+        assertTrue(!WishingCompassSolver.zonesCompatible(
+                CrystalHollowsZone.JUNGLE, CrystalHollowsZone.GOBLIN_HOLDOUT));
+        assertEquals(CrystalHollowsZone.CRYSTAL_NUCLEUS, WishingCompassSolver.effectiveZone(
+                CrystalHollowsZone.CRYSTAL_NUCLEUS, CrystalHollowsZone.CRYSTAL_NUCLEUS));
+        assertEquals(CrystalHollowsZone.JUNGLE, WishingCompassSolver.effectiveZone(
+                CrystalHollowsZone.CRYSTAL_NUCLEUS, CrystalHollowsZone.JUNGLE));
     }
 
     @Test

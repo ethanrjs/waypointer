@@ -39,7 +39,11 @@ final class GroupEditPolicy {
             Component.translatableWithFallback(
                     "waypointer.screen.group_edit.info.shift_right_click.label", "Shift-right-click"),
             Component.translatableWithFallback(
-                    "waypointer.screen.group_edit.info.color_swatch.label", "Color swatch"));
+                    "waypointer.screen.group_edit.info.color_swatch.label", "Color swatch"),
+            Component.literal("{distance}"),
+            Component.literal("{index}"),
+            Component.literal("{total}"),
+            Component.literal("{route}"));
     private static final List<Component> ROUTE_INFO_DESCRIPTIONS = List.of(
             Component.translatableWithFallback(
                     "waypointer.screen.group_edit.info.click.description", "Select a waypoint row"),
@@ -59,7 +63,15 @@ final class GroupEditPolicy {
                     "Toggle subwaypoint"),
             Component.translatableWithFallback(
                     "waypointer.screen.group_edit.info.color_swatch.description",
-                    "Edit color; Shift-click unlocks"));
+                    "Edit color; Shift-click unlocks"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.placeholder.distance", "Name: distance to waypoint"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.placeholder.index", "Name: waypoint number"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.placeholder.total", "Name: total main waypoints"),
+            Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.info.placeholder.route", "Name: route name"));
     private static final List<Component> DUNGEON_ROUTE_INFO_LABELS = List.of(
             Component.translatableWithFallback(
                     "waypointer.screen.group_edit.info.dungeon.types.label", "Types"),
@@ -260,7 +272,7 @@ final class GroupEditPolicy {
             active.add(Component.translatableWithFallback(
                     "waypointer.screen.group_edit.control.los.label", "LOS").getString());
         }
-        return String.join(" · ", active);
+        return String.join(" Â· ", active);
     }
 
     static boolean shouldShowWaypointControls(int rowIndex, int selectedIndex) {
@@ -269,16 +281,6 @@ final class GroupEditPolicy {
 
     static boolean shouldStartRenameFromRowClick(boolean doubleClick, boolean wasAlreadySelected) {
         return doubleClick && wasAlreadySelected;
-    }
-
-    static String swatchGestureTooltipText(boolean shiftDown) {
-        return shiftDown
-                ? Component.translatableWithFallback(
-                        "waypointer.screen.group_edit.control.color.unlock",
-                        "Shift-click unlocks locked color").getString()
-                : Component.translatableWithFallback(
-                        "waypointer.screen.group_edit.control.color.edit",
-                        "Click to edit waypoint color").getString();
     }
 
     static String dungeonStandSkipTooltipText() {

@@ -23,7 +23,7 @@ public final class CatalogProtocol {
     private static final int CATALOG_CODEC_VERSION = 9;
     private static final int MAX_REGULAR_GROUPS = 64;
     private static final int MAX_DUNGEON_GROUPS = 256;
-    private static final int MAX_WAYPOINTS = 10_000;
+    private static final int MAX_WAYPOINTS = 25_000;
     static final int MAX_PAYLOAD_CHARS = 256 * 1024;
 
     private CatalogProtocol() {
@@ -317,6 +317,11 @@ public final class CatalogProtocol {
 
         public String payload() {
             return payload;
+        }
+
+        /** The base64url SHA-256 the publication record stores for this payload. */
+        public String payloadSha256() {
+            return manifest.payloadSha256();
         }
     }
 

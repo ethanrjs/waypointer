@@ -78,7 +78,8 @@ final class WaypointerChatCommands {
         if (config.focusTempWaypoints()) {
             manager.focusTempWaypoint(selection.group(), selection.index());
             success(src, Component.translatable(
-                    "waypointer.command.temp.focused", x, y, z));
+                    "waypointer.command.temp.focused", x, y, z)
+                    .append(com.babbur.waypointer.crystal.CrystalHollowsShare.defocus()));
             return 1;
         }
 

@@ -488,7 +488,7 @@ final class WaypointerRouteCommands {
         WaypointGroup group = activeGroupOrError(src);
         if (group == null || !validateWaypointIndex(src, group, index)) return 0;
         if (!DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(group, index, x, y, z)) {
-            error(src, DungeonRoomWaypointPlacement.unavailableMessage());
+            error(src, DungeonRoomWaypointPlacement.unavailableMessage(group));
             return 0;
         }
         manager.fireDataChanged();

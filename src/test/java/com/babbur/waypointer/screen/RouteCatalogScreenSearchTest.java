@@ -60,7 +60,7 @@ class RouteCatalogScreenSearchTest {
                         com.babbur.waypointer.core.Zone.fromId("dungeon_hub")));
     }
     @Test
-    void editedSearchRebuildsTheClearedViewThenRestoresSearchFocus() {
+    void editedSearchOnlySchedulesRebuildAfterTheEditBoxFinishesMutation() {
         CatalogBrowserModel browser = new CatalogBrowserModel();
         browser.applyPage(new CatalogPage(List.of(summary()), true, "next"), false);
         List<String> events = new ArrayList<>();
@@ -70,17 +70,32 @@ class RouteCatalogScreenSearchTest {
                 () -> events.add("state"),
                 () -> {
                     assertTrue(browser.routes().isEmpty());
-                    events.add("rebuild");
-                },
-                () -> events.add("focus")));
+                    events.add("schedule");
+                }));
 
-        assertEquals(List.of("state", "rebuild", "focus"), events);
+        assertEquals(List.of("state", "schedule"), events);
         assertFalse(RouteCatalogScreen.applySearchEdit(
                 browser, "crystal",
                 () -> events.add("unexpected-state"),
-                () -> events.add("unexpected-rebuild"),
-                () -> events.add("unexpected-focus")));
-        assertEquals(List.of("state", "rebuild", "focus"), events);
+                () -> events.add("unexpected-schedule")));
+        assertEquals(List.of("state", "schedule"), events);
+    }
+
+    @Test
+    void completeCachedCatalogSearchesPlayersLocallyButPartialPagesNeverHideResults() {
+        var cache = RouteCatalogScreen.<CatalogPage>boundedPageCache(32);
+        cache.put(RouteCatalogScreen.searchCacheKey(null, ""),
+                new CatalogPage(List.of(summary()), false, null));
+        assertEquals(List.of(summary()), RouteCatalogScreen.cachedSearchPage(cache, null, "tes").routes());
+        assertEquals(List.of(summary()), RouteCatalogScreen.cachedSearchPage(cache, "hub", "TESTER").routes());
+        assertTrue(RouteCatalogScreen.cachedSearchPage(cache, "rift", "tester").routes().isEmpty());
+        assertTrue(RouteCatalogScreen.cachedSearchPage(cache, null, "missing").routes().isEmpty());
+        cache.put(RouteCatalogScreen.searchCacheKey(null, ""),
+                new CatalogPage(List.of(summary()), true, "next"));
+        assertNull(RouteCatalogScreen.cachedSearchPage(cache, null, "tes"));
+        var exact = new CatalogPage(List.of(summary()), true, "next");
+        cache.put(RouteCatalogScreen.searchCacheKey(null, "tes"), exact);
+        assertSame(exact, RouteCatalogScreen.cachedSearchPage(cache, null, "tes"));
     }
 
     @Test

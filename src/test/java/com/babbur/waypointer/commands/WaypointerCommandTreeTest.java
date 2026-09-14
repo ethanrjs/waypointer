@@ -49,6 +49,7 @@ class WaypointerCommandTreeTest {
         CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
         List<String> branches = List.of(
                 "gui",
+                "minimap",
                 "help",
                 "list",
                 "routes",
@@ -101,6 +102,9 @@ class WaypointerCommandTreeTest {
     void criticalWorkflowCommandsParseWithoutSyntaxErrors() throws Exception {
         CommandDispatcher<FabricClientCommandSource> dispatcher = registeredDispatcher();
         Map<String, String> commands = Map.ofEntries(
+                Map.entry("wp minimap", "Crystal Hollows minimap editor"),
+                Map.entry("waypointer minimap", "minimap editor long alias"),
+                Map.entry("wptr minimap", "minimap editor short alias"),
                 Map.entry("wp help import", "help section lookup"),
                 Map.entry("wp help chattemp", "chat-temp help lookup"),
                 Map.entry("wp help all", "all-command help lookup"),
@@ -542,6 +546,7 @@ class WaypointerCommandTreeTest {
         assertEquals(6, WaypointerCommandHelp.resolvePage("blacklist"), "blacklist command should resolve to chat/temp help");
         assertEquals(7, WaypointerCommandHelp.resolvePage("debug"), "debug command should resolve to debug");
         assertEquals(8, WaypointerCommandHelp.resolvePage("crystal"), "crystal should resolve directly");
+        assertEquals(8, WaypointerCommandHelp.resolvePage("minimap"), "minimap should resolve to crystal help");
         assertEquals(8, WaypointerCommandHelp.resolvePage("wpch"), "wpch should resolve to crystal help");
         assertEquals(-1, WaypointerCommandHelp.resolvePage("all"), "all is handled before page resolution");
         assertEquals(-1, WaypointerCommandHelp.resolvePage("missing"), "unknown target should still be rejected");

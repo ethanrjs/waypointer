@@ -93,7 +93,7 @@ class WaypointRendererTest {
     }
 
     @Test
-    void featureBloatOffDoesNotReservePaintOrLoseStoredPaint() {
+    void painterRemainsRenderedWhenExtrasAreDisabled() {
         WaypointerConfig config = new WaypointerConfig();
         config.setColorSequenceWaypointsByRole(false);
         WaypointGroup painted = groupWith(waypoint(0));
@@ -105,10 +105,13 @@ class WaypointRendererTest {
             assertTrue(WaypointPaintTextureCache.isRetained(painted.paint()));
             config.setEnableFeatureBloat(false);
             renderer.reserveActivePaints(List.of(painted));
-            assertFalse(WaypointPaintTextureCache.isRetained(painted.paint()));
+            assertTrue(WaypointPaintTextureCache.isRetained(painted.paint()));
             assertTrue(painted.paint() != null);
             config.setBoxStyle(WaypointerConfig.BoxStyle.PAINT);
             assertTrue(renderer.staticBoxGeometryEnabledFor(List.of(painted)));
+            config.setBeaconOpacity(0.0);
+            renderer.reserveActivePaints(List.of(painted));
+            assertFalse(WaypointPaintTextureCache.isRetained(painted.paint()));
         } finally {
             WaypointPaintTextureCache.resetRetainedReservation();
         }
@@ -622,6 +625,36 @@ class WaypointRendererTest {
         assertEquals("33.3%", WaypointRenderer.formatProgressPercent(33.34));
         assertEquals("33.4%", WaypointRenderer.formatProgressPercent(33.35));
         assertEquals("100.0%", WaypointRenderer.formatProgressPercent(100.9));
+    }
+
+    @Test
+    void contextProgressFollowsEachEnabledMainStageAndSubwaypointsShareTheirParent() {
+        var group = groupWith(waypointAt(0, 64, 0, 0),
+                waypointAt(1, 64, 0, Waypoint.FLAG_DISABLED),
+                waypointAt(2, 64, 0, 0),
+                waypointAt(3, 64, 0, Waypoint.FLAG_SUBWAYPOINT),
+                waypointAt(4, 64, 0, 0));
+        group.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        group.setCurrentIndex(2);
+        assertEquals("0.0%", WaypointRenderer.routeProgressText(group, 0));
+        assertEquals("33.3%", WaypointRenderer.routeProgressText(group, 2));
+        assertEquals("33.3%", WaypointRenderer.routeProgressText(group, 3));
+        assertEquals("66.7%", WaypointRenderer.routeProgressText(group, 4));
+        group.setLoadMode(WaypointGroup.LoadMode.STATIC);
+        assertEquals(WaypointRenderer.routeProgressText(group), WaypointRenderer.routeProgressText(group, 0));
+        assertEquals(WaypointRenderer.routeProgressText(group), WaypointRenderer.routeProgressText(group, 4));
+    }
+
+    @Test
+    void waypointNamePlaceholdersUseLiveLabelContextAndPreserveUnknownTokens() {
+        var point = new Waypoint(0, 64, 0, "{route}: {index}/{total} {distance} {unknown}", 0, 0, 0);
+        var group = groupWith(waypointAt(0, 64, 0, 0), point,
+                waypointAt(2, 64, 0, Waypoint.FLAG_SUBWAYPOINT));
+        var config = new WaypointerConfig();
+        config.setShowWaypointNames(true);
+        assertEquals(List.of(group.name() + ": 2/2 12m {unknown}"),
+                WaypointRenderer.labelRows(config, group, 1, point, false, "current", 12.9, null));
+        assertEquals("{route}: {index}/{total} {distance} {unknown}", point.name());
     }
 
     @Test

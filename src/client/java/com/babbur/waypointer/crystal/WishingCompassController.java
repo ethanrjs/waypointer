@@ -94,8 +94,12 @@ public final class WishingCompassController {
         lastEvent = "reset";
     }
 
-    /** Drop unfinished capture context on region changes without deleting a solved marker. */
-    void onRegionChanged() {
+    /**
+     * Drop unfinished capture context on region changes without deleting a solved marker.
+     * Walking between the Nucleus and an outer zone keeps an unfinished search alive.
+     */
+    void onRegionChanged(CrystalHollowsZone from, CrystalHollowsZone to) {
+        if (from != null && to != null && WishingCompassSolver.zonesCompatible(from, to)) return;
         // Keep a completed result available to diagnostics; onUse starts its next search afresh.
         if (solver.lastResult().isEmpty()) solver.reset();
         lastEvent = "region_changed";
@@ -170,13 +174,16 @@ public final class WishingCompassController {
                 result.gap(), result.targets());
         Set<WishingCompassTarget> targets = result.targets();
         StructureSighting sighting = toSighting(result);
+        // Region-exit tracking needs one search region; a Nucleus + outer-zone pair has none.
+        CrystalHollowsZone originRegion = result.firstRay().zone() == result.secondRay().zone()
+                ? result.searchZone() : null;
         if (targets.size() == 1 && targets.contains(WishingCompassTarget.CRYSTAL_NUCLEUS)) {
-            tracker.focusCompassTarget(sighting, result.firstRay().zone());
-            send("waypointer.crystal.compass.solved_nucleus");
+            tracker.focusCompassTarget(sighting, originRegion);
+            send(Component.translatable("waypointer.crystal.compass.solved_nucleus").append(CrystalHollowsShare.defocus()));
             return;
         }
         tracker.merge(sighting, false);
-        tracker.focusCompassTarget(sighting, result.firstRay().zone());
+        tracker.focusCompassTarget(sighting, originRegion);
         sighting = tracker.compassTargetSighting();
         Component names = sighting.structure() == CrystalHollowsStructure.WISHING_TARGET
                 ? targetNames(targets)
@@ -190,7 +197,8 @@ public final class WishingCompassController {
                 .append(Component.translatable("waypointer.crystal.action.share")
                         .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA)
                                 .withUnderlined(true)
-                                .withClickEvent(CrystalHollowsShare.share(sighting))));
+                                .withClickEvent(CrystalHollowsShare.share(sighting))))
+                .append(CrystalHollowsShare.defocus());
         send(message);
     }
 
@@ -243,7 +251,7 @@ public final class WishingCompassController {
         Minecraft client = Minecraft.getInstance();
         if (client.player != null) {
             client.player.sendSystemMessage(WaypointerChatFeedback.suppress(Component.literal("[WP] ")
-                    .withStyle(ChatFormatting.GREEN).append(message)));
+                    .withStyle(ChatFormatting.AQUA).append(message)));
         }
     }
 }

@@ -7,6 +7,7 @@ import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.config.WaypointerConfig;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -36,6 +37,7 @@ public final class DefaultWaypointerApi implements WaypointerApi {
     private final ActiveGroupManager manager;
     private final BooleanSupplier isClientThread;
     private final Executor clientExecutor;
+    private final WaypointerConfig config;
 
     public DefaultWaypointerApi(ActiveGroupManager manager) {
         this(manager, () -> true, Runnable::run);
@@ -45,9 +47,15 @@ public final class DefaultWaypointerApi implements WaypointerApi {
             ActiveGroupManager manager,
             BooleanSupplier isClientThread,
             Executor clientExecutor) {
+        this(manager, isClientThread, clientExecutor, new WaypointerConfig());
+    }
+
+    public DefaultWaypointerApi(ActiveGroupManager manager, BooleanSupplier isClientThread,
+                                Executor clientExecutor, WaypointerConfig config) {
         this.manager = Objects.requireNonNull(manager, "manager");
         this.isClientThread = Objects.requireNonNull(isClientThread, "isClientThread");
         this.clientExecutor = Objects.requireNonNull(clientExecutor, "clientExecutor");
+        this.config = Objects.requireNonNull(config, "config");
     }
 
     @Override
@@ -223,7 +231,8 @@ public final class DefaultWaypointerApi implements WaypointerApi {
                     groups,
                     actualOptions.toCodecOptions(),
                     target,
-                    metadata);
+                    metadata,
+                    config);
         });
     }
 

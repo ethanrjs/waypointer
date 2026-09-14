@@ -50,6 +50,9 @@ public final class WaypointPainterScreen extends Screen {
     private int cursorX;
     private int cursorY;
     private boolean painting;
+    private final EditHistory<PaintState> history;
+    private HistoryButton undoButton, redoButton;
+    private record PaintState(WaypointPaint paint, FaceView faceView) {}
     private int lastPaintOffset = -1;
     private WaypointPaint snapshot;
     private boolean importing;
@@ -82,6 +85,7 @@ public final class WaypointPainterScreen extends Screen {
         this.palette = config.waypointPainterPalette();
         this.pixels = initial.pixelsCopy();
         this.faceView = initial.hasIdenticalFaces() ? FaceView.ONE : FaceView.ALL;
+        history = new EditHistory<>(capture());
     }
 
     @Override
@@ -131,6 +135,8 @@ public final class WaypointPainterScreen extends Screen {
                         targetGroup == null
                                 ? "waypointer.screen.painter.apply.choose.tooltip"
                                 : "waypointer.screen.painter.apply.current.tooltip"))));
+        undoButton = addRenderableWidget(new HistoryButton(width - PAD_OUTER - 48, 4, false, () -> moveHistory(false)));
+        redoButton = addRenderableWidget(new HistoryButton(width - PAD_OUTER - 22, 4, true, () -> moveHistory(true)));
         refreshEditingState();
     }
 
@@ -246,6 +252,7 @@ public final class WaypointPainterScreen extends Screen {
             palette[selectedPalette] = picked & 0xFFFFFF;
             config.setWaypointPainterPalette(palette);
             refreshPaletteTooltip(selectedPalette);
+            remember();
             snapshot = null;
             status = "";
         });
@@ -261,6 +268,7 @@ public final class WaypointPainterScreen extends Screen {
         snapshot = null;
         status = "";
         if (faceViewButton != null) faceViewButton.setMessage(faceViewComponent());
+        remember();
     }
 
     private void importFromFiles() {
@@ -312,6 +320,7 @@ public final class WaypointPainterScreen extends Screen {
             System.arraycopy(imported.paletteCopy(), 0, palette, 0, palette.length);
             System.arraycopy(imported.pixelsCopy(), 0, pixels, 0, pixels.length);
             config.setWaypointPainterPalette(palette);
+            remember();
             refreshPaletteTooltips();
             snapshot = null;
             status = Component.translatable(faceView == FaceView.ONE
@@ -328,6 +337,8 @@ public final class WaypointPainterScreen extends Screen {
         if (faceViewButton != null) faceViewButton.active = editable;
         if (importButton != null) importButton.active = !importing;
         if (applyButton != null) applyButton.active = !importing;
+        if (undoButton != null) undoButton.active = editable && history.canUndo();
+        if (redoButton != null) redoButton.active = editable && history.canRedo();
     }
 
     static boolean acceptsImageDimensions(int width, int height) {
@@ -361,10 +372,6 @@ public final class WaypointPainterScreen extends Screen {
                     target.ordinal() * WaypointPaint.FACE_PIXELS,
                     WaypointPaint.FACE_PIXELS);
         }
-    }
-
-    private String faceViewLabel() {
-        return faceView == FaceView.ONE ? "One" : "All";
     }
 
     private Component faceViewComponent() {
@@ -458,6 +465,7 @@ public final class WaypointPainterScreen extends Screen {
             PaintCell cell = cellAt(layout(), event.x(), event.y());
             if (cell != null) {
                 setFocused(null);
+                if (importing) return true;
                 painting = true;
                 lastPaintOffset = -1;
                 paint(cell);
@@ -485,13 +493,18 @@ public final class WaypointPainterScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
-        painting = false;
-        lastPaintOffset = -1;
+        finishStroke();
         return super.mouseReleased(event);
     }
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if ((event.modifiers() & GLFW_MOD_CONTROL) != 0) {
+            if (event.key() == GLFW_KEY_Z || event.key() == GLFW_KEY_Y) {
+                moveHistory(event.key() == GLFW_KEY_Y || (event.modifiers() & GLFW_MOD_SHIFT) != 0);
+                return true;
+            }
+        }
         if (getFocused() == canvasButton && event.key() != GLFW_KEY_TAB) {
             switch (event.key()) {
                 case GLFW_KEY_LEFT -> moveCursor(-1, 0);
@@ -501,12 +514,44 @@ public final class WaypointPainterScreen extends Screen {
                 case GLFW_KEY_SPACE, GLFW_KEY_ENTER -> {
                     lastPaintOffset = -1;
                     paint(new PaintCell(cursorFace, cursorX, cursorY));
+                    remember();
                 }
                 default -> { return super.keyPressed(event); }
             }
             return true;
         }
         return super.keyPressed(event);
+    }
+
+    private PaintState capture() {
+        return new PaintState(new WaypointPaint(palette, pixels), faceView);
+    }
+
+    private void remember() {
+        history.record(capture());
+        refreshEditingState();
+    }
+
+    private void finishStroke() {
+        if (painting) remember();
+        painting = false;
+        lastPaintOffset = -1;
+    }
+
+    private void moveHistory(boolean forward) {
+        if (importing) return;
+        finishStroke();
+        PaintState state = forward ? history.redo() : history.undo();
+        System.arraycopy(state.paint().paletteCopy(), 0, palette, 0, palette.length);
+        System.arraycopy(state.paint().pixelsCopy(), 0, pixels, 0, pixels.length);
+        faceView = state.faceView();
+        if (faceView == FaceView.ONE) cursorFace = WaypointPaint.Face.NORTH;
+        config.setWaypointPainterPalette(palette);
+        refreshPaletteTooltips();
+        if (faceViewButton != null) faceViewButton.setMessage(faceViewComponent());
+        snapshot = null;
+        status = "";
+        refreshEditingState();
     }
 
     private void moveCursor(int dx, int dy) {
@@ -542,6 +587,7 @@ public final class WaypointPainterScreen extends Screen {
 
     @Override
     public void removed() {
+        finishStroke();
         if (preview != null) {
             preview.release();
             preview = null;

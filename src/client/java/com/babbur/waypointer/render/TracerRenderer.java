@@ -95,7 +95,8 @@ public final class TracerRenderer implements HudElement {
         if (MetalDetectorController.isDetectorGroup(group) && !tracersEnabled(group, options, dungeonConfig)) return null;
         if (!tempFocus && (!tracersEnabled(group, options, dungeonConfig)
                 || options.hideTracerOnStaticRoutes() && group.loadMode() == WaypointGroup.LoadMode.STATIC)) return null;
-        if (target != null && (CompassMarkerState.navigationStopped(target)
+        if (target != null && ((CompassMarkerState.arrived(target) || CompassMarkerState.regionExited(target)
+                        || !tempFocus && CompassMarkerState.defocused(target))
                 || !crystalHollowsTracerAllowed(group, target, options))) return null;
         if (target == null) {
             if (recordDecision) RenderDiagnostics.recordNoStraightTracer(group, "no current target");
@@ -159,7 +160,7 @@ public final class TracerRenderer implements HudElement {
         var groups = manager.activeGroups();
         for (WaypointGroup group : groups) WaypointSkipFade.observe(group, config);
         if (groups.isEmpty()) return;
-        boolean tempFocus = manager.tempWaypointFocusActive();
+        boolean focusActive = manager.tempWaypointFocusActive();
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer player = mc.player;
         GameRenderer renderer = mc.gameRenderer;
@@ -172,6 +173,7 @@ public final class TracerRenderer implements HudElement {
         double fromX = screenW / 2.0;
         double fromY = screenH / 2.0;
         for (WaypointGroup group : groups) {
+            boolean tempFocus = focusActive && group.temp() && group.focusedVisibleIndex() >= 0;
             for (int pass = 0; pass < 2; pass++) {
                 Waypoint target = straightTracerTarget(
                         group, tempFocus, player, camera.position(), pass == 0, pass == 1);

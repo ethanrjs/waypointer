@@ -11,7 +11,6 @@ import net.minecraft.network.chat.Component;
 import java.util.Objects;
 import java.util.function.Consumer;
 
-/** Confirms configuration imports before applying changes. */
 public final class ConfigImportConfirmation {
 
     public record Outcome(boolean confirmed, int changedSettings) {}

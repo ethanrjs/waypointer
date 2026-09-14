@@ -6,7 +6,6 @@ import com.babbur.waypointer.api.WaypointerApiEntrypoints;
 import com.babbur.waypointer.chat.ChatCoordDetector;
 import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.chat.ChatImportDetector;
-import com.babbur.waypointer.chat.HypixelPlayerRankSource;
 import com.babbur.waypointer.commands.WaypointerCommands;
 import com.babbur.waypointer.commands.DungeonCommands;
 import com.babbur.waypointer.commands.CrystalHollowsCommands;
@@ -137,11 +136,11 @@ public final class WaypointerClient implements ClientModInitializer {
         migrateLegacyDungeonRoutes();
         storage.attach(manager);
         Minecraft minecraft = Minecraft.getInstance();
-        api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft);
+        com.babbur.waypointer.debug.ServerTimingDiagnostics.install();
+        api = new DefaultWaypointerApi(manager, minecraft::isSameThread, minecraft, config);
 
         new LocationTracker(manager, config).install();
         installCrystalHollowsSubsystem();
-        HypixelPlayerRankSource.install();
         DungeonChestInteractionGuard chestInteractionGuard = new DungeonChestInteractionGuard();
         chestInteractionGuard.install();
         new ProximityTracker(manager, config, chestInteractionGuard, dungeonConfig).install();
@@ -315,6 +314,7 @@ public final class WaypointerClient implements ClientModInitializer {
         crystalHollowsStore = CrystalHollowsStore.loadDefault();
         crystalHollowsTracker = new CrystalHollowsTracker(manager, config, crystalHollowsStore);
         crystalHollowsTracker.install();
+        new com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync(manager, crystalHollowsTracker).install();
         new com.babbur.waypointer.crystal.CrystalHollowsMinimap(crystalHollowsTracker, config).install();
         crystalHollowsCompass = new WishingCompassController(crystalHollowsTracker, config);
         crystalHollowsCompass.install();

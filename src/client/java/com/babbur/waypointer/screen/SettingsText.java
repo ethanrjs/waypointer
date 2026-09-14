@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
 import net.minecraft.ChatFormatting;
@@ -53,6 +54,9 @@ final class SettingsText {
                 if (Objects.equals(setting.enumOptions().get(i).value(), value)) {
                     return enumOption(setting, i);
                 }
+            }
+            if (value instanceof String text && text.startsWith(WaypointerConfig.CUSTOM_ICON_PREFIX)) {
+                return Component.translatableWithFallback("waypointer.settings.value.custom", "Custom");
             }
         }
         if (setting.hasNumberDisplay(value)) {

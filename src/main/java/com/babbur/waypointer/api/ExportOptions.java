@@ -59,9 +59,8 @@ public final class ExportOptions {
     }
 
     /**
-     * Whether exported routes keep the island they were recorded on. When
-     * false the island is stripped and importers place the route on whatever
-     * island the recipient is standing on.
+     * Whether exports retain the recorded island, when the target supports omission.
+     * Recipients choose how to place routes without an island.
      */
     public boolean includeZone() {
         return includeZone;

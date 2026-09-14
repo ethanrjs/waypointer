@@ -57,6 +57,7 @@ public final class StructureRelayProtocol {
     }
 
     public static String encode(StructureSighting sighting, long age) {
+        if (!local(sighting)) throw new IllegalArgumentException("Only local observations can be shared");
         JsonObject json = new JsonObject();
         json.addProperty("type", "sighting");
         json.addProperty("structure", sighting.structure().id());

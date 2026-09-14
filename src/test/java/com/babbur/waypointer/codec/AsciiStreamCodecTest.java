@@ -7,11 +7,7 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Safety net for the current chat text layer. The codec sits outside DEFLATE, so a
- * single bit-packing regression makes every otherwise-valid waypoint share fail
- * before the binary body version guard can explain what happened.
- */
+
 class AsciiStreamCodecTest {
 
     @Test

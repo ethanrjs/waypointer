@@ -4,9 +4,31 @@ import com.babbur.waypointer.core.Zone;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ScoreboardZoneResolverTest {
+    @Test
+    void missingAreaLineDoesNotHideALateMineshaftCode() {
+        var manager = new com.babbur.waypointer.core.ActiveGroupManager();
+        var source = new ScoreboardZoneResolver(manager::onZoneChanged);
+        source.updateWorld(new Object());
+        source.acceptSidebar("\uE067 Glacite Mineshafts\n09/12/26 m96M UMBE_1");
+        assertEquals(Zone.fromId("mineshaft_umber"), manager.currentZone());
+        source.updateWorld(new Object());
+        for (int poll = 0; poll < ScoreboardZoneResolver.PLAYER_LIST_CONFIRM_POLLS; poll++) {
+            source.acceptSidebar("", () -> "Mineshaft");
+        }
+        assertEquals(Zone.fromId("mineshaft_unknown"), manager.currentZone());
+        source.acceptSidebar("09/12/26 m96M UMBE_1");
+        assertEquals(Zone.fromId("mineshaft_umber"), manager.currentZone());
+        source.acceptSidebar("");
+        assertEquals(Zone.fromId("mineshaft_umber"), manager.currentZone());
+        source.acceptSidebar("TOPA_2");
+        assertEquals(Zone.fromId("mineshaft_topaz_2"), manager.currentZone());
+    }
+
     @Test
     void missingUpdatesKeepRoutesOnlyWithinTheSameWorld() {
         var manager = new com.babbur.waypointer.core.ActiveGroupManager();
@@ -31,6 +53,63 @@ class ScoreboardZoneResolverTest {
         assertNull(manager.currentZone());
     }
 
+
+    @Test
+    void playerListAreaStandsInOnlyWhileNothingElseIsKnown() {
+        var manager = new com.babbur.waypointer.core.ActiveGroupManager();
+        var source = new ScoreboardZoneResolver(manager::onZoneChanged);
+        source.updateWorld(new Object());
+        for (int poll = 1; poll < ScoreboardZoneResolver.PLAYER_LIST_CONFIRM_POLLS; poll++) {
+            source.acceptSidebar("", () -> "Dwarven Mines");
+            assertNull(manager.currentZone());
+        }
+        source.acceptSidebar("", () -> "Dwarven Mines");
+        assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
+        source.acceptSidebar("", () -> "Hub");
+        assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
+        source.acceptSidebar("\u23e3 Hub", () -> "Dwarven Mines");
+        assertEquals(Zone.fromId("hub"), manager.currentZone());
+        source.updateWorld(new Object());
+        source.acceptSidebar(null, () -> null);
+        assertNull(manager.currentZone());
+        assertEquals(Zone.fromId("crystal_hollows"), ScoreboardZoneResolver.resolveAreaName("Jungle"));
+        assertEquals(Zone.fromId("hub"), ScoreboardZoneResolver.resolveAreaName("Hub, "));
+        assertEquals(Zone.fromId("hub"), ScoreboardZoneResolver.resolveKnownAreaName("Hub"));
+        assertNull(ScoreboardZoneResolver.resolveKnownAreaName("Center"));
+        assertNull(ScoreboardZoneResolver.resolveAreaName("  "));
+        assertEquals("Dwarven Mines", TabListTexts.areaName("\u00a7bArea: \u00a7aDwarven Mines"));
+        assertNull(TabListTexts.areaName("Area:"));
+        assertNull(TabListTexts.areaName("Purse: 10"));
+    }
+
+    @Test
+    void confirmedLayoutsSurviveDroppedCodeLinesUntilRealEvidenceReplacesThem() {
+        var manager = new com.babbur.waypointer.core.ActiveGroupManager();
+        var source = new ScoreboardZoneResolver(manager::onZoneChanged);
+        source.updateWorld(new Object());
+        source.acceptSidebar("\u23e3 Glacite Mineshafts\nUMBE_1");
+        assertEquals(Zone.fromId("mineshaft_umber"), manager.currentZone());
+        source.acceptSidebar("\u23e3 Glacite Mineshafts\nCold: 3");
+        assertEquals(Zone.fromId("mineshaft_umber"), manager.currentZone());
+        source.acceptSidebar("\u23e3 Glacite Mineshafts\nAQUA_C");
+        assertEquals(Zone.fromId("mineshaft_crystal"), manager.currentZone());
+        source.acceptSidebar("\u23e3 Dwarven Mines");
+        assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
+        source.acceptSidebar("The Catacombs (F7)\n\u23e3 The Catacombs");
+        assertEquals(Zone.fromId("dungeon_f7"), manager.currentZone());
+        source.acceptSidebar("\u23e3 The Catacombs\nCleared: 40%");
+        assertEquals(Zone.fromId("dungeon_f7"), manager.currentZone());
+        source.acceptSidebar("The Catacombs (M3)\n\u23e3 The Catacombs");
+        assertEquals(Zone.fromId("dungeon_m3"), manager.currentZone());
+        assertEquals(Zone.fromId("mineshaft_umber"), ConfirmedLayoutRetention.retain(
+                Zone.fromId("mineshaft_umber"), Zone.fromId("mineshaft_unknown"), ""));
+        assertEquals(Zone.fromId("hub"), ConfirmedLayoutRetention.retain(
+                Zone.fromId("mineshaft_umber"), Zone.fromId("hub"), ""));
+        assertNull(ConfirmedLayoutRetention.retain(Zone.fromId("mineshaft_umber"), null, ""));
+        assertTrue(Zone.isSpecificMineshaftZone("mineshaft_umber"));
+        assertFalse(Zone.isSpecificMineshaftZone("mineshaft_unknown"));
+        assertFalse(Zone.isSpecificMineshaftZone(null));
+    }
 
     @Test
     void resolvesRepresentativeSidebarFixtures() {
@@ -58,15 +137,20 @@ class ScoreboardZoneResolverTest {
     }
 
     @Test
-    void specialRefinersRequireALocationMarker() {
+    void mineshaftCodesResolveWithoutALocationMarkerButAreaNamesAloneDoNot() {
         assertNull(ScoreboardZoneResolver.resolveSidebarText("""
                 The Catacombs (F7)
                 Dungeon Cleared: 100%
                 """));
-        assertNull(ScoreboardZoneResolver.resolveSidebarText("""
+        assertZone("mineshaft_crystal", """
                 07/15/26 m197CD AQUA_C
                 Glacite Mineshafts
-                """));
+                """);
+        assertZone("mineshaft_umber", "09/12/26 m96M UMBE_1");
+        assertNull(ScoreboardZoneResolver.resolveSidebarText("Glacite Mineshafts"));
+        assertNull(ScoreboardZoneResolver.resolveSidebarText("09/12/26 m96M NOTUMBE_1"));
+        assertNull(ScoreboardZoneResolver.resolveSidebarText("09/12/26 m96M umbe_1"));
+        assertZone("mineshaft_unknown", "\uE067 Glacite Mineshafts");
     }
 
     @Test

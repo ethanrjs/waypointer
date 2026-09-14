@@ -159,6 +159,43 @@ public final class RouteCatalogClient {
         return sendEmpty(builder.build(), MAX_LIST_BYTES, 204);
     }
 
+    /** Signed owner edit; resolves to the route's refreshed catalog summary. */
+    public CompletableFuture<CatalogRouteSummary> updateRoute(
+            String routeId, CatalogRouteUpdate update, PublisherIdentity identity) {
+        requireRouteId(routeId);
+        if (identity == null) {
+            throw new IllegalArgumentException("Publisher identity is required");
+        }
+        if (update == null || update.isEmpty()) {
+            throw new IllegalArgumentException("Route update has no changes");
+        }
+        byte[] body = CatalogJson.updateBody(update).getBytes(StandardCharsets.UTF_8);
+        String path = "/api/routes/" + routeId;
+        HttpRequest.Builder builder = request("routes/" + routeId)
+                .header("Content-Type", "application/json")
+                .method("PATCH", HttpRequest.BodyPublishers.ofByteArray(body));
+        addSignature(builder, identity, "PATCH", path, body);
+        return sendJson(builder.build(), MAX_LIST_BYTES, 200)
+                .thenApply(json -> {
+                    try {
+                        CatalogRouteSummary route = CatalogJson.parseRouteResponse(json);
+                        if (!routeId.equals(route.id())) {
+                            throw new CatalogApiException(200, "invalid_response",
+                                    "The catalog confirmed a different route.");
+                        }
+                        if (!identity.publisherId().equals(route.publisherId())) {
+                            throw new CatalogApiException(200, "invalid_response",
+                                    "The catalog confirmed a different publisher.");
+                        }
+                        return route;
+                    } catch (RuntimeException failure) {
+                        com.babbur.waypointer.debug.DebugSignals.recordCatalogFailure("PATCH", 200, "invalid_response");
+                        if (failure instanceof CatalogApiException) throw failure;
+                        throw new CatalogApiException(200, "invalid_response", "The catalog returned an invalid route.");
+                    }
+                });
+    }
+
     public CompletableFuture<Void> recordInstall(String routeId) {
         return recordInstall(routeId, null, null);
     }
@@ -207,10 +244,10 @@ public final class RouteCatalogClient {
             }
             return json;
         }).orTimeout(12, TimeUnit.SECONDS);
-        result.whenComplete((ignored, failure) -> {
+        return result.whenComplete((ignored, failure) -> {
+            recordFailure(request, failure);
             if (failure instanceof java.util.concurrent.TimeoutException) network.cancel(true);
         });
-        return result;
     }
 
     private static boolean isJsonMediaType(String contentType) {
@@ -231,10 +268,22 @@ public final class RouteCatalogClient {
             }
             return (Void) null;
         }).orTimeout(12, TimeUnit.SECONDS);
-        result.whenComplete((ignored, failure) -> {
+        return result.whenComplete((ignored, failure) -> {
+            recordFailure(request, failure);
             if (failure instanceof java.util.concurrent.TimeoutException) network.cancel(true);
         });
-        return result;
+    }
+
+    private static void recordFailure(HttpRequest request, Throwable failure) {
+        if (failure == null) return;
+        while ((failure instanceof java.util.concurrent.CompletionException
+                || failure instanceof java.util.concurrent.ExecutionException) && failure.getCause() != null) {
+            failure = failure.getCause();
+        }
+        int status = failure instanceof CatalogApiException api ? api.status() : 0;
+        String code = failure instanceof CatalogApiException api ? api.code()
+                : failure instanceof java.util.concurrent.TimeoutException ? "timeout" : "transport_error";
+        com.babbur.waypointer.debug.DebugSignals.recordCatalogFailure(request.method(), status, code);
     }
 
     private void addSignature(

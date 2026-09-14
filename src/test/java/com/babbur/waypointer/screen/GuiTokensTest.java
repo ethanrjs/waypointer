@@ -14,6 +14,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class GuiTokensTest {
 
     @Test
+    void infoTooltipFitsNarrowAndShortScreensWithoutEnlargingText() {
+        assertEquals(1.0f, GuiTokens.infoTooltipScale(300, 230, 640, 400));
+        for (int[] bounds : new int[][]{{250, 400}, {640, 180}, {250, 180}}) {
+            float scale = GuiTokens.infoTooltipScale(300, 230, bounds[0], bounds[1]);
+            assertTrue(scale > 0 && scale < 1);
+            assertTrue(300 * scale <= bounds[0] - GuiTokens.PAD_OUTER + 0.001f);
+            assertTrue(230 * scale <= bounds[1] - GuiTokens.PAD_OUTER + 0.001f);
+        }
+    }
+
+    @Test
     void checkboxCheckmarkPreservesTheSuppliedTextureCanvas() throws IOException {
         try (var stream = GuiTokensTest.class.getResourceAsStream(
                 "/assets/waypointer/textures/gui/checkmark.png")) {

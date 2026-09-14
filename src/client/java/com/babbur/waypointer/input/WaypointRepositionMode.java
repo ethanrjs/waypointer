@@ -1,5 +1,6 @@
 package com.babbur.waypointer.input;
 
+import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
@@ -28,6 +29,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.InteractionResult;
@@ -77,6 +79,16 @@ public final class WaypointRepositionMode {
 
     private static final WaypointEditPicker EDIT_PICKER = new WaypointEditPicker();
     private static Session active;
+
+    /** Never place a waypoint inside the player's own head. */
+    static final double MIN_PLACEMENT_DISTANCE = 1.0;
+    private static final Object MISS_ANCHOR = new Object();
+    // Wheel steps pulling the target toward the player (negative pushes a mid-air target away).
+    private static int placementOffsetSteps;
+    // The block (or open air) the offset was scrolled against; a new target starts from zero again.
+    private static Object placementAnchor;
+    // Trackpads and free-spinning wheels report fractions of a notch; only whole notches move the target.
+    private static double scrollAccumulator;
     private static ActiveGroupManager editManager;
     private static WaypointerConfig editConfig;
     private static String editTargetGroupId;
@@ -135,6 +147,7 @@ public final class WaypointRepositionMode {
         lastEditModeActionLevel = null;
         lastEditModeActionGameTime = Long.MIN_VALUE;
         clearEditSelectionCycle();
+        resetPlacementOffset();
         if (enabled) {
             if (manager == null || config == null) {
                 if (editManager != null) editManager.isolateRouteForEditing(null);
@@ -200,7 +213,7 @@ public final class WaypointRepositionMode {
             return;
         }
         if (!DungeonRoomWaypointPlacement.canPlaceInCurrentRoom(editTarget)) {
-            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage());
+            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage(editTarget));
             return;
         }
         Waypoint waypoint = group.get(waypointIndex);
@@ -208,6 +221,7 @@ public final class WaypointRepositionMode {
                 && waypoint.hasFlag(Waypoint.FLAG_SMALL_SUBWAYPOINT);
         active = new Session(manager, config, group, waypointIndex,
                 Mode.MOVE_EXISTING, preciseSmallPlacement, reopenEditorAfterCommit);
+        resetPlacementOffset();
         MinecraftCompat.setScreen(mc, null);
         showHelp(mc);
     }
@@ -248,6 +262,7 @@ public final class WaypointRepositionMode {
 
         WaypointGroup group = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
         active = new Session(manager, config, group, -1, mode, preciseSmallPlacement, true);
+        resetPlacementOffset();
         MinecraftCompat.setScreen(mc, null);
         showHelp(mc);
     }
@@ -365,7 +380,7 @@ public final class WaypointRepositionMode {
                 new Waypoint(pos.getX(), pos.getY(), pos.getZ(),
                         "", editConfig.defaultWaypointColor(), flags, 0.0));
         if (stored == null) {
-            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage());
+            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage(group));
             return InteractionResult.FAIL;
         }
         group.add(stored);
@@ -491,7 +506,7 @@ public final class WaypointRepositionMode {
         if (!DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(
                 target, session.waypointIndex, pos.getX(), pos.getY(), pos.getZ())) {
             active = null;
-            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage());
+            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage(target));
             return;
         }
         session.manager.fireDataChanged();
@@ -515,7 +530,7 @@ public final class WaypointRepositionMode {
                 target.preciseX(), target.preciseY(), target.preciseZ());
         if (stored == null) {
             active = null;
-            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage());
+            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage(writeTarget));
             return;
         }
         writeTarget.moveWaypointToPrecise(session.waypointIndex, stored[0], stored[1], stored[2]);
@@ -663,8 +678,102 @@ public final class WaypointRepositionMode {
 
     private static BlockHitResult placementHit(Minecraft mc) {
         if (mc == null || mc.player == null || mc.level == null) return null;
-        return placementHit(mc.level, mc.player.getEyePosition(), mc.player.getViewVector(1.0F),
-                mc.player.blockInteractionRange(), CollisionContext.of(mc.player));
+        Vec3 eye = mc.player.getEyePosition();
+        Vec3 direction = mc.player.getViewVector(1.0F);
+        BlockHitResult base = placementHit(mc.level, eye, direction,
+                placementReach(placementConfig(), mc.player.blockInteractionRange()),
+                CollisionContext.of(mc.player));
+        syncPlacementAnchor(base);
+        return applyPlacementOffset(base, eye, direction, placementOffsetSteps,
+                WaypointerConfig.MAX_EDIT_MODE_PLACEMENT_REACH);
+    }
+
+    /**
+     * Moves the edit target one block per notch: down pulls closer, up pushes away.
+     * Shift preserves hotbar scrolling. Returns whether the event was consumed.
+     */
+    public static boolean handleScroll(Minecraft mc, double vertical) {
+        if (mc == null || mc.player == null || mc.level == null || MinecraftCompat.screen(mc) != null) return false;
+        if (!editModeEnabled && active == null) return false;
+        if (vertical == 0 || isShiftDown()) return false;
+        scrollAccumulator += vertical;
+        int notches = (int) scrollAccumulator;
+        if (notches == 0) return true;
+        scrollAccumulator -= notches;
+        Vec3 eye = mc.player.getEyePosition();
+        BlockHitResult base = placementHit(mc.level, eye, mc.player.getViewVector(1.0F),
+                placementReach(placementConfig(), mc.player.blockInteractionRange()),
+                CollisionContext.of(mc.player));
+        syncPlacementAnchor(base);
+        for (int notch = 0; notch < Math.abs(notches); notch++) {
+            placementOffsetSteps = nextPlacementOffset(placementOffsetSteps, notches,
+                    base.getType() == HitResult.Type.BLOCK, eye.distanceTo(base.getLocation()),
+                    WaypointerConfig.MAX_EDIT_MODE_PLACEMENT_REACH);
+        }
+        double distance = placementDistance(base, eye, placementOffsetSteps,
+                WaypointerConfig.MAX_EDIT_MODE_PLACEMENT_REACH);
+        if (mc.gui != null) {
+            MinecraftCompat.setOverlayMessage(mc, Component.translatable(
+                    "waypointer.input.edit_mode.distance", String.format(java.util.Locale.ROOT, "%.1f", distance))
+                    .withStyle(ChatFormatting.AQUA), false);
+        }
+        return true;
+    }
+
+    private static void resetPlacementOffset() {
+        placementOffsetSteps = 0;
+        placementAnchor = null;
+        scrollAccumulator = 0;
+    }
+
+    /** Looking at a different block (or from a block into open air) discards the scrolled offset. */
+    private static void syncPlacementAnchor(BlockHitResult base) {
+        Object anchor = base == null ? null
+                : base.getType() == HitResult.Type.BLOCK ? base.getBlockPos() : MISS_ANCHOR;
+        if (anchor != null && !anchor.equals(placementAnchor)) {
+            placementAnchor = anchor;
+            placementOffsetSteps = 0;
+        }
+    }
+
+    static int nextPlacementOffset(int steps, double wheel, boolean blockHit, double baseDistance,
+                                   double maxReach) {
+        int next = wheel < 0 ? steps + 1 : steps - 1;
+        double farthest = blockHit ? baseDistance : Math.max(baseDistance, maxReach);
+        double nearest = Math.min(MIN_PLACEMENT_DISTANCE, baseDistance);
+        if (baseDistance - next < nearest) next = (int) Math.floor(baseDistance - nearest);
+        if (baseDistance - next > farthest) next = (int) Math.ceil(baseDistance - farthest);
+        return next;
+    }
+
+    static double placementDistance(BlockHitResult base, Vec3 eye, int steps, double maxReach) {
+        double baseDistance = eye.distanceTo(base.getLocation());
+        if (steps == 0) return baseDistance;
+        double farthest = base.getType() == HitResult.Type.BLOCK ? baseDistance : Math.max(baseDistance, maxReach);
+        double nearest = Math.min(MIN_PLACEMENT_DISTANCE, baseDistance);
+        return Math.max(nearest, Math.min(farthest, baseDistance - steps));
+    }
+
+    /** Replaces the ray's block hit with a point along the view ray when an offset is active. */
+    static BlockHitResult applyPlacementOffset(BlockHitResult base, Vec3 eye, Vec3 direction,
+                                               int steps, double maxReach) {
+        if (base == null || steps == 0) return base;
+        double distance = placementDistance(base, eye, steps, maxReach);
+        Vec3 point = eye.add(direction.normalize().scale(distance));
+        return BlockHitResult.miss(point, Direction.UP, BlockPos.containing(point));
+    }
+
+    private static WaypointerConfig placementConfig() {
+        Session session = active;
+        if (session != null && session.config() != null) return session.config();
+        return editConfig != null ? editConfig : WaypointerClient.config();
+    }
+
+    /** The configured reach never shortens the vanilla block reach, so nearby blocks stay targetable. */
+    static double placementReach(WaypointerConfig config, double vanillaReach) {
+        double configured = config == null
+                ? WaypointerConfig.DEFAULT_EDIT_MODE_PLACEMENT_REACH : config.editModePlacementReach();
+        return Math.max(configured, vanillaReach);
     }
 
     static BlockHitResult placementHit(BlockGetter level, Vec3 eye, Vec3 direction,

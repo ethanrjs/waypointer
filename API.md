@@ -1,4 +1,4 @@
-# Waypointer API 1.10.0
+# Waypointer API 1.11.0
 
 Waypointer exposes a client-side Fabric API for reading routes, creating saved
 user routes, rendering session-only markers and overlays, importing and
@@ -21,7 +21,7 @@ repositories {
 }
 
 dependencies {
-    modImplementation "maven.modrinth:waypointer:1.10.0"
+    modImplementation "maven.modrinth:waypointer:1.11.0"
 }
 ```
 
@@ -34,7 +34,7 @@ directory instead:
 
 ```groovy
 dependencies {
-    modImplementation files("libs/waypointer-1.10.0-mc26.1.2.jar")
+    modImplementation files("libs/waypointer-1.11.0-mc26.1.2.jar")
 }
 ```
 
@@ -349,7 +349,7 @@ try {
 ```
 
 Supported input families are Waypointer `WP:` and `WPL:` payloads, Skyblocker,
-Skytils, SkyHanni/Coleweight, ChunkLogger RouteSkipper, Soopy V1, Firmament,
+Skytils, SkyHanni/Coleweight, ChunkLogger RouteSkipper, Soopy V1, Firmament, Skysoft,
 Odin, and recognized JSON shapes. A `WP:` catalog reference (kind 6 subtype 2)
 or a `waypointermod.com/r/` link is rejected here with a message naming the
 route id, because resolving it needs the network; the in-game importers open
@@ -375,7 +375,10 @@ String shareText = waypointer.exportRoutes(
 Exports are read-only. Ids are processed in supplied order; missing and `null`
 ids are skipped. `exportRoutes(ids)` uses full-fidelity Waypointer defaults.
 
-Supported targets are Waypointer, Skyblocker, Skytils, and SkyHanni.
+Supported targets are Waypointer, Skyblocker, Skytils, SkyHanni, and SkySoft.
+`SKYSOFT` creates native `SKYSOFT:` codes from existing route data and compatible
+appearance settings. Names, colors, radii, and route metadata can be omitted;
+SkySoft requires a supported island in every route.
 Third-party formats cannot represent every Waypointer field, so use
 `WAYPOINTER` for lossless round trips. When selected routes have route-library
 metadata, the Waypointer target writes a V10 route-library `WP:` share

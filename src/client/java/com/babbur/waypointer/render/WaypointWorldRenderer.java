@@ -209,7 +209,7 @@ class WaypointWorldRenderer {
         }
 
         WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
-        boolean drawPaint = config.enableFeatureBloat() && hasPaintedGroup(groups, defaultPaint);
+        boolean drawPaint = anyPainted(groups, defaultPaint);
         boolean drawLines = anyStyle(groups, c -> worldBoxOutlinesEnabled(c.effectiveBoxStyle(), irisHudFallbackActive)
                 && c.waypointOutlineOpacity() > 0);
         boolean drawFill = anyStyle(groups, c -> c.beaconOpacity() > 0
@@ -276,7 +276,7 @@ class WaypointWorldRenderer {
         boolean retainCameraIndependentGeometry = sink.retainsStaticGeometry();
         if ((emitStatic || emitFading) && drawPaint && hasThroughWallWaypoints) {
             for (WaypointGroup g : groups) {
-                WaypointPaint paint = effectivePaint(g, defaultPaint);
+                WaypointPaint paint = paintFor(g, defaultPaint);
                 if (paint == null) continue;
                 WaypointPaintTextureCache.Entry paintTexture =
                         WaypointPaintTextureCache.getRetained(paint);
@@ -290,7 +290,7 @@ class WaypointWorldRenderer {
         }
         if ((emitStatic || emitFading) && drawPaint && hasDepthCheckedWaypoints) {
             for (WaypointGroup g : groups) {
-                WaypointPaint paint = effectivePaint(g, defaultPaint);
+                WaypointPaint paint = paintFor(g, defaultPaint);
                 if (paint == null) continue;
                 WaypointPaintTextureCache.Entry paintTexture =
                         WaypointPaintTextureCache.getRetained(paint);
@@ -884,7 +884,7 @@ class WaypointWorldRenderer {
     }
 
     int reserveActivePaints(Iterable<WaypointGroup> groups) {
-        if (groups == null || !anyStyle(groups, c -> c.enableFeatureBloat() && c.beaconOpacity() > 0.0)) {
+        if (groups == null || !anyStyle(groups, c -> c.beaconOpacity() > 0.0)) {
             WaypointPaintTextureCache.resetRetainedReservation();
             return 0;
         }
@@ -896,13 +896,13 @@ class WaypointWorldRenderer {
             for (Waypoint waypoint : group.waypoints()) {
                 WaypointerConfig style = styleFor(group, waypoint);
                 if (style.beaconOpacity() > 0 && !usesSequenceRoleColorPaintFallback(
-                        group, defaultPaint, style.colorSequenceWaypointsByRole())) {
+                        group, defaultPaint, style.colorSequenceWaypointsByRole(), isPaintStyle(style))) {
                     needsTexture = true;
                     break;
                 }
             }
             if (!needsTexture) continue;
-            WaypointPaint paint = effectivePaint(group, defaultPaint);
+            WaypointPaint paint = paintFor(group, defaultPaint);
             if (paint != null) activePaintScratch.add(paint);
         }
         return WaypointPaintTextureCache.reserveForActivePaints(activePaintScratch);
@@ -950,7 +950,7 @@ class WaypointWorldRenderer {
         if (groups == null) return false;
         boolean visibleOutlines = anyStyle(groups, c -> boxStyleDrawsOutline(c.effectiveBoxStyle())
                 && c.waypointOutlineOpacity() > 0.0);
-        boolean hasPaint = config.enableFeatureBloat() && hasPaintedGroup(groups, config.waypointPainterDefaultPaint());
+        boolean hasPaint = anyPainted(groups, config.waypointPainterDefaultPaint());
         boolean hasFilledSub = hasFilledSubwaypoint(groups);
         boolean visibleBoxes = anyStyle(groups, c -> (boxStyleDrawsRgbFill(c.effectiveBoxStyle())
                 || c.effectiveBoxStyle() == WaypointerConfig.BoxStyle.PAINT || hasPaint || hasFilledSub)
@@ -1055,28 +1055,63 @@ class WaypointWorldRenderer {
         return false;
     }
 
+    /** Like {@link #hasPaintedGroup} but honoring each resolved box style. */
+    private boolean anyPainted(Iterable<WaypointGroup> groups, WaypointPaint defaultPaint) {
+        for (WaypointGroup group : groups) {
+            if (paintFor(group, defaultPaint) != null && !group.isEmpty()) return true;
+        }
+        return false;
+    }
+
+    static boolean isPaintStyle(WaypointerConfig style) {
+        return style.effectiveBoxStyle() == WaypointerConfig.BoxStyle.PAINT;
+    }
+
+    private WaypointPaint paintFor(WaypointGroup group, WaypointPaint defaultPaint) {
+        return effectivePaint(group, defaultPaint, group != null && isPaintStyle(styleFor(group, null)));
+    }
+
     static WaypointPaint effectivePaint(WaypointGroup group, WaypointPaint defaultPaint) {
+        return effectivePaint(group, defaultPaint, false);
+    }
+
+    /** Painted box styles use a missing-texture placeholder when no paint is available. */
+    static WaypointPaint effectivePaint(WaypointGroup group, WaypointPaint defaultPaint, boolean paintStyle) {
         WaypointPaint happySnowmanPaint = HappySnowmanSession.facePaint();
         if (happySnowmanPaint != null) return happySnowmanPaint;
-        if (group == null || !group.paintEnabled()) return null;
-        return group.paint() != null ? group.paint() : defaultPaint;
+        if (group == null || !group.paintEnabled() && !paintStyle) return null;
+        WaypointPaint paint = group.paint() != null ? group.paint() : defaultPaint;
+        return paint != null ? paint : paintStyle ? WaypointPaint.missing() : null;
     }
 
     static boolean shouldEmitRgbFill(WaypointGroup group, WaypointPaint defaultPaint) {
-        return effectivePaint(group, defaultPaint) == null;
+        return shouldEmitRgbFill(group, defaultPaint, false);
+    }
+
+    static boolean shouldEmitRgbFill(WaypointGroup group, WaypointPaint defaultPaint, boolean paintStyle) {
+        return effectivePaint(group, defaultPaint, paintStyle) == null;
     }
 
     static boolean usesRgbPaintFallback(WaypointGroup group, WaypointPaint defaultPaint) {
-        WaypointPaint paint = effectivePaint(group, defaultPaint);
+        return usesRgbPaintFallback(group, defaultPaint, false);
+    }
+
+    static boolean usesRgbPaintFallback(WaypointGroup group, WaypointPaint defaultPaint, boolean paintStyle) {
+        WaypointPaint paint = effectivePaint(group, defaultPaint, paintStyle);
         return paint != null && !WaypointPaintTextureCache.isRetained(paint);
     }
 
     static boolean usesSequenceRoleColorPaintFallback(
             WaypointGroup group, WaypointPaint defaultPaint, boolean roleColorsEnabled) {
+        return usesSequenceRoleColorPaintFallback(group, defaultPaint, roleColorsEnabled, false);
+    }
+
+    static boolean usesSequenceRoleColorPaintFallback(
+            WaypointGroup group, WaypointPaint defaultPaint, boolean roleColorsEnabled, boolean paintStyle) {
         return roleColorsEnabled
                 && group != null
                 && group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
-                && effectivePaint(group, defaultPaint) != null;
+                && effectivePaint(group, defaultPaint, paintStyle) != null;
     }
 
     private static boolean isSmallSubwaypoint(Waypoint waypoint) {
@@ -1268,9 +1303,10 @@ class WaypointWorldRenderer {
             Waypoint w = g.get(i);
             WaypointerConfig config = styleFor(g, w);
             WaypointPaint defaultPaint = config.waypointPainterDefaultPaint();
-            boolean paintFallback = config.enableFeatureBloat() && (usesSequenceRoleColorPaintFallback(
-                    g, defaultPaint, config.colorSequenceWaypointsByRole()) || usesRgbPaintFallback(g, defaultPaint));
-            if (config.enableFeatureBloat() && !paintFallback && !shouldEmitRgbFill(g, defaultPaint)) return;
+            boolean paintStyle = isPaintStyle(config);
+            boolean paintFallback = usesSequenceRoleColorPaintFallback(
+                    g, defaultPaint, config.colorSequenceWaypointsByRole(), paintStyle) || usesRgbPaintFallback(g, defaultPaint, paintStyle);
+            if (!paintFallback && !shouldEmitRgbFill(g, defaultPaint, paintStyle)) return;
             if (!paintFallback && !boxStyleDrawsRgbFill(config.effectiveBoxStyle())
                     && config.effectiveBoxStyle() != WaypointerConfig.BoxStyle.PAINT
                     && !isFilledSubwaypoint(w)) return;
@@ -1303,7 +1339,7 @@ class WaypointWorldRenderer {
             Waypoint waypoint = group.get(i);
             WaypointerConfig config = styleFor(group, waypoint);
             if (usesSequenceRoleColorPaintFallback(group, config.waypointPainterDefaultPaint(),
-                    config.colorSequenceWaypointsByRole())) return;
+                    config.colorSequenceWaypointsByRole(), isPaintStyle(config))) return;
             State state = stateFor(group, i, currentIndex);
             float alpha = alphaFor(group, i, state) * (float) config.beaconOpacity() * PAINTED_ALPHA_SCALE;
             if (alpha <= 0) return;
@@ -1753,7 +1789,8 @@ class WaypointWorldRenderer {
         };
         if (config.dimSequenceContextWaypoints() && group != null
                 && group.loadMode() == WaypointGroup.LoadMode.SEQUENCE && state != State.CURRENT) {
-            alpha = Math.min(alpha, (float) config.sequenceContextOpacity());
+            // Dimming replaces the role opacity so the prev/next opacity slider always takes effect.
+            alpha = (float) config.sequenceContextOpacity();
         }
         return alpha;
     }
@@ -1797,7 +1834,7 @@ class WaypointWorldRenderer {
                     config.routeLineColor(), alpha, width);
             return;
         }
-        // ponytail: cap very long connectors at 2048 dashes; use shader dashes if larger routes need finer detail.
+        // Cap long connectors at 2048 dashes to bound geometry.
         int count = (int) Math.min(2048, Math.ceil(length));
         double period = Math.max(1, length / count);
         Vec3 direction = end.subtract(start).scale(1 / length);
@@ -1832,7 +1869,7 @@ class WaypointWorldRenderer {
         if (dimContext
                 && group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
                 && state != State.CURRENT) {
-            return Math.min(state.alpha, SEQUENCE_CONTEXT_ALPHA);
+            return SEQUENCE_CONTEXT_ALPHA;
         }
         return state.alpha;
     }

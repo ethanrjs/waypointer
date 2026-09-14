@@ -111,7 +111,6 @@ final class WaypointerRouteList {
                 && storedGroup.routeKind() == WaypointGroup.RouteKind.DUNGEON) {
             screen.selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
             screen.selectedDungeonRoomZoneId = storedGroup.zoneId();
-            screen.expandDungeonRoom(storedGroup.zoneId());
         }
         revealContainingFolder(screen.manager, id);
         List<Row> rows = rows();
@@ -137,7 +136,6 @@ final class WaypointerRouteList {
         if (roomZoneId == null || roomZoneId.isBlank()) return;
         screen.selectedZoneId = DUNGEON_ROOMS_ZONE_ID;
         screen.selectedDungeonRoomZoneId = roomZoneId;
-        screen.expandDungeonRoom(roomZoneId);
         screen.clearRouteSelection();
         List<Row> rows = rows();
         for (int i = 0; i < rows.size(); i++) {
@@ -218,6 +216,15 @@ final class WaypointerRouteList {
 
     List<Row> rows() {
         List<Row> rows = new ArrayList<>();
+        if (isStructureBrowseZone(screen.selectedZoneId)) {
+            for (WaypointGroup group : screen.manager.allGroups()) {
+                if (screen.selectedZoneId.equals(generatedStructureZoneId(group))
+                        && containsSearch(group.name(), normalizedSearchQuery())) {
+                    rows.add(Row.group(null, group, false, false));
+                }
+            }
+            return rows;
+        }
         if (!isDungeonRoomsZone(screen.selectedZoneId)) {
             if (isTemporaryZone(screen.selectedZoneId)) {
                 for (WaypointGroup group : visibleGroups()) {
@@ -410,6 +417,8 @@ final class WaypointerRouteList {
         if (group.runtimeOnly()) {
             if (mouseX >= RouteListPresentation.routeToggleHitLeft(rowRight) && mouseX <= rowRight) {
                 screen.toggleRouteEnabled(group);
+            } else {
+                screen.openGroupEditor(group);
             }
             return true;
         }
@@ -435,7 +444,12 @@ final class WaypointerRouteList {
 
         boolean openEditor = RouteListPresentation.shouldOpenEditor(
                 doubleClick, wasAlreadyPrimarySelected, shiftDown, controlDown);
-        if (openEditor) {
+        if (openEditor && screen.publishDraft != null) {
+            DebugEventLog.record("WaypointerScreen", "route", group.id(), index,
+                    selectedBefore, selectedAfter, true, false, false,
+                    "route-row", "toggle-publish-draft");
+            screen.togglePublishDraft(group);
+        } else if (openEditor) {
             DebugEventLog.record("WaypointerScreen", "route", group.id(), index,
                     selectedBefore, selectedAfter, true, false, false,
                     "route-row", "open-editor");
@@ -783,7 +797,10 @@ final class WaypointerRouteList {
         }
         WaypointGroup group = row.group;
         if (group == null) return;
-        if (group.runtimeOnly()) return;
+        if (group.runtimeOnly()) {
+            screen.openGroupEditor(group);
+            return;
+        }
         if (row.roomZoneId != null) screen.selectedDungeonRoomZoneId = row.roomZoneId;
         boolean alreadySelected = group.id().equals(screen.selectedGroupId)
                 && screen.selectedGroupIds.contains(group.id());
@@ -954,7 +971,7 @@ final class WaypointerRouteList {
         int textColor = group.enabled() ? TEXT : TEXT_MUTED;
         String name = RouteListPresentation.routeRowName(
                 group, index, screen.config.showRouteIndicesInGui());
-        if (screen.publishDraft != null && screen.publishDraft.draftForm().contains(group)) {
+        if (screen.publishDraft != null && screen.publishDraft.contains(group)) {
             name = "✓ " + name;
             textColor = ACCENT;
         }

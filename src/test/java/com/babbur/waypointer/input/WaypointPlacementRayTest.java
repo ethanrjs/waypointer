@@ -45,6 +45,58 @@ class WaypointPlacementRayTest {
     }
 
     @Test
+    void configuredReachExtendsMidAirPlacementButNeverShortensVanillaReach() {
+        var config = new com.babbur.waypointer.config.WaypointerConfig();
+        assertEquals(5.0, WaypointRepositionMode.placementReach(config, 4.5));
+        assertEquals(5.0, WaypointRepositionMode.placementReach(null, 4.5));
+        assertEquals(6.0, WaypointRepositionMode.placementReach(config, 6.0));
+        config.setEditModePlacementReach(32.0);
+        assertEquals(32.0, WaypointRepositionMode.placementReach(config, 4.5));
+        BlockGetter level = new SingleBlock(Blocks.AIR.defaultBlockState());
+        Vec3 eye = new Vec3(0.5, 80.0, 0.5);
+        BlockHitResult hit = WaypointRepositionMode.placementHit(level, eye, new Vec3(0, 0, 1),
+                WaypointRepositionMode.placementReach(config, 4.5), CollisionContext.empty());
+        assertEquals(HitResult.Type.MISS, hit.getType());
+        assertEquals(new BlockPos(0, 80, 32), WaypointRepositionMode.placementBlock(hit));
+    }
+
+    @Test
+    void wheelOffsetPullsTheTargetAlongTheViewRayWithinSafeBounds() {
+        Vec3 eye = new Vec3(0.5, 80.0, 0.5);
+        Vec3 direction = new Vec3(0, 0, 1);
+        BlockHitResult block = new BlockHitResult(new Vec3(0.5, 80.0, 5.0),
+                net.minecraft.core.Direction.NORTH, new BlockPos(0, 80, 5), false);
+        assertEquals(block, WaypointRepositionMode.applyPlacementOffset(block, eye, direction, 0, 64.0));
+        BlockHitResult closer = WaypointRepositionMode.applyPlacementOffset(block, eye, direction, 1, 64.0);
+        assertEquals(HitResult.Type.MISS, closer.getType());
+        assertEquals(new Vec3(0.5, 80.0, 4.0), closer.getLocation());
+        assertEquals(new BlockPos(0, 80, 4), WaypointRepositionMode.placementBlock(closer));
+        // Scrolling up against a block never passes through it.
+        assertEquals(new Vec3(0.5, 80.0, 5.0),
+                WaypointRepositionMode.applyPlacementOffset(block, eye, direction, -3, 64.0).getLocation());
+        // Scrolling down never reaches the player's head.
+        assertEquals(new Vec3(0.5, 80.0, 1.5),
+                WaypointRepositionMode.applyPlacementOffset(block, eye, direction, 40, 64.0).getLocation());
+
+        int steps = 0;
+        for (int i = 0; i < 10; i++) steps = WaypointRepositionMode.nextPlacementOffset(steps, -1, true, 4.5, 64.0);
+        assertEquals(3, steps, "4.5 blocks away leaves three whole notches before the minimum");
+        assertEquals(0, WaypointRepositionMode.nextPlacementOffset(0, 1, true, 4.5, 64.0));
+        assertEquals(1, WaypointRepositionMode.nextPlacementOffset(2, 1, true, 4.5, 64.0));
+
+        BlockHitResult air = BlockHitResult.miss(new Vec3(0.5, 80.0, 5.5),
+                net.minecraft.core.Direction.UP, new BlockPos(0, 80, 5));
+        int out = WaypointRepositionMode.nextPlacementOffset(0, 1, false, 5.0, 64.0);
+        assertEquals(-1, out);
+        assertEquals(new Vec3(0.5, 80.0, 6.5),
+                WaypointRepositionMode.applyPlacementOffset(air, eye, direction, out, 64.0).getLocation());
+        int far = 0;
+        for (int i = 0; i < 100; i++) far = WaypointRepositionMode.nextPlacementOffset(far, 1, false, 5.0, 64.0);
+        assertEquals(-59, far, "open air stops at the maximum placement reach");
+        assertEquals(64.0, WaypointRepositionMode.placementDistance(air, eye, far, 64.0));
+    }
+
+    @Test
     void selectableShapesIncludeThinNonCollidingAndPartialBlocks() {
         for (BlockState state : new BlockState[] {
                 Blocks.STONE.defaultBlockState(),

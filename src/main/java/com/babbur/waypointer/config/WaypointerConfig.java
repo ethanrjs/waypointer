@@ -45,6 +45,9 @@ public final class WaypointerConfig {
 
     private static final String FILE_NAME = "config.json";
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    public static final double DEFAULT_EDIT_MODE_PLACEMENT_REACH = 5.0;
+    public static final double MIN_EDIT_MODE_PLACEMENT_REACH = 1.0;
+    public static final double MAX_EDIT_MODE_PLACEMENT_REACH = 64.0;
     private static final int CONFIG_SCHEMA_VERSION = 8;
     private static final int TEMP_DURATION_MIN_SECONDS = 1;
     private static final int TEMP_DURATION_MAX_SECONDS = 24 * 60 * 60;
@@ -79,6 +82,8 @@ public final class WaypointerConfig {
 
     private int configSchemaVersion = CONFIG_SCHEMA_VERSION;
     private double defaultReachRadius = Waypoint.DEFAULT_REACH_RADIUS;
+    // Edit mode targets the first block along the view ray; a miss places the waypoint at this distance.
+    private double editModePlacementReach = DEFAULT_EDIT_MODE_PLACEMENT_REACH;
     private boolean resetProgressOnWorldJoin = true;
     private boolean restartRouteWhenComplete = true;
     private boolean showRouteIndicesInGui = false;
@@ -148,6 +153,7 @@ public final class WaypointerConfig {
     private boolean showEditModeSubtitle = true;
 
     private boolean chatCoordDetection = true;
+    private boolean showChatCoordBlockButton = false;
     private List<String> chatCoordSenderBlacklist = new ArrayList<>();
     private boolean autoAddChatTempWaypoints = false;
     private boolean placeNewWaypointsBelowPlayer = true;
@@ -182,6 +188,7 @@ public final class WaypointerConfig {
     private boolean crystalHollowsShowRoughMarkers = true;
     private boolean crystalHollowsEntityDetection = true;
     private boolean crystalHollowsChatDetection = true;
+    private boolean coordinateShareHelper = true;
     private boolean crystalHollowsMetalDetector = true;
     private boolean crystalHollowsRemoteSharing = true;
     // Local preference: never exported in the settings codec or copied from shared settings.
@@ -485,8 +492,17 @@ public final class WaypointerConfig {
         copy.resolvedStyleSnapshot = true;
         return copy;
     }
+    public WaypointerConfig exportSnapshot() {
+        WaypointerConfig copy = unsavedStyleCopy();
+        copy.resolvedStyleSnapshot = false;
+        return copy;
+    }
     private static double finiteStyleValue(double value, double fallback, double min, double max) {
         return Double.isFinite(value) ? clamp(value, min, max) : fallback;
+    }
+    static double normalizeEditModePlacementReach(double value) {
+        if (!Double.isFinite(value)) return DEFAULT_EDIT_MODE_PLACEMENT_REACH;
+        return clamp(value, MIN_EDIT_MODE_PLACEMENT_REACH, MAX_EDIT_MODE_PLACEMENT_REACH);
     }
     public double routeMinRenderDistance() { return finiteStyleValue(routeMinRenderDistance, 0.0, 0.0, 100000.0); }
     public void setRouteMinRenderDistance(double value) { if (!Double.isFinite(value)) return; routeMinRenderDistance = clamp(value, 0.0, 100000.0); save(); }
@@ -528,9 +544,17 @@ public final class WaypointerConfig {
     public void setPreventLabelOverlap(boolean value) { preventLabelOverlap = value; save(); }
     public boolean showWaypointRoleBadge() { return showWaypointRoleBadge; }
     public void setShowWaypointRoleBadge(boolean value) { showWaypointRoleBadge = value; save(); }
+    /** A drawn symbol: this prefix followed by 81 '0'/'1' cells, row by row, of the 9x9 label icon. */
+    public static final String CUSTOM_ICON_PREFIX = "CUSTOM:";
+    public static final int CUSTOM_ICON_SIZE = 9;
+    private static final java.util.regex.Pattern CUSTOM_ICON = java.util.regex.Pattern.compile(
+            "CUSTOM:[01]{" + (CUSTOM_ICON_SIZE * CUSTOM_ICON_SIZE) + "}");
+    public static boolean isValidWaypointIcon(String icon) {
+        return icon != null && (java.util.Set.of("NONE", "DIAMOND", "CIRCLE", "SQUARE", "STAR").contains(icon)
+                || CUSTOM_ICON.matcher(icon).matches());
+    }
     public String waypointIcon() {
-        return waypointIcon != null && java.util.Set.of("NONE", "DIAMOND", "CIRCLE", "SQUARE", "STAR").contains(waypointIcon)
-                ? waypointIcon : "NONE";
+        return isValidWaypointIcon(waypointIcon) ? waypointIcon : "NONE";
     }
     public void setWaypointIcon(String value) {
         waypointIcon = value == null ? "NONE" : value.toUpperCase(java.util.Locale.ROOT);
@@ -559,7 +583,7 @@ public final class WaypointerConfig {
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, json);
+            Storage.writeDurably(tmp, json);
             try {
                 Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING,
                         StandardCopyOption.ATOMIC_MOVE);
@@ -594,6 +618,7 @@ public final class WaypointerConfig {
 
     public int configSchemaVersion()               { return configSchemaVersion; }
     public double defaultReachRadius()        { return Waypoint.normalizeDefaultRadius(defaultReachRadius); }
+    public double editModePlacementReach()    { return normalizeEditModePlacementReach(editModePlacementReach); }
     public boolean resetProgressOnWorldJoin() { return resetProgressOnWorldJoin; }
     public boolean restartRouteWhenComplete() { return restartRouteWhenComplete; }
     public boolean showRouteIndicesInGui()    { return showRouteIndicesInGui; }
@@ -636,8 +661,7 @@ public final class WaypointerConfig {
     public boolean enableFeatureBloat() { return enableFeatureBloat; }
     public void setEnableFeatureBloat(boolean value) { enableFeatureBloat = value; save(); }
     public BoxStyle effectiveBoxStyle() {
-        return !enableFeatureBloat && boxStyle() == BoxStyle.PAINT
-                ? BoxStyle.FILLED_OUTLINED : boxStyle();
+        return boxStyle();
     }
     public boolean exportRoutePreviewEnabled() { return enableFeatureBloat && showExportRoutePreview; }
 
@@ -716,6 +740,7 @@ public final class WaypointerConfig {
     public boolean useBeaconBeamTextures() { return useBeaconBeamTextures; }
     public boolean editSounds() { return editSounds; }
     public boolean showEditModeSubtitle() { return showEditModeSubtitle; }
+    public boolean showChatCoordBlockButton() { return showChatCoordBlockButton; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
     public boolean showWaypointChatShareButtons() { return showWaypointChatShareButtons; }
     public List<String> chatCoordSenderBlacklist() {
@@ -768,6 +793,7 @@ public final class WaypointerConfig {
     public boolean crystalHollowsShowRoughMarkers() { return crystalHollowsShowRoughMarkers; }
     public boolean crystalHollowsEntityDetection() { return crystalHollowsEntityDetection; }
     public boolean crystalHollowsChatDetection() { return crystalHollowsChatDetection; }
+    public boolean coordinateShareHelper() { return coordinateShareHelper; }
     public boolean crystalHollowsMetalDetector() { return crystalHollowsMetalDetector; }
     public boolean crystalHollowsRemoteSharing() { return crystalHollowsRemoteSharing; }
     public boolean crystalHollowsSkyblockerSharing() { return crystalHollowsSkyblockerSharing; }
@@ -799,6 +825,7 @@ public final class WaypointerConfig {
     }
 
     public void setDefaultReachRadius(double v)        { this.defaultReachRadius = Waypoint.normalizeDefaultRadius(v); save(); }
+    public void setEditModePlacementReach(double v)    { this.editModePlacementReach = normalizeEditModePlacementReach(v); save(); }
     public void setResetProgressOnWorldJoin(boolean v) { this.resetProgressOnWorldJoin = v; save(); }
     public void setRestartRouteWhenComplete(boolean v) { this.restartRouteWhenComplete = v; save(); }
     public void setShowRouteIndicesInGui(boolean v)    { this.showRouteIndicesInGui = v; save(); }
@@ -987,6 +1014,7 @@ public final class WaypointerConfig {
         this.routeLineColor = v & 0xFFFFFF;
         save();
     }
+    public void setShowChatCoordBlockButton(boolean v) { this.showChatCoordBlockButton = v; save(); }
     public void setChatCoordDetection(boolean v)       { this.chatCoordDetection = v; save(); }
     public boolean addChatCoordSenderBlacklist(String senderName) {
         String normalized = normalizeChatCoordSender(senderName);
@@ -1056,6 +1084,7 @@ public final class WaypointerConfig {
     public void setCrystalHollowsShowRoughMarkers(boolean v) { crystalHollowsShowRoughMarkers = v; save(); }
     public void setCrystalHollowsEntityDetection(boolean v) { crystalHollowsEntityDetection = v; save(); }
     public void setCrystalHollowsChatDetection(boolean v) { crystalHollowsChatDetection = v; save(); }
+    public void setCoordinateShareHelper(boolean v) { coordinateShareHelper = v; save(); }
     public void setCrystalHollowsMetalDetector(boolean v) { crystalHollowsMetalDetector = v; save(); }
     public void setCrystalHollowsRemoteSharing(boolean v) { crystalHollowsRemoteSharing = v; save(); }
     public void setCrystalHollowsSkyblockerSharing(boolean v) { crystalHollowsSkyblockerSharing = v; save(); }
@@ -1132,6 +1161,7 @@ public final class WaypointerConfig {
         if (replacement == null) return;
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
         defaultReachRadius = replacement.defaultReachRadius;
+        editModePlacementReach = replacement.editModePlacementReach;
         resetProgressOnWorldJoin = replacement.resetProgressOnWorldJoin;
         restartRouteWhenComplete = replacement.restartRouteWhenComplete;
         showRouteIndicesInGui = replacement.showRouteIndicesInGui;
@@ -1195,6 +1225,7 @@ public final class WaypointerConfig {
         editSounds = replacement.editSounds;
         showEditModeSubtitle = replacement.showEditModeSubtitle;
         chatCoordDetection = replacement.chatCoordDetection;
+        showChatCoordBlockButton = replacement.showChatCoordBlockButton;
         chatCoordSenderBlacklist = new ArrayList<>(replacement.chatCoordSenderBlacklist);
         autoAddChatTempWaypoints = replacement.autoAddChatTempWaypoints;
         placeNewWaypointsBelowPlayer = replacement.placeNewWaypointsBelowPlayer;
@@ -1223,6 +1254,7 @@ public final class WaypointerConfig {
         crystalHollowsShowRoughMarkers = replacement.crystalHollowsShowRoughMarkers;
         crystalHollowsEntityDetection = replacement.crystalHollowsEntityDetection;
         crystalHollowsChatDetection = replacement.crystalHollowsChatDetection;
+        coordinateShareHelper = replacement.coordinateShareHelper;
         crystalHollowsMetalDetector = replacement.crystalHollowsMetalDetector;
         crystalHollowsRemoteSharing = replacement.crystalHollowsRemoteSharing;
         crystalHollowsWishingCompassSolver = replacement.crystalHollowsWishingCompassSolver;
@@ -1291,6 +1323,7 @@ public final class WaypointerConfig {
         editSounds = false;
         showEditModeSubtitle = false;
         chatCoordDetection = false;
+        showChatCoordBlockButton = false;
         autoAddChatTempWaypoints = false;
         placeNewWaypointsBelowPlayer = false;
         focusTempWaypoints = false;
@@ -1315,6 +1348,7 @@ public final class WaypointerConfig {
         crystalHollowsShowRoughMarkers = false;
         crystalHollowsEntityDetection = false;
         crystalHollowsChatDetection = false;
+        coordinateShareHelper = false;
         crystalHollowsMetalDetector = false;
         crystalHollowsRemoteSharing = false;
         crystalHollowsSkyblockerSharing = false;
@@ -1364,6 +1398,7 @@ public final class WaypointerConfig {
 
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
         defaultReachRadius = defaults.defaultReachRadius;
+        editModePlacementReach = defaults.editModePlacementReach;
         resetProgressOnWorldJoin = defaults.resetProgressOnWorldJoin;
         restartRouteWhenComplete = defaults.restartRouteWhenComplete;
         showRouteIndicesInGui = defaults.showRouteIndicesInGui;
@@ -1431,6 +1466,7 @@ public final class WaypointerConfig {
         editSounds = defaults.editSounds;
         showEditModeSubtitle = defaults.showEditModeSubtitle;
         chatCoordDetection = defaults.chatCoordDetection;
+        showChatCoordBlockButton = defaults.showChatCoordBlockButton;
         chatCoordSenderBlacklist = new ArrayList<>(defaults.chatCoordSenderBlacklist);
         autoAddChatTempWaypoints = defaults.autoAddChatTempWaypoints;
         placeNewWaypointsBelowPlayer = defaults.placeNewWaypointsBelowPlayer;
@@ -1464,6 +1500,7 @@ public final class WaypointerConfig {
         crystalHollowsShowRoughMarkers = defaults.crystalHollowsShowRoughMarkers;
         crystalHollowsEntityDetection = defaults.crystalHollowsEntityDetection;
         crystalHollowsChatDetection = defaults.crystalHollowsChatDetection;
+        coordinateShareHelper = defaults.coordinateShareHelper;
         crystalHollowsMetalDetector = defaults.crystalHollowsMetalDetector;
         crystalHollowsRemoteSharing = defaults.crystalHollowsRemoteSharing;
         crystalHollowsSkyblockerSharing = defaults.crystalHollowsSkyblockerSharing;

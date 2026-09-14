@@ -64,6 +64,12 @@ public final class WishingCompassSolver {
                     ? Set.of()
                     : Set.copyOf(EnumSet.copyOf(targets));
         }
+
+        /** The zone the search belongs to; a Nucleus use inherits the paired zone's context. */
+        public CrystalHollowsZone searchZone() {
+            return effectiveZone(firstRay == null ? null : firstRay.zone(),
+                    secondRay == null ? null : secondRay.zone());
+        }
     }
 
     public record Outcome(SolverEvent event, CompassRay ray, SolveResult result) {
@@ -114,8 +120,13 @@ public final class WishingCompassSolver {
         if (lastResult != null) reset();
         if (!rays.isEmpty()) {
             CapturedRay previous = rays.getLast();
-            if (previous.ray().zone() != zone || !previous.candidates().equals(targetCandidates)
-                    || !previous.crystals().equals(targetCrystals)) reset();
+            if (!previous.candidates().equals(targetCandidates)
+                    || !previous.crystals().equals(targetCrystals)) {
+                reset();
+            } else {
+                // A different outer zone means a different compass target; Nucleus rays stay usable.
+                rays.removeIf(captured -> !zonesCompatible(captured.ray().zone(), zone));
+            }
         }
         Vec3d use = new Vec3d(x, y, z);
         pending = new CompassTrail(use, nowMillis, zone);
@@ -252,8 +263,8 @@ public final class WishingCompassSolver {
             return;
         }
         EnumSet<WishingCompassTarget> resolved = CompassTargetResolver.resolve(
-                solution, best.second().ray().zone(), best.second().crystals(),
-                best.second().candidates());
+                solution, effectiveZone(best.first().ray().zone(), best.second().ray().zone()),
+                best.second().crystals(), best.second().candidates());
         SolutionConfidence confidence = gap <= HIGH_CONFIDENCE_GAP
                 ? SolutionConfidence.HIGH
                 : SolutionConfidence.LOW;
@@ -263,8 +274,26 @@ public final class WishingCompassSolver {
         emit(SolverEvent.SOLVED, rays.getLast().ray(), lastResult);
     }
 
+    /**
+     * Uses inside the Crystal Nucleus pair with uses from any surrounding zone, so a search may
+     * start at the hub and finish after walking into the target's zone. Two different outer zones
+     * never share a search because the compass changes target between them.
+     */
+    public static boolean zonesCompatible(CrystalHollowsZone first, CrystalHollowsZone second) {
+        return first == second
+                || first == CrystalHollowsZone.CRYSTAL_NUCLEUS
+                || second == CrystalHollowsZone.CRYSTAL_NUCLEUS;
+    }
+
+    /** The outer zone of a compatible pair, or the Nucleus when both uses were inside it. */
+    static CrystalHollowsZone effectiveZone(CrystalHollowsZone first, CrystalHollowsZone second) {
+        if (first != null && first != CrystalHollowsZone.CRYSTAL_NUCLEUS) return first;
+        if (second != null && second != CrystalHollowsZone.CRYSTAL_NUCLEUS) return second;
+        return first != null ? first : second;
+    }
+
     private static boolean pairEligible(CapturedRay first, CapturedRay second) {
-        return first.ray().zone() == second.ray().zone()
+        return zonesCompatible(first.ray().zone(), second.ray().zone())
                 && first.candidates().equals(second.candidates())
                 && first.crystals().equals(second.crystals())
                 && first.ray().usePosition().distanceTo(second.ray().usePosition())

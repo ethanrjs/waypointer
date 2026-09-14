@@ -327,7 +327,7 @@ public final class WaypointerKeybinds {
         Waypoint stored = DungeonRoomWaypointPlacement.toStoredWaypoint(target, new Waypoint(
                 pos.x(), pos.y(), pos.z(), "", config.defaultWaypointColor(), flags, 0.0));
         if (stored == null) {
-            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage());
+            showStatus(mc, DungeonRoomWaypointPlacement.unavailableMessage(target));
             return;
         }
         target.add(stored);

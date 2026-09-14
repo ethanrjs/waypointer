@@ -277,8 +277,14 @@ public final class GuiTokens {
         int w = maxLineWidth + pad * 2;
         int h = pad * 2 + font.lineHeight + 5
                 + lineCount * font.lineHeight + Math.max(0, lineCount - 1) * lineGap;
-        int x = Math.max(PAD_OUTER, Math.min(mouseX + 12, Math.max(PAD_OUTER, maxRight - w)));
-        int y = Math.max(PAD_OUTER, Math.min(mouseY + 12, Math.max(PAD_OUTER, maxBottom - h)));
+        float scale = infoTooltipScale(w, h, maxRight, maxBottom);
+        int x = Math.max(PAD_OUTER, Math.min(mouseX + 12, (int) (maxRight - w * scale)));
+        int y = Math.max(PAD_OUTER, Math.min(mouseY + 12, (int) (maxBottom - h * scale)));
+        g.pose().pushMatrix();
+        g.pose().translate(x, y);
+        g.pose().scale(scale, scale);
+        x = 0;
+        y = 0;
         drawTooltipPanel(g, x, y, x + w, y + h);
 
         int textX = x + pad;
@@ -294,6 +300,13 @@ public final class GuiTokens {
             g.text(font, descriptions[i], textX + maxLabelWidth + GAP, rowY, TEXT_DIM, false);
             rowY += font.lineHeight + lineGap;
         }
+        g.pose().popMatrix();
+    }
+
+    static float infoTooltipScale(int width, int height, int maxRight, int maxBottom) {
+        return Math.min(1.0f, Math.min(
+                Math.max(1, maxRight - PAD_OUTER) / (float) width,
+                Math.max(1, maxBottom - PAD_OUTER) / (float) height));
     }
 
     public static StyledCheckbox styledCheckbox(int x, int y, int size, Component label,

@@ -385,19 +385,15 @@ class ExportScreenTest {
 
     @Test
     void includeGridCollapsesToOneColumnOnlyWhenLabelsWouldNotFit() {
-        // The panel at full width: two columns of three, each capped so the
-        // column width is what sets the panel width rather than the reverse.
         ExportScreen.IncludeGrid full = ExportScreen.includeGrid(416, 6);
         assertEquals(200, full.columnWidth());
         assertEquals(3, full.rowsPerColumn());
 
-        // 308 of content is the exact width where two columns still clear the
-        // label minimum, so it is where the collapse rule turns on.
+        // 308 is the minimum width for two 150-unit columns and their gap.
         ExportScreen.IncludeGrid snug = ExportScreen.includeGrid(308, 6);
         assertEquals(150, snug.columnWidth());
         assertEquals(3, snug.rowsPerColumn());
 
-        // Narrower than that and the list stacks full width instead of clipping.
         ExportScreen.IncludeGrid narrow = ExportScreen.includeGrid(306, 6);
         assertEquals(306, narrow.columnWidth());
         assertEquals(6, narrow.rowsPerColumn());
@@ -410,16 +406,13 @@ class ExportScreenTest {
         int fixed = ExportScreen.panelFixedHeight(includeRowsH, 0);
         int lineH = 10; // Minecraft's 9px font line box plus a pixel of leading.
 
-        // Roomy window: the preview gets its full three lines.
         assertEquals(3 * lineH + 12, ExportScreen.previewHeight(540, fixed, lineH));
         assertTrue(fixed + ExportScreen.previewHeight(540, fixed, lineH) <= 540);
 
-        // GUI scale 4 on a 1080p monitor leaves 270 units of height. The panel
-        // has to fit there too, with the copy buttons still on screen.
+        // 1080p at GUI scale 4 provides 270 logical pixels of height.
         int tight = ExportScreen.previewHeight(270, fixed, lineH);
         assertTrue(fixed + tight <= 270,
                 "panel is " + (fixed + tight) + " tall in a 270-unit window");
-        // It gives ground rather than vanishing: still at least one visible line.
         assertTrue(tight >= lineH + 12);
     }
 

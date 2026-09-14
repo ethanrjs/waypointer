@@ -1,6 +1,11 @@
 package com.babbur.waypointer.catalog;
 
 import com.google.gson.JsonObject;
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -11,6 +16,30 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CatalogJsonTest {
+    @Test
+    void dungeonDetailsReachTheCatalogDecoderAndInstaller() {
+        var group = WaypointGroup.create("Dungeon", "test-room");
+        group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        group.add(Waypoint.at(1, 70, 2));
+        var prepared = CatalogProtocol.prepareCatalogPayload(List.of(group));
+        var route = new JsonObject();
+        route.addProperty("id", "Abcdefghijklmnopqrstuv");
+        route.addProperty("title", "Dungeon");
+        route.addProperty("zoneId", "dungeon");
+        route.addProperty("zoneLabel", "Dungeons");
+        route.addProperty("waypointCount", 1);
+        route.addProperty("groupCount", 1);
+        route.addProperty("codecVersion", DungeonRoomShareCodec.CATALOG_CODEC_VERSION);
+        route.addProperty("payload", prepared.payload());
+        var root = new JsonObject();
+        root.add("route", route);
+        var details = CatalogJson.parseDetails(root.toString());
+        var manager = new ActiveGroupManager();
+        CatalogRouteInstaller.install(manager, RouteCatalogClient.PRODUCTION_API.toString(), details);
+        assertEquals(WaypointGroup.RouteKind.DUNGEON,
+                manager.allGroups().iterator().next().routeKind());
+    }
+
     private static final String ID = "Abcdefghijklmnopqrstuv";
     private static final String SECOND_ID = "Bcdefghijklmnopqrstuvw";
     private static final String THIRD_ID = "Cdefghijklmnopqrstuvwx";

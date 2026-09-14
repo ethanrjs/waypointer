@@ -132,9 +132,11 @@ public final class StructureRelayController {
         }
         if (!wasOpen) {
             wasOpen = true;
-            failures = 0;
+            openedAt = now;
             nextSync = now + SYNC_INTERVAL_MILLIS;
         }
+        // A socket the server accepts and then drops must keep backing off; only a stable session resets.
+        if (failures > 0 && now - openedAt >= STABLE_SESSION_MILLIS) failures = 0;
         tracker.batchDetections(() -> connection.drain(message ->
                 tracker.applyRelayUpdate(StructureRelayProtocol.decodeUpdate(message, age, now))));
         if (syncDue(now, age, closingInSeconds)) {
@@ -176,6 +178,9 @@ public final class StructureRelayController {
         return closingInSeconds >= 0 && !reportedClosing || now - lastSyncAt >= 55_000 && (now >= nextSync
                 || Math.abs(age - lastSyncAge - (now - lastSyncAt) / 50) >= 900);
     }
+
+    private static final long STABLE_SESSION_MILLIS = 15_000;
+    private long openedAt;
 
     private void scheduleRetry(long now) {
         long delay = Math.min(60_000, 1_000L << Math.min(failures++, 6));

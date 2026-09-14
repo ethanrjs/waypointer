@@ -20,23 +20,11 @@ public final class RoutePreviewPassPlan {
 
     private RoutePreviewPassPlan() {}
 
-    record Submission(RenderType type, RoutePreviewRenderCore.Emitter emitter) {}
-
-    static List<Submission> submissions(Pass pass, RoutePreviewRenderState state) {
-        if (state.scene().inspector() != null) return state.scene().inspector().submissions(pass);
-        return List.of(new Submission(renderType(pass, state), emitter(pass)));
-    }
-
     public static List<Pass> orderedPasses(boolean selfOcclusion) {
         return selfOcclusion ? WITH_SELF_OCCLUSION : WITHOUT_SELF_OCCLUSION;
     }
 
-    public static List<Pass> orderedPasses(RoutePreviewRenderState state) {
-        return state.scene().inspector() != null ? WITH_SELF_OCCLUSION : orderedPasses(state.selfOcclusion());
-    }
-
     static RenderType renderType(Pass pass, RoutePreviewRenderState state) {
-        if (state.scene().inspector() != null) return state.scene().inspector().renderType(pass);
         return switch (pass) {
             case DEPTH -> RoutePreviewPipelines.depthOnly();
             case SURFACE -> surfaceType(state);

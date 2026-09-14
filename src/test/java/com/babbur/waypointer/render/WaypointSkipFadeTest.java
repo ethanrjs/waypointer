@@ -288,7 +288,8 @@ class WaypointSkipFadeTest {
         List<Integer> visible = new ArrayList<>();
         renderer.forEachFadingVisibleIndex(group, index -> {
             visible.add(index);
-            if (index == 0) assertEquals(.625f,
+            // Dimming is on by default, so a previous step fades toward the prev/next opacity (0.35).
+            if (index == 0) assertEquals(.675f,
                     renderer.alphaFor(group, index, WaypointRenderer.State.COMPLETED));
         });
         assertEquals(List.of(0, 1), visible);

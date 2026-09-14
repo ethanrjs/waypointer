@@ -26,6 +26,19 @@ public final class DebugSignals {
 
     private DebugSignals() {}
 
+    private static volatile String catalogFailure = "None";
+
+    public static String catalogFailureLine() {
+        return catalogFailure;
+    }
+
+    public static void recordCatalogFailure(String method, int status, String code) {
+        String safeMethod = List.of("GET", "POST", "PATCH", "DELETE").contains(method) ? method : "REQUEST";
+        String safeCode = code != null && code.matches("[a-z_]{1,80}") ? code : "unknown";
+        catalogFailure = safeMethod + " / HTTP " + status + " / " + safeCode;
+        com.babbur.waypointer.Waypointer.LOGGER.warn("Catalog request failed: {}", catalogFailure);
+    }
+
     public static DungeonDebugSnapshot dungeonDebugSnapshot() {
         DungeonStateTracker tracker = WaypointerClient.dungeonTracker();
         DungeonStateTracker.DebugSnapshot trackerSnapshot = tracker == null
@@ -117,6 +130,7 @@ public final class DebugSignals {
                 + ", mode=" + valueOrMissing(snapshot.mode())
                 + ", raw=" + describeZone(snapshot.rawZone())
                 + ", refined=" + describeZone(snapshot.refinedZone())
+                + ", packetAt=" + (snapshot.packetReceivedAt() == null ? "none" : snapshot.packetReceivedAt())
                 + ", at=" + snapshot.capturedAt();
     }
 

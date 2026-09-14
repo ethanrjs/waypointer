@@ -73,7 +73,6 @@ public final class RouteCatalogScreen extends Screen {
     private static final int ROW_H = 44;
     private static final int ROW_PITCH = ROW_H;
     private static final int WIDE_BREAKPOINT = 420;
-    private static final int TOOLBAR_STACK_BREAKPOINT = 340;
     private static final int REFRESH_W = 72;
     private static final int LOAD_MORE_W = 108;
     private static final int BACK_W = 64;
@@ -81,8 +80,8 @@ public final class RouteCatalogScreen extends Screen {
     private static final int SCROLLBAR_W = 3;
     private static final int SCROLLBAR_INSET = 2;
     private static final int DETAIL_HEADER_H = 32;
-    // Client ticks run at 20/s, so six ticks of silence is roughly 300 ms.
-    private static final int SEARCH_DEBOUNCE_TICKS = 6;
+    // Four client ticks debounce uncached searches by roughly 200 ms.
+    private static final int SEARCH_DEBOUNCE_TICKS = 4;
     private static final int SEARCH_CACHE_LIMIT = 32;
     private static final int ZONE_ROW_H = GuiTokens.ROW_H;
     private static final int ZONE_DROPDOWN_MIN_W = 150;
@@ -107,6 +106,7 @@ public final class RouteCatalogScreen extends Screen {
     private Component statusText = Component.empty();
     private int statusColor = TEXT_DIM;
     private int searchDebounceTicks;
+    private boolean searchViewDirty;
     private boolean manualRefreshCooldownArmed;
     private long manualRefreshAllowedAtNanos;
     private int displayedRefreshCooldownSeconds = -1;
@@ -186,9 +186,11 @@ public final class RouteCatalogScreen extends Screen {
 
         int titleY = panelY + panelPad;
         int searchY = titleY + BTN_H + GAP;
-        boolean toolbarStacked = contentW < TOOLBAR_STACK_BREAKPOINT;
-        int checkboxY = searchY + BTN_H + (toolbarStacked ? BTN_H + GAP_TIGHT : 0) + GAP_TIGHT;
-        int bodyY = checkboxY + BTN_H + GAP;
+        Component notInstalledLabel = Component.translatable("waypointer.screen.route_catalog.not_installed");
+        int notInstalledW = font.width(notInstalledLabel) + BTN_H + GAP;
+        boolean toolbarStacked = contentW < 80 + 84 + REFRESH_W + notInstalledW + GAP * 3;
+        int toolbarY = toolbarStacked ? searchY + BTN_H + GAP_TIGHT : searchY;
+        int bodyY = toolbarY + BTN_H + GAP;
         int footerY = panelY + panelH - panelPad - BTN_H;
         Component copyLabel = Component.translatable("waypointer.screen.published_routes.action.copy_code");
         int copyW = Math.max(72, font.width(copyLabel) + 16);
@@ -231,15 +233,15 @@ public final class RouteCatalogScreen extends Screen {
         Component refreshLabel = refreshButtonLabel(System.nanoTime());
         int refreshW = Math.min(contentW, Math.max(REFRESH_W, font.width(refreshLabel) + 16));
         Component zoneLabel = zoneFilterLabel();
-        // Sized to the widest zone name, not the selected one, so the control
-        // keeps one width no matter which zone is picked.
+        // Keep the control width stable when the selected zone changes.
         int zoneW = toolbarStacked
-                ? Math.max(40, contentW - refreshW - GAP)
+                ? Math.max(40, contentW - refreshW - notInstalledW - GAP * 2)
                 : Math.min(Math.max(84, widestZoneOptionWidth() + 28),
-                        Math.max(84, contentW / 3));
+                        Math.min(Math.max(84, contentW / 3),
+                                contentW - refreshW - notInstalledW - GAP * 3 - 80));
         int searchW = toolbarStacked
                 ? contentW
-                : Math.max(40, contentW - refreshW - zoneW - GAP * 2);
+                : Math.max(40, contentW - refreshW - zoneW - notInstalledW - GAP * 3);
         int clearW = Math.max(36, font.width(Component.translatable("waypointer.common.clear")) + 12);
         int inputW = Math.max(20, searchW - clearW - GAP_TIGHT);
         searchBox = new EditBox(font, contentX, searchY, inputW, BTN_H,
@@ -277,9 +279,10 @@ public final class RouteCatalogScreen extends Screen {
         refreshButton.active = refreshCooldownSeconds(System.nanoTime()) == 0 && !listLoading;
         addRenderableWidget(refreshButton);
 
-        addRenderableWidget(Checkbox.builder(Component.translatable(
+        Checkbox notInstalled = Checkbox.builder(Component.translatable(
                         "waypointer.screen.route_catalog.not_installed"), font)
-                .pos(contentX, checkboxY).maxWidth(contentW).selected(onlyNotInstalled)
+                .pos(contentRight - refreshW - GAP - notInstalledW, toolbarY)
+                .maxWidth(notInstalledW).selected(onlyNotInstalled)
                 .tooltip(Tooltip.create(Component.translatable(
                         "waypointer.screen.route_catalog.not_installed.tooltip")))
                 .onValueChange((checkbox, selected) -> {
@@ -289,7 +292,9 @@ public final class RouteCatalogScreen extends Screen {
                     descriptionScroll = 0;
                     updateListStatus();
                     rebuildWidgets();
-                }).build());
+                }).build();
+        notInstalled.setY(toolbarY + (BTN_H - notInstalled.getHeight()) / 2);
+        addRenderableWidget(notInstalled);
 
         loadMoreButton = null;
         addRouteRows();
@@ -297,14 +302,11 @@ public final class RouteCatalogScreen extends Screen {
         addRenderableWidget(styledButton(contentX, footerY, BACK_W, BTN_H,
                 Component.translatable("gui.back"), button -> onClose(), null));
         copyCodeButton = styledButton(contentRight - installW - GAP - copyW, footerY,
-                copyW, BTN_H, copyLabel, button -> copySelectedCode(),
-                Tooltip.create(Component.translatable("waypointer.screen.published_routes.action.copy_code.tooltip")));
+                copyW, BTN_H, copyLabel, button -> copySelectedCode(), null);
         addRenderableWidget(copyCodeButton);
         installButton = styledButton(contentRight - installW, footerY, installW, BTN_H,
                 installButtonLabel(),
-                button -> installSelectedRoute(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_catalog.install.tooltip")));
+                button -> installSelectedRoute(), null);
         refreshPrimaryButtons();
         addRenderableWidget(installButton);
 
@@ -326,8 +328,7 @@ public final class RouteCatalogScreen extends Screen {
                 : Math.max(224, (contentWidth - GAP_SECTION) * 54 / 100);
     }
 
-    // rebuildWidgets clears focus, so remember the search caret before it runs
-    // and let setInitialFocus() below restore it (see SettingsScreen).
+    // Preserve the caret and selection across widget rebuilds.
     @Override
     protected void rebuildWidgets() {
         rememberSearchFocus();
@@ -368,10 +369,7 @@ public final class RouteCatalogScreen extends Screen {
                 searchBox.getValue(), pendingSearchCursor, searchBox.getHighlighted());
     }
 
-    /**
-     * EditBox exposes the cursor but not the selection anchor; recover the
-     * anchor from the highlighted substring so a rebuilt box keeps both.
-     */
+    /** Recover the selection anchor, which EditBox does not expose, from its highlighted text. */
     static int searchHighlightAnchor(String value, int cursor, String highlighted) {
         if (highlighted == null || highlighted.isEmpty()) return cursor;
         if (value != null
@@ -404,19 +402,19 @@ public final class RouteCatalogScreen extends Screen {
             detailLoading = false;
             lastLoadFailed = false;
             searchDebounceTicks = SEARCH_DEBOUNCE_TICKS;
-            statusText = Component.translatable(
-                    "waypointer.screen.route_catalog.status.search_wait");
+            statusText = Component.empty();
             statusColor = TEXT_DIM;
-        }, this::rebuildWidgets, this::focusSearchBox);
+        }, () -> searchViewDirty = true);
     }
 
     static boolean applySearchEdit(
             CatalogBrowserModel browser, String value,
-            Runnable updateState, Runnable rebuild, Runnable restoreFocus) {
+            Runnable updateState, Runnable scheduleRebuild) {
         if (!browser.editSearch(value)) return false;
         updateState.run();
-        rebuild.run();
-        restoreFocus.run();
+        // EditBox calls its responder before finishing selection updates. Rebuilding
+        // here reads a stale selection and can also replace the box mid-keystroke.
+        scheduleRebuild.run();
         return true;
     }
 
@@ -442,9 +440,6 @@ public final class RouteCatalogScreen extends Screen {
                     route.id().equals(browser.selectedRouteId()),
                     installedState(route),
                     () -> selectRoute(route));
-            button.setTooltip(Tooltip.create(Component.literal(route.title())
-                    .append("\n" + route.zoneLabel())
-                    .append(route.description().isBlank() ? "" : "\n" + route.description())));
             addRenderableWidget(button);
         }
         if (browser.nextCursor() != null || appending) {
@@ -472,20 +467,30 @@ public final class RouteCatalogScreen extends Screen {
         requestPage(null, false);
     }
 
-    /**
-     * Runs the debounced search: a query whose first page was already fetched
-     * this session renders straight from the cache with zero network traffic.
-     */
+    /** Reuse cached results before requesting the pending search. */
     private void runPendingSearch() {
         searchDebounceTicks = 0;
         browser.submitPendingSearch();
-        CatalogPage cached = searchCache.get(
-                searchCacheKey(browser.zoneFilter(), browser.normalizedQuery()));
+        CatalogPage cached = cachedSearchPage(searchCache,
+                browser.zoneFilter(), browser.normalizedQuery());
         if (cached != null) {
             showCachedPage(cached);
             return;
         }
         requestPage(null, false);
+    }
+
+    static CatalogPage cachedSearchPage(Map<String, CatalogPage> cache, String zone, String query) {
+        CatalogPage exact = cache.get(searchCacheKey(zone, query));
+        if (exact != null) return exact;
+        CatalogPage complete = cache.get(searchCacheKey(zone, ""));
+        if (complete == null || complete.hasMore()) {
+            complete = cache.get(searchCacheKey(null, ""));
+        }
+        if (complete == null || complete.hasMore()) return null;
+        return new CatalogPage(complete.routes().stream()
+                .filter(route -> zone == null || zone.equals(route.zoneId()))
+                .filter(route -> route.matches(query)).toList(), false, null);
     }
 
     private void showCachedPage(CatalogPage page) {
@@ -516,16 +521,11 @@ public final class RouteCatalogScreen extends Screen {
                 : Component.literal(Zone.fromId(browser.zoneFilter()).displayName());
     }
 
-    /**
-     * Select-control geometry for the zone filter: {labelX, labelMaxW, caretCenterX,
-     * caretCenterY}. The label shares the dropdown rows' {@code x + GAP} column and the
-     * caret's right edge mirrors that inset.
-     */
+    /** Returns {labelX, labelMaxW, caretCenterX, caretCenterY}, aligned with dropdown rows. */
     static int[] filterSelectGeometry(int x, int y, int w, int h) {
         return new int[] {x + GAP, Math.max(12, w - 27), x + w - 13, y + h / 2 - 1};
     }
 
-    /** The zone filter renders as a select control: left-aligned value, right caret. */
     private final class ZoneFilterButton extends GuiTokens.StyledButton {
         ZoneFilterButton(int x, int y, int width, int height, Component label) {
             super(x, y, width, height, label, button -> toggleZoneDropdown());
@@ -616,7 +616,6 @@ public final class RouteCatalogScreen extends Screen {
                 zoneDropdownIds.size(), geo.rowsBottom() - geo.rowsTop());
     }
 
-    /** Scroll offset that centers the selected row inside the dropdown viewport. */
     static int centeredDropdownScroll(int index, int rowCount, int viewport) {
         if (index <= 0) return 0;
         int target = index * ZONE_ROW_H - Math.max(0, viewport / 2 - ZONE_ROW_H / 2);
@@ -976,8 +975,7 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public void extractRenderState(
             GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partial) {
-        // Only the open dropdown may react to the pointer; everything beneath
-        // renders with a dead mouse so hover and tooltips do not bleed through.
+        // Suppress underlying hover states and tooltips while the dropdown is open.
         int backgroundMouseX = zoneDropdownOpen ? -1 : mouseX;
         int backgroundMouseY = zoneDropdownOpen ? -1 : mouseY;
         graphics.fill(0, 0, width, height, 0x80000000);
@@ -1294,6 +1292,14 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public void tick() {
         super.tick();
+        if (searchViewDirty) {
+            searchViewDirty = false;
+            if (cachedSearchPage(searchCache, browser.zoneFilter(), browser.normalizedQuery()) != null) {
+                runPendingSearch();
+            } else {
+                rebuildWidgets();
+            }
+        }
         int before = searchDebounceTicks;
         searchDebounceTicks = advanceSearchDebounce(before);
         if (searchDebounceFired(before, searchDebounceTicks)) runPendingSearch();
@@ -1355,12 +1361,10 @@ public final class RouteCatalogScreen extends Screen {
                 manualRefreshCooldownArmed, nowNanos, manualRefreshAllowedAtNanos);
     }
 
-    /** One debounce tick: counts the remaining keystroke-silence ticks down to zero. */
     static int advanceSearchDebounce(int ticksRemaining) {
         return Math.max(0, ticksRemaining - 1);
     }
 
-    /** The debounced search fires exactly on the transition to zero. */
     static boolean searchDebounceFired(int before, int after) {
         return before > 0 && after == 0;
     }

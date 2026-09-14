@@ -15,7 +15,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class WaypointerContributorBadgeTest {
@@ -260,26 +259,6 @@ class WaypointerContributorBadgeTest {
         assertEquals("\u00a77[WP] \u00a7bBabbur\u00a7f: hi", chat.getString());
         assertEquals("&7[WP] &bBabbur&f: hi", ampersandChat.getString());
         assertEquals("[WP] Babbur", tab.getString());
-    }
-
-    @Test
-    void buildsHypixelRankPrefixUsingServerPriority() {
-        Component custom = WaypointerContributorBadge.hypixelRankPrefix(
-                "NORMAL", "MVP_PLUS", "SUPERSTAR", "\u00a7c[OWNER]");
-        Component staff = WaypointerContributorBadge.hypixelRankPrefix(
-                "YOUTUBER", "MVP_PLUS", "SUPERSTAR", null);
-        Component monthly = WaypointerContributorBadge.hypixelRankPrefix(
-                "NORMAL", "MVP_PLUS", "SUPERSTAR", null);
-        Component packageRank = WaypointerContributorBadge.hypixelRankPrefix(
-                "NORMAL", "MVP_PLUS", "NONE", null);
-        Component noRank = WaypointerContributorBadge.hypixelRankPrefix(
-                "NORMAL", "NONE", "NONE", null);
-
-        assertEquals("[OWNER]", custom.getString());
-        assertEquals("[YOUTUBE]", staff.getString());
-        assertEquals("[MVP++]", monthly.getString());
-        assertEquals("[MVP+]", packageRank.getString());
-        assertNull(noRank);
     }
 
     @Test

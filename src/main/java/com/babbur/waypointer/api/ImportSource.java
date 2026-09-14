@@ -12,7 +12,8 @@ public enum ImportSource {
     COLEWEIGHT,
     ODIN,
     JSON,
-    CHUNKLOGGER;
+    CHUNKLOGGER,
+    SKYSOFT;
 
     static ImportSource from(WaypointImporter.Source source) {
         return valueOf(source.name());

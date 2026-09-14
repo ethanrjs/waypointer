@@ -7,6 +7,18 @@ class StructureRelayProtocolTest {
     private static final long NOW = 1_800_000_000_000L;
 
     @Test
+    void manualAdditionsCannotBePublishedToEitherSocket() {
+        for (var structure : CrystalHollowsStructure.values()) {
+            var manual = new StructureSighting(structure, 600, 100, 300,
+                    SightingConfidence.MANUAL, "manual:player", NOW);
+            assertFalse(StructureRelayProtocol.local(manual));
+            assertThrows(IllegalArgumentException.class, () -> StructureRelayProtocol.encode(manual, 1));
+            assertThrows(IllegalArgumentException.class,
+                    () -> SkyblockerStructureProtocol.publish("mini192Q", manual, NOW, NOW));
+        }
+    }
+
+    @Test
     void reportsWorldDaySeparatelyFromGameAgeAndOmitsUnknownTiming() {
         assertEquals("&protocol=2&day=17&dayTicks=410000&closingInSeconds=191",
                 StructureRelayProtocol.connectionTiming(17, 410_000, 191));

@@ -80,8 +80,6 @@
   "waypointer.screen.group_edit.info.dungeon.skip_ahead.description": "Waypoints kinne oerslein wurde",
   "waypointer.screen.group_edit.row.disabled": "útskeakele",
   "waypointer.screen.group_edit.row.current": "aktueel",
-  "waypointer.screen.group_edit.control.color.edit": "Klik om de waypointkleur te bewurkjen",
-  "waypointer.screen.group_edit.control.color.unlock": "Shift-klik ûntskoattelet de beskoattele kleur",
   "waypointer.screen.group_edit.control.stand.label": "Stean",
   "waypointer.screen.group_edit.control.stand.tooltip": "Stean om oer te slaan",
   "waypointer.screen.group_edit.control.interact.label": "Ynteraksje",

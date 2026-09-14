@@ -25,7 +25,8 @@ class SettingsCatalogTest {
 
     private static final Set<String> MAIN_EXEMPT = Set.of(
             "configSchemaVersion",
-            "namedStyles", "preferredStyleId", "crystalHollowsStyles", // Managed by the style library actions.
+            "namedStyles", "preferredStyleId", "crystalHollowsStyles", // Preserved for saved and imported styles.
+            "beaconMotionSpeed", "beaconWidthScale", "completedWaypointOpacity", "currentWaypointOpacity", "labelBackdropOpacity", "labelDetailDistance", "labelDetailOnDemand", "labelShowCoordinates", "labelShowRouteName", "preventLabelOverlap", "routeLineDashed", "routeLineOpacity", "routeLineWidth", "sequenceContextOpacity", "showWaypointRoleBadge", "tracerCenterGap", "tracerEdgeArrow", "upcomingWaypointOpacity", "waypointIcon",
             "crystalHollowsCompassRays",
             "minimapScale", "minimapCustomPosition", "minimapPositionX", "minimapPositionY", // Edited on screen.
             "crystalHollowsDetections", // One local map exposed as individual structure toggles.
@@ -48,20 +49,16 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void legacyFeaturesShareTheFeatureBloatTabAndRequireSystemOptIn() {
+    void exportPreviewRemainsAnOptionalExtra() {
         Setting toggle = SettingsCatalog.byId("enableFeatureBloat");
         assertEquals("system", categoryContaining(toggle.id()));
         assertEquals("Enable Extras", toggle.label());
-        assertEquals("Enable the Waypoint Painter and 3D route preview.", toggle.tooltip());
+        assertEquals("Enable the 3D route preview.", toggle.tooltip());
         WaypointerConfig config = new WaypointerConfig();
-        Setting paint = SettingsCatalog.byId(SettingsCatalog.ACTION_WAYPOINT_PAINT);
         Setting preview = SettingsCatalog.byId("showExportRoutePreview");
-        assertEquals("feature_bloat", categoryContaining(paint.id()));
         assertEquals("feature_bloat", categoryContaining(preview.id()));
-        assertFalse(paint.isEnabled(config, null));
         assertFalse(preview.isEnabled(config, null));
         toggle.set(config, null, true);
-        assertTrue(paint.isEnabled(config, null));
         assertTrue(preview.isEnabled(config, null));
     }
 
@@ -90,7 +87,6 @@ class SettingsCatalogTest {
         assertTrue(category.groups().stream()
                 .flatMap(group -> group.settings().stream())
                 .allMatch(setting -> setting.store() == Setting.Store.MAIN
-                        || setting.id().equals(SettingsCatalog.ACTION_STRUCTURE_STYLES)
                         || setting.id().equals(SettingsCatalog.ACTION_MINIMAP_EDITOR)));
         Setting master = SettingsCatalog.byId("crystalHollowsEnabled");
         assertNotNull(master);
@@ -191,6 +187,8 @@ class SettingsCatalogTest {
         WaypointerConfig config = new WaypointerConfig();
         Setting sharing = SettingsCatalog.byId("crystalHollowsSkyblockerSharing");
         assertNotNull(sharing);
+        assertEquals("Share Crystal Hollows structures through the Skyblocker websocket. Skyblocker data can be inaccurate.\n\n"
+                + "API.AzureAaron.net receives your Minecraft UUID and profile key proof to authenticate.", sharing.tooltip());
         assertEquals("mining", categoryContaining(sharing.id()));
         assertEquals(true, sharing.get(config, null));
         sharing.set(config, null, false);
@@ -425,17 +423,14 @@ class SettingsCatalogTest {
     }
 
     @Test
-    void waypointPainterIsAnActionInTheFeatureBloatCategory() {
-        Setting paint = SettingsCatalog.byId(SettingsCatalog.ACTION_WAYPOINT_PAINT);
-
-        assertNotNull(paint);
-        assertEquals("Waypoint Painter", paint.label());
-        assertEquals(Setting.Kind.ACTION, paint.kind());
-        assertEquals("feature_bloat", SettingsCatalog.categories().stream()
-                .filter(category -> category.groups().stream()
-                        .flatMap(group -> group.settings().stream())
-                        .anyMatch(setting -> setting.id().equals(SettingsCatalog.ACTION_WAYPOINT_PAINT)))
-                .findFirst().orElseThrow().id());
+    void appearanceUsesInlineControlsAndPainterRemainsAvailable() {
+        assertNotNull(SettingsCatalog.byId("boxStyle"));
+        assertNull(SettingsCatalog.byId("action.waypointInspector"));
+        assertNull(SettingsCatalog.byId("action.routeStyles"));
+        assertNull(SettingsCatalog.byId("action.structureStyles"));
+        assertNull(SettingsCatalog.byId("waypointIcon"));
+        assertTrue(SettingsCatalog.byId("action.waypointPaint").isEnabled(new WaypointerConfig(), null));
+        assertEquals("appearance", categoryContaining("action.waypointPaint"));
     }
 
     @Test
@@ -463,8 +458,7 @@ class SettingsCatalogTest {
         assertEquals(List.of(
                         "renderAntialiasing",
                         "boxStyle",
-                        "waypointIcon",
-                        "showWaypointRoleBadge",
+                        SettingsCatalog.ACTION_WAYPOINT_PAINT,
                         "waypointMarkerScale",
                         "defaultWaypointColor",
                         "beaconOpacity",
@@ -475,42 +469,9 @@ class SettingsCatalogTest {
                 appearance.groups().getFirst().settings().stream().map(Setting::id).toList());
     }
 
-    @Test
-    void stylingPreferencesStayLocalUntilTheShareCodecSupportsThem() {
-        WaypointerConfig defaults = new WaypointerConfig();
-        WaypointerConfig edited = new WaypointerConfig();
-        for (String id : List.of("routeMinRenderDistance", "routeMaxRenderDistance", "routeLineWidth",
-                "routeLineOpacity", "routeLineDashed", "beaconWidthScale", "beaconMotionSpeed",
-                "tracerCenterGap", "tracerEdgeArrow", "labelBackdropOpacity", "labelShowRouteName",
-                "labelShowCoordinates", "labelDetailOnDemand", "labelDetailDistance", "preventLabelOverlap",
-                "waypointIcon", "showWaypointRoleBadge", "completedWaypointOpacity", "currentWaypointOpacity",
-                "upcomingWaypointOpacity", "sequenceContextOpacity")) {
-            Setting setting = SettingsCatalog.byId(id);
-            assertTrue(setting.isLocalOnly(), id);
-            setting.set(edited, null, probeValue(setting, defaults));
-        }
-        assertEquals(21, SettingsCatalog.countChangedSettings(defaults, edited));
-        assertEquals(0, SettingsCatalog.countImportedSettings(defaults, edited));
-    }
 
-    @Test
-    void optionalStylingControlsKeepTheirExistingHomesAndStartDisabled() {
-        WaypointerConfig config = new WaypointerConfig();
-        for (String id : List.of("showWaypointRoleBadge", "routeLineDashed", "tracerEdgeArrow",
-                "labelShowRouteName", "labelShowCoordinates", "labelDetailOnDemand", "preventLabelOverlap")) {
-            assertEquals("appearance", categoryContaining(id));
-            assertEquals(false, SettingsCatalog.byId(id).get(config, null), id);
-        }
-        assertEquals("NONE", SettingsCatalog.byId("waypointIcon").get(config, null));
-        assertEquals("routes", categoryContaining("routeMinRenderDistance"));
-        assertEquals("routes", categoryContaining("routeMaxRenderDistance"));
-        assertEquals("styles", groupContaining(SettingsCatalog.ACTION_ROUTE_STYLES));
-        assertEquals("styles", groupContaining(SettingsCatalog.ACTION_WAYPOINT_INSPECTOR));
-        assertEquals("crystal_hollows_structures", groupContaining(SettingsCatalog.ACTION_STRUCTURE_STYLES));
-        assertFalse(SettingsCatalog.byId("labelDetailDistance").isEnabled(config, null));
-        SettingsCatalog.byId("labelDetailOnDemand").set(config, null, true);
-        assertTrue(SettingsCatalog.byId("labelDetailDistance").isEnabled(config, null));
-    }
+
+
 
     @Test
     void clampedNumberSettingsDeclareTheSameInputBounds() {
@@ -527,6 +488,7 @@ class SettingsCatalogTest {
         assertRange("tracerOpacity", 0.0, 1.0, false);
         assertRange("tracerThickness", 1.0, 12.0, false);
         assertRange("defaultReachRadius", 0.5, 100.0, false);
+        assertRange("editModePlacementReach", 1.0, 64.0, false);
         assertRange("hideWaypointsNearRadius", 0.5, 100.0, false);
     }
 
@@ -699,7 +661,7 @@ class SettingsCatalogTest {
                 SettingsCatalog.byId("focusTempWaypoints").label());
         assertEquals("Show only the temporary waypoint that is active.",
                 SettingsCatalog.byId("focusTempWaypoints").tooltip());
-        assertEquals("Dim surrounding waypoints",
+        assertEquals("Dim prev/next waypoints",
                 SettingsCatalog.byId("dimSequenceContextWaypoints").label());
         assertEquals("Enable waypoint skipping",
                 SettingsCatalog.byId("skipAheadMechanicEnabled").label());

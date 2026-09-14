@@ -63,7 +63,8 @@ final class CatalogJson {
         JsonObject route = object(root.get("route"), "route");
         CatalogRouteSummary summary = parseSummary(route);
         String payload = requiredUtf8String(route, "payload", MAX_PAYLOAD);
-        if (!payload.startsWith("WP:")) {
+        if (!payload.startsWith("WP:")
+                && !payload.startsWith(com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec.MAGIC)) {
             throw new IllegalArgumentException("Catalog route is not a Waypointer code");
         }
         return new CatalogRouteDetails(summary, payload);
@@ -74,6 +75,36 @@ final class CatalogJson {
         CatalogRouteSummary route = parseSummary(object(root.get("route"), "route"));
         String manageToken = optionalString(root, "manageToken", 128, "");
         return new CatalogPublishResult(route, manageToken);
+    }
+
+    /** Parses an owner-update response: the refreshed public summary of the same route. */
+    static CatalogRouteSummary parseRouteResponse(String json) {
+        JsonObject root = object(JsonParser.parseString(json), "route response");
+        return parseSummary(object(root.get("route"), "route"));
+    }
+
+    static String updateBody(CatalogRouteUpdate update) {
+        if (update == null || update.isEmpty()) {
+            throw new IllegalArgumentException("Route update has no changes");
+        }
+        JsonObject root = new JsonObject();
+        if (update.title() != null) {
+            root.addProperty("title", requireLength(update.title(), "title", 80));
+        }
+        if (update.description() != null) {
+            root.addProperty("description",
+                    requireTrimmedLength(update.description(), "description", 10, 500));
+        }
+        if (update.visibility() != null) {
+            root.addProperty("visibility", update.visibility().wireName());
+        }
+        if (update.payload() != null) {
+            root.addProperty("payload", requireUtf8Length(update.payload(), "payload", MAX_PAYLOAD));
+            if (update.zoneId() != null && !update.zoneId().isBlank()) {
+                root.addProperty("zoneId", requireLength(update.zoneId(), "zoneId", 64));
+            }
+        }
+        return root.toString();
     }
 
     static CatalogApiException parseError(int status, String json) {

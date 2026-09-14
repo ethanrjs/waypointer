@@ -21,10 +21,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Round-trip tests for the JSON codec. Avoids FabricLoader calls by using the
- * package-private static helpers directly.
- */
+/** Tests storage helpers directly to avoid FabricLoader initialization. */
 class StorageJsonTest {
 
     @Test
@@ -108,9 +105,6 @@ class StorageJsonTest {
 
     @Test
     void group_dropsTempWaypointsOnSave() {
-        // Temp waypoints intentionally don't survive a save -- they're session
-        // scratch. We stuff three of them into a group plus one real waypoint
-        // and expect only the real one to survive the round-trip.
         WaypointGroup g = WaypointGroup.create("temp-route", "dungeon_f7");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.add(Waypoint.at(1, 10, 1).withName("keeper"));
@@ -186,11 +180,7 @@ class StorageJsonTest {
 
     @Test
     void attached_save_snapshots_live_state_at_pump_time() throws Exception {
-        // Snapshots are deferred to the pump, so a mutation made directly on a
-        // group after the manager event -- which fires no event of its own --
-        // still reaches disk instead of being silently dropped until the next
-        // unrelated change. The snapshot is taken on the pumping thread, so it
-        // is still one consistent point in time, just a later one.
+        // Taking the snapshot at pump time includes direct group edits that emit no event.
         ActiveGroupManager manager = new ActiveGroupManager();
         Path file = tempDir.resolve("waypoints.json");
         Storage storage = new Storage(file);
@@ -285,9 +275,7 @@ class StorageJsonTest {
 
     @Test
     void aBurstOfPersistentChangesCostsOneSnapshot() {
-        // Bulk operations (hide-all, import, closing the route list) fire the
-        // persistent listener once per route. Serializing per event is what made
-        // those stall with a large library; one pump must cover the whole burst.
+        // Bulk route operations emit one event per route; the pump must coalesce snapshots.
         ActiveGroupManager manager = new ActiveGroupManager();
         Storage storage = new Storage(tempDir.resolve("waypoints.json"));
         storage.attach(manager);
@@ -463,12 +451,8 @@ class StorageJsonTest {
 
     @Test
     void group_perGroupGradientEndpointsRoundTrip() {
-        // Gradient endpoints are per-group (not global). If the codec drops
-        // them the gradient silently resets on the next load -- users then
-        // report "my colours keep reverting" and we chase the wrong bug.
         WaypointGroup g = WaypointGroup.create("palette", "galatea");
-        // MANUAL prevents the setter's re-apply from overwriting waypoint colors
-        // we haven't added yet, which isn't the point of this test.
+        // MANUAL isolates endpoint persistence from gradient application.
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setGradientStartColor(0x112233);
         g.setGradientEndColor(0xFEDCBA);

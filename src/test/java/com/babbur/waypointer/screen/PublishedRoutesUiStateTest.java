@@ -25,16 +25,19 @@ class PublishedRoutesUiStateTest {
                 model, false, false);
         assertFalse(noIdentity.copyEnabled());
         assertFalse(noIdentity.deleteEnabled());
+        assertFalse(noIdentity.editEnabled());
 
         PublishedRoutesUiState.Controls ready = PublishedRoutesUiState.controls(
                 model, true, false);
         assertTrue(ready.copyEnabled());
         assertTrue(ready.deleteEnabled());
+        assertTrue(ready.editEnabled());
 
         PublishedRoutesUiState.Controls deleting = PublishedRoutesUiState.controls(
                 model, true, true);
         assertFalse(deleting.copyEnabled());
         assertFalse(deleting.deleteEnabled());
+        assertFalse(deleting.editEnabled());
         assertFalse(deleting.previousEnabled());
         assertFalse(deleting.nextEnabled());
     }

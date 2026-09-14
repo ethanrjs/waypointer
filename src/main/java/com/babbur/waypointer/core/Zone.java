@@ -1,5 +1,7 @@
 package com.babbur.waypointer.core;
 
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -107,7 +109,7 @@ public record Zone(String id, String displayName) {
         return value.regionMatches(true, 0, prefix, 0, prefix.length());
     }
 
-    private static final List<Def> KNOWN = List.of(
+    private static final List<Def> BASE_KNOWN = List.of(
             new Def("hub",               "Hub",                  tokens("hub", "Hub")),
             new Def("private_island",    "Private Island",       tokens("dynamic", "Private Island"),
                     anyDisplay("Private Island", "Your Island")),
@@ -169,7 +171,7 @@ public record Zone(String id, String displayName) {
                     anyDisplay("Safari", "Safari Zone")),
 
             new Def("dungeon", "Catacombs", Zone::genericDungeon,
-                    anyDisplay("Catacombs", "Dungeon")),
+                    anyDisplay("Catacombs", "Dungeon", "The Catacombs")),
             new Def("dungeon_f1", "Catacombs F1",     dungeonFloor("F1")),
             new Def("dungeon_f2", "Catacombs F2",     dungeonFloor("F2")),
             new Def("dungeon_f3", "Catacombs F3",     dungeonFloor("F3")),
@@ -255,7 +257,18 @@ public record Zone(String id, String displayName) {
     }
 
     // Do not expose the legacy broad mineshaft bucket as a route target.
+    // Structure zones are route homes only: packets and sidebar text never resolve to them.
+    private static final List<Def> KNOWN = withStructureZones(BASE_KNOWN);
     private static final List<Zone> KNOWN_ZONES = buildKnownZones();
+
+    private static List<Def> withStructureZones(List<Def> base) {
+        List<Def> all = new ArrayList<>(base);
+        for (CrystalHollowsStructureZones.Definition definition : CrystalHollowsStructureZones.definitions()) {
+            all.add(new Def(definition.zoneId(), definition.displayName(),
+                    Zone::neverMatchesPacket, name -> false));
+        }
+        return List.copyOf(all);
+    }
 
     private static List<Zone> buildKnownZones() {
         Map<String, Zone> zones = new LinkedHashMap<>();
@@ -404,6 +417,11 @@ public record Zone(String id, String displayName) {
 
     private static boolean isSpecificMineshaftZoneId(String id) {
         return MINESHAFT_CRYSTAL_ZONE_ID.equals(id) || mineshaftTypeById(id) != null;
+    }
+
+    /** A Mineshaft zone whose layout was identified, as opposed to the generic unknown bucket. */
+    public static boolean isSpecificMineshaftZone(String id) {
+        return id != null && isSpecificMineshaftZoneId(canonicalId(id));
     }
 
     private static boolean isLegacyDwarvenSurfaceZoneId(String normalizedId) {

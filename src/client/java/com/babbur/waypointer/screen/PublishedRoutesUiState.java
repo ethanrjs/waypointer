@@ -12,6 +12,7 @@ final class PublishedRoutesUiState {
     record Controls(
             boolean copyEnabled,
             boolean deleteEnabled,
+            boolean editEnabled,
             boolean previousEnabled,
             boolean nextEnabled) {
     }
@@ -20,6 +21,7 @@ final class PublishedRoutesUiState {
             PublishedRoutesModel model, boolean identityAvailable, boolean deleting) {
         boolean selected = model != null && model.selected() != null && identityAvailable;
         return new Controls(
+                selected && !deleting,
                 selected && !deleting,
                 selected && !deleting,
                 model != null && model.page() > 0 && !deleting,

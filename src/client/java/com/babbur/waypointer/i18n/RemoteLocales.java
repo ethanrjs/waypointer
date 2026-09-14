@@ -47,6 +47,23 @@ public final class RemoteLocales {
 
     private RemoteLocales() {}
 
+    /** Observes existing state without reading caches, downloading, or requesting a reload. */
+    public static DebugSnapshot debugSnapshot(String locale) {
+        locale = Objects.requireNonNullElse(locale, "");
+        RemoteLocaleManifest.Entry entry = MANIFEST == null ? null : MANIFEST.entry(locale);
+        Long retryAfter = RETRY_AFTER.get(locale);
+        return new DebugSnapshot(MANIFEST != null, isEnabled(),
+                MANIFEST == null ? "" : MANIFEST.commit(),
+                MANIFEST == null ? 0 : MANIFEST.locales().size(), entry != null,
+                OVERLAYS.containsKey(locale), entry != null && RELOADS.applied(locale + ":" + entry.sha256()),
+                IN_FLIGHT.containsKey(locale), retryAfter == null ? 0
+                        : TimeUnit.NANOSECONDS.toMillis(Math.max(0, retryAfter - System.nanoTime())));
+    }
+
+    public record DebugSnapshot(boolean manifestValid, boolean enabled, String commit,
+                                int trustedLocales, boolean selectedSupported, boolean overlayLoaded,
+                                boolean reloadApplied, boolean downloading, long retryInMillis) {}
+
     public static void install() {
         if (!isEnabled()) {
             Waypointer.LOGGER.debug("Remote language files are disabled for this build");

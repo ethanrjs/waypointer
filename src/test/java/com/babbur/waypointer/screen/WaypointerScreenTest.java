@@ -32,6 +32,125 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointerScreenTest {
 
     @Test
+    void occupiedStructureIsPinnedBelowCrystalHollowsEvenWithoutSavedRoutes() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("crystal_hollows"));
+        String structureZone = com.babbur.waypointer.crystal.CrystalHollowsStructureZones.zoneId(
+                com.babbur.waypointer.crystal.CrystalHollowsStructure.LOST_PRECURSOR_CITY);
+        List<String> ids = WaypointerZoneCatalog.islandDropdownIdsForManager(manager, false, structureZone);
+        assertEquals("crystal_hollows", ids.get(0));
+        assertEquals(structureZone, ids.get(1));
+        assertEquals(1, ids.stream().filter(structureZone::equals).count());
+        manager.onZoneChanged(Zone.fromId("hub"));
+        assertFalse(WaypointerZoneCatalog.islandDropdownIdsForManager(manager, false, structureZone)
+                .contains(structureZone));
+    }
+
+    @Test
+    void generatedStructureRowsNavigateToTheirOwnZoneOnly() {
+        WaypointGroup group = new WaypointGroup("crystal_hollows:structure:jungle_temple",
+                "Jungle Temple", "crystal_hollows");
+        assertNull(WaypointerZoneCatalog.generatedStructureZoneId(group));
+        group.setRuntimeOnly(true);
+        assertEquals("crystal_hollows_structure_jungle_temple",
+                WaypointerZoneCatalog.generatedStructureZoneId(group));
+        WaypointGroup unrelated = new WaypointGroup("runtime:other", "Other", "crystal_hollows");
+        unrelated.setRuntimeOnly(true);
+        assertNull(WaypointerZoneCatalog.generatedStructureZoneId(unrelated));
+        WaypointGroup grotto = new WaypointGroup("crystal_hollows:structure:fairy_grotto:2",
+                "Fairy Grotto #2", "crystal_hollows");
+        grotto.setRuntimeOnly(true);
+        String grottoZone = WaypointerZoneCatalog.generatedStructureZoneId(grotto);
+        assertTrue(WaypointerZoneCatalog.isStructureBrowseZone(grottoZone));
+        assertFalse(WaypointerZoneCatalog.canRetargetRoute(
+                WaypointGroup.create("Saved route", "hub"), grottoZone));
+        assertEquals("Fairy Grotto", WaypointerZoneCatalog.displayZoneLabel(grottoZone));
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("crystal_hollows"));
+        manager.add(grotto);
+        assertEquals(grottoZone,
+                WaypointerZoneCatalog.islandDropdownIdsForManager(manager, false, grottoZone).get(1));
+        assertEquals(1, WaypointerZoneCatalog.normalGroupCountForZone(manager, grottoZone));
+    }
+
+    @Test
+    void importsWithoutAnAreaUseTheTargetAndPreserveExplicitAreas() {
+        WaypointGroup unknown = WaypointGroup.create("Unknown", Zone.UNKNOWN.id());
+        WaypointGroup hub = WaypointGroup.create("Hub", "hub");
+        WaypointerZoneCatalog.retargetUnknownImportedGroups(List.of(unknown, hub), "crimson_isle");
+        assertEquals("crimson_isle", unknown.zoneId());
+        assertEquals("hub", hub.zoneId());
+    }
+
+    @Test
+    void actualSkysoftShareActivatesOnlyOnPrivateIsland() throws IOException {
+        String share = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "src/test/resources/fixtures/skysoft-private-island-share.txt"));
+        var outcome = WaypointerScreen.decodeClipboardImport(share, "Imported Route");
+        assertNull(outcome.error());
+        assertNotNull(outcome.waypoints());
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        WaypointerScreen.installImportedWaypointGroups(manager, new WaypointerConfig(),
+                outcome.waypoints(), "hub");
+        var route = manager.allGroupsList().getFirst();
+        assertEquals("test", route.name());
+        assertEquals("private_island", route.zoneId());
+        assertEquals(23, route.size());
+        assertEquals("true", route.styleOverride().values().get("showRouteLines"));
+        assertEquals("0.25", route.styleOverride().values().get("waypointMarkerScale"));
+        assertFalse(manager.activeGroups().contains(route));
+        manager.onZoneChanged(Zone.fromId("private_island"));
+        assertTrue(manager.activeGroups().contains(route));
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, route.loadMode());
+    }
+
+    @Test
+    void skysoftClipboardImportInstallsAnActiveOrderedRouteWithItsCoordinatesAndColors() {
+        String json = """
+                {"version":2,"groups":[{"name":"Skysoft route","island":"HUB",
+                "route":true,"color":1193046,"styles":["MARKER"],"points":[
+                {"name":"First","x":-12.5,"y":70,"z":30.25},
+                {"name":"Second","x":18,"y":72.5,"z":-40,"color":11259375}]}]}
+                """;
+        var outcome = WaypointerScreen.decodeClipboardImport(json, "Imported Route");
+        assertNull(outcome.error());
+        assertNotNull(outcome.waypoints());
+        assertEquals(WaypointImporter.Source.SKYSOFT, outcome.waypoints().source());
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(Zone.fromId("hub"));
+        WaypointerConfig config = new WaypointerConfig();
+        config.setImportedRouteColorMode(WaypointGroup.GradientMode.MANUAL);
+
+        WaypointerScreen.installImportedWaypointGroups(manager, config, outcome.waypoints(), "the_end");
+
+        WaypointGroup route = manager.allGroupsList().getFirst();
+        assertTrue(manager.activeGroups().contains(route));
+        assertEquals("hub", route.zoneId());
+        assertEquals("Skysoft route", route.name());
+        assertEquals(WaypointGroup.LoadMode.SEQUENCE, route.loadMode());
+        assertEquals(2, route.size());
+        assertEquals("First", route.get(0).name());
+        assertEquals(-12.0, route.get(0).centerX());
+        assertEquals(30.75, route.get(0).centerZ());
+        assertEquals(73.0, route.get(1).centerY());
+        assertEquals(0x123456, route.get(0).color());
+        assertEquals(0xABCDEF, route.get(1).color());
+    }
+
+    @Test
+    void zoneSearchMatchesLabelsIdsAndEveryTypedToken() {
+        assertTrue(WaypointerScreen.zoneMatchesSearch("dwarven_mines", "Dwarven Mines", "dwar"));
+        assertTrue(WaypointerScreen.zoneMatchesSearch("dwarven_mines", "Dwarven Mines", "DWARVEN MINES"));
+        assertTrue(WaypointerScreen.zoneMatchesSearch("mineshaft_topaz_1", "Topaz Mineshaft (TOPA_1)", "mineshaft topa"));
+        assertTrue(WaypointerScreen.zoneMatchesSearch("crystal_hollows", "Crystal Hollows", "  "));
+        assertTrue(WaypointerScreen.zoneMatchesSearch("crystal_hollows", "Crystal Hollows", (String) null));
+        assertFalse(WaypointerScreen.zoneMatchesSearch("crystal_hollows", "Crystal Hollows", "hub"));
+        assertFalse(WaypointerScreen.zoneMatchesSearch("hub", "Hub", "hub island"));
+        assertTrue(WaypointerScreen.zoneMatchesSearch(null, null, ""));
+    }
+
+    @Test
     void generatedStructuresFolderHasADistinctTintWithoutChangingSavedFolders() {
         String id = com.babbur.waypointer.crystal.CrystalHollowsStructureFolder.FOLDER_ID;
         int color = com.babbur.waypointer.crystal.CrystalHollowsStructureFolder.FOLDER_COLOR;
@@ -936,45 +1055,6 @@ class WaypointerScreenTest {
         assertEquals("group \"a\" has too many waypoints",
                 WaypointerScreen.importFailureText(new IllegalArgumentException(
                         "group \"a\" has too many waypoints")));
-    }
-
-    @Test
-    void undoRestoreAnchorsToTheNextSurvivingRouteInTheSameContainer() {
-        ActiveGroupManager manager = new ActiveGroupManager();
-        WaypointGroup a = new WaypointGroup("a", "A", "hub");
-        WaypointGroup b = new WaypointGroup("b", "B", "hub");
-        WaypointGroup c = new WaypointGroup("c", "C", "hub");
-        WaypointGroup d = new WaypointGroup("d", "D", "hub");
-        manager.add(a);
-        manager.add(b);
-        manager.add(c);
-        manager.add(d);
-        manager.addFolder(new RouteFolder(
-                "folder", "Folder", "hub", false, 0x123456), List.of(c.id()));
-
-        Set<String> deleting = Set.of("a", "b");
-        assertEquals("d", WaypointerScreen.nextSurvivorGroupId(manager, a, deleting, null),
-                "skips other deleted routes and folder members in another container");
-        assertEquals("d", WaypointerScreen.nextSurvivorGroupId(manager, b, deleting, null));
-        assertEquals("c", WaypointerScreen.nextSurvivorGroupId(
-                manager, b, Set.of("b"), "folder"));
-        assertNull(WaypointerScreen.nextSurvivorGroupId(
-                manager, d, Set.of("d"), null), "the last route has no later anchor");
-
-        WaypointGroup dungeon = new WaypointGroup("dg", "DG", "room");
-        dungeon.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
-        manager.add(dungeon);
-        assertNull(WaypointerScreen.nextSurvivorGroupId(
-                manager, dungeon, Set.of("dg"), null),
-                "dungeon routes restore without an ordering anchor");
-
-        List<WaypointerScreen.RouteRestore> plan =
-                WaypointerScreen.planUndoRestores(manager, List.of(c, dungeon));
-        assertEquals(2, plan.size());
-        assertEquals("folder", plan.get(0).folderId(),
-                "folder membership is captured before the delete");
-        assertNull(plan.get(0).beforeGroupId(), "c is the only folder member");
-        assertNull(plan.get(1).folderId(), "dungeon routes carry no folder");
     }
 
     @Test

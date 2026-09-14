@@ -48,7 +48,12 @@ public final class WaypointLabelAppearance {
         g.pose().popMatrix();
     }
 
-    static boolean iconPixel(String icon, int x, int y) {
+    public static boolean iconPixel(String icon, int x, int y) {
+        if (icon.startsWith(WaypointerConfig.CUSTOM_ICON_PREFIX)) {
+            int size = WaypointerConfig.CUSTOM_ICON_SIZE, half = size / 2;
+            int cell = WaypointerConfig.CUSTOM_ICON_PREFIX.length() + (y + half) * size + (x + half);
+            return cell < icon.length() && icon.charAt(cell) == '1';
+        }
         return switch (icon) {
             case "DIAMOND" -> Math.abs(x) + Math.abs(y) == 4;
             case "CIRCLE" -> x * x + y * y >= 10 && x * x + y * y <= 20;

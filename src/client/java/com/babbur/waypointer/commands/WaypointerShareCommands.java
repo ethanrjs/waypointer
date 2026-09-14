@@ -447,9 +447,6 @@ final class WaypointerShareCommands {
             return;
         }
         if (decoded instanceof UniversalShareCodec.CatalogReference reference) {
-            // The preview fetches the route; installation requires confirmation.
-            info(src, Component.translatable("waypointer.command.import.catalog.opening",
-                    reference.routeId()));
             try {
                 catalogReferencePresenter.present(reference.routeId());
             } catch (RuntimeException failure) {
@@ -468,6 +465,12 @@ final class WaypointerShareCommands {
         }
 
         WaypointImporter.ImportResult imported = ((UniversalShareCodec.Waypoints) decoded).result();
+        installWaypointImport(src, imported, origin, targetZone);
+    }
+
+    private void installWaypointImport(FabricClientCommandSource src,
+                                       WaypointImporter.ImportResult imported,
+                                       String origin, Zone targetZone) {
         int retargeted = retargetUnknownGroups(imported.groups(), targetZone);
         if (imported.libraryMetadata().isEmpty()) {
             RouteColorPolicy.applyImportedRouteDefaults(imported.groups(), config);

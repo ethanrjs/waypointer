@@ -9,6 +9,7 @@ import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.tree.LiteralCommandNode;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.babbur.waypointer.chat.ChatImportCache;
+import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.codec.WaypointCodec;
 import com.babbur.waypointer.config.Storage;
@@ -21,6 +22,7 @@ import com.babbur.waypointer.input.WaypointAddFlow;
 import com.babbur.waypointer.input.WaypointRepositionMode;
 import com.babbur.waypointer.render.HappySnowmanSession;
 import com.babbur.waypointer.screen.DebugInspectScreen;
+import com.babbur.waypointer.screen.CrystalHollowsMinimapEditorScreen;
 import com.babbur.waypointer.screen.RouteCatalogScreen;
 import com.babbur.waypointer.screen.WaypointerScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
@@ -94,6 +96,12 @@ public final class WaypointerCommands {
                         .then(argument("groupId", StringArgumentType.string())
                                 .executes(ctx -> runOpenFocusedGui(
                                         StringArgumentType.getString(ctx, "groupId")))))
+                .then(literal("minimap").executes(ctx -> {
+                    Minecraft client = Minecraft.getInstance();
+                    client.execute(() -> MinecraftCompat.setScreen(client,
+                            new CrystalHollowsMinimapEditorScreen(null, config)));
+                    return 1;
+                }))
                 .then(literal("help")
                         .executes(ctx -> WaypointerCommandHelp.run(ctx.getSource(), root, null))
                         .then(argument("target", StringArgumentType.word())

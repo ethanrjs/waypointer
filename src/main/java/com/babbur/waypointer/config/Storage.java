@@ -107,7 +107,6 @@ public final class Storage {
             quarantineInvalidFile(e);
             return;
         }
-
         writesBlocked = false;
         pendingCanonicalRewriteGroups = parsedGroups.canonicalizedZoneCount();
         pendingSchemaRewrite = parsedGroups.requiresRewrite();
@@ -172,7 +171,7 @@ public final class Storage {
         try {
             Files.createDirectories(file.getParent());
             Path tmp = file.resolveSibling(file.getFileName() + ".tmp");
-            Files.writeString(tmp, json);
+            writeDurably(tmp, json);
             try {
                 Files.move(tmp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
             } catch (AtomicMoveNotSupportedException e) {
@@ -181,6 +180,17 @@ public final class Storage {
             writeCount++;
         } catch (IOException e) {
             throw new UncheckedIOException("Failed to save waypoints to " + file, e);
+        }
+    }
+
+    /** Writes and forces the bytes to disk so a crash after the rename never leaves a truncated file. */
+    static void writeDurably(Path target, String json) throws IOException {
+        try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(target,
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
+                java.nio.file.StandardOpenOption.WRITE)) {
+            java.nio.ByteBuffer bytes = java.nio.charset.StandardCharsets.UTF_8.encode(json);
+            while (bytes.hasRemaining()) channel.write(bytes);
+            channel.force(true);
         }
     }
 

@@ -25,6 +25,20 @@ class ZoneTest {
     }
 
     @Test
+    void crystalHollowsStructureZonesAreRouteHomesThatNeverResolveFromTheServer() {
+        Zone temple = Zone.fromId("crystal_hollows_structure_jungle_temple");
+        assertEquals("Jungle Temple", temple.displayName());
+        assertTrue(Zone.knownZones().contains(temple));
+        assertTrue(Zone.knownZones().contains(Zone.fromId("crystal_hollows_structure_odawa")));
+        assertFalse(Zone.knownZones().stream().anyMatch(zone ->
+                zone.id().equals("crystal_hollows_structure_crystal_nucleus")
+                        || zone.id().equals("crystal_hollows_structure_wishing_target")));
+        assertEquals(Zone.fromId("crystal_hollows"), Zone.resolve("SKYBLOCK", "Crystal Hollows", "crystal_hollows"));
+        assertFalse(Zone.resolveFromDisplayName("Jungle Temple (Crystal Hollows)").id()
+                .startsWith("crystal_hollows_structure_"));
+    }
+
+    @Test
     void privateWorldHasStableUserFacingZoneIdentity() {
         assertEquals(Zone.PRIVATE_WORLD, Zone.fromId("private_world"));
         assertEquals("Private World", Zone.PRIVATE_WORLD.displayName());
@@ -93,9 +107,7 @@ class ZoneTest {
 
     @Test
     void galatea_scoreboardSuffixedNameStillResolvesToGalateaId() {
-        // Hypixel's sidebar reads "Galatea Foraging 2" while players are on the
-        // island, but Skyblocker imports use the bare "galatea" island id. Both
-        // must converge on the same zone id so imported routes render live.
+        // Sidebar names and imported island IDs must share a storage key.
         Zone z = Zone.resolveFromDisplayName("Galatea Foraging 2");
         assertNotNull(z);
         assertEquals("galatea", z.id());
@@ -104,9 +116,6 @@ class ZoneTest {
 
     @Test
     void galatea_hypixelApiMapPrefixResolvesToGalateaId() {
-        // Same convergence guarantee via the mod-API path: if Hypixel reports the
-        // map as "Galatea" (or something starting with it), we land on the
-        // canonical id instead of sanitise-fallback.
         Zone z = Zone.resolve("SKYBLOCK", "Galatea", null);
         assertNotNull(z);
         assertEquals("galatea", z.id());
@@ -119,22 +128,17 @@ class ZoneTest {
         assertEquals("Galatea", z.displayName());
     }
 
-    // Cross-field matching: Hypixel's mod-API doesn't strictly separate island
-    // ids from friendly names between the `map` and `mode` fields. Resolution
-    // must land on the right zone regardless of which slot the id arrives in.
+    // Hypixel may put island IDs or display names in either map or mode.
     @Test
     void resolve_matchesOnEitherMapOrMode() {
-        // Skyblocker-style id in mode.
         Zone a = Zone.resolve("SKYBLOCK", null, "foraging_1");
         assertNotNull(a);
         assertEquals("the_park", a.id());
 
-        // Same zone keyed via friendly name in map.
         Zone b = Zone.resolve("SKYBLOCK", "The Park", null);
         assertNotNull(b);
         assertEquals("the_park", b.id());
 
-        // And with the id in map (defensive -- some payloads swap).
         Zone c = Zone.resolve("SKYBLOCK", "foraging_1", null);
         assertNotNull(c);
         assertEquals("the_park", c.id());
@@ -142,9 +146,6 @@ class ZoneTest {
 
     @Test
     void resolve_coversNewerIslands() {
-        // Every island added in the zone-coverage pass must land on the
-        // documented canonical zone id when the Hypixel payload arrives in
-        // either convention (id in mode, friendly name in map).
         assertEquals("crimson_isle",    Zone.resolve("SKYBLOCK", "Crimson Isle",    null).id());
         assertEquals("crimson_isle",    Zone.resolve("SKYBLOCK", null, "crimson_isle").id());
         assertEquals("backwater_bayou", Zone.resolve("SKYBLOCK", "Backwater Bayou", null).id());
@@ -163,8 +164,7 @@ class ZoneTest {
 
     @Test
     void kuudra_acceptsShortAndLongDisplayName() {
-        // Skyblocker's friendly name is "Kuudra's Hollow", but the sidebar /
-        // older exports abbreviate to "Kuudra". Both must land on the same id.
+        // Older exports and the sidebar abbreviate "Kuudra's Hollow" to "Kuudra".
         assertEquals("kuudra", Zone.resolveFromDisplayName("Kuudra").id());
         assertEquals("kuudra", Zone.resolveFromDisplayName("Kuudra's Hollow").id());
         assertEquals("Kuudra's Hollow", Zone.fromId("kuudra").displayName());
@@ -172,12 +172,7 @@ class ZoneTest {
 
     @Test
     void mineshaft_friendlyNamesResolveToUnknownVariant() {
-        // Both scoreboard labels upgrade to the "Unknown Mineshaft" zone --
-        // the generic mineshaft bucket spans ~33 distinct layouts, so a
-        // waypoint group keyed to it is almost never what the user wants. The
-        // unknown variant is an explicit signal "we know the island, not the
-        // layout"; waypoint groups keyed to it trigger only in that exact
-        // state.
+        // Without a layout code, mineshaft labels resolve only to Unknown Mineshaft.
         assertEquals("mineshaft_unknown", Zone.resolveFromDisplayName("Mineshaft").id());
         assertEquals("mineshaft_unknown", Zone.resolveFromDisplayName("Glacite Mineshafts").id());
         assertEquals("mineshaft_unknown", Zone.resolveFromDisplayName("Unknown Mineshaft").id());
@@ -185,9 +180,7 @@ class ZoneTest {
 
     @Test
     void privateIsland_matchesDynamicId() {
-        // Hypixel's mod-api sends "dynamic" as the mode for Private Island --
-        // one of the few cases where the id and friendly name share zero
-        // spelling. Verify the id-side matcher works.
+        // Hypixel identifies Private Island with mode "dynamic".
         assertEquals("private_island", Zone.resolve("SKYBLOCK", null, "dynamic").id());
         assertEquals("private_island", Zone.resolve("SKYBLOCK", "Private Island", null).id());
         assertEquals("private_island", Zone.resolveFromDisplayName("Your Island").id());
@@ -258,10 +251,7 @@ class ZoneTest {
 
         @Test
     void mineshaftType_resolveFromSidebarBlob() {
-        // Hypixel writes a compact code on the server-identifier line while
-        // inside a mineshaft (e.g. "04/18/26 m197CD AQUA_C" in an Aquamarine
-        // Crystal shaft). We match that code exactly, not the display name --
-        // the display name never appears in the live scoreboard.
+        // The sidebar carries a layout code such as AQUA_C, not its display name.
         assertEquals("mineshaft_topaz_1",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("⏣ Glacite Mineshafts\n04/18/26 m1 TOPA_1").id());
         assertEquals("mineshaft_crystal",
@@ -276,17 +266,14 @@ class ZoneTest {
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 FAIR_1").id());
         assertEquals("mineshaft_tungsten",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 TUNG_1").id());
-        // "Glacite Mineshafts" alone (no variant code on any line) does not
-        // resolve -- the caller falls back to mineshaft_unknown.
+        // Without a layout code, the caller falls back to mineshaft_unknown.
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob("⏣ Glacite Mineshafts"));
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob(null));
     }
 
         @Test
     void mineshaftType_crystalCodeSharesZoneButPlainCodeStaysDistinct() {
-        // Codes like JASP_1 and JASP_C are distinct tokens so no ordering
-        // gymnastics are needed; the crystal token now resolves to the shared
-        // crystal route bucket instead of a per-gem route bucket.
+        // Crystal layouts share one route bucket across gem types.
         assertEquals("mineshaft_jasper",
                 Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 JASP_1").id());
         assertEquals("mineshaft_crystal",
@@ -305,22 +292,16 @@ class ZoneTest {
 
     @Test
     void mineshaftType_rejectsSubstringInsideLargerWord() {
-        // A username like "xTOPA_1x" should not activate the Topaz 1 zone.
-        // containsAsToken requires boundary chars on both sides.
+        // Require token boundaries to avoid matching usernames.
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob("⏣ Glacite Mineshafts\nxTOPA_1x"));
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob("prefixJASP_C"));
-        // Sanity: the lowercase form doesn't match either. Codes are all-caps
-        // in the live scoreboard; case-sensitive matching avoids false hits
-        // on lowercase usernames containing the code as a substring.
+        // Live layout codes are uppercase; lowercase username fragments must not match.
         assertNull(Zone.tryResolveMineshaftTypeFromSidebarBlob("m1 aqua_c"));
     }
 
     @Test
     void mineshaft_packetWithoutVariantUpgradesToUnknown() {
-        // Hypixel's packet sometimes reports "mineshaft" before the sidebar
-        // has populated the variant line. We refine to the Unknown zone
-        // rather than leaving the generic bucket active so variant-scoped
-        // waypoint groups don't accidentally flash on.
+        // A packet can precede the sidebar layout code; keep variant routes inactive until it arrives.
         Zone raw = Zone.resolve("SKYBLOCK", null, "mineshaft");
         assertEquals("mineshaft_unknown", raw.id());
         Zone refined = Zone.refineIfDwarvenMinesContext(raw, "");
@@ -329,9 +310,6 @@ class ZoneTest {
 
     @Test
     void mineshaft_dwarvenMinesWithOnlyGlaciteMineshaftsLineUpgradesToUnknown() {
-        // Refinement via the sub-area path: packet stays on mining_3 but the
-        // sidebar says "Glacite Mineshafts" with no variant line. Should land
-        // on Unknown Mineshaft, not generic mineshaft.
         Zone dm = Zone.resolve("SKYBLOCK", "mining_3", null);
         Zone refined = Zone.refineIfDwarvenMinesContext(dm, "⏣ Glacite Mineshafts");
         assertEquals("mineshaft_unknown", refined.id());
@@ -340,18 +318,13 @@ class ZoneTest {
     @Test
     void mineshaft_unknownZoneRendersFriendlyDisplayName() {
         assertEquals("Unknown Mineshaft", Zone.fromId("mineshaft_unknown").displayName());
-        // Legacy id still resolves for stored groups so imported data doesn't
-        // crash; those groups simply never activate because the runtime path
-        // upgrades past them.
+        // Legacy IDs remain readable, but runtime refinement skips the generic bucket.
         assertEquals("Unknown Mineshaft", Zone.fromId("mineshaft").displayName());
     }
 
     @Test
     void mineshaftType_refineUpgradesMineshaftPacket() {
-        // Hypixel's packet flattens every variant to "mineshaft"; the sidebar
-        // holds the variant code (e.g. "TOPA_2") on the server-identifier
-        // line. refineIfDwarvenMinesContext must follow that signal so
-        // variant-scoped waypoint groups activate.
+        // The packet gives only "mineshaft"; the sidebar layout code selects the route zone.
         Zone raw = Zone.resolve("SKYBLOCK", null, "mineshaft");
         Zone refined = Zone.refineIfDwarvenMinesContext(raw, "⏣ Glacite Mineshafts\n04/18/26 m1 TOPA_2");
         assertEquals("mineshaft_topaz_2", refined.id());
@@ -359,10 +332,7 @@ class ZoneTest {
 
         @Test
     void mineshaftType_refineVariantBeatsGenericSubArea() {
-        // If the blob mentions "Glacite Mineshafts" (generic sub-area) and a
-        // specific variant code on another line, the code wins -- it's the
-        // strictly-more-specific signal and matches what the user is doing in
-        // this shaft.
+        // A specific layout code takes precedence over the generic sub-area name.
         Zone raw = Zone.resolve("SKYBLOCK", null, "mineshaft");
         Zone refined = Zone.refineIfDwarvenMinesContext(raw,
                 "⏣ Glacite Mineshafts\n04/18/26 m197CD AQUA_C");
@@ -379,18 +349,14 @@ class ZoneTest {
 
         @Test
     void mineshaftType_resolveFromDisplayNameAcceptsBareVariant() {
-        // If someone types the variant as a display name (e.g. from chat or an
-        // imported route), it resolves to the same canonical id the refiner
-        // produces, so the two paths agree on storage keys.
+        // Imported display names must resolve to the same key as live layout codes.
         assertEquals("mineshaft_topaz_1", Zone.resolveFromDisplayName("Topaz 1").id());
         assertEquals("mineshaft_crystal", Zone.resolveFromDisplayName("Jasper Crystal").id());
     }
 
     @Test
     void dungeonFloor_acceptsSwappedFieldOrdering() {
-        // Defensive: accept both (map="dungeon", mode="F7") and the swapped
-        // order. Field semantics have shifted between Hypixel packet versions
-        // and we'd rather over-match than silently drop a dungeon run.
+        // Hypixel packet versions have swapped map and mode; accept both orders.
         assertEquals("dungeon_f7", Zone.resolve("SKYBLOCK", "dungeon", "F7").id());
         assertEquals("dungeon_f7", Zone.resolve("SKYBLOCK", "F7", "dungeon").id());
         assertEquals("dungeon_m4", Zone.resolve("SKYBLOCK", "M4", "dungeon").id());

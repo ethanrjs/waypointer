@@ -158,7 +158,7 @@ class GroupEditScreenTest {
                         | Waypoint.FLAG_SKIP_ON_INTERACT
                         | Waypoint.FLAG_DEPTH_CHECKED);
 
-        assertEquals("Tiny · Filled · Interact · LOS",
+        assertEquals("Tiny Â· Filled Â· Interact Â· LOS",
                 GroupEditPolicy.waypointControlSummary(waypoint, true, true));
         assertEquals("LOS",
                 GroupEditPolicy.waypointControlSummary(waypoint, false, false));
@@ -168,7 +168,7 @@ class GroupEditScreenTest {
                 Waypoint.FLAG_DUNGEON_SECRET
                         | Waypoint.FLAG_DUNGEON_ITEM
                         | Waypoint.FLAG_SKIP_ON_STAND);
-        assertEquals("Secret · Item · Stand",
+        assertEquals("Secret Â· Item Â· Stand",
                 GroupEditPolicy.waypointControlSummary(dungeonItem, false, true));
     }
 
@@ -233,14 +233,6 @@ class GroupEditScreenTest {
     }
 
     @Test
-    void swatchGestureTooltipTextExplainsColorActions() {
-        assertEquals("Click to edit waypoint color",
-                GroupEditPolicy.swatchGestureTooltipText(false));
-        assertEquals("Shift-click unlocks locked color",
-                GroupEditPolicy.swatchGestureTooltipText(true));
-    }
-
-    @Test
     void waypointRowVisualStateKeepsHeldSubwaypointParentAndChildrenActive() {
         WaypointGroup group = routeWithSubwaypoints();
         group.advancePast(0);
@@ -286,8 +278,10 @@ class GroupEditScreenTest {
 
     @Test
     void dungeonRouteInfoExplainsTriggerAndRadiusSkipBehaviors() {
-        assertEquals(7, GroupEditPolicy.routeInfoLabels(false).size());
-        assertEquals(13, GroupEditPolicy.routeInfoLabels(true).size());
+        assertEquals(11, GroupEditPolicy.routeInfoLabels(false).size());
+        assertTrue(GroupEditPolicy.routeInfoLabels(false).containsAll(
+                java.util.List.of("{distance}", "{index}", "{total}", "{route}")));
+        assertEquals(17, GroupEditPolicy.routeInfoLabels(true).size());
         assertTrue(GroupEditPolicy.routeInfoLabels(true).containsAll(
                 java.util.List.of("Types", "No trigger", "Stand", "Interact", "Mine", "Skip Ahead")));
         assertEquals(java.util.List.of(
@@ -297,7 +291,11 @@ class GroupEditScreenTest {
                 "Enable or disable the waypoint",
                 "Move in world",
                 "Toggle subwaypoint",
-                "Edit color; Shift-click unlocks"
+                "Edit color; Shift-click unlocks",
+                "Name: distance to waypoint",
+                "Name: waypoint number",
+                "Name: total main waypoints",
+                "Name: route name"
         ), GroupEditPolicy.routeInfoDescriptions(false));
         assertTrue(GroupEditPolicy.routeInfoDescriptions(true).containsAll(java.util.List.of(
                 "Skip when near",

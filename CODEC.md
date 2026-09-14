@@ -575,8 +575,11 @@ The writer omits a field when it equals its normalized default.
 | 109 | `crystalHollowsTracers` | B | `true` |
 | 110 | `crystalHollowsCompassAutoFocus` | B | `true` |
 | 111 | `crystalHollowsCompassTracers` | B | `true` |
+| 112 | `editModePlacementReach` | D | `5.0` |
+| 113 | `showChatCoordBlockButton` | B | `false` |
+| 114 | `coordinateShareHelper` | B | `true` |
 
-Inactive legacy holes are tags 17, 51, 54, 55, 66, and 108. Tag 108 is permanently reserved: the WPC decoder consumes its historical boolean without applying it; the v10 decoder skips it as a bounded unknown field. New writers never emit it. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-107 and 109-111 are active. Tag 87 remains readable for older settings but no longer renders compass rays. Tags 112-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
+Inactive legacy holes are tags 17, 51, 54, 55, 66, and 108. Tag 108 is permanently reserved: the WPC decoder consumes its historical boolean without applying it; the v10 decoder skips it as a bounded unknown field. New writers never emit it. Tag 79 is a decode-only boolean alias (`false=OFF`, `true=EXPERIENCE`); tags 80-107 and 109-114 are active. Tag 87 remains readable for older settings but no longer renders compass rays. Tags 115-65,535 are unassigned. The decoder treats unassigned values as bounded unknown fields. Tag 0 is invalid.
 
 Tag 109 controls structure and metal detector tracers. Tag 111 independently controls compass target tracers, including focused targets. Tag 110 controls automatic compass focus. All three default to true. Old codes that omit tag 111 use its true default.
 
@@ -608,6 +611,7 @@ Tag 53 uses type U, not type E.
 | 59 | `1..86,400` |
 | 72 | Finite and in `0.25..3.0` |
 | 73 | Finite and in `0.0..1.0` |
+| 112 | Finite and in `1.0..64.0` |
 | 76 | `0..33`; 33 means all previous points |
 | 78 | `0..32` |
 
@@ -1181,7 +1185,7 @@ The bare selection applies to generic and public API exports. It is a projection
 - CRC-16 detects accidental corruption. It is not identity or authentication. Anyone can forge it.
 - A decoder MUST apply all limits. Some bounded buffers are allocated before their decoded-size check. The transport-character limit bounds that work.
 
-Dungeon catalog packs contain only room-local dungeon routes. Their listing uses `zoneId="dungeon"`; each route keeps its room ID in the payload and installs as a standard editable DUNGEON group. Regular and dungeon routes cannot share a payload. The catalog profile requires exact `WPD:.` framing, the current ASCII alphabet, bounded zlib inflation, strict UTF-8 and JSON, schema 2, and typed fields without coercion or unknown properties. Room IDs are canonical lowercase hyphenated IDs, up to 64 characters. Limits are 256 routes, 512 waypoints per room route, 10,000 waypoints total, 1,024 UTF-16 code units per route/waypoint name, 256 KiB of payload text, and 8 MiB of inflated JSON. Precise coordinates, colors, action/SubWP flags, and reach radii retain their native values. Catalog decoding does not accept legacy schema-1 room definitions or forgiving clipboard repairs, and the service stores validated WPD bytes verbatim.
+Dungeon catalog packs contain only room-local dungeon routes. Their listing uses `zoneId="dungeon"`; each route keeps its room ID in the payload and installs as a standard editable DUNGEON group. Regular and dungeon routes cannot share a payload. The catalog profile requires exact `WPD:.` framing, the current ASCII alphabet, bounded zlib inflation, strict UTF-8 and JSON, schema 2, and typed fields without coercion or unknown properties. Room IDs are canonical lowercase hyphenated IDs, up to 64 characters. Limits are 256 routes, 512 waypoints per room route, 25,000 waypoints total, 1,024 UTF-16 code units per route/waypoint name, 256 KiB of payload text, and 8 MiB of inflated JSON. Precise coordinates, colors, action/SubWP flags, and reach radii retain their native values. Catalog decoding does not accept legacy schema-1 room definitions or forgiving clipboard repairs, and the service stores validated WPD bytes verbatim.
 
 ## 13. Limits summary
 

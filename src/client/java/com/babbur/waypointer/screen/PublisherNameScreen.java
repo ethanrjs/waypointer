@@ -6,6 +6,8 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.components.MultiLineTextWidget;
+import net.minecraft.client.gui.components.StringWidget;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -23,22 +25,24 @@ final class PublisherNameScreen extends Screen {
     private final Screen parent;
     private final Consumer<String> confirmed;
     private final PublisherNameModel model;
+    private final Component error;
     private EditBox nameBox;
     private Button primaryButton;
 
     private PublisherNameLayout.Layout layout;
 
     PublisherNameScreen(
-            Screen parent, String suggestedName, Consumer<String> confirmed) {
+            Screen parent, String suggestedName, Component error, Consumer<String> confirmed) {
         super(Component.translatable("waypointer.screen.publisher_name.title"));
         this.parent = parent;
         this.confirmed = confirmed;
         this.model = new PublisherNameModel(suggestedName);
+        this.error = error;
     }
 
-    static void open(Screen parent, String suggestedName, Consumer<String> confirmed) {
+    static void open(Screen parent, String suggestedName, Component error, Consumer<String> confirmed) {
         MinecraftCompat.setScreen(Minecraft.getInstance(),
-                new PublisherNameScreen(parent, suggestedName, confirmed));
+                new PublisherNameScreen(parent, suggestedName, error, confirmed));
     }
 
     @Override
@@ -50,6 +54,20 @@ final class PublisherNameScreen extends Screen {
         layout = PublisherNameLayout.calculate(width, height, preferredPrimaryWidth);
 
         if (model.stage() == PublisherNameModel.Stage.ENTRY) {
+            if (error != null) {
+                Component message = GuiTokens.colored(error, GuiTokens.DANGER);
+                if (font.split(message, layout.contentWidth()).size() <= layout.errorRows()) {
+                    addRenderableWidget(new MultiLineTextWidget(layout.contentX(), layout.errorY(), message, font)
+                            .setMaxWidth(layout.contentWidth()));
+                } else {
+                    // Keep the entire rejection readable when a short window leaves only one line.
+                    StringWidget messageWidget = new StringWidget(
+                            layout.contentX(), layout.errorY(), message, font)
+                            .setMaxWidth(layout.contentWidth(), StringWidget.TextOverflow.SCROLLING);
+                    messageWidget.setTooltip(Tooltip.create(error));
+                    addRenderableWidget(messageWidget);
+                }
+            }
             nameBox = new EditBox(font, layout.contentX(), layout.fieldY(),
                     layout.contentWidth(), BTN_H,
                     Component.translatable("waypointer.screen.publisher_name.field"));
@@ -114,7 +132,7 @@ final class PublisherNameScreen extends Screen {
                 layout.contentX(), layout.titleY(), TEXT, false);
 
         if (model.stage() == PublisherNameModel.Stage.ENTRY) {
-            if (layout.entryDetailsVisible()) {
+            if (error == null && layout.entryDetailsVisible()) {
                 graphics.text(font, font.plainSubstrByWidth(Component.translatable(
                                 "waypointer.screen.publisher_name.explanation").getString(),
                                 layout.contentWidth()),
@@ -124,9 +142,11 @@ final class PublisherNameScreen extends Screen {
                                 layout.contentWidth()),
                         layout.contentX(), layout.panelY() + 52, TEXT_DIM, false);
             }
-            graphics.text(font, Component.translatable(
-                            "waypointer.screen.publisher_name.field").getString(),
-                    layout.contentX(), layout.fieldLabelY(), TEXT_DIM, false);
+            if (error == null || layout.entryDetailsVisible()) {
+                graphics.text(font, Component.translatable(
+                                "waypointer.screen.publisher_name.field").getString(),
+                        layout.contentX(), layout.fieldLabelY(), TEXT_DIM, false);
+            }
         } else {
             if (layout.questionVisible()) {
                 graphics.text(font, font.plainSubstrByWidth(Component.translatable(

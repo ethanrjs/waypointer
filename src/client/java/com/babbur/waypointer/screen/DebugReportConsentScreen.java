@@ -30,9 +30,7 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 import static com.babbur.waypointer.screen.GuiTokens.styledCheckbox;
 
-/**
- * Disclosure confirmation shown before report is copied
- */
+/** Confirms report disclosure before copying. */
 public final class DebugReportConsentScreen extends net.minecraft.client.gui.screens.Screen {
 
     private static final int PANEL_MAX_W = 460;

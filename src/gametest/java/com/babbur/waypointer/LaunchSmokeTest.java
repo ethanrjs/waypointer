@@ -26,9 +26,17 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
                     && WaypointerClient.api().currentZone() != null
                     && "private_world".equals(WaypointerClient.api().currentZone().id()), 600);
             context.waitForScreen(null);
+            context.waitFor(client -> com.babbur.waypointer.debug.ServerTimingDiagnostics.estimator()
+                    .snapshot(System.nanoTime()).shortWindow().samples() >= 2, 200);
+            com.babbur.waypointer.screen.DiagnosticsSmokeTest.run(context);
             CrystalHollowsMinimapSmokeTest.run(context);
             ShaderCompatibilitySmokeTest.prepare(context);
-            AppearanceSmokeTest.run(context);
+            ExportSmokeTest.run(context);
+            StructureEditorSmokeTest.run(context);
+            PainterHistorySmokeTest.run(context);
+            SettingsInteractionSmokeTest.run(context);
+            CatalogSearchSmokeTest.run(context);
+            GallerySmokeTest.run(context);
             context.computeOnClient(client -> {
                 checkMetalDetectorVisibility(client);
                 checkMetalDetectorMessage(client);

@@ -176,7 +176,7 @@ public interface WaypointerApi {
      *
      * <p>Accepted formats match Waypointer's import command: Waypointer
      * {@code WP:} payloads, Skyblocker, Skytils, SkyHanni, Soopy, Firmament,
-     * Coleweight, Odin, and JSON.
+     * Skysoft, Coleweight, Odin, and JSON.
      *
      * @param options import options, or {@code null} for {@link ImportOptions#defaults()}
      * @throws IllegalArgumentException when the payload is malformed,

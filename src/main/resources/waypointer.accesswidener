@@ -1,31 +1,13 @@
 accessWidener	v2	official
 
-# Needed so Waypointer can construct custom RenderTypes.
-# Two things are widened:
-#
-#   RenderType.create(String, RenderSetup) -- package-private in vanilla; this
-#     is the only constructor for a RenderType that wraps an arbitrary
-#     RenderPipeline, which we need so our pipeline (depth test disabled) can
-#     actually be drawn through a MultiBufferSource.
-#
-#   RenderPipelines.LINES_SNIPPET -- private static Snippet that vanilla uses
-#     as the shared base for LINES and LINES_TRANSLUCENT. Building from the
-#     snippet is the only way to inherit the line shader + vertex format
-#     without hard-coding shader identifiers that Mojang may rename.
-#
-#   GameRenderer.bobHurt/bobView -- private camera-effect transforms used by
-#     the level projection. HUD waypoint labels must apply the same transforms
-#     or they visually detach from their world markers during damage/view bob.
-#
-#   Checkbox.<init> -- private constructor needed to retain native checkbox
-#     input and narration while replacing its vanilla texture with our UI skin.
-#
-#   GuiGraphicsExtractor.guiRenderState -- private state collector needed to
-#     submit Waypointer's custom picture-in-picture route preview.
+# Custom render types reuse vanilla pipeline snippets.
 accessible	method	net/minecraft/client/renderer/rendertype/RenderType	create	(Ljava/lang/String;Lnet/minecraft/client/renderer/rendertype/RenderSetup;)Lnet/minecraft/client/renderer/rendertype/RenderType;
 accessible	field	net/minecraft/client/renderer/RenderPipelines	LINES_SNIPPET	Lcom/mojang/blaze3d/pipeline/RenderPipeline$Snippet;
 accessible	field	net/minecraft/client/renderer/RenderPipelines	GUI_SNIPPET	Lcom/mojang/blaze3d/pipeline/RenderPipeline$Snippet;
+# HUD labels must follow the same camera effects as world markers.
 accessible	method	net/minecraft/client/renderer/GameRenderer	bobHurt	(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;)V
 accessible	method	net/minecraft/client/renderer/GameRenderer	bobView	(Lnet/minecraft/client/renderer/state/level/CameraRenderState;Lcom/mojang/blaze3d/vertex/PoseStack;)V
+# Retain native checkbox input and narration with custom rendering.
 accessible	method	net/minecraft/client/gui/components/Checkbox	<init>	(IIILnet/minecraft/network/chat/Component;Lnet/minecraft/client/gui/Font;ZLnet/minecraft/client/gui/components/Checkbox$OnValueChange;)V
+# Submit the picture-in-picture route preview.
 accessible	field	net/minecraft/client/gui/GuiGraphicsExtractor	guiRenderState	Lnet/minecraft/client/renderer/state/gui/GuiRenderState;

@@ -13,10 +13,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Focused on the progression edge cases that are easy to regress:
- * skipping ahead, staying put when out of range, and not walking off the end.
- */
+
 class ProximityAdvanceTest {
 
     private static final String DUNGEON_TRIGGER_ROOM_ID = "progress-trigger-room";
@@ -348,16 +345,12 @@ class ProximityAdvanceTest {
 
     @Test
     void skip_ahead_disabled_only_advances_current() {
-        // With proximity skip-ahead off, standing next to a far-future waypoint
-        // must NOT jump progression. The only legal advance is when the player is
-        // within range of the waypoint they're actually on (index 0 here).
+        // With skip-ahead off, only reaching the current waypoint advances progress.
         WaypointGroup g = line();
         assertFalse(ProximityTracker.advanceIfReached(g, 20.5, 0.5, 0.5, false, false));
         assertEquals(0, g.currentIndex());
 
-        // Walking up to the current waypoint still advances by one, same as the
-        // enabled case -- disabling skip-ahead must not also disable normal
-        // progression.
+        // Disabling skip-ahead must preserve normal progression.
         assertTrue(ProximityTracker.advanceIfReached(g, 0.5, 0.5, 0.5, false, false));
         assertEquals(1, g.currentIndex());
     }
@@ -526,9 +519,6 @@ class ProximityAdvanceTest {
 
     @Test
     void reach_mode_temp_is_removed_on_advance() {
-        // TEMP_UNTIL_REACHED waypoints should vanish the moment the proximity
-        // tracker advances past them -- anything else would leave a stale temp
-        // entry hanging around the list after its lifecycle ended.
         WaypointGroup g = WaypointGroup.create("route", "test_zone");
         g.setDefaultRadius(2.0);
         g.add(Waypoint.at(0, 0, 0).withTemp(Waypoint.TEMP_UNTIL_REACHED, 0L));
@@ -536,8 +526,7 @@ class ProximityAdvanceTest {
 
         assertTrue(advanceIfReached(g, 0.5, 0.5, 0.5));
         assertEquals(1, g.size()); // temp was removed
-        // After the temp was removed, currentIndex was originally advanced to 1
-        // but the list shrank; the remaining waypoint should now be index 0.
+        // Removing the reached temporary waypoint shifts the next waypoint to index zero.
         assertEquals(Waypoint.TEMP_NONE, g.get(0).tempMode());
     }
 

@@ -6,9 +6,11 @@
         "ChatComponentMixin",
         "ClientLanguageMixin",
         "ClientPacketListenerMixin",
+        "ConnectionMixin",
         "ContributorNameTagMixin",
         "GameRendererMixin",
         "MinecraftMixin",
+        "MouseHandlerMixin",
         "PlayerInfoMixin",
         "PlayerTabOverlayMixin"
     ],

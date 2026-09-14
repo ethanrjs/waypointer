@@ -110,7 +110,7 @@ public final class WaypointStyles {
         if (cached != null) return cached;
         WaypointerConfig resolved = base.unsavedStyleCopy();
         for (WaypointStyle style : key) applyTo(resolved, style);
-        // ponytail: cap snapshot memory; replace with LRU if more than 1024 distinct styles are used per frame.
+        // Bound snapshot memory when more than 1024 distinct styles are resolved.
         if (base.resolvedStyles.size() >= 1024) base.resolvedStyles.clear();
         base.resolvedStyles.put(key, resolved);
         return resolved;

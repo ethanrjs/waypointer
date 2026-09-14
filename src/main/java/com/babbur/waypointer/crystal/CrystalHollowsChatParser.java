@@ -56,6 +56,31 @@ public final class CrystalHollowsChatParser {
 
     private CrystalHollowsChatParser() {}
 
+    public static List<CrystalHollowsStructure> requestedStructures(String body) {
+        String text = CrystalHollowsSidebar.normalizeName(body);
+        boolean asksLocation = containsWholePhrase(text, "coords")
+                || containsWholePhrase(text, "location") || containsWholePhrase(text, "where");
+        var requested = new java.util.LinkedHashSet<CrystalHollowsStructure>();
+        for (Alias alias : ALIASES) {
+            if (asksLocation ? containsWholePhrase(text, alias.text()) : containsQuestion(text, alias.text())) {
+                requested.add(alias.structure());
+            }
+        }
+        if (asksLocation ? containsWholePhrase(text, "precursor") : containsQuestion(text, "precursor")) {
+            requested.add(CrystalHollowsStructure.LOST_PRECURSOR_CITY);
+        }
+        return List.copyOf(requested);
+    }
+
+    private static boolean containsQuestion(String text, String alias) {
+        int from = 0;
+        while ((from = text.indexOf(alias + "?", from)) >= 0) {
+            if (from == 0 || !Character.isLetterOrDigit(text.charAt(from - 1))) return true;
+            from++;
+        }
+        return false;
+    }
+
     public static boolean isCaveInWarning(String text) {
         return switch (clean(text).trim()) {
             case "You can hear mighty rumbles and explosions in the distance...",

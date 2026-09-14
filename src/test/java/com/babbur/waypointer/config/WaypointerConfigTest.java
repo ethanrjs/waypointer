@@ -32,6 +32,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class WaypointerConfigTest {
 
     @Test
+    void coordinateShareHelperDefaultsAndRoundTrips() throws Exception {
+        var config = new WaypointerConfig();
+        assertTrue(config.coordinateShareHelper());
+        config.setCoordinateShareHelper(false);
+        assertFalse(WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config)).coordinateShareHelper());
+        assertFalse(V10ConfigBodyCodec.decode(V10ConfigBodyCodec.encode(config)).coordinateShareHelper());
+        var copied = new WaypointerConfig();
+        copied.replaceWith(config);
+        assertFalse(copied.coordinateShareHelper());
+        copied.resetToDefaults();
+        assertTrue(copied.coordinateShareHelper());
+        copied.disableAllSettings();
+        assertFalse(copied.coordinateShareHelper());
+    }
+
+    @Test
     void minimapPlacementAndDetectionsPersistLocallyAndReset(@TempDir Path directory) throws IOException {
         Path file = directory.resolve("config.json");
         WaypointerConfig config = WaypointerConfig.load(file);
@@ -94,7 +110,7 @@ class WaypointerConfigTest {
     }
 
     @Test
-    void featureBloatIsOptInAndPreservesStoredChoices() throws IOException {
+    void exportPreviewIsOptInButPainterIsAlwaysAvailable() throws IOException {
         WaypointerConfig config = new WaypointerConfig();
         WaypointPaint paint = WaypointPaint.solid(0x123456);
         config.setWaypointPainterDefaultPaint(paint);
@@ -103,7 +119,7 @@ class WaypointerConfigTest {
         assertFalse(config.enableFeatureBloat());
         assertFalse(WaypointerConfig.fromJson("{}").enableFeatureBloat());
         assertFalse(config.exportRoutePreviewEnabled());
-        assertEquals(WaypointerConfig.BoxStyle.FILLED_OUTLINED, config.effectiveBoxStyle());
+        assertEquals(WaypointerConfig.BoxStyle.PAINT, config.effectiveBoxStyle());
         assertEquals(WaypointerConfig.BoxStyle.PAINT, config.boxStyle());
         assertEquals(paint, config.waypointPainterDefaultPaint());
         config.setEnableFeatureBloat(true);
@@ -1445,6 +1461,32 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void editModePlacementReachClampsAndSurvivesConfigCodesCopiesAndReset() throws IOException {
+        WaypointerConfig config = new WaypointerConfig();
+        assertEquals(5.0, config.editModePlacementReach());
+        config.setEditModePlacementReach(0.25);
+        assertEquals(1.0, config.editModePlacementReach());
+        config.setEditModePlacementReach(500);
+        assertEquals(64.0, config.editModePlacementReach());
+        config.setEditModePlacementReach(Double.NaN);
+        assertEquals(5.0, config.editModePlacementReach());
+        config.setEditModePlacementReach(24.5);
+        assertEquals(24.5, config.editModePlacementReach());
+        WaypointerConfig decoded = WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config));
+        assertEquals(24.5, decoded.editModePlacementReach());
+        assertEquals(24.5, V10ConfigBodyCodec.decode(V10ConfigBodyCodec.encode(config)).editModePlacementReach());
+        WaypointerConfig copied = new WaypointerConfig();
+        copied.replaceWith(decoded);
+        assertEquals(24.5, copied.editModePlacementReach());
+        assertEquals(24.5, WaypointerConfig.fromJson("{\"editModePlacementReach\":24.5}").editModePlacementReach());
+        assertEquals(5.0, WaypointerConfig.fromJson("{}").editModePlacementReach());
+        copied.resetToDefaults();
+        assertEquals(5.0, copied.editModePlacementReach());
+        assertTrue(WaypointerConfigCodec.encodeTaggedFields(new WaypointerConfig()).stream()
+                .noneMatch(field -> field.tag() == 112));
+    }
+
+    @Test
     void crystalHollowsCustomizationSurvivesConfigCodesCopiesAndReset() {
         WaypointerConfig config = new WaypointerConfig();
         assertTrue(config.crystalHollowsTracers());
@@ -1543,6 +1585,25 @@ class WaypointerConfigTest {
 
         WaypointerConfig decoded = V10ConfigBodyCodec.decode(V10ConfigBodyCodec.encode(config));
         assertEquals(WaypointerConfigCodec.encode(config), WaypointerConfigCodec.encode(decoded));
+    }
+
+    @Test
+    void chatCoordBlockButtonFollowsTheConfigLifecycle() throws IOException {
+        WaypointerConfig config = new WaypointerConfig();
+        assertFalse(config.showChatCoordBlockButton());
+        config.setShowChatCoordBlockButton(true);
+        assertTrue(WaypointerConfigCodec.decode(
+                WaypointerConfigCodec.encode(config)).showChatCoordBlockButton());
+        assertTrue(V10ConfigBodyCodec.decode(
+                V10ConfigBodyCodec.encode(config)).showChatCoordBlockButton());
+        WaypointerConfig replacement = new WaypointerConfig();
+        replacement.replaceShareableSettingsWith(config);
+        assertTrue(replacement.showChatCoordBlockButton());
+        replacement.disableAllSettings();
+        assertFalse(replacement.showChatCoordBlockButton());
+        replacement.setShowChatCoordBlockButton(true);
+        replacement.resetToDefaults();
+        assertFalse(replacement.showChatCoordBlockButton());
     }
 
     @Test

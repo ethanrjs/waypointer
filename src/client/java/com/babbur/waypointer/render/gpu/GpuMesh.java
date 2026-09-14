@@ -33,9 +33,6 @@ public final class GpuMesh implements AutoCloseable {
         this.label = Objects.requireNonNull(label, "label");
         this.topology = Objects.requireNonNull(topology, "topology");
         this.sorted = sorted;
-        if (sorted && topology != MeshTopology.QUADS) {
-            throw new IllegalArgumentException("Only quad meshes can be sorted");
-        }
     }
 
     public boolean isEmpty() {
@@ -87,8 +84,7 @@ public final class GpuMesh implements AutoCloseable {
         indexBytes.clear();
         for (int i = 0; i < quads; i++) {
             int base = quadOrder[i] * 4;
-            indexBytes.putInt(base).putInt(base + 1).putInt(base + 2)
-                    .putInt(base + 2).putInt(base + 3).putInt(base);
+            writePrimitiveIndices(indexBytes, topology, base);
         }
         indexBytes.flip();
         GpuMeshCompat.upload(encoder, indexBuffer, indexBytes);
@@ -97,16 +93,40 @@ public final class GpuMesh implements AutoCloseable {
     }
 
     public void draw(RenderPass pass) {
+        draw(pass, 0, indexCount());
+    }
+
+    void draw(RenderPass pass, int firstIndex, int indexCount) {
         if (isEmpty() || vertexBuffer == null) return;
-        int indexCount = indexCount();
         if (indexCount == 0) return;
         GpuMeshCompat.bindVertexBuffer(pass, vertexBuffer);
         if (sorted && indexBuffer != null) {
             GpuMeshCompat.bindIndexBuffer(pass, indexBuffer);
         } else {
-            GpuMeshCompat.bindSequentialIndexBuffer(pass, topology, indexCount);
+            GpuMeshCompat.bindSequentialIndexBuffer(pass, topology, indexCount());
         }
-        GpuMeshCompat.drawIndexed(pass, 0, indexCount);
+        GpuMeshCompat.drawIndexed(pass, firstIndex, indexCount);
+    }
+
+    double primitiveDistance(int index) {
+        return quadDistances[quadOrder[index]];
+    }
+
+    int primitiveCount() {
+        return storedVertices / topology.storedVerticesPerPrimitive();
+    }
+
+    int batchEnd(int start, double nextDistance) {
+        return QuadSorter.batchEnd(quadDistances, quadOrder, start, primitiveCount(), nextDistance);
+    }
+
+    static void writePrimitiveIndices(ByteBuffer target, MeshTopology topology, int base) {
+        target.putInt(base).putInt(base + 1).putInt(base + 2);
+        if (topology == MeshTopology.LINES) {
+            target.putInt(base + 3).putInt(base + 2).putInt(base + 1);
+        } else {
+            target.putInt(base + 2).putInt(base + 3).putInt(base);
+        }
     }
 
     private void captureQuadCenters(MeshBuilder builder, ByteBuffer payload) {

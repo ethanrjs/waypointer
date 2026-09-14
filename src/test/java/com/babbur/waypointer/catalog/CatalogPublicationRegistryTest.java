@@ -18,6 +18,7 @@ import java.util.concurrent.CompletableFuture;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -52,6 +53,44 @@ class CatalogPublicationRegistryTest {
         assertFalse(json.contains("secret-manage-token"));
         assertFalse(json.contains(PAYLOAD));
         assertFalse(json.contains("privateKey"));
+    }
+
+    @Test
+    void ownerEditsRefreshTheStoredRecordWithoutTouchingProvenance() throws Exception {
+        PublisherIdentity identity = PublisherIdentity.generate(Instant.EPOCH)
+                .withPublisherName("Tester_1");
+        Path file = temporaryDirectory.resolve("publisher/publications.json");
+        CatalogPublicationRegistry registry = new CatalogPublicationRegistry(file);
+        CatalogPublication original = registry.recordSuccessfulPublish(
+                receipt(result(identity, "Tester_1", 1, "token"), request(null), identity),
+                API_ROOT, Instant.parse("2026-08-13T01:00:00Z"));
+
+        CatalogRouteSummary edited = new CatalogRouteSummary(
+                ROUTE_ID, "Renamed", "An edited description text.", "Tester_1",
+                identity.publisherId(), true, "public", "hub", "Hub",
+                4, 2, 9, 2, 7, "2026-08-13T00:00:00Z", "2026-09-12T00:00:00Z",
+                "/r/" + ROUTE_ID);
+        CatalogPublication updated = registry.recordUpdate(
+                ROUTE_ID, identity.publisherId(), edited, null);
+        assertEquals("Renamed", updated.title());
+        assertEquals("An edited description text.", updated.description());
+        assertEquals(CatalogPublishRequest.Visibility.PUBLIC, updated.visibility());
+        assertEquals(2, updated.version());
+        assertEquals(original.payloadSha256(), updated.payloadSha256());
+        assertEquals(original.serverCreatedAt(), updated.serverCreatedAt());
+        assertEquals(original.recordedAt(), updated.recordedAt());
+        CatalogPublication reloaded = new CatalogPublicationRegistry(file).list().getFirst();
+        assertEquals("Renamed", reloaded.title());
+        assertEquals(2, reloaded.version());
+
+        CatalogPublication replaced = registry.recordUpdate(
+                ROUTE_ID, identity.publisherId(), edited, "a".repeat(43));
+        assertEquals("a".repeat(43), replaced.payloadSha256());
+        assertNull(registry.recordUpdate("Bbcdefghijklmnopqrstuv", identity.publisherId(), new CatalogRouteSummary(
+                "Bbcdefghijklmnopqrstuv", "Other", "", "Tester_1", identity.publisherId(), true,
+                "unlisted", "hub", "Hub", 1, 1, 9, 1, 0, "", "", "/r/Bbcdefghijklmnopqrstuv"), null));
+        assertThrows(IllegalArgumentException.class, () ->
+                registry.recordUpdate("Bbcdefghijklmnopqrstuv", identity.publisherId(), edited, null));
     }
 
     @Test
@@ -117,6 +156,28 @@ class CatalogPublicationRegistryTest {
         assertNotNull(completed.publication());
         assertFalse(completed.nameSaveFailed());
         assertFalse(completed.publicationSaveFailed());
+    }
+
+    @Test
+    void successfulReclaimedNameReplacesStaleClaimWithoutChangingEitherStoredKey() {
+        Path profileFile = temporaryDirectory.resolve("profile/identity.json");
+        Path sharedFile = temporaryDirectory.resolve("shared/identity.json");
+        PublisherIdentityStore identityStore = PublisherIdentityStore.forProfile(profileFile, sharedFile);
+        PublisherIdentity original = identityStore.savePublisherName(
+                identityStore.loadOrCreate(), "OldClaim");
+        PublisherIdentity retry = original.forNameClaim();
+        CatalogPublicationRegistry registry = CatalogPublicationRegistry.nextToIdentity(identityStore);
+
+        CatalogPublishLifecycle.Completion completed = CatalogPublishLifecycle.persist(
+                receipt(result(retry, "Tester_1", 1, ""), request("Tester_1"), retry),
+                identityStore, registry, API_ROOT, Instant.EPOCH);
+
+        assertFalse(completed.nameSaveFailed());
+        assertEquals("Tester_1", completed.identity().publisherName());
+        assertEquals("Tester_1", identityStore.load().publisherName());
+        assertEquals("Tester_1", new PublisherIdentityStore(sharedFile).load().publisherName());
+        assertEquals(original.publicKeyBase64(), identityStore.load().publicKeyBase64());
+        assertEquals(original.publicKeyBase64(), new PublisherIdentityStore(sharedFile).load().publicKeyBase64());
     }
 
     @Test

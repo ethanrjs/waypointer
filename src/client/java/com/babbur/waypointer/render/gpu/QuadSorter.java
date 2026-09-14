@@ -1,14 +1,23 @@
 package com.babbur.waypointer.render.gpu;
 
-/** Sorts quad centers from farthest to nearest without per-frame allocation. */
+/** Sorts expanded primitive centers from farthest to nearest without per-frame allocation. */
 final class QuadSorter {
 
     private QuadSorter() {}
+
+    /** The longest consecutive run that can precede another mesh's next primitive. */
+    static int batchEnd(double[] distances, int[] order, int start, int count, double nextDistance) {
+        if (nextDistance == Double.NEGATIVE_INFINITY) return count;
+        int end = start;
+        while (end < count && distances[order[end]] >= nextDistance) end++;
+        return end;
+    }
 
     /** Returns false when the previous order is still exact and needs no index upload. */
     static boolean sortBackToFront(float[] centers, int[] order, double[] distances,
                                 int[] scratch, int count, boolean reuseOrder,
                                 double cameraX, double cameraY, double cameraZ) {
+        // ponytail: center sorting cannot resolve intersecting translucent faces; split those if needed.
         for (int i = 0; i < count; i++) {
             if (!reuseOrder) order[i] = i;
             distances[i] = squaredDistance(centers, i * 3, cameraX, cameraY, cameraZ);

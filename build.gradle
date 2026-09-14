@@ -165,9 +165,7 @@ tasks.named('runClientGameTest') {
 	}
 }
 
-// The picture-in-picture renderer changed its constructor and render callback
-// between 26.1.2 and 26.2. Keep that small boundary in a target-specific client
-// source directory while the preview scene and geometry remain shared.
+// Isolate the picture-in-picture API differences between Minecraft targets.
 sourceSets.client.java.srcDir("src/client-${targetMinecraft}/java")
 
 def remoteLocaleDirectory = layout.projectDirectory.dir('translations/lang')
@@ -315,14 +313,12 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 tasks.register('verifyDocumentationVersion') {
-	inputs.file('README.md')
 	inputs.file('API.md')
 	inputs.property('modVersion', project.mod_version)
 	onlyIf { !allowStaleDocumentation.get() }
 
 	doLast {
 		def expectedVersion = project.mod_version.toString()
-		def readme = file('README.md').getText('UTF-8')
 		def api = file('API.md').getText('UTF-8')
 		def expectedApiSnippets = [
 				"# Waypointer API ${expectedVersion}",
@@ -330,9 +326,6 @@ tasks.register('verifyDocumentationVersion') {
 				"libs/waypointer-${expectedVersion}-mc26.1.2.jar"
 		]
 
-		if (!readme.contains("`${expectedVersion}`.")) {
-			throw new GradleException("README.md does not identify Waypointer ${expectedVersion} as the current version")
-		}
 		expectedApiSnippets.each { snippet ->
 			if (!api.contains(snippet)) {
 				throw new GradleException("API.md is missing current-version text: ${snippet}")

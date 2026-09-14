@@ -54,6 +54,14 @@ class TranslationCatalogTest {
             "%(?:(\\d+)\\$)?([A-Za-z%])");
 
     @Test
+    void englishTextHasNoEncodingCorruption() throws IOException {
+        for (var entry : readCatalog(ENGLISH_FILE.resolve("en_us.json")).entrySet()) {
+            assertFalse(Pattern.compile("[\u00c3\u00c2\ufffd]").matcher(entry.getValue()).find(),
+                    () -> "Corrupted English text: " + entry.getKey());
+        }
+    }
+
+    @Test
     void everyRemoteLocaleIsASparseCanonicalOverlay() throws IOException {
         Map<String, String> english = readCatalog(ENGLISH_FILE.resolve("en_us.json"));
         assertFalse(english.isEmpty(), "en_us.json must not be empty");

@@ -6,9 +6,7 @@ import java.util.Base64;
 /**
  * Immutable 16x16 texture for the six faces of a waypoint box.
  *
- * <p>Pixels store indices into a fixed sixteen-color palette. That keeps a full
- * six-face paint close to 2 KiB on disk instead of repeating a 24-bit color for
- * every texel, while still matching the painter's sixteen visible swatches.
+ * <p>Pixels index a sixteen-color palette, keeping all six faces near 2 KiB on disk.
  */
 public final class WaypointPaint {
 
@@ -75,6 +73,28 @@ public final class WaypointPaint {
 
     public static WaypointPaint solid(int rgb) {
         return new WaypointPaint(defaultPalette(rgb), new byte[PIXEL_COUNT]);
+    }
+
+    private static final WaypointPaint MISSING = missingTexture();
+
+    /** The classic magenta-and-black placeholder, shown when a painted style has no paint. */
+    public static WaypointPaint missing() {
+        return MISSING;
+    }
+
+    private static WaypointPaint missingTexture() {
+        int[] palette = defaultPalette(0xF800F8);
+        palette[1] = 0x000000;
+        byte[] pixels = new byte[PIXEL_COUNT];
+        for (Face face : Face.values()) {
+            for (int y = 0; y < SIZE; y++) {
+                for (int x = 0; x < SIZE; x++) {
+                    boolean magenta = (x < SIZE / 2) == (y < SIZE / 2);
+                    pixels[pixelOffset(face, x, y)] = (byte) (magenta ? 0 : 1);
+                }
+            }
+        }
+        return new WaypointPaint(palette, pixels);
     }
 
     public static int[] defaultPalette(int firstColor) {

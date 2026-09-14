@@ -88,8 +88,8 @@ class CatalogRouteInstallerTest {
 
         IllegalArgumentException failure = assertThrows(IllegalArgumentException.class, () ->
                 CatalogRouteInstaller.prepare(new CatalogRouteDetails(
-                        summary(10_001, 1),
-                        WaypointCodec.encodeCatalog(List.of(route("hub", 10_001))))));
+                        summary(25_001, 2),
+                        WaypointCodec.encodeCatalog(List.of(route("hub", 12_501), route("hub", 12_500))))));
         assertTrue(failure.getMessage().contains("install limits"));
     }
 

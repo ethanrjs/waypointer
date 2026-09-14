@@ -200,9 +200,7 @@ class ActiveGroupManagerTest {
         assertNotNull(DungeonRoomData.entry("spider"));
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("spider", "Spider"));
-        // Runtime mirror: the projected form DungeonRoomRouteSync surfaces for
-        // the current room placement. Stored room groups never surface (they
-        // hold room-local coordinates); see the test below.
+        // DungeonRoomRouteSync exposes projected mirrors; stored routes use room-local coordinates.
         WaypointGroup group = new WaypointGroup("dungeon:auto:spider", "Room Route", "spider");
         group.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         group.setRuntimeOnly(true);
@@ -252,6 +250,27 @@ class ActiveGroupManagerTest {
         assertEquals(1, route.size(), "permanent route data should be left alone");
         assertEquals(0, temp.size(), "temporary menu bucket should be emptied");
         assertFalse(manager.tempWaypointFocusActive(), "focused temp render mode should be cleared too");
+    }
+
+    @Test
+    void tempFocusKeepsEnabledStructureMarkersAndRestoresRoutesWhenCleared() {
+        var manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
+        var route = WaypointGroup.create("Route", "crystal_hollows");
+        manager.add(route);
+        var structure = new WaypointGroup("crystal_hollows:structure:odawa", "Odawa", "crystal_hollows");
+        structure.setRuntimeOnly(true);
+        structure.add(Waypoint.at(350, 100, 350));
+        manager.add(structure);
+        var hidden = new WaypointGroup("crystal_hollows:structure:divan", "Divan", "crystal_hollows");
+        hidden.setRuntimeOnly(true);
+        hidden.setEnabled(false);
+        manager.add(hidden);
+        var temp = manager.addTempWaypoint(400, 100, 400, "Target");
+        manager.focusTempWaypoint(temp, 0);
+        assertEquals(List.of(structure, temp), manager.activeGroups());
+        manager.clearTempWaypointFocus();
+        assertEquals(List.of(route, structure, temp), manager.activeGroups());
     }
 
     @Test

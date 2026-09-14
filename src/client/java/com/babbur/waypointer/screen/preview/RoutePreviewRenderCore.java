@@ -21,7 +21,6 @@ public final class RoutePreviewRenderCore {
     private RoutePreviewRenderCore() {}
 
     public static void applyView(RoutePreviewRenderState state, PoseStack poseStack) {
-        if (state.scene().inspector() != null) return;
         poseStack.scale(1.0f, -1.0f, 1.0f);
         poseStack.mulPose(new Quaternionf()
                 .rotateX((float) RoutePreviewProjection.PITCH_RADIANS)
@@ -30,10 +29,6 @@ public final class RoutePreviewRenderCore {
 
     public static void emitDepth(RoutePreviewRenderState state, PoseStack ps,
                                  VertexConsumer vertices) {
-        if (state.scene().inspector() != null) {
-            state.scene().inspector().emitGround(ps, vertices);
-            return;
-        }
         RoutePreviewScene scene = state.scene();
         Basis billboardBasis = scene.simplified() ? basis(state.yawRadians()) : null;
         for (int i = 0; i < scene.markers().size(); i++) {
@@ -50,10 +45,6 @@ public final class RoutePreviewRenderCore {
 
     public static void emitSurfaces(RoutePreviewRenderState state, PoseStack ps,
                                     VertexConsumer vertices) {
-        if (state.scene().inspector() != null) {
-            state.scene().inspector().emitMarker(ps, vertices, false);
-            return;
-        }
         RoutePreviewScene scene = state.scene();
         boolean paintedPass = scene.paint() != null && !scene.simplified();
         Basis viewBasis = basis(state.yawRadians());
@@ -96,10 +87,6 @@ public final class RoutePreviewRenderCore {
 
     public static void emitConnectors(RoutePreviewRenderState state, PoseStack ps,
                                       VertexConsumer vertices) {
-        if (state.scene().inspector() != null) {
-            state.scene().inspector().emitConnector(ps, vertices);
-            return;
-        }
         Basis viewBasis = basis(state.yawRadians());
         for (RoutePreviewScene.Connector connector : state.scene().connectors()) {
             emitRibbon(vertices, ps, viewBasis,
@@ -114,10 +101,6 @@ public final class RoutePreviewRenderCore {
 
     public static void emitPaintHover(RoutePreviewRenderState state, PoseStack ps,
                                       VertexConsumer vertices) {
-        if (state.scene().inspector() != null) {
-            state.scene().inspector().emitBeam(ps, vertices);
-            return;
-        }
         RoutePreviewScene scene = state.scene();
         int index = state.hoveredWaypointIndex();
         if (scene.paint() == null || scene.simplified()
@@ -128,10 +111,6 @@ public final class RoutePreviewRenderCore {
 
     public static void emitOutlines(RoutePreviewRenderState state, PoseStack ps,
                                     VertexConsumer vertices) {
-        if (state.scene().inspector() != null) {
-            state.scene().inspector().emitMarker(ps, vertices, true);
-            return;
-        }
         RoutePreviewScene scene = state.scene();
         Basis viewBasis = basis(state.yawRadians());
         for (int i = 0; i < scene.markers().size(); i++) {

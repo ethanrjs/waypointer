@@ -40,10 +40,9 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
 import static com.babbur.waypointer.screen.GuiTokens.styledButton;
 
 public final class PublishedRoutesScreen extends Screen {
-    private static final int PANEL_W = 440;
     private static final int PANEL_MARGIN = 12;
-    private static final int ROW_H = 34;
-    private static final int ROW_GAP = 2;
+    private static final int CARD_H = 76;
+    private static final int CARD_GAP = 8;
     private static final int STATUS_ERROR = GuiTokens.DANGER;
     private static final int STATUS_OK = GuiTokens.SUCCESS;
     private static final int PUBLIC_COLOR = 0xFF6AA9FF;
@@ -67,6 +66,7 @@ public final class PublishedRoutesScreen extends Screen {
     private Button nextButton;
     private Button copyCodeButton;
     private Button deleteButton;
+    private Button editButton;
     private EditBox searchBox;
     private int panelX;
     private int panelY;
@@ -77,6 +77,9 @@ public final class PublishedRoutesScreen extends Screen {
     private int rowsY;
     private int pagerY;
     private int statusY;
+    private int columns;
+    private int cardW;
+    private int cardH;
 
     PublishedRoutesScreen(
             Screen parent, RouteCatalogClient catalogClient,
@@ -100,10 +103,10 @@ public final class PublishedRoutesScreen extends Screen {
     @Override
     protected void init() {
         screenActive = true;
-        panelW = Math.min(PANEL_W, Math.max(240, width - PANEL_MARGIN * 2));
-        panelH = Math.min(320, Math.max(190, height - PANEL_MARGIN * 2));
-        panelX = Math.max(0, (width - panelW) / 2);
-        panelY = Math.max(0, (height - panelH) / 2);
+        panelX = width > PANEL_MARGIN * 2 ? PANEL_MARGIN : 0;
+        panelY = height > PANEL_MARGIN * 2 ? PANEL_MARGIN : 0;
+        panelW = Math.max(1, width - panelX * 2);
+        panelH = Math.max(1, height - panelY * 2);
         contentX = panelX + PAD_OUTER;
         contentW = Math.max(1, panelW - PAD_OUTER * 2);
         int searchY = panelY + 34;
@@ -111,8 +114,11 @@ public final class PublishedRoutesScreen extends Screen {
         int footerY = panelY + panelH - PAD_OUTER - BTN_H;
         statusY = footerY - 14;
         pagerY = statusY - BTN_H - GAP;
-        model.setRowsPerPage(PublishedRoutesLayout.rowsPerPage(
-                rowsY, pagerY, ROW_H, ROW_GAP, GAP));
+        columns = PublishedRoutesLayout.columns(contentW, CARD_GAP);
+        cardW = PublishedRoutesLayout.cardWidth(contentW, columns, CARD_GAP);
+        cardH = Math.max(34, Math.min(CARD_H, pagerY - GAP - rowsY));
+        model.setRowsPerPage(columns * PublishedRoutesLayout.rowsPerPage(
+                rowsY, pagerY, cardH, CARD_GAP, GAP));
 
         searchBox = new EditBox(font, contentX, searchY, contentW, BTN_H,
                 Component.translatable("waypointer.screen.published_routes.search"));
@@ -134,7 +140,14 @@ public final class PublishedRoutesScreen extends Screen {
         addRenderableWidget(styledButton(contentX, footerY, 64, BTN_H,
                 Component.translatable("gui.back"), button -> onClose(), null));
 
-        int actionW = Math.min(88, Math.max(56, (contentW - 64 - GAP * 2) / 2));
+        int actionW = Math.min(88, Math.max(44, (contentW - 64 - GAP * 3) / 3));
+        editButton = styledButton(contentX + contentW - actionW * 3 - GAP * 2, footerY,
+                actionW, BTN_H,
+                Component.translatable("waypointer.screen.published_routes.action.edit"),
+                button -> editSelected(),
+                Tooltip.create(Component.translatable(
+                        "waypointer.screen.published_routes.action.edit.tooltip")));
+        addRenderableWidget(editButton);
         deleteButton = styledButton(contentX + contentW - actionW, footerY,
                 actionW, BTN_H,
                 Component.translatable(deleting
@@ -199,14 +212,11 @@ public final class PublishedRoutesScreen extends Screen {
         List<CatalogPublication> visible = model.visiblePublications();
         for (int index = 0; index < visible.size(); index++) {
             CatalogPublication publication = visible.get(index);
-            int rowY = rowsY + index * (ROW_H + ROW_GAP);
-            PublicationRow row = new PublicationRow(contentX, rowY, contentW, ROW_H,
+            int cardX = contentX + index % columns * (cardW + CARD_GAP);
+            int cardY = rowsY + index / columns * (cardH + CARD_GAP);
+            PublicationRow row = new PublicationRow(cardX, cardY, cardW, cardH,
                     publication, publication.routeId().equals(model.selectedRouteId()),
                     () -> select(publication.routeId()));
-            row.setTooltip(Tooltip.create(Component.literal(
-                    publication.description().isBlank()
-                            ? publication.shareUrl()
-                            : publication.description())));
             addRenderableWidget(row);
         }
     }
@@ -237,9 +247,12 @@ public final class PublishedRoutesScreen extends Screen {
             int y1 = getY();
             int x2 = x1 + getWidth();
             int y2 = y1 + getHeight();
-            int background = selected ? SELECTED : isHoveredOrFocused() ? GuiTokens.HOVER : 0;
-            if (background != 0) graphics.fill(x1, y1, x2, y2, background);
+            int background = selected ? SELECTED : isHoveredOrFocused() ? GuiTokens.HOVER : SURFACE;
+            graphics.fill(x1, y1, x2, y2, background);
+            graphics.fill(x1, y1, x2, y1 + 1, GuiTokens.BORDER);
             graphics.fill(x1, y2 - 1, x2, y2, GuiTokens.BORDER);
+            graphics.fill(x1, y1, x1 + 1, y2, GuiTokens.BORDER);
+            graphics.fill(x2 - 1, y1, x2, y2, GuiTokens.BORDER);
             if (selected) graphics.fill(x1, y1, x1 + 2, y2, ACCENT);
             if (isFocused()) {
                 graphics.fill(x1, y1, x2, y1 + 1, ACCENT);
@@ -262,13 +275,24 @@ public final class PublishedRoutesScreen extends Screen {
             Component visibility = Component.translatable(isPublic
                     ? "waypointer.screen.route_publish.visibility.public"
                     : "waypointer.screen.published_routes.visibility.private");
-            Component metadata = Component.literal(
-                            Zone.fromId(publication.zoneId()).displayName() + " · ")
-                    .append(GuiTokens.colored(visibility, isPublic ? PUBLIC_COLOR : TEXT_MUTED));
-            graphics.text(font, Language.getInstance().getVisualOrder(font.substrByWidth(metadata,
-                            Math.max(24, dateX - GAP - titleX))),
-                    titleX, textY + 13, TEXT_MUTED, false);
-            graphics.text(font, date, dateX, textY + 13, TEXT_MUTED, false);
+            int textW = Math.max(1, x2 - GAP - titleX);
+            if (getHeight() >= 60) {
+                graphics.text(font, font.plainSubstrByWidth(
+                                Zone.fromId(publication.zoneId()).displayName(), textW),
+                        titleX, textY + 13, TEXT_MUTED, false);
+                if (!publication.description().isBlank()) {
+                    graphics.text(font, font.plainSubstrByWidth(publication.description(), textW),
+                            titleX, textY + 27, TEXT_DIM, false);
+                }
+                graphics.text(font, Language.getInstance().getVisualOrder(font.substrByWidth(
+                                visibility, Math.max(1, dateX - GAP - titleX))),
+                        titleX, y2 - 14, isPublic ? PUBLIC_COLOR : TEXT_MUTED, false);
+                graphics.text(font, date, dateX, y2 - 14, TEXT_MUTED, false);
+            } else {
+                graphics.text(font, font.plainSubstrByWidth(
+                                Zone.fromId(publication.zoneId()).displayName(), textW),
+                        titleX, textY + 13, TEXT_MUTED, false);
+            }
         }
 
         @Override
@@ -312,6 +336,25 @@ public final class PublishedRoutesScreen extends Screen {
         status = Component.translatable(
                 "waypointer.screen.published_routes.status.copied_code");
         statusColor = STATUS_OK;
+    }
+
+    private void editSelected() {
+        CatalogPublication selected = selected();
+        if (selected == null || identity == null || deleting) return;
+        MinecraftCompat.setScreen(minecraft, new PublishedRouteEditScreen(
+                this, catalogClient, identity, publicationRegistry, selected));
+    }
+
+    /** Reloads this device's records after an edit made elsewhere, keeping the selection. */
+    void refreshFromRegistry(Component message, int color) {
+        if (identity == null) return;
+        model.replace(PublishedRoutesUiState.forApiRoot(
+                publicationRegistry.listForPublisher(identity.publisherId()),
+                catalogClient.apiRoot()));
+        showEmptyState = model.publications().isEmpty();
+        status = message == null ? Component.empty() : message;
+        statusColor = color;
+        if (screenActive) rebuildWidgets();
     }
 
     private void confirmDelete() {
@@ -370,6 +413,10 @@ public final class PublishedRoutesScreen extends Screen {
         if (copyCodeButton != null) {
             copyCodeButton.visible = hasRoutes;
             copyCodeButton.active = controls.copyEnabled();
+        }
+        if (editButton != null) {
+            editButton.visible = hasRoutes;
+            editButton.active = controls.editEnabled();
         }
         if (previousButton != null) {
             previousButton.visible = hasRoutes;

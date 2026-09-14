@@ -36,7 +36,6 @@ class CoordScannerTest {
 
     @Test
     void parses_mixed_separators() {
-        // "x, y z" or "x y, z" must both work -- chat is messy.
         List<CoordScanner.Coord> coords = CoordScanner.scan("Boss spawns at 250, 70 -310 every minute");
         assertEquals(1, coords.size());
         assertEquals(new CoordScanner.Coord(250, 70, -310), coords.get(0));
@@ -59,8 +58,7 @@ class CoordScannerTest {
 
     @Test
     void rejects_y_out_of_minecraft_range() {
-        // Middle value > MAX_Y is the cheapest way to catch leaderboard-style triples
-        // where the second number is a score rather than an altitude.
+        // Reject score triples whose middle value exceeds the Y limit.
         assertTrue(CoordScanner.scan("Score: 5000 9999 250").isEmpty(),
                 "y=9999 must be rejected as out of Minecraft Y range");
         assertTrue(CoordScanner.scan("Players online: 50 500 75").isEmpty(),
@@ -69,8 +67,6 @@ class CoordScannerTest {
 
     @Test
     void rejects_horizontal_magnitudes_too_large() {
-        // 50,000 blocks out is well beyond Skyblock's coordinate space; almost
-        // certainly something like a leaderboard score line.
         assertTrue(CoordScanner.scan("Top players: 50000 50 60000").isEmpty());
     }
 
@@ -116,8 +112,7 @@ class CoordScannerTest {
 
     @Test
     void rejects_thousands_separated_coin_amounts() {
-        // Regression for issue #3: bank interest messages like
-        // "You have just received 1,145,926 coins" were being matched as (1, 145, 926).
+        // Bank amounts such as 1,145,926 must not parse as (1, 145, 926).
         assertTrue(
                 CoordScanner.scan("You have just received 1,145,926 coins as interest in your co-op bank account!").isEmpty(),
                 "bank-interest coin counts must not be decorated as coordinates");
@@ -127,8 +122,7 @@ class CoordScannerTest {
 
     @Test
     void still_accepts_comma_space_coords_near_thousands_shape() {
-        // Comma+space separators must keep working even though the numeric shape
-        // (three groups of three digits) overlaps with thousands-separated numbers.
+        // Comma-space triples overlap with thousands-grouped amounts but remain valid coordinates.
         List<CoordScanner.Coord> coords = CoordScanner.scan("Meet at 100, 145, 926");
         assertEquals(1, coords.size());
         assertEquals(new CoordScanner.Coord(100, 145, 926), coords.get(0));
@@ -136,8 +130,6 @@ class CoordScannerTest {
 
     @Test
     void rejects_thousands_separated_number_mixed_in_sentence() {
-        // Even when surrounded by other text, the bare-comma thousands shape
-        // should not leak a coord chip into the chat line.
         assertTrue(CoordScanner.scan("Cleared dungeon, earned 2,500,400 xp today").isEmpty());
     }
 
@@ -164,8 +156,6 @@ class CoordScannerTest {
 
     @Test
     void parses_labeled_format_with_extra_padding_around_punctuation() {
-        // Players sometimes type "x : 100 , y : 64 , z : -200" -- the colon and
-        // comma whitespace must be tolerant in both directions.
         List<CoordScanner.Coord> coords = CoordScanner.scan("x : 100 , y : 64 , z : -200");
         assertEquals(1, coords.size());
         assertEquals(new CoordScanner.Coord(100, 64, -200), coords.get(0));
@@ -173,9 +163,7 @@ class CoordScannerTest {
 
     @Test
     void labeled_format_returns_match_spanning_full_callout() {
-        // The detector recolors the matched range -- it must cover the entire
-        // "x: ..., z: ..." span so the click chip wraps the whole callout, not
-        // just the trailing number.
+        // The highlighted range must cover the entire labeled coordinate callout.
         List<CoordScanner.Match> matches = CoordScanner.scanWithPositions("see x: 100, y: 64, z: -200 ok");
         assertEquals(1, matches.size());
         CoordScanner.Match match = matches.get(0);
@@ -185,9 +173,7 @@ class CoordScannerTest {
 
     @Test
     void labeled_format_rejects_decimals() {
-        // Matches the bare scanner: integers only. The trailing lookahead rejects
-        // any axis whose number is followed by '.', and decimals on x/y are
-        // rejected because the inner '.' breaks the required ',' separator.
+        // Reject decimals on every axis instead of accepting an integer prefix.
         assertTrue(CoordScanner.scan("x: 100.5, y: 64, z: -200").isEmpty());
         assertTrue(CoordScanner.scan("x: 100, y: 64.0, z: -200").isEmpty());
         assertTrue(CoordScanner.scan("x: 100, y: 64, z: -200.5").isEmpty());
@@ -195,9 +181,7 @@ class CoordScannerTest {
 
     @Test
     void labeled_format_rejects_thousands_separated_x_value() {
-        // Regression for issue #3: even with axis labels, a thousands-separated
-        // number must not be coerced into a coord (the user meant x=1000, but
-        // we'd rather miss the callout than parse it wrong).
+        // Reject thousands-separated axis values rather than misreading their magnitude.
         assertTrue(CoordScanner.scan("x: 1,000, y: 64, z: 0").isEmpty());
     }
 
@@ -214,24 +198,19 @@ class CoordScannerTest {
 
     @Test
     void labeled_format_does_not_match_when_axis_letter_is_inside_a_word() {
-        // "Trax: 100..." -- the lookbehind must keep the regex from latching
-        // onto arbitrary words ending in x/y/z.
+        // Axis labels must not match word endings such as "Trax:".
         assertTrue(CoordScanner.scan("Trax: 100, y: 64, z: -200").isEmpty());
         assertTrue(CoordScanner.scan("max: 100, y: 64, z: -200").isEmpty());
     }
 
     @Test
     void labeled_format_requires_correct_axis_order() {
-        // Reordered or duplicated labels are not the canonical callout shape;
-        // staying strict avoids creative false positives from build-mode chat.
         assertTrue(CoordScanner.scan("y: 64, x: 100, z: -200").isEmpty());
         assertTrue(CoordScanner.scan("x: 100, x: 64, x: -200").isEmpty());
     }
 
     @Test
     void labeled_and_bare_formats_coexist_in_one_message() {
-        // A player echoing both styles in the same line should produce two chips
-        // rendered in chat order.
         List<CoordScanner.Match> matches = CoordScanner.scanWithPositions(
                 "x: 100, y: 64, z: -200 vs the older 250, 70, -310 callout");
         assertEquals(2, matches.size());
@@ -309,8 +288,26 @@ class CoordScannerTest {
     }
 
     @Test
+    void chatCoordBlockButtonIsOffByDefaultAndCanBeDisabled() throws Exception {
+        WaypointerConfig config = new WaypointerConfig();
+        ChatCoordDetector detector = new ChatCoordDetector(config, new ActiveGroupManager());
+        Component message = Component.literal("Babbur: x: 1, y: 2, z: 3");
+        assertFalse(config.showChatCoordBlockButton());
+        Component out = invokeCoordDetector(detector, message);
+        assertEquals(message.getString(), out.getString());
+        assertTrue(runs(out).stream().anyMatch(run ->
+                run.style().getClickEvent() instanceof ClickEvent.RunCommand command
+                        && command.command().startsWith("/waypointer chattemp ")));
+        config.setShowChatCoordBlockButton(true);
+        assertTrue(invokeCoordDetector(detector, message).getString().endsWith(" [Block]"));
+        config.setShowChatCoordBlockButton(false);
+        assertEquals(message.getString(), invokeCoordDetector(detector, message).getString());
+    }
+
+    @Test
     void chatCoordHighlightAddsExplicitBlockActionAfterCoords() throws Exception {
         WaypointerConfig config = new WaypointerConfig();
+        config.setShowChatCoordBlockButton(true);
         config.setAutoAddChatTempWaypoints(false);
         Component out = invokeCoordDetector(
                 Component.literal("[CHAT] [334] [MVP++] Babbur: x: 1, y: 2, z: 3"),

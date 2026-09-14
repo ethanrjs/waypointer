@@ -16,6 +16,33 @@ import org.junit.jupiter.api.Test;
 class WishingCompassControllerTest {
 
     @Test
+    void defocusStopsCompassAndFocusedCoordinateTracersWithoutRemovingMarkers() {
+        var manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
+        var route = com.babbur.waypointer.core.WaypointGroup.create("Route", "crystal_hollows");
+        manager.add(route);
+        var tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), null);
+        tracker.focusCompassTarget(new StructureSighting(CrystalHollowsStructure.ODAWA,
+                350, 100, 350, SightingConfidence.COMPASS, "compass", 1L));
+        var group = manager.addTempWaypoint(400, 100, 400, "Chat coordinate");
+        manager.focusTempWaypoint(group, 1);
+        tracker.defocus();
+        assertFalse(manager.tempWaypointFocusActive());
+        assertTrue(manager.activeGroups().contains(route));
+        assertEquals(2, group.size());
+        assertTrue(CompassMarkerState.navigationStopped(group.get(0)));
+        assertTrue(CompassMarkerState.navigationStopped(group.get(1)));
+        assertFalse(CompassMarkerState.arrived(group.get(0)));
+        assertNull(tracker.compassNavigationTarget());
+        assertEquals(CrystalHollowsTracker.CompassNavigationState.DEFOCUSED,
+                tracker.compassNavigationSnapshot().state());
+        tracker.refineCompassTarget(new StructureSighting(CrystalHollowsStructure.ODAWA,
+                355, 100, 355, SightingConfidence.ENTITY, "entity", 2L));
+        assertTrue(CompassMarkerState.defocused(group.get(0)));
+        assertNull(tracker.compassNavigationTarget());
+    }
+
+    @Test
     void regionChangeResetsUnfinishedCaptureWithoutDeletingTheSolvedMarker() {
         var manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
@@ -29,15 +56,36 @@ class WishingCompassControllerTest {
                 CrystalHollowsZone.CRYSTAL_NUCLEUS);
         var marker = manager.getOrCreateTempGroup().get(0);
         controller.solver().onUse(500, 107, 500, CrystalHollowsZone.CRYSTAL_NUCLEUS, 100);
+        // Walking from the Nucleus into an outer zone keeps the unfinished search alive.
         tracker.observeCompassPosition(600, 107, 500);
-        assertEquals(WishingCompassSolver.State.IDLE, controller.solver().state());
-        assertEquals("region_changed", controller.lastEvent());
+        assertEquals(WishingCompassSolver.State.WAITING_PARTICLES, controller.solver().state());
         assertSame(marker, manager.getOrCreateTempGroup().get(0));
         assertTrue(CompassMarkerState.regionExited(marker));
         assertFalse(manager.tempWaypointFocusActive());
+        // Crossing between two outer zones changes the compass target and resets the search.
+        tracker.observeCompassPosition(600, 107, 600);
+        assertEquals(WishingCompassSolver.State.IDLE, controller.solver().state());
+        assertEquals("region_changed", controller.lastEvent());
         tracker.observeCompassPosition(500, 107, 500);
         assertTrue(controller.solver().completedRays().isEmpty());
         assertFalse(tracker.compassNavigationSnapshot().navigationEnabled());
+    }
+
+    @Test
+    void returningToTheNucleusKeepsAnUnfinishedOuterZoneSearch() {
+        var manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("crystal_hollows", "Crystal Hollows"));
+        var config = new WaypointerConfig();
+        var tracker = new CrystalHollowsTracker(manager, config, null);
+        var controller = new WishingCompassController(tracker, config);
+        tracker.attachCompassController(controller);
+        tracker.observeCompassPosition(600, 107, 500);
+        controller.solver().onUse(600, 107, 500, CrystalHollowsZone.MITHRIL_DEPOSITS, 100);
+        tracker.observeCompassPosition(500, 107, 500);
+        assertEquals(WishingCompassSolver.State.WAITING_PARTICLES, controller.solver().state());
+        assertEquals("none", controller.lastEvent());
+        tracker.observeCompassPosition(600, 107, 520);
+        assertEquals(WishingCompassSolver.State.WAITING_PARTICLES, controller.solver().state());
     }
 
     @Test

@@ -86,6 +86,48 @@ public final class CatalogPublicationRegistry {
         return record;
     }
 
+    /**
+     * Refreshes a stored record from the catalog's response to an owner edit. Returns the
+     * new record, or {@code null} when this device holds no record for the route.
+     */
+    public CatalogPublication recordUpdate(
+            String routeId, String publisherId, CatalogRouteSummary route, String payloadSha256) {
+        requireRouteId(routeId);
+        requirePublisherId(publisherId);
+        if (route == null) throw new IllegalArgumentException("Route summary is required");
+        if (!routeId.equals(route.id())) {
+            throw new IllegalArgumentException("The catalog response names a different route");
+        }
+        String title = requireCodePoints(route.title(), "title", 1, 80);
+        String zoneId = requireMatch(route.zoneId(), "zone ID", ZONE_ID);
+        CatalogPublishRequest.Visibility visibility = switch (route.visibility()) {
+            case "public" -> CatalogPublishRequest.Visibility.PUBLIC;
+            case "unlisted" -> CatalogPublishRequest.Visibility.UNLISTED;
+            default -> throw new IllegalArgumentException("Invalid route visibility");
+        };
+        synchronized (IO_LOCK) {
+            List<CatalogPublication> records = new ArrayList<>(readRecords());
+            for (int index = 0; index < records.size(); index++) {
+                CatalogPublication existing = records.get(index);
+                if (!existing.routeId().equals(routeId)
+                        || !existing.publisherId().equals(publisherId)) continue;
+                CatalogPublication updated = new CatalogPublication(
+                        existing.routeId(), existing.publisherId(),
+                        route.authorName() == null || route.authorName().isBlank()
+                                ? existing.publisherName() : route.authorName(),
+                        title, route.description() == null ? "" : route.description(),
+                        visibility, zoneId, route.version(), route.codecVersion(),
+                        existing.serverCreatedAt(), existing.sharePath(), existing.apiRoot(),
+                        payloadSha256 == null ? existing.payloadSha256() : payloadSha256,
+                        existing.recordedAt());
+                records.set(index, updated);
+                writeRecords(records);
+                return updated;
+            }
+            return null;
+        }
+    }
+
     public boolean remove(String routeId, String publisherId) {
         requireRouteId(routeId);
         requirePublisherId(publisherId);

@@ -31,6 +31,9 @@ public final class SkyblockerStructureController {
     private final String version = FabricLoader.getInstance().getModContainer("waypointer")
             .map(mod -> mod.getMetadata().getVersion().getFriendlyString()).orElse("unknown");
     private final StructureRelayConnection connection;
+    private final SkyblockerSocketPolicy socketPolicy = new SkyblockerSocketPolicy(HTTP);
+    /** Skyblocker owns the hysky session when it is loaded; a second client would duplicate auth and publishes. */
+    private final boolean skyblockerLoaded;
     private final EnumSet<CrystalHollowsStructure> published = EnumSet.noneOf(CrystalHollowsStructure.class);
     private final EnumSet<CrystalHollowsStructure> received = EnumSet.noneOf(CrystalHollowsStructure.class);
     private CrystalHollowsLobbyState lobby;
@@ -82,7 +85,9 @@ public final class SkyblockerStructureController {
                 : authentication == null ? "none" : authentication.result.isDone() ? "completed" : "pending";
         long backoff = !open && !connecting && authentication == null && !denied
                 ? Math.max(0, nextAttempt - now) : 0;
-        String status = !enabled ? "disabled" : denied ? "denied" : lobby == null ? "idle"
+        String status = !enabled ? "disabled" : skyblockerLoaded ? "deferred_to_skyblocker"
+                : !socketPolicy.allowed() ? socketPolicy.status()
+                : denied ? "denied" : lobby == null ? "idle"
                 : open ? (subscribed ? "subscribed" : "subscribing") : connecting ? "connecting"
                 : authentication != null ? "authenticating" : backoff > 0 ? "backoff" : "disconnected";
         Failure pending = handshakeFailure;
@@ -94,8 +99,13 @@ public final class SkyblockerStructureController {
     }
 
     public SkyblockerStructureController(CrystalHollowsTracker tracker, WaypointerConfig config) {
+        this(tracker, config, FabricLoader.getInstance().isModLoaded("skyblocker"));
+    }
+
+    SkyblockerStructureController(CrystalHollowsTracker tracker, WaypointerConfig config, boolean skyblockerLoaded) {
         this.tracker = tracker;
         this.config = config;
+        this.skyblockerLoaded = skyblockerLoaded;
         connection = new StructureRelayConnection((uri, listener) -> {
             long attempt = generation;
             return HTTP.newWebSocketBuilder().connectTimeout(Duration.ofSeconds(10))
@@ -131,6 +141,8 @@ public final class SkyblockerStructureController {
         // This gate precedes all profile-key access, network calls, and reads from the game.
         if (!config.crystalHollowsSkyblockerSharing() || !config.crystalHollowsRemoteSharing()
                 || !config.crystalHollowsEnabled()) { reset(); return; }
+        // With Skyblocker present its own client already authenticates and shares for this account.
+        if (skyblockerLoaded) { reset(); return; }
         if (client == null || client.level == null || client.getCurrentServer() == null
                 || !tracker.active() || tracker.lobby() == null || tracker.serverId() == null) {
             leaveLobby();
@@ -142,6 +154,7 @@ public final class SkyblockerStructureController {
             leaveLobby();
             return;
         }
+        if (!allowRemoteSharing()) return;
         UUID currentPlayer = client.getUser().getProfileId();
         if (currentPlayer == null) { reset(); return; }
         if (player != null && !player.equals(currentPlayer)) reset();
@@ -233,6 +246,14 @@ public final class SkyblockerStructureController {
         }
         authentication = null;
         return token != null;
+    }
+
+    /** Policy revocation uses the same complete cleanup as the user's sharing opt-out. */
+    boolean allowRemoteSharing() {
+        socketPolicy.refresh();
+        if (socketPolicy.allowed()) return true;
+        reset();
+        return false;
     }
 
     /** Only called after the sharing consent gate. Does not enable chat signing or change any mod setting. */
@@ -349,8 +370,8 @@ public final class SkyblockerStructureController {
                                 : new SafeFailure(FailureCause.PROOF_FAILED));
                     }
                 }
-            });
-            result.orTimeout(25, java.util.concurrent.TimeUnit.SECONDS).whenComplete((value, error) -> {
+            }).orTimeout(25, java.util.concurrent.TimeUnit.SECONDS);
+            result.whenComplete((value, error) -> {
                 if (error != null) {
                     synchronized (this) {
                         cancelled = true;

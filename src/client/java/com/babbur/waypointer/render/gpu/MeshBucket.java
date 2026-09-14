@@ -10,8 +10,8 @@ public record MeshBucket(Kind kind, boolean depthTested, Identifier texture) {
     public enum Kind {
         BEAM(MeshTopology.QUADS, true, true),
         PAINTED(MeshTopology.QUADS, true, true),
-        QUADS(MeshTopology.QUADS, false, false),
-        LINES(MeshTopology.LINES, false, false);
+        QUADS(MeshTopology.QUADS, false, true),
+        LINES(MeshTopology.LINES, false, true);
 
         private final MeshTopology topology;
         private final boolean textured;

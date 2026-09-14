@@ -11,6 +11,32 @@ import org.junit.jupiter.api.Test;
 class LobbyStateMergeTest {
 
     @Test
+    void sidebarCorrectionPreservesPreciseEvidenceManualAndSeparateGrottos() {
+        var structure = CrystalHollowsStructure.FAIRY_GROTTO;
+        var sidebar = new StructureSighting(structure, 246, 104, 625,
+                SightingConfidence.ROUGH_AREA, "sidebar", 2);
+        for (var confidence : new SightingConfidence[] {SightingConfidence.ENTITY,
+                SightingConfidence.COMPASS, SightingConfidence.MANUAL}) {
+            var lobby = lobby();
+            var precise = new StructureSighting(structure, 253, 107, 618, confidence, "local", 1);
+            lobby.merge(precise);
+            lobby.merge(sidebar);
+            assertEquals(List.of(precise), lobby.sightings());
+        }
+        var lobby = lobby();
+        var remote = new StructureSighting(structure, 253, 107, 618,
+                SightingConfidence.SHARED_REMOTE, "relay", 1, List.of(), "", SightingConfidence.ENTITY);
+        lobby.merge(remote);
+        lobby.merge(sidebar);
+        assertEquals(List.of(remote), lobby.sightings());
+        assertEquals(List.of(sidebar), lobby.localSightings());
+        var separate = new StructureSighting(structure, 500, 104, 625,
+                SightingConfidence.ROUGH_AREA, "sidebar", 2);
+        lobby.merge(separate);
+        assertEquals(List.of(remote, separate), lobby.sightings());
+    }
+
+    @Test
     void addsUpgradesRefinesAndIgnoresByConfidence() {
         CrystalHollowsLobbyState lobby = lobby();
         assertEquals(CrystalHollowsLobbyState.MergeResult.ADDED,

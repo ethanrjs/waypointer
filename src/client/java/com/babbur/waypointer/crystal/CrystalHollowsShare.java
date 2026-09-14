@@ -1,31 +1,40 @@
 package com.babbur.waypointer.crystal;
 
-import com.babbur.waypointer.compat.MinecraftCompat;
 import java.util.List;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.ChatScreen;
 import net.minecraft.network.chat.ClickEvent;
 
-/** Chat share buttons send the captured sighting; route actions prepare editable text. */
+/** Chat share buttons and route actions send structure coordinates when clicked. */
 public final class CrystalHollowsShare {
     private CrystalHollowsShare() {}
 
     public static ClickEvent.RunCommand share(StructureSighting sighting) {
-        return new ClickEvent.RunCommand("/wpch share " + sighting.structure().id()
+        return new ClickEvent.RunCommand("/wpch sendcoords " + sighting.structure().id()
                 + " " + sighting.x() + " " + sighting.y() + " " + sighting.z());
     }
 
-    private static String message(StructureSighting sighting) {
-        return CrystalHollowsChatParser.formatShare(
-                sighting.structure(), sighting.x(), sighting.y(), sighting.z());
+    public static net.minecraft.network.chat.Component defocus() {
+        return net.minecraft.network.chat.Component.literal(" ").append(
+                net.minecraft.network.chat.Component.translatableWithFallback(
+                        "waypointer.crystal.action.defocus", "[Defocus]")
+                        .withStyle(net.minecraft.ChatFormatting.AQUA, net.minecraft.ChatFormatting.UNDERLINE)
+                        .withStyle(style -> style.withClickEvent(new ClickEvent.RunCommand("/wpch defocus"))));
     }
 
-    public static void openDraft(CrystalHollowsTracker tracker, String reference) {
+    public static int send(CrystalHollowsStructure structure, int x, int y, int z) {
+        if (structure == null || !CrystalHollowsGeometry.insideHollows(x, y, z)) return 0;
+        Minecraft client = Minecraft.getInstance();
+        if (client == null || client.getConnection() == null) return 0;
+        client.getConnection().sendChat(CrystalHollowsChatParser.formatShare(structure, x, y, z));
+        return 1;
+    }
+
+    public static void send(CrystalHollowsTracker tracker, String reference) {
         if (tracker == null || !tracker.active() || tracker.lobby() == null) return;
         StructureSighting sighting = resolve(tracker.lobby().sightings(), reference,
                 tracker.compassTargetSighting());
         if (sighting == null) return;
-        MinecraftCompat.setScreen(Minecraft.getInstance(), new ChatScreen(message(sighting), false));
+        send(sighting.structure(), sighting.x(), sighting.y(), sighting.z());
     }
 
     static StructureSighting resolve(List<StructureSighting> sightings, String reference,

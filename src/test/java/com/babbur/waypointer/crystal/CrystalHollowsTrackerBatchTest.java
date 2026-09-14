@@ -17,6 +17,94 @@ class CrystalHollowsTrackerBatchTest {
     @TempDir Path directory;
 
     @Test
+    void fairyGrottoSidebarCreatesAndCorrectsWaypointAtReportedPosition() throws Exception {
+        for (boolean hasRemote : new boolean[] {false, true}) {
+            var manager = new ActiveGroupManager();
+            var config = new WaypointerConfig();
+            config.setCrystalHollowsShowRoughMarkers(true);
+            var tracker = new CrystalHollowsTracker(manager, config, null);
+            var lobby = new CrystalHollowsLobbyState("mini196BN", 1, 6);
+            set(tracker, "active", true);
+            set(tracker, "lobby", lobby);
+            var structure = CrystalHollowsSidebar.structureForArea("Fairy Grotto");
+            set(tracker, "areaSession", new CrystalHollowsAreaSession(structure, 246.220, 104, 625.300));
+            var remote = new StructureSighting(structure, 253, 107, 618,
+                    SightingConfidence.SHARED_REMOTE, SkyblockerStructureProtocol.SOURCE, 1);
+            if (hasRemote) lobby.merge(remote);
+            tracker.sampleRoughArea(246.220, 104, 625.300);
+            assertEquals(1, lobby.sightings().size());
+            var observed = lobby.sightings().getFirst();
+            assertEquals(new CrystalHollowsPosition(246, 104, 625), observed.position());
+            assertEquals(SightingConfidence.ROUGH_AREA, observed.confidence());
+            assertEquals("sidebar", observed.source());
+            var group = manager.get(CrystalHollowsStructureFolder.GROUP_PREFIX + "fairy_grotto");
+            assertNotNull(group, "sidebar alone must create the generated waypoint");
+            assertEquals(246, group.get(0).x());
+            assertEquals(104, group.get(0).y());
+            assertEquals(625, group.get(0).z());
+            assertEquals(CrystalHollowsLobbyState.MergeResult.IGNORED, lobby.merge(remote));
+            tracker.sampleRoughArea(252.220, 104, 629.300);
+            assertEquals(new CrystalHollowsPosition(249, 104, 627), lobby.sightings().getFirst().position());
+            assertEquals(1, lobby.sightings().size(), "refinement must not duplicate the grotto");
+        }
+    }
+
+    @Test
+    void incorrectSkyblockerRequiresContinuousArrivalAndCannotReturnFromSocket() throws Exception {
+        var manager = new ActiveGroupManager();
+        var tracker = new CrystalHollowsTracker(manager, new WaypointerConfig(), null);
+        var lobby = new CrystalHollowsLobbyState("m14ap", 1, 17);
+        set(tracker, "active", true);
+        set(tracker, "lobby", lobby);
+        var local = new StructureSighting(CrystalHollowsStructure.LOST_PRECURSOR_CITY, 610, 100, 610,
+                SightingConfidence.SHARED_CHAT, "chat:player", 1);
+        var remote = new StructureSighting(local.structure(), 600, 100, 600,
+                SightingConfidence.SHARED_REMOTE, SkyblockerStructureProtocol.SOURCE, 2);
+        lobby.merge(local);
+        lobby.merge(remote);
+        tracker.focusCompassTarget(remote);
+        for (int i = 0; i < 29; i++) {
+            assertTrue(tracker.checkIncorrectStructures("Precursor Remnants", 600, 100, 600, true).isEmpty());
+        }
+        assertTrue(tracker.checkIncorrectStructures("Precursor Remnants", 600, 100, 600, false).isEmpty());
+        for (int i = 0; i < 29; i++) {
+            assertTrue(tracker.checkIncorrectStructures("Precursor Remnants", 600, 100, 600, true).isEmpty());
+        }
+        assertTrue(tracker.checkIncorrectStructures("Precursor Remnants", 610, 100, 600, true).isEmpty());
+        for (int i = 0; i < 29; i++) {
+            assertTrue(tracker.checkIncorrectStructures("Precursor Remnants", 600, 100, 600, true).isEmpty());
+        }
+        assertEquals(java.util.List.of(remote.structure()),
+                tracker.checkIncorrectStructures("Precursor Remnants", 600, 100, 600, true));
+        assertEquals(java.util.List.of(local), lobby.sightings());
+        assertNull(tracker.compassTargetSighting());
+        var repeated = new StructureSighting(remote.structure(), 600, 100, 600,
+                SightingConfidence.SHARED_REMOTE, SkyblockerStructureProtocol.SOURCE, 100);
+        assertEquals(CrystalHollowsLobbyState.MergeResult.IGNORED, lobby.merge(repeated));
+        var restored = CrystalHollowsLobbyState.identify("m14ap", 17, 100, lobby, null);
+        assertEquals(CrystalHollowsLobbyState.MergeResult.IGNORED, restored.merge(repeated));
+        assertTrue(tracker.checkIncorrectStructures("Precursor Remnants", 600, 100, 600, true).isEmpty());
+    }
+
+    @Test
+    void rejectsFairyGrottoAtReportedFourMeterPosition() throws Exception {
+        var tracker = new CrystalHollowsTracker(new ActiveGroupManager(), new WaypointerConfig(), null);
+        var lobby = new CrystalHollowsLobbyState("mini192AF", 1, 8);
+        set(tracker, "active", true);
+        set(tracker, "lobby", lobby);
+        var remote = new StructureSighting(CrystalHollowsStructure.FAIRY_GROTTO, 734, 100, 422,
+                SightingConfidence.SHARED_REMOTE, SkyblockerStructureProtocol.SOURCE, 1);
+        lobby.merge(remote);
+        for (int i = 0; i < 29; i++) {
+            assertTrue(tracker.checkIncorrectStructures("Mithril Deposits", 731.3, 97, 421.3, true).isEmpty());
+        }
+        assertEquals(java.util.List.of(CrystalHollowsStructure.FAIRY_GROTTO),
+                tracker.checkIncorrectStructures("Mithril Deposits", 731.3, 97, 421.3, true));
+        assertTrue(lobby.sightings().isEmpty());
+        assertEquals(CrystalHollowsLobbyState.MergeResult.IGNORED, lobby.merge(remote));
+    }
+
+    @Test
     void disabledStructureRejectsEveryAutomaticSourceButKeepsExplicitNavigation() throws Exception {
         for (SightingConfidence confidence : SightingConfidence.values()) {
             var config = new WaypointerConfig();

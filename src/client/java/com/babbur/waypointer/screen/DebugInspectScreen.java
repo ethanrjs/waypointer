@@ -69,6 +69,7 @@ public final class DebugInspectScreen extends Screen {
         record KV(String key, String value) implements Row {}
         record KVDim(String key, String value) implements Row {}
         record KVWarn(String key, String value) implements Row {}
+        record KVStatus(String key, String value, int color) implements Row {}
         record Bit(int bit, String label, boolean set) implements Row {}
         record BitNote(String text) implements Row {}
         record PoolEntry(int index, String text) implements Row {}
@@ -252,11 +253,20 @@ public final class DebugInspectScreen extends Screen {
         } else {
             buildSafely("Server, Player, and Location", DebugReportExport.Category.SERVER_CONTEXT,
                     this::buildServerContextReport);
+            buildSafely("Server Timing", DebugReportExport.Category.SERVER_CONTEXT,
+                    this::buildServerTimingReport);
             buildSafely("Crystal Hollows Diagnostics", DebugReportExport.Category.SERVER_CONTEXT,
                     this::buildCrystalHollowsDiagnosticsReport);
             buildSafely("Structure Sharing Diagnostics", DebugReportExport.Category.SERVER_CONTEXT,
                     this::buildStructureSharingDiagnosticsReport);
+            buildSafely("Publishing Identity", DebugReportExport.Category.SERVER_CONTEXT,
+                    this::buildPublishingIdentityReport);
             buildSafely("Storage Health", this::buildStorageHealthReport);
+            buildSafely("Client Runtime", this::buildClientRuntimeReport);
+            buildSafely("Language Loading", DebugReportExport.Category.SETTINGS_AND_CHANGES,
+                    this::buildLanguageReport);
+            buildSafely("Route Activation", DebugReportExport.Category.ROUTES_AND_WAYPOINTS,
+                    this::buildRouteActivationReport);
             buildSafely("Performance Snapshot", this::buildLivePerformanceReport);
             buildSafely("Settings and Recent Changes", DebugReportExport.Category.SETTINGS_AND_CHANGES,
                     this::buildSettingsReport);
@@ -491,10 +501,47 @@ public final class DebugInspectScreen extends Screen {
 
     private void buildStructureSharingDiagnosticsReport() {
         addSection(rows, sections, "Structure Sharing Diagnostics", null, DebugReportExport.Category.SERVER_CONTEXT);
-        rows.add(new Row.KVDim("Waypointer relay",
-                com.babbur.waypointer.crystal.StructureRelayController.debugSnapshot().toString()));
-        rows.add(new Row.KVDim("Skyblocker",
-                com.babbur.waypointer.crystal.SkyblockerStructureController.debugSnapshot().toString()));
+        var relay = com.babbur.waypointer.crystal.StructureRelayController.debugSnapshot();
+        rows.add(new Row.KVStatus("Waypointer relay", relay.status(), socketStatusColor(relay.status())));
+        rows.add(new Row.KV("Relay availability", "installed=" + relay.installed() + ", enabled="
+                + relay.enabled() + ", lobby=" + relay.lobbyActive()));
+        rows.add(new Row.KV("Relay connection", "connected=" + relay.connected() + ", connecting="
+                + relay.connecting() + ", subscribed=" + relay.subscribed()));
+        rows.add(new Row.KV("Relay auth", relay.authentication()));
+        rows.add(new Row.KV("Relay retry", relay.backoffRemainingMillis() + " ms / " + relay.failures() + " failures"));
+        rows.add(new Row.KV("Relay counters", "sent=" + relay.sentCacheCount() + ", window="
+                + relay.publicationWindowCount() + ", generation=" + relay.generation()));
+        rows.add(new Row.KV("Relay inbound queue", queueCount(relay.inboundQueueCount())));
+
+        var skyblocker = com.babbur.waypointer.crystal.SkyblockerStructureController.debugSnapshot();
+        rows.add(new Row.KVStatus("Skyblocker", skyblocker.status(), socketStatusColor(skyblocker.status())));
+        rows.add(new Row.KV("Skyblocker flags", "installed=" + skyblocker.installed() + ", enabled="
+                + skyblocker.enabled() + ", lobby=" + skyblocker.lobbyActive()));
+        rows.add(new Row.KV("Skyblocker connection", "connected=" + skyblocker.connected() + ", connecting="
+                + skyblocker.connecting() + ", subscribed=" + skyblocker.subscribed()));
+        rows.add(new Row.KVStatus("Skyblocker auth", skyblocker.denied() ? "Denied" : skyblocker.authentication(),
+                skyblocker.denied() ? ERROR_TONE : skyblocker.authentication().equals("ready") ? SUCCESS_TONE : WARN_TONE));
+        rows.add(new Row.KV("Skyblocker retry", skyblocker.backoffRemainingMillis() + " ms / " + skyblocker.failures() + " failures"));
+        rows.add(new Row.KV("Skyblocker counters", "published=" + skyblocker.publishedCount() + ", received="
+                + skyblocker.receivedCount() + ", generation=" + skyblocker.generation()));
+        rows.add(new Row.KV("Skyblocker queue", queueCount(skyblocker.inboundQueueCount())));
+        rows.add(new Row.KVStatus("Skyblocker last failure", skyblocker.lastFailureCause()
+                + " / " + skyblocker.lastFailureStage() + " / status " + skyblocker.lastFailureStatus(),
+                skyblocker.lastFailureCause() == com.babbur.waypointer.crystal.SkyblockerAuthentication.FailureCause.NONE
+                        ? TEXT_DIM : ERROR_TONE));
+    }
+
+    private static String queueCount(int count) {
+        return count < 0 ? "Unavailable" : String.valueOf(count);
+    }
+
+    static int socketStatusColor(String status) {
+        return switch (status) {
+            case "connected", "subscribed" -> SUCCESS_TONE;
+            case "disabled", "idle", "not_installed", "deferred_to_skyblocker" -> TEXT_DIM;
+            case "connecting", "subscribing", "authenticating", "backoff" -> WARN_TONE;
+            default -> ERROR_TONE;
+        };
     }
 
     private void buildLivePerformanceReport() {
@@ -506,11 +553,87 @@ public final class DebugInspectScreen extends Screen {
         buildPerformanceReport(this.performanceStats, config, rows, sections);
     }
 
+    private void buildPublishingIdentityReport() {
+        addSection(rows, sections, "Publishing Identity", "local inspection",
+                DebugReportExport.Category.SERVER_CONTEXT);
+        rows.add(new Row.KV("Minecraft account", oneLine(minecraft.getUser().getName())));
+        String catalogFailure = DebugSignals.catalogFailureLine();
+        rows.add(new Row.KVStatus("Last catalog failure", catalogFailure,
+                catalogFailure.equals("None") ? SUCCESS_TONE : ERROR_TONE));
+        var diagnostics = com.babbur.waypointer.catalog.PublisherIdentityStore.defaultLocation().inspect();
+        addPublisherIdentity("Active", diagnostics.profile());
+        addPublisherIdentity("Shared", diagnostics.shared());
+        String comparison = switch (diagnostics.comparison()) {
+            case "different signing identities" -> "Identity mismatch";
+            case "same signing identity; saved names differ" -> "Same key; different names";
+            case "same signing identity and name" -> "Match";
+            default -> "Unavailable";
+        };
+        rows.add(new Row.KVStatus("Profile / shared", comparison,
+                comparison.equals("Match") ? SUCCESS_TONE : comparison.equals("Identity mismatch") ? ERROR_TONE : WARN_TONE));
+    }
+
+    private void addPublisherIdentity(String label,
+            com.babbur.waypointer.catalog.PublisherIdentityStore.IdentityStatus identity) {
+        boolean valid = identity.publisherId() != null;
+        rows.add(new Row.KVStatus(label + " signing key", valid ? "Valid" : identity.status(),
+                valid ? SUCCESS_TONE : identity.status().equals("unreadable or invalid") ? ERROR_TONE : WARN_TONE));
+        rows.add(new Row.KV(label + " publisher ID", shortPublisherId(identity.publisherId())));
+        rows.add(new Row.KV(label + " publisher name", identity.publisherName() == null ? "(none)" : oneLine(identity.publisherName())));
+    }
+
+    static String shortPublisherId(String id) {
+        return id == null ? "(none)" : id.substring(0, Math.min(14, id.length())) + "...";
+    }
+
+    private void buildServerTimingReport() {
+        var timing = com.babbur.waypointer.debug.ServerTimingDiagnostics.estimator().snapshot(System.nanoTime());
+        addSection(rows, sections, "Server Timing", null, DebugReportExport.Category.SERVER_CONTEXT);
+        rows.add(new Row.KVStatus("Quality", timing.quality(), timingQualityColor(timing.quality())));
+        rows.add(new Row.KVDim("Measurement", "Server-clock estimate"));
+        rows.add(new Row.KV("Tick target", timingNumber(timing.targetTps(), " TPS")
+                + (timing.frozen() ? " / frozen" : " / running")));
+        addTimingWindow("Observed TPS 10s", timing.shortWindow());
+        addTimingWindow("Observed TPS 60s", timing.mediumWindow());
+        addTimingWindow("Observed TPS 180s", timing.longWindow());
+        rows.add(new Row.KV("Robust trend 60s", timingNumber(timing.mediumWindow().trendTps(), " TPS")));
+        rows.add(new Row.KV("Packet age", timingNumber(timing.packetAgeSeconds(), " s")));
+        rows.add(new Row.KV("Max packet gap 60s", timingNumber(timing.longestPacketGapMillis(), " ms")));
+        rows.add(new Row.KV("Delivery jitter p95", timingNumber(timing.mediumWindow().deliveryJitterMillis(), " ms")));
+        rows.add(new Row.KV("Tab latency latest", timing.latestPing() < 0 ? "Unavailable" : timing.latestPing() + " ms"));
+        rows.add(new Row.KV("Tab latency 60s", "median " + timingNumber(timing.medianPing(), " ms")
+                + " / p95 " + timingNumber(timing.p95Ping(), " ms")));
+        rows.add(new Row.KV("Ping spread p95-p5", timingNumber(timing.pingJitter(), " ms")));
+        rows.add(new Row.KV("Tab latency age", timingNumber(timing.pingAgeSeconds(), " s")));
+        rows.add(new Row.KVStatus("Client stalls 60s", timing.clientStalls() + " / max "
+                + timingNumber(timing.longestClientStallMillis(), " ms"), timing.clientStalls() > 0 ? WARN_TONE : SUCCESS_TONE));
+        rows.add(new Row.KV("Clock resets", timing.discontinuities() + " / " + timing.resetReason()));
+    }
+
+    private void addTimingWindow(String label, com.babbur.waypointer.debug.ServerTickEstimator.Window window) {
+        rows.add(new Row.KV(label, timingNumber(window.observedTps(), " TPS") + " / "
+                + window.samples() + " samples / " + timingNumber(window.seconds(), " s")));
+    }
+
+    static String timingNumber(double value, String unit) {
+        return Double.isFinite(value) ? String.format(Locale.ROOT, "%.2f%s", value, unit) : "Unavailable";
+    }
+
+    static int timingQualityColor(String quality) {
+        return switch (quality) {
+            case "Stable" -> SUCCESS_TONE;
+            case "Unavailable", "Stale" -> ERROR_TONE;
+            default -> WARN_TONE;
+        };
+    }
+
     private void buildStorageHealthReport() {
         addSection(rows, sections, "Storage Health", null);
         Path configDirectory = FabricLoader.getInstance().getConfigDir().resolve(Waypointer.MOD_ID);
         addFileHealth("Main config", configDirectory.resolve("config.json"));
         addFileHealth("Dungeon config", configDirectory.resolve("dungeon.json"));
+        addFileHealth("Crystal Hollows", configDirectory.resolve("crystal_hollows.json"));
+        addFileHealth("Publications", com.babbur.waypointer.catalog.CatalogPublicationRegistry.defaultLocation().file());
         Storage storage = WaypointerClient.storage();
         if (storage == null) {
             rows.add(new Row.KVWarn("Storage", "Unavailable"));
@@ -541,7 +664,7 @@ public final class DebugInspectScreen extends Screen {
     private void addFileHealth(String label, Path file) {
         try {
             if (!Files.isRegularFile(file)) {
-                rows.add(new Row.KV(label, "missing (defaults may be in use)"));
+                rows.add(new Row.KV(label, "Missing"));
                 return;
             }
             rows.add(new Row.KV(label, file.getFileName() + ", " + formatBytes(Files.size(file))
@@ -549,6 +672,66 @@ public final class DebugInspectScreen extends Screen {
         } catch (Exception ignored) {
             rows.add(new Row.KVWarn(label, "Metadata unavailable"));
         }
+    }
+
+    private void buildClientRuntimeReport() {
+        addSection(rows, sections, "Client Runtime", "current client state");
+        rows.add(new Row.KV("FPS", String.valueOf(minecraft.getFps())));
+        rows.add(new Row.KV("Paused", String.valueOf(minecraft.isPaused())));
+        rows.add(new Row.KV("Screen class", MinecraftCompat.screen(minecraft) == null ? "(none)"
+                : MinecraftCompat.screen(minecraft).getClass().getName()));
+        rows.add(new Row.KV("Edit mode", String.valueOf(
+                com.babbur.waypointer.input.WaypointRepositionMode.isEditModeEnabled())));
+        rows.add(new Row.KV("Temporary focus", String.valueOf(manager.tempWaypointFocusActive())));
+        rows.add(new Row.KV("JVM uptime", java.lang.management.ManagementFactory.getRuntimeMXBean()
+                .getUptime() + " ms"));
+        var threads = java.lang.management.ManagementFactory.getThreadMXBean();
+        rows.add(new Row.KV("JVM threads", threads.getThreadCount() + " current / "
+                + threads.getPeakThreadCount() + " peak"));
+        for (var collector : java.lang.management.ManagementFactory.getGarbageCollectorMXBeans()) {
+            rows.add(new Row.KVDim("GC " + collector.getName(), collector.getCollectionCount()
+                    + " collections / " + collector.getCollectionTime() + " ms (session)"));
+        }
+    }
+
+    private void buildLanguageReport() {
+        addSection(rows, sections, "Language Loading", null,
+                DebugReportExport.Category.SETTINGS_AND_CHANGES);
+        String selected = minecraft.getLanguageManager().getSelected();
+        var locale = com.babbur.waypointer.i18n.RemoteLocales.debugSnapshot(selected);
+        rows.add(new Row.KV("Selected language", selected));
+        rows.add(new Row.KV("Trust manifest", locale.manifestValid() ? "valid" : "unavailable or invalid"));
+        rows.add(new Row.KV("Remote enabled", String.valueOf(locale.enabled())));
+        rows.add(new Row.KV("Translation commit", locale.commit().isBlank() ? "(none)" : locale.commit()));
+        rows.add(new Row.KV("Trusted languages", String.valueOf(locale.trustedLocales())));
+        rows.add(new Row.KV("Selected supported", String.valueOf(locale.selectedSupported())));
+        rows.add(new Row.KV("Overlay loaded", String.valueOf(locale.overlayLoaded())));
+        rows.add(new Row.KV("Reload applied", String.valueOf(locale.reloadApplied())));
+        rows.add(new Row.KV("Download pending", String.valueOf(locale.downloading())));
+        rows.add(new Row.KV("Retry delay", locale.retryInMillis() + " ms"));
+        rows.add(new Row.KVDim("Fallback", "Bundled English"));
+    }
+
+    private void buildRouteActivationReport() {
+        addSection(rows, sections, "Route Activation", null,
+                DebugReportExport.Category.ROUTES_AND_WAYPOINTS);
+        for (String line : routeActivationLines(manager)) rows.add(new Row.BitNote(line));
+    }
+
+    static List<String> routeActivationLines(ActiveGroupManager manager) {
+        var active = manager.activeGroups();
+        String zone = manager.currentZone() == null ? null : manager.currentZone().id();
+        long inZone = manager.allGroups().stream().filter(group -> group.zoneId().equals(zone)).count();
+        long enabledInZone = manager.allGroups().stream()
+                .filter(group -> group.zoneId().equals(zone) && group.enabled()).count();
+        long runtime = manager.allGroups().stream().filter(WaypointGroup::runtimeOnly).count();
+        long catalog = manager.allGroups().stream().filter(group -> group.catalogProvenance() != null).count();
+        return List.of("Current-zone routes: " + inZone + " total, " + enabledInZone + " enabled, "
+                        + active.size() + " active (includes previews)",
+                "Completed dungeon routes in zone: " + manager.completedDungeonRoomGroupsInCurrentZone().size(),
+                "Library sources: " + runtime + " runtime-only, " + catalog + " catalog-linked",
+                "Folders: " + manager.folders().size(),
+                "Temporary focus: " + manager.tempWaypointFocusActive());
     }
 
     private void buildSettingsReport() {
@@ -573,11 +756,9 @@ public final class DebugInspectScreen extends Screen {
         }
         rows.add(new Row.BitNote("[Internal troubleshooting state]"));
         rows.add(new Row.KV("configSchemaVersion", String.valueOf(config.configSchemaVersion())));
-        if (config.enableFeatureBloat()) {
-            rows.add(new Row.KV("painterPalette", formatPalette(config.waypointPainterPalette())));
-            rows.add(new Row.KV("painterDefault", config.waypointPainterDefaultPaint() == null
-                    ? "(none)" : "configured (hash " + config.waypointPainterDefaultPaint().hashCode() + ")"));
-        }
+        rows.add(new Row.KV("painterPalette", formatPalette(config.waypointPainterPalette())));
+        rows.add(new Row.KV("painterDefault", config.waypointPainterDefaultPaint() == null
+                ? "(none)" : "configured (hash " + config.waypointPainterDefaultPaint().hashCode() + ")"));
         if (dungeonConfig != null) {
             rows.add(new Row.KV("debugLogRoomChanges", String.valueOf(dungeonConfig.debugLogRoomChanges())));
             rows.add(new Row.KV("defaultDirection", dungeonConfig.defaultDirection()));
@@ -613,6 +794,9 @@ public final class DebugInspectScreen extends Screen {
             rows.add(new Row.KV("Route behavior", "skipAhead=" + group.skipAheadEnabled()
                     + ", defaultRadius=" + formatRadius(group.defaultRadius())
                     + ", activeSubParent=" + group.activeSubwaypointParentIndex()));
+            rows.add(new Row.KV("Navigation state", "focusedVisibleIndex=" + group.focusedVisibleIndex()
+                    + ", proximitySuppressedIndex=" + group.proximitySuppressedIndex()
+                    + ", standSkipHoldIndex=" + group.standSkipHoldIndex()));
             List<Waypoint> waypoints = group.waypoints();
             for (int i = 0; i < waypoints.size(); i++) {
                 Waypoint waypoint = waypoints.get(i);
@@ -625,6 +809,8 @@ public final class DebugInspectScreen extends Screen {
                 if (waypoint.hasName()) value.append(" name=\"").append(oneLine(waypoint.name())).append('"');
                 value.append(String.format(Locale.ROOT, " color=#%06X flags=0x%X",
                         waypoint.color() & 0xFFFFFF, waypoint.flags()));
+                value.append(" disabled=").append(waypoint.isDisabled())
+                        .append(" staticReached=").append(group.isStaticWaypointReached(i));
                 double radius = waypoint.customRadius() > 0.0
                         ? waypoint.customRadius() : group.defaultRadius();
                 value.append(" radius=").append(formatRadius(radius));
@@ -1088,6 +1274,10 @@ public final class DebugInspectScreen extends Screen {
                 drawKey(g, kv.key(), x, y);
                 g.text(font, kv.value(), x + KEY_COL_W, y, WARN_TONE, false);
             }
+            case Row.KVStatus kv -> {
+                drawKey(g, kv.key(), x, y);
+                g.text(font, kv.value(), x + KEY_COL_W, y, kv.color(), false);
+            }
             case Row.Bit b -> {
                 g.text(font, "bit " + b.bit(), x, y, TEXT_DIM, false);
                 g.text(font, b.label(), x + BIT_LABEL_OFFSET, y, KEYWORD_TONE, false);
@@ -1102,7 +1292,7 @@ public final class DebugInspectScreen extends Screen {
                         p.text().isEmpty() ? TEXT_MUTED : STRING_TONE, false);
             }
             case Row.WP wp -> drawWaypointRow(g, wp.wp(), x, y, xEnd);
-            case Row.Blank ignored -> { /* deliberate breathing room */ }
+            case Row.Blank ignored -> { }
         }
     }
 
@@ -1540,6 +1730,8 @@ public final class DebugInspectScreen extends Screen {
             case Row.KVDim kv -> String.format(Locale.ROOT, "  %-16s %s",
                     oneLine(kv.key()) + ":", oneLine(kv.value()));
             case Row.KVWarn kv -> String.format(Locale.ROOT, "  %-16s %s",
+                    oneLine(kv.key()) + ":", oneLine(kv.value()));
+            case Row.KVStatus kv -> String.format(Locale.ROOT, "  %-16s %s",
                     oneLine(kv.key()) + ":", oneLine(kv.value()));
             case Row.Bit b -> String.format(Locale.ROOT, "    bit %d  %-17s = %s",
                     b.bit(), oneLine(b.label()), b.set() ? "true" : "false");

@@ -87,7 +87,7 @@ public final class MetalDetectorSolver {
             }
             if (matches.isEmpty()) addDistanceShell(reading, matches);
         }
-        // ponytail: after 64 readings, only narrow existing candidates; reset starts a fresh search.
+        // After 64 readings, narrow existing candidates; reset starts a fresh search.
         // Keeping every retained reading prevents a newly visible chest undoing earlier evidence.
         if (readings.size() < 64) {
             for (CrystalHollowsPosition chest : visibleChests) {

@@ -829,6 +829,7 @@ public final class ExportScreen extends Screen {
     }
 
     private Tooltip toggleTooltip(ToggleSpec spec) {
+        if (exportTarget != WaypointExportCodec.Target.WAYPOINTER) return null;
         return Tooltip.create(Component.translatable(
                 "waypointer.screen.export.toggle."
                         + spec.kind.name().toLowerCase(Locale.ROOT)
@@ -903,6 +904,8 @@ public final class ExportScreen extends Screen {
         }
         WaypointCodec.Options options = optsBuilder.build();
         WaypointExportCodec.Target target = exportTarget;
+        WaypointerConfig appearance = target == WaypointExportCodec.Target.SKYSOFT
+                ? config.exportSnapshot() : config;
         int generation = ++encodeGeneration;
 
         encodePending = true;
@@ -911,7 +914,7 @@ public final class ExportScreen extends Screen {
 
         CodecWorker.runLatestPreview(
                 () -> new EncodeResult(WaypointExportCodec.encode(
-                        snapshot, options, target, metadata), ""),
+                        snapshot, options, target, metadata, appearance), ""),
                 encoded -> applyEncodeResult(generation, encoded));
     }
 
@@ -1170,7 +1173,7 @@ public final class ExportScreen extends Screen {
 
     private void updateLabelInputState() {
         labelInput.active = exportTarget.supportsLabel();
-        labelInput.setTooltip(Tooltip.create(exportTarget.supportsLabel()
+        labelInput.setTooltip(exportTarget != WaypointExportCodec.Target.WAYPOINTER ? null : Tooltip.create(exportTarget.supportsLabel()
                 ? Component.translatable("waypointer.screen.export.label.tooltip")
                 : Component.translatable("waypointer.screen.export.label.unsupported",
                         exportTarget.displayName())));
@@ -1223,8 +1226,10 @@ public final class ExportScreen extends Screen {
         if (optionsPageVisible()) {
             drawClipped(g, Component.translatable("waypointer.screen.export.settings").getString(),
                     includeHeadY, TEXT_DIM);
-            SettingsHelp help = settingsHelp();
-            drawClipped(g, help.text(), includeHeadY + LINE_H, help.color());
+            if (exportTarget == WaypointExportCodec.Target.WAYPOINTER) {
+                SettingsHelp help = settingsHelp();
+                drawClipped(g, help.text(), includeHeadY + LINE_H, help.color());
+            }
 
             if (isZoneExport()) renderRoutePicker(g, mouseX, mouseY);
             if (compactLayout) drawOptionsScrollbar(g);
@@ -1446,26 +1451,12 @@ public final class ExportScreen extends Screen {
     private record SettingsHelp(String text, int color) {}
 
     private SettingsHelp settingsHelp() {
-        if (showSubwaypointCompatibilityWarning()) {
-            return new SettingsHelp(Component.translatable(
-                    "waypointer.screen.export.settings_help.subwaypoints").getString(),
-                    GuiTokens.WARNING);
-        }
-        if (exportTarget != WaypointExportCodec.Target.WAYPOINTER) {
-            return new SettingsHelp(Component.translatable(
-                    "waypointer.screen.export.settings_help.unavailable",
-                    exportTarget.displayName()).getString(), TEXT_DIM);
-        }
         if (!optsBuilder.includeZone()) {
             return new SettingsHelp(Component.translatable(
                     "waypointer.screen.export.settings_help.no_island").getString(), TEXT_DIM);
         }
         return new SettingsHelp(Component.translatable(
                 "waypointer.screen.export.settings_help.shorter").getString(), TEXT_MUTED);
-    }
-
-    private boolean showSubwaypointCompatibilityWarning() {
-        return ExportPolicy.showSubwaypointWarning(exportTarget, selectedGroupsForExport());
     }
 
     private void drawPreview(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
@@ -1716,15 +1707,6 @@ public final class ExportScreen extends Screen {
             MinecraftCompat.setScreen(minecraft, owner);
         }
 
-        private static String targetTooltipKey(WaypointExportCodec.Target target) {
-            return switch (target) {
-                case WAYPOINTER -> "waypointer.screen.export.target.waypointer.tooltip";
-                case SKYBLOCKER -> "waypointer.screen.export.target.skyblocker.tooltip";
-                case SKYTILS -> "waypointer.screen.export.target.skytils.tooltip";
-                case SKYHANNI -> "waypointer.screen.export.target.skyhanni.tooltip";
-            };
-        }
-
         private final class TargetRow extends MarkerRow {
             private final WaypointExportCodec.Target target;
 
@@ -1734,7 +1716,6 @@ public final class ExportScreen extends Screen {
                     MinecraftCompat.setScreen(Minecraft.getInstance(), owner);
                 });
                 this.target = target;
-                setTooltip(Tooltip.create(Component.translatable(targetTooltipKey(target))));
             }
 
             @Override

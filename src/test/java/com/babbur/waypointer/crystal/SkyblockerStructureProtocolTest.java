@@ -68,7 +68,7 @@ class SkyblockerStructureProtocolTest {
     @Test void optOutRemovesOnlyThisProviderAndRestoresLocalFallback() {
         var lobby = new CrystalHollowsLobbyState("mini192Q", NOW, 1);
         var rough = new StructureSighting(CrystalHollowsStructure.JUNGLE_TEMPLE, 300, 100, 300,
-                SightingConfidence.ROUGH_AREA, "sidebar", NOW - 1);
+                SightingConfidence.SHARED_CHAT, "chat:player", NOW - 1);
         var peer = new StructureSighting(CrystalHollowsStructure.MINES_OF_DIVAN, 600, 100, 300,
                 SightingConfidence.SHARED_REMOTE, "relay", NOW);
         lobby.merge(rough);

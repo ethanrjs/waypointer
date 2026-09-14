@@ -39,19 +39,36 @@ public final class DungeonRoomRouteLibrary {
         return disabled;
     }
 
+    /** A dungeon-room or Crystal Hollows structure mirror projected from a saved route. */
+    static boolean isProjectedMirror(WaypointGroup group) {
+        return DungeonRoomRouteProjection.isGeneratedGroup(group)
+                || com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync.isGeneratedGroup(group);
+    }
+
     public static WaypointGroup storedSourceForMirror(ActiveGroupManager manager,
                                                       WaypointGroup mirror) {
-        if (!DungeonRoomRouteProjection.isGeneratedGroup(mirror)) return null;
+        if (!isProjectedMirror(mirror)) return null;
         if (mirror.runtimeSourceGroupId() != null) {
             WaypointGroup exact = manager.get(mirror.runtimeSourceGroupId());
             if (exact != null && !exact.runtimeOnly()) return exact;
         }
+        if (!DungeonRoomRouteProjection.isGeneratedGroup(mirror)) return null;
         return storedRouteForRoom(manager, mirror.zoneId());
+    }
+
+    /** The runtime mirror currently projected from a saved route, if any. */
+    private static WaypointGroup mirrorOf(ActiveGroupManager manager, WaypointGroup source) {
+        if (manager == null || source == null) return null;
+        if (com.babbur.waypointer.crystal.CrystalHollowsStructureRoutes.isStructureRoute(source)) {
+            return manager.get(com.babbur.waypointer.crystal.CrystalHollowsStructureRouteSync
+                    .generatedId(source.id()));
+        }
+        return manager.get(DungeonRoomRouteProjection.generatedGroupId(source.zoneId()));
     }
 
     public static WaypointGroup durableEditTarget(ActiveGroupManager manager,
                                                    WaypointGroup visibleGroup) {
-        if (!DungeonRoomRouteProjection.isGeneratedGroup(visibleGroup)) return visibleGroup;
+        if (!isProjectedMirror(visibleGroup)) return visibleGroup;
         return storedSourceForMirror(manager, visibleGroup);
     }
 
@@ -75,14 +92,12 @@ public final class DungeonRoomRouteLibrary {
 
         WaypointGroup stored = storedSourceForMirror(manager, visibleGroup);
         if (stored != null) mutation.accept(stored);
-        WaypointGroup source = stored == null
-                && !DungeonRoomRouteProjection.isGeneratedGroup(visibleGroup)
+        WaypointGroup source = stored == null && !isProjectedMirror(visibleGroup)
                 ? visibleGroup
                 : stored;
         if (source == null) return;
 
-        WaypointGroup mirror = manager.get(
-                DungeonRoomRouteProjection.generatedGroupId(source.zoneId()));
+        WaypointGroup mirror = mirrorOf(manager, source);
         if (mirror != null && mirror != visibleGroup) mutation.accept(mirror);
     }
 
@@ -95,15 +110,11 @@ public final class DungeonRoomRouteLibrary {
         if (stored != null) stored.setEnabled(enabled);
         visibleGroup.setEnabled(enabled);
 
-        WaypointGroup source = stored == null
-                && !DungeonRoomRouteProjection.isGeneratedGroup(visibleGroup)
+        WaypointGroup source = stored == null && !isProjectedMirror(visibleGroup)
                 ? visibleGroup
                 : stored;
-        if (manager != null && source != null) {
-            WaypointGroup mirror = manager.get(
-                    DungeonRoomRouteProjection.generatedGroupId(source.zoneId()));
-            if (mirror != null) mirror.setEnabled(enabled);
-        }
+        WaypointGroup mirror = mirrorOf(manager, source);
+        if (mirror != null) mirror.setEnabled(enabled);
     }
 
     public static List<WaypointGroup> installRoutes(ActiveGroupManager manager,

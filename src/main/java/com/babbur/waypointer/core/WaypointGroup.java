@@ -101,6 +101,9 @@ public final class WaypointGroup {
         copy.gradientEndColor = gradientEndColor;
         copy.defaultRadius = defaultRadius;
         copy.skipAheadEnabled = skipAheadEnabled;
+        copy.enabled = enabled;
+        copy.stylePresetId = stylePresetId;
+        copy.styleOverride = styleOverride;
         copy.waypoints.addAll(waypoints);
         copy.manualColors.addAll(manualColors);
         return copy;

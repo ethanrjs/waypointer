@@ -28,9 +28,7 @@ import java.util.List;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
-/**
- * One-field modal for creating a waypoint with an optional name.
- */
+/** Creates a waypoint with an optional name and subtype. */
 public final class AddNamedWaypointScreen extends Screen {
 
     private static final int PANEL_W = 280;
@@ -333,9 +331,11 @@ public final class AddNamedWaypointScreen extends Screen {
             waypoint = new Waypoint(x, y, z, name,
                     config.defaultWaypointColor(), flags, 0.0);
         }
-        Waypoint stored = DungeonRoomWaypointPlacement.toStoredWaypoint(target, waypoint);
+        Waypoint stored = useFixedPosition
+                ? DungeonRoomWaypointPlacement.toStoredWaypoint(target, waypoint)
+                : DungeonRoomWaypointPlacement.editorDefaultWaypoint(target, waypoint);
         if (stored == null) {
-            placementError = DungeonRoomWaypointPlacement.unavailableMessage();
+            placementError = DungeonRoomWaypointPlacement.unavailableMessage(target);
             return;
         }
         target.add(stored);

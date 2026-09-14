@@ -6,6 +6,8 @@ import com.google.gson.JsonParser;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsStructure;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import org.junit.jupiter.api.Test;
 
@@ -131,10 +133,8 @@ class WaypointExportCodecTest {
                 WaypointExportCodec.Target.WAYPOINTER);
 
         assertEquals("the_park", WaypointCodec.decode(kept).get(0).zoneId());
-        // Zone.UNKNOWN is what every import path treats as "no island recorded"
-        // and retargets to the island the recipient is standing on.
+        // UNKNOWN marks routes for assignment to the current area on import.
         assertEquals(Zone.UNKNOWN.id(), WaypointCodec.decode(stripped).get(0).zoneId());
-        // Everything else about the route has to survive untouched.
         assertEquals("Park Route", WaypointCodec.decode(stripped).get(0).name());
         assertEquals("start", WaypointCodec.decode(stripped).get(0).get(0).name());
     }
@@ -143,16 +143,12 @@ class WaypointExportCodecTest {
     void dropping_the_island_is_effectively_free() {
         WaypointCodec.Options portable = FULL_EXTERNAL.toBuilder().includeZone(false).build();
 
-        // Against a dictionary zone, both sides are a one-byte ref, so the only
-        // difference is compression noise. Interning the literal "unknown"
-        // instead -- the obvious implementation -- cost about ten characters,
-        // which would make an option that removes data grow the payload.
+        // UNKNOWN and dictionary zones use one-byte references; allow compression variation.
         int keptDict = encodedLength("the_park", FULL_EXTERNAL);
         int strippedDict = encodedLength("the_park", portable);
         assertTrue(strippedDict <= keptDict + 2,
                 "stripping a dictionary island cost " + (strippedDict - keptDict) + " characters");
 
-        // Against a zone that has to be pooled anyway, stripping is a real win.
         int keptCustom = encodedLength("some_custom_zone", FULL_EXTERNAL);
         int strippedCustom = encodedLength("some_custom_zone", portable);
         assertTrue(strippedCustom < keptCustom,
@@ -170,8 +166,7 @@ class WaypointExportCodecTest {
 
         // Dictionary refs are odd; index 0 is the first real entry.
         assertEquals("hub", WaypointCodec.resolveZoneRef(1, pool));
-        // An index past the table -- a zone a newer Waypointer knows about, or a
-        // corrupt byte. The coordinates are still good, so the route must survive.
+        // Unknown dictionary indices preserve the route coordinates.
         assertEquals(Zone.UNKNOWN.id(), WaypointCodec.resolveZoneRef((9999 << 1) | 1, pool));
         // Pool refs are even. The reserved empty slot is how "no island" ships.
         assertEquals(Zone.UNKNOWN.id(), WaypointCodec.resolveZoneRef(0, pool));
@@ -180,8 +175,7 @@ class WaypointExportCodecTest {
 
     @Test
     void a_route_already_stored_without_an_island_round_trips_as_unknown() {
-        // Not an export choice -- routes imported from formats with no island
-        // field are stored this way, and they take the same cheap encoding.
+        // Islandless source formats use the same empty zone reference.
         WaypointGroup group = sampleGroup("Mystery Route", Zone.UNKNOWN.id());
         String encoded = WaypointExportCodec.encode(List.of(group), FULL_EXTERNAL,
                 WaypointExportCodec.Target.WAYPOINTER);
@@ -202,8 +196,7 @@ class WaypointExportCodecTest {
         assertFalse(WaypointExportCodec.Target.SKYHANNI.supportsIslandChoice());
         assertTrue(WaypointExportCodec.Target.WAYPOINTER.supportsIslandChoice());
 
-        // Skytils' island enum has no "unknown" member, so a stripped island
-        // would encode a value its client cannot read. Coercion forces it back on.
+        // Skytils has no unknown island enum, so its export must include an island.
         assertTrue(WaypointExportCodec.Target.SKYTILS.coerce(portable).includeZone);
 
         String encoded = WaypointExportCodec.encode(List.of(group), portable,
@@ -221,7 +214,7 @@ class WaypointExportCodecTest {
     }
 
     @Test
-    void every_known_zone_maps_to_a_real_skyblocker_location_id() {
+    void every_representable_known_zone_maps_to_a_real_skyblocker_location_id() {
         Set<String> accepted = Set.of(
                 "dynamic", "garden", "hub", "farming_1", "foraging_1", "foraging_2", "foraging_3",
                 "combat_1", "combat_2", "combat_3", "crimson_isle", "mining_1",
@@ -230,6 +223,11 @@ class WaypointExportCodecTest {
                 "lotus_atoll", "safari", "unknown");
 
         for (Zone zone : Zone.knownZones()) {
+            if (CrystalHollowsStructureZones.isStructureZone(zone.id())) {
+                assertThrows(IllegalArgumentException.class,
+                        () -> WaypointExportCodec.skyblockerIslandId(zone.id()));
+                continue;
+            }
             assertTrue(accepted.contains(WaypointExportCodec.skyblockerIslandId(zone.id())),
                     () -> "unsupported Skyblocker zone " + zone.id());
         }
@@ -249,7 +247,8 @@ class WaypointExportCodecTest {
             if (zone.id().equals("galatea")
                     || zone.id().equals("lotus_atoll")
                     || zone.id().equals("torrhus_canyon")
-                    || zone.id().equals("safari")) {
+                    || zone.id().equals("safari")
+                    || CrystalHollowsStructureZones.isStructureZone(zone.id())) {
                 assertThrows(IllegalArgumentException.class,
                         () -> WaypointExportCodec.skytilsIslandId(zone.id()));
             } else {
@@ -259,6 +258,29 @@ class WaypointExportCodecTest {
         }
         DungeonRoomData.allEntries().forEach(room ->
                 assertEquals("dungeon", WaypointExportCodec.skytilsIslandId(room.id())));
+    }
+
+    @Test
+    void structure_offsets_keep_their_anchor_zone_and_cannot_be_exported_as_world_coordinates() {
+        String zone = CrystalHollowsStructureZones.zoneId(CrystalHollowsStructure.JUNGLE_TEMPLE);
+        WaypointGroup group = sampleGroup("Temple route", zone);
+        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        Waypoint local = Waypoint.at(-2, 3, 4).withPreciseSixteenths(-28, 48, 72)
+                .withFlags(Waypoint.FLAG_SUBWAYPOINT).withColor(0x123456);
+        group.add(local);
+        WaypointCodec.Options options = FULL_EXTERNAL.toBuilder().includeZone(false).build();
+        String encoded = WaypointExportCodec.encode(List.of(group), options, WaypointExportCodec.Target.WAYPOINTER);
+        WaypointGroup decoded = WaypointCodec.decode(encoded).get(0);
+        assertEquals(zone, decoded.zoneId());
+        assertEquals(local.preciseX(), decoded.get(2).preciseX());
+        assertEquals(local.preciseZ(), decoded.get(2).preciseZ());
+        assertEquals(local.color(), decoded.get(2).color());
+        assertEquals(local.flags(), decoded.get(2).flags());
+        for (WaypointExportCodec.Target target : WaypointExportCodec.Target.values()) {
+            if (target == WaypointExportCodec.Target.WAYPOINTER) continue;
+            assertThrows(IllegalArgumentException.class,
+                    () -> WaypointExportCodec.encode(List.of(group), options, target));
+        }
     }
 
     @Test

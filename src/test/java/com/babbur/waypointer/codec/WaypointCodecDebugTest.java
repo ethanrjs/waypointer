@@ -8,16 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Coverage for {@link WaypointCodec#debugDecode(String)}. The debug API is the only
- * production surface that exposes wire-level bytes (export flags, group flags,
- * coord mode, per-waypoint flag bytes), so a regression here would silently
- * misreport what the decoder is actually doing in the /wp debug inspector.
- *
- * Tests here are paired: each assertion checks both that the decoded domain
- * object matches the source (parity with {@code decode()}) and that the matching
- * raw wire field reflects what the encoder put on the wire.
- */
+/** Checks debug fields against decoded routes and their wire representation. */
 class WaypointCodecDebugTest {
 
     @Test

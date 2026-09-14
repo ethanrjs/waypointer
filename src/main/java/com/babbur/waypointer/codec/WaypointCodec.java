@@ -68,13 +68,7 @@ public final class WaypointCodec {
     private static final int RANGE_DELTA_MIN_VERSION = 6;
     private static final int PRECISE_WAYPOINT_MIN_VERSION = 7;
 
-    /**
-     * Hard cap on label byte length on the wire. Keeps a single export within a
-     * predictable upper bound (~256B before compression) and stops malformed
-     * payloads from forcing huge allocations during {@link #peekLabel(String)}.
-     * UTF-8 max 4 bytes/char -> roughly 64 visible characters, which matches
-     * {@link Options#MAX_LABEL_CHARS}.
-     */
+    /** Bounds wire labels to 256 UTF-8 bytes, including unchecked {@link #peekLabel(String)} reads. */
     private static final int MAX_LABEL_BYTES = 256;
 
     /**
@@ -104,14 +98,7 @@ public final class WaypointCodec {
     /** Y coordinate offset so (y + FIXED_Y_OFFSET) stays non-negative. Covers y in [-64, +447]. */
     private static final int FIXED_Y_OFFSET = 64;
 
-    /**
-     * FIT_COMPACT bit-width field. 5 bits per axis lets us store any width in
-     * [0, 31]; a width of 0 means "every coord equals the origin" and consumes
-     * zero bits per waypoint on that axis (useful for flat groups, e.g. a
-     * horizontal row at a fixed y). A width of 31 is enough for any realistic
-     * Minecraft world range (2^31 is wider than the world border on any known
-     * server).
-     */
+    /** Five bits per axis encode widths 0..31; width 0 means every coordinate equals the origin. */
     private static final int FIT_BITS_PER_AXIS = 5;
     private static final int FIT_MAX_WIDTH = (1 << FIT_BITS_PER_AXIS) - 1;
     private static final int RANGE_PROB_BITS = 12;
@@ -249,12 +236,7 @@ public final class WaypointCodec {
         public final boolean includeWaypointFlags;
         public final boolean includeGroupMeta;
         private final boolean bareCoordinatesOnly;
-        /**
-         * Whether each route keeps the island it was recorded on. Stripping it
-         * encodes {@link Zone#UNKNOWN} instead, which every import path already
-         * retargets to the island the recipient is standing on -- so a shared
-         * route becomes portable rather than pinned to the sender's island.
-         */
+        /** Whether to retain the route island; omission writes {@link Zone#UNKNOWN} for callers to retarget. */
         public final boolean includeZone;
         /** Sanitized label; an empty string leaves the wire label flag unset. */
         public final String  label;
@@ -302,23 +284,14 @@ public final class WaypointCodec {
                     && label.isEmpty();
         }
 
-        /**
-         * Removes Minecraft formatting and control characters, strips whitespace,
-         * and truncates the label to {@link #MAX_LABEL_CHARS} UTF-16 code units.
-         * Sanitizing at the encoder boundary prevents color codes and click
-         * events from reaching the recipient's hover tooltip.
-         */
+        /** Removes formatting/control characters, trims, and caps the label at {@link #MAX_LABEL_CHARS} UTF-16 units. */
         public static String sanitizeLabel(String raw) {
             if (raw == null || raw.isEmpty()) return "";
             StringBuilder sb = new StringBuilder(Math.min(raw.length(), MAX_LABEL_CHARS));
             int kept = 0;
             for (int i = 0; i < raw.length() && kept < MAX_LABEL_CHARS; i++) {
                 char c = raw.charAt(i);
-                // §/\u00A7 is Minecraft's formatting escape -- if it survived, the
-                // client would interpret the next char as a color/style code.
-                // C0 control chars (newlines, tabs, etc.) would line-break the
-                // hover tooltip or break wrapping, which is also out of scope
-                // for a one-line title.
+                // Keep the title free of formatting escapes and line-breaking controls.
                 if (c == '\u00A7' || c < 0x20 || c == 0x7F) continue;
                 if (Character.isHighSurrogate(c)) {
                     if (i + 1 >= raw.length() || !Character.isLowSurrogate(raw.charAt(i + 1))
@@ -1500,16 +1473,8 @@ public final class WaypointCodec {
     }
 
     /**
-     * "No island" is written as the pool's reserved empty slot rather than by
-     * interning the literal {@code "unknown"}.
-     *
-     * <p>Index 0 always holds {@code ""}, so this is a single varint byte -- the
-     * same cost as a dictionary hit, which means dropping the island can never
-     * make a share code longer than keeping it. It also needs nothing new from
-     * the reader: existing clients already run every decoded zone through
-     * {@link Zone#canonicalId}, which turns a blank id into {@code unknown},
-     * and their import paths already snap unknown-island routes to whatever
-     * island the recipient is standing on.
+     * Unknown islands reuse the reserved empty pool slot (index 0), costing one varint byte.
+     * Existing readers map blank IDs to {@code unknown} through {@link Zone#canonicalId}.
      */
     private static void writeZoneRef(DataOutputStream out, String zoneId, StringPool pool)
             throws IOException {
@@ -1542,16 +1507,8 @@ public final class WaypointCodec {
     }
 
     /**
-     * Resolve a zone ref, treating anything it cannot place as "no island".
-     *
-     * <p>A zone is the one field where refusing the payload helps nobody: the
-     * coordinates, names, and route are all still perfectly good, and the
-     * import paths already know how to place an unknown-island route (they snap
-     * it to whatever island the recipient is standing on). So an index outside
-     * the dictionary -- a deliberately reserved one, a zone added by a newer
-     * Waypointer, or a corrupt byte -- degrades to {@link Zone#UNKNOWN} instead
-     * of failing the whole decode. Malformed *structure* is still rejected; this
-     * leniency is scoped to the zone value alone.
+     * Unrecognized zone indices become {@link Zone#UNKNOWN}; malformed structure still fails.
+     * This preserves usable route data when a zone is reserved, newer, or corrupt.
      */
     private static String readZoneRef(DataInputStream in, List<String> pool) throws IOException {
         return resolveZoneRef(readVarint(in), pool);
@@ -1625,11 +1582,7 @@ public final class WaypointCodec {
         return counts;
     }
 
-    /**
-     * Pack the first header byte: version in the low nibble, export flags in
-     * the high nibble. Keeping version at a fixed, well-known position means
-     * the decoder can validate the schema before touching anything else.
-     */
+    /** Packs the version in the low nibble and export flags in the high nibble. */
     private static int buildHeaderByte(Options opts, int wireVersion) {
         if (wireVersion == WIRE_VERSION) {
             return buildV9Header(opts, V9_CONTENT_KIND_GENERAL_ROUTE);
@@ -3363,13 +3316,7 @@ public final class WaypointCodec {
         int position() { return pos; }
     }
 
-    /**
-     * Scratchpad passed through the read path while {@link #debugDecode(String)} runs.
-     * Mutable on purpose -- the capture accumulates during parsing and is turned into
-     * an immutable {@link DecodeDebug} by {@link #build} at the end. Every field is
-     * {@code null} / {@code 0} in normal decode because {@code readBody} is called
-     * with a {@code null} capture.
-     */
+    /** Mutable debug capture, finalized by {@link #build}; normal decoding passes {@code null}. */
     private static final class DebugCapture {
         int headerByte;
         String label = "";

@@ -3,9 +3,7 @@ package com.babbur.waypointer.text;
 /**
  * Translates player-friendly Minecraft formatting codes in waypoint labels.
  *
- * <p>Waypoint names stay stored exactly as the user typed them. Rendering paths
- * call this helper at the edge so names like {@code &e&lMineshaft} display with
- * the same color/style language Skyblock players already use in chat.
+ * <p>Rendering translates codes such as {@code &e&l}; stored names remain unchanged.
  */
 public final class AmpersandFormatting {
 

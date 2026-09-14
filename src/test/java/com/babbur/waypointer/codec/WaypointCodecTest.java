@@ -23,10 +23,7 @@ import java.util.zip.Inflater;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Round-trip safety net for the import/export format. A regression here silently
- * corrupts every shared waypoint chain, so we lean on fuzzing over hand-crafted cases.
- */
+
 class WaypointCodecTest {
 
     private static final WaypointCodec.Options FULL_FIDELITY =
@@ -209,8 +206,7 @@ class WaypointCodecTest {
         WaypointGroup b = sampleGroup("B", "crystal_hollows");
         b.setDefaultRadius(7.5);
         b.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-        // currentIndex is intentionally NOT part of the export contract, so we
-        // don't exercise it here. The decoded b will start at index 0 regardless.
+        // Progress is local state and decodes at index zero.
 
         List<WaypointGroup> decoded = WaypointCodec.decode(
                 WaypointCodec.encode(List.of(a, b), FULL_FIDELITY));
@@ -502,11 +498,7 @@ class WaypointCodecTest {
 
     @Test
     void rejects_legacy_prefixes() {
-        // Early prototypes tried WPTR1:, WP2:, and WP3: as the magic. None of them
-        // shipped. The current format uses a version-in-header scheme so the magic
-        // itself is just WP:; anything else must be rejected outright -- no silent
-        // fallback, no misleading "unsupported version" error from deep inside
-        // the decoder.
+        // Prototype prefixes never shipped; reject them before decoding the versioned WP: body.
         assertThrows(IllegalArgumentException.class,
                 () -> WaypointCodec.decode("WPTR1:AAAABBBBCCCCDDDD"));
         assertThrows(IllegalArgumentException.class,
@@ -523,10 +515,7 @@ class WaypointCodecTest {
 
     @Test
     void fuzz_random_routes_round_trip() {
-        // Progress (currentIndex) and enabled state are deliberately NOT exported,
-        // so we leave both at the WaypointGroup defaults on the source side.
-        // Exercising them here would just prove the decoder overrides them back
-        // to their defaults, which is already covered by the dedicated test.
+        // Progress and enabled defaults are covered separately.
         Random r = new Random(0xC0FFEE);
         for (int trial = 0; trial < 50; trial++) {
             List<WaypointGroup> groups = new ArrayList<>();
@@ -571,17 +560,7 @@ class WaypointCodecTest {
 
     @Test
     void twenty_named_waypoints_fit_in_command_packet() {
-        // The native text codec uses one UTF-8 byte per char, so char
-        // count equals its wire-byte count. The real failure mode is Hypixel's
-        // 256-byte ServerboundChatCommandPacket cap: exceeding it disconnects
-        // the sender. A 20-waypoint named route is the "reasonable share"
-        // baseline we commit to supporting; with a short command prefix like
-        // "/pc " (3 bytes on the wire) the body must stay under 253 bytes.
-        //
-        // Picking 20 points rather than the old 50 reflects the 256-byte
-        // command-packet cap -- 50 named waypoints fundamentally can't fit
-        // any chat command under any encoding, so the old test was
-        // paper-over-a-bug.
+        // This 20-point fixture must fit the 253-byte body budget after a three-byte party-chat prefix.
         WaypointGroup g = WaypointGroup.create("Big Run", "dungeon_f7");
         for (int i = 0; i < 20; i++) {
             g.add(new Waypoint(100 + i * 3, 70 + (i % 5), 200 + i * 2,
@@ -596,9 +575,6 @@ class WaypointCodecTest {
 
     @Test
     void body_chars_are_all_in_alphabet() {
-        // Every non-magic character must be a valid alphabet character so chat
-        // paste, MC's chat validator, and the CodecScanner's word-boundary
-        // extractor all accept it.
         WaypointGroup g = sampleGroup("range check", "dungeon_f7");
         String s = WaypointCodec.encode(List.of(g));
         String body = s.substring(WaypointCodec.MAGIC.length());
@@ -612,12 +588,7 @@ class WaypointCodecTest {
 
     @Test
     void body_never_contains_period() {
-        // Hypixel's advertising filter flags URL-shaped substrings and will
-        // disconnect the sender. '.' is the single most URL-shaped character
-        // we could ship (anything resembling "host.tld" trips the filter),
-        // so the alphabet explicitly omits it. This test is a regression
-        // guard: if someone reintroduces '.', shared routes start bouncing
-        // off the ad filter and this fails loudly in CI.
+        // Periods can form URL-like text that triggers the advertising filter.
         for (int i = 0; i < 20; i++) {
             WaypointGroup g = WaypointGroup.create("fuzz " + i, "dungeon_f7");
             for (int j = 0; j < 8 + i; j++) {
@@ -731,9 +702,7 @@ class WaypointCodecTest {
 
     @Test
     void packed_export_is_chat_paste_safe() {
-        // The whole point of the codec string is that it survives being retyped/pasted
-        // into a Minecraft chat box, which collapses runs of spaces. A leaked space
-        // character here would silently truncate shared routes.
+        // Spaces can truncate a share when pasted into chat.
         WaypointGroup g = sampleGroup("space test", "zone");
         String s = WaypointCodec.encode(List.of(g));
         assertFalse(s.contains(" "), "codec output must contain zero whitespace; got: " + s);
@@ -760,8 +729,6 @@ class WaypointCodecTest {
 
     @Test
     void no_names_export_omits_names_and_still_decodes_geometry() {
-        // When sharing a "clean" route you don't want teammate nicknames / dev labels
-        // leaking. NO_NAMES strips names but must still round-trip coords.
         WaypointGroup g = WaypointGroup.create("Secret Route", "dungeon_f7");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.add(new Waypoint(10, 70, 20, "alpha-personal",    0xAABBCC, 0, 0));
@@ -769,9 +736,6 @@ class WaypointCodecTest {
         g.add(new Waypoint(12, 72, 24, "charlie-personal",  0x001122, 0, 0));
 
         String stripped = WaypointCodec.encode(List.of(g), WaypointCodec.Options.NO_NAMES);
-        // Name strings themselves shouldn't be in the payload. We can't see through
-        // deflate+text encoding directly, but we can confirm the output is smaller
-        // than a names export, and that the decoded waypoints come back nameless.
         String withNames = WaypointCodec.encode(List.of(g), WaypointCodec.Options.WITH_NAMES);
         assertTrue(stripped.length() < withNames.length(),
                 "NO_NAMES export should be shorter than WITH_NAMES; stripped="
@@ -789,10 +753,7 @@ class WaypointCodecTest {
 
     @Test
     void exports_always_reset_session_state_on_import() {
-        // Exports are for sharing a route, not a session. The codec drops
-        // per-group enabled state and currentIndex unconditionally so imports
-        // always start fresh (enabled = true, index = 0), regardless of what
-        // the sender's group looked like when they hit Export.
+        // Imports reset session state: enabled=true, currentIndex=0.
         WaypointGroup g = sampleGroup("Boss Route", "dungeon_f7");
         g.setCurrentIndex(2);
         g.setEnabled(false);
@@ -806,9 +767,7 @@ class WaypointCodecTest {
 
     @Test
     void round_trip_preserves_every_shareable_metadata_field() {
-        // Every field that defines the ROUTE (not the session) must survive a
-        // round trip. Enabled-state and currentIndex are explicitly not in this
-        // set -- see exports_always_reset_session_state_on_import.
+        // Route fields survive sharing; session state is tested separately.
         WaypointGroup g = WaypointGroup.create("F7 Terminals", "dungeon_f7");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
@@ -845,10 +804,6 @@ class WaypointCodecTest {
         assertTrue(WaypointCodec.isCodecString(WaypointCodec.MAGIC + "abcd0"));
         assertTrue(WaypointCodec.isCodecString("   " + WaypointCodec.MAGIC + "xyz0   "));
         assertFalse(WaypointCodec.isCodecString("random text WP no colon"));
-        // Historical prefix shapes must not accidentally qualify -- none of them
-        // ever shipped, but they all survived early prototyping and might crop up
-        // in other people's notes or blog posts. Version handling now lives in the
-        // header byte, not the magic, so there is exactly one valid prefix.
         assertFalse(WaypointCodec.isCodecString("WPTR1:abc"));
         assertFalse(WaypointCodec.isCodecString("WP2:abc"));
         assertFalse(WaypointCodec.isCodecString("WP3:abc"));
@@ -860,9 +815,6 @@ class WaypointCodecTest {
 
     @Test
     void include_colors_false_strips_per_waypoint_colors_to_default() {
-        // Sender opts out of colors; recipient must see DEFAULT_COLOR everywhere
-        // even though the source had distinct values per point. This is the
-        // "share a route, recolor it on my end" workflow.
         WaypointGroup g = WaypointGroup.create("R", "z");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.add(new Waypoint(0, 70, 0, "", 0xFF0000, 0, 0));
@@ -931,9 +883,7 @@ class WaypointCodecTest {
 
     @Test
     void include_group_meta_false_strips_gradient_load_mode_and_default_radius() {
-        // Group metadata stripping should make the recipient see plain defaults.
-        // With colors stripped, that means no AUTO gradient restoration because
-        // AUTO would recolor the default-colored import.
+        // Stripping colors must also suppress AUTO, which would recolor the imported defaults.
         WaypointGroup g = WaypointGroup.create("R", "z");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
@@ -953,9 +903,6 @@ class WaypointCodecTest {
 
     @Test
     void granular_strip_produces_smaller_payload_than_full_export() {
-        // The whole point of the toggles: stripping optional fields must yield
-        // a byte-smaller payload. If a future encoder regression silently
-        // included the data anyway, this would catch it.
         WaypointGroup g = WaypointGroup.create("R", "z");
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
@@ -1054,10 +1001,7 @@ class WaypointCodecTest {
 
     @Test
     void label_sanitization_strips_section_signs_and_caps_visible_chars() {
-        // sanitizeLabel must drop section signs (formatting injection) and
-        // truncate to MAX_LABEL_CHARS so an encoded payload never carries a
-        // hostile or oversized title. Both rules are enforced at the Options
-        // boundary so neither encoder nor decoder has to re-validate.
+        // Options sanitize formatting codes and bound label length.
         String hostile = "\u00A7c" + "Pwned " + "\u00A74".repeat(5);
         String sanitized = WaypointCodec.Options.sanitizeLabel(hostile);
         assertFalse(sanitized.contains("\u00A7"),
@@ -1079,10 +1023,7 @@ class WaypointCodecTest {
 
     @Test
     void auto_mode_beats_absolute_on_yoyo_route_inside_fixed_bounds() {
-        // Yo-yo path entirely within the FIXED_COMPACT window ([-2048, +2047]
-        // on x/z). Delta exacts big jumps; absolute-varint spends ~2 bytes per
-        // coord; fixed-compact spends 33 bits; fit-compact spends less when
-        // the span is tight. AUTO must pick whichever ends up smallest.
+        // Large jumps within the compact range compare eligible modes after compression.
         WaypointGroup g = WaypointGroup.create("yoyo", "z");
         g.add(new Waypoint(0, 0, 0, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint(2000, 100, 2000, "", Waypoint.DEFAULT_COLOR, 0, 0));
@@ -1106,10 +1047,7 @@ class WaypointCodecTest {
 
     @Test
     void auto_mode_no_worse_than_either_when_coords_exceed_fixed_bounds() {
-        // Yo-yo shape far enough out that FIXED_COMPACT is ineligible; AUTO must
-        // still pick the smallest of the two remaining modes. Not asserting the
-        // specific ordering of absolute vs vector because deflate+dictionary can
-        // blur the raw-byte ranking when coord streams compress differently.
+        // Outside FIXED_COMPACT range; compare final compressed lengths, not raw byte counts.
         WaypointGroup g = WaypointGroup.create("yoyo_far", "z");
         g.add(new Waypoint(0, 0, 0, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint(1_000_000, 100, 1_000_000, "", Waypoint.DEFAULT_COLOR, 0, 0));
@@ -1132,10 +1070,7 @@ class WaypointCodecTest {
 
     @Test
     void auto_mode_picks_vector_when_waypoints_cluster_far_from_origin() {
-        // Dense cluster at far coords: each step is tiny but the absolute coord is
-        // 4 bytes of varint. Vector (delta) should beat absolute-varint here.
-        // FIT_COMPACT could also win because the group span is small; we only
-        // assert that AUTO is no worse than any eligible forced mode.
+        // A tight cluster at large coordinates favors deltas or FIT_COMPACT over absolute varints.
         WaypointGroup g = WaypointGroup.create("cluster", "z");
         int base = 2_000_000;
         for (int i = 0; i < 20; i++) {
@@ -1160,10 +1095,7 @@ class WaypointCodecTest {
 
     @Test
     void fit_compact_round_trips_tight_group_exactly() {
-        // FIT_COMPACT picks per-axis bit widths from the group's span. A
-        // dungeon-style group (x in [66..130], y in [128..145], z in [135..190])
-        // needs 7/5/6 bits per axis = 18 bits per waypoint, vs the fixed 33.
-        // Round-tripping must return byte-identical coords.
+        // The fixture spans 7/5/6 bits per axis: 18 bits per point instead of the fixed 33.
         WaypointGroup g = WaypointGroup.create("tight", "dungeon_f7");
         g.add(new Waypoint( 66, 128, 135, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint( 79, 128, 142, "", Waypoint.DEFAULT_COLOR, 0, 0));
@@ -1187,9 +1119,7 @@ class WaypointCodecTest {
 
     @Test
     void fit_compact_handles_single_value_axis() {
-        // Flat path (every waypoint at y=70). FIT_COMPACT should choose yBits=0
-        // for that axis, and the decoder must reconstruct y=70 for every point
-        // without reading any bits off the wire for it.
+        // A constant y=70 requires no per-point Y bits.
         WaypointGroup g = WaypointGroup.create("flat", "z");
         g.add(new Waypoint(10, 70, 20, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint(15, 70, 25, "", Waypoint.DEFAULT_COLOR, 0, 0));
@@ -1207,9 +1137,6 @@ class WaypointCodecTest {
 
     @Test
     void fixed_compact_round_trips_coords_exactly() {
-        // FIXED_COMPACT packs coords with bit-level precision; any bit-width math
-        // error would silently corrupt the decoded values. Explicit per-axis
-        // checks across the full supported range.
         WaypointGroup g = WaypointGroup.create("edges", "z");
         g.add(new Waypoint(-2048, -64, -2048, "", Waypoint.DEFAULT_COLOR, 0, 0));
         g.add(new Waypoint( 2047, 447,  2047, "", Waypoint.DEFAULT_COLOR, 0, 0));
@@ -1229,8 +1156,6 @@ class WaypointCodecTest {
 
     @Test
     void fixed_compact_rejects_out_of_bounds_when_forced() {
-        // If FIXED_COMPACT is forced on a group whose coords overflow the bit
-        // widths, we must throw rather than silently truncate.
         WaypointGroup g = WaypointGroup.create("oob", "z");
         g.add(new Waypoint(100_000, 80, 100_000, "", Waypoint.DEFAULT_COLOR, 0, 0));
         assertThrows(IllegalArgumentException.class,
@@ -1326,8 +1251,6 @@ class WaypointCodecTest {
 
     @Test
     void all_forced_modes_round_trip_identically() {
-        // Packing mode is purely a byte-count optimization -- every mode must
-        // decode to the same logical group.
         WaypointGroup g = sampleGroup("A", "z");
         WaypointGroup fromVector = WaypointCodec.decode(
                 WaypointCodec.encode(List.of(g), FULL_FIDELITY,
@@ -1361,8 +1284,6 @@ class WaypointCodecTest {
 
     @Test
     void auto_picks_minimum_on_every_fuzz_case() {
-        // Strongest safety guarantee: AUTO must never be larger than any eligible
-        // forced mode on any input. If it ever is, the selection logic is broken.
         Random r = new Random(0xF00DF00DL);
         for (int trial = 0; trial < 20; trial++) {
             WaypointGroup g = WaypointGroup.create("t" + trial, "z");
@@ -1637,10 +1558,7 @@ class WaypointCodecTest {
     private static void assertGroupsEqual(WaypointGroup expected, WaypointGroup actual) {
         assertEquals(expected.name(), actual.name(), "name");
         assertEquals(expected.zoneId(), actual.zoneId(), "zoneId");
-        // enabled and currentIndex are never written by the encoder (see
-        // exports_always_reset_session_state_on_import). This helper only stays
-        // valid when callers leave them at the WaypointGroup defaults; tests
-        // that deliberately mutate either field must not route through here.
+        // This helper expects default session state; use separate assertions when mutating it.
         assertTrue(actual.enabled(), "decoded groups always import enabled");
         assertEquals(0, actual.currentIndex(), "decoded groups always start at index 0");
         assertEquals(expected.defaultRadius(), actual.defaultRadius(), 1e-6, "defaultRadius");

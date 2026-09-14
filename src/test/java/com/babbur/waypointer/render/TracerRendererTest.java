@@ -70,6 +70,28 @@ class TracerRendererTest {
     }
 
     @Test
+    void defocusedCoordinateHidesTracerUntilExplicitlyFocusedAgain() throws Exception {
+        var config = new WaypointerConfig();
+        config.setShowTracer(true);
+        var manager = new com.babbur.waypointer.core.ActiveGroupManager();
+        manager.onZoneChanged(new com.babbur.waypointer.core.Zone("crystal_hollows", "Crystal Hollows"));
+        var group = manager.addTempWaypoint(300, 100, 300, "Coordinate");
+        manager.focusTempWaypoint(group, 0);
+        var tracker = new com.babbur.waypointer.crystal.CrystalHollowsTracker(manager, config, null);
+        tracker.defocus();
+        var renderer = new TracerRenderer(manager, config);
+        var select = TracerRenderer.class.getDeclaredMethod("straightTracerTarget",
+                WaypointGroup.class, boolean.class, net.minecraft.client.player.LocalPlayer.class,
+                net.minecraft.world.phys.Vec3.class, boolean.class, boolean.class);
+        select.setAccessible(true);
+        org.junit.jupiter.api.Assertions.assertNull(select.invoke(renderer, group, false, null,
+                net.minecraft.world.phys.Vec3.ZERO, false, false));
+        manager.focusTempWaypoint(group, 0);
+        org.junit.jupiter.api.Assertions.assertSame(group.get(0), select.invoke(renderer, group, true, null,
+                net.minecraft.world.phys.Vec3.ZERO, false, false));
+    }
+
+    @Test
     void regionExitedMarkerCannotTraceEvenWhenExplicitlyFocused() throws Exception {
         var config = new WaypointerConfig();
         config.setShowTracer(true);

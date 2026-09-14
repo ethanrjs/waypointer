@@ -7,11 +7,26 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class CrystalHollowsShareTest {
     @Test
-    void shareRunsClientCommandWithExactCapturedCoordinates() {
+    void defocusButtonRunsTheDedicatedAction() {
+        var button = CrystalHollowsShare.defocus().getSiblings().getFirst();
+        assertEquals("[Defocus]", button.getString());
+        var click = assertInstanceOf(ClickEvent.RunCommand.class, button.getStyle().getClickEvent());
+        assertEquals("/wpch defocus", click.command());
+    }
+
+    @Test
+    void shareRunsSendActionWithExactCapturedCoordinates() {
         StructureSighting sighting = sighting(CrystalHollowsStructure.ODAWA, 349, 110, 390);
         ClickEvent click = CrystalHollowsShare.share(sighting);
         assertInstanceOf(ClickEvent.RunCommand.class, click);
-        assertEquals("/wpch share odawa 349 110 390", ((ClickEvent.RunCommand) click).command());
+        assertEquals("/wpch sendcoords odawa 349 110 390", ((ClickEvent.RunCommand) click).command());
+    }
+
+    @Test
+    void sendingRejectsUnknownStructuresAndOutOfBoundsCoordinates() {
+        assertEquals(0, CrystalHollowsShare.send(null, 300, 100, 300));
+        assertEquals(0, CrystalHollowsShare.send(CrystalHollowsStructure.ODAWA, -1, 100, 300));
+        assertEquals(0, CrystalHollowsShare.send(CrystalHollowsStructure.ODAWA, 300, 500, 300));
     }
 
     @Test

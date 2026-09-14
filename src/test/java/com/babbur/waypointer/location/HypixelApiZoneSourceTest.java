@@ -9,10 +9,52 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HypixelApiZoneSourceTest {
+    @Test
+    void missingApiPacketRecoversUmberFromReportedSidebarAndLateCodeOnly() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup umber = new WaypointGroup("umber", "Umber", "mineshaft_umber");
+        umber.add(Waypoint.at(1, 2, 3));
+        manager.add(umber);
+        HypixelApiZoneSource source = new HypixelApiZoneSource(manager::onZoneChanged);
+        try {
+            source.updateWorld(new Object());
+            for (int poll = 0; poll < 100; poll++) source.acceptSidebar("Purse: 10");
+            assertNull(manager.currentZone());
+            source.acceptSidebar("\uE067 Glacite Mineshafts\n09/12/26 m96M UMBE_1");
+            assertEquals(Zone.fromId("mineshaft_umber"), manager.currentZone());
+            assertEquals(List.of(umber), manager.activeGroups());
+            assertNull(HypixelApiZoneSource.debugSnapshot().rawZone());
+            assertNull(HypixelApiZoneSource.debugSnapshot().packetReceivedAt());
+
+            source.updateWorld(new Object());
+            assertTrue(manager.activeGroups().isEmpty());
+            for (int poll = 0; poll < ScoreboardZoneResolver.PLAYER_LIST_CONFIRM_POLLS; poll++) {
+                source.acceptSidebar("", () -> "Mineshaft");
+            }
+            assertEquals(Zone.fromId("mineshaft_unknown"), manager.currentZone());
+            assertTrue(manager.activeGroups().isEmpty());
+            source.acceptSidebar("09/12/26 m96M UMBE_1");
+            assertEquals(List.of(umber), manager.activeGroups());
+            source.acceptSidebar("");
+            assertEquals(List.of(umber), manager.activeGroups());
+            source.acceptSidebar("TOPA_2");
+            assertEquals(Zone.fromId("mineshaft_topaz_2"), manager.currentZone());
+            assertTrue(manager.activeGroups().isEmpty());
+
+            source.acceptLocation("BEDWARS", null, null, "mini2B", "UMBE_1");
+            source.acceptSidebar("UMBE_1");
+            assertNull(manager.currentZone());
+            assertTrue(manager.activeGroups().isEmpty());
+        } finally {
+            source.resetLocation();
+        }
+    }
+
     @Test
     void lateFloorMarkerWithoutAreaLineRefinesPacketAndMissingMarkerRetainsFloor() {
         ActiveGroupManager manager = new ActiveGroupManager();
@@ -31,6 +73,111 @@ class HypixelApiZoneSourceTest {
             assertEquals(Zone.fromId("dungeon_m7"), manager.currentZone());
             source.acceptSidebar("The Catacombs (F7)");
             assertEquals(Zone.fromId("dungeon_f7"), manager.currentZone());
+        } finally {
+            source.resetLocation();
+        }
+    }
+
+    @Test
+    void playerListAreaLoadsRoutesUntilTheSidebarOrLocationPacketArrives() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        HypixelApiZoneSource source = new HypixelApiZoneSource(manager::onZoneChanged);
+        try {
+            source.updateWorld(new Object());
+            // Cold entry on a lagging server: the sidebar has no area line yet. The player list
+            // must repeat the same area for a second before it is trusted.
+            for (int poll = 1; poll < ScoreboardZoneResolver.PLAYER_LIST_CONFIRM_POLLS; poll++) {
+                source.acceptSidebar("Purse: 10", () -> "Dwarven Mines");
+                assertNull(manager.currentZone());
+            }
+            source.acceptSidebar("Purse: 10", () -> "Dwarven Mines");
+            assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
+            // The player list never overrides a known zone while the sidebar is incomplete.
+            source.acceptSidebar("", () -> "Hub");
+            assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
+            // The sidebar remains authoritative once it carries an area line.
+            source.acceptSidebar("\u23e3 Hub", () -> "Dwarven Mines");
+            assertEquals(Zone.fromId("hub"), manager.currentZone());
+            // A location packet wins over both.
+            source.acceptLocation("SKYBLOCK", "Dwarven Mines", "mining_3", "mini1A", "");
+            assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
+            source.acceptSidebar("", () -> "Hub");
+            assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
+            // A new world starts over and the player list can answer first again.
+            source.updateWorld(new Object());
+            assertNull(manager.currentZone());
+            source.acceptSidebar(null, () -> null);
+            assertNull(manager.currentZone());
+            for (int poll = 0; poll < ScoreboardZoneResolver.PLAYER_LIST_CONFIRM_POLLS; poll++) {
+                source.acceptSidebar(null, () -> "Crystal Hollows");
+            }
+            assertEquals(Zone.fromId("crystal_hollows"), manager.currentZone());
+            // Areas the mod does not know never synthesize a zone from the player list.
+            source.updateWorld(new Object());
+            for (int poll = 0; poll < ScoreboardZoneResolver.PLAYER_LIST_CONFIRM_POLLS + 2; poll++) {
+                source.acceptSidebar(null, () -> "Center");
+            }
+            assertNull(manager.currentZone());
+        } finally {
+            source.resetLocation();
+        }
+    }
+
+    @Test
+    void confirmedMineshaftLayoutSurvivesASidebarThatTemporarilyDropsTheCode() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup umber = new WaypointGroup("umber", "Umber", "mineshaft_umber");
+        umber.add(Waypoint.at(1, 2, 3));
+        manager.add(umber);
+        HypixelApiZoneSource source = new HypixelApiZoneSource(manager::onZoneChanged);
+        try {
+            source.updateWorld(new Object());
+            source.acceptLocation("SKYBLOCK", "Glacite Mineshafts", "mineshaft", "mini1A", "");
+            assertEquals(Zone.fromId("mineshaft_unknown"), manager.currentZone());
+            assertTrue(manager.activeGroups().isEmpty());
+            source.acceptSidebar("\u23e3 Glacite Mineshafts\n07/15/26 m197CD UMBE_1");
+            assertEquals(Zone.fromId("mineshaft_umber"), manager.currentZone());
+            assertEquals(List.of(umber), manager.activeGroups());
+            // The area line is present but the code line was rewritten: routes stay loaded.
+            source.acceptSidebar("\u23e3 Glacite Mineshafts\nCold: 12");
+            assertEquals(Zone.fromId("mineshaft_umber"), manager.currentZone());
+            assertEquals(List.of(umber), manager.activeGroups());
+            source.acceptSidebar("");
+            assertEquals(List.of(umber), manager.activeGroups());
+            // A different code is real evidence and replaces the layout.
+            source.acceptSidebar("\u23e3 Glacite Mineshafts\nTOPA_2");
+            assertEquals(Zone.fromId("mineshaft_topaz_2"), manager.currentZone());
+            assertTrue(manager.activeGroups().isEmpty());
+            // Leaving to the surface arrives as a new packet zone and is never retained.
+            source.acceptLocation("SKYBLOCK", "Dwarven Mines", "mining_3", "mini1A", "\u23e3 Dwarven Mines");
+            assertEquals(Zone.fromId("dwarven_mines"), manager.currentZone());
+            // A new world starts from scratch.
+            source.acceptSidebar("\u23e3 Glacite Mineshafts\nUMBE_1");
+            source.updateWorld(new Object());
+            assertNull(manager.currentZone());
+        } finally {
+            source.resetLocation();
+        }
+    }
+
+    @Test
+    void packetReceivedBeforeTheLevelExistsBelongsToTheNextLevel() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        HypixelApiZoneSource source = new HypixelApiZoneSource(manager::onZoneChanged);
+        try {
+            source.updateWorld(null);
+            source.acceptLocation("SKYBLOCK", "Hub", "hub", "mini1A", "");
+            assertEquals(Zone.fromId("hub"), manager.currentZone());
+            assertNotNull(HypixelApiZoneSource.debugSnapshot().packetReceivedAt());
+            // Without adoption the first level would have wiped the packet.
+            source.markPacketAwaitingLevel();
+            Object level = new Object();
+            source.updateWorld(level);
+            assertEquals(Zone.fromId("hub"), manager.currentZone());
+            source.updateWorld(level);
+            assertEquals(Zone.fromId("hub"), manager.currentZone());
+            source.updateWorld(new Object());
+            assertNull(manager.currentZone());
         } finally {
             source.resetLocation();
         }

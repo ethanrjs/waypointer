@@ -116,16 +116,12 @@ class WaypointerKeybindsTest {
 
         assertEquals(0, manager.activeGroups().size());
 
-        // The completed stored route is still reachable through the retreat
-        // fallback and moves its persisted progress...
+        // Retreat can restore progress on a completed stored route.
         assertEquals(1, WaypointerKeybinds.retreatPreviousWaypointTargets(manager));
         manager.fireDataChanged();
         assertEquals(1, group.currentIndex());
 
-        // ...but stored dungeon-room routes hold room-local coordinates, so
-        // they never render directly: DungeonRoomRouteSync projects them into
-        // a runtime mirror while the player is in the room (covered by
-        // DungeonRoomRouteSyncTest).
+        // Stored dungeon routes render through projected mirrors; see DungeonRoomRouteSyncTest.
         assertEquals(0, manager.activeGroups().size());
     }
 

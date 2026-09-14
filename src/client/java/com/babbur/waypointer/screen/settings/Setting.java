@@ -99,6 +99,7 @@ public final class Setting {
         this.tooltip = tooltip == null ? "" : tooltip;
         this.getter = getter;
         this.setter = setter;
+        aliases(id.replaceAll("([a-z])([A-Z])", "$1 $2"));
     }
 
     public static Setting bool(String id, Store store, String label, String tooltip,

@@ -40,8 +40,6 @@
   "waypointer.screen.group_edit.coordinate.tooltip": "Edit the selected waypoint's %1$s coordinate.\nScroll whilst hovering to adjust by 1.",
   "waypointer.screen.group_edit.info.color_swatch.label": "Colour swatch",
   "waypointer.screen.group_edit.info.color_swatch.description": "Edit colour; Shift-click unlocks",
-  "waypointer.screen.group_edit.control.color.edit": "Click to edit waypoint colour",
-  "waypointer.screen.group_edit.control.color.unlock": "Shift-click unlocks locked colour",
   "waypointer.screen.painter.colors": "Colours",
   "waypointer.screen.painter.palette.tooltip": "Select colour %1$s (#%2$s).",
   "waypointer.screen.painter.palette.narration": "Paint colour %1$s",

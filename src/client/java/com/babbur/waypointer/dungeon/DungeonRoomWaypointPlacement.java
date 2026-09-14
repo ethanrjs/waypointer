@@ -3,6 +3,9 @@ package com.babbur.waypointer.dungeon;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.crystal.CrystalHollowsPosition;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureRoutes;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
 import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import net.minecraft.network.chat.Component;
 
@@ -13,19 +16,46 @@ public final class DungeonRoomWaypointPlacement {
 
     private DungeonRoomWaypointPlacement() {}
 
-    /** Returns null when a dungeon route cannot be placed in the current room. */
+    /**
+     * Returns null when a world position cannot be converted to the route's local coordinates.
+     */
     public static Waypoint toStoredWaypoint(WaypointGroup group, Waypoint actualWaypoint) {
+        if (CrystalHollowsStructureRoutes.isStructureRoute(group)) {
+            CrystalHollowsPosition pivot = CrystalHollowsStructureRoutes.pivotFor(group);
+            return pivot == null ? null : CrystalHollowsStructureZones.toStructureLocal(actualWaypoint, pivot);
+        }
         DungeonRoom room = currentRoomFor(group);
         if (!canPlaceInRoom(group, room)) return null;
         return toStoredWaypoint(room, actualWaypoint);
     }
 
     public static boolean canPlaceInCurrentRoom(WaypointGroup group) {
+        if (CrystalHollowsStructureRoutes.isStructureRoute(group)) {
+            return CrystalHollowsStructureRoutes.pivotFor(group) != null;
+        }
         return canPlaceInRoom(group, currentRoomFor(group));
+    }
+
+    /** The editor starts unlocated structure waypoints at their NPC-relative origin. */
+    public static Waypoint editorDefaultWaypoint(WaypointGroup group, Waypoint playerWaypoint) {
+        if (CrystalHollowsStructureRoutes.isStructureRoute(group)) {
+            CrystalHollowsPosition pivot = CrystalHollowsStructureRoutes.pivotFor(group);
+            return pivot == null ? playerWaypoint.withPos(0, 0, 0)
+                    : CrystalHollowsStructureZones.toStructureLocal(playerWaypoint, pivot);
+        }
+        return toStoredWaypoint(group, playerWaypoint);
     }
 
     private static boolean canPlaceInRoom(WaypointGroup group, DungeonRoom room) {
         return group != null && (group.routeKind() != WaypointGroup.RouteKind.DUNGEON || room != null);
+    }
+
+    /** Why a placement on this route is unavailable; the dungeon-room reason when the route is unknown. */
+    public static Component unavailableMessage(WaypointGroup group) {
+        if (CrystalHollowsStructureRoutes.isStructureRoute(group)) {
+            return CrystalHollowsStructureRoutes.unavailableMessage();
+        }
+        return unavailableMessage();
     }
 
     public static Component unavailableMessage() {
@@ -38,6 +68,10 @@ public final class DungeonRoomWaypointPlacement {
     }
 
     public static Waypoint toActualWaypoint(WaypointGroup group, Waypoint storedWaypoint) {
+        if (CrystalHollowsStructureRoutes.isStructureRoute(group)) {
+            CrystalHollowsPosition pivot = CrystalHollowsStructureRoutes.pivotFor(group);
+            return pivot == null ? storedWaypoint : CrystalHollowsStructureZones.toWorld(storedWaypoint, pivot);
+        }
         DungeonRoom room = currentRoomFor(group);
         return toActualWaypoint(room, storedWaypoint);
     }
@@ -66,11 +100,17 @@ public final class DungeonRoomWaypointPlacement {
                 actual[2]).withStyleOverride(storedWaypoint.styleOverride());
     }
 
-    /** Returns null when a dungeon route cannot be placed in the current room. */
+    /** Returns null when the route's room or structure anchor is unavailable. */
     public static int[] toStoredPrecisePosition(WaypointGroup group,
                                                 int actualPreciseX,
                                                 int actualPreciseY,
                                                 int actualPreciseZ) {
+        if (CrystalHollowsStructureRoutes.isStructureRoute(group)) {
+            CrystalHollowsPosition pivot = CrystalHollowsStructureRoutes.pivotFor(group);
+            return pivot == null ? null
+                    : CrystalHollowsStructureZones.toStructureLocalPrecise(
+                            actualPreciseX, actualPreciseY, actualPreciseZ, pivot);
+        }
         DungeonRoom room = currentRoomFor(group);
         if (!canPlaceInRoom(group, room)) return null;
         if (room == null) {

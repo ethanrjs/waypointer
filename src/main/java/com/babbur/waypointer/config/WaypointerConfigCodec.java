@@ -143,6 +143,9 @@ public final class WaypointerConfigCodec {
     private static final int CRYSTAL_HOLLOWS_TRACERS = 109;
     private static final int CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS = 110;
     private static final int CRYSTAL_HOLLOWS_COMPASS_TRACERS = 111;
+    private static final int EDIT_MODE_PLACEMENT_REACH = 112;
+    private static final int SHOW_CHAT_COORD_BLOCK_BUTTON = 113;
+    private static final int COORDINATE_SHARE_HELPER = 114;
 
     private WaypointerConfigCodec() {
     }
@@ -270,6 +273,7 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, USE_BEACON_BEAM_TEXTURES, config.useBeaconBeamTextures(), defaults.useBeaconBeamTextures());
         writeBoolean(out, EDIT_SOUNDS, config.editSounds(), defaults.editSounds());
         writeBoolean(out, SHOW_EDIT_MODE_SUBTITLE, config.showEditModeSubtitle(), defaults.showEditModeSubtitle());
+        writeBoolean(out, SHOW_CHAT_COORD_BLOCK_BUTTON, config.showChatCoordBlockButton(), defaults.showChatCoordBlockButton());
         writeBoolean(out, CHAT_COORD_DETECTION, config.chatCoordDetection(), defaults.chatCoordDetection());
         writeStringList(out, CHAT_COORD_SENDER_BLACKLIST, config.chatCoordSenderBlacklist(), defaults.chatCoordSenderBlacklist());
         writeBoolean(out, AUTO_ADD_CHAT_TEMP_WAYPOINTS, config.autoAddChatTempWaypoints(), defaults.autoAddChatTempWaypoints());
@@ -313,6 +317,7 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS, config.crystalHollowsCompassAutoFocus(), defaults.crystalHollowsCompassAutoFocus());
         writeBoolean(out, CRYSTAL_HOLLOWS_COMPASS_TRACERS, config.crystalHollowsCompassTracers(), defaults.crystalHollowsCompassTracers());
         writeBoolean(out, CRYSTAL_HOLLOWS_TRACERS, config.crystalHollowsTracers(), defaults.crystalHollowsTracers());
+        writeDouble(out, EDIT_MODE_PLACEMENT_REACH, config.editModePlacementReach(), defaults.editModePlacementReach());
         writeBoolean(out, CRYSTAL_HOLLOWS_ENABLED,
                 config.crystalHollowsEnabled(), defaults.crystalHollowsEnabled());
         writeBoolean(out, CRYSTAL_HOLLOWS_STRUCTURE_WAYPOINTS,
@@ -324,6 +329,7 @@ public final class WaypointerConfigCodec {
         writeBoolean(out, CRYSTAL_HOLLOWS_ENTITY_DETECTION,
                 config.crystalHollowsEntityDetection(),
                 defaults.crystalHollowsEntityDetection());
+        writeBoolean(out, COORDINATE_SHARE_HELPER, config.coordinateShareHelper(), defaults.coordinateShareHelper());
         writeBoolean(out, CRYSTAL_HOLLOWS_CHAT_DETECTION,
                 config.crystalHollowsChatDetection(), defaults.crystalHollowsChatDetection());
         writeBoolean(out, CRYSTAL_HOLLOWS_METAL_DETECTOR,
@@ -426,6 +432,7 @@ public final class WaypointerConfigCodec {
                 case USE_BEACON_BEAM_TEXTURES -> config.setUseBeaconBeamTextures(in.readBoolean());
                 case EDIT_SOUNDS -> config.setEditSounds(in.readBoolean());
                 case SHOW_EDIT_MODE_SUBTITLE -> config.setShowEditModeSubtitle(in.readBoolean());
+                case SHOW_CHAT_COORD_BLOCK_BUTTON -> config.setShowChatCoordBlockButton(in.readBoolean());
                 case CHAT_COORD_DETECTION -> config.setChatCoordDetection(in.readBoolean());
                 case CHAT_COORD_SENDER_BLACKLIST -> readStringList(in).forEach(config::addChatCoordSenderBlacklist);
                 case AUTO_ADD_CHAT_TEMP_WAYPOINTS -> config.setAutoAddChatTempWaypoints(in.readBoolean());
@@ -467,6 +474,7 @@ public final class WaypointerConfigCodec {
                 case CRYSTAL_HOLLOWS_COMPASS_AUTO_FOCUS -> config.setCrystalHollowsCompassAutoFocus(in.readBoolean());
                 case CRYSTAL_HOLLOWS_COMPASS_TRACERS -> config.setCrystalHollowsCompassTracers(in.readBoolean());
                 case CRYSTAL_HOLLOWS_TRACERS -> config.setCrystalHollowsTracers(in.readBoolean());
+                case EDIT_MODE_PLACEMENT_REACH -> config.setEditModePlacementReach(in.readDouble());
                 case CRYSTAL_HOLLOWS_ENABLED -> config.setCrystalHollowsEnabled(in.readBoolean());
                 case CRYSTAL_HOLLOWS_STRUCTURE_WAYPOINTS ->
                         config.setCrystalHollowsStructureWaypoints(in.readBoolean());
@@ -474,6 +482,7 @@ public final class WaypointerConfigCodec {
                         config.setCrystalHollowsShowRoughMarkers(in.readBoolean());
                 case CRYSTAL_HOLLOWS_ENTITY_DETECTION ->
                         config.setCrystalHollowsEntityDetection(in.readBoolean());
+                case COORDINATE_SHARE_HELPER -> config.setCoordinateShareHelper(in.readBoolean());
                 case CRYSTAL_HOLLOWS_CHAT_DETECTION ->
                         config.setCrystalHollowsChatDetection(in.readBoolean());
                 case CRYSTAL_HOLLOWS_METAL_DETECTOR -> config.setCrystalHollowsMetalDetector(in.readBoolean());
@@ -599,7 +608,7 @@ public final class WaypointerConfigCodec {
     }
 
     static boolean isActiveFieldTag(int tag) {
-        return tag >= DEFAULT_REACH_RADIUS && tag <= CRYSTAL_HOLLOWS_COMPASS_TRACERS
+        return tag >= DEFAULT_REACH_RADIUS && tag <= COORDINATE_SHARE_HELPER
                 && tag != SHOW_COMPLETED
                 && tag != LEGACY_CHECK_FOR_UPDATES
                 && tag != TEMP_DEFAULT_DURATION_MIN
@@ -684,7 +693,8 @@ public final class WaypointerConfigCodec {
                     WAYPOINT_OUTLINE_THICKNESS, BEACON_OPACITY, LABEL_SCALE, LABEL_OPACITY,
                     HIDE_WAYPOINTS_NEAR_RADIUS, HIDE_WAYPOINT_LABELS_NEAR_RADIUS,
                     MAX_STATIC_RENDER_DISTANCE, LABEL_HEIGHT_OFFSET,
-                    WAYPOINT_MARKER_SCALE, WAYPOINT_OUTLINE_OPACITY -> Double.BYTES;
+                    WAYPOINT_MARKER_SCALE, WAYPOINT_OUTLINE_OPACITY,
+                    EDIT_MODE_PLACEMENT_REACH -> Double.BYTES;
             case DEFAULT_WAYPOINT_COLOR, TRACER_COLOR, ROUTE_LINE_COLOR,
                     MAX_WAYPOINT_LABELS, IMPORTED_ROUTE_DEFAULT_COLOR,
                     TEMP_DEFAULT_MODE, TEMP_DEFAULT_DURATION_SEC,

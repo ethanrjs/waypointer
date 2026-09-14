@@ -130,6 +130,7 @@ final class WaypointerCommandHelp {
                     List.of(new HelpRow(" debug", "waypointer.command.help.debug", "debug"))),
             new HelpSection("crystal", "waypointer.command.help.section.crystal",
                     List.of(
+                            new HelpRow(" minimap", "waypointer.settings.setting.action.minimapEditor.label", "minimap"),
                             new HelpRow("/wpch add <structure> <x> <y> <z>",
                                     "waypointer.command.help.crystal.add",
                                     "/wpch add odawa 349 110 390")))

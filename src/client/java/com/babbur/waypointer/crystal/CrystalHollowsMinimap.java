@@ -195,7 +195,6 @@ public final class CrystalHollowsMinimap implements HudElement {
     private static void nucleus(GuiGraphicsExtractor g, Rect hub, boolean magma, boolean playerOnHub) {
         int x = hub.x(), y = hub.y(), size = hub.width();
         int bevel = Math.max(2, size / 6);
-        // One low stone platform: a lit top lip, shaded side, and a quiet recessed floor.
         for (int row = 0; row < size; row++) {
             int inset = Math.max(0, bevel - Math.min(row, size - 1 - row));
             g.fill(x + inset, y + row, x + size - inset, y + row + 1, 0xFF536971);
@@ -207,7 +206,6 @@ public final class CrystalHollowsMinimap implements HudElement {
         g.fill(x + bevel, y, x + size - bevel, y + 1, 0xFF82979B);
         g.fill(x + bevel, y + size - 1, x + size - bevel, y + size, 0xFF172329);
         if (size >= 14) {
-            // Inset accents belong to their map quadrants, rather than floating outside the hub.
             int[] colors = magma ? new int[]{0xFFA77858, 0xFFA77858, 0xFFCB9862, 0xFFCB9862}
                     : new int[]{0xFF89AC8E, 0xFF8CB4BB, 0xFFBBA078, 0xFF929FBF};
             for (int corner = 0; corner < 4; corner++) {

@@ -69,15 +69,12 @@ public final class ActiveGroupManager {
         }
         String zoneId = currentZone.id();
         WaypointGroup focused = focusedTempGroupForZone(zoneId);
-        if (focused != null) {
-            cachedActive = withWaypointPreview(List.of(focused));
-            return cachedActive;
-        }
-
         List<WaypointGroup> active = new ArrayList<>();
         for (WaypointGroup g : byId.values()) {
             if (g.enabled()
-                    && zoneId.equals(g.zoneId()) && shouldSurfaceActiveGroup(g)) {
+                    && zoneId.equals(g.zoneId()) && shouldSurfaceActiveGroup(g)
+                    && (focused == null || g == focused || g.runtimeOnly()
+                        && g.id().startsWith(com.babbur.waypointer.crystal.CrystalHollowsStructureFolder.GROUP_PREFIX))) {
                 active.add(g);
             }
         }

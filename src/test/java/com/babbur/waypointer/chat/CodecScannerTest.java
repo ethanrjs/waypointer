@@ -21,12 +21,7 @@ import java.util.zip.CRC32;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Tests for the chat-side detection of Waypointer codec strings. The whole point of
- * this feature is that a friend can paste an export into chat and the recipient's
- * client turns it into a clickable import affordance -- misdetections (false
- * positives OR negatives) make the feature useless, so we test edge cases hard.
- */
+
 class CodecScannerTest {
 
     @Test
@@ -93,10 +88,7 @@ class CodecScannerTest {
 
     @Test
     void ignores_legacy_prefixes() {
-        // Early prototypes tried WPTR1:, WP2:, and WP3: as the magic. None of
-        // them shipped. A chat line mentioning any of them must NOT produce a
-        // clickable import pill -- the current magic is just WP:, with the
-        // version living in the header byte.
+        // These prototype prefixes never shipped; the version belongs in the WP: header.
         assertTrue(CodecScanner.scan("route: WPTR1:AAAABBBBCCCCDDDD").isEmpty());
         assertTrue(CodecScanner.scan("route: WP2:AAAABBBBCCCCDDDD").isEmpty());
         assertTrue(CodecScanner.scan("route: WP3:AAAABBBBCCCCDDDD").isEmpty());
@@ -108,17 +100,12 @@ class CodecScannerTest {
         String chat = "check this -> " + export + " GG";
         CodecScanner.Match m = CodecScanner.scan(chat).get(0);
 
-        // Round-trip through the actual codec to prove the extraction boundary is tight.
         List<WaypointGroup> decoded = WaypointCodec.decode(m.text());
         assertFalse(decoded.isEmpty());
     }
 
     @Test
     void ignores_bare_magic_without_body() {
-        // Don't surface an import button for "just go to WP:" or similar messages --
-        // the magic-as-substring case has to be a false positive when no codec
-        // body follows. Exercises the MIN_BODY guard specifically, so the strings
-        // here use the real current magic (WP:).
         assertTrue(CodecScanner.scan("just go to WP:").isEmpty());
         assertTrue(CodecScanner.scan("WP: ").isEmpty());
         assertTrue(CodecScanner.scan("WP:ab").isEmpty(), "body under MIN_BODY chars must be rejected");
@@ -167,15 +154,7 @@ class CodecScannerTest {
 
     @Test
     void does_not_match_unrelated_text_containing_magic_substring() {
-        // "WP" might appear in any number of unrelated contexts (WordPress, a
-        // product name, a URL slug). Without the colon AND a valid body it
-        // must not trigger -- the body character class + word-boundary rule
-        // keep false positives from being a problem despite the short magic.
         assertTrue(CodecScanner.scan("WP isn't a codec without a colon").isEmpty());
-        // NOTE: the 'example' example used to be "example.com/WP" but '.' is
-        // no longer an alphabet character (it trips Hypixel's ad filter), so
-        // the scanner-level URL-adjacency case is moot. We still exercise the
-        // scenario via a non-'.' URL shape below.
         assertTrue(CodecScanner.scan("visit exampleWP").isEmpty());
         assertTrue(CodecScanner.scan("check /wp help for more").isEmpty(),
                 "unrelated slash commands that happen to contain 'wp' must not match");
@@ -184,8 +163,7 @@ class CodecScannerTest {
     @Test
     void extracts_export_before_clause_punctuation_after_greedy_body() {
         String export = sampleExport();
-        // Comma/close-paren are in the v3 alphabet; they must not be consumed as body
-        // when they belong to the surrounding sentence.
+        // Legacy alphabets include sentence punctuation, so extraction must trim it.
         String afterComma = "Try " + export + ", then head north";
         List<CodecScanner.Match> a = CodecScanner.scan(afterComma);
         assertEquals(1, a.size());
@@ -231,17 +209,12 @@ class CodecScannerTest {
 
     @Test
     void rejects_magic_mid_word_when_preceding_char_is_ascii_alphanumeric() {
-        // v2 uses an ASCII alphabet, so without the word-boundary guard a chat
-        // line like "fileWP:stuff" would fire the import pill. The scanner
-        // must require the character immediately before the magic to be
-        // outside the codec alphabet (or be at the start of the string).
+        // Reject prefixes embedded in words.
         String export = sampleExport();
         assertTrue(CodecScanner.scan("file" + export).isEmpty(),
                 "magic preceded by ASCII alphanumeric must not match");
         assertTrue(CodecScanner.scan("helloWP:" + export.substring(3)).isEmpty(),
                 "magic glued to a preceding word must not match");
-        // Sanity: with a space before (outside the alphabet) the same
-        // codec DOES match, so the rule above is doing real work.
         assertEquals(1, CodecScanner.scan("hello " + export).size(),
                 "magic with a whitespace boundary must still match");
     }

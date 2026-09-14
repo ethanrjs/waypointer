@@ -24,6 +24,26 @@ import static org.junit.jupiter.api.Assertions.*;
 class DefaultWaypointerApiTest {
 
     @Test
+    void skysoftExportHonorsInclusionOptionsAndUsesExistingAppearance() {
+        var manager = new ActiveGroupManager();
+        var config = new com.babbur.waypointer.config.WaypointerConfig();
+        config.setShowRouteLines(false);
+        var route = WaypointGroup.create("Island route", "private_island");
+        route.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+        route.add(Waypoint.at(1, 98, 3).withName("Start").withColor(0x123456));
+        manager.add(route);
+        var api = new DefaultWaypointerApi(manager, () -> true, Runnable::run, config);
+        String share = api.exportRoutes(List.of(route.id()), ExportOptions.builder()
+                .target(ExportTarget.SKYSOFT).includeNames(false).includeColors(false).build());
+        assertTrue(share.startsWith("SKYSOFT:"));
+        var restored = WaypointImporter.importAny(share).groups().getFirst();
+        assertEquals("", restored.get(0).name());
+        assertNotEquals(0x123456, restored.get(0).color());
+        assertEquals("private_island", restored.zoneId());
+        assertEquals("false", restored.styleOverride().values().get("showRouteLines"));
+    }
+
+    @Test
     void waypointUpdatesPreservePersonalStylesNotRepresentedByPublicSpecs() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerApi api = new DefaultWaypointerApi(manager);

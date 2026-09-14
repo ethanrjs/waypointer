@@ -26,7 +26,6 @@ public final class DungeonTriggerDetector {
 
     private static final double ENTITY_TRIGGER_RANGE_SQ = 36.0;
     private static final double ITEM_PICKUP_PLAYER_RANGE_SQ = 36.0;
-    private static final double ETHERWARP_TRIGGER_RANGE_SQ = 9.0;
     private static final double ETHERWARP_JUMP_DISTANCE_SQ = 4.0;
     private static final long ETHERWARP_ARM_WINDOW_MS = 1_500L;
     private static final float SECRET_BAT_SOUND_VOLUME = 0.1f;

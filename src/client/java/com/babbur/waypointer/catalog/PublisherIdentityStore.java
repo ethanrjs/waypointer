@@ -88,6 +88,34 @@ public final class PublisherIdentityStore {
         return file;
     }
 
+    /** Public metadata only; inspection never creates, synchronizes, or repairs identity files. */
+    public record IdentityStatus(String status, String publisherId, String publisherName) { }
+
+    public record Diagnostics(IdentityStatus profile, IdentityStatus shared, String comparison) { }
+
+    public Diagnostics inspect() {
+        IdentityStatus profile = inspectFile(file);
+        IdentityStatus shared = sharedFile == null
+                ? new IdentityStatus("not configured", null, null) : inspectFile(sharedFile);
+        String comparison = "unavailable";
+        if (profile.publisherId() != null && shared.publisherId() != null) {
+            comparison = !profile.publisherId().equals(shared.publisherId()) ? "different signing identities"
+                    : !java.util.Objects.equals(profile.publisherName(), shared.publisherName())
+                    ? "same signing identity; saved names differ" : "same signing identity and name";
+        }
+        return new Diagnostics(profile, shared, comparison);
+    }
+
+    private static IdentityStatus inspectFile(Path path) {
+        if (Files.notExists(path, LinkOption.NOFOLLOW_LINKS)) return new IdentityStatus("missing", null, null);
+        try {
+            PublisherIdentity identity = new PublisherIdentityStore(path).readIdentity();
+            return new IdentityStatus("readable; signing key verified", identity.publisherId(), identity.publisherName());
+        } catch (RuntimeException failure) {
+            return new IdentityStatus("unreadable or invalid", null, null);
+        }
+    }
+
     public PublisherIdentity loadOrCreate() {
         if (Files.exists(file, LinkOption.NOFOLLOW_LINKS)) return load();
         PublisherIdentity inherited = sharedFile == null ? null
@@ -190,6 +218,16 @@ public final class PublisherIdentityStore {
     }
 
     public PublisherIdentity savePublisherName(PublisherIdentity identity, String name) {
+        return savePublisherName(identity, name, false);
+    }
+
+    // Only a validated successful publish receipt may replace a rejected local name claim.
+    PublisherIdentity saveConfirmedPublisherName(CatalogPublishReceipt receipt) {
+        return savePublisherName(receipt.identity(), receipt.expectedPublisherName(), true);
+    }
+
+    private PublisherIdentity savePublisherName(
+            PublisherIdentity identity, String name, boolean confirmed) {
         if (identity == null) throw new IllegalArgumentException("Publisher identity is required");
         String validName = PublisherNamePolicy.requireValid(name);
         synchronized (CREATION_LOCK) {
@@ -209,7 +247,7 @@ public final class PublisherIdentityStore {
                         throw new IllegalStateException(
                                 "Publisher identity changed before its name was saved");
                     }
-                    if (stored.publisherName() != null && !stored.publisherName().equals(validName)) {
+                    if (!confirmed && stored.publisherName() != null && !stored.publisherName().equals(validName)) {
                         throw new IllegalStateException(
                                 "The publisher name is permanent and cannot be changed");
                     }
@@ -220,10 +258,10 @@ public final class PublisherIdentityStore {
                         if (sharedIdentity != null
                                 && sharedIdentity.publisherId().equals(named.publisherId())) {
                             // Claim the shared name under its cross-process lock before updating the profile.
-                            shared.savePublisherName(sharedIdentity, validName);
+                            shared.savePublisherName(sharedIdentity, validName, confirmed);
                         }
                     }
-                    if (stored.publisherName() == null) writeReplacement(named);
+                    if (!validName.equals(stored.publisherName())) writeReplacement(named);
                     return readIdentity();
                 }
             } catch (IOException failure) {

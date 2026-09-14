@@ -3,8 +3,7 @@ package com.babbur.waypointer.core;
 /**
  * A single point in the world rendered by the mod.
  *
- * <p>Immutable by design: edits produce a new instance. This keeps the tick loop
- * safe to iterate while the UI mutates a group, and makes undo trivial to add later.
+ * <p>Edits replace this immutable value; snapshots retain the previous waypoint.
  *
  * <p>Color is 0xRRGGBB; alpha is controlled per-render by the renderer based on state
  * (completed / current / upcoming).
@@ -18,8 +17,7 @@ package com.babbur.waypointer.core;
  *   <li>{@link #TEMP_UNTIL_REACHED} -- removed by the proximity tracker when it advances past this waypoint.
  *   <li>{@link #TEMP_UNTIL_LEAVE} -- removed when the player leaves the server.
  * </ul>
- * All three temp modes are wiped on disconnect (Storage deliberately skips them
- * during save) so nothing ephemeral accumulates in the user's config file.
+ * Temporary waypoints are cleared on disconnect and never saved.
  */
 public record Waypoint(
         int x,
@@ -121,10 +119,7 @@ public record Waypoint(
         z = blockCoordinateFromPrecise(preciseZ);
     }
 
-    /**
-     * Backward-compatible constructor for call sites that pre-date temp waypoints.
-     * Anything built this way is treated as permanent (tempMode=0, expiresAt=0).
-     */
+    /** Creates a permanent waypoint. */
     public Waypoint(int x, int y, int z, String name, int color, int flags, double customRadius) {
         this(x, y, z, name, color, flags, customRadius, TEMP_NONE, 0L);
     }
@@ -186,10 +181,7 @@ public record Waypoint(
         return tempMode == TEMP_TIME && expiresAtMillis > 0 && nowMillis >= expiresAtMillis;
     }
 
-    /**
-     * Invalid persisted/default temp modes fall back to REACH: no timer to
-     * reason about, no server-scope tie-in, just "delete it after I go there."
-     */
+    /** Invalid temporary modes fall back to removal on reach. */
     public static int normalizeTempMode(int mode) {
         if (mode < TEMP_TIME || mode > TEMP_UNTIL_LEAVE) return TEMP_UNTIL_REACHED;
         return mode;

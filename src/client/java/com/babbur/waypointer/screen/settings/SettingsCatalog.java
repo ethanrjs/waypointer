@@ -50,11 +50,8 @@ public final class SettingsCatalog {
     public static final String ACTION_PRESETS = "action.presets";
     public static final String ACTION_DISABLE_ALL = "action.disableAll";
     public static final String ACTION_RESET_DEFAULTS = "action.resetDefaults";
-    public static final String ACTION_WAYPOINT_PAINT = "action.waypointPaint";
-    public static final String ACTION_ROUTE_STYLES = "action.routeStyles";
-    public static final String ACTION_WAYPOINT_INSPECTOR = "action.waypointInspector";
-    public static final String ACTION_STRUCTURE_STYLES = "action.structureStyles";
     public static final String ACTION_MINIMAP_EDITOR = "action.minimapEditor";
+    public static final String ACTION_WAYPOINT_PAINT = "action.waypointPaint";
     public static final String ACTION_FEEDBACK = "action.feedback";
 
     private static final Setting.EnabledWhen ANY_LABEL_TEXT = (c, d) ->
@@ -157,9 +154,9 @@ public final class SettingsCatalog {
         out.add(system());
         out.add(Category.of("feedback", "Feedback", Group.plain(
                 Setting.action(ACTION_FEEDBACK, "Send Feedback",
-                        "Send a bug report or general feedback. Images and debug snapshots are optional.")
+                        "Send a suggestion, comment, or bug report. Images and debug snapshots are optional.")
                         .buttons(Map.of("waypointer.screen.settings.action.feedback", "Send Feedback"))
-                        .aliases("bug", "report", "support", "anonymous"))));
+                        .aliases("bug", "report", "support", "anonymous", "suggestion", "comment"))));
         return List.copyOf(out);
     }
 
@@ -170,13 +167,20 @@ public final class SettingsCatalog {
                                 "Waypoints created at your position go one block below you, under your feet.",
                                 (c, d) -> c.placeNewWaypointsBelowPlayer(),
                                 (c, d, v) -> c.setPlaceNewWaypointsBelowPlayer((Boolean) v)),
-                        Setting.number("maxStaticWaypointRenderDistance", MAIN, "Static marker distance (0 = unlimited)",
+                        Setting.number("editModePlacementReach", MAIN, "Edit mode placement reach (blocks)",
+                                "",
+                                (c, d) -> c.editModePlacementReach(),
+                                (c, d, v) -> c.setEditModePlacementReach(dbl(v)))
+                                .range(WaypointerConfig.MIN_EDIT_MODE_PLACEMENT_REACH,
+                                        WaypointerConfig.MAX_EDIT_MODE_PLACEMENT_REACH)
+                                .aliases("mid-air", "midair", "air", "distance", "raycast"),
+                        Setting.number("maxStaticWaypointRenderDistance", MAIN, "Waypoint Render Distance (blocks, 0=unlimited)",
                                 "Hide static-route waypoints farther away than this.",
                                 (c, d) -> c.maxStaticWaypointRenderDistance(),
                                 (c, d, v) -> c.setMaxStaticWaypointRenderDistance(dbl(v)))
                                 .range(0.0, Double.POSITIVE_INFINITY)
                                 .impact(Setting.Impact.HIGH)
-                                .aliases("render distance", "fps")),
+                                .aliases("render distance", "static distance", "visibility", "range", "fps")),
                 Group.plain("temporary_waypoints", "Temporary waypoints",
                         Setting.enumCycle("tempDefaultMode", MAIN, "Temp waypoint expiry",
                                 null,
@@ -222,21 +226,10 @@ public final class SettingsCatalog {
                                 (c, d) -> c.boxStyle(),
                                 (c, d, v) -> c.setBoxStyle((WaypointerConfig.BoxStyle) v))
                                 .impact(Setting.Impact.LOW),
-                        Setting.enumCycle("waypointIcon", MAIN, "Waypoint symbol",
-                                "Add a shape to identify normal waypoints. Off by default.",
-                                List.of(new Setting.EnumOption("none", "None", "NONE"),
-                                        new Setting.EnumOption("diamond", "Diamond", "DIAMOND"),
-                                        new Setting.EnumOption("circle", "Circle", "CIRCLE"),
-                                        new Setting.EnumOption("square", "Square", "SQUARE"),
-                                        new Setting.EnumOption("star", "Star", "STAR")),
-                                (c, d) -> c.waypointIcon(),
-                                (c, d, v) -> c.setWaypointIcon((String) v))
-                                .localOnly(),
-                        Setting.bool("showWaypointRoleBadge", MAIN, "Show waypoint role badges",
-                                "Identify completed, current, and upcoming route steps without relying on color.",
-                                (c, d) -> c.showWaypointRoleBadge(),
-                                (c, d, v) -> c.setShowWaypointRoleBadge((Boolean) v))
-                                .localOnly(),
+                        Setting.action(ACTION_WAYPOINT_PAINT, "Waypoint Painter",
+                                "Add pictures or paint your own waypoints.")
+                                .buttons(Map.of("waypointer.screen.settings.action.open_painter", "Open painter"))
+                                .aliases("painter", "texture", "pixel"),
                         Setting.number("waypointMarkerScale", MAIN, "Waypoint size (0.25-3)",
                                 null,
                                 (c, d) -> c.waypointMarkerScale(),
@@ -286,39 +279,7 @@ public final class SettingsCatalog {
                                 .enabledWhen((c, d) -> c.boxStyle() == WaypointerConfig.BoxStyle.OUTLINED
                                         || c.boxStyle() == WaypointerConfig.BoxStyle.FILLED_OUTLINED)
                                 .aliases("width")),
-                Group.plain("styles", "Styles & preview",
-                        Setting.action(ACTION_ROUTE_STYLES, "Reusable route styles",
-                                "Save preferred styles and apply them to individual routes.")
-                                .buttons(Map.of("waypointer.screen.settings.action.route_styles", "Manage styles")),
-                        Setting.action(ACTION_WAYPOINT_INSPECTOR, "Waypoint inspector",
-                                "Preview your waypoint appearance before using it in the world.")
-                                .buttons(Map.of("waypointer.screen.settings.action.waypoint_inspector", "Open inspector"))),
-                Group.plain("sequenced", "Sequenced",
-                        Setting.number("completedWaypointOpacity", MAIN, "Completed waypoint opacity",
-                                "Opacity of completed route steps.",
-                                (c, d) -> c.completedWaypointOpacity(),
-                                (c, d, v) -> c.setCompletedWaypointOpacity(dbl(v)))
-                                .localOnly()
-                                .range(0, 1),
-                        Setting.number("currentWaypointOpacity", MAIN, "Current waypoint opacity",
-                                "Opacity of the active route step.",
-                                (c, d) -> c.currentWaypointOpacity(),
-                                (c, d, v) -> c.setCurrentWaypointOpacity(dbl(v)))
-                                .localOnly()
-                                .range(0, 1),
-                        Setting.number("upcomingWaypointOpacity", MAIN, "Upcoming waypoint opacity",
-                                "Opacity of upcoming route steps.",
-                                (c, d) -> c.upcomingWaypointOpacity(),
-                                (c, d, v) -> c.setUpcomingWaypointOpacity(dbl(v)))
-                                .localOnly()
-                                .range(0, 1),
-                        Setting.number("sequenceContextOpacity", MAIN, "Surrounding waypoint opacity",
-                                "Additional opacity applied when dimming surrounding waypoints.",
-                                (c, d) -> c.sequenceContextOpacity(),
-                                (c, d, v) -> c.setSequenceContextOpacity(dbl(v)))
-                                .localOnly()
-                                .range(0, 1)
-                                .enabledWhen((c, d) -> c.dimSequenceContextWaypoints()),
+                Group.plain("sequenced", "Previous / Next Waypoints",
                         Setting.number("waypointSkipFadeMs", MAIN, "Skip fade time (ms)",
                                 "Fade between route steps after a skip or reach. 0 disables fading.",
                                 (c, d) -> (double) c.waypointSkipFadeMs(),
@@ -342,7 +303,7 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setSequenceNextWaypointCount(((Number) v).intValue()))
                                 .range(0, SequenceVisibility.MAX_CONTEXT_WAYPOINTS).wholeNumber()
                                 .impact(Setting.Impact.MEDIUM),
-                        Setting.bool("dimSequenceContextWaypoints", MAIN, "Dim surrounding waypoints",
+                        Setting.bool("dimSequenceContextWaypoints", MAIN, "Dim prev/next waypoints",
                                 null,
                                 (c, d) -> c.dimSequenceContextWaypoints(),
                                 (c, d, v) -> c.setDimSequenceContextWaypoints((Boolean) v)),
@@ -393,33 +354,6 @@ public final class SettingsCatalog {
                                 (c, d) -> c.showRouteProgress(),
                                 (c, d, v) -> c.setShowRouteProgress((Boolean) v))
                                 .aliases("percent"),
-                        Setting.bool("labelShowRouteName", MAIN, "Show route name",
-                                null,
-                                (c, d) -> c.labelShowRouteName(),
-                                (c, d, v) -> c.setLabelShowRouteName((Boolean) v))
-                                .localOnly(),
-                        Setting.bool("labelShowCoordinates", MAIN, "Show coordinates",
-                                null,
-                                (c, d) -> c.labelShowCoordinates(),
-                                (c, d, v) -> c.setLabelShowCoordinates((Boolean) v))
-                                .localOnly(),
-                        Setting.bool("labelDetailOnDemand", MAIN, "Label detail on demand",
-                                "Show extra label details only nearby or while aiming at a waypoint.",
-                                (c, d) -> c.labelDetailOnDemand(),
-                                (c, d, v) -> c.setLabelDetailOnDemand((Boolean) v))
-                                .localOnly(),
-                        Setting.number("labelDetailDistance", MAIN, "Detail distance (blocks)",
-                                "Show full label details within this distance.",
-                                (c, d) -> c.labelDetailDistance(),
-                                (c, d, v) -> c.setLabelDetailDistance(dbl(v)))
-                                .localOnly()
-                                .range(0, 10000)
-                                .enabledWhen((c, d) -> c.labelDetailOnDemand()),
-                        Setting.bool("preventLabelOverlap", MAIN, "Prevent label overlap",
-                                "Hide lower-priority labels when they overlap another waypoint label.",
-                                (c, d) -> c.preventLabelOverlap(),
-                                (c, d, v) -> c.setPreventLabelOverlap((Boolean) v))
-                                .localOnly(),
                         Setting.bool("matchWaypointTextToWaypointColor", MAIN, "Waypoint text inherits color",
                                 null,
                                 (c, d) -> c.matchWaypointTextToWaypointColor(),
@@ -453,13 +387,6 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setLabelOpacity(dbl(v)))
                                 .range(0.0, 1.0)
                                 .enabledWhen(ANY_LABEL_TEXT),
-                        Setting.number("labelBackdropOpacity", MAIN, "Label background opacity",
-                                "Adjust the dark background separately from label text.",
-                                (c, d) -> c.labelBackdropOpacity(),
-                                (c, d, v) -> c.setLabelBackdropOpacity(dbl(v)))
-                                .localOnly()
-                                .range(0, 1)
-                                .enabledWhen((c, d) -> c.showLabelBackdrop() && ANY_LABEL_TEXT.test(c, d)),
                         Setting.number("labelScale", MAIN, "Label scale (0.25-4)",
                                 null,
                                 (c, d) -> c.labelScale(),
@@ -508,17 +435,6 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setShowTracer((Boolean) v))
                                 .impact(Setting.Impact.LOW)
                                 .aliases("esp", "line"),
-                        Setting.number("tracerCenterGap", MAIN, "Tracer center gap (px)",
-                                "Leave clear space around the crosshair.",
-                                (c, d) -> c.tracerCenterGap(),
-                                (c, d, v) -> c.setTracerCenterGap(dbl(v)))
-                                .localOnly()
-                                .range(0, 200),
-                        Setting.bool("tracerEdgeArrow", MAIN, "Off-screen direction arrows",
-                                "Show a direction arrow at the screen edge for off-screen waypoints.",
-                                (c, d) -> c.tracerEdgeArrow(),
-                                (c, d, v) -> c.setTracerEdgeArrow((Boolean) v))
-                                .localOnly(),
                         Setting.number("tracerOpacity", MAIN, "Tracer opacity (0-1)",
                                 null,
                                 (c, d) -> c.tracerOpacity(),
@@ -556,18 +472,6 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setBeaconBeamMode((WaypointerConfig.BeaconBeamMode) v))
                                 .impact(Setting.Impact.MEDIUM)
                                 .aliases("beam", "pillar"),
-                        Setting.number("beaconWidthScale", MAIN, "Beam width",
-                                "Scale beacon beam width.",
-                                (c, d) -> c.beaconWidthScale(),
-                                (c, d, v) -> c.setBeaconWidthScale(dbl(v)))
-                                .localOnly()
-                                .range(0.1, 8),
-                        Setting.number("beaconMotionSpeed", MAIN, "Beam motion speed",
-                                "0 pauses beam animation; 1 uses the usual speed.",
-                                (c, d) -> c.beaconMotionSpeed(),
-                                (c, d, v) -> c.setBeaconMotionSpeed(dbl(v)))
-                                .localOnly()
-                                .range(0, 5),
                         Setting.bool("useBeaconBeamTextures", MAIN, "Use beacon textures",
                                 null,
                                 (c, d) -> c.useBeaconBeamTextures(),
@@ -584,23 +488,6 @@ public final class SettingsCatalog {
                                 (c, d) -> c.showRouteLines(),
                                 (c, d, v) -> c.setShowRouteLines((Boolean) v))
                                 .impact(Setting.Impact.LOW),
-                        Setting.number("routeLineWidth", MAIN, "Route line width (px)",
-                                "0 inherits waypoint outline thickness.",
-                                (c, d) -> c.routeLineWidth(),
-                                (c, d, v) -> c.setRouteLineWidth(dbl(v)))
-                                .localOnly()
-                                .range(0, 12),
-                        Setting.number("routeLineOpacity", MAIN, "Route line opacity",
-                                null,
-                                (c, d) -> c.routeLineOpacity(),
-                                (c, d, v) -> c.setRouteLineOpacity(dbl(v)))
-                                .localOnly()
-                                .range(0, 1),
-                        Setting.bool("routeLineDashed", MAIN, "Dashed route lines",
-                                "Draw connectors as dashes.",
-                                (c, d) -> c.routeLineDashed(),
-                                (c, d, v) -> c.setRouteLineDashed((Boolean) v))
-                                .localOnly(),
                         Setting.bool("useEtherwarpHeight", MAIN, "Use Etherwarp height",
                                 null,
                                 (c, d) -> c.useEtherwarpHeight(),
@@ -616,13 +503,13 @@ public final class SettingsCatalog {
         return Category.of("routes", "Routes & progression",
                 Group.plain(
                         Setting.number("routeMinRenderDistance", MAIN, "Minimum route distance (blocks)",
-                                "Hide route waypoints closer than this distance. 0 disables the rule.",
+                                "Hide route waypoints closer than this distance.",
                                 (c, d) -> c.routeMinRenderDistance(),
                                 (c, d, v) -> c.setRouteMinRenderDistance(dbl(v)))
                                 .localOnly()
                                 .range(0, 100000),
                         Setting.number("routeMaxRenderDistance", MAIN, "Maximum route distance (blocks)",
-                                "Hide route waypoints farther than this distance. 0 means unlimited.",
+                                "Hide route waypoints farther than this distance.",
                                 (c, d) -> c.routeMaxRenderDistance(),
                                 (c, d, v) -> c.setRouteMaxRenderDistance(dbl(v)))
                                 .localOnly()
@@ -744,9 +631,6 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setCrystalHollowsEnabled((Boolean) v))
                                 .impact(Setting.Impact.LOW)
                                 .aliases("mining", "compass", "hollows", "divan", "temple"),
-                        Setting.action(ACTION_STRUCTURE_STYLES, "Structure styles",
-                                "Keep a preferred appearance for each Crystal Hollows structure type across lobbies.")
-                                .buttons(Map.of("waypointer.screen.settings.action.structure_styles", "Edit structure styles")),
                         Setting.bool("crystalHollowsRemoteSharing", MAIN,
                                 "Share Structures",
                                 "Automatically send and receive structure locations in your Crystal Hollows lobby. Turning this off stops both.",
@@ -754,7 +638,7 @@ public final class SettingsCatalog {
                                 (c, d, v) -> c.setCrystalHollowsRemoteSharing((Boolean) v)),
                         Setting.bool("crystalHollowsSkyblockerSharing", MAIN,
                                 "Skyblocker Sharing",
-                                "Also share Crystal Hollows structures through ws.hysky.de. On by default. api.azureaaron.net receives your Minecraft UUID and public profile-key proof to authenticate. ws.hysky.de receives the service token and observed structure positions. Requires Share Structures. Your private key and Minecraft access token stay on this computer.",
+                                "Share Crystal Hollows structures through the Skyblocker websocket. Skyblocker data can be inaccurate.\n\nAPI.AzureAaron.net receives your Minecraft UUID and profile key proof to authenticate.",
                                 (c, d) -> c.crystalHollowsSkyblockerSharing(),
                                 (c, d, v) -> c.setCrystalHollowsSkyblockerSharing((Boolean) v))
                                 .localOnly()
@@ -771,7 +655,7 @@ public final class SettingsCatalog {
                                 (c, d) -> c.crystalHollowsStructureWaypoints(),
                                 (c, d, v) -> c.setCrystalHollowsStructureWaypoints((Boolean) v)),
                         Setting.bool("crystalHollowsTracers", MAIN, "Structure and treasure tracers",
-                                "Allow tracers to detected structures and metal detector treasure. Compass tracers have a separate setting. Uses your Tracer settings for styling.",
+                                "Show tracers for detected structures and for the metal detector solver.",
                                 (c, d) -> c.crystalHollowsTracers(),
                                 (c, d, v) -> c.setCrystalHollowsTracers((Boolean) v)),
                         Setting.bool("crystalHollowsHideStructuresFolder", MAIN,
@@ -789,6 +673,11 @@ public final class SettingsCatalog {
                                 "Use nearby NPCs that are visible or named by your current sidebar area.",
                                 (c, d) -> c.crystalHollowsEntityDetection(),
                                 (c, d, v) -> c.setCrystalHollowsEntityDetection((Boolean) v)),
+                        Setting.bool("coordinateShareHelper", MAIN,
+                                "Coordinate Share Helper",
+                                "Send known structure coordinates when a player asks for a Crystal Hollows location.",
+                                (c, d) -> c.coordinateShareHelper(),
+                                (c, d, v) -> c.setCoordinateShareHelper((Boolean) v)),
                         Setting.bool("crystalHollowsChatDetection", MAIN,
                                 "Shared-coordinate detection",
                                 "Read structure coordinates shared by players in chat.",
@@ -807,29 +696,29 @@ public final class SettingsCatalog {
                         detectionSettings(),
                         Group.parented("minimap", "Crystal Hollows minimap",
                                 (c, d) -> c.crystalHollowsMinimap(),
-                                Setting.bool("crystalHollowsMinimap", MAIN, "Minimap",
-                                        "Show a schematic region map with your heading and detected structure markers.",
+                                Setting.bool("crystalHollowsMinimap", MAIN, "Crystal Hollows minimap",
+                                        "",
                                         (c, d) -> c.crystalHollowsMinimap(),
                                         (c, d, v) -> c.setCrystalHollowsMinimap((Boolean) v))
                                         .aliases("map", "radar", "hollows"),
-                                Setting.action(ACTION_MINIMAP_EDITOR, "Edit minimap layout",
-                                        "Move and scale the map on screen, with alignment guides and snapping.")
+                                Setting.action(ACTION_MINIMAP_EDITOR, "Edit Crystal Hollows minimap layout",
+                                        "Move and scale the Crystal Hollows minimap.")
                                         .buttons(Map.of("waypointer.screen.settings.action.minimap_editor", "Edit layout")),
-                                Setting.number("crystalHollowsMinimapSize", MAIN, "Minimap size",
-                                        "Map width in screen pixels, from 96 to 224.",
+                                Setting.number("crystalHollowsMinimapSize", MAIN, "Crystal Hollows minimap size",
+                                        "Crystal Hollows minimap width in screen pixels.",
                                         (c, d) -> (double) c.crystalHollowsMinimapSize(),
                                         (c, d, v) -> c.setCrystalHollowsMinimapSize(((Number) v).intValue()))
                                         .range(96, 224),
-                                Setting.enumCycle("crystalHollowsMinimapCorner", MAIN, "Minimap corner",
-                                        "Choose which corner of the screen holds the map.",
+                                Setting.enumCycle("crystalHollowsMinimapCorner", MAIN, "Crystal Hollows minimap corner",
+                                        "Choose the screen corner for the Crystal Hollows minimap.",
                                         List.of(new Setting.EnumOption("top_left", "Top left", 0),
                                                 new Setting.EnumOption("top_right", "Top right", 1),
                                                 new Setting.EnumOption("bottom_left", "Bottom left", 2),
                                                 new Setting.EnumOption("bottom_right", "Bottom right", 3)),
                                         (c, d) -> c.crystalHollowsMinimapCorner(),
                                         (c, d, v) -> c.setCrystalHollowsMinimapCorner(((Number) v).intValue())),
-                                Setting.bool("crystalHollowsMinimapLabels", MAIN, "Map labels",
-                                        "Show region names and structure abbreviations on the minimap.",
+                                Setting.bool("crystalHollowsMinimapLabels", MAIN, "Crystal Hollows minimap labels",
+                                        "Show region names and structure abbreviations on the Crystal Hollows minimap.",
                                         (c, d) -> c.crystalHollowsMinimapLabels(),
                                         (c, d, v) -> c.setCrystalHollowsMinimapLabels((Boolean) v))),
                         Group.parented("wishing_compass", "Wishing Compass",
@@ -840,11 +729,11 @@ public final class SettingsCatalog {
                                         (c, d) -> c.crystalHollowsWishingCompassSolver(),
                                         (c, d, v) -> c.setCrystalHollowsWishingCompassSolver((Boolean) v)),
                                 Setting.bool("crystalHollowsCompassTracers", MAIN, "Compass target tracers",
-                                        "Allow tracers to solved compass targets, including focused targets. Turning this off keeps the marker and focus. Uses your Tracer settings for styling.",
+                                        "Show tracers for wishing compass targets.",
                                         (c, d) -> c.crystalHollowsCompassTracers(),
                                         (c, d, v) -> c.setCrystalHollowsCompassTracers((Boolean) v)),
-                                Setting.bool("crystalHollowsCompassAutoFocus", MAIN, "Focus solved compass targets",
-                                        "Automatically focus the solved target. Turning this off releases the current compass focus and keeps the waypoint visible.",
+                                Setting.bool("crystalHollowsCompassAutoFocus", MAIN, "Focus mode for wishing compass",
+                                        "Show a tracer and hide all other waypoints when a Crystal Hollows structure is detected using the wishing compass.",
                                         (c, d) -> c.crystalHollowsCompassAutoFocus(),
                                         (c, d, v) -> c.setCrystalHollowsCompassAutoFocus((Boolean) v)))));
     }
@@ -872,6 +761,10 @@ public final class SettingsCatalog {
                                 (c, d) -> c.chatCoordDetection(),
                                 (c, d, v) -> c.setChatCoordDetection((Boolean) v))
                                 .aliases("coordinates"),
+                        Setting.bool("showChatCoordBlockButton", MAIN, "Show [Block] button",
+                                "Show a button beside detected coordinates to block the sender.",
+                                (c, d) -> c.showChatCoordBlockButton(),
+                                (c, d, v) -> c.setShowChatCoordBlockButton((Boolean) v)),
                         Setting.bool("autoAddChatTempWaypoints", MAIN, "Create Waypoints from Chat Messages",
                                 null,
                                 (c, d) -> c.autoAddChatTempWaypoints(),
@@ -938,12 +831,6 @@ public final class SettingsCatalog {
 
     private static Category featureBloat() {
         return Category.of("feature_bloat", "Extras",
-                Group.plain(
-                        Setting.action(ACTION_WAYPOINT_PAINT, "Waypoint Painter",
-                                "Add pictures or paint your own waypoints.")
-                                .buttons(Map.of("waypointer.screen.settings.action.open_painter", "Open painter"))
-                                .enabledWhen((c, d) -> c.enableFeatureBloat())
-                                .aliases("painter", "texture", "pixel")),
                 Group.plain("export_screen", "Export screen",
                         Setting.bool("showExportRoutePreview", MAIN, "3D route preview",
                                 "Show a rotating 3D preview of the route on the export screen.",
@@ -957,7 +844,7 @@ public final class SettingsCatalog {
         return Category.of("system", "System",
                 Group.plain(
                         Setting.bool("enableFeatureBloat", MAIN, "Enable Extras",
-                                "Enable the Waypoint Painter and 3D route preview.",
+                                "Enable the 3D route preview.",
                                 (c, d) -> c.enableFeatureBloat(),
                                 (c, d, v) -> c.setEnableFeatureBloat((Boolean) v)),
                         Setting.bool("irisShaderHudFallback", MAIN, "Iris shader compatibility",

@@ -4,10 +4,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 public final class SettingsSearch {
 
     static final int MIN_SUBSEQUENCE_TOKEN_LENGTH = 4;
+    private static final Pattern WORD_BOUNDARIES = Pattern.compile("[^\\p{L}\\p{N}]+");
 
     public record Match(Setting setting, String categoryId, String categoryLabel,
                         String groupLabel, int tier) {}
@@ -55,6 +57,18 @@ public final class SettingsSearch {
         }
         out.sort(Comparator.comparingInt(Match::tier)); // stable: catalog order breaks ties
         return out;
+    }
+
+    /** Shared matcher for settings and Appearance; lower tiers sort first, -1 means no match. */
+    public static int matchTier(String rawQuery, Setting setting, String categoryLabel,
+                                String groupLabel, TranslationResolver translations) {
+        String query = rawQuery == null ? "" : rawQuery.trim().toLowerCase(Locale.ROOT);
+        if (query.isEmpty()) return 0;
+        TranslationResolver resolver = translations == null ? (key, fallback) -> fallback : translations;
+        String label = resolve(resolver, setting.labelTranslationKey(), setting.label());
+        String tooltip = resolve(resolver, setting.tooltipTranslationKey(), setting.tooltip());
+        return entryTier(query.split("\\s+"), label, setting.aliases(), tooltip,
+                categoryLabel, groupLabel, buttonLabels(setting, resolver));
     }
 
     static int entryTier(String[] tokens, Setting setting, String categoryLabel, String groupLabel) {
@@ -110,12 +124,32 @@ public final class SettingsSearch {
         if (categoryLabel.contains(token) || groupLabel.contains(token)) return 2;
         if (tooltip.contains(token)) return 3;
         if (token.length() >= MIN_SUBSEQUENCE_TOKEN_LENGTH) {
-            if (isSubsequence(token, label)) return 4;
+            if (isSubsequence(token, label) || fuzzyWord(token, label)) return 4;
             for (String alias : aliases) {
-                if (isSubsequence(token, alias)) return 4;
+                if (isSubsequence(token, alias) || fuzzyWord(token, alias)) return 4;
             }
+            if (fuzzyWord(token, categoryLabel) || fuzzyWord(token, groupLabel)) return 4;
         }
         return -1;
+    }
+
+    private static boolean fuzzyWord(String token, String text) {
+        // One typo (including a swapped pair) is enough without making unrelated settings match.
+        for (String word : WORD_BOUNDARIES.split(text)) {
+            if (Math.abs(token.length() - word.length()) > 1) continue;
+            int i = 0;
+            while (i < Math.min(token.length(), word.length()) && token.charAt(i) == word.charAt(i)) i++;
+            if (i == Math.min(token.length(), word.length())) return true;
+            if (token.length() == word.length()) {
+                if (token.regionMatches(i + 1, word, i + 1, token.length() - i - 1)) return true;
+                if (i + 1 < token.length() && token.charAt(i) == word.charAt(i + 1)
+                        && token.charAt(i + 1) == word.charAt(i)
+                        && token.regionMatches(i + 2, word, i + 2, token.length() - i - 2)) return true;
+            } else if (token.length() > word.length()) {
+                if (token.regionMatches(i + 1, word, i, word.length() - i)) return true;
+            } else if (token.regionMatches(i, word, i + 1, token.length() - i)) return true;
+        }
+        return false;
     }
 
     static boolean isSubsequence(String needle, String haystack) {

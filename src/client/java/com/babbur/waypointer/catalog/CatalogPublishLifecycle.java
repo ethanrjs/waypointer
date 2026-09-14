@@ -54,8 +54,7 @@ public final class CatalogPublishLifecycle {
             String publisherName = PublisherNamePolicy.requireValid(request.publisherName());
             durableIdentity = identity.withPublisherName(publisherName);
             try {
-                durableIdentity = identityStore.savePublisherName(
-                        identity, publisherName);
+                durableIdentity = identityStore.saveConfirmedPublisherName(receipt);
             } catch (CatalogStorageException failure) {
                 nameSaveFailed = true;
             }

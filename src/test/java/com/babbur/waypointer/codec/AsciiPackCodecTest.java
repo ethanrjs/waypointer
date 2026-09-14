@@ -7,18 +7,13 @@ import java.util.Random;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/**
- * Correctness tests for the base-85 binary-to-text codec. A single mispacked
- * bit silently corrupts every shared waypoint route, so we lean hard on fuzzing
- * across every residue class rather than hand-picking cases.
- */
+/** Base-85 round trips across padding lengths and malformed input. */
 class AsciiPackCodecTest {
 
     @Test
     void round_trips_arbitrary_byte_patterns() {
         Random r = new Random(0xCA7CAFE);
-        // Exercise every residue class mod 4 (the pad classes) across many
-        // lengths so both short-tail and long-body paths see coverage.
+        // Cover all four padding lengths.
         for (int trial = 0; trial < 300; trial++) {
             int len = r.nextInt(400);
             byte[] input = new byte[len];
@@ -40,8 +35,6 @@ class AsciiPackCodecTest {
 
     @Test
     void encoded_length_matches_formula() {
-        // For each residue class 0..3 verify the documented formula
-        // ceil(n/4) * 5 + 1 (and the empty-input special case of 1).
         for (int n = 0; n < 21; n++) {
             byte[] input = new byte[n];
             int expected = n == 0 ? 1 : ((n + 3) / 4) * 5 + 1;
@@ -61,9 +54,6 @@ class AsciiPackCodecTest {
 
     @Test
     void output_contains_only_alphabet_chars() {
-        // Any character outside the alphabet would either fail Minecraft's
-        // chat validator (e.g. if § somehow snuck in) or collapse during paste
-        // (e.g. a whitespace run). Both silently corrupt the export.
         Random r = new Random(0x70DA);
         byte[] input = new byte[512];
         r.nextBytes(input);
@@ -76,11 +66,7 @@ class AsciiPackCodecTest {
 
     @Test
     void output_never_contains_period() {
-        // Hypixel's advertising filter flags messages containing URL-shaped
-        // substrings, and in raw Z85 bodies we regularly saw runs like "H.vD"
-        // or ".BeOz" (just digit coincidences) kick in "Advertising is against
-        // the rules" disconnects. Base-85 swaps '.' for ';' to avoid this;
-        // fuzz a big pile of random inputs and assert no body ever contains '.'.
+        // Periods can form URL-like text that triggers Hypixel's advertising filter.
         Random r = new Random(0x4D4F4453);
         for (int trial = 0; trial < 200; trial++) {
             byte[] input = new byte[256 + r.nextInt(256)];
@@ -93,9 +79,6 @@ class AsciiPackCodecTest {
 
     @Test
     void output_is_chat_paste_safe() {
-        // The alphabet is defined precisely so it survives Minecraft chat
-        // paste: no whitespace, no control chars, no section sign, no quotes
-        // that shells (or macro pasters) might strip.
         Random r = new Random(0xBEAF);
         byte[] input = new byte[256];
         r.nextBytes(input);
@@ -112,20 +95,13 @@ class AsciiPackCodecTest {
 
     @Test
     void rejects_out_of_alphabet_character() {
-        // Chat paste corruption typically replaces a character with a blank
-        // or an outside-alphabet glyph. Decode must raise loudly, never
-        // silently produce wrong bytes.
         String valid = AsciiPackCodec.encode(new byte[]{1, 2, 3, 4, 5, 6, 7, 8});
-        // Replace the second body char with a non-alphabet ASCII byte.
         String garbled = valid.charAt(0) + "~" + valid.substring(2);
         assertThrows(IllegalArgumentException.class, () -> AsciiPackCodec.decode(garbled));
     }
 
     @Test
     void rejects_period_as_alphabet_member() {
-        // Regression guard: if someone re-adds '.' to the alphabet, the first
-        // thing the ad filter will do is disconnect the sender. Explicit test
-        // so the intent is documented in code, not just in the commit log.
         assertFalse(AsciiPackCodec.isAlphabetChar('.'),
                 "'.' must not be in the alphabet -- it trips Hypixel's advertising filter");
         String dotted = "0000.0";
@@ -135,19 +111,14 @@ class AsciiPackCodecTest {
 
     @Test
     void rejects_malformed_pad_marker() {
-        // Pad marker digit must be in [0, 3]. A trailer with digit 4..83 is
-        // a hard error -- accepting it would silently trim the wrong number
-        // of bytes.
+        // Padding must be 0..3 bytes.
         String s = AsciiPackCodec.encode(new byte[]{1});
-        // Replace trailer with the digit-value-4 char ('4'): pad=4, which is out of range.
         String bad = s.substring(0, s.length() - 1) + '4';
         assertThrows(IllegalArgumentException.class, () -> AsciiPackCodec.decode(bad));
     }
 
     @Test
     void rejects_body_length_not_multiple_of_five() {
-        // Truncated paste: one character got lost somewhere. Reject loudly
-        // rather than decoding the remaining prefix and returning junk.
         String s = AsciiPackCodec.encode(new byte[]{1, 2, 3, 4, 5, 6, 7, 8});
         String truncated = s.substring(0, s.length() - 2) + s.charAt(s.length() - 1);
         assertThrows(IllegalArgumentException.class, () -> AsciiPackCodec.decode(truncated));
@@ -155,12 +126,7 @@ class AsciiPackCodecTest {
 
     @Test
     void rejects_overflowing_group() {
-        // 85^5 = 4,437,053,125, which is greater than 2^32 (4,294,967,296),
-        // so some 5-digit groups produce integer values that would silently
-        // wrap in a u32 slot. Decode must detect this and fail loudly rather
-        // than emit corrupt bytes. The maximum-digit sequence "#####" packs
-        // digits (84,84,84,84,84) = 85^5 - 1 = 4,437,053,124, which is well
-        // above 0xFFFFFFFF.
+        // The largest base-85 group is 85^5 - 1, exceeding unsigned 32-bit range.
         String overflow = "#####" + AsciiPackCodec.encode(new byte[0]);  // valid pad=0 trailer
         assertThrows(IllegalArgumentException.class, () -> AsciiPackCodec.decode(overflow),
                 "a 5-digit group whose integer value exceeds 2^32 must be rejected");
@@ -168,9 +134,7 @@ class AsciiPackCodecTest {
 
     @Test
     void wire_density_beats_cjk_on_utf8_bytes() {
-        // The whole reason we switched: base-85 should carry more compressed
-        // DEFLATE per UTF-8 byte than the old CJK base-16384 alphabet on a
-        // typical payload. CJK is 4.67 bits per wire byte; base-85 is ~6.41.
+        // Base-85 carries about 6.41 bits per UTF-8 byte; CJK carries 4.67.
         byte[] input = "The quick brown fox jumps over the lazy dog's back 0123456789"
                 .getBytes(StandardCharsets.UTF_8);
         String packed = AsciiPackCodec.encode(input);
@@ -196,8 +160,6 @@ class AsciiPackCodecTest {
 
     @Test
     void decodes_all_residue_classes() {
-        // Each residue (len mod 4) picks a different pad value on encode; decode
-        // must trim exactly the right number of trailing bytes in every case.
         for (int n = 0; n <= 12; n++) {
             byte[] input = new byte[n];
             for (int i = 0; i < n; i++) input[i] = (byte) (0x80 | i);  // high-bit bytes
@@ -208,11 +170,7 @@ class AsciiPackCodecTest {
 
     @Test
     void alphabet_excludes_hostile_characters() {
-        // Minecraft's chat validator rejects § (U+00A7) and any control char.
-        // Shell-style pasters might strip whitespace or backslashes. Hypixel's
-        // ad filter rejects anything URL-shaped (which is why '.' is banned).
-        // Verify none of those are present in the alphabet. ';' is NOT on this
-        // list -- it's the replacement for '.' and is a valid alphabet char.
+        // Exclude chat-invalid and paste-sensitive characters; semicolon replaces period.
         char[] hostile = { ' ', '\t', '\n', '\r', '\u00A7', '\\', '\'', '"', '|', ',', '`', '~', '.' };
         for (char c : hostile) {
             assertFalse(AsciiPackCodec.isAlphabetChar(c),

@@ -46,7 +46,7 @@ public final class ColorPickerScreen extends Screen {
     private DynamicTexture hueTex;
     private Identifier svTexId;
     private Identifier hueTexId;
-    private float svTexBakedHue = -1f; // hue used when svTex was last filled; triggers re-upload when drifted
+    private float svTexBakedHue = -1f; // Re-upload the texture when hue changes.
 
     private enum Drag { NONE, SV, HUE }
     private Drag drag = Drag.NONE;

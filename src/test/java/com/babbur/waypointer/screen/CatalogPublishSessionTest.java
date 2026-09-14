@@ -162,7 +162,7 @@ class CatalogPublishSessionTest {
         CatalogPublishSession.Snapshot needsName = session.snapshot();
         assertEquals(CatalogPublishSession.Phase.NEEDS_PUBLISHER_NAME,
                 needsName.phase());
-        assertNull(needsName.failure());
+        assertNotNull(needsName.failure());
         assertTrue(needsName.attempt() > beforePublish,
                 "a new attempt lets the view reopen its name prompt");
 
@@ -182,18 +182,60 @@ class CatalogPublishSessionTest {
     }
 
     @Test
-    void publisherNameRequiredDetectionUnwrapsAsyncWrappers() {
+    void takenPublisherNameImmediatelyReopensPromptAndRetriesWithTheSameKeyAndDraft() {
+        PublisherIdentity named = namedIdentity("taken", "TakenName");
+        AtomicInteger publishes = new AtomicInteger();
+        AtomicReference<CatalogPublishRequest> sent = new AtomicReference<>();
+        CatalogPublishSession session = new CatalogPublishSession(route(), () -> named,
+                (request, signer, prepared) -> {
+                    sent.set(request);
+                    assertEquals(named.publicKeyBase64(), signer.publicKeyBase64());
+                    if (publishes.incrementAndGet() <= 2) {
+                        return CompletableFuture.failedFuture(CatalogApiExceptions.withCode(
+                                409, "publisher_name_taken", "name taken"));
+                    }
+                    assertNull(signer.publisherName(), "retry may claim a different name with the same key");
+                    return CompletableFuture.completedFuture(completion(signer));
+                }, Runnable::run);
+        completeForm(session.form());
+        session.beginPublish();
+
+        var firstPrompt = session.snapshot();
+        assertEquals(CatalogPublishSession.Phase.NEEDS_PUBLISHER_NAME, firstPrompt.phase());
+        assertTrue(CatalogPublishSession.publisherNameNeedsEntry(firstPrompt.failure()));
+        assertTrue(RoutePublishUiState.shouldPromptPublisherName(-1, firstPrompt));
+        session.confirmPublisherName("AlsoTaken");
+        assertTrue(RoutePublishUiState.shouldPromptPublisherName(
+                firstPrompt.attempt(), session.snapshot()), "another collision must reopen the modal");
+        session.confirmPublisherName("AvailableName");
+
+        assertEquals(CatalogPublishSession.Phase.SUCCEEDED, session.snapshot().phase());
+        assertNull(session.snapshot().failure(), "a successful retry clears the old rejection");
+        assertEquals("AvailableName", sent.get().publisherName());
+        assertEquals("Published route", sent.get().title());
+        assertEquals("A useful route description.", sent.get().description());
+        assertEquals(CatalogPublishRequest.Visibility.UNLISTED, sent.get().visibility());
+        assertEquals(1, session.form().groups().size());
+        assertEquals(named.publisherId(), session.snapshot().identity().publisherId());
+    }
+
+    @Test
+    void publisherNameEntryDetectionUnwrapsAsyncWrappers() {
         RuntimeException required = CatalogApiExceptions.withCode(
                 401, "publisher_name_required", "name unknown");
-        assertTrue(CatalogPublishSession.publisherNameRequired(required));
-        assertTrue(CatalogPublishSession.publisherNameRequired(
+        assertTrue(CatalogPublishSession.publisherNameNeedsEntry(required));
+        assertTrue(CatalogPublishSession.publisherNameNeedsEntry(
+                CatalogApiExceptions.withCode(400, "invalid_publisher_name", "invalid name")));
+        assertTrue(CatalogPublishSession.publisherNameNeedsEntry(
                 new java.util.concurrent.CompletionException(
                         new java.util.concurrent.ExecutionException(required))));
-        assertFalse(CatalogPublishSession.publisherNameRequired(
+        assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
                 CatalogApiExceptions.withCode(429, "rate_limited", "slow down")));
-        assertFalse(CatalogPublishSession.publisherNameRequired(
+        assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
+                CatalogApiExceptions.withCode(409, "publisher_name_locked", "name permanent")));
+        assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
                 new IllegalStateException("boom")));
-        assertFalse(CatalogPublishSession.publisherNameRequired(
+        assertFalse(CatalogPublishSession.publisherNameNeedsEntry(
                 new java.util.concurrent.CompletionException(
                         new IllegalStateException("boom"))));
     }

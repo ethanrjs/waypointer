@@ -23,11 +23,7 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_KP_ENTER;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_SPACE;
 import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
 
-/**
- * Shared right-click / menu-key popup. One instance per screen; at most one open.
- * Every item shows its gesture accelerator as a right-aligned hint, so the menu
- * doubles as the discoverable reference for the hidden gestures it mirrors.
- */
+/** One popup per screen, with shortcut hints beside its actions. */
 final class ContextMenuOverlay {
 
     record Item(Component label, String hint, boolean enabled, Runnable action) {

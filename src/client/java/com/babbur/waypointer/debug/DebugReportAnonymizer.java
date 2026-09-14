@@ -138,6 +138,8 @@ public final class DebugReportAnonymizer {
             String value = colon < 0 ? line : line.substring(colon + 1).stripLeading();
             String prefix = colon < 0 ? "" : line.substring(0, colon + 1) + " ";
             if (key.equals("Scoreboard text") || key.equals("Tab text")) return prefix + OMITTED;
+            if (heading.equals("Publishing Identity") && (key.equals("Minecraft account")
+                    || key.endsWith("publisher ID") || key.endsWith("publisher name"))) return prefix + remember(value);
             if (heading.equals("Recent Relevant Log Lines") && (value.contains("[CHAT]")
                     || value.matches(".*(?:^|\\s)<[^>]+>\\s+.*"))) return prefix + "[Chat payload omitted: may contain unknown player names and private messages.]";
             if (key.equals("Privacy") && heading.equals("Troubleshooting Report")) return prefix + "See privacy notice above.";
