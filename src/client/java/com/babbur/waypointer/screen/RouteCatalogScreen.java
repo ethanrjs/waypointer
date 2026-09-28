@@ -143,8 +143,6 @@ public final class RouteCatalogScreen extends Screen {
     private int statusX;
     private int statusY;
     private int statusMaxW;
-    private int descriptionScroll;
-    private int descriptionMaxScroll;
 
     public RouteCatalogScreen(Screen parent, RouteCatalogClient catalogClient) {
         this(parent, catalogClient, WaypointerClient.manager());
@@ -292,7 +290,6 @@ public final class RouteCatalogScreen extends Screen {
                     onlyNotInstalled = selected;
                     browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
                     requests.selectionChanged();
-                    descriptionScroll = 0;
                     updateListStatus();
                     rebuildWidgets();
                 }).build();
@@ -805,7 +802,6 @@ public final class RouteCatalogScreen extends Screen {
         browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
         if (browser.selectedRoute() == null && !browser.routes().isEmpty()) {
             browser.select(browser.routes().getFirst());
-            descriptionScroll = 0;
         }
         updateListStatus();
     }
@@ -827,7 +823,6 @@ public final class RouteCatalogScreen extends Screen {
 
     private void selectRoute(CatalogRouteSummary route) {
         if (!browser.select(route)) return;
-        descriptionScroll = 0;
         requests.selectionChanged();
         updateListStatus();
         rebuildWidgets();
@@ -1071,7 +1066,6 @@ public final class RouteCatalogScreen extends Screen {
     }
 
     private void renderDetails(GuiGraphicsExtractor graphics, CatalogRouteSummary route) {
-        descriptionMaxScroll = 0;
         if (detailH <= 0) return;
         int x = detailX + GAP;
         int y = detailY + GAP;
@@ -1112,31 +1106,15 @@ public final class RouteCatalogScreen extends Screen {
                     publisherY, ACCENT, false);
         }
 
-        int statsY = detailY + detailH - GAP - LINE_H;
-        int statsDividerY = statsY - DETAIL_LINE_H - GAP;
-        boolean showStats = statsDividerY >= detailY + DETAIL_HEADER_H
-                + GAP * 2 + DETAIL_LINE_H * 2;
-        if (showStats) {
-            graphics.fill(x, statsDividerY, x + available, statsDividerY + 1, BORDER);
-            renderDetailStat(graphics, route.zoneLabel(), x,
-                    statsY - DETAIL_LINE_H, available, ACCENT);
+        // Publisher descriptions are not shown; the facts sit right under the header.
+        int statsY = detailY + DETAIL_HEADER_H + GAP;
+        if (statsY + DETAIL_LINE_H * 2 <= detailY + detailH - GAP) {
+            renderDetailStat(graphics, route.zoneLabel(), x, statsY, available, ACCENT);
             int columnW = Math.max(1, available / 2);
             renderDetailStat(graphics, waypointCount(route.waypointCount()).getString(),
-                    x, statsY, columnW, TEXT_DIM);
+                    x, statsY + DETAIL_LINE_H, columnW, TEXT_DIM);
             renderDetailStat(graphics, installCount(route.downloads()).getString(),
-                    x + columnW, statsY, available - columnW, TEXT_DIM);
-        }
-
-        int bodyY = detailY + DETAIL_HEADER_H + GAP;
-        int bodyBottom = showStats ? statsDividerY - GAP : detailY + detailH - GAP;
-        int bodyMaxH = Math.max(0, bodyBottom - bodyY);
-        if (bodyMaxH >= DETAIL_LINE_H) {
-            Component body = route.description().isBlank()
-                    ? Component.translatable(
-                            "waypointer.screen.route_catalog.description.empty")
-                    : Component.literal(route.description());
-            drawWrapped(graphics, body, x, bodyY, available, bodyMaxH,
-                    route.description().isBlank() ? TEXT_MUTED : TEXT_DIM);
+                    x + columnW, statsY + DETAIL_LINE_H, available - columnW, TEXT_DIM);
         }
     }
 
@@ -1144,27 +1122,6 @@ public final class RouteCatalogScreen extends Screen {
             GuiGraphicsExtractor graphics, String value, int x, int y, int width, int color) {
         int innerW = Math.max(1, width - GAP_TIGHT);
         graphics.text(font, font.plainSubstrByWidth(value, innerW), x, y, color, false);
-    }
-
-    private void drawWrapped(GuiGraphicsExtractor graphics, Component text,
-                             int x, int y, int width, int maxHeight, int color) {
-        maxHeight = Math.max(DETAIL_LINE_H, maxHeight / DETAIL_LINE_H * DETAIL_LINE_H);
-        List<net.minecraft.util.FormattedCharSequence> split = font.split(
-                text, Math.max(1, width - GAP));
-        int contentHeight = split.size() * DETAIL_LINE_H;
-        descriptionMaxScroll = Math.max(0, contentHeight - maxHeight);
-        descriptionScroll = Math.min(descriptionScroll, descriptionMaxScroll);
-        graphics.enableScissor(x, y, x + width, y + maxHeight);
-        for (int i = descriptionScroll / DETAIL_LINE_H; i < split.size(); i++) {
-            int lineY = y + i * DETAIL_LINE_H - descriptionScroll;
-            if (lineY >= y + maxHeight) break;
-            graphics.text(font, split.get(i), x, lineY, color, false);
-        }
-        graphics.disableScissor();
-        int[] thumb = dropdownThumb(maxHeight, contentHeight,
-                descriptionScroll, descriptionMaxScroll);
-        if (thumb != null) graphics.fill(x + width - 2, y + thumb[0],
-                x + width, y + thumb[0] + thumb[1], TEXT_MUTED);
     }
 
     @Override
@@ -1179,12 +1136,6 @@ public final class RouteCatalogScreen extends Screen {
                         geo.rowsBottom() - geo.rowsTop());
                 return true;
             }
-            return true;
-        }
-        if (mouseX >= detailX && mouseX < detailX + detailW
-                && mouseY >= detailY && mouseY < detailY + detailH) {
-            descriptionScroll = Math.max(0, Math.min(descriptionMaxScroll,
-                    descriptionScroll - (int) Math.signum(vertical) * DETAIL_LINE_H * 2));
             return true;
         }
         if (mouseX < listX || mouseX > listX + listW

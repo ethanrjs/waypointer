@@ -48,7 +48,6 @@ public final class CatalogRouteInstallScreen extends Screen {
     private static final int PANEL_H = 236;
     private static final int PANEL_MARGIN = 12;
     private static final int LINE_H = 10;
-    private static final int DESCRIPTION_LINES = 5;
     private static final int STATUS_OK = GuiTokens.SUCCESS;
     private static final int STATUS_ERROR = GuiTokens.DANGER;
     private static final int MAX_REFERENCE_PROBE_CHARS = 256;
@@ -319,17 +318,6 @@ public final class CatalogRouteInstallScreen extends Screen {
                     y += LINE_H;
                 }
                 y += GAP_TIGHT;
-            }
-            String description = summary.description() == null ? "" : summary.description().trim();
-            Component body = description.isEmpty()
-                    ? Component.translatable("waypointer.screen.catalog_install.no_description")
-                    : Component.literal(description);
-            int maxLines = Math.max(1, Math.min(DESCRIPTION_LINES, (statusY - GAP - y) / LINE_H));
-            List<FormattedCharSequence> lines = font.split(body, contentW);
-            for (int index = 0; index < Math.min(lines.size(), maxLines); index++) {
-                graphics.text(font, lines.get(index), contentX, y,
-                        description.isEmpty() ? TEXT_MUTED : TEXT, false);
-                y += LINE_H;
             }
         }
 
