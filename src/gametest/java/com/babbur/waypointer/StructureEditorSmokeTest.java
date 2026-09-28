@@ -3,6 +3,7 @@ package com.babbur.waypointer;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.crystal.CrystalHollowsStructure;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureRoutes;
@@ -67,6 +68,24 @@ final class StructureEditorSmokeTest {
             });
             context.waitTicks(2);
             context.takeScreenshot("report-consent-category-labels");
+            context.runOnClient(client -> {
+                var route = WaypointGroup.create("Aligned rows", "dungeon_f7");
+                route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+                for (int i = 0; i < 14; i++) {
+                    var waypoint = Waypoint.at(i * 37 - 200, 70 + i, i * 11);
+                    if (i == 4) waypoint = waypoint.withName("Named waypoint");
+                    if (i == 6) waypoint = waypoint.withFlags(Waypoint.FLAG_DUNGEON_SECRET
+                            | Waypoint.FLAG_SKIP_ON_INTERACT);
+                    route.add(waypoint);
+                }
+                route.toggleSubwaypoint(1);
+                route.toggleSubwaypoint(2);
+                route.toggleSubwaypoint(13);
+                MinecraftCompat.setScreen(client, new GroupEditScreen(
+                        null, new ActiveGroupManager(), new WaypointerConfig(), route));
+            });
+            context.waitTicks(2);
+            context.takeScreenshot("route-editor-aligned-rows");
         } finally {
             context.runOnClient(client -> {
                 MinecraftCompat.setScreen(client, null);

@@ -236,6 +236,29 @@ public final class WaypointGroup {
         return "#" + mainOrdinal;
     }
 
+    /**
+     * {@link #displayIndexLabel(int)} for every waypoint, computed in one pass
+     * instead of one scan per row.
+     */
+    public List<String> displayIndexLabels() {
+        List<String> labels = new ArrayList<>(waypoints.size());
+        int mainOrdinal = 0;
+        int childOrdinal = 0;
+        for (int i = 0; i < waypoints.size(); i++) {
+            if (!isSubwaypoint(i)) {
+                mainOrdinal++;
+                childOrdinal = 0;
+                labels.add("#" + mainOrdinal);
+            } else if (mainOrdinal == 0) {
+                labels.add("#" + (i + 1));
+            } else {
+                childOrdinal++;
+                labels.add("#" + mainOrdinal + "." + childOrdinal);
+            }
+        }
+        return Collections.unmodifiableList(labels);
+    }
+
     public int parentMainIndex(int index) {
         if (index <= 0 || index >= waypoints.size() || !isSubwaypoint(index)) return -1;
         return previousMainIndexBefore(index);

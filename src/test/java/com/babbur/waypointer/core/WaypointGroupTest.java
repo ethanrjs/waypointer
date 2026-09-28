@@ -468,6 +468,26 @@ class WaypointGroupTest {
     }
 
     @Test
+    void displayIndexLabels_matchEachRowsDisplayIndexLabel() {
+        WaypointGroup g = WaypointGroup.create("labels", "dungeon_f7");
+        assertEquals(List.of(), g.displayIndexLabels());
+        for (int i = 0; i < 14; i++) {
+            g.add(Waypoint.at(i, 70, 0));
+        }
+        assertTrue(g.toggleSubwaypoint(1));
+        assertTrue(g.toggleSubwaypoint(2));
+        assertTrue(g.toggleSubwaypoint(6));
+        assertTrue(g.toggleSubwaypoint(13));
+
+        List<String> labels = g.displayIndexLabels();
+        assertEquals(List.of("#1", "#1.1", "#1.2", "#2", "#3", "#4", "#4.1", "#5", "#6",
+                "#7", "#8", "#9", "#10", "#10.1"), labels);
+        for (int i = 0; i < g.size(); i++) {
+            assertEquals(g.displayIndexLabel(i), labels.get(i), "row " + i);
+        }
+    }
+
+    @Test
     void subwaypoint_toggle_promotesChildBackToMain() {
         WaypointGroup g = route();
         g.toggleSubwaypoint(1);

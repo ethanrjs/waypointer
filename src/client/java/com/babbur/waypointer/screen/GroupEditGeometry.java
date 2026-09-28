@@ -1,10 +1,23 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.core.WaypointGroup;
+
+import java.util.ArrayList;
+import java.util.BitSet;
+import java.util.List;
+import java.util.function.ToIntFunction;
+import java.util.function.UnaryOperator;
+
 import static com.babbur.waypointer.screen.GuiTokens.ROW_H;
 
 final class GroupEditGeometry {
 
     static final int ROUTE_LIST_INSET = 2;
+    static final int WAYPOINT_SWATCH_SIZE = 14;
+    static final int WAYPOINT_SWATCH_TOP = 4;
+    static final int WAYPOINT_SUBWAYPOINT_INDENT = 16;
+    static final int WAYPOINT_SWATCH_TEXT_GAP = 6;
+    static final int WAYPOINT_ORDINAL_GAP = GuiTokens.GAP;
 
     private GroupEditGeometry() {}
 
@@ -95,5 +108,93 @@ final class GroupEditGeometry {
 
     static int labelEditorWidth(int editorX, int textRightX) {
         return Math.max(0, textRightX - editorX);
+    }
+
+    static int waypointSwatchX(int rowLeft, boolean subwaypoint) {
+        return rowLeft + GuiTokens.GAP + 2 + (subwaypoint ? WAYPOINT_SUBWAYPOINT_INDENT : 0);
+    }
+
+    static boolean isOverWaypointSwatch(double x, double y, int rowLeft, int rowTop,
+                                        boolean subwaypoint) {
+        int swatchX = waypointSwatchX(rowLeft, subwaypoint);
+        int swatchY = rowTop + WAYPOINT_SWATCH_TOP;
+        return x >= swatchX && x < swatchX + WAYPOINT_SWATCH_SIZE
+                && y >= swatchY && y < swatchY + WAYPOINT_SWATCH_SIZE;
+    }
+
+    /**
+     * Horizontal layout of one waypoint row: color swatch, then the {@code #n}
+     * label left-aligned in a column as wide as the widest label on the same
+     * level, then the coordinates. Rows on one level therefore start their
+     * coordinates at the same pixel.
+     */
+    static WaypointRowColumns waypointRowColumns(int rowLeft, boolean subwaypoint,
+                                                 WaypointOrdinalColumn ordinals) {
+        int swatchX = waypointSwatchX(rowLeft, subwaypoint);
+        int ordinalX = swatchX + WAYPOINT_SWATCH_SIZE + WAYPOINT_SWATCH_TEXT_GAP;
+        int ordinalWidth = ordinals == null ? 0 : ordinals.width(subwaypoint);
+        return new WaypointRowColumns(swatchX, ordinalX,
+                ordinalX + ordinalWidth + WAYPOINT_ORDINAL_GAP);
+    }
+
+    /** Where a waypoint's name (or its rename box) starts after its coordinates. */
+    static int waypointNameX(int coordinatesX, int coordinatesWidth) {
+        return coordinatesX + Math.max(0, coordinatesWidth) + GuiTokens.GAP;
+    }
+
+    /**
+     * Measures every row's ordinal label once. Main waypoints and subwaypoints
+     * each get their own column width because subwaypoint rows are indented.
+     */
+    static WaypointOrdinalColumn waypointOrdinalColumn(WaypointGroup group,
+                                                       UnaryOperator<String> localize,
+                                                       ToIntFunction<String> textWidth) {
+        if (group == null) return WaypointOrdinalColumn.EMPTY;
+        List<String> rawLabels = group.displayIndexLabels();
+        List<String> labels = new ArrayList<>(rawLabels.size());
+        BitSet subwaypoints = new BitSet(rawLabels.size());
+        int mainWidth = 0;
+        int subwaypointWidth = 0;
+        for (int i = 0; i < rawLabels.size(); i++) {
+            String label = localize.apply(rawLabels.get(i));
+            labels.add(label);
+            int width = Math.max(0, textWidth.applyAsInt(label));
+            if (group.isSubwaypoint(i)) {
+                subwaypoints.set(i);
+                subwaypointWidth = Math.max(subwaypointWidth, width);
+            } else {
+                mainWidth = Math.max(mainWidth, width);
+            }
+        }
+        return new WaypointOrdinalColumn(List.copyOf(labels), subwaypoints,
+                mainWidth, subwaypointWidth);
+    }
+
+    record WaypointRowColumns(int swatchX, int ordinalX, int coordinatesX) {
+    }
+
+    /** Localized ordinal labels for one route plus the column width of each level. */
+    record WaypointOrdinalColumn(List<String> labels, BitSet subwaypoints,
+                                 int mainWidth, int subwaypointWidth) {
+
+        static final WaypointOrdinalColumn EMPTY =
+                new WaypointOrdinalColumn(List.of(), new BitSet(), 0, 0);
+
+        int width(boolean subwaypoint) {
+            return subwaypoint ? subwaypointWidth : mainWidth;
+        }
+
+        String label(int index) {
+            return index >= 0 && index < labels.size() ? labels.get(index) : "";
+        }
+
+        /** True while the route still has the same rows at the same levels. */
+        boolean matchesStructureOf(WaypointGroup group) {
+            if (group == null || group.size() != labels.size()) return false;
+            for (int i = 0; i < labels.size(); i++) {
+                if (group.isSubwaypoint(i) != subwaypoints.get(i)) return false;
+            }
+            return true;
+        }
     }
 }

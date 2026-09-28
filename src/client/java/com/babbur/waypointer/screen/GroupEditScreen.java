@@ -129,6 +129,9 @@ public final class GroupEditScreen extends Screen {
 
     private EditBox labelEditor;
     private int editingIndex = -1;
+    private WaypointOrdinalColumn waypointOrdinals;
+    private String waypointOrdinalProbe;
+    private int waypointOrdinalProbeWidth;
     private boolean draggingRouteScrollbar;
     private int dragWaypointIndex = -1;
     private double waypointDragStartX;
@@ -1085,7 +1088,6 @@ public final class GroupEditScreen extends Screen {
         g.enableScissor(x1, y1, x2, y2);
         int y = y1 + ROUTE_LIST_INSET - scrollOffset;
         int pitch = waypointRowPitch();
-        boolean hasSubwaypoints = group.hasSubwaypoints();
         boolean dragActive = draggingWaypoint && dragWaypointIndex >= 0 && dragWaypointIndex < group.size();
         int blockSize = dragActive ? (group.isSubwaypoint(dragWaypointIndex) ? 1
                 : group.childEndExclusive(dragWaypointIndex) - dragWaypointIndex) : 0;
@@ -1096,6 +1098,7 @@ public final class GroupEditScreen extends Screen {
                     ? Math.max(dragWaypointIndex, waypointDropSlot - blockSize) : waypointDropSlot;
         }
         if (!dragActive) renderWaypointConnectors(g, x1 + ROUTE_LIST_INSET, y1, y2, y, pitch);
+        WaypointOrdinalColumn ordinals = waypointOrdinalColumn();
         for (int i = 0; i < pts.size(); i++) {
             if (dragActive && i >= dragWaypointIndex && i < dragWaypointIndex + blockSize) continue;
             int visualIndex = i;
@@ -1107,7 +1110,7 @@ public final class GroupEditScreen extends Screen {
             if (rowTop + ROW_H < y1 || rowTop > y2) continue;
             renderWaypointRow(g, pts.get(i), i, x1 + ROUTE_LIST_INSET, rowTop,
                     x2 - ROUTE_LIST_INSET,
-                    mouseX, mouseY, hasSubwaypoints);
+                    mouseX, mouseY, ordinals);
         }
         if (dragActive) {
             int sourceTop = (int) mouseY - ROW_H / 2;
@@ -1116,7 +1119,7 @@ public final class GroupEditScreen extends Screen {
             for (int i = 0; i < blockSize; i++) {
                 int index = dragWaypointIndex + i;
                 renderWaypointRow(g, pts.get(index), index, x1 + ROUTE_LIST_INSET,
-                        sourceTop + i * pitch, x2 - ROUTE_LIST_INSET, -1, -1, hasSubwaypoints);
+                        sourceTop + i * pitch, x2 - ROUTE_LIST_INSET, -1, -1, ordinals);
             }
             drawDragOutline(g, x1 + ROUTE_LIST_INSET, sourceTop,
                     x2 - ROUTE_LIST_INSET, sourceBottom, ACCENT, false);
@@ -1179,8 +1182,8 @@ public final class GroupEditScreen extends Screen {
     private void renderWaypointConnectors(GuiGraphicsExtractor g,
                                           int rowX, int clipTop, int clipBottom,
                                           int firstRowY, int pitch) {
-        int mainCenterX = rowX + GAP + 2 + 7;
-        int childCenterX = mainCenterX + 16;
+        int mainCenterX = waypointSwatchX(rowX, false) + WAYPOINT_SWATCH_SIZE / 2;
+        int childCenterX = waypointSwatchX(rowX, true) + WAYPOINT_SWATCH_SIZE / 2;
 
         for (ConnectorSegment segment : connectorSegments(group)) {
             if (segment.horizontal()) {
@@ -1234,7 +1237,7 @@ public final class GroupEditScreen extends Screen {
 
     private void renderWaypointRow(GuiGraphicsExtractor g, Waypoint w, int index,
                                    int x1, int y1, int x2, int mouseX, int mouseY,
-                                   boolean hasSubwaypoints) {
+                                   WaypointOrdinalColumn ordinals) {
         boolean selected = index == selectedIndex;
         boolean subwaypoint = group.isSubwaypoint(index);
         boolean isCurrent = index == group.currentIndex();
@@ -1248,12 +1251,11 @@ public final class GroupEditScreen extends Screen {
         if (bg != 0) g.fill(x1, y1, x2, y1 + ROW_H, bg);
         if (selected) g.fill(x1, y1, x1 + 2, y1 + ROW_H, subwaypoint ? SUBWAY_ACCENT : ACCENT);
 
-        int indent = subwaypoint ? 16 : 0;
-
-        int sx = x1 + GAP + 2 + indent;
-        int sy = y1 + 4;
+        WaypointRowColumns columns = waypointRowColumns(x1, subwaypoint, ordinals);
+        int sx = columns.swatchX();
+        int sy = y1 + WAYPOINT_SWATCH_TOP;
         int swatchColor = 0xFF000000 | (w.color() & 0xFFFFFF);
-        g.fill(sx, sy, sx + 14, sy + 14, swatchColor);
+        g.fill(sx, sy, sx + WAYPOINT_SWATCH_SIZE, sy + WAYPOINT_SWATCH_SIZE, swatchColor);
         if (w.hasFlag(Waypoint.FLAG_LOCKED_COLOR)) {
             g.fill(sx - 1, sy - 1, sx + 15, sy,      0xFFFFFFFF);
             g.fill(sx - 1, sy + 14, sx + 15, sy + 15, 0xFFFFFFFF);
@@ -1262,15 +1264,13 @@ public final class GroupEditScreen extends Screen {
         }
 
         LocalizedNumberFormatter numbers = displayNumbers();
-        String ordinal = numbers.waypointOrdinal(group.displayIndexLabel(index));
-        String label = ordinal + "  " + coordinateLabel(w, numbers);
+        String coordinates = coordinateLabel(w, numbers);
         int textColor = w.isDisabled() ? TEXT_MUTED
                 : visuallyActive ? 0xFFFFF080
                 : index < group.currentIndex() ? TEXT_MUTED
                 : subwaypoint ? TEXT_DIM
                 : TEXT;
         boolean showDungeonWaypointControls = isDungeonRoomGroup();
-        int textX = sx + 20;
         boolean showInlineControls = shouldShowWaypointControls(index, selectedIndex);
         String controlSummary = showInlineControls
                 ? ""
@@ -1278,7 +1278,8 @@ public final class GroupEditScreen extends Screen {
         int textRightX = waypointRowTextRightEdge(x2, subwaypoint,
                 showDungeonWaypointControls, showInlineControls,
                 waypointRightMetadataWidth(w, subwaypoint, isCurrent, controlSummary));
-        renderWaypointRowLabelAndName(g, label, w, index, textX, textRightX, y1, textColor);
+        renderWaypointRowLabelAndName(g, ordinals.label(index), coordinates, w, index,
+                columns, textRightX, y1, textColor);
 
         int rightTextX = x2 - GAP;
         if (showInlineControls) {
@@ -1314,22 +1315,31 @@ public final class GroupEditScreen extends Screen {
         }
     }
 
-    private void renderWaypointRowLabelAndName(GuiGraphicsExtractor g, String label,
+    private void renderWaypointRowLabelAndName(GuiGraphicsExtractor g, String ordinal,
+                                               String coordinates,
                                                Waypoint waypoint, int index,
-                                               int textX, int textRightX,
+                                               WaypointRowColumns columns, int textRightX,
                                                int rowY, int labelColor) {
-        int labelWidth = Math.max(0, textRightX - textX);
-        if (labelWidth <= 0) return;
+        int ordinalWidth = Math.max(0, textRightX - columns.ordinalX());
+        if (ordinalWidth <= 0) return;
 
-        String clippedLabel = font.plainSubstrByWidth(label, labelWidth);
-        if (!clippedLabel.isEmpty()) {
-            g.text(font, clippedLabel, textX, rowY + 7, labelColor, false);
+        String clippedOrdinal = font.plainSubstrByWidth(ordinal, ordinalWidth);
+        if (!clippedOrdinal.isEmpty()) {
+            g.text(font, clippedOrdinal, columns.ordinalX(), rowY + 7, labelColor, false);
+        }
+
+        int coordinatesWidth = Math.max(0, textRightX - columns.coordinatesX());
+        if (coordinatesWidth <= 0) return;
+
+        String clippedCoordinates = font.plainSubstrByWidth(coordinates, coordinatesWidth);
+        if (!clippedCoordinates.isEmpty()) {
+            g.text(font, clippedCoordinates, columns.coordinatesX(), rowY + 7, labelColor, false);
         }
 
         // Keep text out from under the active EditBox.
         if (!waypoint.hasName() || index == editingIndex) return;
 
-        int nameX = textX + font.width(clippedLabel) + GAP;
+        int nameX = waypointNameX(columns.coordinatesX(), font.width(clippedCoordinates));
         int nameWidth = Math.max(0, textRightX - nameX);
         if (nameWidth <= 0) return;
 
@@ -1384,6 +1394,27 @@ public final class GroupEditScreen extends Screen {
 
     private static LocalizedNumberFormatter displayNumbers() {
         return LocalizedNumberFormatter.active();
+    }
+
+    /**
+     * The route's {@code #n} labels and column widths. Measuring is linear in the
+     * route size, so it is redone only when rows change level or count, or when
+     * the language or font would draw the labels differently.
+     */
+    private WaypointOrdinalColumn waypointOrdinalColumn() {
+        LocalizedNumberFormatter numbers = displayNumbers();
+        String probe = numbers.waypointOrdinal("#0123456789.");
+        int probeWidth = font.width(probe);
+        if (waypointOrdinals == null
+                || !probe.equals(waypointOrdinalProbe)
+                || probeWidth != waypointOrdinalProbeWidth
+                || !waypointOrdinals.matchesStructureOf(group)) {
+            waypointOrdinals = GroupEditGeometry.waypointOrdinalColumn(
+                    group, numbers::waypointOrdinal, font::width);
+            waypointOrdinalProbe = probe;
+            waypointOrdinalProbeWidth = probeWidth;
+        }
+        return waypointOrdinals;
     }
 
     private static String coordinateLabel(
@@ -2084,11 +2115,8 @@ public final class GroupEditScreen extends Screen {
         if (idx < 0 || idx >= group.size()) return -1;
 
         int rowY = layout.top() + ROUTE_LIST_INSET - scrollOffset + idx * pitch;
-        int sx = (layout.mainLeft() + ROUTE_LIST_INSET) + GAP + 2
-                + (group.isSubwaypoint(idx) ? 16 : 0);
-        int sy = rowY + 4;
-        if (mx >= sx && mx < sx + 14 && my >= sy && my < sy + 14) return idx;
-        return -1;
+        return isOverWaypointSwatch(mx, my, layout.mainLeft() + ROUTE_LIST_INSET, rowY,
+                group.isSubwaypoint(idx)) ? idx : -1;
     }
 
     private int dungeonTypeButtonIndexAt(double mx, double my) {
@@ -2443,18 +2471,17 @@ public final class GroupEditScreen extends Screen {
 
         int rowX1 = layout.mainLeft() + ROUTE_LIST_INSET;
         int rowX2 = layout.mainRight() - ROUTE_LIST_INSET;
-        int sx = rowX1 + GAP + 2 + (group.isSubwaypoint(index) ? 16 : 0);
-        int labelStart = sx + 20;
         Waypoint w = group.get(index);
-        LocalizedNumberFormatter numbers = displayNumbers();
-        String prefix = numbers.waypointOrdinal(group.displayIndexLabel(index))
-                + "  " + coordinateLabel(w, numbers);
         boolean subwaypoint = group.isSubwaypoint(index);
-        boolean isCurrent = !subwaypoint && index == group.currentIndex();
+        WaypointRowColumns columns = waypointRowColumns(rowX1, subwaypoint, waypointOrdinalColumn());
+        String coordinates = coordinateLabel(w, displayNumbers());
+        // Match renderWaypointRow, which reserves the "current" tag on any current row.
+        boolean isCurrent = index == group.currentIndex();
         int textRightX = waypointRowTextRightEdge(rowX2, subwaypoint,
                 isDungeonRoomGroup(), shouldShowWaypointControls(index, selectedIndex),
                 waypointRightMetadataWidth(w, subwaypoint, isCurrent, ""));
-        int editorX = Math.min(labelStart + font.width(prefix) + GAP, textRightX);
+        int editorX = Math.min(
+                waypointNameX(columns.coordinatesX(), font.width(coordinates)), textRightX);
         int editorW = labelEditorWidth(editorX, textRightX);
 
         labelEditor.setX(editorX);
