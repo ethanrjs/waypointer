@@ -233,6 +233,89 @@ class ActiveGroupManagerTest {
     }
 
     @Test
+    void newWaypointsInsideADungeonRoomStartARoomRouteNotAWorldRoute() {
+        assertNotNull(DungeonRoomData.entry("spider"));
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("spider", "Spider"));
+
+        WaypointGroup route = manager.getOrCreateActiveGroup(false);
+
+        assertEquals(WaypointGroup.RouteKind.DUNGEON, route.routeKind(),
+                "a regular route would store this run's world coordinates for the room");
+        assertEquals("spider", route.zoneId());
+        assertFalse(route.runtimeOnly());
+        assertFalse(route.skipAheadEnabled());
+        assertSame(route, manager.getOrCreateActiveGroup(false));
+        assertEquals(List.of(route), manager.groupsForZone("spider"));
+    }
+
+    @Test
+    void newWaypointsInsideADungeonRoomJoinTheRouteTheRoomShows() {
+        assertNotNull(DungeonRoomData.entry("spider"));
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup firstSaved = storedRoomRoute("First", "spider");
+        WaypointGroup shown = storedRoomRoute("Shown", "spider");
+        manager.add(firstSaved);
+        manager.add(shown);
+        manager.add(roomMirror(shown));
+        manager.onZoneChanged(new Zone("spider", "Spider"));
+
+        assertSame(shown, manager.getOrCreateActiveGroup(),
+                "edits must reach the route the room is projecting, not the first saved one");
+    }
+
+    @Test
+    void roomRouteTargetSkipsRegularAndHiddenRoutesInTheRoom() {
+        assertNotNull(DungeonRoomData.entry("spider"));
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup legacyWorldRoute = WaypointGroup.create("World", "spider");
+        legacyWorldRoute.add(Waypoint.at(10, 70, 10));
+        WaypointGroup hidden = storedRoomRoute("Hidden", "spider");
+        hidden.setEnabled(false);
+        WaypointGroup empty = WaypointGroup.create("Empty", "spider");
+        empty.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        manager.add(legacyWorldRoute);
+        manager.add(hidden);
+        manager.onZoneChanged(new Zone("spider", "Spider"));
+
+        WaypointGroup created = manager.getOrCreateActiveGroup();
+        assertNotSame(legacyWorldRoute, created);
+        assertNotSame(hidden, created);
+        assertEquals(WaypointGroup.RouteKind.DUNGEON, created.routeKind());
+
+        manager.remove(created.id());
+        manager.add(empty);
+        assertSame(empty, manager.getOrCreateActiveGroup(),
+                "an empty room route is not mirrored yet but is still the room's route");
+    }
+
+    @Test
+    void outsideDungeonRoomsNewRoutesStayRegular() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new Zone("dungeon_f7", "Catacombs F7"));
+
+        assertEquals(WaypointGroup.RouteKind.REGULAR,
+                manager.getOrCreateActiveGroup().routeKind());
+    }
+
+    private static WaypointGroup storedRoomRoute(String name, String roomId) {
+        WaypointGroup route = WaypointGroup.create(name, roomId);
+        route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        route.add(Waypoint.at(1, 70, 1));
+        return route;
+    }
+
+    private static WaypointGroup roomMirror(WaypointGroup source) {
+        WaypointGroup mirror = new WaypointGroup(
+                "dungeon:auto:" + source.zoneId(), source.name(), source.zoneId());
+        mirror.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        mirror.setRuntimeOnly(true);
+        mirror.setRuntimeSourceGroupId(source.id());
+        mirror.addAll(source.waypoints());
+        return mirror;
+    }
+
+    @Test
     void clearTemporaryWaypointsWipesOnlyTempBucketsAndFocus() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(new Zone("hub", "Hub"));

@@ -392,6 +392,11 @@ public final class WaypointRepositionMode {
         return InteractionResult.FAIL;
     }
 
+    /**
+     * The keybind and {@code /wp editmode} open Edit Mode without a selected route,
+     * so right-click adds go to the zone's route: inside a dungeon room, the saved
+     * route the room is showing (or a new room route).
+     */
     static WaypointGroup editModeAddTarget(ActiveGroupManager manager) {
         if (manager == null) return null;
         if (editTargetGroupId == null) return manager.getOrCreateActiveGroup();

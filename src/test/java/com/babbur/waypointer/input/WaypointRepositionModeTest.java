@@ -148,6 +148,49 @@ class WaypointRepositionModeTest {
     }
 
     @Test
+    void keybindEditModeInsideADungeonRoomEditsTheRoomsRoute() {
+        assertTrue(DungeonRoomData.entry("spider") != null);
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointGroup otherSaved = WaypointGroup.create("Other", "spider");
+        otherSaved.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        otherSaved.add(Waypoint.at(4, 70, 4));
+        WaypointGroup shown = WaypointGroup.create("Shown", "spider");
+        shown.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        shown.add(Waypoint.at(1, 70, 1));
+        WaypointGroup mirror = new WaypointGroup("dungeon:auto:spider", "Shown", "spider");
+        mirror.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        mirror.setRuntimeOnly(true);
+        mirror.setRuntimeSourceGroupId(shown.id());
+        mirror.addAll(shown.waypoints());
+        manager.add(otherSaved);
+        manager.add(shown);
+        manager.add(mirror);
+        manager.onZoneChanged(new com.babbur.waypointer.core.Zone("spider", "Spider"));
+
+        // The keybind and /wp editmode open Edit Mode without a selected route.
+        WaypointRepositionMode.setEditModeEnabled(manager, config, true);
+
+        assertEquals(List.of(mirror), manager.activeGroups());
+        assertEquals(shown, WaypointRepositionMode.editModeAddTarget(manager));
+    }
+
+    @Test
+    void keybindEditModeInAnEmptyDungeonRoomStartsARoomRoute() {
+        assertTrue(DungeonRoomData.entry("spider") != null);
+        ActiveGroupManager manager = new ActiveGroupManager();
+        manager.onZoneChanged(new com.babbur.waypointer.core.Zone("spider", "Spider"));
+
+        WaypointRepositionMode.setEditModeEnabled(manager, new WaypointerConfig(), true);
+        WaypointGroup target = WaypointRepositionMode.editModeAddTarget(manager);
+
+        assertEquals(WaypointGroup.RouteKind.DUNGEON, target.routeKind());
+        assertEquals("spider", target.zoneId());
+        assertEquals(Waypoint.FLAG_SKIP_ON_STAND,
+                WaypointRepositionMode.defaultDungeonEditFlags(target));
+    }
+
+    @Test
     void selectedRouteIsTheOnlyVisibleRouteUntilEditModeEnds() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointerConfig config = new WaypointerConfig();

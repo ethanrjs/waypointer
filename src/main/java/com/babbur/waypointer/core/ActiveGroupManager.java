@@ -1,5 +1,6 @@
 package com.babbur.waypointer.core;
 
+import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -503,6 +504,11 @@ public final class ActiveGroupManager {
         return getOrCreateActiveGroup(true);
     }
 
+    /**
+     * The saved route that new waypoints in the current zone belong to, created
+     * when the zone has none. Inside a dungeon room this is a room route, never a
+     * regular route, so its waypoints are stored relative to the room.
+     */
     public WaypointGroup getOrCreateActiveGroup(boolean skipAheadDefault) {
         WaypointGroup existing = firstActiveRouteGroup();
         if (existing != null) return existing;
@@ -511,6 +517,7 @@ public final class ActiveGroupManager {
                 "Route -- " + zone.displayName().toLowerCase(Locale.ROOT),
                 zone.id(),
                 skipAheadDefault);
+        if (isDungeonRoomZone(zone)) g.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         add(g);
         return g;
     }
@@ -522,12 +529,40 @@ public final class ActiveGroupManager {
         }
 
         String zoneId = currentZone.id();
+        if (isDungeonRoomZone(currentZone)) return shownDungeonRoomRoute(zoneId);
         for (WaypointGroup g : byId.values()) {
             if (!g.temp() && !g.runtimeOnly() && g.enabled() && zoneId.equals(g.zoneId())) {
                 return g;
             }
         }
         return null;
+    }
+
+    /**
+     * A dungeon room shows one saved route through its runtime mirror. Prefer
+     * that route so edits land where the player sees them, then any other
+     * enabled room route (an empty one is not mirrored yet).
+     */
+    private WaypointGroup shownDungeonRoomRoute(String roomId) {
+        for (WaypointGroup mirror : byId.values()) {
+            if (!mirror.runtimeOnly()
+                    || mirror.routeKind() != WaypointGroup.RouteKind.DUNGEON
+                    || !roomId.equals(mirror.zoneId())
+                    || mirror.runtimeSourceGroupId() == null) continue;
+            WaypointGroup source = byId.get(mirror.runtimeSourceGroupId());
+            if (source != null && source.enabled() && isStoredDungeonRoomGroup(source)
+                    && roomId.equals(source.zoneId())) {
+                return source;
+            }
+        }
+        for (WaypointGroup g : byId.values()) {
+            if (g.enabled() && isStoredDungeonRoomGroup(g) && roomId.equals(g.zoneId())) return g;
+        }
+        return null;
+    }
+
+    private static boolean isDungeonRoomZone(Zone zone) {
+        return zone != null && zone.id() != null && DungeonRoomData.entry(zone.id()) != null;
     }
 
     public WaypointGroup getOrCreateTempGroup() {
