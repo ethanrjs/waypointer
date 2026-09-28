@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.ToIntFunction;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -34,6 +35,20 @@ class RouteCatalogScreenSearchTest {
             assertTrue(listWidth >= 224);
             assertTrue(contentWidth - listWidth - GuiTokens.GAP_SECTION >= 180);
         }
+    }
+
+    @Test
+    void searchHintFallsBackToTheShortLabelInsteadOfSpillingPastTheBox() {
+        ToIntFunction<String> sixPixels = text -> text.length() * 6;
+        String full = "Search by name, publisher, or zone";
+        String brief = "Search routes";
+
+        assertEquals(full, RouteCatalogScreen.searchHint(full, brief, 204, sixPixels));
+        assertEquals(brief, RouteCatalogScreen.searchHint(full, brief, 203, sixPixels));
+        assertEquals(brief, RouteCatalogScreen.searchHint(full, brief, 40, sixPixels),
+                "the caller clips the short label when even that does not fit");
+        assertEquals(92, RouteCatalogScreen.searchTextWidth(100));
+        assertEquals(0, RouteCatalogScreen.searchTextWidth(4));
     }
 
     @Test

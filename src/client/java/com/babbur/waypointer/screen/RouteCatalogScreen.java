@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
+import java.util.function.ToIntFunction;
 
 import static com.babbur.waypointer.screen.GuiTokens.ACCENT;
 import static com.babbur.waypointer.screen.GuiTokens.BORDER;
@@ -247,8 +248,10 @@ public final class RouteCatalogScreen extends Screen {
         searchBox = new EditBox(font, contentX, searchY, inputW, BTN_H,
                 Component.translatable("waypointer.screen.route_catalog.search"));
         searchBox.setMaxLength(80);
-        searchBox.setHint(Component.translatable(
-                "waypointer.screen.route_catalog.search.hint"));
+        searchBox.setHint(Component.literal(font.plainSubstrByWidth(searchHint(
+                Component.translatable("waypointer.screen.route_catalog.search.hint").getString(),
+                Component.translatable("waypointer.screen.route_catalog.search").getString(),
+                searchTextWidth(inputW), font::width), searchTextWidth(inputW))));
         searchBox.setTooltip(Tooltip.create(Component.translatable(
                 "waypointer.screen.route_catalog.search.tooltip")));
         searchBox.setValue(browser.query());
@@ -321,6 +324,20 @@ public final class RouteCatalogScreen extends Screen {
                 refreshCatalog();
             }
         }
+    }
+
+    /**
+     * EditBox draws its hint without clipping, so a long hint in a narrow box
+     * spills across the toolbar. Use the short label when the full one does not fit.
+     */
+    static String searchHint(String full, String brief, int available,
+                             ToIntFunction<String> textWidth) {
+        return textWidth.applyAsInt(full) <= available ? full : brief;
+    }
+
+    /** Text area of a bordered EditBox: four pixels of padding on each side. */
+    static int searchTextWidth(int boxWidth) {
+        return Math.max(0, boxWidth - 8);
     }
 
     static int catalogListWidth(int contentWidth) {
@@ -812,9 +829,7 @@ public final class RouteCatalogScreen extends Screen {
         if (!browser.select(route)) return;
         descriptionScroll = 0;
         requests.selectionChanged();
-        statusText = Component.translatable(
-                "waypointer.screen.route_catalog.status.selection_help");
-        statusColor = TEXT_DIM;
+        updateListStatus();
         rebuildWidgets();
     }
 
@@ -1272,9 +1287,7 @@ public final class RouteCatalogScreen extends Screen {
         }
         if (detailLoading) {
             detailLoading = false;
-            statusText = Component.translatable(
-                    "waypointer.screen.route_catalog.status.selection_help");
-            statusColor = TEXT_DIM;
+            updateListStatus();
         }
         super.removed();
     }

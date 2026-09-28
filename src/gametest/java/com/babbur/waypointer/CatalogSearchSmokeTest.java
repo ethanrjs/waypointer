@@ -9,7 +9,9 @@ import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 import java.util.Map;
@@ -61,6 +63,50 @@ final class CatalogSearchSmokeTest {
                 MinecraftCompat.setScreen(client, null);
             }
         });
+        int scale = context.computeOnClient(client -> client.options.guiScale().get());
+        try {
+            browseAtScale(context, 1, "route-catalog-wide");
+            browseAtScale(context, 4, "route-catalog-compact");
+        } finally {
+            context.runOnClient(client -> {
+                MinecraftCompat.setScreen(client, null);
+                client.options.guiScale().set(scale);
+                client.resizeGui();
+            });
+        }
+    }
+
+    /** Selecting a route keeps the route count instead of a line of keyboard help (#159). */
+    private static void browseAtScale(ClientGameTestContext context, int guiScale, String screenshot) {
+        context.runOnClient(client -> {
+            client.options.guiScale().set(guiScale);
+            client.resizeGui();
+            var screen = new RouteCatalogScreen(null, RouteCatalogClient.production());
+            field(screen, "listRequested", true);
+            @SuppressWarnings("unchecked")
+            var cache = (Map<String, CatalogPage>) field(screen, "searchCache");
+            cache.put("\n", new CatalogPage(List.of(
+                    new CatalogRouteSummary("AAAAAAAAAAAAAAAAAAAAAA", "Mining route", "Publisher description. "
+                            .repeat(8), "Tester", "", true,
+                            "public", "hub", "Hub", 44, 1, 10, 1, 0, "", "", "/r/test"),
+                    new CatalogRouteSummary("BAAAAAAAAAAAAAAAAAAAAA", "Second route", "", "Other", "", false,
+                            "public", "dwarven_mines", "Dwarven Mines", 120, 2, 1234, 1, 0, "", "", "/r/test2")),
+                    false, null));
+            MinecraftCompat.setScreen(client, screen);
+            EditBox search = (EditBox) field(screen, "searchBox");
+            search.setValue("x");
+            search.setValue("");
+            screen.tick();
+            String countStatus = ((Component) field(screen, "statusText")).getString();
+            if (countStatus.isBlank()) throw new AssertionError("Catalog should show its route count");
+            screen.setFocused(null);
+            screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_DOWN, 0, 0));
+            String selectedStatus = ((Component) field(screen, "statusText")).getString();
+            if (!selectedStatus.equals(countStatus))
+                throw new AssertionError("Selecting a route replaced the status with: " + selectedStatus);
+        });
+        context.waitTicks(3);
+        context.takeScreenshot(screenshot);
     }
 
     private static Object field(Object target, String name) {
