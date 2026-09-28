@@ -158,7 +158,7 @@ class GroupEditScreenTest {
                         | Waypoint.FLAG_SKIP_ON_INTERACT
                         | Waypoint.FLAG_DEPTH_CHECKED);
 
-        assertEquals("Tiny Â· Filled Â· Interact Â· LOS",
+        assertEquals("Tiny · Filled · Interact · LOS",
                 GroupEditPolicy.waypointControlSummary(waypoint, true, true));
         assertEquals("LOS",
                 GroupEditPolicy.waypointControlSummary(waypoint, false, false));
@@ -168,7 +168,7 @@ class GroupEditScreenTest {
                 Waypoint.FLAG_DUNGEON_SECRET
                         | Waypoint.FLAG_DUNGEON_ITEM
                         | Waypoint.FLAG_SKIP_ON_STAND);
-        assertEquals("Secret Â· Item Â· Stand",
+        assertEquals("Secret · Item · Stand",
                 GroupEditPolicy.waypointControlSummary(dungeonItem, false, true));
     }
 

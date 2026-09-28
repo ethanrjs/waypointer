@@ -272,7 +272,7 @@ final class GroupEditPolicy {
             active.add(Component.translatableWithFallback(
                     "waypointer.screen.group_edit.control.los.label", "LOS").getString());
         }
-        return String.join(" Â· ", active);
+        return String.join(" · ", active);
     }
 
     static boolean shouldShowWaypointControls(int rowIndex, int selectedIndex) {
