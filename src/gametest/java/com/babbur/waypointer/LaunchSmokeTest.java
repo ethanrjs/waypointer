@@ -129,9 +129,7 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
             updateSidebar.invoke(tracker, client);
             client.getConnection().setActionBarText(packet);
             client.getConnection().setActionBarText(packet);
-            Object hud = client.gui;
-            try { hud = client.gui.getClass().getField("hud").get(client.gui); }
-            catch (NoSuchFieldException ignored) { /* 26.1 keeps the HUD on Gui. */ }
+            Object hud = client.gui.hud;
             var overlay = hud.getClass().getDeclaredField("overlayMessageString");
             overlay.setAccessible(true);
             String displayed = ((net.minecraft.network.chat.Component) overlay.get(hud)).getString();
@@ -172,7 +170,7 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
         BlockPos origin = player.blockPosition().above(8);
         var restored = new java.util.LinkedHashMap<BlockPos, net.minecraft.world.level.block.state.BlockState>();
         try {
-            // Synthetic client-only scene: all edits and ray checks happen before another tick.
+
             for (int z = 0; z <= 5; z++) {
                 BlockPos block = origin.offset(0, 1, z);
                 restored.put(block, level.getBlockState(block));

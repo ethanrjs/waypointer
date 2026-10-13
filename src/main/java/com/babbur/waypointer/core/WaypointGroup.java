@@ -12,7 +12,6 @@ import java.util.UUID;
 import java.util.function.IntConsumer;
 import java.util.function.IntPredicate;
 
-/** Mutable route state. Mutate it only on the client thread. */
 public final class WaypointGroup {
 
     private static final int PROXIMITY_CELL_SIZE = 16;
@@ -142,7 +141,6 @@ public final class WaypointGroup {
     public boolean isEmpty()      { return waypoints.isEmpty(); }
     public boolean isComplete()   { return currentIndex >= waypoints.size(); }
 
-    /** Catalog provenance stays local and is omitted from exports. */
     public void setCatalogProvenance(CatalogRouteProvenance provenance) {
         this.catalogProvenance = provenance;
     }
@@ -386,7 +384,6 @@ public final class WaypointGroup {
                 currentIndex, activeSubwaypointParentIndex(), action);
     }
 
-    /** Queries a render cursor without changing route progress. */
     public void forEachVisibleIndexAt(SequenceVisibility visibility,
                                       boolean keepSubwaypointsVisibleUntilNextWaypoint,
                                       int cursor, int activeParent, IntConsumer action) {
@@ -566,10 +563,31 @@ public final class WaypointGroup {
                 && setWaypointDisabled(index, !isWaypointDisabled(index));
     }
 
-    /** Appearance changes do not alter geometry or route progress. */
     public void setWaypointStyle(int index, WaypointStyle style) {
         Waypoint current = waypoints.get(index);
         if (!current.styleOverride().equals(style)) waypoints.set(index, current.withStyleOverride(style));
+    }
+
+    public void lockWaypointColor(int index, int rgb) {
+        if (gradientMode == GradientMode.STATIC) {
+
+            List<Integer> current = new ArrayList<>(waypoints.size());
+            for (Waypoint waypoint : waypoints) current.add(waypoint.color());
+            gradientMode = GradientMode.MANUAL;
+            setManualColorSnapshot(current);
+            applyColorMode();
+        }
+        int color = rgb & 0xFFFFFF;
+        Waypoint waypoint = waypoints.get(index);
+        set(index, waypoint.withColor(color).withFlags(waypoint.flags() | Waypoint.FLAG_LOCKED_COLOR));
+        if (manualColors.size() == waypoints.size()) manualColors.set(index, color);
+    }
+
+    public void unlockWaypointColor(int index) {
+        Waypoint waypoint = waypoints.get(index);
+        if (!waypoint.hasFlag(Waypoint.FLAG_LOCKED_COLOR)) return;
+        set(index, waypoint.withFlags(waypoint.flags() & ~Waypoint.FLAG_LOCKED_COLOR));
+        applyColorMode();
     }
 
         public void set(int index, Waypoint replacement) {
@@ -969,7 +987,6 @@ public final class WaypointGroup {
         clearStandSkipHold();
     }
 
-    /** Jumping to a disabled waypoint resets the route instead of warping past it. */
     private boolean isDisabledJumpTarget(int index) {
         return index >= 0 && index < waypoints.size() && isWaypointDisabled(index);
     }

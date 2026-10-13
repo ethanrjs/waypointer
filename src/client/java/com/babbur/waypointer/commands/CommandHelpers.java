@@ -27,9 +27,13 @@ public final class CommandHelpers {
     }
 
     public static void suggestText(SuggestionsBuilder builder, String value, String tooltip) {
+        suggestText(builder, value, Component.literal(tooltip));
+    }
+
+    public static void suggestText(SuggestionsBuilder builder, String value, Component tooltip) {
         if (value == null || value.isBlank()) return;
         if (value.toLowerCase(Locale.ROOT).startsWith(builder.getRemainingLowerCase())) {
-            builder.suggest(value, Component.literal(tooltip));
+            builder.suggest(value, tooltip);
         }
     }
 

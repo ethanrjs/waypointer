@@ -28,7 +28,6 @@ import java.util.List;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
 
-/** Creates a waypoint with an optional name and subtype. */
 public final class AddNamedWaypointScreen extends Screen {
 
     private static final int PANEL_W = 280;
@@ -475,7 +474,10 @@ public final class AddNamedWaypointScreen extends Screen {
                 : new Waypoint(fixedX, fixedY, fixedZ, previewName,
                         config.defaultWaypointColor(), flags, 0.0);
 
-        List<Waypoint> previewWaypoints = new ArrayList<>(targetGroup.waypoints());
+        List<Waypoint> previewWaypoints = new ArrayList<>(targetGroup.size() + 1);
+        for (Waypoint stored : targetGroup.waypoints()) {
+            previewWaypoints.add(DungeonRoomWaypointPlacement.toActualWaypoint(targetGroup, stored));
+        }
         previewWaypoints.add(preview);
         previewGroup.replaceWaypoints(previewWaypoints);
         previewGroup.focusOnlyVisibleIndex(previewWaypoints.size() - 1);

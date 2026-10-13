@@ -847,7 +847,6 @@
   "waypointer.screen.group_edit.publish": "公開",
   "waypointer.screen.group_edit.publish.tooltip": "このルートをカタログに公開します。",
   "waypointer.screen.route_catalog.title": "ルートカタログ",
-  "waypointer.screen.route_catalog.subtitle": "コミュニティのルートを探してインストール",
   "waypointer.screen.route_catalog.search": "ルートを検索",
   "waypointer.screen.route_catalog.search.hint": "名前、公開者、ゾーンで検索",
   "waypointer.screen.route_catalog.refresh": "更新",

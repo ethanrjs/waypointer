@@ -37,6 +37,34 @@ class WaypointStylesTest {
         config.putNamedStyle("Small", WaypointStyle.EMPTY.with("labelScale", 1.5));
         assertEquals(1.5, WaypointStyles.resolve(config, route, point.withStyleOverride(null)).labelScale());
     }
+    @Test void zoneStylesSitBetweenGlobalAndRouteAndCoverZoneFamilies() {
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointGroup shaft = WaypointGroup.create("Shaft", "mineshaft_crystal");
+        WaypointGroup hollows = WaypointGroup.create("Gems", "crystal_hollows");
+        config.setZoneStyle("mineshaft", WaypointStyle.EMPTY.with("showTracer", true).with("labelScale", 2));
+        config.setZoneStyle("mineshaft_crystal", WaypointStyle.EMPTY.with("labelScale", 3));
+        config.setZoneStyle("crystal_hollows", WaypointStyle.EMPTY.with("showWaypointNames", false));
+        assertEquals(java.util.List.of("mineshaft", "mineshaft_crystal"), WaypointStyles.zoneKeys("mineshaft_crystal"));
+        assertEquals(java.util.List.of("crystal_hollows"), WaypointStyles.zoneKeys("crystal_hollows"));
+        WaypointerConfig resolvedShaft = WaypointStyles.resolve(config, shaft, null);
+        assertTrue(resolvedShaft.showTracer());
+        assertEquals(3, resolvedShaft.labelScale(), "the exact zone beats its family");
+        assertFalse(WaypointStyles.resolve(config, hollows, null).showWaypointNames());
+        assertTrue(WaypointStyles.resolve(config, WaypointGroup.create("Hub", "hub"), null).showWaypointNames());
+        shaft.setStyleOverride(WaypointStyle.EMPTY.with("labelScale", 1.25));
+        assertEquals(1.25, WaypointStyles.resolve(config, shaft, null).labelScale(), "routes beat zones");
+        config.setZoneStyle("crystal_hollows", WaypointStyle.EMPTY);
+        assertTrue(config.zoneStyles().keySet().stream().noneMatch("crystal_hollows"::equals));
+    }
+    @Test void zoneStylesSurviveSaveAndLoadAndResetToDefaultsClearsThem() {
+        WaypointerConfig loaded = WaypointerConfig.fromJson("""
+                {"zoneStyles":{"mineshaft":{"values":{"showRouteLines":"true","bogus":"x"}},"":{"values":{}}}}
+                """);
+        assertEquals(java.util.Map.of("showRouteLines", "true"), loaded.zoneStyle("mineshaft").values());
+        assertEquals(1, loaded.zoneStyles().size());
+        loaded.resetToDefaults();
+        assertTrue(loaded.zoneStyles().isEmpty());
+    }
     @Test void colorOverridesPreserveOriginalColorsUnlessExplicit() {
         WaypointerConfig config = new WaypointerConfig();
         WaypointGroup route = WaypointGroup.create("Test", "hub");

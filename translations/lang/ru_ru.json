@@ -849,7 +849,6 @@
   "waypointer.screen.group_edit.publish": "Опубликовать",
   "waypointer.screen.group_edit.publish.tooltip": "Опубликовать этот маршрут в каталоге.",
   "waypointer.screen.route_catalog.title": "Каталог маршрутов",
-  "waypointer.screen.route_catalog.subtitle": "Найдите и установите маршруты сообщества",
   "waypointer.screen.route_catalog.search": "Поиск маршрутов",
   "waypointer.screen.route_catalog.search.hint": "Поиск по названию, автору или зоне",
   "waypointer.screen.route_catalog.refresh": "Обновить",

@@ -847,7 +847,6 @@
   "waypointer.screen.group_edit.publish": "نشر",
   "waypointer.screen.group_edit.publish.tooltip": "انشر هذا المسار في الكتالوج.",
   "waypointer.screen.route_catalog.title": "كتالوج المسارات",
-  "waypointer.screen.route_catalog.subtitle": "اعثر على مسارات المجتمع وثبّتها",
   "waypointer.screen.route_catalog.search": "البحث عن مسارات",
   "waypointer.screen.route_catalog.search.hint": "ابحث بالاسم أو الناشر أو المنطقة",
   "waypointer.screen.route_catalog.refresh": "تحديث",

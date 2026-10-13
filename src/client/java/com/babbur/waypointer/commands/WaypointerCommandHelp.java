@@ -86,6 +86,8 @@ final class WaypointerCommandHelp {
                                     "route area 1 current"),
                             new HelpRow(" area <route> <zone|current>", "waypointer.command.help.area",
                                     "area 1 current"),
+                            new HelpRow(" route target [index|clear]", "waypointer.command.help.route_target",
+                                    "route target", "route target 1", "route target clear"),
                             new HelpRow(" route mode <index> <static|sequence>", "waypointer.command.help.route_mode",
                                     "route mode 1 static"),
                             new HelpRow(" route radius <index> <blocks>", "waypointer.command.help.route_radius",

@@ -1,6 +1,8 @@
 package com.babbur.waypointer.input;
 
+import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
+import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import net.minecraft.ChatFormatting;
@@ -19,6 +21,8 @@ public final class WaypointAddFlow {
         if (group == null) return;
         if (group.temp()) return;
 
+        ActiveGroupManager manager = WaypointerClient.manager();
+        if (manager != null) manager.noteRouteEdited(group);
         group.focusNewWaypoint(waypointIndex, false);
         if (group.skipAheadEnabled()) {
             group.setSkipAheadEnabled(false);

@@ -4,7 +4,6 @@ import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
-import com.babbur.waypointer.color.GradientColorizer;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
@@ -16,7 +15,6 @@ import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import com.babbur.waypointer.dungeon.DungeonWaypointType;
 import com.babbur.waypointer.dungeon.DungeonWaypointSkipRules;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.input.WaypointRepositionMode;
 import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
@@ -92,8 +90,7 @@ public final class GroupEditScreen extends Screen {
     private static final int WAYPOINT_CONTROL_ICON_ATLAS_W = WAYPOINT_CONTROL_ICON_SIZE * 7;
     private static final Identifier WAYPOINT_CONTROL_ICONS = Identifier.fromNamespaceAndPath(
             Waypointer.MOD_ID, "textures/gui/waypoint_controls.png");
-    // Optional atlas: eight horizontal 12x12 RGBA cells, no gutters.
-    // Order: Secret, Etherwarp, Dungeonbreaker, Superboom, Pearl, Pearl target, Item, Bat.
+
     private static final Identifier DUNGEON_TYPE_ICONS = Identifier.fromNamespaceAndPath(
             Waypointer.MOD_ID, "textures/gui/dungeon_waypoint_types.png");
     private static final int DUNGEON_TYPE_BUTTON_SIZE = 20;
@@ -115,6 +112,7 @@ public final class GroupEditScreen extends Screen {
     private static final int DEPTH_CHECK_BUTTON_ACTIVE = 0xFF315F8F;
     private static final int HEADER_INFO_BUTTON_SIZE = 12;
     private static final int PUBLISH_BUTTON_W = 92;
+    private static final int SUBWAYPOINT_INDENT = 16;
     private static final int ROUTE_SCROLLBAR_W = 2;
     private static final int ROUTE_SCROLLBAR_HIT_W = 6;
     private static final int ROUTE_SCROLLBAR_MIN_THUMB_H = 12;
@@ -355,8 +353,85 @@ public final class GroupEditScreen extends Screen {
         publishButton.active = !dungeonRoute && !incompatibleDraft;
         addRenderableWidget(publishButton);
 
+        AppearanceTarget look = routeAppearanceTarget();
+        int appearanceW = appearanceButtonWidth();
+        Button appearanceButton = styledButton(
+                width - PAD_OUTER - PUBLISH_BUTTON_W - GAP - appearanceW, PAD_OUTER - 6,
+                appearanceW, BTN_H, appearanceButtonLabel(look),
+                b -> openAppearance(routeAppearanceTarget()),
+                Tooltip.create(Component.translatable(look == null
+                        ? "waypointer.screen.group_edit.downloaded_route_read_only"
+                        : "waypointer.screen.group_edit.appearance.tooltip")));
+        appearanceButton.active = look != null;
+        addRenderableWidget(appearanceButton);
+
+        int peekW = peekButtonWidth();
+        addRenderableWidget(styledButton(
+                appearanceButton.getX() - GAP - peekW, PAD_OUTER - 6, peekW, BTN_H,
+                Component.translatable(peeking
+                        ? "waypointer.screen.group_edit.peek.off"
+                        : "waypointer.screen.group_edit.peek"),
+                b -> {
+                    commitLabelEdit();
+                    peeking = !peeking;
+                    contextMenu.close();
+                    rebuildWidgets();
+                },
+                Tooltip.create(Component.translatable("waypointer.screen.group_edit.peek.tooltip"))));
+
         GuiTokens.layoutFooter(width, height - FOOTER_H, footerActionSpecs, footerDoneSpec,
                 this::addRenderableWidget, font);
+    }
+
+    private AppearanceTarget routeAppearanceTarget() {
+        return AppearanceTarget.route(manager, config, group, this::afterAppearanceWrite);
+    }
+
+    private AppearanceTarget waypointAppearanceTarget(int index) {
+        return AppearanceTarget.waypoint(manager, config, group, index, this::afterAppearanceWrite);
+    }
+
+    private void afterAppearanceWrite() {
+        manager.noteRouteEdited(group);
+        manager.fireDataChanged();
+    }
+
+    private void openAppearance(AppearanceTarget look) {
+        if (look == null) return;
+        MinecraftCompat.setScreen(minecraft, SettingsScreen.forAppearance(
+                this, config, WaypointerClient.dungeonConfig(), look));
+    }
+
+    private Component appearanceButtonLabel(AppearanceTarget look) {
+        int count = look == null ? 0 : look.scope().count();
+        return count == 0
+                ? Component.translatable("waypointer.screen.group_edit.appearance")
+                : Component.translatable("waypointer.screen.group_edit.appearance.count", count);
+    }
+
+    private int peekButtonWidth() {
+        return Math.max(font.width(Component.translatable("waypointer.screen.group_edit.peek")),
+                font.width(Component.translatable("waypointer.screen.group_edit.peek.off"))) + 16;
+    }
+
+    private boolean peeking;
+
+    private boolean inPeekedList(double mouseX, double mouseY) {
+        if (!peeking) return false;
+        Layout layout = layout();
+        return mouseX >= layout.mainLeft() && mouseX <= layout.mainRight()
+                && mouseY >= layout.top() && mouseY <= layout.bottom();
+    }
+
+    @Override
+    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        if (peeking && minecraft != null && minecraft.level != null) return;
+        super.extractBackground(g, mouseX, mouseY, partial);
+    }
+
+    private int appearanceButtonWidth() {
+        return font.width(Component.translatable("waypointer.screen.group_edit.appearance.count", 99))
+                + 16;
     }
 
     record RouteHistoryEntry(RouteEditState visible, WaypointGroup source, RouteEditState stored) {
@@ -380,6 +455,7 @@ public final class GroupEditScreen extends Screen {
     private void recordEdit() {
         editHistory.record(captureEdit());
         refreshHistoryButtons();
+        manager.noteRouteEdited(group);
         manager.fireDataChanged();
     }
 
@@ -858,6 +934,26 @@ public final class GroupEditScreen extends Screen {
         recordEdit();
     }
 
+    private void addSubwaypointHere(int parent) {
+        LocalPlayer p = Minecraft.getInstance().player;
+        if (p == null || parent < 0 || parent >= group.size() || group.isSubwaypoint(parent)) return;
+        PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
+                p.getX(), p.getY(), p.getZ(), config);
+        Waypoint stored = DungeonRoomWaypointPlacement.editorDefaultWaypoint(group, new Waypoint(
+                pos.x(), pos.y(), pos.z(), "", config.defaultWaypointColor(),
+                defaultNewWaypointFlags(pos.x(), pos.y(), pos.z()), 0.0));
+        if (stored == null) {
+            coordinateEditError = DungeonRoomWaypointPlacement.unavailableMessage(group).getString();
+            return;
+        }
+        int at = group.childEndExclusive(parent);
+        group.insert(at, stored.withSubwaypoint(true));
+        new WaypointAddFlow().afterWaypointAdded(group, at, config.showWaypointChatShareButtons());
+        if (skipAheadBtn != null) skipAheadBtn.setMessage(skipAheadLabel());
+        selectWaypoint(at);
+        recordEdit();
+    }
+
     private WaypointGroup durableEditTarget() {
         WaypointGroup editTarget = DungeonRoomRouteLibrary.durableEditTarget(manager, group);
         if (editTarget == null) {
@@ -902,7 +998,7 @@ public final class GroupEditScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
-        // Suppress underlying hover states and tooltips while an overlay is open.
+
         boolean overlayOpen = contextMenu.isOpen() || dungeonTypePickerIndex >= 0;
         int backgroundMouseX = overlayOpen ? -1 : mouseX;
         int backgroundMouseY = overlayOpen ? -1 : mouseY;
@@ -912,10 +1008,12 @@ public final class GroupEditScreen extends Screen {
         Layout layout = layout();
         renderSidebarPanel(g, layout.sidebarLeft(), layout.top(),
                 layout.sidebarRight(), layout.bottom());
-        renderMain(g, layout.mainLeft(), layout.top(),
-                layout.mainRight(), layout.bottom(), backgroundMouseX, backgroundMouseY);
+        if (!peeking) {
+            renderMain(g, layout.mainLeft(), layout.top(),
+                    layout.mainRight(), layout.bottom(), backgroundMouseX, backgroundMouseY);
+        }
         renderDungeonTypePicker(g, mouseX, mouseY);
-        // Redraw these widgets because screens normally render widgets before custom panels.
+
         for (SidebarWidget slot : sidebarWidgets) {
             if (!slot.widget().visible) continue;
             if (slot.widget() instanceof GuiTokens.StyledButton button) {
@@ -935,7 +1033,7 @@ public final class GroupEditScreen extends Screen {
             contextMenu.render(g, font, mouseX, mouseY);
         } else if (isHeaderInfoButtonHovered(backgroundMouseX, backgroundMouseY)) {
             renderRouteInfoTooltip(g, backgroundMouseX, backgroundMouseY);
-        } else {
+        } else if (!peeking) {
             String tooltip = dungeonTypeTooltipAt(backgroundMouseX, backgroundMouseY);
             if (tooltip == null) {
                 tooltip = waypointControlTooltipAt(backgroundMouseX, backgroundMouseY);
@@ -974,7 +1072,8 @@ public final class GroupEditScreen extends Screen {
 
     private String clippedHeaderTitle(String title) {
         String safeTitle = title == null ? "" : title;
-        int publishButtonLeft = width - PAD_OUTER - PUBLISH_BUTTON_W;
+        int publishButtonLeft = width - PAD_OUTER - PUBLISH_BUTTON_W - GAP - appearanceButtonWidth()
+                - GAP - peekButtonWidth();
         int available = publishButtonLeft - PAD_OUTER - HEADER_INFO_BUTTON_SIZE
                 - GAP_TIGHT - GAP_SECTION;
         if (available <= 0) return "";
@@ -1065,6 +1164,7 @@ public final class GroupEditScreen extends Screen {
     private static final int ROUTE_LIST_BG = 0xB0101216;
 
     private void renderMain(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
+        coordinateColumnOffset = coordinateColumnOffset();
         List<Waypoint> pts = group.waypoints();
         g.fill(x1, y1, x2, y2, ROUTE_LIST_BG);
         if (pts.isEmpty()) {
@@ -1248,7 +1348,7 @@ public final class GroupEditScreen extends Screen {
         if (bg != 0) g.fill(x1, y1, x2, y1 + ROW_H, bg);
         if (selected) g.fill(x1, y1, x1 + 2, y1 + ROW_H, subwaypoint ? SUBWAY_ACCENT : ACCENT);
 
-        int indent = subwaypoint ? 16 : 0;
+        int indent = subwaypoint ? SUBWAYPOINT_INDENT : 0;
 
         int sx = x1 + GAP + 2 + indent;
         int sy = y1 + 4;
@@ -1263,7 +1363,7 @@ public final class GroupEditScreen extends Screen {
 
         LocalizedNumberFormatter numbers = displayNumbers();
         String ordinal = numbers.waypointOrdinal(group.displayIndexLabel(index));
-        String label = ordinal + "  " + coordinateLabel(w, numbers);
+        String coordinates = coordinateLabel(w, numbers);
         int textColor = w.isDisabled() ? TEXT_MUTED
                 : visuallyActive ? 0xFFFFF080
                 : index < group.currentIndex() ? TEXT_MUTED
@@ -1278,7 +1378,8 @@ public final class GroupEditScreen extends Screen {
         int textRightX = waypointRowTextRightEdge(x2, subwaypoint,
                 showDungeonWaypointControls, showInlineControls,
                 waypointRightMetadataWidth(w, subwaypoint, isCurrent, controlSummary));
-        renderWaypointRowLabelAndName(g, label, w, index, textX, textRightX, y1, textColor);
+        renderWaypointRowLabelAndName(g, ordinal, coordinates, w, index, textX,
+                x1 + coordinateColumnOffset, textRightX, y1, textColor);
 
         int rightTextX = x2 - GAP;
         if (showInlineControls) {
@@ -1306,7 +1407,8 @@ public final class GroupEditScreen extends Screen {
             String tag = disabledTagText();
             g.text(font, tag, rightTextX - font.width(tag), y1 + 7, GuiTokens.DANGER, false);
         } else if (w.customRadius() > 0) {
-            String r = "radius " + numbers.oneDecimal(w.customRadius());
+            String r = Component.translatable("waypointer.screen.group_edit.row.radius",
+                    numbers.oneDecimal(w.customRadius())).getString();
             g.text(font, r, rightTextX - font.width(r), y1 + 7, TEXT_DIM, false);
         } else if (isCurrent) {
             String tag = currentTagText();
@@ -1314,22 +1416,25 @@ public final class GroupEditScreen extends Screen {
         }
     }
 
-    private void renderWaypointRowLabelAndName(GuiGraphicsExtractor g, String label,
-                                               Waypoint waypoint, int index,
-                                               int textX, int textRightX,
+    private void renderWaypointRowLabelAndName(GuiGraphicsExtractor g, String ordinal,
+                                               String coordinates, Waypoint waypoint, int index,
+                                               int textX, int coordinateX, int textRightX,
                                                int rowY, int labelColor) {
-        int labelWidth = Math.max(0, textRightX - textX);
-        if (labelWidth <= 0) return;
+        if (textRightX - textX <= 0) return;
 
-        String clippedLabel = font.plainSubstrByWidth(label, labelWidth);
-        if (!clippedLabel.isEmpty()) {
-            g.text(font, clippedLabel, textX, rowY + 7, labelColor, false);
+        String clippedOrdinal = font.plainSubstrByWidth(ordinal, Math.max(0, textRightX - textX));
+        if (!clippedOrdinal.isEmpty()) {
+            g.text(font, clippedOrdinal, textX, rowY + 7, labelColor, false);
+        }
+        String clippedCoordinates = font.plainSubstrByWidth(coordinates,
+                Math.max(0, textRightX - coordinateX));
+        if (!clippedCoordinates.isEmpty()) {
+            g.text(font, clippedCoordinates, coordinateX, rowY + 7, labelColor, false);
         }
 
-        // Keep text out from under the active EditBox.
         if (!waypoint.hasName() || index == editingIndex) return;
 
-        int nameX = textX + font.width(clippedLabel) + GAP;
+        int nameX = coordinateX + font.width(clippedCoordinates) + GAP;
         int nameWidth = Math.max(0, textRightX - nameX);
         if (nameWidth <= 0) return;
 
@@ -1362,7 +1467,8 @@ public final class GroupEditScreen extends Screen {
     private static String waypointTrailingMetadata(Waypoint waypoint, boolean isCurrent) {
         if (waypoint.isDisabled()) return disabledTagText();
         if (waypoint.customRadius() > 0) {
-            return "radius " + displayNumbers().oneDecimal(waypoint.customRadius());
+            return Component.translatable("waypointer.screen.group_edit.row.radius",
+                    displayNumbers().oneDecimal(waypoint.customRadius())).getString();
         }
         return isCurrent ? currentTagText() : "";
     }
@@ -1756,6 +1862,7 @@ public final class GroupEditScreen extends Screen {
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
         clearWaypointDrag();
         if (contextMenu.isOpen() && contextMenu.mouseClicked(event.x(), event.y())) return true;
+        if (inPeekedList(event.x(), event.y())) return true;
         int selectedBeforeClick = selectedIndex;
         if (editingIndex >= 0 && !isOverLabelEditor(event.x(), event.y())) {
             commitLabelEdit();
@@ -1890,6 +1997,27 @@ public final class GroupEditScreen extends Screen {
 
     private final ContextMenuOverlay contextMenu = new ContextMenuOverlay();
 
+    private int coordinateColumnOffset;
+
+    private int coordinateColumnOffset() {
+        LocalizedNumberFormatter numbers = displayNumbers();
+        int widest = 0;
+        int main = 0;
+        int child = 0;
+        for (int i = 0; i < group.size(); i++) {
+            boolean subwaypoint = group.isSubwaypoint(i);
+            if (subwaypoint) child++;
+            else {
+                main++;
+                child = 0;
+            }
+            String label = "#" + main + (subwaypoint ? "." + child : "");
+            int indent = subwaypoint ? SUBWAYPOINT_INDENT : 0;
+            widest = Math.max(widest, indent + font.width(numbers.waypointOrdinal(label)));
+        }
+        return GAP + 2 + 20 + widest + GAP;
+    }
+
     private void openWaypointMenu(int index, double anchorX, double anchorY) {
         if (index < 0 || index >= group.size()) return;
         Waypoint waypoint = group.get(index);
@@ -1908,10 +2036,14 @@ public final class GroupEditScreen extends Screen {
                 "middle-click", () -> {
             if (group.toggleWaypointDisabled(index)) recordEdit();
         }));
-        items.add(ContextMenuOverlay.Item.of(
-                Component.translatable(subwaypoint
-                        ? "waypointer.screen.group_edit.menu.subwaypoint_off"
-                        : "waypointer.screen.group_edit.menu.subwaypoint_on"),
+        Component subwaypointLabel = Component.translatable(subwaypoint
+                ? "waypointer.screen.group_edit.menu.subwaypoint_off"
+                : "waypointer.screen.group_edit.menu.subwaypoint_on");
+        if (!subwaypoint && !group.canMakeSubwaypoint(index)) items.add(ContextMenuOverlay.Item.disabled(
+                subwaypointLabel, Component.translatable(index == 0
+                        ? "waypointer.screen.group_edit.menu.subwaypoint_first"
+                        : "waypointer.screen.group_edit.menu.subwaypoint_no_main").getString()));
+        else items.add(ContextMenuOverlay.Item.of(subwaypointLabel,
                 "shift-right-click", () -> {
             if (group.toggleSubwaypoint(index)) {
                 if (group.isSubwaypoint(index)) disableSkipAheadForSequencingEdit();
@@ -1920,12 +2052,32 @@ public final class GroupEditScreen extends Screen {
                 recordEdit();
             }
         }));
+        int subwaypointParent = subwaypoint ? group.parentMainIndex(index) : index;
+        Component addSubLabel = Component.translatable("waypointer.screen.group_edit.menu.add_subwaypoint");
+        items.add(subwaypointParent >= 0 && DungeonRoomRouteLibrary.durableEditTarget(manager, group) == group
+                ? ContextMenuOverlay.Item.of(addSubLabel, null, () -> addSubwaypointHere(subwaypointParent))
+                : ContextMenuOverlay.Item.disabled(addSubLabel, Component.translatable(
+                        "waypointer.screen.group_edit.menu.appearance.room_copy").getString()));
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.group_edit.menu.reposition"),
                 "shift-click", () -> WaypointRepositionMode.start(manager, config, group, index)));
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.group_edit.menu.color"),
                 null, () -> openWaypointColorPicker(index)));
+        if (waypoint.hasFlag(Waypoint.FLAG_LOCKED_COLOR)) {
+            items.add(ContextMenuOverlay.Item.of(
+                    Component.translatable("waypointer.screen.group_edit.menu.color_reset"),
+                    "shift-click color", () -> unlockWaypointColor(index)));
+        }
+        AppearanceTarget look = waypointAppearanceTarget(index);
+        int lookCount = look == null ? 0 : look.scope().count();
+        Component lookLabel = Component.translatable("waypointer.screen.group_edit.menu.appearance");
+        items.add(look == null
+                ? ContextMenuOverlay.Item.disabled(lookLabel, Component.translatable(
+                        "waypointer.screen.group_edit.menu.appearance.room_copy").getString())
+                : ContextMenuOverlay.Item.of(lookLabel, lookCount == 0 ? null
+                        : Component.translatable("waypointer.screen.appearance.set_count", lookCount).getString(),
+                        () -> openAppearance(look)));
         if (isDungeonRoomGroup()) {
             items.add(ContextMenuOverlay.Item.of(
                     Component.translatable("waypointer.screen.group_edit.menu.types"),
@@ -2071,7 +2223,7 @@ public final class GroupEditScreen extends Screen {
     private static boolean hasShiftDown() {
         var win = Minecraft.getInstance().getWindow();
         return InputConstants.isKeyDown(win, InputConstants.KEY_LSHIFT)
-                || InputConstants.isKeyDown(win, 344 /* GLFW_KEY_RIGHT_SHIFT */);
+                || InputConstants.isKeyDown(win, 344  );
     }
 
     private int swatchIndexAt(double mx, double my) {
@@ -2085,7 +2237,7 @@ public final class GroupEditScreen extends Screen {
 
         int rowY = layout.top() + ROUTE_LIST_INSET - scrollOffset + idx * pitch;
         int sx = (layout.mainLeft() + ROUTE_LIST_INSET) + GAP + 2
-                + (group.isSubwaypoint(idx) ? 16 : 0);
+                + (group.isSubwaypoint(idx) ? SUBWAYPOINT_INDENT : 0);
         int sy = rowY + 4;
         if (mx >= sx && mx < sx + 14 && my >= sy && my < sy + 14) return idx;
         return -1;
@@ -2291,12 +2443,7 @@ public final class GroupEditScreen extends Screen {
     }
 
     private void unlockWaypointColor(int idx) {
-        Waypoint w = group.get(idx);
-        int cleared = w.flags() & ~Waypoint.FLAG_LOCKED_COLOR;
-        group.set(idx, w.withFlags(cleared));
-        if (group.gradientMode() == WaypointGroup.GradientMode.AUTO) {
-            GradientColorizer.apply(group);
-        }
+        group.unlockWaypointColor(idx);
         recordEdit();
     }
 
@@ -2316,6 +2463,7 @@ public final class GroupEditScreen extends Screen {
     public boolean mouseScrolled(double mouseX, double mouseY, double horiz, double vert) {
         dungeonTypePickerIndex = -1;
         contextMenu.close();
+        if (inPeekedList(mouseX, mouseY)) return true;
         Layout layout = layout();
         int coordinateAxis = coordinateAxisAt(mouseX, mouseY);
         if (coordinateAxis >= 0) {
@@ -2358,7 +2506,7 @@ public final class GroupEditScreen extends Screen {
             return true;
         }
         if (contextMenu.keyPressed(k)) return true;
-        if (k == GLFW_KEY_MENU && hasSelectedWaypoint()) {
+        if (!peeking && k == GLFW_KEY_MENU && hasSelectedWaypoint()) {
             Layout layout = layout();
             int rowBottom = layout.top() + ROUTE_LIST_INSET - scrollOffset
                     + selectedIndex * waypointRowPitch() + ROW_H;
@@ -2443,18 +2591,15 @@ public final class GroupEditScreen extends Screen {
 
         int rowX1 = layout.mainLeft() + ROUTE_LIST_INSET;
         int rowX2 = layout.mainRight() - ROUTE_LIST_INSET;
-        int sx = rowX1 + GAP + 2 + (group.isSubwaypoint(index) ? 16 : 0);
-        int labelStart = sx + 20;
         Waypoint w = group.get(index);
         LocalizedNumberFormatter numbers = displayNumbers();
-        String prefix = numbers.waypointOrdinal(group.displayIndexLabel(index))
-                + "  " + coordinateLabel(w, numbers);
+        int coordinateX = rowX1 + coordinateColumnOffset();
         boolean subwaypoint = group.isSubwaypoint(index);
         boolean isCurrent = !subwaypoint && index == group.currentIndex();
         int textRightX = waypointRowTextRightEdge(rowX2, subwaypoint,
                 isDungeonRoomGroup(), shouldShowWaypointControls(index, selectedIndex),
                 waypointRightMetadataWidth(w, subwaypoint, isCurrent, ""));
-        int editorX = Math.min(labelStart + font.width(prefix) + GAP, textRightX);
+        int editorX = Math.min(coordinateX + font.width(coordinateLabel(w, numbers)) + GAP, textRightX);
         int editorW = labelEditorWidth(editorX, textRightX);
 
         labelEditor.setX(editorX);

@@ -126,6 +126,126 @@ class WaypointSkipFadeTest {
     }
 
     @Test
+    void subwaypointsRevealedByAStepFadeInInsteadOfSnapping() {
+        WaypointGroup group = parentWithSubwaypoints();
+        WaypointerConfig config = fadeConfig(0, 0);
+        List<Integer> before = visibleAt(group, config, 0);
+        WaypointSkipFade.observe(group, config, 0);
+        group.setCurrentIndex(1);
+        WaypointSkipFade fade = WaypointSkipFade.observe(group, config, 10_000_000);
+        List<Integer> revealed = visibleAt(group, config, 1);
+        revealed.removeAll(before);
+        revealed.remove(Integer.valueOf(1));
+        assertFalse(revealed.isEmpty(), "the scenario must reveal subwaypoints alongside the parent");
+
+        for (int index : revealed) assertEquals(0, fade.alpha(index, 1, true), .00001f);
+        WaypointSkipFade.observe(group, config, 110_000_000);
+        for (int index : revealed) assertEquals(.5f, fade.alpha(index, 1, true), .00001f);
+        WaypointSkipFade.observe(group, config, 210_000_000);
+        for (int index : revealed) assertEquals(1, fade.alpha(index, 1, true), .00001f);
+    }
+
+    @Test
+    void subwaypointsHiddenByAStepFadeOutAndKeepRendering() {
+        WaypointGroup group = parentWithSubwaypoints();
+        group.setCurrentIndex(1);
+        WaypointerConfig config = fadeConfig(0, 0);
+        List<Integer> before = visibleAt(group, config, 1);
+        WaypointSkipFade.observe(group, config, 0);
+        group.setCurrentIndex(4);
+        WaypointSkipFade fade = WaypointSkipFade.observe(group, config, 10_000_000);
+        List<Integer> hidden = new ArrayList<>(before);
+        hidden.removeAll(visibleAt(group, config, 4));
+        hidden.remove(Integer.valueOf(fade.outgoing()));
+        hidden.removeIf(index -> index == 4);
+        assertFalse(hidden.isEmpty(), "the scenario must hide subwaypoints along with the parent");
+
+        assertTrue(fade.fadingOut().containsAll(hidden));
+        for (int index : hidden) assertTrue(fade.alpha(index, 0, false) > .9f);
+        WaypointSkipFade.observe(group, config, 110_000_000);
+        for (int index : hidden) assertTrue(fade.alpha(index, 0, false) < .6f);
+        WaypointSkipFade.observe(group, config, 210_000_000);
+        assertTrue(fade.fadingOut().isEmpty());
+    }
+
+    @Test
+    void fadingSubwaypointsSurviveTheCompletedWaypointFilter() {
+        WaypointGroup group = parentWithSubwaypoints();
+        group.setCurrentIndex(1);
+        WaypointerConfig config = fadeConfig(0, 0);
+        WaypointRenderer renderer = new WaypointRenderer(new ActiveGroupManager(), config);
+        WaypointSkipFade.observe(group, config, 0);
+        group.setCurrentIndex(4);
+        WaypointSkipFade.observe(group, config, 10_000_000);
+        List<Integer> rendered = new ArrayList<>();
+        renderer.forEachFadingVisibleIndex(group, index -> {
+            if (!renderer.shouldHideCompletedSequenceWaypoint(group, index, 4,
+                    WaypointRenderer.stateFor(group, index, 4), false, group.get(index))) {
+                rendered.add(index);
+            }
+        });
+        assertTrue(rendered.containsAll(List.of(1, 2, 3, 4)));
+        assertFalse(renderer.shouldHideCompletedSequenceWaypoint(group, 2, 4,
+                WaypointRenderer.State.COMPLETED, false, group.get(2)));
+        assertTrue(renderer.shouldHideCompletedSequenceWaypoint(group, 2, 4,
+                WaypointRenderer.State.COMPLETED, false,
+                group.get(2).withFlags(group.get(2).flags() | Waypoint.FLAG_HIDE_BEACON)));
+    }
+
+    @Test
+    void interruptedSubwaypointFadesKeepTheirCurrentOpacity() {
+        WaypointGroup group = parentWithSubwaypoints();
+        group.setCurrentIndex(1);
+        WaypointerConfig config = fadeConfig(0, 0);
+        WaypointSkipFade.observe(group, config, 0);
+        group.setCurrentIndex(4);
+        WaypointSkipFade fade = WaypointSkipFade.observe(group, config, 10_000_000);
+        WaypointSkipFade.observe(group, config, 110_000_000);
+        float halfway = fade.alpha(2, 0, false);
+        assertEquals(.5f, halfway, .00001f);
+        group.setCurrentIndex(0);
+        WaypointSkipFade.observe(group, config, 110_000_000);
+        assertTrue(fade.fadingOut().contains(2));
+        assertEquals(halfway, fade.alpha(2, 0, false), .00001f);
+        group.setCurrentIndex(1);
+        WaypointSkipFade.observe(group, config, 110_000_000);
+        assertEquals(halfway, fade.alpha(2, 1, true), .00001f);
+        WaypointSkipFade.observe(group, config, 210_000_000);
+        assertEquals(.75f, fade.alpha(2, 1, true), .00001f);
+    }
+
+    @Test
+    void fadingMarkersDoNotCreateCurrentOnlyBeamsOrTracers() {
+        WaypointGroup group = parentWithSubwaypoints();
+        group.setCurrentIndex(1);
+        WaypointerConfig config = fadeConfig(0, 0);
+        config.setBeaconBeamMode(WaypointerConfig.BeaconBeamMode.CURRENT);
+        WaypointSkipFade.observe(group, config, 0);
+        group.setCurrentIndex(4);
+        WaypointSkipFade fade = WaypointSkipFade.observe(group, config, 10_000_000);
+        assertEquals(0, fade.beamAlpha(2, 1, false));
+        assertEquals(0, fade.tracerAlpha(2));
+    }
+
+    private static WaypointGroup parentWithSubwaypoints() {
+        WaypointGroup group = WaypointGroup.create("Subwaypoints", "hub");
+        group.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        group.add(Waypoint.at(1, 2, 3));
+        group.add(Waypoint.at(4, 5, 6));
+        group.add(Waypoint.at(7, 8, 9).withFlags(Waypoint.FLAG_SUBWAYPOINT));
+        group.add(Waypoint.at(10, 11, 12).withFlags(Waypoint.FLAG_SUBWAYPOINT));
+        group.add(Waypoint.at(13, 14, 15));
+        return group;
+    }
+
+    private static List<Integer> visibleAt(WaypointGroup group, WaypointerConfig config, int current) {
+        List<Integer> visible = new ArrayList<>();
+        group.forEachVisibleIndexAt(config.sequenceVisibility(),
+                config.keepSubwaypointsVisibleUntilNextWaypoint(), current, -1, visible::add);
+        return visible;
+    }
+
+    @Test
     void resetDuringCompletionFadeKeepsTheOutgoingWaypoint() {
         WaypointGroup group = route();
         group.setCurrentIndex(2);
@@ -238,7 +358,7 @@ class WaypointSkipFadeTest {
             WaypointerConfig config = fadeConfig(1, 0);
             config.setBeaconBeamMode(WaypointerConfig.BeaconBeamMode.CURRENT);
             config.setUseBeaconBeamTextures(false);
-            // Exercise actual beam selection/fade calculation without requiring a native client.
+
             config.setBeaconOpacity(0);
             if (mixedModes) group.setWaypointStyle(0,
                     WaypointStyle.EMPTY.with("beaconBeamMode", "ALL_VISIBLE"));
@@ -288,7 +408,7 @@ class WaypointSkipFadeTest {
         List<Integer> visible = new ArrayList<>();
         renderer.forEachFadingVisibleIndex(group, index -> {
             visible.add(index);
-            // Dimming is on by default, so a previous step fades toward the prev/next opacity (0.35).
+
             if (index == 0) assertEquals(.675f,
                     renderer.alphaFor(group, index, WaypointRenderer.State.COMPLETED));
         });

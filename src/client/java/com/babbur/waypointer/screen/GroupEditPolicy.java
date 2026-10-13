@@ -272,7 +272,11 @@ final class GroupEditPolicy {
             active.add(Component.translatableWithFallback(
                     "waypointer.screen.group_edit.control.los.label", "LOS").getString());
         }
-        return String.join(" Â· ", active);
+        if (com.babbur.waypointer.config.WaypointStyles.setCount(waypoint.styleOverride()) > 0) {
+            active.add(Component.translatableWithFallback(
+                    "waypointer.screen.group_edit.control.own_look", "\u25c6 Own look").getString());
+        }
+        return String.join(" \u00b7 ", active);
     }
 
     static boolean shouldShowWaypointControls(int rowIndex, int selectedIndex) {

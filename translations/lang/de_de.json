@@ -832,7 +832,6 @@
   "waypointer.screen.group_edit.publish": "Veröffentlichen",
   "waypointer.screen.group_edit.publish.tooltip": "Diese Route im Katalog veröffentlichen.",
   "waypointer.screen.route_catalog.title": "Routenkatalog",
-  "waypointer.screen.route_catalog.subtitle": "Finde und installiere Routen der Community",
   "waypointer.screen.route_catalog.search": "Routen suchen",
   "waypointer.screen.route_catalog.search.hint": "Suche nach Name, Herausgeber oder Zone",
   "waypointer.screen.route_catalog.refresh": "Aktualisieren",

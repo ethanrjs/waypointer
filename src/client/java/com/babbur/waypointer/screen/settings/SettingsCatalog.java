@@ -280,8 +280,8 @@ public final class SettingsCatalog {
                                         || c.boxStyle() == WaypointerConfig.BoxStyle.FILLED_OUTLINED)
                                 .aliases("width")),
                 Group.plain("sequenced", "Previous / Next Waypoints",
-                        Setting.number("waypointSkipFadeMs", MAIN, "Skip fade time (ms)",
-                                "Fade between route steps after a skip or reach. 0 disables fading.",
+                        Setting.number("waypointSkipFadeMs", MAIN, "Waypoint fade time (ms)",
+                                "Fade waypoints and subwaypoints in and out when the current waypoint changes. 0 = off.",
                                 (c, d) -> (double) c.waypointSkipFadeMs(),
                                 (c, d, v) -> c.setWaypointSkipFadeMs(((Number) v).intValue()))
                                 .range(0, 5000).wholeNumber(),

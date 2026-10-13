@@ -158,7 +158,7 @@ class GroupEditScreenTest {
                         | Waypoint.FLAG_SKIP_ON_INTERACT
                         | Waypoint.FLAG_DEPTH_CHECKED);
 
-        assertEquals("Tiny Â· Filled Â· Interact Â· LOS",
+        assertEquals("Tiny \u00b7 Filled \u00b7 Interact \u00b7 LOS",
                 GroupEditPolicy.waypointControlSummary(waypoint, true, true));
         assertEquals("LOS",
                 GroupEditPolicy.waypointControlSummary(waypoint, false, false));
@@ -168,8 +168,17 @@ class GroupEditScreenTest {
                 Waypoint.FLAG_DUNGEON_SECRET
                         | Waypoint.FLAG_DUNGEON_ITEM
                         | Waypoint.FLAG_SKIP_ON_STAND);
-        assertEquals("Secret Â· Item Â· Stand",
+        assertEquals("Secret \u00b7 Item \u00b7 Stand",
                 GroupEditPolicy.waypointControlSummary(dungeonItem, false, true));
+    }
+
+    @Test
+    void summarySeparatorIsAMiddleDotAndMarksAWaypointWithItsOwnLook() {
+        Waypoint styled = Waypoint.at(0, 70, 0).withFlags(Waypoint.FLAG_DEPTH_CHECKED)
+                .withStyleOverride(com.babbur.waypointer.core.WaypointStyle.EMPTY.with("labelScale", 2.0));
+        String summary = GroupEditPolicy.waypointControlSummary(styled, false, false);
+        assertEquals("LOS \u00b7 \u25c6 Own look", summary);
+        assertFalse(summary.contains("\u00c2"), "the separator must not be double-encoded (#153)");
     }
 
     @Test

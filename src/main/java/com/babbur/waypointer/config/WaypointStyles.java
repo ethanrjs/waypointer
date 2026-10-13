@@ -3,13 +3,15 @@ package com.babbur.waypointer.config;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.WaypointStyle;
+import com.babbur.waypointer.core.Zone;
+import com.babbur.waypointer.crystal.CrystalHollowsStructureZones;
+import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-/** Resolves only explicitly supported local appearance properties, never behavioral preferences. */
 public final class WaypointStyles {
     private WaypointStyles() {}
     private record Property(Method getter, Method setter) {}
@@ -98,19 +100,56 @@ public final class WaypointStyles {
         });
         return new WaypointStyle(values);
     }
+
+    public static String valueOf(WaypointerConfig config, String name) {
+        Property property = PROPERTIES.get(name);
+        if (property == null || config == null) return null;
+        try { return String.valueOf(property.getter().invoke(config)); }
+        catch (ReflectiveOperationException e) { throw new IllegalStateException(e); }
+    }
+
+    public static List<String> zoneKeys(String zoneId) {
+        if (zoneId == null || zoneId.isBlank()) return List.of();
+        String id = Zone.canonicalId(zoneId);
+        String family = zoneFamily(id);
+        return family == null || family.equals(id) ? List.of(id) : List.of(family, id);
+    }
+    static String zoneFamily(String id) {
+        if (Zone.isSpecificMineshaftZone(id) || id.startsWith("mineshaft")) return "mineshaft";
+        if (id.equals("dungeon") || id.startsWith("dungeon_f") || id.startsWith("dungeon_m")
+                || DungeonRoomData.entry(id) != null) return "dungeon";
+        if (CrystalHollowsStructureZones.isStructureZone(id)) return "crystal_hollows";
+        return null;
+    }
+
+    public static WaypointStyle zoneStyle(WaypointerConfig base, String zoneId) {
+        List<String> keys = zoneKeys(zoneId);
+        if (keys.isEmpty()) return WaypointStyle.EMPTY;
+        WaypointStyle family = base.zoneStyle(keys.getFirst());
+        if (keys.size() == 1) return family;
+        WaypointStyle exact = base.zoneStyle(keys.getLast());
+        if (family.isEmpty()) return exact;
+        if (exact.isEmpty()) return family;
+        Map<String, String> merged = new LinkedHashMap<>(family.values());
+        merged.putAll(exact.values());
+        return new WaypointStyle(merged);
+    }
     public static WaypointerConfig resolve(WaypointerConfig base, WaypointGroup group, Waypoint waypoint) {
         if (base.resolvedStyleSnapshot) return base;
         WaypointStyle preferred = base.namedStyle(base.preferredStyleId());
+        WaypointStyle zone = group == null ? WaypointStyle.EMPTY : zoneStyle(base, group.zoneId());
         WaypointStyle routePreset = group == null ? WaypointStyle.EMPTY : base.namedStyle(group.stylePresetId());
         WaypointStyle route = group == null ? WaypointStyle.EMPTY : group.styleOverride();
         WaypointStyle point = waypoint == null ? WaypointStyle.EMPTY : waypoint.styleOverride();
-        if (preferred.isEmpty() && routePreset.isEmpty() && route.isEmpty() && point.isEmpty()) return base;
-        List<WaypointStyle> key = List.of(preferred, routePreset, route, point);
+        if (preferred.isEmpty() && zone.isEmpty() && routePreset.isEmpty() && route.isEmpty() && point.isEmpty()) {
+            return base;
+        }
+        List<WaypointStyle> key = List.of(preferred, zone, routePreset, route, point);
         WaypointerConfig cached = base.resolvedStyles.get(key);
         if (cached != null) return cached;
         WaypointerConfig resolved = base.unsavedStyleCopy();
         for (WaypointStyle style : key) applyTo(resolved, style);
-        // Bound snapshot memory when more than 1024 distinct styles are resolved.
+
         if (base.resolvedStyles.size() >= 1024) base.resolvedStyles.clear();
         base.resolvedStyles.put(key, resolved);
         return resolved;
@@ -123,6 +162,7 @@ public final class WaypointStyles {
         int color = waypoint.color();
         color = styleColor(base.namedStyle(base.preferredStyleId()), color);
         if (group != null) {
+            color = styleColor(zoneStyle(base, group.zoneId()), color);
             color = styleColor(base.namedStyle(group.stylePresetId()), color);
             color = styleColor(group.styleOverride(), color);
         }
@@ -140,7 +180,7 @@ public final class WaypointStyles {
         applyTo(draft, style);
         return draft;
     }
-    /** Applies validated appearance values to an unsaved draft or settings edited by the user. */
+
     public static void applyTo(WaypointerConfig config, WaypointStyle style) {
         if (style == null) return;
         style.values().forEach((name, value) -> applyProperty(config, name, value));
@@ -154,6 +194,33 @@ public final class WaypointStyles {
             values.put(name, value);
         });
         return new WaypointStyle(values);
+    }
+
+    public static WaypointStyle normalizeKeepingUnknown(WaypointStyle style) {
+        if (style == null || style.isEmpty()) return WaypointStyle.EMPTY;
+        WaypointerConfig draft = new WaypointerConfig();
+        Map<String, String> values = new LinkedHashMap<>();
+        style.values().forEach((name, value) -> {
+            if (PROPERTIES.containsKey(name) ? !applyProperty(draft, name, value)
+                    : isOtherSetting(name)) return;
+            values.put(name, value);
+        });
+        return values.isEmpty() ? WaypointStyle.EMPTY : new WaypointStyle(values);
+    }
+    private static boolean isOtherSetting(String name) {
+        try {
+            WaypointerConfig.class.getMethod(name);
+            return true;
+        } catch (NoSuchMethodException ignored) {
+            return false;
+        }
+    }
+
+    public static int setCount(WaypointStyle style) {
+        if (style == null) return 0;
+        int count = 0;
+        for (String name : style.values().keySet()) if (PROPERTIES.containsKey(name)) count++;
+        return count;
     }
     private static boolean applyProperty(WaypointerConfig config, String name, String value) {
         Property property = PROPERTIES.get(name);
@@ -175,7 +242,7 @@ public final class WaypointStyles {
             property.setter().invoke(config, parsed);
             return true;
         } catch (IllegalArgumentException ignored) {
-            // An invalid optional style property must not break other valid properties.
+
             return false;
         } catch (ReflectiveOperationException e) { throw new IllegalStateException(e); }
     }

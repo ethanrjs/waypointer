@@ -25,11 +25,11 @@ class SettingsCatalogTest {
 
     private static final Set<String> MAIN_EXEMPT = Set.of(
             "configSchemaVersion",
-            "namedStyles", "preferredStyleId", "crystalHollowsStyles", // Preserved for saved and imported styles.
+            "namedStyles", "preferredStyleId", "crystalHollowsStyles", "zoneStyles",
             "beaconMotionSpeed", "beaconWidthScale", "completedWaypointOpacity", "currentWaypointOpacity", "labelBackdropOpacity", "labelDetailDistance", "labelDetailOnDemand", "labelShowCoordinates", "labelShowRouteName", "preventLabelOverlap", "routeLineDashed", "routeLineOpacity", "routeLineWidth", "sequenceContextOpacity", "showWaypointRoleBadge", "tracerCenterGap", "tracerEdgeArrow", "upcomingWaypointOpacity", "waypointIcon",
             "crystalHollowsCompassRays",
-            "minimapScale", "minimapCustomPosition", "minimapPositionX", "minimapPositionY", // Edited on screen.
-            "crystalHollowsDetections", // One local map exposed as individual structure toggles.
+            "minimapScale", "minimapCustomPosition", "minimapPositionX", "minimapPositionY",
+            "crystalHollowsDetections",
             "waypointPainterPalette",
             "waypointPainterDefaultPalette",
             "waypointPainterDefaultPixels");
@@ -468,10 +468,6 @@ class SettingsCatalogTest {
                         "waypointOutlineThickness"),
                 appearance.groups().getFirst().settings().stream().map(Setting::id).toList());
     }
-
-
-
-
 
     @Test
     void clampedNumberSettingsDeclareTheSameInputBounds() {

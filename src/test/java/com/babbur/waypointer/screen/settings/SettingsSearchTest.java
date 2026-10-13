@@ -158,7 +158,7 @@ class SettingsSearchTest {
         Map<String, String> french = Map.of(
                 "waypointer.screen.settings.config.copy", "Copier le code",
                 "waypointer.screen.settings.config.import", "Importer le code",
-                "waypointer.screen.settings.preset.nothing", "Tout dÃ©sactiver");
+                "waypointer.screen.settings.preset.nothing", "Tout désactiver");
         SettingsSearch.TranslationResolver resolver =
                 (key, fallback) -> french.getOrDefault(key, fallback);
 
@@ -168,7 +168,7 @@ class SettingsSearchTest {
                             .getFirst().setting().id());
         }
         assertEquals(SettingsCatalog.ACTION_PRESETS,
-                SettingsSearch.search("tout dÃ©sactiver", SettingsCatalog.categories(), resolver)
+                SettingsSearch.search("tout désactiver", SettingsCatalog.categories(), resolver)
                         .getFirst().setting().id());
     }
 

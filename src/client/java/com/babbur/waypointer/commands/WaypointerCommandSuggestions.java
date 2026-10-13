@@ -2,7 +2,6 @@ package com.babbur.waypointer.commands;
 
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
-import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.config.Storage;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -185,35 +184,35 @@ final class WaypointerCommandSuggestions {
             Zone zone = manager.currentZone();
             if (zone != null) {
                 CommandHelpers.suggestText(builder, "Route -- " + zone.displayName().toLowerCase(Locale.ROOT),
-                        "default route name for current zone");
+                        Component.translatable("waypointer.command.suggest.route_name.zone"));
             }
-            CommandHelpers.suggestText(builder, "Route", "generic route name");
+            CommandHelpers.suggestText(builder, "Route", Component.translatable("waypointer.command.suggest.route_name.generic"));
             return builder.buildFuture();
         };
     }
 
     SuggestionProvider<FabricClientCommandSource> suggestLoadModes() {
         return (ctx, builder) -> {
-            CommandHelpers.suggestText(builder, "sequence", "show previous/current/next route points");
-            CommandHelpers.suggestText(builder, "static", "show every waypoint at once");
+            CommandHelpers.suggestText(builder, "sequence", Component.translatable("waypointer.command.suggest.load_mode.sequence"));
+            CommandHelpers.suggestText(builder, "static", Component.translatable("waypointer.command.suggest.load_mode.static"));
             return builder.buildFuture();
         };
     }
 
     SuggestionProvider<FabricClientCommandSource> suggestColorModes() {
         return (ctx, builder) -> {
-            CommandHelpers.suggestText(builder, "gradient", "auto color waypoints between endpoints");
-            CommandHelpers.suggestText(builder, "manual", "keep per-waypoint colors");
-            CommandHelpers.suggestText(builder, "one", "use one route color");
+            CommandHelpers.suggestText(builder, "gradient", Component.translatable("waypointer.command.suggest.color_mode.gradient"));
+            CommandHelpers.suggestText(builder, "manual", Component.translatable("waypointer.command.suggest.color_mode.manual"));
+            CommandHelpers.suggestText(builder, "one", Component.translatable("waypointer.command.suggest.color_mode.one"));
             return builder.buildFuture();
         };
     }
 
     SuggestionProvider<FabricClientCommandSource> suggestToggleStates() {
         return (ctx, builder) -> {
-            CommandHelpers.suggestText(builder, "toggle", "flip current state");
-            CommandHelpers.suggestText(builder, "on", "turn on");
-            CommandHelpers.suggestText(builder, "off", "turn off");
+            CommandHelpers.suggestText(builder, "toggle", Component.translatable("waypointer.command.suggest.toggle.toggle"));
+            CommandHelpers.suggestText(builder, "on", Component.translatable("waypointer.command.suggest.toggle.on"));
+            CommandHelpers.suggestText(builder, "off", Component.translatable("waypointer.command.suggest.toggle.off"));
             return builder.buildFuture();
         };
     }
@@ -222,7 +221,7 @@ final class WaypointerCommandSuggestions {
         return (ctx, builder) -> {
             Zone current = manager.currentZone();
             if (current != null) {
-                CommandHelpers.suggestText(builder, "current", "current area: " + current.displayName());
+                CommandHelpers.suggestText(builder, "current", Component.translatable("waypointer.command.suggest.zone.current", current.displayName()));
                 CommandHelpers.suggestText(builder, current.id(), current.displayName());
             }
             for (String zoneId : manager.knownZoneIds()) {
@@ -234,9 +233,9 @@ final class WaypointerCommandSuggestions {
 
     SuggestionProvider<FabricClientCommandSource> suggestHexColors() {
         return (ctx, builder) -> {
-            CommandHelpers.suggestText(builder, "4FE05A", "Waypointer green");
-            CommandHelpers.suggestText(builder, "00BFFF", "cool route start");
-            CommandHelpers.suggestText(builder, "FF3040", "hot route end");
+            CommandHelpers.suggestText(builder, "4FE05A", Component.translatable("waypointer.command.suggest.color.green"));
+            CommandHelpers.suggestText(builder, "00BFFF", Component.translatable("waypointer.command.suggest.color.cool"));
+            CommandHelpers.suggestText(builder, "FF3040", Component.translatable("waypointer.command.suggest.color.hot"));
             return builder.buildFuture();
         };
     }

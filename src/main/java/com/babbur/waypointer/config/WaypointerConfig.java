@@ -54,6 +54,7 @@ public final class WaypointerConfig {
     private static final int SECONDS_PER_MINUTE = 60;
 
     private Map<String, WaypointStyle> namedStyles = new LinkedHashMap<>();
+    private Map<String, WaypointStyle> zoneStyles = new LinkedHashMap<>();
     private String preferredStyleId = "";
     private Map<String, WaypointStyle> crystalHollowsStyles = new LinkedHashMap<>();
     transient boolean resolvedStyleSnapshot;
@@ -82,7 +83,7 @@ public final class WaypointerConfig {
 
     private int configSchemaVersion = CONFIG_SCHEMA_VERSION;
     private double defaultReachRadius = Waypoint.DEFAULT_REACH_RADIUS;
-    // Edit mode targets the first block along the view ray; a miss places the waypoint at this distance.
+
     private double editModePlacementReach = DEFAULT_EDIT_MODE_PLACEMENT_REACH;
     private boolean resetProgressOnWorldJoin = true;
     private boolean restartRouteWhenComplete = true;
@@ -191,7 +192,7 @@ public final class WaypointerConfig {
     private boolean coordinateShareHelper = true;
     private boolean crystalHollowsMetalDetector = true;
     private boolean crystalHollowsRemoteSharing = true;
-    // Local preference: never exported in the settings codec or copied from shared settings.
+
     private boolean crystalHollowsSkyblockerSharing = true;
     private boolean crystalHollowsWishingCompassSolver = true;
     private boolean crystalHollowsCompassRays = true;
@@ -214,7 +215,6 @@ public final class WaypointerConfig {
     private transient IOException writeBlockCause;
     private transient volatile boolean writesBlockedForFutureSchema;
 
-    /** WPC 1-4 defaults: omitted export toggles meant true. Set directly to avoid saving during decode. */
     static WaypointerConfig legacyConfigCodeDefaults() {
         WaypointerConfig config = new WaypointerConfig();
         config.exportIncludeNames = true;
@@ -268,6 +268,7 @@ public final class WaypointerConfig {
         }
         JsonObject root = JsonParser.parseString(raw).getAsJsonObject();
         JsonElement savedNamedStyles = root.remove("namedStyles");
+        JsonElement savedZoneStyles = root.remove("zoneStyles");
         JsonElement savedStructureStyles = root.remove("crystalHollowsStyles");
         JsonElement savedPreferredStyle = root.remove("preferredStyleId");
         JsonElement savedDetections = root.remove("crystalHollowsDetections");
@@ -279,9 +280,10 @@ public final class WaypointerConfig {
         config.migrateSequenceVisibility(raw, loadedSchemaVersion);
         config.migrateEtherwarpAlignmentSound(raw, loadedSchemaVersion);
         config.applyMigrations(loadedSchemaVersion);
-        // Preserve existing customized backdrops when separating text and background opacity.
+
         if (!root.has("labelBackdropOpacity")) config.labelBackdropOpacity = config.labelOpacity();
         config.namedStyles = readStyles(savedNamedStyles);
+        config.zoneStyles = readStyles(savedZoneStyles);
         config.crystalHollowsStyles = readStyles(savedStructureStyles);
         config.preferredStyleId = savedPreferredStyle != null && savedPreferredStyle.isJsonPrimitive()
                 ? savedPreferredStyle.getAsString() : "";
@@ -446,6 +448,9 @@ public final class WaypointerConfig {
 
     private void normalizeStylePreferences() {
         if (namedStyles == null) namedStyles = new LinkedHashMap<>();
+        if (zoneStyles == null) zoneStyles = new LinkedHashMap<>();
+        zoneStyles.entrySet().removeIf(entry -> entry.getKey() == null || entry.getValue() == null
+                || entry.getValue().isEmpty());
         if (crystalHollowsStyles == null) crystalHollowsStyles = new LinkedHashMap<>();
         namedStyles.entrySet().removeIf(entry -> entry.getKey() == null || entry.getValue() == null);
         crystalHollowsStyles.entrySet().removeIf(entry -> entry.getKey() == null || entry.getValue() == null);
@@ -476,6 +481,19 @@ public final class WaypointerConfig {
     public void removeNamedStyle(String id) {
         namedStyles.remove(id);
         if (preferredStyleId.equals(id)) preferredStyleId = "";
+        save();
+    }
+
+    public WaypointStyle zoneStyle(String zoneKey) {
+        return zoneKey == null ? WaypointStyle.EMPTY : zoneStyles.getOrDefault(zoneKey, WaypointStyle.EMPTY);
+    }
+    public Map<String, WaypointStyle> zoneStyles() {
+        return java.util.Collections.unmodifiableMap(new LinkedHashMap<>(zoneStyles));
+    }
+    public void setZoneStyle(String zoneKey, WaypointStyle style) {
+        if (zoneKey == null || zoneKey.isBlank() || zoneKey.length() > 80) return;
+        if (style == null || style.isEmpty()) zoneStyles.remove(zoneKey);
+        else zoneStyles.put(zoneKey, style);
         save();
     }
     public WaypointStyle crystalHollowsStyle(String structureId) {
@@ -544,7 +562,7 @@ public final class WaypointerConfig {
     public void setPreventLabelOverlap(boolean value) { preventLabelOverlap = value; save(); }
     public boolean showWaypointRoleBadge() { return showWaypointRoleBadge; }
     public void setShowWaypointRoleBadge(boolean value) { showWaypointRoleBadge = value; save(); }
-    /** A drawn symbol: this prefix followed by 81 '0'/'1' cells, row by row, of the 9x9 label icon. */
+
     public static final String CUSTOM_ICON_PREFIX = "CUSTOM:";
     public static final int CUSTOM_ICON_SIZE = 9;
     private static final java.util.regex.Pattern CUSTOM_ICON = java.util.regex.Pattern.compile(
@@ -614,7 +632,6 @@ public final class WaypointerConfig {
             return quarantineFailure;
         }
     }
-
 
     public int configSchemaVersion()               { return configSchemaVersion; }
     public double defaultReachRadius()        { return Waypoint.normalizeDefaultRadius(defaultReachRadius); }
@@ -688,7 +705,7 @@ public final class WaypointerConfig {
         public double labelScale()                { return clamp(labelScale, 0.25, 4.0); }
     public boolean scaleWaypointTextWithDistance() { return scaleWaypointTextWithDistance; }
     public boolean matchWaypointTextToWaypointColor() { return matchWaypointTextToWaypointColor; }
-    /** Maps the old boolean API to previous-step visibility. */
+
     public int waypointSkipFadeMs() { return Math.max(0, Math.min(5000, waypointSkipFadeMs)); }
     public void setWaypointSkipFadeMs(int value) {
         waypointSkipFadeMs = Math.max(0, Math.min(5000, value));
@@ -904,7 +921,7 @@ public final class WaypointerConfig {
     }
     public void setScaleWaypointTextWithDistance(boolean v) { this.scaleWaypointTextWithDistance = v; save(); }
     public void setMatchWaypointTextToWaypointColor(boolean v) { this.matchWaypointTextToWaypointColor = v; save(); }
-    /** Maps the old boolean setting to the default previous-step window. */
+
     public void setShowCompleted(boolean v) {
         this.sequencePreviousWaypointCount = v ? SequenceVisibility.DEFAULT.previous() : 0;
         save();
@@ -1156,7 +1173,7 @@ public final class WaypointerConfig {
     public void replaceWith(WaypointerConfig replacement) {
         replaceShareableSettingsWith(replacement);
     }
-    /** Shared codes intentionally leave local style libraries and advanced appearance preferences intact. */
+
     public void replaceShareableSettingsWith(WaypointerConfig replacement) {
         if (replacement == null) return;
         configSchemaVersion = CONFIG_SCHEMA_VERSION;
@@ -1371,9 +1388,10 @@ public final class WaypointerConfig {
     }
     public void resetToDefaults() {
         WaypointerConfig defaults = new WaypointerConfig();
-        // Reset active preferences without deleting the reusable styles the user created.
+
         preferredStyleId = "";
         crystalHollowsStyles.clear();
+        zoneStyles.clear();
         routeMinRenderDistance = defaults.routeMinRenderDistance;
         routeMaxRenderDistance = defaults.routeMaxRenderDistance;
         routeLineWidth = defaults.routeLineWidth;

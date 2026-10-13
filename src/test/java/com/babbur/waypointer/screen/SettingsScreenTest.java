@@ -1,6 +1,10 @@
 package com.babbur.waypointer.screen;
 
 import com.babbur.waypointer.config.WaypointerConfig;
+import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.Waypoint;
+import com.babbur.waypointer.core.WaypointGroup;
+import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
 import com.babbur.waypointer.screen.settings.Setting;
 import com.babbur.waypointer.screen.settings.SettingsCatalog;
@@ -15,6 +19,50 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SettingsScreenTest {
+
+    @Test
+    void projectedRouteAppearanceWritesToTheSavedRouteAndUndoRestoresBoth() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointerConfig config = new WaypointerConfig();
+        WaypointGroup stored = WaypointGroup.create("Room route", "spider");
+        stored.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        stored.add(Waypoint.at(1, 2, 3));
+        manager.add(stored);
+        WaypointGroup mirror = new WaypointGroup(
+                DungeonRoomRouteProjection.generatedGroupId("spider"), "Room route", "spider");
+        mirror.setRuntimeOnly(true);
+        mirror.setRuntimeSourceGroupId(stored.id());
+        mirror.add(Waypoint.at(101, 2, 103));
+        manager.add(mirror);
+        var original = GroupEditScreen.RouteHistoryEntry.capture(manager, mirror);
+        AppearanceTarget target = AppearanceTarget.route(manager, config, mirror, () -> { });
+        WaypointerConfig draft = target.scope().effective();
+        draft.setLabelScale(2);
+        target.scope().capture(draft, "labelScale");
+        assertEquals("2.0", stored.styleOverride().values().get("labelScale"));
+        assertEquals(stored.styleOverride(), mirror.styleOverride());
+        assertEquals(1, config.labelScale());
+        assertNull(AppearanceTarget.waypoint(manager, config, mirror, 0, () -> { }));
+        original.restore(mirror);
+        assertTrue(stored.styleOverride().isEmpty());
+        assertTrue(mirror.styleOverride().isEmpty());
+    }
+
+    @Test
+    void waypointAppearanceOmitsRouteLineControls() {
+        ActiveGroupManager manager = new ActiveGroupManager();
+        WaypointGroup group = WaypointGroup.create("Route", "hub");
+        group.add(Waypoint.at(1, 2, 3));
+        manager.add(group);
+        AppearanceTarget target = AppearanceTarget.waypoint(manager, new WaypointerConfig(), group, 0, () -> { });
+        var settings = SettingsScreen.appearanceCategories(target::includes).stream()
+                .flatMap(category -> category.groups().stream())
+                .flatMap(section -> section.settings().stream()).map(Setting::id).toList();
+        for (String id : java.util.List.of("showRouteLines", "routeLineWidth", "routeLineOpacity", "routeLineDashed")) {
+            assertFalse(settings.contains(id), id);
+        }
+        assertTrue(settings.contains("labelScale"));
+    }
 
     @Test
     void unnamedDependentGroupsStayWithThePreviousNamedSection() {
@@ -149,7 +197,6 @@ class SettingsScreenTest {
         assertEquals(WaypointerConfig.BoxStyle.OUTLINED,
                 SettingsValuePolicy.nextEnumValue(boxStyle, "garbage"));
 
-
     }
 
     @Test
@@ -201,5 +248,27 @@ class SettingsScreenTest {
 
         assertEquals(setting.label(), tooltip.getString());
         assertEquals(TextColor.fromLegacyFormat(ChatFormatting.GRAY), tooltip.getStyle().getColor());
+    }
+    @Test
+    void scopedAppearanceListsOnlyStylePropertiesGroupedBySection() {
+        java.util.List<SettingsCatalog.Category> all = SettingsScreen.appearanceCategories(id -> true);
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (SettingsCatalog.Category category : all) {
+            for (SettingsCatalog.Group group : category.groups()) {
+                assertNull(group.label(), "the sidebar section names the group");
+                group.settings().forEach(setting -> ids.add(setting.id()));
+            }
+        }
+        assertTrue(com.babbur.waypointer.config.WaypointStyles.supportedProperties().containsAll(ids));
+        assertTrue(ids.contains("showTracer"));
+        assertTrue(ids.contains("hideWaypointsNearPlayer"), "appearance properties from other categories stay reachable");
+        assertFalse(ids.contains("renderAntialiasing"), "global-only render settings are not per-route");
+        assertEquals(SettingsScreen.SCOPED_SECTION_PREFIX + "waypoint_marker", all.getFirst().id());
+        assertEquals(SettingsScreen.SCOPED_VISIBILITY_ID, all.getLast().id());
+
+        java.util.List<SettingsCatalog.Category> waypointOnly =
+                SettingsScreen.appearanceCategories(id -> !id.equals("defaultWaypointColor"));
+        assertTrue(waypointOnly.stream().flatMap(c -> c.groups().stream())
+                .flatMap(g -> g.settings().stream()).noneMatch(s -> s.id().equals("defaultWaypointColor")));
     }
 }

@@ -11,7 +11,6 @@ import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
 import com.babbur.waypointer.dungeon.DungeonWaypointSkipRules;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
 import com.babbur.waypointer.input.WaypointAddFlow;
 import com.babbur.waypointer.input.WaypointerKeybinds;
@@ -521,9 +520,7 @@ final class WaypointerRouteCommands {
             return 0;
         }
 
-        group.setGradientMode(WaypointGroup.GradientMode.MANUAL);
-        Waypoint waypoint = group.get(index);
-        group.set(index, waypoint.withColor(color).withFlags(waypoint.flags() | Waypoint.FLAG_LOCKED_COLOR));
+        group.lockWaypointColor(index, color);
         manager.fireDataChanged();
         success(src, Component.translatable(
                 "waypointer.command.waypoint.color_set",

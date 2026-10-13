@@ -82,6 +82,14 @@ final class WaypointerGroupCommands {
                                         .executes(ctx -> runSetGroupZone(ctx.getSource(),
                                                 IntegerArgumentType.getInteger(ctx, "index"),
                                                 StringArgumentType.getString(ctx, "zone"))))))
+                .then(literal("target")
+                        .executes(ctx -> runShowAddTarget(ctx.getSource()))
+                        .then(literal("clear")
+                                .executes(ctx -> runClearAddTarget(ctx.getSource())))
+                        .then(argument("index", IntegerArgumentType.integer(0))
+                                .suggests(suggestions.suggestAllGroupIndices())
+                                .executes(ctx -> runSetAddTarget(ctx.getSource(),
+                                        IntegerArgumentType.getInteger(ctx, "index")))))
                 .then(literal("mode")
                         .then(argument("index", IntegerArgumentType.integer(0))
                                 .suggests(suggestions.suggestAllGroupIndices())
@@ -171,6 +179,37 @@ final class WaypointerGroupCommands {
         manager.fireDataChanged();
         success(src, Component.translatable(
                 "waypointer.command.route.renamed", index, group.name()));
+        return 1;
+    }
+
+    int runSetAddTarget(FabricClientCommandSource src, int index) {
+        WaypointGroup group = groupAtIndexOrError(src, index);
+        if (group == null) return 0;
+        if (group.temp() || group.runtimeOnly()) {
+            error(src, Component.translatable("waypointer.command.route.target_unavailable", group.name()));
+            return 0;
+        }
+        manager.setRecordingTarget(group);
+        success(src, Component.translatable("waypointer.command.route.target_set", index, group.name()));
+        return 1;
+    }
+
+    int runClearAddTarget(FabricClientCommandSource src) {
+        manager.setRecordingTarget(null);
+        success(src, Component.translatable("waypointer.command.route.target_cleared"));
+        return 1;
+    }
+
+    int runShowAddTarget(FabricClientCommandSource src) {
+        WaypointGroup pinned = manager.recordingTarget();
+        WaypointGroup next = manager.activeRouteGroupOrNull();
+        if (pinned != null) {
+            success(src, Component.translatable("waypointer.command.route.target_pinned", pinned.name()));
+        } else if (next != null) {
+            success(src, Component.translatable("waypointer.command.route.target_current", next.name()));
+        } else {
+            success(src, Component.translatable("waypointer.command.route.target_new"));
+        }
         return 1;
     }
 

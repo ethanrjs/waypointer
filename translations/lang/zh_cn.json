@@ -847,7 +847,6 @@
   "waypointer.screen.group_edit.publish": "发布",
   "waypointer.screen.group_edit.publish.tooltip": "将此路线发布到目录。",
   "waypointer.screen.route_catalog.title": "路线目录",
-  "waypointer.screen.route_catalog.subtitle": "查找并安装社区路线",
   "waypointer.screen.route_catalog.search": "搜索路线",
   "waypointer.screen.route_catalog.search.hint": "按名称、发布者或区域搜索",
   "waypointer.screen.route_catalog.refresh": "刷新",

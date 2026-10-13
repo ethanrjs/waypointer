@@ -845,7 +845,6 @@
   "waypointer.screen.group_edit.publish": "게시",
   "waypointer.screen.group_edit.publish.tooltip": "이 경로를 카탈로그에 게시합니다.",
   "waypointer.screen.route_catalog.title": "경로 카탈로그",
-  "waypointer.screen.route_catalog.subtitle": "커뮤니티 경로를 찾아 설치하세요",
   "waypointer.screen.route_catalog.search": "경로 검색",
   "waypointer.screen.route_catalog.search.hint": "이름, 게시자 또는 구역으로 검색",
   "waypointer.screen.route_catalog.refresh": "새로 고침",

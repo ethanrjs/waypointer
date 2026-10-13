@@ -3,6 +3,7 @@ package com.babbur.waypointer.screen;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
@@ -194,7 +195,6 @@ final class WaypointerRouteList {
         return filtered;
     }
 
-    /** Selection restricted to rows the user can actually see (collapsed folders excluded). */
     List<WaypointGroup> selectedVisibleGroups() {
         List<WaypointGroup> selectedGroups = new ArrayList<>();
         if (screen.selectedGroupIds.isEmpty()) return selectedGroups;
@@ -207,7 +207,6 @@ final class WaypointerRouteList {
         return selectedGroups;
     }
 
-    /** Collapse rows without clearing the route selection. */
     void toggleFolderCollapsed(RouteFolder folder) {
         if (folder == null) return;
         screen.manager.toggleFolderCollapsed(folder.id());
@@ -614,7 +613,7 @@ final class WaypointerRouteList {
                 insertion = i + 1;
             }
         }
-        // A null row reserves the actual destination without changing saved order during a drag.
+
         if (insertion < 0) {
             insertion = source.routeKind() == WaypointGroup.RouteKind.REGULAR
                     && dropTarget.folderId == null ? preview.size()
@@ -741,7 +740,6 @@ final class WaypointerRouteList {
                 textX, y1 + 9, TEXT_MUTED, false);
     }
 
-    /** Space on the focused row: the keyboard twin of the Shown/Hidden chip. */
     private void spaceActivateRow(int index) {
         List<Row> rows = rows();
         if (index < 0 || index >= rows.size()) return;
@@ -755,7 +753,6 @@ final class WaypointerRouteList {
         }
     }
 
-    /** Screen coordinates of a row's bottom-left corner, for anchoring the context menu. */
     int rowMenuAnchorY(int index) {
         WaypointerScreen.Layout layout = screen.layoutForRouteList();
         return rowsTop(layout.top()) - screen.scrollOffset + index * ROW_PITCH + ROW_H + 2;
@@ -1032,12 +1029,34 @@ final class WaypointerRouteList {
 
     private String routeRowSubtitle(WaypointGroup group) {
         if (group.temp()) {
-            return group.size() + " waypoints · " + displayZoneLabel(group.zoneId());
+            return Component.translatable("waypointer.screen.main.route.subtitle.temp",
+                    group.size(), displayZoneLabel(group.zoneId())).getString();
         }
-        if (group.isEmpty()) return "empty · double-click to add waypoints";
-        return group.size() + " waypoints · " + RouteProgress.summary(group)
-                + " · " + (group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
-                ? "step by step" : "all shown");
+        if (group.isEmpty()) {
+            return Component.translatable("waypointer.screen.main.route.subtitle.empty").getString();
+        }
+        String subtitle = Component.translatable("waypointer.screen.main.route.subtitle",
+                group.size(), progressSummary(group),
+                Component.translatable(group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
+                        ? "waypointer.screen.main.route.mode.sequence"
+                        : "waypointer.screen.main.route.mode.static")).getString();
+        if (WaypointStyles.setCount(group.styleOverride()) > 0 || !group.stylePresetId().isBlank()) {
+            subtitle += Component.translatable("waypointer.screen.main.route.subtitle.custom_look").getString();
+        }
+        return subtitle;
+    }
+
+    private static String progressSummary(WaypointGroup group) {
+        RouteProgress.Snapshot snapshot = RouteProgress.snapshot(group);
+        if (snapshot.total == 0) {
+            return Component.translatable("waypointer.screen.main.route.progress.none").getString();
+        }
+        if (snapshot.complete) {
+            return Component.translatable("waypointer.screen.main.route.progress.complete").getString();
+        }
+        return Component.translatable("waypointer.screen.main.route.progress",
+                snapshot.completed, snapshot.total,
+                String.format(java.util.Locale.ROOT, "%.1f", snapshot.percentComplete)).getString();
     }
 
     private Font font() {

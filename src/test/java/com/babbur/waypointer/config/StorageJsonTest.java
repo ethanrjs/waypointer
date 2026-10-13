@@ -21,7 +21,6 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Tests storage helpers directly to avoid FabricLoader initialization. */
 class StorageJsonTest {
 
     @Test
@@ -41,6 +40,32 @@ class StorageJsonTest {
         frames.remove(1);
         frames.remove(0);
         assertThrows(IllegalArgumentException.class, () -> Storage.paintFromJson(paint));
+    }
+
+    @Test
+    void styleKeysFromANewerVersionSurviveLoadAndSave() {
+        WaypointGroup group = WaypointGroup.create("Styled", "hub");
+        group.add(Waypoint.at(1, 2, 3));
+        JsonObject encoded = Storage.groupToJson(group);
+        JsonObject style = new JsonObject();
+        style.addProperty("showTracer", "true");
+        style.addProperty("labelScale", "not-a-number");
+        style.addProperty("futureGlowRadius", "3");
+        style.addProperty("crystalHollowsSkyblockerSharing", "true");
+        encoded.add("styleOverride", style);
+        encoded.getAsJsonArray("waypoints").get(0).getAsJsonObject().add("styleOverride", style.deepCopy());
+
+        WaypointGroup loaded = Storage.groupFromJson(encoded);
+        JsonObject saved = Storage.groupToJson(loaded);
+
+        for (JsonObject savedStyle : List.of(saved.getAsJsonObject("styleOverride"),
+                saved.getAsJsonArray("waypoints").get(0).getAsJsonObject().getAsJsonObject("styleOverride"))) {
+            assertEquals("true", savedStyle.get("showTracer").getAsString());
+            assertEquals("3", savedStyle.get("futureGlowRadius").getAsString());
+            assertFalse(savedStyle.has("labelScale"), "invalid values of known properties are still dropped");
+            assertFalse(savedStyle.has("crystalHollowsSkyblockerSharing"), "styles never carry behaviour settings");
+        }
+        assertEquals(1, WaypointStyles.setCount(loaded.styleOverride()));
     }
 
     @TempDir
@@ -180,7 +205,7 @@ class StorageJsonTest {
 
     @Test
     void attached_save_snapshots_live_state_at_pump_time() throws Exception {
-        // Taking the snapshot at pump time includes direct group edits that emit no event.
+
         ActiveGroupManager manager = new ActiveGroupManager();
         Path file = tempDir.resolve("waypoints.json");
         Storage storage = new Storage(file);
@@ -275,7 +300,7 @@ class StorageJsonTest {
 
     @Test
     void aBurstOfPersistentChangesCostsOneSnapshot() {
-        // Bulk route operations emit one event per route; the pump must coalesce snapshots.
+
         ActiveGroupManager manager = new ActiveGroupManager();
         Storage storage = new Storage(tempDir.resolve("waypoints.json"));
         storage.attach(manager);
@@ -452,7 +477,7 @@ class StorageJsonTest {
     @Test
     void group_perGroupGradientEndpointsRoundTrip() {
         WaypointGroup g = WaypointGroup.create("palette", "galatea");
-        // MANUAL isolates endpoint persistence from gradient application.
+
         g.setGradientMode(WaypointGroup.GradientMode.MANUAL);
         g.setGradientStartColor(0x112233);
         g.setGradientEndColor(0xFEDCBA);
@@ -648,7 +673,7 @@ class StorageJsonTest {
         g.add(Waypoint.at(1, 10, 1).withName("a"));
         g.add(Waypoint.at(2, 10, 2).withName("b"));
         g.add(Waypoint.at(3, 10, 3).withName("c"));
-        g.advancePast(1); // currentIndex = 2
+        g.advancePast(1);
 
         JsonObject json = Storage.groupToJson(g);
         WaypointGroup copy = Storage.groupFromJson(json);

@@ -8,7 +8,6 @@ import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.core.ActiveGroupManager;
-import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.SequenceRoleColor;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
@@ -16,15 +15,9 @@ import com.babbur.waypointer.core.SequenceVisibility;
 import com.babbur.waypointer.core.WaypointPaint;
 import com.babbur.waypointer.core.WaypointVisibility;
 import com.babbur.waypointer.dungeon.config.DungeonConfig;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
-import com.babbur.waypointer.input.WaypointRepositionMode;
-import com.babbur.waypointer.text.AmpersandFormatting;
 import net.fabricmc.fabric.api.client.rendering.v1.level.LevelRenderContext;
 import net.minecraft.client.Camera;
-import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.Font;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.blockentity.BeaconRenderer;
@@ -42,11 +35,8 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.VoxelShape;
 
-import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.function.IntPredicate;
 import java.util.function.IntConsumer;
 import java.util.function.Predicate;
@@ -140,7 +130,6 @@ class WaypointWorldRenderer {
         this.dungeonConfig = dungeonConfig;
     }
 
-
     public static AABB waypointBoxBounds(ClientLevel level, Waypoint waypoint) {
         if (waypoint == null) return null;
         double[] bounds = new double[6];
@@ -161,7 +150,6 @@ class WaypointWorldRenderer {
         out[2] = centerZ;
     }
 
-    // Keep 100% opacity fully opaque.
     protected static final float FILLED_ALPHA_SCALE = 1.0f;
     protected static final float PAINTED_ALPHA_SCALE = 1.0f;
     protected static final float BEAM_ALPHA_SCALE = 0.18f;
@@ -180,13 +168,12 @@ class WaypointWorldRenderer {
         long frameToken = RenderDiagnostics.beginFrame(groups, config, irisHudFallbackActive);
         clearPreparedDungeonEntryPaths();
 
-        // Retained mode emits through its own sink and stable origin.
         if (com.babbur.waypointer.render.gpu.OverlayRenderer.ownsWorldGeometry()) {
             prepareDungeonEntryPathsForRetained(
                     ctx, frameToken, groups, irisHudFallbackActive);
             return;
         }
-        // Keep textures alive for queued 26.2 draws.
+
         reserveActivePaints(groups);
         if (groups.isEmpty()) return;
 
@@ -199,7 +186,6 @@ class WaypointWorldRenderer {
                 irisHudFallbackActive);
     }
 
-    /** Emits world geometry relative to the supplied origin. */
     boolean emitWorldGeometry(LevelRenderContext ctx, PoseStack ps, GeometrySink sink,
                               Vec3 origin, boolean irisHudFallbackActive) {
         var groups = manager.activeGroups();
@@ -246,7 +232,6 @@ class WaypointWorldRenderer {
         try {
             ps.translate(-origin.x, -origin.y, -origin.z);
 
-        // Starting a fill batch invalidates the shared line consumer, so flush fills first.
         if (drawTexturedBeams && hasThroughWallWaypoints) {
             RenderType beamType = WaypointerRenderPipelines.beaconBeamThroughWalls();
             int minY = beamMinY(mc);
@@ -439,7 +424,7 @@ class WaypointWorldRenderer {
     private void prepareDungeonEntryPathsForRetained(
             LevelRenderContext ctx, long frameToken, List<WaypointGroup> groups,
             boolean irisHudFallbackActive) {
-        // Empty capture falls back to a straight tracer without rerunning the pathfinder.
+
         preparedDungeonEntryPaths = new PreparedDungeonEntryPaths(
                 frameToken, ctx, List.of());
         if (ctx == null || groups == null || groups.isEmpty()
@@ -807,7 +792,6 @@ class WaypointWorldRenderer {
         return shouldRenderDepthCheckedWaypoint(mc, level, waypoint);
     }
 
-    /** Hashes the cached line-of-sight results that affect retained geometry. */
     long depthVisibilityFingerprint(Iterable<WaypointGroup> groups, Minecraft mc,
                                     ClientLevel level, Vec3 camPos) {
         if (mc == null || level == null || camPos == null
@@ -849,7 +833,6 @@ class WaypointWorldRenderer {
         hash[0] = mixed ^ (mixed >>> 27);
     }
 
-    /** Hashes distance and near-hide decisions that affect retained geometry. */
     long worldVisibilityFingerprint(Iterable<WaypointGroup> groups, Vec3 camPos, Vec3 playerPos) {
         if (camPos == null || !staticGeometryEnabledFor(groups)) return 0L;
         double maxStaticDistanceSq = squaredDistanceLimit(config.maxStaticWaypointRenderDistance());
@@ -908,7 +891,6 @@ class WaypointWorldRenderer {
         return WaypointPaintTextureCache.reserveForActivePaints(activePaintScratch);
     }
 
-    /** Hashes level-dependent marker bounds. */
     long blockShapeFingerprint(Iterable<WaypointGroup> groups, ClientLevel level,
                                Vec3 camPos, Vec3 playerPos) {
         if (groups == null || level == null || camPos == null
@@ -1055,7 +1037,6 @@ class WaypointWorldRenderer {
         return false;
     }
 
-    /** Like {@link #hasPaintedGroup} but honoring each resolved box style. */
     private boolean anyPainted(Iterable<WaypointGroup> groups, WaypointPaint defaultPaint) {
         for (WaypointGroup group : groups) {
             if (paintFor(group, defaultPaint) != null && !group.isEmpty()) return true;
@@ -1075,7 +1056,6 @@ class WaypointWorldRenderer {
         return effectivePaint(group, defaultPaint, false);
     }
 
-    /** Painted box styles use a missing-texture placeholder when no paint is available. */
     static WaypointPaint effectivePaint(WaypointGroup group, WaypointPaint defaultPaint, boolean paintStyle) {
         WaypointPaint happySnowmanPaint = HappySnowmanSession.facePaint();
         if (happySnowmanPaint != null) return happySnowmanPaint;
@@ -1441,7 +1421,6 @@ class WaypointWorldRenderer {
                 y1, y2, waypointColor, alpha, animationTime, radiusScale, config);
     }
 
-    /** Emits the same beam used in-world. animationTime is speed-adjusted with beaconAnimationTime. */
     public static void emitStyledBeacon(VertexConsumer consumer, PoseStack ps,
                                          float cx, float cz, float y1, float y2, int waypointColor,
                                          float alpha, float animationTime, float radiusScale,
@@ -1575,7 +1554,6 @@ class WaypointWorldRenderer {
         return mc.level == null ? DEFAULT_MAX_BUILD_Y : mc.level.getMaxY();
     }
 
-
     static boolean worldRenderOpacityAllowsAnything(double fillOpacity, double outlineOpacity,
                                                      boolean drawLines, boolean drawRouteLines,
                                                      boolean drawDungeonEntryPaths) {
@@ -1584,7 +1562,6 @@ class WaypointWorldRenderer {
                 || drawRouteLines
                 || drawDungeonEntryPaths;
     }
-
 
     static WaypointerConfig.BoxStyle hudFallbackBoxStyle(WaypointerConfig.BoxStyle style) {
         return style == WaypointerConfig.BoxStyle.FILLED
@@ -1624,7 +1601,6 @@ class WaypointWorldRenderer {
                 fallbackColor);
     }
 
-
     public static State stateFor(WaypointGroup group, int i, int currentIdx) {
         return stateFor(group, i, currentIdx, group.activeSubwaypointParentIndex());
     }
@@ -1649,7 +1625,7 @@ class WaypointWorldRenderer {
                                                 int currentIdx, State state,
                                                 boolean showCompleted, Waypoint waypoint) {
         WaypointSkipFade fade = WaypointSkipFade.get(group);
-        if (fade != null && fade.isOutgoing(index)
+        if (fade != null && (fade.isOutgoing(index) || fade.fadingOut().contains(index))
                 && !shouldForceHideReachedWaypoint(index, currentIdx, waypoint)) return false;
         return shouldHideCompletedSequenceWaypoint(index, currentIdx, state, showCompleted, waypoint);
     }
@@ -1764,6 +1740,9 @@ class WaypointWorldRenderer {
         if (!fade.outgoingNormallyVisible && group.isWaypointEnabled(fade.outgoing())) {
             action.accept(fade.outgoing());
         }
+        for (int index : fade.fadingOut()) {
+            if (group.isWaypointEnabled(index)) action.accept(index);
+        }
     }
 
     float alphaFor(WaypointGroup group, int index, State state) {
@@ -1789,7 +1768,7 @@ class WaypointWorldRenderer {
         };
         if (config.dimSequenceContextWaypoints() && group != null
                 && group.loadMode() == WaypointGroup.LoadMode.SEQUENCE && state != State.CURRENT) {
-            // Dimming replaces the role opacity so the prev/next opacity slider always takes effect.
+
             alpha = (float) config.sequenceContextOpacity();
         }
         return alpha;
@@ -1834,7 +1813,7 @@ class WaypointWorldRenderer {
                     config.routeLineColor(), alpha, width);
             return;
         }
-        // Cap long connectors at 2048 dashes to bound geometry.
+
         int count = (int) Math.min(2048, Math.ceil(length));
         double period = Math.max(1, length / count);
         Vec3 direction = end.subtract(start).scale(1 / length);
@@ -1849,7 +1828,6 @@ class WaypointWorldRenderer {
         }
     }
 
-    /** Bounds are min XYZ / max XYZ with marker scale already applied; alpha is the state/fade alpha. */
     public static void emitStyledMarker(VertexConsumer vertices, PoseStack pose, double[] bounds,
                                          int color, float alpha, WaypointerConfig config, boolean outlinePass) {
         if (alpha * (outlinePass ? config.waypointOutlineOpacity() : config.beaconOpacity()) <= 0) return;
@@ -1874,11 +1852,9 @@ class WaypointWorldRenderer {
         return state.alpha;
     }
 
-
     private float effectiveOutlineThickness() {
         return (float) config.waypointOutlineThickness();
     }
-
 
     public enum State {
         COMPLETED(0.25f),

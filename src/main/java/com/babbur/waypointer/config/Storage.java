@@ -43,7 +43,7 @@ public final class Storage {
     private AsyncSaver saver;
     private ActiveGroupManager managerRef;
     private volatile String pendingSnapshotJson;
-    /** Defers snapshot creation so a burst of changes is serialized once per client tick. */
+
     private boolean snapshotStale;
     private int snapshotCount;
     private volatile int writeCount;
@@ -73,7 +73,7 @@ public final class Storage {
                 size = Files.size(file);
                 modifiedAtMillis = Files.getLastModifiedTime(file).toMillis();
             } catch (IOException ignored) {
-                // A concurrent file replacement can make metadata unavailable.
+
             }
         }
         return new DebugSnapshot(file.getFileName().toString(), exists, size, modifiedAtMillis,
@@ -144,10 +144,6 @@ public final class Storage {
         if (saver != null) saver.flush();
     }
 
-    /**
-     * Creates a snapshot on the manager's client thread and schedules its write.
-     * Call this once per client tick.
-     */
     public void pumpPendingSnapshot() {
         if (!snapshotStale) return;
         ActiveGroupManager manager = managerRef;
@@ -183,7 +179,6 @@ public final class Storage {
         }
     }
 
-    /** Writes and forces the bytes to disk so a crash after the rename never leaves a truncated file. */
     static void writeDurably(Path target, String json) throws IOException {
         try (java.nio.channels.FileChannel channel = java.nio.channels.FileChannel.open(target,
                 java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.TRUNCATE_EXISTING,
@@ -435,7 +430,7 @@ public final class Storage {
                 g.setCatalogProvenance(catalogProvenanceFromJson(
                         o.getAsJsonObject("catalogSource")));
             } catch (RuntimeException invalidProvenance) {
-                // Bad optional provenance must not make a route unreadable.
+
                 Waypointer.LOGGER.warn(
                         "Ignoring invalid catalog provenance for group {}", id,
                         invalidProvenance);
@@ -455,7 +450,7 @@ public final class Storage {
             g.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
         }
         if (o.has("skipAheadEnabled")) g.setSkipAheadEnabled(o.get("skipAheadEnabled").getAsBoolean());
-        // These fields are optional for files written before gradient endpoints existed.
+
         if (o.has("gradientStartColor")) g.setGradientStartColor(o.get("gradientStartColor").getAsInt());
         if (o.has("gradientEndColor"))   g.setGradientEndColor(o.get("gradientEndColor").getAsInt());
         if (o.has("paintEnabled")) g.setPaintEnabled(o.get("paintEnabled").getAsBoolean());
@@ -463,7 +458,7 @@ public final class Storage {
             try {
                 g.setPaint(paintFromJson(o.getAsJsonObject("paint")));
             } catch (RuntimeException invalidPaint) {
-                // Invalid optional paint data must not quarantine valid routes.
+
                 Waypointer.LOGGER.warn("Ignoring invalid waypoint paint for group {}", id, invalidPaint);
             }
         }
@@ -559,10 +554,10 @@ public final class Storage {
         if (value == null || !value.isJsonObject()) return WaypointStyle.EMPTY;
         java.util.Map<String, String> values = new java.util.LinkedHashMap<>();
         value.getAsJsonObject().entrySet().forEach(entry -> {
-            if (entry.getValue().isJsonPrimitive() && WaypointStyles.supportedProperties().contains(entry.getKey()))
+            if (entry.getValue().isJsonPrimitive())
                 values.put(entry.getKey(), entry.getValue().getAsString());
         });
-        return WaypointStyles.normalize(new WaypointStyle(values));
+        return WaypointStyles.normalizeKeepingUnknown(new WaypointStyle(values));
     }
 
     static JsonObject paintToJson(WaypointPaint paint) {

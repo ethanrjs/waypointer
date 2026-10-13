@@ -10,19 +10,17 @@ plugins {
 }
 
 def minecraftTargets = [
-		'26.1.2': [fabricApi: '0.154.2+26.1.2', dependency: '>=26.1 <26.2'],
-		'26.2'  : [fabricApi: '0.154.2+26.2',   dependency: '>=26.2 <26.3']
+		'26.2': [fabricApi: '0.154.2+26.2', dependency: '>=26.2 <26.3']
 ]
 def targetMinecraft = project.minecraft_version.toString()
 def target = minecraftTargets[targetMinecraft]
 if (target == null) {
 	throw new GradleException("Unsupported minecraft_version ${targetMinecraft}; use ${minecraftTargets.keySet().join(' or ')}")
 }
-// Opt-in native shader checks use the same disposable client as ordinary smoke tests.
+
 def shaderPack = providers.gradleProperty('shaderPack').map { file(it) }
 def shaderTestMods = [
-		'26.1.2': [iris: '5H9TsVy4', sodium: 'vf7UgZpC'],
-		'26.2'  : [iris: 'oaD6KQls', sodium: '2Yom1N68']
+		'26.2': [iris: 'oaD6KQls', sodium: '2Yom1N68']
 ]
 if (shaderPack.isPresent() && (!shaderPack.get().isFile()
 		|| !shaderPack.get().name.toLowerCase(Locale.ROOT).endsWith('.zip'))) {
@@ -43,15 +41,9 @@ forwardedBuildArguments += "--max-workers=${gradle.startParameter.maxWorkerCount
 if (allowStaleDocumentation.get()) {
 	forwardedBuildArguments += '-PallowStaleDocumentation=true'
 }
-def buildMinecraft26_1_2 = tasks.register('buildMinecraft26_1_2', Exec) {
-	commandLine(wrapperCommand
-			+ ['clean', 'build', '-Pminecraft_version=26.1.2', '--console=plain']
-			+ forwardedBuildArguments)
-}
 def buildMinecraft26_2 = tasks.register('buildMinecraft26_2', Exec) {
-	dependsOn buildMinecraft26_1_2
 	commandLine(wrapperCommand
-			+ ['build', '-Pminecraft_version=26.2', '--console=plain']
+			+ ['clean', 'build', '-Pminecraft_version=26.2', '--console=plain']
 			+ forwardedBuildArguments)
 }
 tasks.register('buildAllTargets') {
@@ -133,7 +125,7 @@ def retainLaunchLogs = tasks.register('retainLaunchLogs', Sync) {
 }
 tasks.named('runClientGameTest') {
 	timeout = java.time.Duration.ofMinutes(shaderPack.isPresent() ? 10 : 5)
-	// GUI scale 4 requires at least 960 framebuffer rows; smaller windows silently clamp it.
+
 	args '--width', '1708', '--height', '960'
 	finalizedBy retainLaunchLogs
 	if (shaderPack.isPresent()) {
@@ -142,7 +134,7 @@ tasks.named('runClientGameTest') {
 			def runDir = layout.buildDirectory.dir('run/clientGameTest').get().asFile
 			def packs = new File(runDir, 'shaderpacks')
 			packs.mkdirs()
-			// A fixed safe filename also accepts input paths with spaces or Unicode.
+
 			def staged = new File(packs, 'waypointer-test.zip')
 			Files.copy(shaderPack.get().toPath(), staged.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
 			def irisConfig = new File(runDir, 'config/iris.properties')
@@ -164,9 +156,6 @@ tasks.named('runClientGameTest') {
 		}
 	}
 }
-
-// Isolate the picture-in-picture API differences between Minecraft targets.
-sourceSets.client.java.srcDir("src/client-${targetMinecraft}/java")
 
 def remoteLocaleDirectory = layout.projectDirectory.dir('translations/lang')
 def generatedRemoteLocaleResources = layout.buildDirectory.dir('generated/remote-locale-resources')
@@ -262,7 +251,7 @@ dependencies {
 
 def optInTestProperties = ['coleweight.file', 'v10.corpus', 'v10.regen']
 tasks.withType(Test).configureEach {
-	// Forward only explicit fixture inputs to opt-in tests.
+
 	optInTestProperties.each { prop ->
 		def value = providers.gradleProperty(prop)
 		if (System.getProperty(prop) != null) systemProperty prop, System.getProperty(prop)
@@ -323,7 +312,7 @@ tasks.register('verifyDocumentationVersion') {
 		def expectedApiSnippets = [
 				"# Waypointer API ${expectedVersion}",
 				"maven.modrinth:waypointer:${expectedVersion}",
-				"libs/waypointer-${expectedVersion}-mc26.1.2.jar"
+				"libs/waypointer-${expectedVersion}-mc26.2.jar"
 		]
 
 		expectedApiSnippets.each { snippet ->
@@ -343,7 +332,6 @@ jacocoTestReport {
 	}
 }
 
-// Renderer lifecycle classes require a live GPU context.
 def gpuOnlyClasses = [
 		'com/babbur/waypointer/render/gpu/OverlayRenderer*',
 		'com/babbur/waypointer/render/gpu/OverlayPass*',

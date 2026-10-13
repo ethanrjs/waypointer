@@ -12,7 +12,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Consumer;
 
-/** Saved room routes take priority over generated routes. */
 public final class DungeonRoomRouteSync {
 
     private final ActiveGroupManager manager;
@@ -203,6 +202,12 @@ public final class DungeonRoomRouteSync {
         if (eligible.isEmpty()) {
             selectedSourceGroupId = null;
             return null;
+        }
+
+        WaypointGroup edited = manager.lastEditedRoute(room.roomId());
+        if (edited != null && eligible.contains(edited)) {
+            selectedSourceGroupId = edited.id();
+            return edited;
         }
         if (selectedSourceGroupId != null) {
             for (WaypointGroup group : eligible) {

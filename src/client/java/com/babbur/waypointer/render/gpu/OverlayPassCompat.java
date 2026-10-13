@@ -18,15 +18,15 @@ import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3fc;
 import org.joml.Vector4f;
+import org.joml.Vector4fc;
 import org.lwjgl.system.MemoryStack;
 
 import java.nio.ByteBuffer;
+import java.util.Optional;
 import java.util.OptionalDouble;
-import java.util.OptionalInt;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
-/** Minecraft 26.1.2 render-pass compatibility. */
 final class OverlayPassCompat {
 
     private static final Matrix4f IDENTITY = new Matrix4f();
@@ -43,13 +43,12 @@ final class OverlayPassCompat {
         return RenderSystem.getProjectionMatrixBuffer();
     }
 
-    /** Uses the level view matrix; RenderSystem's model-view stack stays at identity. */
     static Matrix4f positionMatrix(LevelRenderContext ctx) {
         return new Matrix4f(ctx.levelState().cameraRenderState.viewRotationMatrix);
     }
 
     private static RenderTarget mainTarget() {
-        return Minecraft.getInstance().getMainRenderTarget();
+        return Minecraft.getInstance().gameRenderer.mainRenderTarget();
     }
 
     static GpuTextureView mainColorView() {
@@ -73,12 +72,14 @@ final class OverlayPassCompat {
     }
 
     static RenderPass beginPass(Supplier<String> label, GpuTextureView color, GpuTextureView depth) {
-        return encoder().createRenderPass(label, color, OptionalInt.empty(), depth, OptionalDouble.empty());
+        Optional<Vector4fc> noClear = Optional.empty();
+        return encoder().createRenderPass(label, color, noClear, depth, OptionalDouble.empty());
     }
 
     static GpuBufferSlice writeTransform(Matrix4fc modelView, Vector3fc modelOffset) {
         return RenderSystem.getDynamicUniforms()
-                .writeTransform(modelView, WHITE, modelOffset, IDENTITY);
+                .writeTransform(new Matrix4f(modelView), WHITE,
+                        new org.joml.Vector3f(modelOffset), IDENTITY);
     }
 
     static void bindUniforms(RenderPass pass, GpuBufferSlice transforms,
@@ -107,9 +108,9 @@ final class OverlayPassCompat {
             float far = Float.MAX_VALUE;
             ByteBuffer bytes = Std140Builder.onStack(stack, FOG_UBO_BYTES)
                     .putVec4(0.0f, 0.0f, 0.0f, 0.0f)
-                    .putFloat(far).putFloat(far)   // environmental start/end
-                    .putFloat(far).putFloat(far)   // render-distance start/end
-                    .putFloat(far).putFloat(far)   // sky end / clouds end
+                    .putFloat(far).putFloat(far)
+                    .putFloat(far).putFloat(far)
+                    .putFloat(far).putFloat(far)
                     .get();
             GpuBuffer buffer = createUniformBuffer(label, FOG_UBO_BYTES);
             encoder().writeToBuffer(buffer.slice(), bytes);

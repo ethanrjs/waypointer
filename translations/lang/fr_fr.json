@@ -833,7 +833,6 @@
   "waypointer.screen.group_edit.publish": "Publier",
   "waypointer.screen.group_edit.publish.tooltip": "Publier cet itinéraire dans le catalogue.",
   "waypointer.screen.route_catalog.title": "Catalogue d'itinéraires",
-  "waypointer.screen.route_catalog.subtitle": "Trouvez et installez des itinéraires de la communauté",
   "waypointer.screen.route_catalog.search": "Rechercher des itinéraires",
   "waypointer.screen.route_catalog.search.hint": "Rechercher par nom, auteur ou zone",
   "waypointer.screen.route_catalog.refresh": "Actualiser",

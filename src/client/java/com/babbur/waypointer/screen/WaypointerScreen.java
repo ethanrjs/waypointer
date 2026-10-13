@@ -9,7 +9,6 @@ import com.babbur.waypointer.codec.WaypointImporter;
 import com.babbur.waypointer.color.RouteColorPolicy;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
-import com.babbur.waypointer.core.RouteProgress;
 import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
@@ -17,14 +16,10 @@ import com.babbur.waypointer.debug.ConfigChangeHistory;
 import com.babbur.waypointer.crystal.CrystalHollowsProjection;
 import com.babbur.waypointer.crystal.CrystalHollowsShare;
 import com.babbur.waypointer.crystal.CrystalHollowsStructureFolder;
-import com.babbur.waypointer.debug.DebugEventLog;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteSync;
-import com.babbur.waypointer.dungeon.config.DungeonConfig;
-import com.babbur.waypointer.dungeon.data.DungeonRoomData;
 import com.babbur.waypointer.dungeon.data.DungeonRoomShareCodec;
 import com.babbur.waypointer.dungeon.data.DungeonRouteImporter;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
-import com.babbur.waypointer.dungeon.DungeonRoomRouteProjection;
 import com.babbur.waypointer.util.MathUtil;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -38,11 +33,9 @@ import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 
 import static com.babbur.waypointer.screen.GuiTokens.*;
@@ -91,7 +84,7 @@ public final class WaypointerScreen extends Screen {
     private static final int DROPDOWN_SEARCH_H = BTN_H + GAP_TIGHT * 2;
     private static final int ISLAND_DROPDOWN_W = 210;
     private static final int ISLAND_SELECTOR_W = ISLAND_DROPDOWN_W;
-    // Centers a BTN_H control on the title's visible glyph box (title y + 4).
+
     private static final int HEADER_BTN_Y = PAD_OUTER - 6;
     private OverlayButton hideAllRoutesBtn;
     private Button deleteBtn;
@@ -344,7 +337,6 @@ public final class WaypointerScreen extends Screen {
                 "waypointer.screen.main.zone_selector.tooltip")));
         addRenderableWidget(islandSelectorBtn);
 
-        // Rendered inside the zone dropdown; registered for input only so it never paints on its own.
         zoneSearchBox = new EditBox(font, 0, 0, ISLAND_DROPDOWN_W - 2 - GAP_TIGHT * 2, BTN_H,
                 Component.translatable("waypointer.screen.main.zone_search"));
         zoneSearchBox.setMaxLength(40);
@@ -494,7 +486,6 @@ public final class WaypointerScreen extends Screen {
                 && !zoneSearchActive() && canToggleEmptyIslands();
     }
 
-    /** Case-insensitive match on the zone's label or id, so "dwarven" and "mineshaft_t" both work. */
     static boolean zoneMatchesSearch(String zoneId, String label, String query) {
         return zoneMatchesSearch(zoneId, label, searchTokens(query));
     }
@@ -748,7 +739,6 @@ public final class WaypointerScreen extends Screen {
         return true;
     }
 
-    /** Double-clicking a route while picking for a publish draft adds it, or removes it again. */
     boolean togglePublishDraft(WaypointGroup group) {
         if (publishDraft == null) return false;
         if (publishDraft.contains(group)) {
@@ -1021,7 +1011,7 @@ public final class WaypointerScreen extends Screen {
         DropdownGeometry geo = islandDropdownGeometry(rowCount);
         boolean inside = mx >= geo.x1() && mx < geo.x2() && my >= geo.y1() && my < geo.y2();
         if (!inside) {
-            // Consume outside clicks so the selector cannot reopen immediately.
+
             closeIslandDropdown();
             zoneMoveGroupId = null;
             return true;
@@ -1175,6 +1165,16 @@ public final class WaypointerScreen extends Screen {
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.main.menu.edit"),
                 "double-click", () -> openGroupEditor(group)));
+        AppearanceTarget look = AppearanceTarget.route(manager, config, group, manager::fireDataChanged);
+        if (look != null) {
+            int lookCount = look.scope().count();
+            items.add(ContextMenuOverlay.Item.of(
+                    Component.translatable("waypointer.screen.main.menu.appearance"),
+                    lookCount == 0 ? null
+                            : Component.translatable("waypointer.screen.appearance.set_count", lookCount).getString(),
+                    () -> MinecraftCompat.setScreen(minecraft, SettingsScreen.forAppearance(
+                            this, config, WaypointerClient.dungeonConfig(), look))));
+        }
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable(group.enabled()
                         ? "waypointer.screen.main.menu.hide"
@@ -1263,7 +1263,7 @@ public final class WaypointerScreen extends Screen {
         MenuGeometry geo = importExportMenuGeometry();
         importExportMenuOpen = false;
         boolean inside = mx >= geo.x1() && mx < geo.x2() && my >= geo.y1() && my < geo.y2();
-        if (!inside) return true; // swallow, so the anchor button doesn't re-toggle
+        if (!inside) return true;
         int idx = (int) ((my - geo.y1() - 1) / ROW_H);
         if (idx == 0) {
             importFromClipboard();
@@ -1348,7 +1348,7 @@ public final class WaypointerScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-        // Hit-test overlays before the widgets beneath them.
+
         if (contextMenu.isOpen() && contextMenu.mouseClicked(event.x(), event.y())) return true;
         if (islandDropdownOpen && handleIslandDropdownClick(event, doubleClick)) return true;
         if (importExportMenuOpen && handleImportExportMenuClick(event.x(), event.y())) return true;
@@ -1406,15 +1406,15 @@ public final class WaypointerScreen extends Screen {
         if (mc == null || mc.getWindow() == null) return false;
         var window = mc.getWindow();
         return InputConstants.isKeyDown(window, InputConstants.KEY_LSHIFT)
-                || InputConstants.isKeyDown(window, 344 /* GLFW_KEY_RIGHT_SHIFT */);
+                || InputConstants.isKeyDown(window, 344  );
     }
 
     static boolean routeSelectionControlDown() {
         Minecraft mc = Minecraft.getInstance();
         if (mc == null || mc.getWindow() == null) return false;
         var window = mc.getWindow();
-        return InputConstants.isKeyDown(window, 341 /* GLFW_KEY_LEFT_CONTROL */)
-                || InputConstants.isKeyDown(window, 345 /* GLFW_KEY_RIGHT_CONTROL */);
+        return InputConstants.isKeyDown(window, 341  )
+                || InputConstants.isKeyDown(window, 345  );
     }
 
     private void replaceRouteSelection(Set<String> nextSelectionIds) {
@@ -1539,7 +1539,7 @@ public final class WaypointerScreen extends Screen {
                 if (zoneSearchActive() && !matches.isEmpty()) selectZoneFromDropdown(matches.get(0));
                 return true;
             }
-            // Typing in the zone search must never reach the route shortcuts below.
+
             super.keyPressed(event);
             return true;
         }
@@ -1625,7 +1625,6 @@ public final class WaypointerScreen extends Screen {
         refreshActionButtons();
     }
 
-    /** Keyboard/menu twin of the Shown/Hidden chip. */
     void toggleRouteEnabled(WaypointGroup group) {
         if (group == null) return;
         toggleRouteEnabled(manager, group);
@@ -2025,7 +2024,6 @@ public final class WaypointerScreen extends Screen {
         return WaypointerZoneCatalog.importTargetZoneId(selectedZoneId, currentZoneId);
     }
 
-    // Decode off-thread, then install on the client thread.
     private void importFromClipboard() {
         if (isStructureBrowseZone(selectedZoneId)) return;
         if (importInFlight) return;
@@ -2096,7 +2094,6 @@ public final class WaypointerScreen extends Screen {
                 return new ClipboardImportOutcome(null, null, null, reference.routeId(), null);
             }
 
-            // Preserve the editor's localized fallback names.
             return new ClipboardImportOutcome(
                     WaypointImporter.importAny(text, defaultImportedRouteName),
                     null, null, null, null);
@@ -2120,7 +2117,6 @@ public final class WaypointerScreen extends Screen {
         });
     }
 
-    /** Codec failures carry specific, user-readable reasons; keep them instead of a generic line. */
     static String importFailureText(RuntimeException failure) {
         String detail = failure == null ? null : failure.getMessage();
         if (detail == null || detail.isBlank()
