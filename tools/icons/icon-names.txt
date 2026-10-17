@@ -20,7 +20,6 @@ check
 eye
 eye_off
 plus
-minus
 trash
 pencil
 undo
@@ -29,11 +28,7 @@ info
 gear
 globe
 upload
-download
 export
-copy
-search
-caret_down
 pin
 target
 reset
@@ -51,5 +46,4 @@ chat
 share
 mail
 close
-grip
 dot
