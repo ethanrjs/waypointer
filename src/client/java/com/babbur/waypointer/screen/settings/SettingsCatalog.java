@@ -745,7 +745,7 @@ public final class SettingsCatalog {
                     || structure == CrystalHollowsStructure.WISHING_TARGET) continue;
             settings.add(Setting.bool("crystalHollowsDetections." + structure.id(), MAIN,
                     structure.displayName(),
-                    "Automatically detect and show this structure. Manual waypoints and compass targets remain available.",
+                    "Detect and show this structure automatically.",
                     (c, d) -> c.crystalHollowsDetectionEnabled(structure.id()),
                     (c, d, v) -> c.setCrystalHollowsDetectionEnabled(structure.id(), (Boolean) v))
                     .localOnly().aliases("automatic", "detect", "hollows", structure.displayName()));
