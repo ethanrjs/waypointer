@@ -38,9 +38,21 @@ public final class ActiveGroupManager {
     private static final Pattern BRACKETED_PREFIX = Pattern.compile("\\[[^\\]]*\\]");
 
     private List<WaypointGroup> cachedActive;
+    private boolean inDungeonBoss;
 
     public Zone currentZone() {
         return currentZone;
+    }
+
+    /** Boss routes only show once the player is in the boss arena. */
+    public void setInDungeonBoss(boolean inBoss) {
+        if (inDungeonBoss == inBoss) return;
+        inDungeonBoss = inBoss;
+        cachedActive = null;
+    }
+
+    public boolean inDungeonBoss() {
+        return inDungeonBoss;
     }
 
     public void onZoneChanged(Zone newZone) {
@@ -103,9 +115,15 @@ public final class ActiveGroupManager {
         cachedActive = null;
     }
 
-    private static boolean shouldSurfaceActiveGroup(WaypointGroup group) {
+    private boolean shouldSurfaceActiveGroup(WaypointGroup group) {
         return (group.showAllWaypoints() || !isCompletedDungeonRoomGroup(group))
-                && !isStoredDungeonRoomGroup(group);
+                && !isStoredDungeonRoomGroup(group)
+                && (inDungeonBoss || !isBossRoute(group));
+    }
+
+    /** A floor route made of dungeon actions; it has fixed coordinates, so it is a boss route. */
+    private static boolean isBossRoute(WaypointGroup group) {
+        return group.routeKind() == WaypointGroup.RouteKind.REGULAR && group.usesDungeonSteps();
     }
 
     private static boolean isStoredDungeonRoomGroup(WaypointGroup group) {
