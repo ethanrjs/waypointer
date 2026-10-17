@@ -10,7 +10,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-final class RouteFolderListModel {
+/** The hub's route order for a zone: each folder's routes in folder order, then unfiled routes. */
+public final class RouteFolderListModel {
 
     record FolderSection(RouteFolder folder, List<WaypointGroup> groups,
                          boolean searchReveal) {}
@@ -18,6 +19,15 @@ final class RouteFolderListModel {
     record Snapshot(List<FolderSection> folders, List<WaypointGroup> unfiled) {}
 
     private RouteFolderListModel() {}
+
+    /** Every listed route in the zone, in the order the hub shows them (ignoring collapsed folders). */
+    public static List<WaypointGroup> orderedRoutes(ActiveGroupManager manager, String zoneId) {
+        Snapshot snapshot = build(manager, zoneId, "");
+        List<WaypointGroup> ordered = new ArrayList<>();
+        for (FolderSection section : snapshot.folders()) ordered.addAll(section.groups());
+        ordered.addAll(snapshot.unfiled());
+        return List.copyOf(ordered);
+    }
 
     static Snapshot build(ActiveGroupManager manager, String zoneId, String searchQuery) {
         String query = searchQuery == null ? "" : searchQuery.trim().toLowerCase(Locale.ROOT);

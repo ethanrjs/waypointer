@@ -27,6 +27,17 @@ final class WaypointerChatCommands {
         this.config = config;
     }
 
+    int runAddTempHere(FabricClientCommandSource src) {
+        net.minecraft.client.player.LocalPlayer player = Minecraft.getInstance().player;
+        if (player == null) {
+            error(src, Component.translatable("waypointer.command.error.not_in_world"));
+            return 0;
+        }
+        var pos = com.babbur.waypointer.placement.PlayerWaypointPlacement.fromPlayer(
+                player.getX(), player.getY(), player.getZ(), config);
+        return runAddTempAt(src, pos.x(), pos.y(), pos.z(), "");
+    }
+
     int runAddTempAt(FabricClientCommandSource src, int x, int y, int z, String sourceName) {
         WaypointGroup target = addConfiguredTempWaypoint(x, y, z, sourceName);
         if (config.focusTempWaypoints()) {

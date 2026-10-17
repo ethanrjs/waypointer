@@ -37,71 +37,80 @@ final class WaypointerCommandSuggestions {
         this.chatImportCache = chatImportCache;
     }
 
-    SuggestionProvider<FabricClientCommandSource> suggestActiveGroupIndices() {
+    /** Route numbers and names from {@code /wp list}, with the route's name and size as tooltip. */
+    SuggestionProvider<FabricClientCommandSource> suggestRoutes() {
         return (ctx, builder) -> {
-            WaypointGroup g = manager.firstActiveGroup();
-            if (g == null) return builder.buildFuture();
-            String prefix = builder.getRemaining();
-            for (int index = 0; index < g.size(); index++) {
-                int number = index + 1;
-                if (Integer.toString(number).startsWith(prefix)) {
-                    builder.suggest(number, Component.literal(activeGroupIndexTooltip(g, index)));
+            List<WaypointGroup> routes = new RouteTargets(manager).listed();
+            String typed = builder.getRemainingLowerCase();
+            for (int i = 0; i < routes.size(); i++) {
+                WaypointGroup route = routes.get(i);
+                Component tip = Component.literal(route.name() + "  ")
+                        .append(com.babbur.waypointer.i18n.Counts.of("waypoint", route.size()));
+                if (typed.isEmpty() || Integer.toString(i + 1).startsWith(typed)) {
+                    if (!typed.isEmpty() || i < 9) builder.suggest(Integer.toString(i + 1), tip);
+                }
+                if (!typed.isEmpty() && route.name().toLowerCase(Locale.ROOT).startsWith(typed)) {
+                    builder.suggest(route.name(), tip);
                 }
             }
             return builder.buildFuture();
         };
     }
 
-    SuggestionProvider<FabricClientCommandSource> suggestSkipTargets() {
+    /** Folder names in the current zone; quoted when the argument is not the last one. */
+    SuggestionProvider<FabricClientCommandSource> suggestFolders(boolean quoteIfNeeded) {
         return (ctx, builder) -> {
-            suggestSkipTargets(manager.activeGroups(), builder);
+            Zone zone = manager.currentZone();
+            if (zone == null) return builder.buildFuture();
+            for (var folder : manager.foldersForZone(zone.id())) {
+                String value = quoteIfNeeded
+                        ? com.mojang.brigadier.arguments.StringArgumentType.escapeIfRequired(folder.name())
+                        : folder.name();
+                CommandHelpers.suggestText(builder, value, Component.literal(folder.name()));
+            }
             return builder.buildFuture();
         };
     }
 
-    static int suggestSkipTargets(List<WaypointGroup> groups, SuggestionsBuilder builder) {
-        String prefix = builder.getRemainingLowerCase();
-        Set<String> suggested = new LinkedHashSet<>();
-        for (WaypointGroup group : groups) {
-            if (group == null) continue;
-            for (int i = 0; i < group.size(); i++) {
-                String label = WaypointerRouteCommands.skipTargetLabel(group, i);
-                if (label.toLowerCase(Locale.ROOT).startsWith(prefix)) {
-                    if (suggested.add(label)) {
-                        builder.suggest(label, Component.literal(describeWaypoint(group.get(i))));
-                    }
-                }
-            }
+    /** The target route's waypoint labels as the editor shows them: 1, 2, 2.1, 3... */
+    SuggestionProvider<FabricClientCommandSource> suggestWaypointLabels() {
+        return (ctx, builder) -> {
+            suggestWaypointLabels(manager.targetRoute(), builder);
+            return builder.buildFuture();
+        };
+    }
+
+    static int suggestWaypointLabels(WaypointGroup route, SuggestionsBuilder builder) {
+        if (route == null) return 0;
+        String typed = builder.getRemainingLowerCase();
+        int count = 0;
+        for (int i = 0; i < route.size(); i++) {
+            String label = RouteTargets.label(route, i);
+            if (!label.startsWith(typed)) continue;
+            builder.suggest(label, Component.literal(describeWaypoint(route.get(i))));
+            count++;
         }
-        return suggested.size();
+        return count;
     }
 
-    SuggestionProvider<FabricClientCommandSource> suggestInsertSlots() {
+    SuggestionProvider<FabricClientCommandSource> suggestWaypointFlags() {
         return (ctx, builder) -> {
-            WaypointGroup g = manager.firstActiveGroup();
-            if (g == null) return builder.buildFuture();
-            int size = g.size();
-            String prefix = builder.getRemaining();
-            for (int index = 0; index <= size; index++) {
-                int number = index + 1;
-                String s = Integer.toString(number);
-                if (!s.startsWith(prefix)) continue;
-                String tip = index == size
-                        ? "Waypoint " + number + " appends"
-                        : "Waypoint " + number + ", before "
-                                + g.displayIndexLabel(index) + " " + describeWaypoint(g.get(index));
-                builder.suggest(number, Component.literal(tip));
+            for (WaypointerWaypointCommands.Flag flag : WaypointerWaypointCommands.Flag.values()) {
+                CommandHelpers.suggestText(builder, flag.id, Component.translatable(flag.labelKey));
             }
             return builder.buildFuture();
         };
     }
 
-    SuggestionProvider<FabricClientCommandSource> suggestAllGroupIndices() {
+    SuggestionProvider<FabricClientCommandSource> suggestDungeonTypes() {
         return (ctx, builder) -> {
-            List<WaypointGroup> all = manager.allGroupsList();
-            return CommandHelpers.suggestIndexed(builder, all.size(),
-                    i -> "index " + i + ": " + all.get(i).name()
-                            + " (" + all.get(i).size() + " pts)");
+            for (var type : com.babbur.waypointer.dungeon.DungeonWaypointType.values()) {
+                CommandHelpers.suggestText(builder, type.name().toLowerCase(Locale.ROOT).replace('_', '-'),
+                        Component.translatable(WaypointerWaypointCommands.typeKey(type)));
+            }
+            CommandHelpers.suggestText(builder, "none",
+                    Component.translatable("waypointer.screen.group_edit.control.types.none"));
+            return builder.buildFuture();
         };
     }
 
@@ -179,31 +188,32 @@ final class WaypointerCommandSuggestions {
         };
     }
 
-    SuggestionProvider<FabricClientCommandSource> suggestGroupNames() {
+    SuggestionProvider<FabricClientCommandSource> suggestNewRouteNames() {
         return (ctx, builder) -> {
             Zone zone = manager.currentZone();
             if (zone != null) {
-                CommandHelpers.suggestText(builder, "Route -- " + zone.displayName().toLowerCase(Locale.ROOT),
-                        Component.translatable("waypointer.command.suggest.route_name.zone"));
+                CommandHelpers.suggestText(builder, com.babbur.waypointer.screen.RouteListPresentation
+                                .nextRouteName(manager.groupsForZone(zone.id())),
+                        Component.translatable("waypointer.command.suggest.route_name"));
             }
-            CommandHelpers.suggestText(builder, "Route", Component.translatable("waypointer.command.suggest.route_name.generic"));
             return builder.buildFuture();
         };
     }
 
     SuggestionProvider<FabricClientCommandSource> suggestLoadModes() {
         return (ctx, builder) -> {
-            CommandHelpers.suggestText(builder, "sequence", Component.translatable("waypointer.command.suggest.load_mode.sequence"));
-            CommandHelpers.suggestText(builder, "static", Component.translatable("waypointer.command.suggest.load_mode.static"));
+            CommandHelpers.suggestText(builder, "step", Component.translatable("waypointer.screen.group_edit.mode.sequence"));
+            CommandHelpers.suggestText(builder, "all", Component.translatable("waypointer.screen.group_edit.mode.static"));
             return builder.buildFuture();
         };
     }
 
     SuggestionProvider<FabricClientCommandSource> suggestColorModes() {
         return (ctx, builder) -> {
-            CommandHelpers.suggestText(builder, "gradient", Component.translatable("waypointer.command.suggest.color_mode.gradient"));
-            CommandHelpers.suggestText(builder, "manual", Component.translatable("waypointer.command.suggest.color_mode.manual"));
-            CommandHelpers.suggestText(builder, "one", Component.translatable("waypointer.command.suggest.color_mode.one"));
+            for (String mode : List.of("color", "gradient", "one", "paint")) {
+                CommandHelpers.suggestText(builder, mode, Component.translatable(
+                        "waypointer.screen.group_edit.color_mode.tooltip." + mode));
+            }
             return builder.buildFuture();
         };
     }
@@ -243,11 +253,6 @@ final class WaypointerCommandSuggestions {
     static String describeWaypoint(Waypoint w) {
         String coords = w.x() + ", " + w.y() + ", " + w.z();
         return w.hasName() ? w.name() + "  " + coords : coords;
-    }
-
-    static String activeGroupIndexTooltip(WaypointGroup group, int index) {
-        return "Waypoint " + (index + 1) + " (" + group.displayIndexLabel(index) + ") "
-                + describeWaypoint(group.get(index));
     }
 
     enum Axis { X, Y, Z }

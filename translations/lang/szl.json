@@ -1,9 +1,6 @@
 {
   "waypointer.settings.setting.showExportRoutePreview.tooltip": "Pokazuje ôbracajōncy sie podglōnd 3D rajzy na ekranie eksportu.",
   "waypointer.settings.setting.action.presets.label": "Szablōny",
-  "waypointer.command.waypoint.flag_requires_subwaypoint": "Punkt %1$s niy ma podpunktym. Nojprzōd użyj /wp sub %2$s.",
-  "waypointer.command.clear.confirm": "To skasuje %1$s rajzōw w %2$s. Coby kōntynuować, użyj /waypointer clear confirm.",
-  "waypointer.command.route.delete_confirm": "To skasuje rajza [%1$s] \"%2$s\" ze %3$s punktami. Coby kōntynuować, użyj /waypointer route delete %1$s confirm.",
   "waypointer.screen.main.settings": "Nasztalowania",
   "waypointer.screen.debug.refresh": "Ôdświyż",
   "waypointer.screen.main.delete.select": "Ôbier",

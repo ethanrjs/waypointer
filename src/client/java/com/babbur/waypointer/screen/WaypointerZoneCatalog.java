@@ -19,7 +19,7 @@ import java.util.Locale;
 import java.util.Set;
 
 /** Zone names, ordering, and route-target rules used by the main screen. */
-final class WaypointerZoneCatalog {
+public final class WaypointerZoneCatalog {
 
     static final String TEMPORARY_ZONE_ID = "__temporary__";
     static final String DUNGEON_ROOMS_ZONE_ID = "__dungeon_rooms__";
@@ -201,7 +201,7 @@ final class WaypointerZoneCatalog {
         return zoneId != null && isDungeonRoomZone(zoneId) ? DUNGEON_ROOMS_ZONE_ID : zoneId;
     }
 
-    static String displayZoneLabel(String zoneId) {
+    public static String displayZoneLabel(String zoneId) {
         if (isStructureBrowseZone(zoneId)) {
             for (CrystalHollowsStructure structure : CrystalHollowsStructure.values()) {
                 if (zoneId.equals(structureMenuZoneId(structure))) return structure.displayName();
@@ -219,7 +219,7 @@ final class WaypointerZoneCatalog {
                 && group.routeKind() == WaypointGroup.RouteKind.REGULAR;
     }
 
-    static boolean canRetargetRoute(WaypointGroup group, String zoneId) {
+    public static boolean canRetargetRoute(WaypointGroup group, String zoneId) {
         String canonicalTarget = Zone.canonicalId(zoneId);
         if (!canMoveRouteZone(group) || zoneId == null
                 || isStructureBrowseZone(zoneId)
@@ -243,7 +243,7 @@ final class WaypointerZoneCatalog {
                 || id.startsWith("dungeon_m");
     }
 
-    static boolean retargetRoute(WaypointGroup group, String zoneId) {
+    public static boolean retargetRoute(WaypointGroup group, String zoneId) {
         if (!canRetargetRoute(group, zoneId)) return false;
         group.setZoneId(Zone.canonicalId(zoneId));
         return true;

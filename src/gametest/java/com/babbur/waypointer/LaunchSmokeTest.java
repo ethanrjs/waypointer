@@ -36,6 +36,7 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
             CrystalHollowsMinimapSmokeTest.run(context);
             ShaderCompatibilitySmokeTest.prepare(context);
             ExportSmokeTest.run(context);
+            CommandSmokeTest.run(context);
             StructureEditorSmokeTest.run(context);
             PainterHistorySmokeTest.run(context);
             SettingsInteractionSmokeTest.run(context);

@@ -283,8 +283,10 @@ final class WaypointerRouteList {
         int rowRight = contentRight(x1, x2);
         int y = rowsTop - screen.scrollOffset;
         Map<String, Integer> routeIndices = RouteListPresentation.routeCommandIndices(
-                screen.config.showRouteIndicesInGui()
-                        ? screen.manager.allGroupsList() : List.of());
+                screen.config.showRouteIndicesInGui() && screen.selectedZoneId != null
+                        ? RouteFolderListModel.orderedRoutes(screen.manager, screen.selectedZoneId)
+                        : List.of());
+        targetMarker = null;
         for (int i = 0; i < rows.size(); i++, y += ROW_PITCH) {
             int rowTop = y;
             int rowBottom = y + ROW_H + 2;
@@ -320,6 +322,25 @@ final class WaypointerRouteList {
         renderDraggedRoute(graphics, x1 + 2, rowRight - 2, mouseX, mouseY, routeIndices);
         graphics.disableScissor();
         renderScrollbar(graphics, rowRight - 4, rowsTop, y2, rows.size(), screen.scrollOffset);
+        int[] marker = targetMarker;
+        if (marker != null && mouseY >= rowsTop && mouseX >= marker[0] && mouseX < marker[2]
+                && mouseY >= marker[1] && mouseY < marker[3]) {
+            graphics.setTooltipForNextFrame(font(), Component.translatable(
+                    screen.manager.recordingTarget() != null
+                            ? "waypointer.screen.main.route.target.pinned"
+                            : "waypointer.screen.main.route.target"), mouseX, mouseY);
+        }
+    }
+
+    /** Bounds of the target-route marker drawn this frame, for its tooltip. */
+    private int[] targetMarker;
+
+    /** The route commands, keybinds and new waypoints go to, when this list shows the player's zone. */
+    private boolean isTargetRoute(WaypointGroup group) {
+        var zone = screen.manager.currentZone();
+        return zone != null && !group.temp() && !group.runtimeOnly()
+                && zone.id().equals(group.zoneId())
+                && group == screen.manager.targetRoute();
     }
 
     boolean mouseClicked(MouseButtonEvent event, boolean doubleClick,
@@ -959,8 +980,16 @@ final class WaypointerRouteList {
             name = "✓ " + name;
             textColor = ACCENT;
         }
-        graphics.text(font(), font().plainSubstrByWidth(name, textMaxWidth),
-                textX, y1 + 4, textColor, false);
+        boolean target = isTargetRoute(group);
+        int nameMaxWidth = target ? Math.max(12, textMaxWidth - Icons.SIZE) : textMaxWidth;
+        String shownName = font().plainSubstrByWidth(name, nameMaxWidth);
+        graphics.text(font(), shownName, textX, y1 + 4, textColor, false);
+        if (target) {
+            int markerX = textX + font().width(shownName) + 1;
+            Icons.draw(graphics, screen.manager.recordingTarget() != null ? Icons.Icon.PIN : Icons.Icon.TARGET,
+                    markerX, y1 + 1, ACCENT);
+            targetMarker = new int[]{markerX + 2, y1 + 2, markerX + Icons.SIZE - 2, y1 + 14};
+        }
 
         String subtitle = routeRowSubtitle(group);
         graphics.text(font(), font().plainSubstrByWidth(subtitle, textMaxWidth),

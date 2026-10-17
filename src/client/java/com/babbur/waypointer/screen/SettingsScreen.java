@@ -165,6 +165,35 @@ public final class SettingsScreen extends Screen {
         return new SettingsScreen(parent, config, dungeonConfig, Objects.requireNonNull(target));
     }
 
+    /** Opens a route's look; false when the route has no editable look (a downloaded room copy). */
+    public static boolean openRouteAppearance(com.babbur.waypointer.core.ActiveGroupManager manager,
+                                              WaypointerConfig config, WaypointGroup route) {
+        AppearanceTarget target = AppearanceTarget.route(manager, config, route, manager::fireDataChanged);
+        if (target == null) return false;
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> MinecraftCompat.setScreen(client,
+                forAppearance(null, config, WaypointerClient.dungeonConfig(), target)));
+        return true;
+    }
+
+    /** Opens one waypoint's look; false when it has no editable look. */
+    public static boolean openWaypointAppearance(com.babbur.waypointer.core.ActiveGroupManager manager,
+                                                 WaypointerConfig config, WaypointGroup route, int index) {
+        AppearanceTarget target = AppearanceTarget.waypoint(manager, config, route, index, manager::fireDataChanged);
+        if (target == null) return false;
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> MinecraftCompat.setScreen(client,
+                forAppearance(null, config, WaypointerClient.dungeonConfig(), target)));
+        return true;
+    }
+
+    /** Opens the settings screen. */
+    public static void open(WaypointerConfig config) {
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> MinecraftCompat.setScreen(client,
+                new SettingsScreen(null, config, WaypointerClient.dungeonConfig())));
+    }
+
     static List<SettingsCatalog.Category> appearanceCategories(Predicate<String> include) {
         Set<String> supported = WaypointStyles.supportedProperties();
         Predicate<Setting> keep = setting -> supported.contains(setting.id())

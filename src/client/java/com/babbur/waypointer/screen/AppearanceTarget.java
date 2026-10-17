@@ -50,7 +50,8 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
                 style -> group.setWaypointStyle(index, style));
         String label = group.get(index).name();
         Component name = label == null || label.isBlank()
-                ? Component.translatable("waypointer.screen.appearance.waypoint_number", index + 1)
+                ? Component.translatable("waypointer.screen.appearance.waypoint_number",
+                        group.displayIndexLabel(index).replaceFirst("^#", ""))
                 : Component.literal(AmpersandFormatting.translate(label));
         return new AppearanceTarget(scope, name, afterWrite);
     }

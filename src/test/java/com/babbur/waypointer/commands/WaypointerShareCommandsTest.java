@@ -486,7 +486,7 @@ class WaypointerShareCommandsTest {
     }
 
     @Test
-    void generatedDungeonRouteMapsOnlyToItsExactDurableSource() {
+    void exportInADungeonRoomSharesTheStoredRoomRouteNotItsProjection() {
         ActiveGroupManager manager = new ActiveGroupManager();
         WaypointGroup stored = new WaypointGroup("stored", "Stored", "room-a");
         stored.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
@@ -501,13 +501,10 @@ class WaypointerShareCommandsTest {
         manager.onZoneChanged(new Zone("room-a", "Room A"));
 
         assertEquals(List.of(stored), WaypointerShareCommands.cliExportGroups(manager));
-
-        generated.setRuntimeSourceGroupId("missing-source");
-        assertTrue(WaypointerShareCommands.cliExportGroups(manager).isEmpty());
     }
 
     @Test
-    void focusedTemporaryRouteIsNotExportedAsTheActiveRoute() {
+    void exportSharesTheTargetRouteEvenWhileATemporaryWaypointIsFocused() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(Zone.fromId("hub"));
         WaypointGroup saved = WaypointGroup.create("Saved", "hub");
@@ -519,11 +516,11 @@ class WaypointerShareCommandsTest {
         manager.addAll(List.of(saved, temporary));
         manager.focusTempWaypoint(temporary, 0);
 
-        assertTrue(WaypointerShareCommands.cliExportGroups(manager).isEmpty());
+        assertEquals(List.of(saved), WaypointerShareCommands.cliExportGroups(manager));
     }
 
     @Test
-    void emptyActiveRoutesAreSkippedForTheFirstUsableRoute() {
+    void exportNeverFallsBackToAnotherRouteWhenTheTargetIsEmpty() {
         ActiveGroupManager manager = new ActiveGroupManager();
         manager.onZoneChanged(Zone.fromId("hub"));
         WaypointGroup empty = WaypointGroup.create("Empty", "hub");
@@ -531,10 +528,11 @@ class WaypointerShareCommandsTest {
         usable.add(Waypoint.at(1, 2, 3));
         manager.addAll(List.of(empty, usable));
 
-        assertEquals(List.of(usable), WaypointerShareCommands.cliExportGroups(manager));
+        assertTrue(WaypointerShareCommands.cliExportGroups(manager).isEmpty(),
+                "the first route is the target; exporting a different one would be ambiguous");
 
-        manager.remove(usable.id());
-        assertTrue(WaypointerShareCommands.cliExportGroups(manager).isEmpty());
+        manager.setRecordingTarget(usable);
+        assertEquals(List.of(usable), WaypointerShareCommands.cliExportGroups(manager));
     }
 
     @Test

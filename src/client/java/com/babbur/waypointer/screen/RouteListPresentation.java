@@ -18,7 +18,7 @@ import static com.babbur.waypointer.screen.GuiTokens.GAP;
 import static com.babbur.waypointer.screen.GuiTokens.HOVER;
 import static com.babbur.waypointer.screen.GuiTokens.SELECTED;
 
-final class RouteListPresentation {
+public final class RouteListPresentation {
 
     static int folderBackgroundTint(RouteFolder folder) {
         boolean structures = folder.runtimeOnly()
@@ -102,7 +102,7 @@ final class RouteListPresentation {
         return changed;
     }
 
-    static String nextRouteName(Iterable<WaypointGroup> zoneGroups) {
+    public static String nextRouteName(Iterable<WaypointGroup> zoneGroups) {
         Set<String> taken = new HashSet<>();
         if (zoneGroups != null) {
             for (WaypointGroup group : zoneGroups) {
@@ -172,19 +172,20 @@ final class RouteListPresentation {
         NONE
     }
 
-    static Map<String, Integer> routeCommandIndices(List<WaypointGroup> groups) {
+    /** Each route's number in {@code /wp list}: its 1-based position in the zone's hub order. */
+    static Map<String, Integer> routeCommandIndices(List<WaypointGroup> zoneRoutes) {
         Map<String, Integer> indices = new HashMap<>();
-        if (groups == null) return indices;
-        for (int i = 0; i < groups.size(); i++) {
-            WaypointGroup group = groups.get(i);
-            if (group != null) indices.put(group.id(), i);
+        if (zoneRoutes == null) return indices;
+        for (int i = 0; i < zoneRoutes.size(); i++) {
+            WaypointGroup group = zoneRoutes.get(i);
+            if (group != null) indices.put(group.id(), i + 1);
         }
         return indices;
     }
 
-    static String routeRowName(WaypointGroup group, int routeIndex, boolean showRouteIndex) {
+    static String routeRowName(WaypointGroup group, int routeNumber, boolean showRouteNumber) {
         String name = displayGroupName(group);
-        return showRouteIndex && routeIndex >= 0 ? "[" + routeIndex + "] " + name : name;
+        return showRouteNumber && routeNumber > 0 ? routeNumber + ". " + name : name;
     }
 
     static String routeToggleLabel(boolean enabled) {

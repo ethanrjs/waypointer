@@ -1,13 +1,11 @@
 package com.babbur.waypointer.commands;
 
 import com.mojang.brigadier.CommandDispatcher;
-import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import com.mojang.brigadier.tree.LiteralCommandNode;
-import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.babbur.waypointer.chat.ChatImportCache;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.codec.UniversalShareCodec;
@@ -24,6 +22,7 @@ import com.babbur.waypointer.render.HappySnowmanSession;
 import com.babbur.waypointer.screen.DebugInspectScreen;
 import com.babbur.waypointer.screen.CrystalHollowsMinimapEditorScreen;
 import com.babbur.waypointer.screen.RouteCatalogScreen;
+import com.babbur.waypointer.screen.SettingsScreen;
 import com.babbur.waypointer.screen.WaypointerScreen;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
@@ -43,7 +42,7 @@ public final class WaypointerCommands {
     private final Runnable openGui;
     private final WaypointerCommandSuggestions suggestions;
     private final WaypointerRouteCommands routeCommands;
-    private final WaypointerGroupCommands groupCommands;
+    private final WaypointerWaypointCommands waypointCommands;
     private final WaypointerChatCommands chatCommands;
     private final WaypointerShareCommands shareCommands;
 
@@ -56,7 +55,7 @@ public final class WaypointerCommands {
         this.suggestions = new WaypointerCommandSuggestions(
                 manager, storage, config, chatImportCache);
         this.routeCommands = new WaypointerRouteCommands(manager, config, suggestions);
-        this.groupCommands = new WaypointerGroupCommands(manager, config, suggestions);
+        this.waypointCommands = new WaypointerWaypointCommands(manager, config, suggestions, routeCommands);
         this.chatCommands = new WaypointerChatCommands(manager, config);
         this.shareCommands = new WaypointerShareCommands(
                 manager, config, chatImportCache);
@@ -89,6 +88,13 @@ public final class WaypointerCommands {
             CommandDispatcher<FabricClientCommandSource> d, String root) {
         LiteralArgumentBuilder<FabricClientCommandSource> cmd = literal(root)
                 .executes(ctx -> { scheduleOpenGui(); return 1; })
+                .then(literal("help")
+                        .executes(ctx -> WaypointerCommandHelp.run(ctx.getSource(), root, null))
+                        .then(argument("topic", StringArgumentType.word())
+                                .suggests(WaypointerCommandHelp.suggestions())
+                                .executes(ctx -> WaypointerCommandHelp.run(ctx.getSource(), root,
+                                        StringArgumentType.getString(ctx, "topic")))))
+                // Screens
                 .then(literal("gui")
                         .executes(ctx -> { scheduleOpenGui(); return 1; })
                         .then(literal("dungeon")
@@ -96,85 +102,48 @@ public final class WaypointerCommands {
                         .then(argument("groupId", StringArgumentType.string())
                                 .executes(ctx -> runOpenFocusedGui(
                                         StringArgumentType.getString(ctx, "groupId")))))
+                .then(literal("settings").executes(ctx -> {
+                    SettingsScreen.open(config);
+                    return 1;
+                }))
+                .then(literal("community").executes(ctx -> { scheduleOpenRouteCatalog(); return 1; }))
+                .then(literal("routes").executes(ctx -> { scheduleOpenRouteCatalog(); return 1; }))
+                .then(routeCommands.editCommand()
+                        .then(literal("mode").executes(this::runToggleEditModeCommand)))
+                .then(literal("editmode").executes(this::runToggleEditModeCommand))
+                .then(routeCommands.appearanceCommand())
+                .then(routeCommands.publishCommand())
                 .then(literal("minimap").executes(ctx -> {
                     Minecraft client = Minecraft.getInstance();
                     client.execute(() -> MinecraftCompat.setScreen(client,
                             new CrystalHollowsMinimapEditorScreen(null, config)));
                     return 1;
                 }))
-                .then(literal("help")
-                        .executes(ctx -> WaypointerCommandHelp.run(ctx.getSource(), root, null))
-                        .then(argument("target", StringArgumentType.word())
-                                .suggests(WaypointerCommandHelp.suggestions())
-                                .executes(ctx -> WaypointerCommandHelp.run(ctx.getSource(), root,
-                                        StringArgumentType.getString(ctx, "target")))))
-                .then(literal("list").executes(ctx -> routeCommands.runList(ctx.getSource())))
-                .then(literal("routes").executes(ctx -> {
-                    scheduleOpenRouteCatalog();
-                    return 1;
-                }))
-                .then(literal("skip").executes(ctx -> routeCommands.runSkipCurrentWaypoint(ctx.getSource())))
-                .then(literal("unskip").executes(ctx -> routeCommands.runUnskipCurrentWaypoint(ctx.getSource())))
-                .then(literal("skipto")
-                        .then(argument("target", StringArgumentType.word())
-                                .suggests(suggestions.suggestSkipTargets())
-                                .executes(ctx -> routeCommands.runSkipTo(ctx.getSource(),
-                                        StringArgumentType.getString(ctx, "target")))))
-                .then(routeCommands.currentSubwayCommand("sub"))
-                .then(routeCommands.currentFlagCommand("tiny", Waypoint.FLAG_SMALL_SUBWAYPOINT,
-                        "waypointer.command.waypoint.flag.tiny", true))
-                .then(routeCommands.currentFlagCommand("filled", Waypoint.FLAG_FILLED_SUBWAYPOINT,
-                        "waypointer.command.waypoint.flag.filled", true))
-                .then(routeCommands.currentFlagCommand("hap", Waypoint.FLAG_HIDE_SUBWAYPOINT_WHEN_PARENT_REACHED,
-                        "waypointer.command.waypoint.flag.hide_after_parent", true))
-                .then(routeCommands.currentFlagCommand("sts", Waypoint.FLAG_SKIP_ON_STAND,
-                        "waypointer.command.waypoint.flag.stand_to_skip", false))
-                .then(routeCommands.currentFlagCommand("its", Waypoint.FLAG_SKIP_ON_INTERACT,
-                        "waypointer.command.waypoint.flag.interact_to_skip", false))
-                .then(routeCommands.currentFlagCommand("los", Waypoint.FLAG_DEPTH_CHECKED,
-                        "waypointer.command.waypoint.flag.line_of_sight", false))
-                .then(literal("reset").executes(ctx -> routeCommands.runResetActiveGroup(ctx.getSource())))
-                .then(literal("mode")
-                        .then(argument("mode", StringArgumentType.word())
-                                .suggests(suggestions.suggestLoadModes())
-                                .executes(ctx -> routeCommands.runSetActiveGroupMode(ctx.getSource(),
-                                        StringArgumentType.getString(ctx, "mode")))))
-                .then(literal("radius")
-                        .then(argument("radius", DoubleArgumentType.doubleArg(
-                                Waypoint.MIN_REACH_RADIUS, Waypoint.MAX_REACH_RADIUS))
-                                .executes(ctx -> routeCommands.runSetActiveGroupRadius(ctx.getSource(),
-                                        DoubleArgumentType.getDouble(ctx, "radius")))))
-                .then(literal("move")
-                        .then(argument("index", IntegerArgumentType.integer(1))
-                                .suggests(suggestions.suggestActiveGroupIndices())
-                                .then(argument("slot", IntegerArgumentType.integer(1))
-                                        .suggests(suggestions.suggestActiveGroupIndices())
-                                        .executes(ctx -> routeCommands.runMoveWaypointToSlot(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                IntegerArgumentType.getInteger(ctx, "slot"))))))
-                .then(literal("add")
-                        .executes(ctx -> routeCommands.runAdd(ctx.getSource(), ""))
-                        .then(literal("at")
-                                .then(argument("x", IntegerArgumentType.integer())
-                                        .suggests(suggestions.suggestPlayerCoord(WaypointerCommandSuggestions.Axis.X))
-                                        .then(argument("y", IntegerArgumentType.integer())
-                                                .suggests(suggestions.suggestPlayerCoord(WaypointerCommandSuggestions.Axis.Y))
-                                                .then(argument("z", IntegerArgumentType.integer())
-                                                        .suggests(suggestions.suggestPlayerCoord(WaypointerCommandSuggestions.Axis.Z))
-                                                        .executes(ctx -> routeCommands.runAddAt(ctx.getSource(),
-                                                                IntegerArgumentType.getInteger(ctx, "x"),
-                                                                IntegerArgumentType.getInteger(ctx, "y"),
-                                                                IntegerArgumentType.getInteger(ctx, "z"),
-                                                                ""))
-                                                        .then(argument("name", StringArgumentType.greedyString())
-                                                                .executes(ctx -> routeCommands.runAddAt(ctx.getSource(),
-                                                                        IntegerArgumentType.getInteger(ctx, "x"),
-                                                                        IntegerArgumentType.getInteger(ctx, "y"),
-                                                                        IntegerArgumentType.getInteger(ctx, "z"),
-                                                                        StringArgumentType.getString(ctx, "name"))))))))
-                        .then(argument("name", StringArgumentType.greedyString())
-                                .executes(ctx -> routeCommands.runAdd(ctx.getSource(), StringArgumentType.getString(ctx, "name")))))
+                .then(literal("debug").executes(ctx -> { scheduleOpenDebugInspector(); return 1; }))
+                // Which route commands act on
+                .then(routeCommands.listCommand())
+                .then(routeCommands.targetCommand())
+                .then(waypointCommands.waypointsCommand())
+                // Routes and folders
+                .then(routeCommands.routeCommand())
+                .then(routeCommands.folderCommand())
+                .then(routeCommands.visibilityCommand("show", true))
+                .then(routeCommands.visibilityCommand("hide", false))
+                .then(routeCommands.clearCommand())
+                // Waypoints
+                .then(waypointCommands.addCommand())
+                .then(waypointCommands.insertCommand())
+                .then(waypointCommands.removeCommand())
+                .then(waypointCommands.moveCommand())
+                .then(waypointCommands.waypointCommand())
+                // Progress
+                .then(waypointCommands.skipCommand())
+                .then(waypointCommands.unskipCommand())
+                .then(waypointCommands.skipToCommand())
+                .then(waypointCommands.resetCommand())
+                // Temporary waypoints and chat
                 .then(literal("addtemp")
+                        .executes(ctx -> chatCommands.runAddTempHere(ctx.getSource()))
                         .then(literal("at")
                                 .then(argument("x", IntegerArgumentType.integer())
                                         .suggests(suggestions.suggestPlayerCoord(WaypointerCommandSuggestions.Axis.X))
@@ -215,14 +184,7 @@ public final class WaypointerCommands {
                                 .then(argument("name", StringArgumentType.word())
                                         .executes(ctx -> chatCommands.runChatCoordBlacklistRemove(ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "name"))))))
-                .then(literal("remove")
-                        .then(argument("index", IntegerArgumentType.integer(1))
-                                .suggests(suggestions.suggestActiveGroupIndices())
-                                .executes(ctx -> routeCommands.runRemove(ctx.getSource(), IntegerArgumentType.getInteger(ctx, "index")))))
-                .then(routeCommands.insertCommand())
-                .then(literal("clear")
-                        .executes(ctx -> routeCommands.runClearZone(ctx.getSource(), false))
-                        .then(literal("confirm").executes(ctx -> routeCommands.runClearZone(ctx.getSource(), true))))
+                // Sharing
                 .then(literal("export")
                         .executes(ctx -> shareCommands.runExport(ctx.getSource(), exportOptionsFromConfig()))
                         .then(literal("routes")
@@ -250,10 +212,6 @@ public final class WaypointerCommands {
                                 .suggests(suggestions.suggestImportFiles())
                                 .executes(ctx -> shareCommands.runImportFile(ctx.getSource(),
                                         StringArgumentType.getString(ctx, "path")))))
-                .then(literal("debug").executes(ctx -> { scheduleOpenDebugInspector(); return 1; }))
-                .then(literal("editmode").executes(this::runToggleEditModeCommand))
-                .then(literal("edit")
-                        .then(literal("mode").executes(this::runToggleEditModeCommand)))
                 .then(literal("importchat")
                         .then(argument("handle", StringArgumentType.word())
                                 .suggests(suggestions.suggestChatHandles())
@@ -279,11 +237,7 @@ public final class WaypointerCommands {
                                         .executes(ctx -> shareCommands.runImportChatTyped(
                                                 ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "handle"),
-                                                UniversalShareCodec.Type.CATALOG)))))
-                .then(routeCommands.waypointCommand())
-                .then(groupCommands.areaCommand())
-                .then(groupCommands.groupCommand("route"))
-                .then(groupCommands.groupCommand("group"));
+                                                UniversalShareCodec.Type.CATALOG)))));
         return d.register(cmd);
     }
 
@@ -333,48 +287,18 @@ public final class WaypointerCommands {
         return 1;
     }
 
-    record SkipToOutcome(int moved, String firstMovedLabel, String error) {}
-
-    static int suggestSkipTargets(List<WaypointGroup> groups, SuggestionsBuilder builder) {
-        return WaypointerCommandSuggestions.suggestSkipTargets(groups, builder);
-    }
-
-    static String activeGroupIndexTooltip(WaypointGroup group, int index) {
-        return WaypointerCommandSuggestions.activeGroupIndexTooltip(group, index);
-    }
-
-    static SkipToOutcome skipActiveGroupsToTarget(List<WaypointGroup> activeGroups, String target) {
-        return WaypointerRouteCommands.skipActiveGroupsToTarget(activeGroups, target);
-    }
-
-    static int waypointIndexFromNumber(int number) {
-        return WaypointerRouteCommands.waypointIndexFromNumber(number);
-    }
-
-    static Integer parseRgb(String rawColor) {
-        return WaypointerRouteCommands.parseRgb(rawColor);
-    }
-
     static int addPersistentWaypointAt(ActiveGroupManager manager, WaypointerConfig config,
                                        WaypointAddFlow addFlow, int x, int y, int z,
                                        String name) {
-        return WaypointerRouteCommands.addPersistentWaypointAt(
+        return WaypointerWaypointCommands.addPersistentWaypointAt(
                 manager, config, addFlow, x, y, z, name);
     }
 
     static int insertPersistentWaypointAt(WaypointGroup target, WaypointerConfig config,
                                           WaypointAddFlow addFlow, int index,
                                           int x, int y, int z, String name) {
-        return WaypointerRouteCommands.insertPersistentWaypointAt(
+        return WaypointerWaypointCommands.insertPersistentWaypointAt(
                 target, config, addFlow, index, x, y, z, name);
-    }
-
-    static boolean definitionOnlyRouteRequiresConversion(ActiveGroupManager manager) {
-        return WaypointerRouteCommands.definitionOnlyRouteRequiresConversion(manager);
-    }
-
-    static Waypoint removeWaypointAt(WaypointGroup target, int index) {
-        return WaypointerRouteCommands.removeWaypointAt(target, index);
     }
 
     static int clearCurrentZoneGroups(ActiveGroupManager manager, boolean confirmed) {

@@ -548,6 +548,14 @@ public final class ActiveGroupManager {
         return firstActiveRouteGroup();
     }
 
+    /**
+     * The route that new waypoints, keybinds and {@code /wp} commands act on in the current zone:
+     * the pinned route, else the route last edited here, else the first shown route. Never creates one.
+     */
+    public WaypointGroup targetRoute() {
+        return firstActiveRouteGroup();
+    }
+
     public void setRecordingTarget(WaypointGroup group) {
         recordingTargetGroupId = group != null && byId.get(group.id()) == group
                 && !group.temp() && !group.runtimeOnly() ? group.id() : null;

@@ -17,9 +17,9 @@ class WaypointAddFlowTest {
     @Test
     void waypointAddedMessageUsesOneCompactLineWithShareActions() {
         Component message = WaypointAddFlow.waypointAddedMessage(
-                "Route 1", 2, Waypoint.at(12, 70, -4), true);
+                "Route 1", "#3", Waypoint.at(12, 70, -4), true);
 
-        assertEquals("Added Waypoint 3 to \"Route 1\" at (12, 70, -4) [All] [Party]",
+        assertEquals("Added Waypoint #3 to \"Route 1\" at (12, 70, -4) [All] [Party]",
                 message.getString());
         List<Component> buttons = message.getSiblings().stream()
                 .filter(component -> component.getStyle().getClickEvent() != null)
@@ -38,9 +38,9 @@ class WaypointAddFlowTest {
     @Test
     void waypointAddedMessageOmitsShareActionsWhenDisabled() {
         Component message = WaypointAddFlow.waypointAddedMessage(
-                "Route 1", 2, Waypoint.at(12, 70, -4), false);
+                "Route 1", "#3", Waypoint.at(12, 70, -4), false);
 
-        assertEquals("Added Waypoint 3 to \"Route 1\" at (12, 70, -4)", message.getString());
+        assertEquals("Added Waypoint #3 to \"Route 1\" at (12, 70, -4)", message.getString());
         assertFalse(message.getSiblings().stream()
                 .anyMatch(component -> component.getStyle().getClickEvent() != null));
     }

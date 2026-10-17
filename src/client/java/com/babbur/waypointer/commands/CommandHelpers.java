@@ -4,8 +4,14 @@ import com.mojang.brigadier.suggestion.Suggestions;
 import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.babbur.waypointer.chat.WaypointerChatFeedback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import com.babbur.waypointer.core.WaypointGroup;
+import com.mojang.brigadier.arguments.StringArgumentType;
 import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
 
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
@@ -54,5 +60,25 @@ public final class CommandHelpers {
     static void error(FabricClientCommandSource source, Component message) {
         source.sendError(WaypointerChatFeedback.suppress(
                 message.copy().withStyle(ChatFormatting.RED)));
+    }
+
+    /** A route's name for chat: clicking it opens Waypointer on that route. */
+    static MutableComponent routeName(WaypointGroup route) {
+        String name = route == null || route.name().isBlank() ? "?" : route.name();
+        if (route == null) return Component.literal(name).withStyle(ChatFormatting.AQUA);
+        return Component.literal(name).withStyle(Style.EMPTY
+                .withColor(ChatFormatting.AQUA)
+                .withClickEvent(new ClickEvent.RunCommand(
+                        "/waypointer gui " + StringArgumentType.escapeIfRequired(route.id())))
+                .withHoverEvent(new HoverEvent.ShowText(
+                        Component.translatable("waypointer.command.route.open_hover"))));
+    }
+
+    /** Feedback about a change to one route, led by the route's name so it is clear what changed. */
+    static void routeSuccess(FabricClientCommandSource source, WaypointGroup route, Component message) {
+        source.sendFeedback(WaypointerChatFeedback.suppress(Component.empty()
+                .append(routeName(route))
+                .append(Component.literal(" \u203A ").withStyle(ChatFormatting.DARK_GRAY))
+                .append(message.copy().withStyle(ChatFormatting.GREEN))));
     }
 }

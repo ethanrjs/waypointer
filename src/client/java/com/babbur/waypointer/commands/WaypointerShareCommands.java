@@ -260,38 +260,13 @@ final class WaypointerShareCommands {
         return line;
     }
 
+    /** {@code /wp export} shares the target route, the same route every other route command acts on. */
     static List<WaypointGroup> cliExportGroups(ActiveGroupManager manager) {
         if (manager == null) return List.of();
-        for (WaypointGroup visible : manager.activeGroups()) {
-            if (visible == null || visible.isEmpty() || visible.temp()) continue;
-            if (!visible.runtimeOnly()
-                    && visible.routeKind() == WaypointGroup.RouteKind.REGULAR) {
-                return List.of(visible);
-            }
-            if (!visible.runtimeOnly()
-                    || visible.routeKind() != WaypointGroup.RouteKind.DUNGEON) {
-                continue;
-            }
-            WaypointGroup durable = DungeonRoomRouteLibrary.durableEditTarget(manager, visible);
-            if (isSafeDurableDungeonTarget(manager, visible, durable)) {
-                return List.of(durable);
-            }
-        }
-        return List.of();
-    }
-
-    private static boolean isSafeDurableDungeonTarget(
-            ActiveGroupManager manager,
-            WaypointGroup visible,
-            WaypointGroup durable) {
-        return durable != null
-                && manager.get(durable.id()) == durable
-                && !durable.temp()
-                && !durable.runtimeOnly()
-                && !durable.isEmpty()
-                && durable.routeKind() == WaypointGroup.RouteKind.DUNGEON
-                && durable.id().equals(visible.runtimeSourceGroupId())
-                && durable.zoneId().equals(visible.zoneId());
+        WaypointGroup target = manager.targetRoute();
+        return target == null || target.isEmpty() || target.temp() || target.runtimeOnly()
+                ? List.of()
+                : List.of(target);
     }
 
     static List<WaypointGroup> cliBulkExportGroups(ActiveGroupManager manager) {

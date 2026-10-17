@@ -449,21 +449,25 @@ class WaypointerScreenTest {
     }
 
     @Test
-    void routeRowsUseZeroBasedCommandIndicesFromManagerOrder() {
+    void routeRowsShowTheirWpListNumberInHubOrder() {
         ActiveGroupManager manager = new ActiveGroupManager();
-        WaypointGroup filteredOut = WaypointGroup.create("Filtered", "garden");
-        WaypointGroup visible = WaypointGroup.create("Visible", "hub");
-        manager.add(filteredOut);
-        manager.add(visible);
+        WaypointGroup other = WaypointGroup.create("Other zone", "garden");
+        WaypointGroup unfiled = WaypointGroup.create("Unfiled", "hub");
+        WaypointGroup filed = WaypointGroup.create("Filed", "hub");
+        manager.add(other);
+        manager.add(unfiled);
+        manager.add(filed);
+        manager.createFolder("Folder", "hub", List.of(filed.id()));
 
-        var indices = RouteListPresentation.routeCommandIndices(manager.allGroupsList());
+        var numbers = RouteListPresentation.routeCommandIndices(
+                RouteFolderListModel.orderedRoutes(manager, "hub"));
 
-        assertEquals(0, indices.get(filteredOut.id()));
-        assertEquals(1, indices.get(visible.id()));
-        assertEquals("[1] Visible", RouteListPresentation.routeRowName(visible,
-                indices.get(visible.id()), true));
-        assertEquals("Visible", RouteListPresentation.routeRowName(visible, 1, false));
-        assertEquals("Visible", RouteListPresentation.routeRowName(visible, -1, true));
+        assertEquals(1, numbers.get(filed.id()), "folder routes come first, as in the hub");
+        assertEquals(2, numbers.get(unfiled.id()));
+        assertFalse(numbers.containsKey(other.id()));
+        assertEquals("2. Unfiled", RouteListPresentation.routeRowName(unfiled, 2, true));
+        assertEquals("Unfiled", RouteListPresentation.routeRowName(unfiled, 2, false));
+        assertEquals("Unfiled", RouteListPresentation.routeRowName(unfiled, -1, true));
     }
 
     @Test

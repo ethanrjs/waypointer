@@ -1,25 +1,31 @@
 package com.babbur.waypointer.commands;
 
-import com.mojang.brigadier.arguments.DoubleArgumentType;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
-import com.mojang.brigadier.arguments.StringArgumentType;
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.babbur.waypointer.WaypointerClient;
+import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
+import com.babbur.waypointer.core.RouteFolder;
 import com.babbur.waypointer.core.Waypoint;
 import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
-import com.babbur.waypointer.dungeon.DungeonRoomWaypointPlacement;
-import com.babbur.waypointer.dungeon.DungeonWaypointSkipRules;
 import com.babbur.waypointer.dungeon.DungeonRoomRouteLibrary;
-import com.babbur.waypointer.input.WaypointAddFlow;
-import com.babbur.waypointer.input.WaypointerKeybinds;
-import com.babbur.waypointer.placement.PlayerWaypointPlacement;
+import com.babbur.waypointer.screen.GroupEditScreen;
+import com.babbur.waypointer.screen.RoutePublishScreen;
+import com.babbur.waypointer.screen.SettingsScreen;
+import com.babbur.waypointer.screen.WaypointerScreen;
+import com.babbur.waypointer.screen.WaypointerZoneCatalog;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
+import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.network.chat.ClickEvent;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.network.chat.Style;
+
 import java.util.List;
 import java.util.Locale;
 
@@ -27,573 +33,687 @@ import static com.babbur.waypointer.commands.CommandHelpers.*;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.argument;
 import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
+/**
+ * Route commands: which route is the target, the route list, and every route action the hub and
+ * the route editor offer. Each acts on the target route (see {@link RouteTargets}).
+ */
 final class WaypointerRouteCommands {
 
     private final ActiveGroupManager manager;
     private final WaypointerConfig config;
-    private final WaypointAddFlow addFlow = new WaypointAddFlow();
     private final WaypointerCommandSuggestions suggestions;
+    private final RouteTargets targets;
 
     WaypointerRouteCommands(ActiveGroupManager manager, WaypointerConfig config,
                             WaypointerCommandSuggestions suggestions) {
         this.manager = manager;
         this.config = config;
         this.suggestions = suggestions;
+        this.targets = new RouteTargets(manager);
     }
 
-    LiteralArgumentBuilder<FabricClientCommandSource> currentSubwayCommand(String name) {
-        return literal(name)
-                .executes(ctx -> runToggleSubwaypoint(ctx.getSource(), null))
-                .then(argument("index", IntegerArgumentType.integer(1))
-                        .suggests(suggestions.suggestActiveGroupIndices())
-                        .executes(ctx -> runToggleSubwaypoint(ctx.getSource(),
-                                IntegerArgumentType.getInteger(ctx, "index"))));
+    // ---- Command tree -----------------------------------------------------------------------
+
+    LiteralArgumentBuilder<FabricClientCommandSource> listCommand() {
+        return literal("list").executes(ctx -> runList(ctx.getSource()));
     }
 
-    LiteralArgumentBuilder<FabricClientCommandSource> currentFlagCommand(String name, int flag,
-                                                                                String labelKey,
-                                                                                boolean subwaypointOnly) {
-        return literal(name)
-                .executes(ctx -> runToggleWaypointFlag(
-                        ctx.getSource(), null, flag, labelKey, subwaypointOnly))
-                .then(argument("index", IntegerArgumentType.integer(1))
-                        .suggests(suggestions.suggestActiveGroupIndices())
-                        .executes(ctx -> runToggleWaypointFlag(ctx.getSource(),
-                                IntegerArgumentType.getInteger(ctx, "index"),
-                                flag, labelKey, subwaypointOnly)));
+    LiteralArgumentBuilder<FabricClientCommandSource> targetCommand() {
+        return literal("target")
+                .executes(ctx -> runShowTarget(ctx.getSource()))
+                .then(literal("auto").executes(ctx -> runTargetAuto(ctx.getSource())))
+                .then(argument("route", StringArgumentType.greedyString())
+                        .suggests(suggestions.suggestRoutes())
+                        .executes(ctx -> runTarget(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "route"))));
     }
 
-    LiteralArgumentBuilder<FabricClientCommandSource> insertCommand() {
-        return literal("insert")
-                .then(argument("index", IntegerArgumentType.integer(1))
-                        .suggests(suggestions.suggestInsertSlots())
-                        .executes(ctx -> runInsert(ctx.getSource(),
-                                IntegerArgumentType.getInteger(ctx, "index"), ""))
-                        .then(literal("at")
-                                .then(argument("x", IntegerArgumentType.integer())
-                                        .suggests(suggestions.suggestPlayerCoord(WaypointerCommandSuggestions.Axis.X))
-                                        .then(argument("y", IntegerArgumentType.integer())
-                                                .suggests(suggestions.suggestPlayerCoord(WaypointerCommandSuggestions.Axis.Y))
-                                                .then(argument("z", IntegerArgumentType.integer())
-                                                        .suggests(suggestions.suggestPlayerCoord(WaypointerCommandSuggestions.Axis.Z))
-                                                        .executes(ctx -> runInsertAt(ctx.getSource(),
-                                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                                IntegerArgumentType.getInteger(ctx, "x"),
-                                                                IntegerArgumentType.getInteger(ctx, "y"),
-                                                                IntegerArgumentType.getInteger(ctx, "z"),
-                                                                ""))
-                                                        .then(argument("name", StringArgumentType.greedyString())
-                                                                .executes(ctx -> runInsertAt(ctx.getSource(),
-                                                                        IntegerArgumentType.getInteger(ctx, "index"),
-                                                                        IntegerArgumentType.getInteger(ctx, "x"),
-                                                                        IntegerArgumentType.getInteger(ctx, "y"),
-                                                                        IntegerArgumentType.getInteger(ctx, "z"),
-                                                                        StringArgumentType.getString(ctx, "name"))))))))
+    LiteralArgumentBuilder<FabricClientCommandSource> visibilityCommand(String name, boolean shown) {
+        LiteralArgumentBuilder<FabricClientCommandSource> command = literal(name)
+                .then(literal("all").executes(ctx -> runSetAllShown(ctx.getSource(), shown)))
+                .then(argument("route", StringArgumentType.greedyString())
+                        .suggests(suggestions.suggestRoutes())
+                        .executes(ctx -> runSetShown(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "route"), shown)));
+        return shown ? command : command.executes(ctx -> runSetShown(ctx.getSource(), null, false));
+    }
+
+    LiteralArgumentBuilder<FabricClientCommandSource> routeCommand() {
+        return literal("route")
+                .executes(ctx -> runShowTarget(ctx.getSource()))
+                .then(literal("new")
                         .then(argument("name", StringArgumentType.greedyString())
-                                .executes(ctx -> runInsert(ctx.getSource(),
-                                        IntegerArgumentType.getInteger(ctx, "index"),
-                                        StringArgumentType.getString(ctx, "name")))));
+                                .suggests(suggestions.suggestNewRouteNames())
+                                .executes(ctx -> runCreate(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "name")))))
+                .then(literal("rename")
+                        .then(argument("name", StringArgumentType.greedyString())
+                                .executes(ctx -> runRename(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "name")))))
+                .then(literal("delete")
+                        .executes(ctx -> runDelete(ctx.getSource(), false))
+                        .then(literal("confirm").executes(ctx -> runDelete(ctx.getSource(), true))))
+                .then(literal("mode")
+                        .then(argument("mode", StringArgumentType.word())
+                                .suggests(suggestions.suggestLoadModes())
+                                .executes(ctx -> runSetMode(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "mode")))))
+                .then(literal("radius")
+                        .then(argument("blocks", DoubleArgumentType.doubleArg(
+                                Waypoint.MIN_REACH_RADIUS, Waypoint.MAX_REACH_RADIUS))
+                                .executes(ctx -> runSetRadius(ctx.getSource(),
+                                        DoubleArgumentType.getDouble(ctx, "blocks")))))
+                .then(literal("skipahead")
+                        .executes(ctx -> runSetSkipAhead(ctx.getSource(), "toggle"))
+                        .then(argument("state", StringArgumentType.word())
+                                .suggests(suggestions.suggestToggleStates())
+                                .executes(ctx -> runSetSkipAhead(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "state")))))
+                .then(literal("colormode")
+                        .then(argument("mode", StringArgumentType.word())
+                                .suggests(suggestions.suggestColorModes())
+                                .executes(ctx -> runSetColorMode(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "mode")))))
+                .then(literal("color")
+                        .then(argument("hex", StringArgumentType.word())
+                                .suggests(suggestions.suggestHexColors())
+                                .executes(ctx -> runSetColor(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "hex")))))
+                .then(literal("gradient")
+                        .then(argument("start", StringArgumentType.word())
+                                .suggests(suggestions.suggestHexColors())
+                                .then(argument("end", StringArgumentType.word())
+                                        .suggests(suggestions.suggestHexColors())
+                                        .executes(ctx -> runSetGradient(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "start"),
+                                                StringArgumentType.getString(ctx, "end"))))))
+                .then(literal("zone")
+                        .then(argument("zone", StringArgumentType.greedyString())
+                                .suggests(suggestions.suggestZoneTargets())
+                                .executes(ctx -> runSetZone(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "zone")))))
+                .then(literal("move")
+                        .then(literal("up").executes(ctx -> runMove(ctx.getSource(), -1)))
+                        .then(literal("down").executes(ctx -> runMove(ctx.getSource(), 1))))
+                .then(literal("folder")
+                        .then(literal("none").executes(ctx -> runSetFolder(ctx.getSource(), null)))
+                        .then(argument("folder", StringArgumentType.greedyString())
+                                .suggests(suggestions.suggestFolders(false))
+                                .executes(ctx -> runSetFolder(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "folder")))));
     }
 
-    LiteralArgumentBuilder<FabricClientCommandSource> waypointCommand() {
-        return literal("waypoint")
-                .then(literal("move")
-                        .then(argument("index", IntegerArgumentType.integer(1))
-                                .suggests(suggestions.suggestActiveGroupIndices())
-                                .then(literal("here")
-                                        .executes(ctx -> runMoveWaypointHere(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"))))
-                                .then(literal("at")
-                                        .then(argument("x", IntegerArgumentType.integer())
-                                                .suggests(suggestions.suggestPlayerCoord(WaypointerCommandSuggestions.Axis.X))
-                                                .then(argument("y", IntegerArgumentType.integer())
-                                                        .suggests(suggestions.suggestPlayerCoord(WaypointerCommandSuggestions.Axis.Y))
-                                                        .then(argument("z", IntegerArgumentType.integer())
-                                                                .suggests(suggestions.suggestPlayerCoord(WaypointerCommandSuggestions.Axis.Z))
-                                                                .executes(ctx -> runMoveWaypointAt(ctx.getSource(),
-                                                                        IntegerArgumentType.getInteger(ctx, "index"),
-                                                                        IntegerArgumentType.getInteger(ctx, "x"),
-                                                                        IntegerArgumentType.getInteger(ctx, "y"),
-                                                                        IntegerArgumentType.getInteger(ctx, "z")))))))))
+    LiteralArgumentBuilder<FabricClientCommandSource> folderCommand() {
+        return literal("folder")
+                .then(literal("new")
+                        .then(argument("name", StringArgumentType.greedyString())
+                                .executes(ctx -> runCreateFolder(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "name")))))
                 .then(literal("rename")
-                        .then(argument("index", IntegerArgumentType.integer(1))
-                                .suggests(suggestions.suggestActiveGroupIndices())
+                        .then(argument("folder", StringArgumentType.string())
+                                .suggests(suggestions.suggestFolders(true))
                                 .then(argument("name", StringArgumentType.greedyString())
-                                        .executes(ctx -> runRenameWaypoint(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                        .executes(ctx -> runRenameFolder(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "folder"),
                                                 StringArgumentType.getString(ctx, "name"))))))
                 .then(literal("color")
-                        .then(argument("index", IntegerArgumentType.integer(1))
-                                .suggests(suggestions.suggestActiveGroupIndices())
+                        .then(argument("folder", StringArgumentType.string())
+                                .suggests(suggestions.suggestFolders(true))
                                 .then(argument("hex", StringArgumentType.word())
                                         .suggests(suggestions.suggestHexColors())
-                                        .executes(ctx -> runSetWaypointColor(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
+                                        .executes(ctx -> runFolderColor(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "folder"),
                                                 StringArgumentType.getString(ctx, "hex"))))))
-                .then(literal("radius")
-                        .then(argument("index", IntegerArgumentType.integer(1))
-                                .suggests(suggestions.suggestActiveGroupIndices())
-                                .then(argument("radius", DoubleArgumentType.doubleArg(
-                                        0.0, Waypoint.MAX_REACH_RADIUS))
-                                        .executes(ctx -> runSetWaypointRadius(ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "index"),
-                                                DoubleArgumentType.getDouble(ctx, "radius"))))))
-                .then(literal("sub")
-                        .then(argument("index", IntegerArgumentType.integer(1))
-                                .suggests(suggestions.suggestActiveGroupIndices())
-                                .executes(ctx -> runToggleSubwaypoint(ctx.getSource(),
-                                        IntegerArgumentType.getInteger(ctx, "index")))));
+                .then(literal("delete")
+                        .then(argument("folder", StringArgumentType.greedyString())
+                                .suggests(suggestions.suggestFolders(false))
+                                .executes(ctx -> runDeleteFolder(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "folder")))));
     }
+
+    LiteralArgumentBuilder<FabricClientCommandSource> editCommand() {
+        return literal("edit").executes(ctx -> runOpenEditor(ctx.getSource()));
+    }
+
+    LiteralArgumentBuilder<FabricClientCommandSource> appearanceCommand() {
+        return literal("appearance").executes(ctx -> runOpenAppearance(ctx.getSource()));
+    }
+
+    LiteralArgumentBuilder<FabricClientCommandSource> publishCommand() {
+        return literal("publish").executes(ctx -> runOpenPublish(ctx.getSource()));
+    }
+
+    // ---- Target ---------------------------------------------------------------------------------
 
     int runList(FabricClientCommandSource src) {
-        List<WaypointGroup> active = manager.activeGroups();
-        if (active.isEmpty()) {
-            Zone zone = manager.currentZone();
-            info(src, zone == null
-                    ? Component.translatable("waypointer.command.list.empty")
-                    : Component.translatable(
-                            "waypointer.command.list.empty_in_zone", zone.displayName()));
+        List<WaypointGroup> routes = targets.listed();
+        if (routes.isEmpty()) {
+            info(src, Component.translatable("waypointer.command.list.none", targets.zoneName()));
             return 0;
         }
-        for (WaypointGroup g : active) {
-            String currentIndexText = g.isComplete()
-                    ? "complete"
-                    : Integer.toString(g.currentIndex() + 1);
-            if (g.currentIndex() >= 0 && g.currentIndex() < g.size()) {
-                currentIndexText += " (" + g.displayIndexLabel(g.currentIndex()) + ")";
-            }
-            info(src, Component.translatable(
-                    "waypointer.command.list.route_numbered",
-                    Component.literal(g.name()).withStyle(ChatFormatting.AQUA),
-                    g.size(), currentIndexText));
-            int shown = Math.min(g.size(), 16);
-            for (int i = 0; i < shown; i++) {
-                Waypoint w = g.get(i);
-                ChatFormatting color = i < g.currentIndex() ? ChatFormatting.DARK_GRAY
-                        : i == g.currentIndex() ? ChatFormatting.YELLOW
-                        : ChatFormatting.WHITE;
-                info(src, Component.translatable(
-                        "waypointer.command.list.waypoint_numbered",
-                        g.displayIndexLabel(i), i + 1,
-                        Component.literal(w.x() + ", " + w.y() + ", " + w.z())
-                                .withStyle(color),
-                        w.hasName()
-                                ? Component.literal(w.name()).withStyle(ChatFormatting.GRAY)
-                                : Component.empty()));
-            }
-            if (g.size() > shown) {
-                info(src, Component.translatable(
-                        "waypointer.command.list.more", g.size() - shown));
-            }
+        WaypointGroup target = manager.targetRoute();
+        info(src, Component.translatable("waypointer.command.list.header", targets.zoneName())
+                .withStyle(ChatFormatting.GRAY));
+        for (int i = 0; i < routes.size(); i++) {
+            info(src, listRow(i + 1, routes.get(i), routes.get(i) == target));
         }
-        return active.size();
+        return routes.size();
     }
 
-    int runSkipCurrentWaypoint(FabricClientCommandSource src) {
-        int moved = WaypointerKeybinds.skipCurrentWaypointTargets(manager, config);
-        if (moved == 0) {
-            error(src, Component.translatable("waypointer.command.skip.no_route"));
-            return 0;
+    private Component listRow(int number, WaypointGroup route, boolean target) {
+        MutableComponent row = Component.literal(target ? " ▶ " : "   ")
+                .withStyle(ChatFormatting.YELLOW);
+        row.append(Component.literal(number + ". ").withStyle(ChatFormatting.DARK_GRAY));
+        Style nameStyle = Style.EMPTY
+                .withColor(route.enabled() ? ChatFormatting.WHITE : ChatFormatting.GRAY)
+                .withClickEvent(new ClickEvent.RunCommand("/wp target " + number))
+                .withHoverEvent(new HoverEvent.ShowText(Component.translatable(target
+                        ? "waypointer.command.list.target_hover"
+                        : "waypointer.command.list.pick_hover")));
+        row.append(Component.literal(route.name()).withStyle(nameStyle));
+        row.append(Component.literal("  ").append(com.babbur.waypointer.i18n.Counts.of(
+                "waypoint", route.size())).withStyle(ChatFormatting.DARK_GRAY));
+        if (!route.enabled()) {
+            row.append(Component.literal(" · ").withStyle(ChatFormatting.DARK_GRAY))
+                    .append(Component.translatable("waypointer.command.list.hidden")
+                            .withStyle(ChatFormatting.DARK_GRAY));
         }
-        success(src, Component.translatable(
-                moved == 1
-                        ? "waypointer.command.skip.success.one"
-                        : "waypointer.command.skip.success.many",
-                moved));
-        return moved;
+        return row;
     }
 
-    int runUnskipCurrentWaypoint(FabricClientCommandSource src) {
-        int moved = WaypointerKeybinds.unskipCurrentWaypointTargets(manager);
-        if (moved == 0) {
-            error(src, Component.translatable(
-                    "waypointer.command.unskip.no_route"));
+    int runShowTarget(FabricClientCommandSource src) {
+        RouteTargets.Target target = targets.target();
+        if (target == null) {
+            info(src, Component.translatable("waypointer.command.target.none", targets.zoneName()));
             return 0;
         }
-        success(src, Component.translatable(
-                moved == 1
-                        ? "waypointer.command.unskip.success.one"
-                        : "waypointer.command.unskip.success.many",
-                moved));
-        return moved;
+        String key = switch (target.reason()) {
+            case PINNED -> "waypointer.command.target.pinned";
+            case EDITED -> "waypointer.command.target.edited";
+            case FIRST -> "waypointer.command.target.first";
+        };
+        info(src, Component.translatable(key, routeName(target.route())));
+        return 1;
     }
 
-    int runSkipTo(FabricClientCommandSource src, String target) {
-        List<WaypointGroup> activeGroups = manager.activeGroups();
-        if (activeGroups.isEmpty()) {
-            error(src, Component.translatable("waypointer.command.skip.no_route"));
+    int runTarget(FabricClientCommandSource src, String reference) {
+        RouteTargets.Lookup<WaypointGroup> found = targets.route(reference);
+        if (!found.ok()) {
+            error(src, found.error());
             return 0;
         }
-        WaypointerCommands.SkipToOutcome outcome = skipActiveGroupsToTarget(activeGroups, target);
-        if (outcome.moved() == 0) {
-            error(src, outcome.error() == null
-                    ? Component.translatable(
-                            "waypointer.command.skipto.no_target", target)
-                    : Component.literal(outcome.error()));
+        WaypointGroup route = found.value();
+        if (!route.enabled()) {
+            error(src, Component.translatable("waypointer.command.target.hidden", route.name()));
             return 0;
         }
+        manager.setRecordingTarget(route);
+        if (manager.recordingTarget() != route) {
+            error(src, Component.translatable("waypointer.command.target.unavailable", route.name()));
+            return 0;
+        }
+        routeSuccess(src, route, Component.translatable("waypointer.command.target.set"));
+        return 1;
+    }
+
+    int runTargetAuto(FabricClientCommandSource src) {
+        manager.setRecordingTarget(null);
+        WaypointGroup now = manager.targetRoute();
+        if (now == null) {
+            success(src, Component.translatable("waypointer.command.target.auto"));
+        } else {
+            routeSuccess(src, now, Component.translatable("waypointer.command.target.auto_now"));
+        }
+        return 1;
+    }
+
+    // ---- Route actions --------------------------------------------------------------------------
+
+    int runCreate(FabricClientCommandSource src, String rawName) {
+        String name = rawName == null ? "" : rawName.trim();
+        if (name.isEmpty()) {
+            error(src, Component.translatable("waypointer.command.error.name_missing"));
+            return 0;
+        }
+        Zone zone = manager.currentZone() == null ? Zone.UNKNOWN : manager.currentZone();
+        WaypointGroup route = WaypointGroup.create(name, zone.id(), config.skipAheadMechanicEnabled());
+        boolean pinned = manager.recordingTarget() != null;
+        manager.add(route);
+        if (pinned) manager.setRecordingTarget(route);
+        manager.noteRouteEdited(route);
+        routeSuccess(src, route, Component.translatable(
+                "waypointer.command.route.created_here", zone.displayName()));
+        return 1;
+    }
+
+    int runRename(FabricClientCommandSource src, String rawName) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        String name = rawName == null ? "" : rawName.trim();
+        if (name.isEmpty()) {
+            error(src, Component.translatable("waypointer.command.error.name_missing"));
+            return 0;
+        }
+        String before = route.name();
+        route.setName(name);
+        changed(route);
+        routeSuccess(src, route, Component.translatable("waypointer.command.route.renamed_from", before));
+        return 1;
+    }
+
+    int runDelete(FabricClientCommandSource src, boolean confirmed) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        if (!confirmed) {
+            warn(src, Component.translatable("waypointer.command.route.delete_ask",
+                    routeName(route), com.babbur.waypointer.i18n.Counts.of("waypoint", route.size())));
+            return 0;
+        }
+        manager.remove(route.id());
+        success(src, Component.translatable("waypointer.command.route.deleted", route.name()));
+        return 1;
+    }
+
+    int runSetShown(FabricClientCommandSource src, String reference, boolean shown) {
+        WaypointGroup route;
+        if (reference == null) {
+            route = targetOrError(src);
+        } else {
+            RouteTargets.Lookup<WaypointGroup> found = targets.route(reference);
+            if (!found.ok()) error(src, found.error());
+            route = found.value();
+        }
+        if (route == null) return 0;
+        setShown(route, shown);
         manager.fireDataChanged();
-
-        success(src, Component.translatable(
-                outcome.moved() == 1
-                        ? "waypointer.command.skipto.success.one"
-                        : "waypointer.command.skipto.success.many",
-                outcome.moved(), outcome.firstMovedLabel()));
-        return outcome.moved();
+        routeSuccess(src, route, Component.translatable(shown
+                ? "waypointer.command.route.shown"
+                : "waypointer.command.route.hidden"));
+        return 1;
     }
 
-    static WaypointerCommands.SkipToOutcome skipActiveGroupsToTarget(List<WaypointGroup> activeGroups, String target) {
-        int moved = 0;
-        String firstError = null;
-        String firstMovedLabel = null;
-        for (WaypointGroup group : activeGroups) {
-            if (group == null || group.isEmpty()) continue;
-            SkipTarget resolved = resolveSkipTargetIndex(group, target);
-            if (resolved.error() != null) {
-                if (firstError == null) firstError = resolved.error();
-                continue;
-            }
-            group.setCurrentTargetIndex(resolved.index());
-            if (firstMovedLabel == null) {
-                firstMovedLabel = skipTargetLabel(group, resolved.index());
-            }
-            moved++;
-        }
-        return new WaypointerCommands.SkipToOutcome(moved, firstMovedLabel, firstError);
-    }
-
-    static SkipTarget resolveSkipTargetIndex(WaypointGroup group, String rawTarget) {
-        String target = rawTarget == null ? "" : rawTarget.trim();
-        if (target.startsWith("#")) target = target.substring(1);
-        if (target.isEmpty()) {
-            return SkipTarget.error("Usage: /wp skipto <number>, for example 2 or 2.2");
-        }
-
-        String[] parts = target.split("\\.", -1);
-        if (parts.length < 1 || parts.length > 2 || parts[0].isBlank()) {
-            return SkipTarget.error("Invalid skip target '" + rawTarget + "'. Use 2 or 2.2.");
-        }
-
-        int mainOrdinal = parsePositiveOrdinal(parts[0]);
-        if (mainOrdinal <= 0) {
-            return SkipTarget.error("Main waypoint number must be 1 or higher.");
-        }
-
-        int mainIndex = indexForMainOrdinal(group, mainOrdinal);
-        if (mainIndex < 0) {
-            return SkipTarget.error("Main waypoint " + mainOrdinal
-                    + " out of range (1.." + group.mainWaypointCount() + ")");
-        }
-        if (parts.length == 1) {
-            return SkipTarget.index(mainIndex);
-        }
-        if (parts[1].isBlank()) {
-            return SkipTarget.error("Subwaypoint number is missing after the decimal.");
-        }
-
-        int childOrdinal = parsePositiveOrdinal(parts[1]);
-        if (childOrdinal <= 0) {
-            return SkipTarget.error("Subwaypoint number must be 1 or higher.");
-        }
-
-        int childIndex = indexForChildOrdinal(group, mainIndex, childOrdinal);
-        if (childIndex < 0) {
-            return SkipTarget.error("Waypoint " + mainOrdinal + " only has "
-                    + childCount(group, mainIndex) + " subwaypoint(s).");
-        }
-        return SkipTarget.index(childIndex);
-    }
-
-    static int parsePositiveOrdinal(String raw) {
-        try {
-            int parsed = Integer.parseInt(raw.trim());
-            return parsed < 1 ? -1 : parsed;
-        } catch (NumberFormatException e) {
-            return -1;
-        }
-    }
-
-    static int indexForMainOrdinal(WaypointGroup group, int ordinal) {
+    int runSetAllShown(FabricClientCommandSource src, boolean shown) {
         int count = 0;
-        for (int i = 0; i < group.size(); i++) {
-            if (group.isSubwaypoint(i)) continue;
-            count++;
-            if (count == ordinal) return i;
-        }
-        return -1;
-    }
-
-    static int indexForChildOrdinal(WaypointGroup group, int mainIndex, int childOrdinal) {
-        if (mainIndex < 0 || mainIndex >= group.size() || group.isSubwaypoint(mainIndex)) {
-            return -1;
-        }
-        int count = 0;
-        for (int i = mainIndex + 1; i < group.size() && group.isSubwaypoint(i); i++) {
-            count++;
-            if (count == childOrdinal) return i;
-        }
-        return -1;
-    }
-
-    static int childCount(WaypointGroup group, int mainIndex) {
-        if (mainIndex < 0 || mainIndex >= group.size() || group.isSubwaypoint(mainIndex)) {
-            return 0;
-        }
-        int count = 0;
-        for (int i = mainIndex + 1; i < group.size() && group.isSubwaypoint(i); i++) {
+        for (WaypointGroup route : targets.listed()) {
+            if (route.enabled() == shown) continue;
+            setShown(route, shown);
             count++;
         }
+        if (count > 0) manager.fireDataChanged();
+        success(src, Component.translatable(shown
+                        ? "waypointer.command.route.shown_all"
+                        : "waypointer.command.route.hidden_all",
+                com.babbur.waypointer.i18n.Counts.of("route", count), targets.zoneName()));
         return count;
     }
 
-    static String skipTargetLabel(WaypointGroup group, int index) {
-        String label = group.displayIndexLabel(index);
-        return label.startsWith("#") ? label.substring(1) : label;
-    }
-
-    record SkipTarget(int index, String error) {
-        static SkipTarget index(int index) {
-            return new SkipTarget(index, null);
-        }
-
-        static SkipTarget error(String message) {
-            return new SkipTarget(-1, message == null ? "Invalid skip target" : message);
+    private void setShown(WaypointGroup route, boolean shown) {
+        if (route.routeKind() == WaypointGroup.RouteKind.DUNGEON) {
+            DungeonRoomRouteLibrary.setRouteEnabled(manager, WaypointerClient.dungeonConfig(), route, shown);
+        } else {
+            route.setEnabled(shown);
         }
     }
 
-    int runResetActiveGroup(FabricClientCommandSource src) {
-        WaypointGroup group = manager.firstActiveGroup();
-        if (group == null) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.no_active_route"));
-            return 0;
-        }
-        group.resetProgress();
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                "waypointer.command.reset.success", group.name()));
-        return 1;
-    }
-
-    int runSetActiveGroupMode(FabricClientCommandSource src, String rawMode) {
-        WaypointGroup group = activeGroupOrError(src);
-        if (group == null) return 0;
+    int runSetMode(FabricClientCommandSource src, String rawMode) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
         WaypointGroup.LoadMode mode = parseLoadMode(rawMode);
         if (mode == null) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.mode"));
+            error(src, Component.translatable("waypointer.command.error.mode_value", rawMode));
             return 0;
         }
-        group.setLoadMode(mode);
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                "waypointer.command.route.mode_set",
-                group.name(), mode.name().toLowerCase(Locale.ROOT)));
+        route.setLoadMode(mode);
+        changed(route);
+        routeSuccess(src, route, Component.translatable("waypointer.command.route.mode",
+                Component.translatable(mode == WaypointGroup.LoadMode.STATIC
+                        ? "waypointer.screen.group_edit.mode.static"
+                        : "waypointer.screen.group_edit.mode.sequence")));
         return 1;
     }
 
-    int runSetActiveGroupRadius(FabricClientCommandSource src, double radius) {
-        WaypointGroup group = activeGroupOrError(src);
-        if (group == null) return 0;
-        group.setDefaultRadius(radius);
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                "waypointer.command.route.radius_set",
-                group.name(), String.format(Locale.ROOT, "%.1f", group.defaultRadius())));
+    int runSetRadius(FabricClientCommandSource src, double radius) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        route.setDefaultRadius(radius);
+        changed(route);
+        routeSuccess(src, route, Component.translatable("waypointer.command.route.radius",
+                formatBlocks(route.defaultRadius())));
         return 1;
     }
 
-    int runMoveWaypointToSlot(FabricClientCommandSource src, int index, int slot) {
-        index = waypointIndexFromNumber(index);
-        slot = waypointIndexFromNumber(slot);
-        WaypointGroup group = activeGroupOrError(src);
-        if (group == null || !validateWaypointIndex(src, group, index)) return 0;
-        if (slot < 0 || slot >= group.size()) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.move_waypoint_number_range",
-                    slot + 1, group.size()));
+    int runSetSkipAhead(FabricClientCommandSource src, String rawState) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        Boolean state = parseToggleState(rawState, route.skipAheadEnabled());
+        if (state == null) {
+            error(src, Component.translatable("waypointer.command.error.state_value", rawState));
             return 0;
         }
-        group.move(index, slot);
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                "waypointer.command.waypoint.reordered_numbered", index + 1, slot + 1));
+        route.setSkipAheadEnabled(state);
+        changed(route);
+        routeSuccess(src, route, Component.translatable("waypointer.command.route.skip_ahead",
+                Component.translatable(state ? "options.on" : "options.off")));
         return 1;
     }
 
-    int runToggleSubwaypoint(FabricClientCommandSource src, Integer requestedIndex) {
-        WaypointGroup group = activeGroupOrError(src);
-        int index = resolveActiveWaypointIndex(src, group, requestedIndex);
-        if (index < 0) return 0;
-
-        boolean wasSubwaypoint = group.isSubwaypoint(index);
-        if (!group.toggleSubwaypoint(index)) {
-            error(src, index == 0
-                    ? Component.translatable(
-                            "waypointer.command.waypoint.first_not_subwaypoint")
-                    : Component.translatable(
-                            "waypointer.command.waypoint.not_subwaypoint_numbered", index + 1));
-            return 0;
+    int runSetColorMode(FabricClientCommandSource src, String rawMode) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        String mode = rawMode == null ? "" : rawMode.trim().toLowerCase(Locale.ROOT);
+        String labelKey;
+        switch (mode) {
+            case "color", "manual" -> {
+                route.setPaintEnabled(false);
+                route.setGradientMode(WaypointGroup.GradientMode.MANUAL);
+                labelKey = "waypointer.screen.group_edit.color_mode.color";
+            }
+            case "gradient", "auto" -> {
+                route.setPaintEnabled(false);
+                route.setGradientMode(WaypointGroup.GradientMode.AUTO);
+                labelKey = "waypointer.screen.group_edit.color_mode.gradient";
+            }
+            case "one", "static", "solid" -> {
+                route.setPaintEnabled(false);
+                route.setGradientMode(WaypointGroup.GradientMode.STATIC);
+                labelKey = "waypointer.screen.group_edit.color_mode.one";
+            }
+            case "paint" -> {
+                route.setPaintEnabled(true);
+                labelKey = "waypointer.screen.group_edit.color_mode.paint";
+            }
+            default -> {
+                error(src, Component.translatable("waypointer.command.error.color_mode_value", rawMode));
+                return 0;
+            }
         }
-        if (!wasSubwaypoint && group.isSubwaypoint(index)) {
-            group.setSkipAheadEnabled(false);
-        }
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                group.isSubwaypoint(index)
-                        ? "waypointer.command.waypoint.subwaypoint"
-                        : "waypointer.command.waypoint.main",
-                group.displayIndexLabel(index)));
+        changed(route);
+        routeSuccess(src, route, Component.translatable("waypointer.command.route.color_mode",
+                Component.translatable(labelKey)));
         return 1;
     }
 
-    int runToggleWaypointFlag(FabricClientCommandSource src, Integer requestedIndex,
-                                      int flag, String labelKey, boolean subwaypointOnly) {
-        WaypointGroup group = activeGroupOrError(src);
-        int index = resolveActiveWaypointIndex(src, group, requestedIndex);
-        if (index < 0) return 0;
-        if (subwaypointOnly && !group.isSubwaypoint(index)) {
-            error(src, Component.translatable(
-                    "waypointer.command.waypoint.flag_requires_subwaypoint",
-                    group.displayIndexLabel(index), index + 1));
-            return 0;
-        }
-
-        Waypoint waypoint = group.get(index);
-        int nextFlags = waypoint.flags() ^ flag;
-        group.set(index, waypoint.withFlags(nextFlags));
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                ((nextFlags & flag) != 0)
-                        ? "waypointer.command.waypoint.flag_enabled"
-                        : "waypointer.command.waypoint.flag_disabled",
-                Component.translatable(labelKey), group.displayIndexLabel(index)));
-        return 1;
-    }
-
-    int runMoveWaypointHere(FabricClientCommandSource src, int index) {
-        LocalPlayer player = Minecraft.getInstance().player;
-        if (player == null) {
-            error(src, Component.translatable("waypointer.command.error.not_in_world"));
-            return 0;
-        }
-        PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
-                player.getX(), player.getY(), player.getZ(), config);
-        return runMoveWaypointAt(src, index, pos.x(), pos.y(), pos.z());
-    }
-
-    int runMoveWaypointAt(FabricClientCommandSource src, int index, int x, int y, int z) {
-        index = waypointIndexFromNumber(index);
-        WaypointGroup group = activeGroupOrError(src);
-        if (group == null || !validateWaypointIndex(src, group, index)) return 0;
-        if (!DungeonRoomWaypointPlacement.moveWaypointToStoredPosition(group, index, x, y, z)) {
-            error(src, DungeonRoomWaypointPlacement.unavailableMessage(group));
-            return 0;
-        }
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                "waypointer.command.waypoint.moved",
-                group.displayIndexLabel(index), x, y, z));
-        return 1;
-    }
-
-    int runRenameWaypoint(FabricClientCommandSource src, int index, String name) {
-        index = waypointIndexFromNumber(index);
-        WaypointGroup group = activeGroupOrError(src);
-        if (group == null || !validateWaypointIndex(src, group, index)) return 0;
-        group.set(index, group.get(index).withName(name == null ? "" : name.trim()));
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                "waypointer.command.waypoint.renamed",
-                group.displayIndexLabel(index)));
-        return 1;
-    }
-
-    int runSetWaypointColor(FabricClientCommandSource src, int index, String rawColor) {
-        index = waypointIndexFromNumber(index);
-        WaypointGroup group = activeGroupOrError(src);
-        if (group == null || !validateWaypointIndex(src, group, index)) return 0;
+    int runSetColor(FabricClientCommandSource src, String rawColor) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
         Integer color = parseRgb(rawColor);
         if (color == null) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.color_hex"));
+            error(src, Component.translatable("waypointer.command.error.hex_value", rawColor));
             return 0;
         }
-
-        group.lockWaypointColor(index, color);
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                "waypointer.command.waypoint.color_set",
-                group.displayIndexLabel(index), formatRgb(color)));
+        route.setPaintEnabled(false);
+        route.setStaticColor(color);
+        route.setGradientMode(WaypointGroup.GradientMode.STATIC);
+        changed(route);
+        routeSuccess(src, route, Component.translatable("waypointer.command.route.one_color",
+                formatRgb(color)));
         return 1;
     }
 
-    int runSetWaypointRadius(FabricClientCommandSource src, int index, double radius) {
-        index = waypointIndexFromNumber(index);
-        WaypointGroup group = activeGroupOrError(src);
-        if (group == null || !validateWaypointIndex(src, group, index)) return 0;
-        group.set(index, group.get(index).withRadius(radius));
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                "waypointer.command.waypoint.radius_set",
-                group.displayIndexLabel(index),
-                String.format(Locale.ROOT, "%.1f", radius)));
+    int runSetGradient(FabricClientCommandSource src, String rawStart, String rawEnd) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        Integer start = parseRgb(rawStart);
+        Integer end = parseRgb(rawEnd);
+        if (start == null || end == null) {
+            error(src, Component.translatable("waypointer.command.error.hex_value",
+                    start == null ? rawStart : rawEnd));
+            return 0;
+        }
+        route.setPaintEnabled(false);
+        route.setGradientStartColor(start);
+        route.setGradientEndColor(end);
+        route.setGradientMode(WaypointGroup.GradientMode.AUTO);
+        changed(route);
+        routeSuccess(src, route, Component.translatable("waypointer.command.route.gradient",
+                formatRgb(start), formatRgb(end)));
         return 1;
     }
 
-    WaypointGroup activeGroupOrError(FabricClientCommandSource src) {
-        WaypointGroup visibleGroup = manager.firstActiveGroup();
-        if (visibleGroup == null) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.no_active_route"));
+    int runSetZone(FabricClientCommandSource src, String rawZone) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        Zone zone = resolveZone(src, rawZone);
+        if (zone == null) return 0;
+        if (!WaypointerZoneCatalog.retargetRoute(route, zone.id())) {
+            error(src, Component.translatable("waypointer.command.error.zone_move", route.name(),
+                    zone.displayName()));
+            return 0;
+        }
+        manager.fireDataChangedFor(route);
+        routeSuccess(src, route, Component.translatable("waypointer.command.route.zone",
+                WaypointerZoneCatalog.displayZoneLabel(route.zoneId())));
+        return 1;
+    }
+
+    int runMove(FabricClientCommandSource src, int delta) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        if (!manager.moveGroupBy(route.id(), delta)) {
+            error(src, Component.translatable("waypointer.command.route.move_blocked"));
+            return 0;
+        }
+        manager.fireDataChanged();
+        routeSuccess(src, route, Component.translatable("waypointer.command.route.position",
+                targets.number(route)));
+        return 1;
+    }
+
+    int runSetFolder(FabricClientCommandSource src, String reference) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        if (reference == null) {
+            if (!manager.removeGroupFromFolder(route.id())) {
+                error(src, Component.translatable("waypointer.command.route.no_folder"));
+                return 0;
+            }
+            manager.fireDataChanged();
+            routeSuccess(src, route, Component.translatable("waypointer.command.route.folder_cleared"));
+            return 1;
+        }
+        RouteTargets.Lookup<RouteFolder> folder = targets.folder(reference);
+        if (!folder.ok()) {
+            error(src, folder.error());
+            return 0;
+        }
+        if (!manager.assignGroupToFolder(route.id(), folder.value().id())) {
+            error(src, Component.translatable("waypointer.command.error.folder_route", route.name()));
+            return 0;
+        }
+        manager.fireDataChanged();
+        routeSuccess(src, route, Component.translatable("waypointer.command.route.folder_set",
+                folder.value().name()));
+        return 1;
+    }
+
+    LiteralArgumentBuilder<FabricClientCommandSource> clearCommand() {
+        return literal("clear")
+                .executes(ctx -> runClearZone(ctx.getSource(), false))
+                .then(literal("confirm").executes(ctx -> runClearZone(ctx.getSource(), true)));
+    }
+
+    int runClearZone(FabricClientCommandSource src, boolean confirmed) {
+        Zone zone = manager.currentZone();
+        if (zone == null) {
+            error(src, Component.translatable("waypointer.command.error.no_zone"));
+            return 0;
+        }
+        List<WaypointGroup> here = manager.groupsForZone(zone.id());
+        if (here.isEmpty()) {
+            info(src, Component.translatable("waypointer.command.clear.empty", zone.displayName()));
+            return 0;
+        }
+        if (!confirmed) {
+            warn(src, Component.translatable("waypointer.command.clear.ask",
+                    com.babbur.waypointer.i18n.Counts.of("route", here.size()), zone.displayName()));
+            return 0;
+        }
+        int cleared = clearCurrentZoneGroups(manager, true);
+        success(src, Component.translatable("waypointer.command.clear.done",
+                com.babbur.waypointer.i18n.Counts.of("route", cleared), zone.displayName()));
+        return cleared;
+    }
+
+    static int clearCurrentZoneGroups(ActiveGroupManager manager, boolean confirmed) {
+        Zone zone = manager.currentZone();
+        if (!confirmed || zone == null) return 0;
+        List<WaypointGroup> here = List.copyOf(manager.groupsForZone(zone.id()));
+        for (WaypointGroup group : here) manager.remove(group.id());
+        return here.size();
+    }
+
+    // ---- Folders ------------------------------------------------------------------------------
+
+    int runCreateFolder(FabricClientCommandSource src, String rawName) {
+        String name = RouteTargets.unquote(rawName);
+        Zone zone = manager.currentZone();
+        if (zone == null || name.isEmpty()) {
+            error(src, Component.translatable(zone == null
+                    ? "waypointer.command.error.no_zone"
+                    : "waypointer.command.error.name_missing"));
+            return 0;
+        }
+        RouteFolder folder = manager.createFolder(name, zone.id(), List.of());
+        if (folder == null) {
+            error(src, Component.translatable("waypointer.command.error.folder_create", name));
+            return 0;
+        }
+        manager.fireDataChanged();
+        success(src, Component.translatable("waypointer.command.folder.created", folder.name(),
+                zone.displayName()));
+        return 1;
+    }
+
+    int runRenameFolder(FabricClientCommandSource src, String reference, String rawName) {
+        RouteTargets.Lookup<RouteFolder> folder = targets.folder(reference);
+        if (!folder.ok()) {
+            error(src, folder.error());
+            return 0;
+        }
+        String name = rawName == null ? "" : rawName.trim();
+        if (name.isEmpty() || !manager.renameFolder(folder.value().id(), name)) {
+            error(src, Component.translatable("waypointer.command.error.name_missing"));
+            return 0;
+        }
+        manager.fireDataChanged();
+        success(src, Component.translatable("waypointer.command.folder.renamed",
+                folder.value().name(), name));
+        return 1;
+    }
+
+    int runFolderColor(FabricClientCommandSource src, String reference, String rawColor) {
+        RouteTargets.Lookup<RouteFolder> folder = targets.folder(reference);
+        if (!folder.ok()) {
+            error(src, folder.error());
+            return 0;
+        }
+        Integer color = parseRgb(rawColor);
+        if (color == null) {
+            error(src, Component.translatable("waypointer.command.error.hex_value", rawColor));
+            return 0;
+        }
+        manager.setFolderColor(folder.value().id(), color);
+        manager.fireDataChanged();
+        success(src, Component.translatable("waypointer.command.folder.color",
+                folder.value().name(), formatRgb(color)));
+        return 1;
+    }
+
+    int runDeleteFolder(FabricClientCommandSource src, String reference) {
+        RouteTargets.Lookup<RouteFolder> folder = targets.folder(reference);
+        if (!folder.ok()) {
+            error(src, folder.error());
+            return 0;
+        }
+        if (!manager.deleteFolder(folder.value().id())) {
+            error(src, Component.translatable("waypointer.command.error.folder_delete",
+                    folder.value().name()));
+            return 0;
+        }
+        manager.fireDataChanged();
+        success(src, Component.translatable("waypointer.command.folder.deleted", folder.value().name()));
+        return 1;
+    }
+
+    // ---- Screens ------------------------------------------------------------------------------
+
+    int runOpenEditor(FabricClientCommandSource src) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> MinecraftCompat.setScreen(client, new GroupEditScreen(
+                new WaypointerScreen(manager, config), manager, config, route)));
+        return 1;
+    }
+
+    int runOpenAppearance(FabricClientCommandSource src) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        if (!SettingsScreen.openRouteAppearance(manager, config, route)) {
+            error(src, Component.translatable("waypointer.screen.group_edit.menu.appearance.room_copy"));
+            return 0;
+        }
+        return 1;
+    }
+
+    int runOpenPublish(FabricClientCommandSource src) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        Minecraft client = Minecraft.getInstance();
+        client.execute(() -> RoutePublishScreen.open(null, config, route));
+        return 1;
+    }
+
+    // ---- Shared -------------------------------------------------------------------------------
+
+    WaypointGroup targetOrError(FabricClientCommandSource src) {
+        RouteTargets.Lookup<WaypointGroup> target = targets.targetOrError();
+        if (!target.ok()) error(src, target.error());
+        return target.value();
+    }
+
+    /** Records a route edit the way the route editor does, so the edited route stays the target. */
+    void changed(WaypointGroup route) {
+        manager.noteRouteEdited(route);
+        manager.fireDataChanged();
+    }
+
+    private Zone resolveZone(FabricClientCommandSource src, String rawZone) {
+        String cleaned = RouteTargets.unquote(rawZone);
+        if (cleaned.isEmpty() || "current".equalsIgnoreCase(cleaned)) {
+            Zone current = manager.currentZone();
+            if (current == null) error(src, Component.translatable("waypointer.command.error.no_zone"));
+            return current;
+        }
+        Zone zone = cleaned.indexOf(' ') >= 0 || cleaned.indexOf('\'') >= 0
+                ? Zone.resolveFromDisplayName(cleaned)
+                : Zone.fromId(cleaned);
+        if (zone == null || Zone.UNKNOWN.equals(zone)) {
+            error(src, Component.translatable("waypointer.command.error.zone_unknown", cleaned));
             return null;
         }
-        WaypointGroup editTarget = DungeonRoomRouteLibrary.durableEditTarget(manager, visibleGroup);
-        if (editTarget == null) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.convert_first"));
-        }
-        return editTarget;
+        return zone;
     }
 
-    int resolveActiveWaypointIndex(FabricClientCommandSource src, WaypointGroup group,
-                                           Integer requestedIndex) {
-        if (group == null) return -1;
-        int index = requestedIndex == null
-                ? group.currentIndex()
-                : waypointIndexFromNumber(requestedIndex);
-        if (requestedIndex == null && (index < 0 || index >= group.size())) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.no_current_waypoint"));
-            return -1;
-        }
-        if (!validateWaypointIndex(src, group, index)) {
-            return -1;
-        }
-        return index;
-    }
-
-    boolean validateWaypointIndex(FabricClientCommandSource src, WaypointGroup group, int index) {
-        if (group != null && index >= 0 && index < group.size()) return true;
-        if (group != null && group.isEmpty()) {
-            error(src, Component.translatable("waypointer.command.error.no_current_waypoint"));
-            return false;
-        }
-        int max = group == null ? 0 : group.size();
-        error(src, Component.translatable(
-                "waypointer.command.error.waypoint_number_range", index + 1, max));
-        return false;
-    }
-
-    static int waypointIndexFromNumber(int number) {
-        return number - 1;
+    static String formatBlocks(double blocks) {
+        return String.format(Locale.ROOT, "%.1f", blocks);
     }
 
     static WaypointGroup.LoadMode parseLoadMode(String rawMode) {
-        String mode = rawMode == null ? "" : rawMode.trim().toLowerCase(Locale.ROOT);
+        String mode = rawMode == null ? "" : rawMode.trim().toLowerCase(Locale.ROOT).replace("-", "");
         return switch (mode) {
-            case "static", "all" -> WaypointGroup.LoadMode.STATIC;
-            case "sequence", "sequenced", "seq" -> WaypointGroup.LoadMode.SEQUENCE;
+            case "all", "showall", "static" -> WaypointGroup.LoadMode.STATIC;
+            case "step", "stepbystep", "sequence", "sequenced", "seq" -> WaypointGroup.LoadMode.SEQUENCE;
+            default -> null;
+        };
+    }
+
+    static Boolean parseToggleState(String rawState, boolean current) {
+        String state = rawState == null ? "toggle" : rawState.trim().toLowerCase(Locale.ROOT);
+        return switch (state) {
+            case "", "toggle", "flip" -> !current;
+            case "on", "true", "yes", "1" -> true;
+            case "off", "false", "no", "0" -> false;
             default -> null;
         };
     }
@@ -613,186 +733,5 @@ final class WaypointerRouteCommands {
 
     static String formatRgb(int color) {
         return String.format(Locale.ROOT, "#%06X", color & 0xFFFFFF);
-    }
-
-    int runAdd(FabricClientCommandSource src, String name) {
-        LocalPlayer player = Minecraft.getInstance().player;
-        if (player == null) {
-            error(src, Component.translatable("waypointer.command.error.not_in_world"));
-            return 0;
-        }
-        PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
-                player.getX(), player.getY(), player.getZ(), config);
-
-        return runAddAt(src, pos.x(), pos.y(), pos.z(), name);
-    }
-
-    int runAddAt(FabricClientCommandSource src, int x, int y, int z, String name) {
-        int index = addPersistentWaypointAt(manager, config, addFlow, x, y, z, name);
-        if (index < 0) {
-            error(src, definitionOnlyRouteRequiresConversion(manager)
-                    ? Component.translatable("waypointer.command.error.convert_first")
-                    : DungeonRoomWaypointPlacement.unavailableMessage());
-            return 0;
-        }
-        return 1;
-    }
-
-    static int addPersistentWaypointAt(ActiveGroupManager manager, WaypointerConfig config,
-                                       WaypointAddFlow addFlow, int x, int y, int z,
-                                       String name) {
-        if (definitionOnlyRouteRequiresConversion(manager)) return -1;
-        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
-        Waypoint stored = storedCommandWaypoint(target, config, x, y, z, name);
-        if (stored == null) return -1;
-        target.add(stored);
-        int index = target.size() - 1;
-        addFlow.afterWaypointAdded(target, index, config.showWaypointChatShareButtons());
-        manager.fireDataChanged();
-        return index;
-    }
-
-    static int insertPersistentWaypointAt(WaypointGroup target, WaypointerConfig config,
-                                          WaypointAddFlow addFlow, int index,
-                                          int x, int y, int z, String name) {
-        if (target == null || index < 0 || index > target.size()) return -1;
-        Waypoint stored = storedCommandWaypoint(target, config, x, y, z, name);
-        if (stored == null) return -1;
-        target.insert(index, stored);
-        addFlow.afterWaypointAdded(target, index, config.showWaypointChatShareButtons());
-        return index;
-    }
-
-    static Waypoint storedCommandWaypoint(WaypointGroup target, WaypointerConfig config,
-                                                  int x, int y, int z, String name) {
-        return DungeonRoomWaypointPlacement.toStoredWaypoint(
-                target, commandWaypoint(target, config, x, y, z, name));
-    }
-
-    static Waypoint commandWaypoint(WaypointGroup target, WaypointerConfig config,
-                                            int x, int y, int z, String name) {
-        int flags = target != null && target.routeKind() == WaypointGroup.RouteKind.DUNGEON
-                ? DungeonWaypointSkipRules.defaultFlagsAt(x, y, z)
-                : 0;
-        return new Waypoint(x, y, z, name == null ? "" : name,
-                config.defaultWaypointColor(), flags, 0.0);
-    }
-
-    int runInsert(FabricClientCommandSource src, int index, String name) {
-        index = waypointIndexFromNumber(index);
-        LocalPlayer player = Minecraft.getInstance().player;
-        if (player == null) {
-            error(src, Component.translatable("waypointer.command.error.not_in_world"));
-            return 0;
-        }
-        if (definitionOnlyRouteRequiresConversion(manager)) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.convert_first"));
-            return 0;
-        }
-
-        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
-        if (index < 0 || index > target.size()) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.insert_waypoint_number_range",
-                    index + 1, target.size() + 1));
-            return 0;
-        }
-
-        PlayerWaypointPlacement.BlockPosition pos = PlayerWaypointPlacement.fromPlayer(
-                player.getX(), player.getY(), player.getZ(), config);
-        if (insertPersistentWaypointAt(target, config, addFlow, index,
-                pos.x(), pos.y(), pos.z(), name) < 0) {
-            error(src, DungeonRoomWaypointPlacement.unavailableMessage());
-            return 0;
-        }
-        manager.fireDataChanged();
-
-        return 1;
-    }
-
-    int runInsertAt(FabricClientCommandSource src, int index,
-                            int x, int y, int z, String name) {
-        index = waypointIndexFromNumber(index);
-        if (definitionOnlyRouteRequiresConversion(manager)) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.convert_first"));
-            return 0;
-        }
-        WaypointGroup target = manager.getOrCreateActiveGroup(config.skipAheadMechanicEnabled());
-        if (index < 0 || index > target.size()) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.insert_waypoint_number_range",
-                    index + 1, target.size() + 1));
-            return 0;
-        }
-
-        if (insertPersistentWaypointAt(target, config, addFlow, index, x, y, z, name) < 0) {
-            error(src, DungeonRoomWaypointPlacement.unavailableMessage());
-            return 0;
-        }
-        manager.fireDataChanged();
-        return 1;
-    }
-
-    int runRemove(FabricClientCommandSource src, int index) {
-        index = waypointIndexFromNumber(index);
-        WaypointGroup target = activeGroupOrError(src);
-        if (target == null) return 0;
-        if (!validateWaypointIndex(src, target, index)) return 0;
-        String displayLabel = target.displayIndexLabel(index);
-        Waypoint removed = removeWaypointAt(target, index);
-        manager.fireDataChanged();
-        success(src, Component.translatable(
-                "waypointer.command.waypoint.removed_numbered",
-                index + 1, displayLabel, removed.x(), removed.y(), removed.z()));
-        return 1;
-    }
-
-    static boolean definitionOnlyRouteRequiresConversion(ActiveGroupManager manager) {
-        return false;
-    }
-
-    static Waypoint removeWaypointAt(WaypointGroup target, int index) {
-        if (target == null || index < 0 || index >= target.size()) return null;
-        Waypoint removed = target.get(index);
-        target.remove(index);
-        return removed;
-    }
-
-    int runClearZone(FabricClientCommandSource src, boolean confirmed) {
-        Zone zone = manager.currentZone();
-        if (zone == null) {
-            error(src, Component.translatable(
-                    "waypointer.command.error.no_active_zone"));
-            return 0;
-        }
-        List<WaypointGroup> here = manager.groupsForZone(zone.id());
-        if (here.isEmpty()) {
-            info(src, Component.translatable(
-                    "waypointer.command.clear.empty", zone.displayName()));
-            return 0;
-        }
-        if (!confirmed) {
-            warn(src, Component.translatable(
-                    "waypointer.command.clear.confirm",
-                    here.size(), zone.displayName()));
-            return 0;
-        }
-        int cleared = clearCurrentZoneGroups(manager, true);
-        success(src, Component.translatable(
-                "waypointer.command.clear.success",
-                here.size(), zone.displayName()));
-        return cleared;
-    }
-
-    static int clearCurrentZoneGroups(ActiveGroupManager manager, boolean confirmed) {
-        Zone zone = manager.currentZone();
-        if (!confirmed || zone == null) return 0;
-        List<WaypointGroup> here = List.copyOf(manager.groupsForZone(zone.id()));
-        for (WaypointGroup group : here) {
-            manager.remove(group.id());
-        }
-        return here.size();
     }
 }

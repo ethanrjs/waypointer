@@ -35,10 +35,11 @@ public final class WaypointAddFlow {
         if (waypointIndex < 0 || waypointIndex >= group.size()) return;
         Waypoint waypoint = group.get(waypointIndex);
         showChatFeedback(waypointAddedMessage(
-                group.name(), waypointIndex, waypoint, showChatShareButtons));
+                group.name(), group.displayIndexLabel(waypointIndex), waypoint, showChatShareButtons));
     }
 
-    static Component waypointAddedMessage(String groupName, int waypointIndex, Waypoint waypoint,
+    /** {@code label} is the number the route editor shows, such as {@code #3} or {@code #2.1}. */
+    static Component waypointAddedMessage(String groupName, String label, Waypoint waypoint,
                                           boolean showChatShareButtons) {
         String coordinates = waypoint.x() + ", " + waypoint.y() + ", " + waypoint.z();
         MutableComponent position = Component.literal("(").withStyle(ChatFormatting.GRAY)
@@ -51,7 +52,7 @@ public final class WaypointAddFlow {
         MutableComponent message = Component.translatableWithFallback("waypointer.input.added",
                 "Added %1$s to %2$s at %3$s",
                 Component.translatableWithFallback("waypointer.input.added.waypoint", "Waypoint %s",
-                        waypointIndex + 1).withStyle(ChatFormatting.AQUA),
+                        label).withStyle(ChatFormatting.AQUA),
                 Component.literal("\"" + groupName + "\"").withStyle(ChatFormatting.GREEN),
                 position).withStyle(ChatFormatting.GRAY);
         if (!showChatShareButtons) return message;

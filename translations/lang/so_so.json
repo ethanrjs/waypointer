@@ -28,7 +28,6 @@
   "waypointer.settings.setting.showExportRoutePreview.label": "Muuqaalka hore ee 3D ee wadada",
   "waypointer.command.export.failed": "Dhoofinta ayaa guuldareysatay: %1$s",
   "waypointer.command.import.label": "Calaamadda: \"%1$s\"",
-  "waypointer.command.route.list_empty": "Ma jiraan waddooyin la qeexay.",
   "waypointer.command.route.deleted": "Waddada \"%1$s\" waa la tirtiray",
   "waypointer.common.confirm": "Xaqiiji?",
   "waypointer.screen.main.import_export": "Dhoofinta iyo soo dejinta",

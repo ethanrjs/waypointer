@@ -83,6 +83,12 @@ public final class DungeonRoomRouteLibrary {
         applyManualProgress(manager, visibleGroup, WaypointGroup::resetProgress);
     }
 
+    /** Applies a progress change to a route and to its stored source or projected room copy. */
+    public static void applyProgress(ActiveGroupManager manager, WaypointGroup route,
+                                     Consumer<WaypointGroup> mutation) {
+        applyManualProgress(manager, route, mutation);
+    }
+
     private static void applyManualProgress(ActiveGroupManager manager,
                                             WaypointGroup visibleGroup,
                                             Consumer<WaypointGroup> mutation) {
