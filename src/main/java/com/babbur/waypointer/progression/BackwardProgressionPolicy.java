@@ -50,7 +50,7 @@ public final class BackwardProgressionPolicy {
     }
 
     private static boolean requiresDungeonEvent(WaypointGroup group, Waypoint waypoint) {
-        return group.routeKind() == WaypointGroup.RouteKind.DUNGEON
+        return group.usesDungeonSteps()
                 && (waypoint.flags() & Waypoint.DUNGEON_COMPLETION_FLAGS) != 0;
     }
 

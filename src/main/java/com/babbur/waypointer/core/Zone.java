@@ -405,6 +405,12 @@ public record Zone(String id, String displayName) {
         return normalized;
     }
 
+    /** The Catacombs as a whole or one of its floors, as opposed to a dungeon room. */
+    public static boolean isCatacombsFloor(String id) {
+        if (id == null) return false;
+        return id.equals("dungeon") || id.startsWith("dungeon_f") || id.startsWith("dungeon_m");
+    }
+
     /** Master Mode floors use the same rooms and boss as their normal floor, so they share routes. */
     public static String routeZoneKey(String id) {
         String canonical = canonicalId(id);

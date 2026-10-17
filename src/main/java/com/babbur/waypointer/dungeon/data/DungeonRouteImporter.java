@@ -340,14 +340,26 @@ public final class DungeonRouteImporter {
             int routeNumber = variant ? routeNumber(key.substring(variantSeparator + 1)) : 1;
 
             DungeonRoomCatalogEntry target = matchSecretRoutesRoom(roomKey);
-            if (target == null) {
+            String bossFloor = target == null ? secretRoutesBossFloor(roomKey) : null;
+            if (target == null && bossFloor == null) {
                 unmatched.add(key);
                 continue;
             }
             Map<Integer, List<int[]>> pathGuides = new LinkedHashMap<>();
-            List<DungeonWaypoint> waypoints =
-                    secretRoutesWaypoints(entry.getValue().getAsJsonArray(), pathGuides);
+            List<DungeonWaypoint> waypoints = secretRoutesWaypoints(
+                    entry.getValue().getAsJsonArray(), pathGuides, bossFloor != null);
             if (waypoints.isEmpty()) continue;
+
+            if (bossFloor != null) {
+                // Boss arenas are not generated, so their routes keep world coordinates.
+                WaypointGroup boss = DungeonRouteGroupAdapter.fromWaypoints(bossFloor,
+                        "F" + bossFloor.charAt(bossFloor.length() - 1) + " Boss, route "
+                                + routeNumber, waypoints, pathGuides);
+                boss.setZoneId(bossFloor);
+                boss.setRouteKind(WaypointGroup.RouteKind.REGULAR);
+                imported.add(boss);
+                continue;
+            }
 
             imported.add(DungeonRouteGroupAdapter.fromWaypoints(
                     target.id(), target.displayName() + ", route " + routeNumber, waypoints, pathGuides));
@@ -356,8 +368,16 @@ public final class DungeonRouteImporter {
                 List.copyOf(unmatched), 0, Format.SECRET_ROUTES);
     }
 
+    /** SecretRoutes names boss routes {@code f7boss}; returns that floor's zone, or null. */
+    static String secretRoutesBossFloor(String rawName) {
+        if (rawName == null) return null;
+        String name = rawName.trim().toLowerCase(Locale.ROOT).replaceAll("[\\s_-]", "");
+        if (!name.matches("[fm][1-7]boss")) return null;
+        return "dungeon_f" + name.charAt(1);
+    }
+
     private static List<DungeonWaypoint> secretRoutesWaypoints(
-            JsonArray steps, Map<Integer, List<int[]>> pathGuides) {
+            JsonArray steps, Map<Integer, List<int[]>> pathGuides, boolean boss) {
         List<DungeonWaypoint> waypoints = new ArrayList<>();
         int secretIndex = 0;
         for (JsonElement stepElement : steps) {
@@ -378,6 +398,8 @@ public final class DungeonRouteImporter {
                     DungeonWaypointTrigger.FLIP_LEVER, "Lever", path);
             addActions(actions, step, "enderpearls", DungeonSecretCategory.PEARL,
                     DungeonWaypointTrigger.THROW_PEARL, "Pearl", path);
+            addActions(actions, step, "bonzo_staffs", DungeonSecretCategory.DEFAULT,
+                    DungeonWaypointTrigger.MANUAL, "Bonzo", path);
             actions.sort(Comparator.comparingInt(SecretRoutesAction::pathIndex)
                     .thenComparingInt(SecretRoutesAction::sourceIndex));
 
@@ -397,9 +419,11 @@ public final class DungeonRouteImporter {
                         highlights));
             }
 
+            // A boss step has no secret; it ends where its path ends.
+            String missingType = boss ? "exit" : "interact";
             String secretType = step.has("secret") && step.get("secret").isJsonObject()
-                    ? string(step.getAsJsonObject("secret"), "type", "interact")
-                    : "interact";
+                    ? string(step.getAsJsonObject("secret"), "type", missingType)
+                    : missingType;
             // A dummy has no collectible; some packs leave its placeholder at the origin.
             if (secretType.equalsIgnoreCase("dummy") && !actions.isEmpty()) continue;
             int[] position = secretType.equalsIgnoreCase("dummy")

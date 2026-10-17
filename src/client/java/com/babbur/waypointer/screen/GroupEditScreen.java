@@ -2085,7 +2085,7 @@ public final class GroupEditScreen extends Screen {
                 : ContextMenuOverlay.Item.of(lookLabel, lookCount == 0 ? null
                         : Component.translatable("waypointer.screen.appearance.set_count", lookCount).getString(),
                         () -> openAppearance(look)));
-        if (isDungeonRoomGroup()) {
+        if (group.usesDungeonSteps()) {
             items.add(ContextMenuOverlay.Item.of(
                     Component.translatable("waypointer.screen.group_edit.menu.types"),
                     null, () -> dungeonTypePickerIndex = index));

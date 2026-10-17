@@ -115,7 +115,7 @@ public final class TracerRenderer implements HudElement {
     private static boolean isDungeonRoomRoute(WaypointGroup group) {
         return group != null
                 && !group.temp()
-                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
+                && group.usesDungeonSteps();
     }
 
     static Waypoint nearestStaticTracerTarget(WaypointGroup group,
@@ -276,7 +276,7 @@ public final class TracerRenderer implements HudElement {
                 && (group.size() != 1 || group.loadMode() != WaypointGroup.LoadMode.SEQUENCE)) return false;
         if (group != null
                 && !group.temp()
-                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                && group.usesDungeonSteps()
                 && dungeonConfig != null) {
             return dungeonConfig.showDungeonTracers();
         }

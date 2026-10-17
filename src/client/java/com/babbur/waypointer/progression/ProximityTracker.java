@@ -545,7 +545,7 @@ public final class ProximityTracker {
                                                int blockX, int blockY, int blockZ,
                                                int from, boolean superboomHeld) {
         if (!isEligibleDungeonTriggerGroup(group)) return -1;
-        int end = group.visibleMainSteps() > 0
+        int end = group.visibleStepCount() > 0
                 ? Math.min(group.size() - 1, from)
                 : group.size() - 1;
         for (int i = end; i >= from; i--) {
@@ -795,7 +795,7 @@ public final class ProximityTracker {
     private static boolean isDungeonRoomRouteGroup(WaypointGroup group) {
         return group != null
                 && !group.temp()
-                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
+                && group.usesDungeonSteps();
     }
 
     private static boolean isEligibleDungeonTriggerGroup(WaypointGroup group) {

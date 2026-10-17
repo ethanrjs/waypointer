@@ -180,6 +180,36 @@ class DungeonStepProgressTest {
     }
 
     @Test
+    void floorRoutesMadeOfActionsGoStepByStepAndClearWhenDone() {
+        WaypointGroup boss = WaypointGroup.create("Boss", "dungeon_f7");
+        boss.setSkipAheadEnabled(false);
+        boss.add(new Waypoint(0, 70, 0, "", Waypoint.DEFAULT_COLOR, MINE, 0.0));
+        boss.add(new Waypoint(4, 70, 0, "", Waypoint.DEFAULT_COLOR, MINE | SUB | ANY, 0.0));
+        boss.add(new Waypoint(8, 70, 0, "", Waypoint.DEFAULT_COLOR, ETHERWARP | SUB, 0.0));
+        boss.add(new Waypoint(12, 70, 0, "", Waypoint.DEFAULT_COLOR, GUIDE, 0.0));
+        assertTrue(boss.usesDungeonSteps());
+        assertTrue(DungeonStepProgress.appliesTo(boss));
+        assertEquals(List.of(0, 1, 2), visible(boss));
+        DungeonStepProgress.complete(boss, 2);
+        assertTrue(boss.isComplete());
+        assertEquals(List.of(), visible(boss));
+    }
+
+    @Test
+    void handMadeFloorRoutesStayPlain() {
+        WaypointGroup floor = WaypointGroup.create("Terminals", "dungeon_f7");
+        floor.add(new Waypoint(0, 70, 0, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
+        floor.add(new Waypoint(4, 70, 0, "", Waypoint.DEFAULT_COLOR, 0, 0.0));
+        assertFalse(floor.usesDungeonSteps());
+        assertFalse(DungeonStepProgress.appliesTo(floor));
+        WaypointGroup hub = WaypointGroup.create("Hub", "hub");
+        hub.add(new Waypoint(0, 70, 0, "", Waypoint.DEFAULT_COLOR, MINE, 0.0));
+        assertFalse(hub.usesDungeonSteps(), "only Catacombs floors");
+        floor.set(1, floor.get(1).withFlags(MINE));
+        assertTrue(floor.usesDungeonSteps(), "recomputed after an edit");
+    }
+
+    @Test
     void anyOrderOnAMainWaypointIsIgnored() {
         WaypointGroup group = route(ETHERWARP | ANY, CHEST | SUB);
         assertFalse(group.isAnyOrderStepMember(0));

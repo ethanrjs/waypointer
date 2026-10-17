@@ -103,6 +103,51 @@ class DungeonRouteImporterTest {
         assertEquals("Arrow Trap, route 2", result.groups().get(1).name());
     }
 
+    private static final String BOSS_JSON = """
+            {
+              "f7boss": [
+                {
+                  "locations": [[73, 221, 16], [69, 221, 41], [69, 205, 41], [59, 167, 50]],
+                  "etherwarps": [],
+                  "mines": [[69, 220, 41], [19, 168, 72], [19, 167, 72]],
+                  "bonzo_staffs": [[53, 168, 56]]
+                }
+              ]
+            }
+            """;
+
+    @Test
+    void secretRoutesBossRoutesBecomeFloorRoutesInWorldCoordinates() {
+        DungeonRouteImporter.Result result = DungeonRouteImporter.parse(BOSS_JSON);
+        assertEquals(List.of(), result.unmatchedRooms());
+        WaypointGroup boss = result.groups().getFirst();
+        assertEquals("dungeon_f7", boss.zoneId());
+        assertEquals(WaypointGroup.RouteKind.REGULAR, boss.routeKind());
+        assertEquals("F7 Boss, route 1", boss.name());
+        assertTrue(boss.usesDungeonSteps());
+        assertEquals(69, boss.get(0).x());
+        assertEquals(220, boss.get(0).y());
+        assertTrue(boss.get(0).hasFlag(Waypoint.FLAG_SKIP_ON_MINE));
+
+        List<String> names = new ArrayList<>();
+        for (Waypoint waypoint : boss.waypoints()) names.add(waypoint.name());
+        assertTrue(names.contains("Bonzo"));
+        assertFalse(names.contains("Chest"), "a boss step has no made-up secret");
+        Waypoint end = boss.waypoints().stream().filter(w -> w.name().equals("Exit"))
+                .findFirst().orElseThrow();
+        assertEquals(59, end.x());
+        assertTrue(end.hasFlag(Waypoint.FLAG_SKIP_ON_STAND));
+    }
+
+    @Test
+    void secretRoutesBossNamesMapToTheirFloor() {
+        assertEquals("dungeon_f7", DungeonRouteImporter.secretRoutesBossFloor("f7boss"));
+        assertEquals("dungeon_f6", DungeonRouteImporter.secretRoutesBossFloor("F6-Boss"));
+        assertEquals("dungeon_f7", DungeonRouteImporter.secretRoutesBossFloor("m7boss"));
+        assertNull(DungeonRouteImporter.secretRoutesBossFloor("f8boss"));
+        assertNull(DungeonRouteImporter.secretRoutesBossFloor("Arrow-Trap-1"));
+    }
+
     @Test
     void secretRoutesMineBlocksCanBeDugInAnyOrder() {
         WaypointGroup room = DungeonRouteImporter.parse("""

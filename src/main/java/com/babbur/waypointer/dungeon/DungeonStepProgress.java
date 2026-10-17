@@ -19,8 +19,8 @@ public final class DungeonStepProgress {
     public static boolean appliesTo(WaypointGroup group) {
         return group != null
                 && !group.temp()
-                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON
-                && group.visibleMainSteps() > 0
+                && group.usesDungeonSteps()
+                && group.visibleStepCount() > 0
                 && group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
                 && !group.isComplete();
     }

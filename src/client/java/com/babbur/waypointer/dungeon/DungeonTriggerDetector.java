@@ -63,9 +63,14 @@ public final class DungeonTriggerDetector {
         DungeonSoundHook.setListener(this::onSoundPacket);
     }
 
+    /** Rooms and the boss alike; boss routes have no room. */
+    private boolean inCatacombs() {
+        return tracker.inDungeon() && (config == null || config.enabled());
+    }
+
     private void onUseItem(ItemStack held, boolean sneaking) {
         if (!sneaking || held == null || held.isEmpty()) return;
-        if (tracker.currentRoom() == null) return;
+        if (!inCatacombs()) return;
         if (DungeonItemIdentity.isEtherwarpItem(held)) {
             etherwarpArmedAtMillis = System.currentTimeMillis();
         }
@@ -84,14 +89,14 @@ public final class DungeonTriggerDetector {
         if (previous.distanceToSqr(current) < ETHERWARP_JUMP_DISTANCE_SQ) return;
 
         etherwarpArmedAtMillis = 0L;
-        if (tracker.currentRoom() == null) return;
+        if (!inCatacombs()) return;
         advanceCurrentAction(Waypoint.FLAG_DUNGEON_ETHERWARP,
                 current.x, current.y, current.z);
     }
 
     private void onEntityUnload(Entity entity, ClientLevel level) {
         if (!(entity instanceof ItemEntity item)) return;
-        if (tracker.currentRoom() == null) return;
+        if (!inCatacombs()) return;
 
         LocalPlayer player = Minecraft.getInstance().player;
         if (player == null
@@ -116,7 +121,7 @@ public final class DungeonTriggerDetector {
     private void onSoundPacket(SoundEvent sound, float volume, double x, double y, double z) {
         if (volume != SECRET_BAT_SOUND_VOLUME) return;
         if (sound != SoundEvents.BAT_HURT && sound != SoundEvents.BAT_DEATH) return;
-        if (tracker.currentRoom() == null) return;
+        if (!inCatacombs()) return;
         if (sound == SoundEvents.BAT_DEATH) {
             advanceCurrentAction(Waypoint.FLAG_DUNGEON_BAT, x, y, z);
         }

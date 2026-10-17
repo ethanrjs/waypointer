@@ -498,7 +498,7 @@ class WaypointWorldRenderer {
     static boolean isDungeonRoomRoute(WaypointGroup group) {
         return group != null
                 && !group.temp()
-                && group.routeKind() == WaypointGroup.RouteKind.DUNGEON;
+                && group.usesDungeonSteps();
     }
 
     private void emitRouteLines(PoseStack ps, VertexConsumer lines, WaypointGroup g,

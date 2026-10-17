@@ -129,7 +129,10 @@ public final class DungeonRoomRouteLibrary {
         List<WaypointGroup> imported = new ArrayList<>();
         for (WaypointGroup route : routes) {
             if (route == null || route.isEmpty()) continue;
-            route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+            // Boss routes stay floor routes; everything else belongs to a room.
+            if (!com.babbur.waypointer.core.Zone.isCatacombsFloor(route.zoneId())) {
+                route.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+            }
             imported.add(route);
         }
         if (imported.isEmpty()) return List.of();
@@ -138,7 +141,7 @@ public final class DungeonRoomRouteLibrary {
         DungeonRoomRouteSync.batched(() -> {
             for (WaypointGroup existing : manager.allGroups()) {
                 if (!existing.temp() && !existing.runtimeOnly()
-                        && existing.routeKind() == WaypointGroup.RouteKind.DUNGEON
+                        && existing.usesDungeonSteps()
                         && importedRooms.contains(existing.zoneId())) {
                     existing.setEnabled(false);
                 }
