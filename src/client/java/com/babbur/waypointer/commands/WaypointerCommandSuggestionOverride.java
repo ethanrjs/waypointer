@@ -40,10 +40,6 @@ public final class WaypointerCommandSuggestionOverride {
         CommandDispatcher<ClientSuggestionProvider> target = connection.getCommands();
         CommandNode<ClientSuggestionProvider> targetRoot = target.getRoot().getChild(ROOT);
         if (isInstalledFor(connection, target, targetRoot)) return;
-        if (isWaypointerRoot(targetRoot)) {
-            rememberInstalledState(connection, target, targetRoot);
-            return;
-        }
 
         CommandNode<FabricClientCommandSource> clientRoot = this.clientRoot;
         if (clientRoot == null) return;
@@ -81,14 +77,63 @@ public final class WaypointerCommandSuggestionOverride {
         return node.getChild("importchat") != null && node.getChild("importfile") != null;
     }
 
+    /**
+     * Makes {@code /wp} and its aliases suggest Waypointer's commands on any server. A server that
+     * registers its own {@code /wp} (Hypixel does) usually gives it a catch-all argument that asks
+     * the server for completions; merged with Waypointer's nodes, the client then waits on a reply
+     * that may never come and shows no suggestions at all. Server arguments under these roots are
+     * dropped; the server's plain subcommand words stay. Waypointer's own commands run client-side
+     * either way.
+     */
     boolean installWpSuggestionRoot(CommandNode<ClientSuggestionProvider> targetRoot,
                                     CommandNode<FabricClientCommandSource> clientRoot) {
         try {
-            targetRoot.addChild(copyAsSuggestionNode(clientRoot));
+            CommandNode<ClientSuggestionProvider> root = installRoot(targetRoot, ROOT, copyAsSuggestionNode(clientRoot));
+            for (String alias : ALIASES) {
+                CommandNode<ClientSuggestionProvider> aliasNode = targetRoot.getChild(alias);
+                if (aliasNode != null && aliasNode.getRedirect() == root && aliasNode.getChildren().isEmpty()) continue;
+                removeChild(targetRoot, alias);
+                targetRoot.addChild(com.mojang.brigadier.builder.LiteralArgumentBuilder
+                        .<ClientSuggestionProvider>literal(alias)
+                        .executes(ctx -> 0)
+                        .redirect(root)
+                        .build());
+            }
             return isWaypointerRoot(targetRoot.getChild(ROOT));
-        } catch (RuntimeException e) {
+        } catch (RuntimeException | ReflectiveOperationException e) {
             warnInstallFailure(e);
             return false;
+        }
+    }
+
+    private static final java.util.List<String> ALIASES = java.util.List.of("waypointer", "wptr");
+
+    private static CommandNode<ClientSuggestionProvider> installRoot(
+            CommandNode<ClientSuggestionProvider> targetRoot, String name,
+            CommandNode<ClientSuggestionProvider> ours) throws ReflectiveOperationException {
+        CommandNode<ClientSuggestionProvider> existing = targetRoot.getChild(name);
+        java.util.List<CommandNode<ClientSuggestionProvider>> serverWords = new java.util.ArrayList<>();
+        if (existing != null) {
+            for (CommandNode<ClientSuggestionProvider> child : existing.getChildren()) {
+                if (child instanceof com.mojang.brigadier.tree.LiteralCommandNode<ClientSuggestionProvider>
+                        && ours.getChild(child.getName()) == null) {
+                    serverWords.add(child);
+                }
+            }
+            removeChild(targetRoot, name);
+        }
+        targetRoot.addChild(ours);
+        CommandNode<ClientSuggestionProvider> installed = targetRoot.getChild(name);
+        for (CommandNode<ClientSuggestionProvider> word : serverWords) installed.addChild(word);
+        return installed;
+    }
+
+    /** Brigadier has no public removal; its three child maps are package-private fields. */
+    private static void removeChild(CommandNode<?> parent, String name) throws ReflectiveOperationException {
+        for (String field : new String[]{"children", "literals", "arguments"}) {
+            java.lang.reflect.Field map = CommandNode.class.getDeclaredField(field);
+            map.setAccessible(true);
+            ((java.util.Map<?, ?>) map.get(parent)).remove(name);
         }
     }
 

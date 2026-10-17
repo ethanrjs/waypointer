@@ -52,6 +52,36 @@ class WaypointerCommandSuggestionOverrideTest {
     }
 
     @Test
+    void serverArgumentsThatAskTheServerCannotStallWaypointerSuggestions() throws Exception {
+        // Hypixel-style tree: the server's own /wp (and aliases) take any text and ask the server
+        // for completions, which may never answer. Fabric merges Waypointer's nodes into it.
+        CommandDispatcher<ClientSuggestionProvider> serverSuggestions = new CommandDispatcher<>();
+        for (String name : java.util.List.of("wp", "waypointer", "wptr")) {
+            serverSuggestions.register(LiteralArgumentBuilder.<ClientSuggestionProvider>literal(name)
+                    .then(com.mojang.brigadier.builder.RequiredArgumentBuilder
+                            .<ClientSuggestionProvider, String>argument("args",
+                                    com.mojang.brigadier.arguments.StringArgumentType.greedyString())
+                            .suggests((ctx, builder) -> new java.util.concurrent.CompletableFuture<>())));
+        }
+        serverSuggestions.getRoot().getChild("wp").addChild(
+                LiteralArgumentBuilder.<ClientSuggestionProvider>literal("debug").build());
+        CommandNode<FabricClientCommandSource> clientRoot = clientSuggestionRoot();
+        CommandDispatcher<FabricClientCommandSource> client = new CommandDispatcher<>();
+        client.getRoot().addChild(clientRoot);
+        client.register(LiteralArgumentBuilder.<FabricClientCommandSource>literal("waypointer").redirect(clientRoot));
+
+        assertTrue(new WaypointerCommandSuggestionOverride()
+                .installWpSuggestionRoot(serverSuggestions.getRoot(), clientRoot));
+
+        for (String typed : java.util.List.of("wp ", "waypointer ", "wptr ")) {
+            Suggestions suggestions = serverSuggestions.getCompletionSuggestions(
+                    serverSuggestions.parse(typed, null)).get(1, java.util.concurrent.TimeUnit.SECONDS);
+            assertTrue(suggestions.getList().stream().anyMatch(s -> "importchat".equals(s.getText())),
+                    typed + " should suggest Waypointer's commands: " + suggestions.getList());
+        }
+    }
+
+    @Test
     void waypointerRootSignatureRejectsGenericServerCommands() {
         CommandNode<ClientSuggestionProvider> genericServerRoot =
                 LiteralArgumentBuilder.<ClientSuggestionProvider>literal("wp")
