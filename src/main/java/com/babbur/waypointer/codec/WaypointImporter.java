@@ -888,7 +888,10 @@ public final class WaypointImporter {
         if (root.isJsonArray()) {
             // Nested arrays identify groups; per-point options identify SkyHanni/Coleweight.
             JsonArray arr = root.getAsJsonArray();
-            if (looksLikeGroupArray(arr)) {
+            if (OdinWaypointImporter.looksLikeExport(arr)) {
+                groups.addAll(OdinWaypointImporter.decode(arr));
+                source = Source.ODIN;
+            } else if (looksLikeGroupArray(arr)) {
                 for (JsonElement el : arr) groups.add(parseGroup(el.getAsJsonObject()));
             } else if (looksLikeColeweightArray(arr)) {
                 WaypointGroup g = parseColeweightRoute(arr, defaultImportedRouteName);
