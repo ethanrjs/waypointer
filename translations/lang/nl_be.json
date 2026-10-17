@@ -748,7 +748,6 @@
   "waypointer.screen.route_catalog.search.tooltip": "Ctrl+F om te zoeken. Pijltjestoetsen bladeren door routes.",
   "waypointer.screen.route_catalog.refresh.tooltip": "Laad de routecatalogus opnieuw (F5). Elke 10 seconden beschikbaar.",
   "waypointer.screen.route_catalog.install.tooltip": "Installeer deze route en open die in Waypointer.",
-  "waypointer.screen.route_catalog.status.search_wait": "De zoekopdracht wordt uitgevoerd zodra je stopt met typen.",
   "waypointer.screen.route_reupload.status.ready": "%1$s en %2$s klaar om te uploaden.",
   "waypointer.count.room.one": "%s kamer",
   "waypointer.count.room.many": "%s kamers",

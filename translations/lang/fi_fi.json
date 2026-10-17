@@ -760,7 +760,6 @@
   "waypointer.screen.route_catalog.search.tooltip": "Ctrl+F hakee. Nuolinäppäimet selaavat reittejä.",
   "waypointer.screen.route_catalog.refresh.tooltip": "Lataa reittiluettelo uudelleen (F5). Käytettävissä 10 sekunnin välein.",
   "waypointer.screen.route_catalog.install.tooltip": "Asenna tämä reitti ja avaa se Waypointerissa.",
-  "waypointer.screen.route_catalog.status.search_wait": "Haku suoritetaan, kun lopetat kirjoittamisen.",
   "waypointer.screen.route_reupload.status.ready": "%1$s ja %2$s valmiina lähetettäväksi.",
   "waypointer.count.route.one": "%s reitti",
   "waypointer.count.route.many": "%s reittiä",

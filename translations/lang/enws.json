@@ -648,7 +648,6 @@
   "waypointer.screen.group_edit.appearance.count": "Semblance (%s)",
   "waypointer.screen.group_edit.appearance.tooltip": "This course's semblance.",
   "waypointer.screen.route_catalog.search.tooltip": "Ctrl+F to seek. The arrows wander the courses.",
-  "waypointer.screen.route_catalog.status.search_wait": "Waiting for you to finish typing...",
   "waypointer.screen.route_reupload.status.ready": "%1$s and %2$s are ready to be sent.",
   "waypointer.count.route.one": "%s course",
   "waypointer.count.route.many": "%s courses",

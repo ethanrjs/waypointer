@@ -738,7 +738,6 @@
   "waypointer.screen.route_catalog.search.tooltip": "Ctrl+F i chwilio. Mae'r saethau'n pori'r llwybrau.",
   "waypointer.screen.route_catalog.refresh.tooltip": "Ail-lwytho'r catalog llwybrau (F5). Ar gael bob 10 eiliad.",
   "waypointer.screen.route_catalog.install.tooltip": "Gosod y llwybr hwn a'i agor yn Waypointer.",
-  "waypointer.screen.route_catalog.status.search_wait": "Bydd y chwiliad yn rhedeg pan fyddwch yn rhoi'r gorau i deipio.",
   "waypointer.screen.route_reupload.status.ready": "%1$s a %2$s yn barod i'w llwytho i fyny.",
   "waypointer.count.route.one": "%s llwybr",
   "waypointer.count.route.many": "%s llwybr",

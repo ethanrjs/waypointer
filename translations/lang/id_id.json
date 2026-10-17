@@ -744,7 +744,6 @@
   "waypointer.screen.route_catalog.search.tooltip": "Ctrl+F untuk mencari. Tombol panah menelusuri rute.",
   "waypointer.screen.route_catalog.refresh.tooltip": "Muat ulang katalog rute (F5). Tersedia setiap 10 detik.",
   "waypointer.screen.route_catalog.install.tooltip": "Instal rute ini dan buka di Waypointer.",
-  "waypointer.screen.route_catalog.status.search_wait": "Pencarian akan berjalan saat Anda berhenti mengetik.",
   "waypointer.screen.route_reupload.status.ready": "%1$s dan %2$s siap diunggah.",
   "waypointer.count.route.one": "%s rute",
   "waypointer.count.route.many": "%s rute",

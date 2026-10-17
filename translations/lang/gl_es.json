@@ -741,7 +741,6 @@
   "waypointer.screen.route_catalog.search.tooltip": "Ctrl+F para buscar. As frechas percorren as rutas.",
   "waypointer.screen.route_catalog.refresh.tooltip": "Actualizar o catálogo de rutas (F5). Dispoñible cada 10 segundos.",
   "waypointer.screen.route_catalog.install.tooltip": "Instalar esta ruta e abrila en Waypointer.",
-  "waypointer.screen.route_catalog.status.search_wait": "A busca executarase cando deixes de escribir.",
   "waypointer.screen.route_reupload.status.ready": "%1$s e %2$s listos para subir.",
   "waypointer.count.route.one": "%s ruta",
   "waypointer.count.route.many": "%s rutas",

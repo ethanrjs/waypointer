@@ -759,7 +759,6 @@
   "waypointer.screen.route_catalog.search.tooltip": "Ctrl+F za pretragu. Strelice prolaze kroz rute.",
   "waypointer.screen.route_catalog.refresh.tooltip": "Ponovo učitaj katalog ruta (F5). Dostupno svakih 10 sekundi.",
   "waypointer.screen.route_catalog.install.tooltip": "Instaliraj ovu rutu i otvori je u Waypointeru.",
-  "waypointer.screen.route_catalog.status.search_wait": "Pretraga će se pokrenuti kada prestaneš pisati.",
   "waypointer.screen.route_reupload.status.ready": "%1$s i %2$s spremno za otpremanje.",
   "waypointer.count.route.one": "ruta: %s",
   "waypointer.count.route.many": "ruta: %s",

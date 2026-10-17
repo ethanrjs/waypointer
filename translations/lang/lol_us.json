@@ -95,6 +95,5 @@
   "waypointer.screen.export.preview.zoom.tooltip": "Reset teh preview to its default zoom.",
   "waypointer.update.your_version": "ur version: %1$s %2$s",
   "waypointer.screen.route_catalog.refresh.tooltip": "Reload teh route catalog (F5). Available every 10 seconds.",
-  "waypointer.screen.route_catalog.install.tooltip": "Install this route an' open it in Waypointer.",
-  "waypointer.screen.route_catalog.status.search_wait": "Search will run when u stop typing."
+  "waypointer.screen.route_catalog.install.tooltip": "Install this route an' open it in Waypointer."
 }

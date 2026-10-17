@@ -48,5 +48,5 @@ share
 mail
 close
 dot
-badge_pickaxe
+badge_discord
 badge_check

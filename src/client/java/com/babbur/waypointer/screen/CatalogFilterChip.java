@@ -16,7 +16,7 @@ import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
 final class CatalogFilterChip extends AbstractButton {
     static final int HEIGHT = 14;
     private static final int PAD = 6;
-    private static final int ICON_W = 9;
+    private static final int ICON_W = 11;
 
     private final boolean on;
     private final int color;
@@ -60,8 +60,8 @@ final class CatalogFilterChip extends AbstractButton {
         int textX = x1 + PAD;
         int tint = on ? TEXT : TEXT_DIM;
         if (icon != null) {
-            // Small badge glyphs sit 3 px into their cell: centre the cell 5 px right of the glyph's edge.
-            Icons.drawAt(g, icon, textX + 5, y1 + 7, on ? TEXT : color);
+            // The 11 px badge glyph sits 2 px into its cell: centre the cell 6 px right of the glyph's edge.
+            Icons.drawAt(g, icon, textX + 6, y1 + 7, on ? TEXT : color);
             textX += ICON_W + 4;
         }
         g.text(font, getMessage(), textX, y1 + 3, tint, false);

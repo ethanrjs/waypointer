@@ -118,14 +118,14 @@ final class CatalogRouteRowButton extends AbstractButton {
     }
 
     private static final int PILL_PAD = 3;
-    private static final int PICKAXE_W = 9;
+    private static final int LOGO_W = 11;
 
     static int miningCultWidth(Font font) {
-        return PILL_PAD + PICKAXE_W + PILL_PAD + font.width(Component.translatable(
+        return PILL_PAD + LOGO_W + PILL_PAD + font.width(Component.translatable(
                 "waypointer.screen.route_catalog.tag.mining_cult.short")) + PILL_PAD;
     }
 
-    /** The purple Mining Cult pill: pickaxe and "MC", sitting on a text baseline at (x, y). */
+    /** The purple Mining Cult pill: the Discord logo and "MC", sitting on a text baseline at (x, y). */
     static int drawMiningCult(GuiGraphicsExtractor graphics, Font font, int x, int y) {
         String label = Component.translatable("waypointer.screen.route_catalog.tag.mining_cult.short").getString();
         int w = miningCultWidth(font);
@@ -134,9 +134,9 @@ final class CatalogRouteRowButton extends AbstractButton {
         graphics.fill(x, y + 8, x + w, y + 9, MINING_CULT);
         graphics.fill(x, y - 2, x + 1, y + 9, MINING_CULT);
         graphics.fill(x + w - 1, y - 2, x + w, y + 9, MINING_CULT);
-        // The 9x8 glyph sits 3 px into its 16 px cell, so its cell centre is 5 px right of its left edge.
-        Icons.drawAt(graphics, Icons.Icon.BADGE_PICKAXE, x + PILL_PAD + 5, y + 4, MINING_CULT_TEXT);
-        graphics.text(font, label, x + PILL_PAD + PICKAXE_W + PILL_PAD, y, MINING_CULT_TEXT, false);
+        // The 11x8 glyph sits 2 px into its 16 px cell, so its cell centre is 6 px right of its left edge.
+        Icons.drawAt(graphics, Icons.Icon.BADGE_DISCORD, x + PILL_PAD + 6, y + 4, MINING_CULT_TEXT);
+        graphics.text(font, label, x + PILL_PAD + LOGO_W + PILL_PAD, y, MINING_CULT_TEXT, false);
         return w;
     }
 

@@ -734,7 +734,6 @@
   "waypointer.screen.route_catalog.search.tooltip": "Ctrl+F för att söka. Piltangenterna bläddrar bland rutter.",
   "waypointer.screen.route_catalog.refresh.tooltip": "Ladda om ruttkatalogen (F5). Tillgänglig var 10:e sekund.",
   "waypointer.screen.route_catalog.install.tooltip": "Installera denna rutt och öppna den i Waypointer.",
-  "waypointer.screen.route_catalog.status.search_wait": "Sökningen körs när du slutar skriva.",
   "waypointer.screen.route_reupload.status.ready": "%1$s och %2$s redo att laddas upp.",
   "waypointer.count.route.one": "%s rutt",
   "waypointer.count.route.many": "%s rutter",

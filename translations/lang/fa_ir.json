@@ -761,7 +761,6 @@
   "waypointer.screen.route_catalog.search.tooltip": "Ctrl+F برای جستجو. کلیدهای جهت بین مسیرها جابه‌جا می‌شوند.",
   "waypointer.screen.route_catalog.refresh.tooltip": "فهرست مسیرها را دوباره بارگذاری کنید (F5). هر 10 ثانیه یک‌بار در دسترس است.",
   "waypointer.screen.route_catalog.install.tooltip": "این مسیر را نصب کنید و در Waypointer باز کنید.",
-  "waypointer.screen.route_catalog.status.search_wait": "جست‌وجو پس از توقف تایپ اجرا می‌شود.",
   "waypointer.screen.route_reupload.status.ready": "%1$s و %2$s آماده بارگذاری‌اند.",
   "waypointer.count.route.one": "%s مسیر",
   "waypointer.count.route.many": "%s مسیر",

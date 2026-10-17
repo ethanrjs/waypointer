@@ -411,6 +411,5 @@
   "waypointer.update.latest_version": "Соңғы нұсқа: %1$s %2$s",
   "waypointer.update.open_modrinth": "Modrinth ашу үшін басыңыз",
   "waypointer.screen.route_catalog.refresh.tooltip": "Маршруттар каталогын қайта жүктеу (F5). Әр 10 секунд сайын қолжетімді.",
-  "waypointer.screen.route_catalog.install.tooltip": "Бұл маршрутты орнатып, Waypointer ішінде ашу.",
-  "waypointer.screen.route_catalog.status.search_wait": "Теруді тоқтатқанда іздеу орындалады."
+  "waypointer.screen.route_catalog.install.tooltip": "Бұл маршрутты орнатып, Waypointer ішінде ашу."
 }

@@ -726,7 +726,6 @@
   "waypointer.screen.route_catalog.search.tooltip": "Ctrl+F for at søge. Piletasterne bladrer i ruter.",
   "waypointer.screen.route_catalog.refresh.tooltip": "Genindlæs rutekataloget (F5). Tilgængelig hvert 10. sekund.",
   "waypointer.screen.route_catalog.install.tooltip": "Installér denne rute, og åbn den i Waypointer.",
-  "waypointer.screen.route_catalog.status.search_wait": "Søgningen kører, når du er færdig med at skrive.",
   "waypointer.screen.route_reupload.status.ready": "%1$s og %2$s klar til upload.",
   "waypointer.count.route.one": "%s rute",
   "waypointer.count.route.many": "%s ruter",
