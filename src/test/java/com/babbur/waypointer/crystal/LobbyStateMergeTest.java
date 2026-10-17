@@ -1,6 +1,8 @@
 package com.babbur.waypointer.crystal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
 import com.babbur.waypointer.crystal.compass.Crystal;
@@ -34,6 +36,51 @@ class LobbyStateMergeTest {
                 SightingConfidence.ROUGH_AREA, "sidebar", 2);
         lobby.merge(separate);
         assertEquals(List.of(remote, separate), lobby.sightings());
+    }
+
+    @Test
+    void aShareNearTheAreaWeAreInConfirmsItSoTheMarkerIsNotApproximate() {
+        var structure = CrystalHollowsStructure.MINES_OF_DIVAN;
+        var shared = new StructureSighting(structure, 720, 100, 300,
+                SightingConfidence.SHARED_REMOTE, "skyblocker", 1);
+        var area = new StructureSighting(structure, 690, 110, 330,
+                SightingConfidence.ROUGH_AREA, "sidebar", 2);
+
+        var lobby = lobby();
+        lobby.merge(shared);
+        lobby.merge(area);
+        var shown = lobby.sightings().getFirst();
+        assertEquals(area.position(), shown.position(), "our own estimate is shown");
+        assertFalse(shown.approximate(), "a known structure never turns into an approximate marker");
+        lobby.merge(new StructureSighting(structure, 700, 110, 320, SightingConfidence.ROUGH_AREA, "sidebar", 3));
+        assertFalse(lobby.sightings().getFirst().approximate(), "refining keeps the confirmation");
+        assertEquals(700, lobby.sightings().getFirst().x());
+
+        var arrivedFirst = lobby();
+        arrivedFirst.merge(area);
+        assertTrue(arrivedFirst.sightings().getFirst().approximate());
+        assertEquals(CrystalHollowsLobbyState.MergeResult.REFINED, arrivedFirst.merge(shared));
+        assertEquals(area.position(), arrivedFirst.sightings().getFirst().position());
+        assertFalse(arrivedFirst.sightings().getFirst().approximate());
+    }
+
+    @Test
+    void aSharePositionFarFromTheAreaWeAreInLosesToTheArea() {
+        var structure = CrystalHollowsStructure.MINES_OF_DIVAN;
+        var wrong = new StructureSighting(structure, 300, 100, 300,
+                SightingConfidence.SHARED_REMOTE, "skyblocker", 1);
+        var area = new StructureSighting(structure, 700, 110, 320,
+                SightingConfidence.ROUGH_AREA, "sidebar", 2);
+        var lobby = lobby();
+        lobby.merge(wrong);
+        lobby.merge(area);
+        assertEquals(List.of(area), lobby.sightings());
+        assertTrue(lobby.sightings().getFirst().approximate());
+
+        var arrivedFirst = lobby();
+        arrivedFirst.merge(area);
+        assertEquals(CrystalHollowsLobbyState.MergeResult.IGNORED, arrivedFirst.merge(wrong));
+        assertEquals(List.of(area), arrivedFirst.sightings());
     }
 
     @Test

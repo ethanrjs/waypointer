@@ -24,6 +24,12 @@ public final class CrystalHollowsLobbyState {
     private static final double EQUAL_REFINEMENT_DISTANCE_SQUARED = 2.0 * 2.0;
     private static final int MAX_WISHING_TARGETS = 8;
     private static final double COMPASS_CONFIRM_DISTANCE_SQUARED = 80.0 * 80.0;
+    /**
+     * How far a shared position may sit from the centre of the area the scoreboard puts us in
+     * and still be that structure. The centre is estimated from where the player has walked, so
+     * it can be well off the structure's own centre.
+     */
+    private static final double AREA_CONFIRM_DISTANCE_SQUARED = 96.0 * 96.0;
 
     private final String serverId;
     private final long firstSeenMillis;
@@ -268,9 +274,19 @@ public final class CrystalHollowsLobbyState {
         boolean incomingRemote = incoming.confidence() == SightingConfidence.SHARED_REMOTE;
         boolean existingRemote = existing.confidence() == SightingConfidence.SHARED_REMOTE;
         int confidence = Integer.compare(evidenceStrength(incoming), evidenceStrength(existing));
-        // A locally observed area is a real location, even though its centre is approximate.
-        if (localSidebar(incoming) && existingRemote && existing.remoteEvidence() == null) confidence = 1;
-        else if (localSidebar(existing) && incomingRemote && incoming.remoteEvidence() == null) confidence = -1;
+        // An area-only share is just where its sender stood when their scoreboard changed; our
+        // own estimate, from where we have walked inside the area, is at least as good. A share
+        // near our area confirms the structure, so the marker is no longer called approximate.
+        // A share far from the area we are standing in is wrong for this lobby.
+        if (localSidebar(incoming) && existingRemote && existing.remoteEvidence() == null) {
+            sightings.set(index, withinArea(existing, incoming)
+                    ? incoming.withNote(StructureSighting.CONFIRMED_AREA) : incoming);
+            return MergeResult.UPGRADED;
+        } else if (localSidebar(existing) && incomingRemote && incoming.remoteEvidence() == null) {
+            if (!withinArea(existing, incoming) || !existing.approximate()) return MergeResult.IGNORED;
+            sightings.set(index, existing.withNote(StructureSighting.CONFIRMED_AREA));
+            return MergeResult.REFINED;
+        }
         // A peer's claimed detection cannot displace our own direct observation.
         if (confidence == 0 && incomingRemote != existingRemote) {
             confidence = incomingRemote ? -1 : 1;
@@ -291,7 +307,9 @@ public final class CrystalHollowsLobbyState {
                 if (samePosition(existing, incoming) && incoming.atMillis() <= existing.atMillis()) {
                     return MergeResult.IGNORED;
                 }
-                sightings.set(index, incoming);
+                // A refined estimate keeps the confirmation the earlier one had.
+                sightings.set(index, existing.approximate() ? incoming
+                        : incoming.withNote(StructureSighting.CONFIRMED_AREA));
                 return MergeResult.REFINED;
             }
             if (existing.position().distanceSquared(incoming.position())
@@ -333,6 +351,10 @@ public final class CrystalHollowsLobbyState {
     private static int evidenceStrength(StructureSighting sighting) {
         return (sighting.remoteEvidence() == null ? sighting.confidence()
                 : sighting.remoteEvidence()).ordinal();
+    }
+
+    private static boolean withinArea(StructureSighting a, StructureSighting b) {
+        return a.position().distanceSquared(b.position()) <= AREA_CONFIRM_DISTANCE_SQUARED;
     }
 
     private static boolean localSidebar(StructureSighting sighting) {

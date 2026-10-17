@@ -1,10 +1,10 @@
 package com.babbur.waypointer.crystal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import com.babbur.waypointer.config.WaypointerConfig;
 import com.babbur.waypointer.core.ActiveGroupManager;
@@ -42,7 +42,11 @@ class CrystalHollowsTrackerBatchTest {
             assertEquals(246, group.get(0).x());
             assertEquals(104, group.get(0).y());
             assertEquals(625, group.get(0).z());
+            // A matching share confirms our estimate once (no longer "approx."), then changes nothing.
+            assertEquals(hasRemote ? CrystalHollowsLobbyState.MergeResult.IGNORED
+                    : CrystalHollowsLobbyState.MergeResult.REFINED, lobby.merge(remote));
             assertEquals(CrystalHollowsLobbyState.MergeResult.IGNORED, lobby.merge(remote));
+            assertFalse(lobby.sightings().getFirst().approximate());
             tracker.sampleRoughArea(252.220, 104, 629.300);
             assertEquals(new CrystalHollowsPosition(249, 104, 627), lobby.sightings().getFirst().position());
             assertEquals(1, lobby.sightings().size(), "refinement must not duplicate the grotto");

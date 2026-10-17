@@ -106,7 +106,7 @@ public final class CrystalHollowsMinimap implements HudElement {
         if (scanner != null) scanner.drawOverlay(g, x, y, size, playerY);
         List<StructureSighting> visible = sightings.stream().filter(sighting ->
                 CrystalHollowsMinimapLayout.contains(sighting.x(), sighting.z())
-                        && (showRough || sighting.confidence() != SightingConfidence.ROUGH_AREA)
+                        && (showRough || !sighting.approximate())
                         && sighting.structure() != CrystalHollowsStructure.CRYSTAL_NUCLEUS).toList();
         List<Rect> occupied = new ArrayList<>();
         if (target != null && CrystalHollowsMinimapLayout.contains(target.x(), target.z())) {
@@ -141,7 +141,7 @@ public final class CrystalHollowsMinimap implements HudElement {
                 && Math.abs(py + 0.5 - (nucleus.y() + nucleus.height() / 2.0)) < 5;
         nucleus(g, nucleus, magma, playerOnHub);
         for (StructureSighting sighting : visible) {
-            boolean rough = sighting.confidence() == SightingConfidence.ROUGH_AREA;
+            boolean rough = sighting.approximate();
             int sx = x + layout.marker(sighting.x()), sy = y + layout.marker(sighting.z());
             int color = mix(0xFF000000 | sighting.structure().rgb(), 0xFFF2F8EF, 0.3);
             diamond(g, sx, sy, 4, 0xFF101216, true);

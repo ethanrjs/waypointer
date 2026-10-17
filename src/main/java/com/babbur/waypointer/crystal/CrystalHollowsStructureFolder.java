@@ -35,14 +35,14 @@ public final class CrystalHollowsStructureFolder {
         for (StructureSighting sighting : sightings) {
             CrystalHollowsStructure structure = sighting.structure();
             int instance = instances.merge(structure, 1, Integer::sum);
-            if (!showRough && sighting.confidence() == SightingConfidence.ROUGH_AREA) continue;
+            if (!showRough && sighting.approximate()) continue;
             String suffix = structure.multiInstance() && instance > 1 ? ":" + instance : "";
             String number = structure.multiInstance() && instance > 1 ? " #" + instance : "";
             String label = label(sighting) + number;
             groups.add(new PlannedGroup(GROUP_PREFIX + structure.id() + suffix,
                     structure.id(), label,
                     List.of(new PlannedWaypoint(label, sighting.position(), structure.rgb())),
-                    instance, sighting.confidence() == SightingConfidence.ROUGH_AREA,
+                    instance, sighting.approximate(),
                     sighting.candidates(), false));
         }
         if (includeNucleus) groups.add(nucleusGroup());
@@ -68,7 +68,7 @@ public final class CrystalHollowsStructureFolder {
             return "Compass target: " + String.join(" / ", sighting.candidates().stream()
                     .map(CrystalHollowsStructure::displayName).toList());
         }
-        String suffix = sighting.confidence() == SightingConfidence.ROUGH_AREA
+        String suffix = sighting.approximate()
                 ? " (approx.)"
                 : "";
         return sighting.structure().displayName() + suffix;
