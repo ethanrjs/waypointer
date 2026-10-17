@@ -155,7 +155,7 @@ public final class ColorPickerScreen extends Screen {
         int panelX = (width - PANEL_W) / 2;
         int panelH = panelHeight();
         int panelY = (height - panelH) / 2;
-        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, SURFACE);
+        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, GuiTokens.panel(SURFACE));
 
         g.text(font, pickerTitle, panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
 
@@ -393,5 +393,11 @@ public final class ColorPickerScreen extends Screen {
 
     private static int clamp255(int v) {
         return MathUtil.clampByte(v);
+    }
+
+    @Override
+    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        if (GuiTokens.extractSeeThroughBackground(g, width, height)) return;
+        super.extractBackground(g, mouseX, mouseY, partial);
     }
 }

@@ -30,9 +30,7 @@
   "waypointer.screen.add_named.none": "Ekkert",
   "waypointer.screen.add_named.confirm": "Staðfesta",
   "waypointer.screen.add_temp.title": "Bæta við tímabundnum Waypoint",
-  "waypointer.screen.add_temp.mode": "Hamur: %1$s",
   "waypointer.screen.add_temp.duration": "Tímalengd (sek.)",
-  "waypointer.screen.add_temp.duration.unused": "Tímalengd ekki notuð fyrir %1$s",
   "waypointer.screen.color_picker.save": "Vista",
   "waypointer.screen.paint_apply.title": "Beita á...",
   "waypointer.screen.paint_apply.pick": "Velja hóp...",
@@ -124,6 +122,5 @@
   "waypointer.update.hover_for_details": "Færðu bendilinn yfir til að sjá upplýsingar.",
   "waypointer.update.your_version": "Þín útgáfa: %1$s %2$s",
   "waypointer.update.latest_version": "Nýjasta útgáfa: %1$s %2$s",
-  "waypointer.update.versions_behind": "Þú ert %1$s útgáfum á eftir.",
   "waypointer.update.open_modrinth": "Smelltu til að opna Modrinth"
 }

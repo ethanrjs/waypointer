@@ -271,7 +271,7 @@ final class WaypointerRouteList {
     void render(GuiGraphicsExtractor graphics, int x1, int y1, int x2, int y2,
                 int mouseX, int mouseY) {
         List<Row> rows = dragPreviewRows();
-        graphics.fill(x1, y1, x2, y2, SURFACE_SUBTLE);
+        graphics.fill(x1, y1, x2, y2, GuiTokens.panel(SURFACE_SUBTLE));
         int rowsTop = rowsTop(y1);
         screen.renderMainNotice(graphics, x1, y1, x2);
         if (rows.isEmpty()) {

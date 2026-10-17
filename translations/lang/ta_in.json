@@ -21,7 +21,6 @@
   "waypointer.screen.add_named.small": "சிறிய",
   "waypointer.screen.add_temp.title": "தற்காலிக Waypoint சேர்க்கவும்",
   "waypointer.screen.add_temp.duration": "காலம் (sec)",
-  "waypointer.screen.add_temp.duration.unused": "%1$s க்கு பயன்படுத்தப்படாத காலம்",
   "waypointer.screen.color_picker.hex": "ஹெக்ஸ்",
   "waypointer.screen.color_picker.save": "சேமிக்கவும்",
   "waypointer.screen.paint_apply.title": "விண்ணப்பிக்கவும்...",
@@ -560,6 +559,5 @@
   "waypointer.screen.export.preview.narration": "பாதை முன்னோட்டம்: %1$s. %2$s",
   "waypointer.update.available": "ஒரு புதுப்பிப்பு கிடைக்கிறது.",
   "waypointer.update.hover_for_details": "விவரங்களுக்கு மேல் சுட்டியை நகர்த்தவும்.",
-  "waypointer.update.versions_behind": "நீங்கள் %1$s பதிப்புகள் பின்னால் உள்ளன.",
   "waypointer.update.open_modrinth": "Modrinth இல் திறக்க கிளிக் செய்யவும்"
 }

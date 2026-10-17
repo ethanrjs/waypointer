@@ -27,9 +27,7 @@ final class RouteListPresentation {
     }
 
     static Component waypointCount(int count) {
-        return count == 1
-                ? Component.translatable("waypointer.screen.main.route.count.one")
-                : Component.translatable("waypointer.screen.main.route.count", count);
+        return com.babbur.waypointer.i18n.Counts.of("waypoint", count);
     }
 
     static String joinParts(List<String> parts) {

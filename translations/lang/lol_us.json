@@ -1,6 +1,5 @@
 {
   "waypointer.chat.import.hover": "Click to import into ur current zone.",
-  "waypointer.screen.add_temp.mode.tooltip": "Cycle through expiry modes:\nTIME: auto-delete after N seconds.\nREACH: delete when u step inside its radius.\nLEAVE: delete when u disconnect from teh server.\nAll temp waypoints vanish on disconnect regardless.",
   "waypointer.screen.settings.done.tooltip": "Return to teh previous screen.\nEvery change on this page is saved as u type or click.",
   "waypointer.screen.settings.empty.hint": "Try fewer words, or clear teh search field.",
   "waypointer.screen.settings.config.status": "Waypointer config codes use ur clipboard.",
@@ -119,7 +118,6 @@
   "waypointer.screen.export.preview.unavailable.detail": "ur export code is unaffected.",
   "waypointer.screen.export.preview.zoom.tooltip": "Reset teh preview to its default zoom.",
   "waypointer.update.your_version": "ur version: %1$s %2$s",
-  "waypointer.update.versions_behind": "u are %1$s versions behind.",
   "waypointer.screen.route_catalog.refresh.tooltip": "Reload teh route catalog (F5). Available every 10 seconds.",
   "waypointer.screen.route_catalog.install.tooltip": "Install this route an' open it in Waypointer.",
   "waypointer.screen.route_catalog.status.search_wait": "Search will run when u stop typing.",

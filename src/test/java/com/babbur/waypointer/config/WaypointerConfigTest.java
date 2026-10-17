@@ -48,6 +48,27 @@ class WaypointerConfigTest {
     }
 
     @Test
+    void menuOpacityIsLocalClampedAndSurvivesConfigImports(@TempDir Path directory) throws IOException {
+        Path file = directory.resolve("config.json");
+        WaypointerConfig config = WaypointerConfig.load(file);
+        assertEquals(1.0, config.menuOpacity());
+        config.setMenuOpacity(0.05);
+        assertEquals(0.2, config.menuOpacity());
+        config.setMenuOpacity(Double.NaN);
+        assertEquals(0.2, config.menuOpacity());
+        config.setMenuOpacity(0.6);
+        config.flush();
+        assertEquals(0.6, WaypointerConfig.load(file).menuOpacity());
+
+        WaypointerConfig imported = WaypointerConfigCodec.decode(WaypointerConfigCodec.encode(config));
+        assertEquals(1.0, imported.menuOpacity(), "config codes do not carry a personal display preference");
+        config.replaceWith(imported);
+        assertEquals(0.6, config.menuOpacity(), "importing someone's config keeps this PC's menu opacity");
+        config.resetToDefaults();
+        assertEquals(1.0, config.menuOpacity());
+    }
+
+    @Test
     void minimapPlacementAndDetectionsPersistLocallyAndReset(@TempDir Path directory) throws IOException {
         Path file = directory.resolve("config.json");
         WaypointerConfig config = WaypointerConfig.load(file);

@@ -8,7 +8,6 @@
   "waypointer.screen.add_named.small": "პატარა",
   "waypointer.screen.add_named.none": "არცერთი",
   "waypointer.screen.add_named.confirm": "დადასტურება",
-  "waypointer.screen.add_temp.mode": "რეჟიმი: %1$s",
   "waypointer.screen.add_temp.duration": "ხანგრძლივობა (sec)",
   "waypointer.screen.color_picker.hex": "ჰექსი",
   "waypointer.screen.color_picker.save": "შენახვა",

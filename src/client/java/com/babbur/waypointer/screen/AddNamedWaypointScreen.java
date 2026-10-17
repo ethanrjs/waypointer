@@ -213,7 +213,7 @@ public final class AddNamedWaypointScreen extends Screen {
         int panelX = (width - PANEL_W) / 2;
         int panelH = panelHeight();
         int panelY = (height - panelH) / 2;
-        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, SURFACE);
+        g.fill(panelX, panelY, panelX + PANEL_W, panelY + panelH, GuiTokens.panel(SURFACE));
         g.text(font, getTitle(), panelX + PAD_OUTER, panelY + PAD_OUTER, TEXT, false);
         if (placementError != null) {
             int errorY = panelY + panelH + GAP;
@@ -584,6 +584,12 @@ public final class AddNamedWaypointScreen extends Screen {
     public void removed() {
         clearPreview();
         super.removed();
+    }
+
+    @Override
+    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        if (GuiTokens.extractSeeThroughBackground(g, width, height)) return;
+        super.extractBackground(g, mouseX, mouseY, partial);
     }
 
     @Override

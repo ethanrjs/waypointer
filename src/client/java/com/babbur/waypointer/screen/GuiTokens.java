@@ -58,6 +58,33 @@ public final class GuiTokens {
         }
     }
 
+    /** The player's Menu opacity setting (1 = solid panels and a blurred world). */
+    public static float menuOpacity() {
+        var config = com.babbur.waypointer.WaypointerClient.config();
+        return config == null ? 1.0f : (float) config.menuOpacity();
+    }
+
+    /** {@code argb} with its alpha scaled by the Menu opacity setting. */
+    public static int panel(int argb) {
+        float opacity = menuOpacity();
+        if (opacity >= 1.0f) return argb;
+        int alpha = Math.round(((argb >>> 24) & 0xFF) * opacity);
+        return (alpha << 24) | (argb & 0xFFFFFF);
+    }
+
+    /**
+     * Background for Waypointer's menus: vanilla's blur at full opacity; below it, only a light
+     * dim so the world stays sharp behind the panels. Returns false when the caller should fall
+     * back to the vanilla background.
+     */
+    static boolean extractSeeThroughBackground(GuiGraphicsExtractor g, int width, int height) {
+        float opacity = menuOpacity();
+        var minecraft = Minecraft.getInstance();
+        if (opacity >= 1.0f || minecraft.level == null) return false;
+        g.fill(0, 0, width, height, Math.round(0x50 * opacity) << 24);
+        return true;
+    }
+
     /** {@code text} cut to {@code maxWidth}, ending in "..." when anything was dropped. */
     public static String ellipsize(net.minecraft.client.gui.Font font, String text, int maxWidth) {
         if (font.width(text) <= maxWidth) return text;

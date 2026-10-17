@@ -35,10 +35,7 @@
   "waypointer.screen.add_named.none": "Cap",
   "waypointer.screen.add_named.confirm": "Confirma",
   "waypointer.screen.add_temp.title": "Afig un waypoint temporal",
-  "waypointer.screen.add_temp.mode.tooltip": "Canvia entre els modes d'expiració:\nTIME: s'elimina automàticament després de N segons.\nREACH: s'elimina quan entres en el seu radi.\nLEAVE: s'elimina quan et desconnectes del servidor.\nTots els waypoints temporals desapareixen en desconnectar, independentment del mode.",
   "waypointer.screen.add_temp.duration": "Duració (s)",
-  "waypointer.screen.add_temp.duration.tooltip": "Segons fins que caduca un waypoint temporal en mode TIME. Ignorat per REACH i LEAVE.",
-  "waypointer.screen.add_temp.duration.unused": "Duració no utilitzada per a %1$s",
   "waypointer.screen.color_picker.save": "Guarda",
   "waypointer.screen.paint_apply.title": "Aplica a...",
   "waypointer.screen.paint_apply.all": "Tots els waypoints",
@@ -500,7 +497,6 @@
   "waypointer.screen.export.routes.select_all": "Selecciona-ho tot",
   "waypointer.screen.export.routes.hide": "Rutes ocultes",
   "waypointer.screen.export.routes.show": "Mostra les rutes",
-  "waypointer.screen.export.routes.summary": "%1$s de %2$s seleccionades, %3$s waypoints",
   "waypointer.screen.export.routes.selected": "%1$s, seleccionada per a l'exportació",
   "waypointer.screen.export.routes.not_selected": "%1$s, no seleccionada per a l'exportació",
   "waypointer.screen.export.toggle.names.label": "Noms dels waypoints",
@@ -609,6 +605,5 @@
   "waypointer.update.hover_for_details": "Passa el cursor per a veure'n els detalls.",
   "waypointer.update.your_version": "La teua versió: %1$s %2$s",
   "waypointer.update.latest_version": "Versió més recent: %1$s %2$s",
-  "waypointer.update.versions_behind": "Portes %1$s versions de retard.",
   "waypointer.update.open_modrinth": "Fes clic per a obrir Modrinth"
 }

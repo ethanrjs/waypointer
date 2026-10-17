@@ -9,7 +9,6 @@
   "waypointer.screen.add_named.name": "Útpont neve",
   "waypointer.screen.add_named.waypoint_type": "Útponttípus: %s",
   "waypointer.screen.add_named.none": "Egyik sem",
-  "waypointer.screen.add_temp.mode": "Mód: %1$s",
   "waypointer.screen.color_picker.save": "Mentés",
   "waypointer.screen.paint_apply.search": "Csoportok keresése",
   "waypointer.screen.paint_apply.empty": "Nincs mentett csoport.",

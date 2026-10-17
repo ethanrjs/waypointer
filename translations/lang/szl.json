@@ -27,6 +27,5 @@
   "waypointer.update.hover_for_details": "Najedź kursorym, coby ôbejzdrzeć informacyje.",
   "waypointer.update.your_version": "Twoja wersyjo: %1$s %2$s",
   "waypointer.update.latest_version": "Najnowszo wersyjo: %1$s %2$s",
-  "waypointer.update.versions_behind": "Mosz %1$s wersyji zaległości.",
   "waypointer.update.open_modrinth": "Kliknij, coby ôdewrzić na Modrinth"
 }

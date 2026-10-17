@@ -429,6 +429,7 @@ public final class SettingsScreen extends Screen {
     public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
 
         if (target != null && minecraft != null && minecraft.level != null) return;
+        if (GuiTokens.extractSeeThroughBackground(g, width, height)) return;
         super.extractBackground(g, mouseX, mouseY, partial);
     }
 
@@ -1372,10 +1373,10 @@ public final class SettingsScreen extends Screen {
         boolean menuOpen = contextMenu.isOpen();
         int widgetMouseX = menuOpen ? -1 : mouseX;
         int widgetMouseY = menuOpen ? -1 : mouseY;
-        g.fill(0, 0, width, height, target == null ? SURFACE : SCOPED_BACKDROP);
+        g.fill(0, 0, width, height, GuiTokens.panel(target == null ? SURFACE : SCOPED_BACKDROP));
         if (target != null) {
-            g.fill(0, 0, width, layout.top(), SCOPED_PANEL);
-            g.fill(0, layout.bottom(), width, height, SCOPED_PANEL);
+            g.fill(0, 0, width, layout.top(), GuiTokens.panel(SCOPED_PANEL));
+            g.fill(0, layout.bottom(), width, height, GuiTokens.panel(SCOPED_PANEL));
         }
         String title = font.plainSubstrByWidth(getTitle().getString(), Math.max(0, width / 2 - PAD_OUTER));
         g.text(font, title, PAD_OUTER, PAD_OUTER, TEXT, false);
@@ -1390,7 +1391,7 @@ public final class SettingsScreen extends Screen {
         renderSidebar(g, layout, widgetMouseX, widgetMouseY);
 
         g.fill(layout.mainLeft(), layout.top(), layout.mainRight(), layout.bottom(),
-                target == null ? SURFACE_SUBTLE : SCOPED_PANEL);
+                GuiTokens.panel(target == null ? SURFACE_SUBTLE : SCOPED_PANEL));
         Component headerTooltip = renderHeaderStrip(g, layout, widgetMouseX, widgetMouseY);
         if (resetLookButton != null) resetLookButton.active = target.scope().count() > 0;
 
@@ -1560,7 +1561,7 @@ public final class SettingsScreen extends Screen {
     private void renderSidebar(GuiGraphicsExtractor g, Layout layout, int mouseX, int mouseY) {
         int x1 = layout.sidebarLeft();
         int x2 = layout.sidebarRight();
-        g.fill(x1, layout.top(), x2, layout.bottom(), target == null ? SURFACE : SCOPED_PANEL);
+        g.fill(x1, layout.top(), x2, layout.bottom(), GuiTokens.panel(target == null ? SURFACE : SCOPED_PANEL));
         g.fill(x2, layout.top(), x2 + 1, layout.bottom(), BORDER);
         boolean rail = layout.rail();
         if (!rail) {

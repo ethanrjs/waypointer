@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.i18n.Counts;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.catalog.CatalogProtocol;
 import com.babbur.waypointer.catalog.CatalogPublication;
@@ -192,7 +193,7 @@ final class RouteReuploadScreen extends Screen implements RoutePickerHost {
             status = routes.isEmpty()
                     ? Component.translatable("waypointer.screen.route_reupload.status.empty")
                     : Component.translatable("waypointer.screen.route_reupload.status.ready",
-                            routes.size(), waypoints);
+                            Counts.of("route", routes.size()), Counts.of("waypoint", waypoints));
             statusColor = TEXT_DIM;
         }
     }

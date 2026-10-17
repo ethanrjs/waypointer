@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.i18n.Counts;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.catalog.CatalogPublishRequest;
@@ -725,7 +726,7 @@ public final class RoutePublishScreen extends Screen implements RoutePickerHost 
         String zone = Component.translatable(dungeon
                         ? "waypointer.screen.route_publish.dungeon_bundle_summary"
                         : "waypointer.screen.route_publish.bundle_summary",
-                form.groups().size(), zoneCount)
+                Counts.of("route", form.groups().size()), Counts.of(dungeon ? "room" : "zone", zoneCount))
                 .getString();
         String count = waypointCount(form.groups().stream().mapToLong(WaypointGroup::size).sum()).getString();
         String clippedZone = font.plainSubstrByWidth(zone,

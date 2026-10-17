@@ -279,7 +279,7 @@ public final class SettingsCatalog {
                                 .enabledWhen((c, d) -> c.boxStyle() == WaypointerConfig.BoxStyle.OUTLINED
                                         || c.boxStyle() == WaypointerConfig.BoxStyle.FILLED_OUTLINED)
                                 .aliases("width")),
-                Group.plain("sequenced", "Previous / Next Waypoints",
+                Group.plain("sequenced", "Previous & next",
                         Setting.number("waypointSkipFadeMs", MAIN, "Waypoint fade time (ms)",
                                 "Fade waypoints and subwaypoints in and out when the current waypoint changes. 0 = off.",
                                 (c, d) -> (double) c.waypointSkipFadeMs(),
@@ -860,7 +860,14 @@ public final class SettingsCatalog {
                         Setting.bool("showEditModeSubtitle", MAIN, "Show EDIT MODE subtitle",
                                 null,
                                 (c, d) -> c.showEditModeSubtitle(),
-                                (c, d, v) -> c.setShowEditModeSubtitle((Boolean) v))),
+                                (c, d, v) -> c.setShowEditModeSubtitle((Boolean) v)),
+                        Setting.number("menuOpacity", MAIN, "Menu opacity (0.2-1)",
+                                "Lower it to see the world through Waypointer's menus while you edit.",
+                                (c, d) -> c.menuOpacity(),
+                                (c, d, v) -> c.setMenuOpacity(dbl(v)))
+                                .range(0.2, 1.0)
+                                .localOnly()
+                                .aliases("transparent", "see through", "background", "menu", "translucent")),
                 Group.plain("config_presets", "Config & presets",
                         Setting.action(ACTION_CONFIG_CODE, "Config code",
                                 null)

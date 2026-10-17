@@ -61,7 +61,10 @@ class UpdateNotificationMessageTest {
         Component behindLine = hover.getSiblings().get(4);
         TranslatableContents behindText = assertInstanceOf(
                 TranslatableContents.class, behindLine.getContents());
-        assertEquals("21", ((Component) behindText.getArgs()[0]).getString());
+        TranslatableContents behindCount = assertInstanceOf(TranslatableContents.class,
+                ((Component) behindText.getArgs()[0]).getContents());
+        assertEquals("waypointer.count.version.many", behindCount.getKey());
+        assertEquals(21L, ((Number) behindCount.getArgs()[0]).longValue());
         assertEquals(color(ChatFormatting.GREEN),
                 hover.getSiblings().get(6).getStyle().getColor());
     }

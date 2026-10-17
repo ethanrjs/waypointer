@@ -33,9 +33,7 @@
   "waypointer.screen.add_named.none": "Ingen",
   "waypointer.screen.add_named.confirm": "Stadfest",
   "waypointer.screen.add_temp.title": "Legg til mellombels vegpunkt",
-  "waypointer.screen.add_temp.mode": "Modus: %1$s",
   "waypointer.screen.add_temp.duration": "Varigheit (sek)",
-  "waypointer.screen.add_temp.duration.unused": "Varigheit ikkje brukt for %1$s",
   "waypointer.screen.color_picker.save": "Lagre",
   "waypointer.screen.paint_apply.all": "Alle vegpunkt",
   "waypointer.screen.paint_apply.all.tooltip": "Bruk denne målinga på alle lagra ruter.",
@@ -483,7 +481,6 @@
   "waypointer.screen.export.routes.select_all.tooltip": "Inkluder alle ruter i denne eksporten",
   "waypointer.screen.export.routes.hide": "Skjul ruter",
   "waypointer.screen.export.routes.show": "Vis ruter",
-  "waypointer.screen.export.routes.summary": "%1$s av %2$s valde, %3$s vegpunkt",
   "waypointer.screen.export.routes.selected": "%1$s, vald for eksport",
   "waypointer.screen.export.routes.not_selected": "%1$s, ikkje vald for eksport",
   "waypointer.screen.export.toggle.names.label": "Namn på vegpunkt",
@@ -575,6 +572,5 @@
   "waypointer.update.hover_for_details": "Hald peikaren over for detaljar.",
   "waypointer.update.your_version": "Di versjon: %1$s %2$s",
   "waypointer.update.latest_version": "Nyaste versjon: %1$s %2$s",
-  "waypointer.update.versions_behind": "Du ligg %1$s versjonar etter.",
   "waypointer.update.open_modrinth": "Klikk for å opne på Modrinth"
 }

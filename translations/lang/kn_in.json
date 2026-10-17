@@ -13,9 +13,6 @@
   "waypointer.route_state.shown": "ತೋರಿಸಲಾಗಿದೆ",
   "waypointer.route_state.hidden": "ಮರೆಮಾಡಲಾಗಿದೆ",
   "waypointer.temp_mode.none": "ಯಾವುದೂ",
-  "waypointer.temp_mode.time": "ಸಮಯ",
-  "waypointer.temp_mode.reach": "ತಲುಪು",
-  "waypointer.temp_mode.leave": "ಬಿಡಿ",
   "waypointer.export.copy_code_block": "Discord ಗೆ ನಕಲಿಸಿ",
   "waypointer.export.copy_clipboard": "ನಕಲು",
   "waypointer.export.fit.chat_and_commands": "ಚಾಟ್ ಮತ್ತು ಆಜ್ಞೆಗಳಿಗೆ ಹೊಂದಿಕೊಳ್ಳುತ್ತದೆ",
@@ -28,9 +25,7 @@
   "waypointer.screen.add_named.none": "ಯಾವುದೂ",
   "waypointer.screen.add_named.confirm": "ದೃಢೀಕರಿಸಿ",
   "waypointer.screen.add_temp.title": "ತಾತ್ಕಾಲಿಕ Waypoint ಅನ್ನು ಸೇರಿಸಿ",
-  "waypointer.screen.add_temp.mode": "ಮೋಡ್: %1$s",
   "waypointer.screen.add_temp.duration": "ಅವಧಿ (ಸೆಕೆಂಡು)",
-  "waypointer.screen.add_temp.duration.unused": "%1$sಗಾಗಿ ಬಳಸದ ಅವಧಿ",
   "waypointer.screen.color_picker.hex": "ಹೆಕ್ಸ್",
   "waypointer.screen.color_picker.save": "ಉಳಿಸಿ",
   "waypointer.screen.paint_apply.all": "ಎಲ್ಲಾ Waypoints",
@@ -558,6 +553,5 @@
   "waypointer.update.hover_for_details": "ವಿವರಗಳಿಗಾಗಿ ಮೌಸ್ ಕರ್ಸರ್ ಅನ್ನು ಇರಿಸಿ.",
   "waypointer.update.your_version": "ನಿಮ್ಮ ಆವೃತ್ತಿ: %1$s %2$s",
   "waypointer.update.latest_version": "ಇತ್ತೀಚಿನ ಆವೃತ್ತಿ: %1$s %2$s",
-  "waypointer.update.versions_behind": "ನೀವು %1$s ಆವೃತ್ತಿಗಳ ಹಿಂದೆ ಇದ್ದೀರಿ.",
   "waypointer.update.open_modrinth": "Modrinth ತೆರೆಯಲು ಕ್ಲಿಕ್ ಮಾಡಿ"
 }

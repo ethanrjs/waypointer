@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.i18n.Counts;
 import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.codec.RouteLibraryMetadata;
@@ -1316,7 +1317,7 @@ public final class ExportScreen extends Screen {
                 headerY, TEXT_DIM);
         drawClipped(g, Component.translatable(
                 "waypointer.screen.export.routes.summary",
-                selectedGroupCount(), groups.size(), selectedWaypointCount()).getString(),
+                selectedGroupCount(), groups.size(), Counts.of("waypoint", selectedWaypointCount())).getString(),
                 headerY + LINE_H, TEXT_MUTED);
 
         if (routePickerExpanded) {
@@ -1456,8 +1457,23 @@ public final class ExportScreen extends Screen {
             return new SettingsHelp(Component.translatable(
                     "waypointer.screen.export.settings_help.no_island").getString(), TEXT_DIM);
         }
+        if (hasOwnLook(selectedGroupsForExport())) {
+            return new SettingsHelp(Component.translatable(
+                    "waypointer.screen.export.settings_help.own_look").getString(), TEXT_DIM);
+        }
         return new SettingsHelp(Component.translatable(
                 "waypointer.screen.export.settings_help.shorter").getString(), TEXT_MUTED);
+    }
+
+    /** Share codes carry waypoints, not looks: say so when the selection has its own look. */
+    static boolean hasOwnLook(List<WaypointGroup> routes) {
+        for (WaypointGroup route : routes) {
+            if (!route.styleOverride().isEmpty() || !route.stylePresetId().isBlank()) return true;
+            for (var waypoint : route.waypoints()) {
+                if (!waypoint.styleOverride().isEmpty()) return true;
+            }
+        }
+        return false;
     }
 
     private void drawPreview(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {

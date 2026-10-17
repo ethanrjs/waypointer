@@ -427,6 +427,7 @@ public final class GroupEditScreen extends Screen {
     @Override
     public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
         if (peeking && minecraft != null && minecraft.level != null) return;
+        if (GuiTokens.extractSeeThroughBackground(g, width, height)) return;
         super.extractBackground(g, mouseX, mouseY, partial);
     }
 
@@ -1142,7 +1143,7 @@ public final class GroupEditScreen extends Screen {
     }
 
     private void renderSidebarPanel(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2) {
-        g.fill(x1, y1, x2, y2, SIDEBAR_BG);
+        g.fill(x1, y1, x2, y2, GuiTokens.panel(SIDEBAR_BG));
         g.fill(x2, y1, x2 + 1, y2, BORDER);
 
         if (radiusMinusBtn != null && radiusPlusBtn != null
@@ -1183,7 +1184,7 @@ public final class GroupEditScreen extends Screen {
     private void renderMain(GuiGraphicsExtractor g, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
         coordinateColumnOffset = coordinateColumnOffset();
         List<Waypoint> pts = group.waypoints();
-        g.fill(x1, y1, x2, y2, ROUTE_LIST_BG);
+        g.fill(x1, y1, x2, y2, GuiTokens.panel(ROUTE_LIST_BG));
         if (pts.isEmpty()) {
             g.text(font, Component.translatable("waypointer.screen.group_edit.empty"),
                     x1 + GAP, y1 + 8, TEXT, false);

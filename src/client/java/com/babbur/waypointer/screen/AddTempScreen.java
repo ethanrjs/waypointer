@@ -74,7 +74,7 @@ public final class AddTempScreen extends Screen {
                 70, BTN_H, Component.translatable("gui.cancel"),
                 this::onCancelButtonPressed, null));
         addRenderableWidget(styledButton(panelX + PANEL_W - PAD_OUTER - 70, footerY,
-                70, BTN_H, Component.translatable("gui.add"),
+                70, BTN_H, Component.translatable("waypointer.screen.add_temp.add"),
                 this::onAddButtonPressed, null));
     }
     private void onModeButtonPressed(Button button) {

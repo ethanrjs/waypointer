@@ -10,7 +10,6 @@
   "waypointer.screen.add_named.waypoint_type": "Weepunkttyp: %s",
   "waypointer.screen.add_named.none": "Keen",
   "waypointer.screen.add_named.confirm": "Bestätegen",
-  "waypointer.screen.add_temp.mode": "Modus: %1$s",
   "waypointer.screen.color_picker.save": "Späicheren",
   "waypointer.screen.paint_apply.all": "All Weepunkte",
   "waypointer.screen.paint_apply.empty": "Keng gerett Gruppen.",
@@ -266,6 +265,5 @@
   "waypointer.screen.export.preview.duplicates": "%1$s Waypoints deelen dës Positioun",
   "waypointer.update.available": "Et ass eng Aktualiséierung verfügbar.",
   "waypointer.update.your_version": "Är Versioun: %1$s %2$s",
-  "waypointer.update.latest_version": "Déi lescht Versioun: %1$s %2$s",
-  "waypointer.update.versions_behind": "Dir sidd %1$s Versiounen hannendrun."
+  "waypointer.update.latest_version": "Déi lescht Versioun: %1$s %2$s"
 }

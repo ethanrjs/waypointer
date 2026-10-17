@@ -35,9 +35,7 @@
   "waypointer.screen.add_named.none": "Wala",
   "waypointer.screen.add_named.confirm": "Kumpirmahin",
   "waypointer.screen.add_temp.title": "Magdagdag ng pansamantalang Waypoint",
-  "waypointer.screen.add_temp.mode": "Paraan: %1$s",
   "waypointer.screen.add_temp.duration": "Tagal (segundo)",
-  "waypointer.screen.add_temp.duration.unused": "Hindi ginagamit ang tagal para sa %1$s",
   "waypointer.screen.color_picker.save": "I-save",
   "waypointer.screen.paint_apply.title": "I-apply sa...",
   "waypointer.screen.paint_apply.all": "Lahat ng Waypoint",
@@ -280,6 +278,5 @@
   "waypointer.update.hover_for_details": "Itapat ang cursor para sa mga detalye.",
   "waypointer.update.your_version": "Ang iyong bersyon: %1$s %2$s",
   "waypointer.update.latest_version": "Ang pinakabagong bersyon: %1$s %2$s",
-  "waypointer.update.versions_behind": "Nahuhuli ka ng %1$s bersyon.",
   "waypointer.update.open_modrinth": "I-click upang buksan ang Modrinth"
 }

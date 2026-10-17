@@ -78,7 +78,56 @@ public final class ScreenGallery {
         shoot(context, "painter", scale, () -> new WaypointPainterScreen(null, config, manager,
                 manager.get(routeId)));
         shoot(context, "feedback", scale, () -> new FeedbackScreen(null, config));
+        shoot(context, "add-temp", scale, () -> new AddTempScreen(null, manager, config));
+        shoot(context, "minimap-editor", scale, () -> new CrystalHollowsMinimapEditorScreen(null, config));
+        shoot(context, "debug", scale, () -> new DebugInspectScreen(null));
+        // Menus and states inside the everyday screens.
+        shoot(context, "hub-new-menu", scale, () -> new WaypointerScreen(manager, config));
+        call(context, "toggleNewMenu");
+        context.takeScreenshot("gallery-hub-new-menu-open-s" + scale);
+        shoot(context, "hub-zones", scale, () -> new WaypointerScreen(manager, config));
+        call(context, "openIslandDropdown");
+        context.takeScreenshot("gallery-hub-zones-open-s" + scale);
+        shoot(context, "settings-search", scale, () -> new SettingsScreen(null, config, WaypointerClient.dungeonConfig()));
+        context.runOnClient(client -> {
+            SettingsScreen screen = (SettingsScreen) MinecraftCompat.screen(client);
+            ((net.minecraft.client.gui.components.EditBox) field(screen, "searchBox")).setValue("tracer");
+        });
+        context.waitTicks(3);
+        context.takeScreenshot("gallery-settings-search-results-s" + scale);
+        shoot(context, "appearance-scope", scale, () -> SettingsScreen.forAppearance(null, config,
+                WaypointerClient.dungeonConfig(), AppearanceTarget.zone(config, "mineshaft")));
+        context.runOnClient(client -> {
+            SettingsScreen screen = (SettingsScreen) MinecraftCompat.screen(client);
+            invoke(screen, "openScopeMenu", new Class<?>[]{net.minecraft.client.gui.components.Button.class},
+                    field(screen, "scopeSwitcher"));
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("gallery-appearance-scope-open-s" + scale);
+        shoot(context, "catalog", scale, () -> new RouteCatalogScreen(null,
+                com.babbur.waypointer.catalog.RouteCatalogClient.production()));
+        context.waitTicks(40);
+        context.takeScreenshot("gallery-catalog-loaded-s" + scale);
+        context.runOnClient(client -> {
+            MinecraftCompat.setScreen(client, null);
+            RoutePublishScreen.open(null, config, manager.get(routeId));
+        });
+        context.waitTicks(5);
+        context.takeScreenshot("gallery-publish-s" + scale);
         context.runOnClient(client -> MinecraftCompat.setScreen(client, null));
+    }
+
+    private static void call(ClientGameTestContext context, String method) {
+        context.runOnClient(client -> invoke(MinecraftCompat.screen(client), method, new Class<?>[0]));
+        context.waitTicks(2);
+    }
+
+    private static Object field(Object owner, String name) {
+        try {
+            var f = owner.getClass().getDeclaredField(name);
+            f.setAccessible(true);
+            return f.get(owner);
+        } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
 
     private static void shoot(ClientGameTestContext context, String name, int scale, Supplier<Screen> open) {

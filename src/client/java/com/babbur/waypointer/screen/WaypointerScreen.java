@@ -1,5 +1,6 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.i18n.Counts;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.WaypointerClient;
@@ -624,7 +625,7 @@ public final class WaypointerScreen extends Screen {
         if (islandSelectorBtn != null) renderIslandSelectorDirection(g);
         String headerTitle = publishDraft == null ? getTitle().getString()
                 : Component.translatable("waypointer.screen.route_publish.selection_title",
-                        publishDraft.routeCount()).getString();
+                        Counts.of("route", publishDraft.routeCount())).getString();
         int titleLeftLimit = PAD_OUTER + SETTINGS_BTN_W + GAP;
         int titleRightLimit = width - PAD_OUTER - ISLAND_SELECTOR_W - GAP;
         int infoSpan = GAP_TIGHT + 1 + WaypointerRouteList.INFO_BUTTON_SIZE;
@@ -1163,9 +1164,14 @@ public final class WaypointerScreen extends Screen {
                         this::openNewFolderEditor)
                 : ContextMenuOverlay.Item.disabled(
                         Component.translatable("waypointer.screen.main.folder"), null));
+        if (minecraft != null && minecraft.player != null) {
+            items.add(ContextMenuOverlay.Item.of(
+                    Component.translatable("waypointer.screen.main.new_temp"),
+                    () -> AddTempScreen.open(this, manager, config)));
+        }
         int anchorX = newBtn == null ? PAD_OUTER : newBtn.getX();
         int anchorBottom = newBtn == null ? height - FOOTER_H : newBtn.getY() - GAP_TIGHT;
-        contextMenu.openAbove(font, items, anchorX, anchorBottom,
+        contextMenu.openAbove(font, ContextMenuOverlay.withIcons(items, NEW_MENU_ICONS), anchorX, anchorBottom,
                 PAD_OUTER, PAD_OUTER, width - PAD_OUTER);
     }
 
@@ -1202,6 +1208,18 @@ public final class WaypointerScreen extends Screen {
                             : Component.translatable("waypointer.screen.appearance.set_count", lookCount).getString(),
                     () -> MinecraftCompat.setScreen(minecraft, SettingsScreen.forAppearance(
                             this, config, WaypointerClient.dungeonConfig(), look))));
+        }
+        String zoneKey = AppearanceTarget.zoneLookKey(group.zoneId());
+        if (zoneKey != null) {
+            int zoneCount = com.babbur.waypointer.config.WaypointStyles.setCount(config.zoneStyle(zoneKey));
+            items.add(ContextMenuOverlay.Item.of(
+                    Component.translatable("waypointer.screen.main.menu.zone_look",
+                            AppearanceTarget.zoneLabel(zoneKey)),
+                    zoneCount == 0 ? null
+                            : Component.translatable("waypointer.screen.appearance.set_count", zoneCount).getString(),
+                    () -> MinecraftCompat.setScreen(minecraft, SettingsScreen.forAppearance(
+                            this, config, WaypointerClient.dungeonConfig(), AppearanceTarget.zone(config, zoneKey))))
+                    .withIcon(Icons.Icon.GLOBE));
         }
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable(group.enabled()
@@ -1260,6 +1278,11 @@ public final class WaypointerScreen extends Screen {
                 ContextMenuOverlay.hint("space"), () -> routeList.toggleFolderCollapsed(folder)));
         openContextMenuAt(items, anchorX, anchorY);
     }
+
+    private static final Map<String, Icons.Icon> NEW_MENU_ICONS = Map.of(
+            "waypointer.screen.main.new_route", Icons.Icon.ROUTE,
+            "waypointer.screen.main.folder", Icons.Icon.FOLDER,
+            "waypointer.screen.main.new_temp", Icons.Icon.CLOCK);
 
     private static final Map<String, Icons.Icon> ROUTE_MENU_ICONS = Map.ofEntries(
             Map.entry("waypointer.screen.main.menu.edit", Icons.Icon.PENCIL),
@@ -2203,6 +2226,12 @@ public final class WaypointerScreen extends Screen {
         clearRouteSelection();
         pendingFocusGroupId = routes.getFirst().id();
         rebuildWidgets();
+    }
+
+    @Override
+    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        if (GuiTokens.extractSeeThroughBackground(g, width, height)) return;
+        super.extractBackground(g, mouseX, mouseY, partial);
     }
 
     @Override

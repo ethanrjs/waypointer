@@ -28,11 +28,7 @@
   "waypointer.screen.add_named.title.named": "Make Named Wayord",
   "waypointer.screen.add_named.name": "Wayord name",
   "waypointer.screen.add_temp.title": "Eke Short-lived Wayord",
-  "waypointer.screen.add_temp.mode": "Wise: %1$s",
-  "waypointer.screen.add_temp.mode.tooltip": "Loop through ending wises:\nTIME: self-adwash after N braids.\nREACH: adwash when you step inside its strale.\nLEAVE: adwash when you unbind from the webthew.\nAll short-lived wayords vanish on unbind anyway.",
   "waypointer.screen.add_temp.duration": "Lastingness (braid)",
-  "waypointer.screen.add_temp.duration.tooltip": "Braids until a TIME-wise short-lived wayord ends. Unheeded for REACH and LEAVE.",
-  "waypointer.screen.add_temp.duration.unused": "Lastingness not brooked for %1$s",
   "waypointer.screen.color_picker.hex": "Sixteenish",
   "waypointer.screen.color_picker.save": "Speal",
   "waypointer.screen.paint_apply.title": "Put On...",
@@ -423,7 +419,6 @@
   "waypointer.command.clear.success": "Emptied %1$s path(s) in %2$s",
   "waypointer.command.export.empty": "Nothing to outsend",
   "waypointer.command.export.empty_in_zone": "Nothing to outsend (%1$s)",
-  "waypointer.command.export.success": "Outsent %1$s path(s) (%2$s staves)",
   "waypointer.command.import.clipboard_empty": "Clipboard is empty. Clove the %1$s... lore load first, or run /wp import <payload> to paste it inline.",
   "waypointer.command.import.file_usage": "Brooking: /wp importfile <path>",
   "waypointer.command.import.invalid_path": "Wrong thread path: %1$s",
@@ -564,7 +559,6 @@
   "waypointer.screen.export.routes.select_all.tooltip": "Put every path into this outsend",
   "waypointer.screen.export.routes.hide": "Hide paths",
   "waypointer.screen.export.routes.show": "Show paths",
-  "waypointer.screen.export.routes.summary": "%1$s of %2$s chosen, %3$s wayords",
   "waypointer.screen.export.toggle.names.label": "Wayord names",
   "waypointer.screen.export.toggle.names.tooltip": "The name you gave each wayord.",
   "waypointer.screen.export.toggle.names.unsupported": "%1$s rowns cannot hold wayord names.",
@@ -660,6 +654,5 @@
   "waypointer.update.available": "A newing is ready.",
   "waypointer.update.hover_for_details": "Hover for more knowledge.",
   "waypointer.update.your_version": "Your shaping: %1$s %2$s",
-  "waypointer.update.latest_version": "Newest shaping: %1$s %2$s",
-  "waypointer.update.versions_behind": "You are %1$s shapings behind."
+  "waypointer.update.latest_version": "Newest shaping: %1$s %2$s"
 }

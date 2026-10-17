@@ -121,6 +121,7 @@ public final class RouteCatalogScreen extends Screen {
     private List<String> zoneDropdownIds = List.of();
 
     private EditBox searchBox;
+    private static final int MIN_SEARCH_W = 160;
     private Button zoneFilterButton;
     private Button refreshButton;
     private Button loadMoreButton;
@@ -188,7 +189,10 @@ public final class RouteCatalogScreen extends Screen {
         int searchY = titleY + BTN_H + GAP;
         Component notInstalledLabel = Component.translatable("waypointer.screen.route_catalog.not_installed");
         int notInstalledW = font.width(notInstalledLabel) + BTN_H + GAP;
-        boolean toolbarStacked = contentW < 80 + 84 + REFRESH_W + notInstalledW + GAP * 3;
+        int refreshWidth = Math.min(contentW, Math.max(REFRESH_W,
+                font.width(refreshButtonLabel(System.nanoTime())) + 16));
+        // Stack the filters under the search box before the box gets too narrow to type in.
+        boolean toolbarStacked = contentW - (84 + refreshWidth + notInstalledW + GAP * 3) < MIN_SEARCH_W;
         int toolbarY = toolbarStacked ? searchY + BTN_H + GAP_TIGHT : searchY;
         int bodyY = toolbarY + BTN_H + GAP;
         int footerY = panelY + panelH - panelPad - BTN_H;
@@ -231,7 +235,7 @@ public final class RouteCatalogScreen extends Screen {
                 Tooltip.create(Component.translatable("waypointer.screen.route_publish.action.manage.tooltip"))));
 
         Component refreshLabel = refreshButtonLabel(System.nanoTime());
-        int refreshW = Math.min(contentW, Math.max(REFRESH_W, font.width(refreshLabel) + 16));
+        int refreshW = refreshWidth;
         Component zoneLabel = zoneFilterLabel();
         // Keep the control width stable when the selected zone changes.
         int zoneW = toolbarStacked
@@ -247,8 +251,9 @@ public final class RouteCatalogScreen extends Screen {
         searchBox = new EditBox(font, contentX, searchY, inputW, BTN_H,
                 Component.translatable("waypointer.screen.route_catalog.search"));
         searchBox.setMaxLength(80);
-        searchBox.setHint(Component.translatable(
-                "waypointer.screen.route_catalog.search.hint"));
+        Component searchHint = Component.translatable("waypointer.screen.route_catalog.search.hint");
+        searchBox.setHint(font.width(searchHint) + 8 <= inputW ? searchHint
+                : Component.translatable("waypointer.screen.route_catalog.search"));
         searchBox.setTooltip(Tooltip.create(Component.translatable(
                 "waypointer.screen.route_catalog.search.tooltip")));
         searchBox.setValue(browser.query());

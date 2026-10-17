@@ -105,6 +105,18 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
         };
     }
 
+    /**
+     * The zone look a route in {@code zoneId} follows and can edit from its menu: the family for
+     * dungeon rooms and mineshafts, otherwise the zone itself. Null where zone looks don't apply.
+     */
+    static String zoneLookKey(String zoneId) {
+        List<String> keys = com.babbur.waypointer.config.WaypointStyles.zoneKeys(zoneId);
+        if (keys.isEmpty()) return null;
+        String key = keys.getFirst();
+        return key.equals(Zone.PRIVATE_WORLD.id()) || key.equals(Zone.UNKNOWN.id())
+                || key.startsWith("temp") ? null : key;
+    }
+
     static List<String> switcherZoneKeys(Zone current) {
         return switcherZoneKeys(current, List.of(), List.of());
     }

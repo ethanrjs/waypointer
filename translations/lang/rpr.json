@@ -24,6 +24,5 @@
   "waypointer.update.hover_for_details": "Наведите указатель для подробностей.",
   "waypointer.update.your_version": "Ваша версія: %1$s %2$s",
   "waypointer.update.latest_version": "Послѣдняя версія: %1$s %2$s",
-  "waypointer.update.versions_behind": "Вы отстаёте на %1$s версій.",
   "waypointer.update.open_modrinth": "Нажмите, чтобы открыть на Modrinth"
 }

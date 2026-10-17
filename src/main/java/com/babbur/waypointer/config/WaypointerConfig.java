@@ -152,6 +152,7 @@ public final class WaypointerConfig {
     private boolean useBeaconBeamTextures = true;
     private boolean editSounds = true;
     private boolean showEditModeSubtitle = true;
+    private double menuOpacity = 1.0;
 
     private boolean chatCoordDetection = true;
     private boolean showChatCoordBlockButton = false;
@@ -757,6 +758,9 @@ public final class WaypointerConfig {
     public boolean useBeaconBeamTextures() { return useBeaconBeamTextures; }
     public boolean editSounds() { return editSounds; }
     public boolean showEditModeSubtitle() { return showEditModeSubtitle; }
+    /** How opaque Waypointer's menus are (0.2-1). Local to this PC; config codes leave it alone. */
+    public double menuOpacity() { return Double.isFinite(menuOpacity) ? clamp(menuOpacity, 0.2, 1.0) : 1.0; }
+    public void setMenuOpacity(double value) { if (!Double.isFinite(value)) return; menuOpacity = clamp(value, 0.2, 1.0); save(); }
     public boolean showChatCoordBlockButton() { return showChatCoordBlockButton; }
     public boolean chatCoordDetection()       { return chatCoordDetection; }
     public boolean showWaypointChatShareButtons() { return showWaypointChatShareButtons; }
@@ -1483,6 +1487,7 @@ public final class WaypointerConfig {
         useBeaconBeamTextures = defaults.useBeaconBeamTextures;
         editSounds = defaults.editSounds;
         showEditModeSubtitle = defaults.showEditModeSubtitle;
+        menuOpacity = defaults.menuOpacity;
         chatCoordDetection = defaults.chatCoordDetection;
         showChatCoordBlockButton = defaults.showChatCoordBlockButton;
         chatCoordSenderBlacklist = new ArrayList<>(defaults.chatCoordSenderBlacklist);

@@ -68,6 +68,5 @@
   "waypointer.update.available": "Na voljo je posodobitev.",
   "waypointer.update.your_version": "Vaša različica: %1$s %2$s",
   "waypointer.update.latest_version": "Najnovejša različica: %1$s %2$s",
-  "waypointer.update.versions_behind": "Zaostajate za %1$s različic.",
   "waypointer.update.open_modrinth": "Kliknite za odprtje na Modrinth"
 }

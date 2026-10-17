@@ -1,5 +1,6 @@
 package com.babbur.waypointer.commands;
 
+import com.babbur.waypointer.i18n.Counts;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.babbur.waypointer.Waypointer;
 import com.babbur.waypointer.WaypointerClient;
@@ -236,7 +237,7 @@ final class WaypointerShareCommands {
                                                  WaypointCodec.Options options, boolean copied) {
         MutableComponent line = Component.translatable(
                         "waypointer.command.export.success",
-                        routeCount, payload.length())
+                        Counts.of("route", routeCount), payload.length())
                 .withStyle(ChatFormatting.GREEN);
         if (options.isBareCoordinateProjection()) {
             line.append(Component.translatable(

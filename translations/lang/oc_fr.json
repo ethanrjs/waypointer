@@ -78,6 +78,5 @@
   "waypointer.update.hover_for_details": "Passatz lo cursor per veire los detalhs.",
   "waypointer.update.your_version": "Vòstra version : %1$s %2$s",
   "waypointer.update.latest_version": "Version mai recenta : %1$s %2$s",
-  "waypointer.update.versions_behind": "Avètz %1$s versions de retard.",
   "waypointer.update.open_modrinth": "Clicatz per dobrir sus Modrinth"
 }
