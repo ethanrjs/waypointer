@@ -32,6 +32,11 @@ public final class LocalizedNumberFormatter {
         return forMinecraftLocale(localeCode);
     }
 
+    /** The game language's locale, for dates and other formatting. */
+    public Locale locale() {
+        return locale;
+    }
+
     public static LocalizedNumberFormatter forMinecraftLocale(String localeCode) {
         String normalized = localeCode == null || localeCode.isBlank()
                 ? DEFAULT_LOCALE

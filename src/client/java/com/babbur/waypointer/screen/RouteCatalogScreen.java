@@ -182,6 +182,20 @@ public final class RouteCatalogScreen extends Screen {
         this.manager = manager;
         browser.setZoneFilter(initialZoneFilterId(
                 manager == null ? null : manager.currentZone()));
+        browser.setHere(playerPlace(manager));
+    }
+
+    /** Where the player is for the Recommended order, including the Hollows structure they are in. */
+    private static List<String> playerPlace(ActiveGroupManager manager) {
+        Zone current = manager == null ? null : manager.currentZone();
+        String structure = null;
+        var tracker = com.babbur.waypointer.WaypointerClient.crystalHollowsTracker();
+        if (current != null && "crystal_hollows".equals(current.id()) && tracker != null && tracker.active()
+                && tracker.sidebarStructure() != null
+                && com.babbur.waypointer.crystal.CrystalHollowsStructureZones.supports(tracker.sidebarStructure())) {
+            structure = com.babbur.waypointer.crystal.CrystalHollowsStructureZones.zoneId(tracker.sidebarStructure());
+        }
+        return CatalogRecommendation.here(current, structure);
     }
 
     /** Browse the complete catalog on every fresh open. */
@@ -526,9 +540,12 @@ public final class RouteCatalogScreen extends Screen {
             if (index >= filtered.size()) break;
             CatalogRouteSummary route = filtered.get(index);
             int y = listY + row * ROW_PITCH;
+            boolean selected = route.id().equals(browser.selectedRouteId());
+            // No divider touches the selected row: its highlight already separates it.
+            boolean nextSelected = index + 1 < filtered.size()
+                    && filtered.get(index + 1).id().equals(browser.selectedRouteId());
             CatalogRouteRowButton button = new CatalogRouteRowButton(
-                    listX, y, rowW, ROW_H, route,
-                    route.id().equals(browser.selectedRouteId()),
+                    listX, y, rowW, ROW_H, route, selected, !selected && !nextSelected,
                     installState(route).action(),
                     () -> openRoute(route));
             addRenderableWidget(button);
@@ -1118,6 +1135,7 @@ public final class RouteCatalogScreen extends Screen {
         }
 
         if (failure != null) {
+            com.babbur.waypointer.Waypointer.LOGGER.warn("Could not install community route {}", requestedRouteId, failure);
             statusText = friendlyFailure(failure);
             statusColor = STATUS_ERROR;
         } else {
@@ -1354,7 +1372,10 @@ public final class RouteCatalogScreen extends Screen {
         y += DETAIL_LINE_H + 3;
         CatalogRouteRowButton.drawZoneAndPublisher(graphics, font, route, x, y, available);
         y += DETAIL_LINE_H + 1;
-        graphics.text(font, GuiTokens.ellipsize(font, detailFacts(route), available), x, y, TEXT_MUTED, false);
+        String facts = detailFacts(route);
+        String shownFacts = GuiTokens.ellipsize(font, facts, available);
+        graphics.text(font, shownFacts, x, y, TEXT_MUTED, false);
+        dateTooltip(graphics, route, facts.equals(shownFacts) ? x + font.width(facts) : -1, y, mouseX, mouseY);
         y += DETAIL_LINE_H + GAP_TIGHT;
 
         // Install state, when the route is already here.
@@ -1415,6 +1436,40 @@ public final class RouteCatalogScreen extends Screen {
         Component age = ageLabel(route.updatedAt().isBlank() ? route.createdAt() : route.updatedAt());
         if (age != null) parts.add(age.getString());
         return String.join("  \u00B7  ", parts);
+    }
+
+    /** Hovering the age at the end of the facts line shows the exact update and publish times. */
+    private void dateTooltip(GuiGraphicsExtractor graphics, CatalogRouteSummary route, int factsRight,
+                             int y, int mouseX, int mouseY) {
+        if (factsRight < 0) return;
+        Component age = ageLabel(route.updatedAt().isBlank() ? route.createdAt() : route.updatedAt());
+        if (age == null) return;
+        int ageLeft = factsRight - font.width(age);
+        if (mouseX < ageLeft || mouseX >= factsRight || mouseY < y - 1 || mouseY >= y + 9) return;
+        List<net.minecraft.util.FormattedCharSequence> lines = new ArrayList<>();
+        String updated = exactTime(route.updatedAt());
+        String published = exactTime(route.createdAt());
+        if (updated != null && !updated.equals(published)) {
+            lines.add(Component.translatable("waypointer.screen.route_catalog.updated_at", updated).getVisualOrderText());
+        }
+        if (published != null) {
+            lines.add(Component.translatable("waypointer.screen.route_catalog.published_at", published).getVisualOrderText());
+        }
+        if (!lines.isEmpty()) graphics.setTooltipForNextFrame(font, lines, mouseX, mouseY);
+    }
+
+    /** A catalog timestamp in the player's time zone and game language, e.g. "17 October 2026, 14:35". */
+    static String exactTime(String timestamp) {
+        if (timestamp == null || timestamp.isBlank()) return null;
+        try {
+            java.time.Instant instant = java.time.Instant.parse(timestamp);
+            java.util.Locale locale = com.babbur.waypointer.i18n.LocalizedNumberFormatter.active().locale();
+            return java.time.format.DateTimeFormatter.ofLocalizedDateTime(
+                            java.time.format.FormatStyle.LONG, java.time.format.FormatStyle.SHORT)
+                    .withLocale(locale).withZone(java.time.ZoneId.systemDefault()).format(instant);
+        } catch (RuntimeException invalid) {
+            return null;
+        }
     }
 
     private static Component installStateLine(CatalogInstallState state, CatalogRouteSummary route) {
@@ -1746,6 +1801,10 @@ public final class RouteCatalogScreen extends Screen {
                 default -> "waypointer.screen.route_catalog.error.request_failed";
             };
             return Component.translatable(key);
+        }
+        // The download worked but the route itself couldn't be read or installed.
+        if (cause instanceof IllegalArgumentException || cause instanceof IllegalStateException) {
+            return Component.translatable("waypointer.screen.route_catalog.error.unreadable");
         }
         return Component.translatable("waypointer.screen.route_catalog.error.request_failed");
     }

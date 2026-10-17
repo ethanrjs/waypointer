@@ -974,5 +974,22 @@
   "waypointer.screen.route_publish.selection_title": "正在發布 · %1$s",
   "waypointer.settings.setting.crystalHollowsSkyblockerSharing.label": "Skyblocker 分享",
   "waypointer.minimap.editor.instructions": "拖曳以移動 · 滾輪調整大小",
-  "waypointer.minimap.editor.sample": "範例大廳"
+  "waypointer.minimap.editor.sample": "範例大廳",
+  "waypointer.screen.route_catalog.updated_at": "更新於 %1$s",
+  "waypointer.screen.route_catalog.published_at": "發布於 %1$s",
+  "waypointer.screen.route_catalog.error.unreadable": "無法讀取此路線，因此未安裝。",
+  "waypointer.screen.main.restore_structures": "恢復結構",
+  "waypointer.screen.main.restore_structures.tooltip": "在你的清單中恢復結構資料夾",
+  "waypointer.screen.published_routes.count.one": "%1$s 條路線",
+  "waypointer.screen.published_routes.count.many": "%1$s 條路線",
+  "waypointer.screen.published_routes.link.changed_short": "已變更",
+  "waypointer.screen.published_routes.link.same": "與此裝置上的副本一致：%1$s",
+  "waypointer.screen.published_routes.link.changed": "發布後你的副本已變更：%1$s",
+  "waypointer.screen.published_routes.link.missing": "發布所用的路線已不在此裝置上。",
+  "waypointer.screen.published_routes.link.none": "未連結此裝置上的路線。選擇路線以發布新版本。",
+  "waypointer.screen.published_routes.action.choose_routes": "選擇路線...",
+  "waypointer.screen.published_routes.action.publish_changes": "發布變更",
+  "waypointer.screen.published_routes.confirm_update.title": "發布變更？",
+  "waypointer.screen.published_routes.confirm_update.message": "「%1$s」將成為第 %2$s 版。已安裝的玩家會收到更新提示。",
+  "waypointer.screen.published_routes.action.edit": "編輯詳細資料"
 }

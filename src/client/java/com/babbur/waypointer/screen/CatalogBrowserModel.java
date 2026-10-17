@@ -15,7 +15,7 @@ final class CatalogBrowserModel {
 
     /** Client-side order of the loaded routes. */
     enum Sort {
-        /** The catalog's own order, which is search relevance while searching. */
+        /** {@link CatalogRecommendation}: updates first, then where the player is, installed last. */
         RECOMMENDED("recommended"),
         POPULAR("popular"), NEWEST("newest"), UPDATED("updated"), WAYPOINTS("waypoints"), NAME("name");
 
@@ -49,6 +49,7 @@ final class CatalogBrowserModel {
     private boolean filteringInstalled;
     private String query = "";
     private String zoneFilter;
+    private List<String> here = List.of();
     private String nextCursor;
     private String selectedRouteId;
     private int scrollOffset;
@@ -168,20 +169,31 @@ final class CatalogBrowserModel {
         return loadedRoutes.stream().anyMatch(route -> route.hasTag(tag));
     }
 
+    /** Where the player is, most specific first, for the Recommended order. */
+    void setHere(List<String> zones) {
+        here = zones == null ? List.of() : List.copyOf(zones);
+    }
+
     /** Applies the installed and tag filters and the sort order to the loaded routes. */
     void filterInstalled(String apiRoot, ActiveGroupManager manager, boolean onlyNotInstalled) {
         if (filteringInstalled != onlyNotInstalled) scrollOffset = 0;
         filteringInstalled = onlyNotInstalled;
-        List<CatalogRouteSummary> visible = loadedRoutes.stream()
+        java.util.Map<String, CatalogInstallState.Action> actions = new java.util.HashMap<>();
+        java.util.function.Function<CatalogRouteSummary, CatalogInstallState.Action> action =
+                route -> actions.computeIfAbsent(route.id(),
+                        id -> manager == null ? null : installState(apiRoot, manager, route).action());
+        List<CatalogRouteSummary> filtered = loadedRoutes.stream()
                 .filter(route -> tagFilter == null || route.hasTag(tagFilter))
                 .filter(route -> {
                     if (!onlyNotInstalled) return true;
-                    CatalogInstallState.Action action = installState(apiRoot, manager, route).action();
-                    return action != CatalogInstallState.Action.INSTALLED
-                            && action != CatalogInstallState.Action.LOCAL_NEWER;
+                    CatalogInstallState.Action state = action.apply(route);
+                    return state != CatalogInstallState.Action.INSTALLED
+                            && state != CatalogInstallState.Action.LOCAL_NEWER;
                 })
-                .sorted(sort.comparator())
                 .toList();
+        List<CatalogRouteSummary> visible = sort == Sort.RECOMMENDED
+                ? CatalogRecommendation.recommended(filtered, action, here, !query.isBlank(), java.time.Instant.now())
+                : CatalogRecommendation.installedLast(filtered.stream().sorted(sort.comparator()).toList(), action);
         if (routes.equals(visible)) return;
         routes = visible;
         reconcileSelection();

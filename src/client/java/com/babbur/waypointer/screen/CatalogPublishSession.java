@@ -219,6 +219,11 @@ final class CatalogPublishSession {
                 failure = publishFailure;
             } else {
                 CatalogPublishLifecycle.Completion completion = published.completion();
+                var sources = com.babbur.waypointer.catalog.PublishedSources.active();
+                if (sources != null && completion.result() != null && completion.result().route() != null) {
+                    sources.remember(completion.result().route().id(),
+                            form.groups().stream().map(WaypointGroup::id).toList());
+                }
                 phase = Phase.SUCCEEDED;
                 result = completion.result();
                 publishedPayload = published.payload();

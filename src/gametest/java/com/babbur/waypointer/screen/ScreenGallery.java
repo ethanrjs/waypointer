@@ -169,6 +169,48 @@ public final class ScreenGallery {
         });
         context.waitTicks(2);
         context.takeScreenshot("gallery-catalog-detail-s" + scale);
+        shootMyRoutes(context, scale);
+    }
+
+    /** My routes with three sample publications; the first changed since it was published. */
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private static void shootMyRoutes(ClientGameTestContext context, int scale) {
+        context.runOnClient(client -> {
+            var screen = new PublishedRoutesScreen(null, com.babbur.waypointer.catalog.RouteCatalogClient.production(),
+                    com.babbur.waypointer.catalog.PublisherIdentityStore.defaultLocation(),
+                    com.babbur.waypointer.catalog.CatalogPublicationRegistry.defaultLocation());
+            setField(screen, "loading", false);
+            String api = com.babbur.waypointer.catalog.RouteCatalogClient.production().apiRoot();
+            String week = java.time.Instant.now().minus(java.time.Duration.ofDays(6)).toString();
+            List<com.babbur.waypointer.catalog.CatalogPublication> mine = List.of(
+                    publication("AAAAAAAAAAAAAAAAAAAAA1", "Glacite tungsten loop", "dwarven_mines", 3, true, week, api),
+                    publication("AAAAAAAAAAAAAAAAAAAAA5", "Gemstone grinding route", "crystal_hollows", 1, true, week, api),
+                    publication("AAAAAAAAAAAAAAAAAAAAA9", "Practice route", "hub", 2, false, week, api));
+            invoke(field(screen, "model"), "replace", new Class<?>[]{List.class}, mine);
+            invoke(field(screen, "model"), "select", new Class<?>[]{String.class}, mine.getFirst().routeId());
+            var summaries = (java.util.Map<String, Object>) field(screen, "summaries");
+            for (var route : catalogRoutes()) summaries.put(route.id(), route);
+            ((java.util.Map<String, Object>) field(screen, "previews")).put(mine.getFirst().routeId(), previewOf(sampleRoute()));
+            try {
+                Class<Enum> state = (Class<Enum>) Class.forName("com.babbur.waypointer.screen.PublishedRoutesScreen$LinkState");
+                var links = (java.util.Map<String, Object>) field(screen, "links");
+                links.put(mine.get(0).routeId(), Enum.valueOf(state, "CHANGED"));
+                links.put(mine.get(1).routeId(), Enum.valueOf(state, "SAME"));
+                links.put(mine.get(2).routeId(), Enum.valueOf(state, "NOT_LINKED"));
+            } catch (ClassNotFoundException e) { throw new AssertionError(e); }
+            MinecraftCompat.setScreen(client, screen);
+        });
+        context.waitTicks(3);
+        context.takeScreenshot("gallery-my-routes-s" + scale);
+    }
+
+    private static com.babbur.waypointer.catalog.CatalogPublication publication(
+            String id, String title, String zone, int version, boolean isPublic, String created, String api) {
+        return new com.babbur.waypointer.catalog.CatalogPublication(id, "publisher", "Kaeso", title,
+                "Ordered for one clean lap; check the mineshaft at the end.",
+                isPublic ? com.babbur.waypointer.catalog.CatalogPublishRequest.Visibility.PUBLIC
+                        : com.babbur.waypointer.catalog.CatalogPublishRequest.Visibility.UNLISTED,
+                zone, version, 9, created, "/r/" + id, api, "0".repeat(64), java.time.Instant.now());
     }
 
     private static Object previewOf(WaypointGroup route) {

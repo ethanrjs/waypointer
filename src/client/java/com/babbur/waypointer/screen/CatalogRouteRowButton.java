@@ -34,15 +34,17 @@ final class CatalogRouteRowButton extends AbstractButton {
 
     final CatalogRouteSummary route;
     private final boolean selected;
+    private final boolean divider;
     private final CatalogInstallState.Action installAction;
     private final Runnable onPress;
 
     CatalogRouteRowButton(
             int x, int y, int width, int height, CatalogRouteSummary route,
-            boolean selected, CatalogInstallState.Action installAction, Runnable onPress) {
+            boolean selected, boolean divider, CatalogInstallState.Action installAction, Runnable onPress) {
         super(x, y, width, height, Component.literal(route.title()));
         this.route = route;
         this.selected = selected;
+        this.divider = divider;
         this.installAction = installAction;
         this.onPress = onPress;
     }
@@ -61,7 +63,7 @@ final class CatalogRouteRowButton extends AbstractButton {
         int y2 = y1 + getHeight();
         int background = selected ? SELECTED : isHoveredOrFocused() ? HOVER : 0;
         if (background != 0) graphics.fill(x1, y1, x2, y2, background);
-        graphics.fill(x1 + GAP, y2 - 1, x2 - GAP, y2, BORDER);
+        if (divider) graphics.fill(x1 + GAP, y2 - 1, x2 - GAP, y2, BORDER);
         if (selected) graphics.fill(x1, y1, x1 + 2, y2, ACCENT);
         if (isFocused() && !selected) graphics.fill(x1, y1, x1 + 1, y2, ACCENT);
 

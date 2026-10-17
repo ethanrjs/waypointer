@@ -33,17 +33,19 @@ class CatalogBrowserModelTest {
         model.applyPage(new CatalogPage(List.of(installed, missing, update, repair), true, "next"), false);
         model.select(installed);
         model.filterInstalled(API_ROOT, manager, true);
-        assertEquals(List.of(missing, update, repair), model.routes());
+        // Recommended: routes with an update or repair waiting lead.
+        assertEquals(List.of(repair, update, missing), model.routes());
         assertNull(model.selectedRoute());
         assertEquals("next", model.nextCursor());
         CatalogRouteSummary next = summary("EEEEEEEEEEEEEEEEEEEEEE", "Next", 1);
         model.scrollBy(1, 1);
         model.applyPage(new CatalogPage(List.of(next), false, null), true);
         model.filterInstalled(API_ROOT, manager, true);
-        assertEquals(List.of(missing, update, repair, next), model.routes());
+        assertEquals(List.of(repair, update, missing, next), model.routes());
         assertEquals(1, model.scrollOffset());
         model.filterInstalled(API_ROOT, manager, false);
-        assertEquals(List.of(installed, missing, update, repair, next), model.routes());
+        assertEquals(List.of(repair, update, missing, next, installed), model.routes(),
+                "installed, up-to-date routes go last");
         model.filterInstalled(API_ROOT, manager, true);
         model.beginRefresh();
         model.filterInstalled(API_ROOT, manager, false);
@@ -61,7 +63,7 @@ class CatalogBrowserModelTest {
         model.applyPage(new CatalogPage(List.of(quiet, busy, alpha), false, null), false);
 
         model.filterInstalled(API_ROOT, manager, false);
-        assertEquals(List.of(quiet, busy, alpha), model.routes(), "recommended keeps the catalog's order");
+        assertEquals(List.of(busy, alpha, quiet), model.routes(), "recommended favours installs away from home");
         assertTrue(model.setSort(CatalogBrowserModel.Sort.POPULAR));
         model.filterInstalled(API_ROOT, manager, false);
         assertEquals(List.of(busy, alpha, quiet), model.routes());

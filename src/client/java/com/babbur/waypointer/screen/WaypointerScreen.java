@@ -96,6 +96,7 @@ public final class WaypointerScreen extends Screen {
     private Button moveUpBtn;
     private Button moveDownBtn;
     private Button islandSelectorBtn;
+    private Button restoreStructuresBtn;
     private EditBox searchBox;
     private OverlayButton clearSearchButton;
     private OverlayButton browseButton;
@@ -340,6 +341,16 @@ public final class WaypointerScreen extends Screen {
                 width - PAD_OUTER - ISLAND_SELECTOR_W, HEADER_BTN_Y,
                 ISLAND_SELECTOR_W, BTN_H, islandSelectorLabel(), b -> toggleIslandDropdown());
         addRenderableWidget(islandSelectorBtn);
+
+        Component restoreLabel = Component.translatable("waypointer.screen.main.restore_structures");
+        int restoreW = font.width(restoreLabel) + 16;
+        restoreStructuresBtn = new GuiTokens.StyledButton(
+                islandSelectorBtn.getX() - GAP - restoreW, HEADER_BTN_Y, restoreW, BTN_H, restoreLabel,
+                b -> restoreStructuresFolder());
+        restoreStructuresBtn.setTooltip(Tooltip.create(Component.translatable(
+                "waypointer.screen.main.restore_structures.tooltip")));
+        restoreStructuresBtn.visible = restoreStructuresShown();
+        addRenderableWidget(restoreStructuresBtn);
 
         // While the island list is open, the zone button turns into its search field.
         zoneSearchBox = new EditBox(font, 0, 0, ISLAND_SELECTOR_W - GAP - 18, 10,
@@ -595,6 +606,7 @@ public final class WaypointerScreen extends Screen {
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        if (restoreStructuresBtn != null) restoreStructuresBtn.visible = restoreStructuresShown();
         focusCurrentDungeonRoomIfChanged();
         if (islandSelectorBtn != null) {
             islandSelectorBtn.setMessage(islandSelectorLabel());
@@ -1029,6 +1041,23 @@ public final class WaypointerScreen extends Screen {
 
     static int maxDropdownScroll(int zoneCount, int viewportHeight) {
         return Math.max(0, zoneCount * ROW_H - Math.max(0, viewportHeight));
+    }
+
+    /** Offered while the Structures folder is hidden and a Crystal Hollows zone is on screen. */
+    private boolean restoreStructuresShown() {
+        // Only where it clears the centred title; the folder menu and settings still offer it.
+        boolean fits = restoreStructuresBtn == null || restoreStructuresBtn.getX() > width / 2 + 60;
+        return fits && config.crystalHollowsHideStructuresFolder() && selectedZoneId != null
+                && ("crystal_hollows".equals(selectedZoneId)
+                    || com.babbur.waypointer.crystal.CrystalHollowsStructureZones.isStructureZone(selectedZoneId));
+    }
+
+    private void restoreStructuresFolder() {
+        config.setCrystalHollowsHideStructuresFolder(false);
+        if (WaypointerClient.crystalHollowsTracker() != null) {
+            WaypointerClient.crystalHollowsTracker().rebuildProjection();
+        }
+        if (restoreStructuresBtn != null) restoreStructuresBtn.visible = false;
     }
 
     private String currentStructureZoneId() {

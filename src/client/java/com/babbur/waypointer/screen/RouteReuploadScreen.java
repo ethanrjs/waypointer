@@ -226,6 +226,10 @@ final class RouteReuploadScreen extends Screen implements RoutePickerHost {
                         refreshButtons();
                         return;
                     }
+                    var sources = com.babbur.waypointer.catalog.PublishedSources.active();
+                    if (sources != null) {
+                        sources.remember(publication.routeId(), chosen.stream().map(WaypointGroup::id).toList());
+                    }
                     parent.finishUpdate(minecraft, updated);
                 }));
     }

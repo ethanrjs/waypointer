@@ -1,51 +1,61 @@
 package com.babbur.waypointer.screen;
 
+import com.babbur.waypointer.WaypointerClient;
 import com.babbur.waypointer.catalog.CatalogApiException;
+import com.babbur.waypointer.catalog.CatalogProtocol;
 import com.babbur.waypointer.catalog.CatalogPublication;
 import com.babbur.waypointer.catalog.CatalogPublicationManager;
 import com.babbur.waypointer.catalog.CatalogPublicationRegistry;
 import com.babbur.waypointer.catalog.CatalogPublishRequest;
+import com.babbur.waypointer.catalog.CatalogRouteSummary;
+import com.babbur.waypointer.catalog.CatalogRouteUpdate;
+import com.babbur.waypointer.catalog.PublishedSources;
 import com.babbur.waypointer.catalog.PublisherIdentity;
 import com.babbur.waypointer.catalog.PublisherIdentityStore;
 import com.babbur.waypointer.catalog.RouteCatalogClient;
 import com.babbur.waypointer.codec.UniversalShareCodec;
 import com.babbur.waypointer.compat.MinecraftCompat;
+import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.core.Zone;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.locale.Language;
 
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
-import static com.babbur.waypointer.screen.GuiTokens.ACCENT;
-import static com.babbur.waypointer.screen.GuiTokens.BTN_H;
-import static com.babbur.waypointer.screen.GuiTokens.GAP;
-import static com.babbur.waypointer.screen.GuiTokens.GAP_SECTION;
-import static com.babbur.waypointer.screen.GuiTokens.PAD_OUTER;
-import static com.babbur.waypointer.screen.GuiTokens.SELECTED;
-import static com.babbur.waypointer.screen.GuiTokens.SURFACE;
-import static com.babbur.waypointer.screen.GuiTokens.TEXT;
-import static com.babbur.waypointer.screen.GuiTokens.TEXT_DIM;
-import static com.babbur.waypointer.screen.GuiTokens.TEXT_MUTED;
-import static com.babbur.waypointer.screen.GuiTokens.styledButton;
+import static com.babbur.waypointer.screen.GuiTokens.*;
 
+/**
+ * The player's published routes, laid out like the community browser: a list beside the
+ * selected route's details. Each route remembers the local routes it was published from
+ * ({@link PublishedSources}), so the page says when they have changed and Publish changes sends
+ * them as a new version in one step.
+ */
 public final class PublishedRoutesScreen extends Screen {
     private static final int PANEL_MARGIN = 12;
-    private static final int CARD_H = 76;
-    private static final int CARD_GAP = 8;
-    private static final int STATUS_ERROR = GuiTokens.DANGER;
-    private static final int STATUS_OK = GuiTokens.SUCCESS;
+    private static final int ROW_H = CatalogRouteRowButton.HEIGHT;
+    private static final int WIDE_BREAKPOINT = 420;
+    private static final int LINE_H = 11;
     private static final int PUBLIC_COLOR = 0xFF6AA9FF;
+
+    /** How the local routes behind a published route compare with what was published. */
+    enum LinkState { UNKNOWN, NOT_LINKED, MISSING, SAME, CHANGED }
 
     private final Screen parent;
     private final RouteCatalogClient catalogClient;
@@ -53,49 +63,39 @@ public final class PublishedRoutesScreen extends Screen {
     private final CatalogPublicationRegistry publicationRegistry;
 
     private final PublishedRoutesModel model = new PublishedRoutesModel();
+    private final Map<String, CatalogRouteSummary> summaries = new HashMap<>();
+    private final Map<String, CatalogRoutePreview> previews = new HashMap<>();
+    private final Set<String> requested = new HashSet<>();
+    private final Map<String, LinkState> links = new HashMap<>();
     private PublisherIdentity identity;
     private boolean loading = true;
-    private boolean deleting;
+    private boolean busy;
     private boolean screenActive;
-    private boolean showEmptyState;
-    private Component status = Component.translatable(
-            "waypointer.screen.published_routes.status.loading");
+    private Component status = Component.empty();
     private int statusColor = TEXT_DIM;
+    private int scroll;
 
-    private Button previousButton;
-    private Button nextButton;
-    private Button copyCodeButton;
-    private Button deleteButton;
-    private Button editButton;
     private EditBox searchBox;
-    private int panelX;
-    private int panelY;
-    private int panelW;
-    private int panelH;
-    private int contentX;
-    private int contentW;
-    private int rowsY;
-    private int pagerY;
+    private Button copyButton;
+    private Button editButton;
+    private Button publishButton;
+    private Button deleteButton;
+    private int panelX, panelY, panelW, panelH, contentX, contentW;
+    private int listX, listY, listW, listH, detailX, detailY, detailW, detailH;
     private int statusY;
-    private int columns;
-    private int cardW;
-    private int cardH;
 
-    PublishedRoutesScreen(
-            Screen parent, RouteCatalogClient catalogClient,
-            PublisherIdentityStore identityStore,
-            CatalogPublicationRegistry publicationRegistry) {
+    PublishedRoutesScreen(Screen parent, RouteCatalogClient catalogClient,
+                          PublisherIdentityStore identityStore, CatalogPublicationRegistry publicationRegistry) {
         super(Component.translatable("waypointer.screen.published_routes.title"));
         this.parent = parent;
         this.catalogClient = catalogClient;
         this.identityStore = identityStore;
         this.publicationRegistry = publicationRegistry;
+        model.setRowsPerPage(1000);
     }
 
-    static void open(
-            Screen parent, RouteCatalogClient catalogClient,
-            PublisherIdentityStore identityStore,
-            CatalogPublicationRegistry publicationRegistry) {
+    static void open(Screen parent, RouteCatalogClient catalogClient,
+                     PublisherIdentityStore identityStore, CatalogPublicationRegistry publicationRegistry) {
         MinecraftCompat.setScreen(Minecraft.getInstance(), new PublishedRoutesScreen(
                 parent, catalogClient, identityStore, publicationRegistry));
     }
@@ -103,388 +103,543 @@ public final class PublishedRoutesScreen extends Screen {
     @Override
     protected void init() {
         screenActive = true;
-        panelX = width > PANEL_MARGIN * 2 ? PANEL_MARGIN : 0;
-        panelY = height > PANEL_MARGIN * 2 ? PANEL_MARGIN : 0;
+        boolean compact = height < 300;
+        int margin = compact ? GAP_TIGHT : PANEL_MARGIN;
+        panelX = width > margin * 2 ? margin : 0;
+        panelY = height > margin * 2 ? margin : 0;
         panelW = Math.max(1, width - panelX * 2);
         panelH = Math.max(1, height - panelY * 2);
-        contentX = panelX + PAD_OUTER;
-        contentW = Math.max(1, panelW - PAD_OUTER * 2);
-        int searchY = panelY + 34;
-        rowsY = searchY + BTN_H + GAP;
-        int footerY = panelY + panelH - PAD_OUTER - BTN_H;
-        statusY = footerY - 14;
-        pagerY = statusY - BTN_H - GAP;
-        columns = PublishedRoutesLayout.columns(contentW, CARD_GAP);
-        cardW = PublishedRoutesLayout.cardWidth(contentW, columns, CARD_GAP);
-        cardH = Math.max(34, Math.min(CARD_H, pagerY - GAP - rowsY));
-        model.setRowsPerPage(columns * PublishedRoutesLayout.rowsPerPage(
-                rowsY, pagerY, cardH, CARD_GAP, GAP));
+        int pad = compact || panelW < 320 ? GAP : PAD_OUTER;
+        contentX = panelX + pad;
+        contentW = Math.max(40, panelW - pad * 2);
+        int titleY = panelY + pad;
 
-        searchBox = new EditBox(font, contentX, searchY, contentW, BTN_H,
+        int toolbarY = titleY + BTN_H + GAP;
+        searchBox = new EditBox(font, contentX, toolbarY, contentW, BTN_H,
                 Component.translatable("waypointer.screen.published_routes.search"));
         searchBox.setMaxLength(80);
-        searchBox.setHint(Component.translatable(
-                "waypointer.screen.published_routes.search"));
+        searchBox.setHint(Component.translatable("waypointer.screen.published_routes.search"));
         searchBox.setValue(model.query());
         searchBox.setResponder(query -> {
-            int cursor = searchBox.getCursorPosition();
             model.setQuery(query);
-            showEmptyState = model.publications().isEmpty();
+            scroll = 0;
             rebuildWidgets();
             setFocused(searchBox);
-            searchBox.setCursorPosition(cursor);
         });
-        searchBox.active = !deleting;
         addRenderableWidget(searchBox);
+
+        int footerY = panelY + panelH - pad - BTN_H;
+        statusY = footerY - 12;
+        int bodyY = toolbarY + BTN_H + GAP;
+        int bodyH = Math.max(40, statusY - GAP_TIGHT - bodyY);
+        boolean wide = contentW >= WIDE_BREAKPOINT;
+        listX = contentX;
+        listY = bodyY;
+        listW = RouteCatalogScreen.catalogListWidth(contentW);
+        listH = bodyH;
+        detailX = wide ? listX + listW + GAP : contentX;
+        detailY = bodyY;
+        detailW = wide ? contentX + contentW - detailX : 0;
+        detailH = wide ? bodyH : 0;
 
         addRenderableWidget(styledButton(contentX, footerY, 64, BTN_H,
                 Component.translatable("gui.back"), button -> onClose(), null));
-
-        int actionW = Math.min(88, Math.max(44, (contentW - 64 - GAP * 3) / 3));
-        editButton = styledButton(contentX + contentW - actionW * 3 - GAP * 2, footerY,
-                actionW, BTN_H,
-                Component.translatable("waypointer.screen.published_routes.action.edit"),
-                button -> editSelected(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.published_routes.action.edit.tooltip")));
-        addRenderableWidget(editButton);
-        deleteButton = styledButton(contentX + contentW - actionW, footerY,
-                actionW, BTN_H,
-                Component.translatable(deleting
-                        ? "waypointer.screen.published_routes.action.deleting"
-                        : "waypointer.screen.published_routes.action.delete"),
-                button -> confirmDelete(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.published_routes.action.delete.tooltip")));
-        addRenderableWidget(deleteButton);
-        copyCodeButton = styledButton(contentX + contentW - actionW * 2 - GAP,
-                footerY, actionW, BTN_H,
-                Component.translatable("waypointer.screen.published_routes.action.copy_code"),
-                button -> copyCode(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.published_routes.action.copy_code.tooltip")));
-        addRenderableWidget(copyCodeButton);
-
-        int pageW = 28;
-        previousButton = styledButton(contentX, pagerY,
-                pageW, BTN_H, Component.literal("\u25c0"), button -> changePage(-1), null);
-        nextButton = styledButton(contentX + contentW - pageW, pagerY,
-                pageW, BTN_H, Component.literal("\u25b6"), button -> changePage(1), null);
-        addRenderableWidget(previousButton);
-        addRenderableWidget(nextButton);
+        // Right to left: the main action last, at the edge.
+        int right = contentX + contentW;
+        publishButton = footerButton(right, footerY, publishLabel(), this::publishOrChoose);
+        right = publishButton.getX() - GAP_TIGHT;
+        editButton = footerButton(right, footerY,
+                Component.translatable("waypointer.screen.published_routes.action.edit"), this::editSelected);
+        right = editButton.getX() - GAP_TIGHT;
+        copyButton = footerButton(right, footerY,
+                Component.translatable("waypointer.screen.published_routes.action.copy_code"), this::copyCode);
+        right = copyButton.getX() - GAP_TIGHT;
+        deleteButton = footerButton(right, footerY, colored(Component.translatable(
+                "waypointer.screen.published_routes.action.delete"), DANGER), this::confirmDelete);
 
         addRows();
         refreshButtons();
         if (loading) loadRecords();
     }
 
+    private Button footerButton(int right, int y, Component label, Runnable action) {
+        int w = font.width(label) + 16;
+        Button button = styledButton(right - w, y, w, BTN_H, label, b -> action.run(), null);
+        addRenderableWidget(button);
+        return button;
+    }
+
+    // ---- Data ---------------------------------------------------------------------------------
+
     private void loadRecords() {
         loading = false;
         CompletableFuture.supplyAsync(() -> {
             if (!Files.isRegularFile(identityStore.file(), LinkOption.NOFOLLOW_LINKS)) {
-                return new Loaded(null, List.of());
+                return new Loaded(null, List.<CatalogPublication>of());
             }
             PublisherIdentity loadedIdentity = identityStore.load();
-            List<CatalogPublication> records = PublishedRoutesUiState.forApiRoot(
-                    publicationRegistry.listForPublisher(loadedIdentity.publisherId()),
-                    catalogClient.apiRoot());
-            return new Loaded(loadedIdentity, records);
+            return new Loaded(loadedIdentity, PublishedRoutesUiState.forApiRoot(
+                    publicationRegistry.listForPublisher(loadedIdentity.publisherId()), catalogClient.apiRoot()));
         }).whenComplete((loaded, failure) -> runOnClient(() -> {
-            if (!screenActive || minecraft == null
-                    || MinecraftCompat.screen(minecraft) != this) return;
+            if (!screenActive) return;
             if (failure != null) {
-                showEmptyState = false;
-                status = Component.translatable(
-                        "waypointer.screen.published_routes.status.load_failed");
-                statusColor = STATUS_ERROR;
+                status = Component.translatable("waypointer.screen.published_routes.status.load_failed");
+                statusColor = DANGER;
             } else {
                 identity = loaded.identity();
                 model.replace(loaded.publications());
-                showEmptyState = model.publications().isEmpty();
-                status = Component.empty();
-                statusColor = TEXT_MUTED;
+                if (model.selected() == null && !model.publications().isEmpty()) {
+                    model.select(model.publications().getFirst().routeId());
+                }
+                for (CatalogPublication publication : model.publications()) fetch(publication);
             }
             rebuildWidgets();
         }));
     }
 
+    /** Live installs, update time and map for each route, and whether its local routes changed. */
+    private void fetch(CatalogPublication publication) {
+        String id = publication.routeId();
+        if (!requested.add(id)) return;
+        catalogClient.getRoute(id).whenComplete((details, failure) -> runOnClient(() -> {
+            if (failure == null && details != null) summaries.put(id, details.summary());
+        }));
+        catalogClient.getRoutePreview(id).whenComplete((data, failure) -> runOnClient(() -> {
+            if (failure == null && data != null) previews.put(id, CatalogRoutePreview.of(data));
+        }));
+        checkLink(publication);
+    }
+
+    private void checkLink(CatalogPublication publication) {
+        List<WaypointGroup> sources = sources(publication);
+        if (sources == null) {
+            links.put(publication.routeId(), linkedIds(publication).isEmpty() ? LinkState.NOT_LINKED : LinkState.MISSING);
+            return;
+        }
+        links.put(publication.routeId(), LinkState.UNKNOWN);
+        List<WaypointGroup> snapshots = sources.stream().map(WaypointGroup::exportSnapshot).toList();
+        CompletableFuture.supplyAsync(() -> CatalogProtocol.prepareCatalogPayload(snapshots).payloadSha256())
+                .whenComplete((sha, failure) -> runOnClient(() -> {
+                    links.put(publication.routeId(), failure != null ? LinkState.NOT_LINKED
+                            : sha.equals(publication.payloadSha256()) ? LinkState.SAME : LinkState.CHANGED);
+                    refreshButtons();
+                }));
+    }
+
+    private static List<String> linkedIds(CatalogPublication publication) {
+        PublishedSources store = PublishedSources.active();
+        return store == null ? List.of() : store.groups(publication.routeId());
+    }
+
+    /** The local routes a publication came from, in order, or null when any is gone. */
+    private static List<WaypointGroup> sources(CatalogPublication publication) {
+        List<String> ids = linkedIds(publication);
+        var manager = WaypointerClient.manager();
+        if (ids.isEmpty() || manager == null) return null;
+        List<WaypointGroup> groups = new ArrayList<>(ids.size());
+        for (String id : ids) {
+            WaypointGroup group = manager.get(id);
+            if (group == null) return null;
+            groups.add(group);
+        }
+        return groups;
+    }
+
+    private LinkState link(CatalogPublication publication) {
+        return publication == null ? LinkState.UNKNOWN : links.getOrDefault(publication.routeId(), LinkState.UNKNOWN);
+    }
+
+    // ---- List ---------------------------------------------------------------------------------
+
+    private int visibleRows() {
+        return Math.max(1, listH / ROW_H);
+    }
+
     private void addRows() {
-        List<CatalogPublication> visible = model.visiblePublications();
-        for (int index = 0; index < visible.size(); index++) {
-            CatalogPublication publication = visible.get(index);
-            int cardX = contentX + index % columns * (cardW + CARD_GAP);
-            int cardY = rowsY + index / columns * (cardH + CARD_GAP);
-            PublicationRow row = new PublicationRow(cardX, cardY, cardW, cardH,
-                    publication, publication.routeId().equals(model.selectedRouteId()),
-                    () -> select(publication.routeId()));
-            addRenderableWidget(row);
+        List<CatalogPublication> rows = model.publications();
+        scroll = Math.max(0, Math.min(scroll, Math.max(0, rows.size() - visibleRows())));
+        for (int row = 0; row < visibleRows(); row++) {
+            int index = scroll + row;
+            if (index >= rows.size()) break;
+            CatalogPublication publication = rows.get(index);
+            boolean selected = publication.routeId().equals(model.selectedRouteId());
+            boolean nextSelected = index + 1 < rows.size()
+                    && rows.get(index + 1).routeId().equals(model.selectedRouteId());
+            addRenderableWidget(new Row(listX, listY + row * ROW_H, listW, ROW_H, publication,
+                    selected, !selected && !nextSelected));
         }
     }
 
-    private static final class PublicationRow
-            extends net.minecraft.client.gui.components.AbstractButton {
+    /** A published route: title and visibility, then zone, version and installs. */
+    private final class Row extends AbstractButton {
         private final CatalogPublication publication;
         private final boolean selected;
-        private final Runnable onPress;
+        private final boolean divider;
 
-        PublicationRow(int x, int y, int width, int height,
-                       CatalogPublication publication, boolean selected, Runnable onPress) {
-            super(x, y, width, height, Component.literal(publication.title()));
+        Row(int x, int y, int w, int h, CatalogPublication publication, boolean selected, boolean divider) {
+            super(x, y, w, h, Component.literal(publication.title()));
             this.publication = publication;
             this.selected = selected;
-            this.onPress = onPress;
+            this.divider = divider;
         }
 
         @Override
         public void onPress(net.minecraft.client.input.InputWithModifiers input) {
-            onPress.run();
+            select(publication.routeId());
         }
 
         @Override
-        protected void extractContents(
-                GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partial) {
-            int x1 = getX();
-            int y1 = getY();
-            int x2 = x1 + getWidth();
-            int y2 = y1 + getHeight();
-            int background = selected ? SELECTED : isHoveredOrFocused() ? GuiTokens.HOVER : SURFACE;
-            graphics.fill(x1, y1, x2, y2, background);
-            graphics.fill(x1, y1, x2, y1 + 1, GuiTokens.BORDER);
-            graphics.fill(x1, y2 - 1, x2, y2, GuiTokens.BORDER);
-            graphics.fill(x1, y1, x1 + 1, y2, GuiTokens.BORDER);
-            graphics.fill(x2 - 1, y1, x2, y2, GuiTokens.BORDER);
-            if (selected) graphics.fill(x1, y1, x1 + 2, y2, ACCENT);
-            if (isFocused()) {
-                graphics.fill(x1, y1, x2, y1 + 1, ACCENT);
-                graphics.fill(x1, y2 - 1, x2, y2, ACCENT);
-                graphics.fill(x1, y1, x1 + 1, y2, ACCENT);
-                graphics.fill(x2 - 1, y1, x2, y2, ACCENT);
-            }
+        protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+            int x1 = getX(), y1 = getY(), x2 = x1 + getWidth(), y2 = y1 + getHeight();
+            int background = selected ? SELECTED : isHoveredOrFocused() ? HOVER : 0;
+            if (background != 0) g.fill(x1, y1, x2, y2, background);
+            if (divider) g.fill(x1 + GAP, y2 - 1, x2 - GAP, y2, BORDER);
+            if (selected) g.fill(x1, y1, x1 + 2, y2, ACCENT);
+            Font font = Minecraft.getInstance().font;
+            int textX = x1 + GAP, right = x2 - GAP;
 
-            var font = Minecraft.getInstance().font;
-            int textY = y1 + 6;
-            String date = PublishedRoutesUiState.publishedDate(
-                    publication.serverCreatedAt());
-            int dateW = font.width(date);
-            int dateX = x2 - GAP - dateW;
-            int titleX = x1 + GAP + 2;
-            String title = font.plainSubstrByWidth(
-                    publication.title(), Math.max(24, x2 - GAP - titleX));
-            graphics.text(font, title, titleX, textY, selected ? TEXT : TEXT_DIM, false);
+            // Line 1: title, then Changed on the right when the local routes moved on.
+            LinkState state = link(publication);
+            Component changed = Component.translatable("waypointer.screen.published_routes.link.changed_short");
+            int stateW = state == LinkState.CHANGED ? font.width(changed) + GAP : 0;
+            if (stateW > 0) g.text(font, changed, right - font.width(changed), y1 + 6, WARNING, false);
+            g.text(font, GuiTokens.ellipsize(font, publication.title(), Math.max(20, right - stateW - textX)),
+                    textX, y1 + 6, TEXT, false);
+
+            // Line 2: zone · visibility, version and installs on the right.
+            CatalogRouteSummary live = summaries.get(publication.routeId());
+            String facts = Component.translatable("waypointer.screen.published_routes.version", publication.version())
+                    .getString() + (live == null ? "" : "  ·  "
+                    + RouteCatalogScreen.installCount(live.downloads()).getString());
+            int factsW = font.width(facts);
+            g.text(font, facts, right - factsW, y1 + 18, TEXT_MUTED, false);
+            String zone = GuiTokens.ellipsize(font, Zone.fromId(publication.zoneId()).displayName(),
+                    Math.max(20, (right - factsW - GAP - textX) * 3 / 5));
+            g.text(font, zone, textX, y1 + 18, ACCENT, false);
             boolean isPublic = publication.visibility() == CatalogPublishRequest.Visibility.PUBLIC;
-            Component visibility = Component.translatable(isPublic
+            String visibility = "  ·  " + Component.translatable(isPublic
                     ? "waypointer.screen.route_publish.visibility.public"
-                    : "waypointer.screen.published_routes.visibility.private");
-            int textW = Math.max(1, x2 - GAP - titleX);
-            if (getHeight() >= 60) {
-                graphics.text(font, font.plainSubstrByWidth(
-                                Zone.fromId(publication.zoneId()).displayName(), textW),
-                        titleX, textY + 13, TEXT_MUTED, false);
-                if (!publication.description().isBlank()) {
-                    graphics.text(font, font.plainSubstrByWidth(publication.description(), textW),
-                            titleX, textY + 27, TEXT_DIM, false);
-                }
-                graphics.text(font, Language.getInstance().getVisualOrder(font.substrByWidth(
-                                visibility, Math.max(1, dateX - GAP - titleX))),
-                        titleX, y2 - 14, isPublic ? PUBLIC_COLOR : TEXT_MUTED, false);
-                graphics.text(font, date, dateX, y2 - 14, TEXT_MUTED, false);
-            } else {
-                graphics.text(font, font.plainSubstrByWidth(
-                                Zone.fromId(publication.zoneId()).displayName(), textW),
-                        titleX, textY + 13, TEXT_MUTED, false);
+                    : "waypointer.screen.route_publish.visibility.unlisted").getString();
+            int room = right - factsW - GAP - textX - font.width(zone);
+            if (room > font.width(visibility)) {
+                g.text(font, visibility, textX + font.width(zone), y1 + 18, isPublic ? PUBLIC_COLOR : TEXT_MUTED, false);
             }
         }
 
         @Override
-        protected net.minecraft.network.chat.MutableComponent createNarrationMessage() {
-            String date = PublishedRoutesUiState.publishedDate(
-                    publication.serverCreatedAt());
-            Component base = Component.literal(date.isEmpty()
-                    ? publication.title()
-                    : publication.title() + ". " + date);
-            return selected
-                    ? Component.translatable(
-                            "waypointer.screen.route_catalog.row.narration.selected", base)
-                    : base.copy();
-        }
-
-        @Override
-        protected void updateWidgetNarration(
-                net.minecraft.client.gui.narration.NarrationElementOutput output) {
+        protected void updateWidgetNarration(NarrationElementOutput output) {
             defaultButtonNarrationText(output);
         }
     }
 
     private void select(String routeId) {
         if (!model.select(routeId)) return;
-        status = Component.translatable(
-                "waypointer.screen.published_routes.status.selected");
-        statusColor = TEXT_DIM;
+        status = Component.empty();
         rebuildWidgets();
     }
 
-    private void changePage(int delta) {
-        if (model.changePage(delta)) rebuildWidgets();
+    // ---- Actions ------------------------------------------------------------------------------
+
+    private Component publishLabel() {
+        LinkState state = link(model.selected());
+        return Component.translatable(state == LinkState.NOT_LINKED || state == LinkState.MISSING
+                ? "waypointer.screen.published_routes.action.choose_routes"
+                : "waypointer.screen.published_routes.action.publish_changes");
     }
 
-    /** Returns a catalog reference code, including for unlisted routes. */
+    private void refreshButtons() {
+        CatalogPublication selected = model.selected();
+        boolean ready = selected != null && identity != null && !busy;
+        LinkState state = link(selected);
+        if (copyButton != null) copyButton.active = selected != null && !busy;
+        if (editButton != null) editButton.active = ready;
+        if (deleteButton != null) deleteButton.active = ready;
+        if (publishButton != null) {
+            publishButton.setMessage(publishLabel());
+            publishButton.active = ready && state != LinkState.SAME && state != LinkState.UNKNOWN;
+        }
+        if (searchBox != null) searchBox.active = !busy;
+    }
+
     private void copyCode() {
-        CatalogPublication selected = selected();
+        CatalogPublication selected = model.selected();
         if (selected == null || minecraft == null) return;
-        minecraft.keyboardHandler.setClipboard(
-                UniversalShareCodec.encodeCatalogReference(selected.routeId()));
-        status = Component.translatable(
-                "waypointer.screen.published_routes.status.copied_code");
-        statusColor = STATUS_OK;
+        minecraft.keyboardHandler.setClipboard(UniversalShareCodec.encodeCatalogReference(selected.routeId()));
+        status = Component.translatable("waypointer.screen.published_routes.status.copied_code");
+        statusColor = SUCCESS;
     }
 
     private void editSelected() {
-        CatalogPublication selected = selected();
-        if (selected == null || identity == null || deleting) return;
+        CatalogPublication selected = model.selected();
+        if (selected == null || identity == null || busy) return;
         MinecraftCompat.setScreen(minecraft, new PublishedRouteEditScreen(
                 this, catalogClient, identity, publicationRegistry, selected));
     }
 
-    /** Reloads this device's records after an edit made elsewhere, keeping the selection. */
-    void refreshFromRegistry(Component message, int color) {
-        if (identity == null) return;
-        model.replace(PublishedRoutesUiState.forApiRoot(
-                publicationRegistry.listForPublisher(identity.publisherId()),
-                catalogClient.apiRoot()));
-        showEmptyState = model.publications().isEmpty();
-        status = message == null ? Component.empty() : message;
-        statusColor = color;
-        if (screenActive) rebuildWidgets();
+    /** Sends the linked routes as a new version, or lets the player pick routes when none are linked. */
+    private void publishOrChoose() {
+        CatalogPublication selected = model.selected();
+        if (selected == null || identity == null || busy) return;
+        LinkState state = link(selected);
+        if (state == LinkState.NOT_LINKED || state == LinkState.MISSING) {
+            PublishedRouteEditScreen edit = new PublishedRouteEditScreen(
+                    this, catalogClient, identity, publicationRegistry, selected);
+            new RouteReuploadScreen(edit, WaypointerClient.config(), catalogClient, identity,
+                    publicationRegistry, selected).openPicker(minecraft);
+            return;
+        }
+        if (state != LinkState.CHANGED) return;
+        List<WaypointGroup> sources = sources(selected);
+        if (sources == null) return;
+        ConfirmScreen confirm = new ConfirmScreen(confirmed -> {
+            MinecraftCompat.setScreen(minecraft, this);
+            if (confirmed) publishChanges(selected, sources);
+        }, Component.translatable("waypointer.screen.published_routes.confirm_update.title"),
+                Component.translatable("waypointer.screen.published_routes.confirm_update.message",
+                        selected.title(), selected.version() + 1),
+                Component.translatable("waypointer.screen.published_routes.action.publish_changes"),
+                Component.translatable("gui.cancel"));
+        MinecraftCompat.setScreen(minecraft, confirm);
+    }
+
+    private void publishChanges(CatalogPublication publication, List<WaypointGroup> sources) {
+        busy = true;
+        status = Component.translatable("waypointer.screen.route_reupload.status.uploading");
+        statusColor = TEXT_DIM;
+        refreshButtons();
+        List<WaypointGroup> snapshots = sources.stream().map(WaypointGroup::exportSnapshot).toList();
+        String zoneId = RouteReuploadScreen.zoneIdFor(snapshots);
+        CompletableFuture.supplyAsync(() -> CatalogProtocol.prepareCatalogPayload(snapshots))
+                .thenCompose(prepared -> CatalogPublicationManager.update(catalogClient, identity,
+                        publicationRegistry, publication,
+                        CatalogRouteUpdate.replacePayload(prepared.payload(), zoneId), prepared.payloadSha256()))
+                .whenComplete((updated, failure) -> runOnClient(() -> {
+                    busy = false;
+                    if (failure != null) {
+                        status = RoutePublishScreen.friendlyFailure(failure);
+                        statusColor = DANGER;
+                    } else {
+                        requested.remove(publication.routeId());
+                        refreshFromRegistry(Component.translatable(
+                                "waypointer.screen.route_reupload.status.uploaded", updated.version()), SUCCESS);
+                        return;
+                    }
+                    rebuildWidgets();
+                }));
     }
 
     private void confirmDelete() {
-        CatalogPublication selected = selected();
-        if (selected == null || identity == null || deleting) return;
+        CatalogPublication selected = model.selected();
+        if (selected == null || identity == null || busy) return;
         ConfirmScreen confirm = new ConfirmScreen(confirmed -> {
             MinecraftCompat.setScreen(minecraft, this);
             if (confirmed) delete(selected);
         }, Component.translatable("waypointer.screen.published_routes.confirm.title"),
-                Component.translatable("waypointer.screen.published_routes.confirm.message",
-                        selected.title()),
+                Component.translatable("waypointer.screen.published_routes.confirm.message", selected.title()),
                 Component.translatable("waypointer.screen.published_routes.action.delete"),
                 Component.translatable("gui.cancel"));
         MinecraftCompat.setScreen(minecraft, confirm);
     }
 
     private void delete(CatalogPublication selected) {
-        deleting = true;
-        status = Component.translatable(
-                "waypointer.screen.published_routes.status.deleting");
+        busy = true;
+        status = Component.translatable("waypointer.screen.published_routes.status.deleting");
         statusColor = TEXT_DIM;
         refreshButtons();
-        CatalogPublicationManager.delete(
-                        catalogClient, identity, publicationRegistry, selected)
+        CatalogPublicationManager.delete(catalogClient, identity, publicationRegistry, selected)
                 .whenComplete((ignored, failure) -> runOnClient(() -> {
-                    if (!screenActive || minecraft == null
-                            || MinecraftCompat.screen(minecraft) != this) return;
-                    deleting = false;
+                    busy = false;
                     if (failure != null) {
                         status = friendlyDeleteFailure(failure);
-                        statusColor = STATUS_ERROR;
+                        statusColor = DANGER;
                     } else {
-                        model.replace(PublishedRoutesUiState.forApiRoot(
-                                publicationRegistry.listForPublisher(identity.publisherId()),
-                                catalogClient.apiRoot()));
-                        showEmptyState = model.publications().isEmpty();
-                        status = Component.translatable(
-                                "waypointer.screen.published_routes.status.deleted");
-                        statusColor = STATUS_OK;
+                        PublishedSources store = PublishedSources.active();
+                        if (store != null) store.forget(selected.routeId());
+                        refreshFromRegistry(Component.translatable(
+                                "waypointer.screen.published_routes.status.deleted"), SUCCESS);
+                        return;
                     }
                     rebuildWidgets();
                 }));
     }
 
-    private void refreshButtons() {
-        PublishedRoutesUiState.Controls controls = PublishedRoutesUiState.controls(
-                model, identity != null, deleting);
-        boolean hasRoutes = !model.publications().isEmpty();
-        if (deleteButton != null) {
-            deleteButton.visible = hasRoutes;
-            deleteButton.active = controls.deleteEnabled();
-            deleteButton.setMessage(Component.translatable(deleting
-                    ? "waypointer.screen.published_routes.action.deleting"
-                    : "waypointer.screen.published_routes.action.delete"));
+    /** Reloads this device's records after an edit, keeping the selection. */
+    void refreshFromRegistry(Component message, int color) {
+        if (identity == null) return;
+        String selected = model.selectedRouteId();
+        model.replace(PublishedRoutesUiState.forApiRoot(
+                publicationRegistry.listForPublisher(identity.publisherId()), catalogClient.apiRoot()));
+        if (selected != null) model.select(selected);
+        if (model.selected() == null && !model.publications().isEmpty()) {
+            model.select(model.publications().getFirst().routeId());
         }
-        if (copyCodeButton != null) {
-            copyCodeButton.visible = hasRoutes;
-            copyCodeButton.active = controls.copyEnabled();
+        for (CatalogPublication publication : model.publications()) {
+            requested.remove(publication.routeId());
+            fetch(publication);
         }
-        if (editButton != null) {
-            editButton.visible = hasRoutes;
-            editButton.active = controls.editEnabled();
-        }
-        if (previousButton != null) {
-            previousButton.visible = hasRoutes;
-            previousButton.active = controls.previousEnabled();
-        }
-        if (nextButton != null) {
-            nextButton.visible = hasRoutes;
-            nextButton.active = controls.nextEnabled();
-        }
-        if (searchBox != null) searchBox.active = !deleting;
-    }
-
-    private CatalogPublication selected() {
-        return model.selected();
+        status = message == null ? Component.empty() : message;
+        statusColor = color;
+        if (screenActive) rebuildWidgets();
     }
 
     private static Component friendlyDeleteFailure(Throwable failure) {
-        Throwable cause = unwrap(failure);
+        Throwable cause = failure;
+        while (cause instanceof CompletionException && cause.getCause() != null) cause = cause.getCause();
         if (cause instanceof CatalogApiException api && api.status() == 429) {
-            return Component.translatable(
-                    "waypointer.screen.published_routes.status.rate_limited");
+            return Component.translatable("waypointer.screen.published_routes.status.rate_limited");
         }
-        return Component.translatable(
-                "waypointer.screen.published_routes.status.delete_failed");
+        return Component.translatable("waypointer.screen.published_routes.status.delete_failed");
     }
 
-    private static Throwable unwrap(Throwable failure) {
-        Throwable cause = failure;
-        while ((cause instanceof CompletionException
-                || cause instanceof java.util.concurrent.ExecutionException)
-                && cause.getCause() != null) {
-            cause = cause.getCause();
+    // ---- Drawing ------------------------------------------------------------------------------
+
+    @Override
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+        g.fill(0, 0, width, height, 0x80000000);
+        g.fill(panelX, panelY, panelX + panelW, panelY + panelH, GuiTokens.panel(SURFACE));
+        int titleY = searchBox == null ? panelY + PAD_OUTER : searchBox.getY() - BTN_H - GAP;
+        g.text(font, getTitle(), contentX, titleY + 6, TEXT, false);
+        String count = Component.translatable(model.publications().size() == 1
+                ? "waypointer.screen.published_routes.count.one" : "waypointer.screen.published_routes.count.many",
+                model.publications().size()).getString();
+        if (!model.publications().isEmpty()) g.text(font, count, contentX + contentW - font.width(count), titleY + 6, TEXT_MUTED, false);
+
+        g.fill(listX, listY, listX + listW, listY + listH, SURFACE_SUBTLE);
+        if (model.publications().isEmpty() && !loading) {
+            Component empty = Component.translatable(model.query().isBlank()
+                    ? "waypointer.screen.published_routes.status.empty"
+                    : "waypointer.screen.published_routes.status.no_matches");
+            g.text(font, empty, listX + (listW - font.width(empty)) / 2, listY + listH / 2 - 4, TEXT_DIM, false);
         }
-        return cause;
+        CatalogRoutePreview.Point hovered = null;
+        if (detailW > 0) {
+            g.fill(detailX, detailY, detailX + detailW, detailY + detailH, SURFACE_SUBTLE);
+            hovered = renderDetails(g, model.selected(), mouseX, mouseY);
+        }
+        if (!status.getString().isBlank()) {
+            g.text(font, GuiTokens.ellipsize(font, status.getString(), contentW), contentX, statusY, statusColor, false);
+        }
+        super.extractRenderState(g, mouseX, mouseY, partial);
+        if (hovered != null) {
+            g.setTooltipForNextFrame(font, CatalogRoutePreview.tooltip(hovered).stream()
+                    .map(Component::getVisualOrderText).toList(), mouseX, mouseY);
+        }
+    }
+
+    private CatalogRoutePreview.Point renderDetails(GuiGraphicsExtractor g, CatalogPublication publication,
+                                                    int mouseX, int mouseY) {
+        int pad = GAP + 2;
+        int x = detailX + pad, right = detailX + detailW - pad, available = Math.max(20, right - x);
+        int bottom = detailY + detailH - pad;
+        if (publication == null) {
+            Component hint = Component.translatable("waypointer.screen.route_catalog.details.select");
+            g.text(font, hint, detailX + (detailW - font.width(hint)) / 2, detailY + detailH / 2 - 4, TEXT_DIM, false);
+            return null;
+        }
+        int y = detailY + pad;
+        g.text(font, Component.literal(GuiTokens.ellipsize(font, publication.title(), available))
+                .withStyle(net.minecraft.ChatFormatting.BOLD), x, y, TEXT, false);
+        y += LINE_H + 3;
+
+        boolean isPublic = publication.visibility() == CatalogPublishRequest.Visibility.PUBLIC;
+        String zone = Zone.fromId(publication.zoneId()).displayName();
+        g.text(font, zone, x, y, ACCENT, false);
+        g.text(font, "  ·  " + Component.translatable(isPublic
+                        ? "waypointer.screen.route_publish.visibility.public"
+                        : "waypointer.screen.route_publish.visibility.unlisted").getString(),
+                x + font.width(zone), y, isPublic ? PUBLIC_COLOR : TEXT_MUTED, false);
+        y += LINE_H + 1;
+
+        CatalogRouteSummary live = summaries.get(publication.routeId());
+        List<String> facts = new ArrayList<>();
+        facts.add(Component.translatable("waypointer.screen.published_routes.version", publication.version()).getString());
+        if (live != null) {
+            facts.add(RouteCatalogScreen.waypointCount(live.waypointCount()).getString());
+            facts.add(RouteCatalogScreen.installCount(live.downloads()).getString());
+        }
+        String when = live != null && !live.updatedAt().isBlank() ? live.updatedAt() : publication.serverCreatedAt();
+        Component age = RouteCatalogScreen.ageLabel(when);
+        if (age != null) facts.add(age.getString());
+        String factLine = String.join("  ·  ", facts);
+        g.text(font, GuiTokens.ellipsize(font, factLine, available), x, y, TEXT_MUTED, false);
+        if (age != null && font.width(factLine) <= available && mouseY >= y - 1 && mouseY < y + 9
+                && mouseX >= x + font.width(factLine) - font.width(age) && mouseX < x + font.width(factLine)) {
+            String exact = RouteCatalogScreen.exactTime(when);
+            if (exact != null) g.setTooltipForNextFrame(font, Component.translatable(
+                    "waypointer.screen.route_catalog.updated_at", exact), mouseX, mouseY);
+        }
+        y += LINE_H + GAP_TIGHT;
+
+        // On this device: whether the local routes match what was published.
+        LinkState state = link(publication);
+        List<WaypointGroup> sources = sources(publication);
+        String names = sources == null ? "" : String.join(", ", sources.stream().map(WaypointGroup::name).toList());
+        Component linkLine = switch (state) {
+            case SAME -> Component.translatable("waypointer.screen.published_routes.link.same", names);
+            case CHANGED -> Component.translatable("waypointer.screen.published_routes.link.changed", names);
+            case MISSING -> Component.translatable("waypointer.screen.published_routes.link.missing");
+            case NOT_LINKED -> Component.translatable("waypointer.screen.published_routes.link.none");
+            case UNKNOWN -> Component.empty();
+        };
+        int linkColor = switch (state) {
+            case SAME -> SUCCESS;
+            case CHANGED -> WARNING;
+            default -> TEXT_MUTED;
+        };
+
+        int mapH = Math.max(0, Math.min(200, (bottom - y - LINE_H * 4) * 60 / 100));
+        CatalogRoutePreview.Point hovered = null;
+        CatalogRoutePreview preview = previews.get(publication.routeId());
+        if (mapH >= 40) {
+            if (preview != null) {
+                hovered = preview.render(g, font, x, y, right, y + mapH, mouseX, mouseY);
+            } else {
+                g.fill(x, y, right, y + mapH, 0x40000000);
+                Component loadingMap = Component.translatable("waypointer.screen.route_catalog.preview.loading");
+                g.text(font, loadingMap, x + (available - font.width(loadingMap)) / 2, y + mapH / 2 - 4, TEXT_MUTED, false);
+            }
+            y += mapH + GAP;
+        }
+        if (!linkLine.getString().isBlank()) {
+            for (var line : font.split(linkLine, available)) {
+                if (y + LINE_H > bottom) break;
+                g.text(font, line, x, y, linkColor, false);
+                y += LINE_H;
+            }
+            y += GAP_TIGHT;
+        }
+        String description = publication.description().isBlank() ? "" : publication.description();
+        for (var line : font.split(Component.literal(description), available)) {
+            if (y + LINE_H > bottom) break;
+            g.text(font, line, x, y, TEXT_DIM, false);
+            y += LINE_H;
+        }
+        return hovered;
     }
 
     @Override
-    public void extractRenderState(
-            GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.fill(0, 0, width, height, 0x80000000);
-        graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, SURFACE);
-        graphics.text(font, font.plainSubstrByWidth(getTitle().getString(), contentW),
-                contentX, panelY + PAD_OUTER, TEXT, false);
-        if (!model.publications().isEmpty()) {
-            String pageText = (model.page() + 1) + "/" + (model.maximumPage() + 1);
-            graphics.text(font, pageText,
-                    contentX + (contentW - font.width(pageText)) / 2,
-                    pagerY + 6, ACCENT, false);
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
+        if (mouseX >= listX && mouseX < listX + listW && mouseY >= listY && mouseY < listY + listH) {
+            int max = Math.max(0, model.publications().size() - visibleRows());
+            int next = Math.max(0, Math.min(max, scroll - (int) Math.signum(vertical)));
+            if (next != scroll) {
+                scroll = next;
+                rebuildWidgets();
+            }
+            return true;
         }
-        if (showEmptyState) {
-            String empty = Component.translatable(
-                    model.query().isBlank()
-                            ? "waypointer.screen.published_routes.status.empty"
-                            : "waypointer.screen.published_routes.status.no_matches").getString();
-            int emptyY = rowsY + Math.max(0, pagerY - rowsY - font.lineHeight) / 2;
-            graphics.text(font, empty,
-                    contentX + (contentW - font.width(empty)) / 2,
-                    emptyY, TEXT_DIM, false);
-        }
-        if (!status.getString().isBlank()) {
-            graphics.text(font, font.plainSubstrByWidth(status.getString(), contentW),
-                    contentX, statusY, statusColor, false);
-        }
-        super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+        return super.mouseScrolled(mouseX, mouseY, horizontal, vertical);
+    }
+
+    @Override
+    public void tick() {
+        super.tick();
+        refreshButtons();
     }
 
     @Override
     public void onClose() {
+        if (busy) return;
         MinecraftCompat.setScreen(minecraft, parent);
     }
 
@@ -504,8 +659,5 @@ public final class PublishedRoutesScreen extends Screen {
         client.execute(action);
     }
 
-    private record Loaded(
-            PublisherIdentity identity,
-            List<CatalogPublication> publications) {
-    }
+    private record Loaded(PublisherIdentity identity, List<CatalogPublication> publications) {}
 }
