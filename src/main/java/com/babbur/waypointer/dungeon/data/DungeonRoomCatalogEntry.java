@@ -40,11 +40,36 @@ public record DungeonRoomCatalogEntry(
     public boolean hasCryptCount() { return cryptCount >= 0; }
     public boolean hasTrappedChestCount() { return trappedChestCount >= 0; }
 
+    /** Lower case, runs of anything but a-z and 0-9 become one dash, no dash at either end. */
     public static String normalizeId(String id) {
         if (id == null) return "";
-        return id.trim().toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9]+", "-")
-                .replaceAll("^-+|-+$", "");
+        if (isNormalized(id)) return id;
+        String lower = id.trim().toLowerCase(Locale.ROOT);
+        StringBuilder out = new StringBuilder(lower.length());
+        boolean dash = false;
+        for (int i = 0; i < lower.length(); i++) {
+            char c = lower.charAt(i);
+            if (c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+                if (dash && !out.isEmpty()) out.append('-');
+                dash = false;
+                out.append(c);
+            } else {
+                dash = true;
+            }
+        }
+        return out.toString();
+    }
+
+    private static boolean isNormalized(String id) {
+        if (id.isEmpty() || id.charAt(0) == '-' || id.charAt(id.length() - 1) == '-') return id.isEmpty();
+        char previous = 0;
+        for (int i = 0; i < id.length(); i++) {
+            char c = id.charAt(i);
+            boolean word = c >= 'a' && c <= 'z' || c >= '0' && c <= '9';
+            if (!word && (c != '-' || previous == '-')) return false;
+            previous = c;
+        }
+        return true;
     }
 
     private static int normalizeCount(int count) {

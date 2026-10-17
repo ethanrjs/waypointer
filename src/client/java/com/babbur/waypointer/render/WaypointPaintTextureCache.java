@@ -39,6 +39,7 @@ public final class WaypointPaintTextureCache {
     }
 
     public static void resetRetainedReservation() {
+        if (RETAINED_PAINTS.isEmpty() && activeCapacity == MAX_TEXTURES) return;
         RETAINED_PAINTS.clear();
         activeCapacity = MAX_TEXTURES;
         evictOldTextures();

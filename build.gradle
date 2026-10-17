@@ -132,6 +132,25 @@ tasks.named('runClientGameTest') {
 	if (providers.gradleProperty('screenGallery').isPresent()) {
 		systemProperty 'waypointer.test.screenGallery', 'true'
 	}
+	// -PperfProbe=<config dir> loads that route library, plays it as the Crystal Hollows and
+	// records frame times and a Flight Recorder profile in build/reports/perf.
+	if (providers.gradleProperty('perfProbe').isPresent()) {
+		def probeSource = file(providers.gradleProperty('perfProbe').get())
+		def reports = layout.buildDirectory.dir('reports/perf').get().asFile
+		systemProperty 'waypointer.test.perfProbe', reports.absolutePath
+		systemProperty 'waypointer.test.singleplayerZone', 'crystal_hollows'
+		jvmArgs "-XX:StartFlightRecording=filename=${new File(reports, 'waypointer.jfr').absolutePath},settings=profile,jdk.ExecutionSample#period=1ms,dumponexit=true"
+		doFirst {
+			reports.mkdirs()
+			def config = new File(layout.buildDirectory.dir('run/clientGameTest').get().asFile, 'config/waypointer')
+			config.mkdirs()
+			['waypoints.json', 'config.json', 'dungeon_rooms.json'].each { name ->
+				def from = new File(probeSource, name)
+				if (from.isFile()) Files.copy(from.toPath(), new File(config, name).toPath(),
+						java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+			}
+		}
+	}
 	if (shaderPack.isPresent()) {
 		systemProperty 'waypointer.test.shaders', 'true'
 		doFirst {

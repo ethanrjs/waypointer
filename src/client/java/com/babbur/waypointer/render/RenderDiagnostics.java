@@ -70,8 +70,9 @@ public final class RenderDiagnostics {
                                         WaypointerConfig config,
                                         boolean irisHudFallbackActiveNow) {
         frameToken++;
-        PREPARED_DUNGEON_PATHS.clear();
-        SUBMITTED_DUNGEON_PATHS.clear();
+        // Identity sets clear their whole table even when empty; most frames have no dungeon paths.
+        if (!PREPARED_DUNGEON_PATHS.isEmpty()) PREPARED_DUNGEON_PATHS.clear();
+        if (!SUBMITTED_DUNGEON_PATHS.isEmpty()) SUBMITTED_DUNGEON_PATHS.clear();
         irisHudFallbackActive = irisHudFallbackActiveNow;
         if (!detailedCaptureEnabled) return frameToken;
 

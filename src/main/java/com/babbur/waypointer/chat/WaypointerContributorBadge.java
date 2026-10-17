@@ -52,13 +52,21 @@ public final class WaypointerContributorBadge {
                 ? replace(component, contributor.color())
                 : prependBadge(component, contributor.color());
     }
+    /** Tab names are asked for every frame while the list is open; each one only changes when Hypixel resends it. */
+    private static final java.util.Map<Component, Component> TAB_NAMES = new java.util.IdentityHashMap<>();
+
     public static Component applyTabName(Component component, WaypointerConfig config) {
         if (component == null || config == null || !config.showContributorBadges()) return component;
+        Component cached = TAB_NAMES.get(component);
+        if (cached != null) return cached;
         Contributor contributor = contributorTabName(plainMessage(component.getString()).text());
-        return contributor != null
+        Component result = contributor != null
                 ? badge(contributor.color()).append(Component.literal(" "))
                         .append(Component.literal(contributor.name()).withStyle(ChatFormatting.AQUA))
                 : component;
+        if (TAB_NAMES.size() >= 512) TAB_NAMES.clear();
+        TAB_NAMES.put(component, result);
+        return result;
     }
 
     private static Component replace(Component component, int color) {

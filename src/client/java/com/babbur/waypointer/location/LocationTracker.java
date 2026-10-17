@@ -52,9 +52,13 @@ public final class LocationTracker {
                 current, minecraft.level != null, minecraft.getCurrentServer() != null));
     }
 
+    /** Singleplayer is a private world; the performance probe stands it in for another zone. */
+    private static final Zone SINGLEPLAYER_ZONE = Zone.fromId(
+            System.getProperty("waypointer.test.singleplayerZone", Zone.PRIVATE_WORLD.id()));
+
     static Zone zoneAfterPrivateWorldCheck(Zone current, boolean worldLoaded, boolean remoteServer) {
         if (!worldLoaded) return null;
-        if (!remoteServer) return Zone.PRIVATE_WORLD;
+        if (!remoteServer) return SINGLEPLAYER_ZONE;
         return Zone.PRIVATE_WORLD.equals(current) ? null : current;
     }
 

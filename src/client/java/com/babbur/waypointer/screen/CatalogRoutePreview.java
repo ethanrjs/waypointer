@@ -118,6 +118,10 @@ final class CatalogRoutePreview {
      * Draws the map into the box and returns the waypoint under the mouse, if any.
      */
     Point render(GuiGraphicsExtractor g, Font font, int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
+        // The GUI checks each element against the overlapping ones in its stratum, so a long route
+        // starts its own and moves to a fresh one every few dozen elements.
+        g.nextStratum();
+        int[] elements = {0};
         g.fill(x1, y1, x2, y2, 0x40000000);
         outline(g, x1, y1, x2, y2, BORDER);
         if (roomPack || isEmpty()) {
@@ -148,6 +152,7 @@ final class CatalogRoutePreview {
         double hoveredX = 0, hoveredY = 0;
         g.enableScissor(x1 + 1, y1 + 1, x2 - 1, y2 - 1);
         for (List<Point> path : paths) {
+            // Segments shorter than a screen pixel are merged into the next one.
             double px = 0, py = 0;
             int previousColor = 0;
             for (int i = 0; i < path.size(); i++) {
@@ -155,14 +160,21 @@ final class CatalogRoutePreview {
                 double sx = centerX + (point.x() - midX) * scale;
                 double sy = centerY + (point.z() - midZ) * scale;
                 if (i > 0) {
+                    boolean last = i == path.size() - 1;
+                    double moved = Math.max(Math.abs(sx - px), Math.abs(sy - py)) * guiScale;
+                    if (moved < 1.0 && !last) continue;
                     RenderHelpers.drawScreenLine(g, px, py, sx, sy, (previousColor & 0xFFFFFF) | 0xB0000000,
                             LINE_WIDTH * guiScale, true);
+                    countElement(g, elements);
                 }
                 px = sx;
                 py = sy;
                 previousColor = point.color();
             }
-            for (int i = path.size() - 1; i >= 0; i--) {
+            // Earlier waypoints draw on top; a pixel only needs its topmost waypoint drawn.
+            it.unimi.dsi.fastutil.longs.LongOpenHashSet seen = new it.unimi.dsi.fastutil.longs.LongOpenHashSet();
+            it.unimi.dsi.fastutil.ints.IntArrayList shown = new it.unimi.dsi.fastutil.ints.IntArrayList();
+            for (int i = 0; i < path.size(); i++) {
                 Point point = path.get(i);
                 double sx = centerX + (point.x() - midX) * scale;
                 double sy = centerY + (point.z() - midZ) * scale;
@@ -174,7 +186,16 @@ final class CatalogRoutePreview {
                     hoveredX = sx;
                     hoveredY = sy;
                 }
+                long pixel = ((long) Math.round(sx * guiScale) << 32) ^ (Math.round(sy * guiScale) & 0xFFFFFFFFL);
+                if (seen.add(pixel)) shown.add(i);
+            }
+            for (int k = shown.size() - 1; k >= 0; k--) {
+                int i = shown.getInt(k);
+                Point point = path.get(i);
+                double sx = centerX + (point.x() - midX) * scale;
+                double sy = centerY + (point.z() - midZ) * scale;
                 dot(g, sx, sy, point, i == 0, guiScale);
+                countElement(g, elements);
             }
         }
         if (hovered != null) {
@@ -193,6 +214,10 @@ final class CatalogRoutePreview {
         String north = "N";
         g.text(font, north, x2 - 4 - font.width(north), y1 + 4, TEXT_MUTED, false);
         return hovered;
+    }
+
+    private static void countElement(GuiGraphicsExtractor g, int[] elements) {
+        if (++elements[0] % 32 == 0) g.nextStratum();
     }
 
     /** A waypoint: a colored square in a dark frame, a white frame for the start, smaller for subwaypoints. */

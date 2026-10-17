@@ -59,6 +59,9 @@ public final class CrystalHollowsMinimap implements HudElement {
                             boolean labels, boolean showRough) {
         var font = Minecraft.getInstance().font;
         int x = layout.mapX(), y = layout.mapY(), size = layout.size();
+        // Every GUI element is checked against the overlapping ones already in its stratum, so the
+        // map starts its own and puts the markers in a second one above the static base.
+        g.nextStratum();
         panel(g, layout.x(), layout.y(), layout.width(), layout.height(), 0xFF39454D);
         panel(g, layout.x() + 1, layout.y() + 1, layout.width() - 2, layout.height() - 2, 0xF213191F);
         g.fill(layout.x() + 3, layout.y(), layout.x() + layout.width() - 3, layout.y() + 1, 0xFF52616A);
@@ -102,6 +105,7 @@ public final class CrystalHollowsMinimap implements HudElement {
                 g.fill(x + offset, y + offsetZ, x + offset + 1, y + offsetZ + 1, 0x248CA3AB);
             }
         }
+        g.nextStratum();
         List<StructureSighting> visible = sightings.stream().filter(sighting ->
                 CrystalHollowsMinimapLayout.contains(sighting.x(), sighting.z())
                         && (showRough || !sighting.approximate())
@@ -250,8 +254,18 @@ public final class CrystalHollowsMinimap implements HudElement {
         };
     }
 
+    private static final java.util.Map<String, String> TEXT = new java.util.HashMap<>();
+    private static net.minecraft.locale.Language textLanguage;
+
+    /** Map wording, translated once per language rather than every frame. */
     private static String text(String key) {
-        return Component.translatable("waypointer.crystal.minimap." + key).getString();
+        net.minecraft.locale.Language language = net.minecraft.locale.Language.getInstance();
+        if (language != textLanguage) {
+            TEXT.clear();
+            textLanguage = language;
+        }
+        return TEXT.computeIfAbsent(key,
+                k -> Component.translatable("waypointer.crystal.minimap." + k).getString());
     }
 
     // Minecraft's bitmap font adds one trailing advance pixel; its eighth row holds descenders.
@@ -260,7 +274,11 @@ public final class CrystalHollowsMinimap implements HudElement {
     }
 
     private static int inkHeight(String text) {
-        return text.codePoints().anyMatch(c -> c > 127 || "gjpqy".indexOf(c) >= 0) ? 8 : 7;
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (c > 127 || "gjpqy".indexOf(c) >= 0) return 8;
+        }
+        return 7;
     }
 
     private static void drawText(GuiGraphicsExtractor g, String text, float x, float y, int color) {
@@ -301,10 +319,7 @@ public final class CrystalHollowsMinimap implements HudElement {
     }
 
     private static void region(GuiGraphicsExtractor g, int x, int y, int width, int height, int top, int bottom) {
-        for (int row = 0; row < height; row += 4) {
-            g.fill(x, y + row, x + width, y + Math.min(row + 4, height),
-                    mix(top, bottom, (double) row / Math.max(1, height - 1)));
-        }
+        g.fillGradient(x, y, x + width, y + height, top, bottom);
     }
 
     private static int mix(int a, int b, double amount) {
