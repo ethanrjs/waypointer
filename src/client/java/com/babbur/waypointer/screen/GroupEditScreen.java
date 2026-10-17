@@ -102,7 +102,7 @@ public final class GroupEditScreen extends Screen {
     private static final int SUBWAY_STYLE_BUTTON_IDLE = 0xFF20242A;
     private static final int SUBWAY_STYLE_BUTTON_HOVER = 0xFF303844;
     private static final int DEPTH_CHECK_BUTTON_ACTIVE = 0xFF315F8F;
-    private static final int HEADER_INFO_BUTTON_SIZE = 12;
+    private static final int HEADER_INFO_BUTTON_SIZE = 11;
     private static final int HEADER_ICON_BTN_W = 24;
     private static final int PUBLISH_BUTTON_W = 92;
     private static final int SUBWAYPOINT_INDENT = 16;

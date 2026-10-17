@@ -85,7 +85,6 @@ public final class WaypointerScreen extends Screen {
     private static final int DONE_BTN_W = 56;
     private static final int REORDER_BTN_W = 28;
     private static final int SETTINGS_BTN_W = 76;
-    private static final int DROPDOWN_SEARCH_H = BTN_H + GAP_TIGHT * 2;
     private static final int ISLAND_DROPDOWN_W = 210;
     private static final int ISLAND_SELECTOR_W = ISLAND_DROPDOWN_W;
 
@@ -342,8 +341,10 @@ public final class WaypointerScreen extends Screen {
                 ISLAND_SELECTOR_W, BTN_H, islandSelectorLabel(), b -> toggleIslandDropdown());
         addRenderableWidget(islandSelectorBtn);
 
-        zoneSearchBox = new EditBox(font, 0, 0, ISLAND_DROPDOWN_W - 2 - GAP_TIGHT * 2, BTN_H,
+        // While the island list is open, the zone button turns into its search field.
+        zoneSearchBox = new EditBox(font, 0, 0, ISLAND_SELECTOR_W - GAP - 18, 10,
                 Component.translatable("waypointer.screen.main.zone_search"));
+        zoneSearchBox.setBordered(false);
         zoneSearchBox.setMaxLength(40);
         zoneSearchBox.setHint(Component.translatable("waypointer.screen.main.zone_search"));
         zoneSearchBox.setValue(zoneSearchQuery);
@@ -808,7 +809,7 @@ public final class WaypointerScreen extends Screen {
         int x2 = width - PAD_OUTER;
         int x1 = x2 - ISLAND_DROPDOWN_W;
         int y1 = HEADER_BTN_Y + BTN_H + GAP_TIGHT;
-        int searchHeight = zoneSearchShown() ? DROPDOWN_SEARCH_H : 0;
+        int searchHeight = 0;
         int maxBottom = Math.max(y1 + BTN_H + searchHeight + ROW_H + 3, layout().bottom());
         int tabsTop = y1 + 1;
         int tabsBottom = tabsTop + BTN_H;
@@ -885,7 +886,9 @@ public final class WaypointerScreen extends Screen {
                     && mouseY >= Math.max(rowY, geo.rowsTop())
                     && mouseY < Math.min(rowY + ROW_H, geo.rowsBottom());
             if (hovered) g.requestCursor(CursorTypes.POINTING_HAND);
-            drawDropdownZoneRow(g, geo.x1() + 1, rowY, geo.x2() - 1, id, hovered, currentId);
+            // The last row sits on the outline (or on Show more's own edge), so it needs no line.
+            boolean last = i == ids.size() - 1;
+            drawDropdownZoneRow(g, geo.x1() + 1, rowY, geo.x2() - 1, id, hovered, currentId, !last);
         }
         if (showToggle) {
             int rowY = geo.rowsTop() - dropdownScrollOffset + ids.size() * ROW_H;
@@ -897,8 +900,7 @@ public final class WaypointerScreen extends Screen {
                     g.fill(geo.x1() + 1, rowY, geo.x2() - 1, rowY + ROW_H, HOVER);
                     g.requestCursor(CursorTypes.POINTING_HAND);
                 }
-                g.fill(geo.x1() + 1, rowY,
-                        geo.x2() - 1, rowY + 1, BORDER);
+                g.fill(geo.x1() + 1, rowY, geo.x2() - 1, rowY + 1, BORDER);
                 String label = Component.translatable(showAllIslands
                         ? "waypointer.screen.main.show_less"
                         : "waypointer.screen.main.show_more").getString();
@@ -920,15 +922,32 @@ public final class WaypointerScreen extends Screen {
         }
     }
 
+    /** Draws the search field over the zone button, keeping the button's arrow to close the list. */
     private void renderZoneSearch(GuiGraphicsExtractor g, DropdownGeometry geo,
                                   int mouseX, int mouseY, float partial) {
-        if (zoneSearchBox == null || !zoneSearchShown()) return;
-        int top = geo.tabsBottom() + 1;
-        zoneSearchBox.setX(geo.x1() + 1 + GAP_TIGHT);
-        zoneSearchBox.setY(top + GAP_TIGHT);
-        zoneSearchBox.setWidth(geo.x2() - geo.x1() - 2 - GAP_TIGHT * 2);
+        if (zoneSearchBox == null || !zoneSearchShown() || islandSelectorBtn == null) return;
+        int x1 = islandSelectorBtn.getX(), y1 = islandSelectorBtn.getY();
+        int x2 = x1 + islandSelectorBtn.getWidth(), y2 = y1 + islandSelectorBtn.getHeight();
+        g.fill(x1, y1, x2, y2, OVERLAY);
+        g.fill(x1, y1, x2, y1 + 1, ACCENT);
+        g.fill(x1, y2 - 1, x2, y2, ACCENT);
+        g.fill(x1, y1, x1 + 1, y2, ACCENT);
+        g.fill(x2 - 1, y1, x2, y2, ACCENT);
+        zoneSearchBox.setX(x1 + GAP);
+        zoneSearchBox.setY(y1 + (BTN_H - 8) / 2);
+        zoneSearchBox.setWidth(x2 - x1 - GAP - 18);
         zoneSearchBox.extractWidgetRenderState(g, mouseX, mouseY, partial);
-        g.fill(geo.x1() + 1, geo.rowsTop() - 1, geo.x2() - 1, geo.rowsTop(), BORDER);
+        if (zoneSearchBox.getValue().isEmpty()) {
+            g.text(font, Component.translatable("waypointer.screen.main.zone_search"),
+                    x1 + GAP + 6, zoneSearchBox.getY(), TEXT_MUTED, false);
+        }
+        renderIslandSelectorDirection(g);
+    }
+
+    private boolean overZoneSearch(double mx, double my) {
+        return zoneSearchShown() && islandSelectorBtn != null
+                && mx >= islandSelectorBtn.getX() && mx < islandSelectorBtn.getX() + islandSelectorBtn.getWidth() - 16
+                && my >= islandSelectorBtn.getY() && my < islandSelectorBtn.getY() + islandSelectorBtn.getHeight();
     }
 
     private void renderDropdownTabs(GuiGraphicsExtractor g, DropdownGeometry geo,
@@ -949,22 +968,27 @@ public final class WaypointerScreen extends Screen {
         drawDropdownTab(g, split, geo.x2() - 1, geo.tabsTop(), geo.tabsBottom(),
                 Component.translatable("waypointer.screen.main.dungeons").getString(),
                 dropdownTab == DropdownTab.DUNGEONS, mouseX, mouseY);
-        g.fill(split, geo.tabsTop(), split + 1, geo.tabsBottom(), BORDER);
+        g.fill(split, geo.tabsTop(), split + 1, geo.tabsBottom() - 1, BORDER);
         g.fill(geo.x1() + 1, geo.tabsBottom(), geo.x2() - 1, geo.tabsBottom() + 1, BORDER);
+        // The selected tab's underline runs the full width of its column, divider included.
+        if (dropdownTab == DropdownTab.ISLANDS) {
+            g.fill(geo.x1() + 1, geo.tabsBottom() - 1, split + 1, geo.tabsBottom(), ACCENT);
+        } else {
+            g.fill(split, geo.tabsBottom() - 1, geo.x2() - 1, geo.tabsBottom(), ACCENT);
+        }
     }
 
     private void drawDropdownTab(GuiGraphicsExtractor g, int x1, int x2, int y1, int y2,
                                  String label, boolean selected, int mouseX, int mouseY) {
         boolean hovered = mouseX >= x1 && mouseX < x2 && mouseY >= y1 && mouseY < y2;
         if (selected || hovered) g.fill(x1, y1, x2, y2, selected ? SELECTED : HOVER);
-        if (selected) g.fill(x1, y2 - 1, x2, y2, ACCENT);
         int textX = x1 + (x2 - x1 - font.width(label)) / 2;
         g.text(font, label, textX, y1 + 6, selected || hovered ? TEXT : TEXT_DIM, false);
         if (hovered) g.requestCursor(CursorTypes.POINTING_HAND);
     }
 
     private void drawDropdownZoneRow(GuiGraphicsExtractor g, int x1, int y, int x2,
-                                     String zoneId, boolean hovered, String currentId) {
+                                     String zoneId, boolean hovered, String currentId, boolean divider) {
         boolean selected = zoneId.equals(selectedZoneId);
         boolean temporary = isTemporaryZone(zoneId);
         boolean dungeonParent = isDungeonRoomsZone(zoneId);
@@ -1000,7 +1024,7 @@ public final class WaypointerScreen extends Screen {
                     currentStructure ? 0xFF5599FF : accent);
         }
         g.text(font, countStr, countX, y + 7, TEXT_MUTED, false);
-        g.fill(x1, y + ROW_H - 1, x2, y + ROW_H, BORDER);
+        if (divider) g.fill(x1, y + ROW_H - 1, x2, y + ROW_H, BORDER);
     }
 
     static int maxDropdownScroll(int zoneCount, int viewportHeight) {
@@ -1034,6 +1058,11 @@ public final class WaypointerScreen extends Screen {
         boolean showToggle = showEmptyIslandsToggle();
         int rowCount = dropdownTab == DropdownTab.DUNGEONS ? 1 : ids.size() + (showToggle ? 1 : 0);
         DropdownGeometry geo = islandDropdownGeometry(rowCount);
+        if (overZoneSearch(mx, my)) {
+            setFocused(zoneSearchBox);
+            zoneSearchBox.mouseClicked(event, doubleClick);
+            return true;
+        }
         boolean inside = mx >= geo.x1() && mx < geo.x2() && my >= geo.y1() && my < geo.y2();
         if (!inside) {
 
@@ -1075,12 +1104,6 @@ public final class WaypointerScreen extends Screen {
             return true;
         }
         if (dropdownTab == DropdownTab.DUNGEONS) return true;
-        if (zoneSearchShown() && zoneSearchBox != null
-                && my >= geo.tabsBottom() + 1 && my < geo.rowsTop()) {
-            setFocused(zoneSearchBox);
-            zoneSearchBox.mouseClicked(event, doubleClick);
-            return true;
-        }
         int idx = dropdownRowIndexAt(my, geo.rowsTop(), geo.rowsBottom(),
                 dropdownScrollOffset, rowCount);
         if (idx >= 0 && idx < ids.size()) {

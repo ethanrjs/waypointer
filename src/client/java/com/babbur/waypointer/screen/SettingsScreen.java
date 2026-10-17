@@ -1504,8 +1504,12 @@ public final class SettingsScreen extends Screen {
             default -> Icons.Icon.ROUTE;
         };
         int textX = x + 4 + Icons.SIZE;
-        // Color codes in the name would fight the tag's own color.
-        String plain = net.minecraft.ChatFormatting.stripFormatting(target.name().getString());
+        // Color codes in the name would fight the tag's own color. Dungeon room looks lead with
+        // the room, since many rooms have a route with the same name.
+        Component room = target.roomName();
+        String label = room == null ? target.name().getString()
+                : room.getString() + " \u00b7 " + target.name().getString();
+        String plain = net.minecraft.ChatFormatting.stripFormatting(label);
         String name = font.plainSubstrByWidth(plain == null ? "" : plain,
                 Math.max(20, PAD_OUTER + maxWidth - textX - 6));
         int right = textX + font.width(name) + 5;

@@ -36,7 +36,7 @@ final class WaypointerRouteList {
     private static final int MOUSE_BUTTON_LEFT = 0;
     private static final int MOUSE_BUTTON_RIGHT = 1;
     private static final double DRAG_THRESHOLD_SQUARED = 16.0;
-    static final int INFO_BUTTON_SIZE = 12;
+    static final int INFO_BUTTON_SIZE = 11;
     private static final String[] INFO_IDS = {
             "right_click", "double_click", "space", "toggle_chip", "multi_select", "select_all", "delete",
     };

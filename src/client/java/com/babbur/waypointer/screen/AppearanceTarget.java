@@ -116,6 +116,16 @@ record AppearanceTarget(AppearanceScope scope, Component name, Runnable afterWri
         return crumbs;
     }
 
+    /** The dungeon room a route or waypoint look belongs to, or null outside dungeon rooms. */
+    Component roomName() {
+        for (AppearanceScope.Layer layer : scope.parents()) {
+            if (layer.level() == AppearanceScope.Level.ZONE && DungeonRoomData.entry(layer.key()) != null) {
+                return zoneLabel(layer.key());
+            }
+        }
+        return null;
+    }
+
     static Component zoneLabel(String zoneKey) {
         return switch (zoneKey) {
             case "dungeon" -> Component.translatable("waypointer.screen.appearance.zone.dungeon");

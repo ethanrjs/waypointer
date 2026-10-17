@@ -334,8 +334,11 @@ public final class GuiTokens {
         g.fill(x, y, x + size, y + size, hovered ? 0xB0FFFFFF : BORDER);
         g.fill(x + 1, y + 1, x + size - 1, y + size - 1,
                 hovered ? INFO_FILL_HOVER : INFO_FILL);
-        int glyphX = x + (size - font.width("i")) / 2;
-        g.text(font, "i", glyphX, y + (size - StyledButton.VISIBLE_GLYPH_HEIGHT) / 2,
+        // The font's width includes a pixel of spacing after the glyph; centre the ink itself.
+        // An odd button size gives the one-pixel glyph a true middle column.
+        int glyphX = x + (size - (font.width("i") - 1)) / 2;
+        // The i's ink is seven pixels tall, from the dot down, starting at the top of its cell.
+        g.text(font, "i", glyphX, y + (size - 7) / 2,
                 hovered ? ACCENT : TEXT_DIM, false);
     }
 
