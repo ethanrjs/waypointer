@@ -66,4 +66,36 @@ class CrystalHollowsTerrainTest {
         assertEquals(1, merged.seenChunkCount());
         assertThrows(IOException.class, () -> CrystalHollowsTerrain.read(new ByteArrayInputStream(new byte[]{1, 2, 3})));
     }
+
+    @Test
+    void lobbiesVoteOutStructuresAndMinedHoles() {
+        int cx = Math.floorDiv(400, 16), cz = Math.floorDiv(400, 16);
+        CrystalHollowsTerrain a = solidChunk(cx, cz), b = solidChunk(cx, cz), c = solidChunk(cx, cz);
+        a.setSolid(400, 100, 400, false);                  // mined in one lobby only
+        for (CrystalHollowsTerrain scan : new CrystalHollowsTerrain[]{a, b, c}) {
+            scan.setSolid(401, 100, 400, false);           // a natural tunnel in every lobby
+        }
+        b.setSolid(402, 100, 400, false);
+        c.setSolid(402, 100, 400, false);                  // a structure's room in two of three
+        var vote = CrystalHollowsTerrainVote.vote(java.util.List.of(a, b, c));
+        assertTrue(vote.terrain().solid(400, 100, 400), "a hole one lobby dug is rock");
+        assertFalse(vote.terrain().solid(401, 100, 400), "the shared tunnel stays open");
+        assertFalse(vote.terrain().solid(402, 100, 400), "majority wins");
+        assertEquals(3, vote.scans(cx, cz));
+        assertEquals(0, vote.scans(cx + 1, cz));
+
+        var tie = CrystalHollowsTerrainVote.vote(java.util.List.of(a, b));
+        assertTrue(tie.terrain().solid(400, 100, 400), "a tie counts as rock");
+    }
+
+    private static CrystalHollowsTerrain solidChunk(int cx, int cz) {
+        CrystalHollowsTerrain terrain = new CrystalHollowsTerrain();
+        for (int y = 95; y <= 105; y++) {
+            for (int z = cz * 16; z < cz * 16 + 16; z++) {
+                for (int x = cx * 16; x < cx * 16 + 16; x++) terrain.setSolid(x, y, z, true);
+            }
+        }
+        terrain.markChunkSeen(cx, cz);
+        return terrain;
+    }
 }

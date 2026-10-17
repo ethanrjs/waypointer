@@ -33,9 +33,12 @@ import java.util.stream.Stream;
 
 /**
  * Developer tool for building the Crystal Hollows terrain map: while on, it records which blocks
- * are solid in every chunk the game receives, one file per lobby, and points a temporary waypoint
- * at the nearest part of the Hollows no scan has covered yet. The Crystal Hollows map shows the
- * covered area and the open space around the player's height.
+ * are solid in every chunk the game receives, one file per lobby. Lobbies differ in their random
+ * structures and player-mined holes, so the scans are combined by vote
+ * ({@link CrystalHollowsTerrainVote}) and every area needs {@value CrystalHollowsTerrainVote#LOBBIES_NEEDED}
+ * lobbies. A temporary waypoint points at the nearest area this lobby can still add a vote to; the
+ * Crystal Hollows map darkens unscanned areas, dims areas that need more lobbies, and shows the
+ * voted open space around the player's height.
  */
 public final class CrystalHollowsTerrainScanner {
     public static final String GROUP_ID = "waypointer:crystal_hollows_scan_next";
@@ -47,6 +50,9 @@ public final class CrystalHollowsTerrainScanner {
     private static final int OVERLAY_SIZE = (CrystalHollowsTerrain.SIZE_XZ + OVERLAY_BLOCKS - 1) / OVERLAY_BLOCKS;
     private static final int OPEN = 0xB8CFE3EA;
     private static final int UNSEEN = 0xC00B0F13;
+    private static final int NEEDS_MORE = 0x700B0F13;
+    /** Scans kept for the vote (about 8 MB each); more lobbies than this change little. */
+    private static final int MAX_SCANS = 9;
 
     private static CrystalHollowsTerrainScanner instance;
 
@@ -62,10 +68,12 @@ public final class CrystalHollowsTerrainScanner {
     private boolean enabled;
     private CrystalHollowsTerrain session;
     private String sessionLobby;
+    private int sessionDay = -1;
     private Path sessionFile;
     private boolean dirty;
     private long lastSaveMillis;
-    private volatile CrystalHollowsTerrain earlier;
+    private final List<CrystalHollowsTerrain> earlierScans = new java.util.ArrayList<>();
+    private volatile CrystalHollowsTerrainVote.Result earlier;
     private int cursor;
     private int ticks;
     private int[] markerChunk;
@@ -110,7 +118,7 @@ public final class CrystalHollowsTerrainScanner {
     public void previewOnly(CrystalHollowsTerrain terrain) {
         enabled = true;
         session = null;
-        earlier = terrain;
+        earlier = CrystalHollowsTerrainVote.vote(List.of(terrain, terrain, terrain));
         overlayRevision = -1;
     }
 
@@ -118,15 +126,28 @@ public final class CrystalHollowsTerrainScanner {
         return directory;
     }
 
-    /** Chunk columns covered by this lobby's scan or any earlier one, out of all of them. */
+    /** Chunk columns scanned in enough lobbies, out of all of them. */
     public int coveredChunks() {
-        int covered = 0;
+        return chunksWith(CrystalHollowsTerrainVote.LOBBIES_NEEDED);
+    }
+
+    /** Chunk columns scanned in at least one lobby. */
+    public int seenChunks() {
+        return chunksWith(1);
+    }
+
+    private int chunksWith(int scans) {
+        int count = 0;
         for (int cz = CrystalHollowsTerrain.MIN_CHUNK; cz <= CrystalHollowsTerrain.MAX_CHUNK; cz++) {
             for (int cx = CrystalHollowsTerrain.MIN_CHUNK; cx <= CrystalHollowsTerrain.MAX_CHUNK; cx++) {
-                if (covered(cx, cz)) covered++;
+                if (scans(cx, cz) >= scans) count++;
             }
         }
-        return covered;
+        return count;
+    }
+
+    public int lobbyDay() {
+        return sessionDay;
     }
 
     public int sessionChunks() {
@@ -141,9 +162,10 @@ public final class CrystalHollowsTerrainScanner {
         }
     }
 
-    private boolean covered(int cx, int cz) {
-        CrystalHollowsTerrain prior = earlier;
-        return session != null && session.chunkSeen(cx, cz) || prior != null && prior.chunkSeen(cx, cz);
+    /** Lobbies that have scanned this chunk column, counting this one. */
+    private int scans(int cx, int cz) {
+        CrystalHollowsTerrainVote.Result prior = earlier;
+        return (prior == null ? 0 : prior.scans(cx, cz)) + (session != null && session.chunkSeen(cx, cz) ? 1 : 0);
     }
 
     private void tick(Minecraft client) {
@@ -157,18 +179,21 @@ public final class CrystalHollowsTerrainScanner {
         if (lobby == null || lobby.isBlank()) lobby = "lobby";
         if (session == null || !lobby.equals(sessionLobby)) {
             finishSession(false);
-            startSession(lobby);
+            startSession(lobby, CrystalHollowsLobbyIdentity.currentDay(client.level));
         }
         scanLoadedChunks(client);
         if (++ticks % 20 == 0) updateMarker(client);
         if (dirty && System.currentTimeMillis() - lastSaveMillis > SAVE_EVERY_MS) save();
     }
 
-    private void startSession(String lobby) {
+    private void startSession(String lobby, int day) {
         session = new CrystalHollowsTerrain();
         sessionLobby = lobby;
+        sessionDay = day;
         String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-        sessionFile = directory.resolve(lobby.replaceAll("[^A-Za-z0-9_-]", "_") + "-" + stamp + EXTENSION);
+        // The lobby's day is in the name: young lobbies have the fewest player-mined holes.
+        sessionFile = directory.resolve(lobby.replaceAll("[^A-Za-z0-9_-]", "_") + "-day" + Math.max(0, day)
+                + "-" + stamp + EXTENSION);
         lastSaveMillis = System.currentTimeMillis();
         dirty = false;
         markerChunk = null;
@@ -184,12 +209,12 @@ public final class CrystalHollowsTerrainScanner {
         CrystalHollowsTerrain finished = session;
         session = null;
         sessionLobby = null;
-        CrystalHollowsTerrain prior = earlier;
-        if (prior != null) {
-            CrystalHollowsTerrain merged = prior.copy();
-            merged.fillFrom(finished);
-            earlier = merged;
-        }
+        if (finished.seenChunkCount() == 0) return;
+        CompletableFuture.runAsync(() -> {
+            earlierScans.add(finished);
+            while (earlierScans.size() > MAX_SCANS) earlierScans.removeFirst();
+            earlier = CrystalHollowsTerrainVote.vote(earlierScans);
+        }, io);
     }
 
     private CompletableFuture<?> save() {
@@ -217,14 +242,17 @@ public final class CrystalHollowsTerrainScanner {
         return Files.list(directory).filter(path -> path.getFileName().toString().endsWith(EXTENSION));
     }
 
+    /** Reads the newest {@value #MAX_SCANS} scans and votes them together. */
     private void loadEarlierScans() {
         earlier = null;
         CompletableFuture.runAsync(() -> {
-            CrystalHollowsTerrain merged = new CrystalHollowsTerrain();
+            earlierScans.clear();
             try (Stream<Path> files = scanFiles()) {
-                for (Path file : files.sorted().toList()) {
+                List<Path> newest = files.sorted(java.util.Comparator.comparing(CrystalHollowsTerrainScanner::modified)
+                        .reversed()).limit(MAX_SCANS).toList().reversed();
+                for (Path file : newest) {
                     try (InputStream in = Files.newInputStream(file)) {
-                        merged.fillFrom(CrystalHollowsTerrain.read(in));
+                        earlierScans.add(CrystalHollowsTerrain.read(in));
                     } catch (IOException e) {
                         Waypointer.LOGGER.warn("Skipping unreadable Crystal Hollows scan {}", file, e);
                     }
@@ -232,8 +260,16 @@ public final class CrystalHollowsTerrainScanner {
             } catch (IOException e) {
                 Waypointer.LOGGER.warn("Could not list Crystal Hollows scans in {}", directory, e);
             }
-            earlier = merged;
+            earlier = CrystalHollowsTerrainVote.vote(earlierScans);
         }, io);
+    }
+
+    private static long modified(Path file) {
+        try {
+            return Files.getLastModifiedTime(file).toMillis();
+        } catch (IOException e) {
+            return 0;
+        }
     }
 
     /** Scans a couple of newly loaded chunk columns per tick, walking the grid round-robin. */
@@ -277,14 +313,17 @@ public final class CrystalHollowsTerrainScanner {
         dirty = true;
     }
 
-    /** Points a temporary waypoint at the nearest chunk column no scan has covered. */
+    /**
+     * Points a temporary waypoint at the nearest chunk column this lobby hasn't scanned and that
+     * still needs more lobbies.
+     */
     private void updateMarker(Minecraft client) {
         double px = client.player.getX(), pz = client.player.getZ();
         int[] best = null;
         double bestDistance = Double.MAX_VALUE;
         for (int cz = CrystalHollowsTerrain.MIN_CHUNK; cz <= CrystalHollowsTerrain.MAX_CHUNK; cz++) {
             for (int cx = CrystalHollowsTerrain.MIN_CHUNK; cx <= CrystalHollowsTerrain.MAX_CHUNK; cx++) {
-                if (covered(cx, cz)) continue;
+                if (session.chunkSeen(cx, cz) || scans(cx, cz) >= CrystalHollowsTerrainVote.LOBBIES_NEEDED) continue;
                 double dx = cx * 16 + 8 - px, dz = cz * 16 + 8 - pz;
                 if (dx * dx + dz * dz < bestDistance) {
                     bestDistance = dx * dx + dz * dz;
@@ -303,7 +342,9 @@ public final class CrystalHollowsTerrainScanner {
             return;
         }
         int percent = coveredChunks() * 100 / CrystalHollowsTerrain.totalChunks();
-        String name = Component.translatable("waypointer.crystal.scan.next", percent).getString();
+        int votes = scans(chunk[0], chunk[1]);
+        String name = Component.translatable(votes == 0 ? "waypointer.crystal.scan.next"
+                : "waypointer.crystal.scan.next_again", percent, votes).getString();
         WaypointGroup group = new WaypointGroup(GROUP_ID, name, "crystal_hollows");
         group.setRuntimeOnly(true);
         group.setEnabled(true);
@@ -337,8 +378,9 @@ public final class CrystalHollowsTerrainScanner {
     }
 
     private void refreshOverlay(int feetY) {
+        CrystalHollowsTerrainVote.Result priorVote = earlier;
         int revision = (session == null ? 0 : session.revision()) * 31
-                + (earlier == null ? 0 : earlier.revision() + 1);
+                + (priorVote == null ? 0 : System.identityHashCode(priorVote));
         if (overlay != null && revision == overlayRevision && feetY == overlayFeetY) return;
         if (overlay != null && ticks % 10 != 0 && feetY == overlayFeetY) return;
         if (overlay == null) {
@@ -349,19 +391,20 @@ public final class CrystalHollowsTerrainScanner {
         overlayRevision = revision;
         overlayFeetY = feetY;
         CrystalHollowsTerrain current = session;
-        CrystalHollowsTerrain prior = earlier;
+        CrystalHollowsTerrain prior = priorVote == null ? null : priorVote.terrain();
         NativeImage image = overlay.getPixels();
         for (int py = 0; py < OVERLAY_SIZE; py++) {
             int z = CrystalHollowsTerrain.MIN_Z + py * OVERLAY_BLOCKS;
             for (int px = 0; px < OVERLAY_SIZE; px++) {
                 int x = CrystalHollowsTerrain.MIN_X + px * OVERLAY_BLOCKS;
                 int cx = Math.floorDiv(x, 16), cz = Math.floorDiv(z, 16);
-                CrystalHollowsTerrain source = current != null && current.chunkSeen(cx, cz) ? current
-                        : prior != null && prior.chunkSeen(cx, cz) ? prior : null;
+                // Earlier lobbies' vote where there is one; this lobby alone otherwise.
+                CrystalHollowsTerrain source = prior != null && prior.chunkSeen(cx, cz) ? prior
+                        : current != null && current.chunkSeen(cx, cz) ? current : null;
                 int argb;
                 if (source == null) argb = UNSEEN;
-                else argb = source.walkableNear(x, z, feetY, 2) || source.walkableNear(x + 1, z + 1, feetY, 2)
-                        ? OPEN : 0;
+                else if (source.walkableNear(x, z, feetY, 2) || source.walkableNear(x + 1, z + 1, feetY, 2)) argb = OPEN;
+                else argb = scans(cx, cz) < CrystalHollowsTerrainVote.LOBBIES_NEEDED ? NEEDS_MORE : 0;
                 image.setPixelABGR(px, py, abgr(argb));
             }
         }

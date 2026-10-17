@@ -6,6 +6,7 @@ import com.babbur.waypointer.crystal.CrystalHollowsSightingSelector;
 import com.babbur.waypointer.crystal.CrystalHollowsStructure;
 import com.babbur.waypointer.crystal.CrystalHollowsTerrain;
 import com.babbur.waypointer.crystal.CrystalHollowsTerrainScanner;
+import com.babbur.waypointer.crystal.CrystalHollowsTerrainVote;
 import com.babbur.waypointer.crystal.CrystalHollowsShare;
 import com.babbur.waypointer.crystal.CrystalHollowsTracker;
 import com.babbur.waypointer.crystal.SightingConfidence;
@@ -105,9 +106,10 @@ public final class CrystalHollowsCommands {
             return 1;
         }
         int total = CrystalHollowsTerrain.totalChunks();
-        int covered = scanner.coveredChunks();
         success(source, Component.translatable("waypointer.crystal.scan.status",
-                covered * 100 / total, covered, total, scanner.sessionChunks(), scanner.earlierScanCount()));
+                scanner.coveredChunks() * 100 / total, scanner.seenChunks() * 100 / total,
+                CrystalHollowsTerrainVote.LOBBIES_NEEDED, scanner.sessionChunks(),
+                Math.max(0, scanner.lobbyDay()), scanner.earlierScanCount()));
         return 1;
     }
 
