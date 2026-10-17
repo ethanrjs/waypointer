@@ -2089,6 +2089,16 @@ public final class GroupEditScreen extends Screen {
             items.add(ContextMenuOverlay.Item.of(
                     Component.translatable("waypointer.screen.group_edit.menu.types"),
                     null, () -> dungeonTypePickerIndex = index));
+            if (subwaypoint && (waypoint.flags() & Waypoint.DUNGEON_COMPLETION_FLAGS) != 0) {
+                boolean anyOrder = waypoint.hasFlag(Waypoint.FLAG_STEP_ANY_ORDER);
+                Component orderLabel = Component.translatable(anyOrder
+                        ? "waypointer.screen.group_edit.menu.in_order"
+                        : "waypointer.screen.group_edit.menu.any_order");
+                items.add(DungeonRoomRouteLibrary.durableEditTarget(manager, group) == group
+                        ? ContextMenuOverlay.Item.of(orderLabel, null, () -> toggleAnyOrder(index))
+                        : ContextMenuOverlay.Item.disabled(orderLabel, Component.translatable(
+                                "waypointer.screen.group_edit.menu.appearance.room_copy").getString()));
+            }
         }
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.group_edit.menu.remove"),
@@ -2115,7 +2125,16 @@ public final class GroupEditScreen extends Screen {
             Map.entry("waypointer.screen.group_edit.menu.color_reset", Icons.Icon.RESET),
             Map.entry("waypointer.screen.group_edit.menu.appearance", Icons.Icon.BRUSH),
             Map.entry("waypointer.screen.group_edit.menu.types", Icons.Icon.TAG),
+            Map.entry("waypointer.screen.group_edit.menu.any_order", Icons.Icon.PREV_NEXT),
+            Map.entry("waypointer.screen.group_edit.menu.in_order", Icons.Icon.PREV_NEXT),
             Map.entry("waypointer.screen.group_edit.menu.remove", Icons.Icon.TRASH));
+
+    private void toggleAnyOrder(int index) {
+        if (index < 0 || index >= group.size()) return;
+        Waypoint waypoint = group.get(index);
+        group.set(index, waypoint.withFlags(waypoint.flags() ^ Waypoint.FLAG_STEP_ANY_ORDER));
+        recordEdit();
+    }
 
     private void setCurrentWaypoint(int index) {
         selectWaypoint(index);

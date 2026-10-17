@@ -65,6 +65,10 @@ final class DungeonRouteGroupAdapter {
             }
             int flags = flagsForTrigger(dungeonWaypoint.trigger());
             if (stageHasMain) flags |= Waypoint.FLAG_SUBWAYPOINT;
+            // Blocks to mine can be dug in any order; the step's secret still ends the step.
+            if (stageHasMain && isMining(dungeonWaypoint.trigger())) {
+                flags |= Waypoint.FLAG_STEP_ANY_ORDER;
+            }
             if (dungeonWaypoint.completesSecret()) flags |= Waypoint.FLAG_DUNGEON_SECRET;
             if (usesLineOfSight(dungeonWaypoint.trigger())) flags |= Waypoint.FLAG_DEPTH_CHECKED;
             int color = actionColor(dungeonWaypoint);
@@ -83,9 +87,9 @@ final class DungeonRouteGroupAdapter {
                 if (dungeonWaypoint.trigger() == DungeonWaypointTrigger.THROW_PEARL) {
                     highlightFlags |= Waypoint.FLAG_DUNGEON_PEARL_TARGET
                             | Waypoint.FLAG_HIDE_BEACON | Waypoint.FLAG_HIDE_NAME;
-                } else if (dungeonWaypoint.trigger() == DungeonWaypointTrigger.BREAK_BLOCKS
-                        || dungeonWaypoint.trigger() == DungeonWaypointTrigger.DUNGEONBREAKER) {
-                    highlightFlags |= flagsForTrigger(dungeonWaypoint.trigger());
+                } else if (isMining(dungeonWaypoint.trigger())) {
+                    highlightFlags |= flagsForTrigger(dungeonWaypoint.trigger())
+                            | Waypoint.FLAG_STEP_ANY_ORDER;
                     if (usesLineOfSight(dungeonWaypoint.trigger())) {
                         highlightFlags |= Waypoint.FLAG_DEPTH_CHECKED;
                     }
@@ -150,6 +154,11 @@ final class DungeonRouteGroupAdapter {
                     Waypoint.FLAG_SKIP_ON_INTERACT;
             case CHAT_MESSAGE, MANUAL -> Waypoint.FLAG_SKIP_ON_STAND;
         };
+    }
+
+    private static boolean isMining(DungeonWaypointTrigger trigger) {
+        return trigger == DungeonWaypointTrigger.BREAK_BLOCKS
+                || trigger == DungeonWaypointTrigger.DUNGEONBREAKER;
     }
 
     private static boolean usesLineOfSight(DungeonWaypointTrigger trigger) {

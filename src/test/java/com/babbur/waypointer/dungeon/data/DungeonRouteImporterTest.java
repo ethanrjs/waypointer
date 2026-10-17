@@ -104,6 +104,29 @@ class DungeonRouteImporterTest {
     }
 
     @Test
+    void secretRoutesMineBlocksCanBeDugInAnyOrder() {
+        WaypointGroup room = DungeonRouteImporter.parse("""
+                {
+                  "Arrow-Trap-1": [
+                    {
+                      "locations": [],
+                      "etherwarps": [[10, 75, 3]],
+                      "mines": [[11, 70, 3], [11, 71, 3]],
+                      "secret": { "type": "interact", "location": [12, 70, 3] }
+                    }
+                  ]
+                }
+                """).groups().getFirst();
+        assertFalse(room.get(0).hasFlag(Waypoint.FLAG_STEP_ANY_ORDER));
+        assertTrue(room.get(1).hasFlag(Waypoint.FLAG_SKIP_ON_MINE));
+        assertTrue(room.isAnyOrderStepMember(1));
+        assertTrue(room.isAnyOrderStepMember(2));
+        assertFalse(room.isAnyOrderStepMember(3), "the secret stays in order");
+        room.advancePast(0);
+        assertEquals(3, room.currentIndex());
+    }
+
+    @Test
     void secretRoutesKeepEditablePathGuidesWithoutAddingCompletionSteps() {
         WaypointGroup room = DungeonRouteImporter.parse(SECRET_ROUTES_JSON).groups().getFirst();
         assertEquals(2, room.mainWaypointCount());

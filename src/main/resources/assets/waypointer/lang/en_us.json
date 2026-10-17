@@ -1182,6 +1182,8 @@
   "waypointer.screen.group_edit.menu.subwaypoint_first": "first waypoint",
   "waypointer.screen.group_edit.menu.subwaypoint_no_main": "needs a main waypoint before it",
   "waypointer.screen.group_edit.menu.types": "Waypoint types...",
+  "waypointer.screen.group_edit.menu.any_order": "Do in any order",
+  "waypointer.screen.group_edit.menu.in_order": "Do in order",
   "waypointer.screen.group_edit.menu.remove": "Remove",
   "waypointer.import.error.damaged": "That looks like a route code, but it couldn't be read. Copy the whole code and try again.",
   "waypointer.import.error.unrecognized": "Not a recognized route code. Supported formats: Waypointer, Skyblocker, Skytils, SkyHanni, Soopy, Firmament, and ChunkLogger.",
