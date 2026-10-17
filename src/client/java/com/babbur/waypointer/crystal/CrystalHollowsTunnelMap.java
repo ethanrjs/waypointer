@@ -16,15 +16,17 @@ import java.util.zip.GZIPInputStream;
 /**
  * The Crystal Hollows' natural tunnels, built from terrain scans by
  * {@code tools/crystal_hollows/build_tunnels.py}: for every column, which 10-block bands of
- * height have somewhere to stand. The map draws every tunnel at once, brightest near the
- * player's height and fainter the further above or below it runs.
+ * height have somewhere to stand. The map shows the tunnels within about ten blocks of the
+ * player's height, tinted by the area they run through (Magma Fields below Y 64).
  */
 public final class CrystalHollowsTunnelMap {
     private static final String RESOURCE = "/assets/waypointer/crystal_hollows/tunnels.bin.gz";
     private static final int MAGIC = 0x57504354; // "WPCT"
     /** Blocks per map pixel; close to the map's size on screen, so lines stay crisp. */
     private static final int CELL = 4;
-    private static final int COLOR = 0xCFE0E8;
+    private static final int JUNGLE = 0x5FD08A, MITHRIL = 0x5CC6DD, GOBLIN = 0xE0AE6A,
+            PRECURSOR = 0x8C9EF0, MAGMA = 0xF07850;
+    private static final int MAGMA_TOP_Y = 64;
 
     private static CrystalHollowsTunnelMap instance;
     private static boolean loaded;
@@ -100,31 +102,42 @@ public final class CrystalHollowsTunnelMap {
         textureBand = playerBand;
         NativeImage image = texture.getPixels();
         for (int cell = 0; cell < cellBands.length; cell++) {
+            int px = cell % pixels, pz = cell / pixels;
+            int shown = nearestBand(cellBands[cell], playerBand);
             int alpha = alpha(cellBands[cell], cellColumns[cell], playerBand);
-            int argb = alpha << 24 | COLOR;
-            image.setPixelABGR(cell % pixels, cell / pixels,
-                    (argb & 0xFF00FF00) | ((argb >> 16) & 0xFF) | ((argb & 0xFF) << 16));
+            int rgb = shown < 0 ? 0 : tint(minX + px * CELL + CELL / 2, minZ + pz * CELL + CELL / 2,
+                    minY + shown * band);
+            int argb = alpha << 24 | rgb;
+            image.setPixelABGR(px, pz, (argb & 0xFF00FF00) | ((argb >> 16) & 0xFF) | ((argb & 0xFF) << 16));
         }
         texture.upload();
     }
 
+    /** The area color: Magma Fields below Y 64, otherwise the quadrant. */
+    static int tint(int x, int z, int bandBottomY) {
+        if (bandBottomY < MAGMA_TOP_Y) return MAGMA;
+        boolean west = x < CrystalHollowsGeometry.NUCLEUS_CENTRE_X;
+        boolean north = z < CrystalHollowsGeometry.NUCLEUS_CENTRE_Z;
+        return north ? (west ? JUNGLE : MITHRIL) : (west ? GOBLIN : PRECURSOR);
+    }
+
+    /** The band shown for a spot: the player's own, else one band above or below; -1 for none. */
+    static int nearestBand(int bandsMask, int playerBand) {
+        if ((bandsMask & (1 << playerBand)) != 0) return playerBand;
+        if (playerBand > 0 && (bandsMask & (1 << (playerBand - 1))) != 0) return playerBand - 1;
+        if ((bandsMask & (1 << (playerBand + 1))) != 0) return playerBand + 1;
+        return -1;
+    }
+
     /**
-     * Brighter the nearer the tunnel runs to the player's height, and the more of the pixel's
-     * columns it fills (which smooths the edges).
+     * Only tunnels near the player's height show: their own band clearly, the bands just above
+     * and below faintly. Thin edges (few of the pixel's columns) are fainter, which smooths them.
      */
     static int alpha(int bandsMask, int columns, int playerBand) {
-        if (bandsMask == 0 || columns <= 0) return 0;
-        int nearest = Integer.MAX_VALUE;
-        for (int b = 0; b < 16; b++) {
-            if ((bandsMask & (1 << b)) != 0) nearest = Math.min(nearest, Math.abs(b - playerBand));
-        }
-        double depth = switch (nearest) {
-            case 0 -> 1.0;
-            case 1 -> 0.42;
-            case 2 -> 0.24;
-            default -> 0.12;
-        };
+        int shown = nearestBand(bandsMask, playerBand);
+        if (shown < 0 || columns <= 0) return 0;
+        double depth = shown == playerBand ? 1.0 : 0.45;
         double fill = Math.min(1.0, columns / (double) (CELL * CELL / 2));
-        return (int) Math.round(176 * depth * fill);
+        return (int) Math.round(215 * depth * fill);
     }
 }

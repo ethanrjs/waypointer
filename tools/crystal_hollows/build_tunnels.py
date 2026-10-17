@@ -56,6 +56,16 @@ def column_mask(seen, minx, size):
     return cells[start:start + size, start:start + size]
 
 
+def despeckle(layer, radius=3, keep=12):
+    """Drops specks: spots with fewer than {keep} standable columns within {radius} blocks,
+    mostly bits of structures or mined holes that survived the vote."""
+    padded = np.pad(layer.astype(np.int32), radius + 1)
+    total = padded.cumsum(0).cumsum(1)
+    w = 2 * radius + 1
+    window = (total[w:, w:] - total[:-w, w:] - total[w:, :-w] + total[:-w, :-w])
+    return layer & (window[: layer.shape[0], : layer.shape[1]] >= keep)
+
+
 def main():
     folder = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else None
     if folder is None or not folder.is_dir():
@@ -64,10 +74,16 @@ def main():
     for path in sorted(folder.glob("*.wpch")):
         lobby = re.split(r"-(?:day\d+-)?\d{8}-\d{6}", path.stem)[0]
         scan = load(path)
-        best = by_lobby.get(lobby)
-        # One vote per lobby: keep the visit that covered the most.
-        if best is None or scan["seen"].sum() > best["seen"].sum():
+        known = by_lobby.get(lobby)
+        if known is None:
             by_lobby[lobby] = scan
+            continue
+        # One vote per lobby: later visits only fill chunks the earlier ones missed, since the
+        # earlier view has had less mining.
+        new = scan["seen"] & ~known["seen"]
+        columns = column_mask(new, scan["minx"], scan["size"])
+        known["solid"][:, columns] = scan["solid"][:, columns]
+        known["seen"] |= new
     if not by_lobby:
         sys.exit(f"No scans in {folder}")
     scans = list(by_lobby.values())
@@ -89,7 +105,7 @@ def main():
     masks = np.zeros((size, size), np.uint16)
     for band in range(bands):
         layer = standable[band * BAND:(band + 1) * BAND].any(axis=0)
-        masks |= layer.astype(np.uint16) << band
+        masks |= despeckle(layer).astype(np.uint16) << band
 
     chunk_lobbies = np.zeros((CHUNKS, CHUNKS), np.uint8)
     for scan in scans:
@@ -100,6 +116,9 @@ def main():
     OUT.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(OUT, "wb", compresslevel=9) as out:
         out.write(header + body)
+    histogram = ", ".join(f"{n} lobbies: {int((chunk_lobbies == n).sum())}"
+                          for n in range(1, int(chunk_lobbies.max()) + 1))
+    print(f"Chunks by lobbies covering them: {histogram}")
     print(f"{len(scans)} lobbies ({', '.join(by_lobby)}); "
           f"{int((chunk_lobbies >= 3).sum())} of {CHUNKS * CHUNKS} chunks in 3+ lobbies, "
           f"{int((chunk_lobbies >= 1).sum())} seen; {OUT.stat().st_size / 1024:.0f} KB")
