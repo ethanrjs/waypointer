@@ -171,7 +171,24 @@ final class CatalogJson {
                 optionalNonNegativeLong(route, "downloads", 0L),
                 optionalString(route, "createdAt", MAX_TEXT, ""),
                 optionalString(route, "updatedAt", MAX_TEXT, ""),
-                optionalString(route, "sharePath", 128, "/r/" + id));
+                optionalString(route, "sharePath", 128, "/r/" + id),
+                optionalTags(route));
+    }
+
+    private static final Pattern TAG = Pattern.compile("[a-z0-9][a-z0-9-]{0,31}");
+
+    /** Optional server-assigned tags such as {@code mining-cult}; unknown or malformed ones are ignored. */
+    private static List<String> optionalTags(JsonObject route) {
+        JsonElement value = route.get("tags");
+        if (value == null || !value.isJsonArray()) return List.of();
+        List<String> tags = new ArrayList<>();
+        for (JsonElement element : value.getAsJsonArray()) {
+            if (tags.size() >= 8) break;
+            if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) continue;
+            String tag = element.getAsString().trim().toLowerCase(java.util.Locale.ROOT);
+            if (TAG.matcher(tag).matches() && !tags.contains(tag)) tags.add(tag);
+        }
+        return List.copyOf(tags);
     }
 
     private static JsonObject object(JsonElement value, String name) {

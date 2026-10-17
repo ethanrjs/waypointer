@@ -51,6 +51,41 @@ class CatalogBrowserModelTest {
     }
 
     @Test
+    void sortsAndTagFilterReorderOnlyTheLoadedRoutes() {
+        CatalogBrowserModel model = new CatalogBrowserModel();
+        ActiveGroupManager manager = new ActiveGroupManager();
+        CatalogRouteSummary quiet = summary("AAAAAAAAAAAAAAAAAAAAAA", "Quiet", 1);
+        CatalogRouteSummary busy = withInstallsAndTags(summary("BBBBBBBBBBBBBBBBBBBBBB", "Busy", 1), 90,
+                List.of(CatalogRouteSummary.TAG_MINING_CULT));
+        CatalogRouteSummary alpha = withInstallsAndTags(summary("CCCCCCCCCCCCCCCCCCCCCC", "Alpha", 1), 5, List.of());
+        model.applyPage(new CatalogPage(List.of(quiet, busy, alpha), false, null), false);
+
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(List.of(quiet, busy, alpha), model.routes(), "recommended keeps the catalog's order");
+        assertTrue(model.setSort(CatalogBrowserModel.Sort.POPULAR));
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(List.of(busy, alpha, quiet), model.routes());
+        model.setSort(CatalogBrowserModel.Sort.NAME);
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(List.of(alpha, busy, quiet), model.routes());
+
+        assertTrue(model.anyLoadedRouteHas(CatalogRouteSummary.TAG_MINING_CULT));
+        model.setTagFilter(CatalogRouteSummary.TAG_MINING_CULT);
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(List.of(busy), model.routes());
+        model.setTagFilter(null);
+        model.filterInstalled(API_ROOT, manager, false);
+        assertEquals(3, model.routes().size());
+    }
+
+    private static CatalogRouteSummary withInstallsAndTags(CatalogRouteSummary route, long installs, List<String> tags) {
+        return new CatalogRouteSummary(route.id(), route.title(), route.description(), route.authorName(),
+                route.publisherId(), route.publisherVerified(), route.visibility(), route.zoneId(), route.zoneLabel(),
+                route.waypointCount(), route.groupCount(), route.codecVersion(), route.version(), installs,
+                route.createdAt(), route.updatedAt(), route.sharePath(), tags);
+    }
+
+    @Test
     void pagesAppendByIdentityAndReconcileSelection() {
         CatalogBrowserModel model = new CatalogBrowserModel();
         CatalogRouteSummary first = summary("AAAAAAAAAAAAAAAAAAAAAA", "First", 1);

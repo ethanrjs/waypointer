@@ -28,6 +28,7 @@ info
 gear
 globe
 upload
+download
 export
 pin
 target
@@ -47,3 +48,5 @@ share
 mail
 close
 dot
+badge_pickaxe
+badge_check

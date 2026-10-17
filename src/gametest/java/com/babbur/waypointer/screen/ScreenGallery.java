@@ -119,10 +119,7 @@ public final class ScreenGallery {
         });
         context.waitTicks(2);
         context.takeScreenshot("gallery-appearance-scope-open-s" + scale);
-        shoot(context, "catalog", scale, () -> new RouteCatalogScreen(null,
-                com.babbur.waypointer.catalog.RouteCatalogClient.production()));
-        context.waitTicks(40);
-        context.takeScreenshot("gallery-catalog-loaded-s" + scale);
+        shootCatalog(context, scale);
         context.runOnClient(client -> {
             MinecraftCompat.setScreen(client, null);
             RoutePublishScreen.open(null, config, manager.get(routeId));
@@ -130,6 +127,107 @@ public final class ScreenGallery {
         context.waitTicks(5);
         context.takeScreenshot("gallery-publish-s" + scale);
         context.runOnClient(client -> MinecraftCompat.setScreen(client, null));
+    }
+
+    /** The community browser on a seeded catalog page, so the shots never depend on the live server. */
+    private static void shootCatalog(ClientGameTestContext context, int scale) {
+        context.runOnClient(client -> {
+            var screen = new RouteCatalogScreen(null, com.babbur.waypointer.catalog.RouteCatalogClient.production());
+            setField(screen, "listRequested", true);
+            MinecraftCompat.setScreen(client, screen);
+            invoke(screen, "applyPage", new Class<?>[]{com.babbur.waypointer.catalog.CatalogPage.class, boolean.class},
+                    new com.babbur.waypointer.catalog.CatalogPage(catalogRoutes(), false, null), false);
+            @SuppressWarnings("unchecked")
+            var previews = (java.util.Map<String, Object>) field(screen, "previews");
+            previews.put(catalogRoutes().get(0).id(), previewOf(sampleRoute()));
+            invoke(screen, "rebuildWidgets", new Class<?>[0]);
+        });
+        context.waitTicks(3);
+        context.takeScreenshot("gallery-catalog-s" + scale);
+        context.runOnClient(client -> invoke(MinecraftCompat.screen(client), "toggleSortMenu", new Class<?>[0]));
+        context.waitTicks(2);
+        context.takeScreenshot("gallery-catalog-sort-s" + scale);
+        context.runOnClient(client -> {
+            Screen screen = MinecraftCompat.screen(client);
+            invoke(screen, "toggleSortMenu", new Class<?>[0]);
+            var browser = field(screen, "browser");
+            invoke(browser, "setTagFilter", new Class<?>[]{String.class},
+                    com.babbur.waypointer.catalog.CatalogRouteSummary.TAG_MINING_CULT);
+            invoke(screen, "applyFilters", new Class<?>[0]);
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("gallery-catalog-mining-cult-s" + scale);
+        context.runOnClient(client -> {
+            Screen screen = MinecraftCompat.screen(client);
+            invoke(field(screen, "browser"), "setTagFilter", new Class<?>[]{String.class}, (Object) null);
+            invoke(screen, "applyFilters", new Class<?>[0]);
+            if (!(boolean) field(screen, "wideLayout")) {
+                var route = invoke(screen, "selectedRoute", new Class<?>[0]);
+                invoke(screen, "openRoute", new Class<?>[]{com.babbur.waypointer.catalog.CatalogRouteSummary.class}, route);
+            }
+        });
+        context.waitTicks(2);
+        context.takeScreenshot("gallery-catalog-detail-s" + scale);
+    }
+
+    private static Object previewOf(WaypointGroup route) {
+        try {
+            var of = Class.forName("com.babbur.waypointer.screen.CatalogRoutePreview")
+                    .getDeclaredMethod("of", List.class);
+            of.setAccessible(true);
+            return of.invoke(null, List.of(route));
+        } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
+    }
+
+    /** A tungsten loop through the Glacite Tunnels, for the preview map. */
+    private static WaypointGroup sampleRoute() {
+        WaypointGroup route = WaypointGroup.create("Glacite tungsten", "dwarven_mines");
+        int[][] points = {{0, 120, 0}, {14, 118, -6}, {30, 116, -4}, {44, 117, 8}, {52, 119, 24},
+                {48, 121, 40}, {36, 120, 52}, {20, 118, 58}, {4, 116, 54}, {-8, 115, 44},
+                {-14, 117, 30}, {-6, 119, 22}, {6, 121, 26}, {18, 120, 34}, {26, 118, 22}, {16, 117, 10}};
+        for (int[] p : points) route.add(Waypoint.at(p[0], p[1], p[2]));
+        route.toggleSubwaypoint(12);
+        return route;
+    }
+
+    private static List<com.babbur.waypointer.catalog.CatalogRouteSummary> catalogRoutes() {
+        String now = java.time.Instant.now().toString();
+        String week = java.time.Instant.now().minus(java.time.Duration.ofDays(6)).toString();
+        String months = java.time.Instant.now().minus(java.time.Duration.ofDays(70)).toString();
+        String mc = com.babbur.waypointer.catalog.CatalogRouteSummary.TAG_MINING_CULT;
+        return List.of(
+                route("AAAAAAAAAAAAAAAAAAAAA1", "Glacite tungsten loop", "Tungsten and umber nodes through the Glacite Tunnels, ordered for one clean lap with a mineshaft check at the end.",
+                        "Kaeso", true, "dwarven_mines", "Dwarven Mines", 16, 412, week, now, List.of(mc)),
+                route("AAAAAAAAAAAAAAAAAAAAA2", "Ruby under Amethyst Quadrant", "Ruby veins below the amethyst quadrant.",
+                        "AAAHHHHHH", false, "crystal_hollows", "Crystal Hollows", 27, 126, months, week, List.of(mc)),
+                route("AAAAAAAAAAAAAAAAAAAAA3", "Hideonleaf spots", "Every hideonleaf spawn on Galatea.",
+                        "YourWhiteAngel", false, "galatea", "Galatea", 51, 88, months, months, List.of()),
+                route("AAAAAAAAAAAAAAAAAAAAA4", "Invisibug", "Invisibug spawns, clockwise.",
+                        "Liquing1", false, "galatea", "Galatea", 44, 61, week, week, List.of()),
+                route("AAAAAAAAAAAAAAAAAAAAA5", "Gemstone grinding route", "Topaz and jade in one lap.",
+                        "Mining Cult", true, "crystal_hollows", "Crystal Hollows", 38, 302, months, now, List.of(mc)),
+                route("AAAAAAAAAAAAAAAAAAAAA6", "Voidling Extremist", "Voidling spawns in the End.",
+                        "casihaingoai", false, "the_end", "The End", 5, 22, week, week, List.of()),
+                route("AAAAAAAAAAAAAAAAAAAAA7", "Automaton spawns", "Lost Precursor City automatons.",
+                        "BABBUR2", true, "crystal_hollows", "Crystal Hollows", 32, 240, months, months, List.of()),
+                route("AAAAAAAAAAAAAAAAAAAAA8", "Torrhus tree protection", "Critter trees in Torrhus Canyon.",
+                        "M2AT", false, "torrhus_canyon", "Torrhus Canyon", 4, 9, now, now, List.of()));
+    }
+
+    private static com.babbur.waypointer.catalog.CatalogRouteSummary route(
+            String id, String title, String description, String author, boolean verified, String zoneId,
+            String zoneLabel, int waypoints, long installs, String created, String updated, List<String> tags) {
+        return new com.babbur.waypointer.catalog.CatalogRouteSummary(id, title, description, author, "", verified,
+                "public", zoneId, zoneLabel, waypoints, 1,
+                com.babbur.waypointer.catalog.CatalogProtocol.currentCodecVersion(), 1, installs, created, updated, "/r/" + id, tags);
+    }
+
+    private static void setField(Object owner, String name, Object value) {
+        try {
+            var f = owner.getClass().getDeclaredField(name);
+            f.setAccessible(true);
+            f.set(owner, value);
+        } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
 
     private static void call(ClientGameTestContext context, String method) {
@@ -151,11 +249,19 @@ public final class ScreenGallery {
         context.takeScreenshot("gallery-" + name + "-s" + scale);
     }
 
-    private static void invoke(Object owner, String name, Class<?>[] types, Object... args) {
+    private static Object invoke(Object owner, String name, Class<?>[] types, Object... args) {
         try {
-            var method = owner.getClass().getDeclaredMethod(name, types);
-            method.setAccessible(true);
-            method.invoke(owner, args);
+            Class<?> type = owner.getClass();
+            while (true) {
+                try {
+                    var method = type.getDeclaredMethod(name, types);
+                    method.setAccessible(true);
+                    return method.invoke(owner, args);
+                } catch (NoSuchMethodException missing) {
+                    type = type.getSuperclass();
+                    if (type == null) throw missing;
+                }
+            }
         } catch (ReflectiveOperationException e) { throw new AssertionError(e); }
     }
 

@@ -6,12 +6,45 @@ import com.babbur.waypointer.catalog.CatalogRouteSummary;
 import com.babbur.waypointer.core.ActiveGroupManager;
 import com.babbur.waypointer.util.MathUtil;
 
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 
 final class CatalogBrowserModel {
+
+    /** Client-side order of the loaded routes. */
+    enum Sort {
+        /** The catalog's own order, which is search relevance while searching. */
+        RECOMMENDED("recommended"),
+        POPULAR("popular"), NEWEST("newest"), UPDATED("updated"), WAYPOINTS("waypoints"), NAME("name");
+
+        final String id;
+
+        Sort(String id) { this.id = id; }
+
+        Comparator<CatalogRouteSummary> comparator() {
+            Comparator<CatalogRouteSummary> byTitle = Comparator.comparing(
+                    route -> route.title().toLowerCase(java.util.Locale.ROOT));
+            return switch (this) {
+                case RECOMMENDED -> (a, b) -> 0;
+                case POPULAR -> Comparator.comparingLong(CatalogRouteSummary::downloads).reversed()
+                        .thenComparing(CatalogRouteSummary::updatedAt, Comparator.reverseOrder())
+                        .thenComparing(byTitle);
+                case NEWEST -> Comparator.comparing(CatalogRouteSummary::createdAt, Comparator.reverseOrder())
+                        .thenComparing(byTitle);
+                case UPDATED -> Comparator.comparing(CatalogRouteSummary::updatedAt, Comparator.reverseOrder())
+                        .thenComparing(byTitle);
+                case WAYPOINTS -> Comparator.comparingInt(CatalogRouteSummary::waypointCount).reversed()
+                        .thenComparing(byTitle);
+                case NAME -> byTitle;
+            };
+        }
+    }
+
     private List<CatalogRouteSummary> routes = List.of();
+    private Sort sort = Sort.RECOMMENDED;
+    private String tagFilter;
     private List<CatalogRouteSummary> loadedRoutes = List.of();
     private boolean filteringInstalled;
     private String query = "";
@@ -107,15 +140,48 @@ final class CatalogBrowserModel {
         reconcileSelection();
     }
 
+    Sort sort() {
+        return sort;
+    }
+
+    boolean setSort(Sort next) {
+        if (next == null || next == sort) return false;
+        sort = next;
+        scrollOffset = 0;
+        return true;
+    }
+
+    /** Only routes carrying this tag, or every route when {@code null}. */
+    String tagFilter() {
+        return tagFilter;
+    }
+
+    boolean setTagFilter(String tag) {
+        if (Objects.equals(tag, tagFilter)) return false;
+        tagFilter = tag;
+        scrollOffset = 0;
+        return true;
+    }
+
+    /** Whether any loaded route carries the tag, so its filter is worth offering. */
+    boolean anyLoadedRouteHas(String tag) {
+        return loadedRoutes.stream().anyMatch(route -> route.hasTag(tag));
+    }
+
+    /** Applies the installed and tag filters and the sort order to the loaded routes. */
     void filterInstalled(String apiRoot, ActiveGroupManager manager, boolean onlyNotInstalled) {
         if (filteringInstalled != onlyNotInstalled) scrollOffset = 0;
         filteringInstalled = onlyNotInstalled;
-        List<CatalogRouteSummary> visible = onlyNotInstalled ? loadedRoutes.stream()
+        List<CatalogRouteSummary> visible = loadedRoutes.stream()
+                .filter(route -> tagFilter == null || route.hasTag(tagFilter))
                 .filter(route -> {
+                    if (!onlyNotInstalled) return true;
                     CatalogInstallState.Action action = installState(apiRoot, manager, route).action();
                     return action != CatalogInstallState.Action.INSTALLED
                             && action != CatalogInstallState.Action.LOCAL_NEWER;
-                }).toList() : loadedRoutes;
+                })
+                .sorted(sort.comparator())
+                .toList();
         if (routes.equals(visible)) return;
         routes = visible;
         reconcileSelection();

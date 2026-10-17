@@ -7,7 +7,6 @@ import com.babbur.waypointer.compat.MinecraftCompat;
 import com.babbur.waypointer.screen.RouteCatalogScreen;
 import net.fabricmc.fabric.api.client.gametest.v1.context.ClientGameTestContext;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.network.chat.Component;
 
@@ -28,12 +27,9 @@ final class CatalogSearchSmokeTest {
                         "AAAAAAAAAAAAAAAAAAAAAA", "Route", "", "Tester", "", false,
                         "public", "hub", "Hub", 44, 1, 10, 1, 0, "", "", "/r/test")), false, null));
                 MinecraftCompat.setScreen(client, screen);
-                Button refresh = (Button) field(screen, "refreshButton");
-                Checkbox notInstalled = screen.children().stream()
-                        .filter(Checkbox.class::isInstance).map(Checkbox.class::cast).findFirst().orElseThrow();
-                if (Math.abs(notInstalled.getY() * 2 + notInstalled.getHeight()
-                        - refresh.getY() * 2 - refresh.getHeight()) > 1)
-                    throw new AssertionError("Not Installed must be centered in the search toolbar");
+                var hideInstalled = (net.minecraft.client.gui.components.AbstractWidget) field(screen, "hideInstalledChip");
+                if (hideInstalled == null || hideInstalled.getY() != (int) field(screen, "chipsY"))
+                    throw new AssertionError("Hide installed must sit in the filter chip row");
                 for (int i = 0; i < 100; i++) {
                     EditBox search = (EditBox) field(screen, "searchBox");
                     screen.setFocused(search);

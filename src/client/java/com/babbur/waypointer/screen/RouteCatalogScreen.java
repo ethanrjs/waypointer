@@ -22,7 +22,6 @@ import com.babbur.waypointer.i18n.LocalizedNumberFormatter;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.Checkbox;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
@@ -69,20 +68,22 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
 public final class RouteCatalogScreen extends Screen {
     private static final int PANEL_MARGIN = 12;
     private static final int LINE_H = 10;
-    private static final int DETAIL_LINE_H = 12;
-    private static final int ROW_H = 44;
+    private static final int DETAIL_LINE_H = 11;
+    private static final int ROW_H = CatalogRouteRowButton.HEIGHT;
     private static final int ROW_PITCH = ROW_H;
     private static final int WIDE_BREAKPOINT = 420;
-    private static final int REFRESH_W = 72;
     private static final int LOAD_MORE_W = 108;
     private static final int BACK_W = 64;
     private static final int PRIMARY_W = 84;
     private static final int SCROLLBAR_W = 3;
     private static final int SCROLLBAR_INSET = 2;
-    private static final int DETAIL_HEADER_H = 32;
+    private static final int ICON_BTN_W = 24;
     // Four client ticks debounce uncached searches by roughly 200 ms.
     private static final int SEARCH_DEBOUNCE_TICKS = 4;
     private static final int SEARCH_CACHE_LIMIT = 32;
+    // Previews load once a route has stayed selected for a moment, so arrowing through is cheap.
+    private static final int PREVIEW_DELAY_TICKS = 6;
+    private static final int PREVIEW_CACHE_LIMIT = 24;
     private static final int ZONE_ROW_H = GuiTokens.ROW_H;
     private static final int ZONE_DROPDOWN_MIN_W = 150;
     private static final long MANUAL_REFRESH_COOLDOWN_NANOS = 10_000_000_000L;
@@ -119,19 +120,36 @@ public final class RouteCatalogScreen extends Screen {
     private boolean onlyNotInstalled;
     private int zoneDropdownScroll;
     private List<String> zoneDropdownIds = List.of();
+    private final ContextMenuOverlay sortMenu = new ContextMenuOverlay();
+    /** Narrow screens show the list and one route's details as separate pages. */
+    private boolean showingDetail;
+    private boolean wideLayout;
+
+    private final LinkedHashMap<String, CatalogRoutePreview> previews = boundedPageCache(PREVIEW_CACHE_LIMIT);
+    private final java.util.Set<String> previewFailures = new java.util.HashSet<>();
+    private String previewWantedId;
+    private String previewLoadingId;
+    private int previewDelayTicks;
+    private int previewTicket;
 
     private EditBox searchBox;
-    private static final int MIN_SEARCH_W = 160;
+    private static final int MIN_SEARCH_W = 110;
+    private static final int COMFORTABLE_SEARCH_W = 180;
     private Button zoneFilterButton;
+    private Button sortButton;
     private Button refreshButton;
     private Button loadMoreButton;
     private Button installButton;
     private Button copyCodeButton;
+    private CatalogFilterChip hideInstalledChip;
+    private CatalogFilterChip miningCultChip;
     private int headerTextWidth;
     private int panelX;
     private int panelY;
     private int panelW;
     private int panelH;
+    private int contentRight;
+    private int chipsY;
     private int listX;
     private int listY;
     private int listW;
@@ -143,6 +161,7 @@ public final class RouteCatalogScreen extends Screen {
     private int statusX;
     private int statusY;
     private int statusMaxW;
+    private int dropdownBottom;
     private int descriptionScroll;
     private int descriptionMaxScroll;
 
@@ -152,7 +171,7 @@ public final class RouteCatalogScreen extends Screen {
 
     RouteCatalogScreen(
             Screen parent, RouteCatalogClient catalogClient, ActiveGroupManager manager) {
-        super(Component.translatable("waypointer.screen.route_catalog.title"));
+        super(Component.translatable("waypointer.screen.route_catalog.title.community"));
         this.parent = parent;
         this.catalogClient = catalogClient;
         this.manager = manager;
@@ -173,82 +192,58 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     protected void init() {
         requests.activate();
+        ZoneBackdrops.clearCache();
         initializing = true;
         browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
 
-        panelX = width > PANEL_MARGIN * 2 ? PANEL_MARGIN : 0;
-        panelY = height > PANEL_MARGIN * 2 ? PANEL_MARGIN : 0;
+        // Short screens (high GUI scales) give the list every pixel they can.
+        boolean compact = height < 300;
+        int margin = compact ? GAP_TIGHT : PANEL_MARGIN;
+        panelX = width > margin * 2 ? margin : 0;
+        panelY = height > margin * 2 ? margin : 0;
         panelW = Math.max(1, width - panelX * 2);
         panelH = Math.max(1, height - panelY * 2);
-        int panelPad = panelW >= 320 ? PAD_OUTER : GAP;
+        int panelPad = panelPad();
         int contentX = panelX + panelPad;
         int contentW = Math.max(40, panelW - panelPad * 2);
-        int contentRight = contentX + contentW;
+        contentRight = contentX + contentW;
+        wideLayout = contentW >= WIDE_BREAKPOINT;
+        if (wideLayout || selectedRoute() == null) showingDetail = false;
 
+        // Header: title, then My routes and an icon-only refresh on the right.
         int titleY = panelY + panelPad;
-        int searchY = titleY + BTN_H + GAP;
-        Component notInstalledLabel = Component.translatable("waypointer.screen.route_catalog.not_installed");
-        int notInstalledW = font.width(notInstalledLabel) + BTN_H + GAP;
-        int refreshWidth = Math.min(contentW, Math.max(REFRESH_W,
-                font.width(refreshButtonLabel(System.nanoTime())) + 16));
-        // Stack the filters under the search box before the box gets too narrow to type in.
-        boolean toolbarStacked = contentW - (84 + refreshWidth + notInstalledW + GAP * 3) < MIN_SEARCH_W;
-        int toolbarY = toolbarStacked ? searchY + BTN_H + GAP_TIGHT : searchY;
-        int bodyY = toolbarY + BTN_H + GAP;
-        int footerY = panelY + panelH - panelPad - BTN_H;
-        Component copyLabel = Component.translatable("waypointer.screen.published_routes.action.copy_code");
-        int copyW = Math.max(72, font.width(copyLabel) + 16);
-        int installW = Math.max(PRIMARY_W, font.width(installButtonLabel()) + 16);
-        statusY = footerY - LINE_H - GAP_TIGHT;
-        statusX = contentX;
-        statusMaxW = contentW;
-        int bodyH = Math.max(60, statusY - GAP - bodyY);
-        boolean wide = contentW >= WIDE_BREAKPOINT;
-
-        if (wide) {
-            listX = contentX;
-            listY = bodyY;
-            listW = catalogListWidth(contentW);
-            listH = bodyH;
-            detailX = listX + listW + GAP_SECTION;
-            detailY = bodyY;
-            detailW = contentRight - detailX;
-            detailH = bodyH;
-        } else {
-            listX = contentX;
-            listY = bodyY;
-            listW = contentW;
-            listH = bodyH < 144 ? bodyH
-                    : Math.max(ROW_H, (bodyH - GAP_SECTION) * 62 / 100);
-            detailX = contentX;
-            detailY = listY + listH + GAP_SECTION;
-            detailW = contentW;
-            detailH = bodyH < 144 ? 0 : Math.max(32, statusY - GAP - detailY);
-        }
-
+        Component refreshLabel = refreshButtonLabel(System.nanoTime());
+        GuiTokens.StyledButton refresh = (GuiTokens.StyledButton) styledButton(
+                contentRight - ICON_BTN_W, titleY, ICON_BTN_W, BTN_H, refreshLabel,
+                button -> requestManualRefresh(),
+                Tooltip.create(Component.translatable("waypointer.screen.route_catalog.refresh.tooltip")),
+                Icons.Icon.RESET);
+        refresh.setIconOnly(true);
+        refreshButton = refresh;
+        refreshButton.active = refreshCooldownSeconds(System.nanoTime()) == 0 && !listLoading;
+        addRenderableWidget(refreshButton);
         Component mineLabel = Component.translatable("waypointer.screen.route_publish.action.manage");
-        int mineW = Math.min(contentW / 2, Math.max(80, font.width(mineLabel) + 16));
-        headerTextWidth = Math.max(1, contentW - mineW - GAP);
-        addRenderableWidget(styledButton(contentRight - mineW, titleY, mineW, BTN_H,
+        int mineW = Math.min(contentW / 2, GuiTokens.iconButtonWidth(font, mineLabel, Icons.Icon.UPLOAD));
+        addRenderableWidget(styledButton(contentRight - ICON_BTN_W - GAP_TIGHT - mineW, titleY, mineW, BTN_H,
                 mineLabel, button -> PublishedRoutesScreen.open(this, catalogClient,
                         PublisherIdentityStore.defaultLocation(), CatalogPublicationRegistry.defaultLocation()),
-                Tooltip.create(Component.translatable("waypointer.screen.route_publish.action.manage.tooltip"))));
+                Tooltip.create(Component.translatable("waypointer.screen.route_publish.action.manage.tooltip")),
+                Icons.Icon.UPLOAD));
+        headerTextWidth = Math.max(1, contentW - mineW - ICON_BTN_W - GAP * 2);
 
-        Component refreshLabel = refreshButtonLabel(System.nanoTime());
-        int refreshW = refreshWidth;
-        Component zoneLabel = zoneFilterLabel();
-        // Keep the control width stable when the selected zone changes.
-        int zoneW = toolbarStacked
-                ? Math.max(40, contentW - refreshW - notInstalledW - GAP * 2)
-                : Math.min(Math.max(84, widestZoneOptionWidth() + 28),
-                        Math.min(Math.max(84, contentW / 3),
-                                contentW - refreshW - notInstalledW - GAP * 3 - 80));
-        int searchW = toolbarStacked
-                ? contentW
-                : Math.max(40, contentW - refreshW - zoneW - notInstalledW - GAP * 3);
-        int clearW = Math.max(36, font.width(Component.translatable("waypointer.common.clear")) + 12);
+        // Toolbar: search, zone, sort. Zone and sort drop under the search box when space is short.
+        int toolbarY = titleY + BTN_H + GAP;
+        int zoneW = Math.max(96, Math.min(150, widestZoneOptionWidth() + 28));
+        int sortW = widestSortLabelWidth() + 28;
+        if (contentW - zoneW - sortW - GAP * 2 < COMFORTABLE_SEARCH_W) {
+            zoneW = 96;
+            sortW = Math.min(sortW, 96);
+        }
+        boolean stacked = contentW - zoneW - sortW - GAP * 2 < MIN_SEARCH_W;
+        int searchW = stacked ? contentW : contentW - zoneW - sortW - GAP * 2;
+        int clearW = BTN_H + 2;
         int inputW = Math.max(20, searchW - clearW - GAP_TIGHT);
-        searchBox = new EditBox(font, contentX, searchY, inputW, BTN_H,
+        searchBox = new EditBox(font, contentX, toolbarY, inputW, BTN_H,
                 Component.translatable("waypointer.screen.route_catalog.search"));
         searchBox.setMaxLength(80);
         Component searchHint = Component.translatable("waypointer.screen.route_catalog.search.hint");
@@ -259,61 +254,115 @@ public final class RouteCatalogScreen extends Screen {
         searchBox.setValue(browser.query());
         searchBox.setResponder(this::handleSearchEdit);
         addRenderableWidget(searchBox);
-        Button clearSearch = styledButton(contentX + inputW + GAP_TIGHT, searchY,
-                clearW, BTN_H, Component.translatable("waypointer.common.clear"),
+        GuiTokens.StyledButton clearSearch = (GuiTokens.StyledButton) styledButton(
+                contentX + inputW + GAP_TIGHT, toolbarY, clearW, BTN_H,
+                Component.translatable("waypointer.common.clear"),
                 button -> {
                     searchBox.setValue("");
                     runPendingSearch();
                     focusSearchBox();
-                }, Tooltip.create(Component.translatable(
-                        "waypointer.screen.main.search.clear.tooltip")));
+                }, Tooltip.create(Component.translatable("waypointer.screen.main.search.clear.tooltip")),
+                Icons.Icon.CLOSE);
+        clearSearch.setIconOnly(true);
         clearSearch.active = !browser.query().isEmpty();
         addRenderableWidget(clearSearch);
 
-        int refreshY = toolbarStacked ? searchY + BTN_H + GAP_TIGHT : searchY;
-        int zoneX = toolbarStacked ? contentX : contentX + searchW + GAP;
-        zoneFilterButton = new ZoneFilterButton(zoneX, refreshY, zoneW, BTN_H, zoneLabel);
+        int filtersY = stacked ? toolbarY + BTN_H + GAP_TIGHT : toolbarY;
+        if (stacked) {
+            sortW = Math.min(sortW, contentW / 2);
+            zoneW = contentW - sortW - GAP;
+        }
+        int zoneX = stacked ? contentX : contentX + searchW + GAP;
+        zoneFilterButton = new ZoneFilterButton(zoneX, filtersY, zoneW, BTN_H, zoneFilterLabel());
         zoneFilterButton.setTooltip(Tooltip.create(Component.translatable(
                 "waypointer.screen.route_catalog.filter.tooltip")));
         addRenderableWidget(zoneFilterButton);
-        refreshButton = styledButton(contentRight - refreshW, refreshY, refreshW, BTN_H,
-                refreshLabel,
-                button -> requestManualRefresh(),
-                Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_catalog.refresh.tooltip")));
-        refreshButton.active = refreshCooldownSeconds(System.nanoTime()) == 0 && !listLoading;
-        addRenderableWidget(refreshButton);
+        sortButton = new SortButton(zoneX + zoneW + GAP, filtersY, sortW, BTN_H, sortLabel());
+        addRenderableWidget(sortButton);
 
-        Checkbox notInstalled = Checkbox.builder(Component.translatable(
-                        "waypointer.screen.route_catalog.not_installed"), font)
-                .pos(contentRight - refreshW - GAP - notInstalledW, toolbarY)
-                .maxWidth(notInstalledW).selected(onlyNotInstalled)
-                .tooltip(Tooltip.create(Component.translatable(
-                        "waypointer.screen.route_catalog.not_installed.tooltip")))
-                .onValueChange((checkbox, selected) -> {
-                    onlyNotInstalled = selected;
-                    browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
-                    requests.selectionChanged();
-                    descriptionScroll = 0;
-                    updateListStatus();
-                    rebuildWidgets();
-                }).build();
-        notInstalled.setY(toolbarY + (BTN_H - notInstalled.getHeight()) / 2);
-        addRenderableWidget(notInstalled);
+        // Filter chips, with the result count on the right of the same line.
+        chipsY = filtersY + BTN_H + GAP_TIGHT + 1;
+        hideInstalledChip = new CatalogFilterChip(contentX, chipsY,
+                Component.translatable("waypointer.screen.route_catalog.filter.hide_installed"),
+                onlyNotInstalled, ACCENT, null, () -> {
+                    onlyNotInstalled = !onlyNotInstalled;
+                    applyFilters();
+                });
+        hideInstalledChip.setTooltip(Tooltip.create(Component.translatable(
+                "waypointer.screen.route_catalog.not_installed.tooltip")));
+        addRenderableWidget(hideInstalledChip);
+        miningCultChip = null;
+        if (browser.anyLoadedRouteHas(CatalogRouteSummary.TAG_MINING_CULT) || browser.tagFilter() != null) {
+            boolean on = CatalogRouteSummary.TAG_MINING_CULT.equals(browser.tagFilter());
+            miningCultChip = new CatalogFilterChip(contentX + hideInstalledChip.getWidth() + GAP_TIGHT, chipsY,
+                    Component.translatable("waypointer.screen.route_catalog.tag.mining_cult"),
+                    on, CatalogRouteRowButton.MINING_CULT, Icons.Icon.BADGE_PICKAXE, () -> {
+                        browser.setTagFilter(on ? null : CatalogRouteSummary.TAG_MINING_CULT);
+                        applyFilters();
+                    });
+            miningCultChip.setTooltip(Tooltip.create(Component.translatable(
+                    "waypointer.screen.route_catalog.tag.mining_cult.tooltip")));
+            addRenderableWidget(miningCultChip);
+        }
+
+        // Body: list beside details, or one of them on narrow screens.
+        int bodyY = chipsY + CatalogFilterChip.HEIGHT + GAP;
+        int footerY = panelY + panelH - panelPad - BTN_H;
+        dropdownBottom = footerY - GAP_TIGHT;
+        int bodyH = Math.max(40, footerY - GAP - bodyY);
+        if (wideLayout) {
+            listX = contentX;
+            listY = bodyY;
+            listW = catalogListWidth(contentW);
+            listH = bodyH;
+            detailX = listX + listW + GAP;
+            detailY = bodyY;
+            detailW = contentRight - detailX;
+            detailH = bodyH;
+        } else if (showingDetail) {
+            listX = contentX;
+            listY = bodyY;
+            listW = contentW;
+            listH = 0;
+            detailX = contentX;
+            detailY = bodyY;
+            detailW = contentW;
+            detailH = bodyH;
+        } else {
+            listX = contentX;
+            listY = bodyY;
+            listW = contentW;
+            listH = bodyH;
+            detailX = contentX;
+            detailY = bodyY;
+            detailW = contentW;
+            detailH = 0;
+        }
 
         loadMoreButton = null;
-        addRouteRows();
+        if (listH > 0) addRouteRows();
 
+        // Footer: Back on the left, the selected route's actions on the right.
+        Component copyLabel = Component.translatable("waypointer.screen.published_routes.action.copy_code");
+        int copyW = GuiTokens.iconButtonWidth(font, copyLabel, Icons.Icon.SHARE);
+        int installW = Math.max(PRIMARY_W, GuiTokens.iconButtonWidth(font, installButtonLabel(), Icons.Icon.DOWNLOAD));
         addRenderableWidget(styledButton(contentX, footerY, BACK_W, BTN_H,
-                Component.translatable("gui.back"), button -> onClose(), null));
+                Component.translatable("gui.back"), button -> onBack(), null));
+        boolean actionsShown = wideLayout || showingDetail;
         copyCodeButton = styledButton(contentRight - installW - GAP - copyW, footerY,
-                copyW, BTN_H, copyLabel, button -> copySelectedCode(), null);
-        addRenderableWidget(copyCodeButton);
+                copyW, BTN_H, copyLabel, button -> copySelectedCode(),
+                Tooltip.create(Component.translatable("waypointer.screen.route_catalog.copy.tooltip")),
+                Icons.Icon.SHARE);
         installButton = styledButton(contentRight - installW, footerY, installW, BTN_H,
-                installButtonLabel(),
-                button -> installSelectedRoute(), null);
-        refreshPrimaryButtons();
+                installButtonLabel(), button -> installSelectedRoute(), null, Icons.Icon.DOWNLOAD);
+        copyCodeButton.visible = actionsShown;
+        installButton.visible = actionsShown;
+        addRenderableWidget(copyCodeButton);
         addRenderableWidget(installButton);
+        statusX = contentX + BACK_W + GAP;
+        statusY = GuiTokens.opticalTextY(footerY, BTN_H);
+        statusMaxW = Math.max(0, (actionsShown ? copyCodeButton.getX() - GAP : contentRight) - statusX);
+        refreshPrimaryButtons();
 
         initializing = false;
         if (!listRequested) {
@@ -326,6 +375,31 @@ public final class RouteCatalogScreen extends Screen {
                 refreshCatalog();
             }
         }
+    }
+
+    private int panelPad() {
+        return height < 300 || panelW < 320 ? GAP : PAD_OUTER;
+    }
+
+    private void applyFilters() {
+        browser.filterInstalled(catalogClient.apiRoot(), manager, onlyNotInstalled);
+        requests.selectionChanged();
+        descriptionScroll = 0;
+        if (browser.selectedRoute() == null && !browser.routes().isEmpty()) {
+            browser.select(browser.routes().getFirst());
+            wantPreview(browser.selectedRoute());
+        }
+        updateListStatus();
+        rebuildWidgets();
+    }
+
+    private void onBack() {
+        if (showingDetail) {
+            showingDetail = false;
+            rebuildWidgets();
+            return;
+        }
+        onClose();
     }
 
     static int catalogListWidth(int contentWidth) {
@@ -443,8 +517,8 @@ public final class RouteCatalogScreen extends Screen {
             CatalogRouteRowButton button = new CatalogRouteRowButton(
                     listX, y, rowW, ROW_H, route,
                     route.id().equals(browser.selectedRouteId()),
-                    installedState(route),
-                    () -> selectRoute(route));
+                    installState(route).action(),
+                    () -> openRoute(route));
             addRenderableWidget(button);
         }
         if (browser.nextCursor() != null || appending) {
@@ -463,6 +537,17 @@ public final class RouteCatalogScreen extends Screen {
                     && browser.nextCursor() != null;
             addRenderableWidget(loadMoreButton);
         }
+    }
+
+    /** Selects a route; on narrow screens this also opens its detail page. */
+    private void openRoute(CatalogRouteSummary route) {
+        boolean already = route.id().equals(browser.selectedRouteId());
+        if (!wideLayout) showingDetail = true;
+        if (already) {
+            rebuildWidgets();
+            return;
+        }
+        selectRoute(route);
     }
 
     /** Unconditional network reload of the first page (initial load, refresh). */
@@ -552,6 +637,63 @@ public final class RouteCatalogScreen extends Screen {
         }
     }
 
+    private final class SortButton extends GuiTokens.StyledButton {
+        SortButton(int x, int y, int width, int height, Component label) {
+            super(x, y, width, height, label, button -> toggleSortMenu());
+        }
+
+        @Override
+        protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
+            boolean highlighted = active && isHoveredOrFocused();
+            GuiTokens.drawControlFrame(g, getX(), getY(), getWidth(), getHeight(),
+                    active, highlighted, isFocused());
+            int[] geo = filterSelectGeometry(getX(), getY(), getWidth(), getHeight());
+            g.text(font, font.plainSubstrByWidth(getMessage().getString(), geo[1]),
+                    geo[0], GuiTokens.opticalTextY(getY(), getHeight()), active ? TEXT : TEXT_MUTED, false);
+            GuiTokens.drawDirectionGlyph(g,
+                    sortMenu.isOpen() ? GuiTokens.Direction.UP : GuiTokens.Direction.DOWN,
+                    geo[2], geo[3], sortMenu.isOpen() ? ACCENT : highlighted ? TEXT : TEXT_DIM);
+        }
+    }
+
+    private static String sortKey(CatalogBrowserModel.Sort sort) {
+        return "waypointer.screen.route_catalog.sort." + sort.id;
+    }
+
+    private Component sortLabel() {
+        return Component.translatable(sortKey(browser.sort()));
+    }
+
+    private int widestSortLabelWidth() {
+        int widest = 0;
+        for (CatalogBrowserModel.Sort sort : CatalogBrowserModel.Sort.values()) {
+            widest = Math.max(widest, font.width(Component.translatable(sortKey(sort))));
+        }
+        return widest;
+    }
+
+    private void toggleSortMenu() {
+        if (sortMenu.isOpen()) {
+            sortMenu.close();
+            return;
+        }
+        closeZoneDropdown();
+        List<ContextMenuOverlay.Item> items = new ArrayList<>();
+        for (CatalogBrowserModel.Sort sort : CatalogBrowserModel.Sort.values()) {
+            ContextMenuOverlay.Item item = ContextMenuOverlay.Item.of(
+                    Component.translatable(sortKey(sort)), () -> chooseSort(sort));
+            items.add(sort == browser.sort() ? item.withIcon(Icons.Icon.CHECK) : item);
+        }
+        sortMenu.openAt(font, items, sortButton.getX(), sortButton.getY() + BTN_H + GAP_TIGHT,
+                panelX + GAP, panelY, panelX + panelW - GAP, dropdownBottom);
+    }
+
+    private void chooseSort(CatalogBrowserModel.Sort sort) {
+        sortMenu.close();
+        if (!browser.setSort(sort)) return;
+        applyFilters();
+    }
+
     private int widestZoneOptionWidth() {
         int widest = 0;
         for (String id : zoneFilterDropdownIds()) {
@@ -586,6 +728,7 @@ public final class RouteCatalogScreen extends Screen {
             closeZoneDropdown();
             return;
         }
+        sortMenu.close();
         if (searchBox != null && searchBox.isFocused()) markSearchRefocus();
         zoneDropdownIds = zoneFilterDropdownIds();
         zoneDropdownOpen = true;
@@ -638,7 +781,7 @@ public final class RouteCatalogScreen extends Screen {
                 ? panelY + PAD_OUTER : zoneFilterButton.getY() + BTN_H;
         int buttonW = zoneFilterButton == null ? 0 : zoneFilterButton.getWidth();
         return zoneDropdownGeometry(
-                anchorX, anchorBottom, buttonW, panelX, panelW, statusY, rowCount);
+                anchorX, anchorBottom, buttonW, panelX, panelW, dropdownBottom, rowCount);
     }
 
     /** Pure dropdown layout: anchored under its button, clipped to the panel. */
@@ -726,6 +869,11 @@ public final class RouteCatalogScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (sortMenu.isOpen()) {
+            if (sortMenu.mouseClicked(event.x(), event.y())) return true;
+            sortMenu.close();
+            if (sortButton != null && sortButton.isMouseOver(event.x(), event.y())) return true;
+        }
         if (zoneDropdownOpen && handleZoneDropdownClick(event.x(), event.y())) return true;
         return super.mouseClicked(event, doubleClick);
     }
@@ -795,21 +943,15 @@ public final class RouteCatalogScreen extends Screen {
             browser.select(browser.routes().getFirst());
             descriptionScroll = 0;
         }
+        wantPreview(browser.selectedRoute());
         updateListStatus();
     }
 
+    /** Counts live beside the filter chips; the footer line is for messages only. */
     private void updateListStatus() {
-        if (browser.routes().isEmpty()) {
-            statusText = Component.translatable(emptyListKey());
+        if (!lastLoadFailed && !detailLoading) {
+            statusText = Component.empty();
             statusColor = TEXT_DIM;
-        } else if (browser.nextCursor() != null) {
-            statusText = Component.translatable(
-                    "waypointer.screen.route_catalog.status.count_more",
-                    formatCount(browser.routes().size()));
-            statusColor = TEXT_MUTED;
-        } else {
-            statusText = routeCount(browser.routes().size());
-            statusColor = TEXT_MUTED;
         }
     }
 
@@ -819,7 +961,36 @@ public final class RouteCatalogScreen extends Screen {
         requests.selectionChanged();
         statusText = Component.empty();
         statusColor = TEXT_DIM;
+        wantPreview(route);
         rebuildWidgets();
+    }
+
+    private void wantPreview(CatalogRouteSummary route) {
+        previewWantedId = route == null ? null : route.id();
+        previewDelayTicks = PREVIEW_DELAY_TICKS;
+    }
+
+    /** Loads the selected route once it has stayed selected briefly; one request at a time. */
+    private void tickPreview() {
+        CatalogRouteSummary route = selectedRoute();
+        if (route == null || !route.id().equals(previewWantedId) || previewLoadingId != null) return;
+        if (previews.containsKey(route.id()) || previewFailures.contains(route.id())) return;
+        if (previewDelayTicks-- > 0) return;
+        String id = route.id();
+        int ticket = ++previewTicket;
+        previewLoadingId = id;
+        catalogClient.getRoute(id)
+                .thenApply(details -> validateDetails(route, details))
+                .thenApplyAsync(details -> CatalogRoutePreview.of(CatalogRouteInstaller.decodeForPreview(details)))
+                .whenComplete((preview, failure) -> runOnClient(() -> {
+                    if (ticket != previewTicket) return;
+                    previewLoadingId = null;
+                    if (failure != null || preview == null) {
+                        previewFailures.add(id);
+                    } else {
+                        previews.put(id, preview);
+                    }
+                }));
     }
 
     private void copySelectedCode() {
@@ -979,33 +1150,65 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public void extractRenderState(
             GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partial) {
-        // Suppress underlying hover states and tooltips while the dropdown is open.
-        int backgroundMouseX = zoneDropdownOpen ? -1 : mouseX;
-        int backgroundMouseY = zoneDropdownOpen ? -1 : mouseY;
+        // Suppress underlying hover states and tooltips while a dropdown is open.
+        boolean overlay = zoneDropdownOpen || sortMenu.isOpen();
+        int backgroundMouseX = overlay ? -1 : mouseX;
+        int backgroundMouseY = overlay ? -1 : mouseY;
         graphics.fill(0, 0, width, height, 0x80000000);
         graphics.fill(panelX, panelY, panelX + panelW, panelY + panelH, SURFACE);
 
-        int panelPad = panelW >= 320 ? PAD_OUTER : GAP;
+        int panelPad = panelPad();
         int contentX = panelX + panelPad;
-        int contentW = Math.max(40, panelW - panelPad * 2);
         int titleY = panelY + panelPad;
         graphics.text(font, font.plainSubstrByWidth(getTitle().getString(), headerTextWidth),
-                contentX, titleY, TEXT, false);
+                contentX, GuiTokens.opticalTextY(titleY, BTN_H), TEXT, false);
 
-        graphics.fill(listX, listY, listX + listW, listY + listH, SURFACE_SUBTLE);
-        renderListState(graphics);
-        renderListScrollbar(graphics);
+        Component count = countLabel();
+        if (count != null) {
+            String text = count.getString();
+            int chipsRight = (miningCultChip != null ? miningCultChip.getX() + miningCultChip.getWidth()
+                    : hideInstalledChip == null ? contentX : hideInstalledChip.getX() + hideInstalledChip.getWidth());
+            String clipped = font.plainSubstrByWidth(text, Math.max(0, contentRight - chipsRight - GAP));
+            graphics.text(font, clipped, contentRight - font.width(clipped), chipsY + 3, TEXT_MUTED, false);
+        }
 
-        graphics.fill(detailX, detailY, detailX + detailW, detailY + detailH,
-                SURFACE_SUBTLE);
-        renderDetails(graphics, selectedRoute());
+        if (listH > 0) {
+            graphics.fill(listX, listY, listX + listW, listY + listH, SURFACE_SUBTLE);
+            renderListState(graphics);
+            renderListScrollbar(graphics);
+        }
 
-        if (!statusText.getString().isBlank()) {
-            String clipped = font.plainSubstrByWidth(statusText.getString(), statusMaxW);
+        CatalogRoutePreview.Point hovered = null;
+        if (detailH > 0) {
+            CatalogRouteSummary selected = selectedRoute();
+            if (selected == null || !ZoneBackdrops.draw(graphics, selected.zoneId(),
+                    detailX, detailY, detailX + detailW, detailY + detailH)) {
+                graphics.fill(detailX, detailY, detailX + detailW, detailY + detailH, SURFACE_SUBTLE);
+            }
+            hovered = renderDetails(graphics, selected, backgroundMouseX, backgroundMouseY);
+        }
+
+        if (!statusText.getString().isBlank() && statusMaxW > 0) {
+            String clipped = GuiTokens.ellipsize(font, statusText.getString(), statusMaxW);
             graphics.text(font, clipped, statusX, statusY, statusColor, false);
         }
         super.extractRenderState(graphics, backgroundMouseX, backgroundMouseY, partial);
         if (zoneDropdownOpen) renderZoneDropdown(graphics, mouseX, mouseY);
+        if (sortMenu.isOpen()) sortMenu.render(graphics, font, mouseX, mouseY);
+        if (hovered != null) {
+            graphics.setTooltipForNextFrame(font, CatalogRoutePreview.tooltip(hovered).stream()
+                    .map(Component::getVisualOrderText).toList(), mouseX, mouseY);
+        }
+    }
+
+    /** "12 routes", or "50+ routes" while more pages exist; nothing while the first page loads. */
+    private Component countLabel() {
+        if (listLoading && !appending) return null;
+        if (browser.routes().isEmpty()) return null;
+        return browser.nextCursor() != null
+                ? Component.translatable("waypointer.screen.route_catalog.count_more",
+                        formatCount(browser.routes().size()))
+                : routeCount(browser.routes().size());
     }
 
     private void renderListState(GuiGraphicsExtractor graphics) {
@@ -1059,80 +1262,139 @@ public final class RouteCatalogScreen extends Screen {
         graphics.fill(trackX, thumbY, trackX + SCROLLBAR_W, thumbY + thumbH, TEXT_MUTED);
     }
 
-    private void renderDetails(GuiGraphicsExtractor graphics, CatalogRouteSummary route) {
+    private CatalogRoutePreview.Point renderDetails(GuiGraphicsExtractor graphics, CatalogRouteSummary route,
+                                                    int mouseX, int mouseY) {
         descriptionMaxScroll = 0;
-        if (detailH <= 0) return;
-        int x = detailX + GAP;
-        int y = detailY + GAP;
-        int available = Math.max(20, detailW - GAP * 2);
+        if (detailH <= 0) return null;
+        int pad = GAP + 2;
+        int x = detailX + pad;
+        int right = detailX + detailW - pad;
+        int available = Math.max(20, right - x);
+        int bottom = detailY + detailH - pad;
         if (route == null) {
             drawCentered(graphics,
                     Component.translatable(listLoading
                             ? "waypointer.screen.route_catalog.details.loading"
                             : "waypointer.screen.route_catalog.details.select"),
                     detailX, detailY, detailW, detailH, TEXT_DIM);
-            return;
+            return null;
         }
 
-        int headerBottom = Math.min(detailY + detailH, detailY + DETAIL_HEADER_H);
-        graphics.fill(detailX, detailY, detailX + detailW, headerBottom, SELECTED);
-        graphics.fill(detailX, detailY, detailX + detailW, detailY + 1, ACCENT);
+        // Title with the Mining Cult badge, then zone and publisher, then size and age.
+        int y = detailY + pad;
+        boolean miningCult = route.hasTag(CatalogRouteSummary.TAG_MINING_CULT);
+        int badgeW = miningCult ? CatalogRouteRowButton.miningCultWidth(font) + GAP : 0;
+        Component title = Component.literal(GuiTokens.ellipsize(font, route.title(), available - badgeW))
+                .withStyle(net.minecraft.ChatFormatting.BOLD);
+        graphics.text(font, title, x, y, TEXT, false);
+        if (miningCult) {
+            int pillX = right - badgeW + GAP;
+            CatalogRouteRowButton.drawMiningCult(graphics, font, pillX, y);
+            CatalogRouteRowButton.miningCultTooltip(graphics, font, pillX, y, mouseX, mouseY);
+        }
+        y += DETAIL_LINE_H + 3;
+        CatalogRouteRowButton.drawZoneAndPublisher(graphics, font, route, x, y, available);
+        y += DETAIL_LINE_H + 1;
+        graphics.text(font, GuiTokens.ellipsize(font, detailFacts(route), available), x, y, TEXT_MUTED, false);
+        y += DETAIL_LINE_H + GAP_TIGHT;
 
-        graphics.text(font, font.plainSubstrByWidth(route.title(), available),
-                x, y, TEXT, false);
+        // Install state, when the route is already here.
+        CatalogInstallState state = installState(route);
+        Component stateLine = installStateLine(state, route);
+        int stateH = stateLine == null ? 0 : DETAIL_LINE_H + GAP_TIGHT;
 
-        Component author = route.authorName().isBlank()
-                ? Component.translatable("waypointer.screen.route_catalog.publisher.unknown")
-                : Component.literal(route.authorName());
-        String publisher = Component.translatable(
-                "waypointer.screen.route_catalog.publisher.by", author).getString();
-        int publisherX = x;
-        int publisherY = y + LINE_H + 2;
-        String verified = route.publisherVerified()
-                ? Component.translatable(
-                        "waypointer.screen.route_catalog.publisher.verified").getString().trim()
-                : "";
-        int verifiedW = verified.isEmpty() ? 0 : font.width(verified) + GAP_TIGHT;
-        graphics.text(font, font.plainSubstrByWidth(
-                        publisher, Math.max(20, available - verifiedW)),
-                publisherX, publisherY, TEXT_DIM, false);
-        if (!verified.isEmpty()) {
-            graphics.text(font, verified, detailX + detailW - GAP - font.width(verified),
-                    publisherY, ACCENT, false);
+        // Map preview: roughly half the pane, leaving room for a few description lines.
+        int descriptionMin = DETAIL_LINE_H * 3;
+        int mapH = Math.max(0, Math.min(220, Math.max(56, (bottom - y - stateH) * 55 / 100)));
+        if (bottom - y - stateH - mapH - GAP < descriptionMin) mapH = Math.max(0, bottom - y - stateH - GAP - descriptionMin);
+        CatalogRoutePreview.Point hovered = null;
+        if (mapH >= 40) {
+            hovered = renderPreview(graphics, route, x, y, right, y + mapH, mouseX, mouseY);
+            y += mapH + GAP;
+        }
+        if (stateLine != null) {
+            graphics.text(font, GuiTokens.ellipsize(font, stateLine.getString(), available), x, y,
+                    state.action() == CatalogInstallState.Action.UPDATE
+                            || state.action() == CatalogInstallState.Action.REPAIR
+                            ? GuiTokens.WARNING : GuiTokens.SUCCESS, false);
+            y += stateH;
         }
 
-        int statsY = detailY + detailH - GAP - LINE_H;
-        int statsDividerY = statsY - DETAIL_LINE_H - GAP;
-        boolean showStats = statsDividerY >= detailY + DETAIL_HEADER_H
-                + GAP * 2 + DETAIL_LINE_H * 2;
-        if (showStats) {
-            graphics.fill(x, statsDividerY, x + available, statsDividerY + 1, BORDER);
-            renderDetailStat(graphics, route.zoneLabel(), x,
-                    statsY - DETAIL_LINE_H, available, ACCENT);
-            int columnW = Math.max(1, available / 2);
-            renderDetailStat(graphics, waypointCount(route.waypointCount()).getString(),
-                    x, statsY, columnW, TEXT_DIM);
-            renderDetailStat(graphics, installCount(route.downloads()).getString(),
-                    x + columnW, statsY, available - columnW, TEXT_DIM);
-        }
-
-        int bodyY = detailY + DETAIL_HEADER_H + GAP;
-        int bodyBottom = showStats ? statsDividerY - GAP : detailY + detailH - GAP;
-        int bodyMaxH = Math.max(0, bodyBottom - bodyY);
+        int bodyMaxH = Math.max(0, bottom - y);
         if (bodyMaxH >= DETAIL_LINE_H) {
             Component body = route.description().isBlank()
-                    ? Component.translatable(
-                            "waypointer.screen.route_catalog.description.empty")
+                    ? Component.translatable("waypointer.screen.route_catalog.description.empty")
                     : Component.literal(route.description());
-            drawWrapped(graphics, body, x, bodyY, available, bodyMaxH,
+            drawWrapped(graphics, body, x, y, available, bodyMaxH,
                     route.description().isBlank() ? TEXT_MUTED : TEXT_DIM);
         }
+        return hovered;
     }
 
-    private void renderDetailStat(
-            GuiGraphicsExtractor graphics, String value, int x, int y, int width, int color) {
-        int innerW = Math.max(1, width - GAP_TIGHT);
-        graphics.text(font, font.plainSubstrByWidth(value, innerW), x, y, color, false);
+    private CatalogRoutePreview.Point renderPreview(GuiGraphicsExtractor graphics, CatalogRouteSummary route,
+                                                    int x1, int y1, int x2, int y2, int mouseX, int mouseY) {
+        CatalogRoutePreview preview = previews.get(route.id());
+        if (preview != null) return preview.render(graphics, font, x1, y1, x2, y2, mouseX, mouseY);
+        graphics.fill(x1, y1, x2, y2, 0x40000000);
+        graphics.fill(x1, y1, x2, y1 + 1, BORDER);
+        graphics.fill(x1, y2 - 1, x2, y2, BORDER);
+        graphics.fill(x1, y1, x1 + 1, y2, BORDER);
+        graphics.fill(x2 - 1, y1, x2, y2, BORDER);
+        Component message = Component.translatable(previewFailures.contains(route.id())
+                ? "waypointer.screen.route_catalog.preview.unavailable"
+                : "waypointer.screen.route_catalog.preview.loading");
+        drawCentered(graphics, message, x1, y1, x2 - x1, y2 - y1, TEXT_MUTED);
+        return null;
+    }
+
+    /** "16 waypoints · 2 installs · updated 3 days ago". */
+    private String detailFacts(CatalogRouteSummary route) {
+        List<String> parts = new ArrayList<>();
+        parts.add(waypointCount(route.waypointCount()).getString());
+        if (route.groupCount() > 1) parts.add(groupCount(route.groupCount()).getString());
+        parts.add(installCount(route.downloads()).getString());
+        Component age = ageLabel(route.updatedAt().isBlank() ? route.createdAt() : route.updatedAt());
+        if (age != null) parts.add(age.getString());
+        return String.join("  \u00B7  ", parts);
+    }
+
+    private static Component installStateLine(CatalogInstallState state, CatalogRouteSummary route) {
+        return switch (state.action()) {
+            case INSTALLED -> Component.translatable("waypointer.screen.route_catalog.state.installed_line");
+            case LOCAL_NEWER -> Component.translatable("waypointer.screen.route_catalog.state.local_newer_line");
+            case UPDATE -> Component.translatable("waypointer.screen.route_catalog.state.update_line",
+                    state.localVersion(), route.version());
+            case REPAIR -> Component.translatable("waypointer.screen.route_catalog.state.repair_line");
+            default -> null;
+        };
+    }
+
+    /** "updated 3 days ago" from an ISO-8601 timestamp, or {@code null} when it cannot be read. */
+    static Component ageLabel(String timestamp) {
+        if (timestamp == null || timestamp.isBlank()) return null;
+        java.time.Instant then;
+        try {
+            then = java.time.OffsetDateTime.parse(timestamp).toInstant();
+        } catch (java.time.format.DateTimeParseException e) {
+            try {
+                then = java.time.Instant.parse(timestamp);
+            } catch (java.time.format.DateTimeParseException ignored) {
+                return null;
+            }
+        }
+        long days = Math.max(0, java.time.Duration.between(then, java.time.Instant.now()).toDays());
+        String base = "waypointer.screen.route_catalog.age.";
+        if (days == 0) return Component.translatable(base + "today");
+        if (days == 1) return Component.translatable(base + "yesterday");
+        if (days < 30) return Component.translatable(base + "days", days);
+        if (days < 365) {
+            long months = Math.max(1, days / 30);
+            return months == 1 ? Component.translatable(base + "month")
+                    : Component.translatable(base + "months", months);
+        }
+        long years = days / 365;
+        return years == 1 ? Component.translatable(base + "year")
+                : Component.translatable(base + "years", years);
     }
 
     private void drawWrapped(GuiGraphicsExtractor graphics, Component text,
@@ -1159,6 +1421,7 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public boolean mouseScrolled(
             double mouseX, double mouseY, double horizontal, double vertical) {
+        if (sortMenu.isOpen()) return true;
         if (zoneDropdownOpen) {
             ZoneDropdownGeometry geo = zoneDropdownGeometry(zoneDropdownIds.size());
             if (mouseX >= geo.x1() && mouseX < geo.x2()
@@ -1170,7 +1433,7 @@ public final class RouteCatalogScreen extends Screen {
             }
             return true;
         }
-        if (mouseX >= detailX && mouseX < detailX + detailW
+        if (detailH > 0 && mouseX >= detailX && mouseX < detailX + detailW
                 && mouseY >= detailY && mouseY < detailY + detailH) {
             descriptionScroll = Math.max(0, Math.min(descriptionMaxScroll,
                     descriptionScroll - (int) Math.signum(vertical) * DETAIL_LINE_H * 2));
@@ -1187,8 +1450,17 @@ public final class RouteCatalogScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (sortMenu.isOpen()) {
+            if (event.key() == GLFW_KEY_ESCAPE) sortMenu.close();
+            else sortMenu.keyPressed(event.key());
+            return true;
+        }
         if (zoneDropdownOpen && event.key() == GLFW_KEY_ESCAPE) {
             closeZoneDropdown();
+            return true;
+        }
+        if (showingDetail && event.key() == GLFW_KEY_ESCAPE) {
+            onBack();
             return true;
         }
         if (event.key() == GLFW_KEY_F && controlDown() && searchBox != null) {
@@ -1218,7 +1490,11 @@ public final class RouteCatalogScreen extends Screen {
         if (enter && selectedRoute() != null && !detailLoading
                 && (getFocused() == null || getFocused() instanceof CatalogRouteRowButton row
                         && row.route.id().equals(browser.selectedRouteId()))) {
-            installSelectedRoute();
+            if (!wideLayout && !showingDetail) {
+                openRoute(selectedRoute());
+            } else {
+                installSelectedRoute();
+            }
             return true;
         }
         return super.keyPressed(event);
@@ -1267,6 +1543,8 @@ public final class RouteCatalogScreen extends Screen {
     @Override
     public void removed() {
         requests.deactivate();
+        previewTicket++;
+        previewLoadingId = null;
         if (listLoading || appending) {
             // Retry interrupted requests on return, keeping loaded rows and cache.
             restartAppendOnReentry = appending && browser.nextCursor() != null;
@@ -1303,6 +1581,7 @@ public final class RouteCatalogScreen extends Screen {
                 rebuildWidgets();
             }
         }
+        tickPreview();
         int before = searchDebounceTicks;
         searchDebounceTicks = advanceSearchDebounce(before);
         if (searchDebounceFired(before, searchDebounceTicks)) runPendingSearch();
@@ -1332,9 +1611,15 @@ public final class RouteCatalogScreen extends Screen {
     }
 
     private Component installButtonLabel() {
-        return Component.translatable(installedState(selectedRoute())
-                ? "waypointer.screen.route_catalog.installed"
-                : "waypointer.screen.route_catalog.install");
+        CatalogRouteSummary selected = selectedRoute();
+        CatalogInstallState.Action action = selected == null ? CatalogInstallState.Action.INSTALL
+                : installState(selected).action();
+        return Component.translatable(switch (action) {
+            case INSTALLED, LOCAL_NEWER -> "waypointer.screen.route_catalog.installed";
+            case UPDATE -> "waypointer.screen.route_catalog.update";
+            case REPAIR -> "waypointer.screen.route_catalog.repair";
+            default -> "waypointer.screen.route_catalog.install";
+        });
     }
 
     private CatalogInstallState installState(CatalogRouteSummary route) {
@@ -1422,8 +1707,8 @@ public final class RouteCatalogScreen extends Screen {
 
     private static Component routeCount(long value) {
         return pluralCount(
-                "waypointer.screen.route_catalog.status.count.one",
-                "waypointer.screen.route_catalog.status.count.many", value);
+                "waypointer.screen.route_catalog.count.one",
+                "waypointer.screen.route_catalog.count.many", value);
     }
 
     private static Component groupCount(long value) {

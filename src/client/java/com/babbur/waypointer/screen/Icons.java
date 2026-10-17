@@ -25,9 +25,9 @@ public final class Icons {
         DUNGEON_SECRET, DUNGEON_ETHERWARP, DUNGEON_BREAKER, DUNGEON_SUPERBOOM,
         DUNGEON_PEARL, DUNGEON_PEARL_TARGET, DUNGEON_ITEM, DUNGEON_BAT, TAG,
         FOLDER, FOLDER_OPEN, CHECK, EYE, EYE_OFF, PLUS, TRASH, PENCIL, UNDO, REDO,
-        INFO, GEAR, GLOBE, UPLOAD, EXPORT, PIN, TARGET,
+        INFO, GEAR, GLOBE, UPLOAD, DOWNLOAD, EXPORT, PIN, TARGET,
         RESET, BRUSH, CLOCK, SPARKLE, STAR, SKULL, MARKER, PREV_NEXT, TRACER, BEACON, ROUTE,
-        CHAT, SHARE, MAIL, CLOSE, DOT;
+        CHAT, SHARE, MAIL, CLOSE, DOT, BADGE_PICKAXE, BADGE_CHECK;
 
         float u() { return (ordinal() % COLUMNS) * (float) SIZE; }
 
@@ -43,6 +43,11 @@ public final class Icons {
     public static void draw(GuiGraphicsExtractor g, Icon icon, int x, int y, int argb) {
         g.blit(RenderPipelines.GUI_TEXTURED, ATLAS, x, y, icon.u(), icon.v(),
                 SIZE, SIZE, ATLAS_WIDTH, ATLAS_HEIGHT, argb);
+    }
+
+    /** Draws {@code icon} with its cell centred on (centerX, centerY); glyphs are centred in their cell. */
+    public static void drawAt(GuiGraphicsExtractor g, Icon icon, int centerX, int centerY, int argb) {
+        draw(g, icon, centerX - SIZE / 2, centerY - SIZE / 2, argb);
     }
 
     /** Draws {@code icon} centred in the box (x, y, width, height). */

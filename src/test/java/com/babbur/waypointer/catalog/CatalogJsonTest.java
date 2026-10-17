@@ -46,6 +46,35 @@ class CatalogJsonTest {
     private static final String EMOJI = "\uD83D\uDE00";
 
     @Test
+    void readsServerTagsAndIgnoresMalformedOnes() {
+        CatalogPage page = CatalogJson.parsePage("""
+                {"routes":[{
+                  "id":"Abcdefghijklmnopqrstuv",
+                  "title":"Tungsten loop",
+                  "zoneId":"dwarven_mines",
+                  "zoneLabel":"Dwarven Mines",
+                  "waypointCount":16,
+                  "groupCount":1,
+                  "codecVersion":9,
+                  "tags":["mining-cult", "Mining-Cult", "has space", 7, "x".repeat(40), "featured"]
+                },{
+                  "id":"Bcdefghijklmnopqrstuvw",
+                  "title":"Untagged",
+                  "zoneId":"hub",
+                  "zoneLabel":"Hub",
+                  "waypointCount":3,
+                  "groupCount":1,
+                  "codecVersion":9
+                }],"hasMore":false}
+                """.replace("\"x\".repeat(40)", "\"" + "x".repeat(40) + "\""));
+
+        CatalogRouteSummary tagged = page.routes().getFirst();
+        assertEquals(java.util.List.of("mining-cult", "featured"), tagged.tags());
+        assertTrue(tagged.hasTag(CatalogRouteSummary.TAG_MINING_CULT));
+        assertTrue(page.routes().get(1).tags().isEmpty(), "older servers send no tags");
+    }
+
+    @Test
     void parsesCurrentSiteSummaryAndSupportsLocalSearch() {
         CatalogPage page = CatalogJson.parsePage("""
                 {"routes":[{
