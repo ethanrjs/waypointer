@@ -875,15 +875,9 @@ class WaypointWorldRenderer {
         activePaintScratch.clear();
         for (WaypointGroup group : groups) {
             if (group == null || group.isEmpty()) continue;
-            boolean needsTexture = false;
-            for (Waypoint waypoint : group.waypoints()) {
-                WaypointerConfig style = styleFor(group, waypoint);
-                if (style.beaconOpacity() > 0 && !usesSequenceRoleColorPaintFallback(
-                        group, defaultPaint, style.colorSequenceWaypointsByRole(), isPaintStyle(style))) {
-                    needsTexture = true;
-                    break;
-                }
-            }
+            boolean needsTexture = anyWaypointStyle(group, style -> style.beaconOpacity() > 0
+                    && !usesSequenceRoleColorPaintFallback(group, defaultPaint,
+                            style.colorSequenceWaypointsByRole(), isPaintStyle(style)));
             if (!needsTexture) continue;
             WaypointPaint paint = paintFor(group, defaultPaint);
             if (paint != null) activePaintScratch.add(paint);
@@ -1780,9 +1774,24 @@ class WaypointWorldRenderer {
 
     private boolean anyStyle(Iterable<WaypointGroup> groups, Predicate<WaypointerConfig> predicate) {
         for (WaypointGroup group : groups) {
-            for (Waypoint waypoint : group.waypoints()) {
-                if (predicate.test(styleFor(group, waypoint))) return true;
+            if (anyWaypointStyle(group, predicate)) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Whether any waypoint of the route resolves to a matching style. Points without their own
+     * override all share the route's style, so it is resolved once rather than per point: these
+     * checks run several times a frame and a long route has thousands of points.
+     */
+    private boolean anyWaypointStyle(WaypointGroup group, Predicate<WaypointerConfig> predicate) {
+        boolean sharedChecked = false;
+        for (Waypoint waypoint : group.waypoints()) {
+            if (waypoint.styleOverride().isEmpty()) {
+                if (sharedChecked) continue;
+                sharedChecked = true;
             }
+            if (predicate.test(styleFor(group, waypoint))) return true;
         }
         return false;
     }

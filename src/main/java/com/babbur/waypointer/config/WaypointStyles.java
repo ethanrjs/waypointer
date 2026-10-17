@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class WaypointStyles {
     private WaypointStyles() {}
@@ -108,8 +109,19 @@ public final class WaypointStyles {
         catch (ReflectiveOperationException e) { throw new IllegalStateException(e); }
     }
 
+    /** Zone ids map to fixed keys, and styles are resolved for every point of every frame. */
+    private static final Map<String, List<String>> ZONE_KEYS = new ConcurrentHashMap<>();
+
     public static List<String> zoneKeys(String zoneId) {
         if (zoneId == null || zoneId.isBlank()) return List.of();
+        List<String> cached = ZONE_KEYS.get(zoneId);
+        if (cached != null) return cached;
+        List<String> keys = computeZoneKeys(zoneId);
+        if (ZONE_KEYS.size() >= 512) ZONE_KEYS.clear();
+        ZONE_KEYS.put(zoneId, keys);
+        return keys;
+    }
+    private static List<String> computeZoneKeys(String zoneId) {
         String id = Zone.canonicalId(zoneId);
         String family = zoneFamily(id);
         return family == null || family.equals(id) ? List.of(id) : List.of(family, id);
