@@ -41,31 +41,28 @@ public final class WaypointAddFlow {
     static Component waypointAddedMessage(String groupName, int waypointIndex, Waypoint waypoint,
                                           boolean showChatShareButtons) {
         String coordinates = waypoint.x() + ", " + waypoint.y() + ", " + waypoint.z();
-        MutableComponent message = Component.empty()
-                .append(Component.literal("Added ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal("Waypoint " + (waypointIndex + 1))
-                        .withStyle(ChatFormatting.AQUA))
-                .append(Component.literal(" to ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal("\"" + groupName + "\"").withStyle(ChatFormatting.GREEN))
-                .append(Component.literal(" at (").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(Integer.toString(waypoint.x()))
-                        .withStyle(ChatFormatting.YELLOW))
+        MutableComponent position = Component.literal("(").withStyle(ChatFormatting.GRAY)
+                .append(Component.literal(Integer.toString(waypoint.x())).withStyle(ChatFormatting.YELLOW))
                 .append(Component.literal(", ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(Integer.toString(waypoint.y()))
-                        .withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal(Integer.toString(waypoint.y())).withStyle(ChatFormatting.YELLOW))
                 .append(Component.literal(", ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(Integer.toString(waypoint.z()))
-                        .withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal(Integer.toString(waypoint.z())).withStyle(ChatFormatting.YELLOW))
                 .append(Component.literal(")").withStyle(ChatFormatting.GRAY));
+        MutableComponent message = Component.translatableWithFallback("waypointer.input.added",
+                "Added %1$s to %2$s at %3$s",
+                Component.translatableWithFallback("waypointer.input.added.waypoint", "Waypoint %s",
+                        waypointIndex + 1).withStyle(ChatFormatting.AQUA),
+                Component.literal("\"" + groupName + "\"").withStyle(ChatFormatting.GREEN),
+                position).withStyle(ChatFormatting.GRAY);
         if (!showChatShareButtons) return message;
         return message
                 .append(Component.literal(" "))
                 .append(chatShareButton(
-                        Component.literal("All"),
+                        Component.translatableWithFallback("waypointer.input.share.all", "All"),
                         "/ac " + coordinates))
                 .append(Component.literal(" "))
                 .append(chatShareButton(
-                        Component.literal("Party"),
+                        Component.translatableWithFallback("waypointer.input.share.party", "Party"),
                         "/pc " + coordinates));
     }
 

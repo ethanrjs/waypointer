@@ -26,7 +26,11 @@ import static org.lwjgl.glfw.GLFW.GLFW_KEY_UP;
 /** One popup per screen, with shortcut hints beside its actions. */
 final class ContextMenuOverlay {
 
-    record Item(Component label, String hint, boolean enabled, Runnable action) {
+    record Item(Component label, String hint, boolean enabled, Runnable action, Icons.Icon icon) {
+        Item(Component label, String hint, boolean enabled, Runnable action) {
+            this(label, hint, enabled, action, null);
+        }
+
         static Item of(Component label, String hint, Runnable action) {
             return new Item(label, hint, true, action);
         }
@@ -38,6 +42,29 @@ final class ContextMenuOverlay {
         static Item disabled(Component label, String hint) {
             return new Item(label, hint, false, null);
         }
+
+        Item withIcon(Icons.Icon icon) {
+            return new Item(label, hint, enabled, action, icon);
+        }
+    }
+
+    private static final int ICON_COLUMN = Icons.SIZE + 4;
+
+    /** Localized shortcut hint shown at the right of a menu item, e.g. "double-click". */
+    static String hint(String id) {
+        return Component.translatable("waypointer.screen.menu.hint." + id).getString();
+    }
+
+    /** Gives every item whose label is one of {@code icons}' translation keys that icon. */
+    static List<Item> withIcons(List<Item> items, java.util.Map<String, Icons.Icon> icons) {
+        List<Item> out = new java.util.ArrayList<>(items.size());
+        for (Item item : items) {
+            Icons.Icon icon = item.label().getContents()
+                    instanceof net.minecraft.network.chat.contents.TranslatableContents translatable
+                    ? icons.get(translatable.getKey()) : null;
+            out.add(icon == null || item.icon() != null ? item : item.withIcon(icon));
+        }
+        return out;
     }
 
     private static final int MIN_W = 130;
@@ -50,6 +77,7 @@ final class ContextMenuOverlay {
     private int width;
     private int height;
     private int cursor = -1;
+    private boolean hintsHidden;
 
     boolean isOpen() {
         return open;
@@ -57,6 +85,7 @@ final class ContextMenuOverlay {
 
     void close() {
         open = false;
+        hintsHidden = false;
         items = List.of();
         cursor = -1;
     }
@@ -64,8 +93,24 @@ final class ContextMenuOverlay {
     /** Opens beside a pointer position, flipped above when it would clip the bottom. */
     void openAt(Font font, List<Item> menuItems, double anchorX, double anchorY,
                 int minX, int minY, int maxRight, int maxBottom) {
-        openMeasured(menuItems, measureWidest(font, menuItems),
-                anchorX, anchorY, minX, minY, maxRight, maxBottom);
+        int widest = fittedWidest(font, menuItems, maxRight - minX);
+        openMeasured(menuItems, widest, anchorX, anchorY, minX, minY, maxRight, maxBottom);
+        fitWidth(minX, maxRight);
+    }
+
+    /** Narrow spaces drop the shortcut hints before the labels get cut. */
+    private int fittedWidest(Font font, List<Item> menuItems, int room) {
+        int widest = measureWidest(font, menuItems, true);
+        boolean hide = menuWidth(widest) > room;
+        int result = hide ? measureWidest(font, menuItems, false) : widest;
+        hintsHidden = hide;
+        return result;
+    }
+
+    private void fitWidth(int minX, int maxRight) {
+        if (!open || width <= maxRight - minX) return;
+        width = Math.max(40, maxRight - minX);
+        x = minX;
     }
 
     void openMeasured(List<Item> menuItems, int widestItemWidth,
@@ -84,8 +129,9 @@ final class ContextMenuOverlay {
     /** Opens with its bottom edge sitting on {@code anchorBottomY} (footer menus). */
     void openAbove(Font font, List<Item> menuItems, int anchorX, int anchorBottomY,
                    int minX, int minY, int maxRight) {
-        openAboveMeasured(menuItems, measureWidest(font, menuItems),
-                anchorX, anchorBottomY, minX, minY, maxRight);
+        int widest = fittedWidest(font, menuItems, maxRight - minX);
+        openAboveMeasured(menuItems, widest, anchorX, anchorBottomY, minX, minY, maxRight);
+        fitWidth(minX, maxRight);
     }
 
     void openAboveMeasured(List<Item> menuItems, int widestItemWidth,
@@ -101,15 +147,20 @@ final class ContextMenuOverlay {
         open = true;
     }
 
-    private static int measureWidest(Font font, List<Item> menuItems) {
+    private static int measureWidest(Font font, List<Item> menuItems, boolean withHints) {
         int widest = 0;
         if (menuItems == null) return widest;
         for (Item item : menuItems) {
             int w = font.width(item.label());
-            if (item.hint() != null) w += GAP_SECTION + font.width(item.hint());
+            if (withHints && item.hint() != null) w += GAP_SECTION + font.width(item.hint());
             widest = Math.max(widest, w);
         }
-        return widest;
+        return widest + (hasIcons(menuItems) ? ICON_COLUMN : 0);
+    }
+
+    private static boolean hasIcons(List<Item> menuItems) {
+        for (Item item : menuItems) if (item.icon() != null) return true;
+        return false;
     }
 
     static int menuWidth(int widestItemWidth) {
@@ -136,6 +187,7 @@ final class ContextMenuOverlay {
         if (!open) return;
         GuiTokens.drawTooltipPanel(g, x, y, x + width, y + height);
         int hovered = itemIndexAt(mouseX, mouseY);
+        int labelX = x + GAP + (hasIcons(items) ? ICON_COLUMN : 0);
         for (int i = 0; i < items.size(); i++) {
             Item item = items.get(i);
             int rowY = y + 1 + i * ROW_H;
@@ -143,7 +195,6 @@ final class ContextMenuOverlay {
             boolean isHovered = i == hovered && item.enabled();
             if (isCursor) {
                 g.fill(x + 1, rowY, x + width - 1, rowY + ROW_H, SELECTED);
-                g.fill(x + 1, rowY, x + 3, rowY + ROW_H, ACCENT);
             } else if (isHovered) {
                 g.fill(x + 1, rowY, x + width - 1, rowY + ROW_H, HOVER);
             }
@@ -152,14 +203,18 @@ final class ContextMenuOverlay {
             int labelColor = !item.enabled() ? TEXT_MUTED
                     : isHovered || isCursor ? TEXT : TEXT_DIM;
             int hintX = x + width - GAP;
-            if (item.hint() != null) {
+            if (item.hint() != null && !hintsHidden) {
                 int hintW = font.width(item.hint());
                 g.text(font, item.hint(), hintX - hintW, rowY + 7, TEXT_MUTED, false);
                 hintX -= hintW + GAP;
             }
-            int labelMaxW = Math.max(12, hintX - (x + GAP));
+            if (item.icon() != null) {
+                int iconColor = !item.enabled() ? TEXT_MUTED : isHovered || isCursor ? ACCENT : TEXT_DIM;
+                Icons.draw(g, item.icon(), x + GAP, rowY + (ROW_H - Icons.SIZE) / 2, iconColor);
+            }
+            int labelMaxW = Math.max(12, hintX - labelX);
             g.text(font, font.plainSubstrByWidth(item.label().getString(), labelMaxW),
-                    x + GAP, rowY + 7, labelColor, false);
+                    labelX, rowY + 7, labelColor, false);
         }
     }
 

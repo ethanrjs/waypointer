@@ -31,14 +31,13 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 import net.minecraft.sounds.SoundEvents;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static com.babbur.waypointer.screen.GroupEditGeometry.*;
 import static com.babbur.waypointer.screen.GroupEditInputRouter.MOUSE_BUTTON_LEFT;
@@ -71,7 +70,6 @@ public final class GroupEditScreen extends Screen {
     private ColorSwatchButton gradientEndBtn;
     private WaypointColorPickerState waypointColorPickerState;
     private int dungeonTypePickerIndex = -1;
-    private boolean dungeonTypeIconsAvailable;
 
     private int scrollOffset;
     private int sidebarScrollOffset;
@@ -86,13 +84,7 @@ public final class GroupEditScreen extends Screen {
     private static final int SUBWAY_ACCENT = 0xFF58C878;
     private static final int SUBWAY_STYLE_BUTTON_SIZE = 20;
     private static final int SUBWAY_STYLE_BUTTON_TOP_PAD = 1;
-    private static final int WAYPOINT_CONTROL_ICON_SIZE = 16;
-    private static final int WAYPOINT_CONTROL_ICON_ATLAS_W = WAYPOINT_CONTROL_ICON_SIZE * 7;
-    private static final Identifier WAYPOINT_CONTROL_ICONS = Identifier.fromNamespaceAndPath(
-            Waypointer.MOD_ID, "textures/gui/waypoint_controls.png");
 
-    private static final Identifier DUNGEON_TYPE_ICONS = Identifier.fromNamespaceAndPath(
-            Waypointer.MOD_ID, "textures/gui/dungeon_waypoint_types.png");
     private static final int DUNGEON_TYPE_BUTTON_SIZE = 20;
     private static final int DUNGEON_TYPE_PICKER_COLUMNS = 4;
     private static final int DUNGEON_TYPE_PICKER_ROWS = 2;
@@ -111,6 +103,7 @@ public final class GroupEditScreen extends Screen {
     private static final int SUBWAY_STYLE_BUTTON_HOVER = 0xFF303844;
     private static final int DEPTH_CHECK_BUTTON_ACTIVE = 0xFF315F8F;
     private static final int HEADER_INFO_BUTTON_SIZE = 12;
+    private static final int HEADER_ICON_BTN_W = 24;
     private static final int PUBLISH_BUTTON_W = 92;
     private static final int SUBWAYPOINT_INDENT = 16;
     private static final int ROUTE_SCROLLBAR_W = 2;
@@ -231,8 +224,6 @@ public final class GroupEditScreen extends Screen {
         clearWaypointDrag();
         dungeonTypePickerIndex = -1;
         contextMenu.close();
-        dungeonTypeIconsAvailable = minecraft != null
-                && minecraft.getResourceManager().getResource(DUNGEON_TYPE_ICONS).isPresent();
         int resumeEditingIndex = editingIndex;
         String resumeEditingValue = labelEditor != null && editingIndex >= 0
                 ? labelEditor.getValue()
@@ -303,7 +294,7 @@ public final class GroupEditScreen extends Screen {
 
         moveSelectedHereBtn = styledButton(sidebarInner, y, fieldW, BTN_H,
                 Component.translatable("waypointer.screen.group_edit.move_here"),
-                b -> moveSelectedHere(), null);
+                b -> moveSelectedHere(), null, Icons.Icon.PIN);
         addSidebarWidget(moveSelectedHereBtn);
 
         int naturalResetY = y + BTN_H + GAP;
@@ -318,7 +309,7 @@ public final class GroupEditScreen extends Screen {
                 Component.translatable("waypointer.screen.group_edit.reset_progress"), b -> {
             DungeonRoomRouteLibrary.resetManualProgress(manager, group);
             recordEdit();
-        }, null));
+        }, null, Icons.Icon.RESET));
         sidebarScrollOffset = Math.max(0, Math.min(maxSidebarScroll, sidebarScrollOffset));
         refreshSidebarWidgets(layout);
 
@@ -342,31 +333,34 @@ public final class GroupEditScreen extends Screen {
         boolean dungeonRoute = CatalogPublishFormModel.unsafeDungeonRoute(group);
         boolean incompatibleDraft = parent instanceof WaypointerScreen main
                 && !main.acceptsPublishDraft(group);
-        Button publishButton = styledButton(width - PAD_OUTER - PUBLISH_BUTTON_W, PAD_OUTER - 6,
-                PUBLISH_BUTTON_W, BTN_H,
+        boolean compactHeader = compactHeader();
+        Button publishButton = styledButton(width - PAD_OUTER - publishButtonWidth(), PAD_OUTER - 6,
+                publishButtonWidth(), BTN_H,
                 Component.translatable("waypointer.screen.group_edit.publish"),
                 b -> publish(),
                 Tooltip.create(Component.translatable(dungeonRoute
                         ? "waypointer.screen.route_publish.validation.dungeon"
                         : incompatibleDraft ? "waypointer.screen.route_publish.validation.mixed_routes"
-                        : "waypointer.screen.group_edit.publish.tooltip")));
+                        : "waypointer.screen.group_edit.publish.tooltip")), Icons.Icon.UPLOAD);
         publishButton.active = !dungeonRoute && !incompatibleDraft;
+        ((GuiTokens.StyledButton) publishButton).setIconOnly(compactHeader);
         addRenderableWidget(publishButton);
 
         AppearanceTarget look = routeAppearanceTarget();
         int appearanceW = appearanceButtonWidth();
         Button appearanceButton = styledButton(
-                width - PAD_OUTER - PUBLISH_BUTTON_W - GAP - appearanceW, PAD_OUTER - 6,
+                width - PAD_OUTER - publishButtonWidth() - GAP - appearanceW, PAD_OUTER - 6,
                 appearanceW, BTN_H, appearanceButtonLabel(look),
                 b -> openAppearance(routeAppearanceTarget()),
                 Tooltip.create(Component.translatable(look == null
                         ? "waypointer.screen.group_edit.downloaded_route_read_only"
-                        : "waypointer.screen.group_edit.appearance.tooltip")));
+                        : "waypointer.screen.group_edit.appearance.tooltip")), Icons.Icon.BRUSH);
         appearanceButton.active = look != null;
+        ((GuiTokens.StyledButton) appearanceButton).setIconOnly(compactHeader);
         addRenderableWidget(appearanceButton);
 
         int peekW = peekButtonWidth();
-        addRenderableWidget(styledButton(
+        Button peekButton = addRenderableWidget(styledButton(
                 appearanceButton.getX() - GAP - peekW, PAD_OUTER - 6, peekW, BTN_H,
                 Component.translatable(peeking
                         ? "waypointer.screen.group_edit.peek.off"
@@ -377,7 +371,9 @@ public final class GroupEditScreen extends Screen {
                     contextMenu.close();
                     rebuildWidgets();
                 },
-                Tooltip.create(Component.translatable("waypointer.screen.group_edit.peek.tooltip"))));
+                Tooltip.create(Component.translatable("waypointer.screen.group_edit.peek.tooltip")),
+                peeking ? Icons.Icon.EYE_OFF : Icons.Icon.EYE));
+        ((GuiTokens.StyledButton) peekButton).setIconOnly(compactHeader);
 
         GuiTokens.layoutFooter(width, height - FOOTER_H, footerActionSpecs, footerDoneSpec,
                 this::addRenderableWidget, font);
@@ -410,8 +406,13 @@ public final class GroupEditScreen extends Screen {
     }
 
     private int peekButtonWidth() {
-        return Math.max(font.width(Component.translatable("waypointer.screen.group_edit.peek")),
-                font.width(Component.translatable("waypointer.screen.group_edit.peek.off"))) + 16;
+        return compactHeader() ? HEADER_ICON_BTN_W : fullPeekButtonWidth();
+    }
+
+    private int fullPeekButtonWidth() {
+        return Math.max(
+                GuiTokens.iconButtonWidth(font, Component.translatable("waypointer.screen.group_edit.peek"), Icons.Icon.EYE),
+                GuiTokens.iconButtonWidth(font, Component.translatable("waypointer.screen.group_edit.peek.off"), Icons.Icon.EYE));
     }
 
     private boolean peeking;
@@ -430,7 +431,23 @@ public final class GroupEditScreen extends Screen {
     }
 
     private int appearanceButtonWidth() {
-        return font.width(Component.translatable("waypointer.screen.group_edit.appearance.count", 99))
+        return compactHeader() ? HEADER_ICON_BTN_W : fullAppearanceButtonWidth();
+    }
+
+    private int publishButtonWidth() {
+        return compactHeader() ? HEADER_ICON_BTN_W : PUBLISH_BUTTON_W;
+    }
+
+    /** True when the route name would be cut off: the header buttons then show only their icons. */
+    private boolean compactHeader() {
+        int full = PUBLISH_BUTTON_W + GAP + fullAppearanceButtonWidth() + GAP + fullPeekButtonWidth();
+        int available = width - PAD_OUTER * 2 - full - HEADER_INFO_BUTTON_SIZE - GAP_TIGHT - GAP_SECTION;
+        return font.width(headerTitleText()) > available;
+    }
+
+    private int fullAppearanceButtonWidth() {
+        return Icons.SIZE + GuiTokens.StyledButton.ICON_GAP
+                + font.width(Component.translatable("waypointer.screen.group_edit.appearance.count", 99))
                 + 16;
     }
 
@@ -477,16 +494,16 @@ public final class GroupEditScreen extends Screen {
         List<GuiTokens.ButtonSpec> left = new ArrayList<>();
         left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.group_edit.add").getString(),
-                this::addHere));
+                this::addHere).withIcon(Icons.Icon.PLUS));
         left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.group_edit.add_named").getString(),
-                this::addNamedHere));
+                this::addNamedHere).withIcon(Icons.Icon.TAG));
         left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.group_edit.export").getString(),
-                this::export));
+                this::export).withIcon(Icons.Icon.EXPORT));
         left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.group_edit.remove").getString(),
-                this::removeSelected));
+                this::removeSelected).withIcon(Icons.Icon.TRASH));
         left.add(new GuiTokens.ButtonSpec("\u25b2", 24, () -> moveSelected(-1),
                 Tooltip.create(Component.translatable(
                         "waypointer.screen.group_edit.move_up.tooltip"))));
@@ -1072,7 +1089,7 @@ public final class GroupEditScreen extends Screen {
 
     private String clippedHeaderTitle(String title) {
         String safeTitle = title == null ? "" : title;
-        int publishButtonLeft = width - PAD_OUTER - PUBLISH_BUTTON_W - GAP - appearanceButtonWidth()
+        int publishButtonLeft = width - PAD_OUTER - publishButtonWidth() - GAP - appearanceButtonWidth()
                 - GAP - peekButtonWidth();
         int available = publishButtonLeft - PAD_OUTER - HEADER_INFO_BUTTON_SIZE
                 - GAP_TIGHT - GAP_SECTION;
@@ -1172,7 +1189,7 @@ public final class GroupEditScreen extends Screen {
                     x1 + GAP, y1 + 8, TEXT, false);
             Component hint = CrystalHollowsStructureRoutes.isStructureRoute(group)
                     ? Component.translatableWithFallback("waypointer.screen.group_edit.empty.structure_hint",
-                            "Click \"+ Add\", then edit the NPC-relative X, Y, and Z coordinates.")
+                            "Click Add, then edit the NPC-relative X, Y and Z coordinates.")
                     : Component.translatable("waypointer.screen.group_edit.empty.hint");
             g.text(font, hint,
                     x1 + GAP, y1 + 8 + 14, TEXT_DIM, false);
@@ -1375,11 +1392,19 @@ public final class GroupEditScreen extends Screen {
         String controlSummary = showInlineControls
                 ? ""
                 : waypointControlSummary(w, subwaypoint, showDungeonWaypointControls);
+        int coordinateX = x1 + coordinateColumnOffset;
         int textRightX = waypointRowTextRightEdge(x2, subwaypoint,
                 showDungeonWaypointControls, showInlineControls,
                 waypointRightMetadataWidth(w, subwaypoint, isCurrent, controlSummary));
+        // The number and coordinates matter most; tags give way when the row is narrow.
+        boolean showMetadata = textRightX >= coordinateX + font.width(coordinates);
+        if (!showMetadata) {
+            controlSummary = "";
+            textRightX = waypointRowTextRightEdge(x2, subwaypoint,
+                    showDungeonWaypointControls, showInlineControls, 0);
+        }
         renderWaypointRowLabelAndName(g, ordinal, coordinates, w, index, textX,
-                x1 + coordinateColumnOffset, textRightX, y1, textColor);
+                coordinateX, textRightX, y1, textColor);
 
         int rightTextX = x2 - GAP;
         if (showInlineControls) {
@@ -1397,6 +1422,7 @@ public final class GroupEditScreen extends Screen {
             g.text(font, controlSummary, rightTextX - summaryW, y1 + 7, TEXT_MUTED, false);
             rightTextX -= summaryW + GAP;
         }
+        if (!showMetadata) return;
         if (subwaypoint) {
             String tag = subwaypointTagText();
             int tagW = font.width(tag);
@@ -1567,7 +1593,8 @@ public final class GroupEditScreen extends Screen {
                 y + DUNGEON_TYPE_BUTTON_SIZE - 1, fill);
         List<DungeonWaypointType> active = DungeonWaypointType.activeTypes(waypoint);
         if (active.isEmpty()) {
-            renderDungeonTypeAtlasIcon(g, x, y, DungeonWaypointType.WAYPOINT_TYPE_ICON_INDEX, TEXT_DIM);
+            Icons.drawCentered(g, Icons.Icon.TAG, x, y, DUNGEON_TYPE_BUTTON_SIZE,
+                    DUNGEON_TYPE_BUTTON_SIZE, hovered || open ? TEXT : TEXT_MUTED);
         } else {
             renderDungeonTypeIcon(g, x, y, active.getFirst(), TEXT);
             if (active.size() > 1) {
@@ -1580,34 +1607,8 @@ public final class GroupEditScreen extends Screen {
 
     private void renderDungeonTypeIcon(GuiGraphicsExtractor g, int x, int y,
                                        DungeonWaypointType type, int color) {
-        renderDungeonTypeAtlasIcon(g, x, y, type.iconIndex(), type.fallbackGlyph(), color);
-    }
-
-    private void renderDungeonTypeAtlasIcon(GuiGraphicsExtractor g, int x, int y,
-                                             int iconIndex, int color) {
-        renderDungeonTypeAtlasIcon(g, x, y, iconIndex, "T", color);
-    }
-
-    private void renderDungeonTypeAtlasIcon(GuiGraphicsExtractor g, int x, int y,
-                                             int iconIndex, String fallbackGlyph, int color) {
-        int inset = (DUNGEON_TYPE_BUTTON_SIZE - DungeonWaypointType.ICON_SIZE) / 2;
-        if (dungeonTypeIconsAvailable) {
-            g.blit(RenderPipelines.GUI_TEXTURED, DUNGEON_TYPE_ICONS,
-                    x + inset, y + inset,
-                    iconIndex * (float) DungeonWaypointType.ICON_SIZE, 0f,
-                    DungeonWaypointType.ICON_SIZE, DungeonWaypointType.ICON_SIZE,
-                    DungeonWaypointType.ICON_ATLAS_WIDTH, DungeonWaypointType.ICON_SIZE);
-            return;
-        }
-        renderDungeonTypeFallbackGlyph(g, x, y, fallbackGlyph, color);
-    }
-
-    private void renderDungeonTypeFallbackGlyph(GuiGraphicsExtractor g, int x, int y,
-                                                String glyph, int color) {
-        g.text(font, glyph,
-                x + (DUNGEON_TYPE_BUTTON_SIZE - font.width(glyph)) / 2,
-                y + (DUNGEON_TYPE_BUTTON_SIZE - font.lineHeight) / 2,
-                color, false);
+        Icons.drawCentered(g, Icons.forDungeonType(type), x, y,
+                DUNGEON_TYPE_BUTTON_SIZE, DUNGEON_TYPE_BUTTON_SIZE, color);
     }
 
     private void renderDungeonTypePicker(GuiGraphicsExtractor g, int mouseX, int mouseY) {
@@ -1729,7 +1730,8 @@ public final class GroupEditScreen extends Screen {
         g.fill(x, y, x + SUBWAY_STYLE_BUTTON_SIZE, y + SUBWAY_STYLE_BUTTON_SIZE, border);
         g.fill(x + 1, y + 1, x + SUBWAY_STYLE_BUTTON_SIZE - 1,
                 y + SUBWAY_STYLE_BUTTON_SIZE - 1, bg);
-        renderWaypointControlIcon(g, x, y, waypointControlIconIndex(action));
+        Icons.drawCentered(g, waypointControlIcon(action), x, y,
+                SUBWAY_STYLE_BUTTON_SIZE, SUBWAY_STYLE_BUTTON_SIZE, controlIconTint(active, hovered));
     }
 
     private void renderDepthCheckButton(GuiGraphicsExtractor g, Waypoint waypoint,
@@ -1746,8 +1748,8 @@ public final class GroupEditScreen extends Screen {
         g.fill(x, y, x + SUBWAY_STYLE_BUTTON_SIZE, y + SUBWAY_STYLE_BUTTON_SIZE, border);
         g.fill(x + 1, y + 1, x + SUBWAY_STYLE_BUTTON_SIZE - 1,
                 y + SUBWAY_STYLE_BUTTON_SIZE - 1, bg);
-        renderWaypointControlIcon(g, x, y,
-                waypointControlIconIndex(WAYPOINT_CONTROL_ACTION_DEPTH_CHECK));
+        Icons.drawCentered(g, waypointControlIcon(WAYPOINT_CONTROL_ACTION_DEPTH_CHECK), x, y,
+                SUBWAY_STYLE_BUTTON_SIZE, SUBWAY_STYLE_BUTTON_SIZE, controlIconTint(active, hovered));
     }
 
     private void renderSubwaypointStyleButtons(GuiGraphicsExtractor g, Waypoint waypoint,
@@ -1787,25 +1789,29 @@ public final class GroupEditScreen extends Screen {
         g.fill(x, y, x + SUBWAY_STYLE_BUTTON_SIZE, y + SUBWAY_STYLE_BUTTON_SIZE, border);
         g.fill(x + 1, y + 1, x + SUBWAY_STYLE_BUTTON_SIZE - 1,
                 y + SUBWAY_STYLE_BUTTON_SIZE - 1, bg);
-        renderWaypointControlIcon(g, x, y, subwaypointStyleIconIndex(action));
+        Icons.drawCentered(g, subwaypointStyleIcon(action), x, y,
+                SUBWAY_STYLE_BUTTON_SIZE, SUBWAY_STYLE_BUTTON_SIZE, controlIconTint(active, hovered));
     }
 
-    private static void renderWaypointControlIcon(GuiGraphicsExtractor g, int x, int y,
-                                                   int iconIndex) {
-        int inset = (SUBWAY_STYLE_BUTTON_SIZE - WAYPOINT_CONTROL_ICON_SIZE) / 2;
-        g.blit(RenderPipelines.GUI_TEXTURED, WAYPOINT_CONTROL_ICONS,
-                x + inset, y + inset,
-                iconIndex * (float) WAYPOINT_CONTROL_ICON_SIZE, 0f,
-                WAYPOINT_CONTROL_ICON_SIZE, WAYPOINT_CONTROL_ICON_SIZE,
-                WAYPOINT_CONTROL_ICON_ATLAS_W, WAYPOINT_CONTROL_ICON_SIZE);
+    private static int controlIconTint(boolean active, boolean hovered) {
+        return active || hovered ? TEXT : TEXT_DIM;
     }
 
-    static int subwaypointStyleIconIndex(int action) {
-        return action - SUBWAY_STYLE_ACTION_SMALL;
+    static Icons.Icon subwaypointStyleIcon(int action) {
+        return switch (action) {
+            case SUBWAY_STYLE_ACTION_FILLED -> Icons.Icon.SUB_FILLED;
+            case SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT -> Icons.Icon.SUB_HIDE_AFTER_PARENT;
+            default -> Icons.Icon.SUB_SMALL;
+        };
     }
 
-    static int waypointControlIconIndex(int action) {
-        return 3 + action - WAYPOINT_CONTROL_ACTION_STAND_SKIP;
+    static Icons.Icon waypointControlIcon(int action) {
+        return switch (action) {
+            case WAYPOINT_CONTROL_ACTION_INTERACT_SKIP -> Icons.Icon.SKIP_INTERACT;
+            case WAYPOINT_CONTROL_ACTION_MINE_SKIP -> Icons.Icon.SKIP_MINE;
+            case WAYPOINT_CONTROL_ACTION_DEPTH_CHECK -> Icons.Icon.DEPTH_CHECK;
+            default -> Icons.Icon.SKIP_STAND;
+        };
     }
 
     private static int subwaypointStyleButtonsLeft(int rowRight, boolean showDungeonControls) {
@@ -2028,12 +2034,12 @@ public final class GroupEditScreen extends Screen {
                 null, () -> setCurrentWaypoint(index)));
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.group_edit.menu.rename"),
-                "double-click", () -> beginLabelEdit(index)));
+                ContextMenuOverlay.hint("double_click"), () -> beginLabelEdit(index)));
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable(waypoint.isDisabled()
                         ? "waypointer.screen.group_edit.menu.enable"
                         : "waypointer.screen.group_edit.menu.disable"),
-                "middle-click", () -> {
+                ContextMenuOverlay.hint("middle_click"), () -> {
             if (group.toggleWaypointDisabled(index)) recordEdit();
         }));
         Component subwaypointLabel = Component.translatable(subwaypoint
@@ -2044,7 +2050,7 @@ public final class GroupEditScreen extends Screen {
                         ? "waypointer.screen.group_edit.menu.subwaypoint_first"
                         : "waypointer.screen.group_edit.menu.subwaypoint_no_main").getString()));
         else items.add(ContextMenuOverlay.Item.of(subwaypointLabel,
-                "shift-right-click", () -> {
+                ContextMenuOverlay.hint("shift_right_click"), () -> {
             if (group.toggleSubwaypoint(index)) {
                 if (group.isSubwaypoint(index)) disableSkipAheadForSequencingEdit();
                 coordinateEditorIndex = -1;
@@ -2060,14 +2066,14 @@ public final class GroupEditScreen extends Screen {
                         "waypointer.screen.group_edit.menu.appearance.room_copy").getString()));
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.group_edit.menu.reposition"),
-                "shift-click", () -> WaypointRepositionMode.start(manager, config, group, index)));
+                ContextMenuOverlay.hint("shift_click"), () -> WaypointRepositionMode.start(manager, config, group, index)));
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.group_edit.menu.color"),
                 null, () -> openWaypointColorPicker(index)));
         if (waypoint.hasFlag(Waypoint.FLAG_LOCKED_COLOR)) {
             items.add(ContextMenuOverlay.Item.of(
                     Component.translatable("waypointer.screen.group_edit.menu.color_reset"),
-                    "shift-click color", () -> unlockWaypointColor(index)));
+                    ContextMenuOverlay.hint("shift_click_color"), () -> unlockWaypointColor(index)));
         }
         AppearanceTarget look = waypointAppearanceTarget(index);
         int lookCount = look == null ? 0 : look.scope().count();
@@ -2091,9 +2097,24 @@ public final class GroupEditScreen extends Screen {
         }));
 
         Layout layout = layout();
-        contextMenu.openAt(font, items, anchorX, anchorY,
+        contextMenu.openAt(font, ContextMenuOverlay.withIcons(items, WAYPOINT_MENU_ICONS), anchorX, anchorY,
                 layout.mainLeft(), layout.top(), layout.mainRight(), layout.bottom());
     }
+
+    private static final Map<String, Icons.Icon> WAYPOINT_MENU_ICONS = Map.ofEntries(
+            Map.entry("waypointer.screen.group_edit.menu.goto", Icons.Icon.TARGET),
+            Map.entry("waypointer.screen.group_edit.menu.rename", Icons.Icon.PENCIL),
+            Map.entry("waypointer.screen.group_edit.menu.enable", Icons.Icon.EYE),
+            Map.entry("waypointer.screen.group_edit.menu.disable", Icons.Icon.EYE_OFF),
+            Map.entry("waypointer.screen.group_edit.menu.subwaypoint_on", Icons.Icon.SUB_SMALL),
+            Map.entry("waypointer.screen.group_edit.menu.subwaypoint_off", Icons.Icon.SUB_FILLED),
+            Map.entry("waypointer.screen.group_edit.menu.add_subwaypoint", Icons.Icon.PLUS),
+            Map.entry("waypointer.screen.group_edit.menu.reposition", Icons.Icon.PIN),
+            Map.entry("waypointer.screen.group_edit.menu.color", Icons.Icon.DOT),
+            Map.entry("waypointer.screen.group_edit.menu.color_reset", Icons.Icon.RESET),
+            Map.entry("waypointer.screen.group_edit.menu.appearance", Icons.Icon.BRUSH),
+            Map.entry("waypointer.screen.group_edit.menu.types", Icons.Icon.TAG),
+            Map.entry("waypointer.screen.group_edit.menu.remove", Icons.Icon.TRASH));
 
     private void setCurrentWaypoint(int index) {
         selectWaypoint(index);

@@ -1368,18 +1368,19 @@ public final class ExportScreen extends Screen {
         if (bg != 0) g.fill(x1, y1, x2, rowBottom, bg);
         if (selected) g.fill(x1, y1, x1 + 2, rowBottom, ACCENT);
 
-        String marker = selected ? "[x]" : "[ ]";
-        int markerColor = selected ? ACCENT : TEXT_MUTED;
         int textColor = selected ? TEXT : TEXT_MUTED;
         int metaColor = selected ? TEXT_DIM : TEXT_MUTED;
         int textX = x1 + GAP;
         int centerY = y1 + (ROUTE_ROW_H - 8) / 2;
-        g.text(font, marker, textX, centerY, markerColor, false);
+        GuiTokens.drawMiniCheck(g, textX, y1 + (ROUTE_ROW_H - GuiTokens.MINI_CHECK) / 2, selected, true);
 
-        String rawMeta = displayZoneLabel(group.zoneId()) + "  " + group.size() + " pts  "
-                + group.loadMode().name().toLowerCase(Locale.ROOT);
+        String rawMeta = RouteListPresentation.joinParts(List.of(displayZoneLabel(group.zoneId()),
+                RouteListPresentation.waypointCount(group.size()).getString(),
+                Component.translatable(group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
+                        ? "waypointer.screen.main.route.mode.sequence"
+                        : "waypointer.screen.main.route.mode.static").getString()));
         int metaRight = x2 - GAP - (maxRouteScrollOffset() > 0 ? ROUTE_SCROLLBAR_W + GAP : 0);
-        int nameX = textX + font.width(marker) + GAP;
+        int nameX = textX + GuiTokens.MINI_CHECK + GAP;
         int metaMaxW = Math.max(40, metaRight - nameX - 60 - GAP);
         String meta = font.plainSubstrByWidth(rawMeta, metaMaxW);
         int metaW = font.width(meta);
@@ -1765,15 +1766,14 @@ public final class ExportScreen extends Screen {
                     active, highlighted, isFocused());
 
             var font = Minecraft.getInstance().font;
-            String marker = marker();
             int textY = GuiTokens.opticalTextY(getY(), getHeight());
             int markerX = getX() + INCLUDE_ROW_INSET;
-            int labelX = markerX + font.width(marker) + GAP_TIGHT;
+            int labelX = markerX + GuiTokens.MINI_CHECK + GAP_TIGHT + 1;
             int labelMaxW = Math.max(0, getX() + getWidth() - INCLUDE_ROW_INSET - labelX);
 
-            int markerColor = !active ? TEXT_MUTED : chosen() ? ACCENT : TEXT_MUTED;
             int labelColor = !active ? TEXT_MUTED : chosen() ? TEXT : TEXT_DIM;
-            g.text(font, marker, markerX, textY, markerColor, false);
+            GuiTokens.drawMiniCheck(g, markerX, getY() + (getHeight() - GuiTokens.MINI_CHECK) / 2,
+                    chosen(), active);
             g.text(font, font.plainSubstrByWidth(getMessage().getString(), labelMaxW),
                     labelX, textY, labelColor, false);
         }

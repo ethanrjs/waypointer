@@ -35,6 +35,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.Set;
 
@@ -71,13 +72,15 @@ public final class WaypointerScreen extends Screen {
 
     private static final long CONFIRM_WINDOW_MS = 2500L;
     private static final int SEARCH_CLEAR_BTN_W = 52;
-    private static final int BROWSE_BTN_W = 88;
-    private static final int MOVE_ZONE_BTN_W = 76;
+    private static final int TOOL_ICON_BTN_W = 24;
+    private static final int SEARCH_MIN_COMFORT_W = 120;
+    private static final int BROWSE_BTN_W = 96;
+    private static final int MOVE_ZONE_BTN_W = 92;
     private static final long MAIN_NOTICE_MS = 2500L;
     private static final int NEW_BTN_W = 64;
-    private static final int HIDE_ALL_ROUTES_BTN_W = 64;
-    private static final int IMPORT_EXPORT_BTN_W = 96;
-    private static final int DELETE_BTN_W = 56;
+    private static final int HIDE_ALL_ROUTES_BTN_W = 80;
+    private static final int IMPORT_EXPORT_BTN_W = 116;
+    private static final int DELETE_BTN_W = 72;
     private static final int DONE_BTN_W = 56;
     private static final int REORDER_BTN_W = 28;
     private static final int SETTINGS_BTN_W = 76;
@@ -136,15 +139,15 @@ public final class WaypointerScreen extends Screen {
         }
         left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.main.import_export").getString(),
-                IMPORT_EXPORT_BTN_W,
+                -1,
                 this::toggleImportExportMenu,
                 Tooltip.create(Component.translatable(
-                        "waypointer.screen.main.import_export.tooltip"))));
+                        "waypointer.screen.main.import_export.tooltip"))).withIcon(Icons.Icon.SHARE));
         left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.main.new").getString(),
-                NEW_BTN_W, this::toggleNewMenu,
+                -1, this::toggleNewMenu,
                 Tooltip.create(Component.translatable(
-                        "waypointer.screen.main.new.tooltip"))));
+                        "waypointer.screen.main.new.tooltip"))).withIcon(Icons.Icon.PLUS));
         left.add(new GuiTokens.ButtonSpec(
                 "\u25b2", REORDER_BTN_W, () -> moveSelectedRouteBy(-1),
                 Tooltip.create(Component.translatable("waypointer.screen.main.move_up.tooltip"))));
@@ -153,7 +156,7 @@ public final class WaypointerScreen extends Screen {
                 Tooltip.create(Component.translatable("waypointer.screen.main.move_down.tooltip"))));
         left.add(new GuiTokens.ButtonSpec(
                 Component.translatable("waypointer.screen.main.delete").getString(),
-                DELETE_BTN_W, this::onDeleteClicked));
+                -1, this::onDeleteClicked).withIcon(Icons.Icon.TRASH));
         return left;
     }
 
@@ -294,6 +297,7 @@ public final class WaypointerScreen extends Screen {
         addRenderableWidget(searchBox);
         clearSearchButton = new OverlayButton(0, 0, SEARCH_CLEAR_BTN_W, BTN_H,
                 Component.translatable("waypointer.common.clear"), this::clearRouteSearch);
+        clearSearchButton.icon(Icons.Icon.CLOSE);
         clearSearchButton.setTooltip(Tooltip.create(Component.translatable(
                 "waypointer.screen.main.search.clear.tooltip")));
         updateClearSearchButton();
@@ -303,6 +307,7 @@ public final class WaypointerScreen extends Screen {
         browseButton = new OverlayButton(0, 0, BROWSE_BTN_W, BTN_H,
                 Component.translatable("waypointer.screen.main.browse"),
                 b -> RouteCatalogScreen.open(this));
+        browseButton.icon(Icons.Icon.GLOBE);
         browseButton.setTooltip(Tooltip.create(Component.translatable(
                 "waypointer.screen.main.browse.tooltip")));
         syncSearchBoxGeometry();
@@ -311,6 +316,7 @@ public final class WaypointerScreen extends Screen {
         moveZoneButton = new OverlayButton(0, 0, MOVE_ZONE_BTN_W, BTN_H,
                 Component.translatable("waypointer.screen.main.move_zone"),
                 this::startZoneMoveForSelection);
+        moveZoneButton.icon(Icons.Icon.EXPORT);
         moveZoneButton.setTooltip(Tooltip.create(Component.translatable(
                 "waypointer.screen.main.move_zone.tooltip")));
         syncSearchBoxGeometry();
@@ -319,6 +325,7 @@ public final class WaypointerScreen extends Screen {
         OverlayButton hideAll = new OverlayButton(0, 0, HIDE_ALL_ROUTES_BTN_W, BTN_H,
                 Component.translatable("waypointer.screen.main.hide_all"),
                 b -> onHideAllRoutesClicked());
+        hideAll.icon(Icons.Icon.EYE_OFF);
         hideAllRoutesBtn = hideAll;
         syncSearchBoxGeometry();
         addRenderableWidget(hideAll);
@@ -326,6 +333,7 @@ public final class WaypointerScreen extends Screen {
         settingsButton = new GuiTokens.StyledButton(PAD_OUTER, HEADER_BTN_Y,
                 SETTINGS_BTN_W, BTN_H,
                 Component.translatable("waypointer.screen.main.settings"), b -> openSettings());
+        ((GuiTokens.StyledButton) settingsButton).icon(Icons.Icon.GEAR);
         settingsButton.setTooltip(Tooltip.create(Component.translatable(
                 "waypointer.screen.main.settings.tooltip")));
         addRenderableWidget(settingsButton);
@@ -393,42 +401,56 @@ public final class WaypointerScreen extends Screen {
         searchBox.setX(left);
         searchBox.setY(toolbarY);
         int availableWidth = layout.mainRight() - layout.mainLeft() - GAP * 2;
-        int clearWidth = clearSearchButton == null ? 0 : SEARCH_CLEAR_BTN_W + GAP_TIGHT;
         boolean showBrowseButton = browseButton != null && publishDraft == null;
-        int browseWidth = showBrowseButton ? BROWSE_BTN_W + GAP : 0;
         boolean showMoveZoneButton = Zone.PRIVATE_WORLD.id().equals(selectedZoneId);
-        int hideAllWidth = hideAllRoutesBtn == null ? 0 : HIDE_ALL_ROUTES_BTN_W + GAP;
-        int moveZoneWidth = showMoveZoneButton ? MOVE_ZONE_BTN_W + GAP : 0;
+        int fullTools = (clearSearchButton == null ? 0 : SEARCH_CLEAR_BTN_W + GAP_TIGHT)
+                + (showBrowseButton ? BROWSE_BTN_W + GAP : 0)
+                + (showMoveZoneButton ? MOVE_ZONE_BTN_W + GAP : 0)
+                + (hideAllRoutesBtn == null ? 0 : HIDE_ALL_ROUTES_BTN_W + GAP);
+        // Narrow windows fold the toolbar into icon buttons before squeezing the search box.
+        boolean compact = availableWidth - fullTools < SEARCH_MIN_COMFORT_W;
+        int clearW = compact ? TOOL_ICON_BTN_W : SEARCH_CLEAR_BTN_W;
+        int browseW = compact ? TOOL_ICON_BTN_W : BROWSE_BTN_W;
+        int moveZoneW = compact ? TOOL_ICON_BTN_W : MOVE_ZONE_BTN_W;
+        int hideAllW = compact ? TOOL_ICON_BTN_W : HIDE_ALL_ROUTES_BTN_W;
+        int clearWidth = clearSearchButton == null ? 0 : clearW + GAP_TIGHT;
+        int browseWidth = showBrowseButton ? browseW + GAP : 0;
+        int hideAllWidth = hideAllRoutesBtn == null ? 0 : hideAllW + GAP;
+        int moveZoneWidth = showMoveZoneButton ? moveZoneW + GAP : 0;
         int searchWidth = Math.max(80,
                 Math.min(180, availableWidth - clearWidth - browseWidth - moveZoneWidth - hideAllWidth));
         searchBox.setWidth(searchWidth);
         if (clearSearchButton != null) {
+            clearSearchButton.setIconOnly(compact);
             clearSearchButton.setX(left + searchWidth + GAP_TIGHT);
             clearSearchButton.setY(toolbarY);
-            clearSearchButton.setWidth(SEARCH_CLEAR_BTN_W);
+            clearSearchButton.setWidth(clearW);
         }
         int afterSearch = clearSearchButton == null
                 ? left + searchWidth + GAP
-                : clearSearchButton.getX() + SEARCH_CLEAR_BTN_W + GAP;
+                : clearSearchButton.getX() + clearW + GAP;
         if (browseButton != null) {
+            browseButton.setIconOnly(compact);
             browseButton.visible = showBrowseButton;
             browseButton.setX(afterSearch);
             browseButton.setY(toolbarY);
-            browseButton.setWidth(BROWSE_BTN_W);
+            browseButton.setWidth(browseW);
         }
         int rightEdge = layout.mainRight() - GAP;
         if (hideAllRoutesBtn != null) {
-            hideAllRoutesBtn.setX(rightEdge - HIDE_ALL_ROUTES_BTN_W);
+            hideAllRoutesBtn.setIconOnly(compact);
+            hideAllRoutesBtn.setX(rightEdge - hideAllW);
             hideAllRoutesBtn.setY(toolbarY);
-            hideAllRoutesBtn.setWidth(HIDE_ALL_ROUTES_BTN_W);
-            rightEdge -= HIDE_ALL_ROUTES_BTN_W + GAP;
+            hideAllRoutesBtn.setWidth(hideAllW);
+            rightEdge -= hideAllW + GAP;
         }
         if (moveZoneButton != null) {
+            moveZoneButton.setIconOnly(compact);
             moveZoneButton.visible = showMoveZoneButton;
-            moveZoneButton.setX(rightEdge - MOVE_ZONE_BTN_W);
+            moveZoneButton.setX(rightEdge - moveZoneW);
             moveZoneButton.setY(toolbarY);
-            moveZoneButton.setWidth(MOVE_ZONE_BTN_W);
-            if (showMoveZoneButton) rightEdge -= MOVE_ZONE_BTN_W + GAP;
+            moveZoneButton.setWidth(moveZoneW);
+            if (showMoveZoneButton) rightEdge -= moveZoneW + GAP;
         }
     }
 
@@ -762,6 +784,12 @@ public final class WaypointerScreen extends Screen {
     }
 
     record Layout(int top, int bottom, int mainLeft, int mainRight) {}
+
+    private void syncHideAllIcon() {
+        if (hideAllRoutesBtn instanceof GuiTokens.StyledButton styled) {
+            styled.icon(showAllMode ? Icons.Icon.EYE : Icons.Icon.EYE_OFF);
+        }
+    }
 
     private static final class OverlayButton extends GuiTokens.StyledButton {
         private OverlayButton(int x, int y, int width, int height,
@@ -1151,7 +1179,7 @@ public final class WaypointerScreen extends Screen {
                     Component.translatable(group.enabled()
                             ? "waypointer.screen.main.menu.hide"
                             : "waypointer.screen.main.menu.show"),
-                    "Space", () -> toggleRouteEnabled(group)));
+                    ContextMenuOverlay.hint("space"), () -> toggleRouteEnabled(group)));
             String structureReference = CrystalHollowsProjection.structureReferenceForGroup(group.id());
             if (structureReference != null) {
                 items.add(ContextMenuOverlay.Item.of(
@@ -1164,7 +1192,7 @@ public final class WaypointerScreen extends Screen {
         }
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.main.menu.edit"),
-                "double-click", () -> openGroupEditor(group)));
+                ContextMenuOverlay.hint("double_click"), () -> openGroupEditor(group)));
         AppearanceTarget look = AppearanceTarget.route(manager, config, group, manager::fireDataChanged);
         if (look != null) {
             int lookCount = look.scope().count();
@@ -1179,21 +1207,21 @@ public final class WaypointerScreen extends Screen {
                 Component.translatable(group.enabled()
                         ? "waypointer.screen.main.menu.hide"
                         : "waypointer.screen.main.menu.show"),
-                "Space", () -> toggleRouteEnabled(group)));
+                ContextMenuOverlay.hint("space"), () -> toggleRouteEnabled(group)));
         items.add(canMoveRouteZone(group)
                 ? ContextMenuOverlay.Item.of(
                         Component.translatable("waypointer.screen.main.menu.move_zone"),
-                        "shift-right-click", () -> startZoneMove(group))
+                        ContextMenuOverlay.hint("shift_right_click"), () -> startZoneMove(group))
                 : ContextMenuOverlay.Item.disabled(
                         Component.translatable("waypointer.screen.main.menu.move_zone"),
-                        "shift-right-click"));
+                        ContextMenuOverlay.hint("shift_right_click")));
         int selectionSize = selectedGroupIds.contains(group.id()) ? selectedGroupIds.size() : 1;
         items.add(ContextMenuOverlay.Item.of(
                 selectionSize > 1
                         ? Component.translatable(
                                 "waypointer.screen.main.menu.delete.many", selectionSize)
                         : Component.translatable("waypointer.screen.main.menu.delete.one"),
-                "Delete", this::onDeleteClicked));
+                ContextMenuOverlay.hint("delete"), this::onDeleteClicked));
         openContextMenuAt(items, anchorX, anchorY);
     }
 
@@ -1229,14 +1257,28 @@ public final class WaypointerScreen extends Screen {
                 Component.translatable(folder.collapsed()
                         ? "waypointer.screen.main.menu.expand"
                         : "waypointer.screen.main.menu.collapse"),
-                "Space", () -> routeList.toggleFolderCollapsed(folder)));
+                ContextMenuOverlay.hint("space"), () -> routeList.toggleFolderCollapsed(folder)));
         openContextMenuAt(items, anchorX, anchorY);
     }
+
+    private static final Map<String, Icons.Icon> ROUTE_MENU_ICONS = Map.ofEntries(
+            Map.entry("waypointer.screen.main.menu.edit", Icons.Icon.PENCIL),
+            Map.entry("waypointer.screen.main.menu.appearance", Icons.Icon.BRUSH),
+            Map.entry("waypointer.screen.main.menu.hide", Icons.Icon.EYE_OFF),
+            Map.entry("waypointer.screen.main.menu.show", Icons.Icon.EYE),
+            Map.entry("waypointer.screen.main.menu.move_zone", Icons.Icon.EXPORT),
+            Map.entry("waypointer.screen.main.menu.delete.one", Icons.Icon.TRASH),
+            Map.entry("waypointer.screen.main.menu.delete.many", Icons.Icon.TRASH),
+            Map.entry("waypointer.crystal.action.share", Icons.Icon.SHARE),
+            Map.entry("waypointer.screen.main.folder.select", Icons.Icon.CHECK),
+            Map.entry("waypointer.screen.main.folder.edit", Icons.Icon.PENCIL),
+            Map.entry("waypointer.screen.main.menu.expand", Icons.Icon.FOLDER_OPEN),
+            Map.entry("waypointer.screen.main.menu.collapse", Icons.Icon.FOLDER));
 
     private void openContextMenuAt(List<ContextMenuOverlay.Item> items,
                                    double anchorX, double anchorY) {
         Layout layout = layout();
-        contextMenu.openAt(font, items, anchorX, anchorY,
+        contextMenu.openAt(font, ContextMenuOverlay.withIcons(items, ROUTE_MENU_ICONS), anchorX, anchorY,
                 PAD_OUTER, PAD_OUTER, width - PAD_OUTER, layout.bottom());
     }
 
@@ -1656,7 +1698,7 @@ public final class WaypointerScreen extends Screen {
         if (!hideAllConfirmation.matches(shownRouteIds, now)) {
             hideAllConfirmation.arm(shownRouteIds, now, CONFIRM_WINDOW_MS);
             if (hideAllRoutesBtn != null) {
-                hideAllRoutesBtn.setMessage(Component.translatable("waypointer.common.confirm"));
+                hideAllRoutesBtn.setMessage(GuiTokens.colored(Component.translatable("waypointer.common.confirm"), GuiTokens.DANGER));
             }
             return;
         }
@@ -1732,6 +1774,7 @@ public final class WaypointerScreen extends Screen {
                 hideAllRoutesBtn.setMessage(Component.translatable(showAllMode
                         ? "waypointer.screen.main.show_all"
                         : "waypointer.screen.main.hide_all"));
+                syncHideAllIcon();
             }
         }
         if (moveZoneButton != null) {
@@ -1859,7 +1902,7 @@ public final class WaypointerScreen extends Screen {
             String targetText = selectedGroups.size() == 1
                     ? "\"" + selectedGroups.get(0).name() + "\""
                     : selectedGroups.size() + " selected routes";
-            deleteBtn.setMessage(Component.translatable("waypointer.common.confirm"));
+            deleteBtn.setMessage(GuiTokens.colored(Component.translatable("waypointer.common.confirm"), GuiTokens.DANGER));
             deleteBtn.setTooltip(Tooltip.create(Component.translatable(
                     "waypointer.screen.main.delete.confirm.tooltip", targetText)));
         }
@@ -1889,6 +1932,7 @@ public final class WaypointerScreen extends Screen {
         hideAllRoutesBtn.setMessage(Component.translatable(showAllMode
                 ? "waypointer.screen.main.show_all"
                 : "waypointer.screen.main.hide_all"));
+        syncHideAllIcon();
     }
 
     private long labelFlashUntil = 0L;

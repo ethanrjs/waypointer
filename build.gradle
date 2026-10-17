@@ -128,6 +128,10 @@ tasks.named('runClientGameTest') {
 
 	args '--width', '1708', '--height', '960'
 	finalizedBy retainLaunchLogs
+	// -PscreenGallery skips the other smoke checks and only screenshots the everyday screens.
+	if (providers.gradleProperty('screenGallery').isPresent()) {
+		systemProperty 'waypointer.test.screenGallery', 'true'
+	}
 	if (shaderPack.isPresent()) {
 		systemProperty 'waypointer.test.shaders', 'true'
 		doFirst {

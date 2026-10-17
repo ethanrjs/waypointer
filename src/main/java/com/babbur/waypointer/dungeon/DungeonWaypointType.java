@@ -16,10 +16,6 @@ public enum DungeonWaypointType {
     ITEM("Item", "I", Waypoint.FLAG_DUNGEON_ITEM),
     BAT("Bat", "B", Waypoint.FLAG_DUNGEON_BAT);
 
-    public static final int ICON_SIZE = 12;
-    public static final int WAYPOINT_TYPE_ICON_INDEX = values().length;
-    public static final int ICON_ATLAS_WIDTH = ICON_SIZE * (WAYPOINT_TYPE_ICON_INDEX + 1);
-
     private final String label;
     private final String fallbackGlyph;
     private final int flag;
@@ -40,10 +36,6 @@ public enum DungeonWaypointType {
 
     public int flag() {
         return flag;
-    }
-
-    public int iconIndex() {
-        return ordinal();
     }
 
     public boolean isSet(Waypoint waypoint) {

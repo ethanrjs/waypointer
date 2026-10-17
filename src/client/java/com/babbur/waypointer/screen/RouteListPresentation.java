@@ -26,6 +26,36 @@ final class RouteListPresentation {
         return (structures ? 0x50000000 : 0x24000000) | folder.color();
     }
 
+    static Component waypointCount(int count) {
+        return count == 1
+                ? Component.translatable("waypointer.screen.main.route.count.one")
+                : Component.translatable("waypointer.screen.main.route.count", count);
+    }
+
+    static String joinParts(List<String> parts) {
+        return String.join(Component.translatable("waypointer.screen.main.route.separator").getString(), parts);
+    }
+
+    /** The folder's own colour, lifted toward white when it would vanish on the dark list. */
+    static int folderIconTint(RouteFolder folder) {
+        return readableOnDark(folder.color());
+    }
+
+    static int readableOnDark(int rgb) {
+        int r = (rgb >> 16) & 0xFF;
+        int g = (rgb >> 8) & 0xFF;
+        int b = rgb & 0xFF;
+        double luma = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255.0;
+        double floor = 0.45;
+        if (luma < floor) {
+            double t = (floor - luma) / (1.0 - luma);
+            r = (int) Math.round(r + (255 - r) * t);
+            g = (int) Math.round(g + (255 - g) * t);
+            b = (int) Math.round(b + (255 - b) * t);
+        }
+        return 0xFF000000 | r << 16 | g << 8 | b;
+    }
+
     static final int CURRENT_DUNGEON_ROOM_ACCENT = 0xFF58C878;
 
     private static final int DUNGEON_ROOM_ACCENT = 0xFFFF8A8A;

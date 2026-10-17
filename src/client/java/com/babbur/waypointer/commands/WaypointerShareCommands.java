@@ -174,15 +174,23 @@ final class WaypointerShareCommands {
             return;
         }
         boolean copied = setClipboard(payload);
-        MutableComponent line = Component.literal("Exported config code (" + payload.length() + " characters).")
+        MutableComponent line = Component.translatableWithFallback("waypointer.command.export.config_done",
+                "Exported config code (%s characters).", payload.length())
                 .withStyle(ChatFormatting.GREEN);
-        if (copied) line.append(Component.literal(" Copied to clipboard.").withStyle(ChatFormatting.GRAY));
-        if (!copied) {
-            line.append(Component.literal(" Copy")
+        appendCopyResult(line, copied, payload);
+        info(src, line);
+    }
+
+    private static void appendCopyResult(MutableComponent line, boolean copied, String payload) {
+        if (copied) {
+            line.append(Component.literal(" ")).append(Component.translatableWithFallback(
+                    "waypointer.command.export.copied", "Copied to clipboard.").withStyle(ChatFormatting.GRAY));
+        } else {
+            line.append(Component.literal(" ")).append(Component.translatableWithFallback(
+                    "waypointer.command.export.copy", "Copy")
                     .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
                             .withClickEvent(new ClickEvent.CopyToClipboard(payload))));
         }
-        info(src, line);
     }
 
     int runExportDungeon(FabricClientCommandSource src) {
@@ -193,7 +201,8 @@ final class WaypointerShareCommands {
                         group.name().toLowerCase(Locale.ROOT)).thenComparing(WaypointGroup::id))
                 .toList();
         if (routes.isEmpty()) {
-            info(src, Component.literal("No dungeon routes are available to export."));
+            info(src, Component.translatableWithFallback("waypointer.command.export.no_dungeon_routes",
+                    "No dungeon routes are available to export."));
             return 0;
         }
 
@@ -215,16 +224,11 @@ final class WaypointerShareCommands {
             return;
         }
         boolean copied = setClipboard(payload);
-        MutableComponent line = Component.literal("Exported " + definitionCount + " dungeon room route"
-                        + (definitionCount == 1 ? "" : "s") + " (" + waypoints + " waypoint"
-                        + (waypoints == 1 ? "" : "s") + ", " + payload.length() + " characters).")
+        MutableComponent line = Component.translatableWithFallback("waypointer.command.export.dungeon_done",
+                "Exported dungeon routes (rooms: %1$s, waypoints: %2$s, %3$s characters).",
+                definitionCount, waypoints, payload.length())
                 .withStyle(ChatFormatting.GREEN);
-        if (copied) line.append(Component.literal(" Copied to clipboard.").withStyle(ChatFormatting.GRAY));
-        if (!copied) {
-            line.append(Component.literal(" Copy")
-                    .withStyle(Style.EMPTY.withColor(ChatFormatting.AQUA).withUnderlined(true)
-                            .withClickEvent(new ClickEvent.CopyToClipboard(payload))));
-        }
+        appendCopyResult(line, copied, payload);
         info(src, line);
     }
 

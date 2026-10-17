@@ -28,22 +28,12 @@ final class HistoryButton extends AbstractButton {
     @Override public void onPress(InputWithModifiers input) { action.run(); }
 
     @Override protected void extractContents(GuiGraphicsExtractor g, int mouseX, int mouseY, float partial) {
-        int color = !active ? GuiTokens.TEXT_MUTED : GuiTokens.TEXT;
+        boolean highlighted = active && isHoveredOrFocused();
+        int color = !active ? GuiTokens.TEXT_MUTED : highlighted ? GuiTokens.ACCENT : GuiTokens.TEXT;
         g.fill(getX(), getY(), getX() + width, getY() + height,
-                active && isHoveredOrFocused() ? GuiTokens.HOVER : GuiTokens.SURFACE_SUBTLE);
-        // Mirrored bent arrow, drawn as pixels rather than a font-dependent symbol.
-        for (int i = 0; i < 10; i++) pixel(g, 5 + i, 7, color);
-        for (int i = 0; i < 7; i++) pixel(g, 14, 7 + i, color);
-        for (int i = 0; i < 6; i++) pixel(g, 9 + i, 13, color);
-        for (int i = 0; i < 4; i++) {
-            pixel(g, 5 + i, 7 - i, color);
-            pixel(g, 5 + i, 7 + i, color);
-        }
-    }
-
-    private void pixel(GuiGraphicsExtractor g, int x, int y, int color) {
-        int px = getX() + (redo ? 20 - x : x);
-        g.fill(px, getY() + y, px + 1, getY() + y + 1, color);
+                highlighted ? GuiTokens.HOVER : GuiTokens.SURFACE_SUBTLE);
+        Icons.drawCentered(g, redo ? Icons.Icon.REDO : Icons.Icon.UNDO,
+                getX(), getY(), width, height, color);
     }
 
     @Override protected void updateWidgetNarration(NarrationElementOutput output) {

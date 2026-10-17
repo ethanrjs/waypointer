@@ -19,9 +19,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,8 +37,6 @@ public final class AddNamedWaypointScreen extends Screen {
     private static final int MAX_NAME_LENGTH = 64;
     private static final int DUNGEON_TYPE_BUTTON_SIZE = 20;
     private static final int DUNGEON_TYPE_ROW_WIDTH = PANEL_W - PAD_OUTER * 2;
-    private static final Identifier DUNGEON_TYPE_ICONS = Identifier.fromNamespaceAndPath(
-            Waypointer.MOD_ID, "textures/gui/dungeon_waypoint_types.png");
     private static String rememberedDungeonRoomKey;
     private static DungeonWaypointType rememberedDungeonType;
 
@@ -69,7 +65,6 @@ public final class AddNamedWaypointScreen extends Screen {
     private boolean subwaypointSelected;
     private boolean smallSelected;
     private DungeonWaypointType selectedDungeonType;
-    private boolean dungeonTypeIconsAvailable;
     private WaypointGroup previewGroup;
     private Component placementError;
 
@@ -161,8 +156,6 @@ public final class AddNamedWaypointScreen extends Screen {
         int panelY = (height - panelH) / 2;
         int inner = panelX + PAD_OUTER;
         int fieldW = PANEL_W - PAD_OUTER * 2;
-        dungeonTypeIconsAvailable = minecraft != null
-                && minecraft.getResourceManager().getResource(DUNGEON_TYPE_ICONS).isPresent();
 
         nameBox = new EditBox(font, inner, panelY + 34, fieldW, BTN_H,
                 Component.translatable("waypointer.screen.add_named.name"));
@@ -543,26 +536,14 @@ public final class AddNamedWaypointScreen extends Screen {
                     rowY + DUNGEON_TYPE_BUTTON_SIZE, border);
             g.fill(x + 1, rowY + 1, x + DUNGEON_TYPE_BUTTON_SIZE - 1,
                     rowY + DUNGEON_TYPE_BUTTON_SIZE - 1, fill);
-            renderDungeonTypeIcon(g, x, rowY, type, active ? TEXT : TEXT_DIM);
+            renderDungeonTypeIcon(g, x, rowY, type, active || hovered ? TEXT : TEXT_DIM);
         }
     }
 
     private void renderDungeonTypeIcon(GuiGraphicsExtractor g, int x, int y,
                                        DungeonWaypointType type, int color) {
-        int inset = (DUNGEON_TYPE_BUTTON_SIZE - DungeonWaypointType.ICON_SIZE) / 2;
-        if (dungeonTypeIconsAvailable) {
-            g.blit(RenderPipelines.GUI_TEXTURED, DUNGEON_TYPE_ICONS,
-                    x + inset, y + inset,
-                    type.iconIndex() * (float) DungeonWaypointType.ICON_SIZE, 0f,
-                    DungeonWaypointType.ICON_SIZE, DungeonWaypointType.ICON_SIZE,
-                    DungeonWaypointType.ICON_ATLAS_WIDTH, DungeonWaypointType.ICON_SIZE);
-            return;
-        }
-        String glyph = type.fallbackGlyph();
-        g.text(font, glyph,
-                x + (DUNGEON_TYPE_BUTTON_SIZE - font.width(glyph)) / 2,
-                y + (DUNGEON_TYPE_BUTTON_SIZE - font.lineHeight) / 2,
-                color, false);
+        Icons.drawCentered(g, Icons.forDungeonType(type), x, y,
+                DUNGEON_TYPE_BUTTON_SIZE, DUNGEON_TYPE_BUTTON_SIZE, color);
     }
 
     private void renderDungeonTypeTooltip(GuiGraphicsExtractor g, String text,

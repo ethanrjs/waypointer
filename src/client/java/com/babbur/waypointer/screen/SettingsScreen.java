@@ -6,6 +6,7 @@ import com.babbur.waypointer.crystal.CrystalHollowsProjection;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.blaze3d.platform.cursor.CursorTypes;
 import com.babbur.waypointer.codec.UniversalShareCodec;
+import com.babbur.waypointer.core.WaypointGroup;
 import com.babbur.waypointer.config.AppearanceScope;
 import com.babbur.waypointer.config.WaypointStyles;
 import com.babbur.waypointer.config.WaypointerConfig;
@@ -119,6 +120,7 @@ public final class SettingsScreen extends Screen {
     private String highlightSettingId;
     private long highlightUntilMillis;
     private Map<String, Integer> searchCategoryCounts = Map.of();
+    private Component railTooltip;
 
     private static final int CONFIRM_NONE = 0;
     private static final int CONFIRM_RESET_DEFAULTS = 2;
@@ -306,7 +308,11 @@ public final class SettingsScreen extends Screen {
                 Component.translatable("waypointer.screen.appearance.everywhere"),
                 zoneScope ? null : "\u2713", zoneScope ? this::onClose : () -> { }));
         var manager = WaypointerClient.manager();
-        for (String key : AppearanceTarget.switcherZoneKeys(manager == null ? null : manager.currentZone())) {
+        List<String> routeZones = manager == null ? List.of() : manager.allGroups().stream()
+                .filter(group -> !group.temp() && !group.runtimeOnly())
+                .map(WaypointGroup::zoneId).distinct().toList();
+        for (String key : AppearanceTarget.switcherZoneKeys(manager == null ? null : manager.currentZone(),
+                routeZones, globalConfig.zoneStyles().keySet())) {
             boolean current = zoneScope && key.equals(target.scope().key());
             int count = WaypointStyles.setCount(globalConfig.zoneStyle(key));
             String hint = current ? "\u2713" : count > 0
@@ -436,7 +442,7 @@ public final class SettingsScreen extends Screen {
         int top = PAD_OUTER + font.lineHeight + GAP;
         int bottom = height - footerSpace - GAP_SECTION;
         int sidebarLeft = PAD_OUTER;
-        int sidebarRight = sidebarLeft + SIDEBAR_W;
+        int sidebarRight = sidebarLeft + sidebarWidth(width);
         int mainLeft = sidebarRight + GAP;
         int mainRight = width - PAD_OUTER;
         int rowsTop = top + 4 + BTN_H + GAP;
@@ -444,7 +450,20 @@ public final class SettingsScreen extends Screen {
     }
 
     private record Layout(int top, int bottom, int sidebarLeft, int sidebarRight,
-                          int mainLeft, int mainRight, int rowsTop) {}
+                          int mainLeft, int mainRight, int rowsTop) {
+        boolean rail() {
+            return sidebarRight - sidebarLeft < SIDEBAR_W;
+        }
+    }
+
+    static final int RAIL_W = Icons.SIZE + GAP * 2 + 4;
+    /** Below this settings width the category list folds into an icon rail. */
+    static final int MIN_MAIN_WITH_FULL_SIDEBAR = 340;
+
+    static int sidebarWidth(int screenWidth) {
+        int mainWithFull = screenWidth - PAD_OUTER * 2 - SIDEBAR_W - GAP;
+        return mainWithFull >= MIN_MAIN_WITH_FULL_SIDEBAR ? SIDEBAR_W : RAIL_W;
+    }
 
     static int maxScrollFor(int contentHeight, int viewportHeight) {
         return Math.max(0, contentHeight - Math.max(0, viewportHeight) + SCROLL_BOTTOM_SLACK);
@@ -791,8 +810,9 @@ public final class SettingsScreen extends Screen {
             measured = Math.max(measured, buttonWidth(Component.translatable(key)));
         }
 
-        int available = layout.mainRight() - CONTROL_RIGHT_INSET
-                - layout.mainLeft() - GAP - DOT_AREA_W - GAP_TIGHT - MIN_SETTING_LABEL_W;
+        int mainW = layout.mainRight() - CONTROL_RIGHT_INSET - layout.mainLeft() - GAP;
+        int labelRoom = Math.max(MIN_SETTING_LABEL_W, mainW / 2);
+        int available = mainW - DOT_AREA_W - GAP_TIGHT - labelRoom;
         return Math.min(measured, Math.max(60, available));
     }
 
@@ -1026,7 +1046,7 @@ public final class SettingsScreen extends Screen {
         ColorSwatchButton[] swatchRef = new ColorSwatchButton[1];
         ColorSwatchButton swatch = new ColorSwatchButton(
                 controlRight - controlWidth, 0, controlWidth, BTN_H,
-                Component.translatable("waypointer.screen.settings.color.pick").getString(),
+                "",
                 currentColor,
                 () -> {
                     int pickerColor = swatchRef[0] == null ? currentColor : swatchRef[0].getColor();
@@ -1366,11 +1386,12 @@ public final class SettingsScreen extends Screen {
                 Math.max(0, width - PAD_OUTER * 2 - font.width(title) - GAP_SECTION));
         g.text(font, hintText, width - PAD_OUTER - font.width(hintText), PAD_OUTER, TEXT_DIM, false);
 
+        railTooltip = null;
         renderSidebar(g, layout, widgetMouseX, widgetMouseY);
 
         g.fill(layout.mainLeft(), layout.top(), layout.mainRight(), layout.bottom(),
                 target == null ? SURFACE_SUBTLE : SCOPED_PANEL);
-        renderHeaderStrip(g, layout);
+        Component headerTooltip = renderHeaderStrip(g, layout, widgetMouseX, widgetMouseY);
         if (resetLookButton != null) resetLookButton.active = target.scope().count() > 0;
 
         super.extractRenderState(g, widgetMouseX, widgetMouseY, partial);
@@ -1384,7 +1405,13 @@ public final class SettingsScreen extends Screen {
         g.disableScissor();
 
         renderScrollbar(g, layout.mainRight() - 4, layout.rowsTop(), layout.bottom());
-        if (menuOpen) contextMenu.render(g, font, mouseX, mouseY);
+        if (menuOpen) {
+            contextMenu.render(g, font, mouseX, mouseY);
+        } else if (railTooltip != null) {
+            g.setTooltipForNextFrame(font, railTooltip, mouseX, mouseY);
+        } else if (headerTooltip != null) {
+            g.setTooltipForNextFrame(font, font.split(headerTooltip, Math.max(120, width / 3)), mouseX, mouseY);
+        }
     }
 
     private Component breadcrumb() {
@@ -1417,7 +1444,8 @@ public final class SettingsScreen extends Screen {
         }
     }
 
-    private void renderHeaderStrip(GuiGraphicsExtractor g, Layout layout) {
+    /** Draws the strip above the rows; returns the full text to show when a clipped info line is hovered. */
+    private Component renderHeaderStrip(GuiGraphicsExtractor g, Layout layout, int mouseX, int mouseY) {
         Component info;
         if (searchActive()) {
             int matches = rows.size();
@@ -1437,9 +1465,12 @@ public final class SettingsScreen extends Screen {
         int infoRight = (scopeSwitcher == null ? layout.mainRight() : scopeSwitcher.getX()) - GAP;
         int infoLeft = searchClearButton == null ? layout.mainLeft() + GAP
                 : searchClearButton.getX() + searchClearButton.getWidth() + GAP;
-        String infoText = font.plainSubstrByWidth(info.getString(), Math.max(0, infoRight - infoLeft));
-        g.text(font, infoText, infoRight - font.width(infoText),
-                layout.top() + 10, target != null ? TEXT : TEXT_DIM, false);
+        String infoText = GuiTokens.ellipsize(font, info.getString(), Math.max(0, infoRight - infoLeft));
+        int infoX = infoRight - font.width(infoText);
+        g.text(font, infoText, infoX, layout.top() + 10, target != null ? TEXT : TEXT_DIM, false);
+        boolean clipped = !infoText.equals(info.getString());
+        Component tooltip = clipped && mouseX >= infoX && mouseX <= infoRight
+                && mouseY >= layout.top() + 6 && mouseY <= layout.top() + 20 ? info : null;
 
         if (rows.isEmpty() && searchActive()) {
             int textX = layout.mainLeft() + GAP;
@@ -1448,6 +1479,7 @@ public final class SettingsScreen extends Screen {
             g.text(font, Component.translatable("waypointer.screen.settings.empty.hint"),
                     textX, layout.rowsTop() + 8 + 14, TEXT_DIM, false);
         }
+        return tooltip;
     }
 
     private List<SidebarEntry> sidebarEntries() {
@@ -1530,10 +1562,13 @@ public final class SettingsScreen extends Screen {
         int x2 = layout.sidebarRight();
         g.fill(x1, layout.top(), x2, layout.bottom(), target == null ? SURFACE : SCOPED_PANEL);
         g.fill(x2, layout.top(), x2 + 1, layout.bottom(), BORDER);
-        g.text(font, Component.translatable(target == null
-                        ? "waypointer.screen.settings.categories"
-                        : "waypointer.screen.appearance.sections"),
-                x1 + GAP, layout.top() + 10, TEXT_DIM, false);
+        boolean rail = layout.rail();
+        if (!rail) {
+            g.text(font, Component.translatable(target == null
+                            ? "waypointer.screen.settings.categories"
+                            : "waypointer.screen.appearance.sections"),
+                    x1 + GAP, layout.top() + 10, TEXT_DIM, false);
+        }
 
         int rowsTop = sidebarRowsTop(layout.top());
         int rowsBottom = layout.bottom() - GAP_TIGHT;
@@ -1558,7 +1593,25 @@ public final class SettingsScreen extends Screen {
             if (bg != 0) g.fill(x1, rowY, x2, rowY + ROW_H, bg);
             if (selected) g.fill(x1, rowY, x1 + 2, rowY + ROW_H, ACCENT);
 
+            Icons.Icon icon = sidebarIcon(entry.id());
+            if (rail) {
+                boolean empty = searching && searchCategoryCounts.getOrDefault(entry.id(), 0) == 0;
+                int tint = selected ? ACCENT : hovered ? TEXT : empty ? 0x60FFFFFF : TEXT_MUTED;
+                if (icon != null) {
+                    Icons.drawCentered(g, icon, x1 + 2, rowY, x2 - x1 - 2, ROW_H, tint);
+                } else {
+                    String initial = entry.label().isEmpty() ? "?" : entry.label().substring(0, 1);
+                    g.text(font, initial, x1 + (x2 - x1 - font.width(initial)) / 2, rowY + 7, tint, false);
+                }
+                if (hovered) railTooltip = Component.literal(entry.label());
+                continue;
+            }
             int labelX = x1 + GAP + 2;
+            if (icon != null) {
+                Icons.draw(g, icon, labelX, rowY + (ROW_H - Icons.SIZE) / 2,
+                        selected ? ACCENT : hovered ? TEXT : TEXT_MUTED);
+                labelX += Icons.SIZE + GAP_TIGHT;
+            }
             int labelMaxW = x2 - GAP - labelX;
             if (searching) {
                 Integer count = searchCategoryCounts.get(entry.id());
@@ -1573,6 +1626,32 @@ public final class SettingsScreen extends Screen {
             g.text(font, clipped, labelX, rowY + 7, selected ? TEXT : TEXT_DIM, false);
         }
         g.disableScissor();
+    }
+
+    static Icons.Icon sidebarIcon(String id) {
+        return switch (id) {
+            case RECENT_ID -> Icons.Icon.CLOCK;
+            case CHANGED_ID -> Icons.Icon.SPARKLE;
+            case SCOPED_VISIBILITY_ID -> Icons.Icon.EYE;
+            case "waypoints" -> Icons.Icon.PIN;
+            case "appearance" -> Icons.Icon.BRUSH;
+            case "routes" -> Icons.Icon.ROUTE;
+            case "dungeons" -> Icons.Icon.SKULL;
+            case "mining" -> Icons.Icon.DUNGEON_BREAKER;
+            case "chat" -> Icons.Icon.CHAT;
+            case "sharing" -> Icons.Icon.SHARE;
+            case "feature_bloat" -> Icons.Icon.STAR;
+            case "system" -> Icons.Icon.GEAR;
+            case "feedback" -> Icons.Icon.MAIL;
+            case SCOPED_SECTION_PREFIX + "waypoint_marker" -> Icons.Icon.MARKER;
+            case SCOPED_SECTION_PREFIX + "sequenced" -> Icons.Icon.PREV_NEXT;
+            case SCOPED_SECTION_PREFIX + "etherwarp" -> Icons.Icon.DUNGEON_ETHERWARP;
+            case SCOPED_SECTION_PREFIX + "labels" -> Icons.Icon.TAG;
+            case SCOPED_SECTION_PREFIX + "tracers" -> Icons.Icon.TRACER;
+            case SCOPED_SECTION_PREFIX + "beacon_beams" -> Icons.Icon.BEACON;
+            case SCOPED_SECTION_PREFIX + "route_lines" -> Icons.Icon.ROUTE;
+            default -> null;
+        };
     }
 
     static int sidebarRowsTop(int panelTop) {

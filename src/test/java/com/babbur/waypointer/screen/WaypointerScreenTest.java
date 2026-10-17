@@ -230,17 +230,6 @@ class WaypointerScreenTest {
     }
 
     @Test
-    void folderSpriteContainsTwoSixteenPixelFrames() throws IOException {
-        try (var stream = WaypointerScreenTest.class.getResourceAsStream(
-                "/assets/waypointer/textures/gui/folders.png")) {
-            assertNotNull(stream);
-            var image = ImageIO.read(stream);
-            assertEquals(32, image.getWidth());
-            assertEquals(16, image.getHeight());
-        }
-    }
-
-    @Test
     void guiImportInstallsLibraryMetadataWithoutOverwritingHiddenColors() {
         ActiveGroupManager source = new ActiveGroupManager();
         WaypointGroup group = new WaypointGroup("route", "Route", "hub");

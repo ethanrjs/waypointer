@@ -15,9 +15,7 @@ import com.babbur.waypointer.util.MathUtil;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.input.MouseButtonEvent;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -34,23 +32,13 @@ final class WaypointerRouteList {
 
     private static final int ROUTE_TOGGLE_CHIP_W = 54;
     private static final int ROUTE_TOGGLE_CHIP_H = 14;
-    private static final int FOLDER_ICON_SIZE = 16;
-    private static final int FOLDER_ICON_ATLAS_WIDTH = FOLDER_ICON_SIZE * 2;
-    private static final Identifier FOLDER_ICONS = Identifier.fromNamespaceAndPath(
-            Waypointer.MOD_ID, "textures/gui/folders.png");
+    private static final int FOLDER_ICON_SIZE = Icons.SIZE;
     private static final int MOUSE_BUTTON_LEFT = 0;
     private static final int MOUSE_BUTTON_RIGHT = 1;
     private static final double DRAG_THRESHOLD_SQUARED = 16.0;
     static final int INFO_BUTTON_SIZE = 12;
-    private static final String INFO_TITLE = "Route list controls";
-    private static final String[] INFO_LABELS = {
-            "Right-click", "Double-click", "Space", "Shown/Hidden chip",
-            "Ctrl / Shift-click", "Ctrl+A", "Delete key",
-    };
-    private static final String[] INFO_DESCRIPTIONS = {
-            "open the route menu", "open a route in the editor",
-            "show or hide the focused route", "toggle a route in the world",
-            "select multiple routes", "select all matching routes", "delete the selection (confirm)",
+    private static final String[] INFO_IDS = {
+            "right_click", "double_click", "space", "toggle_chip", "multi_select", "select_all", "delete",
     };
 
     private final WaypointerScreen screen;
@@ -100,7 +88,9 @@ final class WaypointerRouteList {
 
     void renderInfoTooltip(GuiGraphicsExtractor graphics, int mouseX, int mouseY,
                            int screenWidth, int contentBottom) {
-        GuiTokens.drawInfoTooltip(graphics, font(), INFO_TITLE, INFO_LABELS, INFO_DESCRIPTIONS,
+        GuiTokens.drawInfoTooltip(graphics, font(),
+                Component.translatable("waypointer.screen.main.info.title").getString(),
+                infoText("label"), infoText("description"),
                 null, mouseX, mouseY, screenWidth - PAD_OUTER, contentBottom);
     }
 
@@ -702,11 +692,8 @@ final class WaypointerRouteList {
         if (hovered) graphics.fill(x1, y1, x2, rowBottom, HOVER);
         graphics.fill(x1, rowBottom - 1, x2, rowBottom, BORDER);
         boolean closed = row.folder.collapsed() && !row.searchReveal;
-        float iconU = closed ? 0.0f : FOLDER_ICON_SIZE;
-        graphics.blit(RenderPipelines.GUI_TEXTURED, FOLDER_ICONS,
-                x1 + GAP, y1 + 4, iconU, 0.0f,
-                FOLDER_ICON_SIZE, FOLDER_ICON_SIZE,
-                FOLDER_ICON_ATLAS_WIDTH, FOLDER_ICON_SIZE);
+        Icons.draw(graphics, closed ? Icons.Icon.FOLDER : Icons.Icon.FOLDER_OPEN,
+                x1 + GAP, y1 + 4, RouteListPresentation.folderIconTint(row.folder));
         int nameX = x1 + GAP + FOLDER_ICON_SIZE + GAP;
         int editX = RouteListPresentation.folderEditControlX(x2);
         int selectX = RouteListPresentation.folderSelectControlX(x2);
@@ -1028,35 +1015,44 @@ final class WaypointerRouteList {
     }
 
     private String routeRowSubtitle(WaypointGroup group) {
-        if (group.temp()) {
-            return Component.translatable("waypointer.screen.main.route.subtitle.temp",
-                    group.size(), displayZoneLabel(group.zoneId())).getString();
-        }
-        if (group.isEmpty()) {
+        if (group.isEmpty() && !group.temp()) {
             return Component.translatable("waypointer.screen.main.route.subtitle.empty").getString();
         }
-        String subtitle = Component.translatable("waypointer.screen.main.route.subtitle",
-                group.size(), progressSummary(group),
-                Component.translatable(group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
-                        ? "waypointer.screen.main.route.mode.sequence"
-                        : "waypointer.screen.main.route.mode.static")).getString();
-        if (WaypointStyles.setCount(group.styleOverride()) > 0 || !group.stylePresetId().isBlank()) {
-            subtitle += Component.translatable("waypointer.screen.main.route.subtitle.custom_look").getString();
+        List<String> parts = new ArrayList<>();
+        parts.add(RouteListPresentation.waypointCount(group.size()).getString());
+        if (group.temp()) {
+            parts.add(displayZoneLabel(group.zoneId()));
+            return RouteListPresentation.joinParts(parts);
         }
-        return subtitle;
+        String progress = progressSummary(group);
+        if (!progress.isEmpty()) parts.add(progress);
+        parts.add(Component.translatable(group.loadMode() == WaypointGroup.LoadMode.SEQUENCE
+                ? "waypointer.screen.main.route.mode.sequence"
+                : "waypointer.screen.main.route.mode.static").getString());
+        if (WaypointStyles.setCount(group.styleOverride()) > 0 || !group.stylePresetId().isBlank()) {
+            parts.add(Component.translatable("waypointer.screen.main.route.subtitle.custom_look").getString());
+        }
+        return RouteListPresentation.joinParts(parts);
     }
 
+    /** Progress only means something on a step-by-step route that has been started. */
     private static String progressSummary(WaypointGroup group) {
+        if (group.loadMode() != WaypointGroup.LoadMode.SEQUENCE) return "";
         RouteProgress.Snapshot snapshot = RouteProgress.snapshot(group);
-        if (snapshot.total == 0) {
-            return Component.translatable("waypointer.screen.main.route.progress.none").getString();
-        }
+        if (snapshot.total == 0 || snapshot.completed == 0 && !snapshot.complete) return "";
         if (snapshot.complete) {
             return Component.translatable("waypointer.screen.main.route.progress.complete").getString();
         }
         return Component.translatable("waypointer.screen.main.route.progress",
-                snapshot.completed, snapshot.total,
-                String.format(java.util.Locale.ROOT, "%.1f", snapshot.percentComplete)).getString();
+                snapshot.completed, snapshot.total).getString();
+    }
+
+    private static String[] infoText(String part) {
+        String[] out = new String[INFO_IDS.length];
+        for (int i = 0; i < INFO_IDS.length; i++) {
+            out[i] = Component.translatable("waypointer.screen.main.info." + INFO_IDS[i] + "." + part).getString();
+        }
+        return out;
     }
 
     private Font font() {

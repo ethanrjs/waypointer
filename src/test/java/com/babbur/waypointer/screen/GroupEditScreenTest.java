@@ -362,20 +362,20 @@ class GroupEditScreenTest {
     }
 
     @Test
-    void waypointControlActionsMatchTheSevenIconAtlasCells() {
-        assertEquals(0, GroupEditScreen.subwaypointStyleIconIndex(
+    void waypointControlActionsHaveTheirOwnIcons() {
+        assertEquals(Icons.Icon.SUB_SMALL, GroupEditScreen.subwaypointStyleIcon(
                 GroupEditPolicy.SUBWAY_STYLE_ACTION_SMALL));
-        assertEquals(1, GroupEditScreen.subwaypointStyleIconIndex(
+        assertEquals(Icons.Icon.SUB_FILLED, GroupEditScreen.subwaypointStyleIcon(
                 GroupEditPolicy.SUBWAY_STYLE_ACTION_FILLED));
-        assertEquals(2, GroupEditScreen.subwaypointStyleIconIndex(
+        assertEquals(Icons.Icon.SUB_HIDE_AFTER_PARENT, GroupEditScreen.subwaypointStyleIcon(
                 GroupEditPolicy.SUBWAY_STYLE_ACTION_HIDE_AFTER_PARENT));
-        assertEquals(3, GroupEditScreen.waypointControlIconIndex(
+        assertEquals(Icons.Icon.SKIP_STAND, GroupEditScreen.waypointControlIcon(
                 GroupEditPolicy.WAYPOINT_CONTROL_ACTION_STAND_SKIP));
-        assertEquals(4, GroupEditScreen.waypointControlIconIndex(
+        assertEquals(Icons.Icon.SKIP_INTERACT, GroupEditScreen.waypointControlIcon(
                 GroupEditPolicy.WAYPOINT_CONTROL_ACTION_INTERACT_SKIP));
-        assertEquals(5, GroupEditScreen.waypointControlIconIndex(
+        assertEquals(Icons.Icon.SKIP_MINE, GroupEditScreen.waypointControlIcon(
                 GroupEditPolicy.WAYPOINT_CONTROL_ACTION_MINE_SKIP));
-        assertEquals(6, GroupEditScreen.waypointControlIconIndex(
+        assertEquals(Icons.Icon.DEPTH_CHECK, GroupEditScreen.waypointControlIcon(
                 GroupEditPolicy.WAYPOINT_CONTROL_ACTION_DEPTH_CHECK));
     }
 

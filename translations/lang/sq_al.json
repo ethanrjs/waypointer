@@ -83,7 +83,6 @@
   "waypointer.command.export.empty": "Asgjë për të eksportuar",
   "waypointer.command.export.empty_in_zone": "Asgjë për të eksportuar (%1$s)",
   "waypointer.command.export.without_names": "pa emra",
-  "waypointer.command.export.copy": "[Kliko për të kopjuar]",
   "waypointer.command.import.file_usage": "Përdorimi: /wp importfile <path>",
   "waypointer.command.import.invalid_path": "Rruga e skedarit është e pavlefshme: %1$s",
   "waypointer.command.import.no_file": "Nuk ka skedar të lexueshëm në %1$s",

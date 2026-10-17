@@ -207,20 +207,22 @@ public final class ChatCoordDetector {
                 .withStyle(Style.EMPTY
                         .withColor(ChatFormatting.RED)
                         .withClickEvent(new ClickEvent.RunCommand("/waypointer blacklist add " + senderName))
-                        .withHoverEvent(new HoverEvent.ShowText(Component.literal(
-                                "Ignore chat coordinates from " + senderName)
+                        .withHoverEvent(new HoverEvent.ShowText(Component.translatableWithFallback(
+                                "waypointer.chat.block.hover", "Ignore chat coordinates from %s", senderName)
                                 .withStyle(ChatFormatting.RED))));
     }
     private static Component tempWaypointHover(CoordScanner.Match m, boolean alreadyAdded,
                                                String senderName) {
-        MutableComponent out = Component.empty()
-                .append(Component.literal("Temporary waypoint at ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal("(" + m.x() + ", " + m.y() + ", " + m.z() + ")")
-                        .withStyle(ChatFormatting.YELLOW));
+        MutableComponent out = Component.translatableWithFallback("waypointer.chat.temp.hover",
+                "Temporary waypoint at %s",
+                Component.literal("(" + m.x() + ", " + m.y() + ", " + m.z() + ")")
+                        .withStyle(ChatFormatting.YELLOW)).withStyle(ChatFormatting.GRAY);
 
         out.append(Component.literal("\n"));
-        out.append(Component.literal(alreadyAdded ? "Click to use this temporary waypoint."
-                : "Click to add a temporary waypoint.").withStyle(ChatFormatting.AQUA));
+        out.append(Component.translatableWithFallback(alreadyAdded
+                        ? "waypointer.chat.temp.hover.use" : "waypointer.chat.temp.hover.add",
+                alreadyAdded ? "Click to use this temporary waypoint."
+                        : "Click to add a temporary waypoint.").withStyle(ChatFormatting.AQUA));
 
         return out;
     }

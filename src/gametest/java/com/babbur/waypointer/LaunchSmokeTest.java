@@ -26,6 +26,10 @@ public final class LaunchSmokeTest implements FabricClientGameTest {
                     && WaypointerClient.api().currentZone() != null
                     && "private_world".equals(WaypointerClient.api().currentZone().id()), 600);
             context.waitForScreen(null);
+            if (Boolean.getBoolean("waypointer.test.screenGallery")) {
+                com.babbur.waypointer.screen.ScreenGallery.run(context);
+                return;
+            }
             context.waitFor(client -> com.babbur.waypointer.debug.ServerTimingDiagnostics.estimator()
                     .snapshot(System.nanoTime()).shortWindow().samples() >= 2, 200);
             com.babbur.waypointer.screen.DiagnosticsSmokeTest.run(context);

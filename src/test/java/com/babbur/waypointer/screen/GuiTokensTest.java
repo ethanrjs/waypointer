@@ -25,24 +25,6 @@ class GuiTokensTest {
     }
 
     @Test
-    void checkboxCheckmarkPreservesTheSuppliedTextureCanvas() throws IOException {
-        try (var stream = GuiTokensTest.class.getResourceAsStream(
-                "/assets/waypointer/textures/gui/checkmark.png")) {
-            assertNotNull(stream);
-            var image = ImageIO.read(stream);
-            assertEquals(24, image.getWidth());
-            assertEquals(24, image.getHeight());
-            assertEquals(0, image.getRGB(0, 0) >>> 24);
-            for (int y = 0; y < image.getHeight(); y++) {
-                for (int x = 0; x < image.getWidth(); x++) {
-                    int pixel = image.getRGB(x, y);
-                    if ((pixel >>> 24) != 0) assertEquals(GuiTokens.ACCENT, pixel);
-                }
-            }
-        }
-    }
-
-    @Test
     void coloredMessagesCarryTheTokenAsATextColor() {
         var colored = GuiTokens.colored(
                 net.minecraft.network.chat.Component.literal("Copied"), GuiTokens.SUCCESS);
