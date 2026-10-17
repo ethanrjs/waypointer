@@ -51,6 +51,7 @@ public final class WaypointGroup {
     private int gradientStartColor = 0x00BFFF;
     private int gradientEndColor   = 0xFF3040;
     private String stylePresetId = "";
+    private String icon = RouteIcon.NONE;
     private WaypointStyle styleOverride = WaypointStyle.EMPTY;
     private WaypointPaint paint;
     private boolean paintEnabled = true;
@@ -102,12 +103,16 @@ public final class WaypointGroup {
         copy.skipAheadEnabled = skipAheadEnabled;
         copy.enabled = enabled;
         copy.stylePresetId = stylePresetId;
+        copy.icon = icon;
         copy.styleOverride = styleOverride;
         copy.waypoints.addAll(waypoints);
         copy.manualColors.addAll(manualColors);
         return copy;
     }
 
+    /** The chosen icon ({@link RouteIcon} form), or empty for the zone's default. */
+    public String icon() { return icon; }
+    public void setIcon(String spec) { icon = RouteIcon.normalize(spec); }
     public String stylePresetId() { return stylePresetId; }
     public void setStylePresetId(String id) { stylePresetId = id == null ? "" : id.strip(); }
     public WaypointStyle styleOverride() { return styleOverride; }

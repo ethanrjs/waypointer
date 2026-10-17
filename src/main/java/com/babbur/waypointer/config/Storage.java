@@ -394,6 +394,7 @@ public final class Storage {
         o.addProperty("gradientStartColor", g.gradientStartColor());
         o.addProperty("gradientEndColor",   g.gradientEndColor());
         o.addProperty("paintEnabled", g.paintEnabled());
+        if (!g.icon().isEmpty()) o.addProperty("icon", g.icon());
         if (!g.stylePresetId().isEmpty()) o.addProperty("stylePresetId", g.stylePresetId());
         if (!g.styleOverride().isEmpty()) o.add("styleOverride", styleToJson(g.styleOverride()));
         if (g.catalogProvenance() != null) {
@@ -422,6 +423,7 @@ public final class Storage {
         String name = o.has("name") ? o.get("name").getAsString() : "";
         String zone = o.has("zone") ? o.get("zone").getAsString() : "unknown";
         WaypointGroup g = new WaypointGroup(id, name, zone);
+        if (o.has("icon") && o.get("icon").isJsonPrimitive()) g.setIcon(o.get("icon").getAsString());
         if (o.has("stylePresetId") && o.get("stylePresetId").isJsonPrimitive())
             g.setStylePresetId(o.get("stylePresetId").getAsString());
         g.setStyleOverride(styleFromJson(o.get("styleOverride")));

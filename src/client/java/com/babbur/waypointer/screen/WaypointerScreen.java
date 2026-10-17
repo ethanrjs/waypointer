@@ -1247,6 +1247,13 @@ public final class WaypointerScreen extends Screen {
         items.add(ContextMenuOverlay.Item.of(
                 Component.translatable("waypointer.screen.main.menu.edit"),
                 ContextMenuOverlay.hint("double_click"), () -> openGroupEditor(group)));
+        items.add(ContextMenuOverlay.Item.of(
+                Component.translatable("waypointer.screen.main.menu.icon"),
+                null, () -> RouteIconPickerScreen.open(this, group.icon(), group.zoneId(), spec -> {
+                    group.setIcon(spec);
+                    manager.noteRouteEdited(group);
+                    manager.fireDataChanged();
+                })).withIcon(Icons.Icon.TAG));
         AppearanceTarget look = AppearanceTarget.route(manager, config, group, manager::fireDataChanged);
         if (look != null) {
             int lookCount = look.scope().count();

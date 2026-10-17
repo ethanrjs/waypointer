@@ -21,13 +21,26 @@ public record CatalogRouteSummary(
         String createdAt,
         String updatedAt,
         String sharePath,
-        List<String> tags) {
+        List<String> tags,
+        String icon) {
 
     /** Routes from the Mining Cult carry this server-assigned tag. */
     public static final String TAG_MINING_CULT = "mining-cult";
 
     public CatalogRouteSummary {
         tags = tags == null ? List.of() : List.copyOf(tags);
+        icon = com.babbur.waypointer.core.RouteIcon.normalize(icon);
+    }
+
+    /** A summary without a chosen icon. */
+    public CatalogRouteSummary(String id, String title, String description, String authorName,
+                               String publisherId, boolean publisherVerified, String visibility,
+                               String zoneId, String zoneLabel, int waypointCount, int groupCount,
+                               int codecVersion, int version, long downloads, String createdAt,
+                               String updatedAt, String sharePath, List<String> tags) {
+        this(id, title, description, authorName, publisherId, publisherVerified, visibility,
+                zoneId, zoneLabel, waypointCount, groupCount, codecVersion, version, downloads,
+                createdAt, updatedAt, sharePath, tags, "");
     }
 
     /** A summary without server-assigned tags (older catalog servers send none). */
@@ -38,7 +51,12 @@ public record CatalogRouteSummary(
                                String updatedAt, String sharePath) {
         this(id, title, description, authorName, publisherId, publisherVerified, visibility,
                 zoneId, zoneLabel, waypointCount, groupCount, codecVersion, version, downloads,
-                createdAt, updatedAt, sharePath, List.of());
+                createdAt, updatedAt, sharePath, List.of(), "");
+    }
+
+    /** The icon to draw: the publisher's choice, else the zone's. */
+    public String displayIcon() {
+        return com.babbur.waypointer.core.RouteIcon.display(icon, zoneId);
     }
 
     public boolean hasTag(String tag) {

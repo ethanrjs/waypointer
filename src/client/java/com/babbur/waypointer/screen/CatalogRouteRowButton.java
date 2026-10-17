@@ -26,6 +26,8 @@ final class CatalogRouteRowButton extends AbstractButton {
     static final int HEIGHT = 32;
     private static final int TITLE_TOP = 6;
     private static final int META_TOP = 18;
+    /** The route's item icon sits in a slot at the start of the row. */
+    static final int ICON_SLOT = 22;
 
     /** Mining Cult purple. */
     static final int MINING_CULT = 0xFF9B6BFF;
@@ -68,7 +70,8 @@ final class CatalogRouteRowButton extends AbstractButton {
         if (isFocused() && !selected) graphics.fill(x1, y1, x1 + 1, y2, ACCENT);
 
         Font font = Minecraft.getInstance().font;
-        int textX = x1 + GAP;
+        RouteIcons.slotted(graphics, route.displayIcon(), x1 + GAP, y1 + (HEIGHT - ICON_SLOT) / 2, ICON_SLOT, 16);
+        int textX = x1 + GAP + ICON_SLOT + GAP;
         int right = x2 - GAP;
 
         // Line 1: title, Mining Cult badge, install state on the right.

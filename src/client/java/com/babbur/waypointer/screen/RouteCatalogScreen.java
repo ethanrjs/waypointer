@@ -70,6 +70,7 @@ public final class RouteCatalogScreen extends Screen {
     private static final int LINE_H = 10;
     private static final int DETAIL_LINE_H = 11;
     private static final int ROW_H = CatalogRouteRowButton.HEIGHT;
+    private static final int DETAIL_ICON = 36;
     private static final int ROW_PITCH = ROW_H;
     private static final int WIDE_BREAKPOINT = 420;
     private static final int LOAD_MORE_W = 108;
@@ -1357,8 +1358,14 @@ public final class RouteCatalogScreen extends Screen {
             return null;
         }
 
-        // Title with the Mining Cult badge, then zone and publisher, then size and age.
+        // The route's icon, then beside it the title with the Mining Cult badge, zone and
+        // publisher, and size and age.
         int y = detailY + pad;
+        int iconTop = y - 1;
+        RouteIcons.slotted(graphics, route.displayIcon(), x, iconTop, DETAIL_ICON, 32);
+        int iconBottom = iconTop + DETAIL_ICON;
+        x += DETAIL_ICON + GAP;
+        available = Math.max(20, right - x);
         boolean miningCult = route.hasTag(CatalogRouteSummary.TAG_MINING_CULT);
         int badgeW = miningCult ? CatalogRouteRowButton.miningCultWidth(font) + GAP : 0;
         Component title = Component.literal(GuiTokens.ellipsize(font, route.title(), available - badgeW))
@@ -1376,7 +1383,9 @@ public final class RouteCatalogScreen extends Screen {
         String shownFacts = GuiTokens.ellipsize(font, facts, available);
         graphics.text(font, shownFacts, x, y, TEXT_MUTED, false);
         dateTooltip(graphics, route, facts.equals(shownFacts) ? x + font.width(facts) : -1, y, mouseX, mouseY);
-        y += DETAIL_LINE_H + GAP_TIGHT;
+        y = Math.max(y + DETAIL_LINE_H, iconBottom) + GAP_TIGHT + 2;
+        x = detailX + pad;
+        available = Math.max(20, right - x);
 
         // Install state, when the route is already here.
         CatalogInstallState state = installState(route);

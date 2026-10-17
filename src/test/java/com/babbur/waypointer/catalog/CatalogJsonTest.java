@@ -91,6 +91,24 @@ class CatalogJsonTest {
     }
 
     @Test
+    void readsTheChosenIconAndFallsBackToTheZone() {
+        CatalogPage page = CatalogJson.parsePage("""
+                {"routes":[{
+                  "id":"Abcdefghijklmnopqrstuv", "title":"Tungsten", "zoneId":"dwarven_mines",
+                  "zoneLabel":"Dwarven Mines", "waypointCount":16, "groupCount":1, "codecVersion":9,
+                  "icon":"minecraft:diamond_pickaxe*"
+                },{
+                  "id":"Bcdefghijklmnopqrstuvw", "title":"Odd", "zoneId":"dwarven_mines",
+                  "zoneLabel":"Dwarven Mines", "waypointCount":3, "groupCount":1, "codecVersion":9,
+                  "icon":"<b>pickaxe</b>"
+                }],"hasMore":false}
+                """);
+        assertEquals("minecraft:diamond_pickaxe*", page.routes().getFirst().icon());
+        assertEquals("", page.routes().get(1).icon());
+        assertEquals("minecraft:iron_pickaxe", page.routes().get(1).displayIcon());
+    }
+
+    @Test
     void parsesCurrentSiteSummaryAndSupportsLocalSearch() {
         CatalogPage page = CatalogJson.parsePage("""
                 {"routes":[{

@@ -221,9 +221,11 @@ public final class CatalogRouteInstaller {
                 group.setCatalogProvenance(new CatalogRouteProvenance(
                         apiRoot, summary.id(), summary.version(), summary.codecVersion(),
                         payloadSha256, index, groupCount));
+                if (group.icon().isEmpty()) group.setIcon(summary.icon());
                 WaypointGroup previous = priorGroups.get(index);
                 if (previous != null) {
                     group.setEnabled(previous.enabled());
+                    if (!previous.icon().isEmpty()) group.setIcon(previous.icon());
                     preservePersonalStyles(previous, group);
                 }
                 detached.add(group);

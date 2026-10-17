@@ -222,7 +222,15 @@ final class CatalogJson {
                 optionalString(route, "createdAt", MAX_TEXT, ""),
                 optionalString(route, "updatedAt", MAX_TEXT, ""),
                 optionalString(route, "sharePath", 128, "/r/" + id),
-                optionalTags(route));
+                optionalTags(route),
+                optionalIcon(route));
+    }
+
+    /** The publisher's chosen item icon; anything that isn't an item id reads as none. */
+    private static String optionalIcon(JsonObject route) {
+        JsonElement value = route.get("icon");
+        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) return "";
+        return com.babbur.waypointer.core.RouteIcon.normalize(value.getAsString());
     }
 
     private static final Pattern TAG = Pattern.compile("[a-z0-9][a-z0-9-]{0,31}");

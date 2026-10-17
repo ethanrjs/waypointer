@@ -38,6 +38,8 @@ final class WaypointerCommandHelp {
                                     "route mode sequence", "route mode static"),
                             new HelpRow(" route radius <blocks>", "waypointer.command.help.route_radius_target",
                                     "route radius 4.5"),
+                            new HelpRow(" route icon <item> [glint]", "waypointer.command.help.route_icon",
+                                    "route icon diamond_pickaxe glint"),
                             new HelpRow(" route skipahead [on|off]", "waypointer.command.help.route_skipahead_target",
                                     "route skipahead off"),
                             new HelpRow(" route colormode <color|gradient|one|paint>",

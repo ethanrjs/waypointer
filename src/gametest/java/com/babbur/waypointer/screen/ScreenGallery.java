@@ -121,6 +121,14 @@ public final class ScreenGallery {
         context.waitTicks(2);
         context.takeScreenshot("gallery-appearance-scope-open-s" + scale);
         shootCatalog(context, scale);
+        shoot(context, "route-icon", scale, () -> new RouteIconPickerScreen(null, "minecraft:diamond_pickaxe*",
+                "dwarven_mines", spec -> { }));
+        context.runOnClient(client -> {
+            Screen screen = MinecraftCompat.screen(client);
+            ((net.minecraft.client.gui.components.EditBox) field(screen, "searchBox")).setValue("glass");
+        });
+        context.waitTicks(3);
+        context.takeScreenshot("gallery-route-icon-search-s" + scale);
         context.runOnClient(client -> {
             MinecraftCompat.setScreen(client, null);
             RoutePublishScreen.open(null, config, manager.get(routeId));
@@ -273,6 +281,17 @@ public final class ScreenGallery {
         return route;
     }
 
+    /** Icons a publisher might pick; two routes keep the zone's. */
+    private static final java.util.Map<String, String> ICONS = java.util.Map.of(
+            "AAAAAAAAAAAAAAAAAAAAA1", "minecraft:diamond_pickaxe*",
+            "AAAAAAAAAAAAAAAAAAAAA2", "minecraft:red_stained_glass",
+            "AAAAAAAAAAAAAAAAAAAAA3", "minecraft:oak_leaves",
+            "AAAAAAAAAAAAAAAAAAAAA4", "minecraft:spider_eye",
+            "AAAAAAAAAAAAAAAAAAAAA5", "minecraft:amethyst_cluster",
+            "AAAAAAAAAAAAAAAAAAAAA6", "",
+            "AAAAAAAAAAAAAAAAAAAAA7", "minecraft:redstone",
+            "AAAAAAAAAAAAAAAAAAAAA8", "");
+
     private static List<com.babbur.waypointer.catalog.CatalogRouteSummary> catalogRoutes() {
         String now = java.time.Instant.now().toString();
         String week = java.time.Instant.now().minus(java.time.Duration.ofDays(6)).toString();
@@ -302,7 +321,7 @@ public final class ScreenGallery {
             String zoneLabel, int waypoints, long installs, String created, String updated, List<String> tags) {
         return new com.babbur.waypointer.catalog.CatalogRouteSummary(id, title, description, author, "", verified,
                 "public", zoneId, zoneLabel, waypoints, 1,
-                com.babbur.waypointer.catalog.CatalogProtocol.currentCodecVersion(), 1, installs, created, updated, "/r/" + id, tags);
+                com.babbur.waypointer.catalog.CatalogProtocol.currentCodecVersion(), 1, installs, created, updated, "/r/" + id, tags, ICONS.getOrDefault(id, ""));
     }
 
     private static void setField(Object owner, String name, Object value) {
@@ -359,16 +378,19 @@ public final class ScreenGallery {
         }
         ruby.toggleSubwaypoint(2);
         ruby.setLoadMode(WaypointGroup.LoadMode.SEQUENCE);
+        ruby.setIcon("minecraft:red_stained_glass");
         ruby.setStyleOverride(WaypointStyle.EMPTY.with("labelScale", 1.5).with("showTracer", true));
         ruby.setWaypointStyle(5, WaypointStyle.EMPTY.with("waypointMarkerScale", 1.5));
         manager.add(ruby);
         WaypointGroup topaz = WaypointGroup.create("Topaz shortcut", zone);
         for (int i = 0; i < 6; i++) topaz.add(Waypoint.at(-10 - i * 4, 71, 5 + i));
         topaz.setEnabled(false);
+        topaz.setIcon("minecraft:yellow_stained_glass");
         manager.add(topaz);
         WaypointGroup souls = WaypointGroup.create("Fairy souls", zone);
         for (int i = 0; i < 9; i++) souls.add(Waypoint.at(i * 7, 68, -i * 5));
         souls.setStyleOverride(WaypointStyle.EMPTY.with("showTracer", true));
+        souls.setIcon("minecraft:ghast_tear*");
         manager.add(souls);
         manager.createFolder("Gemstones", zone, List.of(ruby.id(), topaz.id()));
         for (int i = 0; i < 4; i++) {

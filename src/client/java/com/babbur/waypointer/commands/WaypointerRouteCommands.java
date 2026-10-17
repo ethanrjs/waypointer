@@ -103,6 +103,14 @@ final class WaypointerRouteCommands {
                                 Waypoint.MIN_REACH_RADIUS, Waypoint.MAX_REACH_RADIUS))
                                 .executes(ctx -> runSetRadius(ctx.getSource(),
                                         DoubleArgumentType.getDouble(ctx, "blocks")))))
+                .then(literal("icon")
+                        .then(literal("none").executes(ctx -> runSetIcon(ctx.getSource(), "", false)))
+                        .then(argument("item", StringArgumentType.word())
+                                .suggests(WaypointerRouteCommands::suggestItems)
+                                .executes(ctx -> runSetIcon(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "item"), false))
+                                .then(literal("glint").executes(ctx -> runSetIcon(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "item"), true)))))
                 .then(literal("skipahead")
                         .executes(ctx -> runSetSkipAhead(ctx.getSource(), "toggle"))
                         .then(argument("state", StringArgumentType.word())
@@ -413,6 +421,44 @@ final class WaypointerRouteCommands {
         changed(route);
         routeSuccess(src, route, Component.translatable("waypointer.command.route.radius",
                 formatBlocks(route.defaultRadius())));
+        return 1;
+    }
+
+    /** Item ids, without "minecraft:" for vanilla items. */
+    private static java.util.concurrent.CompletableFuture<com.mojang.brigadier.suggestion.Suggestions> suggestItems(
+            com.mojang.brigadier.context.CommandContext<FabricClientCommandSource> ctx,
+            com.mojang.brigadier.suggestion.SuggestionsBuilder builder) {
+        String typed = builder.getRemaining().toLowerCase(Locale.ROOT);
+        for (net.minecraft.resources.Identifier id : net.minecraft.core.registries.BuiltInRegistries.ITEM.keySet()) {
+            String shown = id.getNamespace().equals("minecraft") ? id.getPath() : id.toString();
+            if (!shown.equals("air") && (shown.startsWith(typed) || id.toString().startsWith(typed))) {
+                builder.suggest(shown);
+            }
+        }
+        return builder.buildFuture();
+    }
+
+    int runSetIcon(FabricClientCommandSource src, String rawItem, boolean glint) {
+        WaypointGroup route = targetOrError(src);
+        if (route == null) return 0;
+        if (rawItem.isEmpty()) {
+            route.setIcon(com.babbur.waypointer.core.RouteIcon.NONE);
+            changed(route);
+            routeSuccess(src, route, Component.translatable("waypointer.command.route.icon_none"));
+            return 1;
+        }
+        String spec = com.babbur.waypointer.core.RouteIcon.of(rawItem, glint);
+        var item = spec.isEmpty() ? null : net.minecraft.core.registries.BuiltInRegistries.ITEM
+                .getOptional(net.minecraft.resources.Identifier.tryParse(
+                        com.babbur.waypointer.core.RouteIcon.itemId(spec))).orElse(null);
+        if (item == null || item == net.minecraft.world.item.Items.AIR) {
+            error(src, Component.translatable("waypointer.command.error.icon_value", rawItem));
+            return 0;
+        }
+        route.setIcon(spec);
+        changed(route);
+        routeSuccess(src, route, Component.translatable("waypointer.command.route.icon",
+                new net.minecraft.world.item.ItemStack(item).getHoverName()));
         return 1;
     }
 

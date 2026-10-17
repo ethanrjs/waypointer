@@ -952,6 +952,11 @@ final class WaypointerRouteList {
 
         int chipX = RouteListPresentation.routeToggleChipX(x2);
         int textX = RouteListPresentation.routeRowTextX(x1, indented, folderChild);
+        if (!group.temp()) {
+            RouteIcons.draw(graphics, com.babbur.waypointer.core.RouteIcon.display(group.icon(), group.zoneId()),
+                    textX, y1 + 4, 16);
+            textX += 16 + GAP_TIGHT + 2;
+        }
         int textMaxWidth = Math.max(12, chipX - GAP - textX);
         int textColor = group.enabled() ? TEXT : TEXT_MUTED;
         String name = RouteListPresentation.routeRowName(

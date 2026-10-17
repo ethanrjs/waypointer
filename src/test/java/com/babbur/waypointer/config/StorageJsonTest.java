@@ -24,6 +24,18 @@ import static org.junit.jupiter.api.Assertions.*;
 class StorageJsonTest {
 
     @Test
+    void routeIconIsSavedOnlyWhenChosen() {
+        WaypointGroup group = WaypointGroup.create("Icon", "hub");
+        assertFalse(Storage.groupToJson(group).has("icon"));
+        group.setIcon("minecraft:prismarine_shard*");
+        JsonObject encoded = Storage.groupToJson(group);
+        assertEquals("minecraft:prismarine_shard*", encoded.get("icon").getAsString());
+        assertEquals("minecraft:prismarine_shard*", Storage.groupFromJson(encoded).icon());
+        encoded.addProperty("icon", "<script>");
+        assertEquals("", Storage.groupFromJson(encoded).icon());
+    }
+
+    @Test
     void formerAnimatedPaintKeepsItsFirstFrameWhenLoadingAndSaving() {
         WaypointPaint first = WaypointPaint.solid(0x123456);
         com.google.gson.JsonArray frames = new com.google.gson.JsonArray();
