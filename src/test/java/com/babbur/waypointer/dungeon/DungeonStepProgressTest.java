@@ -148,6 +148,29 @@ class DungeonStepProgressTest {
     }
 
     @Test
+    void editingShowsTheWholeRouteEvenWhenFinished() {
+        WaypointGroup group = room();
+        group.setShowAllWaypoints(true);
+        assertEquals(List.of(0, 1, 2, 3, 4, 5, 6), visible(group));
+        group.setCurrentTargetIndex(group.size());
+        assertEquals(List.of(0, 1, 2, 3, 4, 5, 6), visible(group));
+
+        com.babbur.waypointer.core.ActiveGroupManager manager =
+                new com.babbur.waypointer.core.ActiveGroupManager();
+        WaypointGroup mirror = new WaypointGroup("dungeon:auto:test-room", "Room", "test-room");
+        mirror.setRouteKind(WaypointGroup.RouteKind.DUNGEON);
+        mirror.setRuntimeOnly(true);
+        mirror.add(new Waypoint(0, 70, 0, "", Waypoint.DEFAULT_COLOR, CHEST, 0.0));
+        mirror.setCurrentTargetIndex(1);
+        manager.add(mirror);
+        manager.onZoneChanged(new com.babbur.waypointer.core.Zone("test-room", "Room"));
+        assertEquals(List.of(), manager.activeGroups(), "a finished room hides");
+        mirror.setShowAllWaypoints(true);
+        manager.fireTransientDataChanged();
+        assertEquals(List.of(mirror), manager.activeGroups(), "but not while editing");
+    }
+
+    @Test
     void anyOrderOnAMainWaypointIsIgnored() {
         WaypointGroup group = route(ETHERWARP | ANY, CHEST | SUB);
         assertFalse(group.isAnyOrderStepMember(0));

@@ -58,6 +58,7 @@ public final class WaypointGroup {
     private CatalogRouteProvenance catalogProvenance;
     private transient boolean[] staticReached;
     private transient boolean[] stepDone;
+    private transient boolean showAllWaypoints;
     private transient int proximitySuppressedIndex = -1;
     private transient Integer focusedVisibleIndex;
     private transient int activeSubwaypointParentIndex = -1;
@@ -312,6 +313,9 @@ public final class WaypointGroup {
     public void setTemp(boolean on)                     { this.temp = on; }
     public void setRuntimeOnly(boolean on)              { this.runtimeOnly = on; }
     public void setVisibleMainSteps(int count)           { this.visibleMainSteps = Math.max(0, count); }
+    /** Shows every enabled waypoint whatever the progress; used while editing a room route in the world. */
+    public boolean showAllWaypoints()                    { return showAllWaypoints; }
+    public void setShowAllWaypoints(boolean on)          { this.showAllWaypoints = on; }
     public void setRuntimeSourceGroupId(String id)       { this.runtimeSourceGroupId = id; }
     public void setRouteKind(RouteKind kind)              { this.routeKind = Objects.requireNonNull(kind); }
     public void setPaint(WaypointPaint paint)            { this.paint = paint; }
@@ -404,7 +408,7 @@ public final class WaypointGroup {
             return;
         }
 
-        if (loadMode == LoadMode.STATIC) {
+        if (loadMode == LoadMode.STATIC || showAllWaypoints) {
             for (int i = 0; i < n; i++) {
                 if (isWaypointEnabled(i)) action.accept(i);
             }

@@ -104,7 +104,8 @@ public final class ActiveGroupManager {
     }
 
     private static boolean shouldSurfaceActiveGroup(WaypointGroup group) {
-        return !isCompletedDungeonRoomGroup(group) && !isStoredDungeonRoomGroup(group);
+        return (group.showAllWaypoints() || !isCompletedDungeonRoomGroup(group))
+                && !isStoredDungeonRoomGroup(group);
     }
 
     private static boolean isStoredDungeonRoomGroup(WaypointGroup group) {

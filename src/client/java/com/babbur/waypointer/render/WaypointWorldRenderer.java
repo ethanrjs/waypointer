@@ -1700,7 +1700,9 @@ class WaypointWorldRenderer {
     }
 
     public static State stateFor(WaypointGroup group, int i, int currentIdx, int activeSubwayParent) {
-        if (group.loadMode() == WaypointGroup.LoadMode.STATIC) return State.CURRENT;
+        if (group.loadMode() == WaypointGroup.LoadMode.STATIC || group.showAllWaypoints()) {
+            return State.CURRENT;
+        }
         if (group.isSubwaypoint(i)) {
             if (i == currentIdx) return State.CURRENT;
             int parent = group.parentMainIndex(i);

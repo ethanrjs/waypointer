@@ -170,6 +170,7 @@ public final class WaypointRepositionMode {
             editManager.isolateRouteForEditing(
                     editTargetGroupId == null ? null : editManager.get(editTargetGroupId));
             editModeEnabled = true;
+            editManager.fireTransientDataChanged();
             showStatus(mc, HELP_EDIT_ON);
             if (!wasEnabled) {
                 playEditSound(mc, config);
@@ -178,12 +179,14 @@ public final class WaypointRepositionMode {
         }
 
         WaypointerConfig soundConfig = config == null ? editConfig : config;
+        ActiveGroupManager previousManager = editManager;
         if (editManager != null) editManager.isolateRouteForEditing(null);
         editModeEnabled = false;
         editManager = null;
         editConfig = null;
         editTargetGroupId = null;
         active = null;
+        if (previousManager != null) previousManager.fireTransientDataChanged();
         showStatus(mc, HELP_EDIT_OFF);
         if (wasEnabled) {
             playEditSound(mc, soundConfig);
